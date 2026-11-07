@@ -1547,3 +1547,11 @@ Linux 私有 systemd 实测原 `04f1f463-a0cb-4197-a271-8ad1afb93c9d` 在 Server
 首轮缺少专属 Nginx 密钥目录，第二轮上游容器提前退出，修正后通过。原系统包 Nginx Helper 回执路径和 Windows Release 模块边界回归也复验。Windows Docker 跨进程专项恢复原 `Interrupted` 回执且副作用一次。夹具清理专属容器和 cgroup，核对宿主 Docker 与 Nginx 进程、运行容器清单和 Nginx 配置。此阶段覆盖生产发布与自签证书绑定，公共 CA 与网站发布的同一事务、整机中断、独立执行程序集和动态休眠仍待验收。WebServer 保持 resident。
 
 最终复验的原操作分别为 `3e073972-f898-42ab-ad2c-ff362435be20`（配置）、`4f891ce5-b66d-4475-8ca3-b4f35e94413f`（验证）和 `2ac65837-94cc-4069-82e5-1deac7f48dea`（直接重载回执）。Linux 日志为 `.artifacts/mb05-auth-website-final-website.log`、`.artifacts/mb05-auth-website-final-website-verifying.log` 和 `.artifacts/mb05-auth-website-final-receipt.log`，归档 SHA-256 为 `fb3aeac412206f5e0771a5b11795534f3345974871ee00907bf2587fc9857ef8`。Windows 日志为 `.artifacts/mb05-auth-website-win.log`，Docker 原操作 `9d25c4d8-aa4e-4f28-92c2-548bae0dfd9c`。
+
+### MB-05 网站发布自动 ACME 的权限阻塞
+
+完整认证 Server 的自动签发目前选择 Direct HTTP-01。生产 `HostPrivilegeService` 拒绝把 Server 的进程身份当作权限，当前没有接管此监听的生产 Helper 能力。实机在私有系统启动独立 Pebble 和 DNS，已探通 TLS 目录，实际发布仍在签发前返回 `certificate.port80_elevation_required`。故障发生在 CA 订单之前，公共域名或更换 CA 无法解除此门禁。
+
+此路径的跨进程回归核对已持久化的原失败回执、同键和应用历史，检查证书操作 ID 缺失、CA 无新订单、没有打开 80 端口或重载 Nginx。原 HTTPS、原 Docker 上游和共享服务继续运行。需要先建立经过能力授权的挑战发布边界，明确挑战响应与清理 owner，再验收实际签发中断和原 CA 订单恢复。该路径保持关闭。
+
+Linux 原发布 `929bf5d6-7e68-4df1-baca-8f503bb88af0` 跨重启返回原失败。首轮等待签发响应失败，第二轮通过生产回执确认拒绝原因，最终轮按拒绝路径验收。日志为 `.artifacts/mb05-acme-authorization-final-website-acme.log`，现有证书路径的 Verifying 回归见 `.artifacts/mb05-acme-authorization-final-website-verifying.log`。Release 归档与上一阶段相同。

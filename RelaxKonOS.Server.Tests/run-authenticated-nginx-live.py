@@ -20,8 +20,9 @@ import uuid
 
 def run(root, server, helper_binary, mode):
     production_helper = mode is not None
-    website = mode in ("--systemd-website", "--systemd-website-verifying")
+    website = mode in ("--systemd-website", "--systemd-website-verifying", "--systemd-website-acme")
     verifying_website = mode == "--systemd-website-verifying"
+    acme_website = mode == "--systemd-website-acme"
     retire_retry = mode == "--systemd-retire-retry"
     relay_mode = retire_retry or mode in ("--systemd-response-loss", "--systemd-rejected")
     rejected = mode == "--systemd-rejected"
@@ -53,9 +54,12 @@ def run(root, server, helper_binary, mode):
         env[f"Modules__{module}__Enabled"] = "false"
     if website:
         env["Modules__Docker__Enabled"] = "true"
-        env["no_proxy"] = env["NO_PROXY"] = "website-mb05.test,127.0.0.1"
+        env["no_proxy"] = env["NO_PROXY"] = "website-mb05.test,127.0.0.1,localhost"
         if verifying_website:
             env["SSL_CERT_FILE"] = str(root / "website-ca.pem")
+        if acme_website:
+            env["SSL_CERT_FILE"] = str(root / "https.pem")
+            env["Certificate__DirectoryUrl"] = "https://localhost:14000/dir"
     env["Modules__Certificates__Enabled"] = "true"
     env["Modules__WebServer__Enabled"] = "true"
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -336,17 +340,21 @@ def run(root, server, helper_binary, mode):
                 assert container_state == "running", subprocess.check_output(["docker", "logs", container], stderr=subprocess.STDOUT, text=True)
                 observed = request(app_route, token=token)["application"]
                 assert observed["actualState"].lower() == "running" and not observed["siteId"], observed["actualState"]
-                cert = request(certificates + "/self-signed", token=token, expected=202,
-                               key=secrets.token_hex(16), payload={"domains": [domain], "validityDays": 1})
-                cert_route = f"{certificates}/operations/{cert['operationId']}"
-                wait_for(initial, lambda: request(cert_route, token=token)["state"].lower() == "succeeded",
-                         "authenticated certificate creation")
-                certificate_id = request(cert_route, token=token)["certificateId"]
-                ca_file = root / "material" / certificate_id / "nginx-fullchain.pem"
-                if verifying_website:
-                    (root / "website-ca.pem").symlink_to(ca_file)
-                client = urllib.request.build_opener(urllib.request.ProxyHandler({}),
-                    urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=ca_file)))
+                certificate_options = {"contactEmail": "fixture@example.test", "acceptedTerms": True,
+                                       "publicReachabilityConfirmed": True}
+                if not acme_website:
+                    cert = request(certificates + "/self-signed", token=token, expected=202,
+                                   key=secrets.token_hex(16), payload={"domains": [domain], "validityDays": 1})
+                    cert_route = f"{certificates}/operations/{cert['operationId']}"
+                    wait_for(initial, lambda: request(cert_route, token=token)["state"].lower() == "succeeded",
+                             "authenticated certificate creation")
+                    certificate_id = request(cert_route, token=token)["certificateId"]
+                    ca_file = root / "material" / certificate_id / "nginx-fullchain.pem"
+                    if verifying_website:
+                        (root / "website-ca.pem").symlink_to(ca_file)
+                    client = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                        urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=ca_file)))
+                    certificate_options = {"certificateId": certificate_id}
 
                 def published_body():
                     try:
@@ -359,48 +367,76 @@ def run(root, server, helper_binary, mode):
                            if item["executablePath"] == executable and item["configurationPath"] == str(configuration)]
                 assert len(matches) == 1, "The dedicated Nginx instance was not discovered"
                 payload = {"applicationId": app_id, "webServerId": matches[0]["id"], "domain": domain,
-                           "certificateId": certificate_id, "confirmed": True}
+                           "confirmed": True, **certificate_options}
                 request(publications, payload=payload, key=key, expected=401)
                 original = request(publications, token=token, payload=payload, key=key, expected=202)
                 operation_id = original["operationId"]
                 operation_route = f"{publications}/operations/{operation_id}"
-                wait_for(initial, witness.is_file, "publication systemd reload")
-                if verifying_website:
-                    wait_for(initial, (upstream / "requests").is_file, "Server HTTPS verification reached the Docker upstream")
-                    assert (upstream / "requests").read_text().splitlines() == ["GET / HTTP/1.1"]
+                if acme_website:
+                    def terminal_failure():
+                        current = request(operation_route, token=token)
+                        if current["state"].lower() in ("queued", "running"):
+                            return False
+                        assert (current["state"].lower(), current["problemCode"]) == (
+                            "failed", "certificate.port80_elevation_required"), current
+                        return True
+
+                    wait_for(initial, terminal_failure, "website direct HTTP-01 authorization decision")
+                    failed = request(operation_route, token=token)
+                    assert not failed["certificateOperationId"] and not failed["certificateId"]
+                    assert not witness.exists()
+                    assert_served(b"original")
                 else:
-                    wait_for(initial, published_body, "real published HTTPS upstream")
-                active = request(operation_route, token=token)
-                stage = "verifying" if verifying_website else "configuring"
-                assert (active["state"].lower(), active["stage"].lower()) == ("running", stage)
-                site_id = active["siteId"] if verifying_website else None
-                if verifying_website:
-                    assert site_id
-                assert request(app_route, token=token)["application"]["siteId"] == site_id
+                    wait_for(initial, witness.is_file, "publication systemd reload")
+                    if verifying_website:
+                        wait_for(initial, (upstream / "requests").is_file, "Server HTTPS verification reached the Docker upstream")
+                        assert (upstream / "requests").read_text().splitlines() == ["GET / HTTP/1.1"]
+                    else:
+                        wait_for(initial, published_body, "real published HTTPS upstream")
+                    active = request(operation_route, token=token)
+                    stage = "verifying" if verifying_website else "configuring"
+                    assert (active["state"].lower(), active["stage"].lower()) == ("running", stage)
+                    site_id = active["siteId"] if verifying_website else None
+                    if verifying_website:
+                        assert site_id
+                    assert request(app_route, token=token)["application"]["siteId"] == site_id
                 master = nginx_pid_file.read_text()
                 initial.kill()
                 assert initial.wait(timeout=10) < 0
-                (root / "nginx" / "release").touch()
-                (upstream / "release").touch()
+                if not acme_website:
+                    (root / "nginx" / "release").touch()
+                    (upstream / "release").touch()
 
             with process([server], "website-restarted-server") as restarted:
                 wait_for(restarted, healthy, "website-restarted-server")
-                wait_for(restarted, (root / "nginx" / "reload-finished").is_file, "systemd reload completion")
                 token = login()
                 replay = request(publications, token=token, payload=payload, key=key, expected=202)
                 observed = request(operation_route, token=token)
                 history = request(f"{publications}/applications/{app_id}", token=token)
                 assert replay == observed and history == [observed]
-                assert observed["operationId"] == operation_id and observed["state"].lower() == "interrupted"
+                assert observed["operationId"] == operation_id
+                assert subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip() == "running"
+                if acme_website:
+                    assert observed == failed
+                    assert not request(app_route, token=token)["application"]["siteId"]
+                    assert not witness.exists() and nginx_pid_file.read_text() == master
+                    assert_served(b"original")
+                    with socket.socket() as challenge:
+                        assert challenge.connect_ex(("127.0.0.1", 80)) != 0, "Unexpected Direct HTTP-01 listener"
+                    ca_log = (root / "ca.log").read_text()
+                    assert "GET /dir" in ca_log and "Added order" not in ca_log and "POST /finalize-order/" not in ca_log
+                    print(f"PASS AUTHENTICATED WEBSITE ACME AUTHORIZATION: publication={operation_id}; original failed receipt, no CA order or reload")
+                    return
+                assert observed["state"].lower() == "interrupted"
                 recovery = "website.recheck_required" if verifying_website else "website.site_application_unverified"
                 assert observed["recoveryProblemCode"] == recovery
+                wait_for(restarted, (root / "nginx" / "reload-finished").is_file, "systemd reload completion")
                 assert request(app_route, token=token)["application"]["siteId"] == site_id
                 if verifying_website:
                     assert (upstream / "requests").read_text().splitlines() == ["GET / HTTP/1.1"]
                 wait_for(restarted, published_body, "HTTPS upstream after recovery")
                 assert nginx_pid_file.read_text() == master
                 assert witness.read_text().splitlines() == ["reload"]
-                assert subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip() == "running"
                 print(f"PASS AUTHENTICATED WEBSITE {stage.upper()} RECOVERY: operation={operation_id}; {recovery}; original receipt, HTTPS upstream and one reload")
 
     if website:
@@ -580,7 +616,7 @@ if __name__ == "__main__":
     arguments = sys.argv[1:]
     mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain", "--systemd-unknown", "--systemd-timeout", "--systemd-receipt",
                                                             "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry",
-                                                            "--systemd-website", "--systemd-website-verifying") else None
+                                                            "--systemd-website", "--systemd-website-verifying", "--systemd-website-acme") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

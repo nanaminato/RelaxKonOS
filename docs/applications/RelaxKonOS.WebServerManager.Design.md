@@ -1732,3 +1732,5 @@ Linux 系统包重载的原回执对账覆盖明确成功及原生作业明确�
 Linux 系统包重载的原回执保存在 Server。原终态持久化后，Helper 压缩原详情并保留防重放标记。Linux 实测旧 ID 在 Helper 重启后仍不能重载，清理确认丢失后只重试清理。待核验记录保留详情。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-终态回执保留与防重放)。
 
 完整 Server 的认证网站发布已在既有 Linux 测试机通过生产 Helper、私有 systemd、实际 Nginx 和独立 Docker 上游的联合验收。配置阶段中断恢复原 `website.site_application_unverified` 回执且应用尚未关联。真实 HTTPS 探测期间中断恢复原 `website.recheck_required` 回执并保留应用关联。两条路径都保持现有 TLS 与上游服务，重启和同键查询未再次 reload。测试使用认证证书路由生成的专属自签证书。公共 CA 与发布的联合中断仍待验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证网站发布中断与恢复)。
+
+未指定证书 ID 的自动签发在当前生产配置受 Direct HTTP-01 权限门禁阻塞。Linux 完整 Server 将 `certificate.port80_elevation_required` 保存在原网站发布回执中，重启和同键查询返回该失败。私有 CA 无订单，Nginx 无重载。现有证书 ID 的绑定路径已通过上述实机验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布自动-acme-的权限阻塞)。

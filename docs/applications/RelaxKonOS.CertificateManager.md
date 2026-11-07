@@ -1490,3 +1490,5 @@ Linux 完整认证 Server 已通过真实 CA 断流与重启验收。专属 Ngin
 Linux 私有 Pebble 实测覆盖自动续期已准入、扫描尚未关联原回执时的进程中断。恢复完成原扫描并持久化下次到期，未提交新订单。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书续期持久扫描与执行作用域)。
 
 完整 Server 的自然续期停机路径已在 Linux 私有 Pebble 和 Nginx 上通过验收。收到 SIGTERM 后，Server 等待原 CA 挑战响应和清理完成，再提交原取消回执。重启后读取原下次到期时间，保留当前证书和原回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整-server-自然续期与停机排空)。
+
+网站发布的自动签发采用 Direct HTTP-01，当前缺少经能力授权的生产监听入口。私有 Pebble 实测发布原回执为 `certificate.port80_elevation_required`，未创建证书操作或 CA 订单。以上 WebRoot HTTP-01 路径已独立通过实机验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布自动-acme-的权限阻塞)。

@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 # Accepts one JSON credential line through a private FIFO. No credential file is created.
 set -euo pipefail
-[[ ( $# == 2 || $# == 3 ) && $EUID == 0 ]]
+[[ ( $# == 2 || $# == 3 || $# == 5 ) && $EUID == 0 ]]
 mode=${3:---systemd}
-[[ $mode == --systemd || $mode == --systemd-drain || $mode == --systemd-unknown || $mode == --systemd-timeout || $mode == --systemd-receipt || $mode == --systemd-response-loss || $mode == --systemd-rejected || $mode == --systemd-retire-retry || $mode == --systemd-website || $mode == --systemd-website-verifying ]]
+[[ $mode == --systemd || $mode == --systemd-drain || $mode == --systemd-unknown || $mode == --systemd-timeout || $mode == --systemd-receipt || $mode == --systemd-response-loss || $mode == --systemd-rejected || $mode == --systemd-retire-retry || $mode == --systemd-website || $mode == --systemd-website-verifying || $mode == --systemd-website-acme ]]
+pebble= dns=
+if [[ $mode == --systemd-website-acme ]]; then
+    [[ $# == 5 ]]
+    pebble=$(realpath -e -- "$4")
+    dns=$(realpath -e -- "$5")
+else
+    [[ $# != 5 ]]
+fi
 server=$(realpath -e -- "$1")
 helper=$(realpath -e -- "$2")
 script=$(realpath -e -- "$(dirname -- "$0")/run-authenticated-nginx-live.py")
@@ -47,9 +55,12 @@ cat > "$work/inside.sh" <<EOF
 #!/bin/bash
 set -euo pipefail
 exec > "$work/test.log" 2>&1
-daemon=
+daemon= ca= dns_server=
 finish() {
     code=\$?
+    for pid in "\$ca" "\$dns_server"; do
+        if [[ -n \$pid ]]; then kill "\$pid" 2>/dev/null || :; wait "\$pid" || :; fi
+    done
     if [[ -n \$daemon ]]; then
         if ! docker ps -aq | xargs -r docker rm -f; then code=1; fi
         if [[ -n \$(docker ps -aq) ]]; then code=1; fi
@@ -78,6 +89,25 @@ if [[ "$mode" == --systemd-website* ]]; then
     done
     docker info --format '{{.DockerRootDir}}' | grep -Fxq "$work/docker-data"
     docker load -i "$work/alpine.tar"
+fi
+if [[ "$mode" == --systemd-website-acme ]]; then
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
+        -addext 'subjectAltName=DNS:localhost,IP:127.0.0.2' -keyout "$work/https.key" -out "$work/https.pem" >/dev/null 2>&1
+    cat > "$work/pebble.json" <<JSON
+{"pebble":{"listenAddress":"127.0.0.1:14000","managementListenAddress":"127.0.0.1:15000","certificate":"$work/https.pem","privateKey":"$work/https.key","httpPort":80,"tlsPort":443,"retryAfter":{"authz":1,"order":1}}}
+JSON
+    "$dns" -dnsserver 127.0.0.1:8053 -defaultIPv4 127.0.0.1 -defaultIPv6 '' \
+        -http01 '' -https01 '' -tlsalpn01 '' -doh '' -management 127.0.0.1:8055 > "$work/dns.log" 2>&1 &
+    dns_server=\$!
+    PEBBLE_VA_NOSLEEP=1 PEBBLE_WFE_NONCEREJECT=0 PEBBLE_AUTHZREUSE=0 "$pebble" \
+        -config "$work/pebble.json" -dnsserver 127.0.0.1:8053 -strict=false > "$work/ca.log" 2>&1 &
+    ca=\$!
+    for attempt in \$(seq 1 100); do
+        if curl --noproxy '*' --cacert "$work/https.pem" -fsS https://localhost:14000/dir >/dev/null 2>&1; then break; fi
+        kill -0 "\$ca" "\$dns_server"
+        sleep .1
+    done
+    curl --noproxy '*' --cacert "$work/https.pem" -fsS https://localhost:14000/dir >/dev/null
 fi
 systemctl start nginx.service
 python3 "$script" "$work" "$server" "$helper" "$mode" < "$work/credentials"
@@ -201,6 +231,7 @@ if [[ -f "$work/test.log" ]]; then cat "$work/test.log"; fi
 if [[ ! -f "$work/result" || $(cat "$work/result") != 0 ]]; then
     if [[ -f "$work/manager.log" ]]; then tail -n 60 "$work/manager.log"; fi
     if [[ -f "$work/daemon.log" ]]; then tail -n 30 "$work/daemon.log"; fi
+    if [[ -f "$work/ca.log" ]]; then tail -n 25 "$work/ca.log"; fi
     journalctl --no-pager -n 20 -u "$unit" || :
     exit 1
 fi
