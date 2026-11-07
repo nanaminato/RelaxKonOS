@@ -480,3 +480,5 @@ Proxy 管理队列保留原工作租约至实际清理和终态落盘。调用�
 Git 原构建台账持久区分明确未派发、预检责任未知和可能已派发。重新打开台账后，仅明确未派发的原操作在持久化终态后允许执行代次释放。原回执可按同一 ID 和幂等键查询。见[构建派发恢复台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-03-git-构建派发检查点与重启对账)。
 
 MB-05 的 Nginx 清理确认可在存活 Server 内按原 ID 重试。原工作租约持有到确认落盘，停机后的待清理责任仍由原标记接续，停用检查读取同一标记。WebServer 保持 resident。见[清理确认与租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原回执清理确认与租约)。
+
+MB-05 WebRoot 挑战内容不匹配时，原证书台账保持活动清理责任并拒绝新证书操作。跨进程仍可认证查询原回执和原 CA 订单。Certificates 与 WebServer 保持 resident，见[挑战文件归属验收](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-挑战内容变化时保留原清理责任)。

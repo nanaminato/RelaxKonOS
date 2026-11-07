@@ -101,6 +101,32 @@ internal static class CertificateOperationReplayChecks
                 throw new InvalidOperationException("A WebRoot token with different content must not be removed.");
             }
             catch (CertificateOperationException error) when (error.ProblemCode == "certificate.challenge_ownership_unconfirmed") { }
+            var challengePath = Path.Combine(challengeFiles.RootPath, challenge.Token);
+            await File.WriteAllTextAsync(challengePath, "replacement-authorization");
+            using (var blocked = await CreateAsync())
+            {
+                var blockedReceipt = await blocked.GetWebsiteIssueAsync(websiteId, default);
+                var replayBlocked = await blocked.StartOrderAsync("website", Guid.NewGuid(), "issue", "alice",
+                    (_, _, _) => throw new InvalidOperationException("The original CA operation must not be replayed."),
+                    default, default, websitePublicationId: websiteId);
+                var rejected = await blocked.StartAsync("new-while-blocked", Guid.NewGuid(), "issue", "alice",
+                    _ => throw new InvalidOperationException("Unknown challenge ownership admitted a new operation."), default, default);
+                TestAssert.Assert(blockedReceipt is { State: CertificateOperationState.Running, Stage: "challenge-cleanup-required", CompletedAt: null }
+                    && blockedReceipt.OperationId == issue.OperationId && replayBlocked == blockedReceipt
+                    && await blocked.CancelAsync(issue.OperationId, default) == blockedReceipt
+                    && rejected.OperationId == Guid.Empty && rejected.ProblemCode == "certificate.challenge_ownership_unconfirmed"
+                    && CertificateOperationStore.ReadPending(environment).SequenceEqual([issue.OperationId])
+                    && await File.ReadAllTextAsync(challengePath) == "replacement-authorization",
+                    "Startup retains the original receipt and cleanup responsibility, refuses new work, and leaves foreign bytes intact.");
+                try
+                {
+                    await blocked.GetRenewalsForScanAsync("due-while-blocked", [], default);
+                    throw new InvalidOperationException("The renewal worker must leave its current scan pending.");
+                }
+                catch (RelaxKonOS.Server.Residency.ModuleUnavailableException error) when (error.Code == "module-recovery-blocked") { }
+                await blocked.StopAsync(default);
+            }
+            await File.WriteAllTextAsync(challengePath, "original-authorization");
             var restarted = await CreateAsync();
             var original = await restarted.GetWebsiteIssueAsync(websiteId, default);
             TestAssert.Assert(original?.OperationId == issue.OperationId && original.CertificateId == issue.CertificateId

@@ -2026,3 +2026,11 @@ Windows 与指定 Linux 测试机均通过跨进程及 100 轮实际 Git ALC 回
 Linux 私有 systemd 的最终 Release 验证三个原 ID。原 `41069cb8-6c70-4a8c-b72d-0e7ad7c94721` 的 Helper 已压缩详情但首次清理确认被截断，Server 与 Helper 均存活。暂扣第二次清理时，原终态仍可查且管理端报告活跃租约；放行后待确认标记先落盘，租约随后归零。原 `a1759fe6-af9f-4c97-afda-e112fa5bc382` 在首次清理确认丢失后停止 Server 和 Helper，重启只重试原清理。两条路径均保持原 Succeeded、同键和 HTTPS，各一次真实重载，Helper 拒绝旧 ID 再次重载。另复跑原重载响应丢失 `9053e79e-6151-45c5-b362-870034e38af9`，两进程存活，原回执确认成功。三轮专属 cgroup 清理，宿主 Nginx、Docker PID 和配置指纹一致。
 
 Windows Release 验证实际工作租约覆盖终态后的清理重试，并用受控后续工作确认原生对账完成后释放实例执行锁。MB-05 跨进程按原 `bc26ad61-03d3-4d55-a360-32a69f4d01cf` 读回 Interrupted，受控副作用计数为一。首轮 Linux 因夹具重试事件作用域错误失败，修正后通过。日志为 `.artifacts/mb05-nginx-retirement-final/`，归档 SHA-256 为 `4ea113c4a83357709b27078b65313e704363cddfbee97b3194f70162254b93a9`。整机掉电及防重放目录长期容量仍开放。WebServer 继续 resident，生产内存未测。
+
+### MB-05 WebRoot 挑战内容变化时保留原清理责任
+
+WebRoot 文件摘要不匹配时，原证书操作持久保留 `Running / challenge-cleanup-required`、原订单身份和原挑战记录。存活进程继续保留故障工作责任。重启时读取同一台账，保留内容不匹配的文件及清理阻塞，同时开放原回执、取消状态与原订单的认证只读查询。同键返回原证书或网站发布回执，新证书操作拒绝准入。文件恢复与原摘要一致后，在下次启动中完成原清理并写入原中断回执。远端订单有效性和本地签发、TLS 部署状态继续分别核实。
+
+Linux Release 在私有 Pebble、DNS、Nginx、Docker 和完整认证 Server 上验证发布 `73e1a7e3-4ba7-41da-befa-db788ed9c022` 与证书操作 `2ae08813-0c24-479d-93f9-7b20007b7e04`。CA 已实际签发，响应暂扣期间换入不同字节。放行后原任务保留待清理状态，强制终止 Server。重启仍可查原回执与原 CA `valid`，授权的新证书操作返回 HTTP 409，替换文件保持且可由原 WebRoot 读回。恢复原字节后再启动，原文件被清理并持久化原证书中断回执，测试哨兵保留。旧 TLS 与 Docker 上游保持，CA 一次创建及签发提交，Nginx 零重载。
+
+正常 SIGTERM 对照发布 `c0240e22-2771-427b-9e47-b7f6a386fec7` 同批通过，原订单可查、挑战移除、无额外重载。两轮专属 cgroup 清理，宿主 Nginx、Docker PID 与配置指纹一致。日志为 `.artifacts/mb05-acme-challenge-final/live.log`，归档 SHA-256 为 `aaa08de7ce0c574ed4ff83bc32bd1b3424f3cfd6e815929f485d02deb3522f62`。Windows Release 验证清理阻塞时自动续期扫描保持待处理，同键回执稳定，MB-05 原 `a06c0e90-266d-4a46-9baa-257df0da32eb` 跨进程回执为 Interrupted，受控副作用计数为一。归属阻塞与实际自然日扫描的联合路径尚未实测，Certificates 与 WebServer 保持 resident，生产内存未测。

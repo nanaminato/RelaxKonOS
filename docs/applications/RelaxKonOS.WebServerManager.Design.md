@@ -1756,3 +1756,5 @@ Linux 系统包 Nginx 的 WebRoot 启用中断后，后续授权的 TLS 绑定�
 签发和清理完成后才进入站点配置。管理进程在签发中断时，原发布与证书回执可关联查询，证书台账负责清理原挑战文件和查询原 CA 订单。同键请求返回原发布回执。实机证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
 取消原证书操作后，网站发布等待证书回执终态，并按实际结果结束。若在签发阶段停止 Server，原证书任务继续排空，启动恢复将未完成发布标为 Interrupted。已知的原订单仍可通过原证书操作只读查询。
+
+专属 WebRoot 挑战文件内容无法与原摘要匹配时，证书操作保留清理责任和原订单。网站发布同键仍返回原中断回执，现有 Nginx 与 TLS 继续服务。见[挑战文件归属验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-挑战内容变化时保留原清理责任)。

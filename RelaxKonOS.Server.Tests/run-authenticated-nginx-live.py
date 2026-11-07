@@ -33,6 +33,7 @@ def run(root, server, helper_binary, mode):
     acme_success = mode in ("--systemd-website-acme-success", "--systemd-website-acme-bootstrap-success")
     acme_cancel = mode == "--systemd-website-acme-cancel"
     acme_drain = mode == "--systemd-website-acme-drain"
+    acme_changed_challenge = mode == "--systemd-website-acme-challenge-changed"
     retire_live = mode == "--systemd-retire-live"
     retire_retry = retire_live or mode == "--systemd-retire-retry"
     relay_mode = retire_retry or mode in ("--systemd-response-loss", "--systemd-rejected")
@@ -806,7 +807,18 @@ def run(root, server, helper_binary, mode):
                         assert site_id
                     assert request(app_route, token=token)["application"]["siteId"] == site_id
                 master = nginx_pid_file.read_text()
-                if acme_drain:
+                if acme_changed_challenge:
+                    challenge_path = active_tokens[0]
+                    original_challenge = challenge_path.read_bytes()
+                    foreign_challenge = b"fixture-content-with-different-ownership"
+                    challenge_path.write_bytes(foreign_challenge)
+                    (root / "release-certificate-response").touch()
+                    wait_for(initial, lambda: request(certificate_route, token=token)["stage"] == "challenge-cleanup-required",
+                             "persisted original cleanup responsibility")
+                    assert challenge_path.read_bytes() == foreign_challenge and not witness.exists()
+                    initial.kill()
+                    assert initial.wait(timeout=10) < 0
+                elif acme_drain:
                     initial.terminate()
                     wait_for(initial, lambda: not healthy(), "website shutdown stopped accepting HTTP")
                     assert initial.poll() is None and active_tokens[0].is_file()
@@ -826,11 +838,43 @@ def run(root, server, helper_binary, mode):
                 else:
                     initial.kill()
                     assert initial.wait(timeout=10) < 0
-                if acme_website and not (acme_cancel or acme_drain):
+                if acme_website and not (acme_cancel or acme_drain or acme_changed_challenge):
                     (root / "release-certificate-response").touch()
                 elif not acme_website:
                     (root / "nginx" / "release").touch()
                     (upstream / "release").touch()
+
+            if acme_changed_challenge:
+                with process([server], "website-cleanup-blocked-server") as blocked:
+                    wait_for(blocked, healthy, "website-cleanup-blocked-server")
+                    token = login()
+                    receipt = request(certificate_route, token=token)
+                    assert receipt["operationId"] == original_certificate and receipt["state"].lower() == "running"
+                    assert receipt["stage"] == "challenge-cleanup-required" and not receipt["completedAt"]
+                    assert receipt["problemCode"] == "certificate.challenge_ownership_unconfirmed"
+                    assert request(certificate_route + "/cancel", token=token, method="POST") == receipt
+                    order = request(certificate_route + "/acme-order", token=token)
+                    assert order["remoteStatus"] == "valid" and order["operation"] == receipt
+                    grant = request("/api/v1.0/privileged/elevation", token=token, payload={
+                        "capability": "CertificateCreateSelfSigned", "target": "certificates/self-signed",
+                        "password": credentials["password"]})
+                    assert grant["elevated"]
+                    request("/api/v1.0/certificates/self-signed", token=token, payload={"domains": [domain]},
+                            key=secrets.token_hex(16), expected=409,
+                            expected_problem="certificate.challenge_ownership_unconfirmed")
+                    replay = request(publications, token=token, payload=payload, key=key, expected=202)
+                    assert replay == request(operation_route, token=token) and replay["operationId"] == operation_id
+                    assert replay["certificateOperationId"] == original_certificate and replay["state"].lower() == "interrupted"
+                    assert challenge_path.read_bytes() == foreign_challenge
+                    with opener.open(challenge_url, timeout=2) as response:
+                        assert response.read() == foreign_challenge
+                    assert not witness.exists() and nginx_pid_file.read_text() == master
+                    assert_served(b"original")
+                    assert_ca_once()
+                    blocked.terminate()
+                    assert blocked.wait(timeout=15) == 0
+                assert challenge_path.read_bytes() == foreign_challenge
+                challenge_path.write_bytes(original_challenge)
 
             with process([server], "website-restarted-server") as restarted:
                 wait_for(restarted, healthy, "website-restarted-server")
@@ -861,6 +905,9 @@ def run(root, server, helper_binary, mode):
                     except urllib.error.HTTPError as error:
                         assert error.code == 404
                     assert_ca_once()
+                    if acme_changed_challenge:
+                        print(f"PASS AUTHENTICATED WEBSITE ACME CHALLENGE OWNERSHIP: publication={operation_id}; certificate={original_certificate}; conflicting token preserved, original bytes cleaned after restart, one order")
+                        return
                     outcome = "CANCEL" if acme_cancel else "DRAIN" if acme_drain else "RECOVERY"
                     print(f"PASS AUTHENTICATED WEBSITE ACME {outcome}: publication={operation_id}; certificate={original_certificate}; original valid order, token removed, no reload")
                     return
@@ -1245,7 +1292,7 @@ if __name__ == "__main__":
     mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain", "--systemd-unknown", "--systemd-timeout", "--systemd-receipt",
                                                             "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry", "--systemd-retire-live",
                                                             "--systemd-website", "--systemd-website-verifying", "--systemd-website-acme",
-                                                            "--systemd-website-acme-success", "--systemd-website-acme-cancel",
+                                                            "--systemd-website-acme-success", "--systemd-website-acme-cancel", "--systemd-website-acme-challenge-changed",
                                                             "--systemd-website-acme-drain", "--systemd-website-acme-bootstrap",
                                                             "--systemd-website-acme-bootstrap-success", "--systemd-website-acme-bootstrap-failure",
                                                             "--systemd-website-acme-bootstrap-resume", "--systemd-website-acme-bootstrap-resume-interrupt",

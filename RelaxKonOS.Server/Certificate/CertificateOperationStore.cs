@@ -12,6 +12,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
 {
     internal const string AutomaticRenewalActor = "renewal-worker";
     internal const string InterruptedProblem = "certificate.operation_interrupted";
+    private const string ChallengeOwnershipProblem = "certificate.challenge_ownership_unconfirmed";
     private readonly string _path;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<Guid, PersistedOperation> _operations = [];
@@ -100,7 +101,12 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         using var admission = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, admissionCancellation);
         var key = websitePublicationId is { } publicationId ? WebsiteRequestScope(publicationId, actor) : RequestScope(idempotencyKey, certificateId, kind, actor);
         await _gate.WaitAsync(admission.Token);
-        try { RequireReady(); if (FindExistingRequest(key, certificateId, automaticRenewal) is { } replay) return replay.ToDto(); }
+        try
+        {
+            RequireReady();
+            if (FindExistingRequest(key, certificateId, automaticRenewal) is { } replay) return replay.ToDto();
+            if (HasUnconfirmedChallengeCleanup()) return ChallengeCleanupConflict(certificateId, kind, automaticRenewal);
+        }
         finally { _gate.Release(); }
         using var work = await _work.AdmitAsync(admission.Token);
         PersistedOperation operation;
@@ -114,6 +120,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
                     existing.OperationId, certificateId, kind);
                 return existing.ToDto();
             }
+            if (HasUnconfirmedChallengeCleanup()) return ChallengeCleanupConflict(certificateId, kind, automaticRenewal);
             admission.Token.ThrowIfCancellationRequested();
             work.Token.ThrowIfCancellationRequested();
             operation = new PersistedOperation(Guid.NewGuid(), key, certificateId, kind, actor, CertificateOperationState.Queued, "queued", "", null, null,
@@ -131,6 +138,18 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         finally { _gate.Release(); }
         return operation.ToDto();
     }
+
+    private bool HasUnconfirmedChallengeCleanup() =>
+        _operations.Values.Any(operation => operation.ProblemCode == ChallengeOwnershipProblem);
+
+    private static CertificateOperationDto ChallengeCleanupConflict(Guid certificateId, string kind, bool automaticRenewal)
+    {
+        if (automaticRenewal) throw RenewalCleanupBlocker();
+        return new(Guid.Empty, certificateId, kind, CertificateOperationState.Failed, "validation", ChallengeOwnershipProblem, null, null);
+    }
+
+    private static ModuleUnavailableException RenewalCleanupBlocker() =>
+        new("module-recovery-blocked", 30, "The certificate renewal scan is pending confirmation of WebRoot cleanup.");
 
     internal async Task<CertificateOperationDto?> GetWebsiteIssueAsync(Guid websitePublicationId, CancellationToken ct)
     {
@@ -179,7 +198,8 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
     }
 
     private static bool RequiresOrderReconciliation(PersistedOperation operation) =>
-        operation.ProblemCode == InterruptedProblem || operation.State == CertificateOperationState.Cancelled && operation.Order is not null;
+        operation.ProblemCode is InterruptedProblem or ChallengeOwnershipProblem
+        || operation.State == CertificateOperationState.Cancelled && operation.Order is not null;
 
     public async Task<CertificateOperationDto?> GetAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -196,6 +216,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         try
         {
             RequireReady();
+            if (HasUnconfirmedChallengeCleanup()) throw RenewalCleanupBlocker();
             return _operations.Values.Where(operation => operation.Kind == "renew"
                 && (attachedIds.Contains(operation.OperationId) || operation.Actor == AutomaticRenewalActor
                     && operation.IdempotencyKey == RequestScope(requestKey, operation.CertificateId, "renew", AutomaticRenewalActor)))
@@ -282,6 +303,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         {
             RequireReady();
             if (!_operations.TryGetValue(id, out var operation)) return null;
+            if (operation.ProblemCode == ChallengeOwnershipProblem) return operation.ToDto();
             if (operation.State is CertificateOperationState.Succeeded or CertificateOperationState.Failed or CertificateOperationState.Cancelled) return operation.ToDto();
             _cancellations.TryGetValue(id, out source);
             _operations[id] = operation with { Stage = "cancel-requested" };
@@ -312,7 +334,21 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
                 state = linked.IsCancellationRequested ? CertificateOperationState.Cancelled : string.IsNullOrEmpty(problem) ? CertificateOperationState.Succeeded : CertificateOperationState.Failed;
                 if (linked.IsCancellationRequested) problem = "certificate.operation_cancelled";
             }
-            catch (CertificateChallengeCleanupException) { throw; }
+            catch (CertificateChallengeCleanupException error)
+            {
+                if (error.InnerException is AggregateException failures
+                    && failures.InnerExceptions.Any(failure => failure is CertificateOperationException { ProblemCode: ChallengeOwnershipProblem }))
+                {
+                    await _gate.WaitAsync();
+                    try
+                    {
+                        _operations[id] = MarkChallengeCleanupPending(_operations[id]);
+                        await SaveAsync(CancellationToken.None);
+                    }
+                    finally { _gate.Release(); }
+                }
+                throw;
+            }
             catch (ResidentWorkCompletionException) { throw; }
             catch (CertificateOperationException error) { problem = error.ProblemCode; }
             catch (OperationCanceledException) { state = CertificateOperationState.Cancelled; problem = "certificate.operation_cancelled"; }
@@ -374,11 +410,19 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         {
             foreach (var item in JsonSerializer.Deserialize<PersistedOperation[]>(await File.ReadAllTextAsync(_path, ct), Json) ?? throw new JsonException("Certificate ledger must be an array."))
             {
-                foreach (var challenge in item.Challenges ?? [])
-                    await (_challengeFiles ?? throw new InvalidOperationException("WebRoot cleanup ownership is unavailable.")).RemoveOwnedAsync(challenge, ct);
-                var recovered = item.State is CertificateOperationState.Queued or CertificateOperationState.Running
-                    ? item with { State = CertificateOperationState.Failed, Stage = "interrupted", ProblemCode = InterruptedProblem, CompletedAt = DateTimeOffset.UtcNow, Challenges = null }
-                    : item;
+                PersistedOperation recovered;
+                try
+                {
+                    foreach (var challenge in item.Challenges ?? [])
+                        await (_challengeFiles ?? throw new InvalidOperationException("WebRoot cleanup ownership is unavailable.")).RemoveOwnedAsync(challenge, ct);
+                    recovered = item.State is CertificateOperationState.Queued or CertificateOperationState.Running
+                        ? item with { State = CertificateOperationState.Failed, Stage = "interrupted", ProblemCode = InterruptedProblem, CompletedAt = DateTimeOffset.UtcNow, Challenges = null }
+                        : item;
+                }
+                catch (CertificateOperationException error) when (error.ProblemCode == ChallengeOwnershipProblem)
+                {
+                    recovered = MarkChallengeCleanupPending(item);
+                }
                 _operations[recovered.OperationId] = recovered;
                 _byIdempotency[recovered.IdempotencyKey] = recovered.OperationId;
             }
@@ -386,6 +430,10 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         }
         catch (JsonException error) { throw new InvalidOperationException("Certificate operation ledger is invalid; its responsibility cannot be established.", error); }
     }
+
+    private static PersistedOperation MarkChallengeCleanupPending(PersistedOperation operation) =>
+        operation with { State = CertificateOperationState.Running, Stage = "challenge-cleanup-required",
+            ProblemCode = ChallengeOwnershipProblem, CompletedAt = null };
 
     private async Task SaveAsync(CancellationToken ct)
     {
