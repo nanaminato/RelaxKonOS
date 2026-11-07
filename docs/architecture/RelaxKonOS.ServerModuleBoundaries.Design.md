@@ -143,7 +143,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 | MB-01 | **部分完成，整项开放**。MB-01A 资源清单与分层基线见 §42。[MB-01B](RelaxKonOS.ServerModuleBaseline.20261106.md) 验证双平台启动期采树、交错认证 Git、自然释放和 Terminal Hub，Windows 另完成真实 Firewall 三轮 | Linux 同制品的真实 Helper 联合矩阵仍缺，System 模式探索中终端退出证明缺失且共享 Helper 触发宿主代理恢复。外部共享服务归属、长时间与非空仓库负载继续开放 | 隔离 Helper 和宿主持久恢复责任后补 Linux 全量联合矩阵，保留缺失与原始证据，关联 RES-01/03 |
 | MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现，Firewall-F1 独立契约/执行代码及构建门禁；回收验证见 §10/11/20～22/41 | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11）；镜像清理责任修复与真实 Engine 标签检查见 §43，离线 BuildKit 续核见 §44 | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵未完成；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
-| MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22），Core 接续运行期 TUN 恢复见文末 | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
+| MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22）。Core 接续运行期 TUN，完整认证入站发布恢复与补偿见文末 | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障矩阵和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
 | MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态。Docker 在途停止与原回执恢复见 §45，独立 Pebble、Nginx、Engine 实测见 §52～54，证书续期持久调度、网站发布、直接 WebServer 和 Docker Compose 执行作用域见文末 | 三域仍 resident；独立执行程序集和完整联合矩阵开放；跨文件事务和远端 CA 未知状态仍须恢复规则 | MB-05A 后台 owner/终态/禁用门槛已通过，保持 resident；整项还须验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
 | MB-06 | **MB-06A/06B 阶段交付**（§39/40），Windows LocalSystem/S4U 安装夹具及 Core／Helper 崩溃恢复实测通过（§48） | 正式发行服务全链、Linux 固定启动器跨代故障、SDK 合作 drain/后台任务申报仍开放 | 整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
 | MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall-F1 代码回收与 Tailscale TS-01 持久责任跨对象代次验收交付（§41）；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
@@ -1597,3 +1597,11 @@ Linux 私有 systemd 在同一次事务中运行非 root 完整 Server、生产 
 Server 重启后重新通过 PAM 登录。匿名恢复返回 401，原发布键返回原 Interrupted，显式恢复及原恢复键返回同一 ID，持久化终态为 Succeeded。真实 apply 一次，原配置修订只推进一次，管理进程重启期间 sing-box 继续运行。保留和新增授权均完成真实双向转发。此次联合验收针对原生已经提交、Server 尚未收到结果的路径。原生仍在途时的显式补偿已独立实测，完整 PAM HTTP 与该分支的同事务联验仍待执行。
 
 最终 Linux x64 Release 的原操作为 `467fad21-7888-4888-8234-7583f4175db7`。中继使用私有 `/run`，实测 Server 重启前后的原 sing-box PID 相同。Linux 证据为 `.artifacts/mb04-full-auth-proxy-final-live.log`，归档 SHA-256 为 `a76e44b9c9d066c84c7588fd691e3c2a06586ade32742d7aede61e704d62c63b`。同批 TUN、系统代理、后续授权到期和原生补偿回归通过，宿主服务与代理文件指纹一致，专属 cgroup 已清理。Windows Release 受管服务 16 项、独立 HTTP 队列和模块边界回归通过。
+
+### MB-04 完整认证 Server 的在途入站发布补偿
+
+完整非 root Server 通过 PAM/JWT 受理入站发布，经 Unix socket 直达生产 Helper。私有挂载命名空间中的 `systemctl` 夹具只在本次实际候选已经写入并注册后，暂扣专属 sing-box 的启动调用。旧进程已经实际停止，Helper 归档与 Server 队列记录同一在途 ID。核对原候选证据后强制终止 Server 和 Helper，等待拦下的启动调用退出。重启两进程后，原发布键返回原 Interrupted，显式恢复按原 ID 补偿一次，原回执结案为 Failed / `proxy_server.config_apply_failed`。两个原键均返回相同持久终态。
+
+真实配置和服务注册回到原摘要，安装修订未推进，开机启动关闭且服务保持停止。生产 HTTP 启动路径重新核验授权后，原有效授权完成真实双向转发，本次候选授权被拒绝。生产 Helper 重启后未执行 apply。中断时点由隔离命令屏障控制，实际配置变更、补偿、启动与流量均在专属 systemd 服务中执行。Proxy 仍保持 resident。
+
+最终 Linux x64 Release 原操作 `f44e0d99-db0b-4aba-ae1d-f404f43d06ca`。Helper 日志确认非 root Server 按原 ID 查询并补偿一次，后续另发正常启动。真实已提交响应丢失、TUN、系统代理、到期和原生补偿回归同批通过。宿主服务与代理文件指纹一致，专属 cgroup 已清理。日志为 `.artifacts/mb04-auth-inflight-final-live.log`，归档 SHA-256 为 `c5b9593373fb8b679e2b97552ef3e780230c853ac97ce86364d444f491acb806`。Windows Release 受管服务 16 项及模块边界回归通过，Windows SCM 中断仍待实测。

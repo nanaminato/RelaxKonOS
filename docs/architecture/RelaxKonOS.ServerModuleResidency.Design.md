@@ -404,3 +404,5 @@ MB-04 已为原在途入站发布接入显式补偿。补偿使用原实例锁�
 MB-04 原管理发布队列可在进程中断后按原 ID 接续已验证的领域结果或显式补偿。原队列工作租约覆盖恢复、审计、异步清理和终态持久化。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-原管理发布队列的恢复)。
 
 MB-04 完整认证 Server 已通过原生入站发布提交后、响应交付前中断的联合验收。原发布和恢复键指向同一终态，真实 sing-box 继续服务。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的原入站发布回执)。
+
+MB-04 完整认证 Server 已联合验证真实候选已注册、启动前的中断。Server 与 Helper 重启后按原 ID 补偿，保持服务停止至重新授权启动，原回执与流量验证通过。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的在途入站发布补偿)。

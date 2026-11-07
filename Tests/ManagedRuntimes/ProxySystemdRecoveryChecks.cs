@@ -202,12 +202,17 @@ internal static class ProxySystemdRecoveryChecks
                 throw new InvalidOperationException("The full Server replayed or lost a real systemd publication.");
             if (authenticated)
                 await ProxyAuthenticatedPublicationChecks.RunAsync(root, serverAssembly, socket, host, traffic, retained,
-                    () => states.Read()!.Installation.StateRevision);
+                    () => states.Read()!, async () =>
+                    {
+                        var interrupted = await StopHelperAsync();
+                        if (interrupted.ExitCode == 0 || ApplyCount(interrupted.Log) != 2)
+                            throw new InvalidOperationException("The Helper must have two completed applies and one interrupted apply.");
+                    }, async () => { helper = await StartHelper(); });
             await guard.VerifyTrafficAsync();
             await guard.ApplyAsync(transport, enabled: false);
             guard.VerifyOriginalRestored();
             var secondHelper = await StopHelperAsync();
-            if (ApplyCount(secondHelper.Log) != (authenticated ? 2 : 1))
+            if (ApplyCount(secondHelper.Log) != (authenticated ? 0 : 1))
                 throw new InvalidOperationException("Restarted Helper received an unexpected publication apply.");
             Console.WriteLine("PASS PRODUCTION HELPER SYSTEMD: independent Helper crashed and restarted, runtime PID survived, original candidate confirmed, subsequent expiry and real traffic passed");
 

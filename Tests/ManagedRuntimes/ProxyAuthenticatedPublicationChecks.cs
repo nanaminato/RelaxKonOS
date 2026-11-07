@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text.Json;
+using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Common;
@@ -17,7 +18,8 @@ using RelaxKonOS.Server.ProxyServer;
 internal static class ProxyAuthenticatedPublicationChecks
 {
     internal static async Task RunAsync(string root, string assembly, string socket, ISingBoxArchiveHost host,
-        ProxyFullServerTrafficProbe traffic, ProxyServerSecret retained, Func<long> revision)
+        ProxyFullServerTrafficProbe traffic, ProxyServerSecret retained, Func<RuntimeArchiveState> nativeState,
+        Func<Task> stopHelper, Func<Task> restartHelper)
     {
         var login = ReadLogin();
         var store = ManagedServiceChecks.OpenFullServerStore(root);
@@ -36,7 +38,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         start.Environment["Certificate__StorageRoot"] = Path.Combine(start.WorkingDirectory, "certificate-fixture");
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         var ct = budget.Token;
-        var before = revision();
+        var before = nativeState().Installation.StateRevision;
         var key = Guid.NewGuid().ToString("N");
         Guid operation;
         string nativePid;
@@ -58,7 +60,7 @@ internal static class ProxyAuthenticatedPublicationChecks
                 }
                 var pending = await store.ReadAsync(ct);
                 if (await relay.Committed.Task != operation || pending.PendingPublicationOperationId != operation
-                    || !pending.PendingQueuedPublication || revision() != before + 1)
+                    || !pending.PendingQueuedPublication || nativeState().Installation.StateRevision != before + 1)
                     throw new InvalidOperationException("Production HTTP and native apply did not share the same pending operation.");
                 using var live = await traffic.ForwardAsync(added.Value, ct);
                 nativePid = await ReadNativePidAsync();
@@ -90,7 +92,7 @@ internal static class ProxyAuthenticatedPublicationChecks
             if (receipt.State != ProxyOperationState.Succeeded || final.PendingPublication is not null
                 || final.QueuedPublicationCompletions.GetValueOrDefault(operation) != ProxyServerPublicationOutcome.Committed
                 || await SubmitAsync(client, ProxyServerRoutes.Recovery, recoveryKey, ct) != operation
-                || await ReadAsync(client, operation, ct) != receipt || revision() != before + 1 || !(await host.ObserveAsync(ct)).Running
+                || await ReadAsync(client, operation, ct) != receipt || nativeState().Installation.StateRevision != before + 1 || !(await host.ObserveAsync(ct)).Running
                 || await ReadNativePidAsync() != nativePid)
                 throw new InvalidOperationException("The original publication was not confirmed exactly once.");
             using var oldTraffic = await traffic.ForwardAsync(retained.Value, ct);
@@ -98,6 +100,110 @@ internal static class ProxyAuthenticatedPublicationChecks
             Console.WriteLine($"PASS AUTHENTICATED PROXY QUEUE RECOVERY: {operation}; PAM, original HTTP receipt, native apply once and real traffic");
         }
         finally { await StopAsync(restarted); }
+        await VerifyInFlightAsync(root, assembly, socket, host, traffic, retained, added, login, nativeState, stopHelper, restartHelper);
+    }
+
+    private static async Task VerifyInFlightAsync(string root, string assembly, string socket, ISingBoxArchiveHost host,
+        ProxyFullServerTrafficProbe traffic, ProxyServerSecret retained, StoredCredential kept, LoginRequest login,
+        Func<RuntimeArchiveState> nativeState, Func<Task> stopHelper, Func<Task> restartHelper)
+    {
+        const string fault = "/run/relaxkonos-proxy-start";
+        var armed = Path.Combine(fault, "armed");
+        var blocked = Path.Combine(fault, "blocked");
+        var store = ManagedServiceChecks.OpenFullServerStore(root);
+        var old = await store.ReadAsync(default);
+        var candidate = kept with { Id = Guid.NewGuid(), Name = "interrupted-fixture", Value = Guid.NewGuid().ToString("D") };
+        await store.WriteAsync(old with { Configuration = old.Configuration with { Revision = old.Configuration.Revision + 1 },
+            Credentials = [.. old.Credentials, candidate] }, default);
+        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
+        start.Environment["Modules__Proxy__Enabled"] = "true";
+        start.Environment["Identity__LinuxPamTransport"] = "helper";
+        start.Environment["Certificate__StorageRoot"] = Path.Combine(start.WorkingDirectory, "certificate-fixture");
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        var ct = budget.Token;
+        var baseline = nativeState();
+        await host.SetBootAsync(true, ct);
+        var key = Guid.NewGuid().ToString("N");
+        Guid id;
+        using (var initial = Start(start))
+        {
+            try
+            {
+                using var client = await ConnectAsync(initial, login, ct);
+                await File.WriteAllTextAsync(armed, "private-start", ct);
+                id = await SubmitAsync(client, ProxyServerRoutes.Apply, key, ct);
+                while (!File.Exists(blocked))
+                {
+                    var current = await ReadAsync(client, id, ct);
+                    if (current.State is not (ProxyOperationState.Queued or ProxyOperationState.Running))
+                        throw new InvalidOperationException($"The original apply ended before native start: {current.ProblemCode}");
+                    await Task.Delay(40, ct);
+                }
+                var pending = await store.ReadAsync(ct);
+                var inFlight = nativeState();
+                var observed = await host.ObserveAsync(ct);
+                if (inFlight.ProxyPublication is not { Outcome: ProxyServerPublicationOutcome.InFlight } receipt
+                    || receipt.OperationId != id || pending.PendingPublicationOperationId != id || !pending.PendingQueuedPublication
+                    || inFlight.Installation.StateRevision != baseline.Installation.StateRevision || observed.Running || observed.BootEnabled != true
+                    || observed.RegisteredConfigurationIdentity != receipt.CandidateHash || receipt.PreviousHash != baseline.ConfigurationIdentity)
+                    throw new InvalidOperationException("Production Helper had no matching native candidate at the start boundary.");
+                Console.WriteLine($"PASS AUTHENTICATED PROXY NATIVE BOUNDARY: {id}; candidate registered and service stopped before start");
+                initial.Kill();
+                await initial.WaitForExitAsync(ct);
+                if (initial.ExitCode == 0) throw new InvalidOperationException("The original Server did not crash.");
+                await stopHelper();
+            }
+            finally
+            {
+                await StopAsync(initial);
+                File.Delete(armed);
+            }
+        }
+
+        while (!File.Exists(Path.Combine(fault, "released"))) await Task.Delay(20, ct);
+        await restartHelper();
+        using var restarted = Start(start);
+        try
+        {
+            using var client = await ConnectAsync(restarted, login, ct);
+            if (await SubmitAsync(client, ProxyServerRoutes.Apply, key, ct) != id
+                || (await ReadAsync(client, id, ct)).State != ProxyOperationState.Interrupted
+                || nativeState().ProxyPublication?.Outcome != ProxyServerPublicationOutcome.InFlight)
+                throw new InvalidOperationException("The original interrupted apply did not survive the two process exits.");
+            var recoveryKey = Guid.NewGuid().ToString("N");
+            if (await SubmitAsync(client, ProxyServerRoutes.Recovery, recoveryKey, ct) != id)
+                throw new InvalidOperationException("Recovery must return the original authenticated publication ID.");
+            var terminal = await WaitForTerminalAsync(client, id, ct);
+            var compensated = nativeState();
+            var stopped = await host.ObserveAsync(ct);
+            var domain = await store.ReadAsync(ct);
+            if (terminal.State != ProxyOperationState.Failed || terminal.ProblemCode != "proxy_server.config_apply_failed"
+                || compensated.ProxyPublication is not { Outcome: ProxyServerPublicationOutcome.Compensated } proof || proof.OperationId != id
+                || compensated.Installation.StateRevision != baseline.Installation.StateRevision
+                || stopped.Running || stopped.BootEnabled != false || stopped.RegisteredConfigurationIdentity != baseline.ConfigurationIdentity
+                || domain.PendingPublication is not null || domain.QueuedPublicationCompletions.GetValueOrDefault(id) != ProxyServerPublicationOutcome.Compensated
+                || await SubmitAsync(client, ProxyServerRoutes.Recovery, recoveryKey, ct) != id
+                || await SubmitAsync(client, ProxyServerRoutes.Apply, key, ct) != id || await ReadAsync(client, id, ct) != terminal)
+                throw new InvalidOperationException("Original compensation did not restore configuration and close the authenticated receipt exactly once.");
+            var startId = await SubmitAsync(client, ProxyServerRoutes.RuntimeActions + "/start", Guid.NewGuid().ToString("N"), ct);
+            if ((await WaitForTerminalAsync(client, startId, ct)).State != ProxyOperationState.Succeeded)
+                throw new InvalidOperationException("Authorized HTTP start failed after compensation.");
+            using var retainedTraffic = await traffic.ForwardAsync(retained.Value, ct);
+            using var keptTraffic = await traffic.ForwardAsync(kept.Value, ct);
+            await traffic.DeniedAsync(candidate.Value, ct);
+            Console.WriteLine($"PASS AUTHENTICATED PROXY QUEUE COMPENSATION: {id}; original Failed receipt, no apply replay, candidate grant rejected");
+        }
+        finally { await StopAsync(restarted); }
+    }
+
+    private static async Task<ProxyOperationDto> WaitForTerminalAsync(HttpClient client, Guid id, CancellationToken ct)
+    {
+        while (true)
+        {
+            var receipt = await ReadAsync(client, id, ct);
+            if (receipt.State is ProxyOperationState.Succeeded or ProxyOperationState.Failed) return receipt;
+            await Task.Delay(40, ct);
+        }
     }
 
     private static LoginRequest ReadLogin()

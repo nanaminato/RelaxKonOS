@@ -21,6 +21,7 @@ chmod o+x -- "$work"
 unit=relaxkonos-mb04-systemd-$(cat /proc/sys/kernel/random/uuid).service
 host_pidns=$(readlink /proc/1/ns/pid)
 host_netns=$(readlink /proc/self/ns/net)
+host_mntns=$(readlink /proc/self/ns/mnt)
 runtime_fingerprint() {
     systemctl show relaxkonos-sing-box.service relaxkonos-mihomo.service --property=LoadState,ActiveState,MainPID
 }
@@ -95,7 +96,29 @@ work=$1
 host_pidns=$2
 test "$(readlink /proc/1/ns/pid)" != "$host_pidns"
 test "$(readlink /proc/self/ns/net)" != "$3"
+test "$(readlink /proc/self/ns/mnt)" != "$5"
 mount -t tmpfs -o mode=0755 tmpfs /run
+if [[ $4 == --authenticated ]]; then
+    fault=/run/relaxkonos-proxy-start
+    mkdir -m 0700 "$fault"
+    touch "$fault/systemctl"
+    mount --bind /usr/bin/systemctl "$fault/systemctl"
+    cat > "$fault/wrapper" <<'SYSTEMCTL'
+#!/bin/bash
+fault=/run/relaxkonos-proxy-start
+if [[ $# == 2 && $1 == start && $2 == relaxkonos-sing-box.service && -f "$fault/armed" ]]; then
+    trap 'touch "$fault/released"' EXIT
+    touch "$fault/blocked"
+    while [[ -f "$fault/armed" ]]; do sleep .05; done
+    exit 1
+fi
+exec "$fault/systemctl" "$@"
+SYSTEMCTL
+    chmod 0755 "$fault/wrapper"
+    # The binary alias is needed by the non-root Server for status observations.
+    chmod 0755 "$fault"
+    mount --bind "$fault/wrapper" /usr/bin/systemctl
+fi
 mount -t tmpfs -o mode=0755 tmpfs /var/lib
 mount -t tmpfs -o mode=0755 tmpfs /var/log
 mkdir /var/lib/etc-upper /var/lib/etc-work
@@ -141,7 +164,7 @@ MANAGER
 systemd-run --unit="$unit" --property=Delegate=yes --property=RuntimeMaxSec=180s \
     --property=TimeoutStopSec=5s --property=KillMode=control-group --collect \
     unshare --mount --cgroup --net --pid --fork --kill-child --mount-proc --propagation private \
-    bash "$work/manager.sh" "$work" "$host_pidns" "$host_netns"
+    bash "$work/manager.sh" "$work" "$host_pidns" "$host_netns" "$authenticated" "$host_mntns"
 for attempt in $(seq 1 150); do
     test ! -f "$work/result" || break
     state=$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)

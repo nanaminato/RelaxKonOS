@@ -382,3 +382,5 @@ Linux 私有 systemd 的联合验收同时启用系统代理。独立 Helper 中
 管理发布或回滚中断后，若原操作有匹配的入站证据，恢复请求返回原操作 ID。原发布键和恢复键可查询同一回执。已补偿的发布以 `proxy_server.config_apply_failed` 结案，已提交的发布返回成功。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-原管理发布队列的恢复)。
 
 完整 Server 的生产 PAM 登录、管理队列和生产 Helper 已在 Linux 联合验证原生发布完成后的响应丢失。Server 重启后恢复原操作回执，真实 sing-box 持续服务，保留和新增授权可转发。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的原入站发布回执)。
+
+Linux 联合验收也覆盖候选已注册、尚未启动时 Server 和 Helper 中断。恢复原配置并结案原发布后，服务保持停止。经认证的正常启动恢复已有授权的转发，未提交的候选授权被拒绝。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的在途入站发布补偿)。
