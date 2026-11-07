@@ -1,6 +1,9 @@
 extern alias Server;
 
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Logging;
+using Server::RelaxKonOS.Server.Startup;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.Protocol.Proxy;
@@ -165,13 +168,27 @@ internal static class LinuxSystemProxyLiveChecks
         var reader = new GuardSettings();
         var transport = new CountingTransport(CreateTransport());
         var host = new HostSystemProxyService(transport);
-        var reconciler = new MihomoSystemProxyReconciler(paths, reader, new UnusedControllerSecret(), host,
-            new MihomoPublicationStore(paths, new EphemeralDataProtectionProvider()));
-        var registrations = new ServiceCollection();
-        registrations.AddSingleton<IProxySystemProxyReconciler>(reconciler);
-        await using var services = registrations.BuildServiceProvider();
-        using var guard = new SystemProxyGuardHostedService(reader, services.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<SystemProxyGuardHostedService>.Instance);
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.AddProxyRuntimeServices();
+        builder.Services.AddSingleton<IProxyPlatformPaths>(paths);
+        builder.Services.AddSingleton<IProxySettingsReader>(reader);
+        var protection = new EphemeralDataProtectionProvider();
+        var publication = new MihomoPublicationStore(paths, protection);
+        builder.Services.AddSingleton<IDataProtectionProvider>(protection);
+        builder.Services.AddSingleton(publication);
+        builder.Services.AddSingleton<IHostSystemProxyService>(host);
+        var reconciler = new MihomoSystemProxyReconciler(paths, reader, new UnusedControllerSecret(), host, publication);
+        builder.Services.AddSingleton<IProxySystemProxyReconciler>(reconciler);
+        var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+        var catalog = ServerModules.CreateManaged(new HashSet<string>());
+        var modules = ServerModules.CreateManaged(catalog.KnownModuleIds.Where(id => id != ServerModules.ProxyId).ToHashSet(StringComparer.Ordinal));
+        modules.ConfigureServices(builder, context);
+        await using var owner = builder.Build();
+        await modules.ValidateDeactivationAsync(owner.Services, context, default);
+        if (owner.Services.GetService<IProxyEngineRegistry>() is not null)
+            throw new InvalidOperationException("The disabled Proxy management graph was registered.");
+        using var guard = ActivatorUtilities.CreateInstance<SystemProxyGuardHostedService>(owner.Services);
 
         await guard.StartAsync(default);
         try

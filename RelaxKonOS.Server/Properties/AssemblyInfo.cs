@@ -8,3 +8,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("RelaxKonOS.Tailscale.Tests")]
 
 [assembly: InternalsVisibleTo("RelaxKonOS.ModuleHost.Windows.Tests")]
+[assembly: InternalsVisibleTo("RelaxKonOS.Settings.Tests")]
