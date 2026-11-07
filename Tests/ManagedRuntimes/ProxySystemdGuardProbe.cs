@@ -201,6 +201,7 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
     }
 
     internal int RuntimePid => mihomo.Id;
+    internal Uri RuntimeProxy => new(ProxyUrl);
 
     internal void VerifyOriginalRestored()
     {

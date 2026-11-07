@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
-if [[ $# -lt 3 || $# -gt 5 || ( $# -eq 5 && $5 != --authenticated ) ]]; then
-    echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated]]" >&2
+if [[ $# -lt 3 || $# -gt 6 || ( $# -ge 5 && $5 != --authenticated ) ]]; then
+    echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]]" >&2
     exit 2
 fi
 fixture=$(realpath -e -- "$1")
@@ -10,7 +10,9 @@ server=$(realpath -e -- "$3")
 proxy_tests=
 if [ "$#" -ge 4 ]; then proxy_tests=$(realpath -e -- "$4"); fi
 authenticated=${5:-}
-case "$fixture$helper$server$proxy_tests" in *[!a-zA-Z0-9_./-]*) echo "Test paths must contain only unit-safe characters" >&2; exit 2;; esac
+baseline=
+if [[ $# -eq 6 ]]; then baseline=$(realpath -e -- "$6"); fi
+case "$fixture$helper$server$proxy_tests$baseline" in *[!a-zA-Z0-9_./-]*) echo "Test paths must contain only unit-safe characters" >&2; exit 2;; esac
 test "$(id -u)" -eq 0
 server_uid=$(id -u nobody)
 server_gid=$(id -g nobody)
@@ -74,6 +76,7 @@ set -uo pipefail
 export RELAXKONOS_TEST_SERVER_UID=$server_uid
 export RELAXKONOS_TEST_SERVER_GID=$server_gid
 export RELAXKONOS_TEST_SYSTEMD_WORK=$work
+export RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE="$baseline"
 run_checks() {
     if [[ -n "$proxy_tests" ]]; then
         dotnet "$proxy_tests" --queue-recovery-only || return \$?
@@ -161,7 +164,7 @@ export SYSTEMD_GENERATOR_PATH=/dev/null
 export SYSTEMD_UNIT_PATH=/etc/systemd/system
 exec /usr/lib/systemd/systemd --system --unit=relaxkonos-test.target --log-target=console --log-level=info > "$work/manager.log" 2>&1
 MANAGER
-systemd-run --unit="$unit" --property=Delegate=yes --property=RuntimeMaxSec=180s \
+systemd-run --unit="$unit" --property=Delegate=yes --property=RuntimeMaxSec=180s --property=LimitNOFILE=4096 \
     --property=TimeoutStopSec=5s --property=KillMode=control-group --collect \
     unshare --mount --cgroup --net --pid --fork --kill-child --mount-proc --propagation private \
     bash "$work/manager.sh" "$work" "$host_pidns" "$host_netns" "$authenticated" "$host_mntns"

@@ -27,6 +27,8 @@ MB-04 的 `proxy-management` 场景由 `Tests/Performance/run-linux-proxy-baseli
 
 每个进程使用新的内容根。先按原方法采启动和 35 秒闲时，再进行同样的认证与模块目录读取。启用组依次读取设置、概览及运行时、档案及订阅。停用组验证路由 404，并在相同阶段采样。每个认证阶段采五点，表示已完成请求后的驻留窗口。用 `summarize_module_baseline.py --proxy-pairs` 输出逐轮数据、35 秒启停差及各阶段扣除对照漂移的增量。阶段顺序固定，共用已加载的代码及缓存，因此增量只用于选择后续工作负载。Helper 单独运行，未计入 Server 进程树。空私有状态的结果无法覆盖活跃 Mihomo、非空档案或订阅转换。
 
+连接快照的前后配对使用 `Tests/ManagedRuntimes/run-proxy-systemd-linux.sh` 的 `--authenticated`，随后附加流式改动前的 Server DLL 路径。两组共用专属 Mihomo、512 条已抵达源站的实际连接、Helper 与同一份私有 Server 数据，逐次启动新的 Server 进程。第二对交换顺序。每次登录并预热同一组概览和详情读取，记录 500 ms 后的单点 PSS、RSS 与私有驻留，再对 24 组顺序请求以约 25 ms 采样。请求计时包括客户端 HTTP、JSON 反序列化和连接集合校验。输出的 `PROXY BENCHMARK INPUT` 与 `PROXY BENCHMARK RUN` 含制品摘要、原值和逐次时间。只采样管理 Server PID。结束后才向源站放行，必须收到全部原响应，且原发布修订保持一致。测量未强制 GC，观测峰值受采样间隔限制。
+
 `summarize_module_baseline.py <run-root> --output <summary.json>` 保留每轮结果与指标。启动期观测最大值、首次达到 ready+5s/35s 的点、阶段最后三点的中位数分别记录，缺失传播为 null。汇总时检查每轮退出与逐项业务回执、阶段样本数和指标完整性。结束时只处理本次父进程，Windows 为强制终止。停机后全树另行核验。
 
 ## 场景与交错顺序

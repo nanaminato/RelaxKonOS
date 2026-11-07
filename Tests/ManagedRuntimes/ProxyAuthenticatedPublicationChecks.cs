@@ -102,6 +102,8 @@ internal static class ProxyAuthenticatedPublicationChecks
         finally { await StopAsync(restarted); }
         await VerifyInFlightAsync(root, assembly, socket, host, traffic, retained, added, login, nativeState, stopHelper, restartHelper);
         await VerifyMihomoOverviewRestartAsync(root, assembly, socket, login, nativeState, guard);
+        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
+            await ProxyConnectionBenchmark.RunAsync(root, socket, baseline, assembly, login, guard, nativeState);
     }
 
     private static async Task VerifyMihomoOverviewRestartAsync(string root, string assembly, string socket, LoginRequest login,
@@ -292,20 +294,20 @@ internal static class ProxyAuthenticatedPublicationChecks
         await File.WriteAllTextAsync(Path.Combine(path, "current.json"), JsonSerializer.Serialize(metadata, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
     }
 
-    private static Process Start(ProcessStartInfo start)
+    internal static Process Start(ProcessStartInfo start)
     {
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the authenticated Server.");
         process.BeginOutputReadLine(); process.BeginErrorReadLine();
         return process;
     }
 
-    private static async Task StopAsync(Process process)
+    internal static async Task StopAsync(Process process)
     {
         if (!process.HasExited) process.Kill();
         await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
     }
 
-    private static async Task<HttpClient> ConnectAsync(Process process, LoginRequest login, CancellationToken ct)
+    internal static async Task<HttpClient> ConnectAsync(Process process, LoginRequest login, CancellationToken ct)
     {
         var client = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { BaseAddress = new Uri(ManagedServiceChecks.FullServerUrl) };
         try
