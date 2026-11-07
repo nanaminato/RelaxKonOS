@@ -37,6 +37,12 @@ if (args is ["--module-host-tree-worker", var treeMode])
     return;
 }
 
+if (args is ["--git-dispatch-recovery-worker", var dispatchRoot, var dispatchId, var dispatchOwner])
+{
+    await ModuleBackgroundWorkChecks.RunDispatchRecoveryWorkerAsync(dispatchRoot, Guid.Parse(dispatchId), Guid.Parse(dispatchOwner));
+    return;
+}
+
 if (args is ["--module-residency-checks"] or ["--module-background-work-checks"])
 {
     void VerifyResidency(bool passed, string message)

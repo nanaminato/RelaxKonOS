@@ -476,3 +476,5 @@ Proxy 管理队列保留原工作租约至实际清理和终态落盘。调用�
 实际 Mihomo 拒绝活动订阅配置时，隔离 Linux 验证补偿后的原转发与订阅时间保持。Server 在 Helper 失败回执在途时终止，重启补写原 Failed，期间未重复下载或派发配置。见[活动订阅补偿回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅原生失败与补偿回执)。
 
 隔离 Linux 上，解析代次在 Core 等待原 Helper 回执时闲时卸载。认证读取唤醒新代次并看到同一真实连接，Server 排空原发布后，原连接完成转发。Proxy 整体继续 resident。见[读取代次与原发布恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-读取代次闲时卸载与原发布恢复)。
+
+Git 原构建台账持久区分明确未派发、预检责任未知和可能已派发。重新打开台账后，仅明确未派发的原操作在持久化终态后允许执行代次释放。原回执可按同一 ID 和幂等键查询。见[构建派发恢复台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-03-git-构建派发检查点与重启对账)。

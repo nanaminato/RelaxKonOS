@@ -9,7 +9,9 @@ public sealed record GitBuildRecoveryFact(string ModuleId, string Description, b
 public static class GitBuildLedger
 {
     public sealed record Credential(Guid Id, Guid Owner, string Name, string ProtectedToken);
-    public sealed record BuildEntry(Guid Owner, string KeyHash, string RequestHash, GitBuildOperationDto Operation);
+    // Null leaves CLI ownership unknown, including older receipts with no recorded checkpoint.
+    public sealed record BuildEntry(Guid Owner, string KeyHash, string RequestHash, GitBuildOperationDto Operation,
+        bool? DispatchStarted = null);
     public sealed record Ledger(Credential[] Credentials, BuildEntry[] Builds);
     public const int MaximumLedgerBytes = 32 * 1024 * 1024;
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -19,18 +21,19 @@ public static class GitBuildLedger
         RespectRequiredConstructorParameters = true,
     };
     private static readonly Regex Sha = new("\\A[a-fA-F0-9]{40}\\z", RegexOptions.Compiled);
-    public static bool NeedsRecovery(GitBuildOperationDto operation) => operation.State == "interrupted"
-        || operation.ProblemCode == "git-build.process-cleanup-failed";
+    public static bool NeedsRecovery(BuildEntry entry) =>
+        entry.Operation.State == "interrupted" && entry.DispatchStarted != false
+        || entry.Operation.ProblemCode == "git-build.process-cleanup-failed";
 
     public static IReadOnlyList<GitBuildRecoveryFact> InspectLedger(string contentRoot, GitBuildOptions options, bool hasActiveWork = false)
     {
         try
         {
             return ReadLedger(Path.Combine(contentRoot, options.RootDirectory, "builds.json")).Builds
-                .Where(entry => entry.Operation.State is "queued" or "running" || NeedsRecovery(entry.Operation))
+                .Where(entry => entry.Operation.State is "queued" or "running" || NeedsRecovery(entry))
                 .Select(entry => new GitBuildRecoveryFact("relaxkonos.git",
                     $"Git build {entry.Operation.Id} remains {entry.Operation.State}; its execution and recovery ownership must be established before disabling Git.",
-                    RecoveryRequired: !hasActiveWork || NeedsRecovery(entry.Operation)))
+                    RecoveryRequired: !hasActiveWork || NeedsRecovery(entry)))
                 .ToArray();
         }
         catch (Exception error)
@@ -73,6 +76,9 @@ public static class GitBuildLedger
             || value.Builds.Any(entry => entry is null || entry.Owner == Guid.Empty || !Digest(entry.KeyHash) || !Digest(entry.RequestHash)
                 || entry.Operation is not { } operation || operation.Id == Guid.Empty || operation.CreatedAt == default
                 || operation.State is not ("queued" or "running" or "succeeded" or "failed" or "cancelled" or "interrupted")
+                || entry.DispatchStarted == true && operation.State == "queued"
+                || entry.DispatchStarted == false && (operation.State == "succeeded"
+                    || operation.ProblemCode is "git-build.process-cleanup-failed" or "git-build.image-cleanup-unverified")
                 || (operation.State is "queued" or "running") != (operation.FinishedAt is null)
                 || operation.Logs is null || operation.Logs.Any(line => line is null)
                 || string.IsNullOrWhiteSpace(operation.RepositoryUrl) || string.IsNullOrWhiteSpace(operation.Reference)

@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Protocol.Git;
@@ -41,6 +44,7 @@ internal static class ModuleBackgroundWorkChecks
         }
         await VerifyProcessCancellationAsync(check);
         await VerifyUnreadableLedgerAsync(check);
+        await VerifyDispatchRecoveryAsync(check);
         if (!OperatingSystem.IsLinux()) return;
         var owner = Guid.NewGuid();
         var requestBody = new GitBuildRequest("https://github.com/example/project.git", "refs/heads/main", new string('a', 40), ".", "Dockerfile");
@@ -67,9 +71,29 @@ internal static class ModuleBackgroundWorkChecks
         }
         await using (var fixture = new Fixture())
         {
+            fixture.Runner.HoldBuildPreflight = true;
+            var original = await fixture.Proxy.StartAsync(owner, requestBody, "work-preflight-stop", default);
+            await fixture.Runner.PreflightEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var preflight = GitBuildLedger.ReadLedger(fixture.Ledger).Builds.Single();
+            check(preflight.DispatchStarted is null && fixture.Leases == 1 && fixture.Runner.Builds == 0,
+                "Git preflight owns a real lease and records uncertainty until its CLI has drained");
+            var stopping = fixture.Coordinator.DisposeAsync().AsTask();
+            check(!stopping.IsCompleted, "Git host shutdown keeps waiting while preflight cleanup is blocked");
+            fixture.Runner.PreflightCleanup.TrySetResult();
+            await stopping;
+            var drained = GitBuildLedger.ReadLedger(fixture.Ledger).Builds.Single();
+            check(drained.Operation.Id == original.Id && drained.Operation.State == "interrupted"
+                && drained.DispatchStarted == false && !GitBuildLedger.NeedsRecovery(drained)
+                && fixture.Runner.Builds == 0 && fixture.Runner.Cleanups == 0,
+                "drained preflight records the original interruption without BuildKit dispatch or cleanup");
+        }
+        await using (var fixture = new Fixture())
+        {
             using var http = new CancellationTokenSource();
             var operation = await fixture.Proxy.StartAsync(owner, requestBody, "work-request-one", http.Token);
             await fixture.Runner.BuildEntered.Task.WaitAsync(TimeSpan.FromSeconds(5)); http.Cancel();
+            check(GitBuildLedger.ReadLedger(fixture.Ledger).Builds.Single().DispatchStarted == true,
+                "Git persists possible external dispatch before starting the BuildKit CLI");
             check(fixture.Leases == 1 && !fixture.Runner.BuildToken.IsCancellationRequested,
                 "accepted Git build owns a background lease and does not inherit later HTTP cancellation");
             var replay = await fixture.Proxy.StartAsync(owner, requestBody, "work-request-one", default);
@@ -128,6 +152,86 @@ internal static class ModuleBackgroundWorkChecks
                 && fixture.Factory.Created == 1 && fixture.Factory.Last!.Service.RequiresRecovery,
                 "Git build terminal persistence failure quarantines its original runtime instead of silently dropping recovery responsibility");
         }
+    }
+
+    private static readonly GitBuildRequest DispatchRequest =
+        new("https://github.com/example/project.git", "refs/heads/main", new string('a', 40), ".", "Dockerfile");
+    private const string DispatchKey = "original-dispatch-key";
+
+    private static async Task VerifyDispatchRecoveryAsync(Action<bool, string> check)
+    {
+        foreach (var (state, dispatch) in new (string, bool?)[]
+            { ("queued", false), ("running", false), ("running", true), ("running", null) })
+        {
+            var root = Path.Combine(AppContext.BaseDirectory, "test-data", "git-dispatch-" + Guid.NewGuid().ToString("N"));
+            var file = Path.Combine(root, "builds", "builds.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            try
+            {
+                var owner = Guid.NewGuid();
+                var operation = new GitBuildOperationDto(Guid.NewGuid(), DispatchRequest.RepositoryUrl, DispatchRequest.Reference,
+                    DispatchRequest.CommitSha, DispatchRequest.ContextDirectory, DispatchRequest.Dockerfile, state,
+                    null, null, null, DateTimeOffset.UtcNow, null, []);
+                string Digest(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+                var entry = new GitBuildLedger.BuildEntry(owner, Digest(owner.ToString("D") + "\n" + DispatchKey),
+                    Digest(JsonSerializer.Serialize(DispatchRequest, GitBuildLedger.Json)), operation, dispatch);
+                File.WriteAllBytes(file, JsonSerializer.SerializeToUtf8Bytes(new GitBuildLedger.Ledger([], [entry]), GitBuildLedger.Json));
+                await RunWorkerAsync();
+                var terminal = GitBuildLedger.ReadLedger(file).Builds.Single();
+                var bytes = File.ReadAllBytes(file);
+                await RunWorkerAsync();
+                check(terminal.Operation.Id == operation.Id && terminal.Operation.State == "interrupted"
+                    && terminal.DispatchStarted == dispatch && GitBuildLedger.NeedsRecovery(terminal) == (dispatch != false)
+                    && bytes.SequenceEqual(File.ReadAllBytes(file)),
+                    $"Git reopens {state}/{dispatch?.ToString() ?? "unknown"} in two new processes without replay or changing its original receipt");
+
+                async Task RunWorkerAsync()
+                {
+                    var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
+                    if (string.Equals(Path.GetFileNameWithoutExtension(start.FileName), "dotnet", StringComparison.OrdinalIgnoreCase))
+                        start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
+                    foreach (var argument in new[] { "--git-dispatch-recovery-worker", root, operation.Id.ToString(), owner.ToString() })
+                        start.ArgumentList.Add(argument);
+                    using var worker = Process.Start(start)!;
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    try { await worker.WaitForExitAsync(timeout.Token); }
+                    finally
+                    {
+                        if (!worker.HasExited) { worker.Kill(entireProcessTree: true); await worker.WaitForExitAsync(); }
+                    }
+                    if (worker.ExitCode != 0) throw new InvalidOperationException($"Git dispatch recovery worker exited with {worker.ExitCode}.");
+                }
+            }
+            finally { Directory.Delete(root, true); }
+        }
+    }
+
+    internal static async Task RunDispatchRecoveryWorkerAsync(string root, Guid id, Guid owner)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+        builder.Logging.ClearProviders();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["GitBuilds:RootDirectory"] = "builds" });
+        builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        var modules = ServerModules.CreateManaged(new HashSet<string> { ServerModules.GitId });
+        modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+        await using var app = builder.Build();
+        var git = app.Services.GetRequiredService<IGitBuildService>();
+        var original = await git.StartAsync(owner, DispatchRequest, DispatchKey, default);
+        if (original.Id != id || original.State != "interrupted" || git.Get(owner, id) != original)
+            throw new InvalidOperationException("The original Git receipt was not preserved.");
+        var entry = GitBuildLedger.ReadLedger(Path.Combine(root, "builds", "builds.json")).Builds.Single();
+        var unknown = entry.DispatchStarted != false;
+        var expected = unknown ? "git-build.recovery-required" : "git-build.builder-unconfigured";
+        try
+        {
+            await git.StartAsync(owner, DispatchRequest, "new-dispatch-key", default);
+            throw new InvalidOperationException("Unexpected build admission.");
+        }
+        catch (GitBuildProblem error) when (error.Code == expected) { }
+        var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
+        var release = await coordinator.TrySleepAsync(ServerModules.GitId, default);
+        if (unknown ? release != "module-release-blocked" : release is not null)
+            throw new InvalidOperationException("The Git runtime release did not agree with the durable dispatch proof.");
     }
 
     private static async Task VerifyUnreadableLedgerAsync(Action<bool, string> check)
@@ -208,7 +312,7 @@ internal static class ModuleBackgroundWorkChecks
         }
         public async ValueTask DisposeAsync()
         {
-            Runner.Build.TrySetResult(); Runner.Cleanup.TrySetResult();
+            Runner.Build.TrySetResult(); Runner.Cleanup.TrySetResult(); Runner.PreflightCleanup.TrySetResult();
             await Coordinator.DisposeAsync(); await _services.DisposeAsync(); Directory.Delete(_root, true);
         }
     }
@@ -241,7 +345,10 @@ internal static class ModuleBackgroundWorkChecks
         internal readonly TaskCompletionSource Cleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource BuildEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource CleanupEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource PreflightEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource PreflightCleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal string[] BuilderDetails = ["Driver: remote", "Endpoint: docker-container://test-container"];
+        internal bool HoldBuildPreflight; private int builderChecks;
         internal CancellationToken BuildToken; internal int Builds; internal int Cleanups; internal int CleanupExitCode;
         public async Task<(int ExitCode, List<string> Lines)> RunAsync(string file, IReadOnlyList<string> args, IReadOnlyDictionary<string, string> environment,
             TimeSpan timeout, CancellationToken ct, Action<IReadOnlyList<string>>? onOutput = null)
@@ -253,7 +360,16 @@ internal static class ModuleBackgroundWorkChecks
             { Cleanups++; CleanupEntered.TrySetResult(); await Cleanup.Task; return (CleanupExitCode, []); }
             if (args.Take(2).SequenceEqual(["image", "ls"])) return (CleanupExitCode, []);
             if (args.Take(2).SequenceEqual(["image", "inspect"])) return (0, ["sha256:" + new string('b', 64)]);
-            if (args.Take(2).SequenceEqual(["buildx", "inspect"])) return (0, [.. BuilderDetails]);
+            if (args.Take(2).SequenceEqual(["buildx", "inspect"]))
+            {
+                if (++builderChecks == 2 && HoldBuildPreflight)
+                {
+                    PreflightEntered.TrySetResult();
+                    await PreflightCleanup.Task;
+                    ct.ThrowIfCancellationRequested();
+                }
+                return (0, [.. BuilderDetails]);
+            }
             if (args.Contains("{{.Config.User}}")) return (0, ["1000"]);
             if (args.Contains("{{.State.Running}}")) return (0, ["true"]);
             return (0, ["{\"Privileged\":false,\"Memory\":1048576,\"PidsLimit\":64,\"NanoCpus\":1000000000,\"NetworkMode\":\"test-network\",\"Binds\":[],\"CapAdd\":[]}"]);

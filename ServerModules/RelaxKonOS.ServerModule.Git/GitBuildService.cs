@@ -39,12 +39,12 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
         try
         {
             ledger = ReadLedger(path);
-            recoveryRequired = ledger.Builds.Any(entry => entry.Operation.State is "queued" or "running" || NeedsRecovery(entry.Operation));
             var interrupted = ledger.Builds.Select(entry => entry.Operation.State is "queued" or "running"
                 ? entry with { Operation = entry.Operation with
                     { State = "interrupted", ProblemCode = "git-build.interrupted", FinishedAt = DateTimeOffset.UtcNow } }
                 : entry).ToArray();
             if (!interrupted.SequenceEqual(ledger.Builds)) Save(new(ledger.Credentials, interrupted));
+            recoveryRequired = interrupted.Any(NeedsRecovery);
         }
         catch { unavailable = true; }
     }
@@ -182,7 +182,7 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
             workLease = workLeases.Acquire();
             try
             {
-                Save(new(ledger.Credentials, [.. old, new BuildEntry(owner, keyHash, requestHash, operation)]));
+                Save(new(ledger.Credentials, [.. old, new BuildEntry(owner, keyHash, requestHash, operation, DispatchStarted: false)]));
                 active.Add(operation.Id, CancellationTokenSource.CreateLinkedTokenSource(workLease.Stopping));
             }
             catch { workLease.Dispose(); throw; }
@@ -229,11 +229,14 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
         string? imageId = null;
         try
         {
-            Update(id, operation => operation with { State = "running" });
+            // Builder preflight itself can own a CLI process. Until it has drained, even a
+            // pre-dispatch crash is uncertain and cannot be used to release the old operation.
+            UpdateEntry(id, entry => entry with { Operation = entry.Operation with { State = "running" }, DispatchStarted = null });
             using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(Math.Clamp(options.TimeoutMinutes, 1, 120)));
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, active[id].Token);
             var ct = linked.Token;
             await CheckBuilderAsync(ct);
+            UpdateEntry(id, entry => entry with { DispatchStarted = false });
             var token = Token(owner, request.CredentialId);
             var uri = request.RepositoryUrl + "?ref=" + Uri.EscapeDataString(request.CommitSha)
                 + "&checksum=" + request.CommitSha;
@@ -247,6 +250,8 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
                 env["GIT_AUTH_TOKEN"] = token;
             }
             args.Add(uri);
+            ct.ThrowIfCancellationRequested();
+            UpdateEntry(id, entry => entry with { DispatchStarted = true });
             buildDispatched = true;
             var output = await RunAsync("docker", args, env, TimeSpan.FromMinutes(Math.Clamp(options.TimeoutMinutes, 1, 120)), ct,
                 batch => Append(id, batch, token));
@@ -295,13 +300,17 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
                         ? "git-build.process-cleanup-failed" : "git-build.image-cleanup-unverified";
                 }
             }
-            Update(id, operation => operation with
+            UpdateEntry(id, entry => entry with
             {
-                State = state,
-                ProblemCode = problemCode,
-                ImageReference = state == "succeeded" ? image : null,
-                ImageId = state == "succeeded" ? imageId : null,
-                FinishedAt = DateTimeOffset.UtcNow
+                DispatchStarted = problemCode == "git-build.process-cleanup-failed" ? entry.DispatchStarted : buildDispatched,
+                Operation = entry.Operation with
+                {
+                    State = state,
+                    ProblemCode = problemCode,
+                    ImageReference = state == "succeeded" ? image : null,
+                    ImageId = state == "succeeded" ? imageId : null,
+                    FinishedAt = DateTimeOffset.UtcNow
+                }
             });
         }
         finally
@@ -461,13 +470,19 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
         return line.Length <= 512 ? line : line[..512];
     }
 
-    private void Update(Guid id, Func<GitBuildOperationDto, GitBuildOperationDto> update)
+    private void Update(Guid id, Func<GitBuildOperationDto, GitBuildOperationDto> update) =>
+        UpdateEntry(id, entry => entry with { Operation = update(entry.Operation) });
+
+    private void UpdateEntry(Guid id, Func<BuildEntry, BuildEntry> update)
     {
         lock (gate)
         {
-            if (unavailable) return;
-            Save(new(ledger.Credentials, [.. ledger.Builds.Select(entry => entry.Operation.Id == id
-                ? entry with { Operation = update(entry.Operation) } : entry)]));
+            Ensure();
+            var index = Array.FindIndex(ledger.Builds, entry => entry.Operation.Id == id);
+            if (index < 0) throw new GitBuildProblem("git-build.store-unavailable", 503);
+            var builds = (BuildEntry[])ledger.Builds.Clone();
+            builds[index] = update(builds[index]);
+            Save(new(ledger.Credentials, builds));
         }
     }
 
