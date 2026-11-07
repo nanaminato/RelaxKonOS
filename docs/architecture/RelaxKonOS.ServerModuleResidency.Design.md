@@ -515,6 +515,8 @@ MB-03 在私有 Linux Engine 网络上验证了宿主和 builder 镜像内 Git �
 
 MB-04 的重叠流量请求共用一个控制器采样和连接快照读取。采样租约负责实际控制器任务与作用域清理，各请求的租约负责自身 HTTP 响应。最后一个客户端取消后，新请求等原采样清理再读取。Proxy 继续 resident。见[重叠流量采样](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-重叠流量采样)。
 
+MB-05 的四条 Compose 只读 HTTP 路由使用工作租约保护 CLI、响应及异步作用域清理。未核实的 CLI 清理保留恢复责任，Docker 继续 resident。见[Compose 只读 HTTP 工作责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-只读-http-工作责任)。
+
 Proxy 同次停机联合验收中，原入站到期回执落盘后，Server 仍持有独立 TUN 清理责任。系统代理 guard 与 TUN 复用共享发布锁及原归属记录，已有网络转发继续。见[Proxy 联合安全责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。
 
 Proxy 设置写入的 resident 租约覆盖执行、审计、响应与异步作用域清理。受管发布的重启恢复继续读取原发布权威和 Helper 回执。见[设置写入工作租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-设置写入的工作租约)。

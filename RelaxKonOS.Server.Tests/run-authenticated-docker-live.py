@@ -48,6 +48,9 @@ def run(server, project, helper):
         for module in ("Terminal", "Firewall", "SystemPerformance", "Git", "Tailscale", "Certificates", "WebServer", "Proxy"):
             env[f"Modules__{module}__Enabled"] = "false"
         env["Modules__Docker__Enabled"] = "true"
+        read_barrier = root / "compose-read-barrier"
+        if cancel_observation:
+            read_barrier.mkdir()
         if observation_outage:
             if outage_gate is None:
                 raise RuntimeError("Observation outage requires a dedicated Engine gate")
@@ -65,8 +68,24 @@ import time
 docker = {docker!r}
 gate = Path({str(outage_gate)!r})
 cancel_observation = {cancel_observation!r}
+read_barrier = Path({str(read_barrier)!r})
 args = sys.argv[1:]
 if args[:4] == ['ps', '--all', '--filter', {'label=com.docker.compose.project=' + project!r}]:
+    if cancel_observation and not (read_barrier / 'complete').exists():
+        if (read_barrier / 'armed').exists() and not (read_barrier / 'received').exists():
+            result = subprocess.run([docker, *args], capture_output=True, check=False)
+            if result.returncode != 0 or not result.stdout:
+                sys.exit('Real Compose service observation failed')
+            (read_barrier / 'pid').write_text(str(os.getpid()))
+            (read_barrier / 'received').touch()
+            deadline = time.monotonic() + 30
+            while not (read_barrier / 'release').exists():
+                if time.monotonic() >= deadline:
+                    sys.exit('Held Compose response did not drain')
+                time.sleep(0.05)
+            sys.stdout.buffer.write(result.stdout)
+            sys.exit(0)
+        os.execv(docker, [docker, *args])
     try:
         (gate / 'request-offline').touch(exist_ok=False)
     except FileExistsError:
@@ -158,6 +177,37 @@ os.execv(docker, [docker, *args])
             return request("/api/v1.0/auth/login", {**credentials, "clientPlatform": 1,
                 "deviceName": "Isolated Docker acceptance", "clientVersion": "0.2.2"})["tokens"]["accessToken"]
 
+        def verify_compose_read(token, container, initial_stops):
+            path = f"/api/v1.0/docker/stacks/{project}/services"
+            def active_leases():
+                return request("/api/v1.0/server/modules/relaxkonos.docker", token=token)["residency"]["activeLeases"]
+
+            (read_barrier / "armed").touch()
+            with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+                headers = (f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+                           f"Authorization: Bearer {token}\r\nConnection: close\r\n\r\n")
+                connection.sendall(headers.encode("ascii"))
+                deadline = time.monotonic() + 10
+                while not (read_barrier / "received").exists():
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("Real Compose service output was not held")
+                    time.sleep(0.05)
+                command = Path("/proc", (read_barrier / "pid").read_text())
+                if active_leases() != 1 or not command.exists():
+                    raise RuntimeError("The held Compose command lost its work lease")
+
+            deadline = time.monotonic() + 10
+            while active_leases() != 0:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("The cancelled Compose HTTP read did not drain")
+                time.sleep(0.05)
+            services = request(path, token=token)
+            stops = subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping")
+            if command.exists() or len(services) != 1 or services[0]["service"] != "witness" or stops != initial_stops:
+                raise RuntimeError("The Compose read did not reap its command and preserve the original container")
+            (read_barrier / "complete").touch()
+            print("PASS AUTHENTICATED DOCKER COMPOSE READ: live Engine output, lease, client disconnect, process cleanup and fresh read")
+
         def set_engine_state(state):
             (outage_gate / f"request-{state}").touch(exist_ok=False)
             wait_for_gate(state)
@@ -232,6 +282,8 @@ os.execv(docker, [docker, *args])
                     raise RuntimeError("Expected one running dedicated Docker witness")
                 container = containers[0]
                 initial_stops = subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping")
+                if cancel_observation:
+                    verify_compose_read(token, container, initial_stops)
                 # Send the authenticated mutation on a separate connection and discard its response.
                 payload = b'{"confirmed":true}'
                 with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:

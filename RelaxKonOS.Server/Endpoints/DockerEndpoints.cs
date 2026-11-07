@@ -1,7 +1,9 @@
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Protocol.Docker;
 using System.Security.Claims;
+using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -44,11 +46,11 @@ public static class DockerEndpoints
         group.MapPost("/images/build", (DockerBuildRequest request, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.BuildImageAsync(request, cancellationToken: ct));
         group.MapGet("/images/{id}/export", async (string id, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await service.ExportImageAsync(id, ct) is { } archive ? Results.Ok(archive) : Results.NotFound());
         group.MapPost("/images/import", (DockerImageArchiveDto archive, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.ImportImageAsync(archive, ct));
-        group.MapGet("/stacks", (RelaxKonOS.Server.Docker.IDockerComposeService service, CancellationToken ct) => service.ListAsync(ct));
-        // A preview parses the definition and changes nothing, so it stays a plain synchronous read of
-        // what the Compose parser thinks the document means.
-        group.MapPost("/stacks/preview", (DockerStackDefinitionDto definition, RelaxKonOS.Server.Docker.IDockerComposeService service, CancellationToken ct) =>
-            HandleAsync(async () => Results.Ok(await service.PreviewAsync(definition, ct))));
+        group.MapGet("/stacks", (HttpContext http) => ComposeReadAsync(http,
+            static async (compose, ct) => Results.Ok(await compose.ListAsync(ct))));
+        // Preview is a read of the actual Compose parser, with its own process and temporary file.
+        group.MapPost("/stacks/preview", (DockerStackDefinitionDto definition, HttpContext http) => ComposeReadAsync(http,
+            async (compose, ct) => Results.Ok(await compose.PreviewAsync(definition, ct))));
         // Every mutation is a durable operation. The 202 answers with the record that will still be
         // readable after the phone that asked for it is gone or the server has restarted.
         group.MapPost("/stacks/deploy", (DockerStackDeployRequest request, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator, CancellationToken ct) =>
@@ -67,15 +69,21 @@ public static class DockerEndpoints
             Handle(() => Results.Ok(coordinator.Diagnostics(operationId))));
         group.MapPost("/stack-operations/{operationId:guid}/cancel", (Guid operationId, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>
             Handle(() => Results.Ok(coordinator.Cancel(operationId, Key(http)))));
-        group.MapGet("/stacks/{name}/definition", async (string name, RelaxKonOS.Server.Docker.IDockerComposeService service, CancellationToken ct) => await service.GetDefinitionAsync(name, ct) is { } definition ? Results.Ok(definition) : Results.NotFound());
-        group.MapGet("/stacks/{name}/services", (string name, RelaxKonOS.Server.Docker.IDockerComposeService service, CancellationToken ct) =>
-            ReadAsync(() => service.ListServicesAsync(name, ct)));
+        group.MapGet("/stacks/{name}/definition", (string name, HttpContext http) => ComposeReadAsync(http,
+            async (compose, ct) => await compose.GetDefinitionAsync(name, ct) is { } definition ? Results.Ok(definition) : Results.NotFound()));
+        group.MapGet("/stacks/{name}/services", (string name, HttpContext http) => ComposeReadAsync(http,
+            async (compose, ct) => Results.Ok(await compose.ListServicesAsync(name, ct))));
         group.MapPost("/stacks/{name}/{action}", (string name, string action, DockerStackActionRequest request, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator, CancellationToken ct) =>
             HandleAsync(async () => DockerStackActionRoutes.TryParseAction(action, out var kind)
                 ? Accepted(await coordinator.ApplyActionAsync(name, kind, request.Confirmed, Actor(http.User), Key(http), ct))
                 : Problem(RelaxKonOS.Server.Docker.DockerStackProblem.ValidationFailed, 400)));
         return app;
     }
+
+    private static Task ComposeReadAsync(HttpContext context, Func<IDockerComposeService, CancellationToken, Task<IResult>> read) =>
+        ResidentScopedResponse.ExecuteAsync(context, context.RequestServices.GetRequiredService<IResidentModuleWorkLeaseSource>(), ServerModules.DockerId,
+            (services, ct) => HandleAsync(() => read(services.GetRequiredService<IDockerComposeService>(), ct)),
+            static error => error is DockerComposeCleanupException);
 
     /// <summary>An idempotency key is mandatory for every action that can change the host.</summary>
     private static string Key(HttpContext http) => http.Request.Headers["Idempotency-Key"].ToString();

@@ -378,3 +378,5 @@ Docker Engine 离线时，服务列表返回 `503 / docker.unavailable`。Server
 变更命令返回后若 Engine 暂时无法提供观察，原操作保持 Running / Observing。进入只读恢复后，Server 继续观察原项目，直到能以原 operationId 记录 Interrupted。同项目的新变更在此期间返回 HTTP 409。完整认证 Server 已在私有 Engine 上通过首次观察实际断线验收。见[变更后的观察中断](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-变更返回后的-engine-观察中断)。
 
 用户取消已派发的变更时，若 Engine 暂时无法观察，原操作继续显示 Running / Observing。Server 完成原 CLI 清理并等待只读观察，以原 operationId 写入 Interrupted。同项目在观察恢复前保持互斥。完整认证 Server 已在私有 Engine 上验证首次观察取消、观察断线及原回执接续。见[取消与观察断线](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-用户取消与观察断线交叠)。
+
+Compose 列表、预览、定义与服务读取在认证后取得工作租约。CLI 与输出清理、实际响应及作用域结束后归还租约，无法核实 CLI 清理时保留故障责任。见[Compose 只读 HTTP 工作责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-只读-http-工作责任)。

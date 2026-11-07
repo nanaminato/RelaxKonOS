@@ -178,39 +178,9 @@ public static class ProxyEndpoints
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyLogEntryDto[]>();
     }
 
-    private static async Task ExecuteScopedAsync(HttpContext context, IResidentModuleWorkLeaseSource leases,
-        Func<IServiceProvider, CancellationToken, Task<IResult>> observe)
-    {
-        var request = context.RequestAborted;
-        var lease = await leases.AcquireAsync(ServerModules.ProxyId, request);
-        var cleanupFailed = false;
-        try
-        {
-            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(request, lease.Stopping);
-            stopping.Token.ThrowIfCancellationRequested();
-            var scope = context.RequestServices.CreateAsyncScope();
-            context.RequestAborted = stopping.Token;
-            try
-            {
-                var result = await observe(scope.ServiceProvider, stopping.Token);
-                stopping.Token.ThrowIfCancellationRequested();
-                await result.ExecuteAsync(context);
-                await context.Response.CompleteAsync();
-            }
-            finally
-            {
-                context.RequestAborted = request;
-                try { await scope.DisposeAsync(); }
-                catch
-                {
-                    cleanupFailed = true;
-                    lease.RequireRecovery();
-                    throw;
-                }
-            }
-        }
-        finally { if (!cleanupFailed) lease.Dispose(); }
-    }
+    private static Task ExecuteScopedAsync(HttpContext context, IResidentModuleWorkLeaseSource leases,
+        Func<IServiceProvider, CancellationToken, Task<IResult>> observe) =>
+        ResidentScopedResponse.ExecuteAsync(context, leases, ServerModules.ProxyId, observe);
 
     private static async Task<IResult> QueueValueAsync(HttpContext context,
         Func<string, string, CancellationToken, Task<ProxyOperationDto>> enqueue, CancellationToken ct)

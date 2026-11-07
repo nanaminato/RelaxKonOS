@@ -2438,3 +2438,13 @@ Windows Release 模块边界回归验证 Kestrel 的匿名拒绝、重叠请求�
 | 3 | −4.88 | −4.21 | −7.17 | −950 | −90 |
 
 差值为候选减基线。基线为 `2837ebcd`，两份发布树仅替换 Server DLL，使用同一个 Proxy 解析 DLL 和 Helper。以 `RELAXKONOS_TEST_MIHOMO_SHARED_TRAFFIC=1` 和 `RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE` 选择该测试。隔离归档 SHA-256 为 `925b64534f3a9c2f9d5879dc502dace107ce850ebbbe907dacda8e1f1f59f154`。六轮数据、制品摘要和复核结果见 `.artifacts/mb04-shared-traffic/{paired.log,summary.json}`。本轮测量限重叠请求和隔离负载，生产资源、Windows 原生控制器断线与 Proxy 整体动态休眠继续开放。
+
+### MB-05 Docker Compose 只读 HTTP 工作责任
+
+Compose 列表、预览、定义和服务读取在认证后先取得 Docker 工作租约，再解析独立请求作用域。实际 CLI 及输出排空、HTTP 响应和异步作用域清理均完成后才归还租约。CLI 进程清理无法核实时，原驻留协调器保留故障责任。Proxy 读取复用同一响应作用域机制。Compose 变更与恢复继续由原持久台账和协调器执行，共享 Engine 传输由 Core 持有。
+
+Windows Release Kestrel 夹具验证匿名请求无准入、四条路由的实际任务与响应、异步清理和未确认 CLI 清理的故障租约。模块边界回归通过，MB-05 跨进程以原 `d665dd05-3d97-4cc5-a29c-a44afda94652` 返回 Interrupted，受控副作用计数为一。
+
+Linux 私有 Engine 以完整 PAM/JWT Server 验证服务读取。夹具收到真实 `docker ps` 输出后暂扣交付，模块接口显示一个工作租约。断开 HTTP 后，CLI 包装进程已退出、工作租约归零，新请求取得原容器服务。停止见证次数保持。随后复验原用户取消 `86c05a1a-a0cf-46b6-a5cd-85aa4064b61f`、存活 Server 观察断线 `93e69d33-cb16-44ad-9bdc-926578edca1b` 和重启后 Engine 离线 `72f0b280-d9a7-4435-9168-e2fcd8a98010`，按各自原回执完成只读对账，停止副作用均未重放。三个专属 Engine 场景均清理容器和卷，宿主服务、容器清单与代理文件指纹一致。
+
+首轮混用旧协议与测试 Helper 制品，PAM 登录返回 HTTP 503。统一制品版本后通过，日志在 `.artifacts/mb05-compose-read/`，验收归档 SHA-256 为 `f5753c5aaea7ae1c014a5a57b17097078a8c27f8e6d6c799a82de628ec967cb9`。真实断线验收覆盖服务读取，其他三条路由的任务与响应边界使用本地夹具验证。Docker 保持 resident，Compose 独立执行程序集、ALC 回收与生产资源测量继续开放。
