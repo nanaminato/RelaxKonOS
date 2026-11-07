@@ -695,9 +695,10 @@ if (args.Contains("--host-storage-only"))
     {
         await HostStorageChecks.VerifyHostGlobalMigrationAsync(storageRoot);
         await HostStorageChecks.VerifyProxyHostProfileRepositoryAsync(storageRoot);
+        await HostStorageChecks.VerifyProxySubscriptionRepositoryAsync(storageRoot);
     }
     finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(storageRoot, recursive: true); }
-    Console.WriteLine("Host storage migrations and profile repository checks passed.");
+    Console.WriteLine("Host storage migrations, profile repository and subscription receipts passed.");
     return;
 }
 if (args.Contains("--proxy-configuration-only"))

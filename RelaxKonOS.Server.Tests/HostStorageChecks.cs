@@ -24,7 +24,7 @@ internal static async Task VerifyHostGlobalMigrationAsync(string root)
     await connection.OpenAsync();
     await using var command = connection.CreateCommand();
     command.CommandText = "SELECT MAX(version) FROM relaxkonos_host_schema_migrations;";
-    TestAssert.Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 17, "HostGlobal migrations did not reach the expected version.");
+    TestAssert.Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 18, "HostGlobal migrations did not reach the expected version.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='docker_proxy_settings');";
     TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Docker proxy settings table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='proxy_profile_publication');";
@@ -37,6 +37,8 @@ internal static async Task VerifyHostGlobalMigrationAsync(string root)
     TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Proxy subscription metadata table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('proxy_subscriptions') WHERE name='download_route');";
     TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Proxy subscription download route was not migrated.");
+    command.CommandText = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('proxy_subscriptions') WHERE name='last_draft_refresh_operation_id');";
+    TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Proxy draft refresh receipt was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('docker_proxy_settings') WHERE name='apply_to_image_tags');";
     TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Docker image-tag proxy preference was not migrated.");
 }
@@ -79,6 +81,51 @@ internal static async Task VerifyProxySubscriptionRepositoryAsync(string root)
     command.Parameters.AddWithValue("$id", created.Id.ToString("D"));
     TestAssert.Assert(!string.Equals((string?)await command.ExecuteScalarAsync(), url, StringComparison.Ordinal),
         "Proxy subscription URL was stored in plaintext.");
+
+    var batchId = Guid.NewGuid();
+    var childId = Guid.NewGuid();
+    var skippedId = Guid.NewGuid();
+    var batch = new ProxyOperationDto(batchId, ProxyOperationStore.RefreshBatchKind, ProxyOperationState.Running,
+        "batch_planned", "", DateTimeOffset.UtcNow, null);
+    var paths = new TestProxyPaths(Path.Combine(root, "draft-batch"));
+    Directory.CreateDirectory(paths.GetStateDirectory());
+    var ledgerPath = Path.Combine(paths.GetStateDirectory(), "proxy-operations.json");
+    await File.WriteAllTextAsync(ledgerPath, JsonSerializer.Serialize(new[] { new
+    {
+        IdempotencyKey = "draft-batch",
+        Operation = batch,
+        Batch = new ProxyOperationStore.RefreshStep[] {
+            new(created.Id, childId, ProxyOperationStore.RefreshStepState.Running),
+            new(skippedId, Guid.NewGuid(), ProxyOperationStore.RefreshStepState.Planned)
+        }
+    } }));
+    var queue = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases(), subscriptions: repository);
+    var pending = await queue.GetAsync(batchId, default);
+    TestAssert.Assert(pending is { State: ProxyOperationState.Interrupted, Stage: "batch_pending", CompletedAt: null }
+        && (await queue.InspectResponsibilitiesAsync(default)).Count == 1, "Missing draft proof must retain the original batch responsibility.");
+    var timestamp = DateTimeOffset.UtcNow.AddMinutes(1);
+    await repository.CommitDraftRefreshAsync(created.Id, childId, timestamp, default);
+    TestAssert.Assert(await repository.HasDraftRefreshReceiptAsync(created.Id, childId, default)
+        && !await repository.HasDraftRefreshReceiptAsync(created.Id, batchId, default)
+        && (await repository.GetAsync(created.Id, default))?.Subscription.LastUpdatedAt == timestamp,
+        "SQLite must commit the exact draft receipt and timestamp together.");
+    var reopened = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases(), subscriptions: repository);
+    var settled = await reopened.EnqueueAsync("draft-batch", batch.Kind, (_, _) => throw new Exception("Replayed draft batch"), default);
+    using var reconciled = JsonDocument.Parse(await File.ReadAllTextAsync(ledgerPath));
+    var steps = reconciled.RootElement[0].GetProperty("Batch").Deserialize<ProxyOperationStore.RefreshStep[]>()!;
+    TestAssert.Assert(settled is { State: ProxyOperationState.Interrupted, Stage: "batch_interrupted", CompletedAt: not null }
+        && settled.OperationId == batchId && await reopened.GetAsync(batchId, default) == settled
+        && steps[0].OperationId == childId && steps[0].State == ProxyOperationStore.RefreshStepState.Succeeded
+        && steps[1].SubscriptionId == skippedId && steps[1].State == ProxyOperationStore.RefreshStepState.Skipped
+        && (await reopened.InspectResponsibilitiesAsync(default)).Count == 0, "Draft proof must settle the original step without running the unstarted suffix.");
+    var unplanned = batch with { OperationId = Guid.NewGuid(), State = ProxyOperationState.Queued, Stage = "queued", StartedAt = null };
+    await File.WriteAllTextAsync(ledgerPath, JsonSerializer.Serialize(new[]
+    {
+        new { IdempotencyKey = "unplanned", Operation = unplanned, Batch = Array.Empty<ProxyOperationStore.RefreshStep>() }
+    }));
+    var unstarted = await reopened.GetAsync(unplanned.OperationId, default);
+    TestAssert.Assert(unstarted is { State: ProxyOperationState.Interrupted, Stage: "batch_interrupted", CompletedAt: not null }
+        && (await reopened.InspectResponsibilitiesAsync(default)).Count == 0, "A new batch that never persisted a plan has no dispatched work.");
 
     var downloadFactory = new FixtureHttpClientFactory(Encoding.UTF8.GetBytes("proxies: []\n"));
     var downloader = new ProxySubscriptionDownloader(downloadFactory, new StaticProxySettingsService());

@@ -11,8 +11,7 @@ public interface IProxySubscriptionService
 {
     Task<IReadOnlyList<ProxySubscriptionDto>> ListAsync(CancellationToken cancellationToken);
     Task<ProxySubscriptionDto> ImportAsync(ImportProxySubscriptionRequest request, CancellationToken cancellationToken);
-    Task<string?> RefreshAsync(Guid subscriptionId, Guid? operationId, CancellationToken cancellationToken);
-    Task<string?> RefreshAllAsync(CancellationToken cancellationToken);
+    Task<string?> RefreshAsync(Guid subscriptionId, Guid operationId, CancellationToken cancellationToken);
     Task<string?> ActivateAsync(Guid subscriptionId, CancellationToken cancellationToken);
     Task<ProxySubscriptionContentDto?> GetContentAsync(Guid subscriptionId, CancellationToken cancellationToken);
     Task<ProxySubscriptionDownloadOptionsDto> GetDownloadOptionsAsync(CancellationToken cancellationToken);
@@ -45,7 +44,7 @@ public sealed class ProxySubscriptionService(
         }
     }
 
-    public async Task<string?> RefreshAsync(Guid subscriptionId, Guid? operationId, CancellationToken cancellationToken)
+    public async Task<string?> RefreshAsync(Guid subscriptionId, Guid operationId, CancellationToken cancellationToken)
     {
         var record = await subscriptions.GetAsync(subscriptionId, cancellationToken);
         if (record is null) return ProxyProblemCodes.SubscriptionInvalid;
@@ -53,24 +52,9 @@ public sealed class ProxySubscriptionService(
         var problem = await configurations.StoreAsync(record.Subscription.ProfileId, source.Content, cancellationToken);
         if (!string.IsNullOrEmpty(problem)) return problem;
         if (record.Subscription.IsActive)
-        {
-            if (operationId is not null)
-                return await configurations.ActivateStoredAsync(record.Subscription.ProfileId, cancellationToken,
-                    new(operationId.Value, new(subscriptionId, DateTimeOffset.UtcNow), source.Content));
-            problem = await configurations.ActivateStoredAsync(record.Subscription.ProfileId, cancellationToken);
-            if (!string.IsNullOrEmpty(problem)) return problem;
-        }
-        await subscriptions.SetLastUpdatedAsync(subscriptionId, DateTimeOffset.UtcNow, cancellationToken);
-        return null;
-    }
-
-    public async Task<string?> RefreshAllAsync(CancellationToken cancellationToken)
-    {
-        foreach (var subscription in await subscriptions.ListAsync(cancellationToken))
-        {
-            var problem = await RefreshAsync(subscription.Id, null, cancellationToken);
-            if (!string.IsNullOrEmpty(problem)) return problem;
-        }
+            return await configurations.ActivateStoredAsync(record.Subscription.ProfileId, cancellationToken,
+                new(operationId, new(subscriptionId, DateTimeOffset.UtcNow), source.Content));
+        await subscriptions.CommitDraftRefreshAsync(subscriptionId, operationId, DateTimeOffset.UtcNow, cancellationToken);
         return null;
     }
 

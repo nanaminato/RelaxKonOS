@@ -12,7 +12,7 @@ public sealed class ProxySubscriptionOperations(ProxyOperationStore operations, 
     {
         var kind = operation switch
         {
-            ProxySubscriptionOperation.RefreshAll => "subscription.refresh_all",
+            ProxySubscriptionOperation.RefreshAll => ProxyOperationStore.RefreshBatchKind,
             ProxySubscriptionOperation.Refresh => "subscription.refresh",
             ProxySubscriptionOperation.Activate => "subscription.activate",
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
@@ -27,10 +27,25 @@ public sealed class ProxySubscriptionOperations(ProxyOperationStore operations, 
             var service = services.GetRequiredService<IProxySubscriptionService>();
             return operation switch
             {
-                ProxySubscriptionOperation.RefreshAll => service.RefreshAllAsync(token),
+                ProxySubscriptionOperation.RefreshAll => RefreshBatchAsync(service, operationId, token),
                 ProxySubscriptionOperation.Refresh => service.RefreshAsync(id, operationId, token),
                 ProxySubscriptionOperation.Activate => service.ActivateAsync(id, token),
                 _ => throw new ArgumentOutOfRangeException(nameof(operation))
             };
         }, ct);
+
+    private async Task<string?> RefreshBatchAsync(IProxySubscriptionService service, Guid operationId, CancellationToken ct)
+    {
+        var subscriptions = await service.ListAsync(ct);
+        var plan = await operations.PlanRefreshBatchAsync(operationId, subscriptions.Select(item => item.Id), ct);
+        foreach (var step in plan)
+        {
+            await operations.StartRefreshStepAsync(operationId, step.OperationId);
+            var problem = await service.RefreshAsync(step.SubscriptionId, step.OperationId, ct);
+            if (problem == ProxyProblemCodes.RecoveryRequired) return problem;
+            await operations.FinishRefreshStepAsync(operationId, step.OperationId, problem);
+            if (!string.IsNullOrEmpty(problem)) return problem;
+        }
+        return null;
+    }
 }

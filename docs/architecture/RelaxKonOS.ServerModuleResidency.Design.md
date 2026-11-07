@@ -540,3 +540,5 @@ Linux 直连设置按原 ID 核对宿主策略变更。guard 可完成已证实�
 完整 Linux Server 的直连活动订阅刷新在原确认落盘、SQLite 提交受阻期间持有工作租约。实际 Server 被终止后，由 Core 恢复原档案提交，原队列以同一 ID 和幂等键确认终态，Mihomo 继续转发。见[直连活动订阅队列的进程中断恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连活动订阅队列的进程中断恢复)。
 
 完整 Linux Server 在原直连订阅重载成功但应答未送达时被终止。重启后原队列持久保留无完成时间的待恢复回执，发布检查点继续阻止新写入。原 Mihomo 保持转发。见[直连活动订阅重载应答未知](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连活动订阅重载应答未知)。
+
+批量订阅刷新在原工作租约内保存分项计划及派发状态，原队列只以发布或 SQLite 草稿回执核对已派发分项。未知分项继续占用持久责任，未开始的分项跳过。见[批量订阅刷新分项回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-批量订阅刷新分项回执)。

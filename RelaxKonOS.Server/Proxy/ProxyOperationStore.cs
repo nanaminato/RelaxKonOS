@@ -10,8 +10,9 @@ public delegate Task ProxyOperationStageReporter(string stage);
 /// Durable, host-global operation ledger for typed Proxy mutations.  It queues delegates supplied
 /// by domain services only; it is deliberately not a generic command executor.
 /// </summary>
-public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger,
-    IProxyWorkLeaseSource workLeases, MihomoPublicationStore? publication = null) : IHostedService
+public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger,
+    IProxyWorkLeaseSource workLeases, MihomoPublicationStore? publication = null,
+    IProxySubscriptionRepository? subscriptions = null) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private static readonly JsonSerializerOptions Json = new()
@@ -41,7 +42,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         try
         {
             var entries = await ReadEntriesAsync(paths, ct);
-            return entries.Where(entry => IsUnresolved(entry.Operation))
+            return entries.Where(IsUnresolved)
                 .Select(entry => $"Proxy operation {entry.Operation.OperationId} has unresolved execution or interruption responsibility.").ToArray();
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or JsonException
@@ -79,15 +80,15 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         try
         {
             var entries = await ReadEntriesAsync(paths, cancellationToken);
-            if (entries.Any(entry => IsInterruptedRefresh(entry.Operation)))
+            if (entries.Any(NeedsReconciliation))
                 await ReconcileRefreshesAsync(entries, null, cancellationToken);
             var prior = entries.FirstOrDefault(entry => entry.IdempotencyKey == idempotencyKey);
             if (prior is not null) return Visible(prior.Operation);
-            if (Volatile.Read(ref _stopping) || _recoveryBlocked || entries.Any(entry => IsUnresolved(entry.Operation) && !_running.ContainsKey(entry.Operation.OperationId)))
+            if (Volatile.Read(ref _stopping) || _recoveryBlocked || entries.Any(entry => IsUnresolved(entry) && !_running.ContainsKey(entry.Operation.OperationId)))
                 throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
             work = await workLeases.AcquireAsync(cancellationToken);
             item = new ProxyOperationDto(Guid.NewGuid(), kind, ProxyOperationState.Queued, "queued", "", null, null);
-            await SaveAsync([.. entries, new Entry(idempotencyKey, item)], cancellationToken);
+            await SaveAsync([.. entries, new Entry(idempotencyKey, item, kind == RefreshBatchKind ? [] : null)], cancellationToken);
             _running.Add(item.OperationId, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         }
         catch { work?.Dispose(); throw; }
@@ -107,9 +108,9 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         try
         {
             var entries = await ReadEntriesAsync(paths, ct);
-            var item = entries.Select(entry => entry.Operation).FirstOrDefault(candidate =>
-                (candidate.OperationId == pending || known.Contains(candidate.OperationId))
-                && (IsUnresolved(candidate) || candidate.OperationId == pending && candidate.State == ProxyOperationState.Failed));
+            var item = entries.FirstOrDefault(entry =>
+                (entry.Operation.OperationId == pending || known.Contains(entry.Operation.OperationId))
+                && (IsUnresolved(entry) || entry.Operation.OperationId == pending && entry.Operation.State == ProxyOperationState.Failed))?.Operation;
             if (item is null) return null;
             if (item.Kind is not ("proxy_server.configuration.apply" or "proxy_server.configuration.rollback"))
                 throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
@@ -117,7 +118,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             var id = original.OperationId;
             if (_running.ContainsKey(id)) return original;
             if (Volatile.Read(ref _stopping) || _recoveryBlocked
-                || entries.Any(entry => entry.Operation.OperationId != id && IsUnresolved(entry.Operation)
+                || entries.Any(entry => entry.Operation.OperationId != id && IsUnresolved(entry)
                     && !_running.ContainsKey(entry.Operation.OperationId) && entry.Operation.OperationId != pending
                     && !known.Contains(entry.Operation.OperationId)))
                 throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
@@ -162,7 +163,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             entries = await ReadEntriesAsync(paths, cancellationToken);
             var index = Array.FindIndex(entries, entry => entry.Operation.OperationId == id);
             if (index < 0) return null;
-            if (IsInterruptedRefresh(entries[index].Operation)) await ReconcileRefreshesAsync(entries, id, cancellationToken);
+            if (NeedsReconciliation(entries[index])) await ReconcileRefreshesAsync(entries, id, cancellationToken);
             return Visible(entries[index].Operation);
         }
         finally { entries = null; _gate.Release(); }
@@ -174,12 +175,16 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             || operation.State == ProxyOperationState.Interrupted && operation.Stage == "publication_pending"
                 && operation.ProblemCode == ProxyProblemCodes.OperationInterrupted);
 
+    private bool NeedsReconciliation(Entry entry) => IsInterruptedRefresh(entry.Operation)
+        || entry.Batch is not null && !_running.ContainsKey(entry.Operation.OperationId)
+            && (entry.Operation.State is ProxyOperationState.Queued or ProxyOperationState.Running || entry.Operation.Stage == BatchPending);
+
     // The caller holds the queue gate. Read the atomic publication snapshot without taking the publication gate.
     private async Task ReconcileRefreshesAsync(Entry[] entries, Guid? requested, CancellationToken ct)
     {
-        if (publication is null || Volatile.Read(ref _stopping)) return;
-        MihomoPublicationState state;
-        try { state = await publication.ReadAsync(ct); }
+        if (Volatile.Read(ref _stopping)) return;
+        MihomoPublicationState? state;
+        try { state = publication is null ? null : await publication.ReadAsync(ct); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
         { return; }
         var changed = false;
@@ -187,10 +192,19 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         {
             var entry = entries[index];
             var operation = entry.Operation;
-            if (!IsInterruptedRefresh(operation) || requested is not null && requested != operation.OperationId)
+            if (!NeedsReconciliation(entry) || requested is not null && requested != operation.OperationId)
                 continue;
 
-            if (state.SubscriptionRefreshCompletions?.GetValueOrDefault(operation.OperationId) is { } proof)
+            if (entry.Batch is not null)
+            {
+                var reconciled = await ReconcileBatchAsync(entry, state, subscriptions, ct);
+                if (reconciled == entry) continue;
+                entries[index] = reconciled;
+                changed = true;
+                continue;
+            }
+
+            if (state?.SubscriptionRefreshCompletions?.GetValueOrDefault(operation.OperationId) is { } proof)
                 operation = operation with
                 {
                     State = proof.Confirmed ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
@@ -198,7 +212,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
                     ProblemCode = proof.Confirmed ? "" : ProxyProblemCodes.ConfigApplyFailed,
                     CompletedAt = proof.CompletedAt
                 };
-            else if (HasPendingRefresh(state, operation.OperationId))
+            else if (state is not null && HasPendingRefresh(state, operation.OperationId))
                 operation = operation with
                 {
                     State = ProxyOperationState.Interrupted,
@@ -238,6 +252,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
                 await UpdateAsync(id, item => item with { Stage = stage });
             }, CancellationToken.None);
             var publicationPending = false;
+            var batchPending = original.Kind == RefreshBatchKind && problem == ProxyProblemCodes.RecoveryRequired;
             if (original.Kind == "subscription.refresh" && problem == ProxyProblemCodes.RecoveryRequired && publication is not null)
             {
                 try
@@ -256,10 +271,11 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
                 logger.LogInformation("Proxy operation {OperationId} completed.", id);
             await UpdateAsync(id, item => item with
             {
-                State = publicationPending ? ProxyOperationState.Interrupted
+                State = publicationPending || batchPending ? ProxyOperationState.Interrupted
                     : string.IsNullOrEmpty(problem) ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
-                Stage = publicationPending ? "publication_pending" : string.IsNullOrEmpty(problem) ? "completed" : "failed",
-                ProblemCode = problem ?? "", CompletedAt = publicationPending ? null : DateTimeOffset.UtcNow,
+                Stage = batchPending ? BatchPending : publicationPending ? "publication_pending" : string.IsNullOrEmpty(problem) ? "completed" : "failed",
+                ProblemCode = batchPending ? ProxyProblemCodes.OperationInterrupted : problem ?? "",
+                CompletedAt = publicationPending || batchPending ? null : DateTimeOffset.UtcNow,
             });
         }
         catch (Exception exception)
@@ -271,12 +287,26 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
                 finally { _gate.Release(); }
             }
             logger.LogWarning(exception, "Proxy operation {OperationId} failed.", id);
-            await UpdateAsync(id, item => item with { State = ProxyOperationState.Failed, Stage = "failed", ProblemCode = ProxyProblemCodes.OperationInterrupted, CompletedAt = DateTimeOffset.UtcNow });
+            await UpdateEntryAsync(id, entry =>
+            {
+                var pendingStep = exception is not ProxyOperationCleanupException
+                    && entry.Batch?.Any(step => step.State == RefreshStepState.Running) == true;
+                return entry with { Operation = entry.Operation with
+                {
+                    State = pendingStep ? ProxyOperationState.Interrupted : ProxyOperationState.Failed,
+                    Stage = pendingStep ? BatchPending : "failed",
+                    ProblemCode = ProxyProblemCodes.OperationInterrupted,
+                    CompletedAt = pendingStep ? null : DateTimeOffset.UtcNow
+                } };
+            });
             if (exception is ProxyOperationCleanupException) throw;
         }
     }
 
     private async Task UpdateAsync(Guid id, Func<ProxyOperationDto, ProxyOperationDto> update)
+        => await UpdateEntryAsync(id, entry => entry with { Operation = update(entry.Operation) });
+
+    private async Task UpdateEntryAsync(Guid id, Func<Entry, Entry> update)
     {
         await _gate.WaitAsync();
         try
@@ -284,11 +314,13 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             var entries = await ReadEntriesAsync(paths, CancellationToken.None);
             var index = Array.FindIndex(entries, entry => entry.Operation.OperationId == id);
             if (index < 0) throw new InvalidDataException("Proxy operation responsibility disappeared before terminal confirmation.");
-            entries[index] = entries[index] with { Operation = update(entries[index].Operation) };
+            entries[index] = update(entries[index]);
             await SaveAsync(entries, CancellationToken.None);
         }
         finally { _gate.Release(); }
     }
+
+    private static bool IsUnresolved(Entry entry) => !IsSettledBatchInterruption(entry) && IsUnresolved(entry.Operation);
 
     private static bool IsUnresolved(ProxyOperationDto operation) =>
         operation.State is ProxyOperationState.Queued or ProxyOperationState.Running or ProxyOperationState.Interrupted
@@ -314,11 +346,15 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
             ?? throw new InvalidDataException("Invalid Proxy operation ledger.");
         var keys = new HashSet<string>(StringComparer.Ordinal); var ids = new HashSet<Guid>();
         foreach (var entry in entries)
+        {
             if (entry is null || string.IsNullOrWhiteSpace(entry.IdempotencyKey) || entry.IdempotencyKey.Length > 200
                 || !keys.Add(entry.IdempotencyKey) || entry.Operation is not { } item || item.OperationId == Guid.Empty
                 || !ids.Add(item.OperationId) || !Enum.IsDefined(item.State) || string.IsNullOrEmpty(item.Kind)
-                || item.Stage is null || item.ProblemCode is null)
+                || item.Stage is null || item.ProblemCode is null || !IsValidBatch(entry))
                 throw new InvalidDataException("Invalid Proxy operation ledger entry.");
+            if (entry.Batch is { } steps && steps.Any(step => !ids.Add(step.OperationId)))
+                throw new InvalidDataException("Duplicate Proxy refresh operation ID.");
+        }
         return entries;
     }
 
@@ -350,7 +386,9 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         File.Move(temporary, path, overwrite: true);
     }
 
-    private sealed record Entry(string IdempotencyKey, ProxyOperationDto Operation);
+    private sealed record Entry(string IdempotencyKey, ProxyOperationDto Operation,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        RefreshStep[]? Batch = null);
 
     private static void SetPrivateDirectory(string path)
     {

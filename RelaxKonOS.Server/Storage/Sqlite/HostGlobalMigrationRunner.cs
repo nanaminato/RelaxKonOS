@@ -346,6 +346,13 @@ internal static class HostGlobalMigrationRunner
                 INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (17, CURRENT_TIMESTAMP);
                 """, cancellationToken);
         }
+        if (!await IsAppliedAsync(connection, transaction, 18, cancellationToken))
+        {
+            await ExecuteAsync(connection, transaction, """
+                ALTER TABLE proxy_subscriptions ADD COLUMN last_draft_refresh_operation_id TEXT NULL;
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (18, CURRENT_TIMESTAMP);
+                """, cancellationToken);
+        }
         transaction.Commit();
     }
 

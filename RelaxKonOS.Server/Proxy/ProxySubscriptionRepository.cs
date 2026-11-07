@@ -13,7 +13,8 @@ public interface IProxySubscriptionRepository
     Task<IReadOnlyList<ProxySubscriptionDto>> ListAsync(CancellationToken cancellationToken);
     Task<ProxySubscriptionRecord?> GetAsync(Guid id, CancellationToken cancellationToken);
     Task<ProxySubscriptionDto> CreateAsync(string name, Guid profileId, string url, ProxySubscriptionDownloadRoute downloadRoute, CancellationToken cancellationToken);
-    Task SetLastUpdatedAsync(Guid id, DateTimeOffset updatedAt, CancellationToken cancellationToken);
+    Task CommitDraftRefreshAsync(Guid id, Guid operationId, DateTimeOffset updatedAt, CancellationToken cancellationToken);
+    Task<bool> HasDraftRefreshReceiptAsync(Guid id, Guid operationId, CancellationToken cancellationToken);
 }
 
 public sealed record ProxySubscriptionRecord(ProxySubscriptionDto Subscription, string Url, ProxySubscriptionDownloadRoute DownloadRoute);
@@ -77,14 +78,30 @@ public sealed class SqliteProxySubscriptionRepository(
         return new ProxySubscriptionDto(id, name.Trim(), profileId, false, now, now, now);
     }
 
-    public async Task SetLastUpdatedAsync(Guid id, DateTimeOffset updatedAt, CancellationToken cancellationToken)
+    public async Task CommitDraftRefreshAsync(Guid id, Guid operationId, DateTimeOffset updatedAt, CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE proxy_subscriptions SET last_updated_at=$updated,updated_at=$updated WHERE subscription_id=$id;";
+        command.CommandText = """
+            UPDATE proxy_subscriptions
+            SET last_updated_at=$updated,updated_at=$updated,last_draft_refresh_operation_id=$operation
+            WHERE subscription_id=$id;
+            """;
         command.Parameters.AddWithValue("$id", id.ToString("D"));
+        command.Parameters.AddWithValue("$operation", operationId.ToString("D"));
         command.Parameters.AddWithValue("$updated", updatedAt.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionInvalid);
+    }
+
+    public async Task<bool> HasDraftRefreshReceiptAsync(Guid id, Guid operationId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM proxy_subscriptions WHERE subscription_id=$id AND last_draft_refresh_operation_id=$operation;";
+        command.Parameters.AddWithValue("$id", id.ToString("D"));
+        command.Parameters.AddWithValue("$operation", operationId.ToString("D"));
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)

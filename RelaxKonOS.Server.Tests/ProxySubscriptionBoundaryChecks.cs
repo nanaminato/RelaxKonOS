@@ -103,6 +103,14 @@ internal static class ProxySubscriptionBoundaryChecks
             try { await f.Queue.EnqueueAsync("after-loss", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default); throw new Exception("Unconfirmed owner accepted more work"); }
             catch (ProxyOperationValidationException) { count++; }
             var reopened = new ProxyOperationStore(f.Paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases());
+            var ledger = Path.Combine(f.Paths.GetStateDirectory(), "proxy-operations.json");
+            var unchanged = await File.ReadAllTextAsync(ledger);
+            try { await reopened.GetAsync(accepted.OperationId, default); throw new Exception("Unwritable recovery returned a durable receipt"); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                Check(await File.ReadAllTextAsync(ledger) == unchanged, "Failed receipt persistence leaves the original batch ledger intact");
+            }
+            Directory.Delete(ledger + ".new");
             Check((await reopened.GetAsync(accepted.OperationId, default))!.State == ProxyOperationState.Interrupted,
                 "Reopening the durable running ledger reports interruption and does not replay or infer publication success");
         }
@@ -207,6 +215,7 @@ internal static class ProxySubscriptionBoundaryChecks
         public string Failure = "";
         public WeakReference? Reference;
         public Guid Id;
+        public Guid BatchSubscriptionId { get; } = Guid.NewGuid();
         public ProxySubscriptionOperation Kind;
         public CancellationToken Token;
         public TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously), Release = new(TaskCreationOptions.RunContinuationsAsynchronously),
@@ -222,10 +231,11 @@ internal static class ProxySubscriptionBoundaryChecks
             if (state.Failure == "exception") throw new IOException("Controlled subscription failure");
             return state.Failure == "domain" ? ProxyProblemCodes.SubscriptionInvalid : null;
         }
-        public Task<string?> RefreshAllAsync(CancellationToken ct) => Run(ProxySubscriptionOperation.RefreshAll, Guid.Empty, ct);
-        public Task<string?> RefreshAsync(Guid id, Guid? operationId, CancellationToken ct) => Run(ProxySubscriptionOperation.Refresh, id, ct);
+        public Task<string?> RefreshAsync(Guid id, Guid operationId, CancellationToken ct) =>
+            Run(id == state.BatchSubscriptionId ? ProxySubscriptionOperation.RefreshAll : ProxySubscriptionOperation.Refresh, id, ct);
         public Task<string?> ActivateAsync(Guid id, CancellationToken ct) => Run(ProxySubscriptionOperation.Activate, id, ct);
-        public Task<IReadOnlyList<ProxySubscriptionDto>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ProxySubscriptionDto>> ListAsync(CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<ProxySubscriptionDto>>([new(state.BatchSubscriptionId, "fixture", Guid.NewGuid(), false, null, default, default)]);
         public Task<ProxySubscriptionDto> ImportAsync(ImportProxySubscriptionRequest request, CancellationToken ct) => throw new NotSupportedException();
         public Task<ProxySubscriptionContentDto?> GetContentAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<ProxySubscriptionDownloadOptionsDto> GetDownloadOptionsAsync(CancellationToken ct) => throw new NotSupportedException();
