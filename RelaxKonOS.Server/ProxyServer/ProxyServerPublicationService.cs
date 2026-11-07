@@ -57,7 +57,9 @@ public sealed class ProxyServerPublicationService(ProxyServerStore store,
         // Persist the candidate before the Helper can commit it. A Server crash after the Helper
         // completes must not leave its applied revision permanently detached from the domain state.
         await store.WriteAsync(state with { PendingPublication = material, PendingRollback = rollback }, ct);
-        var updated = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerApply, new(Material: material), ct);
+        // A durable candidate is accepted work. Finish the original Helper call and commit its
+        // result even when the expiry worker or the management caller is stopping.
+        var updated = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerApply, new(Material: material), CancellationToken.None);
         if (updated.ConfigurationHash != Hash(rendered) || updated.RecoveryRequired) return "proxy_server.publication_unconfirmed";
         await store.WriteAsync(state with { PreviousPublished = rollback ? null : state.Published, Published = material,
             PendingPublication = null, PendingRollback = false }, CancellationToken.None);

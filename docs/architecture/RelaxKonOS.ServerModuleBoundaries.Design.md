@@ -1555,3 +1555,13 @@ Linux 私有 systemd 实测原 `04f1f463-a0cb-4197-a271-8ad1afb93c9d` 在 Server
 此路径的跨进程回归核对已持久化的原失败回执、同键和应用历史，检查证书操作 ID 缺失、CA 无新订单、没有打开 80 端口或重载 Nginx。原 HTTPS、原 Docker 上游和共享服务继续运行。需要先建立经过能力授权的挑战发布边界，明确挑战响应与清理 owner，再验收实际签发中断和原 CA 订单恢复。该路径保持关闭。
 
 Linux 原发布 `929bf5d6-7e68-4df1-baca-8f503bb88af0` 跨重启返回原失败。首轮等待签发响应失败，第二轮通过生产回执确认拒绝原因，最终轮按拒绝路径验收。日志为 `.artifacts/mb05-acme-authorization-final-website-acme.log`，现有证书路径的 Verifying 回归见 `.artifacts/mb05-acme-authorization-final-website-verifying.log`。Release 归档与上一阶段相同。
+
+### MB-04 入站授权到期的停机排空
+
+Core 继续使用原受保护台账和摘要绑定的到期索引，只有到期或存在待确认候选才创建执行作用域。入站发布写入候选后，原 Helper 调用及终态提交继续执行，调用方取消不截断响应。到期 worker 停止接收新扫描并等待实际任务与异步作用域释放，停机调用者的等待期限不充当清理完成证明。管理队列继续使用原操作租约，Core 到期执行不依赖管理模块启用。
+
+Linux x64 Release 在私有 systemd、生产 Helper 和真实 sing-box 上通过。原 Helper apply `d14b9cfa-b26d-42ed-ac99-01a91ff64514` 生效后，夹具暂缓向 Core 交付实际响应。用已取消的停机令牌调用 worker Stop，原发布仍持有领域锁和持久候选。交付响应后确认原终态已落盘，Stop 继续等待异步作用域清理。此次实际配置修订仅增加一次，保留授权完成真实转发。同批用另一次到期 `207e2563-c2ed-422c-9b04-77fc03bd4f80` 复验跨进程恢复。Helper 不可达时完整 Server 保留原候选，重启 Helper 后按原摘要确认，后续授权自然到期并拒绝真实认证。系统代理、TUN 和保留授权接续通过，宿主状态与文件指纹一致，专属 cgroup 已清理。
+
+Linux 日志为 `.artifacts/mb04-expiry-drain-live.log`，归档 SHA-256 为 `9aaa2a7a57f4dc4fb1d7ab013d28ff5a5f44da0923f8486fa1b9c30858e37751`。Windows Release 独立 Proxy Server 与模块边界回归通过，日志为 `.artifacts/mb04-expiry-drain-proxy-win.log`、`.artifacts/mb04-expiry-drain-milestones-win.log`。本次停机直接驱动生产 worker，响应交付与作用域清理屏障由夹具注入，完整 Server 的 SIGTERM 同时命中这两个边界仍待实测。
+
+原入站台账仍是恢复权威。此阶段没有为 Core 到期发布新增独立 Helper 终态回执。候选摘要可用于确认已提交的配置，尚缺原配置摘要仍存在时区分未派发和已补偿的原操作证据。Proxy 保持 resident。

@@ -43,7 +43,7 @@ internal static class ExpiryBoundaryChecks
             NullLogger<ProxyServerExpiryService>.Instance);
         await waitingWorker.StartAsync(default);
         await cancellation.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var stop = waitingWorker.StopAsync(default);
+        var stop = waitingWorker.StopAsync(new CancellationToken(canceled: true));
         try
         {
             await disposing.Task.WaitAsync(TimeSpan.FromSeconds(5));

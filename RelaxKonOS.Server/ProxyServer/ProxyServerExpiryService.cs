@@ -12,6 +12,10 @@ public sealed class ProxyServerExpiryService(
     ProxyServerStore store,
     ILogger<ProxyServerExpiryService> logger) : BackgroundService
 {
+    // Cancel scheduling, then drain the actual pass and scope. A host wait deadline cannot make
+    // an accepted revocation or its cleanup safe to dispose.
+    public override Task StopAsync(CancellationToken cancellationToken) => base.StopAsync(CancellationToken.None);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));

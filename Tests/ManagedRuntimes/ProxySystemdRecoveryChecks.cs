@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.ManagedRuntimes;
@@ -46,9 +47,10 @@ internal static class ProxySystemdRecoveryChecks
         var expired = new ProxyServerSecret(Guid.NewGuid(), [inboundId], Guid.NewGuid().ToString("D"));
         var next = expired with { Id = Guid.NewGuid(), Value = Guid.NewGuid().ToString("D") };
         var retained = expired with { Id = Guid.NewGuid(), Value = Guid.NewGuid().ToString("D") };
+        var draining = expired with { Id = Guid.NewGuid(), Value = Guid.NewGuid().ToString("D") };
         var material = traffic.CreateMaterial(new(new(1,
             [new(inboundId, "systemd-fixture", ProxyServerProtocol.VlessTls, "127.0.0.1",
-                inboundPort, "127.0.0.1", inboundPort, "proxy-fixture.example")]), [expired, next, retained], []));
+                inboundPort, "127.0.0.1", inboundPort, "proxy-fixture.example")]), [draining, expired, next, retained], []));
         var binaryBytes = await File.ReadAllBytesAsync(executable);
         var version = (await SingBoxOperations.RunAsync(executable, ["version"]))
             .Split('\n', StringSplitOptions.TrimEntries)[0].Split(' ')[^1];
@@ -99,14 +101,28 @@ internal static class ProxySystemdRecoveryChecks
             await guard.ApplyAsync(transport, enabled: true);
             await guard.VerifyTrafficAsync();
             var store = ManagedServiceChecks.OpenServerStore(root);
-            var expiry = DateTimeOffset.UtcNow.AddSeconds(25);
             await store.WriteAsync(ProxyServerState.Empty with
             {
                 Published = material,
                 Credentials = material.Credentials.Select(grant => new StoredCredential(grant.Id, Guid.NewGuid(), "fixture",
-                    grant.InboundIds.ToArray(), grant.Value, true, grant.Id == expired.Id ? DateTimeOffset.UtcNow.AddMinutes(-1)
-                        : grant.Id == next.Id ? expiry : null)).ToArray()
+                    grant.InboundIds.ToArray(), grant.Value, true,
+                    grant.Id == draining.Id ? DateTimeOffset.UtcNow.AddMinutes(-1) : null)).ToArray()
             }, default);
+            var drainRevision = states.Read()!.Installation.StateRevision;
+            material = material with { Credentials = [expired, next, retained] };
+            var drainHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(material)));
+            await VerifyExpiryDrainAsync(store, transport, drainHash, () => states.Read()!.Installation.StateRevision == drainRevision + 1
+                && states.Read()!.ConfigurationIdentity == drainHash);
+            using (var live = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+            using (var forwarded = await traffic.ForwardAsync(retained.Value, live.Token))
+                Console.WriteLine("PASS EXPIRY DRAIN TRAFFIC: retained credential forwarded after the original commit");
+            var expiry = DateTimeOffset.UtcNow.AddSeconds(25);
+            var afterDrain = await store.ReadAsync(default);
+            await store.WriteAsync(afterDrain with { Credentials = [.. afterDrain.Credentials.Select(credential => credential with
+            {
+                ExpiresAt = credential.Id == expired.Id ? DateTimeOffset.UtcNow.AddMinutes(-1)
+                    : credential.Id == next.Id ? expiry : credential.ExpiresAt
+            })] }, default);
             var before = states.Read()!.Installation.StateRevision;
             var expected = material with { Credentials = [next, retained] };
             var expectedHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(expected)));
@@ -141,7 +157,7 @@ internal static class ProxySystemdRecoveryChecks
             if (firstHelper.ExitCode == 0 || !(await host.ObserveAsync(default)).Running
                 || await SingBoxOperations.RunAsync("/usr/bin/systemctl", ["show", LinuxSingBoxArchiveHost.Unit, "--property=MainPID", "--value"]) != pidBeforeCrash)
                 throw new InvalidOperationException("Helper termination stopped or replaced the independent runtime.");
-            if (ApplyCount(firstHelper.Log) != 1) throw new InvalidOperationException("The original Helper must receive one apply.");
+            if (ApplyCount(firstHelper.Log) != 2) throw new InvalidOperationException("The original Helper must receive one apply per expiry.");
             using (var outage = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
             using (var forwarded = await traffic.ForwardAsync(retained.Value, outage.Token))
                 Console.WriteLine("PASS HELPER OUTAGE TRAFFIC: runtime accepted authenticated traffic with Helper stopped");
@@ -226,6 +242,72 @@ internal static class ProxySystemdRecoveryChecks
 
     private static int ApplyCount(string log) => log.Split('\n').Count(line =>
         line.Contains("event=request-completed operation=ProxyServerApply ", StringComparison.Ordinal));
+
+    private static async Task VerifyExpiryDrainAsync(ProxyServerStore store, IPrivilegedOperationTransport transport,
+        string expectedHash, Func<bool> committed)
+    {
+        var drain = new ExpiryDrain(transport);
+        var services = new ServiceCollection().AddScoped<IProxyServerExpiryExecutor>(_ =>
+            new DrainExecutor(new ProxyServerPublicationService(store, drain, new SystemMode()), drain));
+        await using var provider = services.BuildServiceProvider();
+        using var worker = new ProxyServerExpiryService(provider.GetRequiredService<IServiceScopeFactory>(), store,
+            NullLogger<ProxyServerExpiryService>.Instance);
+        await worker.StartAsync(default);
+        Task? stop = null;
+        try
+        {
+            await drain.ResponseHeld.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            if (!committed() || (await store.ReadAsync(default)).PendingPublication is null)
+                throw new InvalidOperationException("The Helper must commit before the response barrier.");
+            stop = worker.StopAsync(new CancellationToken(canceled: true));
+            if (stop.IsCompleted || store.Gate.CurrentCount != 0)
+                throw new InvalidOperationException("Stop abandoned the original expiry or its gate before the Helper response.");
+            drain.ReleaseResponse.TrySetResult();
+            await drain.DisposalHeld.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var final = await store.ReadAsync(default);
+            if (stop.IsCompleted || final.PendingPublication is not null || final.Published is null
+                || Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(final.Published))) != expectedHash)
+                throw new InvalidOperationException("The original terminal state must persist while stop still drains scope disposal.");
+        }
+        finally
+        {
+            drain.ReleaseResponse.TrySetResult();
+            drain.ReleaseDisposal.TrySetResult();
+            await (stop ?? worker.StopAsync(default)).WaitAsync(TimeSpan.FromSeconds(25));
+        }
+        Console.WriteLine("PASS PRODUCTION EXPIRY DRAIN: original Helper apply, durable terminal state and asynchronous disposal completed before stop");
+    }
+
+    private sealed class ExpiryDrain(IPrivilegedOperationTransport transport) : IPrivilegedOperationTransport
+    {
+        public TaskCompletionSource ResponseHeld { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseResponse { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource DisposalHeld { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseDisposal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
+        {
+            var result = await transport.ExecuteAsync(request, ct);
+            if (request.Operation == PrivilegedOperationKind.ProxyServerApply && result.Success)
+            {
+                ResponseHeld.TrySetResult();
+                await ReleaseResponse.Task.WaitAsync(ct);
+            }
+            return result;
+        }
+    }
+
+    private sealed class DrainExecutor(ProxyServerPublicationService publication, ExpiryDrain drain)
+        : IProxyServerExpiryExecutor, IAsyncDisposable
+    {
+        public Task ReconcileExpiryAsync(CancellationToken ct) => publication.ReconcileExpiryAsync(ct);
+
+        public async ValueTask DisposeAsync()
+        {
+            drain.DisposalHeld.TrySetResult();
+            await drain.ReleaseDisposal.Task;
+        }
+    }
 
     internal static async Task RunExpiryWorkerAsync(string socket, string root)
     {
