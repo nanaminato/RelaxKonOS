@@ -1702,3 +1702,5 @@ MB-05 在既有 Linux 测试机验证了隔离 Nginx 的 TLS 连续性。真实 
 网站发布已通过隔离 Nginx 的 Verifying 阶段崩溃恢复实机验收。重启按原 operationId 持久化 Interrupted，同键取回原回执，已发布站点继续代理 HTTPS，应用关联保留，发布重载只执行一次。见边界设计 §53。
 
 MB-05 也验证了真实 Nginx 已重载、站点元数据和应用关联尚未写入时的恢复。重启保留原操作及 website.site_application_unverified，已生效的 HTTPS 路由继续服务，同键重试未重载或补写元数据。见边界设计 §53。
+
+WebServer 操作和网站发布的 HTTP 202 在响应执行期间持有 WebServer 模块租约。Windows Release 专项通过，新增路由的实机断线验收仍开放。

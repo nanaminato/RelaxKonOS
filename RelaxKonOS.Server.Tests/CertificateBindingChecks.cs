@@ -126,6 +126,8 @@ internal static class CertificateBindingChecks
         // 于是 AuthorizationPolicyCache 在枚举端点元数据时就抛 InvalidOperationException。生产的 DI 里注册过。
         builder.Services.AddSingleton(new RelaxKonOS.Server.Certificate.CertificateRenewalRunRepository(environment, ledger));
         builder.Services.AddSingleton<IHostElevationSessionStore>(elevations);
+        var responseLeases = new TestResidentBackgroundLeases();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>(responseLeases);
         builder.Services.AddSingleton<IServerModeResolver>(mode);
         await using var app = builder.Build();
         app.Use((context, next) => { context.User = principal; return next(context); });
@@ -146,7 +148,8 @@ internal static class CertificateBindingChecks
             TestAssert.Assert(wrongTarget.StatusCode == HttpStatusCode.Forbidden, "HTTPS replacement accepted another certificate's grant.");
         elevations.Grant(principal, HostElevationCapability.CertificateReplaceServerHttps, $"certificates/{id:D}/server-https", false, "test");
         using var accepted = await Submit();
-        TestAssert.Assert(accepted.StatusCode == HttpStatusCode.Accepted, "Authorized HTTPS replacement required an administrator Server process.");
+        TestAssert.Assert(responseLeases.Acquired == 1, "The accepted certificate response must acquire a response lease.");
+        TestAssert.Assert(accepted.StatusCode == HttpStatusCode.Accepted,  $"Authorized HTTPS replacement returned {accepted.StatusCode}: {await accepted.Content.ReadAsStringAsync()}");
         var operation = JsonSerializer.Deserialize<CertificateOperationDto>(await accepted.Content.ReadAsStringAsync(), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)!;
         TestAssert.Assert((await TestOperations.WaitForCertificateOperationAsync(ledger, operation.OperationId)).State == CertificateOperationState.Succeeded,
             "Authorized HTTPS replacement did not complete.");

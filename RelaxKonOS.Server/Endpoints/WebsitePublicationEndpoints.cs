@@ -1,3 +1,4 @@
+using RelaxKonOS.Server.Startup;
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebsitePublishing;
@@ -22,7 +23,7 @@ public static class WebsitePublicationEndpoints
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, request.WebServerId))
                 return ElevationRequired();
             var operation = await coordinator.StartAsync(request, Actor(context.User), Key(context), ct);
-            return Results.Accepted(WebsitePublicationApiRoutes.Operation.Replace("{operationId}", operation.OperationId.ToString("D")), operation);
+            return new ResidentOperationResult(ServerModules.WebServerId, Results.Accepted(WebsitePublicationApiRoutes.Operation.Replace("{operationId}", operation.OperationId.ToString("D")), operation));
         })).RequireAuthorization(ApplicationDeploymentEndpoints.ManagePolicy);
 
         group.MapGet(WebsitePublicationApiRoutes.ByApplicationPattern, (Guid applicationId, int? limit, WebsitePublicationCoordinator coordinator) =>

@@ -1,3 +1,4 @@
+using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Privileged;
@@ -129,7 +130,7 @@ public static class WebServerEndpoints
                 : StatusCodes.Status409Conflict;
             return Results.Problem(statusCode: status, extensions: new Dictionary<string, object?> { ["problemCode"] = operation.ProblemCode });
         }
-        return Results.Accepted($"{WebServerApiRoutes.WebServers}/operations/{operation.OperationId}", operation);
+        return new ResidentOperationResult(ServerModules.WebServerId, Results.Accepted($"{WebServerApiRoutes.WebServers}/operations/{operation.OperationId}", operation));
     }
 
     private static string? Actor(HttpContext context) => context.User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Name)?.Value

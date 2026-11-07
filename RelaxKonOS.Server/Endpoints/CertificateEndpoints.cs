@@ -1,3 +1,4 @@
+using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Protocol.Privileged;
@@ -70,7 +71,7 @@ public static class CertificateEndpoints
                 : StatusCodes.Status409Conflict;
             return Results.Problem(statusCode: status, extensions: new Dictionary<string, object?> { ["problemCode"] = operation.ProblemCode });
         }
-        return Results.Accepted($"{CertificateApiRoutes.Certificates}/operations/{operation.OperationId}", operation);
+        return new ResidentOperationResult(ServerModules.CertificatesId, Results.Accepted($"{CertificateApiRoutes.Certificates}/operations/{operation.OperationId}", operation));
     }
 
     private static string? Actor(HttpContext context) => context.User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Name)?.Value
