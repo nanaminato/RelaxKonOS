@@ -82,16 +82,19 @@ public sealed class MihomoSettingsService(
             try
             {
                 await File.WriteAllTextAsync(temporary, updated, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 File.Move(temporary, active, overwrite: true);
-                var controllerAvailable = (await controller.IsReachableAsync(cancellationToken)).Succeeded;
-                var reload = controllerAvailable ? await controller.ReloadAsync(cancellationToken) : null;
+                // The active file is already visible. Finish the update or compensation even if the client leaves.
+                var completionToken = CancellationToken.None;
+                var controllerAvailable = (await controller.IsReachableAsync(completionToken)).Succeeded;
+                var reload = controllerAvailable ? await controller.ReloadAsync(completionToken) : null;
                 if (controllerAvailable && !string.IsNullOrEmpty(reload))
                 {
-                    await File.WriteAllTextAsync(active, original, cancellationToken);
-                    await controller.ReloadAsync(cancellationToken);
+                    await File.WriteAllTextAsync(active, original, completionToken);
+                    await controller.ReloadAsync(completionToken);
                     return ProxyProblemCodes.ConfigApplyFailed;
                 }
-                var proxyProblem = await systemProxyService.ApplyAsync(settings, previous, enforce: false, cancellationToken);
+                var proxyProblem = await systemProxyService.ApplyAsync(settings, previous, enforce: false, completionToken);
                 // An absent Helper must not block unrelated Mihomo settings while the proxy is off.
                 // Startup reconciliation still retries, so an interrupted root-side write can recover.
                 if (!settings.SystemProxyEnabled && !previous.SystemProxyEnabled
@@ -99,11 +102,11 @@ public sealed class MihomoSettingsService(
                 if (proxyProblem is not null)
                 {
                     logger?.LogWarning("Proxy settings update could not apply the host system proxy. ProblemCode={ProblemCode}", proxyProblem);
-                    await File.WriteAllTextAsync(active, original, cancellationToken);
-                    if (controllerAvailable) await controller.ReloadAsync(cancellationToken);
+                    await File.WriteAllTextAsync(active, original, completionToken);
+                    if (controllerAvailable) await controller.ReloadAsync(completionToken);
                     return proxyProblem;
                 }
-                try { await WriteAsync(settings, cancellationToken); }
+                try { await WriteAsync(settings, completionToken); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or OperationCanceledException)
                 {
                     var rollback = await systemProxyService.ApplyAsync(previous, settings, enforce: true, CancellationToken.None);

@@ -50,10 +50,12 @@ internal static class SystemProxyChecks
             TestAssert.Assert(fixture.Host.Calls[^1].Enforce, "Configured guard did not enforce the host proxy.");
             var before = fixture.Host.Calls.Count;
             fixture.Host.BlockNext = true;
-            var disable = fixture.Service.UpdateAsync(Request(enabled with { SystemProxyEnabled = false }), default);
+            using var caller = new CancellationTokenSource();
+            var disable = fixture.Service.UpdateAsync(Request(enabled with { SystemProxyEnabled = false }), caller.Token);
             await fixture.Host.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            caller.Cancel();
             var guard = fixture.Reconciler.ReconcileSystemProxyAsync(false, default);
-            TestAssert.Assert(!guard.IsCompleted, "Guard must wait on the writer's shared publication gate.");
+            TestAssert.Assert(!disable.IsCompleted && !guard.IsCompleted, "The accepted write and its guard gate must survive caller cancellation.");
             fixture.Host.Release.TrySetResult();
             TestAssert.Assert(await disable is null && await guard is null, "Concurrent disable/guard failed.");
             TestAssert.Assert(fixture.Host.Calls.Count == before + 1 && !fixture.Host.Calls[^1].Settings.SystemProxyEnabled,

@@ -4560,3 +4560,5 @@ Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链�
 合并前后对比了同一批 512 条真实连接上的认证请求，路由与 DNS 结果一致。合并后配置请求减半，隔离负载的 35 秒 PSS 较低，Server CPU 增加。见[配置合并读取配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-配置合并读取配对测量)。
 
 停用管理面时，TUN 的真实禁用确认与入站到期回执可同时在途。到期终态完成后，原 TUN 标记仍保留至路由验证和清理结束。重启由原 guard 核对系统代理归属，Mihomo 原连接继续转发。见[Proxy 联合安全责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。
+
+设置保存使用原鉴权、响应与发布台账。调用方断线后，已受理的受管发布继续由原 operationId 对账。直连设置替换活动文件后继续完成写入或补偿，系统代理 guard 等待同一发布锁。见[设置写入工作租约](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-设置写入的工作租约)。

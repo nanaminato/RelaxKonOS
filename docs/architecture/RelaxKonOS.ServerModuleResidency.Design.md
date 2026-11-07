@@ -514,3 +514,5 @@ Proxy 的运行时、代理组、路由及 DNS 读取使用现有 resident 工�
 MB-03 在私有 Linux Engine 网络上验证了宿主和 builder 镜像内 Git 的专属 HTTPS 传输与信任拒绝路径。真实 BuildKit 执行与 ALC 联合验收仍等待可运行专属 RootlessKit 的环境。见[HTTPS 源仓库夹具](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-03-专属-https-源仓库夹具)。
 
 Proxy 同次停机联合验收中，原入站到期回执落盘后，Server 仍持有独立 TUN 清理责任。系统代理 guard 与 TUN 复用共享发布锁及原归属记录，已有网络转发继续。见[Proxy 联合安全责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。
+
+Proxy 设置写入的 resident 租约覆盖执行、审计、响应与异步作用域清理。受管发布的重启恢复继续读取原发布权威和 Helper 回执。见[设置写入工作租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-设置写入的工作租约)。
