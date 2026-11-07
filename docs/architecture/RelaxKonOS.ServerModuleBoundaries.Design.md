@@ -2136,3 +2136,13 @@ Windows Release 的 Avalonia 无头回归使用实际 Dispatcher 计时和页面
 Linux 私有 systemd 通过真实 Mihomo 连接和完整认证 Server 联验。HTTP 中继收到并暂扣真实 `/traffic` 样本，生产模块状态接口显示一个工作租约。客户端取消后，实际控制器请求中断，清理后状态接口显示零租约，新请求取得样本。原连接 `c8ced245-b35e-4de9-b483-1a7336e7349e` 持续转发，原发布 `0d11a773-00da-4ae9-864f-f76c1cb32a69` 跨 SIGTERM 排空及重启保持原回执，发布和补偿均未重放。Linux 原生套件通过 178 项，专属 cgroup 已清理，宿主 sing-box 和代理文件指纹一致。
 
 证据位于 `.artifacts/mb04-traffic-polling-cancel/`，归档 SHA-256 为 `fa9489a66edaa9f789958013784bf1a4c1e56d7555f77f29b27c28b3c682adf5`。并发上限按桌面工作区计算，多工作区共享采样、生产内存和整模块动态休眠仍开放。下一项核对同一概览仍使用的运行时、代理组、路由和 DNS 读取，补齐实际任务和响应的工作责任。
+
+### MB-04 Mihomo 运行时与控制面读取责任
+
+运行时、代理组、路由及 DNS 的认证 GET 接入原 Proxy 工作租约。先准入，再在独立作用域解析读取依赖，最后等待实际响应和异步清理。运行时继续由 Core 原管理器读取。代理组、路由及 DNS 直接使用控制器，代理组顺序复用已有配置读取。原接口继续在控制器认证失败时分别返回空代理组、路由 HTTP 503 和带问题码的 DNS 回执。
+
+Windows Release 模块边界和控制器回归通过。实际 Kestrel 夹具逐路由覆盖匿名拒绝、控制器任务阻塞及响应阻塞时断线、异步作用域清理和租约归还。MB-05 跨进程原 `264ca97b-7f91-45ed-873f-87350fa10b22` 返回 Interrupted，受控副作用计数为一。
+
+Linux 私有 systemd 使用完整认证 Server 和真实 Mihomo。暂扣 `/proxies` 和两条 `/configs` 的实际响应，分别取消代理组、路由和 DNS 请求。原发布待确认时，运行时返回公开 `RuntimeStateUnknown`。原发布对账后，在重启进程中暂扣真实 `/version` 并取消运行时请求。每条请求持有一个租约，控制器连接中断、清理后归零，随后新请求成功。原发布 `4b244d12-b158-48bd-974f-1f2b39cee684` 保留原 Failed 回执，原连接 `2bebae61-8023-4e87-b5aa-2dc4d17c5708` 完成真实转发。原生套件通过 178 项，专属 cgroup 已清理，宿主 sing-box 和代理文件指纹一致。
+
+前两轮夹具分别误等候待确认状态下的 `/version`，以及误断言内部问题码。复验以公开 DTO 核对待确认状态，并把运行时控制器断线放到对账完成后。Windows 的代理组排序、TUN 34 项、Core 安全 37 项、驻留及生命周期作用域各 31 项也通过。日志在 `.artifacts/mb04-control-observation/`，Linux 归档 SHA-256 为 `267021248d17e526f2b3683449434592ef42a6e7d40cc77c8a608fe0dcf28adb`。Proxy 整体保持 resident，读取图配对资源复测和生产内存仍开放。

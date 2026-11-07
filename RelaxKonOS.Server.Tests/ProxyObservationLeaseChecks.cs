@@ -31,8 +31,10 @@ internal static class ProxyObservationLeaseChecks
         var scenario = new Scenario(holdController: false);
         builder.Services.AddScoped<IProxyEngineRegistry>(_ => throw new InvalidOperationException("Observation reads must not create the management engine graph."));
         builder.Services.AddSingleton<IProxyDiagnosticLogStore, FixtureDiagnostics>();
+        builder.Services.AddSingleton<IProxyPlatformPaths>(new TestProxyPaths(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))));
         builder.Services.AddScoped(_ => new ControllerScope(scenario));
         builder.Services.AddScoped<IMihomoControllerClient>(services => services.GetRequiredService<ControllerScope>().CreateClient());
+        builder.Services.AddScoped<IProxyRuntimeManager, FixtureRuntime>();
         await using var app = builder.Build();
         var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -57,7 +59,8 @@ internal static class ProxyObservationLeaseChecks
         using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
         scenario.ReleaseResponse.TrySetResult();
-        string[] routes = [ProxyApiRoutes.Connections, ProxyApiRoutes.Traffic, ProxyApiRoutes.Logs + "?limit=1"];
+        string[] routes = [ProxyApiRoutes.Connections, ProxyApiRoutes.Traffic, ProxyApiRoutes.Logs + "?limit=1",
+            ProxyApiRoutes.Runtime, ProxyApiRoutes.Groups, ProxyApiRoutes.Routing, ProxyApiRoutes.Dns];
         foreach (var route in routes)
         {
             using var anonymous = await http.GetAsync(route, ct);
@@ -75,6 +78,23 @@ internal static class ProxyObservationLeaseChecks
                 "Controller authentication failure must remain an explicit HTTP 503.");
         await scenario.RequestExited.Task.WaitAsync(ct);
         TestAssert.Assert(!HasLease(), "The error response must drain its scope and lease.");
+
+        foreach (var (route, status, expected) in new[]
+        {
+            (ProxyApiRoutes.Groups, HttpStatusCode.OK, "[]"),
+            (ProxyApiRoutes.Routing, HttpStatusCode.ServiceUnavailable, ProxyProblemCodes.ControllerAuthenticationFailed),
+            (ProxyApiRoutes.Dns, HttpStatusCode.OK, ProxyProblemCodes.ControllerAuthenticationFailed),
+        })
+        {
+            scenario = new Scenario(holdController: false) { Status = HttpStatusCode.Unauthorized };
+            scenario.ReleaseResponse.TrySetResult();
+            scenario.ReleaseCleanup.TrySetResult();
+            using var reply = await http.GetAsync(route, ct);
+            TestAssert.Assert(reply.StatusCode == status && (await reply.Content.ReadAsStringAsync(ct)).Contains(expected, StringComparison.Ordinal),
+                "A leased observation changed the controller authentication failure contract.");
+            await scenario.RequestExited.Task.WaitAsync(ct);
+            TestAssert.Assert(!HasLease(), "The failure response must drain its work lease.");
+        }
 
         scenario = new Scenario(holdController: false) { Status = HttpStatusCode.Unauthorized };
         scenario.ReleaseResponse.TrySetResult();
@@ -131,7 +151,7 @@ internal static class ProxyObservationLeaseChecks
                 "Cleanup failure must retain the work lease and block the original module owner.");
         }
         finally { source.Last?.Dispose(); }
-        Console.WriteLine("PASS PROXY OBSERVATION HTTP DRAIN: connections, traffic and logs preserve authorization, cancellation, response and cleanup");
+        Console.WriteLine("PASS PROXY OBSERVATION HTTP DRAIN: runtime, groups, routing, DNS, connections, traffic and logs preserve authorization, cancellation, response and cleanup");
 
         bool HasLease() => coordinator.HasBackgroundWork(ServerModules.ProxyId);
     }
@@ -188,10 +208,26 @@ internal static class ProxyObservationLeaseChecks
             {
                 "/traffic" => "{\"up\":1,\"down\":2}\n",
                 "/logs" => "{\"type\":\"info\",\"payload\":\"fixture\"}\n",
+                "/version" => "{\"version\":\"v1.19.10\"}",
+                "/proxies" => "{\"proxies\":{}}",
+                "/configs" => "{\"mode\":\"rule\",\"dns\":{\"enable\":true}}",
                 _ => "{\"uploadTotal\":3,\"downloadTotal\":4,\"connections\":[],\"memory\":5}"
             };
             return new HttpResponseMessage(scenario.Status) { Content = new StringContent(body) };
         }
+    }
+
+    private sealed class FixtureRuntime(IMihomoControllerClient controller) : IProxyRuntimeManager
+    {
+        public async Task<ProxyRuntimeDto> GetAsync(string engineId, CancellationToken ct)
+        {
+            var result = await controller.IsReachableAsync(ct);
+            return new(engineId, ProxyRuntimeMode.Managed, result.Succeeded ? ProxyRuntimeState.Running : ProxyRuntimeState.Stopped,
+                "1.19.10", null, true, false, result.ProblemCode);
+        }
+
+        public Task<ProxyRuntimeDto> DetectExternalAsync(string engineId, string executablePath, CancellationToken ct) =>
+            throw new InvalidOperationException("Runtime status must not probe an external executable.");
     }
 
     private sealed class FixtureDiagnostics : IProxyDiagnosticLogStore

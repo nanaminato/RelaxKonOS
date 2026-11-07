@@ -14,7 +14,6 @@ public static class ProxyEndpoints
     public static IEndpointRouteBuilder MapProxyEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapProxyObservationEndpoints();
-        app.MapGet(ProxyApiRoutes.Runtime, (IProxyRuntimeManager runtime, CancellationToken ct) => runtime.GetAsync("mihomo", ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Settings, (IProxySettingsReader settings, CancellationToken ct) => settings.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapPut(ProxyApiRoutes.Settings, async (UpdateProxySettingsRequest request, IProxySettingsWriter settings, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
         {
@@ -104,17 +103,11 @@ public static class ProxyEndpoints
             return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
 
-        app.MapGet(ProxyApiRoutes.Groups, async (IProxyEngineRegistry engines, CancellationToken ct) => Results.Ok(await engines.Find("mihomo")!.GetGroupsAsync(ct))).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapPut(Route(ProxyApiRoutes.GroupSelectionPattern), async (string groupName, SelectProxyGroupRequest request, IProxyEngineRegistry engines, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
         {
             var problem = await engines.Find("mihomo")!.SelectGroupAsync(groupName, request.Proxy, ct); await audit.RecordAsync(Actor(context.User), "group.select", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
             return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.Routing, async (IProxyEngineRegistry engines, CancellationToken ct) =>
-        {
-            var mode = await engines.Find("mihomo")!.GetRoutingModeAsync(ct);
-            return string.IsNullOrEmpty(mode.ProblemCode) ? Results.Ok(mode) : Problem(mode.ProblemCode, StatusCodes.Status503ServiceUnavailable);
-        }).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapPut(ProxyApiRoutes.Routing, async (ProxyRoutingModeDto request, IProxyEngineRegistry engines, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
         {
             var problem = await engines.Find("mihomo")!.SetRoutingModeAsync(request.Mode, ct);
@@ -132,13 +125,28 @@ public static class ProxyEndpoints
             var problem = await engines.Find("mihomo")!.CloseConnectionAsync(connectionId, ct); await audit.RecordAsync(Actor(context.User), "connection.close", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
             return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.Dns, (IProxyEngineRegistry engines, CancellationToken ct) => engines.Find("mihomo")!.GetDnsStatusAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(Route(ProxyApiRoutes.OperationsPattern), (Guid operationId, ProxyOperationStore operations, CancellationToken ct) => operations.GetAsync(operationId, ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         return app;
     }
 
     internal static void MapProxyObservationEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet(ProxyApiRoutes.Runtime, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases,
+            static async (services, ct) => Results.Ok(await services.GetRequiredService<IProxyRuntimeManager>().GetAsync(MihomoEngine.Id, ct))))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyRuntimeDto>();
+        app.MapGet(ProxyApiRoutes.Groups, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases,
+            static async (services, ct) => Results.Ok(await MihomoProxyGroupOrder.ReadGroupsAsync(
+                services.GetRequiredService<IMihomoControllerClient>(), services.GetRequiredService<IProxyPlatformPaths>(), ct))))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyGroupDto[]>();
+        app.MapGet(ProxyApiRoutes.Routing, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases,
+            static async (services, ct) =>
+            {
+                var mode = await services.GetRequiredService<IMihomoControllerClient>().GetRoutingModeAsync(ct);
+                return string.IsNullOrEmpty(mode.ProblemCode) ? Results.Ok(mode) : Problem(mode.ProblemCode, StatusCodes.Status503ServiceUnavailable);
+            })).RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyRoutingModeDto>();
+        app.MapGet(ProxyApiRoutes.Dns, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases,
+            static async (services, ct) => Results.Ok(await services.GetRequiredService<IMihomoControllerClient>().GetDnsStatusAsync(ct))))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyDnsStatusDto>();
         app.MapGet(ProxyApiRoutes.Overview, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases,
             static async (services, ct) => Results.Ok(await services.GetRequiredService<ProxyOverviewService>().GetAsync(ct))))
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyOverviewDto>();

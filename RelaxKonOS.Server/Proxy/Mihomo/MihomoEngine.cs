@@ -54,15 +54,8 @@ public sealed class MihomoEngine(
 
     public Task<string?> ValidateConfigurationAsync(string configurationPath, CancellationToken cancellationToken) => validator.ValidateAsync(configurationPath, cancellationToken);
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => controller.ReloadAsync(cancellationToken);
-    public async Task<IReadOnlyList<ProxyGroupDto>> GetGroupsAsync(CancellationToken cancellationToken)
-    {
-        var result = await controller.GetGroupsAsync(cancellationToken);
-        if (!result.Succeeded) return [];
-        var configuredOrder = await MihomoProxyGroupOrder.ReadAsync(paths, cancellationToken);
-        return result.Value!
-            .OrderBy(group => configuredOrder.TryGetValue(group.Name, out var index) ? index : int.MaxValue)
-            .ToArray();
-    }
+    public Task<IReadOnlyList<ProxyGroupDto>> GetGroupsAsync(CancellationToken cancellationToken) =>
+        MihomoProxyGroupOrder.ReadGroupsAsync(controller, paths, cancellationToken);
     public Task<string?> SelectGroupAsync(string groupName, string proxyName, CancellationToken cancellationToken) => controller.SelectGroupAsync(groupName, proxyName, cancellationToken);
     public Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken) => controller.GetRoutingModeAsync(cancellationToken);
     public Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken) => controller.SetRoutingModeAsync(mode, cancellationToken);

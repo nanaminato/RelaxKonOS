@@ -1,11 +1,20 @@
 using System.Text.RegularExpressions;
+using RelaxKonOS.Protocol.Proxy;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
 /// <summary>Reads only the ordered names from the managed YAML so controller map ordering never changes the proxy-group order in the UI.</summary>
 internal static partial class MihomoProxyGroupOrder
 {
-    public static async Task<IReadOnlyDictionary<string, int>> ReadAsync(IProxyPlatformPaths paths, CancellationToken cancellationToken)
+    internal static async Task<IReadOnlyList<ProxyGroupDto>> ReadGroupsAsync(IMihomoControllerClient controller, IProxyPlatformPaths paths, CancellationToken ct)
+    {
+        var result = await controller.GetGroupsAsync(ct);
+        if (!result.Succeeded) return [];
+        var configuredOrder = await ReadAsync(paths, ct);
+        return result.Value!.OrderBy(group => configuredOrder.TryGetValue(group.Name, out var index) ? index : int.MaxValue).ToArray();
+    }
+
+    private static async Task<IReadOnlyDictionary<string, int>> ReadAsync(IProxyPlatformPaths paths, CancellationToken cancellationToken)
     {
         var path = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
         if (!File.Exists(path)) return Empty;

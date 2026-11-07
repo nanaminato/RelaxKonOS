@@ -324,10 +324,10 @@ internal static class MihomoIpcStartupAcceptance
             await using var helper = await StartHelperAsync(helperAssembly, config, transport);
             await using var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-mihomo-drain.sock", socket, ct,
                 (kind, id) => kind == "MihomoRuntimeQuery" && id == drainId);
-            await using var trafficRelay = login is null ? null : await MihomoTrafficCancellationRelay.StartAsync(original.ControllerPort, ct);
+            await using var controllerRelay = login is null ? null : await MihomoObservationCancellationRelay.StartAsync(original.ControllerPort, ct);
             const string controllerEndpoint = "Proxy__Mihomo__Controller__Endpoint";
             var originalEndpoint = start.Environment[controllerEndpoint];
-            if (trafficRelay is not null) start.Environment[controllerEndpoint] = trafficRelay.Address;
+            if (controllerRelay is not null) start.Environment[controllerEndpoint] = controllerRelay.Address;
             start.ArgumentList[^1] = Path.GetFullPath(serverAssembly);
             start.Environment["Modules__Proxy__Enabled"] = "true";
             if (login is not null)
@@ -374,8 +374,13 @@ internal static class MihomoIpcStartupAcceptance
                     || await ReadRuntimePidAsync() != nativePid || !await probe(port))
                     throw new InvalidOperationException("Server exited without durably draining the original recovery.");
                 start.Environment["PrivilegedHelper__SocketPath"] = socket;
+                await CheckStartupAsync(start, drainId, uid, ready: true, afterReady: login is null ? null : async restartedProcess =>
+                {
+                    using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(restartedProcess, login, ct);
+                    await CancelObservationAsync(client, ProxyApiRoutes.Runtime, "/version");
+                    Console.WriteLine($"PASS MIHOMO NATIVE OBSERVATION CANCELLATION: {drainId}; runtime after recovery, groups, routing and DNS drained their leases");
+                });
                 start.Environment[controllerEndpoint] = originalEndpoint;
-                await CheckStartupAsync(start, drainId, uid, ready: true);
                 var restarted = await startupStore.ReadAsync(ct);
                 var log = await helper.StopAsync(drainCompletedRequests: true);
                 if (restarted.Pending is not null || restarted.Revision != completed.Revision || restarted.Identity != identity
@@ -441,33 +446,50 @@ internal static class MihomoIpcStartupAcceptance
                 if (logs is not { Length: 1 } || traffic is not { ProblemCode: "", MemoryBytes: >= 0, UploadTotalBytes: > 0 }
                     || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId || forwarding.IsCompleted)
                     throw new InvalidOperationException($"Live observation failed during recovery. Logs={logs?.Length}, traffic={traffic}, pending={(await startupStore.ReadAsync(ct)).Pending?.OperationId == drainId}, forwardingCompleted={forwarding.IsCompleted}.");
-                async Task<int> ActiveLeasesAsync() => (await client.GetFromJsonAsync<ServerModuleDto>(
-                    ServerApiRoutes.Modules + "/relaxkonos.proxy", RelaxKonOSJsonOptions.Default, ct))?.Residency?.ActiveLeases
-                    ?? throw new InvalidOperationException("The original Proxy residency state is unavailable.");
-
-                while (await ActiveLeasesAsync() != 0) await Task.Delay(25, ct);
-                using (var caller = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                await CancelObservationAsync(client, ProxyApiRoutes.Traffic, "/traffic");
+                Console.WriteLine($"PASS MIHOMO NATIVE TRAFFIC CANCELLATION: {drainId}; held native sample drained and a fresh request completed");
+                var runtime = await client.GetFromJsonAsync<ProxyRuntimeDto>(ProxyApiRoutes.Runtime, RelaxKonOSJsonOptions.Default, ct);
+                if (runtime is not { State: ProxyRuntimeState.Failed, ProblemCode: ProxyProblemCodes.RuntimeStateUnknown })
+                    throw new InvalidOperationException("Runtime observation did not retain the pending publication authority.");
+                foreach (var (route, path) in new[]
                 {
-                    trafficRelay!.HoldNextTrafficSample();
-                    var cancelled = client.GetFromJsonAsync<ProxyTrafficDto>(ProxyApiRoutes.Traffic, RelaxKonOSJsonOptions.Default, caller.Token);
-                    await trafficRelay.SampleHeld.Task.WaitAsync(ct);
-                    if (await ActiveLeasesAsync() != 1) throw new InvalidOperationException("Held native traffic did not own the Server work lease.");
-                    await caller.CancelAsync();
-                    try { await cancelled; throw new InvalidOperationException("The cancelled HTTP request returned a sample."); }
-                    catch (OperationCanceledException) when (caller.IsCancellationRequested) { }
-                    await trafficRelay.RequestDrained.Task.WaitAsync(ct);
-                }
-                while (await ActiveLeasesAsync() != 0) await Task.Delay(25, ct);
+                    (ProxyApiRoutes.Groups, "/proxies"), (ProxyApiRoutes.Routing, "/configs"), (ProxyApiRoutes.Dns, "/configs"),
+                }) await CancelObservationAsync(client, route, path);
                 if (await client.GetFromJsonAsync<ProxyTrafficDto>(ProxyApiRoutes.Traffic, RelaxKonOSJsonOptions.Default, ct) is not { ProblemCode: "" }
                     || await ObserveConnectionAsync() != originalConnection || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId)
                     throw new InvalidOperationException("A fresh request did not recover the live controller and original publication.");
-                Console.WriteLine($"PASS MIHOMO NATIVE TRAFFIC CANCELLATION: {drainId}; held native sample drained and a fresh request completed");
                 await DrainAsync();
                 await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nproxy-ok"u8.ToArray(), ct);
                 if (await forwarding != "proxy-ok")
                     throw new InvalidOperationException("The original connection did not receive its upstream response after recovery.");
                 Console.WriteLine($"PASS MIHOMO LIVE TRAFFIC AND LOGS DURING RECOVERY: {drainId}; {traffic}, forwarding completed");
                 return $"{loaded}, {woke}, same native connection {originalConnection}";
+            }
+
+            async Task CancelObservationAsync(HttpClient client, string route, string path)
+            {
+                async Task<int> ActiveLeasesAsync() => (await client.GetFromJsonAsync<ServerModuleDto>(
+                    ServerApiRoutes.Modules + "/relaxkonos.proxy", RelaxKonOSJsonOptions.Default, ct))?.Residency?.ActiveLeases
+                    ?? throw new InvalidOperationException("The original Proxy residency state is unavailable.");
+
+                while (await ActiveLeasesAsync() != 0) await Task.Delay(25, ct);
+                using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                var held = controllerRelay!.HoldNext(path);
+                var cancelled = client.GetAsync(route, caller.Token);
+                if (await Task.WhenAny(held.Received.Task, cancelled).WaitAsync(ct) == cancelled)
+                {
+                    using var early = await cancelled;
+                    throw new InvalidOperationException($"Observation {route} returned {early.StatusCode} before reaching {path}.");
+                }
+                if (await ActiveLeasesAsync() != 1) throw new InvalidOperationException($"Held {path} observation did not own its work lease.");
+                await caller.CancelAsync();
+                try { using var unexpected = await cancelled; throw new InvalidOperationException($"Cancelled {path} returned a response."); }
+                catch (OperationCanceledException) when (caller.IsCancellationRequested) { }
+                await held.Drained.Task.WaitAsync(ct);
+                while (await ActiveLeasesAsync() != 0) await Task.Delay(25, ct);
+                using var next = await client.GetAsync(route, ct);
+                next.EnsureSuccessStatusCode();
+                while (await ActiveLeasesAsync() != 0) await Task.Delay(25, ct);
             }
 
             async Task DrainAsync()
@@ -502,7 +524,8 @@ internal static class MihomoIpcStartupAcceptance
         }
     }
 
-    private static async Task CheckStartupAsync(ProcessStartInfo start, Guid operation, uint uid, bool ready)
+    private static async Task CheckStartupAsync(ProcessStartInfo start, Guid operation, uint uid, bool ready,
+        Func<Process, Task>? afterReady = null)
     {
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start full Server.");
         var output = process.StandardOutput.ReadToEndAsync();
@@ -513,19 +536,22 @@ internal static class MihomoIpcStartupAcceptance
         {
             while (!process.HasExited)
             {
+                var reachable = false;
                 try
                 {
                     using var response = await http.GetAsync(ManagedServiceChecks.FullServerUrl + "/healthz", deadline.Token);
-                    if (response.IsSuccessStatusCode)
-                    {
-                        if (!ready) throw new InvalidOperationException("Server admitted unknown Mihomo publication.");
-                        var identity = File.ReadLines($"/proc/{process.Id}/status").Single(line => line.StartsWith("Uid:", StringComparison.Ordinal));
-                        if (!identity.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Skip(1).All(value => value == uid.ToString()))
-                            throw new InvalidOperationException("Server did not run under its non-root UID.");
-                        return;
-                    }
+                    reachable = response.IsSuccessStatusCode;
                 }
                 catch (HttpRequestException) { }
+                if (reachable)
+                {
+                    if (!ready) throw new InvalidOperationException("Server admitted unknown Mihomo publication.");
+                    var identity = File.ReadLines($"/proc/{process.Id}/status").Single(line => line.StartsWith("Uid:", StringComparison.Ordinal));
+                    if (!identity.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Skip(1).All(value => value == uid.ToString()))
+                        throw new InvalidOperationException("Server did not run under its non-root UID.");
+                    if (afterReady is not null) await afterReady(process);
+                    return;
+                }
                 await Task.Delay(100, deadline.Token);
             }
             if (ready || process.ExitCode == 0 || !(await errors).Contains(operation.ToString(), StringComparison.OrdinalIgnoreCase))
