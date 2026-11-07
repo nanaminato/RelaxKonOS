@@ -350,3 +350,5 @@ Linux 已联合验证原 Server 加密发布台账和 Helper Unix socket。授�
 入站队列的原提交和同键回执均在响应执行期间持有独立 Proxy 租约。Windows Release 已验证同键不会再构造业务执行图。
 
 Linux Release 入站队列回归已验证真实客户端断线。响应任务退出前保留租约，后续同键仍返回原 operationId，业务执行图只构造一次。
+
+Linux 隔离实测已覆盖 Proxy 管理模块停用后授权到期。Core 继续执行到期撤销，过期凭据被拒绝，保留凭据可重连，丢失响应后的恢复未再次应用配置。

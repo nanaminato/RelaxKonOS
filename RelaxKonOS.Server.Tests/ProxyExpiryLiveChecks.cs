@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Builder;
+using RelaxKonOS.Server.Startup;
 using System.Diagnostics;
 using System.Net.Security;
 using System.Text.Json.Nodes;
@@ -55,11 +57,23 @@ internal static class ProxyExpiryLiveChecks
 
             await using var transport = new IsolatedTransport(executable, directory.FullName, inboundPort, originPort);
             await transport.ReplaceAsync(material);
-            var services = new ServiceCollection();
-            services.AddSingleton<IProxyServerExpiryExecutor>(_ => new ProxyServerPublicationService(store, transport, new SystemMode()));
-            await using var provider = services.BuildServiceProvider();
-            using var expiry = new ProxyServerExpiryService(provider.GetRequiredService<IServiceScopeFactory>(), store,
-                NullLogger<ProxyServerExpiryService>.Instance);
+            var builder = WebApplication.CreateBuilder();
+            builder.Logging.ClearProviders();
+            builder.AddProxyRuntimeServices();
+            builder.Services.AddSingleton<IProxyPlatformPaths>(paths);
+            builder.Services.AddSingleton(protection);
+            builder.Services.AddSingleton(store);
+            builder.Services.AddSingleton<IPrivilegedOperationTransport>(transport);
+            builder.Services.AddSingleton<IServerModeResolver>(new SystemMode());
+            var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+            var catalog = ServerModules.CreateManaged(new HashSet<string>());
+            var modules = ServerModules.CreateManaged(catalog.KnownModuleIds.Where(id => id != ServerModules.ProxyId).ToHashSet(StringComparer.Ordinal));
+            modules.ConfigureServices(builder, context);
+            await using var owner = builder.Build();
+            await modules.ValidateDeactivationAsync(owner.Services, context, default);
+            TestAssert.Assert(owner.Services.GetService<IProxyEngineRegistry>() is null,
+                "The disabled Proxy management graph must remain absent while existing grants expire.");
+            using var expiry = ActivatorUtilities.CreateInstance<ProxyServerExpiryService>(owner.Services);
             await expiry.ReconcileAsync(default);
             TestAssert.Assert(transport.ApplyCalls == 0, "Idle expiry must leave the live instance alone.");
             using var initialBudget = new CancellationTokenSource(Budget);
@@ -118,7 +132,7 @@ internal static class ProxyExpiryLiveChecks
             var confirmed = await reopened.ReadAsync(default);
             TestAssert.Assert(confirmed.PendingPublication is null && confirmed.Published!.Credentials.Single().Id == retainedId
                 && transport.ApplyCalls == 1, "Recovery must confirm the applied material without a second mutation.");
-            Console.WriteLine("PASS SING-BOX LIVE EXPIRY: pre-expiry forwarded, old streams closed, expired rejected, retained reconnected, worker crashed before reply; original pending publication recovered; apply=1");
+            Console.WriteLine("PASS SING-BOX LIVE EXPIRY: management disabled; pre-expiry forwarded, old streams closed, expired rejected, retained reconnected, worker crashed before reply; original pending publication recovered; apply=1");
         }
         finally { directory.Delete(recursive: true); }
     }
