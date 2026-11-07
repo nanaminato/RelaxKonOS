@@ -38,7 +38,7 @@ def run(root, server, tests, mode):
         "Certificate__DirectoryUrl": "https://localhost:14000/dir",
         "Certificate__StorageRoot": str(root / "material"), "Certificate__ChallengeRoot": str(root / "challenge"),
     })
-    scheduled = mode in ("schedule", "schedule-cancel")
+    scheduled = mode in ("schedule", "schedule-cancel", "schedule-ownership")
     if scheduled:
         env["Logging__LogLevel__RelaxKonOS.Server.Certificate.CertificateRenewalWorker"] = "Debug"
     for module in ("Terminal", "Firewall", "SystemPerformance", "Git", "Tailscale", "Docker", "WebServer", "Proxy"):
@@ -95,8 +95,8 @@ def run(root, server, tests, mode):
                     raise
             child.stdin.close()
 
-    def wait_for(child, check, name):
-        for _ in range(150):
+    def wait_for(child, check, name, attempts=150):
+        for _ in range(attempts):
             if child.poll() is not None:
                 error = next((line for line in (root / f"{name}.stderr").read_text().splitlines()
                               if line.startswith("Unhandled exception.")), "no startup exception")
@@ -178,6 +178,63 @@ def run(root, server, tests, mode):
         print(f"PASS NATURAL RENEWAL {action}: scan={scan['Id']}; operation={operation}; drained before Server exit", flush=True)
         return operation, schedule, receipt
 
+    def interrupt_renewal_with_changed_challenge(initial, token, certificate):
+        (root / "response-fault").write_text("hold-challenge")
+        marker = root / "challenge-response-held"
+        try:
+            original = request(certificate + "/renew", token, {}, "ownership-original", 202)
+            wait_for(initial, marker.is_file, "original-renewal-challenge")
+            challenge, = (root / "challenge").iterdir()
+            assert marker.read_text() == "200"
+            original_content = challenge.read_bytes()
+            changed = b"isolated-file-with-different-ownership"
+            challenge.write_bytes(changed)
+            assert not (root / "data" / "certificate-renewal-runs.json").exists()
+            initial.kill()
+            assert initial.wait(timeout=10) < 0
+            return original["operationId"], challenge, original_content, changed
+        finally:
+            (root / "release-challenge-response").touch()
+            (root / "response-fault").write_text("")
+
+    def verify_schedule_ownership(operation, challenge, original_content, changed, certificate, fingerprint):
+        schedule = root / "data" / "certificate-renewal-runs.json"
+        route = f"{certificates}/operations/{operation}"
+        with process([server], "blocked-server") as blocked:
+            wait_for(blocked, healthy, "blocked-server")
+            token = login()
+            receipt = request(route, token)
+            assert receipt["operationId"] == operation and receipt["stage"] == "challenge-cleanup-required"
+            observation = request(route + "/acme-order", token)
+            assert observation["operation"] == receipt and observation["remoteStatus"] in ("pending", "ready")
+            wait_for(blocked, lambda: "Certificate renewal scan remains pending." in (root / "blocked-server.stdout").read_text(),
+                     "natural-renewal-blocked", attempts=850)
+            slot, = json.loads(schedule.read_bytes())
+            assert slot["Scheduled"] and slot["CompletedAt"] is None
+            assert slot["Operations"] == [] and slot["Rejected"] == 0 and not slot["RejectedCertificates"]
+            assert challenge.read_bytes() == changed and request(route, token) == receipt
+            assert request(certificate, token)["fingerprintSha256"] == fingerprint
+            blocked.terminate()
+            assert blocked.wait(timeout=15) == 0
+        assert challenge.read_bytes() == changed
+        challenge.write_bytes(original_content)
+        with process([server], "recovered-server") as recovered:
+            wait_for(recovered, healthy, "recovered-server")
+            token = login()
+            original = request(route, token)
+            assert original["operationId"] == operation and original["problemCode"] == "certificate.operation_interrupted"
+            assert not challenge.exists()
+            wait_for(recovered, lambda: json.loads(schedule.read_bytes())[0]["CompletedAt"] is not None,
+                     "natural-renewal-resumed", attempts=850)
+            resumed, = json.loads(schedule.read_bytes())
+            assert resumed["Id"] == slot["Id"] and resumed["StartedAt"] == slot["StartedAt"]
+            assert resumed["Operations"] == [operation] and resumed["Rejected"] == 0 and not resumed["RejectedCertificates"]
+            observation = request(route + "/acme-order", token)
+            assert observation["operation"] == original and observation["remoteStatus"] in ("pending", "ready")
+            assert request(certificate + "/renew", token, {}, "ownership-original", 202) == original
+            assert request(certificate, token)["fingerprintSha256"] == fingerprint
+            print(f"PASS NATURAL RENEWAL OWNERSHIP RECOVERY: scan={slot['Id']}; operation={operation}; same scan and original CA receipt", flush=True)
+
     helper_config = root / "helper.json"
     helper_config.write_text(json.dumps({"socketPath": env["PrivilegedHelper__SocketPath"],
         "socketGroupId": os.getegid(), "allowedUids": [os.geteuid()]}))
@@ -190,7 +247,9 @@ def run(root, server, tests, mode):
             certificate = f"{certificates}/{original['certificateId']}"
             fingerprint = request(certificate, token)["fingerprintSha256"]
             assert fingerprint
-            if scheduled:
+            if mode == "schedule-ownership":
+                conflict = interrupt_renewal_with_changed_challenge(initial, token, certificate)
+            elif scheduled:
                 operation, schedule, original_cancelled = verify_scheduled_drain(initial, token)
                 persisted = schedule.read_bytes()
                 with process([server], "restarted-server") as restarted:
@@ -211,17 +270,21 @@ def run(root, server, tests, mode):
                     assert request(certificate, token)["fingerprintSha256"] == fingerprint
                     print(f"PASS NATURAL RENEWAL RESTART: operation={operation}; original receipt and next scan preserved", flush=True)
                 return
-            renew = certificate + "/renew"
-            fault = root / "response-fault"
-            fault.write_text("certificate")
-            signed = terminal(token, request(renew, token, {}, "signed-loss", 202), "failed")
-            fault.write_text("order")
-            missing = terminal(token, request(certificates, token, issue("missing.mb05.test"), "order-loss", 202), "failed")
-            fault.write_text("")
-            for receipt in (signed, missing):
-                assert receipt["stage"] == "interrupted" and receipt["problemCode"] == "certificate.operation_interrupted"
-            assert (root / "truncated-certificate").read_text() == "200" and (root / "truncated-order").read_text() == "201"
-            assert not list((root / "challenge").iterdir()), "HTTP-01 challenge cleanup must complete before terminal recovery"
+            else:
+                renew = certificate + "/renew"
+                fault = root / "response-fault"
+                fault.write_text("certificate")
+                signed = terminal(token, request(renew, token, {}, "signed-loss", 202), "failed")
+                fault.write_text("order")
+                missing = terminal(token, request(certificates, token, issue("missing.mb05.test"), "order-loss", 202), "failed")
+                fault.write_text("")
+                for receipt in (signed, missing):
+                    assert receipt["stage"] == "interrupted" and receipt["problemCode"] == "certificate.operation_interrupted"
+                assert (root / "truncated-certificate").read_text() == "200" and (root / "truncated-order").read_text() == "201"
+                assert not list((root / "challenge").iterdir()), "HTTP-01 challenge cleanup must complete before terminal recovery"
+        if mode == "schedule-ownership":
+            verify_schedule_ownership(*conflict, certificate, fingerprint)
+            return
         with process([server], "restarted-server") as restarted:
             wait_for(restarted, healthy, "restarted-server")
             token = login()

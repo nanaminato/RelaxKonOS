@@ -1489,6 +1489,8 @@ WebRoot 签发和续期在发布 HTTP-01 文件前，在原证书操作记录挑
 
 挑战文件内容已变化时，原回执保持 `Running / challenge-cleanup-required`。重启仍可查询原操作及已知 CA 订单，新证书操作返回 `certificate.challenge_ownership_unconfirmed`。确认文件归属后，原清理在下次启动接续，原操作 ID 保持。见[挑战文件归属验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-挑战内容变化时保留原清理责任)。
 
+自动续期扫描遇到上述阻塞时保留原扫描的待处理状态。隔离 Linux 上的生产 worker 在恢复后沿用同一扫描并关联原续期回执，未新增 CA 订单。见[续期扫描跨阻塞验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-续期扫描跨挑战归属阻塞恢复)。
+
 用户取消或 Server 停机时，已记录的 CA 订单仍可按取消回执的原 operationId 只读查询。任务完成并清理挑战后才写入 Cancelled。若被取消的续期已有订单身份，自动扫描沿用原回执，后续经明确授权完成的成功续期才解除该门禁。
 
 Linux 完整认证 Server 已通过真实 CA 断流与重启验收。专属 Nginx 承载 HTTP-01，重启后须重新登录查询原订单。同键重试返回原回执，原活动证书指纹保持，CA 无新增订单或签发提交。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证-server-的-ca-断流与重启)。

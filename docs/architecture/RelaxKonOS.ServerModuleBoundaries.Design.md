@@ -2034,3 +2034,9 @@ WebRoot 文件摘要不匹配时，原证书操作持久保留 `Running / challe
 Linux Release 在私有 Pebble、DNS、Nginx、Docker 和完整认证 Server 上验证发布 `73e1a7e3-4ba7-41da-befa-db788ed9c022` 与证书操作 `2ae08813-0c24-479d-93f9-7b20007b7e04`。CA 已实际签发，响应暂扣期间换入不同字节。放行后原任务保留待清理状态，强制终止 Server。重启仍可查原回执与原 CA `valid`，授权的新证书操作返回 HTTP 409，替换文件保持且可由原 WebRoot 读回。恢复原字节后再启动，原文件被清理并持久化原证书中断回执，测试哨兵保留。旧 TLS 与 Docker 上游保持，CA 一次创建及签发提交，Nginx 零重载。
 
 正常 SIGTERM 对照发布 `c0240e22-2771-427b-9e47-b7f6a386fec7` 同批通过，原订单可查、挑战移除、无额外重载。两轮专属 cgroup 清理，宿主 Nginx、Docker PID 与配置指纹一致。日志为 `.artifacts/mb05-acme-challenge-final/live.log`，归档 SHA-256 为 `aaa08de7ce0c574ed4ff83bc32bd1b3424f3cfd6e815929f485d02deb3522f62`。Windows Release 验证清理阻塞时自动续期扫描保持待处理，同键回执稳定，MB-05 原 `a06c0e90-266d-4a46-9baa-257df0da32eb` 跨进程回执为 Interrupted，受控副作用计数为一。归属阻塞与实际自然日扫描的联合路径尚未实测，Certificates 与 WebServer 保持 resident，生产内存未测。
+
+### MB-05 续期扫描跨挑战归属阻塞恢复
+
+在私有 Pebble、DNS 和 Nginx 上签发短期证书。真实续期挑战响应在途时换入不同内容并终止 Server。重启后生产续期 worker 按原启动周期创建到期扫描，发现清理阻塞后保留扫描未完成及原证书操作。恢复匹配文件后再启动，由同一 worker 接续原扫描并关联原证书回执。测试使用 Pebble 短期证书和原到期回退规则，隔离网络内的 PAM 夹具只承载认证与管理员检查。
+
+Linux Release 验证原扫描 `a0ae423b-b106-480a-b0fe-cca9fdadcf65` 和原续期 `aba20dc2-767d-488e-900a-16cd868920ff`。第一次实际扫描保留空完成时间及零拒绝，旧文件和活动证书指纹保持。恢复原挑战字节后，下一次自然扫描使用同一 ID 和开始时间，关联原 Interrupted 回执。原键和原订单仍可读取，活动证书指纹一致。Pebble 共两张预期订单、一次签发提交，恢复零新增。强制终止首次 Server 后，测试中继向已关闭 socket 交付原响应得到 BrokenPipe，后续真实扫描和 CA 计数均通过。宿主 Nginx、Docker PID 与环境文件指纹保持。日志为 `.artifacts/mb05-natural-renewal-ownership/live.log`，归档 SHA-256 为 `34652357bb4a0846d608c2d5e82d704ded4877a8c7fe902d2e751a0f24e9304e`。Windows Release MB-05 夹具按原 `a1c1ff2d-364f-4d94-869d-fbedabee9988` 返回 Interrupted，受控副作用计数为一。

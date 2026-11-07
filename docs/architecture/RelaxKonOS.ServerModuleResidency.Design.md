@@ -482,3 +482,5 @@ Git 原构建台账持久区分明确未派发、预检责任未知和可能已�
 MB-05 的 Nginx 清理确认可在存活 Server 内按原 ID 重试。原工作租约持有到确认落盘，停机后的待清理责任仍由原标记接续，停用检查读取同一标记。WebServer 保持 resident。见[清理确认与租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原回执清理确认与租约)。
 
 MB-05 WebRoot 挑战内容不匹配时，原证书台账保持活动清理责任并拒绝新证书操作。跨进程仍可认证查询原回执和原 CA 订单。Certificates 与 WebServer 保持 resident，见[挑战文件归属验收](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-挑战内容变化时保留原清理责任)。
+
+MB-05 已在隔离 Linux 验证生产续期 worker 的自然扫描遇到挑战归属阻塞时保持原扫描未完成。恢复后按同一扫描 ID 和原续期回执接续。见[续期扫描跨阻塞验收](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-续期扫描跨挑战归属阻塞恢复)。

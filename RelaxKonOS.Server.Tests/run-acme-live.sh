@@ -57,7 +57,7 @@ if [ -n "$server" ]; then
     backend=127.0.0.2
     relay_port=14000
     relay_mode=full-server
-    if [ "$schedule" = schedule ] || [ "$schedule" = schedule-cancel ]; then
+    if [ "$schedule" = schedule ] || [ "$schedule" = schedule-cancel ] || [ "$schedule" = schedule-ownership ]; then
         relay_mode=schedule
         authorization_reuse=0
         profiles=',"profiles":{"default":{"description":"Private renewal scheduling fixture","validityPeriod":86400}}'
