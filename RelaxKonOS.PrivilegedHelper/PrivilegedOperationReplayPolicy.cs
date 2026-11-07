@@ -14,5 +14,7 @@ internal static class PrivilegedOperationReplayPolicy
         or PrivilegedOperationKind.TailscaleRecoveryReceipt or PrivilegedOperationKind.TailscaleLoginBegin
         or PrivilegedOperationKind.TailscaleLoginReceipt or PrivilegedOperationKind.TailscaleLoginChallenge
         or PrivilegedOperationKind.TailscaleLoginRecoveryRead or PrivilegedOperationKind.TailscaleLoginClose
-        or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt;
+        or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt
+        // Receipt observations reuse the publication ID before and after the mutation.
+        or PrivilegedOperationKind.MihomoRuntimeQuery;
 }

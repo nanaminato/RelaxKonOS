@@ -407,13 +407,37 @@ internal static class ManagedServiceChecks
         Console.WriteLine(JsonSerializer.Serialize(result));
     }
 
-    private const string FullServerState = "/var/lib/relaxkonos/proxy/state";
+    internal const string FullServerState = "/var/lib/relaxkonos/proxy/state";
 
     private static ProxyServerStore OpenFullServerStore(string root) => new(new FixturePaths(FullServerState), OpenProtection(root));
 
     internal static async Task<bool> RunFullServerAsync(string assembly, string socketPath, string root,
         ProxyServerSecret nextGrant, ProxyServerSecret retainedGrant, ProxyFullServerTrafficProbe traffic,
         DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce, Func<Task>? restoreHelper = null, Func<Task>? verifyReady = null)
+    {
+        var start = await PrepareFullServerAsync(assembly, socketPath, root);
+        var serverUid = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_UID");
+        var socketGid = uint.Parse(Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_GID") ?? "0");
+        uint? deniedUid = serverUid is null ? null : serverUid == "65533" ? 65532u : 65533u;
+        const string url = FullServerUrl;
+        start.Environment["PrivilegedHelper__SocketPath"] = restoreHelper is null ? socketPath + ".absent" : socketPath;
+        await CheckFullServerAsync(start, root, url, expectReady: false, nextGrant, retainedGrant, traffic, nextExpiry, originalAppliedOnce);
+        if (restoreHelper is not null) await restoreHelper();
+        if (deniedUid is not null)
+        {
+            var rejected = await SendAcrossProcessAsync(socketPath, new(PrivilegedOperationKind.ProxyServerStatus),
+                clientUid: deniedUid, clientGid: socketGid);
+            if (rejected.Success) throw new InvalidOperationException("Helper accepted an unlisted UID.");
+            Console.WriteLine($"PASS FULL SERVER HELPER AUTHORIZATION: unlisted uid={deniedUid} rejected");
+        }
+        start.Environment["PrivilegedHelper__SocketPath"] = socketPath;
+        await CheckFullServerAsync(start, root, url, expectReady: true, nextGrant, retainedGrant, traffic, nextExpiry, originalAppliedOnce, verifyReady);
+        return true;
+    }
+
+    internal const string FullServerUrl = "http://127.0.0.1:18763";
+
+    internal static async Task<ProcessStartInfo> PrepareFullServerAsync(string assembly, string socketPath, string root)
     {
         if (!File.ReadLines("/proc/self/mountinfo").Any(line =>
             line.Split(' ')[4] == "/var/lib" && line.Contains(" - tmpfs ", StringComparison.Ordinal)))
@@ -430,7 +454,6 @@ internal static class ManagedServiceChecks
         foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "server")))
             File.Copy(file, Path.Combine(statePath, Path.GetFileName(file)));
 
-        const string url = "http://127.0.0.1:18763";
         var start = new ProcessStartInfo("dotnet")
         {
             UseShellExecute = false, WorkingDirectory = contentRoot,
@@ -438,7 +461,6 @@ internal static class ManagedServiceChecks
         };
         var serverUid = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_UID");
         var serverGid = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_GID");
-        uint? deniedUid = null;
         uint socketGid = 0;
         if (serverUid is not null)
         {
@@ -455,12 +477,11 @@ internal static class ManagedServiceChecks
             start.FileName = "setpriv";
             foreach (var arg in new[] { "--reuid=" + serverUid, "--regid=" + serverGid, "--clear-groups", "--no-new-privs", "dotnet" })
                 start.ArgumentList.Add(arg);
-            deniedUid = uid == 65533 ? 65532u : 65533u;
         }
         start.ArgumentList.Add(Path.GetFullPath(assembly));
         start.Environment["HOME"] = home;
         start.Environment["DOTNET_ENVIRONMENT"] = "Production";
-        start.Environment["ASPNETCORE_URLS"] = url;
+        start.Environment["ASPNETCORE_URLS"] = FullServerUrl;
         start.Environment["Server__Mode"] = "system";
         start.Environment["Storage__Provider"] = "sqlite";
         start.Environment["PrivilegedHelper__SocketPath"] = socketPath;
@@ -474,19 +495,7 @@ internal static class ManagedServiceChecks
         start.Environment["Observability__AuditDatabasePath"] = Path.Combine(contentRoot, "audit.db");
         start.Environment["Observability__AuditHmacKey"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 
-        start.Environment["PrivilegedHelper__SocketPath"] = restoreHelper is null ? socketPath + ".absent" : socketPath;
-        await CheckFullServerAsync(start, root, url, expectReady: false, nextGrant, retainedGrant, traffic, nextExpiry, originalAppliedOnce);
-        if (restoreHelper is not null) await restoreHelper();
-        if (deniedUid is not null)
-        {
-            var rejected = await SendAcrossProcessAsync(socketPath, new(PrivilegedOperationKind.ProxyServerStatus),
-                clientUid: deniedUid, clientGid: socketGid);
-            if (rejected.Success) throw new InvalidOperationException("Helper accepted an unlisted UID.");
-            Console.WriteLine($"PASS FULL SERVER HELPER AUTHORIZATION: unlisted uid={deniedUid} rejected");
-        }
-        start.Environment["PrivilegedHelper__SocketPath"] = socketPath;
-        await CheckFullServerAsync(start, root, url, expectReady: true, nextGrant, retainedGrant, traffic, nextExpiry, originalAppliedOnce, verifyReady);
-        return true;
+        return start;
     }
 
     private static async Task CheckFullServerAsync(ProcessStartInfo start, string root, string url, bool expectReady,

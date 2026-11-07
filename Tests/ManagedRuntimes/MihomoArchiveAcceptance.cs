@@ -258,6 +258,13 @@ internal static class MihomoArchiveAcceptance
         sources.Confirm(source, 0, source.ConfirmationFingerprint, "mihomo-acceptance", now);
         // Production decides support from this build's measured range; the fixture only supplies signed bytes.
         var accepted = sources.Accept(source.SourceId, 1, envelope, now, RuntimeFormatSupport.Configuration);
+        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_HELPER") is not null)
+        {
+            MihomoIpcStartupAcceptance.RequirePrivateHost();
+            var helperSources = RuntimeSourceProtection.Store();
+            helperSources.Confirm(source, 0, source.ConfirmationFingerprint, "mihomo-acceptance", now);
+            helperSources.Accept(source.SourceId, 1, envelope, now, RuntimeFormatSupport.Configuration);
+        }
         return (sources, accepted.Catalog);
     }
 }

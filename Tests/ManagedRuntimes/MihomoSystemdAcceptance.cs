@@ -117,6 +117,9 @@ internal static class MihomoSystemdAcceptance
             Check((await host.ObserveAsync(default)) is { Running: true, BootEnabled: true }, "Boot enablement does not stop a running service");
 
             count += await MihomoServerPublicationAcceptance.RunAsync(lifecycle, published, mixedPort, ProbeAsync);
+            if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_HELPER") is { } helper
+                && Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SERVER") is { } server)
+                await MihomoIpcStartupAcceptance.RunAsync(lifecycle, published, ProbeAsync, mixedPort, helper, server);
 
             var configurationBefore = states.Read()!;
             var configurationRevision = configurationBefore.Active!.RevisionId;
