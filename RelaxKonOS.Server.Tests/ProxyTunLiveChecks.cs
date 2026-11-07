@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Builder;
+using RelaxKonOS.Server.Startup;
 using System.Diagnostics;
 
 internal static class ProxyTunLiveChecks
@@ -109,8 +111,29 @@ internal static class ProxyTunLiveChecks
                     var disableRequests = calls.Reloads;
                     if (mihomo is not null) TestAssert.Assert(disableRequests == 1 && calls.DroppedResponses == 1, "Initial recovery must issue exactly one real disable reload.");
                     var recoveryLog = new RecoveryAttemptLog();
-                    using (var recovery = new ProxyRecoveryHostedService(safety, recoveryLog))
+                    var builder = WebApplication.CreateBuilder();
+                    builder.Logging.ClearProviders();
+                    builder.AddProxyRuntimeServices();
+                    builder.Services.AddSingleton<IProxyPlatformPaths>(paths);
+                    builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+                    builder.Services.AddSingleton(publication);
+                    builder.Services.AddSingleton<IProxyTunSafetyService>(safety);
+                    builder.Services.AddSingleton<ILogger<ProxyRecoveryHostedService>>(recoveryLog);
+                    var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+                    var catalog = ServerModules.CreateManaged(new HashSet<string>());
+                    var modules = ServerModules.CreateManaged(catalog.KnownModuleIds.Where(id => id != ServerModules.ProxyId).ToHashSet(StringComparer.Ordinal));
+                    modules.ConfigureServices(builder, context);
+                    var recoveryRegistration = builder.Services.Single(service => service.ServiceType == typeof(IHostedService)
+                        && service.ImplementationType == typeof(ProxyRecoveryHostedService));
+                    // Resolve only the production TUN worker; other Core workers may require
+                    // host integrations that this namespace does not provide.
+                    builder.Services.AddSingleton(typeof(ProxyRecoveryHostedService), recoveryRegistration.ImplementationType!);
+                    await using (var owner = builder.Build())
                     {
+                        await modules.ValidateDeactivationAsync(owner.Services, context, default);
+                        TestAssert.Assert(owner.Services.GetService<IProxyEngineRegistry>() is null,
+                            "The disabled management graph must stay absent during live Core recovery.");
+                        var recovery = owner.Services.GetRequiredService<ProxyRecoveryHostedService>();
                         await recovery.StartAsync(default);
                         try
                         {
@@ -162,7 +185,7 @@ internal static class ProxyTunLiveChecks
                     if (mihomo is not null)
                         TestAssert.Assert(!mihomo.HasExited && (await runtime.IsEnabledAsync(default)) is { Succeeded: true, Enabled: false },
                             "The original Mihomo process must remain reachable with TUN disabled.");
-                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, same Core worker retried unsafe marker and verified route, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
+                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, management disabled, same Core worker retried unsafe marker and verified route, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
                 }
                 finally { if (mihomo is not null) await DockerProcessRecoveryChecks.StopWorkerAsync(mihomo); }
             }

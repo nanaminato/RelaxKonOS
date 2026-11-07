@@ -1365,3 +1365,5 @@ Linux x64 Release 通过 Proxy Server 入站队列生产路由的 TCP 断线验�
 Core TUN worker 已捕获原恢复标记后，如果后续读取遇到不安全路径，继续保留原代次并按生产周期重试。Linux 隔离实测在 worker 等待路由时临时将标记路径换成符号链接，确认 worker 拒绝读取且继续运行。恢复原文件和管理路由后，同一 worker 关闭原操作 57e96be8-49a4-494e-8d8b-c0e5375262e5，真实禁用重载仍为一次。日志为 .artifacts/mb04-tun-marker-retry-live.log，归档 SHA-256 为 0a24dc0cb2bf30b7a586962a2b2bffed6f5366b978ccfce367777f1f6e9cb2cd。首次启动即无法确认代次仍需人工核验。
 
 Proxy 停用检查先核对原驻留协调器的活动工作租约，覆盖业务清理及独立响应寿命。租约存在时拒绝停用；后续检查继续按原持久台账和 Core 安全责任判断。Linux Release 使用生产协调器验证响应租约持有与归还，同批隔离 sing-box 网络恢复通过。日志为 .artifacts/mb04-proxy-deactivation-live.log，归档 SHA-256 为 26910a3c15986c20acf467630cc17e0d170ba17910db5390dfa83ec709dfedb6。此检查是当前责任快照，完整动态休眠仍开放。
+
+Linux 隔离宿主显式停用 Proxy 管理模块，运行生产停用门禁并确认引擎管理注册表缺席。Core 注册的原 TUN worker 仍接续真实 Mihomo 标记。管理路由缺失和标记路径暂时不安全期间保留责任，恢复后关闭原操作 751f2381-0b1d-4544-ab54-c2998110ad2d，实际禁用重载一次。日志为 .artifacts/mb04-tun-disabled-isolated.log，归档 SHA-256 为 50e125b1e9e17aa67e4cf56409b0427ed5236918076c70152d2565a2372e2baa。隔离宿主只启动 Core TUN worker。早期夹具缺数据保护注册及无关 Docker 台账，修正后通过。运行中动态休眠仍开放。
