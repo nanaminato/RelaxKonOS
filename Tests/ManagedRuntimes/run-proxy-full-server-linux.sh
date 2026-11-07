@@ -8,6 +8,10 @@ fi
 
 fixture=$(realpath -e -- "$1")
 server=$(realpath -e -- "$2")
+server_uid=$(id -u nobody)
+server_gid=$(id -g nobody)
+test "$server_uid" -ne 0
+chmod o+x -- "$(dirname "$fixture")"
 exec unshare --mount --net --pid --fork --mount-proc --propagation private sh -eu -c '
     mount -t tmpfs tmpfs /var/lib
     mount -t tmpfs tmpfs /var/log
@@ -18,5 +22,7 @@ exec unshare --mount --net --pid --fork --mount-proc --propagation private sh -e
     ip link set lo up
     ip address add 93.184.216.34/32 dev lo
     export RELAXKONOS_TEST_FULL_SERVER="$2"
+    export RELAXKONOS_TEST_SERVER_UID="$3"
+    export RELAXKONOS_TEST_SERVER_GID="$4"
     exec dotnet "$1" runtime-managed-service-live /usr/bin/sing-box
-' sh "$fixture" "$server"
+' sh "$fixture" "$server" "$server_uid" "$server_gid"

@@ -311,15 +311,23 @@ internal static class ManagedServiceChecks
     private static string Key() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         .Replace('+', '-').Replace('/', '_')[..43];
 
-    private static async Task<PrivilegedOperationResult> SendAcrossProcessAsync(string socketPath, PrivilegedOperationRequest? request, Func<Process, Task>? interrupt = null, string? expiryRoot = null, bool startup = false)
+    private static async Task<PrivilegedOperationResult> SendAcrossProcessAsync(string socketPath, PrivilegedOperationRequest? request, Func<Process, Task>? interrupt = null, string? expiryRoot = null, bool startup = false, uint? clientUid = null, uint? clientGid = null)
     {
-        var start = new ProcessStartInfo(Environment.ProcessPath!)
+        var executable = Environment.ProcessPath!;
+        var start = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
             RedirectStandardInput = true,
             RedirectStandardOutput = true
         };
-        if (Path.GetFileNameWithoutExtension(start.FileName) == "dotnet")
+        if (clientUid is not null)
+        {
+            start.FileName = "setpriv";
+            foreach (var arg in new[] { "--reuid=" + clientUid, "--regid=" + clientGid,
+                "--clear-groups", "--no-new-privs", executable })
+                start.ArgumentList.Add(arg);
+        }
+        if (Path.GetFileNameWithoutExtension(executable) == "dotnet")
             start.ArgumentList.Add(typeof(ManagedServiceChecks).Assembly.Location);
         start.ArgumentList.Add(expiryRoot is null ? "runtime-managed-service-client" : "runtime-managed-service-expiry-client");
         start.ArgumentList.Add(socketPath);
@@ -428,6 +436,29 @@ internal static class ManagedServiceChecks
             UseShellExecute = false, WorkingDirectory = contentRoot,
             RedirectStandardOutput = true, RedirectStandardError = true
         };
+        var serverUid = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_UID");
+        var serverGid = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_GID");
+        if (serverUid is not null)
+        {
+            if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("The non-root Server fixture requires Linux.");
+            if (!uint.TryParse(serverUid, out var uid) || uid == 0 || !uint.TryParse(serverGid, out _))
+                throw new InvalidOperationException("The full Server fixture requires an explicit non-root UID and GID.");
+            File.SetUnixFileMode(root, File.GetUnixFileMode(root) | UnixFileMode.OtherExecute);
+            var ownership = new ProcessStartInfo("chown") { UseShellExecute = false };
+            foreach (var arg in new[] { "-R", serverUid + ":" + serverGid, "--", contentRoot, home, statePath })
+                ownership.ArgumentList.Add(arg);
+            using var changeOwner = Process.Start(ownership) ?? throw new InvalidOperationException("Unable to assign private Server state.");
+            await changeOwner.WaitForExitAsync();
+            if (changeOwner.ExitCode != 0) throw new InvalidOperationException("Unable to assign private Server state.");
+            start.FileName = "setpriv";
+            foreach (var arg in new[] { "--reuid=" + serverUid, "--regid=" + serverGid, "--clear-groups", "--no-new-privs", "dotnet" })
+                start.ArgumentList.Add(arg);
+            var deniedUid = uid == 65533 ? 65532u : 65533u;
+            var rejected = await SendAcrossProcessAsync(socketPath, new(PrivilegedOperationKind.ProxyServerStatus),
+                clientUid: deniedUid, clientGid: uint.Parse(serverGid!));
+            if (rejected.Success) throw new InvalidOperationException("Helper accepted an unlisted UID.");
+            Console.WriteLine($"PASS FULL SERVER HELPER AUTHORIZATION: unlisted uid={deniedUid} rejected");
+        }
         start.ArgumentList.Add(Path.GetFullPath(assembly));
         start.Environment["HOME"] = home;
         start.Environment["DOTNET_ENVIRONMENT"] = "Production";
@@ -471,6 +502,13 @@ internal static class ManagedServiceChecks
                     if (response.IsSuccessStatusCode)
                     {
                         if (!expectReady) throw new InvalidOperationException("Full Server listened with an unknown Helper outcome.");
+                        if (start.Environment.TryGetValue("RELAXKONOS_TEST_SERVER_UID", out var serverUid))
+                        {
+                            var identity = File.ReadLines($"/proc/{server.Id}/status").Single(line => line.StartsWith("Uid:", StringComparison.Ordinal));
+                            if (!identity.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Skip(1).All(value => value == serverUid))
+                                throw new InvalidOperationException("Full Server retained a root or unexpected UID.");
+                            Console.WriteLine($"PASS FULL SERVER IDENTITY: uid={serverUid}");
+                        }
                         var fullStore = OpenFullServerStore(root);
                         var recovered = await fullStore.ReadAsync(deadline.Token);
                         if (recovered.PendingPublication is not null || recovered.Published?.Credentials.Count != 2
@@ -557,7 +595,12 @@ internal static class ManagedServiceChecks
     {
         var files = new LinuxUnixSocketFileSystem();
         if (files.EffectiveUserId != 0) throw new InvalidOperationException("The isolated Helper socket fixture requires root.");
-        var configuration = new LinuxPrivilegedHelperConfiguration(Path.Combine(root, "ipc", "helper.sock"), 0, [0]);
+        var serverUidText = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_UID");
+        var serverGidText = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_GID");
+        var serverUid = serverUidText is null ? 0u : uint.Parse(serverUidText);
+        var serverGid = serverGidText is null ? 0u : uint.Parse(serverGidText);
+        var configuration = new LinuxPrivilegedHelperConfiguration(Path.Combine(root, "ipc", "helper.sock"),
+            serverGid, serverUid == 0 ? [0] : [0, serverUid]);
         var socket = new LinuxUnixSocketPrivilegedServer(configuration, async (request, _) =>
         {
             if (request.Operation is not (PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerValidate
