@@ -124,7 +124,8 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
             or PrivilegedOperationKind.TailscaleLoginReceipt or PrivilegedOperationKind.TailscaleLoginChallenge
             or PrivilegedOperationKind.TailscaleLoginRecoveryRead or PrivilegedOperationKind.TailscaleLoginClose
             or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt => TimeSpan.FromSeconds(50),
-        PrivilegedOperationKind.NginxReloadReceipt or PrivilegedOperationKind.NginxRetireReloadReceipt => TimeSpan.FromSeconds(10),
+        PrivilegedOperationKind.NginxReloadReceipt or PrivilegedOperationKind.NginxRetireReloadReceipt
+            or PrivilegedOperationKind.NginxServiceIdle => TimeSpan.FromSeconds(10),
         PrivilegedOperationKind.ProcessSnapshot or PrivilegedOperationKind.ProcessIcon
             or PrivilegedOperationKind.ProcessTerminate => TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)),
         // Package transactions own a long per-step Helper deadline. Keep a wider outer bound so a

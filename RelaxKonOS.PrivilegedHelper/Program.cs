@@ -444,7 +444,9 @@ static async Task<PrivilegedOperationResult> ApplyNginxSystemServiceActionAsync(
         NginxSystemServiceAction.DisableAndStop => new[] { "disable", "--now", "nginx.service" },
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
-    return await RunFixedCommandAsync("/usr/bin/systemctl", arguments, TimeSpan.FromSeconds(30), "nginx service operation failed");
+    await NginxServiceGate.WaitAsync();
+    try { return await RunFixedCommandAsync("/usr/bin/systemctl", arguments, TimeSpan.FromSeconds(30), "nginx service operation failed"); }
+    finally { NginxServiceGate.Release(); }
 }
 
 static async Task<PrivilegedOperationResult> ApplyProxyMihomoServiceActionAsync(ProxyMihomoServiceAction? action)

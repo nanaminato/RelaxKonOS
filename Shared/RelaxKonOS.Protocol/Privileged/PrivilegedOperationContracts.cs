@@ -88,6 +88,7 @@ public enum PrivilegedOperationKind
     NginxTrackedReload,
     NginxReloadReceipt,
     NginxRetireReloadReceipt,
+    NginxServiceIdle,
     NginxPackageInstall,
     /// <summary>
     /// Installs the exact Debian package identity a caller froze. The Helper re-resolves the package

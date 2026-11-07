@@ -25,6 +25,13 @@ internal sealed partial class NginxWebServerManager
 
         internal async Task<WebServerOperationResult> ReloadAsync(WebServerDto instance, IWebServerOperationProgress progress, CancellationToken ct)
         {
+            await IntegrationGate.WaitAsync(ct);
+            try { return await ReloadCoreAsync(instance, progress, ct); }
+            finally { IntegrationGate.Release(); }
+        }
+
+        private async Task<WebServerOperationResult> ReloadCoreAsync(WebServerDto instance, IWebServerOperationProgress progress, CancellationToken ct)
+        {
             if (nginx.UsesSystemPackageNginx(instance))
             {
                 await progress.ReportAsync(WebServerOperationStore.NativeReloadDispatchStage, ct);

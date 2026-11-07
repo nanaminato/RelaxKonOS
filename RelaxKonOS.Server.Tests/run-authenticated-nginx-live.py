@@ -1,6 +1,6 @@
 """Exercise production Nginx reload and website recovery on a full private Linux Server."""
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import json
 import os
 from pathlib import Path
@@ -532,7 +532,8 @@ def run(root, server, helper_binary, mode):
             except OSError:
                 return False
 
-        with process([*helper_args, helper_config], "first-site-helper") as helper:
+        with ExitStack() as helpers:
+            helper = helpers.enter_context(process([*helper_args, helper_config], "first-site-helper"))
             wait_for(helper, helper_ready, "first-site-helper")
             for path in ("/etc/nginx/conf.d/relaxkonos.d/fixture-other.enabled",
                          "/etc/nginx/conf.d/relaxkonos.d/nested/acme-http01.enabled"):
@@ -573,9 +574,9 @@ def run(root, server, helper_binary, mode):
                 if interrupt_first_site:
                     initial.kill()
                     assert initial.wait(timeout=10) < 0
-                release.touch()
-                wait_for(helper, finished.is_file, "original first-site native reload completion")
-                if not interrupt_first_site:
+                else:
+                    release.touch()
+                    wait_for(helper, finished.is_file, "original first-site native reload completion")
                     wait_for(initial, lambda: request(operation_route, token=token)["state"].lower() == "succeeded",
                              "first-site WebRoot enablement completed")
             with process([server], "first-site-restarted-server") as restarted:
@@ -614,20 +615,44 @@ def run(root, server, helper_binary, mode):
                 }
                 if interrupt_first_site:
                     previous = rollback.read_bytes()
-                    try:
-                        request(sites, token=token, payload=tls_request)
-                    except RuntimeError as error:
-                        assert str(error).endswith("(webserver.site_save_failed)")
-                    else:
-                        raise AssertionError("TLS update proceeded despite the unresolved rollback")
-                    assert rollback.read_bytes() == previous and request(sites, token=token) == [site]
-                    assert challenge_is_served() and nginx_pid_file.read_text() == master
-                    assert_served(b"original")
-                    assert witness.read_text().splitlines() == ["reload", "reload"]
-                    print(f"PASS FIRST SITE ACME INTERRUPTION: enable={operation}; certificate={cert['operationId']}; original interrupted receipt, one CA order, TLS update blocked by retained rollback")
-                    return
 
-                assert not rollback.exists()
+                    def assert_blocked(backup):
+                        try:
+                            request(sites, token=token, payload=tls_request)
+                        except RuntimeError as error:
+                            assert str(error).endswith("(webserver.site_save_failed)")
+                        else:
+                            raise AssertionError("TLS update proceeded despite unverified recovery evidence")
+                        assert rollback.read_bytes() == backup and request(sites, token=token) == [site]
+                        assert witness.read_text().splitlines() == ["reload", "reload"]
+                        assert challenge_is_served()
+
+                    try:
+                        assert not finished.exists()
+                        assert_blocked(previous)
+                        assert not finished.exists()
+                        helper.kill()
+                        assert helper.wait(timeout=10) < 0 and not helper_ready()
+                        helper = helpers.enter_context(process([*helper_args, helper_config], "first-site-restarted-helper"))
+                        wait_for(helper, helper_ready, "first-site-restarted-helper")
+                        assert not direct_helper_request("NginxServiceIdle", str(uuid.uuid4()))["success"]
+                        assert_blocked(previous)
+                        assert not finished.exists()
+                    finally:
+                        release.touch()
+                    wait_for(helper, finished.is_file, "original first-site native reload completion")
+                    wait_for(helper, lambda: direct_helper_request("NginxServiceIdle", str(uuid.uuid4()))["success"],
+                             "Nginx service job idle after interruption")
+                    foreign = previous.replace(b"server_name", b"# changed\n    server_name", 1)
+                    assert foreign != previous
+                    rollback.write_bytes(foreign)
+                    try:
+                        assert_blocked(foreign)
+                    finally:
+                        rollback.write_bytes(previous)
+                else:
+                    assert not rollback.exists()
+
                 secured = request(sites, token=token, payload=tls_request)
                 assert secured["id"] == site["id"] and secured["certificateId"] == cert["certificateId"]
                 client = urllib.request.build_opener(urllib.request.ProxyHandler({}),
@@ -643,8 +668,11 @@ def run(root, server, helper_binary, mode):
                 wait_for(restarted, site_serves_tls, "CA-issued first-site TLS")
                 assert challenge_is_served() and nginx_pid_file.read_text() == master
                 assert_served(b"original")
-                assert witness.read_text().splitlines() == ["reload", "reload", "reload"]
-                print(f"PASS AUTHENTICATED FIRST SITE ACME: enable={operation}; certificate={cert['operationId']}; original receipt, one CA order, TLS on original master")
+                assert not rollback.exists() and witness.read_text().splitlines() == ["reload", "reload", "reload"]
+                assert request(operation_route, token=token) == receipt
+                assert request(enable, token=token, method="POST", key=key, expected=202) == receipt
+                outcome = "FIRST SITE ACME RECOVERY" if interrupt_first_site else "AUTHENTICATED FIRST SITE ACME"
+                print(f"PASS {outcome}: enable={operation}; certificate={cert['operationId']}; original receipt, one CA order, TLS on original master")
 
     if first_site_acme:
         verify_first_site_acme()

@@ -19,16 +19,15 @@ namespace RelaxKonOS.Server.WebServer;
 
 internal sealed partial class NginxWebServerManager
 {
-    private async Task<string?> WriteSiteConfigurationAsync(WebServerDto instance, WebServerSiteDto site, CancellationToken cancellationToken)
+    private async Task<string?> WriteSiteConfigurationAsync(WebServerDto instance, WebServerSiteDto site, CancellationToken cancellationToken,
+        WebServerSiteDto? previousSite = null)
     {
         var directory = GetSitesDirectory(instance);
         if (directory is null) return "webserver.site_save_failed";
         (string FullChainPath, string PrivateKeyPath)? certificatePaths = null;
         if (site.HttpsEnabled)
         {
-            certificatePaths = site.CertificateId is { } certificateId
-                ? await certificates.GetNginxPathsAsync(certificateId, cancellationToken)
-                : (site.CertificatePath!, site.PrivateKeyPath!);
+            certificatePaths = await ResolveSiteCertificatePathsAsync(site, cancellationToken);
             if (certificatePaths is null)
             {
                 logger.LogError("Nginx site save could not resolve the certificate material. InstanceId={InstanceId}, SiteId={SiteId}, CertificateId={CertificateId}", instance.Id, site.Id, site.CertificateId);
@@ -46,6 +45,9 @@ internal sealed partial class NginxWebServerManager
         var stage = Path.Combine(directory, $"relaxkonos.{Guid.NewGuid():N}.conf");
         var backup = config + ".rollback";
         var acmeChallengeRoot = IsAcmeHttp01Enabled(directory) ? webRootChallenges.RootPath : null;
+        var reuseBackup = File.Exists(backup);
+        if (reuseBackup && !await CanReplaceWebRootBackupAsync(instance, previousSite, config, backup, acmeChallengeRoot, cancellationToken))
+            return "webserver.site_save_failed";
         if (!await WriteNginxFileAsync(stage, RenderSiteConfiguration(site, certificatePaths, acmeChallengeRoot), cancellationToken))
             return "webserver.site_save_failed";
         var hadExisting = File.Exists(config);
@@ -53,7 +55,7 @@ internal sealed partial class NginxWebServerManager
         {
             var testProblem = await TestConfigurationAsync(instance, cancellationToken);
             if (testProblem is not null) return testProblem;
-            if (hadExisting && !await MoveNginxFileAsync(config, backup, overwrite: false, cancellationToken)) return "webserver.site_save_failed";
+            if (hadExisting && !await MoveNginxFileAsync(config, backup, overwrite: reuseBackup, cancellationToken)) return "webserver.site_save_failed";
             if (!await MoveNginxFileAsync(stage, config, overwrite: false, cancellationToken)) return "webserver.site_save_failed";
             var reloadProblem = await ReloadAfterTestAsync(instance, cancellationToken);
             if (reloadProblem is null)
@@ -71,6 +73,36 @@ internal sealed partial class NginxWebServerManager
             if (File.Exists(stage)) _ = await DeleteNginxFileAsync(stage, CancellationToken.None);
             if (File.Exists(backup) && !File.Exists(config)) _ = await MoveNginxFileAsync(backup, config, overwrite: false, CancellationToken.None);
         }
+    }
+
+    private Task<(string FullChainPath, string PrivateKeyPath)?> ResolveSiteCertificatePathsAsync(WebServerSiteDto site, CancellationToken ct)
+        => !site.HttpsEnabled ? Task.FromResult<(string, string)?>(null)
+            : site.CertificateId is { } certificateId
+                ? certificates.GetNginxPathsAsync(certificateId, ct)
+                : Task.FromResult<(string, string)?>((site.CertificatePath!, site.PrivateKeyPath!));
+
+    // Only an explicit update of the persisted site may replace this reconstructible restore point.
+    // File evidence cannot settle the original operation or establish which config live workers loaded.
+    private async Task<bool> CanReplaceWebRootBackupAsync(WebServerDto instance, WebServerSiteDto? previousSite,
+        string config, string backup, string? challengeRoot, CancellationToken ct)
+    {
+        if (previousSite is null || string.IsNullOrWhiteSpace(challengeRoot) || !UsesSystemPackageNginx(instance)
+            || !File.Exists(config) || IsSymbolicLink(config) || IsSymbolicLink(backup)) return false;
+        var certificate = await ResolveSiteCertificatePathsAsync(previousSite, ct);
+        if (previousSite.HttpsEnabled && certificate is null) return false;
+        return await MatchesSiteConfigAsync(config, RenderSiteConfiguration(previousSite, certificate, challengeRoot), ct)
+            && await MatchesSiteConfigAsync(backup, RenderSiteConfiguration(previousSite, certificate), ct)
+            && (await privilegedNginx.ConfirmServiceIdleAsync(ct)).Success;
+    }
+
+    private static async Task<bool> MatchesSiteConfigAsync(string path, string expected, CancellationToken ct)
+    {
+        var expectedBytes = Encoding.UTF8.GetBytes(expected);
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (file.Length != expectedBytes.Length) return false;
+        var actual = new byte[expectedBytes.Length];
+        await file.ReadExactlyAsync(actual, ct);
+        return actual.AsSpan().SequenceEqual(expectedBytes);
     }
 
     private async Task<string?> TestConfigurationAsync(WebServerDto instance, CancellationToken cancellationToken)

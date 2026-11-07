@@ -401,7 +401,7 @@ MB-05 网站自动签发经既有 Nginx WebRoot 实测。证书 owner 在挑战�
 
 MB-05 完整 Linux Server 的网站 WebRoot 签发通过认证取消和 SIGTERM 排空。实际 CA 响应和挑战清理结束前，原证书任务保有责任。已取消的原证书回执保留已知订单供只读对账。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站-webroot-签发的取消与停机排空)。
 
-首个独立 Nginx 站点的显式 WebRoot 启用和证书绑定已通过 Linux 实测。重载中断后原挑战路由与旧 TLS 持续，原启用回执按原 ID 读取。遗留站点备份阻止后续 TLS 配置写入，仍需独立恢复。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站-http-01-显式启用与重载中断)。
+首个独立 Nginx 站点的显式 WebRoot 启用和证书绑定已通过 Linux 实测。重载中断后原挑战路由与旧 TLS 持续，原启用回执按原 ID 读取。只有原生作业已排空且站点文件与持久定义匹配时，后续授权更新才会接续使用站点备份。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站-webroot-备份核验与授权-tls-绑定)。
 
 MB-04 Core 到期 worker 按原索引创建执行作用域。原候选落盘后，Helper 响应、原终态提交和异步释放都纳入停机排空。Proxy 保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站授权到期的停机排空)。
 

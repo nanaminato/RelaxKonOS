@@ -8,7 +8,21 @@ using RelaxKonOS.Protocol.Privileged;
 public static partial class PrivilegedOperationExecutor
 {
     private const string NginxReloadReceiptDirectory = "/var/lib/relaxkonos-nginx-reloads";
+    private static readonly SemaphoreSlim NginxServiceGate = new(1, 1);
     private sealed record NginxReloadRecord(Guid OperationId, bool Completed, bool Failed = false);
+
+    private static async Task<PrivilegedOperationResult> ConfirmNginxServiceIdleAsync()
+    {
+        if (!OperatingSystem.IsLinux()) return Fail(69, PrivilegedProblemCode.UnsupportedOperation, "Linux is required");
+        if (!NginxServiceGate.Wait(0)) return UnknownReload();
+        try
+        {
+            var jobs = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl",
+                ["list-jobs", "--no-legend", "--no-pager", "nginx.service"], "Nginx service jobs could not be read");
+            return jobs is { Success: true, OutputBase64: "" } ? new(true) : UnknownReload();
+        }
+        finally { NginxServiceGate.Release(); }
+    }
 
     private static async Task<PrivilegedOperationResult> RunTrackedNginxReloadAsync(Guid? operationId)
     {
@@ -28,7 +42,10 @@ public static partial class PrivilegedOperationExecutor
                 return AsExecutionResult(QueryNginxReloadReceipt(id));
             }
 
-            var result = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", ["reload", "nginx.service"], "Nginx reload failed");
+            await NginxServiceGate.WaitAsync();
+            PrivilegedOperationResult result;
+            try { result = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", ["reload", "nginx.service"], "Nginx reload failed"); }
+            finally { NginxServiceGate.Release(); }
             // Only systemctl's failure for the specific job it was waiting on is terminal evidence.
             // A generic nonzero exit, timeout, or disconnected bus leaves the original intent open.
             if (!result.Success && !IsConfirmedReloadFailure(result)) return UnknownReload();

@@ -92,13 +92,13 @@ internal sealed partial class NginxWebServerManager
             }
             if (site.RootPath is not null && (!Directory.Exists(site.RootPath) || IsSymbolicLink(site.RootPath)))
                 throw new WebServerSiteValidationException("webserver.site_root_invalid");
-            if (index >= 0) sites[index] = site; else sites.Add(site);
-            var applyProblem = await WriteSiteConfigurationAsync(instance, site, cancellationToken);
+            var applyProblem = await WriteSiteConfigurationAsync(instance, site, cancellationToken, index >= 0 ? sites[index] : null);
             if (applyProblem is not null)
             {
                 logger.LogWarning("Nginx site save failed before metadata was committed. InstanceId={InstanceId}, SiteId={SiteId}, Problem={Problem}, SitesDirectory={SitesDirectory}", instance.Id, site.Id, applyProblem, directory);
                 throw new WebServerSiteApplyException(applyProblem);
             }
+            if (index >= 0) sites[index] = site; else sites.Add(site);
             if (!await WriteSitesAsync(directory, sites, cancellationToken))
                 throw new WebServerSiteApplyException("webserver.site_save_failed");
             logger.LogInformation("Nginx site saved successfully. InstanceId={InstanceId}, SiteId={SiteId}, ListenPort={ListenPort}, SitesDirectory={SitesDirectory}", instance.Id, site.Id, site.Bindings[0].Port, directory);
