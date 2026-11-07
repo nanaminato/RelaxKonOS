@@ -1476,3 +1476,5 @@ Windows 服务与个人模式均在 `appsettings.host.json` 设置 `Certificate.
 Linux Release 证书 HTTP 绑定与原回执回归已通过。证书响应在真实断线时的排空仍待联合验收。
 
 Linux Release 证书绑定 HTTP 回执已通过真实客户端断线验收。原操作成功后，同键响应在断线后仍持有租约，实际响应退出后归还，重试取回原终态。
+
+自动续期换日后仍查询同一证书的原在途或中断回执。中断回执保留原 operationId，后续明确成功的续期解除自动续期阻止。Linux 私有 Pebble 实测覆盖 CA 已签发、续期进程未接收证书的情况。重启以原键和下一日键查询，原活动证书指纹保持，CA 无新增订单。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书自动续期跨日接续)。

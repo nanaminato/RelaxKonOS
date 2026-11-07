@@ -25,9 +25,10 @@ internal static class ModuleBackgroundOwnershipChecks
             var environment = new TestHostEnvironment(directory); var leases = new TestResidentBackgroundLeases();
             var id = Guid.NewGuid(); var certificate = Guid.NewGuid();
             var path = Path.Combine(directory, "data", "certificate-operations.json");
+            const string actor = CertificateOperationStore.AutomaticRenewalActor;
             var original = JsonSerializer.Serialize(new[] { new { operationId = id,
-                idempotencyKey = CertificateOperationStore.RequestScope("old", certificate, "issue", "actor"), certificateId = certificate,
-                kind = "issue", actor = "actor", state = "running", stage = "running", problemCode = "", startedAt = DateTimeOffset.UtcNow, completedAt = (DateTimeOffset?)null } });
+                idempotencyKey = CertificateOperationStore.RequestScope("old", certificate, "renew", actor), certificateId = certificate,
+                kind = "renew", actor, state = "running", stage = "running", problemCode = "", startedAt = DateTimeOffset.UtcNow, completedAt = (DateTimeOffset?)null } });
             await File.WriteAllTextAsync(path, original);
             using var ledger = CreateCertificates(environment, leases);
             Check(leases.Acquired == 0 && CertificateOperationStore.ReadPending(environment).SequenceEqual([id]) && await File.ReadAllTextAsync(path) == original,
@@ -37,6 +38,18 @@ internal static class ModuleBackgroundOwnershipChecks
             await ledger.StartAsync(default);
             Check(leases.Acquired == 1 && leases.Active == 0 && (await ledger.GetAsync(id, default)) is { State: CertificateOperationState.Failed, Stage: "interrupted" },
                 "Explicit certificate startup recovery runs under one real admission and preserves the original interrupted outcome");
+            var later = await ledger.StartAsync("next-day", certificate, "renew", actor,
+                _ => throw new InvalidOperationException("Renewal replayed an unknown CA order."), default, default, automaticRenewal: true);
+            Check(later == await ledger.GetAsync(id, default) && leases.Acquired == 1,
+                "Automatic renewal with a new daily key returns the original interrupted receipt without new work");
+            var operatorRenewal = await ledger.StartAsync("confirmed-manual", certificate, "renew", "operator",
+                _ => Task.FromResult(""), default, default);
+            Check((await TestOperations.WaitForCertificateOperationAsync(ledger, operatorRenewal.OperationId)).State == CertificateOperationState.Succeeded,
+                "An explicitly authorized renewal can establish a new known outcome");
+            var next = await ledger.StartAsync("later-day", certificate, "renew", actor,
+                _ => Task.FromResult(""), default, default, automaticRenewal: true);
+            Check(next.OperationId != id && (await TestOperations.WaitForCertificateOperationAsync(ledger, next.OperationId)).State == CertificateOperationState.Succeeded,
+                "Automatic renewal can resume after a subsequent successful renewal");
             await ledger.StopAsync(default);
         }
         {

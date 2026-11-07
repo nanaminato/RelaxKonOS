@@ -5,7 +5,7 @@ internal static class AcmeLiveChecks
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(45);
     private const string Prefix = "http://+:5002/.well-known/acme-challenge/";
 
-    internal static async Task RunAsync(string root, string mode)
+    internal static async Task RunAsync(string root, string mode, Guid? renewalId = null)
     {
         if (!OperatingSystem.IsLinux() || !Path.IsPathFullyQualified(root) || !Directory.Exists(root))
             throw new ArgumentException("Expected an isolated Linux ACME fixture directory.");
@@ -27,7 +27,8 @@ internal static class AcmeLiveChecks
         await store.StartAsync(default);
         if (mode != "--acme-live-only")
         {
-            await RunCrashWorkerAsync(store, options, metadata, loseIssuedResponse: mode == "--acme-live-response-worker");
+            await RunCrashWorkerAsync(store, options, metadata, certificates, environment, configuration,
+                loseIssuedResponse: mode == "--acme-live-response-worker" || renewalId.HasValue, renewalId);
             return;
         }
         var certificateId = Guid.NewGuid();
@@ -111,11 +112,15 @@ internal static class AcmeLiveChecks
 
         await VerifyCrashAsync("--acme-live-crash-worker", "real-crash", "PASS ACME LIVE CRASH");
         await VerifyCrashAsync("--acme-live-response-worker", "real-response-loss", "PASS ACME LIVE RESPONSE LOSS");
+        await VerifyCrashAsync("--acme-live-renewal-worker", "real-renewal", "PASS ACME LIVE RENEWAL ACROSS DAILY KEYS", certificateId);
 
-        async Task VerifyCrashAsync(string workerMode, string key, string marker)
+        async Task VerifyCrashAsync(string workerMode, string key, string marker, Guid? renewal = null)
         {
+            var oldFingerprint = (await certificates.GetAsync(certificateId, default))?.FingerprintSha256;
+            TestAssert.Assert(!string.IsNullOrEmpty(oldFingerprint), "The existing certificate must have a persisted fingerprint.");
             Guid crashOperationId;
-            using (var worker = DockerProcessRecoveryChecks.StartWorker(workerMode, root))
+            using (var worker = DockerProcessRecoveryChecks.StartWorker(renewal is { } target
+                ? [workerMode, root, target.ToString("D")] : [workerMode, root]))
             {
                 try
                 {
@@ -138,12 +143,25 @@ internal static class AcmeLiveChecks
             using var crashRecovery = OpenStore();
             await crashRecovery.StartAsync(default);
             var recovered = await crashRecovery.GetAsync(crashOperationId, default);
-            var crashReplay = await crashRecovery.StartAsync(key, Guid.NewGuid(), "issue", "fixture",
-                _ => throw new InvalidOperationException("The interrupted ACME order was replayed."), default, default);
+            CertificateOperationDto crashReplay;
+            if (renewal is { } renewable)
+            {
+                await using var direct = new DirectHttp01ChallengeStore(Prefix);
+                var service = CreateAcme(direct);
+                var manager = CreateManager(certificates, service, crashRecovery, environment, configuration);
+                var actor = CertificateOperationStore.AutomaticRenewalActor;
+                var original = await manager.RenewAsync(renewable, key, actor, default, automatic: true);
+                TestAssert.Assert(original == recovered, "The original renewal key did not return the persisted receipt.");
+                crashReplay = await manager.RenewAsync(renewable, "next-day-key", actor, default, automatic: true);
+            }
+            else
+                crashReplay = await crashRecovery.StartAsync(key, Guid.NewGuid(), "issue", "fixture",
+                    _ => throw new InvalidOperationException("The interrupted ACME order was replayed."), default, default);
             TestAssert.Assert(recovered is { State: CertificateOperationState.Failed, Stage: "interrupted",
                     ProblemCode: "certificate.operation_interrupted" }
                 && JsonSerializer.Serialize(crashReplay) == JsonSerializer.Serialize(recovered)
-                && (await certificates.ListAsync(default)).Single().Id == certificateId
+                && (await certificates.ListAsync(default)).Single() is { } current
+                && current.Id == certificateId && current.FingerprintSha256 == oldFingerprint
                 && leases.Active == 0 && CertificateOperationStore.ReadPending(environment).Count == 0,
                 "The replacement must persist the original interrupted receipt without replaying the ACME request.");
             await crashRecovery.StopAsync(default).WaitAsync(Budget);
@@ -155,7 +173,8 @@ internal static class AcmeLiveChecks
     }
 
     private static async Task RunCrashWorkerAsync(CertificateOperationStore store, CertificateOptions options,
-        CertificateMetadataRepository metadata, bool loseIssuedResponse)
+        CertificateMetadataRepository metadata, FileCertificateStore certificates, IHostEnvironment environment, IConfiguration configuration,
+        bool loseIssuedResponse, Guid? renewalId)
     {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Func<HttpListenerContext, CancellationToken, Task>? pauseChallenge = null;
@@ -170,25 +189,38 @@ internal static class AcmeLiveChecks
         }
 
         await using var direct = new DirectHttp01ChallengeStore(Prefix, pauseChallenge);
-        using var http = new HttpClient(new IssuedResponseBarrier(entered));
+        using var http = new HttpClient(new IssuedResponseBarrier(entered, renewalId.HasValue ? "issue.mb05.test" : "response.mb05.test"));
         http.DefaultRequestHeaders.UserAgent.ParseAdd("RelaxKonOS-AcmeAcceptance/1.0");
         var acme = new AnvilAcmeService(new FileHttp01ChallengeStore(options), direct, options, metadata,
             NullLogger<AnvilAcmeService>.Instance, loseIssuedResponse ? uri => new AcmeHttpClient(uri, http) : null);
         var id = Guid.NewGuid();
         var key = loseIssuedResponse ? "real-response-loss" : "real-crash";
         var domain = loseIssuedResponse ? "response.mb05.test" : "crash.mb05.test";
-        var operation = await store.StartAsync(key, id, "issue", "fixture", async ct =>
+        var operation = renewalId is { } renewable
+            ? await CreateManager(certificates, acme, store, environment, configuration)
+                .RenewAsync(renewable, "real-renewal", CertificateOperationStore.AutomaticRenewalActor, default, automatic: true)
+            : await store.StartAsync(key, id, "issue", "fixture", async ct =>
+            {
+                _ = await acme.IssueAsync(id, [domain], CertificateChallengeType.DirectHttp01,
+                    CertificateKeyAlgorithm.EcdsaP256, "acceptance@example.test", ct);
+                throw new InvalidOperationException("The crash barrier unexpectedly permitted local issuance.");
+            }, default, default);
+        var terminal = TerminalAsync(store, operation.OperationId);
+        if (await Task.WhenAny(entered.Task, terminal) == terminal)
         {
-            _ = await acme.IssueAsync(id, [domain], CertificateChallengeType.DirectHttp01,
-                CertificateKeyAlgorithm.EcdsaP256, "acceptance@example.test", ct);
-            throw new InvalidOperationException("The crash barrier unexpectedly permitted local issuance.");
-        }, default, default);
-        await entered.Task.WaitAsync(Budget);
+            var result = await terminal;
+            throw new InvalidOperationException($"The ACME operation reached {result.State}/{result.ProblemCode} before the crash barrier.");
+        }
         Console.WriteLine(operation.OperationId);
         await Task.Delay(Timeout.InfiniteTimeSpan);
     }
 
-    private sealed class IssuedResponseBarrier(TaskCompletionSource entered) : DelegatingHandler(new SocketsHttpHandler { UseProxy = false })
+    private static CertificateManager CreateManager(FileCertificateStore certificates, AnvilAcmeService service,
+        CertificateOperationStore store, IHostEnvironment environment, IConfiguration configuration) =>
+        new(certificates, service, service, store, new KestrelCertificateRegistry(), new CertificateDeploymentRepository(environment, configuration),
+            null!, null!, new TestApplicationLifetime(), NullLogger<CertificateManager>.Instance);
+
+    private sealed class IssuedResponseBarrier(TaskCompletionSource entered, string domain) : DelegatingHandler(new SocketsHttpHandler { UseProxy = false })
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -201,7 +233,7 @@ internal static class AcmeLiveChecks
                 response.EnsureSuccessStatusCode();
                 var pem = await response.Content.ReadAsStringAsync(cancellationToken);
                 using var issued = X509Certificate2.CreateFromPem(pem);
-                TestAssert.Assert(issued.MatchesHostname("response.mb05.test"), "The CA must already have issued the expected certificate.");
+                TestAssert.Assert(issued.MatchesHostname(domain), "The CA must already have issued the expected certificate.");
                 entered.TrySetResult();
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
                 throw new InvalidOperationException("The certificate response barrier was bypassed.");

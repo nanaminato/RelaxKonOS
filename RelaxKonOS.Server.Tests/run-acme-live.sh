@@ -33,7 +33,7 @@ JSON
 "$dns" -dnsserver 127.0.0.1:8053 -defaultIPv4 127.0.0.1 -defaultIPv6 '' \
     -http01 '' -https01 '' -tlsalpn01 '' -doh '' -management 127.0.0.1:8055 > "$fixture/dns.log" 2>&1 &
 dns_pid=$!
-PEBBLE_VA_NOSLEEP=1 PEBBLE_WFE_NONCEREJECT=0 "$pebble" -config "$fixture/pebble.json" \
+PEBBLE_VA_NOSLEEP=1 PEBBLE_WFE_NONCEREJECT=0 PEBBLE_AUTHZREUSE=100 "$pebble" -config "$fixture/pebble.json" \
     -dnsserver 127.0.0.1:8053 -strict=false > "$fixture/ca.log" 2>&1 &
 ca_pid=$!
 for attempt in $(seq 1 100); do
@@ -46,4 +46,4 @@ curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:14000/di
 curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:15000/roots/0 > "$fixture/issuance-root.pem"
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 SSL_CERT_FILE="$fixture/https.pem" dotnet "$assembly" --acme-live-only "$fixture"
-[ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 4 ]
+[ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 5 ]

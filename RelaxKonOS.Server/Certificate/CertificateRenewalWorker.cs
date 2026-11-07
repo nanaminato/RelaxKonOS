@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 namespace RelaxKonOS.Server.Certificate;
 
 /// <summary>Host-local renewal scheduler. Each run uses a day-scoped idempotency key so a restart
-/// cannot start duplicate renewal orders; ACME Retry-After remains handled by the ACME adapter/CA.</summary>
+/// cannot start duplicate renewal orders within a day. Unknown outcomes remain in the operation ledger across daily scans.</summary>
 internal sealed class CertificateRenewalWorker(ICertificateStore certificates, ICertificateManager manager, IAcmeRenewalInfoProvider renewalInfo,
     CertificateRenewalAttemptRepository renewalAttempts, CertificateRenewalRunRepository runs, CertificateOptions options, ILogger<CertificateRenewalWorker> logger,
     RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource leases) : BackgroundService
@@ -71,7 +71,7 @@ internal sealed class CertificateRenewalWorker(ICertificateStore certificates, I
                 _reportedExhaustion.TryRemove(certificate.Id, out _);
                 var key = $"background-{DateTimeOffset.UtcNow:yyyyMMdd}-{retry.ConsecutiveFailures}";
                 RelaxKonOS.Protocol.Certificates.CertificateOperationDto operation;
-                try { operation = await manager.RenewAsync(certificate.Id, key, "renewal-worker", cancellationToken); }
+                try { operation = await manager.RenewAsync(certificate.Id, key, CertificateOperationStore.AutomaticRenewalActor, cancellationToken, automatic: true); }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch (Exception error)
                 {
@@ -80,8 +80,12 @@ internal sealed class CertificateRenewalWorker(ICertificateStore certificates, I
                     continue;
                 }
                 await runs.AddAsync(runId, operation.OperationId, cancellationToken);
-                if (operation.OperationId != Guid.Empty)
-                    logger.LogInformation("Queued certificate renewal. CertificateId={CertificateId} OperationId={OperationId}", certificate.Id, operation.OperationId);
+                if (operation.ProblemCode == CertificateOperationStore.InterruptedProblem)
+                    logger.LogWarning("Automatic certificate renewal remains blocked by an interrupted operation. CertificateId={CertificateId} OperationId={OperationId}",
+                        certificate.Id, operation.OperationId);
+                else if (operation.OperationId != Guid.Empty)
+                    logger.LogInformation("Observed certificate renewal. CertificateId={CertificateId} OperationId={OperationId} State={State}",
+                        certificate.Id, operation.OperationId, operation.State);
             }
         }
         finally { await runs.EndAsync(runId, CancellationToken.None); }

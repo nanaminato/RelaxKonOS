@@ -67,6 +67,11 @@ if (args is [var acmeMode, var acmeFixtureRoot] && acmeMode is "--acme-live-only
     await AcmeLiveChecks.RunAsync(acmeFixtureRoot, acmeMode);
     return;
 }
+if (args is ["--acme-live-renewal-worker", var renewalFixtureRoot, var renewalCertificateId])
+{
+    await AcmeLiveChecks.RunAsync(renewalFixtureRoot, "--acme-live-renewal-worker", Guid.Parse(renewalCertificateId));
+    return;
+}
 if (args is ["--nginx-recovery-worker", var nginxWorkerExecutable, var nginxWorkerRoot])
 {
     await NginxProcessRecoveryChecks.RunWorkerAsync(nginxWorkerExecutable, nginxWorkerRoot);

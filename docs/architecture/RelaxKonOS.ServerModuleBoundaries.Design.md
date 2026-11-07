@@ -1401,3 +1401,9 @@ MB-04 按根引用审计缩短 TUN 控制器执行图的生命周期。Core 启�
 ### MB-04 完整 Server 接续在途 TUN 激活
 
 Linux x64 Release 在原私有 systemd 夹具中使用生产 TUN 安全服务和实际 Mihomo。子进程已完成真实控制器重载、设备创建和策略规则变更，在写入激活完成标记前强制终止。原操作 `23ff134e-a01c-4970-9268-63ca3b352731` 在同一私有持久状态目录经过独立 Helper 退出及完整 Server 拒绝启动后仍保持未完成。Helper 恢复后，非 root 完整 Server 的 Core 日志确认原 ID，禁用 TUN、恢复管理路由及 IPv4/IPv6 规则，Mihomo 继续提供实际 HTTP 转发。系统代理漂移纠正和 sing-box 后续授权到期同时通过，两代 Helper 各收到一次入站 apply。专属 cgroup 清理完成，宿主 sing-box、Mihomo 及代理文件指纹一致。证据为 .artifacts/mb04-tun-activation-crash-live.log，归档 SHA-256 为 d0a258b8484b3e48cf32517cdb5ca98b5c34a756ad93bd379bf91ce57e128e65。Windows Release 受管服务 15 项及模块边界回归通过，Docker 跨进程夹具返回原 Interrupted 回执，副作用一次。Mihomo 使用专属直连配置。确认受管发布后的 TUN 事务、Proxy 动态休眠和生产内存测量仍开放。
+
+### MB-05 证书自动续期跨日接续
+
+原证书操作台账在准入锁内为自动续期查找同一证书的在途操作和未被后续成功续期替代的中断回执。原键与新的自动日期键返回原 operationId，不写新任务或发新 ACME 订单。显式授权的人工续期仍可独立提交，后续成功才解除自动续期阻止。ACME 服务同时核对授权状态，已有效的授权无需再提交挑战。
+
+Linux x64 Release 在既有测试机的独立 Pebble CA 验证真实自动续期。首次实测在已有效授权的重复挑战处未到达签发屏障，修正客户端授权检查后，以确定性的有效授权复用复测。CA 已签发而客户端尚未接收证书时强制终止续期进程。重开原台账后，经生产 CertificateManager 提交原键和下一日键，均返回同一 Interrupted 回执 `de7400be-25b9-4cc9-8e39-0f695ed05730`，保留原活动证书指纹。整组签发、取消、挑战中断、签发响应丢失和续期共五张订单，恢复没有新增订单。日志为 .artifacts/mb05-renewal-daily-live.log，归档 SHA-256 为 3fd290056f8d217279c4c7809beab1da3e5a82ec3cbfd5f9d5d73cb41afc89ff。Windows Release 模块边界回归通过，覆盖跨日原回执、人工成功后自动续期恢复及 Docker 跨进程原回执、单次副作用。测试通过更换调度键模拟日期跨越，未改机器时钟。远端未知订单的主动对账、独立执行图及生产内存测量仍开放。

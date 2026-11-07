@@ -18,7 +18,8 @@ internal interface ICertificateManager
     Task<CertificatePreflightResultDto> PreflightAsync(CertificatePreflightRequest request, CancellationToken cancellationToken);
     Task<CertificateOperationDto> RequestAsync(string idempotencyKey, RequestCertificateRequest request, string? actor, CancellationToken cancellationToken);
     Task<CertificateOperationDto> CreateSelfSignedAsync(string idempotencyKey, CreateSelfSignedCertificateRequest request, string? actor, CancellationToken cancellationToken);
-    Task<CertificateOperationDto> RenewAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken);
+    Task<CertificateOperationDto> RenewAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken,
+        bool automatic = false);
     Task<KestrelCertificateDeploymentDto> GetKestrelDeploymentAsync(Guid certificateId, CancellationToken cancellationToken);
     Task<CertificateOperationDto> DeployKestrelAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken);
     Task<CertificateOperationDto> DeleteAsync(Guid certificateId, string idempotencyKey, DeleteCertificateRequest request, string? actor, CancellationToken cancellationToken);
@@ -171,9 +172,10 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
         }, lifetime.ApplicationStopping, cancellationToken);
     }
 
-    public async Task<CertificateOperationDto> RenewAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
+    public async Task<CertificateOperationDto> RenewAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken,
+        bool automatic = false)
     {
-        if (await operations.FindRequestAsync(idempotencyKey, certificateId, "renew", actor, cancellationToken) is { } replay) return replay;
+        if (await operations.FindRequestAsync(idempotencyKey, certificateId, "renew", actor, cancellationToken, automatic) is { } replay) return replay;
         var existing = await certificates.GetAsync(certificateId, cancellationToken);
         if (existing is null) return Failure("renew", "certificate.not_found");
         if (existing.Kind == CertificateKind.SelfSigned) return Failure("renew", "certificate.self_signed_not_renewable");
@@ -200,7 +202,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
                 await deployments.RecordKestrelAsync(replacementRecord, true, null, ct);
             }
             return "";
-        }, lifetime.ApplicationStopping, cancellationToken);
+        }, lifetime.ApplicationStopping, cancellationToken, automatic);
     }
 
     public async Task<CertificateOperationDto> DeleteAsync(Guid certificateId, string idempotencyKey, DeleteCertificateRequest request, string? actor, CancellationToken cancellationToken)

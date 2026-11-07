@@ -10,6 +10,8 @@ namespace RelaxKonOS.Server.Certificate;
 /// <summary>Durable, secret-free operation ledger for certificate lifecycle tasks.</summary>
 internal sealed class CertificateOperationStore : IHostedService, IDisposable
 {
+    internal const string AutomaticRenewalActor = "renewal-worker";
+    internal const string InterruptedProblem = "certificate.operation_interrupted";
     private readonly string _path;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<Guid, PersistedOperation> _operations = [];
@@ -74,12 +76,13 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         JsonSerializer.Serialize(new[] { actor ?? "", kind, kind is "issue" or "create-self-signed" ? "" : certificateId.ToString("D"), requestKey });
 
     public async Task<CertificateOperationDto> StartAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
-        Func<CancellationToken, Task<string>> action, CancellationToken applicationStopping, CancellationToken admissionCancellation)
+        Func<CancellationToken, Task<string>> action, CancellationToken applicationStopping, CancellationToken admissionCancellation,
+        bool automaticRenewal = false)
     {
         using var admission = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, admissionCancellation);
         var key = RequestScope(idempotencyKey, certificateId, kind, actor);
         await _gate.WaitAsync(admission.Token);
-        try { RequireReady(); if (_byIdempotency.TryGetValue(key, out var replay)) return _operations[replay].ToDto(); }
+        try { RequireReady(); if (FindExistingRequest(key, certificateId, automaticRenewal) is { } replay) return replay.ToDto(); }
         finally { _gate.Release(); }
         using var work = await _work.AdmitAsync(admission.Token);
         PersistedOperation operation;
@@ -87,11 +90,11 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         try
         {
             RequireReady();
-            if (_byIdempotency.TryGetValue(key, out var existing))
+            if (FindExistingRequest(key, certificateId, automaticRenewal) is { } existing)
             {
                 _logger.LogInformation("Certificate operation request reused. OperationId={OperationId} CertificateId={CertificateId} Kind={Kind}",
-                    existing, certificateId, kind);
-                return _operations[existing].ToDto();
+                    existing.OperationId, certificateId, kind);
+                return existing.ToDto();
             }
             admission.Token.ThrowIfCancellationRequested();
             work.Token.ThrowIfCancellationRequested();
@@ -110,12 +113,27 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         return operation.ToDto();
     }
 
-    public async Task<CertificateOperationDto?> FindRequestAsync(string requestKey, Guid certificateId, string kind, string? actor, CancellationToken cancellationToken)
+    public async Task<CertificateOperationDto?> FindRequestAsync(string requestKey, Guid certificateId, string kind, string? actor,
+        CancellationToken cancellationToken, bool automaticRenewal = false)
     {
         var key = RequestScope(requestKey, certificateId, kind, actor);
         await _gate.WaitAsync(cancellationToken);
-        try { RequireReady(); return _byIdempotency.TryGetValue(key, out var id) ? _operations[id].ToDto() : null; }
+        try { RequireReady(); return FindExistingRequest(key, certificateId, automaticRenewal)?.ToDto(); }
         finally { _gate.Release(); }
+    }
+
+    private PersistedOperation? FindExistingRequest(string key, Guid certificateId, bool automaticRenewal)
+    {
+        if (_byIdempotency.TryGetValue(key, out var id)) return _operations[id];
+        if (!automaticRenewal) return null;
+
+        // The daily key can change while a renewal is in flight or its CA outcome is still unknown.
+        var renewals = _operations.Values.Where(operation => operation.Kind == "renew" && operation.CertificateId == certificateId);
+        if (renewals.FirstOrDefault(operation => operation.State is CertificateOperationState.Queued or CertificateOperationState.Running) is { } active)
+            return active;
+        var lastKnownOrInterrupted = renewals.Where(operation => operation.State == CertificateOperationState.Succeeded
+            || operation.ProblemCode == InterruptedProblem).MaxBy(operation => operation.CompletedAt);
+        return lastKnownOrInterrupted?.ProblemCode == InterruptedProblem ? lastKnownOrInterrupted : null;
     }
 
     public async Task<CertificateOperationDto?> GetAsync(Guid id, CancellationToken cancellationToken)
@@ -133,7 +151,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
             RequireReady();
             var retry = await _renewalAttempts.GetScheduleAsync(certificateId, cancellationToken);
             var attempts = _operations.Values.Where(operation => operation.CertificateId == certificateId && operation.Kind == "renew")
-                .Reverse().Take(5).Select(operation => new CertificateRenewalAttemptDto(operation.Actor == "renewal-worker", operation.ToDto())).ToArray();
+                .Reverse().Take(5).Select(operation => new CertificateRenewalAttemptDto(operation.Actor == AutomaticRenewalActor, operation.ToDto())).ToArray();
             return new(automaticEnabled, retry.ConsecutiveFailures, retry.RetryAfter, retry.Exhausted, attempts);
         }
         finally { _gate.Release(); }
@@ -143,14 +161,14 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
     {
         await _gate.WaitAsync(ct);
         try { RequireReady(); return _operations.Values.Where(o => o.CertificateId == certificateId && o.Kind == "renew")
-            .Reverse().Select(o => new CertificateRenewalAttemptDto(o.Actor == "renewal-worker", o.ToDto())).ToArray(); }
+            .Reverse().Select(o => new CertificateRenewalAttemptDto(o.Actor == AutomaticRenewalActor, o.ToDto())).ToArray(); }
         finally { _gate.Release(); }
     }
 
     public async Task<IReadOnlyList<CertificateRenewalRunDto>> GetManualRenewalRunsAsync(CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
-        try { RequireReady(); return _operations.Values.Where(o => o.Kind == "renew" && o.Actor != "renewal-worker")
+        try { RequireReady(); return _operations.Values.Where(o => o.Kind == "renew" && o.Actor != AutomaticRenewalActor)
             .Select(o => new CertificateRenewalRunDto(o.OperationId, o.StartedAt ?? o.CompletedAt ?? DateTimeOffset.UtcNow,
                 o.CompletedAt, false, o.State == CertificateOperationState.Succeeded ? 1 : 0,
                 o.State == CertificateOperationState.Failed ? 1 : 0,
@@ -257,7 +275,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
             foreach (var item in JsonSerializer.Deserialize<PersistedOperation[]>(await File.ReadAllTextAsync(_path, ct), Json) ?? throw new JsonException("Certificate ledger must be an array."))
             {
                 var recovered = item.State is CertificateOperationState.Queued or CertificateOperationState.Running
-                    ? item with { State = CertificateOperationState.Failed, Stage = "interrupted", ProblemCode = "certificate.operation_interrupted", CompletedAt = DateTimeOffset.UtcNow }
+                    ? item with { State = CertificateOperationState.Failed, Stage = "interrupted", ProblemCode = InterruptedProblem, CompletedAt = DateTimeOffset.UtcNow }
                     : item;
                 _operations[recovered.OperationId] = recovered;
                 _byIdempotency[recovered.IdempotencyKey] = recovered.OperationId;

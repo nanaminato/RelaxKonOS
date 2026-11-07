@@ -89,6 +89,8 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
                 certificateId, authorizations.Length);
             foreach (var authorization in authorizations)
             {
+                var resource = await AcmeCallLifetime.AwaitAsync(() => authorization.Resource(), cancellationToken);
+                if (resource.Status == Certify.ACME.Anvil.Acme.Resource.AuthorizationStatus.Valid) continue;
                 var challenge = await AcmeCallLifetime.AwaitAsync(() => authorization.Http(), cancellationToken);
                 if (challenge is null) throw new CertificateOperationException("certificate.http01_not_offered");
                 challenges.Add(challenge);
