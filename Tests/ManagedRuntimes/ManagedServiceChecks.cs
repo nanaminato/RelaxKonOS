@@ -1,3 +1,7 @@
+using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -13,8 +17,10 @@ using RelaxKonOS.Protocol.ProxyServer;
 /// </summary>
 internal static class ManagedServiceChecks
 {
-    internal static async Task<int> RunAsync()
+    internal static async Task<int> RunAsync(string? executable = null)
     {
+        if (executable is not null && (!OperatingSystem.IsLinux() || executable != "/usr/bin/sing-box"))
+            throw new ArgumentException("Expected the installed Linux sing-box binary.");
         var count = 0;
         void Check(bool value, string name) { if (!value) throw new Exception(name); count++; }
         var root = Path.Combine(Path.GetTempPath(), "relaxkonos-managed-service-" + Guid.NewGuid().ToString("N"));
@@ -22,25 +28,35 @@ internal static class ManagedServiceChecks
         {
             var states = new RuntimeArchiveStateStore(Path.Combine(root, "state"), path => Directory.CreateDirectory(path));
             var target = new RuntimeTarget(OperatingSystem.IsWindows() ? "windows" : "linux",
-                OperatingSystem.IsWindows() ? "amd64" : "arm64", null, null, RuntimeInstallMode.Archive,
+                RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "amd64", null, null, RuntimeInstallMode.Archive,
                 OperatingSystem.IsWindows() ? "scm" : "systemd");
             var binaryName = "sing-box";
-            var binaryBytes = Encoding.UTF8.GetBytes("fixture program");
+            var binaryBytes = executable is null ? Encoding.UTF8.GetBytes("fixture program") : await File.ReadAllBytesAsync(executable);
+            var version = executable is null ? "1.14.3" : (await SingBoxOperations.RunAsync(executable, ["version"]))
+                .Split('\n', StringSplitOptions.TrimEntries)[0].Split(' ')[^1];
             var entry = new RuntimeArchiveFile(binaryName, binaryBytes.Length, Digest(binaryBytes), true);
-            var artifact = new RuntimeArtifact("fixture-artifact", new string('c', 64), 4096, "tar.gz", binaryName,
-                "fixture-key", new(1024 * 1024, 8, [entry]));
+            var artifact = new RuntimeArtifact("fixture-artifact", new string('c', 64), Math.Max(4096, binaryBytes.Length), "tar.gz", binaryName,
+                "fixture-key", new(Math.Max(1024 * 1024, binaryBytes.Length), 8, [entry]));
             var now = DateTimeOffset.UtcNow;
-            var release = new RuntimeRelease("fixture-release", "sing-box", "v1.14.3", "1.14.3", RuntimeChannel.Stable,
+            var release = new RuntimeRelease("fixture-release", "sing-box", "v" + version, version, RuntimeChannel.Stable,
                 "fixture-source", target, artifact, SingBoxRuntimeSupport.Capability, true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, now);
             var revisionId = Guid.NewGuid();
             var directory = Path.Combine(root, "versions", revisionId.ToString("N"));
             Directory.CreateDirectory(directory);
             await File.WriteAllBytesAsync(Path.Combine(directory, binaryName), binaryBytes);
-            var materialA = Material(24443);
-            var materialB = Material(24444);
+            if (executable is not null && OperatingSystem.IsLinux())
+                File.SetUnixFileMode(Path.Combine(directory, binaryName), UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            using var firstPort = new TcpListener(IPAddress.Loopback, 0);
+            using var secondPort = new TcpListener(IPAddress.Loopback, 0);
+            firstPort.Start();
+            secondPort.Start();
+            var materialA = Material(((IPEndPoint)firstPort.LocalEndpoint).Port);
+            var materialB = Material(((IPEndPoint)secondPort.LocalEndpoint).Port);
+            firstPort.Stop();
+            secondPort.Stop();
             var identityA = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(materialA)));
             await File.WriteAllBytesAsync(Path.Combine(root, "config.json"), Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(materialA)));
-            var revision = new RuntimeStoredRevision(revisionId, release, "1.14.3", identityA, 1, 1);
+            var revision = new RuntimeStoredRevision(revisionId, release, version, identityA, 1, 1);
             var initial = states.Initialize(new(Guid.NewGuid(), "fixture-host", "sing-box", 0, RuntimeOwnership.Absent, target, null, false), identityA);
             using (var session = states.Acquire())
                 session.Save(initial with
@@ -55,13 +71,14 @@ internal static class ManagedServiceChecks
                     ConfigurationIdentity = identityA,
                     Revisions = [revision]
                 });
-            var host = new ServiceHost(); var natives = new NativeChecks();
+            await using var host = new ServiceHost(executable is not null);
+            ISingBoxNativeChecks natives = executable is null ? new NativeChecks() : new SingBoxNativeChecks();
 
             // Status of a managed installation whose service was never registered.
             var absent = await Send(PrivilegedOperationKind.ProxyServerStatus, null, root, states, host, natives);
             var status = Read<ProxyServerStatus>(absent);
-            Check(status is { Supported: true, Installed: true, Running: false, Applied: false, RecoveryRequired: false, Version: "1.14.3" }
-                && status.ConfigurationHash == identityA && status.ProblemCode is null,
+            Check(status is { Supported: true, Installed: true, Running: false, Applied: false, RecoveryRequired: false, Version: not null }
+                && status.Version == version && status.ConfigurationHash == identityA && status.ProblemCode is null,
                 "Managed installation reports its measured version and applied identity without a registered service");
 
             // Validation only renders and checks; it never touches the service or the durable state.
@@ -146,6 +163,8 @@ internal static class ManagedServiceChecks
                 && Digest(await File.ReadAllBytesAsync(Path.Combine(root, "config.json"))) == identityB,
                 "A runtime that exits after start cannot commit the candidate and must restore the prior running configuration");
 
+            if (executable is not null) return count;
+
             // A tampered program file is never executed again.
             var binary = Path.Combine(directory, binaryName);
             await File.WriteAllBytesAsync(binary, Encoding.UTF8.GetBytes("tampered program"));
@@ -186,7 +205,7 @@ internal static class ManagedServiceChecks
         .Replace('+', '-').Replace('/', '_')[..43];
 
     private static async Task<PrivilegedOperationResult> Send(PrivilegedOperationKind operation, ProxyServerHelperRequest? request,
-        string root, RuntimeArchiveStateStore states, ServiceHost host, NativeChecks natives)
+        string root, RuntimeArchiveStateStore states, ServiceHost host, ISingBoxNativeChecks natives)
     {
         using var session = states.Acquire();
         return await SingBoxManagedRuntime.ExecuteAsync(new(operation, ProxyServer: request), root, session, host, default, natives);
@@ -209,7 +228,7 @@ internal static class ManagedServiceChecks
         }
     }
 
-    private sealed class ServiceHost : ISingBoxArchiveHost
+    private sealed class ServiceHost(bool live) : ISingBoxArchiveHost, IAsyncDisposable
     {
         internal SingBoxServiceObservation Observation = new(false, true, false, null, null, null);
         internal int ConfigureCalls;
@@ -217,26 +236,62 @@ internal static class ManagedServiceChecks
         internal int Starts;
         internal bool FailNextConfigure;
         internal bool ExitOnNextStart;
-        public Task<SingBoxServiceObservation> ObserveAsync(CancellationToken ct) => Task.FromResult(Observation);
-        public Task StopAsync(CancellationToken ct)
+        private Process? process;
+        private string? configuration;
+        public Task<SingBoxServiceObservation> ObserveAsync(CancellationToken ct) =>
+            Task.FromResult(live && process is not { HasExited: false }
+                ? Observation with { Running = false, AppliedConfigurationIdentity = null } : Observation);
+
+        public async Task StopAsync(CancellationToken ct)
         {
             Stops++;
+            await DisposeAsync();
             Observation = Observation with { Running = false, AppliedConfigurationIdentity = null };
-            return Task.CompletedTask;
         }
-        public Task StartAsync(CancellationToken ct)
+
+        public async Task StartAsync(CancellationToken ct)
         {
             Starts++;
+            if (live)
+            {
+                var start = new ProcessStartInfo(Observation.Executable!) { UseShellExecute = false };
+                foreach (var arg in new[] { "run", "-c", configuration! }) start.ArgumentList.Add(arg);
+                process = Process.Start(start) ?? throw new InvalidOperationException("Cannot start isolated sing-box.");
+                using var json = JsonDocument.Parse(await File.ReadAllTextAsync(configuration!, ct));
+                var port = json.RootElement.GetProperty("inbounds")[0].GetProperty("listen_port").GetInt32();
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                deadline.CancelAfter(TimeSpan.FromSeconds(10));
+                while (true)
+                {
+                    if (process.HasExited) throw new InvalidOperationException($"Isolated sing-box exited: {process.ExitCode}.");
+                    using var probe = new TcpClient();
+                    try { await probe.ConnectAsync(IPAddress.Loopback, port, deadline.Token); break; }
+                    catch (SocketException) { await Task.Delay(50, deadline.Token); }
+                }
+            }
             if (ExitOnNextStart)
             {
                 ExitOnNextStart = false;
-                return Task.CompletedTask;
+                await DisposeAsync();
+                return;
             }
             Observation = Observation with { Running = true, AppliedConfigurationIdentity = Current };
-            return Task.CompletedTask;
         }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (process is not { } owned) return;
+            process = null;
+            using (owned)
+            {
+                if (!owned.HasExited) owned.Kill();
+                await owned.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            }
+        }
+
         public Task ConfigureAsync(string binary, string configuration, string identity, bool bootEnabled, CancellationToken ct)
         {
+            this.configuration = configuration;
             ConfigureCalls++;
             Current = identity;
             Observation = new(true, true, false, bootEnabled, binary, null);
@@ -253,7 +308,8 @@ internal static class ManagedServiceChecks
             Observation = new(false, true, false, null, null, null);
             return Task.CompletedTask;
         }
-        public Task<bool> ListenersHealthyAsync(ProxyServerConfiguration published, CancellationToken ct) => Task.FromResult(true);
+        public Task<bool> ListenersHealthyAsync(ProxyServerConfiguration published, CancellationToken ct) =>
+            Task.FromResult(!live || process is { HasExited: false });
         private string? Current;
     }
 }

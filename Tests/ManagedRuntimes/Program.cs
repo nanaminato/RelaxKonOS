@@ -106,6 +106,11 @@ if (args is ["runtime-lifecycle-only"])
     return;
 }
 
+if (args is ["runtime-managed-service-live", var singBoxExecutable])
+{
+    Console.WriteLine($"PASS LIVE SING-BOX HELPER PUBLICATION: {await ManagedServiceChecks.RunAsync(singBoxExecutable)} checks");
+    return;
+}
 if (args is ["runtime-managed-service-only"])
 {
     Console.WriteLine($"Managed runtime service checks passed: {await ManagedServiceChecks.RunAsync()}");

@@ -1283,3 +1283,5 @@ Linux x64 Release 隔离夹具复用持久保护密钥。发布进程通过生�
 ### MB-04 Helper 发布后运行状态核验
 
 生产 sing-box Helper 在提交新配置前核对运行状态与发布前一致。原先运行的服务若在启动返回后已退出，事务进入原补偿路径。Windows Release 受管服务专项验证旧配置摘要、旧状态版本和旧运行状态恢复。实机 Helper 联合验收仍开放。
+
+Linux x64 Release 实机复测通过。生产 SingBoxManagedRuntime 发布事务和原生版本、配置检查使用已安装 sing-box 的专属副本。在私有网络中候选进程实际监听后被终止，Helper 观察到退出后恢复旧配置、旧状态版本和原运行状态。服务控制由专属进程夹具承载，未连接共享 systemd。REALITY 探针仅验证本地监听，私有网络无外部握手路由。日志为 .artifacts/mb04-helper-live-final.log，归档 SHA-256 为 38db85bba4743acfe71a1ced176ed681e8f3be2c0171bbd44cd08fa7a76209bd。
