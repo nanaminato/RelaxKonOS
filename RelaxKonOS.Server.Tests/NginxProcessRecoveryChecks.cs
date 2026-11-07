@@ -261,8 +261,10 @@ internal static class NginxProcessRecoveryChecks
             TestAssert.Assert(worker.ExitCode != 0, "The publication worker must exit abnormally.");
 
             var recoveredStore = new WebsitePublicationStore(environment);
-            using var restarted = new WebsitePublicationCoordinator(recoveredStore, null!, catalog, null!, null!, null!, null!,
-                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, new TestResidentBackgroundLeases());
+            var recoveryExecutions = 0;
+            using var restarted = WebsitePublicationTestScopes.Create(recoveredStore, null!, catalog, null!, null!, null!, null!,
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, new TestResidentBackgroundLeases(),
+                executionCreated: () => Interlocked.Increment(ref recoveryExecutions));
             await restarted.StartAsync(cancellationToken);
             var restored = restarted.Get(operationId);
             var publication = new PublishWebsiteRequest(app.Id, running!.WebServerId, PublicationDomain, running.CertificateId, Confirmed: true);
@@ -285,7 +287,8 @@ internal static class NginxProcessRecoveryChecks
                 "Publication recovery must preserve live TLS, the association and the original reload count.");
             await responseTask;
             await restarted.StopAsync(cancellationToken);
-            Console.WriteLine($"PASS NGINX LIVE PUBLICATION CRASH: operation={operationId}; stage={stage}; recovery={restored!.RecoveryProblemCode}; publication reloads=1; HTTP response drained after disconnect");
+            TestAssert.Assert(recoveryExecutions == 0, "Recovery and HTTP replay must leave the native execution graph absent.");
+            Console.WriteLine($"PASS NGINX LIVE PUBLICATION CRASH: operation={operationId}; stage={stage}; recovery={restored!.RecoveryProblemCode}; publication reloads=1; recovery scopes=0; HTTP response drained after disconnect");
         }
         finally
         {
@@ -425,14 +428,16 @@ internal static class NginxProcessRecoveryChecks
         var instance = await FindManagedInstanceAsync(provider);
         var certificateManager = DispatchProxy.Create<ICertificateManager, BackgroundWebsiteCertificate>();
         ((BackgroundWebsiteCertificate)(object)certificateManager).Domain = PublicationDomain;
-        using var coordinator = new WebsitePublicationCoordinator(new WebsitePublicationStore(environment), applications, catalog,
+        var executions = 0;
+        using var coordinator = WebsitePublicationTestScopes.Create(new WebsitePublicationStore(environment), applications, catalog,
             new WebServerManager([provider]), certificateManager, null!, verification, new TestApplicationLifetime(),
-            NullLogger<WebsitePublicationCoordinator>.Instance, new TestResidentBackgroundLeases());
+            NullLogger<WebsitePublicationCoordinator>.Instance, new TestResidentBackgroundLeases(),
+            executionCreated: () => Interlocked.Increment(ref executions));
         await coordinator.StartAsync(default);
         var receipt = await coordinator.StartAsync(new(app.Id, instance.Id, PublicationDomain, certificateId, Confirmed: true), Actor, PublicationKey);
         Console.WriteLine(receipt.OperationId);
         await (configuring ? transport.Reloaded.Task : verification.Entered.Task).WaitAsync(Budget);
-        TestAssert.Assert(coordinator.HasResponsibility, "The live publication must hold its lease while verifying.");
+        TestAssert.Assert(executions == 1 && coordinator.HasResponsibility, "The live publication must own one execution scope and lease.");
         Console.WriteLine(configuring ? WebsitePublicationStage.Configuring : WebsitePublicationStage.Verifying);
         await Task.Delay(Timeout.InfiniteTimeSpan);
     }

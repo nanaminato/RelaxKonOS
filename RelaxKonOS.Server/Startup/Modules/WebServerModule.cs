@@ -27,6 +27,7 @@ internal sealed class WebServerModule : IServerModule, IServerModuleDeactivation
         builder.Services.AddHostedService(services => services.GetRequiredService<RelaxKonOS.Server.WebServer.WebServerOperationStore>());
         builder.Services.AddSingleton<WebsitePublicationStore>();
         builder.Services.AddSingleton<WebsitePublicationCoordinator>();
+        builder.Services.AddScoped<WebsitePublicationExecution>();
         builder.Services.AddHostedService(services => services.GetRequiredService<WebsitePublicationCoordinator>());
         builder.Services.AddHttpClient("WebsitePublicationVerification", client =>
         {

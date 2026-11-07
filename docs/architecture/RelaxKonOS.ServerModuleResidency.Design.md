@@ -368,3 +368,5 @@ Linux 完整非 root Server 已从同一持久状态目录恢复在途 TUN 激�
 MB-05 证书续期已接入原持久扫描台账。到期执行作用域由原模块租约保护，跨进程实测补回原操作关联，远端订单无重放。证书模块保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书续期持久扫描与执行作用域)。
 
 完整 Server 已通过 MB-05 自然续期、停机排空与重启调度验收。宿主收到停止信号后等待原 CA 任务和挑战清理，再持久化原回执并退出。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整-server-自然续期与停机排空)。
+
+MB-05 网站发布的原常驻协调器只在新发布受理后创建执行作用域。原工作租约保护发布、补偿、终态和异步清理。Linux 实测原回执恢复不构造执行作用域，Nginx 持续转发。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布准入与执行作用域)。
