@@ -381,4 +381,6 @@ MB-04 原 Core TUN worker 持续扫描原标记。已完成的当前会话保持
 
 MB-04 Linux 专属 Mihomo 实测覆盖实际激活副作用发生后取消。原 TUN 安全任务保留原标记，同一 Core worker 补偿，激活和禁用各一次。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
 
-MB-05 系统包 Nginx 经生产 Helper 和专属 systemd 的实机中断恢复通过。原 master 在两进程中断期间持续提供 HTTPS，重启恢复原回执，实际重载一次。自然停机和取消对已提交 Helper 请求的排空仍待验收。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-系统包-nginx-经生产-helper-中断与恢复)。
+MB-05 系统包 Nginx 经生产 Helper 和专属 systemd 的实机中断恢复通过。原 master 在两进程中断期间持续提供 HTTPS，重启恢复原回执，实际重载一次。自然停机和取消排空见下文。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-系统包-nginx-经生产-helper-中断与恢复)。
+
+MB-05 Linux Nginx 固定服务动作提交后，原 WebServer 工作任务等待 Helper 返回，实例锁和执行作用域持有到响应与清理结束。实机验证取消和 SIGTERM 均排空实际 systemd reload，重启未重放。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-已提交-nginx-systemd-作业的取消与停机排空)。

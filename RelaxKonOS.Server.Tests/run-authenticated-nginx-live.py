@@ -15,7 +15,8 @@ import urllib.error
 import urllib.request
 
 
-def run(root, server, helper_binary, production_helper):
+def run(root, server, helper_binary, mode):
+    production_helper = mode is not None
     credentials = json.loads(sys.stdin.readline())
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
@@ -144,6 +145,68 @@ def run(root, server, helper_binary, production_helper):
             time.sleep(0.1)
         raise RuntimeError("Dedicated Nginx did not serve the expected configuration")
 
+    def verify_drain():
+        witness = root / "nginx" / "reloads"
+        release = root / "nginx" / "release"
+        finished = root / "nginx" / "reload-finished"
+        site = root / "nginx" / "conf.d" / "site.conf"
+        with process([*helper_args, helper_config], "drain-helper") as helper:
+            wait_for(helper, helper_ready, "drain-helper")
+            with process([server], "drain-server") as initial:
+                wait_for(initial, healthy, "drain-server")
+                token = login()
+                matches = [item for item in request(web, token=token)
+                           if item["executablePath"] == executable and item["configurationPath"] == str(configuration)]
+                assert len(matches) == 1, "The dedicated Nginx instance was not discovered"
+                route = f"{web}/{matches[0]['id']}/reload"
+                pid = int(nginx_pid_file.read_text())
+                for count, (previous, current) in enumerate((("original", "cancelled"), ("cancelled", "stopped")), 1):
+                    release.unlink(missing_ok=True)
+                    finished.unlink(missing_ok=True)
+                    site.write_text(site.read_text().replace(previous, current))
+                    key = secrets.token_hex(16)
+                    accepted = request(route, token=token, expected=202, method="POST", key=key)
+                    operation = accepted["operationId"]
+                    receipt_route = f"{web}/operations/{operation}"
+                    wait_for(initial, lambda: witness.is_file() and witness.read_text().splitlines() == ["reload"] * count,
+                             "native reload dispatch")
+                    assert_served(current.encode())
+                    assert request(receipt_route, token=token)["state"].lower() == "running"
+                    if count == 1:
+                        cancelled = request(receipt_route + "/cancel", token=token, method="POST")
+                        assert cancelled["state"].lower() == "running"
+                        # The response barrier deliberately remains closed while the cancellation propagates.
+                        for _ in range(10):
+                            assert request(receipt_route, token=token)["state"].lower() == "running", "Receipt ended before systemd reload"
+                            assert not finished.exists()
+                            time.sleep(0.1)
+                        release.touch()
+                        wait_for(initial, finished.is_file, "native reload completion")
+                        wait_for(initial, lambda: request(receipt_route, token=token)["state"].lower() == "cancelled",
+                                 "original cancelled receipt")
+                        assert request(route, token=token, expected=202, method="POST", key=key)["operationId"] == operation
+                        print(f"PASS NGINX SYSTEMD CANCEL DRAIN: operation={operation}; original receipt after native completion")
+                    else:
+                        initial.terminate()
+                        wait_for(initial, lambda: not healthy(), "graceful shutdown")
+                        assert not finished.exists() and initial.poll() is None
+                        assert_served(b"stopped")
+                        release.touch()
+                        assert initial.wait(timeout=15) == 0 and finished.is_file()
+            with process([server], "drain-restarted-server") as restarted:
+                wait_for(restarted, healthy, "drain-restarted-server")
+                token = login()
+                replay = request(route, token=token, expected=202, method="POST", key=key)
+                assert replay["operationId"] == operation and replay["problemCode"] == "webserver.operation_interrupted"
+                assert_served(b"stopped")
+                assert int(nginx_pid_file.read_text()) == pid
+                assert witness.read_text().splitlines() == ["reload", "reload"]
+                print(f"PASS NGINX SYSTEMD SHUTDOWN DRAIN: operation={operation}; original receipt; no extra reload")
+
+    if mode == "--systemd-drain":
+        verify_drain()
+        return
+
     with process([*helper_args, helper_config], "initial-helper") as helper:
         wait_for(helper, helper_ready, "initial-helper")
         with process([server], "initial-server") as initial:
@@ -198,9 +261,7 @@ def run(root, server, helper_binary, production_helper):
 
 if __name__ == "__main__":
     arguments = sys.argv[1:]
-    systemd = arguments[-1:] == ["--systemd"]
-    if systemd:
-        arguments.pop()
+    mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain") else None
     if len(arguments) != 3:
-        raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [--systemd]")
-    run(*(Path(arg).resolve(strict=True) for arg in arguments), production_helper=systemd)
+        raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [--systemd|--systemd-drain]")
+    run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

@@ -61,8 +61,14 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
                 return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
             }
 
+            // A fixed Nginx service job can continue under systemd after the caller cancels.
+            // Once dispatched, its terminal frame must drain before the WebServer owner can finish.
+            var drainServiceAction = request.Operation == PrivilegedOperationKind.NginxSystemServiceAction;
+            if (drainServiceAction) cancellationToken.ThrowIfCancellationRequested();
             await PrivilegedHelperSocketFraming.WriteAsync(stream, JsonSerializer.SerializeToUtf8Bytes(request), CancellationToken.None);
-            using var responseTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var responseTimeout = drainServiceAction
+                ? new CancellationTokenSource()
+                : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             if (ResponseTimeout(request.Operation) is { } timeout) responseTimeout.CancelAfter(timeout);
             for (var count = 0; count < PrivilegedOperationFrame.MaximumFrames; count++)
             {

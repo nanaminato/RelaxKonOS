@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Accepts one JSON credential line through a private FIFO. No credential file is created.
 set -euo pipefail
-[[ $# == 2 && $EUID == 0 ]]
+[[ ( $# == 2 || $# == 3 ) && $EUID == 0 ]]
+mode=${3:---systemd}
+[[ $mode == --systemd || $mode == --systemd-drain ]]
 server=$(realpath -e -- "$1")
 helper=$(realpath -e -- "$2")
 script=$(realpath -e -- "$(dirname -- "$0")/run-authenticated-nginx-live.py")
@@ -41,7 +43,7 @@ set -euo pipefail
 exec > "$work/test.log" 2>&1
 trap 'echo \$? > "$work/result"' EXIT
 systemctl start nginx.service
-python3 "$script" "$work" "$server" "$helper" --systemd < "$work/credentials"
+python3 "$script" "$work" "$server" "$helper" "$mode" < "$work/credentials"
 systemctl is-active --quiet nginx.service
 systemctl stop nginx.service
 EOF

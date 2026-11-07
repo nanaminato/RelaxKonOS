@@ -1496,4 +1496,12 @@ Linux x64 Release 在私有网络、挂载和 PID 命名空间中等待实际 Mi
 
 仓内 `RelaxKonOS.Server.Tests/run-authenticated-nginx-systemd-live.sh` 启动专属 systemd 委派 cgroup，隔离挂载、PID、网络、systemd 单元、PAM 配置和状态。完整 Linux x64 Release Server 走真实 PAM 和生产 Helper Unix socket，调用固定 `nginx.service` 重载。专属单元执行实际 Nginx reload，并在重载后暂缓结束。客户端核验更新后的 HTTPS，生产 API 同时报告原操作 Running。强制终止 Server 和独立生产 Helper 后，原 Helper socket 不可达，原 Nginx master 仍以同一证书提供 HTTPS。释放专属 systemd 重载并重启两进程后，同键与原 ID 均返回 `53b6405f-7cda-41c0-9c46-0e9994f65df6` Failed / webserver.operation_interrupted。原 master PID 保持，实际 reload 一次，专属 cgroup 清理完成。宿主 Nginx、Docker 的服务 PID 和配置指纹一致。
 
-系统包路径日志为 .artifacts/mb05-auth-nginx-systemd-final.log，归档 SHA-256 为 1e837ca6a8a4fa02c1b967d37906ee05e183f5cac44a47dfcb102f714e091a19。原集成路径独立复测保留 `0ddd5092-68a4-476a-aad1-d6345f7c150d` 和一次重载，日志为 .artifacts/mb05-auth-nginx-integrated-final.log。系统包的自然停机和取消联合排空仍开放。源码复核发现 Unix socket 响应等待沿用调用方取消，而 Helper 已接收的 systemd 操作可继续执行。Helper 本地命令等待超时也未证明 systemd 作业结束。两者需区分并补实测。
+系统包路径日志为 .artifacts/mb05-auth-nginx-systemd-final.log，归档 SHA-256 为 1e837ca6a8a4fa02c1b967d37906ee05e183f5cac44a47dfcb102f714e091a19。原集成路径独立复测保留 `0ddd5092-68a4-476a-aad1-d6345f7c150d` 和一次重载，日志为 .artifacts/mb05-auth-nginx-integrated-final.log。系统包的自然停机和取消联合排空见下文。Helper 自身等待超时后的原 systemd 作业对账仍开放。
+
+### MB-05 已提交 Nginx systemd 作业的取消与停机排空
+
+Linux Unix socket 在 Nginx 固定服务动作提交前仍接受取消。帧提交后等待生产 Helper 的终态响应，原 WebServer 工作任务、实例锁与执行作用域继续持有责任。其余 Helper 操作沿用各自响应等待策略。原版在专属 systemd reload 尚未结束时已把原回执从 Running 推到终态，夹具明确失败。
+
+修复后，真实 reload 更新 HTTPS 后，客户端取消原 `45e7671c-86c1-4146-904c-11bca1078c13`，直到原 systemd 重载结束，回执仍 Running。释放原重载后，同键返回原 Cancelled。该回执记录管理操作取消，已生效的 Nginx 配置继续提供服务。第二次真实 reload `b6c2d4fd-6f01-45b0-97a5-caab66fecd0e` 期间发送 SIGTERM，监听关闭后 Server 仍等原作业结束才正常退出。重启同键返回原中断回执。两条路径合计两次实际 reload，原 master 和 HTTPS 持续，宿主服务指纹一致。Windows Release 模块里程碑通过。
+
+失败和修复日志分别为 .artifacts/mb05-auth-nginx-drain-before.log 和 .artifacts/mb05-auth-nginx-drain-final.log，修复归档 SHA-256 为 39b27952467315dc201df33627780b3ddf79bc9a316ae2ef52be5b9ba497251e。Helper 自身命令超时、传输丢失但 Server 仍存活时的原 systemd 作业对账保持开放。
