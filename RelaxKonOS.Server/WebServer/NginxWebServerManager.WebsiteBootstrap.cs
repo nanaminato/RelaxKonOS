@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text.Json;
 using RelaxKonOS.Protocol.WebServers;
 
 namespace RelaxKonOS.Server.WebServer;
@@ -106,6 +108,48 @@ internal sealed partial class NginxWebServerManager
     {
         var observed = await privilegedNginx.QueryReloadReceiptAsync(operationId, ct);
         return observed.Success && observed.NginxReloadReceipt is { Succeeded: true } receipt && receipt.OperationId == operationId;
+    }
+
+    internal async Task<bool> ReconcileWebsiteBindingAsync(WebServerDto instance, Guid publicationId, Guid bindingId,
+        WebServerSiteDto site, string configSha256, Action<bool> associate, CancellationToken ct)
+    {
+        var directory = GetSitesDirectory(instance);
+        if (!UsesSystemPackageNginx(instance) || directory is null || !SiteIdPattern().IsMatch(site.Id)
+            || site.Bindings is not [{ Port: 80 } binding] || !DomainPattern().IsMatch(binding.Domain)) return false;
+        await IntegrationGate.WaitAsync(ct);
+        try
+        {
+            if (!Directory.Exists(directory) || IsSymbolicLink(directory) || !await HasWebsiteBootstrapAnchorAsync(directory, ct)
+                || !await HasSuccessfulWebsiteReloadAsync(publicationId, ct) || !await HasSuccessfulWebsiteReloadAsync(bindingId, ct)
+                || !(await privilegedNginx.ConfirmServiceIdleAsync(ct)).Success || !await IsSystemdNginxActiveAsync(ct))
+                return false;
+
+            var config = Path.Combine(directory, site.Id + ".conf");
+            var backup = config + ".rollback";
+            if (!File.Exists(config) || IsSymbolicLink(config) || new FileInfo(backup).LinkTarget is not null
+                || Directory.Exists(backup) || !await MatchesWebsiteBindingDigestAsync(config, configSha256, ct)) return false;
+            var hasBackup = File.Exists(backup);
+            if (hasBackup && !await MatchesSiteConfigAsync(backup, RenderWebsiteBootstrap(publicationId, site.Id, binding.Domain), ct))
+                return false;
+
+            var sites = await ReadSitesAsync(instance, ct);
+            if (sites.Count == 0)
+            {
+                if (!hasBackup || !await WriteSitesAsync(directory, [site], ct)) return false;
+            }
+            else if (sites.Count != 1 || JsonSerializer.Serialize(sites[0], SiteJson) != JsonSerializer.Serialize(site, SiteJson))
+                return false;
+
+            associate(hasBackup);
+            return !hasBackup || await DeleteNginxFileAsync(backup, ct);
+        }
+        finally { IntegrationGate.Release(); }
+    }
+
+    private static async Task<bool> MatchesWebsiteBindingDigestAsync(string path, string expected, CancellationToken ct)
+    {
+        await using var file = File.OpenRead(path);
+        return file.Length <= 64 * 1024 && Convert.ToHexString(await SHA256.HashDataAsync(file, ct)) == expected;
     }
 
     private static async Task<bool> HasWebsiteBootstrapAnchorAsync(string directory, CancellationToken ct)

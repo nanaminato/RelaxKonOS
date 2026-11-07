@@ -1630,13 +1630,23 @@ Windows Release 模块里程碑回归通过，Docker 跨进程原 `8ce9da8e-6b46
 
 启动恢复保存原中断阶段。证书阶段中断、原证书操作已成功落盘、原应用仍为未关联的本地 IPv4 上游时，授权续接可以复用该证书。配置门禁内再次核验原路由字节、原锚点、原 Helper 重载成功及当前无原生作业，随后在原发布回执写入续接开始，再执行一次正式 TLS 绑定。原证书与发布 ID 保持，应用关联后持久化续接完成和验证检查。重复请求返回原回执。
 
-若续接启动后再次中断，原回执保留起始时间及未核验责任，拒绝第二次续接或清理，以免重放重载或删除可能已应用的站点。现有自动签发仍由原证书操作负责。缺少已持久化的原中断阶段、原证书成功证据或原配置时保留核验门禁。
+若续接启动后再次中断，原回执保留起始时间及未核验责任。后续有原生成功证据的绑定对账见下节。现有自动签发仍由原证书操作负责。缺少已持久化的原中断阶段、原证书成功证据或原配置时保留核验门禁。
 
 Linux Release 使用私有 systemd、Docker、Nginx、Pebble 和 DNS。测试中继在本地证书操作已经终态成功时暂缓交付实际 Helper 只读回执，此时终止 Server。原发布 `5dea1429-9724-4b2b-9bbb-31a330a2e6ad` 重启后仍返回 Interrupted。匿名及配置字节被改动的续接均被拒绝，且未持久化续接开始。恢复原配置后，授权续接使用原证书操作 `74bde98a-8f57-4ce5-8de3-258b14558cc8` 完成绑定，TLS 客户端收到实际 Docker 上游正文，原 Nginx master 继续服务旧 HTTPS。重复续接与原发布同键均返回同一回执，全程一次 CA 订单、一次签发和两次预期重载。
 
 同制品授权清理对照原发布 `43b10f0f-d394-4947-996f-1257f93c9840` 与清理 ID `fad5db52-5da3-4026-9cb8-71e9098ae32f` 通过。对应日志为 `.artifacts/mb05-bootstrap-resume--systemd-website-acme-bootstrap-resume.log` 与 `.artifacts/mb05-bootstrap-resume--systemd-website-acme-bootstrap.log`，归档 SHA-256 分别为 `8accb0476fa556326965474ea2efd9a82897766c7dc6b81a4f7f1beb47419fba` 和 `68c574ff87b456402ccf795b32835bf769a63e476c7a45d981fc81cdf747d63b`。Windows Release 模块里程碑回归通过，Docker 跨进程原 `74250f92-5ba4-4d5e-b5f0-539553f16539` 返回 Interrupted，副作用计数为一。
 
-二次中断最终复验原发布 `4021a173-ec05-40ed-b372-5e9076092baa`，原证书操作 `0ffcaa2d-266b-4410-999d-dfcd6734a43e`。续接已使真实 TLS 可达，原生重载仍在返回屏障内时再次终止 Server。重启后保持原回执、原证书和未核验责任，应用未关联。续接与清理均返回 409，原旧 TLS 和新 TLS 继续，仍为一次订单、一次签发、两次重载。初轮断连在夹具中打印预期的断管异常，收敛日志后复验通过。最终日志 `.artifacts/mb05-bootstrap-resume-final-interrupt.log`，归档 SHA-256 为 `2dc4e30151bb1a2654fa0d5258910aa615ef3b55ada6d3449b3a0b0389e09d84`。三轮专属 cgroup 清理，宿主共享服务和配置指纹一致。二次中断后的原绑定只读对账仍开放。
+二次中断最终复验原发布 `4021a173-ec05-40ed-b372-5e9076092baa`，原证书操作 `0ffcaa2d-266b-4410-999d-dfcd6734a43e`。续接已使真实 TLS 可达，原生重载仍在返回屏障内时再次终止 Server。重启后保持原回执、原证书和未核验责任，应用未关联。续接与清理均返回 409，原旧 TLS 和新 TLS 继续，仍为一次订单、一次签发、两次重载。初轮断连在夹具中打印预期的断管异常，收敛日志后复验通过。最终日志 `.artifacts/mb05-bootstrap-resume-final-interrupt.log`，归档 SHA-256 为 `2dc4e30151bb1a2654fa0d5258910aa615ef3b55ada6d3449b3a0b0389e09d84`。三轮专属 cgroup 清理，宿主共享服务和配置指纹一致。后续新增可核验的绑定证据见下节。
+
+### MB-05 首站续接绑定的原生回执对账
+
+授权续接在任何正式配置写入前，原子持久化独立 Helper 重载 ID、站点定义、正式配置 SHA-256 与证书指纹。续接使用该 ID 执行原生重载。失去终态时保留正式配置、原临时配置备份和原回执。再次授权续接只读取原生回执，核对站点定义、正式配置、证书指纹、原临时备份和当前上游。确认成功才补齐站点元数据及应用关联，并在二者持久化后移除匹配备份。备份已移除时必须已有匹配站点元数据和关联。原发布状态和原证书回执保持。
+
+Helper 无成功证据、现有配置不匹配或原证书及上游已变更时，保留待核验责任。该阶段只覆盖授权续接的正式 TLS 绑定，初次发布的正式绑定仍使用原流程。
+
+Linux Release 在既有隔离环境用真实 Pebble、Nginx 和 Docker 复验。原发布 `549a59f9-fd3a-4814-973f-b124aaa37005` 在续接绑定 `81b6c554-6b35-435b-8d1e-ac09c41ad24b` 已服务 TLS、Helper 尚未完成原生重载时二次终止 Server。重启后仍拒绝正在运行的原作业，且拒绝正式配置或原备份被改动的路径。原文件恢复一致后，按原绑定回执补写站点和应用关联并清理备份。重复续接和发布原键返回同一原回执，原证书操作 `305c1a55-5b24-4672-9028-9952c9d9a9c5` 保持。旧 TLS 与新 TLS 都从原 Nginx master 返回真实正文，全程一次 CA 订单、一次签发和两次预期重载。
+
+正常续接 `d5b1b454-8708-4a14-a135-c6b9575d8f50` 与清理对照 `9b51f6c7-d3b9-4554-b477-fe67a1a7d24a` 通过。日志为 `.artifacts/mb05-bootstrap-bind-reconcile--systemd-website-acme-bootstrap-resume-interrupt.log`、`.artifacts/mb05-bootstrap-bind-reconcile--systemd-website-acme-bootstrap-resume.log` 与 `.artifacts/mb05-bootstrap-bind-reconcile--systemd-website-acme-bootstrap.log`，归档 SHA-256 依次为 `b752f417b07621a16fdb91d459a6af556001cfd4302cde4d58a5ee379526d94c`、`d00afbe2adc4ebcc854bb83c115c5de10bdb5576571d24bdcb15b261bf9387dd` 和 `58faa3ce04f32455b1fb77feb6802c0ecb5b2fce47b165ef2c1459a860ac10eb`。三轮清理专属 cgroup，宿主 Nginx、Docker 和配置指纹一致。Windows Release 回归通过，Docker 跨进程原 `6a2602e1-01a7-40fd-be61-44d125f1ed31` 返回 Interrupted，副作用计数为一。首次构建因证书摘要类型误用失败，修正后通过。
 
 ### MB-05 网站 WebRoot 签发的取消与停机排空
 

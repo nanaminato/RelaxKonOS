@@ -56,7 +56,8 @@ public sealed record WebsitePublicationOperationDto(
     [property: JsonPropertyName("bootstrapCleanedAt")] DateTimeOffset? BootstrapCleanedAt = null,
     [property: JsonPropertyName("interruptedFromStage")] WebsitePublicationStage? InterruptedFromStage = null,
     [property: JsonPropertyName("bootstrapResumeStartedAt")] DateTimeOffset? BootstrapResumeStartedAt = null,
-    [property: JsonPropertyName("bootstrapResumedAt")] DateTimeOffset? BootstrapResumedAt = null);
+    [property: JsonPropertyName("bootstrapResumedAt")] DateTimeOffset? BootstrapResumedAt = null,
+    [property: JsonPropertyName("bootstrapBindingOperationId")] Guid? BootstrapBindingOperationId = null);
 
 public static class WebsitePublicationApiRoutes
 {

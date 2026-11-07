@@ -168,7 +168,7 @@ internal sealed class WebsitePublicationExecution(
         if (nginx is null || operation.State != WebsitePublicationState.Interrupted
             || operation.InterruptedFromStage != WebsitePublicationStage.Certificate
             || operation.RecoveryProblemCode != WebsitePublicationStore.SiteApplicationUnverified
-            || operation.BootstrapCleanupOperationId is not null || operation.BootstrapResumeStartedAt is not null
+            || operation.BootstrapCleanupOperationId is not null
             || operation.SiteId != $"app{operation.ApplicationId:N}"
             || operation.CertificateId is not { } certificateId || operation.CertificateOperationId is not { } issueId)
             throw new WebsitePublicationException("website.recheck_required");
@@ -180,20 +180,60 @@ internal sealed class WebsitePublicationExecution(
             || certificate.CertificateId != certificateId || certificate.OperationId != issueId)
             throw new WebsitePublicationException("website.recheck_required");
 
+        var material = await certificates.GetAsync(certificateId, ct);
+        var now = DateTimeOffset.UtcNow;
+        if (material is null || material.Status is not (CertificateStatus.Issued or CertificateStatus.Active)
+            || material.NotBefore is null || material.NotBefore > now || material.NotAfter is null || material.NotAfter <= now
+            || material.FingerprintSha256 is not { Length: > 0 } fingerprint
+            || !CertificateUsagePolicy.Covers(material.SubjectAlternativeNames, operation.Domain))
+            throw new WebsitePublicationException("website.recheck_required");
+
+        var plan = store.GetBootstrapBinding(operationId);
+        if (operation.BootstrapResumeStartedAt is not null && plan is null)
+            throw new WebsitePublicationException("website.recheck_required");
         var application = catalog.Find(operation.ApplicationId);
-        if (application is null || application.SiteId is not null || application.HostPort is not { } hostPort
+        if (application is null || application.HostPort is not { } hostPort
             || application.BindAddress != "127.0.0.1"
-            || catalog.ReadApplications().Any(item => item.SiteInstanceId == operation.WebServerId && item.SiteId == operation.SiteId)
+            || application.SiteId is not null && (plan is null || !HasOriginalAssociation(application, operation))
+            || catalog.ReadApplications().Any(item => item.Id != application.Id && HasOriginalAssociation(item, operation))
             || (await applications.SnapshotAsync(operation.ApplicationId, ct)).Application.ActualState != ApplicationActualState.Running)
             throw new WebsitePublicationException("website.recheck_required");
 
-        var site = await ApplySiteAsync(operation.WebServerId, operation.SiteId, application.Name, operation.Domain, hostPort,
-            certificateId, null, operationId, () => store.Update(operationId, current => current with
-            {
-                BootstrapResumeStartedAt = DateTimeOffset.UtcNow,
-            }), ct);
-        try { catalog.BindSite(application.Id, operation.WebServerId, site.Id, site.DomainsDisplay); }
-        catch (Exception error) when (error is ApplicationDeploymentException or IOException)
+        if (plan is null)
+        {
+            await ApplySiteAsync(operation.WebServerId, operation.SiteId, application.Name, operation.Domain, hostPort,
+                certificateId, null, operationId, null, ct,
+                (site, digest) => store.RecordBootstrapBinding(operationId, new(site, digest, fingerprint)));
+            operation = store.Get(operationId)!;
+            plan = store.GetBootstrapBinding(operationId)!;
+        }
+        if (plan.CertificateFingerprint != fingerprint
+            || plan.Site.Routes is not [{ Path: "/" } route] || route.Upstream != $"http://127.0.0.1:{hostPort}"
+            || operation.BootstrapBindingOperationId is not { } bindingId)
+            throw new WebsitePublicationException("website.recheck_required");
+
+        var instance = (await webServers.ListAsync(ct)).SingleOrDefault(item => item.Id == operation.WebServerId);
+        if (instance is null) throw new WebsitePublicationException("website.recheck_required");
+        try
+        {
+            if (!await nginx.ReconcileWebsiteBindingAsync(instance, operationId, bindingId, plan.Site, plan.ConfigurationSha256,
+                hasBackup => catalog.Update(application.Id, current =>
+                {
+                    if (current.HostPort != hostPort || current.BindAddress != "127.0.0.1"
+                        || catalog.ReadApplications().Any(item => item.Id != current.Id && HasOriginalAssociation(item, operation)))
+                        throw new WebsitePublicationException("website.recheck_required");
+                    if (HasOriginalAssociation(current, operation) && current.Domain == plan.Site.DomainsDisplay) return current;
+                    if (!hasBackup || current.SiteId is not null)
+                        throw new WebsitePublicationException("website.recheck_required");
+                    return current with
+                    {
+                        SiteInstanceId = operation.WebServerId, SiteId = plan.Site.Id, Domain = plan.Site.DomainsDisplay,
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    };
+                }), ct))
+                throw new WebsitePublicationException("website.recheck_required");
+        }
+        catch (Exception error) when (error is ApplicationDeploymentException or IOException or UnauthorizedAccessException)
         {
             logger.LogWarning(error, "Website bootstrap association remains unconfirmed. OperationId={OperationId}", operationId);
             throw new WebsitePublicationException("website.recheck_required");
@@ -207,8 +247,12 @@ internal sealed class WebsitePublicationExecution(
         });
     }
 
+    private static bool HasOriginalAssociation(ApplicationRecord application, WebsitePublicationOperationDto operation)
+        => application.SiteInstanceId == operation.WebServerId && application.SiteId == operation.SiteId;
+
     private async Task<WebServerSiteDto> ApplySiteAsync(string serverId, string siteId, string name, string domain, int hostPort,
-        Guid certificateId, DateTimeOffset? expectedUpdatedAt, Guid? bootstrapId, Action recordBinding, CancellationToken ct)
+        Guid certificateId, DateTimeOffset? expectedUpdatedAt, Guid? bootstrapId, Action? recordBinding, CancellationToken ct,
+        Func<WebServerSiteDto, string, Guid>? recordTrackedBinding = null)
     {
         var request = new UpsertWebServerSiteRequest(siteId, name, [new WebServerSiteBindingDto(domain, 80)], null, false, false,
             [new WebServerProxyRouteDto("/", $"http://127.0.0.1:{hostPort}")], certificateId, true, true, false,
@@ -216,7 +260,7 @@ internal sealed class WebsitePublicationExecution(
         try
         {
             return (bootstrapId.HasValue
-                ? await nginx!.UpsertSiteAsync(serverId, request, bootstrapId, ct, recordBinding)
+                ? await nginx!.UpsertSiteAsync(serverId, request, bootstrapId, ct, recordBinding, recordTrackedBinding)
                 : await webServers.UpsertSiteAsync(serverId, request, ct))
                 ?? throw new WebsitePublicationException("website.site_apply_failed");
         }

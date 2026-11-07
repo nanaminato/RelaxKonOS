@@ -1741,7 +1741,9 @@ Linux 系统包重载的原回执保存在 Server。原终态持久化后，Help
 
 具备应用部署管理权限和目标 Nginx 配置权限的操作者，可向原发布发送 `POST /api/v1.0/website-publications/operations/{operationId}/cleanup-bootstrap`。清理须确认原生重载结果、原文件内容和证书任务已结束。原回执追加 `bootstrapCleanupOperationId` 与 `bootstrapCleanedAt`。清理请求或 Server 中断时，再次提交同一路径接续同一清理，原发布状态保持。已确认的 CA 验证拒绝在挑战清理后走同一流程。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站临时路由的授权清理)。
 
-同等授权下，`POST /api/v1.0/website-publications/operations/{operationId}/resume-bootstrap` 可用本地已成功落盘的原证书完成 TLS 绑定。原中断阶段必须为证书阶段，当前应用和临时路由须通过核验。原回执保留中断状态，并记录 `bootstrapResumeStartedAt` 与 `bootstrapResumedAt`。已完成续接的重复请求读取原回执。在新的绑定写入期间再次中断时，保留配置、证书和待核验责任，续接与清理请求返回 `website.recheck_required`。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站授权续接原证书)。
+同等授权下，`POST /api/v1.0/website-publications/operations/{operationId}/resume-bootstrap` 可用本地已成功落盘的原证书完成 TLS 绑定。原中断阶段必须为证书阶段，当前应用和临时路由须通过核验。原回执保留中断状态，并记录 `bootstrapResumeStartedAt`、`bootstrapBindingOperationId` 与 `bootstrapResumedAt`。已完成续接的重复请求读取原回执。
+
+绑定期间再次中断时，再次提交续接会核对原绑定 ID 的 Helper 成功回执、正式配置摘要、原证书指纹、应用上游和原备份。证据匹配时只补写站点与应用关联并清理备份，原生重载和 CA 请求无新增。缺少证据或内容已变更时返回 `website.recheck_required`，保留原配置和回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站续接绑定的原生回执对账)。
 
 发布进行期间，同一应用或同一 Nginx 实例内的同一域名只允许一个发布操作。不同应用尝试同时发布到该域名会收到 `409 / website.operation_conflict`。原请求使用同一个幂等键仍可读取原回执。
 

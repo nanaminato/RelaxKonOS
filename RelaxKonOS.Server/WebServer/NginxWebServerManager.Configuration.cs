@@ -20,7 +20,7 @@ namespace RelaxKonOS.Server.WebServer;
 internal sealed partial class NginxWebServerManager
 {
     private async Task<string?> WriteSiteConfigurationAsync(WebServerDto instance, WebServerSiteDto site, CancellationToken cancellationToken,
-        WebServerSiteDto? previousSite = null)
+        WebServerSiteDto? previousSite = null, Func<WebServerSiteDto, string, Guid>? recordTrackedBinding = null)
     {
         var directory = GetSitesDirectory(instance);
         if (directory is null) return "webserver.site_save_failed";
@@ -48,7 +48,9 @@ internal sealed partial class NginxWebServerManager
         var reuseBackup = File.Exists(backup);
         if (reuseBackup && !await CanReplaceWebRootBackupAsync(instance, previousSite, config, backup, acmeChallengeRoot, cancellationToken))
             return "webserver.site_save_failed";
-        if (!await WriteNginxFileAsync(stage, RenderSiteConfiguration(site, certificatePaths, acmeChallengeRoot), cancellationToken))
+        var configuration = RenderSiteConfiguration(site, certificatePaths, acmeChallengeRoot);
+        var reloadId = recordTrackedBinding?.Invoke(site, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(configuration))));
+        if (!await WriteNginxFileAsync(stage, configuration, cancellationToken))
             return "webserver.site_save_failed";
         var hadExisting = File.Exists(config);
         try
@@ -57,6 +59,8 @@ internal sealed partial class NginxWebServerManager
             if (testProblem is not null) return testProblem;
             if (hadExisting && !await MoveNginxFileAsync(config, backup, overwrite: reuseBackup, cancellationToken)) return "webserver.site_save_failed";
             if (!await MoveNginxFileAsync(stage, config, overwrite: false, cancellationToken)) return "webserver.site_save_failed";
+            if (reloadId is { } tracked)
+                return await ReloadTrackedWebsiteBindingAsync(instance, tracked, cancellationToken);
             var reloadProblem = await ReloadAfterTestAsync(instance, cancellationToken);
             if (reloadProblem is null)
             {
@@ -71,8 +75,18 @@ internal sealed partial class NginxWebServerManager
         finally
         {
             if (File.Exists(stage)) _ = await DeleteNginxFileAsync(stage, CancellationToken.None);
-            if (File.Exists(backup) && !File.Exists(config)) _ = await MoveNginxFileAsync(backup, config, overwrite: false, CancellationToken.None);
+            if (reloadId is null && File.Exists(backup) && !File.Exists(config))
+                _ = await MoveNginxFileAsync(backup, config, overwrite: false, CancellationToken.None);
         }
+    }
+
+    private async Task<string?> ReloadTrackedWebsiteBindingAsync(WebServerDto instance, Guid id, CancellationToken ct)
+    {
+        var problem = await TestConfigurationAsync(instance, ct);
+        if (problem is not null) return problem;
+        var result = await RunTrackedReloadAsync(id, ct);
+        return result.Success && result.NginxReloadReceipt is { Succeeded: true } receipt && receipt.OperationId == id
+            ? null : WebServerOperationStore.NativeRecoveryRequired;
     }
 
     private Task<(string FullChainPath, string PrivateKeyPath)?> ResolveSiteCertificatePathsAsync(WebServerSiteDto site, CancellationToken ct)

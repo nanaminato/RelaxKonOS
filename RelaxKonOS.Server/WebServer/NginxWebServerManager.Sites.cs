@@ -30,7 +30,8 @@ internal sealed partial class NginxWebServerManager
         UpsertSiteAsync(instanceId, request, null, cancellationToken);
 
     internal async Task<WebServerSiteDto?> UpsertSiteAsync(string instanceId, UpsertWebServerSiteRequest request,
-        Guid? bootstrapOperationId, CancellationToken cancellationToken, Action? recordBootstrapBinding = null)
+        Guid? bootstrapOperationId, CancellationToken cancellationToken, Action? recordBootstrapBinding = null,
+        Func<WebServerSiteDto, string, Guid>? recordTrackedBinding = null)
     {
         var instance = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
         if (instance is null)
@@ -117,12 +118,13 @@ internal sealed partial class NginxWebServerManager
                 cancellationToken.ThrowIfCancellationRequested();
                 recordBootstrapBinding?.Invoke();
             }
-            var applyProblem = await WriteSiteConfigurationAsync(instance, site, cancellationToken, index >= 0 ? sites[index] : null);
+            var applyProblem = await WriteSiteConfigurationAsync(instance, site, cancellationToken, index >= 0 ? sites[index] : null, recordTrackedBinding);
             if (applyProblem is not null)
             {
                 logger.LogWarning("Nginx site save failed before metadata was committed. InstanceId={InstanceId}, SiteId={SiteId}, Problem={Problem}, SitesDirectory={SitesDirectory}", instance.Id, site.Id, applyProblem, directory);
                 throw new WebServerSiteApplyException(applyProblem);
             }
+            if (recordTrackedBinding is not null) return site; // The receipt-backed reconciliation owns metadata and backup retirement.
             if (index >= 0) sites[index] = site; else sites.Add(site);
             if (!await WriteSitesAsync(directory, sites, cancellationToken))
                 throw new WebServerSiteApplyException("webserver.site_save_failed");

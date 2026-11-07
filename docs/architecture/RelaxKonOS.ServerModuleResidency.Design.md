@@ -405,7 +405,7 @@ MB-05 网站自动签发经既有 Nginx WebRoot 实测。证书 owner 在挑战�
 
 首站临时路由清理在原 WebServer 工作租约内等待实际重载、备份清理和终态持久化。中断后保留原发布及独立清理 ID，重试按原 Helper 证据接续。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站临时路由的授权清理)。
 
-首站授权续接在原 WebServer 工作租约内复用本地已完成的原证书操作，排空实际绑定、应用关联和回执提交。续接中断时继续保有未核验责任。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站授权续接原证书)。
+首站授权续接在原 WebServer 工作租约内复用本地已完成的原证书操作，排空实际绑定、应用关联和回执提交。续接中断时继续保有未核验责任，按原 Helper 成功回执和匹配文件完成对账。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站续接绑定的原生回执对账)。
 
 MB-05 完整 Linux Server 的网站 WebRoot 签发通过认证取消和 SIGTERM 排空。实际 CA 响应和挑战清理结束前，原证书任务保有责任。已取消的原证书回执保留已知订单供只读对账。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站-webroot-签发的取消与停机排空)。
 

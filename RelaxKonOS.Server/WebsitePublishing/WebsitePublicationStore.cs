@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Protocol.WebsitePublishing;
 
 namespace RelaxKonOS.Server.WebsitePublishing;
@@ -27,7 +28,9 @@ internal sealed class WebsitePublicationStore
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    internal sealed record Entry(WebsitePublicationOperationDto Operation, string ActorReference, string IdempotencyReference, string RequestReference);
+    internal sealed record BootstrapBinding(WebServerSiteDto Site, string ConfigurationSha256, string CertificateFingerprint);
+    internal sealed record Entry(WebsitePublicationOperationDto Operation, string ActorReference, string IdempotencyReference,
+        string RequestReference, BootstrapBinding? Binding = null);
 
     public WebsitePublicationStore(IHostEnvironment environment)
     {
@@ -79,6 +82,32 @@ internal sealed class WebsitePublicationStore
     public WebsitePublicationOperationDto? Get(Guid operationId)
     {
         lock (gate) { EnsureAvailable(); return entries.GetValueOrDefault(operationId)?.Operation; }
+    }
+
+    internal BootstrapBinding? GetBootstrapBinding(Guid operationId)
+    {
+        lock (gate) { EnsureAvailable(); return entries.GetValueOrDefault(operationId)?.Binding; }
+    }
+
+    internal Guid RecordBootstrapBinding(Guid operationId, BootstrapBinding binding)
+    {
+        lock (gate)
+        {
+            EnsureAvailable();
+            var before = entries.GetValueOrDefault(operationId) ?? throw new WebsitePublicationException("website.operation_not_found", 404);
+            if (before.Binding is not null || before.Operation.BootstrapResumeStartedAt is not null)
+                throw new WebsitePublicationException("website.recheck_required");
+            var id = Guid.NewGuid();
+            var updated = before with
+            {
+                Operation = before.Operation with { BootstrapBindingOperationId = id, BootstrapResumeStartedAt = DateTimeOffset.UtcNow },
+                Binding = binding,
+            };
+            if (!Valid(updated)) throw new WebsitePublicationException("website.operation_store_unavailable", 503);
+            entries[operationId] = updated;
+            Commit();
+            return id;
+        }
     }
 
     public IReadOnlyList<WebsitePublicationOperationDto> History(Guid applicationId, int maximum)
@@ -193,6 +222,13 @@ internal sealed class WebsitePublicationStore
         && (operation.BootstrapCleanedAt is null || operation.BootstrapCleanupOperationId is not null)
         && (operation.InterruptedFromStage is null || Enum.IsDefined(operation.InterruptedFromStage.Value))
         && (operation.BootstrapResumedAt is null || operation.BootstrapResumeStartedAt is not null)
+        && (entry.Binding is null ? operation.BootstrapBindingOperationId is null
+            : operation.BootstrapBindingOperationId is { } id && id != Guid.Empty && id != operation.OperationId
+                && operation.BootstrapResumeStartedAt is not null && entry.Binding.ConfigurationSha256.Length == 64
+                && !string.IsNullOrEmpty(entry.Binding.CertificateFingerprint)
+                && entry.Binding.Site is { HttpsEnabled: true, AcmeHttp01: true } site
+                && site.Id == operation.SiteId && site.ServerId == operation.WebServerId && site.CertificateId == operation.CertificateId
+                && site.Bindings is [{ Port: 80 } binding] && binding.Domain == operation.Domain)
         && Enum.IsDefined(operation.State) && Enum.IsDefined(operation.Stage) && operation.CreatedAt != default
         && operation.Checks is not null && operation.Checks.Count <= 8
         && operation.Checks.All(check => !string.IsNullOrWhiteSpace(check.Name) && check.Name.Length <= 32 && check.Observer.Length <= 32 && Enum.IsDefined(check.State))

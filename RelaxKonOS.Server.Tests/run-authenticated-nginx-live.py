@@ -468,6 +468,7 @@ def run(root, server, helper_binary, mode):
                             resumed = request(resume_route, token=token, method="POST")
                             assert resumed["operationId"] == operation_id and resumed["state"] == receipt["state"]
                             assert resumed["bootstrapResumeStartedAt"] and resumed["bootstrapResumedAt"] and not resumed["recoveryProblemCode"]
+                            assert resumed["bootstrapBindingOperationId"] != operation_id
                             assert resumed["certificateId"] == issued["certificateId"] and resumed["certificateOperationId"] == issued["operationId"]
                             assert resumed == request(resume_route, token=token, method="POST")
                             assert resumed == request(publications, token=token, payload=payload, key=key, expected=202)
@@ -495,12 +496,15 @@ def run(root, server, helper_binary, mode):
                         wait_for(restarted, published_body, "resumed TLS served before native reload response")
                         pending = request(operation_route, token=token)
                         assert pending["bootstrapResumeStartedAt"] and not pending["bootstrapResumedAt"]
+                        binding_id = pending["bootstrapBindingOperationId"]
+                        assert binding_id and binding_id != operation_id
+                        backup = site_file.with_suffix(".conf.rollback")
+                        assert backup.read_bytes() == bootstrap and not request(f"{web}/{matches[0]['id']}/sites", token=token)
                         assert not finished.exists() and not request(app_route, token=token)["application"]["siteId"]
                         restarted.kill()
                         assert restarted.wait(timeout=10) < 0
                         client_thread.join(timeout=10)
                         assert not client_thread.is_alive()
-                        release.touch()
                     with process([server], "bootstrap-resume-unknown-server") as recovered:
                         wait_for(recovered, healthy, "bootstrap-resume-unknown-server")
                         token = login()
@@ -511,10 +515,33 @@ def run(root, server, helper_binary, mode):
                         assert pending == request(publications, token=token, payload=payload, key=key, expected=202)
                         assert not request(app_route, token=token)["application"]["siteId"]
                         assert witness.read_text().splitlines() == ["reload", "reload"] and nginx_pid_file.read_text() == master
+                        assert not finished.exists() and backup.read_bytes() == bootstrap
+                        release.touch()
+                        wait_for(helper, lambda: direct_helper_request("NginxReloadReceipt", binding_id)["success"],
+                                 "original tracked TLS binding reload receipt")
+                        final_config = site_file.read_bytes()
+                        for path, original_bytes in ((site_file, final_config), (backup, bootstrap)):
+                            edited = original_bytes + b"# external edit\n"
+                            path.write_bytes(edited)
+                            try:
+                                request(resume_route, token=token, method="POST", expected=409, expected_problem="website.recheck_required")
+                                assert path.read_bytes() == edited and request(operation_route, token=token) == pending
+                            finally:
+                                path.write_bytes(original_bytes)
+                        resumed = request(resume_route, token=token, method="POST")
+                        assert resumed["operationId"] == operation_id and resumed["state"] == receipt["state"]
+                        assert resumed["bootstrapBindingOperationId"] == binding_id and resumed["bootstrapResumedAt"]
+                        assert not resumed["recoveryProblemCode"] and resumed["certificateOperationId"] == issued["operationId"]
+                        assert resumed == request(resume_route, token=token, method="POST")
+                        assert resumed == request(publications, token=token, payload=payload, key=key, expected=202)
+                        assert request(app_route, token=token)["application"]["siteId"] == active["siteId"]
+                        site, = request(f"{web}/{matches[0]['id']}/sites", token=token)
+                        assert site["certificateId"] == issued["certificateId"] and not backup.exists()
+                        assert site_file.read_bytes() == final_config and witness.read_text().splitlines() == ["reload", "reload"]
                         assert_ca_once()
                         assert_served(b"original")
-                        wait_for(recovered, published_body, "unconfirmed resume preserves external TLS")
-                        print(f"PASS WEBSITE BOOTSTRAP RESUME INTERRUPTED: operation={operation_id}; certificate={issued['operationId']}; original receipt, TLS and no replay")
+                        wait_for(recovered, published_body, "reconciled binding preserves external TLS")
+                        print(f"PASS WEBSITE BOOTSTRAP BINDING RECONCILED: operation={operation_id}; binding={binding_id}; certificate={issued['operationId']}; original receipt, TLS and no replay")
                     return
                 if bootstrap_failure:
                     wait_for(initial, lambda: request(operation_route, token=token)["state"].lower() == "failed",
