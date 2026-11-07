@@ -1850,3 +1850,13 @@ PSS 为 Server PID 的 MiB 值。峰值增量为请求窗口采样峰值减去�
 候选的闲置 PSS 在三对中低 0.19–4.99 MiB，峰值增量低 0.26–1.73 MiB。差值波动较大，延迟未一致改善。采样范围限管理 Server PID，Helper、Mihomo 和客户端均不计入。未强制 GC。该结果只描述隔离负载，Proxy 整体继续 resident，生产环境与动态休眠未验收。下一项沿概览与详情 HTTP 的请求边界验证从控制器读取到响应、请求清理的工作责任，再考虑扩大可回收执行范围。
 
 基线源码为 `26b050cd`，候选为 `11daf211`。使用各次提交前已发布的测试制品，程序集信息版本分别记录其父提交。Server DLL SHA-256 分别为 `12c8fc0a827f94acad0b3604b576d2f60aee8f8a96fd98ccdce514091803ae0b` 和 `558124c4171f8bcc1a7d683b896cea1f8045fc4dbf7fff46b117e6a2a7d38bea`。原始样本见 `.artifacts/mb04-managed-overview-paired-live.log`，归档 SHA-256 为 `16947bfd658254594498e8b50fb09bd8f6c2fee05818ac2f95254d2857023d1d`，配对摘要为 `.artifacts/mb04-managed-overview-paired-summary.json`。Windows Release 注册 24 项和模块边界回归通过，Docker 跨进程夹具按原 ID `e693812c-5443-4fd4-808b-0175a930a748` 返回 Interrupted，副作用计数为一。
+
+### MB-04 Mihomo 概览和连接详情的 HTTP 工作责任
+
+两个认证 GET 在解析读取服务前从原驻留协调器取得工作租约，按请求及宿主停止信号取消控制器操作。租约覆盖实际读取、响应写入及完成和独立读取作用域的异步释放。客户端断开只发出取消信号，清理确认后归还租约；清理失败保留租约并让原协调器记录恢复阻塞。只读查询没有待提交的操作台账，Core 继续负责系统代理、TUN、授权到期和发布恢复。
+
+Windows Release 使用实际 Kestrel 和驻留协调器。可控控制器传输分别挂起读取和响应启动，断线后等待实际任务结束及异步 scope 释放。匿名请求未创建读取图。另注入清理失败，检查原工作计数和恢复阻塞仍在。模块边界同批通过，MB-05 跨进程夹具按原 ID `b8a51393-3f2a-4f61-98fd-720208df2137` 返回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-observation-lease-final-win.log`。
+
+Linux 私有 systemd 下，完整 PAM/JWT Server 经回环中继读取真实 Mihomo。中继收到包含原活跃连接 ID 的原生详情后暂缓响应，模块目录显示一份活动租约。客户端实际断线后，中继观察到控制器请求取消，模块目录最终回到零。认证重读仍观察到同一连接和运行 PID，发布修订一致，原连接完成真实转发。同批概览、Server 重启及解析代次卸载与唤醒通过。受控响应写入与异步清理故障由 Windows 专项单独验证。
+
+原入站发布 `0ea3e69f-92f3-46ee-a796-bb21744e3bf3`、补偿 `3a661d97-e365-4279-b762-1f6b70f1a998`、授权到期 `736faad2-3208-4e6f-9ee7-5b513e987a3e` 和 TUN 恢复 `f902de54-8e11-4401-819e-77a682262402` 同批通过。专属 cgroup 清理完成，宿主共享服务及代理文件指纹一致。日志为 `.artifacts/mb04-observation-lease-final-live.log`，归档 SHA-256 为 `7fe39a883b528bb9ae030c9bf7a1a8bdfef6c61744c67a9aadb08512f836f52c`。Windows Core 安全及控制器专项也通过。本轮未扩大可回收代码范围，Proxy 保持 resident，整模块动态休眠及生产 PSS 仍开放。

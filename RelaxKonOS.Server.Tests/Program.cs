@@ -135,6 +135,7 @@ if (args.Contains("--module-boundary-milestones-only"))
     {
         await ResidentModuleCatalogChecks.RunAsync();
         await DirectHttpChallengeLifetimeChecks.RunAsync();
+        await ProxyObservationLeaseChecks.RunAsync();
         await ModuleBackgroundOwnershipChecks.RunAsync(milestoneRoot);
         await TerminalStreamFramesChecks.RunAsync();
         if (OperatingSystem.IsLinux()) await TerminalControlInputChecks.RunAsync();

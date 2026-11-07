@@ -450,3 +450,5 @@ Linux 完整认证 Server 已验证同一进程中的解析代次闲时卸载与
 Mihomo 概览直接使用请求作用域内的控制器。隔离 Linux 实测确认一次概览只探测一次 `/version`、读取一次 Core 恢复状态，独立运行时读取继续在原门禁内即时探测。完整认证 HTTP 联验通过，Proxy 整体继续 resident，生产 PSS 尚未测量。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览的单次观测)。
 
 MB-04 真实受管 Mihomo 的 512 连接配对复测覆盖完整认证 Server 及 35 秒闲置窗口。候选 Server PID 的闲置 PSS 在三对中低 0.19–4.99 MiB，延迟未一致改善。结果用于定位隔离负载，生产驻留与 Proxy 整体休眠继续开放。见[配对测量](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-受管-mihomo-概览的配对驻留测量)。
+
+Mihomo 概览和连接详情的原模块工作租约覆盖控制器 Task、HTTP 响应和读取作用域的异步清理。清理失败时租约保留，协调器报告恢复阻塞。Proxy 整体仍 resident，连接解析器的闲时释放继续由自身执行门禁控制。见[HTTP 工作责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览和连接详情的-http-工作责任)。

@@ -3,6 +3,7 @@ using System.Security.Claims;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Proxy;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -11,7 +12,7 @@ public static class ProxyEndpoints
 {
     public static IEndpointRouteBuilder MapProxyEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(ProxyApiRoutes.Overview, (ProxyOverviewService service, CancellationToken ct) => service.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapProxyObservationEndpoints();
         app.MapGet(ProxyApiRoutes.Runtime, (IProxyRuntimeManager runtime, CancellationToken ct) => runtime.GetAsync("mihomo", ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Settings, (IProxySettingsReader settings, CancellationToken ct) => settings.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapPut(ProxyApiRoutes.Settings, async (UpdateProxySettingsRequest request, IProxySettingsWriter settings, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
@@ -125,11 +126,6 @@ public static class ProxyEndpoints
             await audit.RecordAsync(Actor(context.User), "group.proxy.delay", string.IsNullOrEmpty(delay.ProblemCode) ? "succeeded" : "failed", delay.ProblemCode, ct);
             return string.IsNullOrEmpty(delay.ProblemCode) ? Results.Ok(delay) : Problem(delay.ProblemCode, StatusCodes.Status400BadRequest);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.Connections, async (IProxyEngineRegistry engines, CancellationToken ct) =>
-        {
-            try { return Results.Ok(await engines.Find("mihomo")!.GetConnectionsAsync(ct)); }
-            catch (ProxyObservationException error) { return Problem(error.ProblemCode, StatusCodes.Status503ServiceUnavailable); }
-        }).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Traffic, (IProxyEngineRegistry engines, CancellationToken ct) => engines.Find("mihomo")!.GetTrafficAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapDelete(Route(ProxyApiRoutes.ConnectionPattern), async (string connectionId, IProxyEngineRegistry engines, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
         {
@@ -140,6 +136,53 @@ public static class ProxyEndpoints
         app.MapGet(ProxyApiRoutes.Dns, (IProxyEngineRegistry engines, CancellationToken ct) => engines.Find("mihomo")!.GetDnsStatusAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(Route(ProxyApiRoutes.OperationsPattern), (Guid operationId, ProxyOperationStore operations, CancellationToken ct) => operations.GetAsync(operationId, ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         return app;
+    }
+
+    internal static void MapProxyObservationEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapGet(ProxyApiRoutes.Overview, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases,
+            static async (services, ct) => Results.Ok(await services.GetRequiredService<ProxyOverviewService>().GetAsync(ct))))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyOverviewDto>();
+        app.MapGet(ProxyApiRoutes.Connections, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases, static async (services, ct) =>
+        {
+            var engines = services.GetRequiredService<IProxyEngineRegistry>();
+            try { return Results.Ok(await engines.Find("mihomo")!.GetConnectionsAsync(ct)); }
+            catch (ProxyObservationException error) { return Problem(error.ProblemCode, StatusCodes.Status503ServiceUnavailable); }
+        })).RequireAuthorization("ProxyRead").WithTags("Proxy");
+    }
+
+    private static async Task ExecuteObservationAsync(HttpContext context, IResidentModuleWorkLeaseSource leases,
+        Func<IServiceProvider, CancellationToken, Task<IResult>> observe)
+    {
+        var request = context.RequestAborted;
+        var lease = await leases.AcquireAsync(ServerModules.ProxyId, request);
+        var cleanupFailed = false;
+        try
+        {
+            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(request, lease.Stopping);
+            stopping.Token.ThrowIfCancellationRequested();
+            var scope = context.RequestServices.CreateAsyncScope();
+            context.RequestAborted = stopping.Token;
+            try
+            {
+                var result = await observe(scope.ServiceProvider, stopping.Token);
+                stopping.Token.ThrowIfCancellationRequested();
+                await result.ExecuteAsync(context);
+                await context.Response.CompleteAsync();
+            }
+            finally
+            {
+                context.RequestAborted = request;
+                try { await scope.DisposeAsync(); }
+                catch
+                {
+                    cleanupFailed = true;
+                    lease.RequireRecovery();
+                    throw;
+                }
+            }
+        }
+        finally { if (!cleanupFailed) lease.Dispose(); }
     }
 
     private static async Task<IResult> QueueValueAsync(HttpContext context,

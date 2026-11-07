@@ -5,6 +5,13 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading.Channels;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Certificates;
@@ -103,8 +110,85 @@ internal static class ProxyAuthenticatedPublicationChecks
         finally { await StopAsync(restarted); }
         await VerifyInFlightAsync(root, assembly, socket, host, traffic, retained, added, login, nativeState, stopHelper, restartHelper);
         await VerifyMihomoOverviewRestartAsync(root, assembly, socket, login, nativeState, guard);
+        await VerifyMihomoObservationCancellationAsync(root, assembly, socket, login, nativeState, guard);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
             await ProxyConnectionBenchmark.RunAsync(root, socket, baseline, assembly, login, guard, nativeState);
+    }
+
+    private static async Task VerifyMihomoObservationCancellationAsync(string root, string assembly, string socket, LoginRequest login,
+        Func<RuntimeArchiveState> nativeState, ProxySystemdGuardProbe guard)
+    {
+        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
+        start.Environment["Modules__Proxy__Enabled"] = "true";
+        start.Environment["Identity__LinuxPamTransport"] = "helper";
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var relay = builder.Build();
+        using var upstream = new HttpClient(new SocketsHttpHandler { UseProxy = false })
+            { BaseAddress = new Uri("http://127.0.0.1:9090/") };
+        var responseReady = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var outboundCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var holdFirst = 1;
+        relay.MapGet("/{**path}", async (HttpContext context) =>
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, context.Request.Path + context.Request.QueryString);
+            request.Headers.TryAddWithoutValidation("Authorization", context.Request.Headers.Authorization.ToArray());
+            using var response = await upstream.SendAsync(request, context.RequestAborted);
+            var body = await response.Content.ReadAsByteArrayAsync(context.RequestAborted);
+            if (context.Request.Path == "/connections" && response.IsSuccessStatusCode && Interlocked.Exchange(ref holdFirst, 0) == 1)
+            {
+                using var registration = context.RequestAborted.Register(() => outboundCancelled.TrySetResult());
+                responseReady.TrySetResult(body);
+                await outboundCancelled.Task;
+                return;
+            }
+            context.Response.StatusCode = (int)response.StatusCode;
+            context.Response.ContentType = "application/json";
+            await context.Response.Body.WriteAsync(body, context.RequestAborted);
+        });
+        await relay.StartAsync();
+        start.Environment["Proxy__Mihomo__Controller__Endpoint"] =
+            relay.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single() + "/";
+        var revision = nativeState().Installation.StateRevision;
+        var pid = guard.RuntimePid;
+        await guard.VerifyTrafficAsync(async (port, ct) =>
+        {
+            using var server = Start(start);
+            try
+            {
+                using var client = await ConnectAsync(server, login, ct);
+                using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                var pending = client.GetAsync(ProxyApiRoutes.Connections, caller.Token);
+                var snapshot = await responseReady.Task.WaitAsync(ct);
+                var destination = $"93.184.216.34:{port}";
+                using var native = JsonDocument.Parse(snapshot);
+                var original = native.RootElement.GetProperty("connections").EnumerateArray().Single(connection =>
+                    connection.GetProperty("metadata").GetProperty("destinationPort").ToString() == port.ToString()).GetProperty("id").GetString();
+                if (await ReadLeasesAsync() != 1)
+                    throw new InvalidOperationException("The real controller response was held without a Proxy work lease.");
+                caller.Cancel();
+                try { using var unexpected = await pending; throw new InvalidOperationException("Expected client cancellation."); }
+                catch (OperationCanceledException) when (caller.IsCancellationRequested) { }
+                await outboundCancelled.Task.WaitAsync(ct);
+                while (await ReadLeasesAsync() != 0) await Task.Delay(25, ct);
+                var connections = await client.GetFromJsonAsync<ProxyConnectionDto[]>(ProxyApiRoutes.Connections, RelaxKonOSJsonOptions.Default, ct);
+                if (connections?.SingleOrDefault(item => item.Destination == destination)?.Id != original
+                    || guard.RuntimePid != pid || nativeState().Installation.StateRevision != revision)
+                    throw new InvalidOperationException("Cancelling an observation changed the original connection or native authority.");
+                Console.WriteLine("PASS AUTHENTICATED MIHOMO OBSERVATION CANCELLATION: real controller, active work lease, original connection and publication");
+
+                async Task<int> ReadLeasesAsync()
+                {
+                    var module = await client.GetFromJsonAsync<ServerModuleDto>(
+                        ServerModuleManagementRoutes.Detail.Replace("{moduleId}", "relaxkonos.proxy", StringComparison.Ordinal),
+                        RelaxKonOSJsonOptions.Default, ct);
+                    return module?.Residency?.ActiveLeases
+                        ?? throw new InvalidOperationException("Proxy residency did not expose its work count.");
+                }
+            }
+            finally { await StopAsync(server); }
+        });
     }
 
     private static async Task VerifyMihomoOverviewRestartAsync(string root, string assembly, string socket, LoginRequest login,
