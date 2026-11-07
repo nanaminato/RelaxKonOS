@@ -78,12 +78,9 @@ internal static class ManagedServiceChecks
 
             await using var socket = executable is not null && OperatingSystem.IsLinux()
                 ? OpenSocket(root, states, host, natives) : null;
-            var transport = socket is null ? null : new UnixSocketPrivilegedOperationTransport(
-                new PrivilegedHelperOptions { SocketPath = socket.SocketPath },
-                NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
             Task<PrivilegedOperationResult> RequestAsync(PrivilegedOperationKind operation, ProxyServerHelperRequest? request) =>
-                transport is null ? Send(operation, request, root, states, host, natives)
-                    : transport.ExecuteAsync(new(operation, ProxyServer: request), default);
+                socket is null ? Send(operation, request, root, states, host, natives)
+                    : SendAcrossProcessAsync(socket.SocketPath, new(operation, ProxyServer: request));
 
             // Status of a managed installation whose service was never registered.
             var absent = await RequestAsync(PrivilegedOperationKind.ProxyServerStatus, null);
@@ -225,6 +222,47 @@ internal static class ManagedServiceChecks
     /// <summary>Shaped like a sing-box base64url key; the value is not used by any native program here.</summary>
     private static string Key() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         .Replace('+', '-').Replace('/', '_')[..43];
+
+    private static async Task<PrivilegedOperationResult> SendAcrossProcessAsync(string socketPath, PrivilegedOperationRequest request)
+    {
+        var start = new ProcessStartInfo(Environment.ProcessPath!)
+        {
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true
+        };
+        if (Path.GetFileNameWithoutExtension(start.FileName) == "dotnet")
+            start.ArgumentList.Add(typeof(ManagedServiceChecks).Assembly.Location);
+        start.ArgumentList.Add("runtime-managed-service-client");
+        start.ArgumentList.Add(socketPath);
+        using var child = Process.Start(start) ?? throw new InvalidOperationException("Unable to start isolated Helper client.");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            await child.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request).AsMemory(), deadline.Token);
+            child.StandardInput.Close();
+            var response = await child.StandardOutput.ReadToEndAsync(deadline.Token);
+            await child.WaitForExitAsync(deadline.Token);
+            if (child.ExitCode != 0) throw new InvalidOperationException($"Isolated Helper client exited: {child.ExitCode}.");
+            return JsonSerializer.Deserialize<PrivilegedOperationResult>(response)
+                ?? throw new InvalidOperationException("Isolated Helper client did not return a result.");
+        }
+        finally
+        {
+            if (!child.HasExited) child.Kill();
+            await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    internal static async Task RunSocketClientAsync(string socketPath)
+    {
+        var request = JsonSerializer.Deserialize<PrivilegedOperationRequest>(await Console.In.ReadLineAsync() ?? "")
+            ?? throw new InvalidOperationException("Missing isolated Helper client request.");
+        var transport = new UnixSocketPrivilegedOperationTransport(new PrivilegedHelperOptions { SocketPath = socketPath },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+        var response = await transport.ExecuteAsync(request, default);
+        Console.WriteLine(JsonSerializer.Serialize(response));
+    }
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     private static LinuxUnixSocketPrivilegedServer OpenSocket(string root, RuntimeArchiveStateStore states,

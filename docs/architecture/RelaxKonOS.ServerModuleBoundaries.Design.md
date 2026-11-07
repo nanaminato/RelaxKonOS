@@ -1293,3 +1293,5 @@ Linux x64 Release 实机复测通过。生产 SingBoxManagedRuntime 发布事务
 ### MB-04 sing-box 发布事务的 Unix socket 验收
 
 Linux x64 Release 在私有网络中通过生产 Unix socket 服务端、客户端及 peer UID 校验调用生产 SingBoxManagedRuntime。专属 socket 仅允许 UID 0，实际 sing-box 发布、候选退出和停止异常后的补偿共通过 13 项。日志为 .artifacts/mb04-helper-ipc-live.log，归档 SHA-256 为 ff65e52efc7c8498c8c92842d4d5701adc4e06fb96366060cf68a4da4f513934。两端同属测试进程，派发仅接入 sing-box 发布事务，服务控制为专属进程夹具。独立 Helper 进程、生产总派发器和 systemd 仍待联合验收。
+
+Linux x64 Release 同一套 13 项已通过独立客户端进程复测。每次调用由新进程经专属 Unix socket 进入生产 transport 和 peer 校验。日志为 .artifacts/mb04-helper-peer-live.log，制品 SHA-256 为 7974f603d96672ade098f0dcbc834f0457bfc60500a1fb2ee3ce5f52880a39e0。Helper 服务端由父测试进程承载。本次验证进程隔离下的正常请求及服务故障补偿，客户端在途退出后按原台账恢复仍开放。
