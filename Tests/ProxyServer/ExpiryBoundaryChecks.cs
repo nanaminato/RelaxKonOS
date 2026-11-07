@@ -1,16 +1,20 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.Server.ProxyServer;
 
 internal static class ExpiryBoundaryChecks
 {
-    public static async Task RunAsync()
+    public static async Task RunAsync(string root)
     {
+        var store = new ProxyServerStore(new Paths(Path.Combine(root, "expiry-boundary")), new EphemeralDataProtectionProvider());
+        // A pending publication requires reconciliation on every pass until its durable outcome is known.
+        await store.WriteAsync(ProxyServerState.Empty with { PendingPublication = new(new(0, []), [], [], []) }, default);
         var state = new State();
         var services = new ServiceCollection();
         services.AddScoped<IProxyServerExpiryExecutor>(_ => new Executor(state));
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
-        using var worker = new ProxyServerExpiryService(provider.GetRequiredService<IServiceScopeFactory>(),
+        using var worker = new ProxyServerExpiryService(provider.GetRequiredService<IServiceScopeFactory>(), store,
             NullLogger<ProxyServerExpiryService>.Instance);
         Require(state.Created == 0, "Creating the scheduler must not construct management services.");
         await worker.StartAsync(default);
@@ -35,7 +39,7 @@ internal static class ExpiryBoundaryChecks
         var cancellationServices = new ServiceCollection();
         cancellationServices.AddScoped<IProxyServerExpiryExecutor>(_ => new WaitingExecutor(cancellation, disposing, releaseDisposal, disposed));
         await using var cancellationProvider = cancellationServices.BuildServiceProvider();
-        using var waitingWorker = new ProxyServerExpiryService(cancellationProvider.GetRequiredService<IServiceScopeFactory>(),
+        using var waitingWorker = new ProxyServerExpiryService(cancellationProvider.GetRequiredService<IServiceScopeFactory>(), store,
             NullLogger<ProxyServerExpiryService>.Instance);
         await waitingWorker.StartAsync(default);
         await cancellation.Task.WaitAsync(TimeSpan.FromSeconds(5));
