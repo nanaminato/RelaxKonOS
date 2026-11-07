@@ -4446,3 +4446,5 @@ Linux 系统代理独立 Helper 已验证现有非 root Server UID 可申请受�
 Linux 系统代理周期 guard 与停用恢复已在独立 Helper 夹具中使用实际非 root Server UID 验证。
 
 Mihomo 的 Core 发布恢复扫描现在使用加密调度索引。索引匹配时无需解密完整发布台账。索引失效时读取原待处理操作，恢复仍使用原发布事务和锁。Windows Release 发布事务回归通过，Linux 实机联合复测仍开放。
+
+Mihomo 持久调度索引已通过 Linux Release 事务回归，覆盖损坏索引重建、索引不可写和原待处理身份保留。生产 systemd 与动态休眠仍待验收。

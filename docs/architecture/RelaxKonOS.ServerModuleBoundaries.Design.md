@@ -1339,3 +1339,5 @@ Linux 完整认证 Server 的运行中崩溃路径通过。客户端未读取受
 ### MB-04 Mihomo 持久发布调度索引
 
 Core 发布恢复扫描使用加密索引，仅记录权威密文 SHA-256 和原待处理 operationId。匹配时按流核对密文，跳过完整发布图的解密和反序列化。失配、损坏、缺失或不可写时从同一权威文件读取原责任，能写时重建索引。原 gate、发布和恢复执行者及 30 秒扫描周期继续承担职责。Windows Release Mihomo 发布事务 109 项通过，日志为 .artifacts/mb04-mihomo-schedule-win.log。Linux 实机联合复测、动态休眠及生产内存测量仍开放。
+
+Linux x64 Release 的 Mihomo 发布事务专项通过 110 项，含损坏索引重建、不可写时保留原待处理身份，以及未知结果不自动重放。同一制品的隔离 sing-box Helper IPC 与原加密台账联合恢复通过 17 项。首轮外部执行脚本误用 Windows 的 109 项计数，修正后整批通过。日志为 .artifacts/mb04-mihomo-schedule-linux-final.log，归档 SHA-256 为 9a249eeb8322601e1ba964e6bf66a1cdf748f2e646d25946aa44f5865a5f018c。Mihomo 索引专项使用受控事务夹具，生产 systemd、责任交接与动态休眠仍待验收。
