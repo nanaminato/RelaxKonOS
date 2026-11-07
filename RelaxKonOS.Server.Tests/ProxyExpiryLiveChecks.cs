@@ -108,8 +108,8 @@ internal static class ProxyExpiryLiveChecks
                 finally { await DockerProcessRecoveryChecks.StopWorkerAsync(worker); }
             }
 
-            // A fresh disabled host must distinguish a known runtime effect from an unconfirmed
-            // Server publication. The gate cannot infer completion from the live listener.
+            // A live listener alone cannot confirm a pending publication.
+            transport.HideConfigurationHash = true;
             try
             {
                 await modules.ValidateDeactivationAsync(owner.Services, context, default);
@@ -141,11 +141,11 @@ internal static class ProxyExpiryLiveChecks
             var reopened = new ProxyServerStore(paths, OpenProtection(directory.FullName));
             TestAssert.Assert((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication,
                 "The recovery process must discover the pending publication without its index.");
-            await new ProxyServerPublicationService(reopened, transport, new SystemMode()).ReconcileExpiryAsync(default);
+            transport.HideConfigurationHash = false;
+            await modules.ValidateDeactivationAsync(owner.Services, context, default);
             var confirmed = await reopened.ReadAsync(default);
             TestAssert.Assert(confirmed.PendingPublication is null && confirmed.Published!.Credentials.Single().Id == retainedId
                 && transport.ApplyCalls == 1, "Recovery must confirm the applied material without a second mutation.");
-            await modules.ValidateDeactivationAsync(owner.Services, context, default);
             Console.WriteLine("PASS SING-BOX LIVE DISABLED STARTUP GATE: pending publication blocked; original candidate reconciled; startup permitted");
             Console.WriteLine("PASS SING-BOX LIVE EXPIRY: management disabled; pre-expiry forwarded, old streams closed, expired rejected, retained reconnected, worker crashed before reply; original pending publication recovered; apply=1");
         }
@@ -238,6 +238,7 @@ internal static class ProxyExpiryLiveChecks
         private Process? _process;
         private string? _hash;
         internal int ApplyCalls;
+        internal bool HideConfigurationHash;
 
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
         {
@@ -249,7 +250,7 @@ internal static class ProxyExpiryLiveChecks
             }
             if (request.Operation != PrivilegedOperationKind.ProxyServerStatus)
                 throw new InvalidOperationException("Unexpected privileged fixture operation.");
-            var status = new ProxyServerStatus(true, true, true, false, "fixture", _hash, true, null);
+            var status = new ProxyServerStatus(true, true, true, false, "fixture", HideConfigurationHash ? null : _hash, true, null);
             return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(status)));
         }
 

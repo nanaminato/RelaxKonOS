@@ -5,7 +5,7 @@ using RelaxKonOS.Server.ProxyServer;
 
 namespace RelaxKonOS.Server.Proxy;
 
-/// <summary>Read-only safety facts. Never constructs management, changes OS state, or clears intent.</summary>
+/// <summary>Inspects safety ownership and confirms a pending inbound publication from Helper status.</summary>
 internal static class ProxySafetyResponsibilities
 {
     internal static async Task<IReadOnlyList<string>> InspectAsync(IServiceProvider services, IProxyPlatformPaths paths, CancellationToken ct)
@@ -25,7 +25,20 @@ internal static class ProxySafetyResponsibilities
             var store = services.GetService<ProxyServerStore>() ?? new ProxyServerStore(paths,
                 services.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>());
             await store.Gate.WaitAsync(ct);
-            try { if ((await store.ReadAsync(ct)).PendingPublication is not null) facts.Add("Inbound publication remains unconfirmed; expiry/recovery ownership is retained by Core."); }
+            try
+            {
+                if ((await store.ReadAsync(ct)).PendingPublication is not null)
+                {
+                    var publication = new ProxyServerPublicationService(store,
+                        services.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(),
+                        services.GetRequiredService<RelaxKonOS.Server.HostMode.IServerModeResolver>());
+                    await publication.ReadStateAsync(ct, confirmCandidateOnly: true);
+                }
+            }
+            catch (ProxyServerException)
+            {
+                facts.Add("Inbound publication remains unconfirmed; expiry/recovery ownership is retained by Core.");
+            }
             finally { store.Gate.Release(); }
         }
         catch (Exception error) when (Unreadable(error)) { facts.Add("Inbound published-state responsibility cannot be verified."); }
