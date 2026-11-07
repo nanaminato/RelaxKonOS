@@ -4480,3 +4480,5 @@ Proxy 停用启动时，Server 对原台账中已受理的 Mihomo 配置发布�
 独立生产 Helper 的真实 IPC 已验证完整非 root Server 的两条停用启动路径。已终态失败的配置按原回执确认。候选已转发后 Helper 中断时，启动门禁保留原待处理操作，Helper 恢复后只执行一次补偿并恢复旧端口，原 Interrupted 回执持久化。只读查询可以复用原 operationId，配置请求仍由原事务和传输层校验。
 
 TUN 安全服务常驻，控制器和 HTTP 客户端只在实际观察或切换期间创建。Linux 完整 Server 的恢复实测确认，原 TUN 标记和路由仍由 Core 接续处理，Mihomo 转发和系统代理持续可用。
+
+Linux 隔离实测覆盖 TUN 激活重载已应用、持久标记尚未完成时的进程崩溃。完整 Server 以原标记关闭 TUN，验证管理路由和策略规则，同时保留 Mihomo 转发、系统代理 guard 和入站授权到期。证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-接续在途-tun-激活)。

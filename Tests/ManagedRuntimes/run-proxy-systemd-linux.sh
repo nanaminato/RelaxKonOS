@@ -18,7 +18,10 @@ chmod o+x -- "$work"
 unit=relaxkonos-mb04-systemd-$(cat /proc/sys/kernel/random/uuid).service
 host_pidns=$(readlink /proc/1/ns/pid)
 host_netns=$(readlink /proc/self/ns/net)
-before=$(systemctl show relaxkonos-sing-box.service --property=LoadState,ActiveState,MainPID)
+runtime_fingerprint() {
+    systemctl show relaxkonos-sing-box.service relaxkonos-mihomo.service --property=LoadState,ActiveState,MainPID
+}
+before=$(runtime_fingerprint)
 proxy_fingerprint() {
     for file in /etc/environment /var/lib/relaxkonos-system-proxy/recovery.json; do
         if test -f "$file"; then
@@ -41,10 +44,10 @@ cleanup() {
     case "$state" in inactive|failed|"") :;; *) echo "Dedicated systemd cleanup is unresolved" >&2; return 1;; esac
     test ! -d "/sys/fs/cgroup/system.slice/$unit"
     systemctl reset-failed "$unit" 2>/dev/null || true
-    test "$before" = "$(systemctl show relaxkonos-sing-box.service --property=LoadState,ActiveState,MainPID)"
+    test "$before" = "$(runtime_fingerprint)"
     test "$proxy_before" = "$(proxy_fingerprint)"
     rm -rf -- "$work"
-    echo "PASS HOST SYSTEMD CLEANUP: dedicated cgroup removed, host sing-box and proxy files unchanged"
+    echo "PASS HOST SYSTEMD CLEANUP: dedicated cgroup removed, host runtime services and proxy files unchanged"
 }
 trap cleanup EXIT
 cp -- /var/lib/relaxkonos/proxy/engines/mihomo/versions/v1.19.33-linux-x64/mihomo "$work/mihomo"

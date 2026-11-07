@@ -152,7 +152,11 @@ internal static class ProxySystemdRecoveryChecks
             var recovered = await ManagedServiceChecks.RunFullServerAsync(serverAssembly, socket, root, next, retained, traffic, expiry,
                 () => states.Read()!.Installation.StateRevision == before + 1
                     && states.Read()!.ConfigurationIdentity == expectedHash,
-                async () => helper = await StartHelper(), guard.VerifyRecoveryAsync);
+                async () =>
+                {
+                    await guard.VerifyPendingTunAsync();
+                    helper = await StartHelper();
+                }, guard.VerifyRecoveryAsync);
             var final = states.Read()!;
             var finalHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(material with { Credentials = [retained] })));
             if (!recovered || final.Installation.StateRevision != before + 2 || final.ConfigurationIdentity != finalHash
