@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -17,6 +18,7 @@ def run(server, project, helper):
     credentials = json.loads(sys.stdin.readline())
     outage = os.environ.get("RELAXKONOS_TEST_DOCKER_OUTAGE_GATE")
     outage_gate = Path(outage).resolve(strict=True) if outage else None
+    observation_outage = os.environ.get("RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE") == "1"
 
     with tempfile.TemporaryDirectory(prefix="relaxkonos-auth-docker-") as directory:
         root = Path(directory)
@@ -44,6 +46,42 @@ def run(server, project, helper):
         for module in ("Terminal", "Firewall", "SystemPerformance", "Git", "Tailscale", "Certificates", "WebServer", "Proxy"):
             env[f"Modules__{module}__Enabled"] = "false"
         env["Modules__Docker__Enabled"] = "true"
+        if observation_outage:
+            if outage_gate is None:
+                raise RuntimeError("Observation outage requires a dedicated Engine gate")
+            docker = shutil.which("docker")
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            wrapper = bin_dir / "docker"
+            wrapper.write_text(f"""#!/usr/bin/python3
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+docker = {docker!r}
+gate = Path({str(outage_gate)!r})
+args = sys.argv[1:]
+if args[:4] == ['ps', '--all', '--filter', {'label=com.docker.compose.project=' + project!r}]:
+    try:
+        (gate / 'request-offline').touch(exist_ok=False)
+    except FileExistsError:
+        pass
+    else:
+        deadline = time.monotonic() + 25
+        while not (gate / 'offline').exists():
+            if time.monotonic() >= deadline:
+                sys.exit('Dedicated Engine did not stop')
+            time.sleep(0.05)
+        result = subprocess.run([docker, *args], check=False)
+        if result.returncode:
+            (gate / 'observation-failed').touch(exist_ok=False)
+        sys.exit(result.returncode)
+os.execv(docker, [docker, *args])
+""")
+            wrapper.chmod(0o700)
+            env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
         key = secrets.token_hex(16)
         route = f"/api/v1.0/docker/stacks/{project}/stop"
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -111,11 +149,51 @@ def run(server, project, helper):
 
         def set_engine_state(state):
             (outage_gate / f"request-{state}").touch(exist_ok=False)
+            wait_for_gate(state)
+
+        def wait_for_gate(state):
             deadline = time.monotonic() + 30
             while not (outage_gate / state).exists():
                 if time.monotonic() >= deadline:
                     raise TimeoutError(f"Dedicated Engine did not acknowledge {state}")
                 time.sleep(0.05)
+
+        def verify_outage(process, token, operation, container, initial_stops):
+            operation_route = f"/api/v1.0/docker/stack-operations/{operation}"
+            if observation_outage:
+                deadline = time.monotonic() + 10
+                while True:
+                    active = request(operation_route, token=token)
+                    if str(active["state"]).lower() != "running" or str(active["stage"]).lower() != "observing":
+                        raise RuntimeError("The first unavailable observation ended the active receipt")
+                    if not active["cancellable"]:
+                        break
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("The original work did not enter read-only observation recovery")
+                    time.sleep(0.05)
+            pending = request(route, {"confirmed": True}, token, expected=202)
+            if pending["operationId"] != operation or str(pending["state"]).lower() != "running":
+                raise RuntimeError("An unavailable Engine ended the original active operation")
+            request(f"/api/v1.0/docker/stacks/{project}/services", token=token, expected=503)
+            request(route, {"confirmed": True}, token, expected=409, request_key=secrets.token_hex(16))
+            set_engine_state("online")
+            subprocess.run(["docker", "start", container], check=True, stdout=subprocess.DEVNULL)
+            deadline = time.monotonic() + 25
+            while True:
+                observed = request(operation_route, token=token)
+                if str(observed["state"]).lower() != "running":
+                    break
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("The original Docker operation stayed pending after Engine recovery")
+                time.sleep(0.1)
+            replay = request(route, {"confirmed": True}, token, expected=202)
+            if process.poll() is not None or len(observed["services"]) != 1 or observed["operationId"] != operation \
+                    or str(observed["state"]).lower() != "interrupted" or replay != observed:
+                raise RuntimeError("The same Server did not persist the original Interrupted receipt after real observation")
+            state = subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip()
+            stops = subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping")
+            if state != "running" or stops != initial_stops + 1:
+                raise RuntimeError("The original key repeated a stop after the witness was restarted")
 
         helper_config = root / "helper.json"
         helper_config.write_text(json.dumps({"socketPath": env["PrivilegedHelper__SocketPath"],
@@ -171,6 +249,11 @@ def run(server, project, helper):
                 running = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
                 if str(running["state"]).lower() != "running":
                     raise RuntimeError("Original receipt was not running at interruption")
+                if observation_outage:
+                    wait_for_gate("observation-failed")
+                    verify_outage(process, token, operation, container, initial_stops)
+                    print(f"PASS AUTHENTICATED DOCKER LIVE OBSERVATION OUTAGE: operation={operation}; original Server and work survived a failed native observation; no replay")
+                    return
                 process.kill()
                 if process.wait(timeout=10) >= 0:
                     raise RuntimeError("Server did not terminate abnormally")
@@ -191,23 +274,7 @@ def run(server, project, helper):
             try:
                 token = login()
                 if outage_gate is not None:
-                    pending = request(route, {"confirmed": True}, token, expected=202)
-                    if pending["operationId"] != operation or str(pending["state"]).lower() != "running":
-                        raise RuntimeError("An unavailable Engine ended the original active operation")
-                    request(f"/api/v1.0/docker/stacks/{project}/services", token=token, expected=503)
-                    request(route, {"confirmed": True}, token, expected=409, request_key=secrets.token_hex(16))
-                    set_engine_state("online")
-                    subprocess.run(["docker", "start", container], check=True, stdout=subprocess.DEVNULL)
-                    deadline = time.monotonic() + 25
-                    while True:
-                        observed = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
-                        if str(observed["state"]).lower() != "running":
-                            break
-                        if time.monotonic() >= deadline:
-                            raise TimeoutError("The original Docker operation stayed pending after Engine recovery")
-                        time.sleep(0.1)
-                    if len(observed["services"]) != 1 or process.poll() is not None:
-                        raise RuntimeError("The original Server did not persist a real Engine observation")
+                    verify_outage(process, token, operation, container, initial_stops)
                 replay = request(route, {"confirmed": True}, token, expected=202)
                 if replay["operationId"] != operation or str(replay["state"]).lower() != "interrupted":
                     raise RuntimeError("Server restart did not preserve the original Docker receipt")

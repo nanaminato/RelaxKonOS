@@ -2106,3 +2106,13 @@ Linux 私有 systemd 用同一 Host 制品，只替换 Proxy 解析程序集。�
 Linux 私有 Engine 中，完整 Server 经 PAM 登录提交专属容器的真实停止请求。在原操作为 Running 且容器已接到停止信号时终止 Server。原停止结束后关闭专属 daemon，再启动 Server。Engine 离线时服务查询返回 HTTP 503，同键返回原 `3810f922-ce3f-499a-a42e-1e6f54dbf3e8` Running，新键对同项目返回 HTTP 409。启动原 daemon 后，同一 Server 取得实际容器观察并将原操作持久化为 Interrupted。同键与按 ID 查询一致，专属容器保持运行，停止计数未增加。原 daemon 重启和命名卷、专属容器清理同批通过，宿主服务 PID、容器清单及代理文件指纹一致。
 
 首轮夹具缺少私有持久状态目录，完整 Server 在 Proxy 安全启动门禁处终止。复验使用私有 `/var/lib`、`/etc` 覆盖层和独立发布的完整 Server。Windows Release 模块边界回归通过，受控用例验证恢复 worker 在 Engine 离线时停止，下一任 owner 接续同一记录。原 `5be1e27c-7be8-4cf8-a990-c5ea69065f90` 跨进程返回 Interrupted，受控副作用计数为一。日志在 `.artifacts/mb05-engine-offline-recovery/`，归档 SHA-256 为 `c38ed10257a4d99545b0b0292d61686872c0e1c4e03547aa848d8e5782610257`。Docker 保持 resident。存活 Server 在原变更完成后丢失 Engine 观察的连续性、整机掉电与独立执行程序集继续开放。
+
+### MB-05 Docker 变更返回后的 Engine 观察中断
+
+变更 CLI 返回后，首次 Engine 观察失败会在原台账保留 Running / Observing 和原项目互斥。协调器结束原变更作用域，继续持有同一个工作租约，并在独立作用域内重试只读观察。原操作进入只读恢复时关闭取消入口。观察作用域清理并写入原 Interrupted 终态后才归还租约。Host 停机时等待在途观察清理，仍待核验的原记录由下一次启动接续。
+
+Windows Release 模块边界回归通过。用例验证原回执和工作租约持续，同一项目的不同键拒绝准入，Engine 恢复后只读终结，原变更调用一次。MB-05 跨进程原 `75eb7cdf-99a6-4437-8fd0-286d669b7080` 返回 Interrupted，受控副作用计数为一。
+
+Linux Release 使用完整 PAM/JWT Server、独立 Docker socket、私有 Engine 和专属 Compose 项目。原容器收到真实停止后，测试屏障暂扣首次 `docker ps` 观察调用。关闭专属 daemon 后放行真实 CLI，命令非零退出。Server 保持同一进程，原 `a8c0b873-c124-42c6-a4a6-d190409873c5` 仍为 Running / Observing，同键返回原回执，列表返回 503，同项目新键返回 409。Engine 重新启动后，同一 Server 以真实观察提交原 Interrupted 回执，原 ID 与同键查询一致。容器显式重新启动后保持运行，停止计数未增加。
+
+同一制品复验 Engine 离线时的完整 Server 启动，原 `917dcfc6-9308-4fe6-88b2-d4c0a8a6a765` 恢复为 Interrupted。专属容器及卷清理完成，宿主服务 PID、运行容器清单和代理文件指纹一致。日志在 `.artifacts/mb05-live-observation-outage/`，归档 SHA-256 为 `3a578140199fe33ee8bda9b2d0c46fe8585e903aceb175b3a7290a45a0356f3d`。本轮覆盖正常返回后的首次观察丢失。用户取消与首次观察失联同时发生、整机掉电及独立执行程序集仍开放。Docker 保持 resident。

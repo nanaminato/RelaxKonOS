@@ -32,6 +32,7 @@ internal sealed class DockerStackOperationCoordinator(
     private readonly object gate = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> cancellations = new();
     private readonly ConcurrentDictionary<Guid, Task> running = new();
+    private static readonly TimeSpan ObservationRetryDelay = TimeSpan.FromSeconds(5);
     private bool ready;
     private bool stopping;
 
@@ -145,8 +146,24 @@ internal sealed class DockerStackOperationCoordinator(
                 var compose = scope.ServiceProvider.GetRequiredService<IDockerComposeService>();
                 outcome = await ExecuteAsync(compose, id, kind, project, definition, cancellation, workStopping);
             }
+            if (outcome is { AwaitingObservation: true })
+            {
+                using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(workStopping, lifetime.ApplicationStopping);
+                IReadOnlyList<DockerStackServiceDto>? observed;
+                do
+                {
+                    await Task.Delay(ObservationRetryDelay, shutdown.Token);
+                    observed = await TryObserveProjectAsync(project, shutdown.Token);
+                } while (observed is null);
+                shutdown.Token.ThrowIfCancellationRequested();
+                outcome = outcome with { Observed = observed, Recovery = RecoveryCode(kind, observed) };
+            }
             if (outcome is not null)
                 Complete(id, outcome.State, outcome.Problem, outcome.Recovery, outcome.Messages, outcome.Observed);
+        }
+        catch (OperationCanceledException) when (workStopping.IsCancellationRequested || lifetime.ApplicationStopping.IsCancellationRequested)
+        {
+            // The durable active receipt remains available to startup reconciliation.
         }
         finally
         {
@@ -156,7 +173,7 @@ internal sealed class DockerStackOperationCoordinator(
     }
 
     private sealed record Outcome(DockerStackOperationState State, string? Problem, string? Recovery,
-        IReadOnlyList<string> Messages, IReadOnlyList<DockerStackServiceDto>? Observed = null);
+        IReadOnlyList<string> Messages, IReadOnlyList<DockerStackServiceDto>? Observed = null, bool AwaitingObservation = false);
 
     private async Task<Outcome?> ExecuteAsync(IDockerComposeService compose, Guid id, DockerStackOperationKind kind, string project,
         DockerStackDefinitionDto? definition, CancellationTokenSource cancellation, CancellationToken workStopping)
@@ -190,7 +207,13 @@ internal sealed class DockerStackOperationCoordinator(
 
             cancellation.Token.ThrowIfCancellationRequested();
             operations.Update(id, current => current with { Stage = DockerStackOperationStage.Observing }, "stage");
-            var observed = await compose.ListServicesAsync(project, cancellation.Token);
+            var observed = await TryObserveAsync(compose, project, cancellation.Token);
+            if (observed is null)
+            {
+                lock (gate) operations.Update(id, current => current with { Cancellable = false }, "observation-unavailable");
+                messages.Add("Engine observation was unavailable after the mutation; recovery only observes the project");
+                return new(DockerStackOperationState.Interrupted, DockerStackProblem.Interrupted, null, messages, AwaitingObservation: true);
+            }
             Observe(id, observed);
 
             var (state, problem, recovery) = Classify(kind, result, desired, observed);
@@ -367,7 +390,7 @@ internal sealed class DockerStackOperationCoordinator(
         {
             while (awaitingEngine.Count != 0)
             {
-                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                await Task.Delay(ObservationRetryDelay, ct);
                 awaitingEngine = await ReconcileAsync(awaitingEngine, ct);
             }
         }
@@ -389,14 +412,13 @@ internal sealed class DockerStackOperationCoordinator(
             IReadOnlyList<DockerStackServiceDto> observed = [];
             if (operation.State == DockerStackOperationState.Running)
             {
-                await using var scope = scopes.CreateAsyncScope();
-                var compose = scope.ServiceProvider.GetRequiredService<IDockerComposeService>();
-                try { observed = await compose.ListServicesAsync(operation.ProjectName, ct); }
-                catch (DockerStackException error) when (error.ProblemCode == DockerStackProblem.EngineUnavailable)
+                var snapshot = await TryObserveProjectAsync(operation.ProjectName, ct);
+                if (snapshot is null)
                 {
                     awaitingEngine.Add(entry);
                     continue;
                 }
+                observed = snapshot;
             }
             ct.ThrowIfCancellationRequested();
             var message = operation.State == DockerStackOperationState.Running
@@ -406,6 +428,18 @@ internal sealed class DockerStackOperationCoordinator(
                 RecoveryCode(operation.Kind, observed), [message], observed);
         }
         return awaitingEngine;
+    }
+
+    private async Task<IReadOnlyList<DockerStackServiceDto>?> TryObserveProjectAsync(string project, CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        return await TryObserveAsync(scope.ServiceProvider.GetRequiredService<IDockerComposeService>(), project, ct);
+    }
+
+    private static async Task<IReadOnlyList<DockerStackServiceDto>?> TryObserveAsync(IDockerComposeService compose, string project, CancellationToken ct)
+    {
+        try { return await compose.ListServicesAsync(project, ct); }
+        catch (DockerStackException error) when (error.ProblemCode == DockerStackProblem.EngineUnavailable) { return null; }
     }
 
     /// <summary>Which follow-up the operator most likely needs after an unverified operation. A project

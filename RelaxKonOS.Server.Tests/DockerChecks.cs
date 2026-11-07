@@ -792,6 +792,27 @@ internal static async Task VerifyStackOperationsAsync(string root)
     TestAssert.Assert(events.Signals.All(signal => signal.OperationId != cancelled.OperationId),
         "A cancellation was published as a verified recovery or failure.");
 
+    // Losing the first observation must retain the original live work and prohibit another mutation.
+    compose.ObservationUnavailable = true;
+    var priorActions = compose.AppliedActions.Count;
+    var liveRecovery = await coordinator.ApplyActionAsync("observing", DockerStackOperationKind.Stop, true, actor, "key-live");
+    using (var budget = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+    {
+        while (coordinator.Get(liveRecovery.OperationId) is not { State: DockerStackOperationState.Running,
+                   Stage: DockerStackOperationStage.Observing, Cancellable: false })
+            await Task.Delay(10, budget.Token);
+    }
+    TestAssert.Assert(coordinator.HasResponsibility
+        && (await coordinator.ApplyActionAsync("observing", DockerStackOperationKind.Stop, true, actor, "key-live")).OperationId == liveRecovery.OperationId,
+        "A live observation outage lost the original receipt or work lease.");
+    var liveConflict = await CaptureStackFailureAsync(() => coordinator.ApplyActionAsync("observing", DockerStackOperationKind.Stop, true, actor, "key-conflict"),
+        "A new operation was admitted before the original observation finished.");
+    TestAssert.Assert(liveConflict.ProblemCode == DockerStackProblem.OperationConflict, "An observation outage removed project exclusion.");
+    compose.ObservationUnavailable = false;
+    var observedAfterOutage = await AwaitTerminalOperationAsync(coordinator, liveRecovery.OperationId);
+    TestAssert.Assert(observedAfterOutage.State == DockerStackOperationState.Interrupted && observedAfterOutage.Services.Count == 1
+        && compose.AppliedActions.Count == priorActions + 1, "Live recovery must observe the original operation without a second mutation.");
+
     // --- Startup reconciliation: observed, never replayed ----------------------------------------
     var recoveryRoot = Path.Combine(root, "stack-recovery");
     var recoveryStore = NewStackStore(recoveryRoot, 16);
