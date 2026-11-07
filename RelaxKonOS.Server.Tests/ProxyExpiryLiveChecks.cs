@@ -44,7 +44,7 @@ internal static class ProxyExpiryLiveChecks
                 [new(expiredId, [inboundId], expiring.ToString("D")), new(retainedId, [inboundId], retained.ToString("D"))], [],
                 [new(inboundId, certificate.ExportCertificatePem(), key.ExportPkcs8PrivateKeyPem(), "fixture")]);
             var paths = new TestProxyPaths(directory.FullName);
-            var protection = new EphemeralDataProtectionProvider();
+            var protection = OpenProtection(directory.FullName);
             var store = new ProxyServerStore(paths, protection);
             var credentials = new StoredCredential[]
             {
@@ -75,14 +75,24 @@ internal static class ProxyExpiryLiveChecks
             }, default);
             using var clockBudget = new CancellationTokenSource(Budget);
             while (DateTimeOffset.UtcNow < expiresAt) await Task.Delay(50, clockBudget.Token);
-            try
+            using (var worker = DockerProcessRecoveryChecks.StartWorker("--proxy-expiry-crash-worker", directory.FullName))
             {
-                await expiry.ReconcileAsync(default);
-                throw new InvalidOperationException("The test transport did not lose the apply response.");
+                try
+                {
+                    var marker = await worker.StandardOutput.ReadLineAsync().WaitAsync(Budget);
+                    TestAssert.Assert(marker == "apply-pending", $"Missing expiry worker barrier: {marker}");
+                    var pending = (await store.ReadAsync(default)).PendingPublication
+                        ?? throw new InvalidOperationException("The worker did not persist the pending publication.");
+                    TestAssert.Assert(!worker.HasExited && pending.Credentials.Single().Id == retainedId,
+                        "The original pending candidate must contain only the retained credential.");
+                    await transport.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: pending)));
+                    worker.Kill();
+                    await worker.WaitForExitAsync().WaitAsync(Budget);
+                    TestAssert.Assert(worker.ExitCode != 0 && (await store.ReadAsync(default)).PendingPublication is not null,
+                        "Worker termination must leave the original pending publication.");
+                }
+                finally { await DockerProcessRecoveryChecks.StopWorkerAsync(worker); }
             }
-            catch (ProxyServerException) when (transport.ApplyCalls == 1) { }
-            TestAssert.Assert((await store.ReadAsync(default)).PendingPublication is not null,
-                "Response loss must retain the original pending publication.");
 
             using var closureBudget = new CancellationTokenSource(Budget);
             await AssertClosedAsync(expiringConnection, closureBudget.Token);
@@ -100,12 +110,15 @@ internal static class ProxyExpiryLiveChecks
             }
 
             TestAssert.Assert(!origin.Pending(), "The expired UUID reached the origin.");
-            var reopened = new ProxyServerStore(paths, protection);
+            File.Delete(Path.Combine(paths.GetStateDirectory(), "proxy-server.protected.expiry"));
+            var reopened = new ProxyServerStore(paths, OpenProtection(directory.FullName));
+            TestAssert.Assert((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication,
+                "The recovery process must discover the pending publication without its index.");
             await new ProxyServerPublicationService(reopened, transport, new SystemMode()).ReconcileExpiryAsync(default);
             var confirmed = await reopened.ReadAsync(default);
             TestAssert.Assert(confirmed.PendingPublication is null && confirmed.Published!.Credentials.Single().Id == retainedId
                 && transport.ApplyCalls == 1, "Recovery must confirm the applied material without a second mutation.");
-            Console.WriteLine("PASS SING-BOX LIVE EXPIRY: pre-expiry forwarded, old streams closed, expired rejected, retained reconnected, lost reply recovered; apply=1");
+            Console.WriteLine("PASS SING-BOX LIVE EXPIRY: pre-expiry forwarded, old streams closed, expired rejected, retained reconnected, worker crashed before reply; original pending publication recovered; apply=1");
         }
         finally { directory.Delete(recursive: true); }
     }
@@ -155,6 +168,33 @@ internal static class ProxyExpiryLiveChecks
         // VLESS v0, no addons, TCP, big-endian port, IPv4 loopback, one byte of fixture payload.
         byte[] packet = [0, .. uuid.ToByteArray(bigEndian: true), 0, 1, (byte)(port >> 8), (byte)port, 1, 127, 0, 0, 1, 42];
         await stream.WriteAsync(packet, ct);
+    }
+
+    private static IDataProtectionProvider OpenProtection(string root) =>
+        DataProtectionProvider.Create(Directory.CreateDirectory(Path.Combine(root, "fixture-keys")));
+
+    internal static async Task RunCrashWorkerAsync(string root)
+    {
+        var store = new ProxyServerStore(new TestProxyPaths(root), OpenProtection(root));
+        await new ProxyServerPublicationService(store, new CrashTransport(), new SystemMode()).ReconcileExpiryAsync(default);
+        throw new InvalidOperationException("Expiry worker exited before the crash boundary.");
+    }
+
+    private sealed class CrashTransport : IPrivilegedOperationTransport
+    {
+        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct)
+        {
+            if (request.Operation == PrivilegedOperationKind.ProxyServerStatus)
+            {
+                var status = new ProxyServerStatus(true, true, true, false, "fixture", null, true, null);
+                return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(status)));
+            }
+            if (request.Operation != PrivilegedOperationKind.ProxyServerApply)
+                throw new InvalidOperationException("Unexpected expiry worker request.");
+            Console.WriteLine("apply-pending");
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            throw new InvalidOperationException("The expiry crash barrier returned.");
+        }
     }
 
     private sealed class SystemMode : IServerModeResolver

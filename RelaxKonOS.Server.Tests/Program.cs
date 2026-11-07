@@ -400,6 +400,11 @@ if (args is ["--proxy-tun-live-worker", var workerNetworkNamespace, var tunRoot,
     await ProxyTunLiveChecks.RunWorkerAsync(workerNetworkNamespace, tunRoot, int.Parse(controllerPort, System.Globalization.CultureInfo.InvariantCulture));
     return;
 }
+if (args is ["--proxy-expiry-crash-worker", var proxyExpiryCrashRoot])
+{
+    await ProxyExpiryLiveChecks.RunCrashWorkerAsync(proxyExpiryCrashRoot);
+    return;
+}
 if (args is ["--proxy-expiry-live-only", var singBoxExecutable])
 {
     await ProxyExpiryLiveChecks.RunAsync(singBoxExecutable);
