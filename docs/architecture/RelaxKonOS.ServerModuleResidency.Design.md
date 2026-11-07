@@ -548,3 +548,5 @@ Linux 直连设置按原 ID 核对宿主策略变更。guard 可完成已证实�
 草稿未应用路径在原工作租约内先持久化清理决定，再处理原暂存文件并确认未应用回执。只有原草稿和暂存证据核对后才进入清理。见[草稿替换未应用的原回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-草稿替换未应用的原回执)。
 
 排队订阅激活在同一工作租约内持有原发布 ID，重启由原发布权威接续档案事务，原队列可补齐已确认终态。见[排队订阅激活的原发布回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-排队订阅激活的原发布回执)。
+
+订阅激活的明确失败按原 ID 保留终态，应答未知继续占用原发布责任。见[订阅激活未知与失败的实机回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅激活未知与失败的实机回执)。

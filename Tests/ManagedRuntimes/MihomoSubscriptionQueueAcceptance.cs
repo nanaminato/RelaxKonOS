@@ -153,7 +153,8 @@ internal static class MihomoSubscriptionQueueAcceptance
             finally { await ProxyAuthenticatedPublicationChecks.StopAsync(restarted); }
             await VerifyActiveRefreshAsync();
             await VerifyActiveRefreshResponseLossAsync();
-            await VerifyFailedActiveRefreshAsync();
+            await VerifyFailedPublicationAsync(activation: false);
+            await VerifyFailedPublicationAsync(activation: true);
 
             async Task VerifyActiveRefreshAsync()
             {
@@ -347,10 +348,11 @@ internal static class MihomoSubscriptionQueueAcceptance
                 (await client.GetFromJsonAsync<ProxySubscriptionDto[]>(ProxyApiRoutes.Subscriptions, RelaxKonOSJsonOptions.Default, ct))!
                     .Single(item => item.Id == subscriptionId);
 
-            async Task VerifyFailedActiveRefreshAsync()
+            async Task VerifyFailedPublicationAsync(bool activation)
             {
                 var socket = start.Environment["PrivilegedHelper__SocketPath"]!;
                 var key = Guid.NewGuid().ToString("N");
+                var route = activation ? SubscriptionRoute(ProxyApiRoutes.SubscriptionActivatePattern, subscriptionId) : refreshRoute;
                 var previous = await publication.ReadAsync(ct);
                 Guid id;
                 ProxySubscriptionDto subscription;
@@ -364,16 +366,22 @@ internal static class MihomoSubscriptionQueueAcceptance
                     {
                         using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, ct);
                         subscription = await ReadSubscriptionAsync(client);
-                        id = await SubmitAsync(client, refreshRoute, key);
+                        if (activation && (await client.GetFromJsonAsync<ProxySubscriptionContentDto>(contentRoute,
+                            RelaxKonOSJsonOptions.Default, ct))?.Content.Contains("UNSUPPORTED-RULE", StringComparison.Ordinal) != true)
+                            throw new InvalidOperationException("Missing previously downloaded invalid draft for native activation rejection.");
+                        id = await SubmitAsync(client, route, key);
                         var nativeId = await WaitForNativeCommitAsync(client, id, relay);
                         rejected = await lifecycle.QueryAsync(ct, id);
                         var state = await publication.ReadAsync(ct);
                         if (nativeId != id || rejected.Receipt is not { Outcome: RuntimeSwitchOutcome.Failed }
                             || rejected.ConfigurationIdentity != previous.Identity || state.Pending?.OperationId != id
-                            || state.Pending.Identity == previous.Identity || !await probe(port)
+                            || state.Pending.Identity == previous.Identity
+                            || (activation ? state.Pending.Profile?.ActivationSubscriptionId != subscriptionId
+                                : state.Pending.Profile?.Refresh?.SubscriptionId != subscriptionId)
+                            || !await probe(port)
                             || (await ReadOperationAsync(client, id)).State != ProxyOperationState.Running
                             || await ReadLeasesAsync(client) != 1 || Volatile.Read(ref requests) != 5)
-                            throw new InvalidOperationException("The real failed refresh did not restore the previous configuration with its original receipt.");
+                            throw new InvalidOperationException("The real failed subscription publication did not restore the previous configuration with its original receipt.");
                         server.Kill();
                         await server.WaitForExitAsync(ct);
                         if (server.ExitCode == 0) throw new InvalidOperationException("The failed refresh Server did not terminate at the reply boundary.");
@@ -402,11 +410,14 @@ internal static class MihomoSubscriptionQueueAcceptance
                         || final.CompletedAt is null || state.Pending is not null || state.Identity != previous.Identity
                         || state.LastConfiguration is not { Confirmed: false, NotStarted: false } failure || failure.OperationId != id
                         || observed.Receipt != rejected.Receipt || observed.Installation.StateRevision != rejected.Installation.StateRevision
-                        || await ReadSubscriptionAsync(client) != subscription || await SubmitAsync(client, refreshRoute, key) != id
+                        || await ReadSubscriptionAsync(client) != subscription || await SubmitAsync(client, route, key) != id
+                        || (activation && state.SubscriptionActivationCompletions?.GetValueOrDefault(id)?.Confirmed != false)
                         || await ReadOperationAsync(client, id) != final || Volatile.Read(ref requests) != 5
                         || await ReadLeasesAsync(client) != 0 || !await probe(port))
                         throw new InvalidOperationException("Restart did not finish the original failed queue receipt without replay or changing the subscription timestamp.");
-                    Console.WriteLine($"PASS MANAGED MIHOMO ACTIVE SUBSCRIPTION COMPENSATION: original failed {id}, previous traffic and timestamp preserved, no replay");
+                    Console.WriteLine(activation
+                        ? $"PASS MANAGED MIHOMO SUBSCRIPTION ACTIVATION COMPENSATION: original failed {id}, previous traffic and timestamp preserved, no replay"
+                        : $"PASS MANAGED MIHOMO ACTIVE SUBSCRIPTION COMPENSATION: original failed {id}, previous traffic and timestamp preserved, no replay");
                 }
                 finally { await ProxyAuthenticatedPublicationChecks.StopAsync(recovery); }
             }

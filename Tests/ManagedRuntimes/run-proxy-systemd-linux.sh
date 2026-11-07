@@ -13,6 +13,8 @@ authenticated=${5:-}
 run_seconds=150
 if [[ $authenticated == --authenticated ]]; then run_seconds=250; fi
 baseline=
+activation_unknown=${RELAXKONOS_TEST_ACTIVATION_UNKNOWN:-0}
+case "$activation_unknown" in 0|1) ;; *) exit 2 ;; esac
 if [[ $# -eq 6 ]]; then baseline=$(realpath -e -- "$6"); fi
 case "$fixture$helper$server$proxy_tests$baseline" in *[!a-zA-Z0-9_./-]*) echo "Test paths must contain only unit-safe characters" >&2; exit 2;; esac
 test "$(id -u)" -eq 0
@@ -79,6 +81,7 @@ export RELAXKONOS_TEST_SERVER_UID=$server_uid
 export RELAXKONOS_TEST_SERVER_GID=$server_gid
 export RELAXKONOS_TEST_SYSTEMD_WORK=$work
 export RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE="$baseline"
+export RELAXKONOS_TEST_ACTIVATION_UNKNOWN="$activation_unknown"
 run_checks() {
     if [[ -n "$proxy_tests" ]]; then
         dotnet "$proxy_tests" --queue-recovery-only || return \$?

@@ -272,7 +272,7 @@ internal static class MihomoIpcStartupAcceptance
                     throw new InvalidOperationException("The subscription queue changed the original native publication or traffic.");
             });
             var log = await helper.StopAsync(drainCompletedRequests: true);
-            if (log.Split('\n').Count(line => line.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)) != 4
+            if (log.Split('\n').Count(line => line.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)) != 5
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
                 throw new InvalidOperationException("Subscription activation and each refresh must configure once without native replay.");
         }

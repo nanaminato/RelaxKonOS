@@ -24,6 +24,7 @@ internal static class MihomoDirectSubscriptionAcceptance
     internal static async Task RunAsync(string root, string assembly, string socket, LoginRequest login, ProxySystemdGuardProbe guard)
     {
         MihomoIpcStartupAcceptance.RequirePrivateHost();
+        var activationUnknown = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_ACTIVATION_UNKNOWN") == "1";
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(55));
         var ct = budget.Token;
         var paths = new ProxyPlatformPaths();
@@ -80,6 +81,8 @@ internal static class MihomoDirectSubscriptionAcceptance
         await using var relay = relayBuilder.Build();
         var reloadAttempts = 0;
         var reloads = 0;
+        var corruptNextActivation = 0;
+        var rejectedActivation = new TaskCompletionSource<HttpStatusCode>(TaskCreationOptions.RunContinuationsAsynchronously);
         var activationCommitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var activationRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var committed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -96,7 +99,15 @@ internal static class MihomoDirectSubscriptionAcceptance
                 request.Content = new StreamContent(context.Request.Body);
                 request.Content.Headers.TryAddWithoutValidation("Content-Type", context.Request.ContentType);
             }
+            var injectCorruption = reload && Interlocked.Exchange(ref corruptNextActivation, 0) == 1;
+            if (injectCorruption)
+            {
+                // The controller reads active.yaml after Server has validated and replaced it.
+                // Corrupt only this private candidate, then forward to the actual controller.
+                await File.WriteAllTextAsync(activePath, "rules: [", context.RequestAborted);
+            }
             using var response = await native.SendAsync(request, context.RequestAborted);
+            if (injectCorruption) rejectedActivation.TrySetResult(response.StatusCode);
             if (reload && response.IsSuccessStatusCode)
             {
                 var count = Interlocked.Increment(ref reloads);
@@ -110,7 +121,7 @@ internal static class MihomoDirectSubscriptionAcceptance
                     committed.TrySetResult();
                     await release.Task.WaitAsync(context.RequestAborted);
                 }
-                if (count == 3)
+                if (count == (activationUnknown ? 4 : 3))
                 {
                     unacknowledged.TrySetResult();
                     await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted);
@@ -149,6 +160,10 @@ internal static class MihomoDirectSubscriptionAcceptance
                 var unknownKey = Guid.NewGuid().ToString("N");
                 Guid unknown;
                 Guid unknownChild;
+                string unknownRoute;
+                var rollbackKey = Guid.NewGuid().ToString("N");
+                Guid rollbackId = default;
+                ProxyOperationDto? rollbackReceipt = null;
                 byte[] acknowledgedYaml;
                 MihomoDirectReload unknownCheckpoint;
                 var activationKey = Guid.NewGuid().ToString("N");
@@ -284,19 +299,44 @@ internal static class MihomoDirectSubscriptionAcceptance
                     Console.WriteLine($"PASS AUTHENTICATED SUBSCRIPTION BATCH RECOVERY: original {operation}, child {child}; draft and active committed, final item skipped without replay");
 
                     acknowledgedYaml = await File.ReadAllBytesAsync(activePath, trafficCt);
-                    unknown = await SubmitAsync(client, ProxyApiRoutes.SubscriptionsRefresh, unknownKey, trafficCt);
+                    unknownRoute = activationUnknown ? SubscriptionRoute(ProxyApiRoutes.SubscriptionActivatePattern, skipped.Id)
+                        : ProxyApiRoutes.SubscriptionsRefresh;
+                    if (activationUnknown)
+                    {
+                        Volatile.Write(ref corruptNextActivation, 1);
+                        rollbackId = await SubmitAsync(client, unknownRoute, rollbackKey, trafficCt);
+                        rollbackReceipt = await WaitForTerminalAsync(client, rollbackId, trafficCt);
+                        var rejected = await rejectedActivation.Task.WaitAsync(trafficCt);
+                        var rolledBack = await store.ReadAsync(trafficCt);
+                        if (rejected != HttpStatusCode.BadRequest
+                            || rollbackReceipt is not { State: ProxyOperationState.Failed, ProblemCode: ProxyProblemCodes.ConfigApplyFailed, CompletedAt: not null }
+                            || rolledBack.DirectReload is not null || rolledBack.SubscriptionActivationCompletions?.GetValueOrDefault(rollbackId)?.Confirmed != false
+                            || !(await File.ReadAllBytesAsync(activePath, trafficCt)).SequenceEqual(acknowledgedYaml)
+                            || await ReadRevisionAsync(subscription.ProfileId, trafficCt) != revision + 1
+                            || Volatile.Read(ref reloads) != 3 || Volatile.Read(ref reloadAttempts) != 4)
+                            throw new InvalidOperationException($"The real controller rejection did not roll back the original activation: {rejected}/{rollbackReceipt.ProblemCode}.");
+                        using var readRestored = new HttpRequestMessage(HttpMethod.Get, "proxies/fixture-2");
+                        readRestored.Headers.Authorization = new("Bearer", await secrets.GetOrCreateAsync(trafficCt));
+                        using var liveRestored = await native.SendAsync(readRestored, trafficCt);
+                        liveRestored.EnsureSuccessStatusCode();
+                    }
+                    unknown = await SubmitAsync(client, unknownRoute, unknownKey, trafficCt);
                     await unacknowledged.Task.WaitAsync(trafficCt);
                     unknownCheckpoint = (await store.ReadAsync(trafficCt)).DirectReload
-                        ?? throw new InvalidOperationException("Missing unacknowledged direct refresh checkpoint.");
-                    var unknownSteps = await ReadBatchAsync(unknown, trafficCt);
-                    unknownChild = unknownSteps[1].OperationId;
+                        ?? throw new InvalidOperationException("Missing unacknowledged direct subscription checkpoint.");
+                    unknownChild = activationUnknown ? unknown : (await ReadBatchAsync(unknown, trafficCt))[1].OperationId;
+                    var matchesSubscription = activationUnknown
+                        ? unknownCheckpoint.Profile?.ActivationSubscriptionId == skipped.Id && unknownCheckpoint.Profile.Refresh is null
+                        : unknownCheckpoint.Profile?.Refresh?.SubscriptionId == subscription.Id;
                     if (unknownCheckpoint.OperationId != unknownChild || unknownCheckpoint.ProfileReloadConfirmed
-                        || unknownCheckpoint.Profile?.Refresh?.SubscriptionId != subscription.Id
+                        || !matchesSubscription
                         || (await ReadOperationAsync(client, unknown, trafficCt)).State != ProxyOperationState.Running
                         || await ReadLeasesAsync(client, trafficCt) != 1
                         || await ReadRevisionAsync(subscription.ProfileId, trafficCt) != revision + 1
-                        || Volatile.Read(ref feeds) != 3 || Volatile.Read(ref draftFeeds) != 3 || Volatile.Read(ref skippedFeeds) != 1
-                        || Volatile.Read(ref reloads) != 3 || Volatile.Read(ref reloadAttempts) != 3)
+                        || Volatile.Read(ref feeds) != (activationUnknown ? 2 : 3)
+                        || Volatile.Read(ref draftFeeds) != (activationUnknown ? 2 : 3) || Volatile.Read(ref skippedFeeds) != 1
+                        || Volatile.Read(ref reloads) != (activationUnknown ? 4 : 3)
+                        || Volatile.Read(ref reloadAttempts) != (activationUnknown ? 5 : 3))
                         throw new InvalidOperationException("The refresh lost its original work or committed without the reload response.");
                     restarted.Kill();
                     await restarted.WaitForExitAsync(trafficCt);
@@ -316,38 +356,61 @@ internal static class MihomoDirectSubscriptionAcceptance
                     using var ledger = JsonDocument.Parse(persisted);
                     var saved = ledger.RootElement.EnumerateArray().Select(entry => entry.GetProperty("Operation"))
                         .Single(entry => entry.GetProperty(nameof(ProxyOperationDto.OperationId)).GetGuid() == unknown);
-                    using var fresh = new HttpRequestMessage(HttpMethod.Post, ProxyApiRoutes.SubscriptionsRefresh);
+                    using var fresh = new HttpRequestMessage(HttpMethod.Post, unknownRoute);
                     fresh.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
                     using var denied = await client.SendAsync(fresh, trafficCt);
                     var status = await client.GetFromJsonAsync<RuntimeRecoverySnapshot>(RuntimeRoutes.MihomoRecovery, RelaxKonOSJsonOptions.Default, trafficCt);
                     var state = await store.ReadAsync(trafficCt);
                     var content = await client.GetFromJsonAsync<ProxySubscriptionContentDto>(
                         SubscriptionRoute(ProxyApiRoutes.SubscriptionContentPattern, subscription.Id), RelaxKonOSJsonOptions.Default, trafficCt);
-                    var steps = await ReadBatchAsync(unknown, trafficCt);
-                    if (pending.State != ProxyOperationState.Interrupted || pending.Stage != "batch_pending"
+                    if (pending.State != ProxyOperationState.Interrupted || pending.Stage != (activationUnknown ? "publication_pending" : "batch_pending")
                         || pending.CompletedAt is not null || pending.ProblemCode != ProxyProblemCodes.OperationInterrupted
                         || saved.GetProperty(nameof(ProxyOperationDto.Stage)).GetString() != pending.Stage
-                        || await SubmitAsync(client, ProxyApiRoutes.SubscriptionsRefresh, unknownKey, trafficCt) != unknown
+                        || await SubmitAsync(client, unknownRoute, unknownKey, trafficCt) != unknown
                         || await ReadOperationAsync(client, unknown, trafficCt) != pending
                         || await File.ReadAllTextAsync(durableLedger, trafficCt) != persisted
                         || denied.StatusCode != HttpStatusCode.BadRequest
                         || !(await denied.Content.ReadAsStringAsync(trafficCt)).Contains(ProxyProblemCodes.OperationInterrupted, StringComparison.Ordinal)
                         || status is not { Required: true } || status.OperationId != unknownChild
-                        || state.DirectReload != unknownCheckpoint || state.SubscriptionRefreshCompletions?.ContainsKey(unknownChild) == true
-                        || steps[1].OperationId != unknownChild || !steps.Select(step => step.State).SequenceEqual([ProxyOperationStore.RefreshStepState.Succeeded,
-                            ProxyOperationStore.RefreshStepState.Running, ProxyOperationStore.RefreshStepState.Skipped])
+                        || state.DirectReload != unknownCheckpoint
                         || content?.RetrievedAt != checkpoint.Profile!.Refresh!.RetrievedAt
                         || await ReadRevisionAsync(subscription.ProfileId, trafficCt) != revision + 1
                         || await ReadLeasesAsync(client, trafficCt) != 0
-                        || Volatile.Read(ref feeds) != 3 || Volatile.Read(ref draftFeeds) != 3 || Volatile.Read(ref skippedFeeds) != 1
-                        || Volatile.Read(ref reloads) != 3 || Volatile.Read(ref reloadAttempts) != 3
+                        || Volatile.Read(ref feeds) != (activationUnknown ? 2 : 3)
+                        || Volatile.Read(ref draftFeeds) != (activationUnknown ? 2 : 3) || Volatile.Read(ref skippedFeeds) != 1
+                        || Volatile.Read(ref reloads) != (activationUnknown ? 4 : 3)
+                        || Volatile.Read(ref reloadAttempts) != (activationUnknown ? 5 : 3)
                         || guard.RuntimePid != pid)
                         throw new InvalidOperationException("Restart lost the pending direct subscription receipt, replayed work, or committed an unknown result.");
-                    using var readNative = new HttpRequestMessage(HttpMethod.Get, "proxies/fixture-3");
+                    if (activationUnknown)
+                    {
+                        var subscriptions = await client.GetFromJsonAsync<ProxySubscriptionDto[]>(
+                            ProxyApiRoutes.Subscriptions, RelaxKonOSJsonOptions.Default, trafficCt);
+                        if (state.SubscriptionActivationCompletions?.ContainsKey(unknown) == true
+                            || subscriptions?.Single(item => item.Id == skipped.Id) != skipped)
+                            throw new InvalidOperationException("The unknown activation altered the original inactive subscription.");
+                        if (await SubmitAsync(client, unknownRoute, rollbackKey, trafficCt) != rollbackId
+                            || await ReadOperationAsync(client, rollbackId, trafficCt) != rollbackReceipt
+                            || state.SubscriptionActivationCompletions?.GetValueOrDefault(rollbackId)?.Confirmed != false
+                            || Volatile.Read(ref reloadAttempts) != 5)
+                            throw new InvalidOperationException("Restart changed the prior failed activation receipt or repeated the rollback.");
+                        Console.WriteLine($"PASS AUTHENTICATED DIRECT SUBSCRIPTION ACTIVATION ROLLBACK: original {rollbackId}; native rejection, one rollback and stable failed receipt");
+                    }
+                    else
+                    {
+                        var steps = await ReadBatchAsync(unknown, trafficCt);
+                        if (state.SubscriptionRefreshCompletions?.ContainsKey(unknownChild) == true
+                            || steps[1].OperationId != unknownChild || !steps.Select(step => step.State).SequenceEqual([ProxyOperationStore.RefreshStepState.Succeeded,
+                                ProxyOperationStore.RefreshStepState.Running, ProxyOperationStore.RefreshStepState.Skipped]))
+                            throw new InvalidOperationException("The unknown batch lost its original item state.");
+                    }
+                    using var readNative = new HttpRequestMessage(HttpMethod.Get, activationUnknown ? "proxies/skipped" : "proxies/fixture-3");
                     readNative.Headers.Authorization = new("Bearer", await secrets.GetOrCreateAsync(trafficCt));
                     using var liveCandidate = await native.SendAsync(readNative, trafficCt);
                     liveCandidate.EnsureSuccessStatusCode();
-                    Console.WriteLine($"PASS AUTHENTICATED SUBSCRIPTION BATCH UNKNOWN: original {unknown}, child {unknownChild}; restored disk, stable pending receipt, no replay");
+                    Console.WriteLine(activationUnknown
+                        ? $"PASS AUTHENTICATED DIRECT SUBSCRIPTION ACTIVATION UNKNOWN: original {unknown}; pending receipt, no replay"
+                        : $"PASS AUTHENTICATED SUBSCRIPTION BATCH UNKNOWN: original {unknown}, child {unknownChild}; restored disk, stable pending receipt, no replay");
                 }
                 finally { await ProxyAuthenticatedPublicationChecks.StopAsync(recovery); }
             }, TimeSpan.FromSeconds(55));

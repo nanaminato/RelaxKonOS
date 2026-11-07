@@ -2409,4 +2409,14 @@ Windows Release 配置、订阅边界 40 项、ManagedRuntimes 和模块边界�
 
 受管 Mihomo 使用同一隔离主机，生产 Helper 已提交激活 `e05a5a41-cda0-4cab-b2a3-67642325ff5f` 时中继暂扣原应答并强制终止 Server。重启按同一 ID 查询真实 Helper 回执并完成档案提交。原键返回原成功，Helper 原修订与订阅时间保持，激活只派发一次，源站没有激活下载。受管套件通过 178 项，真实转发持续，专属 cgroup 已清理，宿主指纹一致。日志为 `.artifacts/mb04-subscription-activation/managed-live.log`，归档 SHA-256 为 `672b40e3ab76d48f6a04d8e41abddd9428ce6a9be7642b0af8a464026e695c81`。
 
-本轮实机覆盖原生结果已确认的激活中断。激活结果未知及明确回滚的原队列联合验收仍限本地证据。Proxy 保持 resident，动态休眠与生产内存未验收。
+本轮实机覆盖原生结果已确认的激活中断。激活结果未知与确定失败的实测见下节。Proxy 保持 resident，动态休眠与生产内存未验收。
+
+### MB-04 订阅激活未知与失败的实机回执
+
+Windows Release 配置、订阅边界 40 项、ManagedRuntimes 和模块边界回归通过。MB-05 跨进程原 `0d45dd11-c28a-42b1-a354-703f56dacc7b` 返回 Interrupted，受控副作用计数为一。直连私有 systemd runner 可用 `RELAXKONOS_TEST_ACTIVATION_UNKNOWN=1` 选择激活故障，默认保留活动批次的未知故障路径。
+
+受管激活 `15469b9e-4a69-472f-bbf9-503417a18cd8` 使用先前保存的无效规则，由真实 Mihomo 在切换前拒绝。生产 Helper 保留原失败回执和原配置身份，中继暂扣回执时强制终止 Server。重启按同一激活 ID 和原键读回 Failed，Helper 修订、订阅时间与实际转发保持，激活零额外下载且只派发一次。此路径验证切换前的确定失败和准备清理。受管隔离套件通过 178 项，专属 cgroup 已清理，宿主指纹一致。日志为 `.artifacts/mb04-activation-failure/managed-live.log`，归档 SHA-256 为 `34be917c180cf47ff3ed438df0d4fecd0d99bf7b2a54288b60bca0d9c7481e41`。
+
+直连激活 `8db17423-7d06-4def-a445-d4c7eec3268a` 在 Server 已替换配置、真实控制器尚未读取时损坏隔离候选 YAML。真实 Mihomo 返回 HTTP 400，原事务重载旧配置一次。认证控制器读到旧节点，原档案修订和草稿时间保持，原失败回执跨进程读取一致。另一原激活 `de7c6260-9a03-4ccb-91c3-3993c31aa063` 实际加载候选后暂扣应答并强制终止 Server。重启恢复旧磁盘配置，真实进程仍报告候选节点，原激活保持 `publication_pending`、无完成时间，目标档案仍未激活，新键被拒绝。两条路径均无重复下载或重载，原进程跨中断 HTTP 转发通过。
+
+直连首轮在并行运行期间触及 250 秒运行窗口，未产生终态。最终轮在同一运行窗口内通过，两轮专属 cgroup 均已清理，宿主运行时与代理文件指纹一致。最终日志为 `.artifacts/mb04-activation-failure/live-final.log`，归档 SHA-256 为 `e2030e4f66464a7157124c511301c80e603797f8f9269b6b2e6c96690a10c973`。受管激活切换后的故障补偿尚未联合实测。Proxy 保持 resident，动态休眠和生产内存未验收。
