@@ -76,8 +76,16 @@ internal static class ManagedServiceChecks
             await using var host = new ServiceHost(executable is not null);
             ISingBoxNativeChecks natives = executable is null ? new NativeChecks() : new SingBoxNativeChecks();
 
+            var committed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseResponse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var dropResponse = false;
             await using var socket = executable is not null && OperatingSystem.IsLinux()
-                ? OpenSocket(root, states, host, natives) : null;
+                ? OpenSocket(root, states, host, natives, async (request, result) =>
+                {
+                    if (!dropResponse || request.Operation != PrivilegedOperationKind.ProxyServerApply || !result.Success) return;
+                    committed.TrySetResult();
+                    await releaseResponse.Task.WaitAsync(TimeSpan.FromSeconds(20));
+                }) : null;
             Task<PrivilegedOperationResult> RequestAsync(PrivilegedOperationKind operation, ProxyServerHelperRequest? request) =>
                 socket is null ? Send(operation, request, root, states, host, natives)
                     : SendAcrossProcessAsync(socket.SocketPath, new(operation, ProxyServer: request));
@@ -182,7 +190,31 @@ internal static class ManagedServiceChecks
                 && Digest(await File.ReadAllBytesAsync(Path.Combine(root, "config.json"))) == identityB,
                 "A runtime that exits after start cannot commit the candidate and must restore the prior running configuration");
 
-            if (executable is not null) return count;
+            if (socket is not null)
+            {
+                var before = states.Read()!.Installation.StateRevision;
+                var starts = host.Starts;
+                dropResponse = true;
+                try
+                {
+                    await SendAcrossProcessAsync(socket.SocketPath,
+                        new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: materialA)), async child =>
+                        {
+                            await committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                            Check(!child.HasExited && states.Read()!.ConfigurationIdentity == identityA,
+                                "The Helper must commit the candidate before the client is terminated.");
+                            child.Kill();
+                            await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                            Check(child.ExitCode != 0, "The original client must terminate without a response.");
+                        });
+                }
+                finally { releaseResponse.TrySetResult(); }
+                var recovered = Read<ProxyServerStatus>(await RequestAsync(PrivilegedOperationKind.ProxyServerStatus, null));
+                Check(recovered is { Running: true, Applied: true } && recovered.ConfigurationHash == identityA
+                    && states.Read()!.Installation.StateRevision == before + 1 && host.Starts == starts + 1,
+                    "A new client must observe the committed state without another publication.");
+                return count;
+            }
 
             // A tampered program file is never executed again.
             var binary = Path.Combine(directory, binaryName);
@@ -223,7 +255,7 @@ internal static class ManagedServiceChecks
     private static string Key() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         .Replace('+', '-').Replace('/', '_')[..43];
 
-    private static async Task<PrivilegedOperationResult> SendAcrossProcessAsync(string socketPath, PrivilegedOperationRequest request)
+    private static async Task<PrivilegedOperationResult> SendAcrossProcessAsync(string socketPath, PrivilegedOperationRequest request, Func<Process, Task>? interrupt = null)
     {
         var start = new ProcessStartInfo(Environment.ProcessPath!)
         {
@@ -241,6 +273,11 @@ internal static class ManagedServiceChecks
         {
             await child.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request).AsMemory(), deadline.Token);
             child.StandardInput.Close();
+            if (interrupt is not null)
+            {
+                await interrupt(child);
+                return new(false);
+            }
             var response = await child.StandardOutput.ReadToEndAsync(deadline.Token);
             await child.WaitForExitAsync(deadline.Token);
             if (child.ExitCode != 0) throw new InvalidOperationException($"Isolated Helper client exited: {child.ExitCode}.");
@@ -266,17 +303,19 @@ internal static class ManagedServiceChecks
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     private static LinuxUnixSocketPrivilegedServer OpenSocket(string root, RuntimeArchiveStateStore states,
-        ServiceHost host, ISingBoxNativeChecks natives)
+        ServiceHost host, ISingBoxNativeChecks natives, Func<PrivilegedOperationRequest, PrivilegedOperationResult, Task> beforeResponse)
     {
         var files = new LinuxUnixSocketFileSystem();
         if (files.EffectiveUserId != 0) throw new InvalidOperationException("The isolated Helper socket fixture requires root.");
         var configuration = new LinuxPrivilegedHelperConfiguration(Path.Combine(root, "ipc", "helper.sock"), 0, [0]);
-        var socket = new LinuxUnixSocketPrivilegedServer(configuration, (request, _) =>
+        var socket = new LinuxUnixSocketPrivilegedServer(configuration, async (request, _) =>
         {
             if (request.Operation is not (PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerValidate
                 or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerAction))
                 throw new InvalidOperationException("Unexpected operation on the isolated sing-box socket.");
-            return Send(request.Operation, request.ProxyServer, root, states, host, natives);
+            var result = await Send(request.Operation, request.ProxyServer, root, states, host, natives);
+            await beforeResponse(request, result);
+            return result;
         }, files, new LinuxPeerAuthorizer(configuration.AllowedUserIds), Console.WriteLine);
         socket.Start();
         return socket;

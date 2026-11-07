@@ -338,3 +338,5 @@ Helper 发布配置时会核对原运行状态。原先运行的 sing-box 若启
 专属 sing-box 发布和补偿已通过 Linux Unix socket 传输与 peer UID 验收。测试宿主在同一进程运行 socket 两端，使用隔离 sing-box 进程。独立 Helper 进程联合恢复仍待实机验收。
 
 专属 Helper socket 已通过独立客户端进程复测。发布和补偿跨进程调用通过，客户端在途退出后的原台账恢复仍待联合验收。
+
+专属 Helper 已验证提交后、响应前客户端退出。新连接读取同一持久配置结果，Helper 台账版本和 sing-box 启动次数均只增加一次。Server 原发布台账与该 IPC 故障的联合验收仍开放。
