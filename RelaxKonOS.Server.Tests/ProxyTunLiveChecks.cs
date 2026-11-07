@@ -108,12 +108,21 @@ internal static class ProxyTunLiveChecks
 
                     var disableRequests = calls.Reloads;
                     if (mihomo is not null) TestAssert.Assert(disableRequests == 1 && calls.DroppedResponses == 1, "Initial recovery must issue exactly one real disable reload.");
-                    await AddDefaultRouteAsync();
-                    using (var recovery = new ProxyRecoveryHostedService(safety, NullLogger<ProxyRecoveryHostedService>.Instance))
+                    var recoveryLog = new RecoveryAttemptLog();
+                    using (var recovery = new ProxyRecoveryHostedService(safety, recoveryLog))
                     {
                         await recovery.StartAsync(default);
-                        await recovery.ExecuteTask!.WaitAsync(Budget);
-                        await recovery.StopAsync(default);
+                        try
+                        {
+                            await recoveryLog.Pending.Task.WaitAsync(Budget);
+                            TestAssert.Assert(!recovery.ExecuteTask!.IsCompleted
+                                && await safety.CaptureRecoveryAsync(default) == original
+                                && calls.Reloads == disableRequests,
+                                "The same Core worker must retain the original marker while the route is missing.");
+                            await AddDefaultRouteAsync();
+                            await recovery.ExecuteTask.WaitAsync(TimeSpan.FromSeconds(45));
+                        }
+                        finally { await recovery.StopAsync(default).WaitAsync(Budget); }
                     }
                     TestAssert.Assert(await safety.CaptureRecoveryAsync(default) is null && runtime.Removals == 1
                         && calls.Reloads == disableRequests,
@@ -138,7 +147,7 @@ internal static class ProxyTunLiveChecks
                     if (mihomo is not null)
                         TestAssert.Assert(!mihomo.HasExited && (await runtime.IsEnabledAsync(default)) is { Succeeded: true, Enabled: false },
                             "The original Mihomo process must remain reachable with TUN disabled.");
-                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, Core startup verified route, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
+                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, same Core worker retried and verified route, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
                 }
                 finally { if (mihomo is not null) await DockerProcessRecoveryChecks.StopWorkerAsync(mihomo); }
             }
@@ -237,6 +246,20 @@ internal static class ProxyTunLiveChecks
             await DockerProcessRecoveryChecks.StopWorkerAsync(process);
             process.Dispose();
             throw;
+        }
+    }
+
+    private sealed class RecoveryAttemptLog : ILogger<ProxyRecoveryHostedService>
+    {
+        internal readonly TaskCompletionSource Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (level == LogLevel.Warning && formatter(state, exception).StartsWith(
+                "Proxy TUN recovery evaluation requires operator attention:", StringComparison.Ordinal))
+                Pending.TrySetResult();
         }
     }
 
