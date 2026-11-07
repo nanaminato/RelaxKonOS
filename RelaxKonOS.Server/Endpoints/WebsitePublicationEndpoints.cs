@@ -37,14 +37,23 @@ public static class WebsitePublicationEndpoints
             .RequireAuthorization(ApplicationDeploymentEndpoints.ReadPolicy);
         group.MapPost(WebsitePublicationApiRoutes.CleanupBootstrapPattern, (Guid operationId, HttpContext context,
             IHostElevationSessionStore elevations, WebsitePublicationCoordinator coordinator, CancellationToken ct) => HandleAsync(async () =>
-        {
-            if (coordinator.Get(operationId) is not { } operation) return Results.NotFound();
-            if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, operation.WebServerId))
-                return ElevationRequired();
-            var receipt = await coordinator.CleanupBootstrapAsync(operationId, ct);
-            return new ResidentOperationResult(ServerModules.WebServerId, Results.Ok(receipt));
-        })).RequireAuthorization(ApplicationDeploymentEndpoints.ManagePolicy);
+                await RecoverBootstrapAsync(operationId, context, elevations, coordinator, resume: false, ct)))
+            .RequireAuthorization(ApplicationDeploymentEndpoints.ManagePolicy);
+        group.MapPost(WebsitePublicationApiRoutes.ResumeBootstrapPattern, (Guid operationId, HttpContext context,
+            IHostElevationSessionStore elevations, WebsitePublicationCoordinator coordinator, CancellationToken ct) => HandleAsync(async () =>
+                await RecoverBootstrapAsync(operationId, context, elevations, coordinator, resume: true, ct)))
+            .RequireAuthorization(ApplicationDeploymentEndpoints.ManagePolicy);
         return app;
+    }
+
+    private static async Task<IResult> RecoverBootstrapAsync(Guid operationId, HttpContext context,
+        IHostElevationSessionStore elevations, WebsitePublicationCoordinator coordinator, bool resume, CancellationToken ct)
+    {
+        if (coordinator.Get(operationId) is not { } operation) return Results.NotFound();
+        if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, operation.WebServerId))
+            return ElevationRequired();
+        var receipt = await coordinator.RecoverBootstrapAsync(operationId, resume, ct);
+        return new ResidentOperationResult(ServerModules.WebServerId, Results.Ok(receipt));
     }
 
     private static string Key(HttpContext context) => context.Request.Headers["Idempotency-Key"].ToString();

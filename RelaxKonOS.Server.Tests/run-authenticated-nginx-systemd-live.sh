@@ -4,7 +4,7 @@ set -euo pipefail
 [[ ( $# == 2 || $# == 3 || $# == 5 ) && $EUID == 0 ]]
 mode=${3:---systemd}
 case "$mode" in
-    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-website-acme-bootstrap|--systemd-website-acme-bootstrap-success|--systemd-website-acme-bootstrap-failure|--systemd-first-site-acme|--systemd-first-site-acme-success) ;;
+    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-website-acme-bootstrap|--systemd-website-acme-bootstrap-success|--systemd-website-acme-bootstrap-failure|--systemd-website-acme-bootstrap-resume|--systemd-website-acme-bootstrap-resume-interrupt|--systemd-first-site-acme|--systemd-first-site-acme-success) ;;
     *) exit 2 ;;
 esac
 pebble= dns= relay=
@@ -111,7 +111,7 @@ JSON
     ca=\$!
     : > "$work/response-fault"
     relay_mode=website
-    if [[ "$mode" == --systemd-website-acme-success || "$mode" == --systemd-website-acme-bootstrap-success || "$mode" == --systemd-first-site-acme* ]]; then relay_mode=full-server; fi
+    if [[ "$mode" == --systemd-website-acme-success || "$mode" == --systemd-website-acme-bootstrap-success || "$mode" == --systemd-website-acme-bootstrap-resume* || "$mode" == --systemd-first-site-acme* ]]; then relay_mode=full-server; fi
     python3 "$relay" "$work" "\$relay_mode" > "$work/relay.log" 2>&1 &
     acme_relay=\$!
     for attempt in \$(seq 1 100); do

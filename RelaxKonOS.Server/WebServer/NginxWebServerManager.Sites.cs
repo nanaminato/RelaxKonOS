@@ -30,7 +30,7 @@ internal sealed partial class NginxWebServerManager
         UpsertSiteAsync(instanceId, request, null, cancellationToken);
 
     internal async Task<WebServerSiteDto?> UpsertSiteAsync(string instanceId, UpsertWebServerSiteRequest request,
-        Guid? bootstrapOperationId, CancellationToken cancellationToken)
+        Guid? bootstrapOperationId, CancellationToken cancellationToken, Action? recordBootstrapBinding = null)
     {
         var instance = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
         if (instance is null)
@@ -66,6 +66,7 @@ internal sealed partial class NginxWebServerManager
             if (bootstrapOperationId is { } bootstrap)
             {
                 if (sites.Count != 0 || !File.Exists(config) || IsSymbolicLink(config)
+                    || File.Exists(config + ".rollback") || File.Exists(config + ".cleanup.rollback")
                     || !await MatchesSiteConfigAsync(config, RenderWebsiteBootstrap(bootstrap, site.Id, site.Bindings[0].Domain), cancellationToken))
                     throw new WebServerSiteConflictException("website.recheck_required");
             }
@@ -86,7 +87,9 @@ internal sealed partial class NginxWebServerManager
                 throw new WebServerSiteConflictException("webserver.site_binding_conflict");
             }
             if (index >= 0 && site.UpdatedAt <= sites[index].UpdatedAt) site = site with { UpdatedAt = sites[index].UpdatedAt.AddTicks(1) };
-            var anchorProblem = await EnsureSiteIncludeAnchorAsync(instance, cancellationToken);
+            var anchorProblem = bootstrapOperationId.HasValue
+                ? (await HasWebsiteBootstrapAnchorAsync(directory, cancellationToken) ? null : "website.recheck_required")
+                : await EnsureSiteIncludeAnchorAsync(instance, cancellationToken);
             if (anchorProblem is not null)
             {
                 logger.LogError("Nginx site save rejected because the RelaxKonOS include anchor cannot be used. InstanceId={InstanceId}, Problem={Problem}, Configuration={Configuration}, SitesDirectory={SitesDirectory}", instance.Id, anchorProblem, instance.ConfigurationPath, directory);
@@ -106,6 +109,14 @@ internal sealed partial class NginxWebServerManager
             }
             if (site.RootPath is not null && (!Directory.Exists(site.RootPath) || IsSymbolicLink(site.RootPath)))
                 throw new WebServerSiteValidationException("webserver.site_root_invalid");
+            if (bootstrapOperationId is { } publicationId)
+            {
+                if (!await HasSuccessfulWebsiteReloadAsync(publicationId, cancellationToken)
+                    || !(await privilegedNginx.ConfirmServiceIdleAsync(cancellationToken)).Success)
+                    throw new WebServerSiteConflictException("website.recheck_required");
+                cancellationToken.ThrowIfCancellationRequested();
+                recordBootstrapBinding?.Invoke();
+            }
             var applyProblem = await WriteSiteConfigurationAsync(instance, site, cancellationToken, index >= 0 ? sites[index] : null);
             if (applyProblem is not null)
             {

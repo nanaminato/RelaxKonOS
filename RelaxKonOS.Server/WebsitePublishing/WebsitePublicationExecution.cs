@@ -94,23 +94,11 @@ internal sealed class WebsitePublicationExecution(
                     bootstrapPending = false;
                 throw;
             }
-            SetStage(operationId, WebsitePublicationStage.Configuring, siteId: siteId, certificateId: certificateId);
-
             var previousSite = existingSite;
-            WebServerSiteDto site;
-            try
-            {
-                var siteRequest = new UpsertWebServerSiteRequest(
-                    siteId, application.Name, [new WebServerSiteBindingDto(request.Domain, 80)], null, false, false,
-                    [new WebServerProxyRouteDto("/", $"http://127.0.0.1:{hostPort}")], certificateId, true, true, false, ExpectedUpdatedAt: existingSite?.UpdatedAt);
-                site = (bootstrapPending
-                    ? await nginx!.UpsertSiteAsync(server.Id, siteRequest, operationId, stopping)
-                    : await webServers.UpsertSiteAsync(server.Id, siteRequest, stopping))
-                    ?? throw new WebsitePublicationException("website.site_apply_failed");
-            }
-            catch (NginxWebServerManager.WebServerSiteValidationException error) { throw new WebsitePublicationException(error.ProblemCode, 400); }
-            catch (NginxWebServerManager.WebServerSiteConflictException error) { throw new WebsitePublicationException(error.ProblemCode); }
-            catch (NginxWebServerManager.WebServerSiteApplyException error) { throw new WebsitePublicationException(error.ProblemCode); }
+            void RecordBinding() => SetStage(operationId, WebsitePublicationStage.Configuring, siteId: siteId, certificateId: certificateId);
+            if (!bootstrapPending) RecordBinding();
+            var site = await ApplySiteAsync(server.Id, siteId, application.Name, request.Domain, hostPort, certificateId,
+                existingSite?.UpdatedAt, bootstrapPending ? operationId : null, RecordBinding, stopping);
 
             try
             {
@@ -160,7 +148,7 @@ internal sealed class WebsitePublicationExecution(
         var operation = store.Get(operationId) ?? throw new WebsitePublicationException("website.operation_not_found", 404);
         if (WebsitePublicationStore.Active(operation)) throw new WebsitePublicationException("website.operation_conflict");
         if (operation.BootstrapCleanedAt is not null) return operation;
-        if (operation.RecoveryProblemCode != WebsitePublicationStore.SiteApplicationUnverified)
+        if (operation.RecoveryProblemCode != WebsitePublicationStore.SiteApplicationUnverified || operation.BootstrapResumeStartedAt is not null)
             throw new WebsitePublicationException("website.recheck_required");
         CertificateOperationDto? certificate;
         try { certificate = await certificateOperations.GetWebsiteIssueAsync(operationId, ct); }
@@ -171,6 +159,70 @@ internal sealed class WebsitePublicationExecution(
             || !await TryCleanupBootstrapAsync(operation, ct))
             throw new WebsitePublicationException("website.recheck_required");
         return store.Get(operationId)!;
+    }
+
+    internal async Task<WebsitePublicationOperationDto> ResumeBootstrapAsync(Guid operationId, CancellationToken ct)
+    {
+        var operation = store.Get(operationId) ?? throw new WebsitePublicationException("website.operation_not_found", 404);
+        if (operation.BootstrapResumedAt is not null) return operation;
+        if (nginx is null || operation.State != WebsitePublicationState.Interrupted
+            || operation.InterruptedFromStage != WebsitePublicationStage.Certificate
+            || operation.RecoveryProblemCode != WebsitePublicationStore.SiteApplicationUnverified
+            || operation.BootstrapCleanupOperationId is not null || operation.BootstrapResumeStartedAt is not null
+            || operation.SiteId != $"app{operation.ApplicationId:N}"
+            || operation.CertificateId is not { } certificateId || operation.CertificateOperationId is not { } issueId)
+            throw new WebsitePublicationException("website.recheck_required");
+
+        CertificateOperationDto? certificate;
+        try { certificate = await certificateOperations.GetWebsiteIssueAsync(operationId, ct); }
+        catch (ModuleUnavailableException) { throw new WebsitePublicationException("website.recheck_required"); }
+        if (certificate is not { State: CertificateOperationState.Succeeded, CompletedAt: not null }
+            || certificate.CertificateId != certificateId || certificate.OperationId != issueId)
+            throw new WebsitePublicationException("website.recheck_required");
+
+        var application = catalog.Find(operation.ApplicationId);
+        if (application is null || application.SiteId is not null || application.HostPort is not { } hostPort
+            || application.BindAddress != "127.0.0.1"
+            || catalog.ReadApplications().Any(item => item.SiteInstanceId == operation.WebServerId && item.SiteId == operation.SiteId)
+            || (await applications.SnapshotAsync(operation.ApplicationId, ct)).Application.ActualState != ApplicationActualState.Running)
+            throw new WebsitePublicationException("website.recheck_required");
+
+        var site = await ApplySiteAsync(operation.WebServerId, operation.SiteId, application.Name, operation.Domain, hostPort,
+            certificateId, null, operationId, () => store.Update(operationId, current => current with
+            {
+                BootstrapResumeStartedAt = DateTimeOffset.UtcNow,
+            }), ct);
+        try { catalog.BindSite(application.Id, operation.WebServerId, site.Id, site.DomainsDisplay); }
+        catch (Exception error) when (error is ApplicationDeploymentException or IOException)
+        {
+            logger.LogWarning(error, "Website bootstrap association remains unconfirmed. OperationId={OperationId}", operationId);
+            throw new WebsitePublicationException("website.recheck_required");
+        }
+        var checks = await VerifyAsync(operation.Domain, ct);
+        return store.Update(operationId, current => current with
+        {
+            BootstrapResumedAt = DateTimeOffset.UtcNow,
+            RecoveryProblemCode = null,
+            Checks = checks,
+        });
+    }
+
+    private async Task<WebServerSiteDto> ApplySiteAsync(string serverId, string siteId, string name, string domain, int hostPort,
+        Guid certificateId, DateTimeOffset? expectedUpdatedAt, Guid? bootstrapId, Action recordBinding, CancellationToken ct)
+    {
+        var request = new UpsertWebServerSiteRequest(siteId, name, [new WebServerSiteBindingDto(domain, 80)], null, false, false,
+            [new WebServerProxyRouteDto("/", $"http://127.0.0.1:{hostPort}")], certificateId, true, true, false,
+            ExpectedUpdatedAt: expectedUpdatedAt);
+        try
+        {
+            return (bootstrapId.HasValue
+                ? await nginx!.UpsertSiteAsync(serverId, request, bootstrapId, ct, recordBinding)
+                : await webServers.UpsertSiteAsync(serverId, request, ct))
+                ?? throw new WebsitePublicationException("website.site_apply_failed");
+        }
+        catch (NginxWebServerManager.WebServerSiteValidationException error) { throw new WebsitePublicationException(error.ProblemCode, 400); }
+        catch (NginxWebServerManager.WebServerSiteConflictException error) { throw new WebsitePublicationException(error.ProblemCode); }
+        catch (NginxWebServerManager.WebServerSiteApplyException error) { throw new WebsitePublicationException(error.ProblemCode); }
     }
 
     private async Task<bool> TryCleanupBootstrapAsync(WebsitePublicationOperationDto operation, CancellationToken ct)

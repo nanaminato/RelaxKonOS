@@ -53,7 +53,10 @@ public sealed record WebsitePublicationOperationDto(
     [property: JsonPropertyName("startedAt")] DateTimeOffset? StartedAt,
     [property: JsonPropertyName("completedAt")] DateTimeOffset? CompletedAt,
     [property: JsonPropertyName("bootstrapCleanupOperationId")] Guid? BootstrapCleanupOperationId = null,
-    [property: JsonPropertyName("bootstrapCleanedAt")] DateTimeOffset? BootstrapCleanedAt = null);
+    [property: JsonPropertyName("bootstrapCleanedAt")] DateTimeOffset? BootstrapCleanedAt = null,
+    [property: JsonPropertyName("interruptedFromStage")] WebsitePublicationStage? InterruptedFromStage = null,
+    [property: JsonPropertyName("bootstrapResumeStartedAt")] DateTimeOffset? BootstrapResumeStartedAt = null,
+    [property: JsonPropertyName("bootstrapResumedAt")] DateTimeOffset? BootstrapResumedAt = null);
 
 public static class WebsitePublicationApiRoutes
 {
@@ -67,4 +70,6 @@ public static class WebsitePublicationApiRoutes
     public const string OperationPattern = "/operations/{operationId:guid}";
     public const string CleanupBootstrap = $"{Operation}/cleanup-bootstrap";
     public const string CleanupBootstrapPattern = OperationPattern + "/cleanup-bootstrap";
+    public const string ResumeBootstrap = $"{Operation}/resume-bootstrap";
+    public const string ResumeBootstrapPattern = OperationPattern + "/resume-bootstrap";
 }

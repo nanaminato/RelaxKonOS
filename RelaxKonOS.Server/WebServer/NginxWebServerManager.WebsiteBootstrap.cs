@@ -19,8 +19,7 @@ internal sealed partial class NginxWebServerManager
         {
             if (!Directory.Exists(directory) || IsSymbolicLink(directory) || (await ReadSitesAsync(instance, ct)).Count != 0)
                 return "website.acme_webroot_required";
-            var anchor = Path.Combine(Path.GetDirectoryName(directory)!, OwnedFileName);
-            if (!File.Exists(anchor) || IsSymbolicLink(anchor) || await File.ReadAllTextAsync(anchor, ct) != AnchorContent(directory)
+            if (!await HasWebsiteBootstrapAnchorAsync(directory, ct)
                 || Directory.EnumerateFileSystemEntries(directory).Any(path => Path.GetFileName(path) != "sites.json")
                 || !(await privilegedNginx.CheckFirstWebsiteAsync(ct)).Success
                 || !await IsSystemdNginxActiveAsync(ct))
@@ -83,8 +82,7 @@ internal sealed partial class NginxWebServerManager
                 || (await ReadSitesAsync(instance, ct)).Count != 0
                 || !(await privilegedNginx.ConfirmServiceIdleAsync(ct)).Success) return false;
 
-            var anchor = Path.Combine(Path.GetDirectoryName(directory)!, OwnedFileName);
-            if (!File.Exists(anchor) || IsSymbolicLink(anchor) || await File.ReadAllTextAsync(anchor, ct) != AnchorContent(directory)
+            if (!await HasWebsiteBootstrapAnchorAsync(directory, ct)
                 || !await MatchesSiteConfigAsync(hasConfig ? config : backup, RenderWebsiteBootstrap(publicationId, siteId, domain), ct))
                 return false;
 
@@ -108,5 +106,11 @@ internal sealed partial class NginxWebServerManager
     {
         var observed = await privilegedNginx.QueryReloadReceiptAsync(operationId, ct);
         return observed.Success && observed.NginxReloadReceipt is { Succeeded: true } receipt && receipt.OperationId == operationId;
+    }
+
+    private static async Task<bool> HasWebsiteBootstrapAnchorAsync(string directory, CancellationToken ct)
+    {
+        var anchor = Path.Combine(Path.GetDirectoryName(directory)!, OwnedFileName);
+        return File.Exists(anchor) && !IsSymbolicLink(anchor) && await File.ReadAllTextAsync(anchor, ct) == AnchorContent(directory);
     }
 }

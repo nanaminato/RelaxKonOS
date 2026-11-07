@@ -132,6 +132,7 @@ internal sealed class WebsitePublicationStore
                 entries[operation.OperationId] = entries[operation.OperationId] with { Operation = operation with
                 {
                     State = WebsitePublicationState.Interrupted, Stage = WebsitePublicationStage.Interrupted,
+                    InterruptedFromStage = operation.Stage,
                     ProblemCode = "website.operation_interrupted",
                     RecoveryProblemCode = operation.Stage == WebsitePublicationStage.Configuring || HasUnverifiedSite(operation)
                         ? SiteApplicationUnverified : "website.recheck_required",
@@ -190,6 +191,8 @@ internal sealed class WebsitePublicationStore
         && operation.SiteId is null or { Length: > 0 and <= 128 }
         && operation.BootstrapCleanupOperationId != Guid.Empty
         && (operation.BootstrapCleanedAt is null || operation.BootstrapCleanupOperationId is not null)
+        && (operation.InterruptedFromStage is null || Enum.IsDefined(operation.InterruptedFromStage.Value))
+        && (operation.BootstrapResumedAt is null || operation.BootstrapResumeStartedAt is not null)
         && Enum.IsDefined(operation.State) && Enum.IsDefined(operation.Stage) && operation.CreatedAt != default
         && operation.Checks is not null && operation.Checks.Count <= 8
         && operation.Checks.All(check => !string.IsNullOrWhiteSpace(check.Name) && check.Name.Length <= 32 && check.Observer.Length <= 32 && Enum.IsDefined(check.State))
