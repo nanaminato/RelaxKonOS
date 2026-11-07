@@ -29,7 +29,10 @@ public sealed class MihomoSystemProxyReconciler(
                 await settingsFiles.CaptureAsync(settings, settings, cancellationToken);
             var guarded = settings.SystemProxyEnabled && settings.SystemProxy?.GuardEnabled == true;
             if (!startup && !guarded) return null;
-            return await systemProxyService.ApplyAsync(settings, settings, enforce: guarded, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            // The Helper can commit the environment before delivering its response. Keep the
+            // publication gate through the real reply once the operation has been dispatched.
+            return await systemProxyService.ApplyAsync(settings, settings, enforce: guarded, CancellationToken.None);
         }
         catch (Exception ex) when (ex is RuntimePolicyException or RuntimeLifecycleException or IOException or InvalidDataException or ProxyControllerSecretException)
         { return ProxyProblemCodes.RecoveryRequired; }

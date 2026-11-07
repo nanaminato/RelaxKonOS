@@ -8,6 +8,9 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 /// <summary>Recovers interrupted host proxy writes on startup and maintains the configured Windows/Linux proxy guard.</summary>
 public sealed class SystemProxyGuardHostedService(IProxySettingsReader settings, IServiceScopeFactory scopes, ILogger<SystemProxyGuardHostedService> logger) : BackgroundService
 {
+    // Scheduling can stop immediately. An accepted reconciliation still owns its scope and response.
+    public override Task StopAsync(CancellationToken cancellationToken) => base.StopAsync(CancellationToken.None);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var startup = true;

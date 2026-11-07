@@ -412,3 +412,5 @@ MB-04 完整认证 Server 已通过原生入站发布提交后、响应交付前
 MB-04 完整认证 Server 已联合验证真实候选已注册、启动前的中断。Server 与 Helper 重启后按原 ID 补偿，保持服务停止至重新授权启动，原回执与流量验证通过。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的在途入站发布补偿)。
 
 MB-04 Core TUN worker 停机时排空已发出的原禁用和路由核验，未能确认的恢复继续由原标记负责。Proxy 保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-tun-恢复的停机排空)。
+
+MB-04 Core 系统代理 guard 保留已派发的原对账任务和共享发布锁，直到 Helper 响应和执行作用域结束。系统代理环境与原恢复日志由现有 Helper 事务负责。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-系统代理-guard-的停机排空)。

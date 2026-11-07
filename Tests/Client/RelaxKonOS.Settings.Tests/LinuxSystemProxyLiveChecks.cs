@@ -141,10 +141,19 @@ internal static class LinuxSystemProxyLiveChecks
                 throw new InvalidOperationException("An unchanged guard pass rewrote its ownership journal.");
 
             WriteExternalProxy("http://127.0.0.1:3456");
+            await peer.StandardInput.WriteLineAsync("DRIFT");
+            await peer.StandardInput.FlushAsync();
+            await ExpectAsync("GUARD_DRAINING");
+            if (peer.HasExited || LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values
+                .GetValueOrDefault("http_proxy") != "http://127.0.0.1:17890" || !File.Exists(Journal))
+                throw new InvalidOperationException("The real Helper write and original journal must precede stop completion.");
+            await peer.StandardInput.WriteLineAsync("DELIVER");
+            await peer.StandardInput.FlushAsync();
             await ExpectAsync("GUARD_STOPPED");
             var guarded = LinuxEnvironmentDocument.Parse(File.ReadAllText(EnvironmentFile)).Values;
             if (guarded.GetValueOrDefault("http_proxy") != "http://127.0.0.1:17890")
                 throw new InvalidOperationException("The enabled guard did not restore its configured proxy.");
+            Console.WriteLine("PASS LINUX SYSTEM PROXY GUARD DRAIN: real Helper write completed; stop waited for the response and released the original gate without another apply");
 
             WriteExternalProxy("http://127.0.0.1:4567");
             await peer.StandardInput.WriteLineAsync("RESTORE");
@@ -197,9 +206,29 @@ internal static class LinuxSystemProxyLiveChecks
             Console.WriteLine("GUARD_APPLIED");
             await transport.Applied.Reader.ReadAsync().AsTask().WaitAsync(Budget);
             Console.WriteLine("GUARD_STABLE");
+            if (await Console.In.ReadLineAsync().WaitAsync(Budget) != "DRIFT")
+                throw new InvalidOperationException("Missing isolated drift signal.");
+            transport.DriftReady.SetResult();
             await transport.Applied.Reader.ReadAsync().AsTask().WaitAsync(Budget);
+            using var deadline = new CancellationTokenSource();
+            deadline.Cancel();
+            var stopped = guard.StopAsync(deadline.Token);
+            if (stopped.IsCompleted || guard.ExecuteTask is not { IsCompleted: false } || publication.Gate.CurrentCount != 0)
+                throw new InvalidOperationException("Shutdown released the original guard task or publication gate before the Helper response.");
+            Console.WriteLine("GUARD_DRAINING");
+            if (await Console.In.ReadLineAsync().WaitAsync(Budget) != "DELIVER")
+                throw new InvalidOperationException("Missing isolated Helper delivery signal.");
+            transport.Deliver.SetResult();
+            await stopped.WaitAsync(Budget);
+            if (transport.Requests != 3 || publication.Gate.CurrentCount != 1)
+                throw new InvalidOperationException("Guard shutdown must release the gate without dispatching another apply.");
         }
-        finally { await guard.StopAsync(default).WaitAsync(Budget); }
+        finally
+        {
+            transport.DriftReady.TrySetResult();
+            transport.Deliver.TrySetResult();
+            await guard.StopAsync(default).WaitAsync(Budget);
+        }
 
         Console.WriteLine("GUARD_STOPPED");
         if (await Console.In.ReadLineAsync().WaitAsync(Budget) != "RESTORE")
@@ -231,14 +260,20 @@ internal static class LinuxSystemProxyLiveChecks
     private sealed class CountingTransport(IPrivilegedOperationTransport inner) : IPrivilegedOperationTransport
     {
         internal readonly System.Threading.Channels.Channel<bool> Applied = System.Threading.Channels.Channel.CreateUnbounded<bool>();
+        internal readonly TaskCompletionSource DriftReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Deliver = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal int Requests;
 
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
         {
             if (request.Operation != PrivilegedOperationKind.LinuxSystemProxyApply)
                 throw new InvalidOperationException("Unexpected isolated guard operation.");
+            var hold = Interlocked.Increment(ref Requests) == 3;
+            if (hold) await DriftReady.Task.WaitAsync(cancellationToken);
             var result = await inner.ExecuteAsync(request, cancellationToken);
             if (!result.Success) throw new InvalidOperationException($"Isolated guard apply failed: {result.ProblemCode}");
             Applied.Writer.TryWrite(true);
+            if (hold) await Deliver.Task.WaitAsync(cancellationToken);
             return result;
         }
     }

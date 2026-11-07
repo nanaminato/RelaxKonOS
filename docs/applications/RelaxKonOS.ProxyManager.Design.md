@@ -4492,3 +4492,5 @@ Core TUN worker 可在同一 Server 进程内接手未完成关闭。关闭前�
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
 
 Core TUN worker 停止接收新扫描后，等待已发出的禁用请求、实际路由核验和原标记清理。停机等待方的期限不会打断已开始的恢复。如果控制器或管理路由仍无法核实，保留原标记供后续核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-tun-恢复的停机排空)。
+
+系统代理 guard 停机时排空已派发的对账任务，Helper 响应返回前保留原发布锁。停机本身不会撤销系统代理设置。Linux 已验证真实环境改写、原日志恢复及外部修改保留。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-系统代理-guard-的停机排空)。

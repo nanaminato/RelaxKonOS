@@ -1630,3 +1630,11 @@ Core TUN worker 停止调度后仍等待已接受的恢复任务。接受前尊�
 Linux x64 Release 私有网络命名空间使用真实 Mihomo。夹具暂扣实际禁用响应，并用已取消的等待令牌调用生产 worker 的 Stop。原 Task 和标记均保持活跃，交付响应后恢复基线路由与规则、移除设备并结清标记 `af65c4e5-5881-470f-a6af-6739756adec5`。实际禁用 reload 一次，Mihomo 继续运行。同批复验发布门禁、响应丢失、DNS 劫持、路由故障、旧恢复引用与激活取消。宿主服务 PID 和代理文件指纹一致。日志为 `.artifacts/mb04-tun-drain-final-live.log`，归档 SHA-256 为 `d714219fad46c5866967d4d2a577af5380ef7990fc4a1474ca00c3a85f2fefe3`。首轮新增用例通过，旧累计计数断言因统计范围扩大失败，调整断言位置后全组通过。
 
 Windows Release TUN 34 项、Core 安全 37 项、驻留 28 项、工作作用域 31 项和模块边界回归通过。停机专项直接驱动生产 worker。完整 Server 的 SIGTERM 联验、其他 Core 安全 worker 的停机交接和 Proxy 动态休眠仍开放。
+
+### MB-04 Core 系统代理 guard 的停机排空
+
+Core guard 停止调度后等待实际对账任务与执行作用域。对账取得原发布锁并重新核验设置后，派发前仍可取消。已派发的系统代理写入使用原发布锁等待 Helper 返回。Helper 的环境所有权日志继续负责中断恢复和外部修改保护。
+
+Linux x64 Release 在私有挂载和网络命名空间使用非 root Server 身份与独立生产 Helper Unix socket。先核验未变化的 guard 扫描不改写所有权日志，再注入专属环境值冲突。Helper 实际纠正冲突后，测试传输暂扣交付给 guard 的结果。用已取消的等待令牌调用生产 guard 的 Stop，任务与原发布锁保持活跃，私有环境和原恢复日志可核验。交付结果后同一任务释放锁，未追加 apply。随后停用恢复保留了更新的外部设置。真实 Helper 纠正请求为 `72564240-2c8f-468c-9a99-b17447eabfbc`，日志为 `.artifacts/mb04-system-proxy-drain-live.log`，归档 SHA-256 为 `b78e7956222ade99b316dd85aab1f067cf2f52b149b542a5c4a58ffa9467a83b`。宿主环境和恢复日志指纹一致。
+
+Windows Release 系统代理、Core Proxy 安全与模块边界回归均通过。此次故障屏障在 guard 的传输边界，覆盖停机等待取消。完整 Server 的 SIGTERM、真实 IPC 断流时的联合排空、Windows 原生代理环境和 Proxy 动态休眠仍待验收。
