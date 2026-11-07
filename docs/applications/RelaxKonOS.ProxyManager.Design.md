@@ -4538,3 +4538,5 @@ Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。�
 单条活动订阅刷新在受管 Mihomo 中使用同一队列和 Helper 操作 ID。Core 对账确认配置和原回执，原刷新时间随档案一起提交。查询原操作或重试原键可在原证据存在时读到持久终态，缺少证据时保留中断责任。隔离 Linux 已验证 Server 重启和只丢失原生回执两条路径，均未再次下载或派发配置。见[活动订阅终态恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅刷新恢复原队列终态)。
 
 若 Mihomo 拒绝候选且 Helper 证明已恢复上一配置，重启后同键可读取原 Failed 回执。隔离 Linux 验证了旧配置转发、原订阅时间与单次原生派发。见[活动订阅补偿回执](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅原生失败与补偿回执)。
+
+真实 Helper 的原发布回执在途期间，连接详情的解析代次可闲时卸载，后续认证读取加载新代次。隔离 Linux 验证前后观察到同一条真实连接，Core 继续完成原发布恢复，Server 排空退出后该连接收到源站响应。见[读取代次与原发布恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-读取代次闲时卸载与原发布恢复)。

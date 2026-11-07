@@ -2000,3 +2000,11 @@ Windows Release 通过 45 项 Proxy 责任检查、39 项订阅边界、配置�
 Linux Release 在同一专属设施通过完整 PAM/JWT Server 下载一份含 Mihomo 不支持规则的测试订阅。生产 Helper 返回真实 Failed 回执 `a9eee171-6755-4e44-991a-cc5c2fe529f7` 后，专属 Unix 中继暂扣结果。原队列仍为 Running 并持有工作租约，原配置身份和实际转发已恢复。强制终止 Server 后重启，Core 按原 Helper ID 对账，原队列持久化 Failed / `proxy.config_apply_failed`。原键和原 ID 均返回同一回执，原订阅时间、配置身份、Helper 回执和原生修订保持。
 
 同批复验成功重启与存活 Server 断线。测试源共五次请求，Helper 对激活和三次刷新各派发一次配置，恢复无额外配置或补偿命令。Mihomo systemd 套件通过 177 项，专属 cgroup 清理完成，宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-active-sub-compensation/live.log`，归档 SHA-256 为 `2c95db44e293ac3fb4e5e459624199eec6c54ce742a1ee22323ae5426ea7ccb0`。Windows Release 模块边界复跑通过，MB-05 原 `b1ff571b-7191-45ba-a05e-fe17a52bc41f` 的跨进程回执为 Interrupted，受控副作用计数为一。下一步联合验收可回收代次的闲时释放和唤醒、真实转发及 Core 恢复责任。Proxy 整体继续 resident，生产驻留未测。
+
+### MB-04 读取代次闲时卸载与原发布恢复
+
+在同一完整认证 Server 中，专属 Unix 中继暂扣生产 Helper 对原发布的实际查询响应。通过真实 Mihomo 建立到测试源的 HTTP 连接，源站先保留响应。认证详情路由在 Core 持有原 pending 时读取该连接，随后观察解析代次的实际卸载事件。再次查询加载不同代次，读到同一连接 ID，原发布仍 pending，Mihomo PID 保持。Server 收到 SIGTERM 后先关闭监听，继续等原 Helper 响应。放行后原发布收尾并正常退出，原连接收到源站正文。重启核对同一持久回执、配置身份和修订，恢复期间只查询原 Helper 回执一次。
+
+Windows Release 的控制器流和连接专项、31 项 Proxy 驻留专项及模块边界专项通过。MB-05 跨进程夹具按原 `fd100c77-d236-41ac-9987-ef84d6efc4b5` 读回 Interrupted，受控副作用计数为一。首轮 Linux 已通过该联合场景，后续订阅夹具重复读取一次性 PAM 输入导致整套失败，修正为测试进程内复用一次读取的输入。
+
+最终 Linux Release 原发布 `1019960f-134b-4fe7-b479-736f86d89269` 和原连接 `5df3369e-17a5-494e-a80a-d2ca8b634f3b` 联验通过。Helper 恢复阶段无配置或补偿派发，Mihomo systemd 套件共 177 项通过，包括活动订阅的成功、断线和失败恢复。专属 cgroup 清理，宿主服务与代理文件指纹一致。日志为 `.artifacts/mb04-parser-recovery/live.log`，归档 SHA-256 为 `36631e5edb98d8568562843908edab26d8f4308c94af341605e2542f19afee0d`。本轮 Linux 直接观测卸载事件和新代次，Proxy 模块整体仍 resident，整模块动态休眠和生产驻留指标保持开放。

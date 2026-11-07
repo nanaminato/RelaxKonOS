@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Proxy;
@@ -20,12 +21,11 @@ using RelaxKonOS.Server.Proxy.Mihomo;
 internal static class MihomoSubscriptionQueueAcceptance
 {
     internal static async Task RunAsync(ProcessStartInfo start, IProxyPlatformPaths paths, int port,
-        MihomoPublicationStore publication, MihomoRuntimeLifecycle lifecycle, Func<int, Task<bool>> probe,
+        MihomoPublicationStore publication, MihomoRuntimeLifecycle lifecycle, LoginRequest login, Func<int, Task<bool>> probe,
         Func<CancellationToken, Task> verifyNative)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(145));
         var ct = budget.Token;
-        var login = ProxyAuthenticatedPublicationChecks.ReadLogin();
         var settingsFile = Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json");
         var original = File.Exists(settingsFile) ? await File.ReadAllBytesAsync(settingsFile, ct) : null;
         var settings = await new ProxySettingsReader(paths).GetAsync(ct);

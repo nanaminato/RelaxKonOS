@@ -1,13 +1,17 @@
 using Microsoft.AspNetCore.DataProtection;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Json;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
@@ -205,14 +209,17 @@ internal static class MihomoIpcStartupAcceptance
             throw new InvalidOperationException("Rejected TUN activation changed the confirmed native publication, network or recovery authority.");
         Console.WriteLine($"PASS MIHOMO CONFIRMED TUN GATE: original compensation {interrupted}, native PID preserved, no marker or controller request");
 
-        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE") is { Length: > 0 } baseline)
+        var baseline = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE");
+        var subscriptionsEnabled = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SUBSCRIPTION") == "1";
+        var login = subscriptionsEnabled || !string.IsNullOrEmpty(baseline)
+            ? ProxyAuthenticatedPublicationChecks.ReadLogin() : null;
+        if (baseline is { Length: > 0 })
         {
-            var login = ProxyAuthenticatedPublicationChecks.ReadLogin();
             start.Environment["Modules__Proxy__Enabled"] = "true";
             start.Environment["Identity__LinuxPamTransport"] = "helper";
             await using var helper = await StartHelperAsync(helperAssembly, config, transport);
             await ProxyConnectionBenchmark.RunAsync(baseline, serverAssembly, "baseline", "candidate",
-                login, new Uri($"http://127.0.0.1:{port}/"), PrepareAsync, VerifyAsync, requireManaged: true);
+                login!, new Uri($"http://127.0.0.1:{port}/"), PrepareAsync, VerifyAsync, requireManaged: true);
             var log = await helper.StopAsync(drainCompletedRequests: true);
             if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
@@ -238,13 +245,13 @@ internal static class MihomoIpcStartupAcceptance
         }
 
         await VerifyPublicationShutdownAsync();
-        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SUBSCRIPTION") == "1")
+        if (subscriptionsEnabled)
         {
             await using var helper = await StartHelperAsync(helperAssembly, config, transport);
             var native = await lifecycle.QueryAsync(default, interrupted);
             var application = await startupStore.ReadAsync(default);
             var pid = await ReadRuntimePidAsync();
-            await MihomoSubscriptionQueueAcceptance.RunAsync(start, tunPaths, port, startupStore, lifecycle, probe, async ct =>
+            await MihomoSubscriptionQueueAcceptance.RunAsync(start, tunPaths, port, startupStore, lifecycle, login!, probe, async ct =>
             {
                 var observed = await lifecycle.QueryAsync(ct, interrupted);
                 var published = await startupStore.ReadAsync(ct);
@@ -277,7 +284,7 @@ internal static class MihomoIpcStartupAcceptance
 
         async Task VerifyPublicationShutdownAsync()
         {
-            using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(80));
             var ct = budget.Token;
             var drainId = Guid.NewGuid();
             var pendingBase = await startupStore.ReadAsync(ct);
@@ -315,10 +322,20 @@ internal static class MihomoIpcStartupAcceptance
                 (kind, id) => kind == "MihomoRuntimeQuery" && id == drainId);
             start.ArgumentList[^1] = Path.GetFullPath(serverAssembly);
             start.Environment["Modules__Proxy__Enabled"] = "true";
+            if (login is not null)
+            {
+                start.Environment["Identity__LinuxPamTransport"] = "helper";
+                start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
+            }
             start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
             start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
             var shuttingDown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var process = ProxyAuthenticatedPublicationChecks.Start(start, onOutput: line =>
+            var parserEvents = Channel.CreateUnbounded<string>();
+            using var process = ProxyAuthenticatedPublicationChecks.Start(start, line =>
+            {
+                if (line.StartsWith(StartupHook.ParserEventPrefix, StringComparison.Ordinal))
+                    parserEvents.Writer.TryWrite(line[StartupHook.ParserEventPrefix.Length..]);
+            }, onOutput: line =>
             {
                 if (line.Contains("Application is shutting down", StringComparison.Ordinal))
                     shuttingDown.TrySetResult();
@@ -328,20 +345,20 @@ internal static class MihomoIpcStartupAcceptance
             {
                 if (await relay.Committed.Task.WaitAsync(ct) != drainId)
                     throw new InvalidOperationException("The relay did not hold the original Helper response.");
-                var healthUrl = ManagedServiceChecks.FullServerUrl + "/healthz";
-                while (!process.HasExited)
+                string? parserEvidence = null;
+                if (login is not null) parserEvidence = await VerifyParserAsync(login);
+                else
                 {
-                    try { using var health = await http.GetAsync(healthUrl, ct); if (health.IsSuccessStatusCode) break; }
-                    catch (HttpRequestException) { }
-                    await Task.Delay(50, ct);
+                    var healthUrl = ManagedServiceChecks.FullServerUrl + "/healthz";
+                    while (!process.HasExited)
+                    {
+                        try { using var health = await http.GetAsync(healthUrl, ct); if (health.IsSuccessStatusCode) break; }
+                        catch (HttpRequestException) { }
+                        await Task.Delay(50, ct);
+                    }
+                    if (process.HasExited) throw new InvalidOperationException("Server exited before SIGTERM.");
+                    await DrainAsync();
                 }
-                if (process.HasExited) throw new InvalidOperationException("Server exited before SIGTERM.");
-                await ProxyAuthenticatedPublicationChecks.SignalShutdownAsync(process, http, shuttingDown.Task, ct);
-                if (process.HasExited || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId
-                    || await ReadRuntimePidAsync() != nativePid || !await probe(port))
-                    throw new InvalidOperationException("SIGTERM dropped a pending recovery or its original native traffic.");
-                relay.ReleaseHeldResponse();
-                await process.WaitForExitAsync(ct);
                 var completed = await startupStore.ReadAsync(ct);
                 var observedAfter = await lifecycle.QueryAsync(ct, drainId);
                 if (process.ExitCode != 0 || completed.Pending is not null || completed.Identity != identity
@@ -359,11 +376,64 @@ internal static class MihomoIpcStartupAcceptance
                     || !await probe(port))
                     throw new InvalidOperationException("Shutdown and restart must not replay the original configure or recovery.");
                 Console.WriteLine($"PASS MIHOMO FULL SERVER SIGTERM DRAIN: original Failed receipt {drainId}, one query, durable cleanup, same runtime PID and live traffic");
+                if (parserEvidence is not null)
+                    Console.WriteLine($"PASS MIHOMO PARSER IDLE DURING RECOVERY: {drainId}, {parserEvidence}");
             }
             finally
             {
                 relay.ReleaseHeldResponse();
                 await ProxyAuthenticatedPublicationChecks.StopAsync(process);
+                start.Environment.Remove("DOTNET_STARTUP_HOOKS");
+            }
+
+            async Task<string> VerifyParserAsync(LoginRequest credentials)
+            {
+                using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(process, credentials, ct);
+                using var origin = new TcpListener(IPAddress.Parse("93.184.216.34"), 0);
+                origin.Start();
+                var destination = origin.LocalEndpoint.ToString();
+                using var proxy = new HttpClient(new SocketsHttpHandler { Proxy = new WebProxy($"http://127.0.0.1:{port}") })
+                    { Timeout = Timeout.InfiniteTimeSpan };
+                var forwarding = proxy.GetStringAsync($"http://{destination}/", ct);
+                using var upstream = await origin.AcceptTcpClientAsync(ct);
+                using var stream = upstream.GetStream();
+                using var reader = new StreamReader(stream);
+                while (await reader.ReadLineAsync(ct) is { Length: > 0 }) { }
+
+                async Task<string> ObserveConnectionAsync()
+                {
+                    var connections = await client.GetFromJsonAsync<ProxyConnectionDto[]>(ProxyApiRoutes.Connections, RelaxKonOSJsonOptions.Default, ct);
+                    return connections?.SingleOrDefault(item => item.Destination == destination)?.Id
+                        ?? throw new InvalidOperationException("The held native connection was absent from the production read route.");
+                }
+
+                var originalConnection = await ObserveConnectionAsync();
+                var loaded = await parserEvents.Reader.ReadAsync(ct);
+                var unloaded = await parserEvents.Reader.ReadAsync(ct);
+                if (!loaded.StartsWith("load ", StringComparison.Ordinal) || unloaded != $"unload {loaded[5..]}"
+                    || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId || forwarding.IsCompleted)
+                    throw new InvalidOperationException("The original parser did not idle-unload while Core and the connection remained active.");
+                var sameConnection = await ObserveConnectionAsync();
+                var woke = await parserEvents.Reader.ReadAsync(ct);
+                if (!woke.StartsWith("load ", StringComparison.Ordinal) || woke == loaded || sameConnection != originalConnection
+                    || process.HasExited || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId
+                    || await ReadRuntimePidAsync() != nativePid || forwarding.IsCompleted)
+                    throw new InvalidOperationException("The new parser generation did not observe the original connection during recovery.");
+                await DrainAsync();
+                await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nproxy-ok"u8.ToArray(), ct);
+                if (await forwarding != "proxy-ok")
+                    throw new InvalidOperationException("The original connection did not receive its upstream response after recovery.");
+                return $"{loaded}, {woke}, same native connection {originalConnection}";
+            }
+
+            async Task DrainAsync()
+            {
+                await ProxyAuthenticatedPublicationChecks.SignalShutdownAsync(process, http, shuttingDown.Task, ct);
+                if (process.HasExited || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId
+                    || await ReadRuntimePidAsync() != nativePid || !await probe(port))
+                    throw new InvalidOperationException("SIGTERM dropped a pending recovery or its original native traffic.");
+                relay.ReleaseHeldResponse();
+                await process.WaitForExitAsync(ct);
             }
         }
     }
