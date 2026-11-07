@@ -236,8 +236,12 @@ internal static class ManagedServiceChecks
                 var blockedStartup = await SendAcrossProcessAsync(socket.SocketPath + ".absent", null, expiryRoot: root, startup: true);
                 Check(!blockedStartup.Success && (await serverStore.ReadAsync(default)).PendingPublication is not null,
                     "Disabled startup must preserve the original candidate while Helper status is unavailable.");
-                var recovery = await SendAcrossProcessAsync(socket.SocketPath, null, expiryRoot: root, startup: true);
-                var reopened = OpenServerStore(root);
+                var fullServer = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_FULL_SERVER");
+                var recovery = fullServer is null
+                    ? await SendAcrossProcessAsync(socket.SocketPath, null, expiryRoot: root, startup: true)
+                    : new PrivilegedOperationResult(await RunFullServerAsync(fullServer, socket.SocketPath, root));
+                var reopened = fullServer is null ? OpenServerStore(root) : OpenFullServerStore(root);
+                if (fullServer is not null) indexPath = Path.Combine(FullServerState, "proxy-server.protected.expiry");
                 var recoveredState = await reopened.ReadAsync(default);
                 Check(recovery.Success && File.Exists(indexPath) && recoveredState.PendingPublication is null
                     && recoveredState.Published?.Credentials.Count == 0,
@@ -377,11 +381,106 @@ internal static class ManagedServiceChecks
         Console.WriteLine(JsonSerializer.Serialize(result));
     }
 
+    private const string FullServerState = "/var/lib/relaxkonos/proxy/state";
+
+    private static ProxyServerStore OpenFullServerStore(string root) => new(new FixturePaths(FullServerState), OpenProtection(root));
+
+    private static async Task<bool> RunFullServerAsync(string assembly, string socketPath, string root)
+    {
+        if (!File.ReadLines("/proc/self/mountinfo").Any(line =>
+            line.Split(' ')[4] == "/var/lib" && line.Contains(" - tmpfs ", StringComparison.Ordinal)))
+            throw new InvalidOperationException("The full Server fixture requires a private /var/lib tmpfs.");
+        var statePath = FullServerState;
+        if (File.Exists(Path.Combine(statePath, "proxy-server.protected")))
+            throw new InvalidOperationException("The full Server fixture requires an empty private Proxy state mount.");
+        Directory.CreateDirectory(statePath);
+        var contentRoot = Directory.CreateDirectory(Path.Combine(root, "full-server")).FullName;
+        var home = Directory.CreateDirectory(Path.Combine(root, "full-home")).FullName;
+        var keyRing = Directory.CreateDirectory(Path.Combine(home, ".aspnet", "DataProtection-Keys")).FullName;
+        foreach (var key in Directory.EnumerateFiles(Path.Combine(root, "fixture-keys"), "*.xml"))
+            File.Copy(key, Path.Combine(keyRing, Path.GetFileName(key)));
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "server")))
+            File.Copy(file, Path.Combine(statePath, Path.GetFileName(file)));
+
+        const string url = "http://127.0.0.1:18763";
+        var start = new ProcessStartInfo("dotnet")
+        {
+            UseShellExecute = false, WorkingDirectory = contentRoot,
+            RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        start.ArgumentList.Add(Path.GetFullPath(assembly));
+        start.Environment["HOME"] = home;
+        start.Environment["DOTNET_ENVIRONMENT"] = "Production";
+        start.Environment["ASPNETCORE_URLS"] = url;
+        start.Environment["Server__Mode"] = "system";
+        start.Environment["Storage__Provider"] = "sqlite";
+        start.Environment["PrivilegedHelper__SocketPath"] = socketPath;
+        start.Environment["Jwt__Secret"] = "private-server-fixture-key-0123456789abcdef0123456789";
+        foreach (var module in new[] { "Terminal", "Firewall", "SystemPerformance", "Git", "Tailscale", "Docker", "Certificates", "WebServer", "Proxy" })
+            start.Environment[$"Modules__{module}__Enabled"] = "false";
+        start.Environment["Jwt__Issuer"] = "RelaxKonOS.Server";
+        start.Environment["Jwt__Audience"] = "RelaxKonOS.Client";
+        start.Environment["Observability__InstanceId"] = Guid.NewGuid().ToString("D");
+        start.Environment["Observability__LogDirectory"] = Path.Combine(contentRoot, "logs");
+        start.Environment["Observability__AuditDatabasePath"] = Path.Combine(contentRoot, "audit.db");
+        start.Environment["Observability__AuditHmacKey"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+
+        start.Environment["PrivilegedHelper__SocketPath"] = socketPath + ".absent";
+        await CheckFullServerAsync(start, root, url, expectReady: false);
+        start.Environment["PrivilegedHelper__SocketPath"] = socketPath;
+        await CheckFullServerAsync(start, root, url, expectReady: true);
+        return true;
+    }
+
+    private static async Task CheckFullServerAsync(ProcessStartInfo start, string root, string url, bool expectReady)
+    {
+        using var server = Process.Start(start) ?? throw new InvalidOperationException("Unable to start the full Server.");
+        var output = server.StandardOutput.ReadToEndAsync();
+        var errors = server.StandardError.ReadToEndAsync();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var client = new HttpClient(new HttpClientHandler { UseProxy = false });
+        try
+        {
+            while (!server.HasExited)
+            {
+                try
+                {
+                    using var response = await client.GetAsync(url + "/healthz", deadline.Token);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        if (!expectReady) throw new InvalidOperationException("Full Server listened with an unknown Helper outcome.");
+                        var fullStore = OpenFullServerStore(root);
+                        var recovered = await fullStore.ReadAsync(deadline.Token);
+                        if (recovered.PendingPublication is not null || recovered.Published?.Credentials.Count != 0)
+                            throw new InvalidOperationException("Full Server became ready without confirming the original candidate.");
+                        Console.WriteLine("PASS FULL SERVER DISABLED STARTUP: ready with original candidate confirmed over Helper IPC");
+                        return;
+                    }
+                }
+                catch (HttpRequestException) { }
+                await Task.Delay(100, deadline.Token);
+            }
+            var error = await errors;
+            if (expectReady || server.ExitCode == 0 || !error.Contains("Inbound publication remains unconfirmed", StringComparison.Ordinal)
+                || (await OpenFullServerStore(root).ReadAsync(deadline.Token)).PendingPublication is null)
+                throw new InvalidOperationException($"Unexpected full Server startup exit {server.ExitCode}.");
+            Console.WriteLine("PASS FULL SERVER BLOCKED STARTUP: Helper unavailable and original candidate preserved");
+        }
+        finally
+        {
+            if (!server.HasExited) server.Kill();
+            await server.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Console.WriteLine(await output);
+            Console.WriteLine(await errors);
+        }
+    }
+
     private static ProxyServerStore OpenServerStore(string root) => new(new FixturePaths(Path.Combine(root, "server")),
         OpenProtection(root));
 
     private static IDataProtectionProvider OpenProtection(string root) =>
-        DataProtectionProvider.Create(Directory.CreateDirectory(Path.Combine(root, "fixture-keys")));
+        DataProtectionProvider.Create(Directory.CreateDirectory(Path.Combine(root, "fixture-keys")),
+            options => options.SetApplicationName(RelaxKonOS.Server.Secrets.HostDataProtection.ApplicationName));
 
     private sealed class FixturePaths(string root) : IProxyPlatformPaths
     {
