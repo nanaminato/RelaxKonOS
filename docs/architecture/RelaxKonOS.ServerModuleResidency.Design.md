@@ -518,3 +518,5 @@ Proxy 同次停机联合验收中，原入站到期回执落盘后，Server 仍�
 Proxy 设置写入的 resident 租约覆盖执行、审计、响应与异步作用域清理。受管发布的重启恢复继续读取原发布权威和 Helper 回执。见[设置写入工作租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-设置写入的工作租约)。
 
 档案激活和配置应用也由原 Proxy 工作租约覆盖执行、审计、响应与清理。受管恢复使用原发布和档案选择标记。见[档案发布工作租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-档案发布的工作租约)。
+
+直连配置 reload 的未知结果保留原磁盘配置与元数据。TUN 从原标记接续实际状态观察。见[直连 reload 回执丢失](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连-reload-回执丢失)。

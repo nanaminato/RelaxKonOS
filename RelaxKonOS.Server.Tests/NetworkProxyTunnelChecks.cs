@@ -102,8 +102,9 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") };
     });
     var interruptedReloadClient = new MihomoControllerClient(new HttpClient(interruptedReloadHandler), new StaticProxySecretStore(), new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/") });
-    TestAssert.Assert(await interruptedReloadClient.ReloadAsync(CancellationToken.None) is null && calls == 2 && reloadPayload == "{\"path\":\"\",\"payload\":\"\"}",
-        "A recovered controller connection after reload was incorrectly reported as a TUN configuration failure.");
+    TestAssert.Assert(await interruptedReloadClient.ReloadAsync(CancellationToken.None) == ProxyProblemCodes.RecoveryRequired
+        && calls == 1 && reloadPayload == "{\"path\":\"\",\"payload\":\"\"}",
+        "An interrupted reload must preserve its unknown outcome without a liveness substitution or another write.");
 
     var rejectedReloadHandler = new DelegateHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
     {
@@ -112,6 +113,11 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
     var rejectedReloadClient = new MihomoControllerClient(new HttpClient(rejectedReloadHandler), new StaticProxySecretStore(), new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/") });
     TestAssert.Assert(await rejectedReloadClient.ReloadAsync(CancellationToken.None) == ProxyProblemCodes.ConfigApplyFailed,
         "An HTTP configuration rejection was misclassified as an unavailable controller.");
+    using var failedReloadClient = new MihomoControllerClient(new HttpClient(new DelegateHandler(_ =>
+        Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)))), new StaticProxySecretStore(),
+        new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/") });
+    TestAssert.Assert(await failedReloadClient.ReloadAsync(CancellationToken.None) == ProxyProblemCodes.RecoveryRequired,
+        "A server failure must leave the reload outcome unknown.");
 }
 
 internal static async Task VerifyMihomoLiveStreamsAsync()

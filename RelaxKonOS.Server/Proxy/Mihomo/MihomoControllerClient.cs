@@ -3,7 +3,6 @@ using System.Buffers;
 using System.IO.Pipelines;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -38,8 +37,6 @@ public sealed record ControllerResult<T>(T? Value, string ProblemCode)
 /// <summary>Bounded REST-only Mihomo adapter; it accepts only a loopback URI and hides all controller JSON.</summary>
 public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposable
 {
-    private static readonly TimeSpan ReloadConfirmationTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan ReloadConfirmationInterval = TimeSpan.FromMilliseconds(200);
     private readonly HttpClient _httpClient;
     private readonly IProxyControllerSecretStore _secrets;
     private readonly MihomoControllerOptions _options;
@@ -259,60 +256,19 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
 
     public async Task<string?> ReloadAsync(CancellationToken cancellationToken)
     {
-        // Applying a TUN configuration can replace Mihomo's listener while the HTTP response
-        // is in flight. In that narrow case the reload has succeeded but the response socket is
-        // reset. Confirm the loopback controller before asking the caller to roll back a sound
-        // configuration. HTTP error responses remain failures; only transport interruptions are
-        // eligible for this confirmation.
-        // Mihomo requires both fields even when reloading the configuration it already owns.
-        // An empty object is rejected immediately, which previously bypassed the reconnect wait
-        // and was misleadingly surfaced as controller_unavailable.
         var reload = await SendAsync(HttpMethod.Put, "configs?force=true",
             new StringContent("{\"path\":\"\",\"payload\":\"\"}", Encoding.UTF8, "application/json"),
             cancellationToken, logTransportFailure: false);
         if (reload.Succeeded) return null;
-        if (!reload.TransportInterrupted)
+        if (reload.TransportInterrupted || reload.StatusCode is >= 500)
         {
-            // An HTTP response proves that the controller is available. Surface its safe error
-            // detail as a configuration failure rather than incorrectly asking the operator to
-            // wait for a controller that already rejected the new YAML.
-            LogReloadRejection(reload);
-            return reload.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed
-                ? reload.ProblemCode
-                : ProxyProblemCodes.ConfigApplyFailed;
+            // A reachable controller cannot prove which configuration it loaded.
+            return ProxyProblemCodes.RecoveryRequired;
         }
-
-        var deadline = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * ReloadConfirmationTimeout.TotalSeconds);
-        while (Stopwatch.GetTimestamp() < deadline)
-        {
-            var remaining = TimeSpan.FromSeconds((deadline - Stopwatch.GetTimestamp()) / (double)Stopwatch.Frequency);
-            if (remaining <= TimeSpan.Zero) break;
-            await Task.Delay(remaining < ReloadConfirmationInterval ? remaining : ReloadConfirmationInterval, cancellationToken);
-            if (Stopwatch.GetTimestamp() >= deadline) break;
-
-            using var confirmationCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            remaining = TimeSpan.FromSeconds((deadline - Stopwatch.GetTimestamp()) / (double)Stopwatch.Frequency);
-            if (remaining <= TimeSpan.Zero) break;
-            confirmationCancellation.CancelAfter(remaining);
-            ControllerResponse confirmation;
-            try
-            {
-                confirmation = await SendAsync(HttpMethod.Get, "version", null, confirmationCancellation.Token, logTransportFailure: false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
-            if (confirmation.Succeeded)
-            {
-                _logger?.LogInformation("Mihomo controller reconnected after its configuration reload response was interrupted. Endpoint={Endpoint}", _options.Endpoint.Authority);
-                return null;
-            }
-            if (!confirmation.TransportInterrupted) break;
-        }
-
-        LogTransportFailure();
-        return reload.ProblemCode;
+        LogReloadRejection(reload);
+        return reload.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed
+            ? reload.ProblemCode
+            : ProxyProblemCodes.ConfigApplyFailed;
     }
 
     private async Task<string?> SetRoutingModeCoreAsync(string body, CancellationToken cancellationToken) =>

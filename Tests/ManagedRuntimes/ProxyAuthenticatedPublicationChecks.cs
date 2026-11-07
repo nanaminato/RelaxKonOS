@@ -116,8 +116,96 @@ internal static class ProxyAuthenticatedPublicationChecks
         await VerifySafetyShutdownAsync(root, assembly, socket, login, nativeState, guard, traffic, retained, added, readReceipt);
         await VerifyManagedPublicationShutdownAsync(root, assembly, socket, login, nativeState, traffic, retained, added, readReceipt);
         await VerifySubscriptionBodyResidencyAsync(guard);
+        await VerifyDirectReloadLossAsync(root, guard);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
             await ProxyConnectionBenchmark.RunAsync(root, socket, baseline, assembly, login, guard, nativeState);
+    }
+
+    private static async Task VerifyDirectReloadLossAsync(string root, ProxySystemdGuardProbe guard)
+    {
+        var paths = new RelaxKonOS.Server.Proxy.Platform.ProxyPlatformPaths();
+        var protection = ManagedServiceChecks.OpenProtection(root);
+        var publication = new RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationStore(paths, protection);
+        var secrets = new RelaxKonOS.Server.Proxy.Mihomo.DataProtectionProxyControllerSecretStore(
+            new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { ContentRootPath = Path.Combine(root, "full-server") }, protection);
+        var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
+        var nativeOptions = new RelaxKonOS.Server.Proxy.Mihomo.MihomoControllerOptions { Endpoint = new("http://127.0.0.1:9090/") };
+        using var upstream = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { BaseAddress = nativeOptions.Endpoint };
+        using var native = new RelaxKonOS.Server.Proxy.Mihomo.MihomoControllerClient(upstream, secrets, nativeOptions);
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var relay = builder.Build();
+        var dropAfterDispatch = false;
+        var relayWrites = 0;
+        var nativeWrites = 0;
+        relay.Run(async context =>
+        {
+            var reload = HttpMethods.IsPut(context.Request.Method) && context.Request.Path == "/configs";
+            if (reload)
+            {
+                Interlocked.Increment(ref relayWrites);
+                if (!Volatile.Read(ref dropAfterDispatch)) { context.Abort(); return; }
+            }
+            using var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), context.Request.Path + context.Request.QueryString);
+            request.Headers.TryAddWithoutValidation("Authorization", context.Request.Headers.Authorization.ToArray());
+            if (reload)
+            {
+                request.Content = new StreamContent(context.Request.Body);
+                request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(context.Request.ContentType!);
+            }
+            using var response = await upstream.SendAsync(request, context.RequestAborted);
+            if (reload && response.IsSuccessStatusCode)
+            {
+                Interlocked.Increment(ref nativeWrites);
+                context.Abort();
+                return;
+            }
+            context.Response.StatusCode = (int)response.StatusCode;
+            await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+        });
+        await relay.StartAsync();
+        var address = relay.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var client = new RelaxKonOS.Server.Proxy.Mihomo.MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }),
+            secrets, new() { Endpoint = new(address + "/") });
+        var host = MihomoPublicationTransactionChecks.Stub<RelaxKonOS.Server.Proxy.Platform.IHostSystemProxyService>(
+            _ => throw new InvalidOperationException("Unknown reload must not dispatch host proxy changes."));
+        var settings = new RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService(paths, client, secrets, nativeOptions, host, publication);
+        var reader = new RelaxKonOS.Server.Proxy.ProxySettingsReader(paths);
+        var previous = await reader.GetAsync(default);
+        var payload = new UpdateProxySettingsRequest(false, previous.AllowLan, previous.DnsEnabled, previous.Ipv6Enabled,
+            previous.UnifiedDelay, "warning", previous.MixedPort, previous.AllowInsecureSubscriptionSources,
+            previous.SystemProxyHost, previous.Tun, previous.SystemProxy);
+        var original = await File.ReadAllBytesAsync(active);
+        var pid = guard.RuntimePid;
+        await guard.VerifyTrafficAsync(async (_, ct) =>
+        {
+            var oldLevel = await ReadLevelAsync(ct);
+            if (oldLevel == payload.LogLevel) throw new InvalidOperationException("The test must change the live log level.");
+            foreach (var applied in new[] { false, true })
+            {
+                Volatile.Write(ref dropAfterDispatch, applied);
+                var before = Volatile.Read(ref relayWrites);
+                if (await settings.UpdateAsync(payload, ct) != ProxyProblemCodes.RecoveryRequired
+                    || Volatile.Read(ref relayWrites) != before + 1 || Volatile.Read(ref nativeWrites) != (applied ? 1 : 0)
+                    || !(await File.ReadAllBytesAsync(active, ct)).SequenceEqual(original) || await reader.GetAsync(ct) != previous
+                    || await ReadLevelAsync(ct) != (applied ? payload.LogLevel : oldLevel) || guard.RuntimePid != pid)
+                    throw new InvalidOperationException($"Direct reload loss did not preserve authority. Native applied={applied}, relay writes={relayWrites}, acknowledged native writes={nativeWrites}.");
+            }
+            if (await native.ReloadAsync(ct) is not null || await ReadLevelAsync(ct) != oldLevel)
+                throw new InvalidOperationException("Explicit fixture cleanup did not reload the original protected configuration.");
+        });
+        Console.WriteLine("PASS MIHOMO DIRECT RELOAD LOSS: real controller pre-dispatch and post-apply disconnect, no replay, original disk and settings retained");
+
+        async Task<string?> ReadLevelAsync(CancellationToken ct)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "configs");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await secrets.GetOrCreateAsync(ct));
+            using var response = await upstream.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+            using var body = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(ct));
+            return body.RootElement.GetProperty("log-level").GetString();
+        }
     }
 
     private static async Task VerifySubscriptionBodyResidencyAsync(ProxySystemdGuardProbe guard)

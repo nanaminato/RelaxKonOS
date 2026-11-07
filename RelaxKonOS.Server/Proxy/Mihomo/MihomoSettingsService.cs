@@ -61,6 +61,7 @@ public sealed class MihomoSettingsService(
                 return null;
             }
             var original = await File.ReadAllTextAsync(active, cancellationToken);
+            var originalMode = OperatingSystem.IsWindows() ? (UnixFileMode?)null : File.GetUnixFileMode(active);
             // A settings write is not a TUN transition.  Carry the live activation forward;
             // letting the managed TUN block fall back to "disabled" tore the adapter down and
             // left the durable marker still reporting an active session.
@@ -82,6 +83,7 @@ public sealed class MihomoSettingsService(
             try
             {
                 await File.WriteAllTextAsync(temporary, updated, cancellationToken);
+                if (!OperatingSystem.IsWindows() && originalMode is { } mode) File.SetUnixFileMode(temporary, mode);
                 cancellationToken.ThrowIfCancellationRequested();
                 File.Move(temporary, active, overwrite: true);
                 // The active file is already visible. Finish the update or compensation even if the client leaves.
@@ -90,8 +92,9 @@ public sealed class MihomoSettingsService(
                 var reload = controllerAvailable ? await controller.ReloadAsync(completionToken) : null;
                 if (controllerAvailable && !string.IsNullOrEmpty(reload))
                 {
-                    await File.WriteAllTextAsync(active, original, completionToken);
-                    await controller.ReloadAsync(completionToken);
+                    await RestoreConfigurationAsync();
+                    if (reload == ProxyProblemCodes.RecoveryRequired) return reload;
+                    if (!string.IsNullOrEmpty(await controller.ReloadAsync(completionToken))) return ProxyProblemCodes.RecoveryRequired;
                     return ProxyProblemCodes.ConfigApplyFailed;
                 }
                 var proxyProblem = await systemProxyService.ApplyAsync(settings, previous, enforce: false, completionToken);
@@ -102,16 +105,18 @@ public sealed class MihomoSettingsService(
                 if (proxyProblem is not null)
                 {
                     logger?.LogWarning("Proxy settings update could not apply the host system proxy. ProblemCode={ProblemCode}", proxyProblem);
-                    await File.WriteAllTextAsync(active, original, completionToken);
-                    if (controllerAvailable) await controller.ReloadAsync(completionToken);
+                    await RestoreConfigurationAsync();
+                    if (controllerAvailable && !string.IsNullOrEmpty(await controller.ReloadAsync(completionToken)))
+                        return ProxyProblemCodes.RecoveryRequired;
                     return proxyProblem;
                 }
                 try { await WriteAsync(settings, completionToken); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or OperationCanceledException)
                 {
                     var rollback = await systemProxyService.ApplyAsync(previous, settings, enforce: true, CancellationToken.None);
-                    await File.WriteAllTextAsync(active, original, CancellationToken.None);
-                    if (controllerAvailable) await controller.ReloadAsync(CancellationToken.None);
+                    await RestoreConfigurationAsync();
+                    if (controllerAvailable && !string.IsNullOrEmpty(await controller.ReloadAsync(CancellationToken.None)))
+                        return ProxyProblemCodes.RecoveryRequired;
                     return rollback ?? ProxyProblemCodes.ConfigApplyFailed;
                 }
                 logger?.LogInformation("Proxy settings updated. SystemProxyEnabled={SystemProxyEnabled} AllowLan={AllowLan} DnsEnabled={DnsEnabled} MixedPort={MixedPort} TunEnabled={TunEnabled}",
@@ -119,6 +124,13 @@ public sealed class MihomoSettingsService(
                 return null;
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
+
+            async Task RestoreConfigurationAsync()
+            {
+                await File.WriteAllTextAsync(temporary, original, CancellationToken.None);
+                if (!OperatingSystem.IsWindows() && originalMode is { } mode) File.SetUnixFileMode(temporary, mode);
+                File.Move(temporary, active, overwrite: true);
+            }
         }
         catch (RuntimePolicyException) { return ProxyProblemCodes.RecoveryRequired; }
         catch (InvalidDataException) { return ProxyProblemCodes.RecoveryRequired; }

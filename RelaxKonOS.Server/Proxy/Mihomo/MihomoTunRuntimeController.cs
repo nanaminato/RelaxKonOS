@@ -47,9 +47,7 @@ public sealed class MihomoTunRuntimeController(
                 File.Move(temporary, active, overwrite: true);
                 // A recovery transition can run while Mihomo is intentionally stopped (for
                 // example after the Windows Server process was restarted). Do not send a reload
-                // to a controller that was already unavailable: ReloadAsync correctly gives an
-                // in-flight reload up to 30 seconds to reconnect, but that wait is incorrect
-                // when there was no running controller before the transition began.
+                // to a controller that was already unavailable.
                 var controllerAvailable = await controller.IsReachableAsync(cancellationToken);
                 if (!controllerAvailable.Succeeded)
                 {
@@ -58,9 +56,10 @@ public sealed class MihomoTunRuntimeController(
                     return controllerAvailable.ProblemCode;
                 }
                 var reload = await controller.ReloadAsync(cancellationToken);
-                if (string.IsNullOrEmpty(reload))
+                if (string.IsNullOrEmpty(reload) || reload == ProxyProblemCodes.RecoveryRequired)
                 {
-                    var applied = await controller.GetTunEnabledAsync(cancellationToken);
+                    var applied = reload is null ? await controller.GetTunEnabledAsync(cancellationToken)
+                        : await ObserveInterruptedReloadAsync(cancellationToken);
                     if (!applied.Succeeded || applied.Value != enabled)
                         return ProxyProblemCodes.RecoveryRequired;
                     // Mihomo's reload endpoint acknowledges the configuration before the TUN
@@ -106,6 +105,25 @@ public sealed class MihomoTunRuntimeController(
         }
         catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
         finally { publication.Gate.Release(); }
+    }
+
+    private async Task<ControllerResult<bool>> ObserveInterruptedReloadAsync(CancellationToken ct)
+    {
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(TimeSpan.FromSeconds(30));
+        try
+        {
+            while (true)
+            {
+                var observed = await controller.GetTunEnabledAsync(budget.Token);
+                if (observed.ProblemCode is not (ProxyProblemCodes.ControllerUnavailable or ProxyProblemCodes.ControllerTimeout)) return observed;
+                await Task.Delay(TimeSpan.FromMilliseconds(200), budget.Token);
+            }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return ControllerResult<bool>.Failure(ProxyProblemCodes.RecoveryRequired);
+        }
     }
 
     /// <summary>Reports the engine's own view of its TUN flag.  A controller that cannot answer

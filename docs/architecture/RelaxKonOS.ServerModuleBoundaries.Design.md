@@ -2230,3 +2230,15 @@ Windows Release Kestrel 验证两条档案入口拒绝只读用户，保留激�
 Linux 私有 systemd 使用非 root 完整 Server，经认证配置应用入口写入真实受管 Mihomo。Helper 提交后暂扣原响应，HTTP 断开时仍有一个租约，原档案意图保留，档案保持未激活。终止并重启 Server 后按原 `ccace5ba-700b-4e3f-ba2f-2a1d270f0407` 确认 Helper 回执，档案修订只增加一次，实际路由模式为 Direct，提交后的原生修订、PID 和真实转发保持。configure 一次，recover 零次。同轮设置原 `cf73fb38-e0da-4531-ac12-bf595a64e2ac` 也按原回执恢复。显式测试恢复完成后，Linux 原生套件通过 178 项。专属 cgroup 已清理，宿主 sing-box 与代理文件指纹一致。日志见 `.artifacts/mb04-profile-lease/`，归档 SHA-256 为 `b2e479ea333bdd3891e5e1f5dea11ed125ddffedce31a85c55a1140c46f94783`。
 
 直连取消及补偿的证据来自本地夹具。控制器连接恢复目前不足以证明指定 YAML 已生效，真实直连响应丢失与 Server 崩溃后的配置权威仍开放。Proxy 保持 resident，动态休眠及生产内存未验收。下一项验证直连 reload 回执丢失时的判定和原配置保护，保持同一个执行者与原领域记录。
+
+### MB-04 Mihomo 直连 reload 回执丢失
+
+档案和设置的控制器 reload 要求原 HTTP 成功响应。传输中断或控制器 5xx 返回 `RecoveryRequired`。执行器在原发布锁内原子恢复原磁盘配置，保持原档案与设置元数据，随后返回原有待恢复问题码。此分支没有补发 reload，也不会用 `/version` 的可达性确认原 YAML。明确拒绝时仍沿用原补偿。TUN 保留原安全标记，响应中断后可在有界等待内只读重查实际 TUN 标志，再验证设备及管理路由。
+
+Linux 私有 systemd 使用真实独立 Mihomo 和回环 TCP 中继执行两次专属直连设置请求。第一次在中继转发前断开，控制器仍报告原日志级别。第二次实际收到 Mihomo 成功响应后丢弃回复，控制器报告候选日志级别。两次均返回 `RecoveryRequired`，各发出一次 PUT，原磁盘字节、原设置元数据和 Mihomo PID 保持，未派发系统代理变更。明确的夹具清理操作加载原磁盘配置，原 HTTP 连接完成转发。同批 Core 联合停机的到期 `218a81b5-d015-4ca5-b8f9-014f6f990ed5` 和 TUN `be8bab8f-fed0-4d75-ae42-a0d97c5768f0` 保留原责任，管理队列 `a9935e66-7a9b-4b80-9065-c22099ffea2f` 保留原回执。专属 cgroup 已清理，宿主 runtime 与代理文件指纹一致。主套件归档 SHA-256 为 `f9b0a65ce407d4b76583f195f420e69a0a20602218accbd28ad5a793e55bf3cd`。
+
+Windows Release 控制器、直连档案、系统代理和模块边界专项通过。直连档案夹具核对未知结果时不增加档案修订，原文件保持且只有一次 reload。TUN 边界 35 项通过，包含一次只读查询失败后恢复，以及无额外 reload。MB-05 跨进程原 `0ebd1049-d684-4b55-ab93-9ae549541f82` 返回 Interrupted，受控副作用计数为一。日志见 `.artifacts/mb04-direct-reload-final/`。
+
+独立 Linux 网络命名空间复验真实 Mihomo TUN、自动路由及 DNS。原 `c596587e-0589-4ee2-809b-961c4bcdd464` 在禁用请求未到达时保留标记，原生 reload 为零。随后实际禁用成功但回执丢失，真实设备只撤销一次。管理路由恢复后原 Core worker 清理同一标记，禁用 reload 仍为一次。同批通过真实激活取消和恢复排空，宿主服务 PID 与代理文件指纹一致。专项日志为 `tun-live.log`，归档 SHA-256 为 `ecf3d0f91a1d08179cf40a7421239d261c0678460522907ca9c2c793f7d92de8`。
+
+原生直连 reload 接口未提供可查询的操作回执或完整生效配置摘要。当前实测覆盖存活的直连设置执行器遇到未知结果后的原文件保护。进程在还原前崩溃、后续直连写入的持久恢复门禁，以及真实直连档案响应丢失仍开放。下一阶段在原发布权威内推进持久直连检查点，明确 TUN 紧急恢复的接续权限。Proxy 整体保持 resident，动态休眠及生产内存尚未验收。

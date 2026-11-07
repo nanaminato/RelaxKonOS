@@ -4564,3 +4564,5 @@ Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链�
 设置保存使用原鉴权、响应与发布台账。调用方断线后，已受理的受管发布继续由原 operationId 对账。直连设置替换活动文件后继续完成写入或补偿，系统代理 guard 等待同一发布锁。见[设置写入工作租约](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-设置写入的工作租约)。
 
 档案激活和配置应用在原工作租约内完成执行、审计和响应。直连配置替换活动文件后继续核对 reload 并完成档案写入或补偿。受管配置应用用原发布回执和原档案意图恢复选择。见[档案发布工作租约](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-档案发布的工作租约)。
+
+直连 Mihomo reload 响应丢失时，档案与设置保留原磁盘配置和应用元数据，并返回待恢复。运行中的 Mihomo 可能已经应用候选配置，控制器恢复可达后仍需要核实其状态。见[直连 reload 回执丢失](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连-reload-回执丢失)。

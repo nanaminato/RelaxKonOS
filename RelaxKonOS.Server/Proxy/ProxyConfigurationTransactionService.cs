@@ -152,6 +152,18 @@ public sealed class ProxyConfigurationTransactionService(
                 // Once the active file is visible, finish activation or compensation under the same gate.
                 var completionToken = CancellationToken.None;
                 var reload = await engine.ReloadAsync(completionToken);
+                if (reload == ProxyProblemCodes.RecoveryRequired)
+                {
+                    // Keep the last acknowledged file for a future runtime start. The live result is unknown.
+                    if (File.Exists(backup))
+                    {
+                        File.Copy(backup, temporary, overwrite: false);
+                        SetPrivateFile(temporary);
+                        File.Move(temporary, active, overwrite: true);
+                    }
+                    else File.Delete(active);
+                    return reload;
+                }
                 var health = string.IsNullOrEmpty(reload) ? await engine.GetHealthAsync(completionToken) : null;
                 if (string.IsNullOrEmpty(reload) && health?.State == ProxyHealthState.Healthy)
                 {

@@ -68,6 +68,13 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
         && (await subscriptions.GetAsync(subscription.Id, default))!.Subscription.LastUpdatedAt == refreshedAt,
         "A queued refresh recognizes its own stored GEO-normalized draft and commits its timestamp.");
     var beforePending = await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"));
+    var beforeUnknown = await profiles.GetAsync(second.Id, default);
+    var reloadsBeforeUnknown = engine.ReloadCalls;
+    engine.NextReloadProblem = ProxyProblemCodes.RecoveryRequired;
+    TestAssert.Assert(await service.ActivateStoredAsync(profile.Id, default) == ProxyProblemCodes.RecoveryRequired
+        && engine.ReloadCalls == reloadsBeforeUnknown + 1 && await profiles.GetAsync(second.Id, default) == beforeUnknown
+        && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,
+        "Unknown profile reload must preserve the prior file and metadata without another controller mutation.");
     var staleRefresh = new ProxyQueuedSubscriptionRefresh(Guid.NewGuid(), new(Guid.NewGuid(), DateTimeOffset.UtcNow), "mode: direct\n");
     TestAssert.Assert(await service.ActivateStoredAsync(second.Id, default, staleRefresh) == ProxyProblemCodes.ConfigApplyFailed
         && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,

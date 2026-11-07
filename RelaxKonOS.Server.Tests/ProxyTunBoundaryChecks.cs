@@ -40,6 +40,14 @@ internal static class ProxyTunBoundaryChecks
         }
         using (var f = new Fixture())
         {
+            f.LoseNextReloadReply = true;
+            f.UnavailableTunReads = 1;
+            Check(await f.Safety.EnableAsync(Guid.NewGuid(), null, default) is null
+                && f.Reloads == 1 && f.TunReads == 2 && f.Devices.Calls == 1 && File.Exists(f.Marker),
+                "Lost TUN reload reply can be resolved by retrying the flag read and checking the device without another reload");
+        }
+        using (var f = new Fixture())
+        {
             f.Reachable = false;
             Check(await f.Safety.EnableAsync(Guid.NewGuid(), null, default) == ProxyProblemCodes.RecoveryRequired
                 && File.Exists(f.Marker) && f.Reloads == 0,
@@ -192,8 +200,8 @@ internal static class ProxyTunBoundaryChecks
         public string Active => Path.Combine(Paths.GetProtectedConfigurationDirectory(), "active.yaml");
         public string Marker => Path.Combine(Paths.GetStateDirectory(), "proxy-tun-recovery.json");
         public ProxyManagementRouteSnapshot Snapshot { get; } = new("boundary", DateTimeOffset.UtcNow, true, "eth0", "192.0.2.1", [], []);
-        public bool Reachable = true, ObservationFails;
-        public int Reloads, FailReloads;
+        public bool Reachable = true, ObservationFails, LoseNextReloadReply;
+        public int Reloads, FailReloads, TunReads, UnavailableTunReads;
         public Action? BeforeReachability;
         public Func<CancellationToken, Task>? BlockReload;
         public Fixture()
@@ -207,9 +215,7 @@ internal static class ProxyTunBoundaryChecks
             {
                 "IsReachableAsync" => Reachability(),
                 "ReloadAsync" => ReloadAsync((CancellationToken)args![0]!),
-                "GetTunEnabledAsync" => Task.FromResult(ObservationFails || !Reachable
-                    ? ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerUnavailable)
-                    : ControllerResult<bool>.Success(MihomoManagedConfiguration.ReadTunActivation(File.ReadAllText(Active)).Enabled)),
+                "GetTunEnabledAsync" => ObserveTun(),
                 _ => throw new Exception("Unexpected controller method: " + name)
             };
             Tun = new(Paths, Reader, Controller, Publication, Devices);
@@ -226,8 +232,21 @@ internal static class ProxyTunBoundaryChecks
             Reloads++;
             var block = BlockReload; BlockReload = null;
             if (block is not null) await block(ct);
+            if (LoseNextReloadReply) { LoseNextReloadReply = false; return ProxyProblemCodes.RecoveryRequired; }
             if (FailReloads > 0) { FailReloads--; return ProxyProblemCodes.TunActivationFailed; }
             return null;
+        }
+        private Task<ControllerResult<bool>> ObserveTun()
+        {
+            TunReads++;
+            if (UnavailableTunReads > 0)
+            {
+                UnavailableTunReads--;
+                return Task.FromResult(ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerUnavailable));
+            }
+            return Task.FromResult(ObservationFails || !Reachable
+                ? ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerUnavailable)
+                : ControllerResult<bool>.Success(MihomoManagedConfiguration.ReadTunActivation(File.ReadAllText(Active)).Enabled));
         }
         public async Task<string?> RecoverAsync()
         {
