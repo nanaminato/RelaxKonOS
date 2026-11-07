@@ -8,7 +8,7 @@ namespace RelaxKonOS.Server.Proxy;
 /// <summary>Inspects safety ownership and confirms a pending inbound publication from Helper status.</summary>
 internal static class ProxySafetyResponsibilities
 {
-    internal static async Task<IReadOnlyList<string>> InspectAsync(IServiceProvider services, IProxyPlatformPaths paths, CancellationToken ct)
+    internal static async Task<IReadOnlyList<string>> InspectAsync(IServiceProvider services, IProxyPlatformPaths paths, bool confirmPublication, CancellationToken ct)
     {
         var facts = new List<string>();
         try
@@ -29,15 +29,19 @@ internal static class ProxySafetyResponsibilities
             {
                 if ((await store.ReadAsync(ct)).PendingPublication is not null)
                 {
-                    var publication = new ProxyServerPublicationService(store,
-                        services.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(),
-                        services.GetRequiredService<RelaxKonOS.Server.HostMode.IServerModeResolver>());
-                    await publication.ReadStateAsync(ct, confirmCandidateOnly: true);
+                    if (confirmPublication)
+                    {
+                        var publication = new ProxyServerPublicationService(store,
+                            services.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(),
+                            services.GetRequiredService<RelaxKonOS.Server.HostMode.IServerModeResolver>());
+                        await publication.ReadStateAsync(ct, confirmCandidateOnly: true);
+                    }
+                    else facts.Add(PendingPublication);
                 }
             }
             catch (ProxyServerException)
             {
-                facts.Add("Inbound publication remains unconfirmed; expiry/recovery ownership is retained by Core.");
+                facts.Add(PendingPublication);
             }
             finally { store.Gate.Release(); }
         }
@@ -57,6 +61,8 @@ internal static class ProxySafetyResponsibilities
         catch (Exception error) when (Unreadable(error)) { facts.Add("Squid publication responsibility cannot be verified."); }
         return facts;
     }
+    private const string PendingPublication = "Inbound publication remains unconfirmed; expiry/recovery ownership is retained by Core.";
+
     private static bool Unreadable(Exception error) => error is IOException or InvalidDataException or UnauthorizedAccessException
         or System.Text.Json.JsonException or CryptographicException or RuntimePolicyException or FormatException;
 }

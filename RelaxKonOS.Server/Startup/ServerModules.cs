@@ -54,12 +54,16 @@ internal interface IServerModuleHealthProbe
 internal interface IServerModuleDeactivationGuard
 {
     /// <summary>
-    /// Asked only for a module that is disabled in this process, after the service provider exists so
-    /// the Core-owned ledgers can be read. An unreadable or unknown ledger must be reported as
-    /// unresolved, never as "nothing to do".
+    /// Reports unresolved work without mutating a domain ledger. An unreadable or unknown
+    /// ledger must be reported as unresolved.
     /// </summary>
     ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
         IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken);
+
+    /// <summary>Checks disabled startup and may reconcile work whose original outcome is confirmed.</summary>
+    ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectDisabledStartupAsync(
+        IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken) =>
+        InspectOrphanedWorkAsync(services, context, cancellationToken);
 }
 
 /// <summary>

@@ -106,6 +106,11 @@ if (args is ["runtime-lifecycle-only"])
     return;
 }
 
+if (args is ["runtime-managed-service-expiry-client", var startupSocket, var startupRoot, "--disabled-startup"])
+{
+    await ManagedServiceChecks.RunDisabledStartupAsync(startupSocket, startupRoot);
+    return;
+}
 if (args is ["runtime-managed-service-expiry-client", var expirySocket, var expiryRoot])
 {
     await ManagedServiceChecks.RunExpiryClientAsync(expirySocket, expiryRoot);

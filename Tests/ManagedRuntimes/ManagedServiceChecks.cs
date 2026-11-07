@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Builder;
+using RelaxKonOS.Server.Startup;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Server.Proxy;
@@ -84,9 +86,11 @@ internal static class ManagedServiceChecks
             var committed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var releaseResponse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var dropResponse = false;
+            var applyRequests = 0;
             await using var socket = executable is not null && OperatingSystem.IsLinux()
                 ? OpenSocket(root, states, host, natives, async (request, result) =>
                 {
+                    if (request.Operation == PrivilegedOperationKind.ProxyServerApply) Interlocked.Increment(ref applyRequests);
                     if (!dropResponse || request.Operation != PrivilegedOperationKind.ProxyServerApply || !result.Success) return;
                     committed.TrySetResult();
                     await releaseResponse.Task.WaitAsync(TimeSpan.FromSeconds(20));
@@ -199,6 +203,7 @@ internal static class ManagedServiceChecks
             {
                 var before = states.Read()!.Installation.StateRevision;
                 var starts = host.Starts;
+                var applies = Volatile.Read(ref applyRequests);
                 var serverStore = OpenServerStore(root);
                 var originalGrant = materialB.Credentials.Single();
                 await serverStore.WriteAsync(ProxyServerState.Empty with
@@ -228,7 +233,10 @@ internal static class ManagedServiceChecks
                 finally { releaseResponse.TrySetResult(); }
                 var indexPath = Path.Combine(root, "server", "proxy-server.protected.expiry");
                 File.Delete(indexPath);
-                var recovery = await SendAcrossProcessAsync(socket.SocketPath, null, expiryRoot: root);
+                var blockedStartup = await SendAcrossProcessAsync(socket.SocketPath + ".absent", null, expiryRoot: root, startup: true);
+                Check(!blockedStartup.Success && (await serverStore.ReadAsync(default)).PendingPublication is not null,
+                    "Disabled startup must preserve the original candidate while Helper status is unavailable.");
+                var recovery = await SendAcrossProcessAsync(socket.SocketPath, null, expiryRoot: root, startup: true);
                 var reopened = OpenServerStore(root);
                 var recoveredState = await reopened.ReadAsync(default);
                 Check(recovery.Success && File.Exists(indexPath) && recoveredState.PendingPublication is null
@@ -236,7 +244,8 @@ internal static class ManagedServiceChecks
                     "Server recovery must confirm and clear the original pending publication.");
                 var recovered = Read<ProxyServerStatus>(await RequestAsync(PrivilegedOperationKind.ProxyServerStatus, null));
                 Check(recovered is { Running: true, Applied: true } && recovered.ConfigurationHash == expectedHash
-                    && states.Read()!.Installation.StateRevision == before + 1 && host.Starts == starts + 1,
+                    && states.Read()!.Installation.StateRevision == before + 1 && host.Starts == starts + 1
+                    && Volatile.Read(ref applyRequests) == applies + 1,
                     "A new client must observe the committed state without another publication.");
                 return count;
             }
@@ -280,7 +289,7 @@ internal static class ManagedServiceChecks
     private static string Key() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         .Replace('+', '-').Replace('/', '_')[..43];
 
-    private static async Task<PrivilegedOperationResult> SendAcrossProcessAsync(string socketPath, PrivilegedOperationRequest? request, Func<Process, Task>? interrupt = null, string? expiryRoot = null)
+    private static async Task<PrivilegedOperationResult> SendAcrossProcessAsync(string socketPath, PrivilegedOperationRequest? request, Func<Process, Task>? interrupt = null, string? expiryRoot = null, bool startup = false)
     {
         var start = new ProcessStartInfo(Environment.ProcessPath!)
         {
@@ -293,6 +302,7 @@ internal static class ManagedServiceChecks
         start.ArgumentList.Add(expiryRoot is null ? "runtime-managed-service-client" : "runtime-managed-service-expiry-client");
         start.ArgumentList.Add(socketPath);
         if (expiryRoot is not null) start.ArgumentList.Add(expiryRoot);
+        if (startup) start.ArgumentList.Add("--disabled-startup");
         using var child = Process.Start(start) ?? throw new InvalidOperationException("Unable to start isolated Helper client.");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
@@ -333,8 +343,45 @@ internal static class ManagedServiceChecks
         Console.WriteLine(JsonSerializer.Serialize(new PrivilegedOperationResult(true)));
     }
 
+    internal static async Task RunDisabledStartupAsync(string socketPath, string root)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.AddProxyRuntimeServices();
+        builder.Services.AddSingleton<IProxyPlatformPaths>(new FixturePaths(Path.Combine(root, "server")));
+        builder.Services.AddSingleton<IDataProtectionProvider>(OpenProtection(root));
+        builder.Services.AddSingleton(OpenServerStore(root));
+        builder.Services.AddSingleton<IPrivilegedOperationTransport>(CreateTransport(socketPath));
+        builder.Services.AddSingleton<IServerModeResolver>(new FixtureMode());
+        var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+        var catalog = ServerModules.CreateManaged(new HashSet<string>());
+        var modules = ServerModules.CreateManaged(catalog.KnownModuleIds.Where(id => id != ServerModules.ProxyId).ToHashSet(StringComparer.Ordinal));
+        modules.ConfigureServices(builder, context);
+        await using var app = builder.Build();
+        if (app.Services.GetService<IProxyEngineRegistry>() is not null)
+            throw new InvalidOperationException("Disabled startup constructed the Proxy management graph.");
+        var inspection = await new RelaxKonOS.Server.Startup.Modules.ProxyModule()
+            .InspectOrphanedWorkAsync(app.Services, context, default);
+        if (!inspection.Any(item => item.Description.Contains("Inbound publication remains unconfirmed", StringComparison.Ordinal))
+            || (await app.Services.GetRequiredService<ProxyServerStore>().ReadAsync(default)).PendingPublication is null)
+            throw new InvalidOperationException("Read-only Proxy diagnostics must report and preserve the original candidate.");
+        PrivilegedOperationResult result;
+        try
+        {
+            await modules.ValidateDeactivationAsync(app.Services, context, default);
+            result = new(true);
+        }
+        catch (InvalidOperationException error) when (error.Message.Contains("Inbound publication remains unconfirmed", StringComparison.Ordinal))
+        {
+            result = new(false);
+        }
+        Console.WriteLine(JsonSerializer.Serialize(result));
+    }
+
     private static ProxyServerStore OpenServerStore(string root) => new(new FixturePaths(Path.Combine(root, "server")),
-        DataProtectionProvider.Create(Directory.CreateDirectory(Path.Combine(root, "fixture-keys"))));
+        OpenProtection(root));
+
+    private static IDataProtectionProvider OpenProtection(string root) =>
+        DataProtectionProvider.Create(Directory.CreateDirectory(Path.Combine(root, "fixture-keys")));
 
     private sealed class FixturePaths(string root) : IProxyPlatformPaths
     {

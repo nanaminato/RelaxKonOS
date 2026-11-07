@@ -154,8 +154,16 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
     /// Deactivation remains blocked while authority is unknown; management disablement never
     /// removes the Core safety, expiry or publication recovery owners.
     /// </summary>
-    public async ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
-        IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken)
+    public ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectOrphanedWorkAsync(
+        IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken) =>
+        InspectResponsibilitiesAsync(services, confirmPublication: false, cancellationToken);
+
+    public ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectDisabledStartupAsync(
+        IServiceProvider services, ServerModuleContext context, CancellationToken cancellationToken) =>
+        InspectResponsibilitiesAsync(services, confirmPublication: true, cancellationToken);
+
+    private async ValueTask<IReadOnlyList<ServerModuleOrphanedWork>> InspectResponsibilitiesAsync(
+        IServiceProvider services, bool confirmPublication, CancellationToken cancellationToken)
     {
         if (services.GetService<RelaxKonOS.Server.Residency.ModuleResidencyCoordinator>()?.HasBackgroundWork(Id) == true)
             return [new(Id, "Proxy execution, cleanup or response remains owned in this process.")];
@@ -164,7 +172,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
             ? await ProxyOperationStore.InspectPersistedResponsibilitiesAsync(services.GetRequiredService<IProxyPlatformPaths>(), cancellationToken)
             : await operations.InspectResponsibilitiesAsync(cancellationToken);
         var publication = await InspectPublicationAsync(services, cancellationToken);
-        var safety = await ProxySafetyResponsibilities.InspectAsync(services, services.GetRequiredService<IProxyPlatformPaths>(), cancellationToken);
+        var safety = await ProxySafetyResponsibilities.InspectAsync(services, services.GetRequiredService<IProxyPlatformPaths>(), confirmPublication, cancellationToken);
         return [.. facts.Concat(safety).Select(fact => new ServerModuleOrphanedWork(Id, fact)), .. publication];
     }
 

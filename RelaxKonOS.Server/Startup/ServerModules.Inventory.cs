@@ -4,8 +4,7 @@ using RelaxKonOS.Server.Residency;
 namespace RelaxKonOS.Server.Startup;
 
 // Read-only diagnostics for operators and clients: what is listed, what would block a disable, and
-// what residency state each enabled module is in. None of these methods may change state; in
-// particular a status query never loads a module.
+// what residency state each enabled module is in. Inventory queries never load a module.
 internal sealed partial class ServerModules
 {
     private static readonly Lazy<string?> HostDigest = new(() =>
@@ -17,7 +16,7 @@ internal sealed partial class ServerModules
     });
     /// <summary>
     /// Read-only inventory for operators and clients. It answers "what would happen if I disabled
-    /// this module" with the same facts the startup gate uses.
+    /// this module" using the current durable state.
     /// </summary>
     internal async Task<IReadOnlyList<ServerModuleDto>> DescribeAsync(IServiceProvider services,
         ServerModuleContext context, CancellationToken cancellationToken)
@@ -118,7 +117,7 @@ internal sealed partial class ServerModules
     {
         var orphaned = new List<ServerModuleOrphanedWork>();
         foreach (var module in _disabled.OfType<IServerModuleDeactivationGuard>())
-            orphaned.AddRange(await module.InspectOrphanedWorkAsync(services, context, cancellationToken));
+            orphaned.AddRange(await module.InspectDisabledStartupAsync(services, context, cancellationToken));
 
         if (orphaned.Count == 0) return;
         var details = string.Join(" ", orphaned.Select(item => $"({item.ModuleId}) {item.Description}"));
