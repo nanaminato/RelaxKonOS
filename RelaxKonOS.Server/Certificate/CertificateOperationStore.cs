@@ -247,14 +247,16 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         {
             var operation = _operations[id];
             if (operation.State == CertificateOperationState.Cancelled && state != CertificateOperationState.Cancelled) return;
-            var completed = operation with { State = state, Stage = state.ToString().ToLowerInvariant(), ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow };
+            var interrupted = problemCode == InterruptedProblem;
+            var completed = operation with { State = state, Stage = interrupted ? "interrupted" : state.ToString().ToLowerInvariant(),
+                ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow };
             _operations[id] = completed;
             try
             {
                 await SaveAsync(ct);
                 _logger.LogInformation("Certificate operation completed. OperationId={OperationId} CertificateId={CertificateId} Kind={Kind} State={State} ProblemCode={ProblemCode}",
                     id, completed.CertificateId, completed.Kind, state, problemCode);
-                if (completed.Kind == "renew")
+                if (completed.Kind == "renew" && !interrupted)
                 {
                     if (state == CertificateOperationState.Failed)
                         await _certificates.UpdateRenewalOutcomeAsync(completed.CertificateId, null, problemCode, ct);

@@ -21,8 +21,12 @@ internal static class AcmeLiveChecks
         var metadata = new CertificateMetadataRepository(environment, configuration);
         var certificates = new FileCertificateStore(environment, options, metadata);
         var leases = new TestResidentBackgroundLeases();
-        CertificateOperationStore OpenStore() => new(environment, new HostOperationJournal(environment, configuration), certificates,
-            new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance, leases);
+        CertificateOperationStore OpenStore(IHostEnvironment? operationEnvironment = null)
+        {
+            var owner = operationEnvironment ?? environment;
+            return new(owner, new HostOperationJournal(owner, configuration), certificates,
+                new CertificateRenewalAttemptRepository(owner, configuration, options), NullLogger<CertificateOperationStore>.Instance, leases);
+        }
         using var store = OpenStore();
         await store.StartAsync(default);
         if (mode != "--acme-live-only")
@@ -113,6 +117,59 @@ internal static class AcmeLiveChecks
         await VerifyCrashAsync("--acme-live-crash-worker", "real-crash", "PASS ACME LIVE CRASH");
         await VerifyCrashAsync("--acme-live-response-worker", "real-response-loss", "PASS ACME LIVE RESPONSE LOSS");
         await VerifyCrashAsync("--acme-live-renewal-worker", "real-renewal", "PASS ACME LIVE RENEWAL ACROSS DAILY KEYS", certificateId);
+        await VerifyLiveResponseLossAsync("order", "201");
+        await VerifyLiveResponseLossAsync("certificate", "200");
+
+        async Task VerifyLiveResponseLossAsync(string response, string statusCode)
+        {
+            var owner = new TestHostEnvironment(Directory.CreateDirectory(Path.Combine(root, "loss-" + response)).FullName);
+            var previous = await certificates.GetAsync(certificateId, default);
+            TestAssert.Assert(!string.IsNullOrEmpty(previous?.FingerprintSha256), "A renewal requires an active certificate.");
+            await using var direct = new DirectHttp01ChallengeStore(Prefix);
+            using var http = new HttpClient(new SocketsHttpHandler
+            {
+                UseProxy = false,
+                ConnectCallback = async (_, ct) =>
+                {
+                    var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                    try
+                    {
+                        await socket.ConnectAsync(IPAddress.Loopback, 14001, ct);
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch { socket.Dispose(); throw; }
+                }
+            });
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("RelaxKonOS-AcmeAcceptance/1.0");
+            http.DefaultRequestHeaders.Add("X-Fixture-Lose-Response", response);
+            var service = new AnvilAcmeService(new FileHttp01ChallengeStore(options), direct, options, metadata,
+                NullLogger<AnvilAcmeService>.Instance, uri => new AcmeHttpClient(uri, http));
+            using var live = OpenStore(owner);
+            await live.StartAsync(default);
+            var manager = CreateManager(certificates, service, live, environment, configuration);
+            var actor = CertificateOperationStore.AutomaticRenewalActor;
+            var original = await manager.RenewAsync(certificateId, "before-loss", actor, default, automatic: true);
+            var interrupted = await TerminalAsync(live, original.OperationId);
+            var evidence = Path.Combine(root, "truncated-" + response);
+            TestAssert.Assert(interrupted is { State: CertificateOperationState.Failed, Stage: "interrupted",
+                    ProblemCode: CertificateOperationStore.InterruptedProblem }
+                && File.Exists(evidence) && await File.ReadAllTextAsync(evidence) == statusCode,
+                $"The actual truncated {response} response must preserve the original unknown result: {interrupted.State}/{interrupted.ProblemCode}.");
+            TestAssert.Assert(await manager.RenewAsync(certificateId, "before-loss", actor, default, automatic: true) == interrupted
+                && await manager.RenewAsync(certificateId, "next-daily-key", actor, default, automatic: true) == interrupted,
+                "The still-running owner must return the original receipt for both keys.");
+            await live.StopAsync(default).WaitAsync(Budget);
+            using var recovered = OpenStore(owner);
+            await recovered.StartAsync(default);
+            var recoveryManager = CreateManager(certificates, CreateAcme(direct), recovered, environment, configuration);
+            TestAssert.Assert(await recoveryManager.RenewAsync(certificateId, "after-restart-key", actor, default, automatic: true) == interrupted
+                && (await recovered.GetRenewalInfoAsync(certificateId, true, default)).ConsecutiveFailures == 0
+                && (await certificates.GetAsync(certificateId, default))?.FingerprintSha256 == previous!.FingerprintSha256,
+                "The persisted interruption must keep the original certificate and prevent an automatic retry after reopening.");
+            await recovered.StopAsync(default).WaitAsync(Budget);
+            TestAssert.Assert(leases.Active == 0, "Confirmed local cleanup must drain the ACME lease.");
+            Console.WriteLine($"PASS ACME LIVE TRANSPORT LOSS: response={response}; operation={original.OperationId}; original interrupted receipt retained");
+        }
 
         async Task VerifyCrashAsync(string workerMode, string key, string marker, Guid? renewal = null)
         {

@@ -78,20 +78,20 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             certificateId, directoryUri, challengeType, keyAlgorithm, string.Join(',', domains));
         var acme = await LoadContextAsync(directoryUri, contactEmail, cancellationToken);
         logger.LogInformation("ACME account context loaded. CertificateId={CertificateId}", certificateId);
-        var order = await AcmeCallLifetime.AwaitAsync(() => acme.NewOrder(domains.ToList()), cancellationToken);
+        var order = await ObserveOrderAsync(() => acme.NewOrder(domains.ToList()), cancellationToken);
         logger.LogInformation("ACME order created. CertificateId={CertificateId}", certificateId);
         var challenges = new List<IChallengeContext>();
         Exception? issuanceFailure = null;
         try
         {
-            var authorizations = (await AcmeCallLifetime.AwaitAsync(() => order.Authorizations(), cancellationToken)).ToArray();
+            var authorizations = (await ObserveOrderAsync(() => order.Authorizations(), cancellationToken)).ToArray();
             logger.LogInformation("ACME order authorizations retrieved. CertificateId={CertificateId} AuthorizationCount={AuthorizationCount}",
                 certificateId, authorizations.Length);
             foreach (var authorization in authorizations)
             {
-                var resource = await AcmeCallLifetime.AwaitAsync(() => authorization.Resource(), cancellationToken);
+                var resource = await ObserveOrderAsync(() => authorization.Resource(), cancellationToken);
                 if (resource.Status == Certify.ACME.Anvil.Acme.Resource.AuthorizationStatus.Valid) continue;
-                var challenge = await AcmeCallLifetime.AwaitAsync(() => authorization.Http(), cancellationToken);
+                var challenge = await ObserveOrderAsync(() => authorization.Http(), cancellationToken);
                 if (challenge is null) throw new CertificateOperationException("certificate.http01_not_offered");
                 challenges.Add(challenge);
                 await challengesStore.PutAsync(challenge.Token, challenge.KeyAuthz, cancellationToken);
@@ -99,7 +99,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             }
             foreach (var challenge in challenges)
             {
-                await AcmeCallLifetime.AwaitAsync(() => challenge.Validate(), cancellationToken);
+                await ObserveOrderAsync(() => challenge.Validate(), cancellationToken);
                 logger.LogInformation("ACME HTTP-01 validation requested. CertificateId={CertificateId} TokenLength={TokenLength}", certificateId, challenge.Token.Length);
             }
 
@@ -108,7 +108,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             var ready = false;
             for (var attempt = 0; attempt < 24; attempt++)
             {
-                var resource = await AcmeCallLifetime.AwaitAsync(() => order.Resource(), cancellationToken);
+                var resource = await ObserveOrderAsync(() => order.Resource(), cancellationToken);
                 logger.LogInformation("ACME order validation status. CertificateId={CertificateId} Attempt={Attempt} Status={Status}", certificateId, attempt + 1, resource.Status);
                 if (resource.Status == Certify.ACME.Anvil.Acme.Resource.OrderStatus.Ready) { ready = true; break; }
                 if (resource.Status == Certify.ACME.Anvil.Acme.Resource.OrderStatus.Invalid) throw new CertificateOperationException("certificate.validation_failed");
@@ -124,7 +124,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
                 ? KeyFactory.NewKey(KeyAlgorithm.RS256, 2048)
                 : KeyFactory.NewKey(KeyAlgorithm.ES256);
             logger.LogInformation("ACME certificate key created. CertificateId={CertificateId} KeyAlgorithm={KeyAlgorithm}", certificateId, keyAlgorithm);
-            var certificate = await AcmeCallLifetime.AwaitAsync(() => order.Generate(new CsrInfo { CommonName = domains[0] }, certificateKey), cancellationToken);
+            var certificate = await ObserveOrderAsync(() => order.Generate(new CsrInfo { CommonName = domains[0] }, certificateKey), cancellationToken);
             logger.LogInformation("ACME certificate issued. CertificateId={CertificateId}", certificateId);
             return new CertificateMaterial(certificateId, domains, challengeType, keyAlgorithm, contactEmail, certificate.ToPem(), certificateKey.ToPem(), DateTimeOffset.UtcNow);
         }
@@ -168,6 +168,27 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
                 throw new CertificateChallengeCleanupException(cleanupFailures);
             }
         }
+    }
+
+    private static async Task<T> ObserveOrderAsync<T>(Func<Task<T>> operation, CancellationToken ct)
+    {
+        try { return await AcmeCallLifetime.AwaitAsync(operation, ct); }
+        catch (Exception error) when (HasUnknownOrderOutcome(error, ct))
+        {
+            throw new CertificateOperationException(CertificateOperationStore.InterruptedProblem, error);
+        }
+    }
+
+    private static bool HasUnknownOrderOutcome(Exception error, CancellationToken ct)
+    {
+        for (Exception? cause = error; cause is not null; cause = cause.InnerException)
+        {
+            if (cause is HttpIOException or TimeoutException
+                || cause is HttpRequestException request && (request.StatusCode is null || (int)request.StatusCode >= 500)
+                || cause is OperationCanceledException && !ct.IsCancellationRequested)
+                return true;
+        }
+        return false;
     }
 
     private async Task<AcmeContext> LoadContextAsync(Uri directoryUri, string contactEmail, CancellationToken cancellationToken)
@@ -266,7 +287,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
     private static string Base64Url(byte[] value) => Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }
 
-internal sealed class CertificateOperationException(string problemCode) : Exception(problemCode)
+internal sealed class CertificateOperationException(string problemCode, Exception? inner = null) : Exception(problemCode, inner)
 {
     public string ProblemCode { get; } = problemCode;
 }

@@ -1415,3 +1415,9 @@ Linux x64 Release 在既有测试机的独立 Pebble CA 验证真实自动续期
 TUN 激活在既有发布锁内通过待处理和确认发布门禁，并完成配置读取和计算后才提交恢复标记。恢复标记落盘后才允许首次文件和网络变更。拒绝准入或等待发布锁时取消，不产生虚假的 TUN 恢复责任。已有原标记遇到发布竞争仍保留原责任，不追加 reload。
 
 Windows Release TUN 边界 33 项及模块边界回归通过，覆盖待处理和已确认发布、准入前取消、写入后取消、补偿及锁竞争。Linux x64 Release 私有网络专项首轮夹具使用旧发布修订号，修正为读取原台账后通过。原待处理发布 `b1bd32c1-b530-4990-918a-37cac406a530` 拒绝新的 TUN 激活，新增标记、reload、配置和规则变更均为零。另一条真实 TUN 恢复 `1a6ac90c-aeec-484b-a9ad-113e44ff17b3` 保留原标记直到路由可核实，原禁用 reload 一次。日志为 .artifacts/mb04-tun-admission-linux.log，归档 SHA-256 为 9d4bee3b1861cf0d42f01266c36b79f6d199c999eb15a79f920a425aa293bc18。完整非 root Server、独立 Helper 和私有 systemd 同批复测恢复原激活操作 `0719d031-b697-42db-82ed-d59526826165`，系统代理和授权到期持续，宿主服务状态及代理文件指纹一致。日志为 .artifacts/mb04-tun-admission-systemd-live.log，归档 SHA-256 为 d8e8a862bdefee52516f8ff640c02c9b2e44c881e499ff561a2327aea1ecdf74。此切片验证发布准入和原补偿，不启用已确认受管发布下的 TUN 网络事务。Proxy 保持 resident。
+
+### MB-05 证书 CA 传输中断与原回执
+
+发送订单请求后，ACME 调用遇到无法确认远端结果的传输失败时，原 Task 仍等待 SDK 返回并排空挑战清理，再以原 operationId 持久化 `certificate.operation_interrupted`。API 保留既有 Failed 状态和 interrupted 阶段。续期中断沿用原台账的跨日门禁，当前进程和重开台账均返回原回执，不进入普通失败退避或创建新订单。明确的业务失败仍走原失败路径。CA 账户准备阶段和订单之外的其他操作未纳入本项。
+
+Linux x64 Release 在独立 Pebble 与 DNS 命名空间中通过。TLS 中继收到真实 CA 的订单创建 201 和已签发证书 200 后分别截断响应体并关闭实际连接。证书执行器保持运行，原订单操作 `8597f483-1b6a-437b-acde-7b92669a77c1` 和原证书下载操作 `a840b9a1-b4ae-43c6-9f23-4a47d9c7e163` 均以同一 ID 保留中断回执。原键、下一日键及重开台账后的新日期键均命中原回执。原证书指纹保持，续期普通失败计数为零，确认本地清理后工作租约归零。整组共七张预期 CA 订单，恢复零新增。日志为 .artifacts/mb05-acme-transport-live.log，归档 SHA-256 为 2f5b8c070d2489b6a35b860834265216f5f2ca4cad43b33069a8015e5472f9dc。Windows Release 模块边界回归通过，Docker 跨进程仍为原 Interrupted 回执和一次副作用。测试使用生产证书管理器、Anvil 和台账；完整 Server 认证入口及未知远端订单的主动查询仍开放。

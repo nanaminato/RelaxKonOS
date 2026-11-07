@@ -11,11 +11,13 @@ ip link set lo up
 fixture=$(mktemp -d /tmp/relaxkonos-acme.XXXXXXXX)
 ca_pid=
 dns_pid=
+relay_pid=
 cleanup() {
-    for pid in "$ca_pid" "$dns_pid"; do
+    for pid in "$relay_pid" "$ca_pid" "$dns_pid"; do
         if [ -n "$pid" ]; then kill -TERM "$pid" 2>/dev/null || true; wait "$pid" || true; fi
     done
     if [ -f "$fixture/dns.log" ]; then tail -15 "$fixture/dns.log" >&2; fi
+    if [ -f "$fixture/relay.log" ]; then tail -20 "$fixture/relay.log" >&2; fi
     if [ -f "$fixture/ca.log" ]; then
         tail -20 "$fixture/ca.log" >&2
         printf 'Pebble orders recorded: '
@@ -44,6 +46,14 @@ for attempt in $(seq 1 100); do
 done
 curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:14000/dir >/dev/null
 curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:15000/roots/0 > "$fixture/issuance-root.pem"
+python3 "$(dirname "$0")/acme-response-loss-relay.py" "$fixture" > "$fixture/relay.log" 2>&1 &
+relay_pid=$!
+for attempt in $(seq 1 100); do
+    if curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:14001/dir >/dev/null 2>&1; then break; fi
+    kill -0 "$relay_pid"
+    sleep .05
+done
+curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:14001/dir >/dev/null
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 SSL_CERT_FILE="$fixture/https.pem" dotnet "$assembly" --acme-live-only "$fixture"
-[ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 5 ]
+[ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 7 ]
