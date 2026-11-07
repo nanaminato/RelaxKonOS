@@ -23,6 +23,8 @@ using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.ManagedRuntimes;
+using RelaxKonOS.Server.Proxy;
+using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.ProxyServer;
 
 internal static class ProxyAuthenticatedPublicationChecks
@@ -138,6 +140,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         await using var relay = builder.Build();
         var dropAfterDispatch = false;
+        var holdResponse = true;
         var relayWrites = 0;
         var nativeWrites = 0;
         var committed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -161,8 +164,11 @@ internal static class ProxyAuthenticatedPublicationChecks
             {
                 Interlocked.Increment(ref nativeWrites);
                 committed.TrySetResult();
-                await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted);
-                return;
+                if (Volatile.Read(ref holdResponse))
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted);
+                    return;
+                }
             }
             context.Response.StatusCode = (int)response.StatusCode;
             await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
@@ -248,6 +254,66 @@ internal static class ProxyAuthenticatedPublicationChecks
             Console.WriteLine($"PASS MIHOMO DIRECT RELOAD LOSS: original {operation}; pre-dispatch loss and real post-apply process crash, disk recovery without replay");
         });
 
+        Volatile.Write(ref holdResponse, false);
+        foreach (var barrier in new[] { "before-sqlite", "after-sqlite" })
+        {
+            await guard.VerifyTrafficAsync(async (_, ct) =>
+            {
+                var profilePaths = await CreatePathsAsync(barrier, ct);
+                var stateDir = profilePaths.GetStateDirectory();
+                var repository = await MihomoProfilePublicationChecks.CreateAsync(stateDir);
+                var profile = await repository.UpsertAsync(null, barrier, MihomoEngine.Id, null, ct);
+                var store = new MihomoPublicationStore(profilePaths, protection);
+                var priorWrites = Volatile.Read(ref nativeWrites);
+                var priorRequests = Volatile.Read(ref relayWrites);
+                var start = new ProcessStartInfo("dotnet") { UseShellExecute = false };
+                foreach (var argument in new[] { typeof(ProxyAuthenticatedPublicationChecks).Assembly.Location,
+                    "runtime-proxy-direct-profile-crash", root, stateDir, address, guard.RuntimeExecutable, profile.Id.ToString("D"), barrier })
+                    start.ArgumentList.Add(argument);
+                using var child = Process.Start(start) ?? throw new InvalidOperationException("Could not start the direct profile writer.");
+                MihomoDirectReload checkpoint;
+                try
+                {
+                    while (!File.Exists(Path.Combine(stateDir, "commit-barrier")))
+                    {
+                        if (child.HasExited) throw new InvalidOperationException($"The direct profile writer exited before {barrier}. Exit={child.ExitCode}.");
+                        await Task.Delay(30, ct);
+                    }
+                    checkpoint = (await store.ReadAsync(ct)).DirectReload
+                        ?? throw new InvalidOperationException("The acknowledged profile checkpoint was not durable.");
+                    var observed = await repository.GetAsync(profile.Id, ct);
+                    var sqliteCommitted = barrier == "after-sqlite";
+                    if (!checkpoint.ProfileReloadConfirmed || checkpoint.Profile?.ProfileId != profile.Id
+                        || observed?.Revision != profile.Revision + (sqliteCommitted ? 1 : 0) || observed.IsActive != sqliteCommitted
+                        || Volatile.Read(ref nativeWrites) != priorWrites + 1 || Volatile.Read(ref relayWrites) != priorRequests + 1
+                        || await ReadConfigAsync("mode", ct) != "rule")
+                        throw new InvalidOperationException($"Unexpected side effects at {barrier}.");
+                    child.Kill();
+                    await child.WaitForExitAsync(ct);
+                    if (child.ExitCode == 0) throw new InvalidOperationException("The profile writer did not crash.");
+                }
+                finally { await StopAsync(child); }
+
+                var reopened = new MihomoPublicationStore(profilePaths, protection);
+                var services = new ServiceCollection().AddSingleton(reopened)
+                    .AddSingleton<IProxyProfileRepository>(await MihomoProfilePublicationChecks.CreateAsync(stateDir))
+                    .AddSingleton<MihomoPublicationRecoveryService>().AddLogging();
+                await using var provider = services.BuildServiceProvider();
+                var recovery = provider.GetRequiredService<MihomoPublicationRecoveryService>();
+                var named = new MihomoRuntimeRecoveryService(reopened, null!, null!, null!, null!, repository);
+                if (await recovery.ReconcileAsync(ct) is not null || await reopened.ReadPendingIdentityAsync(ct) is not null
+                    || await named.RetryAsync(checkpoint.OperationId, ct) != new RuntimeSwitchResult(checkpoint.OperationId, RuntimeSwitchOutcome.Succeeded, null)
+                    || await repository.GetAsync(profile.Id, ct) is not { IsActive: true } selected || selected.Revision != profile.Revision + 1
+                    || MihomoPublicationStore.Identity(await File.ReadAllTextAsync(active, ct)) != checkpoint.CandidateIdentity
+                    || Volatile.Read(ref nativeWrites) != priorWrites + 1 || Volatile.Read(ref relayWrites) != priorRequests + 1
+                    || guard.RuntimePid != pid)
+                    throw new InvalidOperationException($"Restart did not settle the original profile commit at {barrier}.");
+                Console.WriteLine($"PASS MIHOMO DIRECT PROFILE RECOVERY: {barrier}, original {checkpoint.OperationId}, one native reload and one profile revision");
+                await File.WriteAllBytesAsync(active, original, ct);
+                if (await native.ReloadAsync(ct) is not null) throw new InvalidOperationException("Could not restore the private runtime after the profile case.");
+            });
+        }
+
         async Task<DirectReloadFixturePaths> CreatePathsAsync(string name, CancellationToken ct)
         {
             var state = Directory.CreateDirectory(Path.Combine(root, "direct-reload", name)).FullName;
@@ -256,14 +322,16 @@ internal static class ProxyAuthenticatedPublicationChecks
             return new(state);
         }
 
-        async Task<string?> ReadLevelAsync(CancellationToken ct)
+        Task<string?> ReadLevelAsync(CancellationToken ct) => ReadConfigAsync("log-level", ct);
+
+        async Task<string?> ReadConfigAsync(string property, CancellationToken ct)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, "configs");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await secrets.GetOrCreateAsync(ct));
             using var response = await upstream.SendAsync(request, ct);
             response.EnsureSuccessStatusCode();
             using var body = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(ct));
-            return body.RootElement.GetProperty("log-level").GetString();
+            return body.RootElement.GetProperty(property).GetString();
         }
     }
 
@@ -285,6 +353,56 @@ internal static class ProxyAuthenticatedPublicationChecks
         return await settings.UpdateAsync(new(false, previous.AllowLan, previous.DnsEnabled, previous.Ipv6Enabled,
             previous.UnifiedDelay, "warning", previous.MixedPort, previous.AllowInsecureSubscriptionSources,
             previous.SystemProxyHost, previous.Tun, previous.SystemProxy), ct);
+    }
+
+    internal static async Task ExecuteDirectProfileFixtureAsync(string root, string state, string relay, string binary,
+        Guid profileId, string barrier, CancellationToken ct)
+    {
+        MihomoIpcStartupAcceptance.RequirePrivateHost();
+        var paths = new DirectReloadFixturePaths(state);
+        var protection = ManagedServiceChecks.OpenProtection(root);
+        var publication = new MihomoPublicationStore(paths, protection);
+        var secrets = new DataProtectionProxyControllerSecretStore(
+            new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { ContentRootPath = Path.Combine(root, "full-server") }, protection);
+        using var controller = new MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }), secrets,
+            new() { Endpoint = new(relay + "/") });
+        var repository = await MihomoProfilePublicationChecks.CreateAsync(state);
+        var profiles = new ProfileCommitBarrier(repository, Path.Combine(state, "commit-barrier"), barrier == "after-sqlite");
+        var engine = new MihomoEngine(controller, new NativeProfileValidator(binary), paths);
+        var service = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), profiles, secrets,
+            new() { Endpoint = new("http://127.0.0.1:9090/") }, publication, new ProxySettingsReader(paths));
+        var result = await service.ApplyAsync(profileId, "mode: rule\nrules:\n  - MATCH,DIRECT\n", ct);
+        throw new InvalidOperationException($"Direct profile publication exited before the commit barrier. Problem={result}.");
+    }
+
+    private sealed class NativeProfileValidator(string binary) : IMihomoConfigurationValidator
+    {
+        public async Task<string?> ValidateAsync(string configurationPath, CancellationToken ct)
+        {
+            var start = new ProcessStartInfo(binary) { UseShellExecute = false };
+            foreach (var argument in new[] { "-t", "-d", Path.GetDirectoryName(binary)!, "-f", configurationPath })
+                start.ArgumentList.Add(argument);
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not run native profile validation.");
+            await process.WaitForExitAsync(ct);
+            return process.ExitCode == 0 ? null : ProxyProblemCodes.ConfigInvalid;
+        }
+    }
+
+    private sealed class ProfileCommitBarrier(IProxyProfileRepository inner, string marker, bool afterCommit) : IProxyProfileRepository
+    {
+        public Task<IReadOnlyList<ProxyProfileDto>> ListAsync(CancellationToken ct) => inner.ListAsync(ct);
+        public Task<ProxyProfileDto?> GetAsync(Guid id, CancellationToken ct) => inner.GetAsync(id, ct);
+        public Task<ProxyProfileDto?> GetActiveAsync(CancellationToken ct) => inner.GetActiveAsync(ct);
+        public Task<ProxyProfileDto> UpsertAsync(Guid? id, string name, string engineId, long? revision, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> DeleteAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProxyProfileDto?> SetActiveAsync(Guid id, CancellationToken ct, MihomoSubscriptionRefresh? refresh = null) => throw new NotSupportedException();
+        public Task ValidatePublicationAsync(MihomoProfilePublication selection, CancellationToken ct) => inner.ValidatePublicationAsync(selection, ct);
+        public async Task CommitPublicationAsync(Guid operationId, MihomoProfilePublication selection, string identity, CancellationToken ct)
+        {
+            if (afterCommit) await inner.CommitPublicationAsync(operationId, selection, identity, ct);
+            await File.WriteAllTextAsync(marker, operationId.ToString("D"), ct);
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        }
     }
 
     private sealed class DirectReloadFixturePaths(string state) : RelaxKonOS.Server.Proxy.IProxyPlatformPaths

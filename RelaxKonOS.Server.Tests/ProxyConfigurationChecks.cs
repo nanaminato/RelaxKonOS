@@ -94,10 +94,44 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
         "The original direct checkpoint must block a subsequent activation without dispatching.");
     var activePath = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
     await File.WriteAllTextAsync(activePath, "# independently changed configuration\n");
-    await publication.RestoreDirectConfigurationAsync(checkpoint!.OperationId, default);
+    await publication.Gate.WaitAsync();
+    try { await publication.RecoverDirectReloadUnderGateAsync(await publication.ReadAsync(default), profiles, default); }
+    finally { publication.Gate.Release(); }
     TestAssert.Assert(await File.ReadAllTextAsync(activePath) == "# independently changed configuration\n"
-        && await publication.ReadPendingIdentityAsync(default) == checkpoint.OperationId,
+        && await publication.ReadPendingIdentityAsync(default) == checkpoint!.OperationId,
         "Direct recovery must preserve independently changed disk content and the original schedule identity.");
+
+    var confirmedPaths = new TestProxyPaths(Path.Combine(root, "confirmed-profile"));
+    var confirmedStore = new MihomoPublicationStore(confirmedPaths, new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+    var confirmedFile = Path.Combine(Directory.CreateDirectory(confirmedPaths.GetProtectedConfigurationDirectory()).FullName, "active.yaml");
+    const string candidate = "mode: rule\n";
+    var selectedBefore = (await profiles.GetAsync(profile.Id, default))!;
+    var activeBefore = (await profiles.GetActiveAsync(default))!;
+    var selection = new MihomoProfilePublication(profile.Id, selectedBefore.Revision, activeBefore.Id,
+        activeBefore.Revision, selectedBefore.CreatedAt, activeBefore.CreatedAt);
+    MihomoDirectReload confirmed;
+    await confirmedStore.Gate.WaitAsync();
+    try
+    {
+        confirmed = await confirmedStore.BeginDirectReloadAsync(beforePending, candidate, default, selection);
+        await confirmedStore.ConfirmDirectProfileReloadAsync(confirmed.OperationId);
+    }
+    finally { confirmedStore.Gate.Release(); }
+    var named = new RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService(confirmedStore, null!, null!, null!, null!, profiles);
+    await File.WriteAllTextAsync(confirmedFile, "# independent configuration\n");
+    var blocked = await named.RetryAsync(confirmed.OperationId, default);
+    TestAssert.Assert(blocked.OperationId == confirmed.OperationId && blocked.ProblemCode == "runtime.direct_profile_commit_pending"
+        && await profiles.GetAsync(profile.Id, default) == selectedBefore
+        && await File.ReadAllTextAsync(confirmedFile) == "# independent configuration\n"
+        && await confirmedStore.ReadPendingIdentityAsync(default) == confirmed.OperationId,
+        "Acknowledged profile recovery must preserve an independent edit and leave SQLite unchanged.");
+    await File.WriteAllTextAsync(confirmedFile, candidate);
+    var completed = await named.RetryAsync(confirmed.OperationId, default);
+    TestAssert.Assert(completed.Outcome == RelaxKonOS.Protocol.ManagedRuntimes.RuntimeSwitchOutcome.Succeeded
+        && await named.RetryAsync(confirmed.OperationId, default) == completed
+        && await confirmedStore.ReadPendingIdentityAsync(default) is null
+        && await profiles.GetAsync(profile.Id, default) is { IsActive: true } committed && committed.Revision == selectedBefore.Revision + 1,
+        "The original acknowledged profile receipt must survive repeated recovery without incrementing its revision.");
 }
 
 internal static async Task VerifyProxyTunSafetyAsync(string root)

@@ -1,4 +1,5 @@
 using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.ManagedRuntimes;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
@@ -33,9 +34,22 @@ public sealed class MihomoPublicationRecoveryService(IServiceScopeFactory scopes
             if (state.DirectReload is { } direct)
             {
                 operation = direct.OperationId;
-                await store.RestoreDirectConfigurationAsync(direct.OperationId, stoppingToken);
-                logger.LogWarning("Mihomo direct reload outcome requires verification. OperationId={OperationId}", direct.OperationId);
-                return (false, operation);
+                await store.Gate.WaitAsync(stoppingToken);
+                try
+                {
+                    state = await store.ReadAsync(stoppingToken);
+                    if (state.DirectReload is not { } current || current.OperationId != operation) return (false, null);
+                    var directResult = await store.RecoverDirectReloadUnderGateAsync(state,
+                        current.ProfileReloadConfirmed ? scope.ServiceProvider.GetService<IProxyProfileRepository>() : null, stoppingToken);
+                    if (directResult.Outcome == RuntimeSwitchOutcome.Succeeded)
+                    {
+                        logger.LogInformation("Mihomo direct profile commit recovered. OperationId={OperationId}", operation);
+                        return (false, null);
+                    }
+                    logger.LogWarning("Mihomo direct reload remains pending. OperationId={OperationId} ProblemCode={ProblemCode}", operation, directResult.ProblemCode);
+                    return (false, operation);
+                }
+                finally { store.Gate.Release(); }
             }
             if (state.Pending is not { } pending) return (false, null);
             if (pending.ConfigurationPlan is null && pending.InstallationPlan is null && pending.RemovalPlan is null)

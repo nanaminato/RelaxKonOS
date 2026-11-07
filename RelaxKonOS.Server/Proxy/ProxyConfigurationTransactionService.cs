@@ -147,10 +147,12 @@ public sealed class ProxyConfigurationTransactionService(
                     logger?.LogWarning("Proxy configuration activation was rejected by validation. ProfileId={ProfileId} EngineId={EngineId} ProblemCode={ProblemCode}", profileId, engine.EngineId, validation);
                     return validation;
                 }
+                var selection = await CaptureSelectionAsync(profileId, refresh?.Metadata, cancellationToken);
+                await profiles.ValidatePublicationAsync(selection, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 var previous = File.Exists(active) ? await File.ReadAllTextAsync(active, cancellationToken) : null;
                 if (previous is not null) File.Copy(active, backup, overwrite: false);
-                checkpoint = await publication.BeginDirectReloadAsync(previous, managedYaml, cancellationToken);
+                checkpoint = await publication.BeginDirectReloadAsync(previous, managedYaml, cancellationToken, selection, refresh?.OperationId);
                 File.Move(temporary, active, overwrite: true); SetPrivateFile(active);
                 // Once the active file is visible, finish activation or compensation under the same gate.
                 var completionToken = CancellationToken.None;
@@ -170,9 +172,11 @@ public sealed class ProxyConfigurationTransactionService(
                 var health = string.IsNullOrEmpty(reload) ? await engine.GetHealthAsync(completionToken) : null;
                 if (string.IsNullOrEmpty(reload) && health?.State == ProxyHealthState.Healthy)
                 {
-                    if (await profiles.SetActiveAsync(profileId, completionToken, refresh?.Metadata) is null)
+                    await publication.ConfirmDirectProfileReloadAsync(checkpoint.OperationId);
+                    var confirmed = await publication.ReadAsync(completionToken);
+                    if ((await publication.RecoverDirectReloadUnderGateAsync(confirmed, profiles, completionToken)).Outcome
+                        != RuntimeSwitchOutcome.Succeeded)
                         return ProxyProblemCodes.RecoveryRequired;
-                    await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
                     logger?.LogInformation("Proxy configuration activated. ProfileId={ProfileId} EngineId={EngineId} BackupCreated={BackupCreated}", profileId, engine.EngineId, File.Exists(backup));
                     return null;
                 }
@@ -254,10 +258,7 @@ public sealed class ProxyConfigurationTransactionService(
             var plan = new RuntimeConfigurationPlan(observed.Installation.InstallationId, observed.Installation.HostId,
                 "mihomo", observed.Installation.StateRevision, observed.ActiveRevisionId.Value, state.Identity!,
                 MihomoPublicationStore.Identity(yaml), operationId.ToString("N"));
-            var profile = await profiles.GetAsync(profileId, ct);
-            if (profile is null || profile.EngineId != MihomoEngine.Id) return ProxyProblemCodes.ConfigInvalid;
-            var active = (await profiles.ListAsync(ct)).SingleOrDefault(item => item.IsActive);
-            var selection = new MihomoProfilePublication(profile.Id, profile.Revision, active?.Id, active?.Revision, profile.CreatedAt, active?.CreatedAt, refresh?.Metadata);
+            var selection = await CaptureSelectionAsync(profileId, refresh?.Metadata, ct);
             var result = await managedPublication.PublishUnderGateAsync(operationId, state.Revision, plan, description.Material, ct, profile: selection);
             if (result.Outcome != MihomoPublicationOutcome.Confirmed)
                 return result.Outcome == MihomoPublicationOutcome.RecoveryRequired
@@ -269,6 +270,15 @@ public sealed class ProxyConfigurationTransactionService(
         catch (ProxyControllerSecretException) { return ProxyProblemCodes.RecoveryRequired; }
         catch (IOException) { return ProxyProblemCodes.RecoveryRequired; }
         catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
+    }
+
+    private async Task<MihomoProfilePublication> CaptureSelectionAsync(Guid profileId, MihomoSubscriptionRefresh? refresh, CancellationToken ct)
+    {
+        var profile = await profiles.GetAsync(profileId, ct);
+        if (profile is null || profile.EngineId != MihomoEngine.Id)
+            throw new RuntimePolicyException("runtime.profile_selection_invalid");
+        var active = await profiles.GetActiveAsync(ct);
+        return new(profile.Id, profile.Revision, active?.Id, active?.Revision, profile.CreatedAt, active?.CreatedAt, refresh);
     }
 
     private string GetProfilesDirectory()

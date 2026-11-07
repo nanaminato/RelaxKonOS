@@ -155,6 +155,7 @@ public static class RuntimeCatalogEndpoints
                     or "runtime.recovery_target_conflict" or "runtime.recovery_not_required"
                     or "runtime.recovery_stop_required" or "runtime.recovery_stop_failed"
                     or "runtime.publication_unconfirmed" or "runtime.publication_state_invalid" or "runtime.direct_reload_unverified"
+                    or "runtime.direct_profile_commit_pending" or "runtime.profile_selection_conflict"
                     or "runtime.installation_absent"
                     or "runtime.external_installation" or "runtime.state_unknown" => 409,
                 "runtime.platform_unsupported" => 403,

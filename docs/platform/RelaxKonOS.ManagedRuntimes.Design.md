@@ -249,3 +249,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）直连配置待恢复时，Mihomo 受管计划和发布保持原恢复门禁。既有直接安装入口在激活前复核同一检查点，下载阶段不占用 Core 安全共用发布锁。见[直连 reload 持久检查点](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连-reload-持久检查点)。
 
 2026-11-08（MR-03 / MB-04）Mihomo 运行时恢复入口按原 ID 区分 Server 直连检查点与 Helper 事务。直连查询和磁盘重试可独立于 Helper；恢复响应保留原 ID 和 `RecoveryRequired`。特权事务的停止、关账和已有版本生命周期按各自台账处理。见[直连具名恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连具名恢复)。
+
+2026-11-08（MR-03 / MB-04 配置恢复）直连档案发布已持久记录原生确认时，按原 ID 接续已有 SQLite 档案提交，完成后可读回原成功回执。未记录确认的原 reload 继续待恢复。见[直连档案提交恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连档案提交恢复)。

@@ -30,7 +30,7 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
                 PendingOperationId = observed.PendingOperationId ?? operation,
                 PendingStage = observed.PendingStage,
                 ProblemCode = conflict ? "runtime.recovery_target_conflict"
-                    : state.DirectReload is not null ? MihomoPublicationStore.DirectReloadUnverified : "runtime.publication_unconfirmed"
+                    : state.DirectReload?.ProblemCode ?? "runtime.publication_unconfirmed"
             };
         }
         catch (Exception ex) when (ex is RuntimePolicyException or IOException or UnauthorizedAccessException)
@@ -189,7 +189,7 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
             return unknown with { Required = true, ProblemCode = "runtime.publication_state_invalid" };
         }
         if (state.DirectReload is { } direct)
-            return new(true, direct.OperationId, null, null, false, MihomoPublicationStore.DirectReloadUnverified, null, null, null);
+            return new(true, direct.OperationId, null, null, false, direct.ProblemCode, null, null, null);
 
         var observed = await CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery), ct);
         if (state.Pending is not { } pending) return observed;
@@ -266,7 +266,7 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
     {
         if (state.DirectReload is { } direct)
             throw new RuntimeLifecycleException(direct.OperationId == operationId
-                ? MihomoPublicationStore.DirectReloadUnverified : "runtime.recovery_target_conflict");
+                ? direct.ProblemCode : "runtime.recovery_target_conflict");
     }
 
     /// <summary>

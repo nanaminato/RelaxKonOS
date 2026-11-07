@@ -7,6 +7,14 @@ if (args is ["runtime-proxy-direct-reload-crash", var directRoot, var directStat
     throw new InvalidOperationException($"The private direct writer unexpectedly returned {result}.");
 }
 
+if (args is ["runtime-proxy-direct-profile-crash", var profileRoot, var profileState, var profileRelay,
+    var profileBinary, var profileId, var profileBarrier])
+{
+    await ProxyAuthenticatedPublicationChecks.ExecuteDirectProfileFixtureAsync(profileRoot, profileState, profileRelay,
+        profileBinary, Guid.Parse(profileId), profileBarrier, default);
+    throw new InvalidOperationException("The private profile writer unexpectedly returned.");
+}
+
 if (args is ["docker-service-override-only"])
 {
     Console.WriteLine($"Docker service override checks passed: {DockerServiceOverrideChecks.Run()}");

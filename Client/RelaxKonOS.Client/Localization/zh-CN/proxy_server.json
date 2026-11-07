@@ -360,6 +360,7 @@
     "proxy_server.runtime_problem.operation_interrupted": "操作被中断。",
     "proxy_server.runtime_problem.recovery_target_conflict": "恢复目标与待处理事务不一致。",
     "proxy_server.runtime_problem.direct_reload_unverified": "直连重载的运行结果未知。候选文件仍匹配时，重试可恢复磁盘上的原配置。恢复记录会继续保留。",
+    "proxy_server.runtime_problem.direct_profile_commit_pending": "运行时已确认重载。重试会核对候选配置并完成档案选择，无需再次重载运行时。",
     "proxy_server.runtime_problem.request_invalid": "请求无效。",
     "proxy_server.runtime_problem.request_failed": "请求失败。",
     "proxy_server.runtime_problem.response_invalid": "响应无效。",

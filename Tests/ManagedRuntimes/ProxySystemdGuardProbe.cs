@@ -224,6 +224,7 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
     }
 
     internal int RuntimePid => mihomo.Id;
+    internal string RuntimeExecutable => mihomo.StartInfo.FileName;
     internal Uri RuntimeProxy => new(ProxyUrl);
 
     internal (string Environment, DateTime EnvironmentWrite, string Journal, DateTime JournalWrite) ReadOwnershipWitness()

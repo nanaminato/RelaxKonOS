@@ -1,5 +1,6 @@
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
 
 namespace RelaxKonOS.Server.ManagedRuntimes;
@@ -7,7 +8,7 @@ namespace RelaxKonOS.Server.ManagedRuntimes;
 /// <summary>One named recovery across native transactions and the Server publication commit.</summary>
 public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, MihomoRuntimeService runtime,
     MihomoConfigurationPublicationService configuration, MihomoInstallationPublicationService installation,
-    MihomoRemovalPublicationService removal)
+    MihomoRemovalPublicationService removal, IProxyProfileRepository? profiles = null)
 {
     public async Task<RuntimeSwitchResult> RetryAsync(Guid operationId, CancellationToken ct)
     {
@@ -16,13 +17,14 @@ public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, M
         try
         {
             var state = await store.ReadAsync(ct);
+            if (state.DirectProfileCompletions?.Contains(operationId) == true)
+                return new(operationId, RuntimeSwitchOutcome.Succeeded, null);
             if (state.DirectReload is { } direct)
             {
                 if (direct.OperationId != operationId) throw new RuntimeLifecycleException("runtime.recovery_target_conflict");
-                try { await store.RestoreDirectConfigurationUnderGateAsync(direct, ct); }
+                try { return await store.RecoverDirectReloadUnderGateAsync(state, profiles, ct); }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 { throw new RuntimeLifecycleException("runtime.publication_recovery_failed"); }
-                return new(operationId, RuntimeSwitchOutcome.RecoveryRequired, MihomoPublicationStore.DirectReloadUnverified);
             }
             if (state.Pending is not { } pending)
                 return await runtime.RecoverUnderGateAsync(Guid.NewGuid(), operationId, CancellationToken.None)

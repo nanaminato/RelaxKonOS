@@ -228,6 +228,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
                 {
                     var state = await publication.ReadAsync(CancellationToken.None);
                     publicationPending = (state.Pending?.OperationId == id && state.Pending.Profile?.Refresh is not null)
+                        || (state.DirectReload?.OperationId == id && state.DirectReload.Profile?.Refresh is not null)
                         || state.SubscriptionRefreshCompletions?.ContainsKey(id) == true;
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
