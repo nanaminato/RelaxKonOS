@@ -194,6 +194,7 @@ internal static class ProxyTunLiveChecks
                         "Every original marker must be resolved by the same Core worker.");
                     if (mihomo is not null)
                     {
+                        await VerifyRecoveryDrainAsync(paths, safety, runtime, calls, baselineRules);
                         var restoredRoute = await RunIpAsync("route", "get", "198.51.100.53");
                         TestAssert.Assert(await ReadRulesAsync() == baselineRules
                             && restoredRoute.Contains(" via 192.0.2.1 dev rk-egress ", StringComparison.Ordinal),
@@ -244,6 +245,43 @@ internal static class ProxyTunLiveChecks
             }
         }
         finally { await RunIpAsync("link", "del", "rk-egress"); }
+    }
+
+    private static async Task VerifyRecoveryDrainAsync(TestProxyPaths paths, ProxyTunSafetyService safety,
+        NamespaceTunRuntime runtime, ControllerRequestCounter calls, string baselineRules)
+    {
+        TestAssert.Assert(await safety.EnableAsync(Guid.NewGuid(), null, default) is null, "The dedicated TUN must be active.");
+        var original = await safety.CaptureRecoveryAsync(includeCurrentSession: true, default);
+        var restarted = new ProxyTunSafetyService(paths, new HostProxyNetworkSafetyPlatform(), runtime);
+        using var worker = new ProxyRecoveryHostedService(restarted, NullLogger<ProxyRecoveryHostedService>.Instance);
+        var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var deliver = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        calls.HoldNextReloadResponse = received;
+        calls.DeliverHeldResponse = deliver.Task;
+        var before = calls.Reloads;
+        await worker.StartAsync(default);
+        try
+        {
+            await received.Task.WaitAsync(Budget);
+            using var deadline = new CancellationTokenSource();
+            deadline.Cancel();
+            var stopping = worker.StopAsync(deadline.Token);
+            TestAssert.Assert(!stopping.IsCompleted && worker.ExecuteTask is { IsCompleted: false }
+                && (await restarted.GetStatusAsync(default)).RecoveryRequired,
+                "An expired stop waiter must preserve the actual response task and the unfinished marker.");
+            deliver.SetResult();
+            await stopping.WaitAsync(Budget);
+            TestAssert.Assert(original is not null && !await DeviceExistsAsync() && await ReadRulesAsync() == baselineRules
+                && await restarted.CaptureRecoveryAsync(includeCurrentSession: true, default) is null
+                && calls.Reloads == before + 1,
+                "Shutdown must drain route verification and close the original marker after exactly one native reload.");
+            Console.WriteLine($"PASS MIHOMO LIVE RECOVERY DRAIN: operation={original!.OperationId}; one native disable; route and marker closed");
+        }
+        finally
+        {
+            deliver.TrySetResult();
+            await worker.StopAsync(default).WaitAsync(Budget);
+        }
     }
 
     private static async Task VerifyCancelledActivationAsync(ProxyTunSafetyService safety,
@@ -401,6 +439,7 @@ internal static class ProxyTunLiveChecks
         internal int DroppedResponses;
         internal bool DropNextReloadResponse;
         internal TaskCompletionSource? HoldNextReloadResponse;
+        internal Task? DeliverHeldResponse;
         internal bool BlockNextReload;
         internal int BlockedReloads;
 
@@ -417,6 +456,14 @@ internal static class ProxyTunLiveChecks
             if (request.Method == HttpMethod.Put && response.IsSuccessStatusCode && HoldNextReloadResponse is { } dispatched)
             {
                 HoldNextReloadResponse = null;
+                if (DeliverHeldResponse is { } deliver)
+                {
+                    DeliverHeldResponse = null;
+                    dispatched.SetResult();
+                    try { await deliver.WaitAsync(cancellationToken); }
+                    catch { response.Dispose(); throw; }
+                    return response;
+                }
                 using (response)
                 {
                     dispatched.SetResult();

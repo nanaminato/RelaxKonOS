@@ -1623,3 +1623,10 @@ Server 重启后重新通过 PAM 登录。匿名恢复返回 401，原发布键�
 真实配置和服务注册回到原摘要，安装修订未推进，开机启动关闭且服务保持停止。生产 HTTP 启动路径重新核验授权后，原有效授权完成真实双向转发，本次候选授权被拒绝。生产 Helper 重启后未执行 apply。中断时点由隔离命令屏障控制，实际配置变更、补偿、启动与流量均在专属 systemd 服务中执行。Proxy 仍保持 resident。
 
 最终 Linux x64 Release 原操作 `f44e0d99-db0b-4aba-ae1d-f404f43d06ca`。Helper 日志确认非 root Server 按原 ID 查询并补偿一次，后续另发正常启动。真实已提交响应丢失、TUN、系统代理、到期和原生补偿回归同批通过。宿主服务与代理文件指纹一致，专属 cgroup 已清理。日志为 `.artifacts/mb04-auth-inflight-final-live.log`，归档 SHA-256 为 `c5b9593373fb8b679e2b97552ef3e780230c853ac97ce86364d444f491acb806`。Windows Release 受管服务 16 项及模块边界回归通过，Windows SCM 中断仍待实测。
+### MB-04 Core TUN 恢复的停机排空
+
+Core TUN worker 停止调度后仍等待已接受的恢复任务。接受前尊重取消。原标记写入未完成状态并发出实际禁用后，控制器响应、管理路由验证和原标记清理在同一次执行内完成。等待方的停机期限不会归还责任。无法确认禁用或路由时，原标记仍是恢复权威。
+
+Linux x64 Release 私有网络命名空间使用真实 Mihomo。夹具暂扣实际禁用响应，并用已取消的等待令牌调用生产 worker 的 Stop。原 Task 和标记均保持活跃，交付响应后恢复基线路由与规则、移除设备并结清标记 `af65c4e5-5881-470f-a6af-6739756adec5`。实际禁用 reload 一次，Mihomo 继续运行。同批复验发布门禁、响应丢失、DNS 劫持、路由故障、旧恢复引用与激活取消。宿主服务 PID 和代理文件指纹一致。日志为 `.artifacts/mb04-tun-drain-final-live.log`，归档 SHA-256 为 `d714219fad46c5866967d4d2a577af5380ef7990fc4a1474ca00c3a85f2fefe3`。首轮新增用例通过，旧累计计数断言因统计范围扩大失败，调整断言位置后全组通过。
+
+Windows Release TUN 34 项、Core 安全 37 项、驻留 28 项、工作作用域 31 项和模块边界回归通过。停机专项直接驱动生产 worker。完整 Server 的 SIGTERM 联验、其他 Core 安全 worker 的停机交接和 Proxy 动态休眠仍开放。

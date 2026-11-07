@@ -4490,3 +4490,5 @@ Linux 隔离实测覆盖 TUN 激活重载已应用、持久标记尚未完成时
 Core TUN worker 可在同一 Server 进程内接手未完成关闭。关闭前持久化原标记，管理路由故障时保留同一 ID。Linux 私有网络实测确认路由恢复后只核验并结清原标记，不重复禁用，已经完成的当前会话继续运行。受管发布下的 TUN 网络事务仍由现有门禁阻止。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-接续运行期-tun-恢复)。
 
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
+
+Core TUN worker 停止接收新扫描后，等待已发出的禁用请求、实际路由核验和原标记清理。停机等待方的期限不会打断已开始的恢复。如果控制器或管理路由仍无法核实，保留原标记供后续核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-tun-恢复的停机排空)。

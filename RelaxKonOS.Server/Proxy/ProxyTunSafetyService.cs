@@ -122,13 +122,15 @@ public sealed class ProxyTunSafetyService(
         if (marker.OperationId == Guid.Empty) return ProxyProblemCodes.RecoveryRequired;
 
         // A live session becomes unfinished before teardown can touch the runtime or routes.
+        cancellationToken.ThrowIfCancellationRequested();
         if (marker.ActivationCompleted)
             await WriteMarkerAsync(marker with { ActivationCompleted = false }, cancellationToken);
 
         // Disable Mihomo's TUN first; this is the component that owns routes and DNS.  We still
         // call the platform restore hook so it can verify that the original management path won.
         var runtimeProblem = await _runtime.SetEnabledAsync(marker.Snapshot, false, null, CancellationToken.None);
-        var restored = await platform.RestoreAsync(marker.Snapshot, cancellationToken);
+        // Once dispatched, keep the same operation through route verification and marker cleanup.
+        var restored = await platform.RestoreAsync(marker.Snapshot, CancellationToken.None);
         if (!restored || !string.IsNullOrEmpty(runtimeProblem))
         {
             logger?.LogError("TUN recovery could not restore the protected management path. OperationId={OperationId} PlatformRestored={PlatformRestored} RuntimeProblemCode={RuntimeProblemCode}",

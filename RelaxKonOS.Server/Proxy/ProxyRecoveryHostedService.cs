@@ -6,6 +6,9 @@ namespace RelaxKonOS.Server.Proxy;
 /// </summary>
 public sealed class ProxyRecoveryHostedService(IProxyTunSafetyService tunSafety, ILogger<ProxyRecoveryHostedService> logger) : BackgroundService
 {
+    // Stop future scans, then wait for any accepted TUN restoration and its durable marker update.
+    public override Task StopAsync(CancellationToken cancellationToken) => base.StopAsync(CancellationToken.None);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         ProxyTunRecoveryReference? reference = null;
