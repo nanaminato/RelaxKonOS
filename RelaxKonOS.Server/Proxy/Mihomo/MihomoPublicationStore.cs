@@ -38,6 +38,7 @@ public sealed record MihomoPublicationState(int SchemaVersion, long Revision, Mi
 /// </summary>
 public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProtectionProvider protection)
 {
+    internal const string DirectReloadUnverified = "runtime.direct_reload_unverified";
     public SemaphoreSlim Gate { get; } = new(1, 1);
     private readonly IDataProtector protector = protection.CreateProtector("RelaxKonOS.Mihomo.Publication.v1");
     private readonly IDataProtector scheduleProtector = protection.CreateProtector("RelaxKonOS.Mihomo.PublicationSchedule.v1");
@@ -82,14 +83,19 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         try
         {
             if ((await ReadAsync(ct)).DirectReload is not { } checkpoint || checkpoint.OperationId != operationId) return;
-            var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
-            RuntimeSourceStore.RequireNoLinks(active);
-            if (!File.Exists(active) || Identity(await File.ReadAllTextAsync(active, ct)) != checkpoint.CandidateIdentity) return;
-            // This is disk-only recovery. The live result and the original checkpoint remain unknown.
-            if (checkpoint.PreviousYaml is { } previous) await SaveAtomicAsync(active, Encoding.UTF8.GetBytes(previous), ct);
-            else File.Delete(active);
+            await RestoreDirectConfigurationUnderGateAsync(checkpoint, ct);
         }
         finally { Gate.Release(); }
+    }
+
+    internal async Task RestoreDirectConfigurationUnderGateAsync(MihomoDirectReload checkpoint, CancellationToken ct)
+    {
+        var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
+        RuntimeSourceStore.RequireNoLinks(active);
+        if (!File.Exists(active) || Identity(await File.ReadAllTextAsync(active, ct)) != checkpoint.CandidateIdentity) return;
+        // This is disk-only recovery. The live result and the original checkpoint remain unknown.
+        if (checkpoint.PreviousYaml is { } previous) await SaveAtomicAsync(active, Encoding.UTF8.GetBytes(previous), ct);
+        else File.Delete(active);
     }
 
     public async Task<MihomoPublicationState> ReadAsync(CancellationToken ct)

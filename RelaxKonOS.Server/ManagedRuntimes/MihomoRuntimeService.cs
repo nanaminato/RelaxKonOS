@@ -29,7 +29,8 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
                 Installation = observed.Installation with { RecoveryRequired = true },
                 PendingOperationId = observed.PendingOperationId ?? operation,
                 PendingStage = observed.PendingStage,
-                ProblemCode = conflict ? "runtime.recovery_target_conflict" : "runtime.publication_unconfirmed"
+                ProblemCode = conflict ? "runtime.recovery_target_conflict"
+                    : state.DirectReload is not null ? MihomoPublicationStore.DirectReloadUnverified : "runtime.publication_unconfirmed"
             };
         }
         catch (Exception ex) when (ex is RuntimePolicyException or IOException or UnauthorizedAccessException)
@@ -177,26 +178,30 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
     /// <summary>Read-only recovery facts. It observes the service but changes neither the ledger nor the service.</summary>
     public async Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct)
     {
-        var observed = await CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery), ct);
+        MihomoPublicationState state;
         try
         {
-            var state = await store.ReadAsync(ct);
-            if ((state.Pending?.OperationId ?? state.DirectReload?.OperationId) is not { } operation) return observed;
-            if (observed.OperationId is { } actual && actual != operation)
-                return observed with { Required = true, ProblemCode = "runtime.recovery_target_conflict" };
-            // Server commit work is still recoverable after the native transaction has finished.
-            // Do not invent a failed compensation or a native stage from this publication intent.
-            return observed with
-            {
-                Required = true, OperationId = operation,
-                Change = state.Pending?.InstallationPlan?.Request.Change ?? state.Pending?.RemovalPlan?.Request.Change ?? observed.Change,
-                ProblemCode = "runtime.publication_unconfirmed"
-            };
+            state = await store.ReadAsync(ct);
         }
         catch (Exception ex) when (ex is RuntimePolicyException or IOException or UnauthorizedAccessException)
         {
-            return observed with { Required = true, ProblemCode = "runtime.publication_state_invalid" };
+            var unknown = await CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery), ct);
+            return unknown with { Required = true, ProblemCode = "runtime.publication_state_invalid" };
         }
+        if (state.DirectReload is { } direct)
+            return new(true, direct.OperationId, null, null, false, MihomoPublicationStore.DirectReloadUnverified, null, null, null);
+
+        var observed = await CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery), ct);
+        if (state.Pending is not { } pending) return observed;
+        if (observed.OperationId is { } actual && actual != pending.OperationId)
+            return observed with { Required = true, ProblemCode = "runtime.recovery_target_conflict" };
+        // Server commit work can outlive the native transaction.
+        return observed with
+        {
+            Required = true, OperationId = pending.OperationId,
+            Change = pending.InstallationPlan?.Request.Change ?? pending.RemovalPlan?.Request.Change ?? observed.Change,
+            ProblemCode = "runtime.publication_unconfirmed"
+        };
     }
 
     /// <summary>
@@ -218,6 +223,12 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         await store.Gate.WaitAsync(ct);
         try
         {
+            try { RefuseNativeActionForDirectReload(await store.ReadAsync(ct), operationId); }
+            catch (Exception ex) when (ex is RuntimePolicyException or IOException or UnauthorizedAccessException)
+            {
+                // The Helper still verifies its own operation ID. An unreadable Server ledger
+                // must not prevent emergency stop of a real native transaction.
+            }
             return await CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryStop,
                 RuntimeLifecycle: new(RecoveryOperationId: operationId)), ct);
         }
@@ -239,7 +250,9 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         {
             try
             {
-                if ((await store.ReadAsync(ct)).Pending?.OperationId == operationId)
+                var state = await store.ReadAsync(ct);
+                RefuseNativeActionForDirectReload(state, operationId);
+                if (state.Pending?.OperationId == operationId)
                     throw new RuntimeLifecycleException("runtime.publication_unconfirmed");
             }
             catch (RuntimePolicyException ex) { throw new RuntimeLifecycleException(ex.ProblemCode); }
@@ -247,6 +260,13 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
                 RuntimeLifecycle: new(RecoveryOperationId: operationId, Confirmed: true)), ct);
         }
         finally { store.Gate.Release(); }
+    }
+
+    private static void RefuseNativeActionForDirectReload(MihomoPublicationState state, Guid operationId)
+    {
+        if (state.DirectReload is { } direct)
+            throw new RuntimeLifecycleException(direct.OperationId == operationId
+                ? MihomoPublicationStore.DirectReloadUnverified : "runtime.recovery_target_conflict");
     }
 
     /// <summary>

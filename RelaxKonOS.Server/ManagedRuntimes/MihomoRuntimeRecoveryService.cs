@@ -16,6 +16,14 @@ public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, M
         try
         {
             var state = await store.ReadAsync(ct);
+            if (state.DirectReload is { } direct)
+            {
+                if (direct.OperationId != operationId) throw new RuntimeLifecycleException("runtime.recovery_target_conflict");
+                try { await store.RestoreDirectConfigurationUnderGateAsync(direct, ct); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                { throw new RuntimeLifecycleException("runtime.publication_recovery_failed"); }
+                return new(operationId, RuntimeSwitchOutcome.RecoveryRequired, MihomoPublicationStore.DirectReloadUnverified);
+            }
             if (state.Pending is not { } pending)
                 return await runtime.RecoverUnderGateAsync(Guid.NewGuid(), operationId, CancellationToken.None)
                     ?? throw new RuntimeLifecycleException("runtime.recovery_absent");

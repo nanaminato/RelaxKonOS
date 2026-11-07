@@ -128,6 +128,7 @@ internal static class MihomoRuntimeHttpChecks
                 && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeRecoveryClose
                 && fixture.Last?.RuntimeLifecycle is { RecoveryOperationId: var closeId, Confirmed: true } && closeId == closeTarget,
                 "An acknowledged close carries the operator decision to the Host");
+            count += await CheckDirectRecoveryAsync(client, fixture, store);
             var placedResources = await client.PostAsJsonAsync(RuntimeRoutes.MihomoResources, new { });
             Check(placedResources.IsSuccessStatusCode
                 && (await placedResources.Content.ReadFromJsonAsync<RuntimeResourceReport>()) is { Files.Count: 5 }
@@ -169,7 +170,8 @@ internal static class MihomoRuntimeHttpChecks
                 new("artifact", new string('a', 64), 4096, "gz", "mihomo", "signed-manifest:key", new(4096, 1, [new("mihomo", 1, new string('b', 64), true)])),
                 "mihomo-v1", true, RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, null);
             var pendingOperation = Guid.NewGuid();
-            await store.BeginInstallationAsync(pendingOperation, 0, material, new(request, "mihomo", release, null), default);
+            await store.BeginInstallationAsync(pendingOperation, (await store.ReadAsync(default)).Revision,
+                material, new(request, "mihomo", release, null), default);
             using (var pending = await client.PostAsJsonAsync(RuntimeRoutes.MihomoPlan, selection))
                 Check(pending.IsSuccessStatusCode && (await pending.Content.ReadFromJsonAsync<RuntimePlanResult>())!.Problems.Contains("runtime.publication_unconfirmed")
                     && fixture.Calls == beforePending, "Pending Server publication blocks plans before a second Helper operation");
@@ -242,8 +244,64 @@ internal static class MihomoRuntimeHttpChecks
             Check(unknown is { Installation.Ownership: RuntimeOwnership.Unknown, Installation.RecoveryRequired: true,
                 Installation.ActiveReleaseId: null, MeasuredVersion: null, ActiveRevisionId: null, ProblemCode: "runtime.publication_state_invalid" },
                 "Unreadable Server authority withdraws ownership/version proof and never reports not installed");
+            client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
+            using var stopWithInvalidState = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryStop, new RuntimeRecoveryActionRequest(otherRootOperation));
+            Check(stopWithInvalidState.IsSuccessStatusCode && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeRecoveryStop,
+                "Unreadable Server publication state does not block a real native emergency stop");
         }
         finally { await app.StopAsync(); Directory.Delete(root, true); }
+        return count;
+    }
+
+    private static async Task<int> CheckDirectRecoveryAsync(HttpClient client, Fixture fixture, MihomoPublicationStore store)
+    {
+        var count = 0;
+        void Check(bool ok, string name) { if (!ok) throw new Exception(name); count++; }
+        const string unverified = "runtime.direct_reload_unverified";
+        const string previous = "log-level: info\n";
+        const string candidate = "log-level: warning\n";
+        const string drift = "log-level: error\n";
+        var active = Path.Combine(Directory.CreateDirectory(fixture.GetProtectedConfigurationDirectory()).FullName, "active.yaml");
+        MihomoDirectReload checkpoint;
+        await store.Gate.WaitAsync();
+        try
+        {
+            checkpoint = await store.BeginDirectReloadAsync(previous, candidate, default);
+            await File.WriteAllTextAsync(active, candidate);
+        }
+        finally { store.Gate.Release(); }
+        var calls = fixture.Calls;
+        client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
+        var observed = await client.GetFromJsonAsync<RuntimeRecoverySnapshot>(RuntimeRoutes.MihomoRecovery);
+        Check(observed is { Required: true, ProblemCode: unverified, Stage: null, Service: null, NeedsOperatorDecision: false }
+            && observed.OperationId == checkpoint.OperationId && fixture.Calls == calls && await File.ReadAllTextAsync(active) == candidate,
+            "Read observes only the direct checkpoint and never invents a native stage or writes YAML");
+        client.DefaultRequestHeaders.Authorization = new("Bearer", "installer");
+        using (var noElevation = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryRetry, new RuntimeRecoveryActionRequest(checkpoint.OperationId)))
+            Check(noElevation.StatusCode == HttpStatusCode.Forbidden && await File.ReadAllTextAsync(active) == candidate,
+                "Direct disk recovery still requires elevation");
+        client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
+        using (var wrongTarget = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryRetry, new RuntimeRecoveryActionRequest(Guid.NewGuid())))
+            Check(wrongTarget.StatusCode == HttpStatusCode.Conflict && await File.ReadAllTextAsync(active) == candidate,
+                "Wrong recovery identity cannot restore the candidate or dispatch Helper");
+        foreach (var route in new[] { RuntimeRoutes.MihomoRecoveryClose, RuntimeRoutes.MihomoRecoveryStop })
+        {
+            using var refused = await client.PostAsJsonAsync(route, new RuntimeRecoveryActionRequest(checkpoint.OperationId, Confirmed: true));
+            Check(refused.StatusCode == HttpStatusCode.Conflict && (await refused.Content.ReadAsStringAsync()).Contains(unverified),
+                "The direct checkpoint cannot be passed to a native stop or acknowledged close");
+        }
+        foreach (var disk in new[] { previous, drift })
+        {
+            using var retry = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryRetry, new RuntimeRecoveryActionRequest(checkpoint.OperationId));
+            Check(await retry.Content.ReadFromJsonAsync<RuntimeSwitchResult>() == new RuntimeSwitchResult(
+                    checkpoint.OperationId, RuntimeSwitchOutcome.RecoveryRequired, unverified)
+                && await File.ReadAllTextAsync(active) == disk && (await store.ReadAsync(default)).DirectReload == checkpoint
+                && fixture.Calls == calls, "Direct retry restores only the known candidate and preserves the same unknown receipt");
+            if (disk == previous) await File.WriteAllTextAsync(active, drift);
+        }
+        await store.Gate.WaitAsync();
+        try { await store.CompleteDirectReloadAsync(checkpoint.OperationId); }
+        finally { store.Gate.Release(); }
         return count;
     }
 

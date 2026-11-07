@@ -365,6 +365,7 @@
     "proxy_server.runtime_problem.instance_busy": "Another transaction is currently running.",
     "proxy_server.runtime_problem.installed_file_drift": "Installed files no longer match the immutable revision.",
     "proxy_server.runtime_problem.configuration_drift": "The published configuration differs from the recorded identity.",
+    "proxy_server.runtime_problem.direct_reload_unverified": "The live result of the direct reload is unknown. Retry can restore the previous configuration on disk if the candidate still matches. The recovery record stays open.",
     "proxy_server.runtime_problem.staging_conflict": "The staging area conflicts with this operation.",
     "proxy_server.runtime_problem.permission_denied": "Host management permission is missing.",
     "proxy_server.runtime_problem.session_changed": "The signed-in session changed.",

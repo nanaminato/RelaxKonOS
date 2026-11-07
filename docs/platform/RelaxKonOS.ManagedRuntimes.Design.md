@@ -247,3 +247,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-02 回归）Windows Release 生命周期夹具使用 `sing-box.exe` 作为签名制品入口，使伪造归档布局和证据信任用例通过平台预检并到达 Helper 独立信任复核。专项 28 项通过，使用 Windows apphost 的 ManagedRuntimes 广跑也通过。可信下载传输探针因该主机缺少进程级 CA 覆盖而跳过。此次验证范围为本地回归夹具。
 
 2026-11-08（MR-03 / MB-04）直连配置待恢复时，Mihomo 受管计划和发布保持原恢复门禁。既有直接安装入口在激活前复核同一检查点，下载阶段不占用 Core 安全共用发布锁。见[直连 reload 持久检查点](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连-reload-持久检查点)。
+
+2026-11-08（MR-03 / MB-04）Mihomo 运行时恢复入口按原 ID 区分 Server 直连检查点与 Helper 事务。直连查询和磁盘重试可独立于 Helper；恢复响应保留原 ID 和 `RecoveryRequired`。特权事务的停止、关账和已有版本生命周期按各自台账处理。见[直连具名恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连具名恢复)。

@@ -17,10 +17,12 @@ using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Server.Certificate;
+using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.ProxyServer;
 
 internal static class ProxyAuthenticatedPublicationChecks
@@ -225,6 +227,21 @@ internal static class ProxyAuthenticatedPublicationChecks
                 || await new RelaxKonOS.Server.Proxy.ProxySettingsReader(crashPaths).GetAsync(ct) != previous
                 || await ReadLevelAsync(ct) != "warning" || guard.RuntimePid != pid)
                 throw new InvalidOperationException("Restart did not preserve the original identity, old disk state and live unknown result without replay.");
+
+            // An external controller reload has no Helper receipt. Recovery must work without a
+            // privileged transport and must not reinterpret the live candidate as a success.
+            var runtime = new MihomoRuntimeService(null!, afterCrash, null!, null!, null!);
+            var directRecovery = new MihomoRuntimeRecoveryService(afterCrash, runtime, null!, null!, null!);
+            var pending = await runtime.RecoveryAsync(ct);
+            var receipt = await directRecovery.RetryAsync(operation, ct);
+            if (!pending.Required || pending.OperationId != operation || pending.Service is not null
+                || receipt != new RuntimeSwitchResult(operation, RuntimeSwitchOutcome.RecoveryRequired, "runtime.direct_reload_unverified")
+                || (await afterCrash.ReadAsync(ct)).DirectReload?.OperationId != operation
+                || Volatile.Read(ref relayWrites) != 2 || Volatile.Read(ref nativeWrites) != 1
+                || !(await File.ReadAllBytesAsync(active, ct)).SequenceEqual(original)
+                || await ReadLevelAsync(ct) != "warning" || guard.RuntimePid != pid)
+                throw new InvalidOperationException("Named direct recovery replayed or closed the unknown live result.");
+            Console.WriteLine($"PASS MIHOMO DIRECT NAMED RECOVERY: original {operation}; recoveryRequired, one native candidate, zero replay");
 
             if (await native.ReloadAsync(ct) is not null || await ReadLevelAsync(ct) != oldLevel)
                 throw new InvalidOperationException("Explicit fixture cleanup did not reload the original protected configuration.");

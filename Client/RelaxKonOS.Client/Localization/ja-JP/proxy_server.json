@@ -359,6 +359,7 @@
     "proxy_server.runtime_problem.operation_pending": "操作はまだ完了していません。",
     "proxy_server.runtime_problem.operation_interrupted": "操作が中断されました。",
     "proxy_server.runtime_problem.recovery_target_conflict": "復旧対象が保留中トランザクションと一致しません。",
+    "proxy_server.runtime_problem.direct_reload_unverified": "直接再読み込みの実行結果は不明です。候補ファイルが一致する場合、再試行でディスク上の元の構成を復元できます。復旧記録は保留のままです。",
     "proxy_server.runtime_problem.request_invalid": "要求が無効です。",
     "proxy_server.runtime_problem.request_failed": "要求に失敗しました。",
     "proxy_server.runtime_problem.response_invalid": "応答が無効です。",
