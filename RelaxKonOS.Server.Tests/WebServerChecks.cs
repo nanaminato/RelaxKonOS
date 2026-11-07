@@ -355,6 +355,54 @@ internal static async Task VerifyOperationCancellationDrainAsync(string root)
             && WebServerOperationStore.ReadPending(cleanupEnvironment).Single().OperationId == uncertain.OperationId,
             "Unconfirmed execution cleanup must retain the original active receipt and faulted work responsibility.");
     }
+    var retirementEnvironment = new TestHostEnvironment(Directory.CreateDirectory(Path.Combine(root, "native-retirement")).FullName);
+    var retirementLeases = new TestResidentBackgroundLeases();
+    var retryEntered = new TaskCompletionSource<Guid>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseRetry = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var attempts = 0;
+    var queries = 0;
+    var transport = new RetirementTransport(async (request, ct) =>
+    {
+        if (request.Operation == PrivilegedOperationKind.NginxReloadReceipt && request.OperationId is { } id)
+        {
+            Interlocked.Increment(ref queries);
+            return new(true, NginxReloadReceipt: new(id, true));
+        }
+        TestAssert.Assert(request.Operation == PrivilegedOperationKind.NginxRetireReloadReceipt && request.OperationId is not null,
+            "Receipt cleanup must only send retirement for the original ID.");
+        if (Interlocked.Increment(ref attempts) == 1) return new(false, ProblemCode: PrivilegedProblemCode.HelperUnavailable);
+        retryEntered.TrySetResult(request.OperationId!.Value);
+        await releaseRetry.Task.WaitAsync(ct);
+        return new(true);
+    });
+    using (var retirement = new WebServerOperationStore(retirementEnvironment,
+        new HostOperationJournal(retirementEnvironment, configuration), NullLogger<WebServerOperationStore>.Instance,
+        retirementLeases, new PrivilegedNginxOperations(transport)))
+    {
+        await retirement.StartAsync(default);
+        var original = await retirement.StartAsync("retirement", "nginx", "reload", "test",
+            _ => Task.FromResult(new WebServerOperationResult(WebServerOperationStore.NativeRecoveryRequired)), default);
+        try
+        {
+            TestAssert.Assert(await retryEntered.Task.WaitAsync(budget) == original.OperationId
+                && retirementLeases.Active == 1
+                && WebServerOperationStore.ReadPending(retirementEnvironment).Single() is { State: WebServerOperationState.Succeeded } pending
+                && pending.OperationId == original.OperationId,
+                "The original terminal receipt and lease must remain visible while native retirement is retried.");
+            var later = await retirement.StartAsync("independent", "nginx", "reload", "test",
+                _ => Task.FromResult(WebServerOperationResult.Success), default);
+            TestAssert.Assert((await TestOperations.WaitForWebOperationAsync(retirement, later.OperationId)).State == WebServerOperationState.Succeeded,
+                "Receipt retirement must not retain the Nginx execution lock after original native reconciliation.");
+        }
+        finally { releaseRetry.TrySetResult(); }
+        using var deadline = new CancellationTokenSource(budget);
+        while (Volatile.Read(ref retirementLeases.Active) != 0) await Task.Delay(20, deadline.Token);
+        TestAssert.Assert(queries == 1 && attempts == 2 && WebServerOperationStore.ReadPending(retirementEnvironment).Count == 0
+            && (await retirement.GetAsync(original.OperationId, default))?.State == WebServerOperationState.Succeeded,
+            "Confirmed retirement must persist before the lease ends and preserve the original terminal outcome.");
+        await retirement.StopAsync(default);
+        Console.WriteLine($"PASS NGINX RETIREMENT WORK: original {original.OperationId}, two retirement attempts, durable terminal and cleanup");
+    }
     var path = Path.Combine(root, "data", "webserver-operations.json");
     await File.WriteAllTextAsync(path, "{broken");
     var failedLeases = new TestResidentBackgroundLeases();
@@ -372,6 +420,13 @@ internal static async Task VerifyOperationCancellationDrainAsync(string root)
         && await File.ReadAllTextAsync(path) == "{broken",
         "Unreadable startup state must retain recovery responsibility and preserve the original ledger.");
     Console.WriteLine("Web-server operation cancellation drain checks passed.");
+}
+
+private sealed class RetirementTransport(Func<PrivilegedOperationRequest, CancellationToken, Task<PrivilegedOperationResult>> execute)
+    : IPrivilegedOperationTransport
+{
+    public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default) =>
+        execute(request, cancellationToken);
 }
 
 internal static async Task VerifyWebServerProviderRoutingAsync()

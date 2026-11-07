@@ -2018,3 +2018,11 @@ Windows Release 的控制器流和连接专项、31 项 Proxy 驻留专项及模
 Windows 与指定 Linux 测试机均通过跨进程及 100 轮实际 Git ALC 回归。Linux 的受控命令执行器验证预检清理被挂起时 Host 等待并保留工作租约，清理结束后持久化同一中断回执，BuildKit 派发和镜像清理均为零。另验证 BuildKit 命令调用前已读到持久派发检查点，实际子进程取消等待退出的专项通过。Windows MB-05 模块边界按原 `3458e5b7-b363-4d4c-97d7-aefa90270fb8` 读回 Interrupted，受控副作用计数为一。日志在 `.artifacts/mb03-dispatch-recovery/`，Linux 归档 SHA-256 为 `45df763eee4c2d069f15065dce44b60c08f427ed788509c23712b34104cd4e66`。
 
 同机只读复核 AppArmor 非特权用户命名空间限制为 1，`unshare -Ur true` 因写入 uid_map 被拒绝。主机无 RootlessKit、QEMU 和 KVM 设备。真实 BuildKit 在途结果、远端构建清理和动态回收的联合矩阵仍需允许专属 RootlessKit 用户命名空间的隔离环境及受信 HTTPS 测试仓库。生产内存保持未测。
+
+### MB-05 Nginx 原回执清理确认与租约
+
+原 Server 终态及清理待确认标记先持久化，再按同一 ID 通知 Helper。清理确认丢失时，原后台 owner 在存活 Server 内重试清理，保留工作租约直至确认写盘。停机时将尚未确认的清理交给同一持久标记，重启只重试原清理。停用检查也会读取带清理标记的终态。恢复原生重载结果时，实例执行锁保护到原终态持久化；之后只保留清理工作租约，已核实的同实例操作可继续准入。
+
+Linux 私有 systemd 的最终 Release 验证三个原 ID。原 `41069cb8-6c70-4a8c-b72d-0e7ad7c94721` 的 Helper 已压缩详情但首次清理确认被截断，Server 与 Helper 均存活。暂扣第二次清理时，原终态仍可查且管理端报告活跃租约；放行后待确认标记先落盘，租约随后归零。原 `a1759fe6-af9f-4c97-afda-e112fa5bc382` 在首次清理确认丢失后停止 Server 和 Helper，重启只重试原清理。两条路径均保持原 Succeeded、同键和 HTTPS，各一次真实重载，Helper 拒绝旧 ID 再次重载。另复跑原重载响应丢失 `9053e79e-6151-45c5-b362-870034e38af9`，两进程存活，原回执确认成功。三轮专属 cgroup 清理，宿主 Nginx、Docker PID 和配置指纹一致。
+
+Windows Release 验证实际工作租约覆盖终态后的清理重试，并用受控后续工作确认原生对账完成后释放实例执行锁。MB-05 跨进程按原 `bc26ad61-03d3-4d55-a360-32a69f4d01cf` 读回 Interrupted，受控副作用计数为一。首轮 Linux 因夹具重试事件作用域错误失败，修正后通过。日志为 `.artifacts/mb05-nginx-retirement-final/`，归档 SHA-256 为 `4ea113c4a83357709b27078b65313e704363cddfbee97b3194f70162254b93a9`。整机掉电及防重放目录长期容量仍开放。WebServer 继续 resident，生产内存未测。

@@ -67,18 +67,18 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 foreach (var operation in _operations.Values.Where(item => item.ProblemCode == NativeRecoveryRequired))
                 {
                     using var continuation = await _workOwner.AdmitAsync(stopping.Token);
-                    continuation.Run(token => ReconcileNativeReloadAsync(operation.OperationId, token));
+                    continuation.Run(async token =>
+                    {
+                        if (await ReconcileNativeReloadAsync(operation.OperationId, token))
+                            await RetireNativeReceiptsAsync([operation.OperationId], token);
+                    });
                 }
                 var pendingRetirements = _operations.Values.Where(item => item.NativeReceiptRetirementPending)
                     .Select(item => item.OperationId).ToArray();
                 if (pendingRetirements.Length != 0)
                 {
                     using var retirement = await _workOwner.AdmitAsync(stopping.Token);
-                    retirement.Run(async token =>
-                    {
-                        foreach (var id in pendingRetirements)
-                            await RetireNativeReceiptAsync(id, token);
-                    });
+                    retirement.Run(token => RetireNativeReceiptsAsync(pendingRetirements, token));
                 }
                 stopping.Token.ThrowIfCancellationRequested();
                 _ready = true;
@@ -201,6 +201,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, workStopping, cancellation.Token);
             var state = WebServerOperationState.Failed;
             var result = new WebServerOperationResult("webserver.operation_failed");
+            bool? retireReconciledReceipt = null;
             if (!linked.IsCancellationRequested && !await SetRunningAsync(operationId, CancellationToken.None)) return;
             try
             {
@@ -214,8 +215,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                     {
                         await PreserveUnknownNativeOperationAsync(operationId);
                         using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, workStopping);
-                        await ReconcileNativeReloadAsync(operationId, shutdown.Token);
-                        return;
+                        retireReconciledReceipt = await ReconcileNativeReloadAsync(operationId, shutdown.Token);
                     }
                 }
                 finally { instanceGate.Release(); }
@@ -226,6 +226,11 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             {
                 _logger.LogError(exception, "Web-server operation failed unexpectedly. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
             }
+            if (retireReconciledReceipt is { } retire)
+            {
+                if (retire) await RetireNativeReceiptsAsync([operationId], workStopping);
+                return;
+            }
             if (linked.IsCancellationRequested)
             {
                 // Shutdown leaves the original active receipt for startup reconciliation.
@@ -234,7 +239,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 result = new("webserver.operation_cancelled", result.SnapshotId);
             }
             if (await CompleteAsync(operationId, state, result.ProblemCode, result.SnapshotId))
-                await RetireNativeReceiptAsync(operationId, workStopping);
+                await RetireNativeReceiptsAsync([operationId], workStopping);
         }
         finally
         {
@@ -244,7 +249,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         }
     }
 
-    private async Task ReconcileNativeReloadAsync(Guid operationId, CancellationToken stoppingToken)
+    private async Task<bool> ReconcileNativeReloadAsync(Guid operationId, CancellationToken stoppingToken)
     {
         try
         {
@@ -255,14 +260,13 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 if (result is { Success: true, NginxReloadReceipt: { } receipt } && receipt.OperationId == operationId)
                 {
                     var state = receipt.Succeeded ? WebServerOperationState.Succeeded : WebServerOperationState.Failed;
-                    if (await CompleteAsync(operationId, state, receipt.Succeeded ? "" : "webserver.reload_failed", null, nativeEvidence: true))
-                        await RetireNativeReceiptAsync(operationId, stoppingToken);
-                    return;
+                    return await CompleteAsync(operationId, state, receipt.Succeeded ? "" : "webserver.reload_failed", null, nativeEvidence: true);
                 }
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        return false;
     }
 
     private async Task PreserveUnknownNativeOperationAsync(Guid id)
@@ -315,11 +319,29 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         finally { _gate.Release(); }
     }
 
-    private async Task RetireNativeReceiptAsync(Guid id, CancellationToken stoppingToken)
+    private async Task RetireNativeReceiptsAsync(Guid[] ids, CancellationToken stoppingToken)
     {
-        if (_nativeOperations is null || stoppingToken.IsCancellationRequested) return;
+        if (_nativeOperations is null) return;
+        var pending = ids.ToList();
+        try
+        {
+            while (pending.Count != 0 && !stoppingToken.IsCancellationRequested)
+            {
+                for (var index = 0; index < pending.Count && !stoppingToken.IsCancellationRequested;)
+                {
+                    if (await TryRetireNativeReceiptAsync(pending[index], stoppingToken)) pending.RemoveAt(index);
+                    else index++;
+                }
+                if (pending.Count != 0) await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+    }
+
+    private async Task<bool> TryRetireNativeReceiptAsync(Guid id, CancellationToken stoppingToken)
+    {
         var result = await _nativeOperations.RetireReloadReceiptAsync(id, stoppingToken);
-        if (!result.Success) return;
+        if (!result.Success) return false;
 
         await _gate.WaitAsync();
         try
@@ -329,6 +351,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             catch (Exception error) { throw new ResidentWorkCompletionException(error); }
         }
         finally { _gate.Release(); }
+        return true;
     }
 
     private async Task ReportStageAsync(Guid id, string stage, CancellationToken ct)
@@ -350,7 +373,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
 
     internal static IReadOnlyList<WebServerOperationDto> ReadPending(IHostEnvironment environment) =>
         ReadLedger(LedgerPath(environment))
-            .Where(operation => operation.State is WebServerOperationState.Queued or WebServerOperationState.Running)
+            .Where(operation => operation.NativeReceiptRetirementPending
+                || operation.State is WebServerOperationState.Queued or WebServerOperationState.Running)
             .Select(operation => operation.ToDto()).ToArray();
 
     private static PersistedOperation[] ReadLedger(string path)

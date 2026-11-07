@@ -70,7 +70,7 @@ internal sealed class WebServerModule : IServerModule, IServerModuleDeactivation
                 $"website publication {operation.OperationId} for domain \"{operation.Domain}\" is still {operation.State} "
                 + $"({operation.Stage})."))
                 .Concat(operations.Select(operation => new ServerModuleOrphanedWork(Id,
-                    $"Web server operation {operation.OperationId} for instance {operation.InstanceId} is still {operation.State}.")))
+                    $"Web server operation {operation.OperationId} for instance {operation.InstanceId} still owns execution or native receipt cleanup.")))
                 .ToArray());
     }
 

@@ -33,7 +33,8 @@ def run(root, server, helper_binary, mode):
     acme_success = mode in ("--systemd-website-acme-success", "--systemd-website-acme-bootstrap-success")
     acme_cancel = mode == "--systemd-website-acme-cancel"
     acme_drain = mode == "--systemd-website-acme-drain"
-    retire_retry = mode == "--systemd-retire-retry"
+    retire_live = mode == "--systemd-retire-live"
+    retire_retry = retire_live or mode == "--systemd-retire-retry"
     relay_mode = retire_retry or mode in ("--systemd-response-loss", "--systemd-rejected")
     rejected = mode == "--systemd-rejected"
     expect_unknown = mode in ("--systemd-unknown", "--systemd-timeout")
@@ -176,6 +177,8 @@ def run(root, server, helper_binary, mode):
                 assert response["Type"] == "result"
                 return response["Result"]
 
+    retirement_retried = threading.Event()
+
     @contextmanager
     def helper_connection():
         if not relay_mode and not bootstrap_resume:
@@ -196,6 +199,11 @@ def run(root, server, helper_binary, mode):
                         kind = request["operation"]
                         if relay_mode and kind == "NginxReloadReceipt" and not permit_query.wait(12):
                             raise RuntimeError("The fixture did not release the receipt observation")
+                        if retire_retry and kind == "NginxRetireReloadReceipt" and dropped.is_set():
+                            assert request["operationId"] == operation
+                            retirement_retried.set()
+                            if not permit_query.wait(20):
+                                return
                         upstream.sendall(request_bytes)
                         while True:
                             response_bytes, response = frame(source)
@@ -216,7 +224,7 @@ def run(root, server, helper_binary, mode):
                             try:
                                 self.connection.sendall(response_bytes)
                             except BrokenPipeError:
-                                if not bootstrap_resume:
+                                if not bootstrap_resume and not retire_retry:
                                     raise
                                 return
                             if terminal:
@@ -1118,6 +1126,24 @@ def run(root, server, helper_binary, mode):
 
                 assert request(operation_route, token=token)["state"].lower() == "succeeded"
                 assert retirement_pending() and receipt_file.stat().st_size == 0
+                if retire_live:
+                    assert retirement_retried.wait(12), "The running Server did not retry the original retirement"
+                    module_route = "/api/v1.0/server/modules/relaxkonos.webserver"
+                    assert request(module_route, token=token)["residency"]["activeLeases"] > 0
+                    assert retirement_pending() and initial.poll() is None and helper.poll() is None
+                    assert_served(b"updated")
+                    permit_query.set()
+                    wait_for(initial, lambda: not retirement_pending(), "live retry of the original retirement")
+                    wait_for(initial, lambda: request(module_route, token=token)["residency"]["activeLeases"] == 0,
+                             "native receipt cleanup lease release")
+                    replay = request(reload_route, token=token, expected=202, method="POST", key=key)
+                    assert replay["operationId"] == operation and replay["state"].lower() == "succeeded"
+                    assert not direct_helper_request("NginxTrackedReload", operation)["success"]
+                    assert witness.read_text().splitlines() == ["reload"] and receipt_file.stat().st_size == 0
+                    assert int(nginx_pid_file.read_text()) == nginx_pid
+                    assert_served(b"updated")
+                    print(f"PASS NGINX LIVE RETIREMENT ACK RETRY: operation={operation}; original lease, terminal result and HTTPS; no reload")
+                    return
             elif expect_unknown:
                 if mode == "--systemd-unknown":
                     helper.kill()
@@ -1217,7 +1243,7 @@ def run(root, server, helper_binary, mode):
 if __name__ == "__main__":
     arguments = sys.argv[1:]
     mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain", "--systemd-unknown", "--systemd-timeout", "--systemd-receipt",
-                                                            "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry",
+                                                            "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry", "--systemd-retire-live",
                                                             "--systemd-website", "--systemd-website-verifying", "--systemd-website-acme",
                                                             "--systemd-website-acme-success", "--systemd-website-acme-cancel",
                                                             "--systemd-website-acme-drain", "--systemd-website-acme-bootstrap",
