@@ -61,7 +61,8 @@ internal static class MihomoRegistrationChecks
             && services.GetRequiredService<IProxySettingsReader>() is ProxySettingsReader,
             "Default profile transactions and lightweight settings reader resolve their current contracts");
         Check(services.GetRequiredService<IProxySystemProxyReconciler>() is MihomoSystemProxyReconciler
-            && services.GetRequiredService<IProxyTunRuntimeController>() is MihomoTunRuntimeController
+            && services.GetRequiredService<IProxyTunRuntimeController>() is ScopedProxyTunRuntimeController
+            && builder.Services.Single(item => item.ServiceType == typeof(MihomoTunRuntimeController)).Lifetime == ServiceLifetime.Scoped
             && !ReferenceEquals(services.GetRequiredService<IProxySettingsWriter>(), services.GetRequiredService<IProxySettingsWriter>()),
             "Guard and TUN have narrow executors while settings writers are created per invocation");
         Check(builder.Services.Single(x => x.ServiceType == typeof(MihomoSettingsService)).Lifetime == ServiceLifetime.Transient
@@ -97,12 +98,31 @@ internal static class MihomoRegistrationChecks
         Check(services.GetRequiredService<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>() is not null,
             "Runtime service resolves alongside the real download-proxy resolver without a construction cycle");
         builder.Services.AddSingleton<MihomoSettingsService>(_ => throw new Exception("Safety executor constructed the settings writer"));
-        using (var tunServices = builder.Services.BuildServiceProvider())
+        var handlers = new List<ControllerProbeHandler>();
+        builder.Services.AddTransient<IMihomoControllerClient>(provider =>
+        {
+            var handler = new ControllerProbeHandler();
+            handlers.Add(handler);
+            return new MihomoControllerClient(new HttpClient(handler),
+                provider.GetRequiredService<IProxyControllerSecretStore>(), provider.GetRequiredService<MihomoControllerOptions>());
+        });
+        await using (var tunServices = builder.Services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true }))
         {
             using var recovery = ActivatorUtilities.CreateInstance<ProxyRecoveryHostedService>(tunServices);
+            var runtime = tunServices.GetRequiredService<IProxyTunRuntimeController>();
             Check(tunServices.GetRequiredService<IProxyTunSafetyService>() is ProxyTunSafetyService
-                && tunServices.GetRequiredService<IProxyTunRuntimeController>() is MihomoTunRuntimeController,
-                "Production TUN startup recovery constructs without the settings writer");
+                && runtime is ScopedProxyTunRuntimeController && handlers.Count == 0,
+                "Production TUN startup constructs neither a settings writer nor an HTTP controller");
+            for (var call = 1; call <= 2; call++)
+            {
+                var pending = runtime.IsEnabledAsync(default);
+                var handler = handlers[call - 1];
+                await handler.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Check(!pending.IsCompleted && !handler.Disposed, "TUN scope keeps the controller through the actual response task");
+                handler.Reply.SetResult(new(System.Net.HttpStatusCode.OK) { Content = new StringContent("{}") });
+                Check((await pending.WaitAsync(TimeSpan.FromSeconds(5))).Succeeded && handler.Disposed && handlers.Count == call,
+                    "Each completed TUN observation disposes its own controller scope");
+            }
         }
         builder.Services.AddSingleton<IMihomoControllerClient>(_ => throw new Exception("Guard constructed a controller client"));
         using var guardServices = builder.Services.BuildServiceProvider();
@@ -111,6 +131,25 @@ internal static class MihomoRegistrationChecks
             "Production guard constructs without the settings writer, TUN controller or direct controller client");
         return count;
     }
+    private sealed class ControllerProbeHandler : HttpMessageHandler
+    {
+        internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource<HttpResponseMessage> Reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal bool Disposed;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Entered.TrySetResult();
+            return Reply.Task.WaitAsync(cancellationToken);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
+        }
+    }
+
     private sealed class TemporaryDirectory : IDisposable
     {
         internal string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "mihomo-registration-" + Guid.NewGuid().ToString("N"));

@@ -36,7 +36,7 @@ public sealed record ControllerResult<T>(T? Value, string ProblemCode)
 }
 
 /// <summary>Bounded REST-only Mihomo adapter; it accepts only a loopback URI and hides all controller JSON.</summary>
-public sealed class MihomoControllerClient : IMihomoControllerClient
+public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposable
 {
     private static readonly TimeSpan ReloadConfirmationTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ReloadConfirmationInterval = TimeSpan.FromMilliseconds(200);
@@ -59,6 +59,8 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         _options = options;
         _logger = logger;
     }
+
+    public void Dispose() => _httpClient.Dispose();
 
     public async Task<ControllerResult<bool>> IsReachableAsync(CancellationToken cancellationToken)
     {

@@ -67,7 +67,8 @@ internal static class ProxyRuntimeRegistration
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.IProxySettingsWriter>(services => services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>());
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.IProxySystemProxyReconciler, RelaxKonOS.Server.Proxy.Mihomo.MihomoSystemProxyReconciler>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IProxyTunDeviceObserver, RelaxKonOS.Server.Proxy.Platform.HostProxyTunDeviceObserver>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyTunRuntimeController, RelaxKonOS.Server.Proxy.Mihomo.MihomoTunRuntimeController>();
+        builder.Services.AddScoped<RelaxKonOS.Server.Proxy.Mihomo.MihomoTunRuntimeController>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyTunRuntimeController, RelaxKonOS.Server.Proxy.ScopedProxyTunRuntimeController>();
 
         // Durable safety promises survive disabling the management surface. Exactly one owner.
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IProxyNetworkSafetyPlatform, RelaxKonOS.Server.Proxy.Platform.HostProxyNetworkSafetyPlatform>();

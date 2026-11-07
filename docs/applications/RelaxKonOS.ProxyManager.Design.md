@@ -4478,3 +4478,5 @@ Proxy 管理停用后，Linux 非 root Core guard 仍通过专属 Helper 对账�
 Proxy 停用启动时，Server 对原台账中已受理的 Mihomo 配置发布执行一次恢复。原回执和运行时状态核对成功后启动继续。Helper 忙或结果仍未知时，启动保留原待处理记录并拒绝继续。Linux 私有 systemd 已验证真实提交和原生拒绝补偿后的响应丢失，不重发候选配置。独立 Helper IPC 与完整非 root Server 的该组合仍待联合验收。
 
 独立生产 Helper 的真实 IPC 已验证完整非 root Server 的两条停用启动路径。已终态失败的配置按原回执确认。候选已转发后 Helper 中断时，启动门禁保留原待处理操作，Helper 恢复后只执行一次补偿并恢复旧端口，原 Interrupted 回执持久化。只读查询可以复用原 operationId，配置请求仍由原事务和传输层校验。
+
+TUN 安全服务常驻，控制器和 HTTP 客户端只在实际观察或切换期间创建。Linux 完整 Server 的恢复实测确认，原 TUN 标记和路由仍由 Core 接续处理，Mihomo 转发和系统代理持续可用。
