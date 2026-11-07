@@ -125,6 +125,8 @@ internal static class ProxyAuthenticatedPublicationChecks
         await VerifyManagedPublicationShutdownAsync(root, assembly, socket, login, nativeState, traffic, retained, added, readReceipt);
         await VerifySubscriptionBodyResidencyAsync(guard);
         await VerifyDirectReloadLossAsync(root, socket, guard);
+        if (OperatingSystem.IsLinux())
+            await MihomoDirectSubscriptionAcceptance.RunAsync(root, assembly, socket, login, guard);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
             await ProxyConnectionBenchmark.RunAsync(root, socket, baseline, assembly, login, guard, nativeState);
     }

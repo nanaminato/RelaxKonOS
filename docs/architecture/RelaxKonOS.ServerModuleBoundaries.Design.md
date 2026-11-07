@@ -2336,3 +2336,13 @@ Windows Release ManagedRuntimes 广跑和模块边界回归通过。MB-05 跨进
 Windows Release ManagedRuntimes 广跑、Mihomo HTTP 57 项、系统代理、TUN 边界 38 项、Core 安全 40 项及模块边界通过。未提权、未确认和非具名直连设置均未进入补偿。不可读 TUN 标记保留，原发布权威不变。桌面 Release 编译和补偿协议专项通过。Android 线协议与 HTTP 15 项通过，设备测试源码已编译，设备交互未验收。MB-05 跨进程原 `5b0d918f-417d-4337-ac03-5f0c33cac006` 返回 Interrupted，受控副作用计数为一。
 
 隔离 Linux 两轮通过。最终轮原 `8e46e263-b9b1-4b1e-9d29-0b3965c9b764` 经独立补偿 `9cdc31cb-fea3-4d96-8ac8-43ecb9c41ee1` 恢复旧监听和宿主策略，原回执为 `Interrupted`。Helper 应答丢失的原 `08ee17a3-2bc1-4829-bdb7-57741d973d0f` 以补偿 `5e457875-d240-40c6-b44a-2b5af0f0750f` 查回实际效果后同样结清。控制器补偿 reload 应答丢失的原 `a4792419-e6e4-4147-93d3-41ab55528b24` 和补偿 `b59e0d14-82e7-4808-a5ac-a1bf6fed0e27` 持续待核对，实际旧端口恢复可转发，宿主补偿调用为零。三条路径均只执行一次补偿 reload，重复请求无重放，旧端口真实新建 HTTP 转发通过。专属 cgroup 已清理，共享服务和代理文件指纹一致。最终归档 SHA-256 为 `c3204f87525b7597e4fd5c68d738cea7cb5a802ca778b55f691a3c0123bae5d8`。日志在 `.artifacts/mb04-port-compensation-final/`。
+
+### MB-04 直连活动订阅队列的进程中断恢复
+
+完整 Linux Server 通过 PAM/JWT 认证导入、激活并刷新隔离源站的订阅。测试中继等待真实 Mihomo 成功返回，夹具在交付应答前取得同一个 SQLite 数据库的写锁。确认原刷新 ID 的加密检查点已落盘，HTTP 回执仍为 Running，Proxy 仍有一个工作租约后，强制终止实际 Server 进程。SQLite 写锁阻止了原进程提交档案。
+
+重启后，Core 使用原检查点提交档案并恢复原订阅时间，原 `890eca76-d4e6-429c-a3d6-13a9662c0efa` 通过操作查询和同一幂等键返回同一个 Succeeded 回执。刷新只下载一次、只派发一次真实 reload、只增加一次档案修订。原 Mihomo PID、跨中断 HTTP 转发和系统代理归属保持。私有 systemd 套件其余验收通过，专属 cgroup 已清理，宿主代理文件和运行时服务指纹一致。
+
+首轮因私有档案目录未交给非 root Server，在导入时返回 400，未进入恢复场景。调整夹具属主后复验通过。Linux 日志在 `.artifacts/mb04-direct-subscription/live.log`，归档 SHA-256 为 `04fdebe69500ee6e7a5dc76081a9100d455e9e370df4fab2b3b592f422cefdf7`。Windows Release 模块边界与 ManagedRuntimes 回归通过。MB-05 跨进程原 `c8883f12-13fa-47c0-919a-f6e91695ec8c` 返回 Interrupted，受控副作用计数为一。
+
+本项实测覆盖已收到原控制器确认、SQLite 尚未提交的活动订阅刷新。原控制器结果未知时，待恢复记录继续承担写入门禁。该断线与直连队列原回执的联合实测仍开放，批量刷新也未纳入本轮。Proxy 保持 resident，动态休眠与生产内存未验收。

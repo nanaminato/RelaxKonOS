@@ -6,6 +6,8 @@ When a direct Mihomo reload loses its acknowledgement, the Component Center runt
 
 If profile publication recorded the controller acknowledgement, startup recovery or a named retry verifies the candidate file and finishes the original profile commit. A subsequent retry can read the saved receipt. Changes to the candidate file or profile identity keep recovery pending. Emergency TUN disable and system proxy recovery continue to use their own durable records.
 
+A queued refresh of an active subscription records the direct reload acknowledgement under the original refresh ID. After startup recovery commits the profile, both the refresh receipt and its original idempotency key refer to the same refresh. Recovery uses the converted configuration and the original subscription timestamp without downloading the subscription or reloading the controller again. Without the original acknowledgement, pending recovery continues to block writes.
+
 If a direct settings update recorded successful replies from both the runtime and the host, and the host proxy policy stays the same, recovery verifies the candidate configuration and settings file and finishes the local commit. An unknown result or an independent file edit leaves the original operation pending.
 
 After the runtime acknowledges a direct host policy change on Linux, recovery can check the Helper receipt and current proxy values by the original operation ID. When both checks pass and the candidate file still matches, recovery finishes the local settings commit. If the guard must independently maintain the persisted policy, it leaves the original operation pending so the two effects remain distinguishable.
