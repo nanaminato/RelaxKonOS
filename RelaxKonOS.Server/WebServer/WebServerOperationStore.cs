@@ -17,6 +17,7 @@ internal sealed record WebServerOperationResult(string ProblemCode, string? Snap
 /// <summary>Allows a long-running web-server operation to publish a durable, client-visible stage.</summary>
 internal interface IWebServerOperationProgress
 {
+    Guid OperationId { get; }
     Task ReportAsync(string stage, CancellationToken cancellationToken);
 }
 
@@ -34,17 +35,20 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _instanceGates = new(StringComparer.Ordinal);
     private readonly HostOperationJournal _journal;
     private readonly ResidentBackgroundWorkOwner _workOwner;
+    private readonly IPrivilegedNginxOperations? _nativeOperations;
     private bool _ready;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
 
     private readonly ILogger<WebServerOperationStore> _logger;
 
-    public WebServerOperationStore(IHostEnvironment environment, HostOperationJournal journal, ILogger<WebServerOperationStore> logger, IResidentModuleWorkLeaseSource leases)
+    public WebServerOperationStore(IHostEnvironment environment, HostOperationJournal journal, ILogger<WebServerOperationStore> logger, IResidentModuleWorkLeaseSource leases,
+        IPrivilegedNginxOperations? nativeOperations = null)
     {
         _path = LedgerPath(environment);
         _journal = journal;
         _logger = logger;
         _workOwner = new(leases, ServerModules.WebServerId);
+        _nativeOperations = nativeOperations;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -58,6 +62,11 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             try
             {
                 await LoadAndRecoverAsync(stopping.Token);
+                foreach (var operation in _operations.Values.Where(item => item.ProblemCode == NativeRecoveryRequired))
+                {
+                    using var continuation = await _workOwner.AdmitAsync(stopping.Token);
+                    continuation.Run(token => ReconcileNativeReloadAsync(operation.OperationId, token));
+                }
                 stopping.Token.ThrowIfCancellationRequested();
                 _ready = true;
             }
@@ -192,7 +201,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                     {
                         await PreserveUnknownNativeOperationAsync(operationId);
                         using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, workStopping);
-                        await Task.Delay(Timeout.InfiniteTimeSpan, shutdown.Token);
+                        await ReconcileNativeReloadAsync(operationId, shutdown.Token);
+                        return;
                     }
                 }
                 finally { instanceGate.Release(); }
@@ -218,6 +228,26 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             try { _cancellations.TryRemove(operationId, out _); cancellation.Dispose(); }
             finally { _gate.Release(); }
         }
+    }
+
+    private async Task ReconcileNativeReloadAsync(Guid operationId, CancellationToken stoppingToken)
+    {
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                var result = _nativeOperations is null
+                    ? null : await _nativeOperations.QueryReloadReceiptAsync(operationId, stoppingToken);
+                if (result is { Success: true, NginxReloadReceipt.OperationId: var id } && id == operationId)
+                {
+                    try { await CompleteAsync(operationId, WebServerOperationState.Succeeded, "", null, CancellationToken.None); }
+                    catch (Exception error) { throw new ResidentWorkCompletionException(error); }
+                    return;
+                }
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
     private async Task PreserveUnknownNativeOperationAsync(Guid id)
@@ -338,6 +368,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
 
     private sealed class OperationProgress(WebServerOperationStore owner, Guid operationId) : IWebServerOperationProgress
     {
+        public Guid OperationId => operationId;
+
         public Task ReportAsync(string stage, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(stage);

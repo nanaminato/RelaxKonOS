@@ -236,8 +236,12 @@ internal sealed partial class NginxWebServerManager(
         return IsManagedInstallation(layout) && (await RunManagedConfigurationTestAsync(layout, ct)).Success;
     }
 
+    private Task<PrivilegedOperationResult> RunTrackedReloadAsync(Guid id, CancellationToken ct) =>
+        privilegedNginx.RunTrackedReloadAsync(id, ct);
+
     private sealed class InstallationStageReporter(IInstallationProgress progress) : IWebServerOperationProgress
     {
+        public Guid OperationId => progress.OperationId;
         public Task ReportAsync(string stage, CancellationToken ct) => progress.ReportAsync(new(stage switch
         {
             "installing_package" => InstallationStage.Installing,

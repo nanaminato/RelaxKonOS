@@ -345,6 +345,8 @@ public static partial class PrivilegedOperationExecutor
                 PrivilegedOperationKind.FileCreateStaging => CreateStaging(request.Path, fileRoots),
                 PrivilegedOperationKind.NativeServiceAction => await ApplyNativeServiceActionAsync(request.ServiceId, request.ServiceAction, policy.AllowedServiceIds),
                 PrivilegedOperationKind.NginxSystemServiceAction => await ApplyNginxSystemServiceActionAsync(request.NginxServiceAction),
+                PrivilegedOperationKind.NginxTrackedReload => await RunTrackedNginxReloadAsync(request.OperationId),
+                PrivilegedOperationKind.NginxReloadReceipt => QueryNginxReloadReceipt(request.OperationId),
                 PrivilegedOperationKind.NginxPackageInstall => await InstallNginxPackageAsync(request.PackageVersion),
                 PrivilegedOperationKind.NginxPackageUninstall => await UninstallNginxPackageAsync(),
                 PrivilegedOperationKind.ComponentPackageQuery => await QueryComponentPackageAsync(request.ComponentId, request.OperationId),

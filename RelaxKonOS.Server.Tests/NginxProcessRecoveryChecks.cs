@@ -95,13 +95,13 @@ internal static class NginxProcessRecoveryChecks
                     Key, HostElevationCapability.NginxLifecycle, restored.InstanceId, null, CancellationToken.None);
                 using var reopenedStore = await OpenStoreAsync(root);
                 var reopened = await reopenedStore.GetAsync(operationId, default);
-                TestAssert.Assert(restored is { State: WebServerOperationState.Failed, Stage: "interrupted",
-                        ProblemCode: "webserver.operation_interrupted" }
+                TestAssert.Assert(restored is { State: WebServerOperationState.Running, Stage: "native-recovery-required",
+                        ProblemCode: WebServerOperationStore.NativeRecoveryRequired }
                     && replay == restored && reloadReplay == restored && reopened == restored && CountReloads(root) == 1
                     && transport.Calls == 0 && recoveryScopes == 0,
-                    "The original interrupted receipt must persist and the retry must preserve the single reload.");
+                    "The original unconfirmed receipt must persist and the retry must preserve the single reload.");
                 await ObserveAsync(client, address, "after", nginx);
-                Console.WriteLine($"PASS NGINX LIVE CRASH RECOVERY: operation={operationId}; interrupted receipt persisted, reloads=1, recovery scopes=0, original Nginx still serving; HTTP response drained after disconnect");
+                Console.WriteLine($"PASS NGINX LIVE CRASH RECOVERY: operation={operationId}; unconfirmed receipt persisted, reloads=1, recovery scopes=0, original Nginx still serving; HTTP response drained after disconnect");
             }
             finally
             {
@@ -553,8 +553,8 @@ internal static class NginxProcessRecoveryChecks
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref Calls);
-            if (!allowReload || request.Operation != PrivilegedOperationKind.NginxSystemServiceAction
-                || request.NginxServiceAction != NginxSystemServiceAction.Reload)
+            if (!allowReload || request.Operation != PrivilegedOperationKind.NginxTrackedReload
+                || request.OperationId is null)
                 throw new InvalidOperationException("Unexpected privileged request in isolated Nginx fixture.");
             using var command = StartNginx(executable, root, "-s", "reload");
             await command.WaitForExitAsync(cancellationToken);

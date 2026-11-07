@@ -1508,8 +1508,16 @@ Linux Unix socket 在 Nginx 固定服务动作提交前仍接受取消。帧提�
 
 ### MB-05 Nginx 原生重载结果待核验
 
-直接系统包 Nginx 重载在派发前持久化原操作检查点。生产 Unix socket 在派发后发现连接丢失、帧不完整或 Helper 自身超时，报告原生结果未核实。存活 Server 保持原 Running / native-recovery-required 回执、工作租约和实例锁。启动遇到未获终态的派发检查点也保留原 ID 和待核验回执，已知键和原 ID 可读，同实例新的后台操作返回 409。收到明确的 Helper 响应时沿原终态与停机规则处理。当前没有 Helper 原作业终态的持久查询入口，待核验回执不会因系统服务仍健康、看不到作业或等待超时而自动关账。桌面和 Android 显示待核验提示。
+直接系统包 Nginx 重载在派发前持久化原操作检查点。生产 Unix socket 在派发后发现连接丢失、帧不完整或 Helper 自身超时，报告原生结果未核实。存活 Server 保持原 Running / native-recovery-required 回执、工作租约和实例锁。启动遇到未获终态的派发检查点也保留原 ID 和待核验回执，已知键和原 ID 可读，同实例新的后台操作返回 409。收到明确的 Helper 响应时沿原终态与停机规则处理。此阶段尚无 Helper 原作业终态的持久查询入口，后续补齐见下文。待核验回执不会因系统服务仍健康、看不到作业或等待超时而自动关账。桌面和 Android 显示待核验提示。
 
 最终 Linux x64 Release 私有 systemd 实测三条路径。仅终止 Helper 时，存活 Server 保留 `5560ad28-8aef-4374-9b19-1e392586351b`。Helper 自身 30 秒超时且真实 reload 作业仍在时，保留 `fc4e4ac4-993f-474c-b426-f655af7fcf69`。双进程强制终止时，重启从派发检查点保留 `7c6f143f-8e6f-4b61-b45c-5c890f108af8`。每条路径均核对原 ID、同键、不同键拒绝、HTTPS 持续、同一 master 和仅一次实际重载。Windows Release 模块边界通过。Linux 同批取消与 SIGTERM 排空复测通过，收到原 Helper 终态后仍按原规则持久化。专属 cgroup 清理完成，宿主共享服务和配置指纹一致。
 
-日志为 .artifacts/mb05-auth-nginx-checkpoint-unknown.log、.artifacts/mb05-auth-nginx-checkpoint-timeout.log、.artifacts/mb05-auth-nginx-checkpoint-crash.log 及 .artifacts/mb05-auth-nginx-checkpoint-drain.log，归档 SHA-256 为 c663b4d80d62f9d41e313064a74be4105cd7ed3de0e951bc3e88a22a9e1b456b。下一步需让 Helper 提供原 operationId 的持久原生终态证据，核验后方可解除待核验门禁。WebServer 保持 resident。
+日志为 .artifacts/mb05-auth-nginx-checkpoint-unknown.log、.artifacts/mb05-auth-nginx-checkpoint-timeout.log、.artifacts/mb05-auth-nginx-checkpoint-crash.log 及 .artifacts/mb05-auth-nginx-checkpoint-drain.log，归档 SHA-256 为 c663b4d80d62f9d41e313064a74be4105cd7ed3de0e951bc3e88a22a9e1b456b。原 operationId 的 Helper 成功证据和门禁解除见下文。WebServer 保持 resident。
+
+### MB-05 Nginx 原 Helper 回执对账
+
+直接系统包 reload 将原 WebServer operationId 传给生产 Helper 的专属固定操作。Helper 在 root 保护目录内独占写入原意图，再调用固定的 `systemctl reload nginx.service`。原命令明确成功后原子持久化成功证据，再发送响应。同 ID 执行请求若已存在原意图，只读取原回执。只读查询按同一 ID 返回成功证据，超时、非零但无法核实原生终态、文件缺失或身份不符均保留待核验。Server 原后台工作 owner 在运行期与启动时按原 ID 查询，只在匹配证据后持久化成功并释放原责任。未完成查询不构造 Nginx 执行作用域，不再次派发。
+
+Linux x64 Release 私有 systemd 实测。原重载 `c8021da0-0f86-4b20-81b5-093455edc5b4` 已更新真实 HTTPS 时终止 Server，随后生产 Helper 收到实际 systemctl 成功并落盘。重启 Helper 与 Server 后，原 ID 和同键返回 Succeeded，原重载仍为一次。确认原回执后，新键才准入并完成下一次重载。Helper 提前终止 `281f0065-49b7-40ff-bfa1-5b010e1679ce` 和真实 30 秒超时 `ea6aaf34-479e-4192-a0f5-557a42762336` 继续保留同 ID 待核验，实际各一次。正常取消与 SIGTERM 排空复测通过。原 Nginx master、HTTPS 和宿主指纹核验通过，专属 cgroup 清理。Windows Release 模块里程碑通过。Linux 原工作进程崩溃和 HTTP 响应断线夹具也复测通过，原待核验回执和单次重载保持。
+
+联合日志为 .artifacts/mb05-nginx-receipt-receipt-live.log、.artifacts/mb05-nginx-receipt-unknown-live.log、.artifacts/mb05-nginx-receipt-timeout-live.log 和 .artifacts/mb05-nginx-receipt-drain-live.log，归档 SHA-256 为 fa12570bc4d2f4b970b79326639576140bf4f8b94011e83855808d5a448fa790。HTTP 断线夹具日志为 .artifacts/mb05-nginx-receipt-fixture-live.log。范围为明确成功证据。若 Helper 未收到或未写入原终态，系统健康及时间流逝无法解除门禁。此前未向 Helper 传递原 ID 的回执也保持待核验。Helper 回执保留策略、原生失败证据和系统重启后的联合验证仍开放。

@@ -28,8 +28,9 @@ internal sealed partial class NginxWebServerManager
             if (nginx.UsesSystemPackageNginx(instance))
             {
                 await progress.ReportAsync(WebServerOperationStore.NativeReloadDispatchStage, ct);
-                var helper = await nginx.RunSystemdNginxOperationAsync("reload", ct);
-                if (helper.ProblemCode == PrivilegedProblemCode.RecoveryRequired)
+                var helper = await nginx.RunTrackedReloadAsync(progress.OperationId, ct);
+                if (helper.ProblemCode == PrivilegedProblemCode.RecoveryRequired
+                    || helper.Success && helper.NginxReloadReceipt?.OperationId != progress.OperationId)
                     return new(WebServerOperationStore.NativeRecoveryRequired);
                 await progress.ReportAsync("running", CancellationToken.None);
                 return new(helper.Success ? "" : ToWebServerProblem(helper.ProblemCode, "webserver.reload_failed"));

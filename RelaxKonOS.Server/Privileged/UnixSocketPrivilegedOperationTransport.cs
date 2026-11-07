@@ -43,7 +43,8 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
         // Cancellation stays meaningful while connecting and handshaking. Once the request frame is
         // sent, the Helper owns the authoritative operation deadline; disconnecting cannot roll back
         // an already-started privileged mutation.
-        var drainServiceAction = request.Operation == PrivilegedOperationKind.NginxSystemServiceAction;
+        var drainServiceAction = request.Operation is PrivilegedOperationKind.NginxSystemServiceAction
+            or PrivilegedOperationKind.NginxTrackedReload;
         var reloadDispatched = false;
         using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         connectTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
@@ -66,8 +67,9 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
             // A fixed Nginx service job can continue under systemd after the caller cancels.
             // Once dispatched, its terminal frame must drain before the WebServer owner can finish.
             if (drainServiceAction) cancellationToken.ThrowIfCancellationRequested();
-            reloadDispatched = request.Operation == PrivilegedOperationKind.NginxSystemServiceAction
-                && request.NginxServiceAction == NginxSystemServiceAction.Reload;
+            reloadDispatched = request.Operation == PrivilegedOperationKind.NginxTrackedReload
+                || request.Operation == PrivilegedOperationKind.NginxSystemServiceAction
+                    && request.NginxServiceAction == NginxSystemServiceAction.Reload;
             await PrivilegedHelperSocketFraming.WriteAsync(stream, JsonSerializer.SerializeToUtf8Bytes(request), CancellationToken.None);
             using var responseTimeout = drainServiceAction
                 ? new CancellationTokenSource()
@@ -122,6 +124,7 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
             or PrivilegedOperationKind.TailscaleLoginReceipt or PrivilegedOperationKind.TailscaleLoginChallenge
             or PrivilegedOperationKind.TailscaleLoginRecoveryRead or PrivilegedOperationKind.TailscaleLoginClose
             or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt => TimeSpan.FromSeconds(50),
+        PrivilegedOperationKind.NginxReloadReceipt => TimeSpan.FromSeconds(10),
         PrivilegedOperationKind.ProcessSnapshot or PrivilegedOperationKind.ProcessIcon
             or PrivilegedOperationKind.ProcessTerminate => TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)),
         // Package transactions own a long per-step Helper deadline. Keep a wider outer bound so a

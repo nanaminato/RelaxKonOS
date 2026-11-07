@@ -386,3 +386,5 @@ MB-05 系统包 Nginx 经生产 Helper 和专属 systemd 的实机中断恢复�
 MB-05 Linux Nginx 固定服务动作提交后，原 WebServer 工作任务等待 Helper 返回，实例锁和执行作用域持有到响应与清理结束。实机验证取消和 SIGTERM 均排空实际 systemd reload，重启未重放。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-已提交-nginx-systemd-作业的取消与停机排空)。
 
 MB-05 Linux 系统包直接重载以原检查点保护未知原生作业。实机覆盖 Helper 超时、Helper 丢失和双进程中断，均保留原 ID 并拒绝同实例新后台操作。终态证据缺失时保持 resident 和恢复责任。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原生重载结果待核验)。
+
+MB-05 已为系统包 Nginx 直接重载接入生产 Helper 原 ID 成功回执。原工作 owner 只读对账，确认证据后写入原终态。Linux 实机确认重启后原 reload 未重放，证据缺失时继续保留责任。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原-helper-回执对账)。

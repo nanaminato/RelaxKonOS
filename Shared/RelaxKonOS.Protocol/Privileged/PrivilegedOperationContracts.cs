@@ -85,6 +85,8 @@ public enum PrivilegedOperationKind
     FileCreateStaging,
     NativeServiceAction,
     NginxSystemServiceAction,
+    NginxTrackedReload,
+    NginxReloadReceipt,
     NginxPackageInstall,
     /// <summary>
     /// Installs the exact Debian package identity a caller froze. The Helper re-resolves the package
@@ -479,6 +481,7 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("systemAuthenticationResult")] SystemAuthenticationResult? SystemAuthenticationResult = null,
     [property: JsonPropertyName("hostAdministratorEligible")] bool? HostAdministratorEligible = null,
     [property: JsonPropertyName("nginxRunning")] bool? NginxRunning = null,
+    [property: JsonPropertyName("nginxReloadReceipt")] NginxNativeReloadReceipt? NginxReloadReceipt = null,
     /// <summary>Read-only package facts. Only <see cref="PrivilegedOperationKind.ComponentPackageQuery"/> sets it.</summary>
     [property: JsonPropertyName("pinnedArchives")] IReadOnlyList<RelaxKonOS.Protocol.ManagedRuntimes.ComponentPinnedArchive>? PinnedArchives = null,
     [property: JsonPropertyName("componentArchive")] RelaxKonOS.Protocol.ManagedRuntimes.ComponentArchiveHostSnapshot? ComponentArchive = null,
@@ -488,6 +491,9 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("processTermination")] KillProcessResultDto? ProcessTermination = null,
     [property: JsonPropertyName("processIconContentType")] string? ProcessIconContentType = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
+
+/// <summary>Root-owned terminal evidence for a fixed Nginx reload.</summary>
+public sealed record NginxNativeReloadReceipt(Guid OperationId);
 
 /// <summary>Fixed Linux proxy writers; no executable, arbitrary variable, path, or target user can be supplied.</summary>
 public sealed record LinuxSystemProxyConfiguration(bool Enabled, string Host, int Port, bool UseDefaultBypass, string BypassList, bool Enforce = false);

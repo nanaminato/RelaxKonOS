@@ -406,6 +406,7 @@ internal sealed partial class NginxWebServerManager
     internal sealed class SilentProgress : IWebServerOperationProgress
     {
         public static readonly SilentProgress Instance = new();
+        public Guid OperationId => Guid.Empty;
         public Task ReportAsync(string stage, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 

@@ -251,26 +251,38 @@ def run(root, server, helper_binary, mode):
             else:
                 initial.kill()
                 assert initial.wait(timeout=10) < 0
-                if production_helper:
+                if production_helper and mode != "--systemd-receipt":
                     helper.kill()
                     assert helper.wait(timeout=10) < 0
                     assert not helper_ready(), "The original production Helper is still reachable"
                     assert_served(b"updated")
                 (root / "nginx" / "release").touch()
+                if mode == "--systemd-receipt":
+                    receipt_file = Path("/var/lib/relaxkonos-nginx-reloads") / (operation.replace("-", "") + ".json")
+                    wait_for(helper, lambda: receipt_file.is_file()
+                             and json.loads(receipt_file.read_text()).get("Completed") is True,
+                             "durable original Helper receipt")
 
     with process([*helper_args, helper_config], "restarted-helper") as helper:
         wait_for(helper, helper_ready, "restarted-helper")
         with process([server], "restarted-server") as restarted:
             wait_for(restarted, healthy, "restarted-server")
             token = login()
+            if mode == "--systemd-receipt":
+                wait_for(restarted, lambda: request(operation_route, token=token)["state"].lower() == "succeeded",
+                         "original receipt reconciliation")
             replay = request(reload_route, token=token, expected=202, method="POST", key=key)
             observed = request(operation_route, token=token)
-            expected = (("running", "webserver.native_recovery_required") if production_helper
-                        else ("failed", "webserver.operation_interrupted"))
+            if mode == "--systemd-receipt":
+                expected = ("succeeded", "")
+            elif production_helper:
+                expected = ("running", "webserver.native_recovery_required")
+            else:
+                expected = ("failed", "webserver.operation_interrupted")
             for receipt in (replay, observed):
                 assert receipt["operationId"] == operation
                 assert (receipt["state"].lower(), receipt["problemCode"]) == expected
-            if production_helper:
+            if production_helper and mode != "--systemd-receipt":
                 request(reload_route, token=token, expected=409, method="POST", key=secrets.token_hex(16))
             assert_served(b"updated")
             assert int(nginx_pid_file.read_text()) == nginx_pid
@@ -279,11 +291,21 @@ def run(root, server, helper_binary, mode):
                 wait_for(restarted, (root / "nginx" / "reload-finished").is_file, "native reload completion")
                 print(f"PASS PRODUCTION NGINX SYSTEMD: {mode}, native master {nginx_pid} served HTTPS")
             print(f"PASS AUTHENTICATED SERVER NGINX RECEIPT: operation={operation}, {expected[0]} / {expected[1]}, one reload")
+            if mode == "--systemd-receipt":
+                (root / "nginx" / "reload-finished").unlink()
+                new_key = secrets.token_hex(16)
+                next_receipt = request(reload_route, token=token, expected=202, method="POST", key=new_key)
+                assert next_receipt["operationId"] != operation
+                next_path = f"{web}/operations/{next_receipt['operationId']}"
+                wait_for(restarted, lambda: request(next_path, token=token)["state"].lower() == "succeeded",
+                         "new reload after recovery")
+                assert witness.read_text().splitlines() == ["reload", "reload"]
+                print("PASS NGINX ORIGINAL RECEIPT RECONCILIATION: exact Helper evidence reopened admission")
 
 
 if __name__ == "__main__":
     arguments = sys.argv[1:]
-    mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain", "--systemd-unknown", "--systemd-timeout") else None
+    mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain", "--systemd-unknown", "--systemd-timeout", "--systemd-receipt") else None
     if len(arguments) != 3:
-        raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [--systemd|--systemd-drain|--systemd-unknown|--systemd-timeout]")
+        raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [--systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)
