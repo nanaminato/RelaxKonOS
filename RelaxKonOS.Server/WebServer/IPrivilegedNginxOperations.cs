@@ -10,6 +10,7 @@ public interface IPrivilegedNginxOperations
     Task<PrivilegedOperationResult> RetireReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken);
     Task<PrivilegedOperationResult> QueryReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken);
     Task<PrivilegedOperationResult> ConfirmServiceIdleAsync(CancellationToken cancellationToken);
+    Task<PrivilegedOperationResult> CheckFirstWebsiteAsync(CancellationToken cancellationToken);
     Task<PrivilegedOperationResult> ApplySystemServiceActionAsync(NginxSystemServiceAction action, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> InstallPackageAsync(string? version, CancellationToken cancellationToken = default);
     /// <summary>
@@ -45,6 +46,9 @@ public sealed class PrivilegedNginxOperations(RelaxKonOS.Server.Privileged.IPriv
 
     public Task<PrivilegedOperationResult> ConfirmServiceIdleAsync(CancellationToken cancellationToken) =>
         ExecuteAsync(new(PrivilegedOperationKind.NginxServiceIdle), cancellationToken);
+
+    public Task<PrivilegedOperationResult> CheckFirstWebsiteAsync(CancellationToken cancellationToken) =>
+        ExecuteAsync(new(PrivilegedOperationKind.NginxFirstWebsiteCheck), cancellationToken);
 
     public Task<PrivilegedOperationResult> ApplySystemServiceActionAsync(NginxSystemServiceAction action, CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxSystemServiceAction, NginxServiceAction: action), cancellationToken);

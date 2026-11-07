@@ -25,7 +25,8 @@ def run(root, server, helper_binary, mode):
     interrupt_first_site = mode == "--systemd-first-site-acme"
     website = acme_website or mode in ("--systemd-website", "--systemd-website-verifying")
     verifying_website = mode == "--systemd-website-verifying"
-    acme_success = mode == "--systemd-website-acme-success"
+    bootstrap_acme = mode in ("--systemd-website-acme-bootstrap", "--systemd-website-acme-bootstrap-success")
+    acme_success = mode in ("--systemd-website-acme-success", "--systemd-website-acme-bootstrap-success")
     acme_cancel = mode == "--systemd-website-acme-cancel"
     acme_drain = mode == "--systemd-website-acme-drain"
     retire_retry = mode == "--systemd-retire-retry"
@@ -398,9 +399,91 @@ def run(root, server, helper_binary, mode):
                 payload = {"applicationId": app_id, "webServerId": matches[0]["id"], "domain": domain,
                            "confirmed": True, **certificate_options}
                 request(publications, payload=payload, key=key, expected=401)
+                if bootstrap_acme and acme_success:
+                    def assert_bootstrap_rejected():
+                        blocked = request(publications, token=token, payload=payload, key=secrets.token_hex(16), expected=202)
+                        route = f"{publications}/operations/{blocked['operationId']}"
+                        wait_for(initial, lambda: request(route, token=token)["state"].lower() == "failed",
+                                 "protected existing web listener")
+                        rejected = request(route, token=token)
+                        assert rejected["problemCode"] == "website.acme_webroot_required" and not rejected["siteId"]
+                        assert not witness.exists() and "Added order" not in (root / "ca.log").read_text()
+
+                    with socket.socket() as foreign:
+                        foreign.bind(("127.0.0.1", 80))
+                        foreign.listen()
+                        assert_bootstrap_rejected()
+                    dormant = Path("/etc/nginx/conf.d/unloaded.conf")
+                    dormant.write_text(f"server {{ listen 80; server_name {domain}; }}\n")
+                    try:
+                        assert_bootstrap_rejected()
+                    finally:
+                        dormant.unlink()
                 original = request(publications, token=token, payload=payload, key=key, expected=202)
                 operation_id = original["operationId"]
                 operation_route = f"{publications}/operations/{operation_id}"
+                if bootstrap_acme and not acme_success:
+                    wait_for(initial, witness.is_file, "first website bootstrap reload")
+                    active = request(operation_route, token=token)
+                    assert active["state"].lower() == "running" and not active["certificateOperationId"]
+                    config = Path("/etc/nginx/conf.d/relaxkonos.d") / (active["siteId"] + ".conf")
+                    original_config = config.read_bytes()
+                    assert str(operation_id).encode() in original_config and b"proxy_pass" not in original_config
+
+                    def bootstrap_serves_challenge():
+                        try:
+                            with opener.open(f"http://{domain}/.well-known/acme-challenge/{sentinel.name}", timeout=1) as response:
+                                return response.read() == b"untouched"
+                        except OSError:
+                            return False
+
+                    wait_for(initial, bootstrap_serves_challenge, "first website challenge route serving")
+                    wrong_host = urllib.request.Request(f"http://{domain}/.well-known/acme-challenge/{sentinel.name}",
+                                                        headers={"Host": "other.test"})
+                    try:
+                        opener.open(wrong_host, timeout=2).close()
+                    except urllib.error.HTTPError as error:
+                        assert error.code == 404
+                    else:
+                        raise AssertionError("The bootstrap challenge was exposed to another hostname")
+                    try:
+                        opener.open(f"http://{domain}/", timeout=2).close()
+                    except urllib.error.HTTPError as error:
+                        assert error.code == 404
+                    else:
+                        raise AssertionError("The bootstrap site exposed the upstream before TLS")
+                    master = nginx_pid_file.read_text()
+                    assert_served(b"original")
+                    initial.kill()
+                    assert initial.wait(timeout=10) < 0
+                    (root / "nginx" / "release").touch()
+                    with process([server], "bootstrap-restarted-server") as restarted:
+                        wait_for(restarted, healthy, "bootstrap-restarted-server")
+                        token = login()
+                        receipt = request(operation_route, token=token)
+                        assert receipt == request(publications, token=token, payload=payload, key=key, expected=202)
+                        assert receipt["operationId"] == operation_id and receipt["state"].lower() == "interrupted"
+                        assert receipt["recoveryProblemCode"] == "website.site_application_unverified"
+                        assert not receipt["certificateOperationId"] and not request(app_route, token=token)["application"]["siteId"]
+                        request(publications, token=token, payload=payload, key=secrets.token_hex(16),
+                                expected=409, expected_problem="website.recheck_required")
+                        request(f"{web}/{matches[0]['id']}/sites", token=token, payload={
+                            "id": active["siteId"], "name": "unconfirmed publication",
+                            "bindings": [{"domain": domain, "port": 80}],
+                            "routes": [{"path": "/", "upstream": "http://127.0.0.1:18080"}],
+                        }, expected=409, expected_problem="website.recheck_required")
+                        assert "Added order" not in (root / "ca.log").read_text()
+                        assert witness.read_text().splitlines() == ["reload"] and config.read_bytes() == original_config
+                        assert nginx_pid_file.read_text() == master and bootstrap_serves_challenge()
+                        assert_served(b"original")
+                        wait_for(helper, lambda: direct_helper_request("NginxReloadReceipt", operation_id)["success"],
+                                 "original bootstrap native reload receipt")
+                        native = direct_helper_request("NginxReloadReceipt", operation_id)["nginxReloadReceipt"]
+                        assert native["OperationId"] == operation_id and native["Succeeded"]
+                        assert direct_helper_request("NginxTrackedReload", operation_id)["nginxReloadReceipt"] == native
+                        assert witness.read_text().splitlines() == ["reload"]
+                        print(f"PASS WEBSITE BOOTSTRAP INTERRUPTION: operation={operation_id}; original route and receipt, one reload and no CA order")
+                    return
                 if acme_website:
                     def acme_checkpoint():
                         current = request(operation_route, token=token)
@@ -429,8 +512,18 @@ def run(root, server, helper_binary, mode):
                         assert request(certificate_route, token=token)["state"].lower() == "succeeded"
                         assert request(app_route, token=token)["application"]["siteId"]
                         assert list(challenge_root.iterdir()) == [sentinel] and sentinel.read_text() == "untouched"
-                        assert witness.read_text().splitlines() == ["reload"]
-                        print(f"PASS AUTHENTICATED WEBSITE ACME SUCCESS: publication={operation_id}; certificate={original_certificate}; real HTTPS and one reload")
+                        assert witness.read_text().splitlines() == (["reload", "reload"] if bootstrap_acme else ["reload"])
+                        if bootstrap_acme:
+                            sites = request(f"{web}/{matches[0]['id']}/sites", token=token)
+                            site, = sites
+                            assert site["acmeHttp01"] and site["httpsEnabled"]
+                            config = Path("/etc/nginx/conf.d/relaxkonos.d") / (site["id"] + ".conf")
+                            assert b"# RelaxKonOS website publication:" not in config.read_bytes()
+                            assert not config.with_suffix(".conf.rollback").exists()
+                            assert_served(b"original")
+                            print(f"PASS WEBSITE BOOTSTRAP SUCCESS: operation={operation_id}; certificate={original_certificate}; one order and two reloads")
+                        else:
+                            print(f"PASS AUTHENTICATED WEBSITE ACME SUCCESS: publication={operation_id}; certificate={original_certificate}; real HTTPS and one reload")
                         return
                     active_tokens = [path for path in challenge_root.iterdir() if path != sentinel]
                     assert len(active_tokens) == 1 and re.fullmatch(r"[A-Za-z0-9_-]+", active_tokens[0].name)
@@ -876,7 +969,8 @@ if __name__ == "__main__":
                                                             "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry",
                                                             "--systemd-website", "--systemd-website-verifying", "--systemd-website-acme",
                                                             "--systemd-website-acme-success", "--systemd-website-acme-cancel",
-                                                            "--systemd-website-acme-drain", "--systemd-first-site-acme",
+                                                            "--systemd-website-acme-drain", "--systemd-website-acme-bootstrap",
+                                                            "--systemd-website-acme-bootstrap-success", "--systemd-first-site-acme",
                                                             "--systemd-first-site-acme-success") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")

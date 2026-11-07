@@ -1733,7 +1733,11 @@ Linux 系统包重载的原回执保存在 Server。原终态持久化后，Help
 
 完整 Server 的认证网站发布已在既有 Linux 测试机通过生产 Helper、私有 systemd、实际 Nginx 和独立 Docker 上游的联合验收。配置阶段中断恢复原 `website.site_application_unverified` 回执且应用尚未关联。真实 HTTPS 探测期间中断恢复原 `website.recheck_required` 回执并保留应用关联。两条路径都保持现有 TLS 与上游服务，重启和同键查询未再次 reload。测试使用认证证书路由生成的专属自签证书。公共 CA 与发布的联合中断仍待验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证网站发布中断与恢复)。
 
-未指定证书 ID 时，自动签发通过所选 Nginx 的现有 WebRoot HTTP-01 集成。发起者须同时具备所选实例的 `NginxConfigurationWrite` 与 `CertificateIssue`（目标 `certificates/issue`）。发布前须确认 CA 能用申请域名和 TCP 80 读取同一个挑战目录。首站和新域名需要预先配置可达的 HTTP-01 路由。缺少集成时，发布在创建 CA 订单前以 `website.acme_webroot_required` 结束。
+未指定证书 ID 时，自动签发使用所选 Nginx 的 WebRoot HTTP-01。发起者须同时具备所选实例的 `NginxConfigurationWrite` 与 `CertificateIssue`（目标 `certificates/issue`），并确认 CA 能通过申请域名的 TCP 80 到达该实例。已启用的集成或已记录 HTTP-01 的同域名站点沿用原挑战路由。
+
+已集成、正在运行且尚无受管站点的 Linux 系统包 Nginx，可在发布时自动建立首站的 IPv4 挑战路由。Helper 必须确认 80 和 443 当前均未被监听，且磁盘配置也没有占用这两个端口。临时路由仅提供原域名的挑战目录，其余请求返回 404。签发成功后由同一发布将临时配置替换为站点 TLS 配置，保留站点的 HTTP-01 路由用于续期。无法核实前置条件时，在创建 CA 订单前返回 `website.acme_webroot_required`。
+
+临时配置写入前，发布台账已记录原操作的站点责任。原生重载中断后，同键取回原回执。启动恢复保留临时配置及原 Helper 证据，新发布和直接覆盖仍受核验门禁约束。跨中断后的授权清理与续接仍待交付。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布自动建立首站-http-01-路由)。
 
 发布进行期间，同一应用或同一 Nginx 实例内的同一域名只允许一个发布操作。不同应用尝试同时发布到该域名会收到 `409 / website.operation_conflict`。原请求使用同一个幂等键仍可读取原回执。
 

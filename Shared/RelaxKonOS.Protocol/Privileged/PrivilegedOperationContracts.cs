@@ -89,6 +89,7 @@ public enum PrivilegedOperationKind
     NginxReloadReceipt,
     NginxRetireReloadReceipt,
     NginxServiceIdle,
+    NginxFirstWebsiteCheck,
     NginxPackageInstall,
     /// <summary>
     /// Installs the exact Debian package identity a caller froze. The Helper re-resolves the package

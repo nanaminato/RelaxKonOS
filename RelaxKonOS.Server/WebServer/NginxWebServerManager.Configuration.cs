@@ -44,7 +44,7 @@ internal sealed partial class NginxWebServerManager
         }
         var stage = Path.Combine(directory, $"relaxkonos.{Guid.NewGuid():N}.conf");
         var backup = config + ".rollback";
-        var acmeChallengeRoot = IsAcmeHttp01Enabled(directory) ? webRootChallenges.RootPath : null;
+        var acmeChallengeRoot = site.AcmeHttp01 || IsAcmeHttp01Enabled(directory) ? webRootChallenges.RootPath : null;
         var reuseBackup = File.Exists(backup);
         if (reuseBackup && !await CanReplaceWebRootBackupAsync(instance, previousSite, config, backup, acmeChallengeRoot, cancellationToken))
             return "webserver.site_save_failed";

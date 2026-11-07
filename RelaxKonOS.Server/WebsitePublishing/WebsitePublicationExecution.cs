@@ -21,13 +21,15 @@ internal sealed class WebsitePublicationExecution(
     CertificateOperationStore certificateOperations,
     IHttpClientFactory httpClients,
     IHostApplicationLifetime lifetime,
-    ILogger<WebsitePublicationExecution> logger)
+    ILogger<WebsitePublicationExecution> logger,
+    NginxWebServerManager? nginx = null)
 {
     internal async Task RunAsync(Guid operationId, PublishWebsiteRequest request, string actor, CancellationToken workStopping)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(workStopping, lifetime.ApplicationStopping);
         var stopping = linked.Token;
         var checks = new List<WebsitePublicationCheckDto>();
+        var bootstrapPending = false;
         try
         {
             stopping.ThrowIfCancellationRequested();
@@ -65,8 +67,22 @@ internal sealed class WebsitePublicationExecution(
                 throw new WebsitePublicationException("website.domain_conflict");
 
             var siteId = application.SiteId ?? $"app{application.Id:N}";
-            if (request.CertificateId is null && !NginxWebServerManager.HasAcmeWebRoot(server))
-                throw new WebsitePublicationException("website.acme_webroot_required");
+            if (request.CertificateId is null && !NginxWebServerManager.HasAcmeWebRoot(server)
+                && !(existingSite is { AcmeHttp01: true } && existingSite.Bindings.Any(binding => binding.Domain == request.Domain && binding.Port == 80)))
+            {
+                if (nginx is null || application.SiteId is not null)
+                    throw new WebsitePublicationException("website.acme_webroot_required");
+                var problem = await nginx.PrepareWebsiteWebRootAsync(server, operationId, siteId, request.Domain, () =>
+                {
+                    store.Update(operationId, current => current with
+                    {
+                        SiteId = siteId,
+                        RecoveryProblemCode = WebsitePublicationStore.SiteApplicationUnverified,
+                    });
+                    bootstrapPending = true;
+                }, stopping);
+                if (problem is not null) throw new WebsitePublicationException(problem);
+            }
             var certificateId = await ResolveCertificateAsync(operationId, request, actor, stopping);
             SetStage(operationId, WebsitePublicationStage.Configuring, siteId: siteId, certificateId: certificateId);
 
@@ -74,9 +90,12 @@ internal sealed class WebsitePublicationExecution(
             WebServerSiteDto site;
             try
             {
-                site = await webServers.UpsertSiteAsync(server.Id, new UpsertWebServerSiteRequest(
+                var siteRequest = new UpsertWebServerSiteRequest(
                     siteId, application.Name, [new WebServerSiteBindingDto(request.Domain, 80)], null, false, false,
-                    [new WebServerProxyRouteDto("/", $"http://127.0.0.1:{hostPort}")], certificateId, true, true, false, ExpectedUpdatedAt: existingSite?.UpdatedAt), stopping)
+                    [new WebServerProxyRouteDto("/", $"http://127.0.0.1:{hostPort}")], certificateId, true, true, false, ExpectedUpdatedAt: existingSite?.UpdatedAt);
+                site = (bootstrapPending
+                    ? await nginx!.UpsertSiteAsync(server.Id, siteRequest, operationId, stopping)
+                    : await webServers.UpsertSiteAsync(server.Id, siteRequest, stopping))
                     ?? throw new WebsitePublicationException("website.site_apply_failed");
             }
             catch (NginxWebServerManager.WebServerSiteValidationException error) { throw new WebsitePublicationException(error.ProblemCode, 400); }
@@ -98,7 +117,11 @@ internal sealed class WebsitePublicationExecution(
                 return;
             }
 
-            SetStage(operationId, WebsitePublicationStage.Associating, siteId: site.Id, certificateId: certificateId);
+            store.Update(operationId, current => current with
+            {
+                Stage = WebsitePublicationStage.Associating, SiteId = site.Id, CertificateId = certificateId, RecoveryProblemCode = null,
+            });
+            bootstrapPending = false;
             stopping.ThrowIfCancellationRequested();
             SetStage(operationId, WebsitePublicationStage.Verifying, siteId: site.Id, certificateId: certificateId);
             checks.AddRange(await VerifyAsync(request.Domain, stopping));
@@ -111,12 +134,14 @@ internal sealed class WebsitePublicationExecution(
         }
         catch (WebsitePublicationException error)
         {
-            Complete(operationId, WebsitePublicationState.Failed, error.ProblemCode, null, checks);
+            Complete(operationId, WebsitePublicationState.Failed, error.ProblemCode,
+                bootstrapPending ? WebsitePublicationStore.SiteApplicationUnverified : null, checks);
         }
         catch (Exception error) when (error is not ResidentWorkCompletionException)
         {
             logger.LogError(error, "Website publication failed. OperationId={OperationId}", operationId);
-            Complete(operationId, WebsitePublicationState.Failed, "website.operation_failed", null, checks);
+            Complete(operationId, WebsitePublicationState.Failed, "website.operation_failed",
+                bootstrapPending ? WebsitePublicationStore.SiteApplicationUnverified : null, checks);
         }
     }
 

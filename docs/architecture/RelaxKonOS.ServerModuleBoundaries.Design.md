@@ -1468,7 +1468,7 @@ TLS 中继收到实际 CA 挑战响应 200 后保留响应。Server 接收 SIGTE
 
 同一台账锁同时为活跃发布保留应用及 Nginx 实例内的规范域名。同键先查原回执。不同键命中活跃发布返回 `website.operation_conflict`，命中已有未核验配置继续返回 `website.recheck_required`。域名占用在应用观察、CA 签发及配置执行前生效。
 
-Linux Release 在私有 systemd、Docker、Nginx、Pebble 和 DNS 上启动两个独立应用。原发布 `69f61255-1f9c-407f-b946-25e24e7297fc` 的实际 CA 证书响应被暂扣时，另一运行应用提交带大写和末尾点的同域名请求，收到认证 HTTP 409，历史为空。原键返回原回执，CA 一张订单、一次签发提交。随后终止 Server，重启仍以原发布和原证书操作 `553bf539-e7e7-4321-bcb1-9e44e65047f2` 查询原有效订单。挑战已清理，旧 TLS 和原上游继续，零新增 Nginx 重载。专属 cgroup 清理，宿主服务与配置指纹一致。日志为 `.artifacts/mb05-publication-domain-live.log`，归档 SHA-256 为 `b76242814db9faa538ee0f8281ee5963ba612da11be18458509d294a02eb23b6`。首站自动建路由的文件所有权与恢复仍开放。
+Linux Release 在私有 systemd、Docker、Nginx、Pebble 和 DNS 上启动两个独立应用。原发布 `69f61255-1f9c-407f-b946-25e24e7297fc` 的实际 CA 证书响应被暂扣时，另一运行应用提交带大写和末尾点的同域名请求，收到认证 HTTP 409，历史为空。原键返回原回执，CA 一张订单、一次签发提交。随后终止 Server，重启仍以原发布和原证书操作 `553bf539-e7e7-4321-bcb1-9e44e65047f2` 查询原有效订单。挑战已清理，旧 TLS 和原上游继续，零新增 Nginx 重载。专属 cgroup 清理，宿主服务与配置指纹一致。日志为 `.artifacts/mb05-publication-domain-live.log`，归档 SHA-256 为 `b76242814db9faa538ee0f8281ee5963ba612da11be18458509d294a02eb23b6`。首站自动建路由的后续交付见下文。
 
 同制品正常发布 `fef71822-3ea7-4f02-b996-fc99a7870c7b` 通过真实 HTTPS 和一次重载，日志为 `.artifacts/mb05-publication-domain-success.log`。Windows Release 模块里程碑回归通过，验证并发拒绝没有创建执行作用域或新回执，Docker 跨进程原 `e8d5d6b4-bf59-41b3-bea3-8a7f2252860d` 返回 Interrupted，副作用计数为一。Windows 首轮夹具的应用创建与观察共用屏障，第二轮站点关联检查沿用单应用假设。修正后日志为 `.artifacts/mb05-publication-domain-win-confirmed.log`。
 
@@ -1578,7 +1578,7 @@ Linux x64 Release 使用完整 PAM/JWT Server、生产 Helper、私有 systemd�
 
 最终中断发布 `a18aad80-5b6a-48a3-a131-25961501e8d6` 关联证书操作 `a1694919-20d1-4657-84ee-a2a0820a7546`。成功发布为 `7b65af66-eb68-4ac1-8103-491250e4f420`，原 Verifying 回归为 `f9cc0811-4dbd-4816-9bde-53d06c5a18b6`。三个 Linux 运行均清理专属 cgroup，宿主 Nginx/Docker PID 与 Nginx 配置指纹一致。日志为 `.artifacts/mb05-webroot-final--systemd-website-acme.log`、`.artifacts/mb05-webroot-final--systemd-website-acme-success.log` 与 `.artifacts/mb05-webroot-final--systemd-website-verifying.log`，Release 归档 SHA-256 为 `9cb6545d4a170606d6a6f854cb015315263a3dadc964ce4eaed7a61717094f9d`。首轮夹具误读 `remoteStatus`，修正后通过。Windows Release 模块边界回归（含跨进程 Docker 原回执与 WebRoot 台账恢复）及 Android 网站发布请求单测通过。Windows Direct HTTP 实监听在允许本地 URL 注册的运行中通过 16 项。
 
-待验收范围包括公共 CA 与公共 DNS、网站发布自动建立首站 HTTP-01 路由、完整非管理员提升交互及整机掉电。首个独立站点的显式启用路径见下节。独立执行程序集与动态休眠仍开放，Certificates 和 WebServer 保持 resident。
+待验收范围包括公共 CA 与公共 DNS、完整非管理员提升交互及整机掉电。首个独立站点的显式启用及网站发布自动建立路由见后续小节。独立执行程序集与动态休眠仍开放，Certificates 和 WebServer 保持 resident。
 
 ### MB-05 首站 HTTP-01 显式启用与重载中断
 
@@ -1596,7 +1596,23 @@ Linux 系统包 Nginx 的站点更新在持有原配置门禁时，从持久站�
 
 Linux Release 在私有 systemd 上复验。原启用 `d100fc82-3425-404b-993d-ea20587de1d8` 的重载仍在途时终止 Server。重启后由 Pebble 真实验证并签发，证书操作为 `7fbaf778-4c93-4c58-bbd8-9a9dbb34715c`，全程一次订单和一次签发提交。原 Helper 存活、Helper 崩溃并重启但原 systemd 作业仍执行，以及故意修改备份三个条件下，绑定均拒绝并保留当时备份内容及原站点元数据，未新增重载。恢复准确的备份且作业排空后，明确提交的新绑定只重载一次，清理备份，原 Nginx master 用新证书提供站点正文并保持旧 HTTPS。绑定完成后同键仍返回原中断回执。
 
-同制品复验直接重载原回执 `b7054c8b-5d2b-4e88-9795-8f211f4fd158`，Helper 重启后旧 ID 仍拒绝重载。两个专属 cgroup 已清理，宿主 Nginx、Docker 及配置指纹一致。日志为 `.artifacts/mb05-first-site-recovery-final--systemd-first-site-acme.log` 与 `.artifacts/mb05-first-site-recovery-final--systemd-receipt.log`，归档 SHA-256 为 `033dd6f176406d9ee99dd7788509c53f27eb66269a186685c17e25f45c6be121`。Windows Release 模块里程碑回归通过，Docker 跨进程原 `d2699ea5-6353-46df-8efe-0ea63e018a2a` 返回 Interrupted，副作用计数为一。网站发布自动建立首站 HTTP-01 路由和整机掉电仍开放。
+同制品复验直接重载原回执 `b7054c8b-5d2b-4e88-9795-8f211f4fd158`，Helper 重启后旧 ID 仍拒绝重载。两个专属 cgroup 已清理，宿主 Nginx、Docker 及配置指纹一致。日志为 `.artifacts/mb05-first-site-recovery-final--systemd-first-site-acme.log` 与 `.artifacts/mb05-first-site-recovery-final--systemd-receipt.log`，归档 SHA-256 为 `033dd6f176406d9ee99dd7788509c53f27eb66269a186685c17e25f45c6be121`。Windows Release 模块里程碑回归通过，Docker 跨进程原 `d2699ea5-6353-46df-8efe-0ea63e018a2a` 返回 Interrupted，副作用计数为一。网站发布自动建立首站 HTTP-01 路由见下节，整机掉电仍开放。
+
+### MB-05 网站发布自动建立首站 HTTP-01 路由
+
+Linux 系统包 Nginx 在已集成、运行中且受管站点为空时支持首站自动 HTTP-01。Helper 只读核验现有 TCP 监听和固定 `nginx -T` 的配置摘要条件。80 或 443 被使用，配置包含对应显式监听、隐式监听或无法确定的语法和截断输出时，拒绝在该实例建立路由。完整配置留在 Helper 内。自动路径目前建立 IPv4 路由。
+
+原发布在任何配置写入前持久化站点 ID 和未核验责任。临时配置包含同一发布 ID，仅服务该域名的 HTTP-01，其他 Host 和请求路径返回 404。只有原 ID 的原生重载回执确认成功才允许提交 ACME。最终站点写入前逐字节核验临时配置和原 ID，成功后用正式 TLS 站点替换临时配置、保留该站点的挑战路由，再完成原应用关联。单站点标记独立于实例级 WebRoot 集成。
+
+重启原发布仅恢复原回执与未核验责任。该阶段中断时保留原文件及 Helper 证据，拒绝同目标新发布及直接覆盖。当前产品尚无跨中断的授权清理或接续流程，确定签发失败后的临时路由也保留供核验。网站发布和证书仍由原常驻 owner 管理。
+
+Linux Release 在私有 systemd、Docker、Nginx、Pebble 与 DNS 通过三轮。原发布 `612a9f7c-9b01-4cd4-80cc-6a70f63f2bf4` 由原生 Nginx 提供实际挑战，证书操作 `a458416c-b552-4fb2-86ef-c47eee91fe92` 只创建及签发一次，真实 HTTPS 返回容器正文。共两次重载，临时配置和备份均清理，原 Nginx master 的旧 TLS 持续。独立活动监听及未加载的 Nginx 端口配置均在写入和下单前被拒绝。
+
+中断发布 `2701ed88-08aa-43cb-9443-2c77bb5c3819` 在原生重载生效、返回前终止 Server。错误 Host 和非挑战路径均返回 404。重启后同键返回原 Interrupted，原 Helper 回执及同 ID 请求都读到原成功证据。直接覆盖和新键发布被拒绝，原配置字节保持，只有一次重载，CA 零订单，应用未关联。已有 WebRoot 的发布对照 `a65aa654-df57-4a2e-a4dc-02f1c986e5d4` 仍以一次重载完成 HTTPS。三轮专属 cgroup 清理，宿主 Nginx、Docker 和配置指纹一致。
+
+最终日志为 `.artifacts/mb05-website-bootstrap-final--systemd-website-acme-bootstrap-success.log`、`.artifacts/mb05-website-bootstrap-final--systemd-website-acme-bootstrap.log` 和 `.artifacts/mb05-website-bootstrap-final--systemd-website-acme-success.log`，归档 SHA-256 依次为 `d5417d2af3f11a2345250f2f9f91e820d1afe60c39946aa842bd1ae0322dd984`、`f892f7cda6d915e4631b90acf65a3479db16a8a0e24a563c2312cf0faac5c6fe` 和 `74c890658f2077b511f281946627d84ef9ba050c2589520af66fea93e664be18`。
+
+Windows Release 模块边界回归通过，Docker 跨进程原 `dba7519d-8ecb-4b6d-8aa6-a220662a1821` 返回 Interrupted，副作用计数为一。日志为 `.artifacts/mb05-website-bootstrap-win-final.log`。
 
 ### MB-05 网站 WebRoot 签发的取消与停机排空
 

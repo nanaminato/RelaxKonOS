@@ -27,7 +27,8 @@ public sealed record WebServerSiteDto(
     [property: JsonPropertyName("ipv6Enabled")] bool Ipv6Enabled,
     [property: JsonPropertyName("updatedAt")] DateTimeOffset UpdatedAt,
     [property: JsonPropertyName("certificatePath")] string? CertificatePath = null,
-    [property: JsonPropertyName("privateKeyPath")] string? PrivateKeyPath = null)
+    [property: JsonPropertyName("privateKeyPath")] string? PrivateKeyPath = null,
+    [property: JsonPropertyName("acmeHttp01")] bool AcmeHttp01 = false)
 {
     /// <summary>Compact, table-ready entry list such as <c>app.example.com:5000, app.example.com:6000</c>.</summary>
     [JsonIgnore]

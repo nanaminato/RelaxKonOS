@@ -4,7 +4,7 @@ set -euo pipefail
 [[ ( $# == 2 || $# == 3 || $# == 5 ) && $EUID == 0 ]]
 mode=${3:---systemd}
 case "$mode" in
-    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-first-site-acme|--systemd-first-site-acme-success) ;;
+    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-website-acme-bootstrap|--systemd-website-acme-bootstrap-success|--systemd-first-site-acme|--systemd-first-site-acme-success) ;;
     *) exit 2 ;;
 esac
 pebble= dns= relay=
@@ -109,7 +109,7 @@ JSON
     ca=\$!
     : > "$work/response-fault"
     relay_mode=website
-    if [[ "$mode" == --systemd-website-acme-success || "$mode" == --systemd-first-site-acme* ]]; then relay_mode=full-server; fi
+    if [[ "$mode" == --systemd-website-acme-success || "$mode" == --systemd-website-acme-bootstrap-success || "$mode" == --systemd-first-site-acme* ]]; then relay_mode=full-server; fi
     python3 "$relay" "$work" "\$relay_mode" > "$work/relay.log" 2>&1 &
     acme_relay=\$!
     for attempt in \$(seq 1 100); do
@@ -168,6 +168,9 @@ fi
 if [[ -f "$work/website-acme" ]]; then
     chmod 0711 "$work"
     mkdir -m 0755 "$work/challenge"
+    if [[ "$mode" == --systemd-website-acme-bootstrap* ]]; then
+        access_log="$work/nginx/acme-access.log"
+    else
     printf '# Managed by RelaxKonOS. Do not edit.\nACME HTTP-01 enabled.\n' > "$conf/relaxkonos.d/acme-http01.enabled"
     cat > "$conf/challenge.conf" <<EOF
 server {
@@ -178,6 +181,7 @@ server {
     location / { return 404; }
 }
 EOF
+    fi
 fi
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=127.0.0.1 \
     -addext subjectAltName=IP:127.0.0.1 -keyout "$work/nginx/key.pem" -out "$work/nginx/cert.pem" >/dev/null 2>&1

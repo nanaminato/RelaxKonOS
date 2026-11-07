@@ -133,7 +133,7 @@ internal sealed class WebsitePublicationStore
                 {
                     State = WebsitePublicationState.Interrupted, Stage = WebsitePublicationStage.Interrupted,
                     ProblemCode = "website.operation_interrupted",
-                    RecoveryProblemCode = operation.Stage == WebsitePublicationStage.Configuring
+                    RecoveryProblemCode = operation.Stage == WebsitePublicationStage.Configuring || HasUnverifiedSite(operation)
                         ? SiteApplicationUnverified : "website.recheck_required",
                     CompletedAt = now,
                 } };

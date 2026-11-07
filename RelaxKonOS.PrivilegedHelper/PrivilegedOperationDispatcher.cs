@@ -350,6 +350,7 @@ public static partial class PrivilegedOperationExecutor
                 PrivilegedOperationKind.NginxReloadReceipt => QueryNginxReloadReceipt(request.OperationId),
                 PrivilegedOperationKind.NginxRetireReloadReceipt => RetireNginxReloadReceipt(request.OperationId),
                 PrivilegedOperationKind.NginxServiceIdle => await ConfirmNginxServiceIdleAsync(),
+                PrivilegedOperationKind.NginxFirstWebsiteCheck => await CheckNginxFirstWebsiteAsync(),
                 PrivilegedOperationKind.NginxPackageInstall => await InstallNginxPackageAsync(request.PackageVersion),
                 PrivilegedOperationKind.NginxPackageUninstall => await UninstallNginxPackageAsync(),
                 PrivilegedOperationKind.ComponentPackageQuery => await QueryComponentPackageAsync(request.ComponentId, request.OperationId),

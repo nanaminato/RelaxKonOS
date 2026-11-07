@@ -26,7 +26,11 @@ internal sealed partial class NginxWebServerManager
         return await ReadSitesAsync(instance, cancellationToken);
     }
 
-    public async Task<WebServerSiteDto?> UpsertSiteAsync(string instanceId, UpsertWebServerSiteRequest request, CancellationToken cancellationToken)
+    public Task<WebServerSiteDto?> UpsertSiteAsync(string instanceId, UpsertWebServerSiteRequest request, CancellationToken cancellationToken) =>
+        UpsertSiteAsync(instanceId, request, null, cancellationToken);
+
+    internal async Task<WebServerSiteDto?> UpsertSiteAsync(string instanceId, UpsertWebServerSiteRequest request,
+        Guid? bootstrapOperationId, CancellationToken cancellationToken)
     {
         var instance = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
         if (instance is null)
@@ -58,6 +62,16 @@ internal sealed partial class NginxWebServerManager
             var sites = (await ReadSitesAsync(instance, cancellationToken)).ToList();
             var index = sites.FindIndex(item => item.Id == site.Id);
             WebServerSiteConcurrency.RequireCurrent(index >= 0 ? sites[index] : null, request.ExpectedUpdatedAt);
+            var config = Path.Combine(directory, site.Id + ".conf");
+            if (bootstrapOperationId is { } bootstrap)
+            {
+                if (sites.Count != 0 || !File.Exists(config) || IsSymbolicLink(config)
+                    || !await MatchesSiteConfigAsync(config, RenderWebsiteBootstrap(bootstrap, site.Id, site.Bindings[0].Domain), cancellationToken))
+                    throw new WebServerSiteConflictException("website.recheck_required");
+            }
+            else if (HasWebsiteBootstrap(directory) || index < 0 && File.Exists(config))
+                throw new WebServerSiteConflictException("website.recheck_required");
+            site = site with { AcmeHttp01 = bootstrapOperationId.HasValue || index >= 0 && sites[index].AcmeHttp01 };
             if (site.HttpsEnabled && site.CertificateId is { } certificateId)
             {
                 var certificate = await certificates.GetAsync(certificateId, cancellationToken);
