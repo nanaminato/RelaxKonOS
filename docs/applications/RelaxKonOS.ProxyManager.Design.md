@@ -4462,3 +4462,5 @@ TUN 重载必须核对控制器实际状态。未知结果保留原恢复标记�
 TUN 路由恢复后由 Core 启动 worker 读回原标记并自动完成收尾的路径已通过 Linux 隔离验收。原 Mihomo 继续运行，禁用 reload 未重复。
 
 同一 Core TUN 恢复 worker 已在 Linux 实测跨管理路由故障持续重试。路由恢复后关闭原标记，禁用重载未重复。
+
+系统代理空闲优化后，隔离 Linux 的非 root guard 和专属 Helper IPC 已复测通过，原恢复台账及竞争编辑保护均通过。
