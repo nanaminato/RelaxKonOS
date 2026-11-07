@@ -37,7 +37,14 @@ internal sealed class ProxyConnectionExecutionGate
         get { lock (gate) return current?.Code; }
     }
 
-    internal async Task<int> ReadAsync(Stream stream, Action<ProxyConnectionSnapshotEntry>? project, CancellationToken ct)
+    internal async Task<int> ReadAsync(Stream stream, Action<ProxyConnectionSnapshotEntry>? project, CancellationToken ct) =>
+        (await ReadSnapshotAsync(stream, project, statisticsOnly: false, ct)).Count;
+
+    internal async Task<ProxyConnectionStatistics> ReadStatisticsAsync(Stream stream, CancellationToken ct) =>
+        (await ReadSnapshotAsync(stream, null, statisticsOnly: true, ct)).Statistics;
+
+    private async Task<(int Count, ProxyConnectionStatistics Statistics)> ReadSnapshotAsync(Stream stream,
+        Action<ProxyConnectionSnapshotEntry>? project, bool statisticsOnly, CancellationToken ct)
     {
         Generation? generation = null;
         try
@@ -45,7 +52,7 @@ internal sealed class ProxyConnectionExecutionGate
             await using var ownedStream = stream;
             ct.ThrowIfCancellationRequested();
             generation = Acquire();
-            var parser = CreateReader(generation.Reader, project);
+            var parser = CreateReader(generation.Reader, project, statisticsOnly);
             var pipe = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
             long consumed = 0;
             try
@@ -59,7 +66,7 @@ internal sealed class ProxyConnectionExecutionGate
                     consumed += parsed;
                     if (buffer.Length - parsed > MaximumRecordBytes) throw new JsonException();
                     pipe.AdvanceTo(buffer.GetPosition(parsed), buffer.End);
-                    if (read.IsCompleted) return parser.Count;
+                    if (read.IsCompleted) return (parser.Count, statisticsOnly ? parser.Statistics : default);
                 }
             }
             finally { await pipe.CompleteAsync(); }
@@ -134,9 +141,9 @@ internal sealed class ProxyConnectionExecutionGate
         }
     }
 
-    private static IProxyConnectionSnapshotReader CreateReader(Type type, Action<ProxyConnectionSnapshotEntry>? project)
+    private static IProxyConnectionSnapshotReader CreateReader(Type type, Action<ProxyConnectionSnapshotEntry>? project, bool statisticsOnly)
     {
-        try { return (IProxyConnectionSnapshotReader)Activator.CreateInstance(type, [project])!; }
+        try { return (IProxyConnectionSnapshotReader)Activator.CreateInstance(type, [project, statisticsOnly])!; }
         catch (Exception) { throw new InvalidDataException("Proxy connection parser could not be created."); }
     }
 

@@ -4544,3 +4544,5 @@ Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。�
 连接详情直接通过当前工作作用域的 Mihomo 控制器读取。控制器错误继续通过同一 HTTP 503 回执返回，工作租约覆盖实际响应和异步清理。见[连接详情读取执行图](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接详情读取执行图)。
 
 流量与日志读取使用同样的响应工作租约。流量返回原控制器指标与错误字段，日志保留脱敏和本地诊断，控制器流和请求作用域均完成清理后才释放工作责任。见[流量与日志读取租约](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-流量与日志读取租约)。
+
+Mihomo 流量速率来自实时流量样本，累计上传、累计下载和内存来自同一份有界连接快照。读取统计时只解码所需的根级字段，连接详情按独立请求取得。见[流量累计量读取](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-流量累计量使用有界连接快照)。

@@ -4,8 +4,9 @@ using System.Text.Json;
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
 /// <summary>Validates one finite controller snapshot and projects at most its first 2,000 records.</summary>
-public sealed class MihomoConnectionSnapshotReader(Action<ProxyConnectionSnapshotEntry>? project) : IProxyConnectionSnapshotReader
+public sealed class MihomoConnectionSnapshotReader(Action<ProxyConnectionSnapshotEntry>? project, bool statisticsOnly) : IProxyConnectionSnapshotReader
 {
+    private enum Statistic { None, Upload, Download, Memory }
     private const int MaximumRecordBytes = 256 * 1024;
     private JsonReaderState state;
     private bool rootClosed;
@@ -13,8 +14,11 @@ public sealed class MihomoConnectionSnapshotReader(Action<ProxyConnectionSnapsho
     private bool expectConnections;
     private bool inConnections;
     private int records;
+    private Statistic nextStatistic;
+    private long? upload, download, memory;
 
     public int Count { get; private set; }
+    public ProxyConnectionStatistics Statistics => new(upload!.Value, download!.Value, memory!.Value);
 
     public long Parse(ReadOnlySequence<byte> buffer, bool final, CancellationToken ct)
     {
@@ -29,6 +33,19 @@ public sealed class MihomoConnectionSnapshotReader(Action<ProxyConnectionSnapsho
                 if (reader.TokenType == JsonTokenType.EndObject) rootClosed = true;
                 else if (reader.TokenType != JsonTokenType.StartObject) throw new JsonException();
             }
+            else if (nextStatistic != Statistic.None)
+            {
+                if (reader.TokenType != JsonTokenType.Number || !reader.TryGetInt64(out var value) || value < 0)
+                    throw new JsonException();
+                switch (nextStatistic)
+                {
+                    case Statistic.Upload when upload is null: upload = value; break;
+                    case Statistic.Download when download is null: download = value; break;
+                    case Statistic.Memory when memory is null: memory = value; break;
+                    default: throw new JsonException();
+                }
+                nextStatistic = Statistic.None;
+            }
             else if (expectConnections)
             {
                 expectConnections = false;
@@ -40,11 +57,17 @@ public sealed class MihomoConnectionSnapshotReader(Action<ProxyConnectionSnapsho
                 if (foundConnections) throw new JsonException();
                 foundConnections = expectConnections = true;
             }
-            else if (inConnections && reader.CurrentDepth == 2 && records < 2_000)
+            else if (statisticsOnly && reader.CurrentDepth == 1 && reader.TokenType == JsonTokenType.PropertyName)
+            {
+                if (reader.ValueTextEquals("uploadTotal"u8)) nextStatistic = Statistic.Upload;
+                else if (reader.ValueTextEquals("downloadTotal"u8)) nextStatistic = Statistic.Download;
+                else if (reader.ValueTextEquals("memory"u8)) nextStatistic = Statistic.Memory;
+            }
+            else if (inConnections && reader.CurrentDepth == 2 && (statisticsOnly || records < 2_000))
             {
                 if (reader.TokenType != JsonTokenType.StartObject) throw new JsonException();
                 var complete = project is null
-                    ? TryCountConnection(ref reader, before.BytesConsumed, ct)
+                    ? TryReadConnection(ref reader, before.BytesConsumed, ct)
                     : TryProjectConnection(ref reader, before.BytesConsumed);
                 if (!complete)
                 {
@@ -59,11 +82,12 @@ public sealed class MihomoConnectionSnapshotReader(Action<ProxyConnectionSnapsho
             }
         }
         state = reader.CurrentState;
-        if (final && (!rootClosed || !foundConnections)) throw new JsonException();
+        if (final && (!rootClosed || !foundConnections || statisticsOnly && (upload is null || download is null || memory is null)))
+            throw new JsonException();
         return reader.BytesConsumed;
     }
 
-    private bool TryCountConnection(ref Utf8JsonReader reader, long start, CancellationToken ct)
+    private bool TryReadConnection(ref Utf8JsonReader reader, long start, CancellationToken ct)
     {
         var recordDepth = reader.CurrentDepth;
         Utf8JsonReader id = default;
@@ -73,10 +97,10 @@ public sealed class MihomoConnectionSnapshotReader(Action<ProxyConnectionSnapsho
             if (reader.CurrentDepth == recordDepth && reader.TokenType == JsonTokenType.EndObject)
             {
                 if (reader.BytesConsumed - start > MaximumRecordBytes) throw new JsonException();
-                if (HasId(ref id, ct)) Count++;
+                if (!statisticsOnly && HasId(ref id, ct)) Count++;
                 return true;
             }
-            if (reader.CurrentDepth != recordDepth + 1 || reader.TokenType != JsonTokenType.PropertyName
+            if (statisticsOnly || reader.CurrentDepth != recordDepth + 1 || reader.TokenType != JsonTokenType.PropertyName
                 || !reader.ValueTextEquals("id"u8)) continue;
             if (!reader.Read()) return false;
             // Like JsonElement.TryGetProperty, only the last matching value is decoded.

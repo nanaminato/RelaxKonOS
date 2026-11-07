@@ -50,9 +50,8 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
         var payload = request.RequestUri!.PathAndQuery switch
         {
             "/proxies" => "{\"proxies\":{\"AUTO\":{\"type\":\"Selector\",\"now\":\"node-a\",\"all\":[\"node-a\",\"node-b\"]}}}",
-            "/traffic" => "{\"up\":12,\"down\":34,\"upTotal\":56,\"downTotal\":78}",
-            "/memory" => "{\"inuse\":90,\"oslimit\":0}",
-            "/connections" => "{\"connections\":null}",
+            "/traffic" => "{\"up\":12,\"down\":34}",
+            "/connections" => "{\"downloadTotal\":78,\"uploadTotal\":56,\"connections\":null,\"memory\":90}",
             "/configs" => tunPayload,
             _ when request.RequestUri.PathAndQuery.StartsWith("/logs", StringComparison.Ordinal) => "{\"type\":\"info\",\"payload\":\"Authorization: Bearer controller-secret token=private-value\"}\n",
             _ => "{}",
@@ -122,17 +121,41 @@ internal static async Task VerifyMihomoLiveStreamsAsync()
     {
         Content = new StreamContent(new OpenControllerStream(request.RequestUri!.AbsolutePath switch
         {
-            "/traffic" => "{\"up\":12,\"down\":34,\"upTotal\":56,\"downTotal\":78}\n",
-            "/memory" => "{\"inuse\":90}\n",
-            "/connections" => "{\"connections\":[{\"id\":\"fixture\",\"metadata\":{\"network\":\"tcp\",\"sourceIP\":\"::1\",\"sourcePort\":\"1234\",\"destinationIP\":\"192.0.2.1\",\"destinationPort\":\"443\",\"host\":\"example.test\"},\"rule\":\"Domain\",\"chains\":[\"DIRECT\"],\"start\":\"2026-10-02T00:00:00Z\"}]}",
+            "/traffic" => "{\"up\":12,\"down\":34,\"upTotal\":999,\"downTotal\":999}\n",
+            "/connections" => "{\"downloadTotal\":78,\"uploadTotal\":56,\"connections\":[{\"id\":\"fixture\",\"metadata\":{\"network\":\"tcp\",\"sourceIP\":\"::1\",\"sourcePort\":\"1234\",\"destinationIP\":\"192.0.2.1\",\"destinationPort\":\"443\",\"host\":\"example.test\"},\"rule\":\"Domain\",\"chains\":[\"DIRECT\"],\"start\":\"2026-10-02T00:00:00Z\"}],\"memory\":90}",
             _ => "{\"type\":\"info\",\"payload\":\"token=private-value\"}\n",
         }, complete: request.RequestUri.AbsolutePath == "/connections")),
     }));
     var client = new MihomoControllerClient(new HttpClient(handler), new StaticProxySecretStore(), options);
     var watch = System.Diagnostics.Stopwatch.StartNew();
     var traffic = await client.GetTrafficAsync(CancellationToken.None);
-    TestAssert.Assert(traffic.ProblemCode == "" && traffic.MemoryBytes == 90 && watch.Elapsed < TimeSpan.FromSeconds(1),
+    TestAssert.Assert(traffic is { ProblemCode: "", UploadTotalBytes: 56, DownloadTotalBytes: 78, MemoryBytes: 90 }
+        && watch.Elapsed < TimeSpan.FromSeconds(1),
         "An endless flow stream must return its first sample without waiting for EOF.");
+    async Task<ProxyTrafficDto> SampleAsync(string snapshot)
+    {
+        using var sampler = new MihomoControllerClient(new HttpClient(new DelegateHandler(request =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(new OpenControllerStream(
+                    request.RequestUri!.AbsolutePath == "/traffic" ? "{\"up\":12,\"down\":34}\n" : snapshot,
+                    complete: true, chunkSize: 7))
+            }))), new StaticProxySecretStore(), options);
+        return await sampler.GetTrafficAsync(default);
+    }
+    var many = string.Join(",", Enumerable.Repeat("""{"id":"ignored","metadata":{"memory":111}}""", 2_001));
+    TestAssert.Assert(await SampleAsync("{\"uploadTotal\":56,\"downloadTotal\":78,\"connections\":[" + many + "],\"memory\":90}")
+        is { ProblemCode: "", UploadTotalBytes: 56, DownloadTotalBytes: 78, MemoryBytes: 90 },
+        "Statistics must read the fragmented root footer without projecting the connection array.");
+    foreach (var malformed in new[]
+    {
+        """{"uploadTotal":56,"downloadTotal":78,"connections":null}""",
+        """{"uploadTotal":56,"uploadTotal":57,"downloadTotal":78,"memory":90,"connections":null}""",
+        """{"uploadTotal":56,"downloadTotal":-1,"memory":90,"connections":null}""",
+        """{"uploadTotal":56,"downloadTotal":78,"memory":90,"connections":[{"id":"truncated"}"""
+    })
+        TestAssert.Assert((await SampleAsync(malformed)).ProblemCode == ProxyProblemCodes.ControllerResponseInvalid,
+            "Invalid or incomplete statistics must not be published as complete traffic metrics.");
     var connections = await client.GetConnectionsAsync(CancellationToken.None);
     TestAssert.Assert(connections.Value?.Single() is { Id: "fixture", Network: "tcp", Source: "[::1]:1234",
             Destination: "example.test:443", Rule: "Domain", Chains: "DIRECT" } entry

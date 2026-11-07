@@ -428,16 +428,14 @@ internal static class MihomoIpcStartupAcceptance
                 }
                 var logs = await logRead;
                 var traffic = await trafficRead;
-                // This phase uses the older systemd runtime. Its real /traffic sample has no totals,
-                // so the existing controller error is the expected HTTP DTO.
-                if (logs is not { Length: 1 } || traffic is not { ProblemCode: ProxyProblemCodes.ControllerResponseInvalid }
+                if (logs is not { Length: 1 } || traffic is not { ProblemCode: "", MemoryBytes: >= 0, UploadTotalBytes: > 0 }
                     || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId || forwarding.IsCompleted)
-                    throw new InvalidOperationException($"Live observation failed during recovery. Logs={logs?.Length}; traffic={traffic?.ProblemCode}; memory={traffic?.MemoryBytes}; pending={(await startupStore.ReadAsync(ct)).Pending?.OperationId == drainId}; forwardingCompleted={forwarding.IsCompleted}.");
+                    throw new InvalidOperationException($"Live observation failed during recovery. Logs={logs?.Length}, traffic={traffic}, pending={(await startupStore.ReadAsync(ct)).Pending?.OperationId == drainId}, forwardingCompleted={forwarding.IsCompleted}.");
                 await DrainAsync();
                 await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nproxy-ok"u8.ToArray(), ct);
                 if (await forwarding != "proxy-ok")
                     throw new InvalidOperationException("The original connection did not receive its upstream response after recovery.");
-                Console.WriteLine($"PASS MIHOMO LIVE TRAFFIC AND LOGS DURING RECOVERY: {drainId}; native log and original traffic error, forwarding completed");
+                Console.WriteLine($"PASS MIHOMO LIVE TRAFFIC AND LOGS DURING RECOVERY: {drainId}; {traffic}, forwarding completed");
                 return $"{loaded}, {woke}, same native connection {originalConnection}";
             }
 

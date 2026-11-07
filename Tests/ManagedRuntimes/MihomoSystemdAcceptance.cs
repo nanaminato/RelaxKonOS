@@ -243,6 +243,14 @@ internal static class MihomoSystemdAcceptance
             Check(upgraded.MeasuredVersion == "1.19.30" && (await host.ObserveAsync(default)) is { Running: true, BootEnabled: true },
                 "Real update changes measured program and preserves independent service flags");
             Check(await ProbeAsync(mixedPort), "Updated release forwards real HTTP after restart");
+            using (var controller = new MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }),
+                new FixtureControllerSecret(secret), new() { Endpoint = new($"http://127.0.0.1:{controllerPort}/") }))
+            {
+                var traffic = await controller.GetTrafficAsync(default);
+                Check(traffic is { ProblemCode: "", MemoryBytes: >= 0, UploadTotalBytes: > 0 },
+                    $"The newer managed runtime reports complete traffic through the shared snapshot fields: {traffic}");
+                Console.WriteLine($"PASS MIHOMO NEWER CONTROLLER TRAFFIC: real 1.19.30 {traffic}");
+            }
             var upgradedMarker = Path.Combine(root, "data", upgraded.RevisionId.ToString("N"), "acceptance-selection");
             Check(await File.ReadAllTextAsync(upgradedMarker) == "old-data", "Real service update carries its stopped data into an independent revision");
             await File.WriteAllTextAsync(upgradedMarker, "new-data");
@@ -385,6 +393,12 @@ internal static class MihomoSystemdAcceptance
             return response == "mihomo-evidence";
         }
         finally { timeout.Cancel(); listener.Stop(); try { await server; } catch (OperationCanceledException) { } }
+    }
+
+    private sealed class FixtureControllerSecret(string secret) : IProxyControllerSecretStore
+    {
+        public Task<string> GetOrCreateAsync(CancellationToken ct) => Task.FromResult(secret);
+        public Task<string?> ReadExistingAsync(CancellationToken ct) => Task.FromResult<string?>(secret);
     }
 
     private sealed class Authorization(MihomoPublishedRuntime published) : IMihomoArchiveAuthorization

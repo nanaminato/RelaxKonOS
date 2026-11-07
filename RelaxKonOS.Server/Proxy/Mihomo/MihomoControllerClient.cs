@@ -147,7 +147,13 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
     public Task<ControllerResult<int>> GetConnectionCountAsync(CancellationToken cancellationToken) =>
         ReadConnectionsAsync(null, cancellationToken);
 
-    private async Task<ControllerResult<int>> ReadConnectionsAsync(List<ProxyConnectionDto>? details, CancellationToken cancellationToken)
+    private Task<ControllerResult<int>> ReadConnectionsAsync(List<ProxyConnectionDto>? details, CancellationToken cancellationToken) =>
+        ReadConnectionSnapshotAsync((stream, ct) => ProxyConnectionExecutionGate.Shared.ReadAsync(stream, details is null ? null : item =>
+            details.Add(new ProxyConnectionDto(item.Id, item.Network, item.Source, item.Destination, item.Rule, item.Chains, item.Start)), ct),
+            cancellationToken);
+
+    private async Task<ControllerResult<T>> ReadConnectionSnapshotAsync<T>(Func<Stream, CancellationToken, Task<T>> read,
+        CancellationToken cancellationToken)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
@@ -157,25 +163,22 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await _secrets.GetOrCreateAsync(deadline.Token));
             using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             if (!response.IsSuccessStatusCode)
-                return ControllerResult<int>.Failure(response.StatusCode == HttpStatusCode.Unauthorized
+                return ControllerResult<T>.Failure(response.StatusCode == HttpStatusCode.Unauthorized
                     ? ProxyProblemCodes.ControllerAuthenticationFailed : ProxyProblemCodes.ControllerUnavailable);
             var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
-            var count = await ProxyConnectionExecutionGate.Shared.ReadAsync(stream, details is null ? null : item =>
-                details.Add(new ProxyConnectionDto(item.Id, item.Network, item.Source, item.Destination, item.Rule, item.Chains, item.Start)),
-                deadline.Token);
-            return ControllerResult<int>.Success(count);
+            return ControllerResult<T>.Success(await read(stream, deadline.Token));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        { return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerTimeout); }
-        catch (JsonException) { return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerResponseInvalid); }
-        catch (InvalidOperationException) { return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerResponseInvalid); }
-        catch (ProxyControllerSecretException) { return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerUnavailable); }
+        { return ControllerResult<T>.Failure(ProxyProblemCodes.ControllerTimeout); }
+        catch (JsonException) { return ControllerResult<T>.Failure(ProxyProblemCodes.ControllerResponseInvalid); }
+        catch (InvalidOperationException) { return ControllerResult<T>.Failure(ProxyProblemCodes.ControllerResponseInvalid); }
+        catch (ProxyControllerSecretException) { return ControllerResult<T>.Failure(ProxyProblemCodes.ControllerUnavailable); }
         catch (HttpRequestException error)
         {
             LogTransportFailure(error);
-            return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerUnavailable);
+            return ControllerResult<T>.Failure(ProxyProblemCodes.ControllerUnavailable);
         }
-        catch (IOException) { return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerUnavailable); }
+        catch (IOException) { return ControllerResult<T>.Failure(ProxyProblemCodes.ControllerUnavailable); }
     }
 
     public async Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken)
@@ -184,26 +187,18 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
         if (!result.Succeeded) return new(0, 0, 0, 0, 0, result.ProblemCode);
         long uploadRate;
         long downloadRate;
-        long uploadTotal;
-        long downloadTotal;
         try
         {
             var traffic = result.Value!.RootElement;
-            if (!TryGetInt64(traffic, "up", out uploadRate) || !TryGetInt64(traffic, "down", out downloadRate) ||
-                !TryGetInt64(traffic, "upTotal", out uploadTotal) || !TryGetInt64(traffic, "downTotal", out downloadTotal))
+            if (!TryGetInt64(traffic, "up", out uploadRate) || !TryGetInt64(traffic, "down", out downloadRate))
                 return new(0, 0, 0, 0, 0, ProxyProblemCodes.ControllerResponseInvalid);
         }
         finally { result.Value?.Dispose(); }
 
-        var memoryResult = await GetStreamSampleAsync("memory", cancellationToken);
-        if (!memoryResult.Succeeded) return new(0, 0, 0, 0, 0, memoryResult.ProblemCode);
-        try
-        {
-            return TryGetInt64(memoryResult.Value!.RootElement, "inuse", out var memory)
-                ? new(uploadRate, downloadRate, uploadTotal, downloadTotal, memory)
-                : new(0, 0, 0, 0, 0, ProxyProblemCodes.ControllerResponseInvalid);
-        }
-        finally { memoryResult.Value?.Dispose(); }
+        var snapshot = await ReadConnectionSnapshotAsync(ProxyConnectionExecutionGate.Shared.ReadStatisticsAsync, cancellationToken);
+        return snapshot.Succeeded
+            ? new(uploadRate, downloadRate, snapshot.Value.UploadTotal, snapshot.Value.DownloadTotal, snapshot.Value.Memory)
+            : new(0, 0, 0, 0, 0, snapshot.ProblemCode);
     }
 
     public async Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) =>

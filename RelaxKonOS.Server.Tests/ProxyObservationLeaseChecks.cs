@@ -186,10 +186,9 @@ internal static class ProxyObservationLeaseChecks
             ct.ThrowIfCancellationRequested();
             var body = request.RequestUri!.AbsolutePath switch
             {
-                "/traffic" => "{\"up\":1,\"down\":2,\"upTotal\":3,\"downTotal\":4}\n",
-                "/memory" => "{\"inuse\":5}\n",
+                "/traffic" => "{\"up\":1,\"down\":2}\n",
                 "/logs" => "{\"type\":\"info\",\"payload\":\"fixture\"}\n",
-                _ => "{\"connections\":[]}"
+                _ => "{\"uploadTotal\":3,\"downloadTotal\":4,\"connections\":[],\"memory\":5}"
             };
             return new HttpResponseMessage(scenario.Status) { Content = new StringContent(body) };
         }
