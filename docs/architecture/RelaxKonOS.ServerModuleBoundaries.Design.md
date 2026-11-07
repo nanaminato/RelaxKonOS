@@ -1520,4 +1520,12 @@ Linux Unix socket 在 Nginx 固定服务动作提交前仍接受取消。帧提�
 
 Linux x64 Release 私有 systemd 实测。原重载 `c8021da0-0f86-4b20-81b5-093455edc5b4` 已更新真实 HTTPS 时终止 Server，随后生产 Helper 收到实际 systemctl 成功并落盘。重启 Helper 与 Server 后，原 ID 和同键返回 Succeeded，原重载仍为一次。确认原回执后，新键才准入并完成下一次重载。Helper 提前终止 `281f0065-49b7-40ff-bfa1-5b010e1679ce` 和真实 30 秒超时 `ea6aaf34-479e-4192-a0f5-557a42762336` 继续保留同 ID 待核验，实际各一次。正常取消与 SIGTERM 排空复测通过。原 Nginx master、HTTPS 和宿主指纹核验通过，专属 cgroup 清理。Windows Release 模块里程碑通过。Linux 原工作进程崩溃和 HTTP 响应断线夹具也复测通过，原待核验回执和单次重载保持。
 
-联合日志为 .artifacts/mb05-nginx-receipt-receipt-live.log、.artifacts/mb05-nginx-receipt-unknown-live.log、.artifacts/mb05-nginx-receipt-timeout-live.log 和 .artifacts/mb05-nginx-receipt-drain-live.log，归档 SHA-256 为 fa12570bc4d2f4b970b79326639576140bf4f8b94011e83855808d5a448fa790。HTTP 断线夹具日志为 .artifacts/mb05-nginx-receipt-fixture-live.log。范围为明确成功证据。若 Helper 未收到或未写入原终态，系统健康及时间流逝无法解除门禁。此前未向 Helper 传递原 ID 的回执也保持待核验。Helper 回执保留策略、原生失败证据和系统重启后的联合验证仍开放。
+联合日志为 .artifacts/mb05-nginx-receipt-receipt-live.log、.artifacts/mb05-nginx-receipt-unknown-live.log、.artifacts/mb05-nginx-receipt-timeout-live.log 和 .artifacts/mb05-nginx-receipt-drain-live.log，归档 SHA-256 为 fa12570bc4d2f4b970b79326639576140bf4f8b94011e83855808d5a448fa790。HTTP 断线夹具日志为 .artifacts/mb05-nginx-receipt-fixture-live.log。该阶段范围为明确成功证据，失败证据见下文。若 Helper 未收到或未写入原终态，系统健康及时间流逝无法解除门禁。此前未向 Helper 传递原 ID 的回执也保持待核验。Helper 回执保留策略和系统重启后的联合验证仍开放。
+
+### MB-05 Nginx 存活进程响应丢失和失败回执
+
+Helper 原 ID 回执支持实际成功及可确认的失败。仅接受固定 `systemctl reload nginx.service` 对所等待原作业的明确失败诊断，读取失败、通用非零、断连和本地超时仍保留原意图。只读查询返回带原 ID 的终态证据，Server 持久化 Succeeded 或 Failed / webserver.reload_failed 后才解除原实例后台准入门禁。原生失败诊断来自 [systemd 作业终态等待实现](https://github.com/systemd/systemd/blob/main/src/shared/bus-wait-for-jobs.c)。
+
+Linux 私有 systemd 上，Unix socket 中继仅截断实际生产 Helper 的首个终态响应，并短暂阻止只读查询，以核对原操作进入待核验、新键被拒绝。释放查询后，完整 Server 和原 Helper 保持存活，成功操作 `1a3516f4-6709-486f-99ef-76f9b478a2bd` 按原 ID 落盘，实际 reload 一次。真实 Nginx 配置检查拒绝 `bdd59a66-2a3a-453c-9488-8f4f0d348ba0`，作业尝试一次，未发重载信号，原 HTTPS 和 master 持续。按原 ID 只读确认失败后，新键才通过并完成下一次真实 reload。两次均核验同键和共享服务指纹，专属 cgroup 清理完成。首轮中继把终态字段名大小写读错，修正后通过。
+
+日志为 .artifacts/mb05-nginx-live-loss-attempts-response-loss.log 和 .artifacts/mb05-nginx-live-loss-attempts-rejected.log，归档 SHA-256 为 7587cfe65e52aa7bf83feaee98548d2eafad09831c9f0dbba1a75fd0effabff5。Windows Release 模块里程碑通过。Linux 本批取消和 SIGTERM 排空复测通过，真实 30 秒超时操作仍保持原待核验回执。日志为 .artifacts/mb05-nginx-live-loss-final-drain.log 和 .artifacts/mb05-nginx-live-loss-final-timeout.log。Helper 未观察到明确原作业终态时保留待核验。Helper 回执保留策略、主机重启及其他 WebServer 直接动作仍待验收。

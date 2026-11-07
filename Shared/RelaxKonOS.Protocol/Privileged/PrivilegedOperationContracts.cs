@@ -493,7 +493,7 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
 
 /// <summary>Root-owned terminal evidence for a fixed Nginx reload.</summary>
-public sealed record NginxNativeReloadReceipt(Guid OperationId);
+public sealed record NginxNativeReloadReceipt(Guid OperationId, [property: JsonRequired] bool Succeeded);
 
 /// <summary>Fixed Linux proxy writers; no executable, arbitrary variable, path, or target user can be supplied.</summary>
 public sealed record LinuxSystemProxyConfiguration(bool Enabled, string Host, int Port, bool UseDefaultBypass, string BypassList, bool Enforce = false);

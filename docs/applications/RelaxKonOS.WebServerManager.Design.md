@@ -1726,3 +1726,5 @@ Linux 系统包 Nginx 的重载请求提交给生产 Helper 后，取消或自�
 Linux 系统包直接重载在派发前持久化原检查点。生产 Helper 超时、连接丢失或 Server 在原响应前退出时，原 ID 和同键可查询待核验回执，同实例新后台操作暂缓。Linux 专属 systemd 已验证三条路径及一次实际重载。原生成功终态查询和解除待核验门禁见下文。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原生重载结果待核验)。
 
 Linux 系统包直接重载现在可以在重启后按原 ID 对账。生产 Helper 持久化原 systemctl 成功证据后，Server 只读核验并完成原回执，同键不会重载。缺少匹配证据时继续显示待核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原-helper-回执对账)。
+
+Linux 系统包重载的原回执对账覆盖明确成功及原生作业明确失败。响应丢失后读取原 ID，原 HTTPS 持续，原作业只尝试一次。Helper 无原作业终态证据时仍显示待核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-存活进程响应丢失和失败回执)。

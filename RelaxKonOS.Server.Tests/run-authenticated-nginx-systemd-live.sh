@@ -3,7 +3,7 @@
 set -euo pipefail
 [[ ( $# == 2 || $# == 3 ) && $EUID == 0 ]]
 mode=${3:---systemd}
-[[ $mode == --systemd || $mode == --systemd-drain || $mode == --systemd-unknown || $mode == --systemd-timeout || $mode == --systemd-receipt ]]
+[[ $mode == --systemd || $mode == --systemd-drain || $mode == --systemd-unknown || $mode == --systemd-timeout || $mode == --systemd-receipt || $mode == --systemd-response-loss || $mode == --systemd-rejected ]]
 server=$(realpath -e -- "$1")
 helper=$(realpath -e -- "$2")
 script=$(realpath -e -- "$(dirname -- "$0")/run-authenticated-nginx-live.py")
@@ -100,6 +100,8 @@ EOF
 cat > "$work/reload.sh" <<EOF
 #!/bin/bash
 set -euo pipefail
+echo attempt >> "$work/nginx/reload-attempts"
+/usr/sbin/nginx -t
 /usr/sbin/nginx -s reload
 echo reload >> "$work/nginx/reloads"
 for ((i=0; i<450; i++)); do

@@ -238,9 +238,10 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             {
                 var result = _nativeOperations is null
                     ? null : await _nativeOperations.QueryReloadReceiptAsync(operationId, stoppingToken);
-                if (result is { Success: true, NginxReloadReceipt.OperationId: var id } && id == operationId)
+                if (result is { Success: true, NginxReloadReceipt: { } receipt } && receipt.OperationId == operationId)
                 {
-                    try { await CompleteAsync(operationId, WebServerOperationState.Succeeded, "", null, CancellationToken.None); }
+                    var state = receipt.Succeeded ? WebServerOperationState.Succeeded : WebServerOperationState.Failed;
+                    try { await CompleteAsync(operationId, state, receipt.Succeeded ? "" : "webserver.reload_failed", null, CancellationToken.None); }
                     catch (Exception error) { throw new ResidentWorkCompletionException(error); }
                     return;
                 }

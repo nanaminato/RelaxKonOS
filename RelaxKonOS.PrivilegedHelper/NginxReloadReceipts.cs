@@ -1,3 +1,5 @@
+using System.Runtime.Versioning;
+using System.Text;
 using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
@@ -6,7 +8,7 @@ using RelaxKonOS.Protocol.Privileged;
 public static partial class PrivilegedOperationExecutor
 {
     private const string NginxReloadReceiptDirectory = "/var/lib/relaxkonos-nginx-reloads";
-    private sealed record NginxReloadRecord(Guid OperationId, bool Completed);
+    private sealed record NginxReloadRecord(Guid OperationId, bool Completed, bool Failed = false);
 
     private static async Task<PrivilegedOperationResult> RunTrackedNginxReloadAsync(Guid? operationId)
     {
@@ -22,14 +24,15 @@ public static partial class PrivilegedOperationExecutor
             catch (IOException) when (File.Exists(path))
             {
                 // An accepted ID is read-only, even after Helper restart.
-                return QueryNginxReloadReceipt(id);
+                return AsExecutionResult(QueryNginxReloadReceipt(id));
             }
 
-            var result = await ApplyNginxSystemServiceActionAsync(NginxSystemServiceAction.Reload);
-            // A local timeout or failed systemctl connection cannot establish that the systemd job ended.
-            if (!result.Success) return UnknownReload();
-            WriteReloadRecord(path, new(id, true), overwrite: true);
-            return new(true, NginxReloadReceipt: new(id));
+            var result = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", ["reload", "nginx.service"], "Nginx reload failed");
+            // Only systemctl's failure for the specific job it was waiting on is terminal evidence.
+            // A generic nonzero exit, timeout, or disconnected bus leaves the original intent open.
+            if (!result.Success && !IsConfirmedReloadFailure(result)) return UnknownReload();
+            WriteReloadRecord(path, new(id, true, Failed: !result.Success), overwrite: true);
+            return AsExecutionResult(new(true, NginxReloadReceipt: new(id, result.Success)));
         }
         catch (Exception error) when (ReloadRecordError(error))
         {
@@ -50,7 +53,7 @@ public static partial class PrivilegedOperationExecutor
             if (input.Length is <= 0 or > 512) return UnknownReload();
             var receipt = JsonSerializer.Deserialize<NginxReloadRecord>(input);
             return receipt is { Completed: true } && receipt.OperationId == id
-                ? new(true, NginxReloadReceipt: new(id))
+                ? new(true, NginxReloadReceipt: new(id, !receipt.Failed))
                 : UnknownReload();
         }
         catch (Exception error) when (ReloadRecordError(error))
@@ -63,8 +66,26 @@ public static partial class PrivilegedOperationExecutor
         Path.Combine(NginxReloadReceiptDirectory, id.ToString("N") + ".json");
 
     private static bool ReloadRecordError(Exception error) =>
-        error is IOException or UnauthorizedAccessException or JsonException or RuntimePolicyException;
+        error is IOException or UnauthorizedAccessException or JsonException or RuntimePolicyException or OperationCanceledException;
 
+    private static bool IsConfirmedReloadFailure(PrivilegedOperationResult result)
+    {
+        if (result.ProblemCode != PrivilegedProblemCode.InternalError || result.OutputBase64 is not { } output) return false;
+        var text = Encoding.UTF8.GetString(Convert.FromBase64String(output));
+        using var lines = new StringReader(text);
+        while (lines.ReadLine() is { } line)
+            if (line is "Job for nginx.service failed." or
+                "Job for nginx.service failed because the control process exited with error code.")
+                return true;
+        return false;
+    }
+
+    private static PrivilegedOperationResult AsExecutionResult(PrivilegedOperationResult observation) =>
+        observation.NginxReloadReceipt is { Succeeded: false }
+            ? observation with { Success = false, ExitCode = 1, ProblemCode = PrivilegedProblemCode.InternalError }
+            : observation;
+
+    [SupportedOSPlatform("linux")]
     private static void RequireProtectedReloadPath(string path)
     {
         RuntimeSourceStore.RequireNoLinks(path);
@@ -73,6 +94,7 @@ public static partial class PrivilegedOperationExecutor
             throw new UnauthorizedAccessException("The Nginx reload receipt path must be protected.");
     }
 
+    [SupportedOSPlatform("linux")]
     private static void WriteReloadRecord(string path, NginxReloadRecord record, bool overwrite)
     {
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
