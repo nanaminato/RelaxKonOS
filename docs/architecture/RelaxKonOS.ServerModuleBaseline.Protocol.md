@@ -29,6 +29,8 @@ MB-04 的 `proxy-management` 场景由 `Tests/Performance/run-linux-proxy-baseli
 
 连接快照的前后配对使用 `Tests/ManagedRuntimes/run-proxy-systemd-linux.sh` 的 `--authenticated`，随后附加流式改动前的 Server DLL 路径。两组共用专属 Mihomo、512 条已抵达源站的实际连接、Helper 与同一份私有 Server 数据，逐次启动新的 Server 进程。第二对交换顺序。每次登录并预热同一组概览和详情读取，记录 500 ms 后的单点 PSS、RSS 与私有驻留，再对 24 组顺序请求以约 25 ms 采样。请求计时包括客户端 HTTP、JSON 反序列化和连接集合校验。输出的 `PROXY BENCHMARK INPUT` 与 `PROXY BENCHMARK RUN` 含制品摘要、原值和逐次时间。只采样管理 Server PID。结束后才向源站放行，必须收到全部原响应，且原发布修订保持一致。测量未强制 GC，观测峰值受采样间隔限制。
 
+受管 Mihomo 概览的前后配对复用相同的 512 连接及请求采样器。私有 systemd、D-Bus、挂载和网络中先通过既有 `native-mihomo-systemd` 夹具准备专属受管服务并完成原 IPC 补偿。设置 `RELAXKONOS_TEST_MIHOMO_HELPER`、`RELAXKONOS_TEST_MIHOMO_SERVER` 和 `RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE` 指向独立 Helper、候选 Server 和基线 Server 的 Release DLL。专属 runner 提供非 root UID/GID、临时工作目录、PAM 策略及仅由测试进程读取的 stdin 凭据。测量期间每个概览都必须返回 `Managed / Running / IntegrityVerified`，两版使用同一运行时 PID、原台账及活动连接。每轮突发请求后闲置 35 秒并以 100 ms 间隔读取五点，再访问概览与详情核对同一连接集合。原回执、运行时修订和发布状态保持一致，Helper 日志不得出现配置或恢复命令。
+
 `summarize_module_baseline.py <run-root> --output <summary.json>` 保留每轮结果与指标。启动期观测最大值、首次达到 ready+5s/35s 的点、阶段最后三点的中位数分别记录，缺失传播为 null。汇总时检查每轮退出与逐项业务回执、阶段样本数和指标完整性。结束时只处理本次父进程，Windows 为强制终止。停机后全树另行核验。
 
 ## 场景与交错顺序

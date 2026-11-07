@@ -285,7 +285,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         }
     }
 
-    private static LoginRequest ReadLogin()
+    internal static LoginRequest ReadLogin()
     {
         try
         {

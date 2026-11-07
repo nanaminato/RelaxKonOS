@@ -17,14 +17,37 @@ internal static class ProxyConnectionBenchmark
     internal static async Task RunAsync(string root, string socket, string baseline, string streaming, LoginRequest login,
         ProxySystemdGuardProbe guard, Func<RuntimeArchiveState> nativeState)
     {
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(85));
-        var ct = budget.Token;
         var revision = nativeState().Installation.StateRevision;
         await guard.VerifyTrafficAsync();
+        await RunAsync(baseline, streaming, "buffered", "streaming", login, guard.RuntimeProxy, PrepareAsync, VerifyAsync,
+            requireManaged: false);
+
+        async Task<ProcessStartInfo> PrepareAsync(string assembly)
+        {
+            var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
+            start.Environment["Modules__Proxy__Enabled"] = "true";
+            start.Environment["Identity__LinuxPamTransport"] = "helper";
+            return start;
+        }
+
+        async Task VerifyAsync()
+        {
+            await guard.VerifyTrafficAsync();
+            if (nativeState().Installation.StateRevision != revision)
+                throw new InvalidOperationException("The paired read workload advanced the original publication revision.");
+        }
+    }
+
+    internal static async Task RunAsync(string baseline, string candidate, string baselineMode, string candidateMode,
+        LoginRequest login, Uri runtimeProxy, Func<string, Task<ProcessStartInfo>> prepare, Func<Task> verify,
+        bool requireManaged)
+    {
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(requireManaged ? 420 : 85));
+        var ct = budget.Token;
         using var origin = new TcpListener(IPAddress.Parse("93.184.216.34"), 0);
         origin.Start(ConnectionCount);
         var destination = ((IPEndPoint)origin.LocalEndpoint).ToString();
-        using var proxy = new HttpClient(new SocketsHttpHandler { Proxy = new WebProxy(guard.RuntimeProxy), UseProxy = true })
+        using var proxy = new HttpClient(new SocketsHttpHandler { Proxy = new WebProxy(runtimeProxy), UseProxy = true })
             { Timeout = Timeout.InfiniteTimeSpan };
         var replies = Enumerable.Range(0, ConnectionCount).Select(_ => proxy.GetStringAsync($"http://{destination}/", ct)).ToArray();
         var connections = new List<TcpClient>(ConnectionCount);
@@ -34,7 +57,7 @@ internal static class ProxyConnectionBenchmark
                 connections.Add(await origin.AcceptTcpClientAsync(ct));
             await Task.WhenAll(connections.Select(connection => ReadHeadersAsync(connection, ct)));
 
-            var inputs = new[] { (Mode: "buffered", Assembly: baseline), (Mode: "streaming", Assembly: streaming) };
+            var inputs = new[] { (Mode: baselineMode, Assembly: baseline), (Mode: candidateMode, Assembly: candidate) };
             foreach (var input in inputs)
                 Console.WriteLine("PROXY BENCHMARK INPUT " + JsonSerializer.Serialize(new
                 {
@@ -46,16 +69,14 @@ internal static class ProxyConnectionBenchmark
             {
                 foreach (var input in pair == 2 ? inputs.Reverse() : inputs)
                 {
-                    var start = await ManagedServiceChecks.PrepareFullServerAsync(input.Assembly, socket, root, reuse: true);
-                    start.Environment["Modules__Proxy__Enabled"] = "true";
-                    start.Environment["Identity__LinuxPamTransport"] = "helper";
+                    var start = await prepare(input.Assembly);
                     using var process = ProxyAuthenticatedPublicationChecks.Start(start);
                     try
                     {
                         using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(process, login, ct);
-                        var ids = await ObserveAsync(client, destination, ct);
+                        var ids = await ObserveAsync(client, destination, requireManaged, ct);
                         original ??= ids;
-                        if (!ids.SequenceEqual(original) || nativeState().Installation.StateRevision != revision || replies.Any(reply => reply.IsCompleted))
+                        if (!ids.SequenceEqual(original) || replies.Any(reply => reply.IsCompleted))
                             throw new InvalidOperationException("The paired workload changed a connection or the original publication revision.");
                         await Task.Delay(500, ct);
                         var idle = ReadMemory(process.Id);
@@ -68,9 +89,21 @@ internal static class ProxyConnectionBenchmark
                             samples.Add(ReadMemory(process.Id));
                         }
                         await load;
+                        var cooldown = new List<MemoryPoint>();
+                        if (requireManaged)
+                        {
+                            await Task.Delay(TimeSpan.FromSeconds(35), ct);
+                            for (var sample = 0; sample < 5; sample++)
+                            {
+                                cooldown.Add(ReadMemory(process.Id));
+                                await Task.Delay(100, ct);
+                            }
+                            if (!(await ObserveAsync(client, destination, requireManaged, ct)).SequenceEqual(original))
+                                throw new InvalidOperationException("The original connections did not survive the cooldown.");
+                        }
                         Console.WriteLine("PROXY BENCHMARK RUN " + JsonSerializer.Serialize(new
                         {
-                            Pair = pair, input.Mode, ConnectionCount, RequestsPerRoute, Idle = idle, Samples = samples, PairRequestMs = timings
+                            Pair = pair, input.Mode, ConnectionCount, RequestsPerRoute, Idle = idle, Samples = samples, Cooldown = cooldown, PairRequestMs = timings
                         }));
 
                         async Task ObserveRepeatedlyAsync()
@@ -78,7 +111,7 @@ internal static class ProxyConnectionBenchmark
                             for (var i = 0; i < RequestsPerRoute; i++)
                             {
                                 var watch = Stopwatch.StartNew();
-                                var current = await ObserveAsync(client, destination, ct);
+                                var current = await ObserveAsync(client, destination, requireManaged, ct);
                                 timings.Add(watch.Elapsed.TotalMilliseconds);
                                 if (!current.SequenceEqual(original))
                                     throw new InvalidOperationException("A measured request saw a different active connection set.");
@@ -86,15 +119,14 @@ internal static class ProxyConnectionBenchmark
                         }
                     }
                     finally { await ProxyAuthenticatedPublicationChecks.StopAsync(process); }
+                    await verify();
                 }
             }
             await Task.WhenAll(connections.Select(connection => connection.GetStream().WriteAsync(
                 "HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nproxy-ok"u8.ToArray(), ct).AsTask()));
             if ((await Task.WhenAll(replies)).Any(reply => reply != "proxy-ok"))
                 throw new InvalidOperationException("An original benchmark connection failed to forward its response.");
-            await guard.VerifyTrafficAsync();
-            if (nativeState().Installation.StateRevision != revision)
-                throw new InvalidOperationException("The paired read workload advanced the original publication revision.");
+            await verify();
             Console.WriteLine("PASS PAIRED MIHOMO CONNECTION BENCHMARK: 512 original connections, six authenticated Server runs, all origin responses delivered");
         }
         finally
@@ -106,11 +138,12 @@ internal static class ProxyConnectionBenchmark
         }
     }
 
-    private static async Task<string[]> ObserveAsync(HttpClient client, string destination, CancellationToken ct)
+    private static async Task<string[]> ObserveAsync(HttpClient client, string destination, bool requireManaged, CancellationToken ct)
     {
         var overview = await client.GetFromJsonAsync<ProxyOverviewDto>(ProxyApiRoutes.Overview, RelaxKonOSJsonOptions.Default, ct);
         var connections = await client.GetFromJsonAsync<ProxyConnectionDto[]>(ProxyApiRoutes.Connections, RelaxKonOSJsonOptions.Default, ct);
         if (overview is not { ActiveConnections: ConnectionCount, Health.ControllerReachable: true } || connections?.Length != ConnectionCount
+            || (requireManaged && overview.Runtime is not { Mode: ProxyRuntimeMode.Managed, State: ProxyRuntimeState.Running, IntegrityVerified: true })
             || connections.Any(connection => connection.Destination != destination))
             throw new InvalidOperationException($"Expected {ConnectionCount} held native connections; overview={overview?.ActiveConnections}, details={connections?.Length}.");
         return connections.Select(connection => connection.Id).Order(StringComparer.Ordinal).ToArray();

@@ -204,6 +204,38 @@ internal static class MihomoIpcStartupAcceptance
             || await ReadRuntimePidAsync() != pidBefore || !await probe(port))
             throw new InvalidOperationException("Rejected TUN activation changed the confirmed native publication, network or recovery authority.");
         Console.WriteLine($"PASS MIHOMO CONFIRMED TUN GATE: original compensation {interrupted}, native PID preserved, no marker or controller request");
+
+        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE") is { Length: > 0 } baseline)
+        {
+            var login = ProxyAuthenticatedPublicationChecks.ReadLogin();
+            start.Environment["Modules__Proxy__Enabled"] = "true";
+            start.Environment["Identity__LinuxPamTransport"] = "helper";
+            await using var helper = await StartHelperAsync(helperAssembly, config, transport);
+            await ProxyConnectionBenchmark.RunAsync(baseline, serverAssembly, "separate-observations", "shared-observation",
+                login, new Uri($"http://127.0.0.1:{port}/"), PrepareAsync, VerifyAsync, requireManaged: true);
+            var log = await helper.StopAsync(drainCompletedRequests: true);
+            if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
+                || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
+                throw new InvalidOperationException("The read workload dispatched a native publication action.");
+            Console.WriteLine($"PASS MANAGED MIHOMO OVERVIEW BENCHMARK: native PID {runtimePid}, original receipt {interrupted}, no configure or recover");
+
+            Task<ProcessStartInfo> PrepareAsync(string assembly)
+            {
+                start.ArgumentList[^1] = Path.GetFullPath(assembly);
+                return Task.FromResult(start);
+            }
+
+            async Task VerifyAsync()
+            {
+                var state = await lifecycle.QueryAsync(default, interrupted);
+                var publication = await startupStore.ReadAsync(default);
+                if (state.Receipt != final.Receipt || state.Installation.StateRevision != final.Installation.StateRevision
+                    || state.ConfigurationIdentity != final.ConfigurationIdentity || publication.Revision != publicationBefore.Revision
+                    || publication.Identity != publicationBefore.Identity || publication.Pending is not null
+                    || await ReadRuntimePidAsync() != pidBefore || !await probe(port))
+                    throw new InvalidOperationException("The read workload changed the original runtime, publication or recovery receipt.");
+            }
+        }
     }
 
     private static async Task<string> ReadNetworkAsync() =>

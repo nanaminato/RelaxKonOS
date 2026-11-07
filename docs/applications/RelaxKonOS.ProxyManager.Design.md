@@ -4516,3 +4516,5 @@ Linux 完整认证 HTTP 已验证解析代次在同一 Server 进程内闲时卸
 Mihomo 概览在一次请求内共用一次控制器版本探测和一次 Core 恢复状态读取。独立运行时读取每次自行探测。控制器拒绝认证时，运行时仍可显示 Running，管理健康显示认证失败，连接数为零。若 Core 存在待恢复责任，健康继续显示恢复状态。
 
 Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。完整认证 Server 重启及连接解析器卸载与重载期间，原连接持续转发。验收范围见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览的单次观测)。
+
+概览与详情的两版配对测量共用同一受管 Mihomo 和 512 条真实代理连接。六轮均核验运行时完整性，全部原连接完成转发，原发布与恢复回执保持一致。Proxy 管理模块保持常驻。隔离负载的内存及延迟数据见[配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-受管-mihomo-概览的配对驻留测量)。
