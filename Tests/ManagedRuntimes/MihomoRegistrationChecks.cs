@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.Privileged;
@@ -55,6 +56,7 @@ internal static class MihomoRegistrationChecks
             && services.GetRequiredService<MihomoRemovalPublicationService>() is not null,
             "Default runtime and publication coordinators resolve with the current contracts");
         Check(new[] { typeof(MihomoConfigurationPublicationService), typeof(MihomoInstallationPublicationService), typeof(MihomoRemovalPublicationService), typeof(MihomoRuntimeRecoveryService) }
+            .Append(typeof(MihomoInstallationBootstrapService))
             .All(type => builder.Services.Single(x => x.ServiceType == type).Lifetime == ServiceLifetime.Transient),
             "Publication coordinators and manual recovery have per-resolution instances and retain the singleton publication authority");
         Check(scope.ServiceProvider.GetRequiredService<IProxyConfigurationTransactionService>() is ProxyConfigurationTransactionService
@@ -98,11 +100,20 @@ internal static class MihomoRegistrationChecks
         Check(services.GetRequiredService<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>() is not null,
             "Runtime service resolves alongside the real download-proxy resolver without a construction cycle");
         builder.Services.AddSingleton<MihomoSettingsService>(_ => throw new Exception("Safety executor constructed the settings writer"));
-        var handlers = new List<ControllerProbeHandler>();
+        builder.Services.AddTransient<MihomoInstallationBootstrapService>(_ => throw new Exception("The idle ledger constructed the installation bootstrap."));
+        builder.Services.AddTransient<MihomoInstallationPublicationService>(_ => throw new Exception("The idle ledger constructed an installation publisher."));
+        builder.Services.AddTransient<MihomoRemovalPublicationService>(_ => throw new Exception("The idle ledger constructed a removal publisher."));
+        var paths = new ProbePaths(temporary.Path);
+        builder.Services.AddSingleton<IProxyPlatformPaths>(paths);
+        var handlers = System.Threading.Channels.Channel.CreateUnbounded<ControllerProbeHandler>();
+        var handlerCount = 0;
+        async Task<ControllerProbeHandler> NextHandlerAsync() =>
+            await handlers.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         builder.Services.AddTransient<IMihomoControllerClient>(provider =>
         {
             var handler = new ControllerProbeHandler();
-            handlers.Add(handler);
+            Interlocked.Increment(ref handlerCount);
+            handlers.Writer.TryWrite(handler);
             return new MihomoControllerClient(new HttpClient(handler),
                 provider.GetRequiredService<IProxyControllerSecretStore>(), provider.GetRequiredService<MihomoControllerOptions>());
         });
@@ -111,18 +122,42 @@ internal static class MihomoRegistrationChecks
             using var recovery = ActivatorUtilities.CreateInstance<ProxyRecoveryHostedService>(tunServices);
             var runtime = tunServices.GetRequiredService<IProxyTunRuntimeController>();
             Check(tunServices.GetRequiredService<IProxyTunSafetyService>() is ProxyTunSafetyService
-                && runtime is ScopedProxyTunRuntimeController && handlers.Count == 0,
+                && runtime is ScopedProxyTunRuntimeController && handlerCount == 0,
                 "Production TUN startup constructs neither a settings writer nor an HTTP controller");
             for (var call = 1; call <= 2; call++)
             {
                 var pending = runtime.IsEnabledAsync(default);
-                var handler = handlers[call - 1];
+                var handler = await NextHandlerAsync();
                 await handler.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
                 Check(!pending.IsCompleted && !handler.Disposed, "TUN scope keeps the controller through the actual response task");
                 handler.Reply.SetResult(new(System.Net.HttpStatusCode.OK) { Content = new StringContent("{}") });
-                Check((await pending.WaitAsync(TimeSpan.FromSeconds(5))).Succeeded && handler.Disposed && handlers.Count == call,
+                Check((await pending.WaitAsync(TimeSpan.FromSeconds(5))).Succeeded && handler.Disposed && handlerCount == call,
                     "Each completed TUN observation disposes its own controller scope");
             }
+            var manager = tunServices.GetRequiredService<IProxyRuntimeManager>();
+            Check(manager is MihomoRuntimeManager && ReferenceEquals(manager, tunServices.GetRequiredService<IMihomoConfigurationValidator>())
+                && tunServices.GetRequiredService<RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService>() is not null && handlerCount == 2,
+                "Core runtime and installation authority resolve without constructing a controller or publication executor.");
+            const string version = "v1.19.30";
+            var release = Directory.CreateDirectory(System.IO.Path.Combine(paths.GetEngineVersionsDirectory(MihomoEngine.Id), version + "-" + MihomoRuntimeManifest.CurrentRid()));
+            File.WriteAllText(System.IO.Path.Combine(release.FullName, OperatingSystem.IsWindows() ? "mihomo.exe" : "mihomo"), "");
+            File.WriteAllText(System.IO.Path.Combine(paths.GetStateDirectory(), "mihomo-runtime.json"),
+                System.Text.Json.JsonSerializer.Serialize(new { ActiveVersion = version, ActivatedAt = DateTimeOffset.UtcNow }));
+            var status = manager.GetAsync(MihomoEngine.Id, default);
+            var statusHandler = await NextHandlerAsync();
+            await statusHandler.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(!status.IsCompleted && !statusHandler.Disposed, "Runtime status retains the controller until the actual response.");
+            statusHandler.Reply.SetResult(new(System.Net.HttpStatusCode.Unauthorized) { Content = new StringContent("") });
+            Check((await status.WaitAsync(TimeSpan.FromSeconds(5))).State == ProxyRuntimeState.Running && statusHandler.Disposed,
+                "A listening controller still counts as running on HTTP 401, and its scope is released.");
+            using var cancelled = new CancellationTokenSource();
+            status = manager.GetAsync(MihomoEngine.Id, cancelled.Token);
+            var cancelledHandler = await NextHandlerAsync();
+            await cancelledHandler.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cancelled.Cancel();
+            try { await status.WaitAsync(TimeSpan.FromSeconds(5)); throw new Exception("Cancelled status reported a runtime state."); }
+            catch (OperationCanceledException) when (status.IsCanceled) { }
+            Check(cancelledHandler.Disposed, "A cancelled probe releases only its own controller scope.");
         }
         builder.Services.AddSingleton<IMihomoControllerClient>(_ => throw new Exception("Guard constructed a controller client"));
         using var guardServices = builder.Services.BuildServiceProvider();
@@ -130,6 +165,14 @@ internal static class MihomoRegistrationChecks
         Check(guardServices.GetRequiredService<IProxySystemProxyReconciler>() is MihomoSystemProxyReconciler,
             "Production guard constructs without the settings writer, TUN controller or direct controller client");
         return count;
+    }
+    private sealed class ProbePaths(string root) : IProxyPlatformPaths
+    {
+        public string GetStateDirectory() => root;
+        public string GetProtectedConfigurationDirectory() => root;
+        public string GetEngineVersionsDirectory(string engineId) => root;
+        public string GetEngineDataDirectory(string engineId) => root;
+        public string GetSanitizedLogDirectory() => root;
     }
     private sealed class ControllerProbeHandler : HttpMessageHandler
     {

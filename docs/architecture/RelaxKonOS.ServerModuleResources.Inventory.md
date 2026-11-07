@@ -50,7 +50,7 @@
 | Docker | Core `DockerStackOperationStore` 持久 stack/audit、Compose 定义，真实 Engine 状态 | 模块 coordinator startup reconcile；不自动重跑中断的 mutation；未知存储/Engine 结果阻止停用 |
 | Certificate | Core certificate files/metadata/deployment、`HostOperationJournal`；模块 `data/certificate-operations.json`、renewal attempt/run repositories；CA 实际订单 | operation store/renewal worker 与挑战 owner；失败清理留保护。尚未完成轻调度及 CA/Nginx 联合中断恢复矩阵，不可宣称已可整体休眠 |
 | WebServer | `data/website-publications.json`、Core Nginx metadata/operation journal、真实配置/服务和证书部署 | publication coordinator startup observe/reconcile；不重放原发布请求；证书/挑战依赖和故障清理结束前保留 owner |
-| Proxy | Mihomo publication store/授权/设置及 TUN marker；SQLite profile/subscription repositories；Proxy operation/audit；sing-box store/授权到期状态；Squid configuration | Core publication scheduler/guard/TUN recovery/expiry 为唯一持续安全 owner；管理操作保存完整执行责任。不能因模块 disabled 或 scope disposed 丢弃 recovery index |
+| Proxy | Mihomo publication store/授权/设置及 TUN marker；SQLite profile/subscription repositories；Proxy operation/audit；sing-box store/授权到期状态；Squid configuration | Core publication scheduler/guard/TUN recovery/expiry 为唯一持续安全 owner；管理操作保存完整执行责任。Mihomo 实例锁和安装台账常驻，状态/就绪控制器及安装/移除发布执行器按任务解析。模块停用或作用域释放后，原恢复索引继续负责 |
 
 ## 4. 安装模块和不可漏算的 Host 根
 

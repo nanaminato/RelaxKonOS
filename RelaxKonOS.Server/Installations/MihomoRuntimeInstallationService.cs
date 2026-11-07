@@ -9,8 +9,7 @@ namespace RelaxKonOS.Server.Installations;
 /// <summary>One installation ledger entry: Linux uses publication-aware signed plans;
 /// Windows uses the selected official version or user-supplied archive and its independent service host.</summary>
 public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore store, MihomoRuntimeService runtime,
-    MihomoInstallationBootstrapService bootstrap, MihomoInstallationPublicationService installation,
-    MihomoRemovalPublicationService removal, MihomoRuntimeManager native, InstallationFileReferenceStore files,
+    IServiceScopeFactory scopes, MihomoRuntimeManager native, InstallationFileReferenceStore files,
     RelaxKonOS.Server.Components.ComponentLifecycleRegistry? components = null,
     RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport? helper = null) : InstallationService<MihomoInstallationRequest>
 {
@@ -91,10 +90,13 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
         await progress.ReportAsync(new(InstallationStage.Preflight, Cancellable: kind != InstallationOperationKind.Uninstall), ct);
         try
         {
+            await using var scope = scopes.CreateAsyncScope();
             var result = kind switch
             {
-                InstallationOperationKind.Install => await bootstrap.InstallAsync(progress.OperationId, request.Plan!, ct),
-                InstallationOperationKind.Uninstall => await removal.RemoveAsync(progress.OperationId, request.Plan!, ct),
+                InstallationOperationKind.Install => await scope.ServiceProvider.GetRequiredService<MihomoInstallationBootstrapService>()
+                    .InstallAsync(progress.OperationId, request.Plan!, ct),
+                InstallationOperationKind.Uninstall => await scope.ServiceProvider.GetRequiredService<MihomoRemovalPublicationService>()
+                    .RemoveAsync(progress.OperationId, request.Plan!, ct),
                 _ => await ExecuteProgramAsync(progress.OperationId, request.Plan!, ct)
             };
             RequireCompleted(result, progress.OperationId);
@@ -158,11 +160,12 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
                     if (state.Pending is { } pending)
                     {
                         if (pending.OperationId != operationId) return Failed("runtime.recovery_target_conflict");
+                        await using var scope = scopes.CreateAsyncScope();
                         MihomoPublicationResult publication;
                         if (kind == InstallationOperationKind.Install && pending.InstallationPlan is not null)
-                            publication = await installation.RecoverUnderGateAsync(state, ct);
+                            publication = await scope.ServiceProvider.GetRequiredService<MihomoInstallationPublicationService>().RecoverUnderGateAsync(state, ct);
                         else if (kind == InstallationOperationKind.Uninstall && pending.RemovalPlan is not null)
-                            publication = await removal.RecoverUnderGateAsync(state, ct);
+                            publication = await scope.ServiceProvider.GetRequiredService<MihomoRemovalPublicationService>().RecoverUnderGateAsync(state, ct);
                         else return Failed("runtime.publication_unconfirmed");
                         return FromPublication(publication, operationId);
                     }

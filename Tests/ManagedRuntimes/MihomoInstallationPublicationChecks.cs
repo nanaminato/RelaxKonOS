@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Installations;
@@ -297,12 +298,17 @@ internal static class MihomoInstallationPublicationChecks
         internal TaskCompletionSource CancelSignal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         internal string LedgerRoot => root;
+        private ServiceProvider? ledgerServices;
         internal MihomoRuntimeInstallationService LedgerAdapter()
         {
             var provider = new MihomoRuntimeAuthorizationProvider(Store, this, this);
             var runtime = new MihomoRuntimeService(this, Store, provider, this, new DirectDownloads());
-            return new(Store, runtime, new(Store, Service, this, this, new() { Endpoint = new("http://127.0.0.1:19090/") }), Service,
-                new(Store, runtime, this, MihomoRemovalHostFixture.Files(this)), null!, null!);
+            ledgerServices ??= new ServiceCollection()
+                .AddTransient(_ => new MihomoInstallationBootstrapService(Store, Service, this, this, new() { Endpoint = new("http://127.0.0.1:19090/") }))
+                .AddTransient(_ => Service)
+                .AddTransient(_ => new MihomoRemovalPublicationService(Store, runtime, this, MihomoRemovalHostFixture.Files(this)))
+                .BuildServiceProvider();
+            return new(Store, runtime, ledgerServices.GetRequiredService<IServiceScopeFactory>(), null!, null!);
         }
 
         internal int SettingsReads, SecretCreations;
@@ -462,6 +468,6 @@ internal static class MihomoInstallationPublicationChecks
         public string GetEngineDataDirectory(string engineId) => Path.Combine(root, "data");
         public string GetStateDirectory() => Path.Combine(root, "state");
         public string GetSanitizedLogDirectory() => Path.Combine(root, "logs");
-        public void Dispose() => Directory.Delete(root, true);
+        public void Dispose() { ledgerServices?.Dispose(); Directory.Delete(root, true); }
     }
 }

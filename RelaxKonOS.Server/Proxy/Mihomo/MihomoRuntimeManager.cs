@@ -24,7 +24,7 @@ public sealed class MihomoRuntimeManager(
     IOutboundProxyHttpClientFactory httpClients,
     IProxyPrivilegedOperations privileged,
     IMihomoRuntimeProbe probe,
-    IMihomoControllerClient controller,
+    IServiceScopeFactory scopes,
     IProxyControllerSecretStore controllerSecrets,
     MihomoControllerOptions controllerOptions,
     MihomoRuntimeManifest manifest,
@@ -157,6 +157,8 @@ public sealed class MihomoRuntimeManager(
 
     private async Task<ProxyRuntimeState> RunningStateAsync(CancellationToken cancellationToken)
     {
+        await using var scope = scopes.CreateAsyncScope();
+        var controller = scope.ServiceProvider.GetRequiredService<IMihomoControllerClient>();
         // An HTTP 401 proves Mihomo is listening even though its credential is wrong; the health
         // projection reports that mismatch separately.
         var controllerHealth = await controller.IsReachableAsync(cancellationToken);
@@ -482,6 +484,8 @@ public sealed class MihomoRuntimeManager(
     /// </summary>
     private async Task<ControllerResult<bool>> WaitForControllerReadinessAsync(CancellationToken cancellationToken)
     {
+        await using var scope = scopes.CreateAsyncScope();
+        var controller = scope.ServiceProvider.GetRequiredService<IMihomoControllerClient>();
         var deadline = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * controllerOptions.StartupReadinessSeconds);
         ControllerResult<bool> result;
         var attempts = 0;

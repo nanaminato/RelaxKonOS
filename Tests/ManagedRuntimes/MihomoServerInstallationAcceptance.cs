@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Common;
@@ -63,8 +64,13 @@ internal static class MihomoServerInstallationAcceptance
             store = new(paths, DataProtectionProvider.Create(keys));
             var restarted = Compose(store);
             var unusedSettings = MihomoPublicationTransactionChecks.Stub<IProxySettingsReader>(_ => throw new Exception("Ledger recovery read settings"));
+            await using var ledgerServices = new ServiceCollection()
+                .AddTransient(_ => new MihomoInstallationBootstrapService(store, restarted.Install, unusedSettings, paths, new()))
+                .AddTransient(_ => restarted.Install)
+                .AddTransient(_ => new MihomoRemovalPublicationService(store, restarted.Runtime, paths, MihomoRemovalHostFixture.Files(paths)))
+                .BuildServiceProvider();
             var domain = new MihomoRuntimeInstallationService(store, restarted.Runtime,
-                new(store, restarted.Install, unusedSettings, paths, new()), restarted.Install, new(store, restarted.Runtime, paths, MihomoRemovalHostFixture.Files(paths)), null!, null!);
+                ledgerServices.GetRequiredService<IServiceScopeFactory>(), null!, null!);
             var coordinator = new InstallationCoordinator(ledger, [domain], lifetime);
             await coordinator.StartAsync(default);
             Check(coordinator.Get(operationId)!.Operation.State == InstallationOperationState.Succeeded,

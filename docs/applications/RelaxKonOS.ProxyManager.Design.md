@@ -4496,3 +4496,5 @@ Core TUN worker 停止接收新扫描后，等待已发出的禁用请求、实�
 系统代理 guard 停机时排空已派发的对账任务，Helper 响应返回前保留原发布锁。停机本身不会撤销系统代理设置。Linux 已验证真实环境改写、原日志恢复及外部修改保留。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-系统代理-guard-的停机排空)。
 
 Mihomo 发布恢复调度器停机时等待已开始的原回执核验、应用台账写入和异步作用域清理。恢复仍按原 operationId 与 Helper 证据执行。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-mihomo-发布恢复的停机排空)。
+
+Mihomo 状态读取按调用使用独立控制器，启动就绪检查在一次检查期间复用同一个控制器。安装与移除的执行作用域由原安装台账适配器按需创建。状态刷新不会触发配置发布或服务启停，原发布锁、系统代理、TUN 与恢复责任仍由 Core 持续负责。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-运行时与安装执行作用域)。

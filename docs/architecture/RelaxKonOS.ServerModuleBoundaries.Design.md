@@ -1648,3 +1648,13 @@ Linux x64 Release 私有 systemd 与真实 Mihomo 用原配置操作 `d3397e41-3
 同一归档复验完整非 root Server 与独立生产 Helper 的启动回执查询及中断补偿，原操作分别为 `fea2da8c-c881-4e87-823e-1b82ba5ad97f` 和 `133314fd-b76a-448a-8ad1-b03fddb4e75a`。Linux 原生 171 项、Windows 发布事务 112 项通过。已完成请求的旧夹具改用 SIGTERM 排空 Helper 日志，实际中断仍强制终止。专属 cgroup 已清理，宿主共享服务及代理文件指纹一致。日志为 `.artifacts/mb04-mihomo-publication-drain-verified.log`，归档 SHA-256 为 `ada60f63cd5a884270d7b3391e16354efb078d441db97d2abc07fe74e0f7469e`。
 
 完整 Server 的 SIGTERM 与此排空屏障的联合实测仍开放。安装和移除使用同一调度器停机契约，各自的在途停机尚未纳入本轮。Proxy 保持 resident。
+
+### MB-04 Mihomo 运行时与安装执行作用域
+
+根引用审计定位到两个长期持有者。Mihomo 运行时管理器持有直接 HTTP 控制器，安装台账适配器经引导和移除协调器持有发布执行图。运行时管理器继续持有原实例锁，只在状态探测或整个启动就绪循环创建控制器作用域。安装台账适配器继续管理原执行与取消身份，在实际执行或读取原待恢复事务时解析发布协调器，收尾后释放。Core 安全调度器、原发布锁、原领域台账及 Helper 协议继续承担各自责任。
+
+Windows 与 Linux Release 的注册检查各 23 项通过。空闲解析两个根服务不会创建执行图。状态探测持有控制器直至实际响应，401 仍按原规则表明控制器在监听，取消后释放本次作用域。Windows 安装发布 88 项、移除发布 92 项、安装协调器 47 项和配置发布 112 项通过，Core Proxy 安全与模块边界回归也通过。首轮注册夹具在异步文件读取完成前读取控制器列表，改为等待创建信号后复测通过。
+
+Linux 私有 systemd 172 项通过。连续状态读取使用真实认证控制器，持续验证真实 HTTP 转发，Helper 原配置修订与派发次数一致。原配置/profile 恢复排空 `bfe20c26-8db8-4c9d-9671-c2d149604702`、独立 Helper 原失败回执 `a2b6710c-746b-4033-a683-f2b6ed970226` 与真实中断补偿 `32bd2440-6fc3-4f31-97c0-3d5ee95ca8dc` 均复验。已有受管安装、移除回执沿用原台账。首轮 Linux 状态夹具注入的凭据替身拒绝控制器读取，改由生产凭据存储读取夹具预置的加密凭据。专属 cgroup 清理，宿主服务及代理文件指纹一致。日志为 `.artifacts/mb04-mihomo-graph-final-live.log`，归档 SHA-256 为 `26e3a6df41adfc20eeeda8f6d6147fef4c612eeb5382395b7ef770b18e2f83f4`。
+
+原生 Windows 启动就绪循环、整体管理图的动态休眠与生产内存测量仍待验收。Proxy 保持 resident。

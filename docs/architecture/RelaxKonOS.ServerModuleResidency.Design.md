@@ -416,3 +416,5 @@ MB-04 Core TUN worker 停机时排空已发出的原禁用和路由核验，未�
 MB-04 Core 系统代理 guard 保留已派发的原对账任务和共享发布锁，直到 Helper 响应和执行作用域结束。系统代理环境与原恢复日志由现有 Helper 事务负责。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-系统代理-guard-的停机排空)。
 
 MB-04 Core Mihomo 发布恢复调度器停机时等待原回执、终态持久化与异步释放。原持久索引及领域台账继续负责调度与恢复。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-mihomo-发布恢复的停机排空)。
+
+MB-04 缩短了 Mihomo 运行时管理器的控制器和安装台账适配器的发布执行图寿命。原锁、回执和安全 worker 仍由 Core 负责。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-运行时与安装执行作用域)。

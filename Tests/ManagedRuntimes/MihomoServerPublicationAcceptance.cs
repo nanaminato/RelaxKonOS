@@ -167,6 +167,25 @@ internal static class MihomoServerPublicationAcceptance
                 && (await profiles.GetAsync(nextProfile.Id, default)) is { IsActive: true, Revision: 2 }
                 && !(await profiles.GetAsync(profileId, default))!.IsActive && await probe(originalPort + 2),
                 "Server restart reconciles real SQLite profile selection without repeating native configuration");
+            var controllerServices = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+            controllerServices.Configuration["Proxy:Mihomo:Controller:Endpoint"] = $"http://127.0.0.1:{original.ControllerPort}/";
+            controllerServices.AddProxyRuntimeServices();
+            controllerServices.Services.AddSingleton<IDataProtectionProvider>(protection);
+            var controllerSecret = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "data")).FullName, "proxy-controller.secret");
+            await File.WriteAllTextAsync(controllerSecret, protection.CreateProtector("RelaxKonOS.Proxy.ControllerSecret.v1").Protect(original.ControllerSecret));
+            await using (var controllers = controllerServices.Services.BuildServiceProvider())
+            {
+                var manager = new MihomoRuntimeManager(paths, null!, null!, null!, controllers.GetRequiredService<IServiceScopeFactory>(),
+                    paths, controllers.GetRequiredService<MihomoControllerOptions>(), new(), managedRuntime: Runtime(store));
+                var beforeStatus = await lifecycle.QueryAsync(default);
+                var firstStatus = await manager.GetAsync(MihomoEngine.Id, default);
+                var nextStatus = await manager.GetAsync(MihomoEngine.Id, default);
+                Check(firstStatus is { State: ProxyRuntimeState.Running, IntegrityVerified: true } && firstStatus == nextStatus
+                    && (await lifecycle.QueryAsync(default)).Installation.StateRevision == beforeStatus.Installation.StateRevision
+                    && transport.ConfigureCalls == beforeProfileRecovery && await probe(originalPort + 2),
+                    "Scoped runtime status probes the real authenticated controller and leaves forwarding and publication intact.");
+                Console.WriteLine("PASS MIHOMO SCOPED RUNTIME STATUS: real controller and forwarding; no configuration mutation");
+            }
             var noOpApplication = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), publicationProfiles, paths,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:" + original.ControllerPort + "/") }, store,
                 settingsService: settings, managedPublication: Service(store), managedRuntime: Runtime(store));
