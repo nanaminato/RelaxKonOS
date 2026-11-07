@@ -1323,3 +1323,5 @@ MB-05 证书生产路由在 Linux Kestrel 夹具上通过真实客户端断线�
 Linux x64 Release 隔离 Nginx 发布恢复已走生产网站发布 HTTP 同键入口。原操作 663e2f69-beaa-4ea1-88e9-9178bf2d5421 在 Configuring 中断。恢复后的同键响应在写出前遇到真实客户端断线，实际响应退出前保留租约。后续重试返回原 Interrupted 回执及 website.site_application_unverified，HTTPS 继续代理，发布只重载一次。日志为 .artifacts/mb05-website-drain-live.log，归档 SHA-256 为 20a7a124f5311bc7b731d000d5516e87d3f2448eab6c0158ca11427b6740c6a7。故障由原协调器工作进程触发，Kestrel 夹具提供身份、响应屏障和租约观测。
 
 Linux x64 Release 另通过 Verifying 阶段的 HTTP 回执断线实机复测。原操作 d4a11877-ab18-40c6-a980-6785a37820e8 已持久化应用关联后中断，同键 HTTP 响应断线后排空。重试返回原 Interrupted / website.recheck_required，应用关联、HTTPS 和发布重载计数均符合预期，发布重载一次。日志为 .artifacts/mb05-website-verifying-drain-live.log，归档 SHA-256 为 b90a472b452bc97354656380639619cd762a124fed9f54ef77703e2d33dc4ce5。
+
+Linux x64 Release 通过独立 Nginx reload 的生产 HTTP 同键回执断线验收。原操作 4b43a6bc-375d-4257-8765-8b16899e8ee6 在真实 reload 后中断，原实例已从管理发现移除。客户端断开后，租约保持到回执响应退出，重试返回原 Interrupted 回执，原 Nginx 继续提供 HTTPS，日志只有一次 reload。同一制品的 Verifying 发布回归也通过。日志为 .artifacts/mb05-nginx-reload-drain-live.log 和 .artifacts/mb05-nginx-shared-replay-live.log。HTTP 身份、响应屏障和租约观测由 Kestrel 夹具提供。

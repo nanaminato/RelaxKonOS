@@ -84,7 +84,14 @@ internal static class NginxProcessRecoveryChecks
                     "The original instance must be absent from discovery when retrying.");
                 var manager = new WebServerManager([provider]);
                 var replay = await manager.ApplyLifecycleAsync(restored!.InstanceId, WebServerLifecycleAction.Reload, Key, Actor, default);
-                var reloadReplay = await manager.ReloadAsync(restored.InstanceId, Key, Actor, default);
+                var reloadReplay = await ReplayOverHttpAsync<WebServerOperationDto>(services =>
+                {
+                    services.AddSingleton<IWebServerManager>(manager);
+                    services.AddSingleton(provider);
+                    services.AddSingleton(store);
+                    services.AddSingleton(new WebServerMetadataRepository(new TestHostEnvironment(root), TestConfiguration()));
+                }, app => app.MapWebServerEndpoints(), WebServerApiRoutes.Reload.Replace("{id}", restored.InstanceId),
+                    Key, HostElevationCapability.NginxLifecycle, restored.InstanceId, null, CancellationToken.None);
                 using var reopenedStore = await OpenStoreAsync(root);
                 var reopened = await reopenedStore.GetAsync(operationId, default);
                 TestAssert.Assert(restored is { State: WebServerOperationState.Failed, Stage: "interrupted",
@@ -92,7 +99,7 @@ internal static class NginxProcessRecoveryChecks
                     && replay == restored && reloadReplay == restored && reopened == restored && CountReloads(root) == 1 && transport.Calls == 0,
                     "The original interrupted receipt must persist and the retry must preserve the single reload.");
                 await ObserveAsync(client, address, "after", nginx);
-                Console.WriteLine($"PASS NGINX LIVE CRASH RECOVERY: operation={operationId}; interrupted receipt persisted, reloads=1, original Nginx still serving");
+                Console.WriteLine($"PASS NGINX LIVE CRASH RECOVERY: operation={operationId}; interrupted receipt persisted, reloads=1, original Nginx still serving; HTTP response drained after disconnect");
             }
             finally
             {
@@ -258,8 +265,11 @@ internal static class NginxProcessRecoveryChecks
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, new TestResidentBackgroundLeases());
             await restarted.StartAsync(cancellationToken);
             var restored = restarted.Get(operationId);
-            var replay = await ReplayOverHttpAsync(restarted,
-                new(app.Id, running!.WebServerId, PublicationDomain, running.CertificateId, Confirmed: true), cancellationToken);
+            var publication = new PublishWebsiteRequest(app.Id, running!.WebServerId, PublicationDomain, running.CertificateId, Confirmed: true);
+            var replay = await ReplayOverHttpAsync<WebsitePublicationOperationDto>(services => services.AddSingleton(restarted),
+                app => app.MapWebsitePublicationEndpoints(), WebsitePublicationApiRoutes.Root, PublicationKey,
+                HostElevationCapability.NginxConfigurationWrite, publication.WebServerId,
+                () => JsonContent.Create(publication, options: RelaxKonOSJsonOptions.Default), cancellationToken);
             TestAssert.Assert(restored is { State: WebsitePublicationState.Interrupted }
                 && restored.RecoveryProblemCode == (configuring ? WebsitePublicationStore.SiteApplicationUnverified : "website.recheck_required")
                 && replay.RecoveryProblemCode == restored.RecoveryProblemCode && replay.OperationId == operationId && replay.State == restored.State && replay.ProblemCode == restored.ProblemCode
@@ -296,11 +306,15 @@ internal static class NginxProcessRecoveryChecks
         }
     }
 
-    private static async Task<WebsitePublicationOperationDto> ReplayOverHttpAsync(
-        WebsitePublicationCoordinator coordinator, PublishWebsiteRequest publication, CancellationToken ct)
+    private static async Task<TReceipt> ReplayOverHttpAsync<TReceipt>(Action<IServiceCollection> configure,
+        Action<WebApplication> map, string path, string key, HostElevationCapability capability, string target,
+        Func<HttpContent>? content, CancellationToken cancellationToken) where TReceipt : class
     {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(Budget);
+        var ct = deadline.Token;
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", Actor),
-            new Claim("jti", "publication-fixture"), new Claim("amr", "alias")], "Fixture"));
+            new Claim("name", Actor), new Claim("jti", "publication-fixture"), new Claim("amr", "alias")], "Fixture"));
         var elevations = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new ProgressTestMode(), new HostElevationSessionState());
         var leases = new TestResidentBackgroundLeases();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -315,7 +329,7 @@ internal static class NginxProcessRecoveryChecks
             options.AddPolicy(ApplicationDeploymentEndpoints.ManagePolicy, policy => policy.RequireAuthenticatedUser());
             options.AddPolicy(ApplicationDeploymentEndpoints.ReadPolicy, policy => policy.RequireAuthenticatedUser());
         });
-        builder.Services.AddSingleton(coordinator);
+        configure(builder.Services);
         builder.Services.AddSingleton<IHostElevationSessionStore>(elevations);
         builder.Services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver, ProgressTestMode>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>(leases);
@@ -334,7 +348,7 @@ internal static class NginxProcessRecoveryChecks
             finally { exited.TrySetResult(); }
         });
         app.UseAuthorization();
-        app.MapWebsitePublicationEndpoints();
+        map(app);
         await app.StartAsync(ct);
         using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false })
         {
@@ -361,15 +375,14 @@ internal static class NginxProcessRecoveryChecks
         using var response = await client.SendAsync(retry, ct);
         TestAssert.Assert(response.StatusCode == HttpStatusCode.Accepted,
             $"Website retry returned {response.StatusCode}: {await response.Content.ReadAsStringAsync(ct)}");
-        return await response.Content.ReadFromJsonAsync<WebsitePublicationOperationDto>(RelaxKonOSJsonOptions.Default, ct)
+        return await response.Content.ReadFromJsonAsync<TReceipt>(RelaxKonOSJsonOptions.Default, ct)
             ?? throw new InvalidOperationException("Missing website replay response.");
 
         HttpRequestMessage NewRequest(bool hold)
         {
-            elevations.Grant(principal, HostElevationCapability.NginxConfigurationWrite, publication.WebServerId, false, "fixture");
-            var request = new HttpRequestMessage(HttpMethod.Post, WebsitePublicationApiRoutes.Root)
-                { Content = JsonContent.Create(publication, options: RelaxKonOSJsonOptions.Default) };
-            request.Headers.Add("Idempotency-Key", PublicationKey);
+            elevations.Grant(principal, capability, target, false, "fixture");
+            var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = content?.Invoke() };
+            request.Headers.Add("Idempotency-Key", key);
             if (hold) request.Headers.Add("X-Hold-Receipt", "1");
             return request;
         }
