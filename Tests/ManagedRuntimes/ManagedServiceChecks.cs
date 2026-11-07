@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using RelaxKonOS.Server.Privileged;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -74,8 +76,17 @@ internal static class ManagedServiceChecks
             await using var host = new ServiceHost(executable is not null);
             ISingBoxNativeChecks natives = executable is null ? new NativeChecks() : new SingBoxNativeChecks();
 
+            await using var socket = executable is not null && OperatingSystem.IsLinux()
+                ? OpenSocket(root, states, host, natives) : null;
+            var transport = socket is null ? null : new UnixSocketPrivilegedOperationTransport(
+                new PrivilegedHelperOptions { SocketPath = socket.SocketPath },
+                NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+            Task<PrivilegedOperationResult> RequestAsync(PrivilegedOperationKind operation, ProxyServerHelperRequest? request) =>
+                transport is null ? Send(operation, request, root, states, host, natives)
+                    : transport.ExecuteAsync(new(operation, ProxyServer: request), default);
+
             // Status of a managed installation whose service was never registered.
-            var absent = await Send(PrivilegedOperationKind.ProxyServerStatus, null, root, states, host, natives);
+            var absent = await RequestAsync(PrivilegedOperationKind.ProxyServerStatus, null);
             var status = Read<ProxyServerStatus>(absent);
             Check(status is { Supported: true, Installed: true, Running: false, Applied: false, RecoveryRequired: false, Version: not null }
                 && status.Version == version && status.ConfigurationHash == identityA && status.ProblemCode is null,
@@ -83,14 +94,14 @@ internal static class ManagedServiceChecks
 
             // Validation only renders and checks; it never touches the service or the durable state.
             var revisionBefore = states.Read()!.Installation.StateRevision;
-            var validate = await Send(PrivilegedOperationKind.ProxyServerValidate, new(Action: null, Material: materialB), root, states, host, natives);
+            var validate = await RequestAsync(PrivilegedOperationKind.ProxyServerValidate, new(Action: null, Material: materialB));
             Check(validate.Success && Read<ProxyServerValidation>(validate).Valid && host.ConfigureCalls == 0
                 && states.Read()!.Installation.StateRevision == revisionBefore
                 && Digest(await File.ReadAllBytesAsync(Path.Combine(root, "config.json"))) == identityA,
                 "Validation uses the recorded program without publishing the candidate");
 
             // First publication registers the recorded program and commits the new configuration identity.
-            var apply = await Send(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialB), root, states, host, natives);
+            var apply = await RequestAsync(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialB));
             var identityB = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(materialB)));
             var applied = Read<ProxyServerStatus>(apply);
             Check(apply.Success && host.ConfigureCalls == 1 && applied.Running == false && applied.ConfigurationHash == identityB
@@ -100,13 +111,13 @@ internal static class ManagedServiceChecks
                 "The replaced configuration is retained for the Server's own rollback");
 
             // Start applies the published identity and is only reported applied once the process ran it.
-            var start = await Send(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Start), root, states, host, natives);
+            var start = await RequestAsync(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Start));
             var running = Read<ProxyServerStatus>(start);
             Check(start.Success && running is { Running: true, Applied: true } && running.ConfigurationHash == identityB,
                 "Start applies the committed identity and reports it only after the process used it");
 
             // Publishing while running preserves the run state across the stop/configure/start sequence.
-            var republish = await Send(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA), root, states, host, natives);
+            var republish = await RequestAsync(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA));
             var republished = Read<ProxyServerStatus>(republish);
             Check(republish.Success && republished is { Running: true, Applied: true } && republished.ConfigurationHash == identityA
                 && host.Stops == 1 && host.Starts == 2 && states.Read()!.ConfigurationIdentity == identityA,
@@ -116,16 +127,16 @@ internal static class ManagedServiceChecks
 
             // Startup registration is changed without stopping or starting the service.
             var startsBefore = host.Starts;
-            var enable = await Send(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Enable), root, states, host, natives);
+            var enable = await RequestAsync(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Enable));
             var enabled = Read<ProxyServerStatus>(enable);
-            var disable = await Send(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Disable), root, states, host, natives);
+            var disable = await RequestAsync(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Disable));
             var disabled = Read<ProxyServerStatus>(disable);
             Check(enabled is { BootEnabled: true, Running: true } && disabled is { BootEnabled: false, Running: true }
                 && host.Starts == startsBefore,
                 "Boot registration changes without restarting the published service");
 
             // Rollback restores the file this installation replaced and commits its identity.
-            var rollback = await Send(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Rollback), root, states, host, natives);
+            var rollback = await RequestAsync(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Rollback));
             var rolledBack = Read<ProxyServerStatus>(rollback);
             Check(rollback.Success && rolledBack.ConfigurationHash == identityB && states.Read()!.ConfigurationIdentity == identityB
                 && Digest(await File.ReadAllBytesAsync(Path.Combine(root, "config.json"))) == identityB,
@@ -133,9 +144,9 @@ internal static class ManagedServiceChecks
 
             // On-disk drift is reported and blocks a new publication instead of silently overwriting it.
             await File.AppendAllTextAsync(Path.Combine(root, "config.json"), " ");
-            var drifted = Read<ProxyServerStatus>(await Send(PrivilegedOperationKind.ProxyServerStatus, null, root, states, host, natives));
+            var drifted = Read<ProxyServerStatus>(await RequestAsync(PrivilegedOperationKind.ProxyServerStatus, null));
             var configureBefore = host.ConfigureCalls;
-            var blocked = await Send(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA), root, states, host, natives);
+            var blocked = await RequestAsync(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA));
             Check(drifted is { Applied: false, ProblemCode: "proxy_server.configuration_drift" }
                 && !blocked.Success && blocked.Error == "proxy_server.configuration_drift" && host.ConfigureCalls == configureBefore,
                 "Configuration drift is reported and refuses to publish over an unverified file");
@@ -143,7 +154,7 @@ internal static class ManagedServiceChecks
 
             // A failing registration restores the replaced configuration and the original run state.
             host.FailNextConfigure = true;
-            var failed = await Send(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA), root, states, host, natives);
+            var failed = await RequestAsync(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA));
                         var afterFailure = states.Read()!;
             Check(!failed.Success && failed.Error == "proxy_server.config_apply_failed"
                 && afterFailure.ConfigurationIdentity == identityB && afterFailure.Pending is null
@@ -153,7 +164,7 @@ internal static class ManagedServiceChecks
 
             // A failed stop leaves the publication candidate on disk. Compensation needs its own staging file.
             host.FailNextStop = true;
-            var interrupted = await Send(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA), root, states, host, natives);
+            var interrupted = await RequestAsync(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA));
             var afterStopFailure = await host.ObserveAsync(default);
             Check(!interrupted.Success && interrupted.Error == "proxy_server.config_apply_failed"
                 && states.Read()!.ConfigurationIdentity == identityB
@@ -165,7 +176,7 @@ internal static class ManagedServiceChecks
             // Start can return before the service exits. The old run state still needs compensation.
             host.ExitOnNextStart = true;
             var revisionBeforeExit = states.Read()!.Installation.StateRevision;
-            var exited = await Send(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA), root, states, host, natives);
+            var exited = await RequestAsync(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA));
             var restored = await host.ObserveAsync(default);
             Check(!exited.Success && exited.Error == "proxy_server.config_apply_failed"
                 && states.Read()!.Installation.StateRevision == revisionBeforeExit
@@ -179,16 +190,16 @@ internal static class ManagedServiceChecks
             // A tampered program file is never executed again.
             var binary = Path.Combine(directory, binaryName);
             await File.WriteAllBytesAsync(binary, Encoding.UTF8.GetBytes("tampered program"));
-            var tampered = await Send(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA), root, states, host, natives);
-            var tamperedStart = await Send(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Start), root, states, host, natives);
+            var tampered = await RequestAsync(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA));
+            var tamperedStart = await RequestAsync(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Start));
             Check(!tampered.Success && tampered.Error == "proxy_server.runtime_failed"
                 && !tamperedStart.Success && tamperedStart.Error == "proxy_server.runtime_failed",
                 "Program files that no longer match the recorded artifact are not executed");
             await File.WriteAllBytesAsync(binary, binaryBytes);
 
             // Uninstall stays with the runtime lifecycle; install is an idempotent no-op for a managed program.
-            var uninstall = await Send(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Uninstall, KeepData: true), root, states, host, natives);
-            var install = await Send(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Install), root, states, host, natives);
+            var uninstall = await RequestAsync(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Uninstall, KeepData: true));
+            var install = await RequestAsync(PrivilegedOperationKind.ProxyServerAction, new(Action: ProxyServerAction.Install));
             Check(!uninstall.Success && uninstall.Error == "proxy_server.managed_runtime_required"
                 && install.Success && Read<ProxyServerStatus>(install).Installed,
                 "Uninstall requires the runtime lifecycle while Install reports the existing managed program");
@@ -214,6 +225,24 @@ internal static class ManagedServiceChecks
     /// <summary>Shaped like a sing-box base64url key; the value is not used by any native program here.</summary>
     private static string Key() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         .Replace('+', '-').Replace('/', '_')[..43];
+
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static LinuxUnixSocketPrivilegedServer OpenSocket(string root, RuntimeArchiveStateStore states,
+        ServiceHost host, ISingBoxNativeChecks natives)
+    {
+        var files = new LinuxUnixSocketFileSystem();
+        if (files.EffectiveUserId != 0) throw new InvalidOperationException("The isolated Helper socket fixture requires root.");
+        var configuration = new LinuxPrivilegedHelperConfiguration(Path.Combine(root, "ipc", "helper.sock"), 0, [0]);
+        var socket = new LinuxUnixSocketPrivilegedServer(configuration, (request, _) =>
+        {
+            if (request.Operation is not (PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerValidate
+                or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerAction))
+                throw new InvalidOperationException("Unexpected operation on the isolated sing-box socket.");
+            return Send(request.Operation, request.ProxyServer, root, states, host, natives);
+        }, files, new LinuxPeerAuthorizer(configuration.AllowedUserIds), Console.WriteLine);
+        socket.Start();
+        return socket;
+    }
 
     private static async Task<PrivilegedOperationResult> Send(PrivilegedOperationKind operation, ProxyServerHelperRequest? request,
         string root, RuntimeArchiveStateStore states, ServiceHost host, ISingBoxNativeChecks natives)

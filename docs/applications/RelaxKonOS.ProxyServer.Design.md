@@ -334,3 +334,5 @@ Helper 发布配置时会核对原运行状态。原先运行的 sing-box 若启
 上述发布补偿也已通过 Linux 实机复测。专属 sing-box 候选进程开始监听后退出，生产 Helper 恢复旧配置和旧运行状态。测试使用专属进程控制，生产 systemd 和跨进程 Helper IPC 仍待联合验收。
 
 配置发布的停止步骤失败时，Helper 用独立暂存文件补偿，核对旧配置摘要、服务注册、启动策略和运行状态后才确认恢复。Linux 隔离进程验收覆盖了该路径。
+
+专属 sing-box 发布和补偿已通过 Linux Unix socket 传输与 peer UID 验收。测试宿主在同一进程运行 socket 两端，使用隔离 sing-box 进程。独立 Helper 进程联合恢复仍待实机验收。

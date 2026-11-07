@@ -1289,3 +1289,7 @@ Linux x64 Release 实机复测通过。生产 SingBoxManagedRuntime 发布事务
 ### MB-04 Helper 在停止失败后补偿
 
 停止失败时发布候选仍可能占用暂存文件。补偿使用独立暂存文件，收尾不继承已取消的请求令牌。返回已补偿前核对原配置摘要、注册程序、启动策略和运行状态。Linux x64 Release 专属 sing-box 通过 13 项，包含夹具注入停止异常后实际重启旧配置，以及候选进程退出后恢复。日志为 .artifacts/mb04-helper-stop-live.log，归档 SHA-256 为 3254d1ab12ea6fff32b3eafb4a0b64679d196e7dc30fc0950ca924cb2654cefd。生产 systemd 故障注入及 Helper IPC 联合验收仍开放。
+
+### MB-04 sing-box 发布事务的 Unix socket 验收
+
+Linux x64 Release 在私有网络中通过生产 Unix socket 服务端、客户端及 peer UID 校验调用生产 SingBoxManagedRuntime。专属 socket 仅允许 UID 0，实际 sing-box 发布、候选退出和停止异常后的补偿共通过 13 项。日志为 .artifacts/mb04-helper-ipc-live.log，归档 SHA-256 为 ff65e52efc7c8498c8c92842d4d5701adc4e06fb96366060cf68a4da4f513934。两端同属测试进程，派发仅接入 sing-box 发布事务，服务控制为专属进程夹具。独立 Helper 进程、生产总派发器和 systemd 仍待联合验收。
