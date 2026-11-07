@@ -116,8 +116,75 @@ internal static class ProxyAuthenticatedPublicationChecks
         await VerifyTunShutdownAsync(root, assembly, socket, login, nativeState, guard);
         await VerifyExpiryShutdownAsync(root, assembly, socket, login, nativeState, traffic, retained, added, readReceipt);
         await VerifyManagedPublicationShutdownAsync(root, assembly, socket, login, nativeState, traffic, retained, added, readReceipt);
+        await VerifySubscriptionBodyResidencyAsync(guard);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
             await ProxyConnectionBenchmark.RunAsync(root, socket, baseline, assembly, login, guard, nativeState);
+    }
+
+    private static async Task VerifySubscriptionBodyResidencyAsync(ProxySystemdGuardProbe guard)
+    {
+        var originBuilder = WebApplication.CreateBuilder();
+        originBuilder.Logging.ClearProviders();
+        originBuilder.WebHost.UseUrls("http://93.184.216.34:0");
+        await using var origin = originBuilder.Build();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        origin.MapGet("/feed", async (HttpContext context) =>
+        {
+            await context.Response.WriteAsync("vless://test-id@", context.RequestAborted);
+            await context.Response.Body.FlushAsync(context.RequestAborted);
+            await release.Task.WaitAsync(context.RequestAborted);
+            await context.Response.WriteAsync("example.test:443#fixture", context.RequestAborted);
+        });
+        await origin.StartAsync();
+        var endpoint = origin.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        var manager = WebApplication.CreateBuilder();
+        new RelaxKonOS.Server.Startup.Modules.ProxyModule().ConfigureServices(manager,
+            RelaxKonOS.Server.Startup.ServerModuleContext.Create(manager.Configuration, manager.Environment, "memory"));
+        manager.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsReader, SubscriptionProbeSettings>();
+        await using var services = manager.Services.BuildServiceProvider();
+        var downloader = services.GetRequiredService<RelaxKonOS.Server.Proxy.IProxySubscriptionDownloader>();
+        var loaded = Channel.CreateUnbounded<TaskCompletionSource>();
+        AssemblyLoadEventHandler observe = (_, args) =>
+        {
+            if (args.LoadedAssembly.GetName().Name != "RelaxKonOS.ServerModule.Proxy"
+                || System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(args.LoadedAssembly) is not { Name: { } name } context
+                || !name.StartsWith("proxy-subscription:", StringComparison.Ordinal)) return;
+            var unloading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            context.Unloading += _ => unloading.TrySetResult();
+            loaded.Writer.TryWrite(unloading);
+        };
+        AppDomain.CurrentDomain.AssemblyLoad += observe;
+        try
+        {
+            await guard.VerifyTrafficAsync(async (_, ct) =>
+            {
+                var body = downloader.DownloadAsync(endpoint + "/feed", ProxySubscriptionDownloadRoute.Direct, ct);
+                var generation = await loaded.Reader.ReadAsync(ct);
+                if (body.IsCompleted || generation.Task.IsCompleted)
+                    throw new InvalidOperationException("The subscription generation did not own the live response body.");
+                release.TrySetResult();
+                var output = await body;
+                await generation.Task.WaitAsync(ct);
+                var next = await downloader.DownloadAsync(endpoint + "/feed", ProxySubscriptionDownloadRoute.Direct, ct);
+                var awakened = await loaded.Reader.ReadAsync(ct);
+                await awakened.Task.WaitAsync(ct);
+                if (ReferenceEquals(awakened, generation) || next.Content != output.Content
+                    || !output.Content.Contains("example.test", StringComparison.Ordinal))
+                    throw new InvalidOperationException("A subsequent real subscription did not wake an equivalent execution generation.");
+            });
+            Console.WriteLine("PASS REAL SUBSCRIPTION BODY RESIDENCY: production downloader streamed, unloaded and woke while the original proxy connection remained live");
+        }
+        finally
+        {
+            release.TrySetResult();
+            AppDomain.CurrentDomain.AssemblyLoad -= observe;
+        }
+    }
+
+    private sealed class SubscriptionProbeSettings : RelaxKonOS.Server.Proxy.IProxySettingsReader
+    {
+        public Task<ProxySettingsDto> GetAsync(CancellationToken ct) =>
+            Task.FromResult(RelaxKonOS.Server.Proxy.ProxySettingsReader.Defaults with { AllowInsecureSubscriptionSources = true });
     }
 
     private static async Task VerifyManagedPublicationShutdownAsync(string root, string assembly, string socket, LoginRequest login,

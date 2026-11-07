@@ -3,14 +3,13 @@ using System.Runtime.Loader;
 
 namespace RelaxKonOS.Server.Proxy;
 
-/// <summary>Host call gate. Only text crosses the independently loaded subscription implementation boundary.</summary>
+/// <summary>Host call gate for an authorized subscription response body.</summary>
 internal static class ProxySubscriptionContentNormalizer
 {
     private static readonly ProxySubscriptionExecutionGate Gate = new();
 
-    internal static string Normalize(string content) => Gate.Normalize(content, out _);
-
-    internal static string Normalize(string content, out WeakReference code) => Gate.Normalize(content, out code);
+    internal static Task<ProxySubscriptionBody> ReadAsync(Stream stream, CancellationToken ct, Action<WeakReference>? observe = null) =>
+        Gate.ReadAsync(stream, ct, observe);
 }
 
 /// <summary>Bounds active and not-yet-collected conversion contexts without forcing GC.</summary>
@@ -21,31 +20,43 @@ internal sealed class ProxySubscriptionExecutionGate
     private readonly List<WeakReference> _code = [];
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal string Normalize(string content, out WeakReference code)
+    internal async Task<ProxySubscriptionBody> ReadAsync(Stream stream, CancellationToken ct, Action<WeakReference>? observe = null)
     {
-        var path = ProxyExecutionLoadContext.BundledAssemblyPath();
-        ProxyExecutionLoadContext context;
-        lock (_gate)
+        ProxyExecutionLoadContext? context = null;
+        try
         {
-            _code.RemoveAll(reference => !reference.IsAlive);
-            if (_code.Count >= MaxOutstandingContexts)
-                throw new InvalidDataException("Proxy subscription code collection is pending; retry after collection or arrange host recovery.");
-            context = new ProxyExecutionLoadContext("subscription");
-            code = new WeakReference(context);
-            _code.Add(code);
+            await using var body = stream;
+            ct.ThrowIfCancellationRequested();
+            var path = ProxyExecutionLoadContext.BundledAssemblyPath();
+            WeakReference code;
+            lock (_gate)
+            {
+                _code.RemoveAll(reference => !reference.IsAlive);
+                if (_code.Count >= MaxOutstandingContexts)
+                    throw new InvalidDataException("Proxy subscription code collection is pending; retry after collection or arrange host recovery.");
+                context = new ProxyExecutionLoadContext("subscription");
+                code = new WeakReference(context);
+                _code.Add(code);
+            }
+            observe?.Invoke(code);
+            return await ConvertAsync(context, path, stream, ct);
         }
-        try { return Convert(context, path, content); }
-        finally { context.Unload(); }
+        finally
+        {
+            context?.Unload();
+            context = null;
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static string Convert(AssemblyLoadContext context, string path, string content)
+    private static async Task<ProxySubscriptionBody> ConvertAsync(AssemblyLoadContext context, string path, Stream stream, CancellationToken ct)
     {
         try
         {
             var type = context.LoadFromAssemblyPath(path).GetType("RelaxKonOS.Server.Proxy.ProxySubscriptionNormalizer", true)!;
-            return ((IProxySubscriptionNormalizer)Activator.CreateInstance(type)!).Normalize(content);
+            return await ((IProxySubscriptionNormalizer)Activator.CreateInstance(type)!).ReadAsync(stream, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
         catch (Exception)
         {
             // Do not leak a private exception/stack through a root operation record or logging pipeline.

@@ -466,3 +466,5 @@ Mihomo 概览按 token 计数，继续校验完整快照。固定快照解析分
 停用 Proxy 管理面时，Core 的入站授权到期经真实 Helper 撤销并生成原回执。Linux 完整 Server 在 SIGTERM 后等到原响应并持久化完成，重启按原 ID 读到同一回执，未重放撤销。见[授权到期停机排空](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-的入站授权到期停机排空)。
 
 Proxy 管理队列保留原工作租约至实际清理和终态落盘。调用方可取消等待，Host 停机仍排空已受理任务。见[管理队列停机所有权](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理队列的-host-停机所有权)。
+
+已授权的订阅响应体由独立可回收代次读入、解码和转换，流清理完成后卸载。真实分段响应与 Mihomo 转发在隔离 Linux 联验，弱引用回收由本地 Release 验证。Proxy 整体仍 resident。见[订阅响应体执行边界](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅响应体的可回收执行边界)。

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text;
 using System.Text.Json;
 
@@ -12,7 +13,31 @@ public sealed class ProxySubscriptionNormalizer : IProxySubscriptionNormalizer
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
-    public string Normalize(string content)
+    public async Task<ProxySubscriptionBody> ReadAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        using var buffer = new MemoryStream();
+        var bytes = ArrayPool<byte>.Shared.Rent(16_384);
+        try
+        {
+            while (true)
+            {
+                var read = await stream.ReadAsync(bytes.AsMemory(0, 16_384), cancellationToken);
+                if (read == 0) break;
+                if (buffer.Length + read > ProxySubscriptionBody.MaximumBytes) return new(null, 0, TooLarge: true);
+                buffer.Write(bytes, 0, read);
+            }
+            var length = (int)buffer.Length;
+            string content;
+            try { content = StrictUtf8.GetString(buffer.GetBuffer(), 0, length); }
+            catch (DecoderFallbackException) { return new(null, length); }
+            if (string.IsNullOrWhiteSpace(content) || content.IndexOf('\0') >= 0) return new(null, length);
+            cancellationToken.ThrowIfCancellationRequested();
+            return new(Normalize(content), length);
+        }
+        finally { ArrayPool<byte>.Shared.Return(bytes, clearArray: true); }
+    }
+
+    private static string Normalize(string content)
     {
         if (LooksLikeYaml(content)) return content;
 

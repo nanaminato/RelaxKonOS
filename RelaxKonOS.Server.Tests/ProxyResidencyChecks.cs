@@ -95,7 +95,7 @@ internal static class ProxyResidencyChecks
         var generations = new List<WeakReference>();
         for (var generation = 0; generation < 100; generation++)
         {
-            var output = gate.Normalize("vless://test-id@example.com:443#cycle", out var code);
+            var output = Read(gate, "vless://test-id@example.com:443#cycle", out var code);
             if (!output.Contains("example.com")) throw new Exception("Conversion changed after reopening budget");
             generations.Add(code);
             for (var i = 0; code.IsAlive && i < 30; i++)
@@ -120,7 +120,7 @@ internal static class ProxyResidencyChecks
     private static (WeakReference Code, InvalidDataException Error) CaptureConversionFailure(ProxySubscriptionExecutionGate gate)
     {
         WeakReference code = null!;
-        try { gate.Normalize(null!, out code); }
+        try { Read(gate, null, out code); }
         catch (InvalidDataException error) { return (code, error); }
         throw new Exception("Invalid private conversion unexpectedly succeeded");
     }
@@ -132,14 +132,14 @@ internal static class ProxyResidencyChecks
         var pending = new List<WeakReference>();
         for (var i = 0; i < ProxySubscriptionExecutionGate.MaxOutstandingContexts; i++)
         {
-            gate.Normalize("vless://test-id@example.com:443#retained", out var code);
+            Read(gate, "vless://test-id@example.com:443#retained", out var code);
             retained.Add(code.Target ?? throw new Exception("Context collected before test retention"));
             pending.Add(code);
         }
         var rejected = 0;
         Parallel.For(0, 32, _ =>
         {
-            try { gate.Normalize("vless://test-id@example.com:443#overflow", out var ignored); }
+            try { Read(gate, "vless://test-id@example.com:443#overflow", out var ignored); }
             catch (InvalidDataException error) when (error.Message.Contains("collection is pending") && error.InnerException is null)
             { Interlocked.Increment(ref rejected); }
         });
@@ -148,12 +148,42 @@ internal static class ProxyResidencyChecks
         return pending.ToArray();
     }
 
+    private static string Read(ProxySubscriptionExecutionGate gate, string? input, out WeakReference code)
+    {
+        WeakReference? observed = null;
+        try
+        {
+            var stream = input is null ? null : new MemoryStream(System.Text.Encoding.UTF8.GetBytes(input));
+            return gate.ReadAsync(stream!, default, value => observed = value).GetAwaiter().GetResult().Content!;
+        }
+        finally { code = observed!; }
+    }
+
     private static async Task CheckParserAsync(Action<bool,string> check)
     {
         var hostReferences = typeof(ProxyOperationStore).Assembly.GetReferencedAssemblies();
         check(!hostReferences.Any(name => name.Name == "RelaxKonOS.ServerModule.Proxy"), "Server has no static reference to the private Proxy implementation assembly");
         var input = "vless://test-id@example.com:443?security=tls#example";
-        var output = ProxySubscriptionContentNormalizer.Normalize(input, out var code);
+        var gate = new ProxySubscriptionExecutionGate();
+        var stream = new SubscriptionCleanupStream();
+        WeakReference? draining = null;
+        var read = gate.ReadAsync(stream, default, code => draining = code);
+        await stream.Disposing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            check(!read.IsCompleted && draining?.IsAlive == true, "The subscription body generation remains live during asynchronous stream cleanup");
+        }
+        finally { stream.Release.TrySetResult(); }
+        var retained = await read.WaitAsync(TimeSpan.FromSeconds(5));
+        for (var i = 0; draining!.IsAlive && i < 30; i++) { GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); await Task.Delay(10); }
+        check(!draining!.IsAlive && retained.Content?.Contains("example.com") == true,
+            "Keeping the completed body result does not retain the old subscription code");
+        var oversized = await gate.ReadAsync(new MemoryStream(new byte[ProxySubscriptionBody.MaximumBytes + 1]), default);
+        var invalidUtf8 = await gate.ReadAsync(new MemoryStream([0xff]), default);
+        check(oversized.TooLarge && !invalidUtf8.TooLarge && invalidUtf8.Content is null,
+            "Actual read size and strict UTF-8 keep their distinct failure classifications");
+        var output = Read(gate, input, out var code);
         check(output.Contains("proxies:") && output.Contains("example.com") && output.Contains("vless"), "Production gate executes the moved URI conversion and returns only shared text");
         for (var i = 0; code.IsAlive && i < 30; i++) { GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); await Task.Delay(10); }
         check(!code.IsAlive, "Completed conversion releases its collectible private code while the resident Host remains alive");
@@ -163,11 +193,11 @@ internal static class ProxyResidencyChecks
             ("ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@example.com:443#ss", "ss"),
             ("hy2://secret@example.com:443#hy2", "hysteria2"),
             ("tuic://test-id:secret@example.com:443#tuic", "tuic") })
-            check(ProxySubscriptionContentNormalizer.Normalize(pair.Item1).Contains("type: " + pair.Item2), "Independent converter preserves " + pair.Item2 + " subscription support");
+            check(Read(gate, pair.Item1, out _).Contains("type: " + pair.Item2), "Independent converter preserves " + pair.Item2 + " subscription support");
         var invalid = "vmess://invalid";
-        check(ProxySubscriptionContentNormalizer.Normalize(invalid) == invalid, "Invalid subscription conversion retains original input for the existing validation stage");
+        check(Read(gate, invalid, out _) == invalid, "Invalid subscription conversion retains original input for the existing validation stage");
         var yaml = "proxies: []\nrules: []\n";
-        check(ProxySubscriptionContentNormalizer.Normalize(yaml) == yaml, "Native YAML and existing parsing behavior remain unchanged through the independent boundary");
+        check(Read(gate, yaml, out _) == yaml, "Native YAML and existing parsing behavior remain unchanged through the independent boundary");
     }
     private sealed class Cleanup : IAsyncDisposable
     {
@@ -176,6 +206,19 @@ internal static class ProxyResidencyChecks
         internal void Configure(TaskCompletionSource began, TaskCompletionSource wait) { entered = began; release = wait; }
         public async ValueTask DisposeAsync() { entered?.TrySetResult(); if (release is not null) await release.Task; if (Fail) throw new IOException("isolated cleanup failure"); }
     }
+    private sealed class SubscriptionCleanupStream() : MemoryStream("vless://test-id@example.com:443#held"u8.ToArray())
+    {
+        internal readonly TaskCompletionSource Disposing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask DisposeAsync()
+        {
+            Disposing.TrySetResult();
+            await Release.Task;
+            await base.DisposeAsync();
+        }
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly string root = Path.Combine(Path.GetTempPath(), "proxy-residency-" + Guid.NewGuid().ToString("N"));

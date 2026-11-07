@@ -4530,3 +4530,5 @@ Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。�
 系统代理 guard 即使在 Proxy 管理面停用时仍由 Core 运行。隔离 Linux 已验证真实 Helper 写入后遇到 SIGTERM，Server 等待原响应，重启核对保留代理值和归属记录，原连接持续转发。见[系统代理 guard 排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-的系统代理-guard-停机排空)。
 
 隔离 Linux 已验证 TUN 恢复的 SIGTERM 排空。真实设备已撤销而控制器确认仍在途时，Core 保留原标记，收齐确认并核验管理路由后清理。重启未重发 reload，原代理连接持续转发。见[真实 TUN 停机排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-的真实-tun-停机排空)。
+
+订阅下载仍由 Host 校验地址、路由与 TLS。已授权响应流由可回收代次限长读取、严格解码和转换，流清理后卸载。隔离 Linux 验证了真实分段下载和下一次读取加载新代次。见[订阅响应体执行边界](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅响应体的可回收执行边界)。

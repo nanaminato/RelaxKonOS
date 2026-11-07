@@ -116,8 +116,6 @@ public sealed class ProxySubscriptionDownloader(
     IProxySettingsReader settingsService,
     ILogger<ProxySubscriptionDownloader>? logger = null) : IProxySubscriptionDownloader
 {
-    private const int MaximumBytes = 1_048_576;
-
     public Task<ProxySubscriptionDownloadOptionsDto> GetDownloadOptionsAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new ProxySubscriptionDownloadOptionsDto(ProxySubscriptionNetworkPolicy.HasSystemProxy()));
 
@@ -168,28 +166,16 @@ public sealed class ProxySubscriptionDownloader(
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested) { throw new ProxySubscriptionException(transportFailure); }
         using (response)
         {
-        if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength is > MaximumBytes)
+        if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength is > ProxySubscriptionBody.MaximumBytes)
             throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionFetchFailed);
         try
         {
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var buffer = new MemoryStream();
-            var bytes = new byte[16_384];
-            while (true)
-            {
-                var read = await stream.ReadAsync(bytes, cancellationToken);
-                if (read == 0) break;
-                if (buffer.Length + read > MaximumBytes) throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionFetchFailed);
-                await buffer.WriteAsync(bytes.AsMemory(0, read), cancellationToken);
-            }
-            string content;
-            try { content = new UTF8Encoding(false, true).GetString(buffer.ToArray()); }
-            catch (DecoderFallbackException) { throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionInvalid); }
-            if (string.IsNullOrWhiteSpace(content) || content.IndexOf('\0') >= 0)
-                throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionInvalid);
-            var normalized = ProxySubscriptionContentNormalizer.Normalize(content);
+            var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var body = await ProxySubscriptionContentNormalizer.ReadAsync(stream, cancellationToken);
+            if (body.TooLarge) throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionFetchFailed);
+            if (body.Content is not { } normalized) throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionInvalid);
             logger?.LogInformation("Proxy subscription download completed. Route={Route} SourceHostHash={SourceHostHash} Bytes={Bytes} NormalizedCharacters={NormalizedCharacters}",
-                downloadRoute, HashForLog(uri.DnsSafeHost), buffer.Length, normalized.Length);
+                downloadRoute, HashForLog(uri.DnsSafeHost), body.Bytes, normalized.Length);
             return new ProxySubscriptionDownload(uri, normalized);
         }
         catch (HttpRequestException) { throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionFetchFailed); }

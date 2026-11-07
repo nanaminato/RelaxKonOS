@@ -1946,3 +1946,13 @@ Windows Release 中，调用方先取消自己的等待，再用同一已取消�
 首轮 Linux 夹具在阻塞原发布回执时，同键 POST 还需要取得原领域锁，导致该测试调用超时。复跑把同键检查放在重启后并通过。同批原入站恢复、补偿、系统代理 guard、TUN 与自然到期排空均通过。专属 cgroup 清理完成，宿主服务和代理文件指纹一致。失败日志为 `.artifacts/mb04-queue-drain-live.log`，通过日志为 `.artifacts/mb04-queue-drain-final-live.log`，归档 SHA-256 为 `44e15d1454cd3cfdb15ba24637ff1b3c41bdad3ccf1da9ea9ccdf7b9e8f28e9d`。
 
 Proxy 继续 resident。下一阶段沿原工作租约和台账拆出可释放的管理执行图，再独立验收卸载、唤醒和 Core 安全职责连续性。
+
+### MB-04 订阅响应体的可回收执行边界
+
+Host 按原规则校验来源地址、DNS、系统代理路由、TLS 与响应头。经授权的响应流交给已有可回收订阅代次，代次负责实际字节上限、严格 UTF-8 与转换，向 Host 返回共享值。解码直接使用累积缓冲，省去一份完整字节副本；临时租用的读块归还时清除。流实际异步释放后才请求卸载。原 HTTP 接口、工作队列、审计及领域台账继续沿用，Core 安全职责与网络准入都在 Host。
+
+Windows Release 驻留专项验证流清理未结束时仍保留代次、保留结果时旧代码可回收、100 次转换代次循环及超限、无效 UTF-8 的原错误分类。Host 档案、Core 安全和模块边界回归通过，依赖守卫 16 项通过。MB-05 跨进程按原 `3fd51576-ebc8-48e4-82f5-06e98e11caa4` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-sub-body-win.log`、`.artifacts/mb04-sub-body-storage-win.log`、`.artifacts/mb04-sub-body-boundaries-win.log` 与 `.artifacts/mb04-sub-body-boundary-guard.log`。
+
+Linux 使用私有网络中的可控分段 HTTP 源站和生产下载器及连接策略。已见代次加载而源站仍暂停正文时，下载任务和代次均在途。放行后得到原转换格式，观察卸载；第二次读取加载独立代次并得到相同结果，最初的真实 Mihomo 连接完成转发。该下载路径在验收进程内使用生产注册，HTTP 源仅在专属夹具中启用。本轮证据分开记录真实流的卸载事件和本地弱引用回收。
+
+完整认证同批复验 Core 系统代理、TUN 和到期，以及原管理操作 `453002c0-267c-4da0-a48e-51e7864e15ea` 与原到期回执 `324a1e3f-c1c0-4093-8a93-1f1bc94d293f`，各一次原生 apply。专属 cgroup 清理，宿主服务与代理文件指纹一致。日志为 `.artifacts/mb04-sub-body-live.log`，归档 SHA-256 为 `c63115ccae7c18baa421d9bbc0d5a341b000cdd98eb4f0ee9aa436841b9aa2f4`。Proxy 继续 resident，生产 PSS 与整模块休眠仍开放。下一步联验真实受管 Mihomo 的完整认证订阅队列，核对转换代次释放与同一领域台账和发布责任的关系。
