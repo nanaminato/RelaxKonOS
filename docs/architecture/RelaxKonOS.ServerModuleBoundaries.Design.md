@@ -1301,3 +1301,5 @@ Linux x64 Release 增加 Helper 已提交、socket 响应尚未发送时的客�
 Linux x64 Release 联合验收通过 17 项。独立客户端运行生产到期发布执行器，将候选持久化到 Server 原加密台账，再经专属 Unix socket 提交到 Helper。确认 Helper 摘要与原待处理候选一致后，在响应前终止客户端。恢复重新打开 Server 台账，通过同一 Helper 观察确认原候选并清除待处理记录。Helper 版本及实际 sing-box 启动次数各增加一次。日志为 .artifacts/mb04-helper-ledger-live.log，归档 SHA-256 为 834f9c78bf26b8209f2c267cd8d664591df3f51f6a6fcf948826045e8280706a。服务控制为专属进程夹具，生产 systemd、动态休眠与内存验收仍开放。
 
 Linux x64 Release 联合复测改由新进程执行生产到期调度器的一次扫描。原发布客户端退出后删除派生索引，新进程从原加密台账重建索引，在临时作用域内通过原 Helper socket 确认候选。同一 Helper 版本和 sing-box 启动计数只增一次。17 项通过，日志为 .artifacts/mb04-helper-scheduler-live.log，归档 SHA-256 为 a459ca5fee60a0f3651bd661b578799fec6986a42d5d1e2bc850277b5d48ac4b。此项验证调度恢复入口，不涵盖常驻 worker 退役或动态休眠。
+
+Linux Release 验证到期索引路径为符号链接时，调度读取原台账，保留待处理发布且不改写链接目标。原台账及暂存写入使用同一禁止链接路径检查。专属 sing-box 跨进程回归同批通过，apply 仍为一次。日志为 .artifacts/mb04-index-links-linux.log，归档 SHA-256 为 86547d3d5220fcac631834e534894365a71238e01588abfd202d8ba2749317c6。

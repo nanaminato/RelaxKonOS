@@ -1,3 +1,4 @@
+using RelaxKonOS.ManagedRuntimes;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -59,6 +60,7 @@ public sealed class ProxyServerStore(IProxyPlatformPaths paths, IDataProtectionP
 
     public async Task<ProxyServerState> ReadAsync(CancellationToken ct)
     {
+        RuntimeSourceStore.RequireNoLinks(PathName);
         try { return Decode(await File.ReadAllTextAsync(PathName, ct)); }
         catch (FileNotFoundException) { return ProxyServerState.Empty; }
         catch (DirectoryNotFoundException) { return ProxyServerState.Empty; }
@@ -73,6 +75,7 @@ public sealed class ProxyServerStore(IProxyPlatformPaths paths, IDataProtectionP
         await Gate.WaitAsync(ct);
         try
         {
+            RuntimeSourceStore.RequireNoLinks(PathName);
             FileStream stream;
             try { stream = new FileStream(PathName, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete); }
             catch (FileNotFoundException) { return default; }
@@ -97,6 +100,7 @@ public sealed class ProxyServerStore(IProxyPlatformPaths paths, IDataProtectionP
     {
         try
         {
+            RuntimeSourceStore.RequireNoLinks(ExpiryPath);
             await using var stream = new FileStream(ExpiryPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
             if (stream.Length is <= 0 or > MaximumIndexBytes) return null;
             var bytes = new byte[MaximumIndexBytes + 1];
@@ -104,7 +108,7 @@ public sealed class ProxyServerStore(IProxyPlatformPaths paths, IDataProtectionP
             if (count > MaximumIndexBytes) return null;
             return JsonSerializer.Deserialize<ExpiryIndex>(_expiryProtector.Unprotect(Encoding.UTF8.GetString(bytes, 0, count)), Json);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException or JsonException or FormatException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException or JsonException or FormatException or RuntimePolicyException)
         {
             // The sidecar is an optimization. Only the original protected ledger can establish responsibility.
             return null;
@@ -134,6 +138,7 @@ public sealed class ProxyServerStore(IProxyPlatformPaths paths, IDataProtectionP
     public async Task WriteAsync(ProxyServerState state, CancellationToken ct)
     {
         var protectedState = Encoding.UTF8.GetBytes(_protector.Protect(JsonSerializer.Serialize(state, Json)));
+        RuntimeSourceStore.RequireNoLinks(PathName);
         Directory.CreateDirectory(Path.GetDirectoryName(PathName)!);
         // Publish the derived index first. An interrupted commit can leave a mismatched index,
         // which never overrides the digest of the authoritative file.
@@ -145,15 +150,18 @@ public sealed class ProxyServerStore(IProxyPlatformPaths paths, IDataProtectionP
     {
         try
         {
+            RuntimeSourceStore.RequireNoLinks(ExpiryPath);
+            RuntimeSourceStore.RequireNoLinks(ExpiryPath + ".new");
             var protectedIndex = Encoding.UTF8.GetBytes(_expiryProtector.Protect(JsonSerializer.Serialize(index, Json)));
             await WriteAtomicAsync(ExpiryPath, protectedIndex, ct);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException or RuntimePolicyException) { }
     }
 
     private static async Task WriteAtomicAsync(string path, byte[] bytes, CancellationToken ct)
     {
         var temporary = path + ".new";
+        RuntimeSourceStore.RequireNoLinks(temporary);
         try
         {
             var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write };

@@ -86,6 +86,18 @@ internal static class ProxyCoreSafetyChecks
                 Check((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication,
                     "A missing index preserves expiry recovery for existing ledgers");
                 File.Delete(expiryIndex);
+                if (OperatingSystem.IsLinux())
+                {
+                    var target = expiryIndex + ".target";
+                    await File.WriteAllTextAsync(target, "untouched");
+                    File.CreateSymbolicLink(expiryIndex, target);
+                    Check((await reopened.ReadExpiryScheduleAsync(default)).PendingPublication
+                        && await File.ReadAllTextAsync(target) == "untouched"
+                        && new FileInfo(expiryIndex).LinkTarget is not null,
+                        "A linked index cannot hide pending work or redirect index repair");
+                    File.Delete(expiryIndex);
+                    File.Delete(target);
+                }
                 Directory.CreateDirectory(expiryIndex);
                 try
                 {
