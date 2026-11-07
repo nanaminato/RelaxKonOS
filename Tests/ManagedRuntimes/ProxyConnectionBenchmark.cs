@@ -41,7 +41,7 @@ internal static class ProxyConnectionBenchmark
 
     internal static async Task RunAsync(string baseline, string candidate, string baselineMode, string candidateMode,
         LoginRequest login, Uri runtimeProxy, Func<string, Task<ProcessStartInfo>> prepare, Func<Task> verify,
-        bool requireManaged, int? pollingRuntimePid = null)
+        bool requireManaged, int? pollingRuntimePid = null, bool controlReads = false)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(requireManaged ? 420 : 85));
         var ct = budget.Token;
@@ -69,6 +69,7 @@ internal static class ProxyConnectionBenchmark
                         Path.Combine(Path.GetDirectoryName(input.Assembly)!, "Modules", "Proxy", "RelaxKonOS.ServerModule.Proxy.dll"), ct))) : null
                 }));
             string[]? original = null;
+            JsonElement[]? originalControl = null;
             for (var pair = 1; pair <= 3; pair++)
             {
                 foreach (var input in pair == 2 ? inputs.Reverse() : inputs)
@@ -82,6 +83,7 @@ internal static class ProxyConnectionBenchmark
                         original ??= ids;
                         if (!ids.SequenceEqual(original) || replies.Any(reply => reply.IsCompleted))
                             throw new InvalidOperationException("The paired workload changed a connection or the original publication revision.");
+                        if (controlReads) await ObserveControlAsync();
                         await Task.Delay(500, ct);
                         var idle = ReadMemory(process.Id);
                         var samples = new List<MemoryPoint> { idle };
@@ -111,7 +113,7 @@ internal static class ProxyConnectionBenchmark
                         }
                         Console.WriteLine("PROXY BENCHMARK RUN " + JsonSerializer.Serialize(new
                         {
-                            Pair = pair, input.Mode, ConnectionCount, RequestsPerRoute = runtime is null ? RequestsPerRoute : 0,
+                            Pair = pair, input.Mode, ConnectionCount, ControlReads = controlReads, RequestsPerRoute = runtime is null ? RequestsPerRoute : 0,
                             Idle = idle, Samples = samples, Cooldown = cooldown,
                             PairRequestMs = runtime is null ? timings : null, TrafficPollMs = runtime is null ? null : timings,
                             ServerCpuMs = serverCpuMs, RuntimeCpuMs = runtimeCpuMs
@@ -143,11 +145,31 @@ internal static class ProxyConnectionBenchmark
                             for (var i = 0; i < RequestsPerRoute; i++)
                             {
                                 var watch = Stopwatch.StartNew();
-                                var current = await ObserveAsync(client, destination, requireManaged, ct);
-                                timings.Add(watch.Elapsed.TotalMilliseconds);
-                                if (!current.SequenceEqual(original))
+                                if (controlReads) await ObserveControlAsync();
+                                else if (!(await ObserveAsync(client, destination, requireManaged, ct)).SequenceEqual(original))
                                     throw new InvalidOperationException("A measured request saw a different active connection set.");
+                                timings.Add(watch.Elapsed.TotalMilliseconds);
                             }
+                        }
+
+                        async Task ObserveControlAsync()
+                        {
+                            JsonElement[] values =
+                            [
+                                await ReadAsync(ProxyApiRoutes.Runtime), await ReadAsync(ProxyApiRoutes.Groups),
+                                await ReadAsync(ProxyApiRoutes.Routing), await ReadAsync(ProxyApiRoutes.Dns),
+                            ];
+                            if (values[0].Deserialize<ProxyRuntimeDto>(RelaxKonOSJsonOptions.Default)
+                                    is not { Mode: ProxyRuntimeMode.Managed, State: ProxyRuntimeState.Running, IntegrityVerified: true, ProblemCode: "" }
+                                || values[1].ValueKind != JsonValueKind.Array
+                                || values[2].Deserialize<ProxyRoutingModeDto>(RelaxKonOSJsonOptions.Default) is not { ProblemCode: "" }
+                                || values[3].Deserialize<ProxyDnsStatusDto>(RelaxKonOSJsonOptions.Default) is not { ProblemCode: "" })
+                                throw new InvalidOperationException("The control workload did not observe the real running Mihomo and its configuration.");
+                            originalControl ??= values;
+                            if (!values.Zip(originalControl, JsonElement.DeepEquals).All(equal => equal))
+                                throw new InvalidOperationException("The paired read workload returned different control observations.");
+
+                            Task<JsonElement> ReadAsync(string route) => client.GetFromJsonAsync<JsonElement>(route, RelaxKonOSJsonOptions.Default, ct);
                         }
                     }
                     finally { await ProxyAuthenticatedPublicationChecks.StopAsync(process); }

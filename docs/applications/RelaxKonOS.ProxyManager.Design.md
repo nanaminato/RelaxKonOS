@@ -4552,3 +4552,5 @@ Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链�
 桌面概览以两秒间隔请求流量，每个工作区最多持有一个在途请求。离开概览时取消，重新打开后等待原请求结束，丢弃迟到结果。见[流量轮询排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-桌面-mihomo-流量轮询排空)和[高连接数流量轮询基线](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-高连接数流量轮询基线)。
 
 运行时、代理组、路由和 DNS 读取的工作责任覆盖控制器读取、响应和清理。代理组仍按配置顺序显示。见[控制面读取责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-运行时与控制面读取责任)。
+
+四条控制面接口已用相同的 512 条真实连接和配对请求复测。各轮返回结果一致，Server 峰值 PSS 和延迟变化未形成稳定改善。见[控制面读取配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-控制面读取配对测量)。

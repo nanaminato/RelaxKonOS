@@ -211,6 +211,7 @@ internal static class MihomoIpcStartupAcceptance
 
         var baseline = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE");
         var trafficPolling = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_TRAFFIC_POLLING") == "1";
+        var controlReads = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_CONTROL_READS") == "1";
         var subscriptionsEnabled = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SUBSCRIPTION") == "1";
         var login = subscriptionsEnabled || trafficPolling || !string.IsNullOrEmpty(baseline)
             ? ProxyAuthenticatedPublicationChecks.ReadLogin() : null;
@@ -222,12 +223,12 @@ internal static class MihomoIpcStartupAcceptance
             await ProxyConnectionBenchmark.RunAsync(trafficPolling ? serverAssembly : baseline!, serverAssembly,
                 trafficPolling ? "no-polling" : "baseline", trafficPolling ? "traffic-polling" : "candidate",
                 login!, new Uri($"http://127.0.0.1:{port}/"), PrepareAsync, VerifyAsync, requireManaged: true,
-                pollingRuntimePid: trafficPolling ? runtimePid : null);
+                pollingRuntimePid: trafficPolling ? runtimePid : null, controlReads: controlReads);
             var log = await helper.StopAsync(drainCompletedRequests: true);
             if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
                 throw new InvalidOperationException("The read workload dispatched a native publication action.");
-            var measurement = trafficPolling ? "TRAFFIC POLLING" : "OVERVIEW";
+            var measurement = trafficPolling ? "TRAFFIC POLLING" : controlReads ? "CONTROL READS" : "OVERVIEW";
             Console.WriteLine($"PASS MANAGED MIHOMO {measurement} BENCHMARK: native PID {runtimePid}, original receipt {interrupted}, no configure or recover");
 
             Task<ProcessStartInfo> PrepareAsync(string assembly)
