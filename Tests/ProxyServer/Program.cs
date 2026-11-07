@@ -120,15 +120,24 @@ try
     // Revision and public export addresses are absent from native JSON; change an effective field.
     interruptedCandidate = interruptedCandidate with { Configuration = interruptedCandidate.Configuration with
         { Inbounds = [reality with { ListenPort = 24446 }] } };
-    await store.WriteAsync(state with { PendingPublication = interruptedCandidate }, default);
-    await helper.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: interruptedCandidate)));
+    var interruptedId = Guid.NewGuid();
+    var previousHash = Helper.Hash(state.Published!);
+    var candidateHash = Helper.Hash(interruptedCandidate);
+    var pendingState = state with { PendingPublication = interruptedCandidate,
+        PendingPublicationOperationId = interruptedId, PendingPreviousHash = previousHash };
+    await store.WriteAsync(pendingState, default);
+    await ThrowsAsync(() => service.ReadAsync(default), "proxy_server.recovery_required");
+    Check((await store.ReadAsync(default)).PendingPublicationOperationId == interruptedId,
+        "An old configuration without the original receipt cannot close the pending publication");
+    await helper.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: interruptedCandidate), OperationId: interruptedId));
     Check((await service.ReadAsync(default)).PublishedRevision == 99 && (await store.ReadAsync(default)).PendingPublication is null,
         "A Server restart reconciles a Helper commit before the domain commit");
-    await store.WriteAsync(state with { PendingPublication = interruptedCandidate, PendingRollback = true }, default);
+    await store.WriteAsync(pendingState with { PendingRollback = true }, default);
     Check((await service.ReadAsync(default)).PreviousRevision is null && !(await store.ReadAsync(default)).PendingRollback,
         "Interrupted rollback finalization preserves the single-step rollback boundary");
-    await helper.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: state.Published)));
-    await store.WriteAsync(state with { PendingPublication = interruptedCandidate }, default);
+    await helper.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: state.Published), OperationId: Guid.NewGuid()));
+    helper.Receipt = new(interruptedId, candidateHash, previousHash, ProxyServerPublicationOutcome.Compensated);
+    await store.WriteAsync(pendingState, default);
     Check((await service.ReadAsync(default)).PublishedRevision == state.Published!.Configuration.Revision
         && (await store.ReadAsync(default)).PendingPublication is null, "Compensated publication clears the Server transaction marker");
     await store.WriteAsync(state, default);
@@ -303,6 +312,8 @@ sealed class Helper : IPrivilegedOperationTransport
     private readonly List<string> applied = [];
     private bool installed = true;
     private bool running;
+    internal ProxyServerPublicationReceipt? Receipt;
+    internal static string Hash(ProxyServerMaterial material) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(material))));
 
     public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
     {
@@ -311,6 +322,12 @@ sealed class Helper : IPrivilegedOperationTransport
             value = new ProxyServerRealityKey(Guid.Empty, new('A', 43), new('B', 43), "1234567890abcdef");
         else if (request.Operation == PrivilegedOperationKind.ProxyServerValidate)
             value = new ProxyServerValidation(true, [], null);
+        else if (request.Operation == PrivilegedOperationKind.ProxyServerPublicationReceipt)
+        {
+            if (Receipt is null || Receipt.OperationId != request.OperationId)
+                return Task.FromResult(new PrivilegedOperationResult(false, Error: "proxy_server.publication_unconfirmed"));
+            value = Receipt;
+        }
         else
         {
             switch (request.ProxyServer?.Action)
@@ -323,7 +340,11 @@ sealed class Helper : IPrivilegedOperationTransport
                 case ProxyServerAction.Rollback: if (applied.Count > 1) applied.RemoveAt(applied.Count - 1); break;
             }
             if (request.Operation == PrivilegedOperationKind.ProxyServerApply)
-                applied.Add(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(request.ProxyServer!.Material!)))));
+            {
+                var candidate = Hash(request.ProxyServer!.Material!);
+                Receipt = new(request.OperationId!.Value, candidate, applied.LastOrDefault() ?? new string('0', 64), ProxyServerPublicationOutcome.Committed);
+                applied.Add(candidate);
+            }
             value = new ProxyServerStatus(true, installed, running, false, installed ? SingBoxManifest.Version : null,
                 applied.Count == 0 ? null : applied[^1], running && applied.Count > 0, null);
         }

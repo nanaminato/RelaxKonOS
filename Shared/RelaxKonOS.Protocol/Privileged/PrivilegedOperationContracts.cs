@@ -211,6 +211,7 @@ public enum PrivilegedOperationKind
     SquidValidateConfiguration,
     SquidAccountsRead,
     SquidAccountMutate,
+    ProxyServerPublicationReceipt,
 }
 
 /// <summary>

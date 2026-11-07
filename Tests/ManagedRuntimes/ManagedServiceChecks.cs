@@ -95,9 +95,9 @@ internal static class ManagedServiceChecks
                     committed.TrySetResult();
                     await releaseResponse.Task.WaitAsync(TimeSpan.FromSeconds(20));
                 }) : null;
-            Task<PrivilegedOperationResult> RequestAsync(PrivilegedOperationKind operation, ProxyServerHelperRequest? request) =>
-                socket is null ? Send(operation, request, root, states, host, natives)
-                    : SendAcrossProcessAsync(socket.SocketPath, new(operation, ProxyServer: request));
+            Task<PrivilegedOperationResult> RequestAsync(PrivilegedOperationKind operation, ProxyServerHelperRequest? request, Guid? operationId = null) =>
+                socket is null ? Send(operation, request, root, states, host, natives, operationId)
+                    : SendAcrossProcessAsync(socket.SocketPath, new(operation, ProxyServer: request, OperationId: operationId));
 
             // Status of a managed installation whose service was never registered.
             var absent = await RequestAsync(PrivilegedOperationKind.ProxyServerStatus, null);
@@ -168,13 +168,18 @@ internal static class ManagedServiceChecks
 
             // A failing registration restores the replaced configuration and the original run state.
             host.FailNextConfigure = true;
-            var failed = await RequestAsync(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA));
-                        var afterFailure = states.Read()!;
+            var compensatedId = Guid.NewGuid();
+            var failed = await RequestAsync(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA), compensatedId);
+            var afterFailure = states.Read()!;
             Check(!failed.Success && failed.Error == "proxy_server.config_apply_failed"
                 && afterFailure.ConfigurationIdentity == identityB && afterFailure.Pending is null
                 && Digest(await File.ReadAllBytesAsync(Path.Combine(root, "config.json"))) == identityB
                 && (await host.ObserveAsync(default)).Running,
                 "Failed publication compensates to the recorded configuration and restores the running service");
+            var compensation = await RequestAsync(PrivilegedOperationKind.ProxyServerPublicationReceipt, null, compensatedId);
+            Check(compensation.Success && Read<ProxyServerPublicationReceipt>(compensation)
+                == new ProxyServerPublicationReceipt(compensatedId, identityA, identityB, ProxyServerPublicationOutcome.Compensated),
+                "Compensation is visible through the original receipt and binds both native configurations");
 
             // A failed stop leaves the publication candidate on disk. Compensation needs its own staging file.
             host.FailNextStop = true;
@@ -620,9 +625,10 @@ internal static class ManagedServiceChecks
         var socket = new LinuxUnixSocketPrivilegedServer(configuration, async (request, _) =>
         {
             if (request.Operation is not (PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerValidate
-                or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerAction))
+                or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerAction
+                or PrivilegedOperationKind.ProxyServerPublicationReceipt))
                 throw new InvalidOperationException("Unexpected operation on the isolated sing-box socket.");
-            var result = await Send(request.Operation, request.ProxyServer, root, states, host, natives);
+            var result = await Send(request.Operation, request.ProxyServer, root, states, host, natives, request.OperationId);
             await beforeResponse(request, result);
             return result;
         }, files, new LinuxPeerAuthorizer(configuration.AllowedUserIds), Console.WriteLine);
@@ -631,10 +637,10 @@ internal static class ManagedServiceChecks
     }
 
     private static async Task<PrivilegedOperationResult> Send(PrivilegedOperationKind operation, ProxyServerHelperRequest? request,
-        string root, RuntimeArchiveStateStore states, ServiceHost host, ISingBoxNativeChecks natives)
+        string root, RuntimeArchiveStateStore states, ServiceHost host, ISingBoxNativeChecks natives, Guid? operationId = null)
     {
         using var session = states.Acquire();
-        return await SingBoxManagedRuntime.ExecuteAsync(new(operation, ProxyServer: request), root, session, host, default, natives);
+        return await SingBoxManagedRuntime.ExecuteAsync(new(operation, ProxyServer: request, OperationId: operationId ?? Guid.NewGuid()), root, session, host, default, natives);
     }
 
     private static T Read<T>(PrivilegedOperationResult result) =>

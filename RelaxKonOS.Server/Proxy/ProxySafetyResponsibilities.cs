@@ -5,7 +5,7 @@ using RelaxKonOS.Server.ProxyServer;
 
 namespace RelaxKonOS.Server.Proxy;
 
-/// <summary>Inspects safety ownership and confirms a pending inbound publication from Helper status.</summary>
+/// <summary>Inspects safety ownership and confirms a pending inbound publication from the original Helper receipt.</summary>
 internal static class ProxySafetyResponsibilities
 {
     internal static async Task<IReadOnlyList<string>> InspectAsync(IServiceProvider services, IProxyPlatformPaths paths, bool confirmPublication, CancellationToken ct)
@@ -34,7 +34,7 @@ internal static class ProxySafetyResponsibilities
                         var publication = new ProxyServerPublicationService(store,
                             services.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(),
                             services.GetRequiredService<RelaxKonOS.Server.HostMode.IServerModeResolver>());
-                        await publication.ReadStateAsync(ct, confirmCandidateOnly: true);
+                        await publication.ReadStateAsync(ct);
                     }
                     else facts.Add(PendingPublication);
                 }

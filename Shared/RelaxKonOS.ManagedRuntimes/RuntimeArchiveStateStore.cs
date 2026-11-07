@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.ProxyServer;
 
 namespace RelaxKonOS.ManagedRuntimes;
 
@@ -118,6 +119,9 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                 || !Enum.IsDefined(r.Outcome) || r.Outcome == RuntimeSwitchOutcome.RecoveryRequired)
             || state.Receipts.Select(r => r.OperationId).Distinct().Count() != state.Receipts.Length
             || state.Receipts.Select(r => r.IdempotencyHash).Distinct().Count() != state.Receipts.Length
+            || state.ProxyPublication is { } publication && (installation.RuntimeId != "sing-box"
+                || publication.OperationId == Guid.Empty || !Digest(publication.CandidateHash)
+                || !Digest(publication.PreviousHash) || !Enum.IsDefined(publication.Outcome))
             || (state.Pending is null ? 0 : 1) + (state.Removal is null ? 0 : 1) + (state.Configuration is null ? 0 : 1) > 1)
             throw new RuntimePolicyException("runtime.transaction_state_invalid");
         if (state.Pending is { } pending)
@@ -217,11 +221,33 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                 || state.Installation.Target != previous.Installation.Target
                 || state.Installation.StateRevision != checked(previous.Installation.StateRevision + 1)))
                 throw new RuntimePolicyException("runtime.state_revision_conflict");
+            if (State?.ProxyPublication is { Outcome: ProxyServerPublicationOutcome.InFlight } publication
+                && (state.ProxyPublication != (publication with { Outcome = ProxyServerPublicationOutcome.Committed })
+                    || state.ConfigurationIdentity != publication.CandidateHash))
+                throw new RuntimePolicyException("runtime.publication_receipt_conflict");
             Validate(state);
             store.PersistCommittedWitness(State, state);
             store.WriteCore(state);
             State = state;
         }
+        // Intent and failed-attempt evidence do not change the observed installation revision.
+        // A successful native configuration commit still advances the revision through Save.
+        public void RecordProxyPublication(ProxyServerPublicationReceipt receipt)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            var current = State ?? throw new RuntimePolicyException("runtime.state_unknown");
+            var previous = current.ProxyPublication;
+            var valid = previous is { Outcome: ProxyServerPublicationOutcome.InFlight }
+                ? receipt.Outcome == ProxyServerPublicationOutcome.Compensated && receipt == (previous with { Outcome = receipt.Outcome })
+                : (receipt.Outcome is ProxyServerPublicationOutcome.InFlight or ProxyServerPublicationOutcome.Rejected)
+                  && receipt.OperationId != previous?.OperationId;
+            if (!valid || receipt.PreviousHash != current.ConfigurationIdentity)
+                throw new RuntimePolicyException("runtime.publication_receipt_conflict");
+            var updated = current with { ProxyPublication = receipt };
+            store.WriteCore(updated);
+            State = updated;
+        }
+
         public void Dispose() { if (disposed) return; disposed = true; gate.Dispose(); }
     }
 }

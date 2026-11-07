@@ -50,7 +50,7 @@ public static partial class PrivilegedOperationExecutor
             return await RuntimeSourceOperations.ExecuteAsync(request);
         if (request.RuntimeSourceId is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime source fields require a dedicated operation");
-        if (request.Operation is PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerAction or PrivilegedOperationKind.ProxyServerValidate or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerGenerateKeys)
+        if (request.Operation is PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerAction or PrivilegedOperationKind.ProxyServerValidate or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerGenerateKeys or PrivilegedOperationKind.ProxyServerPublicationReceipt)
             return await SingBoxOperations.ExecuteAsync(request);
         if (request.ProxyServer is not null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "ProxyServer fields require a dedicated operation");
         if (request.Operation is PrivilegedOperationKind.ComponentPackageQuery or PrivilegedOperationKind.ComponentPackageInstall or PrivilegedOperationKind.ComponentPackageChange or PrivilegedOperationKind.ComponentPackageRecover)

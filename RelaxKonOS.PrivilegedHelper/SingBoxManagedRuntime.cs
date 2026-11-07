@@ -61,6 +61,14 @@ internal static class SingBoxManagedRuntime
         {
             case PrivilegedOperationKind.ProxyServerStatus:
                 return Json(await StatusAsync(root, state, host, ct));
+            case PrivilegedOperationKind.ProxyServerPublicationReceipt:
+                if (state.ProxyPublication is not { } receipt || receipt.OperationId != request.OperationId)
+                    return Failure("proxy_server.publication_unconfirmed");
+                if (receipt.Outcome == ProxyServerPublicationOutcome.InFlight) return Json(receipt);
+                var status = await StatusAsync(root, state, host, ct);
+                var expected = receipt.Outcome == ProxyServerPublicationOutcome.Committed ? receipt.CandidateHash : receipt.PreviousHash;
+                return status.ProblemCode is null && !status.RecoveryRequired && status.ConfigurationHash == expected
+                    ? Json(receipt) : Failure("proxy_server.publication_unconfirmed");
             // Recovering a runtime switch needs the lifecycle's fresh authorization; never clear it here.
             case PrivilegedOperationKind.ProxyServerAction when request.ProxyServer is { Action: ProxyServerAction.Recover }:
                 return Json(await StatusAsync(root, state, host, ct));
@@ -72,14 +80,30 @@ internal static class SingBoxManagedRuntime
             default: return Failure("proxy_server.request_invalid");
         }
         if (state.Active is null || state.Pending is not null || state.Removal is not null || state.Configuration is not null
+            || state.ProxyPublicationUnresolved
             || state.Installation.RecoveryRequired) return Failure(Recovery);
         return request.Operation switch
         {
             PrivilegedOperationKind.ProxyServerGenerateKeys => await GenerateKeysAsync(root, state),
             PrivilegedOperationKind.ProxyServerValidate => await PublishAsync(request, root, state, session, host, validateOnly: true, natives, ct),
-            PrivilegedOperationKind.ProxyServerApply => await PublishAsync(request, root, state, session, host, validateOnly: false, natives, ct),
+            PrivilegedOperationKind.ProxyServerApply => await ApplyAsync(request, root, state, session, host, natives, ct),
             _ => await ActionAsync(request, root, state, session, host, natives, ct)
         };
+    }
+
+    private static async Task<PrivilegedOperationResult> ApplyAsync(PrivilegedOperationRequest request, string root,
+        RuntimeArchiveState state, RuntimeArchiveStateStore.Session session, ISingBoxArchiveHost host,
+        ISingBoxNativeChecks natives, CancellationToken ct)
+    {
+        if (request.OperationId is not { } id || id == Guid.Empty || id == state.ProxyPublication?.OperationId
+            || request.ProxyServer is not { Action: null, Material: { } material }) return Failure("proxy_server.publication_unconfirmed");
+        var result = await PublishAsync(request, root, state, session, host, validateOnly: false, natives, ct);
+        if (!result.Success && session.State?.ProxyPublication?.OperationId != id)
+        {
+            var candidate = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(material, false))));
+            session.RecordProxyPublication(new(id, candidate, state.ConfigurationIdentity!, ProxyServerPublicationOutcome.Rejected));
+        }
+        return result;
     }
 
     private static async Task<PrivilegedOperationResult> ActionAsync(PrivilegedOperationRequest request, string root,
@@ -106,7 +130,8 @@ internal static class SingBoxManagedRuntime
         CancellationToken ct)
     {
         var active = state.Active;
-        var pending = state.Pending is not null || state.Removal is not null || state.Configuration is not null || state.Installation.RecoveryRequired;
+        var pending = state.Pending is not null || state.Removal is not null || state.Configuration is not null
+            || state.ProxyPublicationUnresolved || state.Installation.RecoveryRequired;
         SingBoxServiceObservation observed;
         try { observed = await host.ObserveAsync(ct); }
         catch (RuntimePolicyException)
@@ -168,8 +193,11 @@ internal static class SingBoxManagedRuntime
             await WriteNewAsync(candidate, rendered, ct);
             var identity = await natives.ValidateAsync(binary, candidate, active.Release, rendered, ct);
             if (validateOnly) return Json(new ProxyServerValidation(true, []));
+            var publication = new ProxyServerPublicationReceipt(request.OperationId!.Value, identity,
+                state.ConfigurationIdentity!, ProxyServerPublicationOutcome.InFlight);
             var wasRunning = observed.Exists && observed.Running;
             var bootEnabled = observed.Exists && observed.BootEnabled == true;
+            session.RecordProxyPublication(publication);
             await BackupAsync(root, ct);
             try
             {
@@ -187,9 +215,14 @@ internal static class SingBoxManagedRuntime
             catch (Exception)
             {
                 if (!await CompensateAsync(root, state, host, wasRunning, bootEnabled, CancellationToken.None)) return Failure(Recovery);
+                File.Delete(candidate);
+                session.RecordProxyPublication(publication with { Outcome = ProxyServerPublicationOutcome.Compensated });
                 return Failure(ApplyFailed);
             }
-            var updated = Commit(session, state, identity);
+            var updated = Commit(session, state with
+            {
+                ProxyPublication = publication with { Outcome = ProxyServerPublicationOutcome.Committed }
+            }, identity);
             return Json(await StatusAsync(root, updated, host, ct));
         }
         finally { File.Delete(candidate); }

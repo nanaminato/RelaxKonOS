@@ -218,14 +218,20 @@ internal static class ProxyCoreSafetyChecks
         public string? Hash;
         public int ApplyCalls;
         public bool LoseReply;
+        private ProxyServerPublicationReceipt? receipt;
         public TaskCompletionSource Applied = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
         {
             if (request.Operation == PrivilegedOperationKind.ProxyServerApply)
             {
-                ApplyCalls++; Hash = ProxyServerPublicationService.Hash(SingBoxConfiguration.Render(request.ProxyServer!.Material!, false)); Applied.TrySetResult();
+                var previous = Hash!;
+                ApplyCalls++; Hash = ProxyServerPublicationService.Hash(SingBoxConfiguration.Render(request.ProxyServer!.Material!, false));
+                receipt = new(request.OperationId!.Value, Hash, previous, ProxyServerPublicationOutcome.Committed);
+                Applied.TrySetResult();
                 if (LoseReply) { LoseReply = false; return Task.FromResult(new PrivilegedOperationResult(false, Error: "proxy_server.helper_unavailable")); }
             }
+            else if (request.Operation == PrivilegedOperationKind.ProxyServerPublicationReceipt && receipt?.OperationId == request.OperationId)
+                return Task.FromResult(new PrivilegedOperationResult(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(receipt))));
             else if (request.Operation != PrivilegedOperationKind.ProxyServerStatus) throw new Exception("Unexpected Core Helper action");
             var status = new ProxyServerStatus(true, true, true, false, "test", Hash, true, null);
             return Task.FromResult(new PrivilegedOperationResult(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(status))));

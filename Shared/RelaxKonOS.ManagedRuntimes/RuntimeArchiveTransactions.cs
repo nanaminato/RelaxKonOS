@@ -30,7 +30,12 @@ public sealed record RuntimePendingSwitch(Guid OperationId, string RequestHash, 
     string? RecoveryProblemCode);
 public sealed record RuntimeArchiveState(RuntimeInstallation Installation, RuntimeStoredRevision? Active, string? ConfigurationIdentity,
     RuntimeStoredRevision[] Revisions, RuntimePendingSwitch? Pending, RuntimeSwitchReceipt[] Receipts,
-    RuntimePendingRemoval? Removal = null, [property: JsonRequired] RuntimePendingConfiguration? Configuration = null);
+    RuntimePendingRemoval? Removal = null, [property: JsonRequired] RuntimePendingConfiguration? Configuration = null)
+{
+    public Protocol.ProxyServer.ProxyServerPublicationReceipt? ProxyPublication { get; init; }
+    [JsonIgnore] public bool ProxyPublicationUnresolved =>
+        ProxyPublication?.Outcome == Protocol.ProxyServer.ProxyServerPublicationOutcome.InFlight;
+}
 
 /// <summary>
 /// Closed runtime-specific implementation, never supplied by a client. Backups and preparation must be

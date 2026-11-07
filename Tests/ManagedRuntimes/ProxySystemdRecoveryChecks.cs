@@ -126,6 +126,7 @@ internal static class ProxySystemdRecoveryChecks
             var before = states.Read()!.Installation.StateRevision;
             var expected = material with { Credentials = [next, retained] };
             var expectedHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(expected)));
+            ProxyServerPublicationReceipt? originalReceipt = null;
             var workerStart = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true };
             foreach (var arg in new[] { typeof(ProxySystemdRecoveryChecks).Assembly.Location,
                 "runtime-proxy-systemd-expiry-worker", socket, root }) workerStart.ArgumentList.Add(arg);
@@ -134,10 +135,15 @@ internal static class ProxySystemdRecoveryChecks
                 try
                 {
                     var marker = await worker.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(20));
+                    var pending = await store.ReadAsync(default);
                     if (marker != "native-apply-committed" || worker.HasExited
                         || states.Read()!.ConfigurationIdentity != expectedHash
-                        || (await store.ReadAsync(default)).PendingPublication is null)
+                        || pending.PendingPublication is null || pending.PendingPublicationOperationId is not { } operationId)
                         throw new InvalidOperationException("The real Helper did not commit before the domain reply barrier.");
+                    originalReceipt = await ReadReceiptAsync(operationId);
+                    if (originalReceipt.Outcome != ProxyServerPublicationOutcome.Committed
+                        || originalReceipt.CandidateHash != expectedHash || originalReceipt.PreviousHash != pending.PendingPreviousHash)
+                        throw new InvalidOperationException("The Helper receipt did not bind the original pending publication.");
                     worker.Kill();
                     await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
                     if (worker.ExitCode == 0) throw new InvalidOperationException("The expiry worker did not crash.");
@@ -172,6 +178,9 @@ internal static class ProxySystemdRecoveryChecks
                 {
                     await guard.VerifyPendingTunAsync();
                     helper = await StartHelper();
+                    if (originalReceipt is null || await ReadReceiptAsync(originalReceipt.OperationId) != originalReceipt)
+                        throw new InvalidOperationException("The original publication receipt did not survive the Helper restart.");
+                    Console.WriteLine($"PASS PRODUCTION EXPIRY RECEIPT: {originalReceipt.OperationId} survived the Helper restart");
                 }, guard.VerifyRecoveryAsync);
             var final = states.Read()!;
             var finalHash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(material with { Credentials = [retained] })));
@@ -184,6 +193,15 @@ internal static class ProxySystemdRecoveryChecks
             var secondHelper = await StopHelperAsync();
             if (ApplyCount(secondHelper.Log) != 1) throw new InvalidOperationException("Restarted Helper must receive only the later expiry apply.");
             Console.WriteLine("PASS PRODUCTION HELPER SYSTEMD: independent Helper crashed and restarted, runtime PID survived, original candidate confirmed, subsequent expiry and real traffic passed");
+
+            async Task<ProxyServerPublicationReceipt> ReadReceiptAsync(Guid operationId)
+            {
+                var response = await transport.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerPublicationReceipt, OperationId: operationId));
+                if (!response.Success || response.OutputBase64 is null)
+                    throw new InvalidOperationException("The production Helper did not return the original receipt.");
+                return JsonSerializer.Deserialize<ProxyServerPublicationReceipt>(Convert.FromBase64String(response.OutputBase64),
+                    RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default) ?? throw new InvalidOperationException("Invalid publication receipt.");
+            }
 
             async Task<Process> StartHelper()
             {
@@ -288,8 +306,13 @@ internal static class ProxySystemdRecoveryChecks
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
         {
             var result = await transport.ExecuteAsync(request, ct);
-            if (request.Operation == PrivilegedOperationKind.ProxyServerApply && result.Success)
+            if (request.Operation == PrivilegedOperationKind.ProxyServerApply)
             {
+                if (!result.Success)
+                {
+                    ResponseHeld.TrySetException(new InvalidOperationException($"Production expiry apply failed: {result.Error}"));
+                    return result;
+                }
                 ResponseHeld.TrySetResult();
                 await ReleaseResponse.Task.WaitAsync(ct);
             }

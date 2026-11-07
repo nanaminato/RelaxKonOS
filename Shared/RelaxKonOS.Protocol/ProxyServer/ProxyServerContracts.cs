@@ -236,3 +236,9 @@ public sealed record ProxyServerHelperRequest(
     ProxyServerAction? Action = null,
     ProxyServerMaterial? Material = null,
     bool KeepData = true);
+
+public enum ProxyServerPublicationOutcome { InFlight, Committed, Compensated, Rejected }
+
+/// <summary>The Helper's evidence for a single native publication, inside the existing runtime archive.</summary>
+public sealed record ProxyServerPublicationReceipt(Guid OperationId, string CandidateHash, string PreviousHash,
+    ProxyServerPublicationOutcome Outcome);

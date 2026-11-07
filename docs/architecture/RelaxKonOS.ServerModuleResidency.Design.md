@@ -396,3 +396,5 @@ MB-05 系统包 Nginx 在 Server 原终态持久化后压缩 Helper 回执详情
 MB-05 完整认证网站发布通过 Linux 私有 systemd 的 Configuring 和 Verifying 中断验收。Server 重启后通过原 operationId、应用历史和同键取得原回执，现有 Nginx、TLS 和独立 Docker 上游持续服务。应用关联按实际提交阶段保留，实际重载每次只执行一次。WebServer 保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证网站发布中断与恢复)。
 
 MB-04 Core 到期 worker 按原索引创建执行作用域。原候选落盘后，Helper 响应、原终态提交和异步释放都纳入停机排空。Proxy 保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站授权到期的停机排空)。
+
+MB-04 入站发布将原 Helper 操作 ID 保存在现有入站台账，恢复只读核对同一回执及配置摘要。在途或证据缺失保留原责任。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站发布按原-helper-回执恢复)。

@@ -54,42 +54,54 @@ public sealed class ProxyServerPublicationService(ProxyServerStore store,
         if (status.RecoveryRequired) return "proxy_server.recovery_required";
         if (status.ProblemCode == "proxy_server.configuration_drift") return status.ProblemCode;
         var rendered = SingBoxConfiguration.Render(material);
+        var operationId = Guid.NewGuid();
         // Persist the candidate before the Helper can commit it. A Server crash after the Helper
         // completes must not leave its applied revision permanently detached from the domain state.
-        await store.WriteAsync(state with { PendingPublication = material, PendingRollback = rollback }, ct);
+        await store.WriteAsync(state with { PendingPublication = material, PendingRollback = rollback,
+            PendingPublicationOperationId = operationId, PendingPreviousHash = status.ConfigurationHash }, ct);
         // A durable candidate is accepted work. Finish the original Helper call and commit its
         // result even when the expiry worker or the management caller is stopping.
-        var updated = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerApply, new(Material: material), CancellationToken.None);
+        var updated = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerApply, new(Material: material),
+            CancellationToken.None, operationId);
         if (updated.ConfigurationHash != Hash(rendered) || updated.RecoveryRequired) return "proxy_server.publication_unconfirmed";
         await store.WriteAsync(state with { PreviousPublished = rollback ? null : state.Published, Published = material,
-            PendingPublication = null, PendingRollback = false }, CancellationToken.None);
+            PendingPublication = null, PendingRollback = false, PendingPublicationOperationId = null, PendingPreviousHash = null }, CancellationToken.None);
         return null;
     }
 
     // Called with the domain gate held. Reconcile only a confirmed committed or compensated
     // Helper transaction; uncertain state remains blocked until explicit recovery succeeds.
-    internal async Task<ProxyServerState> ReadStateAsync(CancellationToken ct, bool confirmCandidateOnly = false)
+    internal async Task<ProxyServerState> ReadStateAsync(CancellationToken ct)
     {
         var state = await store.ReadAsync(ct);
         if (state.PendingPublication is not { } candidate) return state;
+        if (state.PendingPublicationOperationId is not { } operationId || operationId == Guid.Empty)
+            throw new ProxyServerException("proxy_server.recovery_required");
+        ProxyServerPublicationReceipt receipt;
+        try { receipt = await CallAsync<ProxyServerPublicationReceipt>(PrivilegedOperationKind.ProxyServerPublicationReceipt, null, ct, operationId); }
+        catch (ProxyServerException) { throw new ProxyServerException("proxy_server.recovery_required"); }
+        var candidateHash = Hash(SingBoxConfiguration.Render(candidate, false));
+        if (receipt.OperationId != operationId || receipt.CandidateHash != candidateHash || receipt.PreviousHash != state.PendingPreviousHash)
+            throw new ProxyServerException("proxy_server.recovery_required");
         var status = await StatusAsync(ct);
         if (!status.Installed || status.RecoveryRequired || status.ProblemCode is not null)
             throw new ProxyServerException("proxy_server.recovery_required");
-        if (status.ConfigurationHash == Hash(SingBoxConfiguration.Render(candidate, false)))
-            state = state with { PreviousPublished = state.PendingRollback ? null : state.Published, Published = candidate,
-                PendingPublication = null, PendingRollback = false };
-        else if (!confirmCandidateOnly && status.ConfigurationHash == (state.Published is null ? null : Hash(SingBoxConfiguration.Render(state.Published, false))))
-            state = state with { PendingPublication = null, PendingRollback = false };
-        else throw new ProxyServerException("proxy_server.recovery_required");
-        await store.WriteAsync(state, CancellationToken.None);
-        return state;
+        if (receipt.Outcome == ProxyServerPublicationOutcome.Committed && status.ConfigurationHash == candidateHash)
+            state = state with { PreviousPublished = state.PendingRollback ? null : state.Published, Published = candidate };
+        else if (receipt.Outcome is not (ProxyServerPublicationOutcome.Compensated or ProxyServerPublicationOutcome.Rejected)
+            || status.ConfigurationHash != receipt.PreviousHash)
+            throw new ProxyServerException("proxy_server.recovery_required");
+        var completed = state with { PendingPublication = null, PendingRollback = false,
+            PendingPublicationOperationId = null, PendingPreviousHash = null };
+        await store.WriteAsync(completed, CancellationToken.None);
+        return completed;
     }
 
-    private async Task<T> CallAsync<T>(PrivilegedOperationKind operation, ProxyServerHelperRequest? request, CancellationToken ct)
+    private async Task<T> CallAsync<T>(PrivilegedOperationKind operation, ProxyServerHelperRequest? request, CancellationToken ct, Guid? operationId = null)
     {
         if (mode.Mode != RelaxKonOS.Protocol.Common.ServerMode.System || !mode.Supports(ServerHostFeature.Proxy))
             throw new ProxyServerException("proxy_server.platform_unsupported");
-        var result = await helper.ExecuteAsync(new(operation, ProxyServer: request), ct);
+        var result = await helper.ExecuteAsync(new(operation, ProxyServer: request, OperationId: operationId), ct);
         if (!result.Success || result.OutputBase64 is null) throw new ProxyServerException(result.Error?.StartsWith("proxy_server.", StringComparison.Ordinal) == true
             ? result.Error : "proxy_server.helper_unavailable");
         try { return JsonSerializer.Deserialize<T>(Convert.FromBase64String(result.OutputBase64), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)

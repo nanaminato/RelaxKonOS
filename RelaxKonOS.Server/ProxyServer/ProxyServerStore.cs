@@ -33,6 +33,8 @@ public sealed record ProxyServerState(
     Dictionary<string, ProxyServerReceipt> Receipts)
 {
     public ProxyServerMaterial? PendingPublication { get; init; }
+    public Guid? PendingPublicationOperationId { get; init; }
+    public string? PendingPreviousHash { get; init; }
     public bool PendingRollback { get; init; }
     public static ProxyServerState Empty => new(new(0, []), [], [], [], null, null, [], new(StringComparer.Ordinal));
 }

@@ -24,9 +24,10 @@ internal static class SingBoxManagedStop
         if (after.Running || after.Exists && (!after.Owned || !SamePath(before.Executable, after.Executable)))
             throw new RuntimePolicyException("runtime.stop_not_verified");
         // Preserve all pending checkpoints, snapshots and receipts. A stop is not a recovery success.
-        return new(true, state.Active is not null, false, state.Pending is not null,
+        var pending = state.Pending is not null || state.ProxyPublicationUnresolved;
+        return new(true, state.Active is not null, false, pending,
             state.Active?.MeasuredVersion, state.ConfigurationIdentity, false,
-            state.Pending is null ? null : "proxy_server.recovery_required", BootEnabled: after.BootEnabled);
+            pending ? "proxy_server.recovery_required" : null, BootEnabled: after.BootEnabled);
     }
 
     private static bool SamePath(string? left, string? right) => left is not null && right is not null

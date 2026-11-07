@@ -59,7 +59,7 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
             && (pending.RequestHash != requestHash || pending.IdempotencyHash != keyHash))
             throw new RuntimePolicyException("runtime.idempotency_conflict");
         if (current.Pending is not null || current.Removal is not null || current.Configuration is not null
-            || current.Installation.RecoveryRequired) throw new RuntimePolicyException("runtime.recovery_required");
+            || current.ProxyPublicationUnresolved || current.Installation.RecoveryRequired) throw new RuntimePolicyException("runtime.recovery_required");
         if (plan.InstallationId != current.Installation.InstallationId || plan.HostId != current.Installation.HostId
             || plan.RuntimeId != current.Installation.RuntimeId) throw new RuntimePolicyException("runtime.installation_mismatch");
         if (current.Active is null || current.Installation.Ownership != RuntimeOwnership.Managed)

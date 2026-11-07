@@ -95,11 +95,13 @@ internal static class ProxyExpiryLiveChecks
                 {
                     var marker = await worker.StandardOutput.ReadLineAsync().WaitAsync(Budget);
                     TestAssert.Assert(marker == "apply-pending", $"Missing expiry worker barrier: {marker}");
-                    var pending = (await store.ReadAsync(default)).PendingPublication
+                    var persisted = await store.ReadAsync(default);
+                    var pending = persisted.PendingPublication
                         ?? throw new InvalidOperationException("The worker did not persist the pending publication.");
                     TestAssert.Assert(!worker.HasExited && pending.Credentials.Single().Id == retainedId,
                         "The original pending candidate must contain only the retained credential.");
-                    await transport.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: pending)));
+                    await transport.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: pending),
+                        OperationId: persisted.PendingPublicationOperationId));
                     worker.Kill();
                     await worker.WaitForExitAsync().WaitAsync(Budget);
                     TestAssert.Assert(worker.ExitCode != 0 && (await store.ReadAsync(default)).PendingPublication is not null,
@@ -205,17 +207,19 @@ internal static class ProxyExpiryLiveChecks
     internal static async Task RunCrashWorkerAsync(string root)
     {
         var store = new ProxyServerStore(new TestProxyPaths(root), OpenProtection(root));
-        await new ProxyServerPublicationService(store, new CrashTransport(), new SystemMode()).ReconcileExpiryAsync(default);
+        var published = (await store.ReadAsync(default)).Published!;
+        var hash = ProxyServerPublicationService.Hash(SingBoxConfiguration.Render(published, false));
+        await new ProxyServerPublicationService(store, new CrashTransport(hash), new SystemMode()).ReconcileExpiryAsync(default);
         throw new InvalidOperationException("Expiry worker exited before the crash boundary.");
     }
 
-    private sealed class CrashTransport : IPrivilegedOperationTransport
+    private sealed class CrashTransport(string hash) : IPrivilegedOperationTransport
     {
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct)
         {
             if (request.Operation == PrivilegedOperationKind.ProxyServerStatus)
             {
-                var status = new ProxyServerStatus(true, true, true, false, "fixture", null, true, null);
+                var status = new ProxyServerStatus(true, true, true, false, "fixture", hash, true, null);
                 return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(status)));
             }
             if (request.Operation != PrivilegedOperationKind.ProxyServerApply)
@@ -237,6 +241,7 @@ internal static class ProxyExpiryLiveChecks
     {
         private Process? _process;
         private string? _hash;
+        private ProxyServerPublicationReceipt? _receipt;
         internal int ApplyCalls;
         internal bool HideConfigurationHash;
 
@@ -245,9 +250,13 @@ internal static class ProxyExpiryLiveChecks
             if (request.Operation == PrivilegedOperationKind.ProxyServerApply)
             {
                 ApplyCalls++;
+                var previous = _hash!;
                 await ReplaceAsync(request.ProxyServer!.Material!);
+                _receipt = new(request.OperationId!.Value, _hash!, previous, ProxyServerPublicationOutcome.Committed);
                 return new(false, Error: "proxy_server.helper_unavailable");
             }
+            if (request.Operation == PrivilegedOperationKind.ProxyServerPublicationReceipt && _receipt?.OperationId == request.OperationId)
+                return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(_receipt)));
             if (request.Operation != PrivilegedOperationKind.ProxyServerStatus)
                 throw new InvalidOperationException("Unexpected privileged fixture operation.");
             var status = new ProxyServerStatus(true, true, true, false, "fixture", HideConfigurationHash ? null : _hash, true, null);

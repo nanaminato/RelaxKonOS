@@ -1565,3 +1565,13 @@ Linux x64 Release 在私有 systemd、生产 Helper 和真实 sing-box 上通过
 Linux 日志为 `.artifacts/mb04-expiry-drain-live.log`，归档 SHA-256 为 `9aaa2a7a57f4dc4fb1d7ab013d28ff5a5f44da0923f8486fa1b9c30858e37751`。Windows Release 独立 Proxy Server 与模块边界回归通过，日志为 `.artifacts/mb04-expiry-drain-proxy-win.log`、`.artifacts/mb04-expiry-drain-milestones-win.log`。本次停机直接驱动生产 worker，响应交付与作用域清理屏障由夹具注入，完整 Server 的 SIGTERM 同时命中这两个边界仍待实测。
 
 原入站台账仍是恢复权威。此阶段没有为 Core 到期发布新增独立 Helper 终态回执。候选摘要可用于确认已提交的配置，尚缺原配置摘要仍存在时区分未派发和已补偿的原操作证据。Proxy 保持 resident。
+
+### MB-04 入站发布按原 Helper 回执恢复
+
+原入站加密台账在派发前保存 Helper 操作 ID、候选和旧配置摘要。受管 sing-box Helper 在原归档状态及实例锁中记录同一 ID。进入原生变更前写入在途标记，随后记录已提交、已补偿或未触及原生配置的明确拒绝。只读回执验证归档与实际配置摘要，Server 重新核对原 ID 和两个摘要，才提交候选或确认原配置。停用启动门禁调用同一恢复路径。旧摘要单独出现、原回执缺失、旧候选缺少 ID 或回执仍在途时保留责任，不自动重发。
+
+在途标记阻止同一受管实例进入新的发布、切换和移除，原紧急停止入口仍可用。Helper 目前保存最近一次原生发布证据。若恢复期间该证据已被后续受理操作取代，Server 保留原未知结果。Helper 在原生变更中被终止后的按 ID 补偿入口和旧数据缺失证据的人工关账仍待实现。Proxy 保持 resident。
+
+Linux x64 Release 使用生产 Helper、完整非 root Server 和私有 systemd 的真实 sing-box。原到期 `2fc60685-3fb8-4b15-a60b-6540abfa401e` 在 Helper 提交后、Server 写回前中断。重启前后原 ID 返回相同回执。Helper 停止期间有效授权仍可转发。恢复接通后完整 Server 确认原候选，Helper 只接收之后自然到期的新 apply，未重发原发布。TUN、系统代理、真实流量及专属 cgroup 清理回归通过，宿主服务与代理文件指纹一致。日志为 `.artifacts/mb04-proxy-receipt-final-live.log`，归档 SHA-256 为 `3289e4001a0a2edb2fec28985313160d703dc7885322b0e7def93aa550e366ec`。
+
+Windows Release 独立 Proxy Server、Proxy Core、模块边界及受管服务分组通过。受控原生适配器的明确补偿按原 ID 返回两个配置摘要，未将该夹具计作 Linux 外部故障。首轮 Linux 暴露通用保存强制推进安装修订，改用原归档锁内的回执专用保存后通过。成功配置提交仍推进一次安装修订。
