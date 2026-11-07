@@ -885,7 +885,8 @@ static string ValidateNginxManagedFile(string? path)
         || IsWithin(canonical, staticSitesRoot);
     var extensionAllowed = IsWithin(canonical, staticSitesRoot)
         ? Path.GetExtension(canonical) is ".html" or ".stage" or ".rollback"
-        : Path.GetExtension(canonical) is ".conf" or ".json" or ".stage" or ".rollback";
+        : Path.GetExtension(canonical) is ".conf" or ".json" or ".stage" or ".rollback"
+            || string.Equals(canonical, Path.Combine(relaxkonosDirectory, "acme-http01.enabled"), StringComparison.Ordinal);
     if (!allowed || !extensionAllowed)
         throw new UnauthorizedAccessException();
     EnsureNoReparsePoints(IsWithin(canonical, staticSitesRoot) ? staticSitesRoot : includeRoot, canonical);

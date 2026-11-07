@@ -1735,6 +1735,10 @@ Linux 系统包重载的原回执保存在 Server。原终态持久化后，Help
 
 未指定证书 ID 时，自动签发通过所选 Nginx 的现有 WebRoot HTTP-01 集成。发起者须同时具备所选实例的 `NginxConfigurationWrite` 与 `CertificateIssue`（目标 `certificates/issue`）。发布前须确认 CA 能用申请域名和 TCP 80 读取同一个挑战目录。首站和新域名需要预先配置可达的 HTTP-01 路由。缺少集成时，发布在创建 CA 订单前以 `website.acme_webroot_required` 结束。
 
+首个独立 Nginx 站点可先保存 HTTP 配置，再执行实例的 `EnableAcmeHttp01` 操作。空实例会返回 `webserver.acme_no_managed_sites`。若启用操作在原生重载期间中断，同键查询返回原操作回执。后续签发需先独立核验该域名的 HTTP-01 路由，再发起新的证书请求，签发成功后可将证书绑定到原站点。
+
+Linux 实测通过了正常路径的完整签发与 TLS 绑定。重载中断路径中，即使 HTTP-01 可达并成功签发，原操作遗留的站点 `.rollback` 仍会使绑定返回 `webserver.site_save_failed`。此时原备份、站点元数据和旧 TLS 持续保留，备份对账恢复仍待实现。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站-http-01-显式启用与重载中断)。
+
 签发和清理完成后才进入站点配置。管理进程在签发中断时，原发布与证书回执可关联查询，证书台账负责清理原挑战文件和查询原 CA 订单。同键请求返回原发布回执。实机证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
 取消原证书操作后，网站发布等待证书回执终态，并按实际结果结束。若在签发阶段停止 Server，原证书任务继续排空，启动恢复将未完成发布标为 Interrupted。已知的原订单仍可通过原证书操作只读查询。

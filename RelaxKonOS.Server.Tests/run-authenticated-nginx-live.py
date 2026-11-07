@@ -21,6 +21,8 @@ import uuid
 def run(root, server, helper_binary, mode):
     production_helper = mode is not None
     acme_website = mode is not None and mode.startswith("--systemd-website-acme")
+    first_site_acme = mode is not None and mode.startswith("--systemd-first-site-acme")
+    interrupt_first_site = mode == "--systemd-first-site-acme"
     website = acme_website or mode in ("--systemd-website", "--systemd-website-verifying")
     verifying_website = mode == "--systemd-website-verifying"
     acme_success = mode == "--systemd-website-acme-success"
@@ -60,9 +62,9 @@ def run(root, server, helper_binary, mode):
         env["no_proxy"] = env["NO_PROXY"] = "website-mb05.test,127.0.0.1,localhost"
         if verifying_website:
             env["SSL_CERT_FILE"] = str(root / "website-ca.pem")
-        if acme_website:
-            env["SSL_CERT_FILE"] = str(root / "trust.pem")
-            env["Certificate__DirectoryUrl"] = "https://localhost:14000/dir"
+    if acme_website or first_site_acme:
+        env["SSL_CERT_FILE"] = str(root / "trust.pem")
+        env["Certificate__DirectoryUrl"] = "https://localhost:14000/dir"
     env["Modules__Certificates__Enabled"] = "true"
     env["Modules__WebServer__Enabled"] = "true"
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -150,7 +152,7 @@ def run(root, server, helper_binary, mode):
         assert len(payload) == length
         return header + payload, json.loads(payload)
 
-    def direct_helper_request(kind, operation):
+    def direct_helper_request(kind, operation, **fields):
         def send(connection, payload):
             data = json.dumps(payload).encode()
             connection.sendall(len(data).to_bytes(4, "little") + data)
@@ -162,7 +164,7 @@ def run(root, server, helper_binary, mode):
                 send(connection, {"Type": "hello", "Version": "1.0", "Capabilities": ["progress"]})
                 assert frame(source)[1]["Type"] == "welcome"
                 send(connection, {"operation": kind, "operationId": operation, "version": "1.1",
-                                  "correlation": {"correlationId": str(uuid.uuid4()), "operationId": operation}})
+                                  "correlation": {"correlationId": str(uuid.uuid4()), "operationId": operation}, **fields})
                 response = frame(source)[1]
                 assert response["Type"] == "result"
                 return response["Result"]
@@ -503,6 +505,151 @@ def run(root, server, helper_binary, mode):
                 assert witness.read_text().splitlines() == ["reload"]
                 print(f"PASS AUTHENTICATED WEBSITE {stage.upper()} RECOVERY: operation={operation_id}; {recovery}; original receipt, HTTPS upstream and one reload")
 
+    def verify_first_site_acme():
+        domain = "website-mb05.test"
+        certificates = "/api/v1.0/certificates"
+        challenge_root = root / "challenge"
+        sentinel = challenge_root / "first-site-probe"
+        sentinel.write_text("first-site-webroot")
+        sentinel.chmod(0o644)
+        probe = f"http://{domain}/.well-known/acme-challenge/{sentinel.name}"
+        witness = root / "nginx" / "reloads"
+        release = root / "nginx" / "release"
+        finished = root / "nginx" / "reload-finished"
+        master = nginx_pid_file.read_text()
+        public = root / "first-site-public"
+        public.mkdir(mode=0o755)
+        (public / "index.html").write_text("first-site-tls")
+        (public / "index.html").chmod(0o644)
+        site_request = {"id": "mb05-first", "name": "MB-05 First Site",
+                        "bindings": [{"domain": domain, "port": 80}], "rootPath": str(public)}
+        rollback = Path("/etc/nginx/conf.d/relaxkonos.d/mb05-first.conf.rollback")
+
+        def challenge_is_served():
+            try:
+                with opener.open(probe, timeout=1) as response:
+                    return response.read() == b"first-site-webroot"
+            except OSError:
+                return False
+
+        with process([*helper_args, helper_config], "first-site-helper") as helper:
+            wait_for(helper, helper_ready, "first-site-helper")
+            for path in ("/etc/nginx/conf.d/relaxkonos.d/fixture-other.enabled",
+                         "/etc/nginx/conf.d/relaxkonos.d/nested/acme-http01.enabled"):
+                assert not direct_helper_request("NginxDeleteManagedFile", str(uuid.uuid4()), path=path)["success"]
+            with process([server], "first-site-server") as initial:
+                wait_for(initial, healthy, "first-site-server")
+                token = login()
+                instance, = (item for item in request(web, token=token)
+                             if item["executablePath"] == executable and item["configurationPath"] == str(configuration))
+                sites = f"{web}/{instance['id']}/sites"
+                enable = f"{web}/{instance['id']}/lifecycle/EnableAcmeHttp01"
+                assert request(sites, token=token) == []
+                empty = request(enable, token=token, method="POST", key=secrets.token_hex(16), expected=202)
+                empty_route = f"{web}/operations/{empty['operationId']}"
+                wait_for(initial, lambda: request(empty_route, token=token)["state"].lower() == "failed",
+                         "WebRoot rejected without a managed site")
+                assert request(empty_route, token=token)["problemCode"] == "webserver.acme_no_managed_sites"
+                assert not witness.exists() and not (Path("/etc/nginx/conf.d/relaxkonos.d") / "acme-http01.enabled").exists()
+                release.touch()
+                site = request(sites, token=token, payload=site_request)
+                assert site["id"] == site_request["id"] and not challenge_is_served()
+                assert witness.read_text().splitlines() == ["reload"]
+                release.unlink()
+                finished.unlink()
+                request(enable, method="POST", key=key, expected=401)
+                operation = request(enable, token=token, method="POST", key=key, expected=202)["operationId"]
+                operation_route = f"{web}/operations/{operation}"
+                def active_route():
+                    receipt = request(operation_route, token=token)
+                    if receipt["state"].lower() not in ("queued", "running"):
+                        raise RuntimeError(f"First-site route enablement ended before native completion: {receipt['problemCode']}")
+                    return challenge_is_served()
+
+                wait_for(initial, active_route, "first-site challenge route")
+                assert request(operation_route, token=token)["state"].lower() == "running"
+                assert witness.read_text().splitlines() == ["reload", "reload"] and not finished.exists()
+                assert_served(b"original")
+                if interrupt_first_site:
+                    initial.kill()
+                    assert initial.wait(timeout=10) < 0
+                release.touch()
+                wait_for(helper, finished.is_file, "original first-site native reload completion")
+                if not interrupt_first_site:
+                    wait_for(initial, lambda: request(operation_route, token=token)["state"].lower() == "succeeded",
+                             "first-site WebRoot enablement completed")
+            with process([server], "first-site-restarted-server") as restarted:
+                wait_for(restarted, healthy, "first-site-restarted-server")
+                token = login()
+                receipt = request(operation_route, token=token)
+                assert receipt == request(enable, token=token, method="POST", key=key, expected=202)
+                expected = ("failed", "webserver.operation_interrupted") if interrupt_first_site else ("succeeded", "")
+                assert receipt["operationId"] == operation and (receipt["state"].lower(), receipt["problemCode"]) == expected
+                assert witness.read_text().splitlines() == ["reload", "reload"] and challenge_is_served()
+                assert request(sites, token=token) == [site]
+                assert "Added order" not in (root / "ca.log").read_text()
+
+                accepted = request(certificates, token=token, expected=202, key=secrets.token_hex(16), payload={
+                    "domains": [domain], "challengeType": "webRootHttp01", "contactEmail": "fixture@example.test",
+                    "acceptedTerms": True, "publicReachabilityConfirmed": True,
+                })
+                cert_route = f"{certificates}/operations/{accepted['operationId']}"
+
+                def certificate_issued():
+                    result = request(cert_route, token=token)
+                    if result["state"].lower() in ("failed", "cancelled"):
+                        raise RuntimeError(f"First-site ACME failed: {result['problemCode']}")
+                    return result["state"].lower() == "succeeded"
+
+                wait_for(restarted, certificate_issued, "first-site certificate issuance", attempts=350)
+                cert = request(cert_route, token=token)
+                assert list(challenge_root.iterdir()) == [sentinel] and challenge_is_served()
+                access = (root / "nginx" / "acme-access.log").read_text()
+                assert re.search(r'GET /\.well-known/acme-challenge/(?!first-site-probe )[A-Za-z0-9_-]+ HTTP/1\.1" 200 ', access)
+                ca_log = (root / "ca.log").read_text()
+                assert ca_log.count("Added order") == ca_log.count("POST /finalize-order/") == 1
+                tls_request = {
+                    **site_request, "expectedUpdatedAt": site["updatedAt"], "certificateId": cert["certificateId"],
+                    "httpsEnabled": True, "redirectHttpToHttps": True,
+                }
+                if interrupt_first_site:
+                    previous = rollback.read_bytes()
+                    try:
+                        request(sites, token=token, payload=tls_request)
+                    except RuntimeError as error:
+                        assert str(error).endswith("(webserver.site_save_failed)")
+                    else:
+                        raise AssertionError("TLS update proceeded despite the unresolved rollback")
+                    assert rollback.read_bytes() == previous and request(sites, token=token) == [site]
+                    assert challenge_is_served() and nginx_pid_file.read_text() == master
+                    assert_served(b"original")
+                    assert witness.read_text().splitlines() == ["reload", "reload"]
+                    print(f"PASS FIRST SITE ACME INTERRUPTION: enable={operation}; certificate={cert['operationId']}; original interrupted receipt, one CA order, TLS update blocked by retained rollback")
+                    return
+
+                assert not rollback.exists()
+                secured = request(sites, token=token, payload=tls_request)
+                assert secured["id"] == site["id"] and secured["certificateId"] == cert["certificateId"]
+                client = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                    urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=root / "issuing-root.pem")))
+
+                def site_serves_tls():
+                    try:
+                        with client.open(f"https://{domain}/", timeout=1) as response:
+                            return response.read() == b"first-site-tls"
+                    except OSError:
+                        return False
+
+                wait_for(restarted, site_serves_tls, "CA-issued first-site TLS")
+                assert challenge_is_served() and nginx_pid_file.read_text() == master
+                assert_served(b"original")
+                assert witness.read_text().splitlines() == ["reload", "reload", "reload"]
+                print(f"PASS AUTHENTICATED FIRST SITE ACME: enable={operation}; certificate={cert['operationId']}; original receipt, one CA order, TLS on original master")
+
+    if first_site_acme:
+        verify_first_site_acme()
+        return
+
     if website:
         verify_website_publication()
         return
@@ -682,7 +829,8 @@ if __name__ == "__main__":
                                                             "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry",
                                                             "--systemd-website", "--systemd-website-verifying", "--systemd-website-acme",
                                                             "--systemd-website-acme-success", "--systemd-website-acme-cancel",
-                                                            "--systemd-website-acme-drain") else None
+                                                            "--systemd-website-acme-drain", "--systemd-first-site-acme",
+                                                            "--systemd-first-site-acme-success") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

@@ -4,11 +4,11 @@ set -euo pipefail
 [[ ( $# == 2 || $# == 3 || $# == 5 ) && $EUID == 0 ]]
 mode=${3:---systemd}
 case "$mode" in
-    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain) ;;
+    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-first-site-acme|--systemd-first-site-acme-success) ;;
     *) exit 2 ;;
 esac
 pebble= dns= relay=
-if [[ $mode == --systemd-website-acme* ]]; then
+if [[ $mode == --systemd-website-acme* || $mode == --systemd-first-site-acme* ]]; then
     [[ $# == 5 ]]
     pebble=$(realpath -e -- "$4")
     dns=$(realpath -e -- "$5")
@@ -95,7 +95,7 @@ if [[ "$mode" == --systemd-website* ]]; then
     docker info --format '{{.DockerRootDir}}' | grep -Fxq "$work/docker-data"
     docker load -i "$work/alpine.tar"
 fi
-if [[ "$mode" == --systemd-website-acme* ]]; then
+if [[ -n "$pebble" ]]; then
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
         -addext 'subjectAltName=DNS:localhost,IP:127.0.0.2' -keyout "$work/https.key" -out "$work/https.pem" >/dev/null 2>&1
     cat > "$work/pebble.json" <<JSON
@@ -109,7 +109,7 @@ JSON
     ca=\$!
     : > "$work/response-fault"
     relay_mode=website
-    if [[ "$mode" == --systemd-website-acme-success ]]; then relay_mode=full-server; fi
+    if [[ "$mode" == --systemd-website-acme-success || "$mode" == --systemd-first-site-acme* ]]; then relay_mode=full-server; fi
     python3 "$relay" "$work" "\$relay_mode" > "$work/relay.log" 2>&1 &
     acme_relay=\$!
     for attempt in \$(seq 1 100); do
@@ -131,6 +131,7 @@ cat > "$work/manager.sh" <<'MANAGER'
 #!/bin/bash
 set -euo pipefail
 work=$1
+mode=$5
 exec > "$work/manager.log" 2>&1
 [[ $$ == 1 && $(readlink /proc/self/ns/mnt) != "$2" && $(readlink /proc/self/ns/net) != "$3" ]]
 [[ $(readlink /proc/self/ns/pid) != "$4" ]]
@@ -153,11 +154,17 @@ mount -o remount,bind,ro /proc/sys
 ip link set lo up
 
 conf="$work/nginx/conf.d"
-if [[ -f "$work/alpine.tar" ]]; then
+if [[ -f "$work/alpine.tar" || "$mode" == --systemd-first-site-acme* ]]; then
     conf=/etc/nginx/conf.d
     printf '\n127.0.0.1 website-mb05.test\n' >> /etc/hosts
 fi
 mkdir -p "$conf/relaxkonos.d" "$work/nginx" /var/lib/nginx
+access_log=off
+if [[ "$mode" == --systemd-first-site-acme* ]]; then
+    chmod 0711 "$work"
+    mkdir -m 0755 "$work/challenge"
+    access_log="$work/nginx/acme-access.log"
+fi
 if [[ -f "$work/website-acme" ]]; then
     chmod 0711 "$work"
     mkdir -m 0755 "$work/challenge"
@@ -179,7 +186,7 @@ pid $work/nginx/nginx.pid;
 error_log $work/nginx/error.log notice;
 events {}
 http {
-    access_log off;
+    access_log $access_log;
     include $conf/*.conf;
 }
 EOF
@@ -244,7 +251,7 @@ MANAGER
 systemd-run --unit="$unit" --property=Delegate=yes --property=RuntimeMaxSec=120s \
     --property=TimeoutStopSec=5s --property=KillMode=control-group --collect \
     unshare --mount --cgroup --net --pid --fork --kill-child --mount-proc --propagation private \
-    bash "$work/manager.sh" "$work" "$host_mnt" "$host_net" "$host_pid"
+    bash "$work/manager.sh" "$work" "$host_mnt" "$host_net" "$host_pid" "$mode"
 for attempt in $(seq 1 105); do
     [[ ! -f "$work/result" ]] || break
     case $(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true) in

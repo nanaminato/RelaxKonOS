@@ -1572,7 +1572,17 @@ Linux x64 Release 使用完整 PAM/JWT Server、生产 Helper、私有 systemd�
 
 最终中断发布 `a18aad80-5b6a-48a3-a131-25961501e8d6` 关联证书操作 `a1694919-20d1-4657-84ee-a2a0820a7546`。成功发布为 `7b65af66-eb68-4ac1-8103-491250e4f420`，原 Verifying 回归为 `f9cc0811-4dbd-4816-9bde-53d06c5a18b6`。三个 Linux 运行均清理专属 cgroup，宿主 Nginx/Docker PID 与 Nginx 配置指纹一致。日志为 `.artifacts/mb05-webroot-final--systemd-website-acme.log`、`.artifacts/mb05-webroot-final--systemd-website-acme-success.log` 与 `.artifacts/mb05-webroot-final--systemd-website-verifying.log`，Release 归档 SHA-256 为 `9cb6545d4a170606d6a6f854cb015315263a3dadc964ce4eaed7a61717094f9d`。首轮夹具误读 `remoteStatus`，修正后通过。Windows Release 模块边界回归（含跨进程 Docker 原回执与 WebRoot 台账恢复）及 Android 网站发布请求单测通过。Windows Direct HTTP 实监听在允许本地 URL 注册的运行中通过 16 项。
 
-待验收范围包括公共 CA 与公共 DNS、首站自动建立 HTTP-01 路由、完整非管理员提升交互及整机掉电。独立执行程序集与动态休眠仍开放，Certificates 和 WebServer 保持 resident。本阶段记录任务及外部资源连续性。
+待验收范围包括公共 CA 与公共 DNS、网站发布自动建立首站 HTTP-01 路由、完整非管理员提升交互及整机掉电。首个独立站点的显式启用路径见下节。独立执行程序集与动态休眠仍开放，Certificates 和 WebServer 保持 resident。
+
+### MB-05 首站 HTTP-01 显式启用与重载中断
+
+Linux 系统包 Helper 允许已有暂存文件原子移动为集成目录中的固定 `acme-http01.enabled`。其余 `.enabled` 文件及子目录中的同名文件仍拒绝，原路径和链接检查继续生效。旧 Helper 实测在该移动处返回 `webserver.config_elevation_required`。原有 WebRoot 的网站发布对照继续通过。
+
+既有 Linux 测试机的私有 systemd、PID、网络和挂载命名空间运行完整认证 Server、生产 Helper、真实 Nginx、独立 Pebble 与专属 DNS。夹具从空的 RelaxKonOS 站点目录开始，空实例启用返回 `webserver.acme_no_managed_sites`，没有重载。通过认证 API 保存首个 HTTP 站点并显式启用 WebRoot。正常路径启用 `55e19870-e050-4f17-8c70-7bd28f705e7b`，新证书操作 `b60a2556-83e5-45a7-bda1-f438356e3391`。Pebble 实际通过 Nginx 取挑战并签发一次，挑战清理后绑定到原站点，原 Nginx master 用受信任的 TLS 提供站点正文，旧 HTTPS 站点持续服务。
+
+中断路径在 Nginx 已服务挑战路由、真实 systemd 重载未返回时终止 Server。重启后按原 ID `5350cd4b-bb11-40ac-bc5e-36530f4264b4` 和同键返回相同 `Failed / webserver.operation_interrupted`，没有重放重载。独立检查路由后明确提交新证书操作 `7e7e9144-3b9c-45dd-a7e8-2b7f3745daf0`，一次 CA 签发完成且原挑战清理。原启用留下的站点 `.rollback` 阻止随后的 TLS 绑定，返回 `webserver.site_save_failed`，备份字节、原站点元数据和旧 HTTPS 保持，未发生第三次重载。原启用的配置与备份尚缺按原操作对账的恢复流程。
+
+两轮的专属 cgroup 已清理，宿主 Nginx、Docker PID 和 Nginx 配置指纹一致。日志为 `.artifacts/mb05-first-site-final--systemd-first-site-acme.log` 与 `.artifacts/mb05-first-site-final--systemd-first-site-acme-success.log`，Release 归档 SHA-256 为 `494dec81bf1d019fb0acd57d2bf330a3e7954a2869419883a2301512b3f6bf45`。初轮夹具遗漏向命名空间传入模式参数，修正后复现旧 Helper 拒绝。Windows Release 模块里程碑回归通过，Docker 跨进程恢复 `e3ed673d-e29f-48e5-8429-776513717dc6` 为原 Interrupted，副作用计数为一。
 
 ### MB-05 网站 WebRoot 签发的取消与停机排空
 
