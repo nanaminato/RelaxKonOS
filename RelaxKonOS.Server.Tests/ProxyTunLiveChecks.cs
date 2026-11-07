@@ -88,6 +88,16 @@ internal static class ProxyTunLiveChecks
                             "The schedule must observe the exact not-started publication closure.");
                         Console.WriteLine($"PASS MIHOMO LIVE PUBLICATION GATE: publication={publicationId}; TUN recovery={original.OperationId}; competing reloads=0");
                     }
+                    if (mihomo is not null)
+                    {
+                        calls.BlockNextReload = true;
+                        TestAssert.Assert(await safety.RecoverAsync(original, default) == ProxyProblemCodes.RecoveryRequired
+                            && await DeviceExistsAsync() && calls.Reloads == 0 && calls.BlockedReloads == 1
+                            && await safety.CaptureRecoveryAsync(default) == original
+                            && (await runtime.IsEnabledAsync(default)) is { Succeeded: true, Enabled: true },
+                            "A controller that reconnects but still reports TUN enabled cannot close the original recovery.");
+                        Console.WriteLine($"PASS MIHOMO LIVE UNAPPLIED RELOAD: operation={original.OperationId}; marker retained; native reloads=0");
+                    }
                     calls.DropNextReloadResponse = mihomo is not null;
                     await RunIpAsync("route", "del", "default", "via", "192.0.2.1", "dev", "rk-egress");
                     TestAssert.Assert(await safety.RecoverAsync(original, default) == ProxyProblemCodes.RecoveryRequired
@@ -230,9 +240,17 @@ internal static class ProxyTunLiveChecks
         internal int Reloads;
         internal int DroppedResponses;
         internal bool DropNextReloadResponse;
+        internal bool BlockNextReload;
+        internal int BlockedReloads;
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (request.Method == HttpMethod.Put && BlockNextReload)
+            {
+                BlockNextReload = false;
+                Interlocked.Increment(ref BlockedReloads);
+                throw new HttpRequestException("Isolated fixture interrupted the connection before forwarding the reload.");
+            }
             if (request.Method == HttpMethod.Put) Interlocked.Increment(ref Reloads);
             var response = await base.SendAsync(request, cancellationToken);
             if (request.Method == HttpMethod.Put && DropNextReloadResponse && response.IsSuccessStatusCode)
