@@ -1238,6 +1238,14 @@ Linux x64 Release 在私有网络及挂载命名空间运行生产发布协调�
 
 Linux x64 Release 实机日志为 .artifacts/mb05-nginx-configuring-live.log，制品 SHA-256 为 2d1f70095edd08bf32ac0db5cbd042d7358da80a2920e00997a9577b53463503。该路径保留未知结果供复核。
 
+### 隔离环境只读巡检
+
+在发布工作进程停止、专属 Nginx 仍运行时，巡检按原 `operationId` 读取发布台账、目标站点的配置路径和所有权标记、`sites.json` 中的站点记录及应用目录中的关联。实际路由证据来自夹具对回环 HTTPS 的 SNI、证书指纹和预期上游响应检查。只有收到匹配的路由证据且站点未登记时才报告 `live_site_unregistered`。仅有磁盘配置时，路由仍为 `live_route_unverified`。
+
+原回执和恢复问题码随 JSON 证据输出。Configuring 分支应同时报告发布结果待核实、已生效站点未登记及应用关联不匹配。Verifying 分支应保留待核实的发布结果，同时显示站点记录和应用关联已经存在。巡检仅供人工复核。夹具断言同键仍返回原回执，配置、站点元数据、应用目录和发布台账内容保持一致，且无追加 reload 或恢复执行作用域。
+
+使用现有 `RelaxKonOS.Server.Tests/run-nginx-site-live.sh` 分别运行 `configuring` 和 `verifying`。Linux x64 Release 在私有挂载和网络命名空间以 Nginx 1.26.3 通过两条路径。夹具的私有主机名配置令 `localhost` 对应 IPv4 回环，与发布使用的 `127.0.0.1` 上游一致。Configuring 原回执为 `1dfe5375-41cf-4125-a557-a0fdedba32f5`，Verifying 原回执为 `716947bd-3a99-473e-a6b8-cbbad0a48ced`。两条路径均保持单次发布 reload、原 HTTPS 路由、原回执和零恢复执行作用域。巡检本身尚未在完整 Server 中联合验收，完整认证发布恢复的独立验收见文末。
+
 ## 54. MB-05 独立 Engine 重启与持久卷
 
 既有 Linux 测试机的私有挂载和网络命名空间运行 Docker Engine 29.8.2。私有挂载隐藏宿主 containerd socket，日志确认 daemon 连接专属 exec-root 下的 containerd。Docker socket、客户端配置和 vfs 数据目录均专属。镜像从共享 Engine 已缓存的 Alpine 标签只读导出，并导入专属 Engine。首轮日志发现 daemon 默认尝试使用共享 containerd，独立验收改为隐藏宿主 socket。离线导入后使用导出的标签处理两种镜像存储返回的 ID 差异。
