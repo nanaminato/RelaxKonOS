@@ -47,6 +47,12 @@ var output = Path.Combine(AppContext.BaseDirectory, "layout-qa");
 Directory.CreateDirectory(output);
 var host = new Window { Width = 1000, Height = 700 };
 host.Show();
+if (args.Contains("--proxy-traffic-only"))
+{
+    ProxyTrafficPollingChecks.Run(host);
+    host.Close();
+    return;
+}
 if (args.Contains("--file-progress-only"))
 {
     FileOperationProgressChecks.Run(host, settings, output, appearance);
@@ -349,6 +355,7 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
     cases++;
 }
 BrowserChecks.Run(host, settings, appearance, output);
+ProxyTrafficPollingChecks.Run(host);
 host.Close();
 Console.WriteLine($"PASS: {cases} real-page layouts across 3 languages, 2 modes and 3 system styles. Screenshots: {output}");
 static void Check(bool condition, string message)

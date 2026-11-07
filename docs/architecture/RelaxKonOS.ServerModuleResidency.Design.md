@@ -500,3 +500,5 @@ Docker Engine 离线时，启动对账继续持有原 resident 工作租约和�
 存活 Server 中的 Compose 变更返回后若首次 Engine 观察失败，原工作租约继续覆盖独立只读观察作用域及原终态提交。Docker 保持 resident。见[变更后的观察中断](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-变更返回后的-engine-观察中断)。
 
 已派发的 Compose 变更遇到用户取消和 Engine 观察断线时，原工作租约覆盖 CLI 清理、后续只读观察及原终态持久化。见[取消与观察断线](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-用户取消与观察断线交叠)。
+
+桌面 Proxy 概览限制每个工作区的在途流量请求数，并在离开页面时取消。Server 的工作租约继续由真实任务和清理的寿命决定。见[流量轮询排空](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-桌面-mihomo-流量轮询排空)。

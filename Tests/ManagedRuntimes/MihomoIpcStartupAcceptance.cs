@@ -324,6 +324,10 @@ internal static class MihomoIpcStartupAcceptance
             await using var helper = await StartHelperAsync(helperAssembly, config, transport);
             await using var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-mihomo-drain.sock", socket, ct,
                 (kind, id) => kind == "MihomoRuntimeQuery" && id == drainId);
+            await using var trafficRelay = login is null ? null : await MihomoTrafficCancellationRelay.StartAsync(original.ControllerPort, ct);
+            const string controllerEndpoint = "Proxy__Mihomo__Controller__Endpoint";
+            var originalEndpoint = start.Environment[controllerEndpoint];
+            if (trafficRelay is not null) start.Environment[controllerEndpoint] = trafficRelay.Address;
             start.ArgumentList[^1] = Path.GetFullPath(serverAssembly);
             start.Environment["Modules__Proxy__Enabled"] = "true";
             if (login is not null)
@@ -370,6 +374,7 @@ internal static class MihomoIpcStartupAcceptance
                     || await ReadRuntimePidAsync() != nativePid || !await probe(port))
                     throw new InvalidOperationException("Server exited without durably draining the original recovery.");
                 start.Environment["PrivilegedHelper__SocketPath"] = socket;
+                start.Environment[controllerEndpoint] = originalEndpoint;
                 await CheckStartupAsync(start, drainId, uid, ready: true);
                 var restarted = await startupStore.ReadAsync(ct);
                 var log = await helper.StopAsync(drainCompletedRequests: true);
@@ -387,6 +392,7 @@ internal static class MihomoIpcStartupAcceptance
             {
                 relay.ReleaseHeldResponse();
                 await ProxyAuthenticatedPublicationChecks.StopAsync(process);
+                start.Environment[controllerEndpoint] = originalEndpoint;
                 start.Environment.Remove("DOTNET_STARTUP_HOOKS");
             }
 
@@ -435,6 +441,27 @@ internal static class MihomoIpcStartupAcceptance
                 if (logs is not { Length: 1 } || traffic is not { ProblemCode: "", MemoryBytes: >= 0, UploadTotalBytes: > 0 }
                     || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId || forwarding.IsCompleted)
                     throw new InvalidOperationException($"Live observation failed during recovery. Logs={logs?.Length}, traffic={traffic}, pending={(await startupStore.ReadAsync(ct)).Pending?.OperationId == drainId}, forwardingCompleted={forwarding.IsCompleted}.");
+                async Task<int> ActiveLeasesAsync() => (await client.GetFromJsonAsync<ServerModuleDto>(
+                    ServerApiRoutes.Modules + "/relaxkonos.proxy", RelaxKonOSJsonOptions.Default, ct))?.Residency?.ActiveLeases
+                    ?? throw new InvalidOperationException("The original Proxy residency state is unavailable.");
+
+                while (await ActiveLeasesAsync() != 0) await Task.Delay(25, ct);
+                using (var caller = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    trafficRelay!.HoldNextTrafficSample();
+                    var cancelled = client.GetFromJsonAsync<ProxyTrafficDto>(ProxyApiRoutes.Traffic, RelaxKonOSJsonOptions.Default, caller.Token);
+                    await trafficRelay.SampleHeld.Task.WaitAsync(ct);
+                    if (await ActiveLeasesAsync() != 1) throw new InvalidOperationException("Held native traffic did not own the Server work lease.");
+                    await caller.CancelAsync();
+                    try { await cancelled; throw new InvalidOperationException("The cancelled HTTP request returned a sample."); }
+                    catch (OperationCanceledException) when (caller.IsCancellationRequested) { }
+                    await trafficRelay.RequestDrained.Task.WaitAsync(ct);
+                }
+                while (await ActiveLeasesAsync() != 0) await Task.Delay(25, ct);
+                if (await client.GetFromJsonAsync<ProxyTrafficDto>(ProxyApiRoutes.Traffic, RelaxKonOSJsonOptions.Default, ct) is not { ProblemCode: "" }
+                    || await ObserveConnectionAsync() != originalConnection || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId)
+                    throw new InvalidOperationException("A fresh request did not recover the live controller and original publication.");
+                Console.WriteLine($"PASS MIHOMO NATIVE TRAFFIC CANCELLATION: {drainId}; held native sample drained and a fresh request completed");
                 await DrainAsync();
                 await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nproxy-ok"u8.ToArray(), ct);
                 if (await forwarding != "proxy-ok")

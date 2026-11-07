@@ -14,6 +14,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
 {
     private readonly IProxyRepository repository;
     private readonly ITaskManagerClient? systemMonitor;
+    private int _refreshingTraffic;
     private bool _updatingOverviewProxySelection;
     private int? _persistedMixedPort;
     [ObservableProperty] private bool _hasManagePermission;
@@ -237,7 +238,6 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
                 LoadOptionalAsync(() => repository.ListGroupsAsync(), ReplaceGroups),
                 LoadOptionalAsync(() => repository.GetRoutingModeAsync(), value => RoutingMode = value.Mode),
                 RefreshConnectionsAsync(),
-                RefreshTrafficAsync(),
                 LoadOptionalAsync(() => repository.ListLogsAsync(), values => Replace(Logs, values)),
                 LoadOptionalAsync(() => repository.GetDnsStatusAsync(), value => DnsStatus = value));
             await LoadSystemProxyHostOptionsAsync();
@@ -280,8 +280,18 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     }
 
     /// <summary>Small live overview refresh; it deliberately avoids reloading profiles or logs.</summary>
-    public Task RefreshTrafficAsync() => LoadOptionalAsync(() => repository.GetTrafficAsync(), value =>
-        Traffic = string.IsNullOrEmpty(value.ProblemCode) ? value : null);
+    public async Task RefreshTrafficAsync(CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested || Interlocked.Exchange(ref _refreshingTraffic, 1) != 0) return;
+        try
+        {
+            var value = await repository.GetTrafficAsync(cancellationToken);
+            if (!cancellationToken.IsCancellationRequested)
+                Traffic = string.IsNullOrEmpty(value.ProblemCode) ? value : null;
+        }
+        catch (Exception error) when (error is ProxyRequestException or HttpRequestException or OperationCanceledException) { }
+        finally { Volatile.Write(ref _refreshingTraffic, 0); }
+    }
 
     [RelayCommand(CanExecute = nameof(CanStartProxy))] private Task StartProxyAsync() => LifecycleAsync(ProxyLifecycleAction.Start);
     [RelayCommand(CanExecute = nameof(CanStopProxy))] private Task StopProxyAsync() => LifecycleAsync(ProxyLifecycleAction.Stop);

@@ -4549,4 +4549,4 @@ Mihomo 流量速率来自实时流量样本，累计上传、累计下载和内�
 
 Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链和开始时间。候选投影及实机资源测量见[连接详情按需解码评估](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接详情按需解码评估)。
 
-桌面概览每两秒请求流量。单客户端和 512 条真实连接的资源成本见[高连接数流量轮询基线](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-高连接数流量轮询基线)。
+桌面概览以两秒间隔请求流量，每个工作区最多持有一个在途请求。离开概览时取消，重新打开后等待原请求结束，丢弃迟到结果。见[流量轮询排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-桌面-mihomo-流量轮询排空)和[高连接数流量轮询基线](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-高连接数流量轮询基线)。

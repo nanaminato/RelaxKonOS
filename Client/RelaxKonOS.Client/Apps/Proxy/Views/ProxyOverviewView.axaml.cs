@@ -11,6 +11,7 @@ internal partial class ProxyOverviewView : UserControl
     // vertical content at infinite width, causing star-sized card columns to become Auto.
     private const double OverviewRightInset = 28;
     private readonly DispatcherTimer _trafficTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private CancellationTokenSource? _trafficLifetime;
 
     public ProxyOverviewView()
     {
@@ -20,10 +21,17 @@ internal partial class ProxyOverviewView : UserControl
         AttachedToVisualTree += (_, _) =>
         {
             UpdateOverviewContentWidth();
+            _trafficLifetime = new();
             _trafficTimer.Start();
             _ = RefreshTrafficAsync();
         };
-        DetachedFromVisualTree += (_, _) => _trafficTimer.Stop();
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _trafficTimer.Stop();
+            using var lifetime = _trafficLifetime;
+            _trafficLifetime = null;
+            lifetime?.Cancel();
+        };
     }
 
     private async void TrafficTimer_Tick(object? sender, EventArgs eventArgs) => await RefreshTrafficAsync();
@@ -49,7 +57,7 @@ internal partial class ProxyOverviewView : UserControl
         eventArgs.Handled = true;
     }
 
-    private Task RefreshTrafficAsync() => DataContext is ProxyManagerViewModel viewModel
-        ? viewModel.RefreshTrafficAsync()
+    private Task RefreshTrafficAsync() => _trafficLifetime is { } lifetime && DataContext is ProxyManagerViewModel viewModel
+        ? viewModel.RefreshTrafficAsync(lifetime.Token)
         : Task.CompletedTask;
 }

@@ -2126,3 +2126,13 @@ Windows Release 模块边界回归通过，含在首个观察阻塞时取消、�
 Linux Release 使用完整认证 Server 和专属 Engine。原容器真实停止后，夹具挂起第一次观察进程，停止专属 daemon，再通过生产 HTTP 路由取消。Server 返回原 `d754692b-b1c2-4d88-9c9c-18633f8e6728` Running 回执，首次观察进程已回收，随后真实 `docker ps` 非零退出。原回执保持 Running / Observing，诊断显示观察失败，列表返回 503，同项目新键返回 409。专属 Engine 恢复后，同一 Server 完成只读观察并提交原 Interrupted 回执，按 ID 和同键查询一致，容器保持运行，停止计数未增加。
 
 同制品复验了未取消的首次观察断线 `a5aafdfa-7349-413b-993a-809c08247a3d` 和完整 Server 离线启动 `38b69a9a-5cb6-4712-8325-798951830581`。专属项目和卷已清理，宿主服务 PID、容器清单及代理文件指纹一致。日志位于 `.artifacts/mb05-cancelled-observation/`，归档 SHA-256 为 `d016b37fadfcfc9996cd527288cfaedc6b5113f9a1a6e108b029b1a50acaa5b7`。验收限变更返回后的取消窗口。变更 CLI 自身无法证实清理、整机掉电、生产内存和独立执行程序集仍开放。Docker 保持 resident。
+
+### MB-04 桌面 Mihomo 流量轮询排空
+
+桌面概览在进入页面后开始两秒流量轮询，通用工作区刷新不再并行发起同一路径。每个工作区只允许一个流量 HTTP Task。慢请求跨过计时周期时跳过该周期，离开概览取消原调用，重新进入仍等待原 Task 完成。已离开页面的迟到结果不会更新当前显示。Server 继续用原工作租约保护控制器任务、响应与异步清理。
+
+Windows Release 的 Avalonia 无头回归使用实际 Dispatcher 计时和页面 attach/detach，验证慢请求、取消、迟到结果丢弃和重新进入后的下一次请求。首轮夹具只运行待处理任务，未驱动计时器，改为实际 Dispatcher 循环后通过。完整桌面回归通过 105 个页面布局及本专项。模块边界回归通过，MB-05 跨进程原 `09c5a30c-f7e7-4215-a174-7cc946c80930` 返回 Interrupted，受控副作用计数为一。
+
+Linux 私有 systemd 通过真实 Mihomo 连接和完整认证 Server 联验。HTTP 中继收到并暂扣真实 `/traffic` 样本，生产模块状态接口显示一个工作租约。客户端取消后，实际控制器请求中断，清理后状态接口显示零租约，新请求取得样本。原连接 `c8ced245-b35e-4de9-b483-1a7336e7349e` 持续转发，原发布 `0d11a773-00da-4ae9-864f-f76c1cb32a69` 跨 SIGTERM 排空及重启保持原回执，发布和补偿均未重放。Linux 原生套件通过 178 项，专属 cgroup 已清理，宿主 sing-box 和代理文件指纹一致。
+
+证据位于 `.artifacts/mb04-traffic-polling-cancel/`，归档 SHA-256 为 `fa9489a66edaa9f789958013784bf1a4c1e56d7555f77f29b27c28b3c682adf5`。并发上限按桌面工作区计算，多工作区共享采样、生产内存和整模块动态休眠仍开放。下一项核对同一概览仍使用的运行时、代理组、路由和 DNS 读取，补齐实际任务和响应的工作责任。
