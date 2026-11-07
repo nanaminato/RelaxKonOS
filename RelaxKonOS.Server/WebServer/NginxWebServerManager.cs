@@ -25,6 +25,7 @@ namespace RelaxKonOS.Server.WebServer;
 internal sealed partial class NginxWebServerManager(
     IPrivilegedNginxOperations privilegedNginx,
     WebServerOperationStore operations,
+    IServiceScopeFactory scopes,
     WebServerMetadataRepository metadata,
     IHostApplicationLifetime lifetime,
     NginxManagedOptions managedOptions,
@@ -194,18 +195,8 @@ internal sealed partial class NginxWebServerManager(
         var instance = ToIntegratedInstance(candidate);
         logger.LogInformation("Nginx integration was requested. CandidateId={CandidateId}, Executable={Executable}, Configuration={Configuration}, Actor={Actor}",
             candidateId, candidate.ExecutablePath, candidate.ConfigurationPath, actor ?? "<anonymous>");
-        return await operations.StartAsync(idempotencyKey, candidateId, "integrate", actor, async ct =>
-        {
-            var result = await IntegrateCoreAsync(instance, ct);
-            if (string.IsNullOrEmpty(result.ProblemCode))
-            {
-                await metadata.UpsertInstanceAsync(instance, ct);
-                logger.LogInformation("Nginx integration completed. InstanceId={InstanceId}, Executable={Executable}, Configuration={Configuration}", instance.Id, instance.ExecutablePath, instance.ConfigurationPath);
-            }
-            else
-                logger.LogWarning("Nginx integration failed. InstanceId={InstanceId}, Problem={Problem}, SnapshotId={SnapshotId}", instance.Id, result.ProblemCode, result.SnapshotId);
-            return result;
-        }, lifetime.ApplicationStopping);
+        return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, candidateId, "integrate", actor, scopes,
+            (execution, ct) => execution.IntegrateAsync(instance, ct), lifetime.ApplicationStopping);
     }
 
     public async Task<WebServerOperationDto?> ReloadAsync(string instanceId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
@@ -216,13 +207,8 @@ internal sealed partial class NginxWebServerManager(
         if (detected is null || detected.Id != instanceId) return null;
         if (detected.ManagementMode != WebServerManagementMode.Integrated)
             return new WebServerOperationDto(Guid.Empty, instanceId, "reload", WebServerOperationState.Failed, "authorization", "webserver.reload_not_permitted", null, null, DateTimeOffset.UtcNow);
-        return await operations.StartAsync(idempotencyKey, instanceId, "reload", actor, async ct =>
-        {
-            var reload = UsesSystemPackageNginx(detected)
-                ? await RunSystemdNginxOperationAsync("reload", ct)
-                : new PrivilegedOperationResult((await RunNginxAsync(detected.ExecutablePath, ["-s", "reload"], ct)).Success);
-            return new WebServerOperationResult(reload.Success ? "" : ToWebServerProblem(reload.ProblemCode, "webserver.reload_failed"));
-        }, lifetime.ApplicationStopping);
+        return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, "reload", actor, scopes,
+            (execution, ct) => execution.ReloadAsync(detected, ct), lifetime.ApplicationStopping);
     }
 
     internal async Task<string?> ExecuteInstallationAsync(InstallationOperationKind kind, NginxInstallationRequest request,
@@ -277,31 +263,22 @@ internal sealed partial class NginxWebServerManager(
         {
             if (instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed))
                 return Rejected(instanceId, "reload", "webserver.reload_not_permitted");
-            return await operations.StartAsync(idempotencyKey, instanceId, "reload", actor, async ct =>
-            {
-                if (UsesSystemPackageNginx(instance))
-                {
-                    var helper = await RunSystemdNginxOperationAsync("reload", ct);
-                    return new WebServerOperationResult(helper.Success ? "" : ToWebServerProblem(helper.ProblemCode, "webserver.reload_failed"));
-                }
-                var reload = await RunNginxAsync(instance.ExecutablePath,
-                    instance.ManagementMode == WebServerManagementMode.Managed ? ManagedArguments(GetManagedLayout(), ["-s", "reload"]) : ["-s", "reload"], ct);
-                return new WebServerOperationResult(reload.Success ? "" : "webserver.reload_failed");
-            }, lifetime.ApplicationStopping);
+            return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, "reload", actor, scopes,
+                (execution, ct) => execution.ReloadAsync(instance, ct), lifetime.ApplicationStopping);
         }
         if (action == WebServerLifecycleAction.EnableAcmeHttp01)
         {
             if (instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed))
                 return Rejected(instanceId, "enable-acme-http01", "webserver.acme_integration_required");
-            return await operations.StartAsync(idempotencyKey, instanceId, "enable-acme-http01", actor,
-                ct => EnableAcmeHttp01CoreAsync(instance, ct), lifetime.ApplicationStopping);
+            return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, "enable-acme-http01", actor, scopes,
+                (execution, ct) => execution.EnableAcmeHttp01Async(instance, ct), lifetime.ApplicationStopping);
         }
         if (instance.ManagementMode != WebServerManagementMode.Managed)
             return Rejected(instanceId, kind, "webserver.managed_required");
 
         var layout = GetManagedLayout();
-        return await operations.StartAsync(idempotencyKey, instanceId, kind, actor,
-            ct => ApplyManagedLifecycleCoreAsync(layout, action, ct), lifetime.ApplicationStopping);
+        return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, kind, actor, scopes,
+            (execution, ct) => execution.ApplyManagedLifecycleAsync(layout, action, ct), lifetime.ApplicationStopping);
     }
 
 }

@@ -398,7 +398,7 @@ internal sealed partial class NginxWebServerManager
     private static WebServerOperationDto Rejected(string instanceId, string kind, string problemCode) =>
         new(Guid.Empty, instanceId, kind, WebServerOperationState.Failed, "validation", problemCode, null, null, DateTimeOffset.UtcNow);
 
-    private sealed record ManagedLayout(string Root, string ExecutablePath, string ConfigurationPath, string MarkerPath, string InstanceId);
+    internal sealed record ManagedLayout(string Root, string ExecutablePath, string ConfigurationPath, string MarkerPath, string InstanceId);
     private sealed record NginxManagedInstallRequest(bool Confirmed, string? Version = null, InstallationFileSource? Source = null);
     private sealed record NginxInstallResult(bool Success, PrivilegedProblemCode ProblemCode);
 

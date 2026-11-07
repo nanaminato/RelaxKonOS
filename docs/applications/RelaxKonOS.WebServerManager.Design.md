@@ -1714,3 +1714,5 @@ Linux 隔离 Nginx 已验证网站发布恢复后的生产 HTTP 同键响应。�
 独立 Nginx reload 的生产 HTTP 回执也通过 Linux 断线验收。原管理实例从发现移除后，同键仍返回原中断回执。响应执行退出后归还租约，原 HTTPS 服务继续运行，reload 未重放。
 
 网站发布以原持久台账准入，并在原工作租约内创建执行作用域。恢复或同键查询直接返回原回执。Linux 隔离 Nginx 已验证配置提交和 HTTPS 验证中的进程崩溃。恢复保留原回执与现有 TLS，未追加发布重载。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布准入与执行作用域)。
+
+直接 Nginx 操作在原 WebServer 台账准入后创建执行作用域，完成任务和作用域清理后提交终态。清理无法确认时保留原活跃回执。Linux 隔离实测覆盖重载后进程中断、同键恢复和 HTTP 断线排空，原 HTTPS 保持，重载一次。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-webserver-操作执行作用域)。

@@ -270,6 +270,10 @@ internal static async Task VerifyOperationIdempotencyAsync(string root)
         "Original web-server request could not be recovered without rediscovery.");
     TestAssert.Assert(await webOperations.FindRequestAsync("same-key", "nginx-test", "reload", "another-user", CancellationToken.None) is null,
         "Web-server request recovery exposed another actor's operation.");
+    var conflictingActor = await webOperations.StartAsync("same-key", "nginx-test", "reload", "another-user",
+        _ => throw new InvalidOperationException("A conflicting actor ran the operation."), default);
+    TestAssert.Assert(conflictingActor.OperationId == Guid.Empty && conflictingActor.ProblemCode == "webserver.idempotency_conflict",
+        "The atomic admission check must also refuse another actor's receipt.");
     TestAssert.Assert(await webOperations.FindRequestAsync("different-key", "nginx-test", "reload", "test", CancellationToken.None) is null,
         "Web-server request recovery matched a different key.");
     TestAssert.Assert((await TestOperations.WaitForWebOperationAsync(webOperations, webFirst.OperationId)).State == WebServerOperationState.Succeeded, "WebServer operation did not complete.");
@@ -288,8 +292,12 @@ internal static async Task VerifyOperationCancellationDrainAsync(string root)
     var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var cleanupEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var cleanupReleased = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var scopes = new OperationTestScopeFactory<object>(() => new object(),
+        async () => { cleanupEntered.SetResult(); await cleanupReleased.Task; });
     var budget = TimeSpan.FromSeconds(10);
-    var receipt = await store.StartAsync("drain", "nginx", "reload", "test", async ct =>
+    var receipt = await store.StartScopedAsync<object>("drain", "nginx", "reload", "test", scopes, async (_, ct) =>
     {
         using var notification = ct.Register(() => cancelled.TrySetResult());
         entered.TrySetResult();
@@ -299,19 +307,54 @@ internal static async Task VerifyOperationCancellationDrainAsync(string root)
     try
     {
         await entered.Task.WaitAsync(budget);
+        var conflict = await store.StartScopedAsync<object>("drain", "nginx", "reload", "other-actor", scopes,
+            (_, _) => throw new InvalidOperationException("Another actor ran a conflicting operation."), default);
+        TestAssert.Assert(conflict.OperationId == Guid.Empty && conflict.ProblemCode == "webserver.idempotency_conflict",
+            "Concurrent admission must preserve the original actor's receipt.");
         var result = await store.CancelAsync(receipt.OperationId, default);
         await cancelled.Task.WaitAsync(budget);
         TestAssert.Assert(result?.State == WebServerOperationState.Running
             && Volatile.Read(ref leases.Active) == 1
             && WebServerOperationStore.ReadPending(environment).Single().OperationId == receipt.OperationId,
             "Cancellation must leave the original active receipt and lease until the action drains.");
+        released.TrySetResult();
+        await cleanupEntered.Task.WaitAsync(budget);
+        TestAssert.Assert(Volatile.Read(ref leases.Active) == 1
+            && WebServerOperationStore.ReadPending(environment).Single().OperationId == receipt.OperationId,
+            "The original receipt and lease must remain active until asynchronous scope cleanup finishes.");
     }
-    finally { released.TrySetResult(); }
+    finally { released.TrySetResult(); cleanupReleased.TrySetResult(); }
     var completed = await TestOperations.WaitForWebOperationAsync(store, receipt.OperationId);
     await store.StopAsync(default).WaitAsync(budget);
     TestAssert.Assert(completed.State == WebServerOperationState.Cancelled && leases.Active == 0
         && WebServerOperationStore.ReadPending(environment).Count == 0,
         "Actual action completion must precede a durable Cancelled receipt and lease release.");
+
+    var cleanupEnvironment = new TestHostEnvironment(Directory.CreateDirectory(Path.Combine(root, "unknown-scope-cleanup")).FullName);
+    var unresolvedLeases = new TestResidentBackgroundLeases();
+    using (var unresolved = new WebServerOperationStore(cleanupEnvironment, new HostOperationJournal(cleanupEnvironment, configuration),
+        NullLogger<WebServerOperationStore>.Instance, unresolvedLeases))
+    {
+        var cleanupFailed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var failedScope = new OperationTestScopeFactory<object>(() => new object(), () =>
+        {
+            cleanupFailed.SetResult();
+            throw new IOException("Fixture scope cleanup failed.");
+        });
+        await unresolved.StartAsync(default);
+        var uncertain = await unresolved.StartScopedAsync<object>("unknown-cleanup", "nginx", "reload", "test", failedScope,
+            (_, _) => Task.FromResult(WebServerOperationResult.Success), default);
+        await cleanupFailed.Task.WaitAsync(budget);
+        try
+        {
+            await unresolved.StopAsync(default).WaitAsync(budget);
+            throw new InvalidOperationException("Unconfirmed execution cleanup was treated as complete.");
+        }
+        catch (InvalidOperationException error) when (error.InnerException is IOException) { }
+        TestAssert.Assert(unresolvedLeases.Active == 1 && unresolvedLeases.RecoveryRequired == 1
+            && WebServerOperationStore.ReadPending(cleanupEnvironment).Single().OperationId == uncertain.OperationId,
+            "Unconfirmed execution cleanup must retain the original active receipt and faulted work responsibility.");
+    }
     var path = Path.Combine(root, "data", "webserver-operations.json");
     await File.WriteAllTextAsync(path, "{broken");
     var failedLeases = new TestResidentBackgroundLeases();

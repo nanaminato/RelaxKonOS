@@ -77,7 +77,8 @@ internal static class NginxProcessRecoveryChecks
                 using var store = await OpenStoreAsync(root);
                 var restored = await store.GetAsync(operationId, default);
                 var transport = new IsolatedReloadTransport(executable, root, allowReload: false);
-                var provider = CreateProvider(root, store, transport);
+                var recoveryScopes = 0;
+                var provider = CreateProvider(root, store, transport, executionCreated: () => Interlocked.Increment(ref recoveryScopes));
                 File.Delete(NginxManagedPaths.MarkerPath(new() { InstallationRoot = root }));
                 TestAssert.Assert(restored is not null, "Original operation was absent after startup recovery.");
                 TestAssert.Assert(!(await provider.DiscoverAsync(default)).Any(instance => instance.Id == restored!.InstanceId),
@@ -96,10 +97,11 @@ internal static class NginxProcessRecoveryChecks
                 var reopened = await reopenedStore.GetAsync(operationId, default);
                 TestAssert.Assert(restored is { State: WebServerOperationState.Failed, Stage: "interrupted",
                         ProblemCode: "webserver.operation_interrupted" }
-                    && replay == restored && reloadReplay == restored && reopened == restored && CountReloads(root) == 1 && transport.Calls == 0,
+                    && replay == restored && reloadReplay == restored && reopened == restored && CountReloads(root) == 1
+                    && transport.Calls == 0 && recoveryScopes == 0,
                     "The original interrupted receipt must persist and the retry must preserve the single reload.");
                 await ObserveAsync(client, address, "after", nginx);
-                Console.WriteLine($"PASS NGINX LIVE CRASH RECOVERY: operation={operationId}; interrupted receipt persisted, reloads=1, original Nginx still serving; HTTP response drained after disconnect");
+                Console.WriteLine($"PASS NGINX LIVE CRASH RECOVERY: operation={operationId}; interrupted receipt persisted, reloads=1, recovery scopes=0, original Nginx still serving; HTTP response drained after disconnect");
             }
             finally
             {
@@ -509,11 +511,13 @@ internal static class NginxProcessRecoveryChecks
     {
         using var store = await OpenStoreAsync(root);
         var transport = new IsolatedReloadTransport(executable, root, allowReload: true);
-        var provider = CreateProvider(root, store, transport);
+        var executions = 0;
+        var provider = CreateProvider(root, store, transport, executionCreated: () => Interlocked.Increment(ref executions));
         var instance = await FindManagedInstanceAsync(provider);
         var receipt = await new WebServerManager([provider]).ApplyLifecycleAsync(instance.Id, WebServerLifecycleAction.Reload, Key, Actor, default)
             ?? throw new InvalidOperationException("The production provider refused the isolated reload.");
         await transport.Accepted.Task.WaitAsync(Budget);
+        TestAssert.Assert(executions == 1, "The original reload must own one direct execution scope.");
         Console.WriteLine(receipt.OperationId);
         await Task.Delay(Timeout.InfiniteTimeSpan);
     }
@@ -522,13 +526,22 @@ internal static class NginxProcessRecoveryChecks
         (await provider.DiscoverAsync(default)).Single(instance => instance.ManagementMode == WebServerManagementMode.Managed
             && instance.ExecutablePath == PackageExecutable);
 
-    private static NginxWebServerManager CreateProvider(string root, WebServerOperationStore store, IPrivilegedOperationTransport transport, ICertificateStore? certificates = null)
+    private static NginxWebServerManager CreateProvider(string root, WebServerOperationStore store, IPrivilegedOperationTransport transport,
+        ICertificateStore? certificates = null, Action? executionCreated = null)
     {
         var environment = new TestHostEnvironment(root);
         var configuration = TestConfiguration();
-        return new(new PrivilegedNginxOperations(transport), store, new WebServerMetadataRepository(environment, configuration),
+        var metadata = new WebServerMetadataRepository(environment, configuration);
+        NginxWebServerManager? provider = null;
+        var scopes = new OperationTestScopeFactory<NginxWebServerManager.DirectExecution>(() =>
+        {
+            executionCreated?.Invoke();
+            return new(provider!, metadata, NullLogger<NginxWebServerManager.DirectExecution>.Instance);
+        });
+        provider = new(new PrivilegedNginxOperations(transport), store, scopes, metadata,
             new TestApplicationLifetime(), new NginxManagedOptions { InstallationRoot = root },
             null!, certificates!, null!, null!, NullLogger<NginxWebServerManager>.Instance);
+        return provider;
     }
 
     // Intercept only the closed reload request. No Helper connection or systemd call is available to this fixture.

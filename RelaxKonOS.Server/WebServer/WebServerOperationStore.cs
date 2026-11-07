@@ -82,6 +82,20 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         Func<CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
         => await StartAsync(idempotencyKey, instanceId, kind, actor, (_, cancellationToken) => action(cancellationToken), applicationStopping);
 
+    internal Task<WebServerOperationDto> StartScopedAsync<TExecution>(string idempotencyKey, string instanceId, string kind, string? actor,
+        IServiceScopeFactory scopes, Func<TExecution, CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
+        where TExecution : notnull =>
+        StartAsync(idempotencyKey, instanceId, kind, actor, async ct =>
+        {
+            var scope = scopes.CreateAsyncScope();
+            try { return await action(scope.ServiceProvider.GetRequiredService<TExecution>(), ct); }
+            finally
+            {
+                try { await scope.DisposeAsync(); }
+                catch (Exception error) { throw new ExecutionCleanupException(error); }
+            }
+        }, applicationStopping);
+
     public async Task<WebServerOperationDto> StartAsync(string idempotencyKey, string instanceId, string kind, string? actor,
         Func<IWebServerOperationProgress, CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
     {
@@ -92,7 +106,12 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         {
             RequireReady();
             if (_byIdempotency.TryGetValue(key, out var existingId))
-                return _operations[existingId].ToDto();
+            {
+                var existing = _operations[existingId];
+                return string.Equals(existing.Actor, actor, StringComparison.Ordinal) ? existing.ToDto()
+                    : new(Guid.Empty, instanceId, kind, WebServerOperationState.Failed, "validation",
+                        "webserver.idempotency_conflict", null, null, DateTimeOffset.UtcNow);
+            }
 
             work.Token.ThrowIfCancellationRequested();
             var operation = new PersistedOperation(Guid.NewGuid(), key, instanceId, kind, actor, WebServerOperationState.Queued,
@@ -164,7 +183,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 state = string.IsNullOrEmpty(result.ProblemCode) ? WebServerOperationState.Succeeded : WebServerOperationState.Failed;
             }
             catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
-            catch (Exception exception) when (exception is not NginxProcessCleanupException)
+            catch (Exception exception) when (exception is not (NginxProcessCleanupException or ExecutionCleanupException))
             {
                 _logger.LogError(exception, "Web-server operation failed unexpectedly. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
             }
@@ -278,6 +297,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
     {
         public WebServerOperationDto ToDto() => new(OperationId, InstanceId, Kind, State, Stage, ProblemCode, SnapshotId, StartedAt, CompletedAt);
     }
+
+    private sealed class ExecutionCleanupException(Exception inner) : InvalidOperationException("Web-server execution scope did not drain.", inner);
 
     private sealed class OperationProgress(WebServerOperationStore owner, Guid operationId) : IWebServerOperationProgress
     {

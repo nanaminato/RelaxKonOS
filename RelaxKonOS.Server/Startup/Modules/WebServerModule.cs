@@ -25,6 +25,7 @@ internal sealed class WebServerModule : IServerModule, IServerModuleDeactivation
     public void ConfigureServices(WebApplicationBuilder builder, ServerModuleContext context)
     {
         builder.Services.AddHostedService(services => services.GetRequiredService<RelaxKonOS.Server.WebServer.WebServerOperationStore>());
+        builder.Services.AddScoped<RelaxKonOS.Server.WebServer.NginxWebServerManager.DirectExecution>();
         builder.Services.AddSingleton<WebsitePublicationStore>();
         builder.Services.AddSingleton<WebsitePublicationCoordinator>();
         builder.Services.AddScoped<WebsitePublicationExecution>();

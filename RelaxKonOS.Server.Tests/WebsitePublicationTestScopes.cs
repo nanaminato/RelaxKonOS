@@ -10,7 +10,7 @@ internal static class WebsitePublicationTestScopes
         IHttpClientFactory httpClients, IHostApplicationLifetime lifetime, ILogger<WebsitePublicationCoordinator> logger,
         IResidentModuleWorkLeaseSource leases, Action? executionCreated = null, Func<ValueTask>? cleanup = null)
     {
-        var scopes = new Factory(() =>
+        var scopes = new OperationTestScopeFactory<WebsitePublicationExecution>(() =>
         {
             executionCreated?.Invoke();
             return new WebsitePublicationExecution(store, applications, catalog, webServers, certificates, certificateOperations,
@@ -19,18 +19,19 @@ internal static class WebsitePublicationTestScopes
         return new WebsitePublicationCoordinator(store, catalog, scopes, lifetime, logger, leases);
     }
 
-    private sealed class Factory(Func<WebsitePublicationExecution> create, Func<ValueTask>? cleanup) : IServiceScopeFactory
-    {
-        public IServiceScope CreateScope() => new Scope(create, cleanup);
-    }
+}
 
-    private sealed class Scope(Func<WebsitePublicationExecution> create, Func<ValueTask>? cleanup) :
+internal sealed class OperationTestScopeFactory<T>(Func<T> create, Func<ValueTask>? cleanup = null) : IServiceScopeFactory where T : class
+{
+    public IServiceScope CreateScope() => new Scope(create, cleanup);
+
+    private sealed class Scope(Func<T> create, Func<ValueTask>? cleanup) :
         IServiceScope, IServiceProvider, IAsyncDisposable
     {
-        private WebsitePublicationExecution? execution;
+        private T? execution;
         public IServiceProvider ServiceProvider => this;
-        public object? GetService(Type serviceType) => serviceType == typeof(WebsitePublicationExecution) ? execution ??= create() : null;
+        public object? GetService(Type serviceType) => serviceType == typeof(T) ? execution ??= create() : null;
         public ValueTask DisposeAsync() => cleanup?.Invoke() ?? ValueTask.CompletedTask;
-        public void Dispose() => throw new InvalidOperationException("The publication scope must be disposed asynchronously.");
+        public void Dispose() => throw new InvalidOperationException("The operation scope must be disposed asynchronously.");
     }
 }
