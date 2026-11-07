@@ -3,7 +3,7 @@
 set -euo pipefail
 [[ ( $# == 2 || $# == 3 ) && $EUID == 0 ]]
 mode=${3:---systemd}
-[[ $mode == --systemd || $mode == --systemd-drain || $mode == --systemd-unknown || $mode == --systemd-timeout || $mode == --systemd-receipt || $mode == --systemd-response-loss || $mode == --systemd-rejected || $mode == --systemd-retire-retry ]]
+[[ $mode == --systemd || $mode == --systemd-drain || $mode == --systemd-unknown || $mode == --systemd-timeout || $mode == --systemd-receipt || $mode == --systemd-response-loss || $mode == --systemd-rejected || $mode == --systemd-retire-retry || $mode == --systemd-website || $mode == --systemd-website-verifying ]]
 server=$(realpath -e -- "$1")
 helper=$(realpath -e -- "$2")
 script=$(realpath -e -- "$(dirname -- "$0")/run-authenticated-nginx-live.py")
@@ -16,6 +16,9 @@ host_pid=$(readlink /proc/self/ns/pid)
 fingerprint() {
     systemctl show nginx.service docker.service --property=MainPID,ActiveState
     find /etc/nginx -type f -print0 | sort -z | xargs -0 -r sha256sum
+    if [[ $mode == --systemd-website* ]]; then
+        docker --host unix:///var/run/docker.sock ps -q | sort
+    fi
 }
 before=$(fingerprint)
 writer=
@@ -31,6 +34,9 @@ cleanup() {
     echo "PASS HOST NGINX SYSTEMD ISOLATION: dedicated cgroup removed, shared state unchanged"
 }
 trap cleanup EXIT
+if [[ $mode == --systemd-website* ]]; then
+    docker --host unix:///var/run/docker.sock image save alpine:3.22 > "$work/alpine.tar"
+fi
 mkfifo -m 0600 "$work/credentials"
 exec 3<&0
 cat <&3 > "$work/credentials" &
@@ -41,7 +47,38 @@ cat > "$work/inside.sh" <<EOF
 #!/bin/bash
 set -euo pipefail
 exec > "$work/test.log" 2>&1
-trap 'echo \$? > "$work/result"' EXIT
+daemon=
+finish() {
+    code=\$?
+    if [[ -n \$daemon ]]; then
+        if ! docker ps -aq | xargs -r docker rm -f; then code=1; fi
+        if [[ -n \$(docker ps -aq) ]]; then code=1; fi
+        kill "\$daemon" 2>/dev/null || :
+        wait "\$daemon" || code=1
+    fi
+    echo "\$code" > "$work/result"
+    exit "\$code"
+}
+trap finish EXIT
+if [[ "$mode" == --systemd-website* ]]; then
+    export DOCKER_HOST="unix://$work/engine.sock"
+    export DOCKER_CONFIG="$work/docker-client"
+    unset DOCKER_CONTEXT
+    mkdir "\$DOCKER_CONFIG"
+    printf '{}\n' > "$work/daemon.json"
+    dockerd --config-file "$work/daemon.json" --host "\$DOCKER_HOST" --pidfile "$work/docker.pid" \
+        --data-root "$work/docker-data" --exec-root "$work/docker-exec" --storage-driver vfs \
+        --exec-opt native.cgroupdriver=cgroupfs --bridge none --iptables=false --ip6tables=false \
+        --ip-forward=false --ip-masq=false > "$work/daemon.log" 2>&1 &
+    daemon=\$!
+    for attempt in \$(seq 1 100); do
+        if docker info --format '{{.DockerRootDir}}' 2>/dev/null | grep -Fxq "$work/docker-data"; then break; fi
+        kill -0 "\$daemon"
+        sleep .1
+    done
+    docker info --format '{{.DockerRootDir}}' | grep -Fxq "$work/docker-data"
+    docker load -i "$work/alpine.tar"
+fi
 systemctl start nginx.service
 python3 "$script" "$work" "$server" "$helper" "$mode" < "$work/credentials"
 systemctl is-active --quiet nginx.service
@@ -52,6 +89,7 @@ cat > "$work/manager.sh" <<'MANAGER'
 #!/bin/bash
 set -euo pipefail
 work=$1
+exec > "$work/manager.log" 2>&1
 [[ $$ == 1 && $(readlink /proc/self/ns/mnt) != "$2" && $(readlink /proc/self/ns/net) != "$3" ]]
 [[ $(readlink /proc/self/ns/pid) != "$4" ]]
 mount -t tmpfs -o mode=0755 tmpfs /run
@@ -72,7 +110,12 @@ mount --bind /proc/sys /proc/sys
 mount -o remount,bind,ro /proc/sys
 ip link set lo up
 
-mkdir -p "$work/nginx/conf.d/relaxkonos.d" /var/lib/nginx
+conf="$work/nginx/conf.d"
+if [[ -f "$work/alpine.tar" ]]; then
+    conf=/etc/nginx/conf.d
+    printf '\n127.0.0.1 website-mb05.test\n' >> /etc/hosts
+fi
+mkdir -p "$conf/relaxkonos.d" "$work/nginx" /var/lib/nginx
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=127.0.0.1 \
     -addext subjectAltName=IP:127.0.0.1 -keyout "$work/nginx/key.pem" -out "$work/nginx/cert.pem" >/dev/null 2>&1
 cat > /etc/nginx/nginx.conf <<EOF
@@ -81,10 +124,10 @@ error_log $work/nginx/error.log notice;
 events {}
 http {
     access_log off;
-    include $work/nginx/conf.d/*.conf;
+    include $conf/*.conf;
 }
 EOF
-cat > "$work/nginx/conf.d/site.conf" <<EOF
+cat > "$conf/site.conf" <<EOF
 server {
     listen 127.0.0.1:18443 ssl;
     ssl_certificate $work/nginx/cert.pem;
@@ -92,10 +135,10 @@ server {
     location / { return 200 "original"; }
 }
 EOF
-cat > "$work/nginx/conf.d/relaxkonos.conf" <<EOF
+cat > "$conf/relaxkonos.conf" <<EOF
 # Managed by RelaxKonOS. Do not edit.
 # RelaxKonOS-owned Nginx integration anchor.
-include $work/nginx/conf.d/relaxkonos.d/*.conf;
+include $conf/relaxkonos.d/*.conf;
 EOF
 cat > "$work/reload.sh" <<EOF
 #!/bin/bash
@@ -140,7 +183,7 @@ done
 export container=relaxkonos-test
 export SYSTEMD_GENERATOR_PATH=/dev/null
 export SYSTEMD_UNIT_PATH=/etc/systemd/system
-exec /usr/lib/systemd/systemd --system --unit=relaxkonos-test.target --log-target=console > "$work/manager.log" 2>&1
+exec /usr/lib/systemd/systemd --system --unit=relaxkonos-test.target --log-target=console
 MANAGER
 systemd-run --unit="$unit" --property=Delegate=yes --property=RuntimeMaxSec=120s \
     --property=TimeoutStopSec=5s --property=KillMode=control-group --collect \
@@ -157,5 +200,7 @@ done
 if [[ -f "$work/test.log" ]]; then cat "$work/test.log"; fi
 if [[ ! -f "$work/result" || $(cat "$work/result") != 0 ]]; then
     if [[ -f "$work/manager.log" ]]; then tail -n 60 "$work/manager.log"; fi
+    if [[ -f "$work/daemon.log" ]]; then tail -n 30 "$work/daemon.log"; fi
+    journalctl --no-pager -n 20 -u "$unit" || :
     exit 1
 fi

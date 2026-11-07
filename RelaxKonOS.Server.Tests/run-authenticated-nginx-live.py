@@ -1,4 +1,4 @@
-"""Exercise the production Nginx reload and receipt routes on a full private Linux Server."""
+"""Exercise production Nginx reload and website recovery on a full private Linux Server."""
 
 from contextlib import contextmanager
 import json
@@ -20,6 +20,8 @@ import uuid
 
 def run(root, server, helper_binary, mode):
     production_helper = mode is not None
+    website = mode in ("--systemd-website", "--systemd-website-verifying")
+    verifying_website = mode == "--systemd-website-verifying"
     retire_retry = mode == "--systemd-retire-retry"
     relay_mode = retire_retry or mode in ("--systemd-response-loss", "--systemd-rejected")
     rejected = mode == "--systemd-rejected"
@@ -49,6 +51,11 @@ def run(root, server, helper_binary, mode):
     })
     for module in ("Terminal", "Firewall", "SystemPerformance", "Git", "Tailscale", "Docker", "Proxy"):
         env[f"Modules__{module}__Enabled"] = "false"
+    if website:
+        env["Modules__Docker__Enabled"] = "true"
+        env["no_proxy"] = env["NO_PROXY"] = "website-mb05.test,127.0.0.1"
+        if verifying_website:
+            env["SSL_CERT_FILE"] = str(root / "website-ca.pem")
     env["Modules__Certificates__Enabled"] = "true"
     env["Modules__WebServer__Enabled"] = "true"
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -286,6 +293,120 @@ def run(root, server, helper_binary, mode):
                 assert witness.read_text().splitlines() == ["reload", "reload"]
                 print(f"PASS NGINX SYSTEMD SHUTDOWN DRAIN: operation={operation}; original receipt; no extra reload")
 
+    def verify_website_publication():
+        applications = "/api/v1.0/application-deployments/applications"
+        certificates = "/api/v1.0/certificates"
+        publications = "/api/v1.0/website-publications"
+        domain = "website-mb05.test"
+        expected_body = b"private-engine-publication"
+        witness = root / "nginx" / "reloads"
+        upstream = root / "upstream"
+        upstream.mkdir()
+        (upstream / "reply").write_text(
+            "#!/bin/sh\n"
+            "IFS= read -r request || exit 1\n"
+            "while IFS= read -r header && [ \"$header\" != \"$(printf '\\r')\" ]; do :; done\n"
+            "printf '%s\\n' \"$request\" >> /witness/requests\n"
+            "while [ ! -f /witness/release ]; do sleep .1; done\n"
+            f"printf 'HTTP/1.1 200 OK\\r\\nContent-Length: {len(expected_body)}\\r\\nConnection: close\\r\\n\\r\\n%s' '{expected_body.decode()}'\n"
+        )
+        (upstream / "reply").chmod(0o755)
+        if verifying_website:
+            (root / "nginx" / "release").touch()
+        else:
+            (upstream / "release").touch()
+        with process([*helper_args, helper_config], "website-helper") as helper:
+            wait_for(helper, helper_ready, "website-helper")
+            with process([server], "website-server") as initial:
+                wait_for(initial, healthy, "website-server")
+                token = login()
+                app = request(applications, token=token, key=secrets.token_hex(16), payload={
+                    "name": "mb05-publication", "sourceKind": "Image", "hostPort": 18080, "containerPort": 18080,
+                })
+                app_id = app["id"]
+                container = subprocess.check_output([
+                    "docker", "run", "-d", "--pull", "never", "--network", "host",
+                    "--name", "relaxkonos-ad-" + app_id.replace("-", "")[:12],
+                    "--label", "relaxkonos.managed=true", "--label", "relaxkonos.owner=application-deployment",
+                    "--label", "relaxkonos.application-id=" + app_id, "-v", f"{upstream}:/witness",
+                    "alpine:3.22", "busybox", "nc", "-ll", "-p", "18080", "-e", "/witness/reply",
+                ], text=True).strip()
+                app_route = f"{applications}/{app_id}"
+                container_state = subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip()
+                assert container_state == "running", subprocess.check_output(["docker", "logs", container], stderr=subprocess.STDOUT, text=True)
+                observed = request(app_route, token=token)["application"]
+                assert observed["actualState"].lower() == "running" and not observed["siteId"], observed["actualState"]
+                cert = request(certificates + "/self-signed", token=token, expected=202,
+                               key=secrets.token_hex(16), payload={"domains": [domain], "validityDays": 1})
+                cert_route = f"{certificates}/operations/{cert['operationId']}"
+                wait_for(initial, lambda: request(cert_route, token=token)["state"].lower() == "succeeded",
+                         "authenticated certificate creation")
+                certificate_id = request(cert_route, token=token)["certificateId"]
+                ca_file = root / "material" / certificate_id / "nginx-fullchain.pem"
+                if verifying_website:
+                    (root / "website-ca.pem").symlink_to(ca_file)
+                client = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                    urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=ca_file)))
+
+                def published_body():
+                    try:
+                        with client.open(f"https://{domain}/", timeout=1) as response:
+                            return response.read() == expected_body
+                    except OSError:
+                        return False
+
+                matches = [item for item in request(web, token=token)
+                           if item["executablePath"] == executable and item["configurationPath"] == str(configuration)]
+                assert len(matches) == 1, "The dedicated Nginx instance was not discovered"
+                payload = {"applicationId": app_id, "webServerId": matches[0]["id"], "domain": domain,
+                           "certificateId": certificate_id, "confirmed": True}
+                request(publications, payload=payload, key=key, expected=401)
+                original = request(publications, token=token, payload=payload, key=key, expected=202)
+                operation_id = original["operationId"]
+                operation_route = f"{publications}/operations/{operation_id}"
+                wait_for(initial, witness.is_file, "publication systemd reload")
+                if verifying_website:
+                    wait_for(initial, (upstream / "requests").is_file, "Server HTTPS verification reached the Docker upstream")
+                    assert (upstream / "requests").read_text().splitlines() == ["GET / HTTP/1.1"]
+                else:
+                    wait_for(initial, published_body, "real published HTTPS upstream")
+                active = request(operation_route, token=token)
+                stage = "verifying" if verifying_website else "configuring"
+                assert (active["state"].lower(), active["stage"].lower()) == ("running", stage)
+                site_id = active["siteId"] if verifying_website else None
+                if verifying_website:
+                    assert site_id
+                assert request(app_route, token=token)["application"]["siteId"] == site_id
+                master = nginx_pid_file.read_text()
+                initial.kill()
+                assert initial.wait(timeout=10) < 0
+                (root / "nginx" / "release").touch()
+                (upstream / "release").touch()
+
+            with process([server], "website-restarted-server") as restarted:
+                wait_for(restarted, healthy, "website-restarted-server")
+                wait_for(restarted, (root / "nginx" / "reload-finished").is_file, "systemd reload completion")
+                token = login()
+                replay = request(publications, token=token, payload=payload, key=key, expected=202)
+                observed = request(operation_route, token=token)
+                history = request(f"{publications}/applications/{app_id}", token=token)
+                assert replay == observed and history == [observed]
+                assert observed["operationId"] == operation_id and observed["state"].lower() == "interrupted"
+                recovery = "website.recheck_required" if verifying_website else "website.site_application_unverified"
+                assert observed["recoveryProblemCode"] == recovery
+                assert request(app_route, token=token)["application"]["siteId"] == site_id
+                if verifying_website:
+                    assert (upstream / "requests").read_text().splitlines() == ["GET / HTTP/1.1"]
+                wait_for(restarted, published_body, "HTTPS upstream after recovery")
+                assert nginx_pid_file.read_text() == master
+                assert witness.read_text().splitlines() == ["reload"]
+                assert subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip() == "running"
+                print(f"PASS AUTHENTICATED WEBSITE {stage.upper()} RECOVERY: operation={operation_id}; {recovery}; original receipt, HTTPS upstream and one reload")
+
+    if website:
+        verify_website_publication()
+        return
+
     if mode == "--systemd-drain":
         verify_drain()
         return
@@ -458,7 +579,8 @@ def run(root, server, helper_binary, mode):
 if __name__ == "__main__":
     arguments = sys.argv[1:]
     mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain", "--systemd-unknown", "--systemd-timeout", "--systemd-receipt",
-                                                            "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry") else None
+                                                            "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry",
+                                                            "--systemd-website", "--systemd-website-verifying") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

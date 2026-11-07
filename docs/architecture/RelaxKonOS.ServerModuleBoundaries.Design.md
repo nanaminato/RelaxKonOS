@@ -1458,7 +1458,7 @@ TLS 中继收到实际 CA 挑战响应 200 后保留响应。Server 接收 SIGTE
 
 原网站发布协调器继续独占准入、台账恢复与停机排空。只有持久化 queued 的新发布创建执行作用域，执行器在原工作租约内处理上游观察、证书选择、Nginx 配置、应用关联、HTTPS 验证及原补偿。工作 owner 等待终态提交和异步作用域释放。启动恢复、已知键回执和准入拒绝不解析执行器。Core Nginx 管理、TLS 材料与应用关联仍由原服务持有。
 
-Windows Release 模块边界回归通过。测试确认原协调器启动不构造执行图，停止时等待真实观察任务和异步作用域清理，工作租约持续到清理结束。Linux x64 Release 在两套专属网络、挂载和 PID 命名空间用实际 Nginx 验证。配置提交崩溃 `8caf607a-1400-4dfe-96e8-ad67dbb518a9` 返回原 Interrupted / website.site_application_unverified，HTTPS 验证崩溃 `2d7f8936-648f-474f-8101-5ffe131a3d27` 返回原 Interrupted / website.recheck_required。两条路径的同键 HTTP 响应断线后均完成排空，恢复执行作用域为零，各只重载一次发布配置，真实 HTTPS 转发保持。宿主 Nginx PID 和配置指纹前后一致。首轮远端包装器在进入命名空间前失败，修正后通过。证据为 .artifacts/mb05-website-scope-live.log，归档 SHA-256 为 30c32dd3867bccc7b16ca16664b4d54c179df48e0563584a2afc510ae049968c。该联合验收使用生产执行器与真实 Nginx，HTTP 认证和响应屏障由隔离夹具提供。完整 Server 认证及直接 WebServer 操作的执行边界仍开放，网站发布模块保持 resident。
+Windows Release 模块边界回归通过。测试确认原协调器启动不构造执行图，停止时等待真实观察任务和异步作用域清理，工作租约持续到清理结束。Linux x64 Release 在两套专属网络、挂载和 PID 命名空间用实际 Nginx 验证。配置提交崩溃 `8caf607a-1400-4dfe-96e8-ad67dbb518a9` 返回原 Interrupted / website.site_application_unverified，HTTPS 验证崩溃 `2d7f8936-648f-474f-8101-5ffe131a3d27` 返回原 Interrupted / website.recheck_required。两条路径的同键 HTTP 响应断线后均完成排空，恢复执行作用域为零，各只重载一次发布配置，真实 HTTPS 转发保持。宿主 Nginx PID 和配置指纹前后一致。首轮远端包装器在进入命名空间前失败，修正后通过。证据为 .artifacts/mb05-website-scope-live.log，归档 SHA-256 为 30c32dd3867bccc7b16ca16664b4d54c179df48e0563584a2afc510ae049968c。该联合验收使用生产执行器与真实 Nginx，HTTP 认证和响应屏障由隔离夹具提供。完整 Server 认证与直接 WebServer 后续验收见文末，网站发布模块保持 resident。
 
 ### MB-05 直接 WebServer 操作执行作用域
 
@@ -1476,7 +1476,7 @@ Windows Release 模块边界与本地跨进程回归通过，覆盖原工作租�
 
 仓内 `RelaxKonOS.Server.Tests/run-authenticated-nginx-live.sh` 和同名 Python 驱动在独立挂载、网络和 PID 命名空间运行。私有状态、发现入口、配置和证书只供专属 Nginx。完整 Linux x64 Release Server 使用生产 PAM 登录和管理员授权路径，未认证重载被拒绝。专属命令实际向 Nginx 提交一次 reload，客户端验证原证书和新站点响应。命令返回前保留测试屏障，通过生产 API 确认操作仍 Running 后终止整个 Server。重启重新认证，同键和原 ID 查询均返回 `3eb76997-4b04-4849-ad72-a34423de592a` Failed / webserver.operation_interrupted。相同 Nginx master 持续提供 HTTPS，reload 计数保持一次。宿主 Docker 和 Nginx PID 及 Nginx 配置指纹一致。
 
-日志为 .artifacts/mb05-auth-nginx-admin-live.log，Release 归档 SHA-256 为 e0666d40f74d1058d6ca6d940a33903c9eff280cdef33b06a72c6bb9ecfba6b8。前几轮暴露私有状态挂载、专属 Nginx 初始化和测试身份选择问题，修正后通过。测试命令包装器仅限专属集成实例，生产提供者、授权、台账及重启入口均参与。系统包 Nginx 的 Helper/systemd 故障见下文，其他直接动作及完整认证的网站发布仍待验收，WebServer 保持 resident。
+日志为 .artifacts/mb05-auth-nginx-admin-live.log，Release 归档 SHA-256 为 e0666d40f74d1058d6ca6d940a33903c9eff280cdef33b06a72c6bb9ecfba6b8。前几轮暴露私有状态挂载、专属 Nginx 初始化和测试身份选择问题，修正后通过。测试命令包装器仅限专属集成实例，生产提供者、授权、台账及重启入口均参与。系统包 Nginx 的 Helper/systemd 故障见下文，其他直接动作仍待验收，完整认证的网站发布见文末。WebServer 保持 resident。
 
 ### MB-04 Core 接续运行期 TUN 恢复
 
@@ -1537,3 +1537,13 @@ Server 在原后台 owner 内同步持久化终态及清理待确认标记后，
 Linux 私有 systemd 实测原 `04f1f463-a0cb-4197-a271-8ad1afb93c9d` 在 Server 退出时由 Helper 保留完整证据，Server 重启按原 ID 完成后才压缩。Helper IPC 重发该 ID 在本代及 Helper 重启后均被拒绝，原 HTTPS 持续，同键读取 Server 原成功回执。另截断原 `469bb500-0257-4560-a8dd-cb27ccced484` 的真实清理确认。Server 已有原成功回执和待确认标记，Helper 已压缩。两进程重启后只重试原清理，完成原标记，无额外 reload。真实 30 秒超时的原待核验回执拒绝清理。自然停机与取消排空复测通过，自然停机重启后核实原成功。日志为 .artifacts/mb05-nginx-retire-timeout-live.log 和 .artifacts/mb05-nginx-retire-drain-live.log。Windows Release 模块里程碑通过，专属 cgroup 清理与共享服务指纹通过。
 
 日志为 .artifacts/mb05-nginx-retire-receipt-live.log 和 .artifacts/mb05-nginx-retire-ack-retry-live.log，归档 SHA-256 为 fb3aeac412206f5e0771a5b11795534f3345974871ee00907bf2587fc9857ef8。每个已清理 ID 仍占一个防重放目录项，目录项总量、旧终态详情的迁移清理及整机掉电恢复未验收。WebServer 保持 resident，本阶段未测量生产内存。
+
+### MB-05 完整认证网站发布中断与恢复
+
+在既有 Linux 测试机的私有 systemd、挂载、网络和 PID 命名空间运行完整 Release Server、生产 Helper、系统包 Nginx 和独立 Docker Engine。仅从共享 Engine 读取已缓存的 Alpine 镜像。专属应用通过认证路由创建，夹具在私有 Engine 启动带应用所有权标签的 HTTP 上游。生产证书路由生成专属自签证书，Nginx 使用证书仓库绑定，HTTPS 客户端校验证书和实际转发正文。
+
+配置阶段在原生 reload 已生效、systemd 尚未返回结果时终止 Server。重启从原 operationId、应用历史和同键 POST 读回同一 `Interrupted / website.site_application_unverified` 回执。应用未关联，实际 HTTPS 转发持续。验证阶段在应用关联已提交、真实 HTTPS 探测到达容器后由上游暂缓响应。此时终止 Server，重启以同样三个入口读回 `Interrupted / website.recheck_required`，保留原关联，未重发探测。两条路径分别核验原 Nginx master、原上游容器和一次原生 reload。
+
+首轮缺少专属 Nginx 密钥目录，第二轮上游容器提前退出，修正后通过。原系统包 Nginx Helper 回执路径和 Windows Release 模块边界回归也复验。Windows Docker 跨进程专项恢复原 `Interrupted` 回执且副作用一次。夹具清理专属容器和 cgroup，核对宿主 Docker 与 Nginx 进程、运行容器清单和 Nginx 配置。此阶段覆盖生产发布与自签证书绑定，公共 CA 与网站发布的同一事务、整机中断、独立执行程序集和动态休眠仍待验收。WebServer 保持 resident。
+
+最终复验的原操作分别为 `3e073972-f898-42ab-ad2c-ff362435be20`（配置）、`4f891ce5-b66d-4475-8ca3-b4f35e94413f`（验证）和 `2ac65837-94cc-4069-82e5-1deac7f48dea`（直接重载回执）。Linux 日志为 `.artifacts/mb05-auth-website-final-website.log`、`.artifacts/mb05-auth-website-final-website-verifying.log` 和 `.artifacts/mb05-auth-website-final-receipt.log`，归档 SHA-256 为 `fb3aeac412206f5e0771a5b11795534f3345974871ee00907bf2587fc9857ef8`。Windows 日志为 `.artifacts/mb05-auth-website-win.log`，Docker 原操作 `9d25c4d8-aa4e-4f28-92c2-548bae0dfd9c`。

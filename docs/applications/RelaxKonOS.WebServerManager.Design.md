@@ -1730,3 +1730,5 @@ Linux 系统包直接重载现在可以在重启后按原 ID 对账。生产 Hel
 Linux 系统包重载的原回执对账覆盖明确成功及原生作业明确失败。响应丢失后读取原 ID，原 HTTPS 持续，原作业只尝试一次。Helper 无原作业终态证据时仍显示待核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-存活进程响应丢失和失败回执)。
 
 Linux 系统包重载的原回执保存在 Server。原终态持久化后，Helper 压缩原详情并保留防重放标记。Linux 实测旧 ID 在 Helper 重启后仍不能重载，清理确认丢失后只重试清理。待核验记录保留详情。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-终态回执保留与防重放)。
+
+完整 Server 的认证网站发布已在既有 Linux 测试机通过生产 Helper、私有 systemd、实际 Nginx 和独立 Docker 上游的联合验收。配置阶段中断恢复原 `website.site_application_unverified` 回执且应用尚未关联。真实 HTTPS 探测期间中断恢复原 `website.recheck_required` 回执并保留应用关联。两条路径都保持现有 TLS 与上游服务，重启和同键查询未再次 reload。测试使用认证证书路由生成的专属自签证书。公共 CA 与发布的联合中断仍待验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证网站发布中断与恢复)。
