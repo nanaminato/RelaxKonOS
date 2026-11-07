@@ -452,3 +452,5 @@ Mihomo 概览直接使用请求作用域内的控制器。隔离 Linux 实测确
 MB-04 真实受管 Mihomo 的 512 连接配对复测覆盖完整认证 Server 及 35 秒闲置窗口。候选 Server PID 的闲置 PSS 在三对中低 0.19–4.99 MiB，延迟未一致改善。结果用于定位隔离负载，生产驻留与 Proxy 整体休眠继续开放。见[配对测量](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-受管-mihomo-概览的配对驻留测量)。
 
 Mihomo 概览和连接详情的原模块工作租约覆盖控制器 Task、HTTP 响应和读取作用域的异步清理。清理失败时租约保留，协调器报告恢复阻塞。Proxy 整体仍 resident，连接解析器的闲时释放继续由自身执行门禁控制。见[HTTP 工作责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览和连接详情的-http-工作责任)。
+
+Mihomo 连接计数和详情投影已进入现有可回收读取代次。Host 保留共享投影值或协议 DTO 不影响该代次回收。Proxy 整体继续 resident，安全及恢复责任沿用原所有者。见[连接计数与详情投影](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接计数与详情投影随代次释放)。

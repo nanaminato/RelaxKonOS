@@ -1860,3 +1860,15 @@ Windows Release 使用实际 Kestrel 和驻留协调器。可控控制器传输�
 Linux 私有 systemd 下，完整 PAM/JWT Server 经回环中继读取真实 Mihomo。中继收到包含原活跃连接 ID 的原生详情后暂缓响应，模块目录显示一份活动租约。客户端实际断线后，中继观察到控制器请求取消，模块目录最终回到零。认证重读仍观察到同一连接和运行 PID，发布修订一致，原连接完成真实转发。同批概览、Server 重启及解析代次卸载与唤醒通过。受控响应写入与异步清理故障由 Windows 专项单独验证。
 
 原入站发布 `0ea3e69f-92f3-46ee-a796-bb21744e3bf3`、补偿 `3a661d97-e365-4279-b762-1f6b70f1a998`、授权到期 `736faad2-3208-4e6f-9ee7-5b513e987a3e` 和 TUN 恢复 `f902de54-8e11-4401-819e-77a682262402` 同批通过。专属 cgroup 清理完成，宿主共享服务及代理文件指纹一致。日志为 `.artifacts/mb04-observation-lease-final-live.log`，归档 SHA-256 为 `7fe39a883b528bb9ae030c9bf7a1a8bdfef6c61744c67a9aadb08512f836f52c`。Windows Core 安全及控制器专项也通过。本轮未扩大可回收代码范围，Proxy 保持 resident，整模块动态休眠及生产 PSS 仍开放。
+
+### MB-04 Mihomo 连接计数与详情投影随代次释放
+
+连接记录的 ID 筛选、计数、端点格式化和详情投影迁入已有可回收 Proxy 执行程序集。计数请求只读取计数，详情请求从共享值构建原协议 DTO。JSON 记录在代次内解析并释放。Host 仍负责控制器鉴权、流和管道的完成、错误映射与 HTTP 工作租约。投影代次一直持有到流清理结束，现有 30 秒门禁和代次预算继续适用。
+
+Windows Release 控制器专项验证分片、上限、坏数据、取消及超时，也核对 IPv6 源地址、主机名、规则、链和开始时间的投影。Host 保留共享投影值后旧代次仍可回收，新计数唤醒新代次，满预算继续使用当前代次。Windows 模块边界回归通过，MB-05 跨进程按原 ID `4d1e4b9f-e502-4c13-bfef-6a7a32a3707d` 返回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-projection-win.log` 和 `.artifacts/mb04-projection-boundaries-win.log`。
+
+Proxy 程序集边界守卫通过 16 项。完整 PAM/JWT Server 在 Linux 私有 systemd 中重启后继续读取同一真实 Mihomo 连接，解析代次卸载与唤醒时原连接仍可转发。截留真实控制器响应并取消请求后，原租约正常归还。原发布 `9dfa7fdd-11f4-4ae9-8df0-2691406377c1`、补偿 `01a0d9f9-c3c6-4c91-a5ee-5730b9f04eda`、授权到期 `c0fd364e-f038-44b4-969b-bc3faa05f69b` 和 TUN 恢复 `b1afdb4d-fc42-450e-a0cc-f89edd2b0448` 同批通过。专属 cgroup 清理完成，宿主服务与代理文件指纹一致。日志为 `.artifacts/mb04-projection-auth-live.log`，归档 SHA-256 为 `d438c52e688dda5c20a784799e5859d25724f6a9de69481618319f1cbafe28c2`。
+
+真实受管 Mihomo 套件通过 177 项。Host 保留真实详情 DTO，代次自然闲置卸载后通过测试 GC 与弱引用确认回收。之后的原生转发及新代次读取成功。原发布排空 `8203808c-3e16-42f2-b4fa-8a612542ebb9`、失败回执 `642e94c0-ccfe-4d37-8118-d2715c17192c` 及原中断补偿 `29449349-a407-4e4f-972e-1a9c7f69ebc2` 同批通过，补偿一次且未重发配置。专属 cgroup 清理完成，宿主服务及代理文件指纹一致。日志为 `.artifacts/mb04-projection-native-live.log`，归档 SHA-256 为 `47cae6ce81f171ad657aecf0509f772b7ce49d777824ee51177b19cace89085a`。
+
+本轮证据覆盖读取代码回收与网络连续性，整模块动态休眠和生产内存仍开放。下一项验证计数路径能否省去逐条详情 JSON 对象，同时保留完整快照验证，再用同一真实连接负载配对测量。

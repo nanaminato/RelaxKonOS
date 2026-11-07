@@ -37,7 +37,7 @@ internal sealed class ProxyConnectionExecutionGate
         get { lock (gate) return current?.Code; }
     }
 
-    internal async Task ReadAsync(Stream stream, Action<JsonElement> project, CancellationToken ct)
+    internal async Task<int> ReadAsync(Stream stream, Action<ProxyConnectionSnapshotEntry>? project, CancellationToken ct)
     {
         Generation? generation = null;
         try
@@ -59,7 +59,7 @@ internal sealed class ProxyConnectionExecutionGate
                     consumed += parsed;
                     if (buffer.Length - parsed > MaximumRecordBytes) throw new JsonException();
                     pipe.AdvanceTo(buffer.GetPosition(parsed), buffer.End);
-                    if (read.IsCompleted) return;
+                    if (read.IsCompleted) return parser.Count;
                 }
             }
             finally { await pipe.CompleteAsync(); }
@@ -134,9 +134,9 @@ internal sealed class ProxyConnectionExecutionGate
         }
     }
 
-    private static IProxyConnectionSnapshotReader CreateReader(Type type, Action<JsonElement> project)
+    private static IProxyConnectionSnapshotReader CreateReader(Type type, Action<ProxyConnectionSnapshotEntry>? project)
     {
-        try { return (IProxyConnectionSnapshotReader)Activator.CreateInstance(type, project)!; }
+        try { return (IProxyConnectionSnapshotReader)Activator.CreateInstance(type, [project])!; }
         catch (Exception) { throw new InvalidDataException("Proxy connection parser could not be created."); }
     }
 

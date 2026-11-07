@@ -134,7 +134,9 @@ internal static async Task VerifyMihomoLiveStreamsAsync()
     TestAssert.Assert(traffic.ProblemCode == "" && traffic.MemoryBytes == 90 && watch.Elapsed < TimeSpan.FromSeconds(1),
         "An endless flow stream must return its first sample without waiting for EOF.");
     var connections = await client.GetConnectionsAsync(CancellationToken.None);
-    TestAssert.Assert(connections.Value?.Single() is { Network: "tcp", Source: "[::1]:1234", Destination: "example.test:443", Chains: "DIRECT" },
+    TestAssert.Assert(connections.Value?.Single() is { Id: "fixture", Network: "tcp", Source: "[::1]:1234",
+            Destination: "example.test:443", Rule: "Domain", Chains: "DIRECT" } entry
+        && entry.StartedAt == new DateTimeOffset(2026, 10, 2, 0, 0, 0, TimeSpan.Zero),
         "Connection metadata, host and endpoint ports were not mapped.");
     TestAssert.Assert(await client.GetConnectionCountAsync(default) is { Succeeded: true, Value: 1 },
         "Overview counts the same bounded connection records as the detailed view.");
@@ -194,15 +196,15 @@ internal static async Task VerifyMihomoLiveStreamsAsync()
     catch (ProxyObservationException error) { failedRead = error.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed; }
     TestAssert.Assert(failedRead, "A failed connection read must not become a successful empty list.");
     var gate = new ProxyConnectionExecutionGate(TimeSpan.FromMilliseconds(50));
-    var code = await VerifyConnectionParserDrainAsync(gate);
+    var (code, retainedEntry) = await VerifyConnectionParserDrainAsync(gate);
     for (var i = 0; code.IsAlive && i < 50; i++)
     {
         GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
         await Task.Delay(20);
     }
-    TestAssert.Assert(!code.IsAlive, "The idle connection parser must release its private assembly while the Host remains alive.");
-    var awake = 0;
-    await gate.ReadAsync(new MemoryStream("""{"connections":[{}]}"""u8.ToArray()), _ => awake++, default);
+    TestAssert.Assert(!code.IsAlive && retainedEntry.Id == "kept",
+        "The idle connection parser must release its private assembly even while the Host keeps a projected entry.");
+    var awake = await gate.ReadAsync(new MemoryStream("""{"connections":[{"id":"new"}]}"""u8.ToArray()), null, default);
     TestAssert.Assert(awake == 1 && gate.CurrentCode is { } next && !ReferenceEquals(next, code),
         "A subsequent connection snapshot must wake fresh parser code.");
     await VerifyConnectionParserBudgetAsync();
@@ -215,37 +217,38 @@ private static async Task VerifyConnectionParserBudgetAsync()
     var retained = new List<object>();
     for (var i = 0; i < ProxyConnectionExecutionGate.MaximumOutstandingGenerations; i++)
     {
-        var reference = await VerifyConnectionParserDrainAsync(gate);
+        var (reference, _) = await VerifyConnectionParserDrainAsync(gate);
         retained.Add(reference.Target ?? throw new InvalidOperationException("Expected the current parser generation."));
         if (i + 1 < ProxyConnectionExecutionGate.MaximumOutstandingGenerations)
             while (gate.CurrentCode is not null) await Task.Delay(10, budget.Token);
     }
     var current = gate.CurrentCode;
     await Task.Delay(250, budget.Token);
-    await gate.ReadAsync(new MemoryStream("""{"connections":null}"""u8.ToArray()), _ => { }, budget.Token);
+    await gate.ReadAsync(new MemoryStream("""{"connections":null}"""u8.ToArray()), null, budget.Token);
     TestAssert.Assert(current is not null && ReferenceEquals(current, gate.CurrentCode),
         "A full pending-collection budget must retain the current parser and continue serving reads.");
     GC.KeepAlive(retained);
 }
 
-private static async Task<WeakReference> VerifyConnectionParserDrainAsync(ProxyConnectionExecutionGate gate)
+private static async Task<(WeakReference Code, ProxyConnectionSnapshotEntry Entry)> VerifyConnectionParserDrainAsync(ProxyConnectionExecutionGate gate)
 {
     var stream = new CleanupSnapshotStream();
-    var pending = gate.ReadAsync(stream, _ => { }, default);
+    ProxyConnectionSnapshotEntry entry = default;
+    var pending = gate.ReadAsync(stream, result => entry = result, default);
     try
     {
         await stream.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var original = gate.CurrentCode ?? throw new InvalidOperationException("The parser generation was not admitted.");
         await Task.Delay(150);
-        await gate.ReadAsync(new MemoryStream("""{"connections":null}"""u8.ToArray()), _ => { }, default);
+        await gate.ReadAsync(new MemoryStream("""{"connections":null}"""u8.ToArray()), null, default);
         TestAssert.Assert(!pending.IsCompleted && ReferenceEquals(original, gate.CurrentCode),
             "A pending stream cleanup must hold the same parser generation for overlapping reads.");
-        return original;
+        return (original, entry);
     }
     finally { stream.Release.TrySetResult(); await pending.WaitAsync(TimeSpan.FromSeconds(5)); }
 }
 
-private sealed class CleanupSnapshotStream() : MemoryStream("""{"connections":[{}]}"""u8.ToArray())
+private sealed class CleanupSnapshotStream() : MemoryStream("""{"connections":[{"id":"kept"}]}"""u8.ToArray())
 {
     internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);

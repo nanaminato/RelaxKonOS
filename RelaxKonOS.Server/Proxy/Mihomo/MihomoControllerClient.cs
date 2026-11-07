@@ -160,16 +160,9 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
                 return ControllerResult<int>.Failure(response.StatusCode == HttpStatusCode.Unauthorized
                     ? ProxyProblemCodes.ControllerAuthenticationFailed : ProxyProblemCodes.ControllerUnavailable);
             var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
-            var count = 0;
-            await ProxyConnectionExecutionGate.Shared.ReadAsync(stream, item =>
-            {
-                var id = GetString(item, "id");
-                if (string.IsNullOrWhiteSpace(id)) return;
-                count++;
-                details?.Add(new ProxyConnectionDto(id, GetString(item, "metadata", "network") ?? "unknown", ConnectionEndpoint(item, false),
-                    ConnectionEndpoint(item, true), GetString(item, "rule") ?? "", GetString(item, "chains") ?? "",
-                    GetDateTime(item, "start") ?? DateTimeOffset.MinValue));
-            }, deadline.Token);
+            var count = await ProxyConnectionExecutionGate.Shared.ReadAsync(stream, details is null ? null : item =>
+                details.Add(new ProxyConnectionDto(item.Id, item.Network, item.Source, item.Destination, item.Rule, item.Chains, item.Start)),
+                deadline.Token);
             return ControllerResult<int>.Success(count);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -406,16 +399,6 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
         catch (IOException) { return ControllerResult<IReadOnlyList<string>>.Failure(ProxyProblemCodes.ControllerUnavailable); }
     }
 
-    private static string ConnectionEndpoint(JsonElement item, bool destination)
-    {
-        var address = destination
-            ? GetString(item, "metadata", "host") : GetString(item, "metadata", "sourceIP");
-        if (string.IsNullOrWhiteSpace(address)) address = GetString(item, "metadata", destination ? "destinationIP" : "sourceIP") ?? "";
-        var port = GetString(item, "metadata", destination ? "destinationPort" : "sourcePort");
-        if (string.IsNullOrWhiteSpace(port)) return address;
-        return (address.Contains(':') ? "[" + address + "]" : address) + ":" + port;
-    }
-
     private async Task<ControllerResult<JsonDocument>> GetJsonAsync(string path, CancellationToken cancellationToken)
     {
         var result = await SendAsync(HttpMethod.Get, path, null, cancellationToken);
@@ -491,7 +474,6 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
         value = 0;
         return item.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out value);
     }
-    private static DateTimeOffset? GetDateTime(JsonElement item, string name) => item.TryGetProperty(name, out var value) && value.TryGetDateTimeOffset(out var result) ? result : null;
     private sealed record ControllerResponse(string? Content, string ProblemCode, bool TransportInterrupted = false,
         int? StatusCode = null, string? Detail = null) { public bool Succeeded => string.IsNullOrEmpty(ProblemCode); }
 }
