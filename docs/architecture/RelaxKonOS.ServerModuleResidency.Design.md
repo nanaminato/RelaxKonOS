@@ -422,3 +422,5 @@ MB-04 缩短了 Mihomo 运行时管理器的控制器和安装台账适配器的
 MB-04 隔离 Linux 的 Proxy 管理面静态配对基线已完成。三组管理读取中，概览与运行时组的 Server PSS 增量最大，下一阶段优先拆分该请求组的执行依赖。见[配对数据与限制](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理面的配对驻留基线)。
 
 MB-04 概览使用独立请求作用域、直接活动档案查询和连接计数投影。后台启停不解析概览执行图。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-概览与启停执行边界)。
+
+MB-04 Mihomo 连接快照使用共用流式读取器。连接概览不保留详情，读取期间的片段与投影均有上限。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接快照的流式读取)。

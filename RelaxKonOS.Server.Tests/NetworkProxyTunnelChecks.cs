@@ -138,6 +138,39 @@ internal static async Task VerifyMihomoLiveStreamsAsync()
         "Connection metadata, host and endpoint ports were not mapped.");
     TestAssert.Assert(await client.GetConnectionCountAsync(default) is { Succeeded: true, Value: 1 },
         "Overview counts the same bounded connection records as the detailed view.");
+    MihomoControllerClient Snapshot(string payload, bool complete = true, int chunkSize = int.MaxValue) =>
+        new(new HttpClient(new DelegateHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        { Content = new StreamContent(new OpenControllerStream(payload, complete, chunkSize)) }))),
+            new StaticProxySecretStore(), new MihomoControllerOptions { TimeoutSeconds = 1 });
+    using (var fragmented = Snapshot("""{"other":{"connections":null},"connections":[{"id":"first"},{"id":""},{"id":"second"}],"tail":[true]}""", chunkSize: 7))
+    {
+        TestAssert.Assert(await fragmented.GetConnectionCountAsync(default) is { Succeeded: true, Value: 2 }
+            && (await fragmented.GetConnectionsAsync(default)).Value?.Select(item => item.Id).SequenceEqual(["first", "second"]) == true,
+            "Split JSON tokens and records must preserve count and detail order.");
+    }
+    var capped = string.Join(",", Enumerable.Repeat("""{"id":"one"}""", 2_001));
+    using (var large = Snapshot("{\"connections\":[" + capped + "]}"))
+    using (var truncated = Snapshot("{\"connections\":[" + capped + "]"))
+    {
+        TestAssert.Assert(await large.GetConnectionCountAsync(default) is { Succeeded: true, Value: 2_000 }
+            && (await truncated.GetConnectionCountAsync(default)).ProblemCode == ProxyProblemCodes.ControllerResponseInvalid,
+            "The record cap must preserve output bounds while still rejecting a truncated response.");
+    }
+    using (var oversizedRecord = Snapshot("{\"connections\":[{\"id\":\"" + new string('x', 262_145) + "\"}]}"))
+    using (var duplicate = Snapshot("""{"connections":null,"connections":[]}"""))
+    using (var stalled = Snapshot("""{"connections":[{"id":"one"}""", complete: false))
+    {
+        TestAssert.Assert((await oversizedRecord.GetConnectionCountAsync(default)).ProblemCode == ProxyProblemCodes.ControllerResponseInvalid
+            && (await duplicate.GetConnectionCountAsync(default)).ProblemCode == ProxyProblemCodes.ControllerResponseInvalid,
+            "Oversized records and ambiguous envelopes must be rejected.");
+        TestAssert.Assert((await stalled.GetConnectionCountAsync(default)).ProblemCode == ProxyProblemCodes.ControllerTimeout,
+            "A stalled snapshot must not return a partial count.");
+        using var caller = new CancellationTokenSource();
+        var pending = stalled.GetConnectionsAsync(caller.Token);
+        caller.Cancel();
+        try { await pending; throw new InvalidOperationException("A cancelled snapshot returned a result."); }
+        catch (OperationCanceledException) when (pending.IsCanceled) { }
+    }
     var logs = await client.GetLogsAsync(1, CancellationToken.None);
     TestAssert.Assert(logs.Succeeded && logs.Value!.Count == 1 && !logs.Value[0].Message.Contains("private-value"),
         "A live NDJSON log must be sampled and sanitized without EOF.");
@@ -428,7 +461,7 @@ internal sealed class QuietControllerHandler : HttpMessageHandler
         throw new InvalidOperationException();
     }
 }
-internal sealed class OpenControllerStream(string payload, bool complete = false) : Stream
+internal sealed class OpenControllerStream(string payload, bool complete = false, int chunkSize = int.MaxValue) : Stream
 {
     private readonly byte[] _payload = Encoding.UTF8.GetBytes(payload);
     private int _position;
@@ -445,7 +478,7 @@ internal sealed class OpenControllerStream(string payload, bool complete = false
             if (complete) return 0;
             await Task.Delay(Timeout.Infinite, cancellationToken);
         }
-        var length = Math.Min(buffer.Length, _payload.Length - _position);
+        var length = Math.Min(chunkSize, Math.Min(buffer.Length, _payload.Length - _position));
         _payload.AsMemory(_position, length).CopyTo(buffer); _position += length;
         return length;
     }

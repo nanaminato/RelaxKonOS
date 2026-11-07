@@ -136,43 +136,53 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
         finally { result.Value?.Dispose(); }
     }
 
-    public Task<ControllerResult<IReadOnlyList<ProxyConnectionDto>>> GetConnectionsAsync(CancellationToken cancellationToken) =>
-        ReadConnectionsAsync<IReadOnlyList<ProxyConnectionDto>>(items => items.Select(connection =>
-        {
-            var (item, id) = connection;
-            return new ProxyConnectionDto(id, GetString(item, "metadata", "network") ?? "unknown", ConnectionEndpoint(item, false),
-                ConnectionEndpoint(item, true), GetString(item, "rule") ?? "", GetString(item, "chains") ?? "",
-                GetDateTime(item, "start") ?? DateTimeOffset.MinValue);
-        }).ToArray(), [], cancellationToken);
-
-    public Task<ControllerResult<int>> GetConnectionCountAsync(CancellationToken cancellationToken) =>
-        ReadConnectionsAsync(items => items.Count(), 0, cancellationToken);
-
-    private async Task<ControllerResult<T>> ReadConnectionsAsync<T>(Func<IEnumerable<(JsonElement Item, string Id)>, T> project,
-        T empty, CancellationToken cancellationToken)
+    public async Task<ControllerResult<IReadOnlyList<ProxyConnectionDto>>> GetConnectionsAsync(CancellationToken cancellationToken)
     {
-        var result = await GetJsonAsync("connections", cancellationToken);
-        if (!result.Succeeded) return ControllerResult<T>.Failure(result.ProblemCode);
-        try
-        {
-            if (!result.Value!.RootElement.TryGetProperty("connections", out var connections))
-                return ControllerResult<T>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
-            // Mihomo serializes its nil slice as null when no trackers are active.
-            if (connections.ValueKind == JsonValueKind.Null) return ControllerResult<T>.Success(empty);
-            if (connections.ValueKind != JsonValueKind.Array)
-                return ControllerResult<T>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
-            return ControllerResult<T>.Success(project(EnumerateConnections(connections)));
-        }
-        finally { result.Value?.Dispose(); }
+        var details = new List<ProxyConnectionDto>();
+        var result = await ReadConnectionsAsync(details, cancellationToken);
+        return result.Succeeded ? ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Success(details)
+            : ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Failure(result.ProblemCode);
     }
 
-    private static IEnumerable<(JsonElement Item, string Id)> EnumerateConnections(JsonElement connections)
+    public Task<ControllerResult<int>> GetConnectionCountAsync(CancellationToken cancellationToken) =>
+        ReadConnectionsAsync(null, cancellationToken);
+
+    private async Task<ControllerResult<int>> ReadConnectionsAsync(List<ProxyConnectionDto>? details, CancellationToken cancellationToken)
     {
-        foreach (var item in connections.EnumerateArray().Take(2_000))
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+        try
         {
-            var id = GetString(item, "id");
-            if (!string.IsNullOrWhiteSpace(id)) yield return (item, id);
+            using var request = new HttpRequestMessage(HttpMethod.Get, "connections");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await _secrets.GetOrCreateAsync(deadline.Token));
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            if (!response.IsSuccessStatusCode)
+                return ControllerResult<int>.Failure(response.StatusCode == HttpStatusCode.Unauthorized
+                    ? ProxyProblemCodes.ControllerAuthenticationFailed : ProxyProblemCodes.ControllerUnavailable);
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+            var count = 0;
+            await new MihomoConnectionSnapshotReader(item =>
+            {
+                var id = GetString(item, "id");
+                if (string.IsNullOrWhiteSpace(id)) return;
+                count++;
+                details?.Add(new ProxyConnectionDto(id, GetString(item, "metadata", "network") ?? "unknown", ConnectionEndpoint(item, false),
+                    ConnectionEndpoint(item, true), GetString(item, "rule") ?? "", GetString(item, "chains") ?? "",
+                    GetDateTime(item, "start") ?? DateTimeOffset.MinValue));
+            }).ReadAsync(stream, deadline.Token);
+            return ControllerResult<int>.Success(count);
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        { return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerTimeout); }
+        catch (JsonException) { return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerResponseInvalid); }
+        catch (InvalidOperationException) { return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerResponseInvalid); }
+        catch (ProxyControllerSecretException) { return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerUnavailable); }
+        catch (HttpRequestException error)
+        {
+            LogTransportFailure(error);
+            return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerUnavailable);
+        }
+        catch (IOException) { return ControllerResult<int>.Failure(ProxyProblemCodes.ControllerUnavailable); }
     }
 
     public async Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken)
