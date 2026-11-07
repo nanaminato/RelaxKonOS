@@ -6,4 +6,6 @@ When a direct Mihomo reload loses its acknowledgement, the Component Center runt
 
 If profile publication recorded the controller acknowledgement, startup recovery or a named retry verifies the candidate file and finishes the original profile commit. A subsequent retry can read the saved receipt. Changes to the candidate file or profile identity keep recovery pending. Emergency TUN disable and system proxy recovery continue to use their own durable records.
 
+If a direct settings update recorded successful replies from both the runtime and the host, and the host proxy policy stays the same, recovery verifies the candidate configuration and settings file and finishes the local commit. An unknown result or an independent file edit leaves the original operation pending.
+
 Use a second management connection on a disposable VM for the first platform validation. See the skipped-test register before attempting Windows or Ubuntu recovery drills.

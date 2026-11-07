@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Certificates;
@@ -23,8 +24,10 @@ using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.ManagedRuntimes;
+using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
+using RelaxKonOS.Server.Proxy.Platform;
 using RelaxKonOS.Server.ProxyServer;
 
 internal static class ProxyAuthenticatedPublicationChecks
@@ -120,12 +123,12 @@ internal static class ProxyAuthenticatedPublicationChecks
         await VerifySafetyShutdownAsync(root, assembly, socket, login, nativeState, guard, traffic, retained, added, readReceipt);
         await VerifyManagedPublicationShutdownAsync(root, assembly, socket, login, nativeState, traffic, retained, added, readReceipt);
         await VerifySubscriptionBodyResidencyAsync(guard);
-        await VerifyDirectReloadLossAsync(root, guard);
+        await VerifyDirectReloadLossAsync(root, socket, guard);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE") is { Length: > 0 } baseline)
             await ProxyConnectionBenchmark.RunAsync(root, socket, baseline, assembly, login, guard, nativeState);
     }
 
-    private static async Task VerifyDirectReloadLossAsync(string root, ProxySystemdGuardProbe guard)
+    private static async Task VerifyDirectReloadLossAsync(string root, string socket, ProxySystemdGuardProbe guard)
     {
         var paths = new RelaxKonOS.Server.Proxy.Platform.ProxyPlatformPaths();
         var protection = ManagedServiceChecks.OpenProtection(root);
@@ -314,6 +317,72 @@ internal static class ProxyAuthenticatedPublicationChecks
             });
         }
 
+        foreach (var barrier in new[] { "before-settings-file", "after-settings-file" })
+        {
+            await guard.VerifyTrafficAsync(async (_, ct) =>
+            {
+                var settingsPaths = await CreatePathsAsync(barrier, ct);
+                var stateDir = settingsPaths.GetStateDirectory();
+                var store = new MihomoPublicationStore(settingsPaths, protection);
+                var reader = new ProxySettingsReader(settingsPaths);
+                var prior = await reader.GetAsync(ct);
+                if (!prior.SystemProxyEnabled || prior.LogLevel == "warning")
+                    throw new InvalidOperationException("The native settings case requires the original active system proxy and a distinct log level.");
+                var priorWrites = Volatile.Read(ref nativeWrites);
+                var priorRequests = Volatile.Read(ref relayWrites);
+                var start = new ProcessStartInfo("dotnet") { UseShellExecute = false };
+                foreach (var argument in new[] { typeof(ProxyAuthenticatedPublicationChecks).Assembly.Location,
+                    "runtime-proxy-direct-settings-crash", root, stateDir, address, socket, barrier })
+                    start.ArgumentList.Add(argument);
+                using var child = Process.Start(start) ?? throw new InvalidOperationException("Could not start the private settings writer.");
+                MihomoDirectReload checkpoint;
+                try
+                {
+                    while (!File.Exists(Path.Combine(stateDir, "settings-commit-barrier")))
+                    {
+                        if (child.HasExited) throw new InvalidOperationException($"The direct settings writer exited before {barrier}. Exit={child.ExitCode}.");
+                        await Task.Delay(30, ct);
+                    }
+                    checkpoint = (await store.ReadAsync(ct)).DirectReload
+                        ?? throw new InvalidOperationException("The acknowledged settings checkpoint was not durable.");
+                    var expected = barrier == "before-settings-file" ? prior : prior with { LogLevel = "warning" };
+                    if (checkpoint.ConfirmedSettings is null || await reader.GetAsync(ct) != expected
+                        || await ReadLevelAsync(ct) != "warning" || Volatile.Read(ref nativeWrites) != priorWrites + 1
+                        || Volatile.Read(ref relayWrites) != priorRequests + 1
+                        || (await File.ReadAllLinesAsync(Path.Combine(stateDir, "host-applied"), ct)).Length != 1)
+                        throw new InvalidOperationException($"Unexpected settings side effects at {barrier}.");
+                    child.Kill();
+                    await child.WaitForExitAsync(ct);
+                    if (child.ExitCode == 0) throw new InvalidOperationException("The direct settings writer did not crash.");
+                }
+                finally { await StopAsync(child); }
+
+                var reopened = new MihomoPublicationStore(settingsPaths, protection);
+                var noHost = MihomoPublicationTransactionChecks.Stub<IHostSystemProxyService>(
+                    _ => throw new InvalidOperationException("Local settings recovery must not dispatch the host proxy."));
+                var files = new MihomoSettingsPublicationFiles(settingsPaths, noHost);
+                var services = new ServiceCollection().AddSingleton(reopened).AddSingleton(files)
+                    .AddSingleton<MihomoPublicationRecoveryService>().AddLogging();
+                await using var provider = services.BuildServiceProvider();
+                var recovery = provider.GetRequiredService<MihomoPublicationRecoveryService>();
+                var named = new MihomoRuntimeRecoveryService(reopened, null!, null!, null!, null!, settingsFiles: files);
+                var settingsFile = Path.Combine(stateDir, "mihomo-settings.json");
+                var beforeCommit = await File.ReadAllBytesAsync(settingsFile, ct);
+                var lastWrite = File.GetLastWriteTimeUtc(settingsFile);
+                if (await recovery.ReconcileAsync(ct) is not null || await reopened.ReadPendingIdentityAsync(ct) is not null
+                    || await named.RetryAsync(checkpoint.OperationId, ct) != new RuntimeSwitchResult(checkpoint.OperationId, RuntimeSwitchOutcome.Succeeded, null)
+                    || await reader.GetAsync(ct) != (prior with { LogLevel = "warning" })
+                    || Volatile.Read(ref nativeWrites) != priorWrites + 1 || Volatile.Read(ref relayWrites) != priorRequests + 1
+                    || await ReadLevelAsync(ct) != "warning" || guard.RuntimePid != pid
+                    || barrier == "after-settings-file" && (!(await File.ReadAllBytesAsync(settingsFile, ct)).SequenceEqual(beforeCommit)
+                        || File.GetLastWriteTimeUtc(settingsFile) != lastWrite))
+                    throw new InvalidOperationException($"Restart did not settle the original settings commit at {barrier}.");
+                Console.WriteLine($"PASS MIHOMO DIRECT SETTINGS COMMIT RECOVERY: {barrier}, original {checkpoint.OperationId}, one native reload, one real Host acknowledgement, zero replay");
+                await File.WriteAllBytesAsync(active, original, ct);
+                if (await native.ReloadAsync(ct) is not null) throw new InvalidOperationException("Could not restore the private runtime after the settings case.");
+            });
+        }
+
         async Task<DirectReloadFixturePaths> CreatePathsAsync(string name, CancellationToken ct)
         {
             var state = Directory.CreateDirectory(Path.Combine(root, "direct-reload", name)).FullName;
@@ -335,6 +404,58 @@ internal static class ProxyAuthenticatedPublicationChecks
         }
     }
 
+    internal static async Task ExecuteDirectSettingsCommitFixtureAsync(string root, string state, string relay,
+        string socket, string barrier, CancellationToken ct)
+    {
+        MihomoIpcStartupAcceptance.RequirePrivateHost();
+        var paths = new DirectReloadFixturePaths(state);
+        var protection = ManagedServiceChecks.OpenProtection(root);
+        var secrets = new DataProtectionProxyControllerSecretStore(
+            new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { ContentRootPath = Path.Combine(root, "full-server") }, protection);
+        using var controller = new MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }), secrets,
+            new() { Endpoint = new(relay + "/") });
+        var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+        var armed = false;
+        var host = new HostSystemProxyService(new SettingsHostAcknowledgement(transport, () =>
+        {
+            File.AppendAllText(Path.Combine(state, "host-applied"), "1\n");
+            armed = true;
+        }));
+        var settingsFile = Path.Combine(state, "mihomo-settings.json");
+        var publication = new MihomoPublicationStore(new DirectReloadFixturePaths(state, () =>
+        {
+            if (armed && barrier == "after-settings-file" && ProxySettingsReader.Decode(File.ReadAllBytes(settingsFile)).LogLevel == "warning")
+                Block();
+        }), protection);
+        var files = new MihomoSettingsPublicationFiles(new DirectReloadFixturePaths(state, () =>
+        {
+            if (armed && barrier == "before-settings-file") Block();
+        }), host);
+        var writer = new MihomoSettingsService(paths, controller, secrets, new() { Endpoint = new("http://127.0.0.1:9090/") },
+            host, publication, files);
+        var prior = await new ProxySettingsReader(paths).GetAsync(ct);
+        var problem = await writer.UpdateAsync(new(prior.SystemProxyEnabled, prior.AllowLan, prior.DnsEnabled, prior.Ipv6Enabled,
+            prior.UnifiedDelay, "warning", prior.MixedPort, prior.AllowInsecureSubscriptionSources, prior.SystemProxyHost, prior.Tun, prior.SystemProxy), ct);
+        throw new InvalidOperationException($"The direct settings writer returned before the barrier. Problem={problem}.");
+
+        void Block()
+        {
+            using (File.Create(Path.Combine(state, "settings-commit-barrier"))) { }
+            Thread.Sleep(Timeout.Infinite);
+        }
+    }
+
+    private sealed class SettingsHostAcknowledgement(IPrivilegedOperationTransport inner, Action acknowledge) : IPrivilegedOperationTransport
+    {
+        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct)
+        {
+            var result = await inner.ExecuteAsync(request, ct);
+            if (request.Operation == PrivilegedOperationKind.LinuxSystemProxyApply && result.Success) acknowledge();
+            return result;
+        }
+    }
+
     internal static async Task<string?> ExecuteDirectReloadFixtureAsync(string root, string state, string relay, CancellationToken ct)
     {
         MihomoIpcStartupAcceptance.RequirePrivateHost();
@@ -348,7 +469,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         var host = MihomoPublicationTransactionChecks.Stub<RelaxKonOS.Server.Proxy.Platform.IHostSystemProxyService>(
             _ => throw new InvalidOperationException("Unknown reload must not dispatch host proxy changes."));
         var settings = new RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService(paths, client, secrets,
-            new() { Endpoint = new("http://127.0.0.1:9090/") }, host, publication);
+            new() { Endpoint = new("http://127.0.0.1:9090/") }, host, publication, new(paths, host));
         var previous = await new RelaxKonOS.Server.Proxy.ProxySettingsReader(paths).GetAsync(ct);
         return await settings.UpdateAsync(new(false, previous.AllowLan, previous.DnsEnabled, previous.Ipv6Enabled,
             previous.UnifiedDelay, "warning", previous.MixedPort, previous.AllowInsecureSubscriptionSources,
@@ -405,10 +526,10 @@ internal static class ProxyAuthenticatedPublicationChecks
         }
     }
 
-    private sealed class DirectReloadFixturePaths(string state) : RelaxKonOS.Server.Proxy.IProxyPlatformPaths
+    private sealed class DirectReloadFixturePaths(string state, Action? beforeStateAccess = null) : RelaxKonOS.Server.Proxy.IProxyPlatformPaths
     {
         private readonly RelaxKonOS.Server.Proxy.Platform.ProxyPlatformPaths native = new();
-        public string GetStateDirectory() => state;
+        public string GetStateDirectory() { beforeStateAccess?.Invoke(); return state; }
         public string GetProtectedConfigurationDirectory() => native.GetProtectedConfigurationDirectory();
         public string GetSanitizedLogDirectory() => native.GetSanitizedLogDirectory();
         public string GetEngineVersionsDirectory(string engineId) => native.GetEngineVersionsDirectory(engineId);

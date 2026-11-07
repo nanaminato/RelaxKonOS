@@ -17,11 +17,12 @@ public sealed record MihomoPendingPublication(Guid OperationId, MihomoPublishedR
 public sealed record MihomoPublicationCompletion(Guid OperationId, string RequestHash, bool Confirmed, bool NotStarted);
 public sealed record MihomoSubscriptionRefreshCompletion(bool Confirmed, DateTimeOffset CompletedAt);
 public sealed record MihomoDirectReload(Guid OperationId, string? PreviousYaml, string CandidateIdentity,
-    MihomoProfilePublication? Profile = null, bool ProfileReloadConfirmed = false)
+    MihomoProfilePublication? Profile = null, bool ProfileReloadConfirmed = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoSettingsPublication? ConfirmedSettings = null)
 {
     [JsonIgnore]
-    internal string ProblemCode => ProfileReloadConfirmed
-        ? MihomoPublicationStore.DirectProfileCommitPending : MihomoPublicationStore.DirectReloadUnverified;
+    internal string ProblemCode => ConfirmedSettings is not null ? MihomoPublicationStore.DirectSettingsCommitPending
+        : ProfileReloadConfirmed ? MihomoPublicationStore.DirectProfileCommitPending : MihomoPublicationStore.DirectReloadUnverified;
 }
 
 /// <summary>Server-private encrypted state, never returned by ordinary management reads.</summary>
@@ -34,9 +35,13 @@ public sealed record MihomoPublicationState(int SchemaVersion, long Revision, Mi
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     Dictionary<Guid, MihomoSubscriptionRefreshCompletion>? SubscriptionRefreshCompletions = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoDirectReload? DirectReload = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] HashSet<Guid>? DirectProfileCompletions = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] HashSet<Guid>? DirectProfileCompletions = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] HashSet<Guid>? DirectSettingsCompletions = null)
 {
     public static MihomoPublicationState Empty => new(1, 0, null, null, null, null, null, null, null);
+
+    internal bool HasDirectCompletion(Guid id) =>
+        DirectProfileCompletions?.Contains(id) == true || DirectSettingsCompletions?.Contains(id) == true;
 }
 
 /// <summary>
@@ -47,6 +52,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
 {
     internal const string DirectReloadUnverified = "runtime.direct_reload_unverified";
     internal const string DirectProfileCommitPending = "runtime.direct_profile_commit_pending";
+    internal const string DirectSettingsCommitPending = "runtime.direct_settings_commit_pending";
     public SemaphoreSlim Gate { get; } = new(1, 1);
     private readonly IDataProtector protector = protection.CreateProtector("RelaxKonOS.Mihomo.Publication.v1");
     private readonly IDataProtector scheduleProtector = protection.CreateProtector("RelaxKonOS.Mihomo.PublicationSchedule.v1");
@@ -75,7 +81,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         if (state.Published is not null || state.Pending is not null || state.DirectReload is not null)
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
         var checkpoint = new MihomoDirectReload(operationId ?? Guid.NewGuid(), previous, Identity(candidate), profile);
-        if (state.DirectProfileCompletions?.Contains(checkpoint.OperationId) == true
+        if (state.HasDirectCompletion(checkpoint.OperationId)
             || state.SubscriptionRefreshCompletions?.ContainsKey(checkpoint.OperationId) == true)
             throw new RuntimePolicyException("runtime.idempotency_conflict");
         await SaveAsync(state with { Revision = checked(state.Revision + 1), DirectReload = checkpoint }, ct);
@@ -85,7 +91,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
     internal async Task CompleteDirectReloadAsync(Guid operationId)
     {
         var state = await ReadAsync(CancellationToken.None);
-        if (state.DirectReload is not { ProfileReloadConfirmed: false } direct || direct.OperationId != operationId)
+        if (state.DirectReload is not { ProfileReloadConfirmed: false, ConfirmedSettings: null } direct || direct.OperationId != operationId)
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
         await SaveAsync(state with { Revision = checked(state.Revision + 1), DirectReload = null }, CancellationToken.None);
     }
@@ -102,13 +108,28 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         }, CancellationToken.None);
     }
 
+    internal async Task<MihomoPublicationState> ConfirmDirectSettingsAsync(Guid operationId, MihomoSettingsPublication intent)
+    {
+        var state = await ReadAsync(CancellationToken.None);
+        if (state.DirectReload is not { Profile: null, ConfirmedSettings: null } direct || direct.OperationId != operationId
+            || !MihomoSettingsPublicationFiles.HasSameHostProxyPolicy(intent.Previous, intent.Candidate))
+            throw new RuntimePolicyException("runtime.publication_unconfirmed");
+        var confirmed = state with
+        {
+            Revision = checked(state.Revision + 1),
+            DirectReload = direct with { ConfirmedSettings = intent }
+        };
+        await SaveAsync(confirmed, CancellationToken.None);
+        return confirmed;
+    }
+
     internal async Task<RuntimeSwitchResult> RecoverDirectReloadUnderGateAsync(MihomoPublicationState state,
-        IProxyProfileRepository? profiles, CancellationToken ct)
+        IProxyProfileRepository? profiles, CancellationToken ct, MihomoSettingsPublicationFiles? settingsFiles = null)
     {
         var checkpoint = state.DirectReload ?? throw new RuntimePolicyException("runtime.recovery_absent");
         var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
         var matches = await MatchesCandidateAsync(ct);
-        if (!checkpoint.ProfileReloadConfirmed)
+        if (!checkpoint.ProfileReloadConfirmed && checkpoint.ConfirmedSettings is null)
         {
             // This is disk-only recovery. The live result and the original checkpoint remain unknown.
             if (matches && checkpoint.PreviousYaml is { } previous) await SaveAtomicAsync(active, Encoding.UTF8.GetBytes(previous), ct);
@@ -116,22 +137,36 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             return new(checkpoint.OperationId, RuntimeSwitchOutcome.RecoveryRequired, DirectReloadUnverified);
         }
 
-        if (!matches || profiles is null)
-            return new(checkpoint.OperationId, RuntimeSwitchOutcome.RecoveryRequired, DirectProfileCommitPending);
-        var profile = checkpoint.Profile!;
-        await profiles.CommitPublicationAsync(checkpoint.OperationId, profile, checkpoint.CandidateIdentity, CancellationToken.None);
+        if (!matches) return Pending();
+        var profileReceipts = state.DirectProfileCompletions;
+        var settingsReceipts = state.DirectSettingsCompletions;
+        if (checkpoint.ConfirmedSettings is { } settings)
+        {
+            if (settingsFiles is null) return Pending();
+            await settingsFiles.CommitFileAsync(settings, CancellationToken.None);
+            settingsReceipts = settingsReceipts is { } prior ? new HashSet<Guid>(prior) : [];
+            settingsReceipts.Add(checkpoint.OperationId);
+        }
+        else
+        {
+            if (profiles is null) return Pending();
+            await profiles.CommitPublicationAsync(checkpoint.OperationId, checkpoint.Profile!, checkpoint.CandidateIdentity, CancellationToken.None);
+            profileReceipts = profileReceipts is { } prior ? new HashSet<Guid>(prior) : [];
+            profileReceipts.Add(checkpoint.OperationId);
+        }
         if (!await MatchesCandidateAsync(CancellationToken.None))
-            return new(checkpoint.OperationId, RuntimeSwitchOutcome.RecoveryRequired, DirectProfileCommitPending);
-        var receipts = state.DirectProfileCompletions is { } prior ? new HashSet<Guid>(prior) : [];
-        receipts.Add(checkpoint.OperationId);
+            return Pending();
         await SaveAsync(state with
         {
             Revision = checked(state.Revision + 1),
             DirectReload = null,
-            DirectProfileCompletions = receipts,
-            SubscriptionRefreshCompletions = CompleteSubscriptionRefresh(state, checkpoint.OperationId, profile, true)
+            DirectProfileCompletions = profileReceipts,
+            DirectSettingsCompletions = settingsReceipts,
+            SubscriptionRefreshCompletions = CompleteSubscriptionRefresh(state, checkpoint.OperationId, checkpoint.Profile, true)
         }, CancellationToken.None);
         return new(checkpoint.OperationId, RuntimeSwitchOutcome.Succeeded, null);
+
+        RuntimeSwitchResult Pending() => new(checkpoint.OperationId, RuntimeSwitchOutcome.RecoveryRequired, checkpoint.ProblemCode);
 
         async Task<bool> MatchesCandidateAsync(CancellationToken token)
         {
@@ -387,7 +422,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         if (state.SchemaVersion != 1 || state.Revision < 0 || (state.Published is null) != (state.Identity is null)
             || (state.Published is null) != (state.LastOperationId is null) || state.LastOperationId == Guid.Empty)
             throw new RuntimePolicyException("runtime.publication_state_invalid");
-        if (state.DirectProfileCompletions?.Contains(Guid.Empty) == true)
+        if (state.HasDirectCompletion(Guid.Empty))
             throw new RuntimePolicyException("runtime.publication_state_invalid");
         if (state.DirectReload is { } direct)
         {
@@ -395,10 +430,16 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
                 || direct.CandidateIdentity is not { Length: 64 } || !direct.CandidateIdentity.All(Uri.IsHexDigit)
                 || direct.PreviousYaml is { } previous && Encoding.UTF8.GetByteCount(previous) > 2 * 1024 * 1024
                 || direct.ProfileReloadConfirmed && direct.Profile is null
-                || state.DirectProfileCompletions?.Contains(direct.OperationId) == true
+                || state.HasDirectCompletion(direct.OperationId)
                 || state.SubscriptionRefreshCompletions?.ContainsKey(direct.OperationId) == true)
                 throw new RuntimePolicyException("runtime.publication_state_invalid");
             direct.Profile?.Validate();
+            if (direct.ConfirmedSettings is { } settings)
+            {
+                MihomoSettingsPublicationFiles.Validate(settings);
+                if (direct.Profile is not null || !MihomoSettingsPublicationFiles.HasSameHostProxyPolicy(settings.Previous, settings.Candidate))
+                    throw new RuntimePolicyException("runtime.publication_state_invalid");
+            }
         }
         if (state.LastConfiguration is { } completed && (completed.OperationId == Guid.Empty
             || completed.RequestHash is not { Length: 64 } || !completed.RequestHash.All(Uri.IsHexDigit) || state.Published is null

@@ -17,10 +17,10 @@ public sealed class MihomoSettingsService(
     MihomoControllerOptions controllerOptions,
     Platform.IHostSystemProxyService systemProxyService,
     MihomoPublicationStore publication,
+    MihomoSettingsPublicationFiles settingsFiles,
     ILogger<MihomoSettingsService>? logger = null,
     MihomoConfigurationPublicationService? managedPublication = null,
-    MihomoRuntimeService? managedRuntime = null,
-    MihomoSettingsPublicationFiles? settingsFiles = null) : IProxySettingsWriter
+    MihomoRuntimeService? managedRuntime = null) : IProxySettingsWriter
 {
     private static readonly HashSet<string> LogLevels = new(StringComparer.OrdinalIgnoreCase) { "silent", "error", "warning", "info", "debug" };
     private SemaphoreSlim _gate => publication.Gate;
@@ -80,6 +80,8 @@ public sealed class MihomoSettingsService(
             catch (ProxyControllerSecretException) { return ProxyProblemCodes.ConfigApplyFailed; }
             catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
 
+            var localCommit = MihomoSettingsPublicationFiles.HasSameHostProxyPolicy(previous, settings)
+                ? await settingsFiles.CaptureAsync(previous, settings, cancellationToken) : null;
             var temporary = Path.Combine(directory, ".settings-" + Guid.NewGuid().ToString("N"));
             try
             {
@@ -101,6 +103,12 @@ public sealed class MihomoSettingsService(
                     return ProxyProblemCodes.ConfigApplyFailed;
                 }
                 var proxyProblem = await systemProxyService.ApplyAsync(settings, previous, enforce: false, completionToken);
+                if (controllerAvailable && proxyProblem is null && localCommit is not null)
+                {
+                    var confirmed = await publication.ConfirmDirectSettingsAsync(checkpoint.OperationId, localCommit);
+                    var result = await publication.RecoverDirectReloadUnderGateAsync(confirmed, null, completionToken, settingsFiles);
+                    return result.Outcome == RuntimeSwitchOutcome.Succeeded ? null : ProxyProblemCodes.RecoveryRequired;
+                }
                 // An absent Helper must not block unrelated Mihomo settings while the proxy is off.
                 // Startup reconciliation still retries, so an interrupted root-side write can recover.
                 if (!settings.SystemProxyEnabled && !previous.SystemProxyEnabled
@@ -152,7 +160,7 @@ public sealed class MihomoSettingsService(
     private async Task<string?> UpdateManagedUnderGateAsync(ProxySettingsDto settings, ProxySettingsDto previous,
         MihomoPublicationState state, CancellationToken ct)
     {
-        if (managedPublication is null || managedRuntime is null || settingsFiles is null) return ProxyProblemCodes.NotSupported;
+        if (managedPublication is null || managedRuntime is null) return ProxyProblemCodes.NotSupported;
         try
         {
             var observed = await MihomoManagedPublicationVerification.VerifyAsync(paths, controllerSecrets, managedRuntime, state, ct);

@@ -40,10 +40,11 @@ public sealed class MihomoPublicationRecoveryService(IServiceScopeFactory scopes
                     state = await store.ReadAsync(stoppingToken);
                     if (state.DirectReload is not { } current || current.OperationId != operation) return (false, null);
                     var directResult = await store.RecoverDirectReloadUnderGateAsync(state,
-                        current.ProfileReloadConfirmed ? scope.ServiceProvider.GetService<IProxyProfileRepository>() : null, stoppingToken);
+                        current.ProfileReloadConfirmed ? scope.ServiceProvider.GetService<IProxyProfileRepository>() : null, stoppingToken,
+                        current.ConfirmedSettings is not null ? scope.ServiceProvider.GetService<MihomoSettingsPublicationFiles>() : null);
                     if (directResult.Outcome == RuntimeSwitchOutcome.Succeeded)
                     {
-                        logger.LogInformation("Mihomo direct profile commit recovered. OperationId={OperationId}", operation);
+                        logger.LogInformation("Mihomo direct application commit recovered. OperationId={OperationId}", operation);
                         return (false, null);
                     }
                     logger.LogWarning("Mihomo direct reload remains pending. OperationId={OperationId} ProblemCode={ProblemCode}", operation, directResult.ProblemCode);

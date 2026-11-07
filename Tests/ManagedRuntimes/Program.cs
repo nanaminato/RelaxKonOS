@@ -15,6 +15,14 @@ if (args is ["runtime-proxy-direct-profile-crash", var profileRoot, var profileS
     throw new InvalidOperationException("The private profile writer unexpectedly returned.");
 }
 
+if (args is ["runtime-proxy-direct-settings-crash", var settingsRoot, var settingsState, var settingsRelay,
+    var settingsSocket, var settingsBarrier])
+{
+    await ProxyAuthenticatedPublicationChecks.ExecuteDirectSettingsCommitFixtureAsync(settingsRoot, settingsState,
+        settingsRelay, settingsSocket, settingsBarrier, default);
+    throw new InvalidOperationException("The private settings writer unexpectedly returned.");
+}
+
 if (args is ["docker-service-override-only"])
 {
     Console.WriteLine($"Docker service override checks passed: {DockerServiceOverrideChecks.Run()}");

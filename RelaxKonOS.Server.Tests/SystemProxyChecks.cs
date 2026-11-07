@@ -32,6 +32,34 @@ internal static class SystemProxyChecks
         using (var fixture = new Fixture())
         {
             var current = await fixture.Reader.GetAsync(default);
+            var file = Path.Combine(fixture.Paths.GetStateDirectory(), "mihomo-settings.json");
+            var external = JsonSerializer.Serialize(current with { LogLevel = "error" });
+            fixture.Host.BeforeApply = () => File.WriteAllText(file, external);
+            TestAssert.Assert(await fixture.Service.UpdateAsync(Request(current with { LogLevel = "info" }), default) == ProxyProblemCodes.RecoveryRequired,
+                "An independent settings edit should leave an acknowledged direct update pending.");
+            var pending = (await fixture.Publication.ReadAsync(default)).DirectReload!;
+            var recovery = new RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService(fixture.Publication,
+                null!, null!, null!, null!, settingsFiles: new(fixture.Paths, fixture.Host));
+            try
+            {
+                await recovery.RetryAsync(pending.OperationId, default);
+                throw new Exception("Settings recovery accepted an independent edit.");
+            }
+            catch (RelaxKonOS.Server.ManagedRuntimes.RuntimeLifecycleException ex) when (ex.ProblemCode == "runtime.settings_drift") { }
+            TestAssert.Assert(pending.ConfirmedSettings is not null && await File.ReadAllTextAsync(file) == external
+                && await fixture.Publication.ReadPendingIdentityAsync(default) == pending.OperationId && fixture.Host.Calls.Count == 1,
+                "Conflicting settings recovery mutated the file, repeated the host operation, or dropped the original checkpoint.");
+            File.Delete(file); // Restore the prior absence in this private fixture.
+            var completed = await recovery.RetryAsync(pending.OperationId, default);
+            TestAssert.Assert(completed.Outcome == RelaxKonOS.Protocol.ManagedRuntimes.RuntimeSwitchOutcome.Succeeded
+                && await recovery.RetryAsync(pending.OperationId, default) == completed
+                && (await fixture.Reader.GetAsync(default)).LogLevel == "info" && fixture.Host.Calls.Count == 1
+                && await fixture.Publication.ReadPendingIdentityAsync(default) is null,
+                "The acknowledged local settings commit should complete once without another host effect.");
+        }
+        using (var fixture = new Fixture())
+        {
+            var current = await fixture.Reader.GetAsync(default);
             var original = await File.ReadAllTextAsync(fixture.Active);
             fixture.Host.BeforeApply = () => Directory.CreateDirectory(Path.Combine(fixture.Paths.GetStateDirectory(), "mihomo-settings.json")); // Fail persistence after the valid read and host apply.
             TestAssert.Assert(await fixture.Service.UpdateAsync(Request(current with { SystemProxyEnabled = true }), default) == ProxyProblemCodes.ConfigApplyFailed,
@@ -109,7 +137,7 @@ internal static class SystemProxyChecks
             Directory.CreateDirectory(Paths.GetStateDirectory());
             File.WriteAllText(Active, "mixed-port: 7890\nmode: rule\nproxies: []\nproxy-groups: []\nrules: []\n");
             Publication = new(Paths, new EphemeralDataProtectionProvider());
-            Service = new(Paths, new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), Host, Publication);
+            Service = new(Paths, new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), Host, Publication, new(Paths, Host));
         }
         public void Dispose() => Directory.Delete(root, recursive: true);
     }

@@ -526,3 +526,5 @@ Proxy 设置写入的 resident 租约覆盖执行、审计、响应与异步作�
 直连具名重试与 Core 启动恢复共用原发布锁和磁盘还原逻辑。原控制器结果仍未知时，原 ID、调度索引和写入门禁继续保留。见[直连具名恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连具名恢复)。
 
 直连档案收到原 reload 确认后，Core 可接续原 SQLite 提交并持久化回执。候选配置漂移时继续保留调度与写入责任。见[直连档案提交恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连档案提交恢复)。
+
+宿主代理策略一致且原生应答齐备时，Core 可接续直连设置的本地提交，保留原系统代理 guard 和 TUN 所有者。见[直连设置提交恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连设置提交恢复)。

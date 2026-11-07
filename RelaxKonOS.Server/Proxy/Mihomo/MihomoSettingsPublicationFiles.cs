@@ -100,6 +100,12 @@ public sealed class MihomoSettingsPublicationFiles(IProxyPlatformPaths paths, IH
 
     internal Task CommitAsync(MihomoSettingsPublication intent, CancellationToken ct) => CommitCoreAsync(intent, requireHostProof: false, ct);
 
+    internal static bool HasSameHostProxyPolicy(ProxySettingsDto previous, ProxySettingsDto candidate) =>
+        !previous.SystemProxyEnabled && !candidate.SystemProxyEnabled
+        || previous.SystemProxyEnabled && candidate.SystemProxyEnabled
+            && previous.SystemProxyHost == candidate.SystemProxyHost && previous.MixedPort == candidate.MixedPort
+            && previous.SystemProxy == candidate.SystemProxy;
+
     private async Task CommitCoreAsync(MihomoSettingsPublication intent, bool requireHostProof, CancellationToken ct)
     {
         await VerifyAsync(intent, allowCandidate: true, ct);
@@ -110,11 +116,17 @@ public sealed class MihomoSettingsPublicationFiles(IProxyPlatformPaths paths, IH
         if (problem is not null && !(!requireHostProof && problem == ProxyProblemCodes.PrivilegedOperationUnavailable
             && !intent.Candidate.SystemProxyEnabled && !intent.Previous.SystemProxyEnabled))
             throw new RuntimePolicyException("runtime.settings_host_apply_failed");
-        // Check again after host IPC: never overwrite an unrelated settings edit in the crash window.
-        await VerifyAsync(intent, allowCandidate: true, ct);
+        await CommitFileAsync(intent, ct);
+    }
+
+    /// <summary>Commit only the captured file. The caller is responsible for the separate host effect.</summary>
+    internal async Task CommitFileAsync(MihomoSettingsPublication intent, CancellationToken ct)
+    {
+        Validate(intent);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(intent.Candidate);
         var existing = await ReadBytesAsync(ct);
         if (existing is not null && Identity(existing) == Identity(bytes)) return;
+        if ((existing is null ? null : Identity(existing)) != intent.PreviousIdentity) Fail();
         var directory = Path.GetDirectoryName(SettingsPath)!;
         RuntimeSourceStore.RequireNoLinks(directory);
         if (OperatingSystem.IsWindows()) Directory.CreateDirectory(directory);
@@ -125,7 +137,7 @@ public sealed class MihomoSettingsPublicationFiles(IProxyPlatformPaths paths, IH
             var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
             if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
             await using (var output = new FileStream(temporary, options)) { await output.WriteAsync(bytes, ct); output.Flush(true); }
-            RuntimeSourceStore.RequireNoLinks(SettingsPath);
+            await VerifyAsync(intent, allowCandidate: true, ct);
             File.Move(temporary, SettingsPath, true);
         }
         finally { File.Delete(temporary); }

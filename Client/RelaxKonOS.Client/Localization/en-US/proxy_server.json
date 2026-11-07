@@ -367,6 +367,8 @@
     "proxy_server.runtime_problem.configuration_drift": "The published configuration differs from the recorded identity.",
     "proxy_server.runtime_problem.direct_reload_unverified": "The live result of the direct reload is unknown. Retry can restore the previous configuration on disk if the candidate still matches. The recovery record stays open.",
     "proxy_server.runtime_problem.direct_profile_commit_pending": "The runtime acknowledged the reload. Retry verifies the candidate configuration and finishes the profile selection without reloading the runtime.",
+    "proxy_server.runtime_problem.direct_settings_commit_pending": "The runtime and host acknowledged the update. Retry verifies and saves the local settings without repeating either operation.",
+    "proxy_server.runtime_problem.settings_drift": "The saved proxy settings changed independently. The recovery record remains open.",
     "proxy_server.runtime_problem.staging_conflict": "The staging area conflicts with this operation.",
     "proxy_server.runtime_problem.permission_denied": "Host management permission is missing.",
     "proxy_server.runtime_problem.session_changed": "The signed-in session changed.",

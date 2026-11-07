@@ -272,8 +272,11 @@ internal static class ProxyTunBoundaryChecks
             return reference is null ? null : await safety.RecoverAsync(reference, default);
         }
         public ProxyTunSafetyService NewSafety() => new(Paths, Platform, Tun);
-        public MihomoSettingsService Writer() => new(Paths, Controller, new StaticProxySecretStore(),
-            new MihomoControllerOptions(), new Host(), Publication);
+        public MihomoSettingsService Writer()
+        {
+            var host = new Host();
+            return new(Paths, Controller, new StaticProxySecretStore(), new MihomoControllerOptions(), host, Publication, new(Paths, host));
+        }
         public void Dispose() => Directory.Delete(root, true);
     }
     public class ControllerStub : DispatchProxy
