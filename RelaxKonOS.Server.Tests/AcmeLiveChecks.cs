@@ -168,7 +168,9 @@ internal static class AcmeLiveChecks
             var recoveryManager = CreateManager(certificates, observationService, recovered, environment, configuration);
             var ledgerPath = Path.Combine(owner.ContentRootPath, "data", "certificate-operations.json");
             var ledgerBefore = await File.ReadAllTextAsync(ledgerPath);
-            var observation = await recovered.ObserveOrderAsync(original.OperationId, observationService, default);
+            CertificateOrderObservationDto? observation;
+            using (var work = await recovered.AdmitOrderObservationAsync(default))
+                observation = await recovered.ObserveOrderUnderLeaseAsync(original.OperationId, () => observationService, work.Stopping);
             var expectedStatus = response == "certificate" ? "valid" : "identity-unavailable";
             TestAssert.Assert(observation == new CertificateOrderObservationDto(interrupted, expectedStatus)
                 && await File.ReadAllTextAsync(ledgerPath) == ledgerBefore,
@@ -220,7 +222,9 @@ internal static class AcmeLiveChecks
                 var actor = CertificateOperationStore.AutomaticRenewalActor;
                 var original = await manager.RenewAsync(renewable, key, actor, default, automatic: true);
                 TestAssert.Assert(original == recovered, "The original renewal key did not return the persisted receipt.");
-                var observation = await crashRecovery.ObserveOrderAsync(crashOperationId, service, default);
+                CertificateOrderObservationDto? observation;
+                using (var work = await crashRecovery.AdmitOrderObservationAsync(default))
+                    observation = await crashRecovery.ObserveOrderUnderLeaseAsync(crashOperationId, () => service, work.Stopping);
                 TestAssert.Assert(observation == new CertificateOrderObservationDto(original, "valid"),
                     $"The checkpoint must survive an actual worker crash: observed {observation?.RemoteStatus}.");
                 var reopenedSchedule = new CertificateRenewalRunRepository(environment);

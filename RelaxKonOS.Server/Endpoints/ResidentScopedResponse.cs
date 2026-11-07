@@ -4,11 +4,15 @@ namespace RelaxKonOS.Server.Endpoints;
 
 internal static class ResidentScopedResponse
 {
-    internal static async Task ExecuteAsync(HttpContext context, IResidentModuleWorkLeaseSource leases, string moduleId,
+    internal static Task ExecuteAsync(HttpContext context, IResidentModuleWorkLeaseSource leases, string moduleId,
+        Func<IServiceProvider, CancellationToken, Task<IResult>> execute, Func<Exception, bool>? cleanupUnconfirmed = null) =>
+        ExecuteAsync(context, ct => leases.AcquireAsync(moduleId, ct), execute, cleanupUnconfirmed);
+
+    internal static async Task ExecuteAsync(HttpContext context, Func<CancellationToken, ValueTask<IModuleWorkLease>> admit,
         Func<IServiceProvider, CancellationToken, Task<IResult>> execute, Func<Exception, bool>? cleanupUnconfirmed = null)
     {
         var request = context.RequestAborted;
-        var lease = await leases.AcquireAsync(moduleId, request);
+        var lease = await admit(request);
         var recoveryRequired = false;
         try
         {

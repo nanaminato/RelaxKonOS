@@ -36,6 +36,13 @@ class Relay(BaseHTTPRequestHandler):
             selected = self.headers.get("X-Fixture-Lose-Response")
             if full_server:
                 selected = (root / "response-fault").read_text(encoding="ascii").strip()
+            if selected == "hold-observation" and self.command == "POST" and self.path.startswith("/my-order/") and response.status == 200:
+                (root / "order-observation-held").write_text(self.path, encoding="ascii")
+                deadline = time.monotonic() + 10
+                while not (root / "release-order-observation").is_file():
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("The order observation response was not released")
+                    time.sleep(0.05)
             if schedule and selected == "hold-challenge" and self.path.startswith("/chalZ/") and response.status == 200:
                 (root / "challenge-response-held").write_text("200", encoding="ascii")
                 deadline = time.monotonic() + 25

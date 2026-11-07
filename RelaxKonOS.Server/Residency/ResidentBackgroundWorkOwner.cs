@@ -57,7 +57,7 @@ internal sealed class ResidentBackgroundWorkOwner(IResidentModuleWorkLeaseSource
     private static TaskCompletionSource Completed()
     { var source = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); source.SetResult(); return source; }
 
-    internal sealed class Work : IDisposable
+    internal sealed class Work : IModuleWorkLease
     {
         private readonly ResidentBackgroundWorkOwner _owner;
         private readonly IModuleWorkLease _lease;
@@ -69,6 +69,8 @@ internal sealed class ResidentBackgroundWorkOwner(IResidentModuleWorkLeaseSource
         internal Guid Id { get; } = Guid.NewGuid();
         internal Task Completion => _done.Task;
         internal CancellationToken Token => _stopping.Token;
+        CancellationToken IModuleWorkLease.Stopping => Token;
+        void IModuleWorkLease.RequireRecovery() => Fail(new InvalidOperationException("Resident request cleanup could not be confirmed."));
         internal Work(ResidentBackgroundWorkOwner owner, IModuleWorkLease lease, CancellationToken stopping)
         { _owner = owner; _lease = lease; _stopping = CancellationTokenSource.CreateLinkedTokenSource(stopping, lease.Stopping); }
         internal void Run(Func<CancellationToken, Task> action)

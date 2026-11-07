@@ -225,7 +225,9 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         finally { _gate.Release(); }
     }
 
-    internal async Task<CertificateOrderObservationDto?> ObserveOrderAsync(Guid id, IAcmeService acme, CancellationToken ct)
+    internal async ValueTask<IModuleWorkLease> AdmitOrderObservationAsync(CancellationToken ct) => await _work.AdmitAsync(ct);
+
+    internal async Task<CertificateOrderObservationDto?> ObserveOrderUnderLeaseAsync(Guid id, Func<IAcmeService> resolveAcme, CancellationToken ct)
     {
         PersistedOperation? operation;
         await _gate.WaitAsync(ct);
@@ -235,9 +237,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         if (!RequiresOrderReconciliation(operation) || operation.Order is null)
             return new(operation.ToDto(), "identity-unavailable");
 
-        using var work = await _work.AdmitAsync(ct);
-        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(ct, work.Token);
-        var status = await acme.ObserveOrderAsync(operation.Order, stopping.Token);
+        var status = await resolveAcme().ObserveOrderAsync(operation.Order, ct);
         return new(operation.ToDto(), status);
     }
 

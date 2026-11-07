@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import secrets
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -76,6 +77,44 @@ def run(root, server, tests, mode):
     def login():
         return request("/api/v1.0/auth/login", payload={**credentials, "clientPlatform": 1,
             "deviceName": "Isolated ACME acceptance", "clientVersion": "0.2.2"})["tokens"]["accessToken"]
+
+    def verify_observation_disconnect(child, token, route, original, stop_server=False):
+        def active():
+            return request("/api/v1.0/server/modules/relaxkonos.certificates", token)["residency"]["activeLeases"]
+
+        held = root / "order-observation-held"
+        release = root / "release-order-observation"
+        held.unlink(missing_ok=True)
+        release.unlink(missing_ok=True)
+        fault = root / "response-fault"
+        wait_for(child, lambda: active() == 0, "restarted-server")
+        fault.write_text("hold-observation")
+        try:
+            with socket.create_connection(("127.0.0.1", int(base.rsplit(":", 1)[1])), timeout=5) as connection:
+                connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+                connection.sendall((f"GET {route} HTTP/1.1\r\nHost: {base.split('//', 1)[1]}\r\n"
+                                    f"Authorization: Bearer {token}\r\nConnection: close\r\n\r\n").encode("ascii"))
+                wait_for(child, held.is_file, "restarted-server", attempts=80)
+                assert active() == 1, "The real CA task must hold one work lease"
+            # The SDK call does not accept the HTTP request cancellation token.
+            time.sleep(0.2)
+            assert active() == 1, "A disconnected client released the still-held CA call"
+            if stop_server:
+                child.terminate()
+                deadline = time.monotonic() + 6
+                while healthy():
+                    assert child.poll() is None and time.monotonic() < deadline, "Server listener did not enter shutdown"
+                    time.sleep(0.05)
+                assert child.poll() is None, "Server exited before the real order observation drained"
+        finally:
+            fault.write_text("")
+            release.touch()
+        if stop_server:
+            assert child.wait(timeout=15) == 0, "Server did not complete observation shutdown"
+            return
+        wait_for(child, lambda: active() == 0, "restarted-server")
+        assert request(route, token) == {"operation": original, "remoteStatus": "valid"}
+        print(f"PASS AUTHENTICATED ACME OBSERVATION DRAIN: operation={original['operationId']}; original CA response drained after disconnect", flush=True)
 
     @contextmanager
     def process(arguments, name):
@@ -296,10 +335,20 @@ def run(root, server, tests, mode):
             ):
                 observe = f"{certificates}/operations/{receipt['operationId']}/acme-order"
                 request(observe, expected=401)
+                if status == "valid":
+                    verify_observation_disconnect(restarted, token, observe, receipt)
                 assert request(observe, token) == {"operation": receipt, "remoteStatus": status}
                 assert request(route, token, payload, key, 202) == receipt
                 print(f"PASS AUTHENTICATED ACME RECEIPT: operation={receipt['operationId']}; observed={status}", flush=True)
             assert ledger.read_bytes() == before and request(certificate, token)["fingerprintSha256"] == fingerprint
+            signed_route = f"{certificates}/operations/{signed['operationId']}/acme-order"
+            verify_observation_disconnect(restarted, token, signed_route, signed, stop_server=True)
+        with process([server], "drained-server") as drained:
+            wait_for(drained, healthy, "drained-server")
+            token = login()
+            assert request(signed_route, token) == {"operation": signed, "remoteStatus": "valid"}
+            assert ledger.read_bytes() == before and request(certificate, token)["fingerprintSha256"] == fingerprint
+            print(f"PASS AUTHENTICATED ACME OBSERVATION SIGTERM: operation={signed['operationId']}; drained original CA task, same receipt after restart", flush=True)
 
 
 run(*(Path(argument).resolve() for argument in sys.argv[1:4]), sys.argv[4])

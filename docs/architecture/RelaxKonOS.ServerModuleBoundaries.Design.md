@@ -2460,3 +2460,13 @@ Windows Release 模块边界回归通过。独立检查在保留成功与失败 
 Linux Release 的五代收集检查同样通过。完整认证 Server 在专属 Engine 中暂扣真实 `docker ps` 输出，跨 30 秒观察窗口保持原代次与一个工作租约。客户端断线后 CLI 包装进程已退出，工作租约归零，原代次报告闲时卸载，新请求加载下一代并读到原服务。新代次也通过真实列表、原定义读取及预览，预览目录确认清空。Core 的原操作 `e24ef921-2592-4b39-a596-df1f772d0c91`、`20168d97-2f95-43b1-99b5-d6c430e43845` 和 `3f21603a-a081-4e11-acc4-bb1f1af2b6ed` 分别在取消、存活 Server 失联和重启后 Engine 离线场景按原 ID 对账，停止未重放。专属资源清理完成，宿主服务、容器和代理文件指纹一致。
 
 首轮外层握手在空闲卸载窗口结束前停止专属 Engine，修正等待条件的期限后通过。构建守卫反向拒绝额外程序集引用。最终日志在 `.artifacts/mb05-compose-execution/`，Linux 归档 SHA-256 为 `7190796694ca3ffd9f27e3c898d7258b25f9e0d2be50976c25f421dd09020816`。未知清理保留代次在本地检查验证。Docker 管理模块继续 resident，生产资源测量及其余管理执行图继续开放。
+
+### MB-05 ACME 原订单观察的 HTTP 工作责任
+
+认证订单读取从原证书操作 owner 取得一个工作租约，涵盖台账快照、真实 CA Task、HTTP 响应和异步作用域清理。未知操作返回 404，缺少可核实的原订单身份返回 `identity-unavailable`，两条路径均无需解析 ACME 客户端。停机通过同一个 owner 排空，返回 `Cache-Control: no-store`，原回执和证书事实维持原权威。
+
+Windows Release Kestrel 检查通过，覆盖匿名拒绝、客户端断线后的真实 Task 等待、响应及清理期间持有同一租约和台账字节一致。模块边界回归通过，Docker 跨进程原 `1ce0b949-7009-4c97-887c-9b4c44b342ae` 为 Interrupted，受控副作用计数为一。
+
+Linux 完整 PAM/JWT Server 使用私有 Pebble、Nginx 和域名解析。中继取得真实原订单结果并暂扣响应。HTTP 断线后仍有一个租约，放行后归零。再次暂扣时发送 SIGTERM，监听关闭后原进程继续等实际 CA Task，放行后正常退出。重启按原 `cb0406e3-6622-4449-a534-4580d5f05f34` 读到原回执和 CA `valid`，缺失身份的原 `bb03eaff-cc8e-4880-a816-d38bf105c279` 仍为 `identity-unavailable`。原台账字节和活动证书指纹一致，CA 共三张订单、两次签发提交，观察与同键查询没有新增。宿主服务和文件指纹一致。
+
+同制品独立 Pebble 回归通过签发、取消、进程中断、跨日及两种传输断流，七张订单与四次签发提交符合原矩阵。首两轮包装器分别在临时目录路径校验和框架依赖入口处失败，修正后通过，测试目录已清理。日志在 `.artifacts/mb05-acme-observation-drain/`，归档 SHA-256 为 `bb0102b661e02cab73dc82cb31b6f0c286deeee1f5e468376a8bd685c4cdf4d4`，复验启动包装器 SHA-256 为 `38e5704912726a90c5c4e6eb22924f6be4d158d126bd8b25d55b22d1123bef7b`。Certificates 保持 resident，ACME SDK 执行图、ALC 与生产资源验收继续开放。

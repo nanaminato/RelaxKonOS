@@ -519,6 +519,8 @@ MB-05 的四条 Compose 只读 HTTP 路由使用工作租约保护 CLI、响应�
 
 MB-05 的 Compose 执行代码在所有作用域结束后可闲时卸载。Core 保有共享 Engine、原栈操作台账和终态恢复，Docker 管理模块继续 resident。见[Compose 独立执行程序集](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-独立执行程序集)。
 
+MB-05 的 ACME 原订单观察由原证书 owner 持有一个工作租约，覆盖真实 CA Task、HTTP 响应和异步清理。完整 Linux Server 的断线与 SIGTERM 验收已通过。Certificates 继续 resident。见[原订单观察](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-acme-原订单观察的-http-工作责任)。
+
 Proxy 同次停机联合验收中，原入站到期回执落盘后，Server 仍持有独立 TUN 清理责任。系统代理 guard 与 TUN 复用共享发布锁及原归属记录，已有网络转发继续。见[Proxy 联合安全责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。
 
 Proxy 设置写入的 resident 租约覆盖执行、审计、响应与异步作用域清理。受管发布的重启恢复继续读取原发布权威和 Helper 回执。见[设置写入工作租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-设置写入的工作租约)。

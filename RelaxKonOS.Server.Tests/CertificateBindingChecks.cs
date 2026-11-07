@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Authentication;
 using System.Security.Claims;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.HostMode;
@@ -38,8 +39,9 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(registry.Snapshot(wildcardId).IsDefault && !registry.Snapshot(id).IsDefault, "Deployment unexpectedly changed the default.");
         TestAssert.Assert(registry.Snapshot(id).FingerprintSha256 == exact.GetCertHashString(HashAlgorithmName.SHA256), "Snapshot did not report actual runtime material.");
         var server = new BindingServer();
+        var ledgerLeases = new TestResidentBackgroundLeases();
         var ledger = new CertificateOperationStore(environment, new HostOperationJournal(environment, configuration), certificates,
-            new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance, new TestResidentBackgroundLeases());
+            new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance, ledgerLeases);
         await ledger.StartAsync(CancellationToken.None);
         var manager = new CertificateManager(certificates, null!, null!, ledger, registry,
             new CertificateDeploymentRepository(environment, configuration), server, new BindingPrivileges(), new TestApplicationLifetime(), NullLogger<CertificateManager>.Instance);
@@ -65,7 +67,7 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(facts.HttpsConfigured && facts.FingerprintSha256!.Equals(metadata.FingerprintSha256!.Replace(":", ""), StringComparison.OrdinalIgnoreCase), "GET used metadata rather than deployed certificate fingerprint.");
         TestAssert.Assert(!(await manager.GetAsync(created.CertificateId!.Value, CancellationToken.None))!.Renewal!.AutomaticEnabled,
             "Self-signed certificate was shown as automatically renewable.");
-        await VerifyReplacementEndpointAsync(unprivilegedManager, ledger, id, created.CertificateId!.Value, environment);
+        await VerifyReplacementEndpointAsync(unprivilegedManager, ledger, id, created.CertificateId!.Value, environment, ledgerLeases);
         var automaticRenewal = await ledger.StartAsync("renewal-history-failure", id, "renew", "renewal-worker",
             _ => Task.FromResult("certificate.validation_failed"), CancellationToken.None, CancellationToken.None);
         await TestOperations.WaitForCertificateOperationAsync(ledger, automaticRenewal.OperationId);
@@ -107,7 +109,8 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(replay.OperationId == deployed.OperationId, "Lost deployment response could not recover original operation after facts changed.");
         TestAssert.Assert(registry.Select("one.example.test") == wildcard, "Deleted exact binding did not fall back to the surviving default.");
     }
-    private static async Task VerifyReplacementEndpointAsync(ICertificateManager manager, CertificateOperationStore ledger, Guid id, Guid selfSignedId, IHostEnvironment environment)
+    private static async Task VerifyReplacementEndpointAsync(ICertificateManager manager, CertificateOperationStore ledger, Guid id, Guid selfSignedId,
+        IHostEnvironment environment, TestResidentBackgroundLeases ledgerLeases)
     {
         var mode = new UploadSessionChecks.SystemMode();
         var elevations = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), mode, new HostElevationSessionState());
@@ -116,12 +119,15 @@ internal static class CertificateBindingChecks
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, ProgressTestAuthentication>("test", _ => { });
         builder.Services.AddAuthorization();
         builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(
             new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
         builder.Services.AddSingleton<ICertificateManager>(manager);
         builder.Services.AddSingleton(ledger);
-        builder.Services.AddSingleton<IAcmeService>(new AnvilAcmeService(null!, null!, new(), null!, NullLogger<AnvilAcmeService>.Instance));
+        OrderObservationFixture? orderFixture = null;
+        builder.Services.AddScoped<IAcmeService>(_ => new OrderObservationScope(orderFixture
+            ?? throw new InvalidOperationException("An observation without an original order must not resolve ACME.")));
         // MapCertificateEndpoints 的续期扫描端点取 CertificateRenewalRunRepository。这个类型没有注册时
         // ASP.NET Core 会把该复杂类型参数按「请求体」推断，而 MapGet 不允许推断请求体，
         // 于是 AuthorizationPolicyCache 在枚举端点元数据时就抛 InvalidOperationException。生产的 DI 里注册过。
@@ -138,7 +144,18 @@ internal static class CertificateBindingChecks
         await using var app = builder.Build();
         app.Use(async (context, next) =>
         {
-            context.User = principal;
+            if (!context.Request.Headers.ContainsKey("X-Anonymous")) context.User = principal;
+            if (context.Request.Headers.ContainsKey("X-Hold-Order") && orderFixture is { } current)
+            {
+                context.Response.OnStarting(async () =>
+                {
+                    current.Response.TrySetResult();
+                    await current.ReleaseResponse.Task.WaitAsync(deadline.Token);
+                });
+                try { await next(context); }
+                finally { current.Exited.TrySetResult(); }
+                return;
+            }
             if (!context.Request.Headers.ContainsKey("X-Hold-Receipt"))
             {
                 await next(context);
@@ -215,6 +232,72 @@ internal static class CertificateBindingChecks
         using (var missing = await http.GetAsync(CertificateApiRoutes.ObserveOrder.Replace("{operationId}", Guid.NewGuid().ToString("D"))))
             TestAssert.Assert(missing.StatusCode == HttpStatusCode.NotFound, "Order observation must reject an unknown operation.");
 
+        var order = new AcmeOrderIdentity(new("https://ca.test/dir"), new("https://ca.test/account/1"), "fixture", new("https://ca.test/order/2"));
+        var original = await ledger.StartOrderAsync("observe-original", id, "issue", "alice", async (checkpoint, _, _) =>
+        {
+            await checkpoint(order);
+            return CertificateOperationStore.InterruptedProblem;
+        }, deadline.Token, deadline.Token);
+        var originalReceipt = await TestOperations.WaitForCertificateOperationAsync(ledger, original.OperationId);
+        var orderRoute = CertificateApiRoutes.ObserveOrder.Replace("{operationId}", original.OperationId.ToString("D"));
+        var ledgerPath = Path.Combine(environment.ContentRootPath, "data", "certificate-operations.json");
+        var ledgerBefore = await File.ReadAllBytesAsync(ledgerPath, deadline.Token);
+        var admittedBefore = ledgerLeases.Acquired;
+        using (var anonymous = new HttpRequestMessage(HttpMethod.Get, orderRoute))
+        {
+            anonymous.Headers.Add("X-Anonymous", "1");
+            using var response = await http.SendAsync(anonymous, deadline.Token);
+            TestAssert.Assert(response.StatusCode == HttpStatusCode.Unauthorized && ledgerLeases.Acquired == admittedBefore,
+                "An unauthorized order observation must not acquire work.");
+        }
+        foreach (var cancel in new[] { true, false })
+        {
+            var current = orderFixture = new OrderObservationFixture(order);
+            using var caller = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+            using var request = new HttpRequestMessage(HttpMethod.Get, orderRoute);
+            request.Headers.Add("X-Hold-Order", "1");
+            var pending = http.SendAsync(request, caller.Token);
+            try
+            {
+                await current.Entered.Task.WaitAsync(deadline.Token);
+                TestAssert.Assert(ledgerLeases.Active == 1, "The original CA call must hold one work lease.");
+                if (cancel)
+                {
+                    await caller.CancelAsync();
+                    await current.Cancelled.Task.WaitAsync(deadline.Token);
+                    try { using var unexpected = await pending; throw new InvalidOperationException("Expected observation disconnect."); }
+                    catch (OperationCanceledException) when (caller.IsCancellationRequested) { }
+                    TestAssert.Assert(ledgerLeases.Active == 1 && !current.Exited.Task.IsCompleted,
+                        "The original CA task must remain owned after client cancellation.");
+                }
+                current.ReleaseRead.TrySetResult();
+                if (!cancel)
+                {
+                    await current.Response.Task.WaitAsync(deadline.Token);
+                    TestAssert.Assert(ledgerLeases.Active == 1 && !current.Cleaning.Task.IsCompleted,
+                        "The same lease must protect the real order response.");
+                    current.ReleaseResponse.TrySetResult();
+                }
+                await current.Cleaning.Task.WaitAsync(deadline.Token);
+                TestAssert.Assert(ledgerLeases.Active == 1 && !current.Exited.Task.IsCompleted,
+                    "The same lease must protect asynchronous scope cleanup.");
+            }
+            finally { current.ReleaseRead.TrySetResult(); current.ReleaseResponse.TrySetResult(); current.ReleaseCleanup.TrySetResult(); }
+            if (!cancel)
+            {
+                using var response = await pending;
+                var observation = JsonSerializer.Deserialize<CertificateOrderObservationDto>(await response.Content.ReadAsStringAsync(),
+                    RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
+                TestAssert.Assert(response.StatusCode == HttpStatusCode.OK && response.Headers.CacheControl?.NoStore == true
+                    && observation == new CertificateOrderObservationDto(originalReceipt, "valid"), "Observation changed the original receipt.");
+            }
+            await current.Exited.Task.WaitAsync(deadline.Token);
+            TestAssert.Assert(ledgerLeases.Active == 0, "An observation must return its lease only after cleanup.");
+        }
+        var ledgerAfter = await File.ReadAllBytesAsync(ledgerPath, deadline.Token);
+        TestAssert.Assert(ledgerBefore.SequenceEqual(ledgerAfter), "Order observation must leave the ledger untouched.");
+        Console.WriteLine($"PASS CERTIFICATE ORDER OBSERVATION DRAIN: original {original.OperationId}, one lease through task, response and cleanup");
+
         foreach (var (capability, action, method, body, problem) in new[] {
             (HostElevationCapability.CertificateIssue, "issue", HttpMethod.Post, "{\"domains\":[\"example.test\"],\"challengeType\":\"directHttp01\",\"contactEmail\":\"a@example.test\",\"acceptedTerms\":false}", "certificate.terms_not_accepted"),
             (HostElevationCapability.CertificateRenew, "renew", HttpMethod.Post, "{}", "certificate.self_signed_not_renewable"),
@@ -242,6 +325,38 @@ internal static class CertificateBindingChecks
             } else TestAssert.Assert(result.StatusCode == HttpStatusCode.Conflict && response.Contains(problem), $"Authorized {action} did not reach domain validation: {response}");
         }
     }
+    private sealed class OrderObservationFixture(AcmeOrderIdentity identity)
+    {
+        internal AcmeOrderIdentity Identity { get; } = identity;
+        internal readonly TaskCompletionSource Entered = Signal(), Cancelled = Signal(), Response = Signal(), Cleaning = Signal(), Exited = Signal();
+        internal readonly TaskCompletionSource ReleaseRead = Signal(), ReleaseResponse = Signal(), ReleaseCleanup = Signal();
+        private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class OrderObservationScope(OrderObservationFixture fixture) : IAcmeService, IAsyncDisposable
+    {
+        public async Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken ct)
+        {
+            TestAssert.Assert(identity == fixture.Identity, "Observation must use the original CA order identity.");
+            using var registration = ct.Register(() => fixture.Cancelled.TrySetResult());
+            fixture.Entered.TrySetResult();
+            await fixture.ReleaseRead.Task;
+            return "valid";
+        }
+
+        public Task<CertificateMaterial> IssueAsync(Guid certificateId, IReadOnlyList<string> domains, CertificateChallengeType challengeType,
+            CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken ct,
+            Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null) => throw new NotSupportedException();
+
+        public Task RevokeAsync(X509Certificate2 certificate, string contactEmail, CancellationToken ct) => throw new NotSupportedException();
+
+        public async ValueTask DisposeAsync()
+        {
+            fixture.Cleaning.TrySetResult();
+            await fixture.ReleaseCleanup.Task;
+        }
+    }
+
     private sealed class UnprivilegedBindingPrivileges : IHostPrivilegeService { public bool IsAdministrator => false; }
     private sealed class BindingPrivileges : IHostPrivilegeService { public bool IsAdministrator => true; }
     private sealed class BindingServer : IServer

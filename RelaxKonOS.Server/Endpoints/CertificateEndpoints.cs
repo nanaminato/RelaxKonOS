@@ -3,6 +3,7 @@ using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.Certificate;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -48,13 +49,13 @@ public static class CertificateEndpoints
             await StartAuthorizedAsync(context, elevations, HostElevationCapability.CertificateRevoke, $"certificates/{id:D}/revoke", key => manager.RevokeAsync(id, key, request, Actor(context), ct)));
         group.MapGet(CertificateApiRoutes.OperationsPattern, async (Guid operationId, RelaxKonOS.Server.Certificate.CertificateOperationStore operations, CancellationToken ct) =>
             await operations.GetAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());
-        group.MapGet(CertificateApiRoutes.ObserveOrderPattern, async (Guid operationId, RelaxKonOS.Server.Certificate.CertificateOperationStore operations,
-            [Microsoft.AspNetCore.Mvc.FromServices] RelaxKonOS.Server.Certificate.IAcmeService acme, HttpContext context, CancellationToken ct) =>
-        {
-            context.Response.Headers.CacheControl = "no-store";
-            return await operations.ObserveOrderAsync(operationId, acme, ct) is { } observation
-                ? (IResult)new ResidentOperationResult(ServerModules.CertificatesId, Results.Ok(observation)) : Results.NotFound();
-        });
+        group.MapGet(CertificateApiRoutes.ObserveOrderPattern, (Guid operationId, CertificateOperationStore operations, HttpContext context) =>
+            ResidentScopedResponse.ExecuteAsync(context, operations.AdmitOrderObservationAsync, async (services, ct) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                return await operations.ObserveOrderUnderLeaseAsync(operationId, services.GetRequiredService<IAcmeService>, ct) is { } observation
+                    ? Results.Ok(observation) : Results.NotFound();
+            }));
         group.MapPost(CertificateApiRoutes.CancelOperationPattern, async (Guid operationId, RelaxKonOS.Server.Certificate.CertificateOperationStore operations, CancellationToken ct) =>
             await operations.CancelAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());
         return app;
