@@ -1472,3 +1472,5 @@ Windows 服务与个人模式均在 `appsettings.host.json` 设置 `Certificate.
 隔离 Pebble 也通过了挑战响应期间进程退出，以及 CA 已签发、下载响应尚未交给 Anvil 时进程退出的恢复验收。两条路径均释放挑战监听器并保留原 operationId 和中断回执。CA 已签发的证书未在本地激活，同键恢复未提交新订单。证据见边界设计 §52。
 
 证书操作的 HTTP 202 在响应执行期间持有证书模块租约。Windows Release 证书绑定与回执专项已通过。
+
+Linux Release 证书 HTTP 绑定与原回执回归已通过。证书响应在真实断线时的排空仍待联合验收。
