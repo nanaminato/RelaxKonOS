@@ -121,6 +121,7 @@ internal static class CertificateBindingChecks
             new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
         builder.Services.AddSingleton<ICertificateManager>(manager);
         builder.Services.AddSingleton(ledger);
+        builder.Services.AddSingleton<IAcmeService>(new AnvilAcmeService(null!, null!, new(), null!, NullLogger<AnvilAcmeService>.Instance));
         // MapCertificateEndpoints 的续期扫描端点取 CertificateRenewalRunRepository。这个类型没有注册时
         // ASP.NET Core 会把该复杂类型参数按「请求体」推断，而 MapGet 不允许推断请求体，
         // 于是 AuthorizationPolicyCache 在枚举端点元数据时就抛 InvalidOperationException。生产的 DI 里注册过。
@@ -203,6 +204,16 @@ internal static class CertificateBindingChecks
                 && replay.State == CertificateOperationState.Succeeded, "Retry must return the original terminal certificate operation.");
         }
         Console.WriteLine($"PASS CERTIFICATE HTTP RECEIPT DRAIN: operation={operation.OperationId}");
+        using (var observed = await http.GetAsync(CertificateApiRoutes.ObserveOrder.Replace("{operationId}", operation.OperationId.ToString("D"))))
+        {
+            var observation = JsonSerializer.Deserialize<CertificateOrderObservationDto>(await observed.Content.ReadAsStringAsync(),
+                RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
+            TestAssert.Assert(observed.StatusCode == HttpStatusCode.OK && observed.Headers.CacheControl?.NoStore == true
+                && observation?.Operation.OperationId == operation.OperationId && observation.RemoteStatus == "identity-unavailable",
+                "Order observation must return the original receipt with no cache or guessed CA identity.");
+        }
+        using (var missing = await http.GetAsync(CertificateApiRoutes.ObserveOrder.Replace("{operationId}", Guid.NewGuid().ToString("D"))))
+            TestAssert.Assert(missing.StatusCode == HttpStatusCode.NotFound, "Order observation must reject an unknown operation.");
 
         foreach (var (capability, action, method, body, problem) in new[] {
             (HostElevationCapability.CertificateIssue, "issue", HttpMethod.Post, "{\"domains\":[\"example.test\"],\"challengeType\":\"directHttp01\",\"contactEmail\":\"a@example.test\",\"acceptedTerms\":false}", "certificate.terms_not_accepted"),

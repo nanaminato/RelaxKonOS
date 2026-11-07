@@ -11,11 +11,14 @@ namespace RelaxKonOS.Server.Certificate;
 internal interface IAcmeService
 {
     Task<CertificateMaterial> IssueAsync(Guid certificateId, IReadOnlyList<string> domains, CertificateChallengeType challengeType,
-        CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken cancellationToken);
+        CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken cancellationToken,
+        Func<AcmeOrderIdentity, Task>? recordOrder = null);
+    Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken cancellationToken);
     Task RevokeAsync(X509Certificate2 certificate, string contactEmail, CancellationToken cancellationToken);
 }
 
 internal sealed record AcmeRenewalWindow(DateTimeOffset Start, DateTimeOffset End);
+internal sealed record AcmeOrderIdentity(Uri Directory, Uri Account, string AccountThumbprint, Uri Order);
 
 internal interface IAcmeRenewalInfoProvider
 {
@@ -68,7 +71,8 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
         catch { return null; } // ARI is optional; the renewal worker applies the documented NotAfter fallback.
     }
     public async Task<CertificateMaterial> IssueAsync(Guid certificateId, IReadOnlyList<string> domains, CertificateChallengeType challengeType,
-        CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken cancellationToken)
+        CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken cancellationToken,
+        Func<AcmeOrderIdentity, Task>? recordOrder = null)
     {
         if (challengeType == CertificateChallengeType.Dns01)
             throw new CertificateOperationException("certificate.challenge_mode_not_available");
@@ -78,7 +82,11 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             certificateId, directoryUri, challengeType, keyAlgorithm, string.Join(',', domains));
         var acme = await LoadContextAsync(directoryUri, contactEmail, cancellationToken);
         logger.LogInformation("ACME account context loaded. CertificateId={CertificateId}", certificateId);
-        var order = await ObserveOrderAsync(() => acme.NewOrder(domains.ToList()), cancellationToken);
+        var order = await ObserveOrderAsync(() => acme.NewOrder(domains.ToList()), cancellationToken, checkCompletionCancellation: false);
+        if (recordOrder is not null && directoryUri.Query.Length == 0 && await acme.GetAccountUri() is { } account
+            && IsSameOrigin(directoryUri, account) && IsSameOrigin(directoryUri, order.Location))
+            await recordOrder(new(directoryUri, account, acme.AccountKey.Thumbprint(), order.Location));
+        cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation("ACME order created. CertificateId={CertificateId}", certificateId);
         var challenges = new List<IChallengeContext>();
         Exception? issuanceFailure = null;
@@ -170,9 +178,68 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
         }
     }
 
-    private static async Task<T> ObserveOrderAsync<T>(Func<Task<T>> operation, CancellationToken ct)
+    public async Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken ct)
     {
-        try { return await AcmeCallLifetime.AwaitAsync(operation, ct); }
+        try
+        {
+            var directory = ValidateDirectoryUrl(options.DirectoryUrl);
+            if (directory != identity.Directory || !IsSameOrigin(directory, identity.Account) || !IsSameOrigin(directory, identity.Order))
+                return "identity-unavailable";
+            var key = KeyFactory.FromPem(await File.ReadAllTextAsync(AccountKeyPath(directory), ct));
+            if (!string.Equals(key.Thumbprint(), identity.AccountThumbprint, StringComparison.Ordinal))
+                return "identity-unavailable";
+
+            // With the existing account URI Anvil can sign POST-as-GET directly. Restrict
+            // this transport to directory/nonce reads and the exact original order request.
+            using var http = new HttpClient(new OrderReadHandler(directory, identity.Order)) { Timeout = TimeSpan.FromSeconds(15) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("RelaxKonOS/1.0");
+            var context = new AcmeContext(directory, key, new AcmeHttpClient(directory, http), accountUri: identity.Account);
+            var order = await AcmeCallLifetime.AwaitAsync(() => context.Order(identity.Order).Resource(), ct);
+            return order.Status switch
+            {
+                Certify.ACME.Anvil.Acme.Resource.OrderStatus.Pending => "pending",
+                Certify.ACME.Anvil.Acme.Resource.OrderStatus.Ready => "ready",
+                Certify.ACME.Anvil.Acme.Resource.OrderStatus.Processing => "processing",
+                Certify.ACME.Anvil.Acme.Resource.OrderStatus.Valid => "valid",
+                Certify.ACME.Anvil.Acme.Resource.OrderStatus.Invalid => "invalid",
+                _ => "unavailable"
+            };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (FileNotFoundException) { return "identity-unavailable"; }
+        catch (DirectoryNotFoundException) { return "identity-unavailable"; }
+        catch (Exception error)
+        {
+            logger.LogWarning("ACME order observation unavailable. ErrorType={ErrorType}", error.GetType().Name);
+            return "unavailable";
+        }
+    }
+
+    private static bool IsSameOrigin(Uri directory, Uri? target) =>
+        target is { IsAbsoluteUri: true, Scheme: "https", UserInfo.Length: 0, Fragment.Length: 0, Query.Length: 0 }
+        && string.Equals(directory.IdnHost, target.IdnHost, StringComparison.OrdinalIgnoreCase) && directory.Port == target.Port;
+
+    private sealed class OrderReadHandler(Uri directory, Uri order) : DelegatingHandler(new SocketsHttpHandler { AllowAutoRedirect = false })
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (!IsSameOrigin(directory, request.RequestUri)
+                || !(request.Method == HttpMethod.Head || request.Method == HttpMethod.Get && request.RequestUri == directory
+                    || request.Method == HttpMethod.Post && request.RequestUri == order))
+                throw new HttpRequestException("ACME order observation attempted a request outside its read-only authority.");
+            return base.SendAsync(request, ct);
+        }
+    }
+
+    private static async Task<T> ObserveOrderAsync<T>(Func<Task<T>> operation, CancellationToken ct, bool checkCompletionCancellation = true)
+    {
+        ct.ThrowIfCancellationRequested();
+        try
+        {
+            var result = await operation();
+            if (checkCompletionCancellation) ct.ThrowIfCancellationRequested();
+            return result;
+        }
         catch (Exception error) when (HasUnknownOrderOutcome(error, ct))
         {
             throw new CertificateOperationException(CertificateOperationStore.InterruptedProblem, error);

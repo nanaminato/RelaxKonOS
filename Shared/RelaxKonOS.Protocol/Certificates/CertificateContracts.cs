@@ -8,6 +8,10 @@ public enum CertificateKeyAlgorithm { EcdsaP256, Rsa2048 }
 public enum CertificateKind { Acme, SelfSigned }
 public enum CertificateOperationState { Queued, Running, Succeeded, Failed, Cancelled }
 
+public sealed record CertificateOrderObservationDto(
+    [property: JsonPropertyName("operation")] CertificateOperationDto Operation,
+    [property: JsonPropertyName("remoteStatus")] string RemoteStatus);
+
 public sealed record CertificateDto(
     [property: JsonPropertyName("id")] Guid Id,
     [property: JsonPropertyName("primaryDomain")] string PrimaryDomain,

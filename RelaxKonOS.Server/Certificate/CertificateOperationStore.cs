@@ -75,8 +75,19 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
     internal static string RequestScope(string requestKey, Guid certificateId, string kind, string? actor) =>
         JsonSerializer.Serialize(new[] { actor ?? "", kind, kind is "issue" or "create-self-signed" ? "" : certificateId.ToString("D"), requestKey });
 
-    public async Task<CertificateOperationDto> StartAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
+    public Task<CertificateOperationDto> StartAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
         Func<CancellationToken, Task<string>> action, CancellationToken applicationStopping, CancellationToken admissionCancellation,
+        bool automaticRenewal = false) =>
+        StartCoreAsync(idempotencyKey, certificateId, kind, actor, (_, ct) => action(ct), applicationStopping, admissionCancellation, automaticRenewal);
+
+    internal Task<CertificateOperationDto> StartOrderAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
+        Func<Func<AcmeOrderIdentity, Task>, CancellationToken, Task<string>> action, CancellationToken applicationStopping,
+        CancellationToken admissionCancellation, bool automaticRenewal = false) =>
+        StartCoreAsync(idempotencyKey, certificateId, kind, actor, (id, ct) => action(identity => RecordOrderAsync(id, identity), ct),
+            applicationStopping, admissionCancellation, automaticRenewal);
+
+    private async Task<CertificateOperationDto> StartCoreAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
+        Func<Guid, CancellationToken, Task<string>> action, CancellationToken applicationStopping, CancellationToken admissionCancellation,
         bool automaticRenewal = false)
     {
         using var admission = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, admissionCancellation);
@@ -107,7 +118,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
                 operation.OperationId, certificateId, kind, actor);
             var cancellation = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, work.Token);
             _cancellations[operation.OperationId] = cancellation;
-            work.Run(_ => RunAsync(operation.OperationId, operation.CertificateId, action, cancellation));
+            work.Run(_ => RunAsync(operation.OperationId, operation.CertificateId, ct => action(operation.OperationId, ct), cancellation));
         }
         finally { _gate.Release(); }
         return operation.ToDto();
@@ -140,6 +151,41 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
     {
         await _gate.WaitAsync(cancellationToken);
         try { RequireReady(); return _operations.GetValueOrDefault(id)?.ToDto(); }
+        finally { _gate.Release(); }
+    }
+
+    internal async Task<CertificateOrderObservationDto?> ObserveOrderAsync(Guid id, IAcmeService acme, CancellationToken ct)
+    {
+        PersistedOperation? operation;
+        await _gate.WaitAsync(ct);
+        try { RequireReady(); operation = _operations.GetValueOrDefault(id); }
+        finally { _gate.Release(); }
+        if (operation is null) return null;
+        if (operation.ProblemCode != InterruptedProblem || operation.Order is null)
+            return new(operation.ToDto(), "identity-unavailable");
+
+        using var work = await _work.AdmitAsync(ct);
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(ct, work.Token);
+        var status = await acme.ObserveOrderAsync(operation.Order, stopping.Token);
+        return new(operation.ToDto(), status);
+    }
+
+    private async Task RecordOrderAsync(Guid id, AcmeOrderIdentity identity)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            var operation = _operations[id];
+            if (operation.State != CertificateOperationState.Running || operation.Order is not null)
+                throw new ResidentWorkCompletionException(new InvalidOperationException("Invalid ACME order checkpoint."));
+            _operations[id] = operation with { Order = identity };
+            try { await SaveLedgerAsync(CancellationToken.None); }
+            catch (Exception error)
+            {
+                _operations[id] = operation;
+                throw new ResidentWorkCompletionException(error);
+            }
+        }
         finally { _gate.Release(); }
     }
 
@@ -217,6 +263,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
                 if (linked.IsCancellationRequested) problem = "certificate.operation_cancelled";
             }
             catch (CertificateChallengeCleanupException) { throw; }
+            catch (ResidentWorkCompletionException) { throw; }
             catch (CertificateOperationException error) { problem = error.ProblemCode; }
             catch (OperationCanceledException) { state = CertificateOperationState.Cancelled; problem = "certificate.operation_cancelled"; }
             catch (Exception error) { _logger.LogError(error, "Certificate operation failed. OperationId={OperationId}", id); problem = "certificate.operation_failed"; }
@@ -249,7 +296,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
             if (operation.State == CertificateOperationState.Cancelled && state != CertificateOperationState.Cancelled) return;
             var interrupted = problemCode == InterruptedProblem;
             var completed = operation with { State = state, Stage = interrupted ? "interrupted" : state.ToString().ToLowerInvariant(),
-                ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow };
+                ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow, Order = interrupted ? operation.Order : null };
             _operations[id] = completed;
             try
             {
@@ -289,15 +336,25 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
 
     private async Task SaveAsync(CancellationToken ct)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        var temp = _path + ".tmp";
-        await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(_operations.Values, Json), ct);
-        File.Move(temp, _path, true);
+        await SaveLedgerAsync(ct);
         await _journal.UpsertAsync(_operations.Values.Select(operation => new CertificateOperationJournalEntry(operation.ToDto(), operation.IdempotencyKey, operation.Actor)), ct);
     }
 
+    private async Task SaveLedgerAsync(CancellationToken ct)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        var temp = _path + ".tmp";
+        await using (var output = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            await JsonSerializer.SerializeAsync(output, _operations.Values, Json, ct);
+            output.Flush(flushToDisk: true);
+        }
+        File.Move(temp, _path, true);
+    }
+
     private sealed record PersistedOperation(Guid OperationId, string IdempotencyKey, Guid CertificateId, string Kind, string? Actor,
-        CertificateOperationState State, string Stage, string ProblemCode, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt)
+        CertificateOperationState State, string Stage, string ProblemCode, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AcmeOrderIdentity? Order = null)
     {
         public CertificateOperationDto ToDto() => new(OperationId, CertificateId, Kind, State, Stage, ProblemCode, StartedAt, CompletedAt);
     }

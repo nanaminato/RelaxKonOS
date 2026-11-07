@@ -22,6 +22,8 @@ cleanup() {
         tail -20 "$fixture/ca.log" >&2
         printf 'Pebble orders recorded: '
         grep -c 'Added order' "$fixture/ca.log" || true
+        printf 'Pebble finalizations recorded: '
+        grep -c 'POST /finalize-order/' "$fixture/ca.log" || true
     fi
     rm -rf -- "$fixture"
 }
@@ -57,3 +59,4 @@ curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:14001/di
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 SSL_CERT_FILE="$fixture/https.pem" dotnet "$assembly" --acme-live-only "$fixture"
 [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 7 ]
+[ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 4 ]

@@ -27,6 +27,8 @@ public static class CertificateApiRoutes
     public const string DeletePattern = "/{id:guid}";
     public const string Operations = $"{Certificates}/operations/{{operationId}}";
     public const string OperationsPattern = "/operations/{operationId:guid}";
+    public const string ObserveOrder = $"{Certificates}/operations/{{operationId}}/acme-order";
+    public const string ObserveOrderPattern = "/operations/{operationId:guid}/acme-order";
     public const string CancelOperation = $"{Certificates}/operations/{{operationId}}/cancel";
     public const string CancelOperationPattern = "/operations/{operationId:guid}/cancel";
 }

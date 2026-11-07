@@ -1425,3 +1425,9 @@ Linux x64 Release 在独立 Pebble 与 DNS 命名空间中通过。TLS 中继收
 ### MB-04 已确认受管发布的真实 TUN 门禁
 
 Linux x64 Release 在私有 systemd、D-Bus 和网络内复测独立 Helper 及非 root 完整 Server。原受管配置中断后只执行一次具名补偿，原 `c130d33d-de2b-493a-b0f4-ce0c41019b5a` 回执为 Interrupted，原端口恢复实际转发。随后生产 TUN 安全服务从已确认的 Server 台账拒绝直接激活。无控制器请求及新恢复标记，受管状态修订、原回执、配置字节、运行 PID、管理路由、IPv4/IPv6 规则和真实转发均通过前后核验。专属 cgroup 已清理，宿主服务状态与代理文件指纹一致。Linux 原生套件通过 171 项及完整 IPC 路径，Windows Release 受管服务 15 项通过。日志为 .artifacts/mb04-confirmed-tun-live.log，归档 SHA-256 为 97ca5ce3b2e788e7ac7d39434f052f42d032c0bb5ff2caf4d048d60bb0ff61fe。此项覆盖受管发布后的拒绝与责任保留，受管 TUN 网络事务与 Proxy 动态休眠仍开放。
+
+### MB-05 原 CA 订单的只读对账
+
+生产签发和续期在取得 CA 订单响应后，于提交挑战和请求签发前把原目录、账户、账户公钥指纹与订单 URI 持久化到同一 operationId 的台账。检查点失败按本地持久化故障保留工作责任。已知中断可通过认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order` 查询，响应为原 operation 与 remoteStatus。查询核对当前 CA 目录、原账户密钥及同源 HTTPS 身份，只允许目录读取、nonce 请求与原订单的 POST-as-GET，不跟随重定向，不返回内部 URI，不修改回执、台账或当前证书。无可信检查点返回 identity-unavailable。远端 valid 表示 CA 订单状态，本地依然按原中断回执和证书版本处理。
+
+Linux x64 Release 使用隔离 Pebble、真实 TLS 断流与生产证书管理器验证。创建响应丢失的原操作 `6d002ed8-eb47-4c10-a0b8-64c23bb19b6c` 返回 identity-unavailable。已签发响应丢失的 `6467531e-9b4d-460a-b974-3303381d5f5f` 与实际终止续期进程后的 `f65187c4-2aea-4f6f-830a-e91ff7a5afe6` 均在重开台账后观察到原 CA 订单 valid。传输断流后的查询前后台账字节一致，原证书指纹保持，下一日键继续命中原回执。整组共七张预期订单、四次预期签发提交，对账没有新增。日志为 .artifacts/mb05-acme-observe-live.log，归档 SHA-256 为 f379fec759de54010022835163f13c00815e2b0d50168b2812b13b04e162db18。Windows Release 模块边界回归通过，生产 HTTP 路由的隔离 Kestrel 测试核对原回执、禁止缓存和未知操作 404。已知订单与完整认证 Server 的联合实测、跨源 CA 身份、缺失订单身份的外部核实及独立执行图继续开放。

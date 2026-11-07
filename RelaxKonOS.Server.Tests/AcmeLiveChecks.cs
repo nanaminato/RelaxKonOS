@@ -161,14 +161,22 @@ internal static class AcmeLiveChecks
             await live.StopAsync(default).WaitAsync(Budget);
             using var recovered = OpenStore(owner);
             await recovered.StartAsync(default);
-            var recoveryManager = CreateManager(certificates, CreateAcme(direct), recovered, environment, configuration);
+            var observationService = CreateAcme(direct);
+            var recoveryManager = CreateManager(certificates, observationService, recovered, environment, configuration);
+            var ledgerPath = Path.Combine(owner.ContentRootPath, "data", "certificate-operations.json");
+            var ledgerBefore = await File.ReadAllTextAsync(ledgerPath);
+            var observation = await recovered.ObserveOrderAsync(original.OperationId, observationService, default);
+            var expectedStatus = response == "certificate" ? "valid" : "identity-unavailable";
+            TestAssert.Assert(observation == new CertificateOrderObservationDto(interrupted, expectedStatus)
+                && await File.ReadAllTextAsync(ledgerPath) == ledgerBefore,
+                $"Read-only recovery must preserve the original receipt and ledger. Expected {expectedStatus}, observed {observation?.RemoteStatus}.");
             TestAssert.Assert(await recoveryManager.RenewAsync(certificateId, "after-restart-key", actor, default, automatic: true) == interrupted
                 && (await recovered.GetRenewalInfoAsync(certificateId, true, default)).ConsecutiveFailures == 0
                 && (await certificates.GetAsync(certificateId, default))?.FingerprintSha256 == previous!.FingerprintSha256,
                 "The persisted interruption must keep the original certificate and prevent an automatic retry after reopening.");
             await recovered.StopAsync(default).WaitAsync(Budget);
             TestAssert.Assert(leases.Active == 0, "Confirmed local cleanup must drain the ACME lease.");
-            Console.WriteLine($"PASS ACME LIVE TRANSPORT LOSS: response={response}; operation={original.OperationId}; original interrupted receipt retained");
+            Console.WriteLine($"PASS ACME LIVE TRANSPORT LOSS: response={response}; operation={original.OperationId}; observed={expectedStatus}; original interrupted receipt retained");
         }
 
         async Task VerifyCrashAsync(string workerMode, string key, string marker, Guid? renewal = null)
@@ -209,6 +217,9 @@ internal static class AcmeLiveChecks
                 var actor = CertificateOperationStore.AutomaticRenewalActor;
                 var original = await manager.RenewAsync(renewable, key, actor, default, automatic: true);
                 TestAssert.Assert(original == recovered, "The original renewal key did not return the persisted receipt.");
+                var observation = await crashRecovery.ObserveOrderAsync(crashOperationId, service, default);
+                TestAssert.Assert(observation == new CertificateOrderObservationDto(original, "valid"),
+                    $"The checkpoint must survive an actual worker crash: observed {observation?.RemoteStatus}.");
                 crashReplay = await manager.RenewAsync(renewable, "next-day-key", actor, default, automatic: true);
             }
             else
