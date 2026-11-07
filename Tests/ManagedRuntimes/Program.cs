@@ -121,6 +121,16 @@ if (args is ["runtime-managed-service-client", var singBoxSocket])
     await ManagedServiceChecks.RunSocketClientAsync(singBoxSocket);
     return;
 }
+if (args is ["runtime-proxy-systemd", var nativeHelper, var nativeServer, var nativeSingBox])
+{
+    await ProxySystemdRecoveryChecks.RunAsync(nativeHelper, nativeServer, nativeSingBox);
+    return;
+}
+if (args is ["runtime-proxy-systemd-expiry-worker", var nativeSocket, var nativeRoot])
+{
+    await ProxySystemdRecoveryChecks.RunExpiryWorkerAsync(nativeSocket, nativeRoot);
+    return;
+}
 if (args is ["runtime-managed-service-live", var singBoxExecutable])
 {
     Console.WriteLine($"PASS LIVE SING-BOX HELPER PUBLICATION: {await ManagedServiceChecks.RunAsync(singBoxExecutable)} checks");

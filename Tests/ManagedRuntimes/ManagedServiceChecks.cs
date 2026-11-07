@@ -411,9 +411,9 @@ internal static class ManagedServiceChecks
 
     private static ProxyServerStore OpenFullServerStore(string root) => new(new FixturePaths(FullServerState), OpenProtection(root));
 
-    private static async Task<bool> RunFullServerAsync(string assembly, string socketPath, string root,
+    internal static async Task<bool> RunFullServerAsync(string assembly, string socketPath, string root,
         ProxyServerSecret nextGrant, ProxyServerSecret retainedGrant, ProxyFullServerTrafficProbe traffic,
-        DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce)
+        DateTimeOffset nextExpiry, Func<bool> originalAppliedOnce, Func<Task>? restoreHelper = null)
     {
         if (!File.ReadLines("/proc/self/mountinfo").Any(line =>
             line.Split(' ')[4] == "/var/lib" && line.Contains(" - tmpfs ", StringComparison.Ordinal)))
@@ -438,10 +438,12 @@ internal static class ManagedServiceChecks
         };
         var serverUid = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_UID");
         var serverGid = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_GID");
+        uint? deniedUid = null;
+        uint socketGid = 0;
         if (serverUid is not null)
         {
             if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("The non-root Server fixture requires Linux.");
-            if (!uint.TryParse(serverUid, out var uid) || uid == 0 || !uint.TryParse(serverGid, out _))
+            if (!uint.TryParse(serverUid, out var uid) || uid == 0 || !uint.TryParse(serverGid, out socketGid))
                 throw new InvalidOperationException("The full Server fixture requires an explicit non-root UID and GID.");
             File.SetUnixFileMode(root, File.GetUnixFileMode(root) | UnixFileMode.OtherExecute);
             var ownership = new ProcessStartInfo("chown") { UseShellExecute = false };
@@ -453,11 +455,7 @@ internal static class ManagedServiceChecks
             start.FileName = "setpriv";
             foreach (var arg in new[] { "--reuid=" + serverUid, "--regid=" + serverGid, "--clear-groups", "--no-new-privs", "dotnet" })
                 start.ArgumentList.Add(arg);
-            var deniedUid = uid == 65533 ? 65532u : 65533u;
-            var rejected = await SendAcrossProcessAsync(socketPath, new(PrivilegedOperationKind.ProxyServerStatus),
-                clientUid: deniedUid, clientGid: uint.Parse(serverGid!));
-            if (rejected.Success) throw new InvalidOperationException("Helper accepted an unlisted UID.");
-            Console.WriteLine($"PASS FULL SERVER HELPER AUTHORIZATION: unlisted uid={deniedUid} rejected");
+            deniedUid = uid == 65533 ? 65532u : 65533u;
         }
         start.ArgumentList.Add(Path.GetFullPath(assembly));
         start.Environment["HOME"] = home;
@@ -476,8 +474,16 @@ internal static class ManagedServiceChecks
         start.Environment["Observability__AuditDatabasePath"] = Path.Combine(contentRoot, "audit.db");
         start.Environment["Observability__AuditHmacKey"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 
-        start.Environment["PrivilegedHelper__SocketPath"] = socketPath + ".absent";
+        start.Environment["PrivilegedHelper__SocketPath"] = restoreHelper is null ? socketPath + ".absent" : socketPath;
         await CheckFullServerAsync(start, root, url, expectReady: false, nextGrant, retainedGrant, traffic, nextExpiry, originalAppliedOnce);
+        if (restoreHelper is not null) await restoreHelper();
+        if (deniedUid is not null)
+        {
+            var rejected = await SendAcrossProcessAsync(socketPath, new(PrivilegedOperationKind.ProxyServerStatus),
+                clientUid: deniedUid, clientGid: socketGid);
+            if (rejected.Success) throw new InvalidOperationException("Helper accepted an unlisted UID.");
+            Console.WriteLine($"PASS FULL SERVER HELPER AUTHORIZATION: unlisted uid={deniedUid} rejected");
+        }
         start.Environment["PrivilegedHelper__SocketPath"] = socketPath;
         await CheckFullServerAsync(start, root, url, expectReady: true, nextGrant, retainedGrant, traffic, nextExpiry, originalAppliedOnce);
         return true;
@@ -556,7 +562,7 @@ internal static class ManagedServiceChecks
         }
     }
 
-    private static ProxyServerStore OpenServerStore(string root) => new(new FixturePaths(Path.Combine(root, "server")),
+    internal static ProxyServerStore OpenServerStore(string root) => new(new FixturePaths(Path.Combine(root, "server")),
         OpenProtection(root));
 
     private static IDataProtectionProvider OpenProtection(string root) =>

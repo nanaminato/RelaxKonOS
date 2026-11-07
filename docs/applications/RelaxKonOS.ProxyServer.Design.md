@@ -366,3 +366,5 @@ Linux 完整 Server 启动实测覆盖两条路径。Helper 不可达时，Serve
 完整 Server 的 Core 到期接续已通过真实 VLESS TLS 流量验证。管理模块停用后，有效授权仍可转发。到期发布关闭原连接，过期授权被拒绝，长期有效授权可重新连接并继续转发。运行时使用生产生成的配置，测试上游地址仅配置在隔离网络中。
 
 完整 Server 的启动恢复与后续授权到期现已在 Linux 非 root 身份下通过真实 TLS 流量验收。Helper 按实际 UID 接受授权调用，拥有 socket 组访问权但未列入白名单的 UID 被拒绝。测试仅调整专属临时目录和私有状态目录的权限。
+
+Linux 实测使用独立生产 Helper、非 root 完整 Server 和私有 systemd 管理的专属 sing-box。Helper 进程中断期间，sing-box 保持原 PID 并继续转发认证流量。完整 Server 在 Helper 不可达时保留原候选并拒绝启动，重启 Helper 后确认候选并继续处理后续到期。两个到期发布各执行一次。测试清理后，宿主 sing-box 和系统代理状态通过前后核验。
