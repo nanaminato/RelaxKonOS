@@ -29,6 +29,7 @@ def run(root, server, helper_binary, mode):
     bootstrap_failure = mode == "--systemd-website-acme-bootstrap-failure"
     bootstrap_resume = mode in ("--systemd-website-acme-bootstrap-resume", "--systemd-website-acme-bootstrap-resume-interrupt")
     resume_interrupt = mode == "--systemd-website-acme-bootstrap-resume-interrupt"
+    bind_interrupt = mode == "--systemd-website-acme-bootstrap-bind-interrupt"
     acme_success = mode in ("--systemd-website-acme-success", "--systemd-website-acme-bootstrap-success")
     acme_cancel = mode == "--systemd-website-acme-cancel"
     acme_drain = mode == "--systemd-website-acme-drain"
@@ -435,6 +436,55 @@ def run(root, server, helper_binary, mode):
                 original = request(publications, token=token, payload=payload, key=key, expected=202)
                 operation_id = original["operationId"]
                 operation_route = f"{publications}/operations/{operation_id}"
+                if bind_interrupt:
+                    wait_for(initial, published_body, "first binding TLS before the native response", attempts=350)
+                    pending = request(operation_route, token=token)
+                    binding_id = pending["bootstrapBindingOperationId"]
+                    cert = request(f"{certificates}/operations/{pending['certificateOperationId']}", token=token)
+                    assert pending["state"].lower() == "running" and pending["stage"].lower() == "configuring"
+                    assert binding_id and binding_id != operation_id and not pending["bootstrapResumeStartedAt"]
+                    assert cert["state"].lower() == "succeeded" and cert["certificateId"] == pending["certificateId"]
+                    config = Path("/etc/nginx/conf.d/relaxkonos.d") / (pending["siteId"] + ".conf")
+                    backup = config.with_suffix(".conf.rollback")
+                    assert backup.is_file() and not (root / "nginx" / "reload-finished").exists()
+                    config_bytes = config.read_bytes()
+                    assert not request(app_route, token=token)["application"]["siteId"]
+                    assert witness.read_text().splitlines() == ["reload", "reload"]
+                    assert_ca_once()
+                    master = nginx_pid_file.read_text()
+                    assert_served(b"original")
+                    initial.kill()
+                    assert initial.wait(timeout=10) < 0
+                    with process([server], "first-binding-restarted-server") as restarted:
+                        wait_for(restarted, healthy, "first-binding-restarted-server")
+                        token = login()
+                        receipt = request(operation_route, token=token)
+                        assert receipt["state"].lower() == "interrupted" and receipt["interruptedFromStage"].lower() == "configuring"
+                        assert receipt["bootstrapBindingOperationId"] == binding_id and not receipt["bootstrapResumedAt"]
+                        assert receipt == request(publications, token=token, payload=payload, key=key, expected=202)
+                        resume_route = operation_route + "/resume-bootstrap"
+                        request(resume_route, token=token, method="POST", expected=409, expected_problem="website.recheck_required")
+                        request(operation_route + "/cleanup-bootstrap", token=token, method="POST",
+                                expected=409, expected_problem="website.recheck_required")
+                        assert not request(app_route, token=token)["application"]["siteId"] and backup.is_file()
+                        (root / "nginx" / "release").touch()
+                        wait_for(helper, lambda: direct_helper_request("NginxReloadReceipt", binding_id)["success"],
+                                 "original first TLS binding reload receipt")
+                        reconciled = request(resume_route, token=token, method="POST")
+                        assert reconciled["state"] == receipt["state"] and reconciled["operationId"] == operation_id
+                        assert reconciled["bootstrapBindingOperationId"] == binding_id and reconciled["bootstrapResumedAt"]
+                        assert not reconciled["recoveryProblemCode"] and reconciled["certificateOperationId"] == cert["operationId"]
+                        assert reconciled == request(resume_route, token=token, method="POST")
+                        assert reconciled == request(publications, token=token, payload=payload, key=key, expected=202)
+                        assert request(app_route, token=token)["application"]["siteId"] == receipt["siteId"]
+                        site, = request(f"{web}/{matches[0]['id']}/sites", token=token)
+                        assert site["certificateId"] == cert["certificateId"] and not backup.exists()
+                        assert config.read_bytes() == config_bytes and witness.read_text().splitlines() == ["reload", "reload"]
+                        assert nginx_pid_file.read_text() == master and published_body()
+                        assert_ca_once()
+                        assert_served(b"original")
+                        print(f"PASS WEBSITE FIRST BINDING RECONCILED: operation={operation_id}; binding={binding_id}; certificate={cert['operationId']}; original receipt, no replay")
+                    return
                 if bootstrap_resume:
                     wait_for(initial, held.is_set, "read-only original reload receipt after local certificate persistence", attempts=350)
                     active = request(operation_route, token=token)
@@ -713,6 +763,8 @@ def run(root, server, helper_binary, mode):
                         assert list(challenge_root.iterdir()) == [sentinel] and sentinel.read_text() == "untouched"
                         assert witness.read_text().splitlines() == (["reload", "reload"] if bootstrap_acme else ["reload"])
                         if bootstrap_acme:
+                            terminal = request(operation_route, token=token)
+                            assert terminal["bootstrapBindingOperationId"] and not terminal["bootstrapResumeStartedAt"]
                             sites = request(f"{web}/{matches[0]['id']}/sites", token=token)
                             site, = sites
                             assert site["acmeHttp01"] and site["httpsEnabled"]
@@ -1170,7 +1222,8 @@ if __name__ == "__main__":
                                                             "--systemd-website-acme-success", "--systemd-website-acme-cancel",
                                                             "--systemd-website-acme-drain", "--systemd-website-acme-bootstrap",
                                                             "--systemd-website-acme-bootstrap-success", "--systemd-website-acme-bootstrap-failure",
-                                                            "--systemd-website-acme-bootstrap-resume", "--systemd-website-acme-bootstrap-resume-interrupt", "--systemd-first-site-acme",
+                                                            "--systemd-website-acme-bootstrap-resume", "--systemd-website-acme-bootstrap-resume-interrupt",
+                                                            "--systemd-website-acme-bootstrap-bind-interrupt", "--systemd-first-site-acme",
                                                             "--systemd-first-site-acme-success") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")

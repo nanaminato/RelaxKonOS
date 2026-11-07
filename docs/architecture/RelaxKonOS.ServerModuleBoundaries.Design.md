@@ -1642,11 +1642,21 @@ Linux Release 使用私有 systemd、Docker、Nginx、Pebble 和 DNS。测试中
 
 授权续接在任何正式配置写入前，原子持久化独立 Helper 重载 ID、站点定义、正式配置 SHA-256 与证书指纹。续接使用该 ID 执行原生重载。失去终态时保留正式配置、原临时配置备份和原回执。再次授权续接只读取原生回执，核对站点定义、正式配置、证书指纹、原临时备份和当前上游。确认成功才补齐站点元数据及应用关联，并在二者持久化后移除匹配备份。备份已移除时必须已有匹配站点元数据和关联。原发布状态和原证书回执保持。
 
-Helper 无成功证据、现有配置不匹配或原证书及上游已变更时，保留待核验责任。该阶段只覆盖授权续接的正式 TLS 绑定，初次发布的正式绑定仍使用原流程。
+Helper 无成功证据、现有配置不匹配或原证书及上游已变更时，保留待核验责任。授权续接的正式 TLS 绑定先采用该流程，初次发布接入见下节。
 
 Linux Release 在既有隔离环境用真实 Pebble、Nginx 和 Docker 复验。原发布 `549a59f9-fd3a-4814-973f-b124aaa37005` 在续接绑定 `81b6c554-6b35-435b-8d1e-ac09c41ad24b` 已服务 TLS、Helper 尚未完成原生重载时二次终止 Server。重启后仍拒绝正在运行的原作业，且拒绝正式配置或原备份被改动的路径。原文件恢复一致后，按原绑定回执补写站点和应用关联并清理备份。重复续接和发布原键返回同一原回执，原证书操作 `305c1a55-5b24-4672-9028-9952c9d9a9c5` 保持。旧 TLS 与新 TLS 都从原 Nginx master 返回真实正文，全程一次 CA 订单、一次签发和两次预期重载。
 
 正常续接 `d5b1b454-8708-4a14-a135-c6b9575d8f50` 与清理对照 `9b51f6c7-d3b9-4554-b477-fe67a1a7d24a` 通过。日志为 `.artifacts/mb05-bootstrap-bind-reconcile--systemd-website-acme-bootstrap-resume-interrupt.log`、`.artifacts/mb05-bootstrap-bind-reconcile--systemd-website-acme-bootstrap-resume.log` 与 `.artifacts/mb05-bootstrap-bind-reconcile--systemd-website-acme-bootstrap.log`，归档 SHA-256 依次为 `b752f417b07621a16fdb91d459a6af556001cfd4302cde4d58a5ee379526d94c`、`d00afbe2adc4ebcc854bb83c115c5de10bdb5576571d24bdcb15b261bf9387dd` 和 `58faa3ce04f32455b1fb77feb6802c0ecb5b2fce47b165ef2c1459a860ac10eb`。三轮清理专属 cgroup，宿主 Nginx、Docker 和配置指纹一致。Windows Release 回归通过，Docker 跨进程原 `6a2602e1-01a7-40fd-be61-44d125f1ed31` 返回 Interrupted，副作用计数为一。首次构建因证书摘要类型误用失败，修正后通过。
+
+### MB-05 首站首次 TLS 绑定的原生回执对账
+
+自动建立 WebRoot 的首站首次发布与授权续接共用正式绑定记录。首次路径在写入正式配置前持久化独立 Helper 重载 ID、证书指纹、站点定义和正式配置摘要。正常发布在原生重载成功后核验这些证据，随后补写站点和应用关联、移除原临时配置备份。原回执按正常流程完成，首次成功路径没有续接时间。
+
+首次正式绑定中断后仍按原发布 ID 授权续接。已记录绑定时，续接只核验原 Helper 成功回执、当前证书及上游、正式配置和备份，完成本地关联并保留原中断回执。原生结果未确认时保留证据并拒绝清理或继续写入。既有 WebRoot 和手动指定证书的发布保持原流程。
+
+Linux Release 使用既有私有 systemd、Docker、Nginx、Pebble 和 DNS。首次发布 `04524788-ec36-4957-bc74-d2efd67a15fb` 在原 TLS 绑定 `1b64ec26-9b19-41f2-b0b2-fbd0c6b0dacd` 已提供真实 HTTPS、原生结果仍在途时终止 Server。重启读回原 Configuring 中断，续接和清理在 Helper 无终态时拒绝。原 Helper 成功后，续接保留原证书操作 `3b786c6e-cf4d-4716-b359-9539f88d00be` 和正式配置字节，补写站点及应用关联并移除备份。同键和续接重试返回同一回执，全程一次订单、一次签发、两次预期重载。原 Nginx master 与旧 HTTPS 持续服务。
+
+正常首次发布 `553aa6d4-7a9e-4d11-8cfc-b9a62ba15165` 和授权续接二次中断 `12448c61-9fec-4155-ada5-d5111b225607` 同批通过。三轮均清理专属 cgroup，宿主 Nginx、Docker 与配置指纹一致。日志为 `.artifacts/mb05-first-bind-reconcile--systemd-website-acme-bootstrap-bind-interrupt.log`、`.artifacts/mb05-first-bind-reconcile--systemd-website-acme-bootstrap-success.log`、`.artifacts/mb05-first-bind-reconcile--systemd-website-acme-bootstrap-resume-interrupt.log`，归档 SHA-256 依次为 `3662d74aa8ecf9517313f2d1ff57f954c141c637d8007eabe4229e6c8460ebff`、`506ae122963dedc178334f597dbc17ee96c0612a7e82f088fa3f4a7bc4b3acb4`、`c74e6c315f2c2066c7a12441ae6fe5e6af994935a8d087387c31841d86b88298`。Windows Release 模块回归通过，Docker 跨进程原 `84c84432-35e1-43d2-b0b9-e670b703b28e` 返回 Interrupted，副作用计数为一。
 
 ### MB-05 网站 WebRoot 签发的取消与停机排空
 

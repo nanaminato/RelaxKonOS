@@ -30,7 +30,7 @@ internal sealed partial class NginxWebServerManager
         UpsertSiteAsync(instanceId, request, null, cancellationToken);
 
     internal async Task<WebServerSiteDto?> UpsertSiteAsync(string instanceId, UpsertWebServerSiteRequest request,
-        Guid? bootstrapOperationId, CancellationToken cancellationToken, Action? recordBootstrapBinding = null,
+        Guid? bootstrapOperationId, CancellationToken cancellationToken,
         Func<WebServerSiteDto, string, Guid>? recordTrackedBinding = null)
     {
         var instance = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
@@ -116,7 +116,6 @@ internal sealed partial class NginxWebServerManager
                     || !(await privilegedNginx.ConfirmServiceIdleAsync(cancellationToken)).Success)
                     throw new WebServerSiteConflictException("website.recheck_required");
                 cancellationToken.ThrowIfCancellationRequested();
-                recordBootstrapBinding?.Invoke();
             }
             var applyProblem = await WriteSiteConfigurationAsync(instance, site, cancellationToken, index >= 0 ? sites[index] : null, recordTrackedBinding);
             if (applyProblem is not null)

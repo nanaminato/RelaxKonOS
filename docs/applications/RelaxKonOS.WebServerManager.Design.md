@@ -1745,6 +1745,8 @@ Linux 系统包重载的原回执保存在 Server。原终态持久化后，Help
 
 绑定期间再次中断时，再次提交续接会核对原绑定 ID 的 Helper 成功回执、正式配置摘要、原证书指纹、应用上游和原备份。证据匹配时只补写站点与应用关联并清理备份，原生重载和 CA 请求无新增。缺少证据或内容已变更时返回 `website.recheck_required`，保留原配置和回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站续接绑定的原生回执对账)。
 
+自动建立 WebRoot 的首次正式 TLS 绑定也记录 `bootstrapBindingOperationId`。首次绑定重载期间中断后，同一续接 API 使用原成功回执补写本地关联。正常首站发布返回 Succeeded，保留绑定 ID。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站首次-tls-绑定的原生回执对账)。
+
 发布进行期间，同一应用或同一 Nginx 实例内的同一域名只允许一个发布操作。不同应用尝试同时发布到该域名会收到 `409 / website.operation_conflict`。原请求使用同一个幂等键仍可读取原回执。
 
 首个独立 Nginx 站点可先保存 HTTP 配置，再执行实例的 `EnableAcmeHttp01` 操作。空实例会返回 `webserver.acme_no_managed_sites`。若启用操作在原生重载期间中断，同键查询返回原操作回执。后续签发需先独立核验该域名的 HTTP-01 路由，再发起新的证书请求，签发成功后可将证书绑定到原站点。

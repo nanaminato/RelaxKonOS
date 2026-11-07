@@ -100,7 +100,9 @@ internal sealed class WebsitePublicationStore
             var id = Guid.NewGuid();
             var updated = before with
             {
-                Operation = before.Operation with { BootstrapBindingOperationId = id, BootstrapResumeStartedAt = DateTimeOffset.UtcNow },
+                Operation = Active(before.Operation)
+                    ? before.Operation with { BootstrapBindingOperationId = id, Stage = WebsitePublicationStage.Configuring }
+                    : before.Operation with { BootstrapBindingOperationId = id, BootstrapResumeStartedAt = DateTimeOffset.UtcNow },
                 Binding = binding,
             };
             if (!Valid(updated)) throw new WebsitePublicationException("website.operation_store_unavailable", 503);
@@ -164,6 +166,7 @@ internal sealed class WebsitePublicationStore
                     InterruptedFromStage = operation.Stage,
                     ProblemCode = "website.operation_interrupted",
                     RecoveryProblemCode = operation.Stage == WebsitePublicationStage.Configuring || HasUnverifiedSite(operation)
+                        || operation.BootstrapBindingOperationId is not null
                         ? SiteApplicationUnverified : "website.recheck_required",
                     CompletedAt = now,
                 } };
@@ -224,7 +227,7 @@ internal sealed class WebsitePublicationStore
         && (operation.BootstrapResumedAt is null || operation.BootstrapResumeStartedAt is not null)
         && (entry.Binding is null ? operation.BootstrapBindingOperationId is null
             : operation.BootstrapBindingOperationId is { } id && id != Guid.Empty && id != operation.OperationId
-                && operation.BootstrapResumeStartedAt is not null && entry.Binding.ConfigurationSha256.Length == 64
+                && entry.Binding.ConfigurationSha256.Length == 64
                 && !string.IsNullOrEmpty(entry.Binding.CertificateFingerprint)
                 && entry.Binding.Site is { HttpsEnabled: true, AcmeHttp01: true } site
                 && site.Id == operation.SiteId && site.ServerId == operation.WebServerId && site.CertificateId == operation.CertificateId
