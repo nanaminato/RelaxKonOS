@@ -8,6 +8,7 @@ import sys
 
 
 root = Path(sys.argv[1])
+full_server = sys.argv[2:] == ["full-server"]
 ca_context = ssl.create_default_context(cafile=str(root / "https.pem"))
 
 
@@ -18,12 +19,15 @@ class Relay(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         headers = {name: self.headers[name] for name in ("Host", "Content-Type", "User-Agent")
                    if name in self.headers}
-        upstream = http.client.HTTPSConnection("localhost", 14000, context=ca_context, timeout=15)
+        upstream = http.client.HTTPSConnection("127.0.0.2" if full_server else "localhost",
+                                               14000, context=ca_context, timeout=15)
         try:
             upstream.request(self.command, self.path, self.rfile.read(length) if length else None, headers)
             response = upstream.getresponse()
             body = response.read()
             selected = self.headers.get("X-Fixture-Lose-Response")
+            if full_server:
+                selected = (root / "response-fault").read_text(encoding="ascii").strip()
             truncate = (
                 selected == "order" and self.path == "/order-plz" and response.status == 201 and response.getheader("Location")
                 or selected == "certificate" and self.path.startswith("/certZ/") and response.status == 200
@@ -48,7 +52,7 @@ class Relay(BaseHTTPRequestHandler):
     do_GET = do_HEAD = do_POST = relay
 
 
-with ThreadingHTTPServer(("127.0.0.1", 14001), Relay) as server:
+with ThreadingHTTPServer(("127.0.0.1", 14000 if full_server else 14001), Relay) as server:
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     tls.load_cert_chain(root / "https.pem", root / "https.key")
     server.socket = tls.wrap_socket(server.socket, server_side=True)

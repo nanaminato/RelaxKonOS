@@ -1482,3 +1482,5 @@ Linux Release 证书绑定 HTTP 回执已通过真实客户端断线验收。原
 CA 已接单或签发后遇到无法确认结果的传输失败，证书操作等待真实 SDK Task 和挑战清理，再记录原 operationId 的中断回执。自动续期用下一日键也返回原回执，保留原活动证书。Linux 私有 Pebble 已验证订单和证书响应截断，以及重开台账后的原回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书-ca-传输中断与原回执)。
 
 已有中断回执可用认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order` 查询。响应包含原 `operation` 和 `remoteStatus`。状态为 `pending`、`ready`、`processing`、`valid`、`invalid`、`identity-unavailable` 或 `unavailable`。查询使用相同 CA 和原账户密钥，只读取已记录的原订单。订单创建响应丢失且无身份时返回 `identity-unavailable`。远端状态单独呈现，原中断回执与当前证书保持，自动续期继续遵守原门禁。实测见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-原-ca-订单的只读对账)。
+
+Linux 完整认证 Server 已通过真实 CA 断流与重启验收。专属 Nginx 承载 HTTP-01，重启后须重新登录查询原订单。同键重试返回原回执，原活动证书指纹保持，CA 无新增订单或签发提交。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证-server-的-ca-断流与重启)。

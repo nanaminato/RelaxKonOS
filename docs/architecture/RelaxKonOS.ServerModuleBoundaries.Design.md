@@ -1431,3 +1431,11 @@ Linux x64 Release 在私有 systemd、D-Bus 和网络内复测独立 Helper 及�
 生产签发和续期在取得 CA 订单响应后，于提交挑战和请求签发前把原目录、账户、账户公钥指纹与订单 URI 持久化到同一 operationId 的台账。检查点失败按本地持久化故障保留工作责任。已知中断可通过认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order` 查询，响应为原 operation 与 remoteStatus。查询核对当前 CA 目录、原账户密钥及同源 HTTPS 身份，只允许目录读取、nonce 请求与原订单的 POST-as-GET，不跟随重定向，不返回内部 URI，不修改回执、台账或当前证书。无可信检查点返回 identity-unavailable。远端 valid 表示 CA 订单状态，本地依然按原中断回执和证书版本处理。
 
 Linux x64 Release 使用隔离 Pebble、真实 TLS 断流与生产证书管理器验证。创建响应丢失的原操作 `6d002ed8-eb47-4c10-a0b8-64c23bb19b6c` 返回 identity-unavailable。已签发响应丢失的 `6467531e-9b4d-460a-b974-3303381d5f5f` 与实际终止续期进程后的 `f65187c4-2aea-4f6f-830a-e91ff7a5afe6` 均在重开台账后观察到原 CA 订单 valid。传输断流后的查询前后台账字节一致，原证书指纹保持，下一日键继续命中原回执。整组共七张预期订单、四次预期签发提交，对账没有新增。日志为 .artifacts/mb05-acme-observe-live.log，归档 SHA-256 为 f379fec759de54010022835163f13c00815e2b0d50168b2812b13b04e162db18。Windows Release 模块边界回归通过，生产 HTTP 路由的隔离 Kestrel 测试核对原回执、禁止缓存和未知操作 404。已知订单与完整认证 Server 的联合实测、跨源 CA 身份、缺失订单身份的外部核实及独立执行图继续开放。
+
+### MB-05 完整认证 Server 的 CA 断流与重启
+
+Linux x64 Release 以私有网络、挂载及 PID 命名空间启动完整 System Mode Server。专属 Helper 只开放生产 PAM 验证及 sudoers 资格检查，生产认证、授权及证书 HTTP 路由全部参与。专属 Nginx 用实际 WebRoot 响应 Pebble HTTP-01，原活动证书签发后记录指纹。隔离 TLS 中继分别截断 CA 已签发的 200 和订单创建的 201 响应，原 Server 等待本地挑战清理并保存原中断回执后退出。
+
+完整 Server 重启后，匿名查询返回 401，重新登录通过认证路由查询原续期 `f351872d-c279-41ab-b775-cbe29547de85` 得到 valid，原申请 `82f46e93-7950-4b63-9ee9-4dc3932ab6d7` 得到 identity-unavailable。两条同键提交均返回原回执，台账字节、原活动证书指纹保持。独立 CA 共三张订单和两次签发提交，查询和重试零新增。宿主 Nginx、Docker、Mihomo 状态与 PID，以及 /etc/hosts 和 /etc/environment 指纹前后一致。日志为 .artifacts/mb05-auth-acme-live.log，归档 SHA-256 为 2632a6b64707eccbbc11b3497a0851639cf3ed14e459d08c4c5dad73346258ae。Windows Release 模块边界回归通过，Docker 跨进程仍为原回执与一次副作用。完整认证与原订单恢复路径通过。缺少身份的外部核实、自动补取部署及独立执行图继续开放。
+
+同制品的独立 Pebble 回归继续通过原签发、取消、进程中断、跨日和两种传输断流，七张订单和四次签发提交符合原矩阵。日志为 .artifacts/mb05-auth-acme-regression-live.log，归档 SHA-256 为 36fc3ec833fa37b4e8ccb7cea69904400d72cabe2d88368177373c5c31fd76bc。

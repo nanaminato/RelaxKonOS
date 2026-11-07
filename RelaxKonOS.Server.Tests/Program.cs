@@ -97,6 +97,11 @@ if (args is ["--isolated-pam-helper", var pamHelperConfiguration] && OperatingSy
     await IsolatedPamHelper.RunAsync(pamHelperConfiguration);
     return;
 }
+if (args is ["--isolated-certificate-pam-helper", var certificatePamConfiguration] && OperatingSystem.IsLinux())
+{
+    await IsolatedPamHelper.RunAsync(certificatePamConfiguration, allowAdministratorCheck: true);
+    return;
+}
 if (args is ["--docker-live-http-disconnect", var httpLedger, var httpCompose, var httpProject, var httpContainer])
 {
     await DockerChecks.VerifyLiveHttpDisconnectAsync(httpLedger, httpCompose, httpProject, httpContainer);
