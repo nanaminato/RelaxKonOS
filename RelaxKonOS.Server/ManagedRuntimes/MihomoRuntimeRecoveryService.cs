@@ -1,5 +1,6 @@
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
 
@@ -19,6 +20,10 @@ public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, M
         {
             var state = await store.ReadAsync(ct);
             if (state.DirectCompensationReceipt(operationId) is { } compensated) return compensated;
+            if (state.SubscriptionActivationCompletions?.GetValueOrDefault(operationId) is { } activation)
+                return activation.Confirmed
+                    ? new(operationId, RuntimeSwitchOutcome.Succeeded, null)
+                    : new(operationId, RuntimeSwitchOutcome.Failed, ProxyProblemCodes.ConfigApplyFailed);
             if (state.HasDirectCompletion(operationId))
                 return new(operationId, RuntimeSwitchOutcome.Succeeded, null);
             if (state.DirectReload is { } direct)
@@ -41,6 +46,8 @@ public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, M
                 return new(operationId, RuntimeSwitchOutcome.Succeeded, null);
             if (result.Outcome == MihomoPublicationOutcome.RecoveryRequired)
                 return new(operationId, RuntimeSwitchOutcome.RecoveryRequired, result.Receipt?.ProblemCode ?? "runtime.publication_unconfirmed");
+            if (pending.Profile?.ActivationSubscriptionId is not null)
+                return new(operationId, RuntimeSwitchOutcome.Failed, ProxyProblemCodes.ConfigApplyFailed);
             return result.Receipt ?? new(operationId, RuntimeSwitchOutcome.Failed, "runtime.operation_not_started");
         }
         catch (RuntimePolicyException ex) { throw new RuntimeLifecycleException(ex.ProblemCode); }

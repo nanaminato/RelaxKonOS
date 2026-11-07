@@ -233,7 +233,7 @@ internal static class ProxySubscriptionBoundaryChecks
         }
         public Task<string?> RefreshAsync(Guid id, Guid operationId, CancellationToken ct) =>
             Run(id == state.BatchSubscriptionId ? ProxySubscriptionOperation.RefreshAll : ProxySubscriptionOperation.Refresh, id, ct);
-        public Task<string?> ActivateAsync(Guid id, CancellationToken ct) => Run(ProxySubscriptionOperation.Activate, id, ct);
+        public Task<string?> ActivateAsync(Guid id, Guid operationId, CancellationToken ct) => Run(ProxySubscriptionOperation.Activate, id, ct);
         public Task<IReadOnlyList<ProxySubscriptionDto>> ListAsync(CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<ProxySubscriptionDto>>([new(state.BatchSubscriptionId, "fixture", Guid.NewGuid(), false, null, default, default)]);
         public Task<ProxySubscriptionDto> ImportAsync(ImportProxySubscriptionRequest request, CancellationToken ct) => throw new NotSupportedException();

@@ -80,6 +80,8 @@ internal static class MihomoDirectSubscriptionAcceptance
         await using var relay = relayBuilder.Build();
         var reloadAttempts = 0;
         var reloads = 0;
+        var activationCommitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var activationRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var committed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var unacknowledged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -98,6 +100,11 @@ internal static class MihomoDirectSubscriptionAcceptance
             if (reload && response.IsSuccessStatusCode)
             {
                 var count = Interlocked.Increment(ref reloads);
+                if (count == 1)
+                {
+                    activationCommitted.TrySetResult();
+                    await activationRelease.Task.WaitAsync(context.RequestAborted);
+                }
                 if (count == 2)
                 {
                     committed.TrySetResult();
@@ -144,6 +151,10 @@ internal static class MihomoDirectSubscriptionAcceptance
                 Guid unknownChild;
                 byte[] acknowledgedYaml;
                 MihomoDirectReload unknownCheckpoint;
+                var activationKey = Guid.NewGuid().ToString("N");
+                Guid activationId;
+                string activationRoute;
+                long beforeActivation;
                 using (var server = ProxyAuthenticatedPublicationChecks.Start(start, Console.WriteLine))
                 {
                     try
@@ -152,12 +163,63 @@ internal static class MihomoDirectSubscriptionAcceptance
                         draft = await ImportAsync(client, "/draft", "00-draft", trafficCt);
                         subscription = await ImportAsync(client, "/feed", "50-active", trafficCt);
                         skipped = await ImportAsync(client, "/skipped", "99-skipped", trafficCt);
-                        var activation = await SubmitAsync(client, SubscriptionRoute(ProxyApiRoutes.SubscriptionActivatePattern, subscription.Id),
-                            Guid.NewGuid().ToString("N"), trafficCt);
-                        var activated = await WaitForTerminalAsync(client, activation, trafficCt);
-                        if (activated.State != ProxyOperationState.Succeeded)
-                            throw new InvalidOperationException($"The direct subscription could not be activated: {activated.ProblemCode}.");
+                        activationRoute = SubscriptionRoute(ProxyApiRoutes.SubscriptionActivatePattern, subscription.Id);
+                        activationId = await SubmitAsync(client, activationRoute, activationKey, trafficCt);
+                        while (!activationCommitted.Task.IsCompleted)
+                        {
+                            if ((await ReadOperationAsync(client, activationId, trafficCt)).State is not (ProxyOperationState.Running or ProxyOperationState.Queued))
+                                throw new InvalidOperationException("Direct activation ended before the original reload response.");
+                            await Task.WhenAny(activationCommitted.Task, Task.Delay(30, trafficCt)).WaitAsync(trafficCt);
+                        }
+                        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database }.ToString());
+                        await connection.OpenAsync(trafficCt);
+                        await using var writeLock = connection.BeginTransaction();
+                        activationRelease.TrySetResult();
+                        MihomoDirectReload activationCheckpoint;
+                        while (true)
+                        {
+                            if ((await store.ReadAsync(trafficCt)).DirectReload is { ProfileReloadConfirmed: true } confirmed)
+                            { activationCheckpoint = confirmed; break; }
+                            await Task.Delay(25, trafficCt);
+                        }
+                        if (activationCheckpoint.OperationId != activationId
+                            || activationCheckpoint.Profile?.ActivationSubscriptionId != subscription.Id
+                            || activationCheckpoint.Profile.Refresh is not null
+                            || (await ReadOperationAsync(client, activationId, trafficCt)).State != ProxyOperationState.Running
+                            || await ReadLeasesAsync(client, trafficCt) != 1 || Volatile.Read(ref feeds) != 1)
+                            throw new InvalidOperationException("Direct activation lost its original identity or work lease.");
+                        beforeActivation = activationCheckpoint.Profile.ExpectedRevision;
+                        server.Kill();
+                        await server.WaitForExitAsync(trafficCt);
+                        if (server.ExitCode == 0) throw new InvalidOperationException("The original activation Server did not crash.");
+                    }
+                    finally { await ProxyAuthenticatedPublicationChecks.StopAsync(server); }
+                }
+                using (var server = ProxyAuthenticatedPublicationChecks.Start(start, Console.WriteLine))
+                {
+                    try
+                    {
+                        using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, trafficCt);
+                        ProxyOperationDto activated;
+                        do
+                        {
+                            activated = await ReadOperationAsync(client, activationId, trafficCt);
+                            if (activated.State != ProxyOperationState.Interrupted) break;
+                            await Task.Delay(25, trafficCt);
+                        } while (true);
                         revision = await ReadRevisionAsync(subscription.ProfileId, trafficCt);
+                        var state = await store.ReadAsync(trafficCt);
+                        var content = await client.GetFromJsonAsync<ProxySubscriptionContentDto>(
+                            SubscriptionRoute(ProxyApiRoutes.SubscriptionContentPattern, subscription.Id), RelaxKonOSJsonOptions.Default, trafficCt);
+                        if (activated.State != ProxyOperationState.Succeeded || activated.CompletedAt is null
+                            || await SubmitAsync(client, activationRoute, activationKey, trafficCt) != activationId
+                            || await ReadOperationAsync(client, activationId, trafficCt) != activated
+                            || revision != beforeActivation + 1 || state.DirectReload is not null
+                            || state.SubscriptionActivationCompletions?.GetValueOrDefault(activationId)?.Confirmed != true
+                            || content?.RetrievedAt != subscription.LastUpdatedAt || Volatile.Read(ref feeds) != 1
+                            || Volatile.Read(ref reloads) != 1 || Volatile.Read(ref reloadAttempts) != 1 || guard.RuntimePid != pid)
+                            throw new InvalidOperationException("Direct activation did not recover its original operation exactly once.");
+                        Console.WriteLine($"PASS AUTHENTICATED DIRECT SUBSCRIPTION ACTIVATION CRASH: original {activationId}; one reload and one profile commit");
                         operation = await SubmitAsync(client, ProxyApiRoutes.SubscriptionsRefresh, key, trafficCt);
                         while (!committed.Task.IsCompleted)
                         {
@@ -292,6 +354,7 @@ internal static class MihomoDirectSubscriptionAcceptance
         }
         finally
         {
+            activationRelease.TrySetResult();
             release.TrySetResult();
             await File.WriteAllBytesAsync(settingsPath, originalSettings);
             File.Delete(runtimePath);

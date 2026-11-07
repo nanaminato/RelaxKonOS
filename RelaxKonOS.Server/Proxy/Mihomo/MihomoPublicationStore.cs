@@ -15,7 +15,7 @@ public sealed record MihomoPendingPublication(Guid OperationId, MihomoPublishedR
     [property: JsonRequired] MihomoSettingsPublication? Settings,
     [property: JsonRequired] MihomoProfilePublication? Profile);
 public sealed record MihomoPublicationCompletion(Guid OperationId, string RequestHash, bool Confirmed, bool NotStarted);
-public sealed record MihomoSubscriptionRefreshCompletion(bool Confirmed, DateTimeOffset CompletedAt);
+public sealed record MihomoSubscriptionPublicationCompletion(bool Confirmed, DateTimeOffset CompletedAt);
 public enum MihomoDirectCompensationStage { ReloadDispatched, ReloadConfirmed, HostDispatched }
 public sealed record MihomoDirectCompensation(Guid Id, MihomoDirectCompensationStage Stage);
 public sealed record MihomoDirectReload(Guid OperationId, string? PreviousYaml, string CandidateIdentity,
@@ -41,11 +41,13 @@ public sealed record MihomoPublicationState(int SchemaVersion, long Revision, Mi
     [property: JsonRequired] MihomoPublicationCompletion? LastInstallation,
     [property: JsonRequired] MihomoPublicationCompletion? LastRemoval,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    Dictionary<Guid, MihomoSubscriptionRefreshCompletion>? SubscriptionRefreshCompletions = null,
+    Dictionary<Guid, MihomoSubscriptionPublicationCompletion>? SubscriptionRefreshCompletions = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoDirectReload? DirectReload = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] HashSet<Guid>? DirectProfileCompletions = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] HashSet<Guid>? DirectSettingsCompletions = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Dictionary<Guid, Guid>? DirectCompensations = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Dictionary<Guid, Guid>? DirectCompensations = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    Dictionary<Guid, MihomoSubscriptionPublicationCompletion>? SubscriptionActivationCompletions = null)
 {
     public static MihomoPublicationState Empty => new(1, 0, null, null, null, null, null, null, null);
 
@@ -97,7 +99,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
         var checkpoint = new MihomoDirectReload(operationId ?? Guid.NewGuid(), previous, Identity(candidate), profile);
         if (state.HasDirectCompletion(checkpoint.OperationId) || state.DirectCompensations?.ContainsKey(checkpoint.OperationId) == true
-            || state.SubscriptionRefreshCompletions?.ContainsKey(checkpoint.OperationId) == true)
+            || state.SubscriptionRefreshCompletions?.ContainsKey(checkpoint.OperationId) == true
+            || state.SubscriptionActivationCompletions?.ContainsKey(checkpoint.OperationId) == true)
             throw new RuntimePolicyException("runtime.idempotency_conflict");
         await SaveAsync(state with { Revision = checked(state.Revision + 1), DirectReload = checkpoint }, ct);
         return checkpoint;
@@ -108,7 +111,9 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         var state = await ReadAsync(CancellationToken.None);
         if (state.DirectReload is not { ProfileReloadConfirmed: false, ConfirmedSettings: null } direct || direct.OperationId != operationId)
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
-        await SaveAsync(state with { Revision = checked(state.Revision + 1), DirectReload = null }, CancellationToken.None);
+        await SaveAsync(state with { Revision = checked(state.Revision + 1), DirectReload = null,
+            SubscriptionActivationCompletions = CompleteSubscription(state.SubscriptionActivationCompletions,
+                operationId, direct.Profile?.ActivationSubscriptionId is not null, false) }, CancellationToken.None);
     }
 
     internal async Task ConfirmDirectProfileReloadAsync(Guid operationId)
@@ -236,7 +241,10 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             DirectReload = null,
             DirectProfileCompletions = profileReceipts,
             DirectSettingsCompletions = settingsReceipts,
-            SubscriptionRefreshCompletions = CompleteSubscriptionRefresh(state, checkpoint.OperationId, checkpoint.Profile, true)
+            SubscriptionRefreshCompletions = CompleteSubscription(state.SubscriptionRefreshCompletions,
+                checkpoint.OperationId, checkpoint.Profile?.Refresh is not null, true),
+            SubscriptionActivationCompletions = CompleteSubscription(state.SubscriptionActivationCompletions,
+                checkpoint.OperationId, checkpoint.Profile?.ActivationSubscriptionId is not null, true)
         }, CancellationToken.None);
         return new(checkpoint.OperationId, RuntimeSwitchOutcome.Succeeded, null);
 
@@ -375,6 +383,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         }
         if (current.Revision != expectedRevision || current.LastOperationId == operationId)
             throw new RuntimePolicyException("runtime.state_revision_conflict");
+        if (current.SubscriptionActivationCompletions?.ContainsKey(operationId) == true)
+            throw new RuntimePolicyException("runtime.idempotency_conflict");
         var next = current with { Revision = checked(current.Revision + 1), Pending = new(operationId, candidate, identity, plan, installationPlan, removalPlan, settings, profile) };
         await SaveAsync(next, ct);
         return next;
@@ -390,7 +400,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         if (pending.RemovalPlan is not null) throw new RuntimePolicyException("runtime.publication_unconfirmed");
         var next = current with { Revision = checked(current.Revision + 1), Published = pending.Candidate,
             Identity = pending.Identity, LastOperationId = operationId, Pending = null,
-            SubscriptionRefreshCompletions = CompleteSubscriptionRefresh(current, pending, true),
+            SubscriptionRefreshCompletions = CompleteSubscription(current.SubscriptionRefreshCompletions, operationId, pending.Profile?.Refresh is not null, true),
+            SubscriptionActivationCompletions = CompleteSubscription(current.SubscriptionActivationCompletions, operationId, pending.Profile?.ActivationSubscriptionId is not null, true),
             LastConfiguration = pending.ConfigurationPlan is null ? null : new(operationId, ConfigurationRequestHash(pending.ConfigurationPlan, pending.Candidate, pending.Settings, pending.Profile), true, false),
             LastInstallation = pending.InstallationPlan is null ? current.LastInstallation
                 : new(operationId, InstallationRequestHash(pending.InstallationPlan, pending.Candidate), true, false) };
@@ -405,7 +416,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         if (current.Pending?.OperationId != operationId || restoredIdentity != current.Identity)
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
         var next = current with { Revision = checked(current.Revision + 1), Pending = null,
-            SubscriptionRefreshCompletions = CompleteSubscriptionRefresh(current, current.Pending, false),
+            SubscriptionRefreshCompletions = CompleteSubscription(current.SubscriptionRefreshCompletions, operationId, current.Pending.Profile?.Refresh is not null, false),
+            SubscriptionActivationCompletions = CompleteSubscription(current.SubscriptionActivationCompletions, operationId, current.Pending.Profile?.ActivationSubscriptionId is not null, false),
             LastConfiguration = current.Pending.ConfigurationPlan is null ? current.LastConfiguration
                 : new(operationId, ConfigurationRequestHash(current.Pending.ConfigurationPlan, current.Pending.Candidate, current.Pending.Settings, current.Pending.Profile), false, notStarted),
             LastInstallation = current.Pending.InstallationPlan is null ? current.LastInstallation
@@ -416,16 +428,11 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         return next;
     }
 
-    private static Dictionary<Guid, MihomoSubscriptionRefreshCompletion>? CompleteSubscriptionRefresh(
-        MihomoPublicationState current, MihomoPendingPublication pending, bool confirmed) =>
-        CompleteSubscriptionRefresh(current, pending.OperationId, pending.Profile, confirmed);
-
-    private static Dictionary<Guid, MihomoSubscriptionRefreshCompletion>? CompleteSubscriptionRefresh(
-        MihomoPublicationState current, Guid operationId, MihomoProfilePublication? profile, bool confirmed)
+    private static Dictionary<Guid, MihomoSubscriptionPublicationCompletion>? CompleteSubscription(
+        Dictionary<Guid, MihomoSubscriptionPublicationCompletion>? prior, Guid operationId, bool tracked, bool confirmed)
     {
-        if (profile?.Refresh is null) return current.SubscriptionRefreshCompletions;
-        var completions = current.SubscriptionRefreshCompletions is { } prior
-            ? new Dictionary<Guid, MihomoSubscriptionRefreshCompletion>(prior) : [];
+        if (!tracked) return prior;
+        var completions = prior is null ? [] : new Dictionary<Guid, MihomoSubscriptionPublicationCompletion>(prior);
         completions.Add(operationId, new(confirmed, DateTimeOffset.UtcNow));
         return completions;
     }
@@ -510,7 +517,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
                 || direct.ProfileReloadConfirmed && direct.Profile is null
                 || state.HasDirectCompletion(direct.OperationId)
                 || state.DirectCompensations?.ContainsKey(direct.OperationId) == true
-                || state.SubscriptionRefreshCompletions?.ContainsKey(direct.OperationId) == true)
+                || state.SubscriptionRefreshCompletions?.ContainsKey(direct.OperationId) == true
+                || state.SubscriptionActivationCompletions?.ContainsKey(direct.OperationId) == true)
                 throw new RuntimePolicyException("runtime.publication_state_invalid");
             direct.Profile?.Validate();
             if (direct.ConfirmedSettings is { } settings)
@@ -531,6 +539,10 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             throw new RuntimePolicyException("runtime.publication_state_invalid");
         if (state.SubscriptionRefreshCompletions?.Any(entry => entry.Key == Guid.Empty || entry.Value is null
             || entry.Value.CompletedAt == default) == true)
+            throw new RuntimePolicyException("runtime.publication_state_invalid");
+        if (state.SubscriptionActivationCompletions?.Any(entry => entry.Key == Guid.Empty || entry.Value is null
+            || entry.Value.CompletedAt == default || state.Pending?.OperationId == entry.Key
+            || state.SubscriptionRefreshCompletions?.ContainsKey(entry.Key) == true) == true)
             throw new RuntimePolicyException("runtime.publication_state_invalid");
         if (state.LastInstallation is { } installed && (installed.OperationId == Guid.Empty
             || installed.RequestHash is not { Length: 64 } || !installed.RequestHash.All(Uri.IsHexDigit)

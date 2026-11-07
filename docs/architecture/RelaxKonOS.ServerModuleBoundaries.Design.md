@@ -2396,3 +2396,17 @@ Windows Release 存储、订阅边界 40 项、配置、ManagedRuntimes 和模�
 隔离 Linux 使用私有 bind mount 让实际 Server 的草稿替换失败，确认原文件与暂存文件均保留后强制终止。首次重启允许清理决定和暂存清理，SQLite 触发器仍拒绝未应用回执，此时再次强制终止。第二次重启按原批次 `5b936c50-b61d-4752-9e90-f4aac1099cbe`、原分项 `ea44a3a4-e0e7-4e52-b8ec-3ec94fbdb6ef` 完成未应用回执。原键回读一致，旧 YAML 字节、修改时间和上次抓取时间保持，原刷新只下载一次，恢复零重载。跨两次中断的真实 HTTP 转发通过。专属 cgroup 清理后宿主运行时与代理文件指纹一致。同批复验草稿已替换的原回执及活动订阅两条路径。日志为 `.artifacts/mb04-draft-unapplied/live-final.log`，归档 SHA-256 为 `93b4908818eee58d310f452dbc22382a4e36fc3c19dcce51f10dbf1f15feef9e`。
 
 受管 Mihomo 最终制品通过 178 项，含草稿原 `c2ffa66a-9d45-4564-a872-faa67095039b` 和活动刷新原回执、丢失响应与失败补偿。专属 cgroup 已清理，宿主指纹一致。日志为 `.artifacts/mb04-draft-unapplied/managed-live-final.log`，归档 SHA-256 为 `79a28414cf6c492656ef7bfe6979c611fc56b5355e1f8eefe1e1d3df1ba5af5b`。双中断实测覆盖批次草稿，单项未应用对账限本地验证。意图落盘前遗留、无法关联的暂存内容仍需单独核对。Proxy 保持 resident，动态休眠和生产内存未验收。
+
+### MB-04 排队订阅激活的原发布回执
+
+订阅激活沿用原队列操作 ID，直连检查点、受管 Helper 请求和档案提交均使用同一 ID。发布意图冻结原订阅和档案关联，SQLite 在派发前和档案事务内核对关联及待恢复草稿门禁。激活沿用已保存的草稿与原抓取时间。原发布权威保存激活的确认或失败结果，后续查询使用该结果补齐原队列回执。
+
+未知原发布结果继续占用 `publication_pending`，完成时间留空。具名恢复查询已结清的原 ID 时返回原应用结果，无控制器或 Helper 派发。队列在真实工作、审计和作用域结束后才释放执行责任，重启接续原持久发布与档案提交。
+
+Windows Release 配置、订阅边界 40 项、ManagedRuntimes 和模块边界通过。订阅与档案不匹配时零重载，明确回滚后具名查询返回原失败。未确认直连重载通过原键返回稳定待恢复回执，具名查询保持原 ID 且无重载。MB-05 跨进程原 `f62a9628-1a31-40cc-8103-405b9d74048f` 返回 Interrupted，受控副作用计数为一。
+
+隔离 Linux 直连激活 `9ec3b9b0-0ddc-4721-8ac3-7bfe7b621c03` 使用真实 Mihomo。夹具暂扣真实重载应答并持有 SQLite 写锁，随后让原确认落盘。在原任务仍持有工作租约时强制终止 Server。重启补齐一次档案修订，原键与原 ID 读回同一成功回执。全程一次重载、激活阶段零订阅下载、原抓取时间与运行时进程保持。跨中断 HTTP 转发和专属资源清理通过，宿主指纹一致。日志为 `.artifacts/mb04-subscription-activation/live.log`，归档 SHA-256 为 `d8a2c69062d8480f6b7b5eee8ed32ea3264f35f33c8d1b1f85d62567b08a8e8a`。
+
+受管 Mihomo 使用同一隔离主机，生产 Helper 已提交激活 `e05a5a41-cda0-4cab-b2a3-67642325ff5f` 时中继暂扣原应答并强制终止 Server。重启按同一 ID 查询真实 Helper 回执并完成档案提交。原键返回原成功，Helper 原修订与订阅时间保持，激活只派发一次，源站没有激活下载。受管套件通过 178 项，真实转发持续，专属 cgroup 已清理，宿主指纹一致。日志为 `.artifacts/mb04-subscription-activation/managed-live.log`，归档 SHA-256 为 `672b40e3ab76d48f6a04d8e41abddd9428ce6a9be7642b0af8a464026e695c81`。
+
+本轮实机覆盖原生结果已确认的激活中断。激活结果未知及明确回滚的原队列联合验收仍限本地证据。Proxy 保持 resident，动态休眠与生产内存未验收。

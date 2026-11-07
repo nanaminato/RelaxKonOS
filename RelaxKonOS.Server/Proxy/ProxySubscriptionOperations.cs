@@ -29,7 +29,7 @@ public sealed class ProxySubscriptionOperations(ProxyOperationStore operations, 
             {
                 ProxySubscriptionOperation.RefreshAll => RefreshBatchAsync(service, operationId, token),
                 ProxySubscriptionOperation.Refresh => service.RefreshAsync(id, operationId, token),
-                ProxySubscriptionOperation.Activate => service.ActivateAsync(id, token),
+                ProxySubscriptionOperation.Activate => service.ActivateAsync(id, operationId, token),
                 _ => throw new ArgumentOutOfRangeException(nameof(operation))
             };
         }, ct);

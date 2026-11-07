@@ -128,6 +128,7 @@ public sealed class SqliteProxyProfileRepository(IHostEnvironment environment, I
                 var current = await GetForUpdateAsync(connection, transaction, selection.ProfileId, cancellationToken);
                 if (current is not { IsActive: true, EngineId: MihomoEngine.Id } || current.Revision != selection.ExpectedRevision + 1 || current.CreatedAt != selection.ProfileCreatedAt)
                     throw new RuntimePolicyException("runtime.profile_selection_conflict");
+                await RequireActivationSubscriptionAsync(connection, transaction, selection, cancellationToken);
                 return; // Exact committed operation: do not increment revision or change the active selection again.
             }
         }
@@ -192,6 +193,7 @@ public sealed class SqliteProxyProfileRepository(IHostEnvironment environment, I
         var profile = await GetForUpdateAsync(connection, transaction, selection.ProfileId, ct);
         if (profile is null || profile.EngineId != MihomoEngine.Id || profile.Revision != selection.ExpectedRevision || profile.CreatedAt != selection.ProfileCreatedAt)
             throw new RuntimePolicyException("runtime.profile_selection_conflict");
+        await RequireActivationSubscriptionAsync(connection, transaction, selection, ct);
         await using var command = connection.CreateCommand(); command.Transaction = transaction;
         command.CommandText = "SELECT profile_id,revision,created_at FROM proxy_profiles WHERE is_active=1;";
         await using var reader = await command.ExecuteReaderAsync(ct);
@@ -202,6 +204,22 @@ public sealed class SqliteProxyProfileRepository(IHostEnvironment environment, I
                 throw new RuntimePolicyException("runtime.profile_selection_conflict");
         }
         else if (selection.PreviousActiveId is not null) throw new RuntimePolicyException("runtime.profile_selection_conflict");
+    }
+
+    private static async Task RequireActivationSubscriptionAsync(SqliteConnection connection, SqliteTransaction transaction,
+        MihomoProfilePublication selection, CancellationToken ct)
+    {
+        if (selection.ActivationSubscriptionId is not { } subscription) return;
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT 1 FROM proxy_subscriptions
+            WHERE subscription_id=$subscription AND profile_id=$profile AND pending_draft_operation_id IS NULL;
+            """;
+        command.Parameters.AddWithValue("$subscription", subscription.ToString("D"));
+        command.Parameters.AddWithValue("$profile", selection.ProfileId.ToString("D"));
+        if (await command.ExecuteScalarAsync(ct) is null)
+            throw new RuntimePolicyException("runtime.profile_selection_conflict");
     }
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken) { var connection = new SqliteConnection(_connectionString); await connection.OpenAsync(cancellationToken); return connection; }

@@ -68,6 +68,23 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
         && (await subscriptions.GetAsync(subscription.Id, default))!.Subscription.LastUpdatedAt == refreshedAt,
         "A queued refresh recognizes its own stored GEO-normalized draft and commits its timestamp.");
     var beforePending = await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"));
+    var activationReloads = engine.ReloadCalls;
+    TestAssert.Assert(await service.ActivateStoredAsync(profile.Id, default,
+            activation: new(Guid.NewGuid(), subscription.Id)) == ProxyProblemCodes.RecoveryRequired
+        && engine.ReloadCalls == activationReloads && (await publication.ReadAsync(default)).DirectReload is null,
+        "A queued activation must validate its original subscription/profile binding before reloading.");
+    var failedActivation = Guid.NewGuid();
+    engine.FailNextReload = true;
+    TestAssert.Assert(await service.ActivateStoredAsync(second.Id, default, activation: new(failedActivation, subscription.Id))
+        == ProxyProblemCodes.ConfigApplyFailed && engine.ReloadCalls == activationReloads + 2
+        && (await publication.ReadAsync(default)).SubscriptionActivationCompletions?.GetValueOrDefault(failedActivation) is { Confirmed: false }
+        && (await subscriptions.GetAsync(subscription.Id, default))!.Subscription.LastUpdatedAt == refreshedAt,
+        "A definite direct rollback must leave the original activation failure receipt and preserve the subscription timestamp.");
+    var activationRecovery = new RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService(publication, null!, null!, null!, null!, profiles);
+    TestAssert.Assert(await activationRecovery.RetryAsync(failedActivation, default) is
+        { Outcome: RelaxKonOS.Protocol.ManagedRuntimes.RuntimeSwitchOutcome.Failed, ProblemCode: ProxyProblemCodes.ConfigApplyFailed } failure
+        && failure.OperationId == failedActivation && engine.ReloadCalls == activationReloads + 2,
+        "Named recovery of the original failed activation must return the saved outcome without touching the runtime.");
     var staleRefresh = new ProxyQueuedSubscriptionRefresh(Guid.NewGuid(), new(Guid.NewGuid(), DateTimeOffset.UtcNow), "mode: direct\n");
     TestAssert.Assert(await service.ActivateStoredAsync(second.Id, default, staleRefresh) == ProxyProblemCodes.ConfigApplyFailed
         && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,
@@ -83,15 +100,29 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
     await publication.AbortAsync(managed, null, notStarted: true, default);
     var beforeUnknown = await profiles.GetAsync(second.Id, default);
     var reloadsBeforeUnknown = engine.ReloadCalls;
+    var unknownActivation = Guid.NewGuid();
     engine.NextReloadProblem = ProxyProblemCodes.RecoveryRequired;
-    TestAssert.Assert(await service.ActivateStoredAsync(profile.Id, default) == ProxyProblemCodes.RecoveryRequired
+    TestAssert.Assert(await service.ActivateStoredAsync(second.Id, default, activation: new(unknownActivation, subscription.Id)) == ProxyProblemCodes.RecoveryRequired
         && engine.ReloadCalls == reloadsBeforeUnknown + 1 && await profiles.GetAsync(second.Id, default) == beforeUnknown
         && await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")) == beforePending,
         "Unknown profile reload must preserve the prior file and metadata without another controller mutation.");
     var checkpoint = (await publication.ReadAsync(default)).DirectReload;
-    TestAssert.Assert(checkpoint is not null && await service.ActivateStoredAsync(profile.Id, default) == ProxyProblemCodes.RecoveryRequired
+    TestAssert.Assert(checkpoint?.OperationId == unknownActivation && checkpoint.Profile?.ActivationSubscriptionId == subscription.Id
+        && await service.ActivateStoredAsync(profile.Id, default) == ProxyProblemCodes.RecoveryRequired
         && engine.ReloadCalls == reloadsBeforeUnknown + 1 && (await publication.ReadAsync(default)).DirectReload == checkpoint,
         "The original direct checkpoint must block a subsequent activation without dispatching.");
+    var queue = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases(), publication);
+    var receiptPath = Path.Combine(paths.GetStateDirectory(), "proxy-operations.json");
+    var running = new ProxyOperationDto(unknownActivation, "subscription.activate", ProxyOperationState.Running,
+        "running", "", DateTimeOffset.UtcNow, null);
+    await File.WriteAllTextAsync(receiptPath, JsonSerializer.Serialize(new[] { new { IdempotencyKey = "activation", Operation = running } }));
+    var pendingActivation = await queue.GetAsync(unknownActivation, default);
+    TestAssert.Assert(pendingActivation is { State: ProxyOperationState.Interrupted, Stage: "publication_pending", CompletedAt: null }
+        && await queue.EnqueueAsync("activation", running.Kind, (_, _) => throw new Exception("Replayed activation"), default) == pendingActivation
+        && await activationRecovery.RetryAsync(unknownActivation, default) is
+            { Outcome: RelaxKonOS.Protocol.ManagedRuntimes.RuntimeSwitchOutcome.RecoveryRequired } unresolved
+        && unresolved.OperationId == unknownActivation && engine.ReloadCalls == reloadsBeforeUnknown + 1,
+        "An unconfirmed activation must keep the same pending queue and runtime identities without reloading.");
     var activePath = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
     await File.WriteAllTextAsync(activePath, "# independently changed configuration\n");
     await publication.Gate.WaitAsync();

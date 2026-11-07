@@ -8,7 +8,8 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 public sealed record MihomoProfilePublication(Guid ProfileId, long ExpectedRevision,
     [property: JsonRequired] Guid? PreviousActiveId, [property: JsonRequired] long? PreviousActiveRevision,
     DateTimeOffset ProfileCreatedAt, [property: JsonRequired] DateTimeOffset? PreviousActiveCreatedAt,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoSubscriptionRefresh? Refresh = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoSubscriptionRefresh? Refresh = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? ActivationSubscriptionId = null)
 {
     internal void Validate()
     {
@@ -17,6 +18,7 @@ public sealed record MihomoProfilePublication(Guid ProfileId, long ExpectedRevis
             || PreviousActiveRevision is < 1 || ProfileCreatedAt == default
             || (PreviousActiveId is null) != (PreviousActiveCreatedAt is null) || PreviousActiveCreatedAt == default(DateTimeOffset)
             || PreviousActiveId == ProfileId && (PreviousActiveRevision != ExpectedRevision || PreviousActiveCreatedAt != ProfileCreatedAt)
+            || ActivationSubscriptionId == Guid.Empty || ActivationSubscriptionId is not null && Refresh is not null
             || Refresh is { } refresh && (PreviousActiveId != ProfileId || refresh.SubscriptionId == Guid.Empty || refresh.RetrievedAt == default))
             throw new RuntimePolicyException("runtime.profile_selection_invalid");
     }

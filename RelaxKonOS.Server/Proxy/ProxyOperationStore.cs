@@ -170,13 +170,13 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         finally { entries = null; _gate.Release(); }
     }
 
-    private bool IsInterruptedRefresh(ProxyOperationDto operation) =>
-        operation.Kind == "subscription.refresh" && !_running.ContainsKey(operation.OperationId)
+    private bool IsInterruptedSubscriptionPublication(ProxyOperationDto operation) =>
+        IsSubscriptionPublication(operation.Kind) && !_running.ContainsKey(operation.OperationId)
         && (operation.State == ProxyOperationState.Running
             || operation.State == ProxyOperationState.Interrupted && operation.Stage == "publication_pending"
                 && operation.ProblemCode == ProxyProblemCodes.OperationInterrupted);
 
-    private bool NeedsReconciliation(Entry entry) => IsInterruptedRefresh(entry.Operation)
+    private bool NeedsReconciliation(Entry entry) => IsInterruptedSubscriptionPublication(entry.Operation)
         || entry.Batch is not null && !_running.ContainsKey(entry.Operation.OperationId)
             && (entry.Operation.State is ProxyOperationState.Queued or ProxyOperationState.Running || entry.Operation.Stage == BatchPending);
 
@@ -206,7 +206,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                 continue;
             }
 
-            if (state?.SubscriptionRefreshCompletions?.GetValueOrDefault(operation.OperationId) is { } proof)
+            if (state is not null && ReadSubscriptionCompletion(state, operation) is { } proof)
                 operation = operation with
                 {
                     State = proof.Confirmed ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
@@ -216,9 +216,9 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                 };
             else
             {
-                var draft = state is not null && HasPendingRefresh(state, operation.OperationId)
+                var draft = state is not null && HasPendingSubscriptionPublication(state, operation)
                     ? (Pending: true, Receipt: (ProxyDraftRefreshReceipt?)null)
-                    : await ReconcileDraftAsync(operation.OperationId, null, ct);
+                    : operation.Kind == "subscription.refresh" ? await ReconcileDraftAsync(operation.OperationId, null, ct) : default;
                 if (draft.Receipt is { } receipt)
                     operation = operation with
                     {
@@ -254,6 +254,18 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         (state.Pending?.OperationId == id && state.Pending.Profile?.Refresh is not null)
         || (state.DirectReload?.OperationId == id && state.DirectReload.Profile?.Refresh is not null);
 
+    private static bool IsSubscriptionPublication(string kind) => kind is "subscription.refresh" or "subscription.activate";
+
+    private static bool HasPendingSubscriptionPublication(MihomoPublicationState state, ProxyOperationDto operation) =>
+        operation.Kind == "subscription.activate"
+            ? state.Pending?.OperationId == operation.OperationId && state.Pending.Profile?.ActivationSubscriptionId is not null
+                || state.DirectReload?.OperationId == operation.OperationId && state.DirectReload.Profile?.ActivationSubscriptionId is not null
+            : HasPendingRefresh(state, operation.OperationId);
+
+    private static MihomoSubscriptionPublicationCompletion? ReadSubscriptionCompletion(MihomoPublicationState state, ProxyOperationDto operation) =>
+        (operation.Kind == "subscription.activate" ? state.SubscriptionActivationCompletions : state.SubscriptionRefreshCompletions)
+        ?.GetValueOrDefault(operation.OperationId);
+
     private ProxyOperationDto Visible(ProxyOperationDto operation) =>
         operation.State is ProxyOperationState.Queued or ProxyOperationState.Running && !_running.ContainsKey(operation.OperationId)
             ? operation with { State = ProxyOperationState.Interrupted, Stage = "interrupted", ProblemCode = ProxyProblemCodes.OperationInterrupted, CompletedAt = DateTimeOffset.UtcNow }
@@ -273,14 +285,14 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             }, CancellationToken.None);
             var publicationPending = false;
             var batchPending = original.Kind == RefreshBatchKind && problem == ProxyProblemCodes.RecoveryRequired;
-            if (original.Kind == "subscription.refresh" && problem == ProxyProblemCodes.RecoveryRequired && publication is not null)
+            if (IsSubscriptionPublication(original.Kind) && problem == ProxyProblemCodes.RecoveryRequired && publication is not null)
             {
                 try
                 {
                     var state = await publication.ReadAsync(CancellationToken.None);
-                    publicationPending = HasPendingRefresh(state, id)
-                        || state.SubscriptionRefreshCompletions?.ContainsKey(id) == true
-                        || subscriptions is not null && await subscriptions.ReadDraftRefreshIntentAsync(id, CancellationToken.None) is not null;
+                    publicationPending = HasPendingSubscriptionPublication(state, original) || ReadSubscriptionCompletion(state, original) is not null
+                        || original.Kind == "subscription.refresh" && subscriptions is not null
+                            && await subscriptions.ReadDraftRefreshIntentAsync(id, CancellationToken.None) is not null;
                 }
                 catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or SqliteException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
                 { publicationPending = true; }

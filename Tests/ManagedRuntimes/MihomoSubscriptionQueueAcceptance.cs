@@ -158,17 +158,55 @@ internal static class MihomoSubscriptionQueueAcceptance
             async Task VerifyActiveRefreshAsync()
             {
                 var socket = start.Environment["PrivilegedHelper__SocketPath"]!;
-                using (var activation = ProxyAuthenticatedPublicationChecks.Start(start))
+                var activationRoute = SubscriptionRoute(ProxyApiRoutes.SubscriptionActivatePattern, subscriptionId);
+                var activationKey = Guid.NewGuid().ToString("N");
+                Guid activationId;
+                RuntimeInstallationSnapshot activationReceipt;
+                await using (var activationRelay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-subscription-activation.sock",
+                    socket, ct, static (kind, _) => kind == "MihomoRuntimeConfigure"))
                 {
+                    start.Environment["PrivilegedHelper__SocketPath"] = activationRelay.Path;
+                    using var activation = ProxyAuthenticatedPublicationChecks.Start(start, OnError);
                     try
                     {
                         using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(activation, login, ct);
-                        var id = await SubmitAsync(client, SubscriptionRoute(ProxyApiRoutes.SubscriptionActivatePattern, subscriptionId),
-                            Guid.NewGuid().ToString("N"));
-                        if ((await WaitForTerminalAsync(client, id)).State != ProxyOperationState.Succeeded || !await probe(port))
-                            throw new InvalidOperationException("The real managed subscription could not be activated.");
+                        activationId = await SubmitAsync(client, activationRoute, activationKey);
+                        var nativeActivation = await WaitForNativeCommitAsync(client, activationId, activationRelay);
+                        activationReceipt = await lifecycle.QueryAsync(ct, nativeActivation);
+                        var pending = (await publication.ReadAsync(ct)).Pending;
+                        if (nativeActivation != activationId || pending?.OperationId != activationId
+                            || pending.Profile?.ActivationSubscriptionId != subscriptionId || pending.Profile.Refresh is not null
+                            || activationReceipt.Receipt is not { Outcome: RuntimeSwitchOutcome.Succeeded }
+                            || (await ReadOperationAsync(client, activationId)).State != ProxyOperationState.Running
+                            || await ReadLeasesAsync(client) != 1 || Volatile.Read(ref requests) != 2 || !await probe(port))
+                            throw new InvalidOperationException("Managed activation did not retain its original queue and native IDs while awaiting the reply.");
+                        activation.Kill();
+                        await activation.WaitForExitAsync(ct);
+                        if (activation.ExitCode == 0) throw new InvalidOperationException("The managed activation Server did not crash.");
                     }
                     finally { await ProxyAuthenticatedPublicationChecks.StopAsync(activation); }
+                }
+                start.Environment["PrivilegedHelper__SocketPath"] = socket;
+                using (var activationRecovery = ProxyAuthenticatedPublicationChecks.Start(start, OnError))
+                {
+                    try
+                    {
+                        using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(activationRecovery, login, ct);
+                        while ((await publication.ReadAsync(ct)).Pending is not null) await Task.Delay(30, ct);
+                        var original = await ReadOperationAsync(client, activationId);
+                        var observed = await lifecycle.QueryAsync(ct, activationId);
+                        var selected = await ReadSubscriptionAsync(client);
+                        if (original.State != ProxyOperationState.Succeeded || original.CompletedAt is null
+                            || await SubmitAsync(client, activationRoute, activationKey) != activationId
+                            || await ReadOperationAsync(client, activationId) != original
+                            || observed.Receipt != activationReceipt.Receipt
+                            || observed.Installation.StateRevision != activationReceipt.Installation.StateRevision
+                            || !selected.IsActive || selected.LastUpdatedAt != updated.RetrievedAt
+                            || Volatile.Read(ref requests) != 2 || !await probe(port))
+                            throw new InvalidOperationException("Managed activation recovery did not confirm the original receipt or replayed work.");
+                        Console.WriteLine($"PASS MANAGED MIHOMO SUBSCRIPTION ACTIVATION CRASH: original {activationId}; native commit once and original receipt recovered");
+                    }
+                    finally { await ProxyAuthenticatedPublicationChecks.StopAsync(activationRecovery); }
                 }
                 var before = await lifecycle.QueryAsync(ct);
                 var oldPublication = await publication.ReadAsync(ct);
