@@ -1421,3 +1421,7 @@ Windows Release TUN 边界 33 项及模块边界回归通过，覆盖待处理�
 发送订单请求后，ACME 调用遇到无法确认远端结果的传输失败时，原 Task 仍等待 SDK 返回并排空挑战清理，再以原 operationId 持久化 `certificate.operation_interrupted`。API 保留既有 Failed 状态和 interrupted 阶段。续期中断沿用原台账的跨日门禁，当前进程和重开台账均返回原回执，不进入普通失败退避或创建新订单。明确的业务失败仍走原失败路径。CA 账户准备阶段和订单之外的其他操作未纳入本项。
 
 Linux x64 Release 在独立 Pebble 与 DNS 命名空间中通过。TLS 中继收到真实 CA 的订单创建 201 和已签发证书 200 后分别截断响应体并关闭实际连接。证书执行器保持运行，原订单操作 `8597f483-1b6a-437b-acde-7b92669a77c1` 和原证书下载操作 `a840b9a1-b4ae-43c6-9f23-4a47d9c7e163` 均以同一 ID 保留中断回执。原键、下一日键及重开台账后的新日期键均命中原回执。原证书指纹保持，续期普通失败计数为零，确认本地清理后工作租约归零。整组共七张预期 CA 订单，恢复零新增。日志为 .artifacts/mb05-acme-transport-live.log，归档 SHA-256 为 2f5b8c070d2489b6a35b860834265216f5f2ca4cad43b33069a8015e5472f9dc。Windows Release 模块边界回归通过，Docker 跨进程仍为原 Interrupted 回执和一次副作用。测试使用生产证书管理器、Anvil 和台账；完整 Server 认证入口及未知远端订单的主动查询仍开放。
+
+### MB-04 已确认受管发布的真实 TUN 门禁
+
+Linux x64 Release 在私有 systemd、D-Bus 和网络内复测独立 Helper 及非 root 完整 Server。原受管配置中断后只执行一次具名补偿，原 `c130d33d-de2b-493a-b0f4-ce0c41019b5a` 回执为 Interrupted，原端口恢复实际转发。随后生产 TUN 安全服务从已确认的 Server 台账拒绝直接激活。无控制器请求及新恢复标记，受管状态修订、原回执、配置字节、运行 PID、管理路由、IPv4/IPv6 规则和真实转发均通过前后核验。专属 cgroup 已清理，宿主服务状态与代理文件指纹一致。Linux 原生套件通过 171 项及完整 IPC 路径，Windows Release 受管服务 15 项通过。日志为 .artifacts/mb04-confirmed-tun-live.log，归档 SHA-256 为 97ca5ce3b2e788e7ac7d39434f052f42d032c0bb5ff2caf4d048d60bb0ff61fe。此项覆盖受管发布后的拒绝与责任保留，受管 TUN 网络事务与 Proxy 动态休眠仍开放。

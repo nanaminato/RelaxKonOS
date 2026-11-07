@@ -233,3 +233,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-07（MB-04 / MR-03 配置恢复）：Proxy 停用启动门禁复用原配置发布恢复入口，核对同一 operationId 的 Helper 回执和配置权威。原生发布及补偿验证见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)。本阶段范围为已受理配置发布恢复，MR-03 安装和版本生命周期沿用各自验收记录。
 
 2026-11-07（MB-04 / MR-03 配置恢复）：真实独立 Helper IPC 验收确认 Mihomo 同一发布 ID 可在配置前后用于只读查询。候选转发期间 Helper 中断后的补偿由完整非 root Server 按原 operationId 执行，恢复旧配置及原回执。证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)。
+
+2026-11-07（MR-03 / MB-04）已确认受管发布后的直接 TUN 拒绝路径通过 Linux 私有 systemd 验收。原具名配置补偿回执和真实流量持续，拒绝未生成新恢复标记或控制器请求。受管 TUN 网络事务仍开放。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-已确认受管发布的真实-tun-门禁)。

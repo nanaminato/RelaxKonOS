@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.DataProtection;
 using System.Diagnostics;
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -8,6 +10,7 @@ using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.Privileged;
@@ -168,6 +171,59 @@ internal static class MihomoIpcStartupAcceptance
             || (await startupStore.ReadAsync(default)).Pending is not null || !await probe(port))
             throw new InvalidOperationException("Compensation did not durably restore the original native publication.");
         Console.WriteLine($"PASS MIHOMO IPC INTERRUPTED COMPENSATION: original Interrupted receipt {interrupted}, one recover and no configure replay");
+
+        var tunPaths = new ProxyPlatformPaths();
+        using var requests = new ControllerRequestCount();
+        using var http = new HttpClient(requests, disposeHandler: false);
+        var controller = new MihomoControllerClient(http, secrets,
+            new() { Endpoint = new($"http://127.0.0.1:{original.ControllerPort}/") });
+        var platform = new HostProxyNetworkSafetyPlatform();
+        var safety = new ProxyTunSafetyService(tunPaths, platform,
+            new MihomoTunRuntimeController(tunPaths, new ProxySettingsReader(tunPaths), controller, startupStore,
+                new HostProxyTunDeviceObserver()));
+        var managementAddress = IPAddress.Parse("192.0.2.3");
+        var route = await platform.CaptureManagementRouteAsync(managementAddress, default)
+            ?? throw new InvalidOperationException("The private systemd fixture has no management route.");
+        var networkBefore = await ReadNetworkAsync();
+        var pidBefore = await ReadRuntimePidAsync();
+        if (!int.TryParse(pidBefore, out var runtimePid) || runtimePid <= 0)
+            throw new InvalidOperationException("The confirmed Mihomo systemd process is not running.");
+        var activeBefore = await File.ReadAllBytesAsync(active);
+        var publicationBefore = await startupStore.ReadAsync(default);
+        var rejected = await safety.EnableAsync(Guid.NewGuid(), managementAddress, default);
+        var after = await lifecycle.QueryAsync(default, interrupted);
+        var publicationAfter = await startupStore.ReadAsync(default);
+        var activeAfter = await File.ReadAllBytesAsync(active);
+        if (rejected != ProxyProblemCodes.NotSupported || await safety.CaptureRecoveryAsync(default) is not null
+            || requests.Count != 0 || !activeBefore.SequenceEqual(activeAfter)
+            || after.Receipt != final.Receipt || after.Installation.StateRevision != final.Installation.StateRevision
+            || after.ConfigurationIdentity != final.ConfigurationIdentity
+            || publicationAfter.Revision != publicationBefore.Revision || publicationAfter.Identity != publicationBefore.Identity
+            || publicationAfter.Pending is not null
+            || await ReadNetworkAsync() != networkBefore || !await platform.VerifyManagementRouteAsync(route, default)
+            || await ReadRuntimePidAsync() != pidBefore || !await probe(port))
+            throw new InvalidOperationException("Rejected TUN activation changed the confirmed native publication, network or recovery authority.");
+        Console.WriteLine($"PASS MIHOMO CONFIRMED TUN GATE: original compensation {interrupted}, native PID preserved, no marker or controller request");
+    }
+
+    private static async Task<string> ReadNetworkAsync() =>
+        await NativeRuntimeProcess.RunAsync("/usr/sbin/ip", ["-4", "rule", "show"], 4096)
+        + await NativeRuntimeProcess.RunAsync("/usr/sbin/ip", ["-6", "rule", "show"], 4096)
+        + string.Join(',', NetworkInterface.GetAllNetworkInterfaces().Select(item => item.Name).Order(StringComparer.Ordinal));
+
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static Task<string> ReadRuntimePidAsync() =>
+        NativeRuntimeProcess.RunAsync("/usr/bin/systemctl", ["show", LinuxMihomoArchiveHost.Unit, "--property=MainPID", "--value"], 64);
+
+    private sealed class ControllerRequestCount() : DelegatingHandler(new SocketsHttpHandler { UseProxy = false })
+    {
+        internal int Count { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Count++;
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 
     private static async Task CheckStartupAsync(ProcessStartInfo start, Guid operation, uint uid, bool ready)
