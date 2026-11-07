@@ -179,6 +179,7 @@ internal static class SingBoxManagedRuntime
                 if (wasRunning) await host.StartAsync(ct);
                 var after = await host.ObserveAsync(ct);
                 if (!after.Exists || !after.Owned || !SamePath(after.Executable, binary)
+                    || after.Running != wasRunning
                     || after.Running && (!string.Equals(after.AppliedConfigurationIdentity, identity, StringComparison.OrdinalIgnoreCase)
                         || !await host.ListenersHealthyAsync(material.Configuration, ct)))
                     throw new RuntimePolicyException(ApplyFailed);

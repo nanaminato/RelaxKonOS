@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes;
@@ -134,6 +134,18 @@ internal static class ManagedServiceChecks
                 && (await host.ObserveAsync(default)).Running,
                 "Failed publication compensates to the recorded configuration and restores the running service");
 
+            // Start can return before the service exits. The old run state still needs compensation.
+            host.ExitOnNextStart = true;
+            var revisionBeforeExit = states.Read()!.Installation.StateRevision;
+            var exited = await Send(PrivilegedOperationKind.ProxyServerApply, new(Action: null, Material: materialA), root, states, host, natives);
+            var restored = await host.ObserveAsync(default);
+            Check(!exited.Success && exited.Error == "proxy_server.config_apply_failed"
+                && states.Read()!.Installation.StateRevision == revisionBeforeExit
+                && states.Read()!.ConfigurationIdentity == identityB
+                && restored.Running && restored.AppliedConfigurationIdentity == identityB
+                && Digest(await File.ReadAllBytesAsync(Path.Combine(root, "config.json"))) == identityB,
+                "A runtime that exits after start cannot commit the candidate and must restore the prior running configuration");
+
             // A tampered program file is never executed again.
             var binary = Path.Combine(directory, binaryName);
             await File.WriteAllBytesAsync(binary, Encoding.UTF8.GetBytes("tampered program"));
@@ -204,6 +216,7 @@ internal static class ManagedServiceChecks
         internal int Stops;
         internal int Starts;
         internal bool FailNextConfigure;
+        internal bool ExitOnNextStart;
         public Task<SingBoxServiceObservation> ObserveAsync(CancellationToken ct) => Task.FromResult(Observation);
         public Task StopAsync(CancellationToken ct)
         {
@@ -214,6 +227,11 @@ internal static class ManagedServiceChecks
         public Task StartAsync(CancellationToken ct)
         {
             Starts++;
+            if (ExitOnNextStart)
+            {
+                ExitOnNextStart = false;
+                return Task.CompletedTask;
+            }
             Observation = Observation with { Running = true, AppliedConfigurationIdentity = Current };
             return Task.CompletedTask;
         }
