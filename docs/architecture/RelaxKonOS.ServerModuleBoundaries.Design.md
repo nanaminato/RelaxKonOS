@@ -2116,3 +2116,13 @@ Windows Release 模块边界回归通过。用例验证原回执和工作租约�
 Linux Release 使用完整 PAM/JWT Server、独立 Docker socket、私有 Engine 和专属 Compose 项目。原容器收到真实停止后，测试屏障暂扣首次 `docker ps` 观察调用。关闭专属 daemon 后放行真实 CLI，命令非零退出。Server 保持同一进程，原 `a8c0b873-c124-42c6-a4a6-d190409873c5` 仍为 Running / Observing，同键返回原回执，列表返回 503，同项目新键返回 409。Engine 重新启动后，同一 Server 以真实观察提交原 Interrupted 回执，原 ID 与同键查询一致。容器显式重新启动后保持运行，停止计数未增加。
 
 同一制品复验 Engine 离线时的完整 Server 启动，原 `917dcfc6-9308-4fe6-88b2-d4c0a8a6a765` 恢复为 Interrupted。专属容器及卷清理完成，宿主服务 PID、运行容器清单和代理文件指纹一致。日志在 `.artifacts/mb05-live-observation-outage/`，归档 SHA-256 为 `3a578140199fe33ee8bda9b2d0c46fe8585e903aceb175b3a7290a45a0356f3d`。本轮覆盖正常返回后的首次观察丢失。用户取消与首次观察失联同时发生、整机掉电及独立执行程序集仍开放。Docker 保持 resident。
+
+### MB-05 Docker 用户取消与观察断线交叠
+
+变更可能已派发时，用户取消先让原 CLI 任务及输出清理结束，再使用 Host 停机信号约束只读观察。Engine 可观测时沿用原取消终态。观察失败时保留原 Running / Observing 回执、诊断、项目互斥及工作租约。Engine 恢复后，同一个 owner 只读观察、清理作用域并以原 operationId 写入 Interrupted。Host 停机可交接仍待观察的原记录。
+
+Windows Release 模块边界回归通过，含在首个观察阻塞时取消、原项目继续受保护、恢复后原变更仍只有一次。MB-05 跨进程原 `5f7f3cc4-878f-4df4-8813-91ca210b750e` 返回 Interrupted，受控副作用计数为一。
+
+Linux Release 使用完整认证 Server 和专属 Engine。原容器真实停止后，夹具挂起第一次观察进程，停止专属 daemon，再通过生产 HTTP 路由取消。Server 返回原 `d754692b-b1c2-4d88-9c9c-18633f8e6728` Running 回执，首次观察进程已回收，随后真实 `docker ps` 非零退出。原回执保持 Running / Observing，诊断显示观察失败，列表返回 503，同项目新键返回 409。专属 Engine 恢复后，同一 Server 完成只读观察并提交原 Interrupted 回执，按 ID 和同键查询一致，容器保持运行，停止计数未增加。
+
+同制品复验了未取消的首次观察断线 `a5aafdfa-7349-413b-993a-809c08247a3d` 和完整 Server 离线启动 `38b69a9a-5cb6-4712-8325-798951830581`。专属项目和卷已清理，宿主服务 PID、容器清单及代理文件指纹一致。日志位于 `.artifacts/mb05-cancelled-observation/`，归档 SHA-256 为 `d016b37fadfcfc9996cd527288cfaedc6b5113f9a1a6e108b029b1a50acaa5b7`。验收限变更返回后的取消窗口。变更 CLI 自身无法证实清理、整机掉电、生产内存和独立执行程序集仍开放。Docker 保持 resident。

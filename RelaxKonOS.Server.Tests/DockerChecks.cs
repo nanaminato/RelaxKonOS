@@ -813,6 +813,25 @@ internal static async Task VerifyStackOperationsAsync(string root)
     TestAssert.Assert(observedAfterOutage.State == DockerStackOperationState.Interrupted && observedAfterOutage.Services.Count == 1
         && compose.AppliedActions.Count == priorActions + 1, "Live recovery must observe the original operation without a second mutation.");
 
+    var observing = compose.HoldNextObservation();
+    var cancelledDuringObservation = await coordinator.ApplyActionAsync("observing", DockerStackOperationKind.Stop, true, actor, "key-cancel-observation");
+    await observing.WaitAsync(TimeSpan.FromSeconds(10));
+    compose.ObservationUnavailable = true;
+    var acknowledgement = coordinator.Cancel(cancelledDuringObservation.OperationId, "key-cancel-ack");
+    TestAssert.Assert(acknowledgement is { State: DockerStackOperationState.Running, Cancellable: false },
+        "Cancellation did not preserve the in-flight observation receipt.");
+    using (var budget = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+    {
+        while (!coordinator.Diagnostics(acknowledgement.OperationId).Lines.Any(line => line.Contains("Engine observation was unavailable", StringComparison.Ordinal)))
+            await Task.Delay(10, budget.Token);
+    }
+    TestAssert.Assert(coordinator.HasResponsibility && coordinator.GetActive("observing")?.OperationId == acknowledgement.OperationId,
+        "Cancelling while the Engine is offline lost the original project or work lease.");
+    compose.ObservationUnavailable = false;
+    var recoveredCancellation = await AwaitTerminalOperationAsync(coordinator, acknowledgement.OperationId);
+    TestAssert.Assert(recoveredCancellation.State == DockerStackOperationState.Interrupted && recoveredCancellation.Services.Count == 1
+        && compose.AppliedActions.Count == priorActions + 2, "The cancelled observation must recover without replaying its mutation.");
+
     // --- Startup reconciliation: observed, never replayed ----------------------------------------
     var recoveryRoot = Path.Combine(root, "stack-recovery");
     var recoveryStore = NewStackStore(recoveryRoot, 16);
@@ -1476,6 +1495,13 @@ internal sealed class FakeComposeService : IDockerComposeService
     public int DeployCalls { get; private set; }
     public int ListServicesCalls { get; private set; }
     public volatile bool ObservationUnavailable;
+    private TaskCompletionSource? observationGate;
+
+    public Task HoldNextObservation()
+    {
+        observationGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        return observationGate.Task;
+    }
     /// <summary>Holds a deployment inside the Engine call so a test can cancel it while it is active.</summary>
     public bool BlockOnDeploy { get; set; }
     internal Action? OnDeploy { get; init; }
@@ -1493,11 +1519,16 @@ internal sealed class FakeComposeService : IDockerComposeService
     public Task<DockerStackDefinitionDto?> GetDefinitionAsync(string name, CancellationToken cancellationToken = default) =>
         Task.FromResult<DockerStackDefinitionDto?>(null);
 
-    public Task<IReadOnlyList<DockerStackServiceDto>> ListServicesAsync(string name, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<DockerStackServiceDto>> ListServicesAsync(string name, CancellationToken cancellationToken = default)
     {
         ListServicesCalls++;
+        if (Interlocked.Exchange(ref observationGate, null) is { } held)
+        {
+            held.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
         if (ObservationUnavailable) throw new DockerStackException(DockerStackProblem.EngineUnavailable, 503);
-        return Task.FromResult(Observed);
+        return Observed;
     }
 
     public async Task<DockerStackMutationResult> DeployAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default)

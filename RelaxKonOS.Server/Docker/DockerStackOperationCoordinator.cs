@@ -179,6 +179,7 @@ internal sealed class DockerStackOperationCoordinator(
         DockerStackDefinitionDto? definition, CancellationTokenSource cancellation, CancellationToken workStopping)
     {
         var messages = new List<string>();
+        var mutationMayHaveStarted = false;
         try
         {
             cancellation.Token.ThrowIfCancellationRequested();
@@ -200,6 +201,7 @@ internal sealed class DockerStackOperationCoordinator(
 
             operations.Update(id, current => current with { Stage = DockerStackOperationStage.Applying }, "stage");
             cancellation.Token.ThrowIfCancellationRequested();
+            mutationMayHaveStarted = true;
             var result = kind == DockerStackOperationKind.Deploy
                 ? await compose.DeployAsync(definition!, cancellation.Token)
                 : await compose.ApplyActionAsync(project, kind, confirmed: true, cancellation.Token);
@@ -209,11 +211,7 @@ internal sealed class DockerStackOperationCoordinator(
             operations.Update(id, current => current with { Stage = DockerStackOperationStage.Observing }, "stage");
             var observed = await TryObserveAsync(compose, project, cancellation.Token);
             if (observed is null)
-            {
-                lock (gate) operations.Update(id, current => current with { Cancellable = false }, "observation-unavailable");
-                messages.Add("Engine observation was unavailable after the mutation; recovery only observes the project");
-                return new(DockerStackOperationState.Interrupted, DockerStackProblem.Interrupted, null, messages, AwaitingObservation: true);
-            }
+                return AwaitObservation(id, messages);
             Observe(id, observed);
 
             var (state, problem, recovery) = Classify(kind, result, desired, observed);
@@ -226,7 +224,11 @@ internal sealed class DockerStackOperationCoordinator(
             // startup reconciles it against the Engine instead of reporting a phantom outcome.
             var stopping = lifetime.ApplicationStopping.IsCancellationRequested || workStopping.IsCancellationRequested;
             if (stopping) return null;
-            var observed = await SafeObserveAsync(compose, project);
+            using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(workStopping, lifetime.ApplicationStopping);
+            var observed = mutationMayHaveStarted
+                ? await TryObserveAsync(compose, project, shutdown.Token)
+                : await SafeObserveAsync(compose, project);
+            if (observed is null) return AwaitObservation(id, messages);
             return new(DockerStackOperationState.Cancelled, DockerStackProblem.Cancelled, null, messages, observed);
         }
         catch (DockerStackException failure)
@@ -243,6 +245,17 @@ internal sealed class DockerStackOperationCoordinator(
             var state = observed.Count > 0 ? DockerStackOperationState.PartialFailed : DockerStackOperationState.Failed;
             return new(state, DockerStackProblem.ComposeFailed, state == DockerStackOperationState.PartialFailed ? DockerStackProblem.PartialFailure : null, messages, observed);
         }
+    }
+
+    private Outcome AwaitObservation(Guid id, List<string> messages)
+    {
+        messages.Add("Engine observation was unavailable after dispatch; recovery only observes the project");
+        lock (gate) operations.Update(id, current => current with
+        {
+            Stage = DockerStackOperationStage.Observing,
+            Cancellable = false,
+        }, "observation-unavailable", messages);
+        return new(DockerStackOperationState.Interrupted, DockerStackProblem.Interrupted, null, messages, AwaitingObservation: true);
     }
 
     /// <summary>

@@ -498,3 +498,5 @@ Mihomo 流量轮询在 512 条真实连接的隔离负载下有可测的 Server 
 Docker Engine 离线时，启动对账继续持有原 resident 工作租约和项目互斥。Engine 恢复后的只读观察、作用域清理及原终态持久化完成后才归还工作责任。见[Engine 离线启动对账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-engine-离线时的原启动对账)。
 
 存活 Server 中的 Compose 变更返回后若首次 Engine 观察失败，原工作租约继续覆盖独立只读观察作用域及原终态提交。Docker 保持 resident。见[变更后的观察中断](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-变更返回后的-engine-观察中断)。
+
+已派发的 Compose 变更遇到用户取消和 Engine 观察断线时，原工作租约覆盖 CLI 清理、后续只读观察及原终态持久化。见[取消与观察断线](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-用户取消与观察断线交叠)。

@@ -18,7 +18,9 @@ def run(server, project, helper):
     credentials = json.loads(sys.stdin.readline())
     outage = os.environ.get("RELAXKONOS_TEST_DOCKER_OUTAGE_GATE")
     outage_gate = Path(outage).resolve(strict=True) if outage else None
-    observation_outage = os.environ.get("RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE") == "1"
+    observation_mode = os.environ.get("RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE")
+    cancel_observation = observation_mode == "cancel"
+    observation_outage = cancel_observation or observation_mode == "1"
 
     with tempfile.TemporaryDirectory(prefix="relaxkonos-auth-docker-") as directory:
         root = Path(directory)
@@ -62,13 +64,22 @@ import time
 
 docker = {docker!r}
 gate = Path({str(outage_gate)!r})
+cancel_observation = {cancel_observation!r}
 args = sys.argv[1:]
 if args[:4] == ['ps', '--all', '--filter', {'label=com.docker.compose.project=' + project!r}]:
     try:
         (gate / 'request-offline').touch(exist_ok=False)
     except FileExistsError:
-        pass
+        if cancel_observation and (gate / 'offline').exists() and not (gate / 'observation-failed').exists():
+            result = subprocess.run([docker, *args], check=False)
+            if result.returncode:
+                (gate / 'observation-failed').touch(exist_ok=False)
+            sys.exit(result.returncode)
     else:
+        if cancel_observation:
+            (gate / 'held-pid').write_text(str(os.getpid()))
+            time.sleep(60)
+            sys.exit('Observation was not cancelled')
         deadline = time.monotonic() + 25
         while not (gate / 'offline').exists():
             if time.monotonic() >= deadline:
@@ -166,7 +177,8 @@ os.execv(docker, [docker, *args])
                     active = request(operation_route, token=token)
                     if str(active["state"]).lower() != "running" or str(active["stage"]).lower() != "observing":
                         raise RuntimeError("The first unavailable observation ended the active receipt")
-                    if not active["cancellable"]:
+                    diagnostics = request(operation_route + "/diagnostics", token=token)
+                    if not active["cancellable"] and any("Engine observation was unavailable" in line for line in diagnostics["lines"]):
                         break
                     if time.monotonic() >= deadline:
                         raise TimeoutError("The original work did not enter read-only observation recovery")
@@ -250,9 +262,18 @@ os.execv(docker, [docker, *args])
                 if str(running["state"]).lower() != "running":
                     raise RuntimeError("Original receipt was not running at interruption")
                 if observation_outage:
+                    if cancel_observation:
+                        wait_for_gate("held-pid")
+                        wait_for_gate("offline")
+                        ack = request(f"/api/v1.0/docker/stack-operations/{operation}/cancel", {}, token)
+                        if ack["operationId"] != operation or str(ack["state"]).lower() != "running" or ack["cancellable"]:
+                            raise RuntimeError("Cancellation did not preserve the original active receipt")
                     wait_for_gate("observation-failed")
+                    if cancel_observation and Path("/proc", (outage_gate / "held-pid").read_text()).exists():
+                        raise RuntimeError("Cancellation did not reap the first observation process")
                     verify_outage(process, token, operation, container, initial_stops)
-                    print(f"PASS AUTHENTICATED DOCKER LIVE OBSERVATION OUTAGE: operation={operation}; original Server and work survived a failed native observation; no replay")
+                    evidence = "CANCELLED OBSERVATION" if cancel_observation else "LIVE OBSERVATION OUTAGE"
+                    print(f"PASS AUTHENTICATED DOCKER {evidence}: operation={operation}; original Server and work survived a failed native observation; no replay")
                     return
                 process.kill()
                 if process.wait(timeout=10) >= 0:
