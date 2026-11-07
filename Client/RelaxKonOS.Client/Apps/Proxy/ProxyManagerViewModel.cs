@@ -236,10 +236,13 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             // must still show its install and profile pages rather than fail the entire refresh.
             await Task.WhenAll(
                 LoadOptionalAsync(() => repository.ListGroupsAsync(), ReplaceGroups),
-                LoadOptionalAsync(() => repository.GetRoutingModeAsync(), value => RoutingMode = value.Mode),
+                LoadOptionalAsync(() => repository.GetControllerConfigurationAsync(), value =>
+                {
+                    if (string.IsNullOrEmpty(value.Routing.ProblemCode)) RoutingMode = value.Routing.Mode;
+                    DnsStatus = value.Dns;
+                }),
                 RefreshConnectionsAsync(),
-                LoadOptionalAsync(() => repository.ListLogsAsync(), values => Replace(Logs, values)),
-                LoadOptionalAsync(() => repository.GetDnsStatusAsync(), value => DnsStatus = value));
+                LoadOptionalAsync(() => repository.ListLogsAsync(), values => Replace(Logs, values)));
             await LoadSystemProxyHostOptionsAsync();
             StatusText = Overview.Recovery.RecoveryRequired
                 ? LocalizedText.Ref("proxy.status.recovery_required")

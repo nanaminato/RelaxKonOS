@@ -103,14 +103,13 @@ interface RelaxKonGateway {
     suspend fun proxyTraffic(serverUrl: String, accessToken: String): ApiResult<ProxyTraffic>
     suspend fun proxyConnections(serverUrl: String, accessToken: String): ApiResult<List<ProxyConnection>>
     suspend fun proxyLogs(serverUrl: String, accessToken: String): ApiResult<List<ProxyLog>>
-    suspend fun proxyDns(serverUrl: String, accessToken: String): ApiResult<ProxyDns>
     suspend fun saveProxySettings(serverUrl: String, accessToken: String, settings: ProxySettings): ApiResult<Unit>
     suspend fun closeProxyConnection(serverUrl: String, accessToken: String, id: String): ApiResult<Unit>
     suspend fun proxyOverview(serverUrl: String, accessToken: String): ApiResult<ProxyOverview>
     suspend fun proxyProfiles(serverUrl: String, accessToken: String): ApiResult<List<ProxyProfile>>
     suspend fun proxySubscriptions(serverUrl: String, accessToken: String): ApiResult<List<ProxySubscription>>
     suspend fun proxyGroups(serverUrl: String, accessToken: String): ApiResult<List<ProxyGroup>>
-    suspend fun proxyRouting(serverUrl: String, accessToken: String): ApiResult<ProxyRoutingMode>
+    suspend fun proxyControllerConfiguration(serverUrl: String, accessToken: String): ApiResult<ProxyControllerConfiguration>
     suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean>
     suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation>
     suspend fun proxyQueue(serverUrl: String, accessToken: String, action: ProxyAction, target: String?, key: String): ApiResult<String>

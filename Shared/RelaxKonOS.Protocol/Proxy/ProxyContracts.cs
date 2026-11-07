@@ -72,7 +72,7 @@ public static class ProxyApiRoutes
     public const string Traffic = Proxy + "/traffic";
     public const string ConnectionPattern = "/connections/{connectionId}";
     public const string Logs = Proxy + "/logs";
-    public const string Dns = Proxy + "/dns";
+    public const string ControllerConfiguration = Proxy + "/controller-config";
     public const string Settings = Proxy + "/settings";
     public const string Recovery = Proxy + "/recovery";
     public const string OperationsPattern = "/operations/{operationId:guid}";
@@ -166,6 +166,8 @@ public sealed record ProxyConnectionDto(string Id, string Network, string Source
 public sealed record ProxyTrafficDto(long UploadBytesPerSecond, long DownloadBytesPerSecond, long UploadTotalBytes, long DownloadTotalBytes, long MemoryBytes, string ProblemCode = "");
 public sealed record ProxyLogEntryDto(DateTimeOffset Timestamp, string Level, string Message);
 public sealed record ProxyDnsStatusDto(bool Enabled, bool HijackEnabled, string? Mode, string ProblemCode = "");
+
+public sealed record ProxyControllerConfigurationDto(ProxyRoutingModeDto Routing, ProxyDnsStatusDto Dns);
 /// <summary>Managed subset of Mihomo's top-level TUN configuration. Enabling TUN remains a separate protected operation.</summary>
 public sealed record ProxyTunSettingsDto(
     string Stack,

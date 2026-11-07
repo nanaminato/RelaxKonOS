@@ -2162,3 +2162,13 @@ Linux 私有 systemd 使用完整认证 Server 和真实 Mihomo。暂扣 `/proxi
 同制品复验四路取消和原发布 `1c5776cf-cb18-4031-9277-8454dfa4893a`，Linux 原生套件 178 项通过。专属 cgroup 已清理，宿主 sing-box 和代理文件指纹一致。Windows Release 注册和模块边界回归通过，MB-05 跨进程原 `286c684d-ce4f-457e-ab8b-2cea434d0237` 为 Interrupted，受控副作用计数为一。原始数据、制品摘要和配对结果在 `.artifacts/mb04-control-read-paired/`，Linux 归档 SHA-256 为 `a8ce68a15d95ae48984354b9ced4ff4624dc8b8ee96599ff87b0a1afa10f57dc`。
 
 桌面刷新当前同时请求路由和 DNS，Server 分别读取相同控制器 `/configs`。下一项验证同一配置样本能否提供两项结果、减少请求并保持授权及工作责任。
+
+### MB-04 Mihomo 路由和 DNS 单次采样
+
+桌面刷新改为认证 `GET /api/v1.0/proxy/controller-config`。Server 在一个工作租约内读取并解码一份 Mihomo `/configs`，返回路由和 DNS 两项结果及各自的问题码。路由字段无效时仍返回有效的 DNS 投影，桌面保留原路由显示。合并接口接替原有两条 GET，路由写入继续使用原 PUT。
+
+Linux 私有 systemd 通过完整认证 Server 和真实 Mihomo 核对请求计数。合并读取、取消和随后新请求各触发一次 `/configs`，控制器清理后原租约归零。原发布 `0c93c1a2-5128-4766-b6f1-2a76dd473d37` 跨 SIGTERM 及重启保留原回执，原连接 `aed2c9a6-9fee-4094-9024-21e3ec04c20c` 完成转发，发布与补偿未重放。原生套件通过 178 项，专属 cgroup 清理，宿主 sing-box 和代理文件指纹一致。日志位于 `.artifacts/mb04-single-config/`，归档 SHA-256 为 `0de8c26494f62fb18703c721391f0728d4b956260e3571272d2e1e86f93210bc`。
+
+Windows Release 模块边界、控制器和桌面布局回归通过。Kestrel 夹具覆盖一次采样、认证失败及无效路由字段下的独立 DNS 投影。MB-05 跨进程原 `289f23ad-2b74-410a-bf43-684ddace71f5` 返回 Interrupted，受控副作用计数为一。Android 代理 HTTP、仓储和 ViewModel 共 46 项通过，设备测试源码已编译。Android 首轮编译发现未决路由写入的核对仍调用旧读取，更新后复验确认 DNS 成功不能解除未知路由标记。Android 工作流见[应用文档](../../Client/RelaxKonOS.Client.Android/docs/features/Proxy.md)。
+
+此项验证实际请求数从两次降为一次。Proxy 保持 resident，配对内存及整模块动态休眠仍开放。

@@ -178,7 +178,6 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun proxyConnections(serverUrl: String, accessToken: String): ApiResult<List<ProxyConnection>> = onProxyConnections()
     var onProxyLogs: suspend () -> ApiResult<List<ProxyLog>> = { error("Unexpected proxy diagnostic call") }
     override suspend fun proxyLogs(serverUrl: String, accessToken: String): ApiResult<List<ProxyLog>> = onProxyLogs()
-    override suspend fun proxyDns(serverUrl: String, accessToken: String): ApiResult<ProxyDns> = error("Unexpected proxy diagnostic call")
     var onRuntimeResources: suspend () -> ApiResult<ManagedRuntimeResources> = { error("Unexpected proxy diagnostic call") }
     override suspend fun runtimeResources(serverUrl: String, accessToken: String): ApiResult<ManagedRuntimeResources> = onRuntimeResources()
     var onSaveProxySettings: suspend (ProxySettings) -> ApiResult<Unit> = { _ -> error("Unexpected proxy diagnostic call") }
@@ -192,8 +191,9 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun proxySubscriptions(serverUrl: String, accessToken: String): ApiResult<List<ProxySubscription>> = onProxySubscriptions()
     var onProxyGroups: suspend () -> ApiResult<List<ProxyGroup>> = { error("Unexpected proxy call") }
     override suspend fun proxyGroups(serverUrl: String, accessToken: String): ApiResult<List<ProxyGroup>> = onProxyGroups()
-    var onProxyRouting: suspend () -> ApiResult<ProxyRoutingMode> = { error("Unexpected proxy call") }
-    override suspend fun proxyRouting(serverUrl: String, accessToken: String): ApiResult<ProxyRoutingMode> = onProxyRouting()
+    var onProxyControllerConfiguration: suspend () -> ApiResult<ProxyControllerConfiguration> = { error("Unexpected proxy call") }
+    override suspend fun proxyControllerConfiguration(serverUrl: String, accessToken: String): ApiResult<ProxyControllerConfiguration> =
+        onProxyControllerConfiguration()
     var onProxyDownloadOptions: suspend () -> ApiResult<Boolean> = { error("Unexpected proxy call") }
     override suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean> = onProxyDownloadOptions()
     var onProxyOperation: suspend (String) -> ApiResult<ProxyOperation> = { _ -> error("Unexpected proxy call") }

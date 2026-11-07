@@ -43,6 +43,7 @@ object ProxyDiagnosticsWire {
     }
     fun connections(payload: String) = array(payload, 10000) { j -> ProxyConnection(j.getString("id"), j.getString("network"), j.getString("source"), j.getString("destination"), j.getString("rule"), j.getString("chains"), IsoInstant.requireEpochMillis(j.getString("startedAt"))) }
     fun logs(payload: String) = array(payload, 500) { j -> ProxyLog(IsoInstant.requireEpochMillis(j.getString("timestamp")), j.getString("level"), j.getString("message")) }
-    fun dns(payload: String) = JSONObject(payload).let { ProxyDns(it.getBoolean("enabled"), it.getBoolean("hijackEnabled"), if (it.isNull("mode")) null else it.getString("mode"), it.getString("problemCode")) }
+    fun dns(value: JSONObject) = ProxyDns(value.getBoolean("enabled"), value.getBoolean("hijackEnabled"),
+        if (value.isNull("mode")) null else value.getString("mode"), value.getString("problemCode"))
     private fun <T> array(payload: String, max: Int, parse: (JSONObject) -> T) = JSONArray(payload).let { a -> require(a.length() <= max); List(a.length()) { parse(a.getJSONObject(it)) } }
 }

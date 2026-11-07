@@ -14,13 +14,12 @@ public interface IProxyRepository
     Task<ProxyOperationAcceptedDto> RefreshAllSubscriptionsAsync(CancellationToken cancellationToken = default);
     Task<ProxyOperationAcceptedDto> ActivateSubscriptionAsync(Guid subscriptionId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProxyGroupDto>> ListGroupsAsync(CancellationToken cancellationToken = default);
-    Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken = default);
+    Task<ProxyControllerConfigurationDto> GetControllerConfigurationAsync(CancellationToken cancellationToken = default);
     Task SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken = default);
     Task<ProxyDelayDto> TestProxyDelayAsync(string groupName, string proxyName, TestProxyDelayRequest request, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProxyConnectionDto>> ListConnectionsAsync(CancellationToken cancellationToken = default);
     Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProxyLogEntryDto>> ListLogsAsync(int limit = 200, CancellationToken cancellationToken = default);
-    Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken = default);
     Task<ProxySettingsDto> GetSettingsAsync(CancellationToken cancellationToken = default);
     Task UpdateSettingsAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken = default);
     Task<RuntimeResourceSnapshot> GetResourcesAsync(CancellationToken cancellationToken = default);

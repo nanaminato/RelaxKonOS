@@ -57,12 +57,10 @@ public sealed class MihomoEngine(
     public Task<IReadOnlyList<ProxyGroupDto>> GetGroupsAsync(CancellationToken cancellationToken) =>
         MihomoProxyGroupOrder.ReadGroupsAsync(controller, paths, cancellationToken);
     public Task<string?> SelectGroupAsync(string groupName, string proxyName, CancellationToken cancellationToken) => controller.SelectGroupAsync(groupName, proxyName, cancellationToken);
-    public Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken) => controller.GetRoutingModeAsync(cancellationToken);
     public Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken) => controller.SetRoutingModeAsync(mode, cancellationToken);
     public Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken) =>
         controller.TestProxyDelayAsync(proxyName, url, timeoutMilliseconds, cancellationToken);
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => controller.CloseConnectionAsync(connectionId, cancellationToken);
-    public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => controller.GetDnsStatusAsync(cancellationToken);
 }
 
 /// <summary>Goal 3 supplies the service-owned implementation; Goal 2 deliberately has no CLI or shell fallback.</summary>

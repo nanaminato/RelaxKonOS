@@ -157,13 +157,13 @@ internal static class ProxyConnectionBenchmark
                             JsonElement[] values =
                             [
                                 await ReadAsync(ProxyApiRoutes.Runtime), await ReadAsync(ProxyApiRoutes.Groups),
-                                await ReadAsync(ProxyApiRoutes.Routing), await ReadAsync(ProxyApiRoutes.Dns),
+                                await ReadAsync(ProxyApiRoutes.ControllerConfiguration),
                             ];
                             if (values[0].Deserialize<ProxyRuntimeDto>(RelaxKonOSJsonOptions.Default)
                                     is not { Mode: ProxyRuntimeMode.Managed, State: ProxyRuntimeState.Running, IntegrityVerified: true, ProblemCode: "" }
                                 || values[1].ValueKind != JsonValueKind.Array
-                                || values[2].Deserialize<ProxyRoutingModeDto>(RelaxKonOSJsonOptions.Default) is not { ProblemCode: "" }
-                                || values[3].Deserialize<ProxyDnsStatusDto>(RelaxKonOSJsonOptions.Default) is not { ProblemCode: "" })
+                                || values[2].Deserialize<ProxyControllerConfigurationDto>(RelaxKonOSJsonOptions.Default)
+                                    is not { Routing.ProblemCode: "", Dns.ProblemCode: "" })
                                 throw new InvalidOperationException("The control workload did not observe the real running Mihomo and its configuration.");
                             originalControl ??= values;
                             if (!values.Zip(originalControl, JsonElement.DeepEquals).All(equal => equal))

@@ -53,7 +53,7 @@ class ProxyViewModelTest {
         gateway.onProxyOverview = { ApiResult.Success(overview) }
         gateway.onProxyProfiles = { ApiResult.Success(emptyList()) }
         gateway.onProxySubscriptions = { ApiResult.Success(emptyList()) }
-        gateway.onProxyRouting = { ApiResult.Success(ProxyRoutingMode.Rule) }
+        gateway.onProxyControllerConfiguration = { ApiResult.Success(ProxyControllerConfiguration(ProxyRoutingMode.Rule, "", ProxyDns(false, false, null, ""))) }
         gateway.onProxyDownloadOptions = { ApiResult.Success(false) }
         gateway.onProxySettings = { ApiResult.Success(ProxySettings(false, false, true, false, false, "info", 7890, false, "127.0.0.1", null, null)) }
         gateway.onProxyRecovery = { ApiResult.Success(ProxyRecovery(false, false, null, "")) }

@@ -20,14 +20,13 @@ class ProxyRepository(private val gateway: RelaxKonGateway, private val session:
     suspend fun profiles(owner: SessionState.Active) = read(owner, gateway::proxyProfiles)
     suspend fun subscriptions(owner: SessionState.Active) = read(owner, gateway::proxySubscriptions)
     suspend fun groups(owner: SessionState.Active) = read(owner, gateway::proxyGroups)
-    suspend fun routing(owner: SessionState.Active) = read(owner, gateway::proxyRouting)
+    suspend fun controllerConfiguration(owner: SessionState.Active) = read(owner, gateway::proxyControllerConfiguration)
     suspend fun downloadOptions(owner: SessionState.Active) = read(owner, gateway::proxyDownloadOptions)
     suspend fun settings(owner: SessionState.Active) = read(owner, gateway::proxySettings)
     suspend fun recovery(owner: SessionState.Active) = read(owner, gateway::proxyRecovery)
     suspend fun traffic(owner: SessionState.Active) = read(owner, gateway::proxyTraffic)
     suspend fun connections(owner: SessionState.Active) = read(owner, gateway::proxyConnections)
     suspend fun logs(owner: SessionState.Active) = read(owner, gateway::proxyLogs)
-    suspend fun dns(owner: SessionState.Active) = read(owner, gateway::proxyDns)
     suspend fun resources(owner: SessionState.Active) = read(owner, gateway::runtimeResources)
     suspend fun saveSettings(owner: SessionState.Active, settings: ProxySettings) = mutate(owner, ProxyWrite.Settings, null) { u, t -> gateway.saveProxySettings(u, t, settings) }
     suspend fun closeConnection(owner: SessionState.Active, id: String) = mutate(owner, ProxyWrite.Connection, null) { u, t -> gateway.closeProxyConnection(u, t, id) }
@@ -85,7 +84,12 @@ class ProxyRepository(private val gateway: RelaxKonGateway, private val session:
         verify(owner); require(pending in journal.pending(owner) && pending.action == null)
         val overview = overview(owner); val profiles = profiles(owner); val subscriptions = subscriptions(owner)
         val extra = when (pending.write) {
-            ProxyWrite.Selection -> groups(owner); ProxyWrite.Routing -> routing(owner); ProxyWrite.Settings -> settings(owner)
+            ProxyWrite.Selection -> groups(owner)
+            ProxyWrite.Routing -> when (val config = controllerConfiguration(owner)) {
+                is ApiResult.Success -> if (config.value.routingProblemCode.isEmpty()) config else ApiResult.Transport(null)
+                else -> config
+            }
+            ProxyWrite.Settings -> settings(owner)
             ProxyWrite.Connection -> connections(owner); else -> ApiResult.Success(Unit)
         }
         currentCoroutineContext().ensureActive()

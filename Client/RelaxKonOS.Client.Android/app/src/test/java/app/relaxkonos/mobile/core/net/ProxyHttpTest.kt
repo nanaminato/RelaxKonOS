@@ -7,6 +7,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProxyHttpTest {
+    @Test fun `controller configuration reads routing and DNS from one authenticated request`() = runTest {
+        val requests = mutableListOf<List<String>>()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            requests += listOf(exchange.requestMethod, exchange.requestURI.path, exchange.requestHeaders.getFirst("Authorization"))
+            val bytes = """{"routing":{"mode":"rule","problemCode":"proxy.controller_response_invalid"},"dns":{"enabled":true,"hijackEnabled":false,"mode":"fake-ip","problemCode":""}}""".toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }; exchange.close()
+        }
+        server.start()
+        try {
+            val result = RelaxKonApi("test", "test").proxyControllerConfiguration("http://127.0.0.1:${server.address.port}", "token")
+            assertEquals(listOf(listOf("GET", "/api/v1.0/proxy/controller-config", "Bearer token")), requests)
+            assertEquals(ApiResult.Success(ProxyControllerConfiguration(ProxyRoutingMode.Rule,
+                "proxy.controller_response_invalid", ProxyDns(true, false, "fake-ip", ""))), result)
+        } finally { server.stop(0) }
+    }
+
     @Test fun `node selection preserves emoji names in the actual HTTP body`() = runTest {
         val group = "CrossWall (克洛斯)"
         val proxy = "🇺🇸美国自动选择"

@@ -379,7 +379,7 @@ internal static class MihomoIpcStartupAcceptance
                 {
                     using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(restartedProcess, login, ct);
                     await CancelObservationAsync(client, ProxyApiRoutes.Runtime, "/version");
-                    Console.WriteLine($"PASS MIHOMO NATIVE OBSERVATION CANCELLATION: {drainId}; runtime after recovery, groups, routing and DNS drained their leases");
+                    Console.WriteLine($"PASS MIHOMO NATIVE OBSERVATION CANCELLATION: {drainId}; runtime after recovery, groups and combined configuration drained their leases");
                 });
                 start.Environment[controllerEndpoint] = originalEndpoint;
                 var restarted = await startupStore.ReadAsync(ct);
@@ -452,10 +452,17 @@ internal static class MihomoIpcStartupAcceptance
                 var runtime = await client.GetFromJsonAsync<ProxyRuntimeDto>(ProxyApiRoutes.Runtime, RelaxKonOSJsonOptions.Default, ct);
                 if (runtime is not { State: ProxyRuntimeState.Failed, ProblemCode: ProxyProblemCodes.RuntimeStateUnknown })
                     throw new InvalidOperationException("Runtime observation did not retain the pending publication authority.");
-                foreach (var (route, path) in new[]
-                {
-                    (ProxyApiRoutes.Groups, "/proxies"), (ProxyApiRoutes.Routing, "/configs"), (ProxyApiRoutes.Dns, "/configs"),
-                }) await CancelObservationAsync(client, route, path);
+                await CancelObservationAsync(client, ProxyApiRoutes.Groups, "/proxies");
+                var requestsBefore = controllerRelay!.ConfigurationRequests;
+                await CancelObservationAsync(client, ProxyApiRoutes.ControllerConfiguration, "/configs");
+                if (controllerRelay.ConfigurationRequests != requestsBefore + 2)
+                    throw new InvalidOperationException("Cancellation and the fresh configuration request must use one controller read each.");
+                var configuration = await client.GetFromJsonAsync<ProxyControllerConfigurationDto>(
+                    ProxyApiRoutes.ControllerConfiguration, RelaxKonOSJsonOptions.Default, ct);
+                if (controllerRelay.ConfigurationRequests != requestsBefore + 3
+                    || configuration is not { Routing.ProblemCode: "", Dns.ProblemCode: "" })
+                    throw new InvalidOperationException("Routing and DNS did not come from one real Mihomo configuration read.");
+                Console.WriteLine($"PASS MIHOMO SINGLE CONTROLLER CONFIGURATION: {drainId}; one native /configs per request and both results returned");
                 if (await client.GetFromJsonAsync<ProxyTrafficDto>(ProxyApiRoutes.Traffic, RelaxKonOSJsonOptions.Default, ct) is not { ProblemCode: "" }
                     || await ObserveConnectionAsync() != originalConnection || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId)
                     throw new InvalidOperationException("A fresh request did not recover the live controller and original publication.");

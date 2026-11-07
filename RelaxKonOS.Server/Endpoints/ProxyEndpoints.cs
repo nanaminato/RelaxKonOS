@@ -138,15 +138,9 @@ public static class ProxyEndpoints
             static async (services, ct) => Results.Ok(await MihomoProxyGroupOrder.ReadGroupsAsync(
                 services.GetRequiredService<IMihomoControllerClient>(), services.GetRequiredService<IProxyPlatformPaths>(), ct))))
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyGroupDto[]>();
-        app.MapGet(ProxyApiRoutes.Routing, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases,
-            static async (services, ct) =>
-            {
-                var mode = await services.GetRequiredService<IMihomoControllerClient>().GetRoutingModeAsync(ct);
-                return string.IsNullOrEmpty(mode.ProblemCode) ? Results.Ok(mode) : Problem(mode.ProblemCode, StatusCodes.Status503ServiceUnavailable);
-            })).RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyRoutingModeDto>();
-        app.MapGet(ProxyApiRoutes.Dns, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases,
-            static async (services, ct) => Results.Ok(await services.GetRequiredService<IMihomoControllerClient>().GetDnsStatusAsync(ct))))
-            .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyDnsStatusDto>();
+        app.MapGet(ProxyApiRoutes.ControllerConfiguration, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases,
+            static async (services, ct) => Results.Ok(await services.GetRequiredService<IMihomoControllerClient>().GetControllerConfigurationAsync(ct))))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyControllerConfigurationDto>();
         app.MapGet(ProxyApiRoutes.Overview, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases,
             static async (services, ct) => Results.Ok(await services.GetRequiredService<ProxyOverviewService>().GetAsync(ct))))
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyOverviewDto>();

@@ -21,14 +21,14 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session,
     public Task<ProxyOperationAcceptedDto> RefreshAllSubscriptionsAsync(CancellationToken cancellationToken = default) => SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post, ProxyApiRoutes.SubscriptionsRefresh, null, cancellationToken, idempotent: true);
     public Task<ProxyOperationAcceptedDto> ActivateSubscriptionAsync(Guid subscriptionId, CancellationToken cancellationToken = default) => SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post, SubscriptionRoute(subscriptionId) + "/activate", null, cancellationToken, idempotent: true);
     public Task<IReadOnlyList<ProxyGroupDto>> ListGroupsAsync(CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<ProxyGroupDto>>(HttpMethod.Get, ProxyApiRoutes.Groups, null, cancellationToken);
-    public Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken = default) => SendAsync<ProxyRoutingModeDto>(HttpMethod.Get, ProxyApiRoutes.Routing, null, cancellationToken);
+    public Task<ProxyControllerConfigurationDto> GetControllerConfigurationAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<ProxyControllerConfigurationDto>(HttpMethod.Get, ProxyApiRoutes.ControllerConfiguration, null, cancellationToken);
     public Task SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken = default) => SendNoContentAsync(HttpMethod.Put, ProxyApiRoutes.Routing, new ProxyRoutingModeDto(mode), cancellationToken);
     public Task<ProxyDelayDto> TestProxyDelayAsync(string groupName, string proxyName, TestProxyDelayRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<ProxyDelayDto>(HttpMethod.Post, ProxyApiRoutes.Proxy + "/groups/" + Uri.EscapeDataString(groupName) + "/proxies/" + Uri.EscapeDataString(proxyName) + "/delay", request, cancellationToken);
     public Task<IReadOnlyList<ProxyConnectionDto>> ListConnectionsAsync(CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<ProxyConnectionDto>>(HttpMethod.Get, ProxyApiRoutes.Connections, null, cancellationToken);
     public Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken = default) => SendAsync<ProxyTrafficDto>(HttpMethod.Get, ProxyApiRoutes.Traffic, null, cancellationToken);
     public Task<IReadOnlyList<ProxyLogEntryDto>> ListLogsAsync(int limit = 200, CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<ProxyLogEntryDto>>(HttpMethod.Get, ProxyApiRoutes.Logs + "?limit=" + Math.Clamp(limit, 1, 500), null, cancellationToken);
-    public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken = default) => SendAsync<ProxyDnsStatusDto>(HttpMethod.Get, ProxyApiRoutes.Dns, null, cancellationToken);
     public Task<ProxySettingsDto> GetSettingsAsync(CancellationToken cancellationToken = default) => SendAsync<ProxySettingsDto>(HttpMethod.Get, ProxyApiRoutes.Settings, null, cancellationToken);
     public Task UpdateSettingsAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken = default) => SendNoContentAsync(HttpMethod.Put, ProxyApiRoutes.Settings, request, cancellationToken);
     private readonly object? login = session.CurrentSession;

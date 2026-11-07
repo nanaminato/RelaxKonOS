@@ -107,4 +107,14 @@ class ProxyRepositoryTest {
         gateway.onProxyGroups = { ApiResult.Success(emptyList()) }
         assertTrue(repository.acceptFacts(owner, pending) is ApiResult.Success); assertTrue(journal.pending(owner).isEmpty())
     }
+    @Test fun `DNS success cannot clear a routing marker while routing remains unknown`() = runTest {
+        val owner = signIn(); facts(); val pending = journal.begin(owner, null, null, ProxyWrite.Routing)
+        val observed = ProxyControllerConfiguration(ProxyRoutingMode.Rule, "proxy.controller_response_invalid", ProxyDns(true, false, "fake-ip", ""))
+        gateway.onProxyControllerConfiguration = { ApiResult.Success(observed) }
+        assertTrue(repository.acceptFacts(owner, pending) is ApiResult.Transport)
+        assertEquals(listOf(pending), repository.pending(owner))
+        gateway.onProxyControllerConfiguration = { ApiResult.Success(observed.copy(routingProblemCode = "")) }
+        assertTrue(repository.acceptFacts(owner, pending) is ApiResult.Success)
+        assertTrue(repository.pending(owner).isEmpty())
+    }
 }

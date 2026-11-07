@@ -11,6 +11,8 @@ internal sealed class MihomoObservationCancellationRelay : IAsyncDisposable
     private readonly HttpClient upstream = new(new SocketsHttpHandler { UseProxy = false });
     private readonly Uri controller;
     private HeldResponse? next;
+    private int configurationRequests;
+    internal int ConfigurationRequests => Volatile.Read(ref configurationRequests);
     internal string Address => app.Urls.Single() + "/";
 
     private MihomoObservationCancellationRelay(WebApplication app, Uri controller)
@@ -40,6 +42,7 @@ internal sealed class MihomoObservationCancellationRelay : IAsyncDisposable
 
     private async Task ForwardAsync(HttpContext context)
     {
+        if (context.Request.Path == "/configs") Interlocked.Increment(ref configurationRequests);
         var hold = Volatile.Read(ref next);
         if (hold is not null && (context.Request.Path != hold.Path || Interlocked.CompareExchange(ref next, null, hold) != hold))
             hold = null;

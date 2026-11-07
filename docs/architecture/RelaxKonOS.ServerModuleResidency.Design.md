@@ -506,3 +506,5 @@ Docker Engine 离线时，启动对账继续持有原 resident 工作租约和�
 Proxy 的运行时、代理组、路由及 DNS 读取使用现有 resident 工作租约。原 Core 管理器仍负责运行时观察，实际响应和异步清理结束才释放请求责任。见[控制面读取责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-运行时与控制面读取责任)。
 
 四条控制面读取的隔离配对实测未显示稳定 PSS 改善。Proxy 继续保持 resident，原读任务和响应由现有租约保护。见[控制面读取配对测量](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-控制面读取配对测量)。
+
+桌面路由与 DNS 共用一次 Mihomo 配置读取，其控制器任务、响应和异步清理由同一个原工作租约保护。见[路由和 DNS 单次采样](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-路由和-dns-单次采样)。

@@ -34,6 +34,7 @@ data class ProxyOverview(val runtime: ProxyRuntime, val activeProfile: ProxyProf
     val supportsAutoRoute: Boolean = false, val supportsDnsHijack: Boolean = false, val tunState: String = "disabled")
 data class ProxyOperation(val operationId: String, val kind: String, val state: ProxyOperationState, val stage: String, val problemCode: String)
 data class ProxyDelay(val proxyName: String, val delayMilliseconds: Int?, val timedOut: Boolean, val problemCode: String)
+data class ProxyControllerConfiguration(val routing: ProxyRoutingMode, val routingProblemCode: String, val dns: ProxyDns)
 data class ProxyProfileRequest(val name: String, val expectedRevision: Long? = null) {
     fun body(): JsonBody { require(name.isNotBlank() && name.length <= 128); return JsonBody().string("name", name.trim()).string("engineId", "mihomo").raw("expectedRevision", expectedRevision?.toString() ?: "null") }
 }
@@ -47,6 +48,7 @@ object ProxyRoutes {
     const val SUBSCRIPTIONS = "$ROOT/subscriptions"
     const val GROUPS = "$ROOT/groups"
     const val ROUTING = "$ROOT/routing"
+    const val CONTROLLER_CONFIGURATION = "$ROOT/controller-config"
     fun segment(value: String): String { require(value.isNotEmpty() && value.length <= 512 && value.none { it.code < 32 }); return java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20") }
     fun profile(id: String) = "$PROFILES/${InstallationRoutes.canonicalId(id)}"
     fun subscription(id: String) = "$SUBSCRIPTIONS/${InstallationRoutes.canonicalId(id)}"
@@ -90,7 +92,11 @@ object ProxyWire {
             health.getString("tunState").also { require(it in setOf("disabled", "enabling", "enabled", "disabling", "recovering", "failed")) })
     }
     fun groups(payload: String) = array(payload) { j -> ProxyGroup(j.getString("name"), j.getString("type"), j.text("selected"), j.getJSONArray("proxies").let { a -> List(a.length()) { a.getString(it) } }) }
-    fun routing(payload: String) = JSONObject(payload).let { j -> require(j.getString("problemCode").isBlank()); ProxyRoutingMode.entries.single { it.wire == j.getString("mode") } }
+    fun controllerConfiguration(payload: String) = JSONObject(payload).let { j ->
+        val routing = j.getJSONObject("routing")
+        ProxyControllerConfiguration(ProxyRoutingMode.entries.single { it.wire == routing.getString("mode") },
+            routing.getString("problemCode"), ProxyDiagnosticsWire.dns(j.getJSONObject("dns")))
+    }
     fun accepted(payload: String) = id(JSONObject(payload), "operationId")
     fun operation(payload: String) = JSONObject(payload).let { j -> ProxyOperation(id(j, "operationId"), j.getString("kind"), ProxyOperationState.entries.single { it.wire == j.getString("state") }, j.getString("stage"), j.getString("problemCode")) }
     fun delay(payload: String) = JSONObject(payload).let { j -> ProxyDelay(j.getString("proxyName"), if (j.isNull("delayMilliseconds")) null else j.getInt("delayMilliseconds").also { require(it >= 0) }, j.getBoolean("timedOut"), j.getString("problemCode")) }

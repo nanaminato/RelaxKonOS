@@ -190,15 +190,26 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
         verify(active)
         val facts = (overview as? ApiResult.Success)?.value
         val groups = if (facts?.controllerReachable == true && facts.supportsGroups) repository.groups(active) else null
-        val routing = if (facts?.controllerReachable == true) repository.routing(active) else null
+        val config = if (facts?.controllerReachable == true) repository.controllerConfiguration(active) else null
+        val routingProblem = (config as? ApiResult.Success)?.value?.routingProblemCode?.takeIf(String::isNotEmpty)
+        val routing = when (config) {
+            is ApiResult.Success -> if (routingProblem == null) ApiResult.Success(config.value.routing) else null
+            is ApiResult.Problem -> config
+            is ApiResult.Transport -> config
+            null -> null
+        }
         val options = if (active.privilegedOperations) repository.downloadOptions(active) else null
         val settings = repository.settings(active); val recovery = repository.recovery(active); val resources = repository.resources(active)
         verify(active)
         state = state.copy(overview = overview, profiles = profiles, subscriptions = subscriptions, groups = groups, routing = routing,
             downloadOptions = (options as? ApiResult.Success)?.value == true, settings = settings, recovery = recovery, resources = resources, pending = repository.pending(active),
             pendingInstallation = installations.pending(active).any { it.service == InstallationService.Mihomo }, observedAtMillis = System.currentTimeMillis())
-        val failure = listOfNotNull(overview, profiles, subscriptions, groups, routing, options, settings, recovery, resources).firstOrNull { it !is ApiResult.Success }
-        if (failure != null) failure(failure)
+        val earlyFailure = listOfNotNull(overview, profiles, subscriptions, groups, routing).firstOrNull { it !is ApiResult.Success }
+        when {
+            earlyFailure != null -> failure(earlyFailure)
+            routingProblem != null -> state = state.copy(problemCode = routingProblem)
+            else -> listOfNotNull(options, settings, recovery, resources).firstOrNull { it !is ApiResult.Success }?.let(::failure)
+        }
     }
     fun queue(action: ProxyAction, target: String? = null) = work { active ->
         operationResult(active, repository.queue(active, action, target)); retainAccepted(active); load(active)
@@ -299,7 +310,12 @@ internal class ProxyViewModel(private val session: AuthSession, private val repo
                                 ApiResult.Success((logs.value + previous).distinct().sortedByDescending { it.timestampMillis }.take(500)) else logs)
                         }
                         "settings" -> {
-                            val dns = if (overview.supportsDns) repository.dns(active) else null; verifyRead()
+                            val dns = if (overview.supportsDns) when (val config = repository.controllerConfiguration(active)) {
+                                is ApiResult.Success -> ApiResult.Success(config.value.dns)
+                                is ApiResult.Problem -> config
+                                is ApiResult.Transport -> config
+                            } else null
+                            verifyRead()
                             state = state.copy(dns = dns, diagnosticsFailed = dns != null && dns !is ApiResult.Success)
                         }
                     }

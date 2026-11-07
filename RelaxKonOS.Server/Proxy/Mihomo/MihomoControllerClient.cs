@@ -16,7 +16,7 @@ public interface IMihomoControllerClient
     Task<ControllerResult<bool>> IsReachableAsync(CancellationToken cancellationToken);
     Task<ControllerResult<IReadOnlyList<ProxyGroupDto>>> GetGroupsAsync(CancellationToken cancellationToken);
     Task<string?> SelectGroupAsync(string groupName, string proxyName, CancellationToken cancellationToken);
-    Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken);
+    Task<ProxyControllerConfigurationDto> GetControllerConfigurationAsync(CancellationToken cancellationToken);
     Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken);
     Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken);
     Task<ControllerResult<IReadOnlyList<ProxyConnectionDto>>> GetConnectionsAsync(CancellationToken cancellationToken);
@@ -24,7 +24,6 @@ public interface IMihomoControllerClient
     Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken);
     Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken);
     Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken);
-    Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken);
     Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken);
     Task<string?> ReloadAsync(CancellationToken cancellationToken);
 }
@@ -100,15 +99,23 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
         return (await SendAsync(HttpMethod.Put, path, new StringContent(body, Encoding.UTF8, "application/json"), cancellationToken)).ProblemCode;
     }
 
-    public async Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken)
+    public async Task<ProxyControllerConfigurationDto> GetControllerConfigurationAsync(CancellationToken cancellationToken)
     {
         var result = await GetJsonAsync("configs", cancellationToken);
-        if (!result.Succeeded) return new(ProxyRoutingMode.Rule, result.ProblemCode);
+        if (!result.Succeeded) return new(new(ProxyRoutingMode.Rule, result.ProblemCode), new(false, false, null, result.ProblemCode));
         try
         {
-            return ParseRoutingMode(GetString(result.Value!.RootElement, "mode")) is { } mode
-                ? new(mode)
-                : new(ProxyRoutingMode.Rule, ProxyProblemCodes.ControllerResponseInvalid);
+            var root = result.Value!.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return new(new(ProxyRoutingMode.Rule, ProxyProblemCodes.ControllerResponseInvalid),
+                    new(false, false, null, ProxyProblemCodes.ControllerResponseInvalid));
+            var routing = ParseRoutingMode(GetString(root, "mode")) is { } mode
+                ? new ProxyRoutingModeDto(mode)
+                : new ProxyRoutingModeDto(ProxyRoutingMode.Rule, ProxyProblemCodes.ControllerResponseInvalid);
+            var dns = root.TryGetProperty("dns", out var value) ? value : default;
+            return new(routing, dns.ValueKind == JsonValueKind.Object
+                ? new(GetBool(dns, "enable"), GetBool(dns, "enhanced-mode"), GetString(dns, "enhanced-mode"))
+                : new(false, false, null));
         }
         finally { result.Value?.Dispose(); }
     }
@@ -225,20 +232,6 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
             return ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success(logs);
         }
         catch (JsonException) { return ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Failure(ProxyProblemCodes.ControllerResponseInvalid); }
-    }
-
-    public async Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken)
-    {
-        var result = await GetJsonAsync("configs", cancellationToken);
-        if (!result.Succeeded) return new(false, false, null, result.ProblemCode);
-        try
-        {
-            var dns = result.Value!.RootElement.TryGetProperty("dns", out var value) ? value : default;
-            return dns.ValueKind == JsonValueKind.Object
-                ? new(GetBool(dns, "enable"), GetBool(dns, "enhanced-mode"), GetString(dns, "enhanced-mode"))
-                : new(false, false, null);
-        }
-        finally { result.Value?.Dispose(); }
     }
 
     /// <summary>Reads the live <c>tun.enable</c> flag. This is the only trustworthy source for

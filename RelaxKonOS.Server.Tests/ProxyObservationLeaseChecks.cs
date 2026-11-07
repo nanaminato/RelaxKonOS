@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
@@ -60,7 +62,7 @@ internal static class ProxyObservationLeaseChecks
             .Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
         scenario.ReleaseResponse.TrySetResult();
         string[] routes = [ProxyApiRoutes.Connections, ProxyApiRoutes.Traffic, ProxyApiRoutes.Logs + "?limit=1",
-            ProxyApiRoutes.Runtime, ProxyApiRoutes.Groups, ProxyApiRoutes.Routing, ProxyApiRoutes.Dns];
+            ProxyApiRoutes.Runtime, ProxyApiRoutes.Groups, ProxyApiRoutes.ControllerConfiguration];
         foreach (var route in routes)
         {
             using var anonymous = await http.GetAsync(route, ct);
@@ -79,19 +81,26 @@ internal static class ProxyObservationLeaseChecks
         await scenario.RequestExited.Task.WaitAsync(ct);
         TestAssert.Assert(!HasLease(), "The error response must drain its scope and lease.");
 
-        foreach (var (route, status, expected) in new[]
+        scenario = new Scenario(holdController: false) { Status = HttpStatusCode.Unauthorized };
+        scenario.ReleaseResponse.TrySetResult();
+        scenario.ReleaseCleanup.TrySetResult();
+        var groups = await http.GetFromJsonAsync<ProxyGroupDto[]>(ProxyApiRoutes.Groups, RelaxKonOSJsonOptions.Default, ct);
+        await scenario.RequestExited.Task.WaitAsync(ct);
+        TestAssert.Assert(groups is { Length: 0 } && !HasLease(), "An unauthorized controller must still return an empty group list.");
+
+        foreach (var (status, mode) in new[] { (HttpStatusCode.OK, "direct"), (HttpStatusCode.OK, "invalid"), (HttpStatusCode.Unauthorized, "direct") })
         {
-            (ProxyApiRoutes.Groups, HttpStatusCode.OK, "[]"),
-            (ProxyApiRoutes.Routing, HttpStatusCode.ServiceUnavailable, ProxyProblemCodes.ControllerAuthenticationFailed),
-            (ProxyApiRoutes.Dns, HttpStatusCode.OK, ProxyProblemCodes.ControllerAuthenticationFailed),
-        })
-        {
-            scenario = new Scenario(holdController: false) { Status = HttpStatusCode.Unauthorized };
+            scenario = new Scenario(holdController: false) { Status = status, RoutingMode = mode };
             scenario.ReleaseResponse.TrySetResult();
             scenario.ReleaseCleanup.TrySetResult();
-            using var reply = await http.GetAsync(route, ct);
-            TestAssert.Assert(reply.StatusCode == status && (await reply.Content.ReadAsStringAsync(ct)).Contains(expected, StringComparison.Ordinal),
-                "A leased observation changed the controller authentication failure contract.");
+            var reply = await http.GetFromJsonAsync<ProxyControllerConfigurationDto>(ProxyApiRoutes.ControllerConfiguration, RelaxKonOSJsonOptions.Default, ct);
+            var expected = status == HttpStatusCode.OK
+                ? new ProxyControllerConfigurationDto(mode == "direct" ? new(ProxyRoutingMode.Direct)
+                    : new(ProxyRoutingMode.Rule, ProxyProblemCodes.ControllerResponseInvalid), new(true, false, "fake-ip"))
+                : new ProxyControllerConfigurationDto(new(ProxyRoutingMode.Rule, ProxyProblemCodes.ControllerAuthenticationFailed),
+                    new(false, false, null, ProxyProblemCodes.ControllerAuthenticationFailed));
+            TestAssert.Assert(reply == expected && scenario.ControllerCalls == 1,
+                "Routing and DNS must project the same single controller response, including authentication failure.");
             await scenario.RequestExited.Task.WaitAsync(ct);
             TestAssert.Assert(!HasLease(), "The failure response must drain its work lease.");
         }
@@ -151,7 +160,7 @@ internal static class ProxyObservationLeaseChecks
                 "Cleanup failure must retain the work lease and block the original module owner.");
         }
         finally { source.Last?.Dispose(); }
-        Console.WriteLine("PASS PROXY OBSERVATION HTTP DRAIN: runtime, groups, routing, DNS, connections, traffic and logs preserve authorization, cancellation, response and cleanup");
+        Console.WriteLine("PASS PROXY OBSERVATION HTTP DRAIN: runtime, groups, controller configuration, connections, traffic and logs preserve authorization, cancellation, response and cleanup");
 
         bool HasLease() => coordinator.HasBackgroundWork(ServerModules.ProxyId);
     }
@@ -161,6 +170,8 @@ internal static class ProxyObservationLeaseChecks
         internal bool HoldController { get; } = holdController;
         internal bool FailCleanup { get; init; }
         internal HttpStatusCode Status { get; init; } = HttpStatusCode.OK;
+        internal string RoutingMode { get; init; } = "direct";
+        internal int ControllerCalls;
         internal readonly TaskCompletionSource ControllerEntered = Signal();
         internal readonly TaskCompletionSource ControllerCancelled = Signal();
         internal readonly TaskCompletionSource ResponseEntered = Signal();
@@ -201,6 +212,7 @@ internal static class ProxyObservationLeaseChecks
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             using var cancellation = ct.Register(() => scenario.ControllerCancelled.TrySetResult());
+            Interlocked.Increment(ref scenario.ControllerCalls);
             scenario.ControllerEntered.TrySetResult();
             if (scenario.HoldController) await scenario.ReleaseController.Task;
             ct.ThrowIfCancellationRequested();
@@ -210,7 +222,7 @@ internal static class ProxyObservationLeaseChecks
                 "/logs" => "{\"type\":\"info\",\"payload\":\"fixture\"}\n",
                 "/version" => "{\"version\":\"v1.19.10\"}",
                 "/proxies" => "{\"proxies\":{}}",
-                "/configs" => "{\"mode\":\"rule\",\"dns\":{\"enable\":true}}",
+                "/configs" => "{\"mode\":\"" + scenario.RoutingMode + "\",\"dns\":{\"enable\":true,\"enhanced-mode\":\"fake-ip\"}}",
                 _ => "{\"uploadTotal\":3,\"downloadTotal\":4,\"connections\":[],\"memory\":5}"
             };
             return new HttpResponseMessage(scenario.Status) { Content = new StringContent(body) };

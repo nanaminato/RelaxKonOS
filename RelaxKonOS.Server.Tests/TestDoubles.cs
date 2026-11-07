@@ -111,7 +111,8 @@ sealed class HealthyMihomoController : IMihomoControllerClient
     public Task<ControllerResult<bool>> IsReachableAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(true));
     public Task<ControllerResult<IReadOnlyList<ProxyGroupDto>>> GetGroupsAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyGroupDto>>.Success([]));
     public Task<string?> SelectGroupAsync(string groupName, string proxyName, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
-    public Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyRoutingModeDto(ProxyRoutingMode.Rule));
+    public Task<ProxyControllerConfigurationDto> GetControllerConfigurationAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new ProxyControllerConfigurationDto(new(ProxyRoutingMode.Rule), new(false, false, null)));
     public Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken) => Task.FromResult(new ProxyDelayDto(proxyName, 42, false));
     public Task<ControllerResult<IReadOnlyList<ProxyConnectionDto>>> GetConnectionsAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Success([]));
@@ -119,7 +120,6 @@ sealed class HealthyMihomoController : IMihomoControllerClient
     public Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyTrafficDto(0, 0, 0, 0, 0));
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success([]));
-    public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyDnsStatusDto(false, false, null));
     public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(false));
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
@@ -129,7 +129,8 @@ sealed class StaticGroupMihomoController(IReadOnlyList<ProxyGroupDto> groups) : 
     public Task<ControllerResult<bool>> IsReachableAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(true));
     public Task<ControllerResult<IReadOnlyList<ProxyGroupDto>>> GetGroupsAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyGroupDto>>.Success(groups));
     public Task<string?> SelectGroupAsync(string groupName, string proxyName, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
-    public Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyRoutingModeDto(ProxyRoutingMode.Rule));
+    public Task<ProxyControllerConfigurationDto> GetControllerConfigurationAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new ProxyControllerConfigurationDto(new(ProxyRoutingMode.Rule), new(false, false, null)));
     public Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken) => Task.FromResult(new ProxyDelayDto(proxyName, null, false));
     public Task<ControllerResult<IReadOnlyList<ProxyConnectionDto>>> GetConnectionsAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Success([]));
@@ -137,7 +138,6 @@ sealed class StaticGroupMihomoController(IReadOnlyList<ProxyGroupDto> groups) : 
     public Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyTrafficDto(0, 0, 0, 0, 0));
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success([]));
-    public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyDnsStatusDto(false, false, null));
     public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(false));
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
@@ -157,7 +157,8 @@ sealed class DelayedHealthyMihomoController(int unavailableResponses) : IMihomoC
     }
     public Task<ControllerResult<IReadOnlyList<ProxyGroupDto>>> GetGroupsAsync(CancellationToken cancellationToken) => _healthy.GetGroupsAsync(cancellationToken);
     public Task<string?> SelectGroupAsync(string groupName, string proxyName, CancellationToken cancellationToken) => _healthy.SelectGroupAsync(groupName, proxyName, cancellationToken);
-    public Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken) => _healthy.GetRoutingModeAsync(cancellationToken);
+    public Task<ProxyControllerConfigurationDto> GetControllerConfigurationAsync(CancellationToken cancellationToken) =>
+        _healthy.GetControllerConfigurationAsync(cancellationToken);
     public Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken) => _healthy.SetRoutingModeAsync(mode, cancellationToken);
     public Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken) => _healthy.TestProxyDelayAsync(proxyName, url, timeoutMilliseconds, cancellationToken);
     public Task<ControllerResult<IReadOnlyList<ProxyConnectionDto>>> GetConnectionsAsync(CancellationToken cancellationToken) => _healthy.GetConnectionsAsync(cancellationToken);
@@ -165,7 +166,6 @@ sealed class DelayedHealthyMihomoController(int unavailableResponses) : IMihomoC
     public Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken) => _healthy.GetTrafficAsync(cancellationToken);
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => _healthy.CloseConnectionAsync(connectionId, cancellationToken);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => _healthy.GetLogsAsync(limit, cancellationToken);
-    public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => _healthy.GetDnsStatusAsync(cancellationToken);
     public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => _healthy.GetTunEnabledAsync(cancellationToken);
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => _healthy.ReloadAsync(cancellationToken);
 }
@@ -221,11 +221,9 @@ sealed class TransactionTestEngine : IProxyEngine
     }
     public Task<IReadOnlyList<ProxyGroupDto>> GetGroupsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ProxyGroupDto>>([]);
     public Task<string?> SelectGroupAsync(string groupName, string proxyName, CancellationToken cancellationToken) => Task.FromResult<string?>(ProxyProblemCodes.NotSupported);
-    public Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyRoutingModeDto(ProxyRoutingMode.Rule, ProxyProblemCodes.NotSupported));
     public Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken) => Task.FromResult<string?>(ProxyProblemCodes.NotSupported);
     public Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken) => Task.FromResult(new ProxyDelayDto(proxyName, null, false, ProxyProblemCodes.NotSupported));
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<string?>(ProxyProblemCodes.NotSupported);
-    public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyDnsStatusDto(false, false, null));
 }
 
 sealed class TestProxyNetworkSafetyPlatform : IProxyNetworkSafetyPlatform

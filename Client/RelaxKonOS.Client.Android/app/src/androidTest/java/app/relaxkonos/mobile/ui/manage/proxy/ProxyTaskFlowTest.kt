@@ -101,7 +101,8 @@ class ProxyTaskFlowTest {
                 assertEquals(profile.id, id); yamlSaves += yaml; return ApiResult.Success(Unit)
             }
             override suspend fun proxySubscriptions(serverUrl: String, accessToken: String): ApiResult<List<ProxySubscription>> = ApiResult.Success(emptyList())
-            override suspend fun proxyRouting(serverUrl: String, accessToken: String) = ApiResult.Success(ProxyRoutingMode.Rule)
+            override suspend fun proxyControllerConfiguration(serverUrl: String, accessToken: String) =
+                ApiResult.Success(ProxyControllerConfiguration(ProxyRoutingMode.Rule, "", ProxyDns(false, false, null, "")))
             override suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String) = ApiResult.Success(downloadOptions)
             override suspend fun proxySettings(serverUrl: String, accessToken: String) = ApiResult.Success(ProxySettings(false, false, true, false, false, "info", 7890, false, "127.0.0.1", null, null))
             override suspend fun saveProxySettings(serverUrl: String, accessToken: String, settings: ProxySettings): ApiResult<Unit> {

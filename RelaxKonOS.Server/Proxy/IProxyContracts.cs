@@ -13,11 +13,9 @@ public interface IProxyEngine
     Task<string?> ReloadAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<ProxyGroupDto>> GetGroupsAsync(CancellationToken cancellationToken);
     Task<string?> SelectGroupAsync(string groupName, string proxyName, CancellationToken cancellationToken);
-    Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken);
     Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken);
     Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken);
     Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken);
-    Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken);
 }
 
 public interface IProxyEngineRegistry
