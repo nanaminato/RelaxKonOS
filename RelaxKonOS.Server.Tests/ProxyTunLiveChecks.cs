@@ -109,10 +109,15 @@ internal static class ProxyTunLiveChecks
                     var disableRequests = calls.Reloads;
                     if (mihomo is not null) TestAssert.Assert(disableRequests == 1 && calls.DroppedResponses == 1, "Initial recovery must issue exactly one real disable reload.");
                     await AddDefaultRouteAsync();
-                    TestAssert.Assert(await safety.RecoverAsync(original, default) is null
-                        && await safety.CaptureRecoveryAsync(default) is null && runtime.Removals == 1
+                    using (var recovery = new ProxyRecoveryHostedService(safety, NullLogger<ProxyRecoveryHostedService>.Instance))
+                    {
+                        await recovery.StartAsync(default);
+                        await recovery.ExecuteTask!.WaitAsync(Budget);
+                        await recovery.StopAsync(default);
+                    }
+                    TestAssert.Assert(await safety.CaptureRecoveryAsync(default) is null && runtime.Removals == 1
                         && calls.Reloads == disableRequests,
-                        "Verified route recovery must clear the original marker without a second TUN removal.");
+                        "Core startup recovery must clear the original marker without a second TUN removal.");
                     if (mihomo is not null)
                     {
                         var restoredRoute = await RunIpAsync("route", "get", "198.51.100.53");
@@ -133,7 +138,7 @@ internal static class ProxyTunLiveChecks
                     if (mihomo is not null)
                         TestAssert.Assert(!mihomo.HasExited && (await runtime.IsEnabledAsync(default)) is { Succeeded: true, Enabled: false },
                             "The original Mihomo process must remain reachable with TUN disabled.");
-                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, route verified, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
+                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, Core startup verified route, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
                 }
                 finally { if (mihomo is not null) await DockerProcessRecoveryChecks.StopWorkerAsync(mihomo); }
             }

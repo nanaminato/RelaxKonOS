@@ -1351,3 +1351,5 @@ Mihomo TUN 重载后核对控制器实际 TUN 标志，连接恢复本身不足�
 Linux 实机补齐禁用请求未到达控制器的分支。传输夹具在转发前中断请求，真实 Mihomo 仍报告 TUN 开启，原恢复标记和设备保留，原生 reload 为零。同一操作 91aa1220-2def-42d9-9120-d58affea83ff 随后在确认仍需禁用时执行一次真实 reload。成功响应再次被夹具丢弃，原路由恢复后清除标记，未追加 reload。日志为 .artifacts/mb04-tun-unapplied-live.log，归档 SHA-256 为 bb4b55b2c4664a224be05ab46f104860aa2c3549acbf077633dfc8d8a6843d3f。
 
 MB-04 系统代理 guard 完成启动对账后，按轻量设置读取判断 guard 是否启用。空闲扫描不再构造发布验证与平台写入执行图。启动恢复失败仍重试，启用时由原 reconciler 在发布锁内重新读取设置并执行。Linux Release 在管理模块启用与禁用两种状态通过空闲构造断言、启动恢复及原安全回归，同批隔离 sing-box 实测通过。日志为 .artifacts/mb04-idle-guard-linux.log，归档 SHA-256 为 806e9994a8ffdcaccb9b47cbd5d2c49e4427be6b1e6a8b0afe08601ea0e5c800。该切片缩小空闲执行图，原 guard 保持常驻。
+
+Linux 私有网络中，真实 Mihomo 禁用已应用但管理路由仍不可验证时，原 TUN 标记继续保留。恢复路由后启动生产 Core ProxyRecoveryHostedService，自动捕获原标记并完成收尾。原操作 6a38b6b8-1c94-470d-bd74-b544e0610bc5 的禁用 reload 仍为一次，真实 Mihomo 继续运行。日志为 .artifacts/mb04-tun-core-live.log，归档 SHA-256 为 7000596a6e2ab76dc76ec6348afeb0ca37f074ba7203f7875ac488fda95039ec。实机覆盖 Core 启动 worker，完整管理模块休眠交接仍开放。
