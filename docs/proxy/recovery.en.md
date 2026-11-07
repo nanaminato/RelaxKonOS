@@ -10,4 +10,6 @@ If a direct settings update recorded successful replies from both the runtime an
 
 After the runtime acknowledges a direct host policy change on Linux, recovery can check the Helper receipt and current proxy values by the original operation ID. When both checks pass and the candidate file still matches, recovery finishes the local settings commit. If the guard must independently maintain the persisted policy, it leaves the original operation pending so the two effects remain distinguishable.
 
+If the pending change moved the proxy listener, Mihomo may still serve the candidate port after the guard restores the saved proxy address. New connections to the old port may be refused while existing connections continue forwarding. The recovery panel keeps the original operation ID and pending status.
+
 Use a second management connection on a disposable VM for the first platform validation. See the skipped-test register before attempting Windows or Ubuntu recovery drills.
