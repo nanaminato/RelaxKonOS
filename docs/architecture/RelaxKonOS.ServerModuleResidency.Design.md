@@ -542,3 +542,5 @@ Linux 直连设置按原 ID 核对宿主策略变更。guard 可完成已证实�
 完整 Linux Server 在原直连订阅重载成功但应答未送达时被终止。重启后原队列持久保留无完成时间的待恢复回执，发布检查点继续阻止新写入。原 Mihomo 保持转发。见[直连活动订阅重载应答未知](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连活动订阅重载应答未知)。
 
 批量订阅刷新在原工作租约内保存分项计划及派发状态，原队列只以发布或 SQLite 草稿回执核对已派发分项。未知分项继续占用持久责任，未开始的分项跳过。见[批量订阅刷新分项回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-批量订阅刷新分项回执)。
+
+未激活订阅的草稿替换先持久化原意图，进程中断后可在原工作租约内凭文件标记和摘要补交 SQLite 回执。未知证据继续承担写入和停用门禁。见[草稿文件替换后的原回执恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-草稿文件替换后的原回执恢复)。

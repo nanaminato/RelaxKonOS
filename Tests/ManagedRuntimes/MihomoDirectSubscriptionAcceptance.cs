@@ -58,6 +58,7 @@ internal static class MihomoDirectSubscriptionAcceptance
         var feeds = 0;
         var draftFeeds = 0;
         var skippedFeeds = 0;
+        var windowFeeds = 0;
         var originBuilder = WebApplication.CreateBuilder();
         originBuilder.Logging.ClearProviders();
         originBuilder.WebHost.UseUrls("http://93.184.216.34:0");
@@ -69,6 +70,7 @@ internal static class MihomoDirectSubscriptionAcceptance
         });
         origin.MapGet("/draft", () => $"vless://550e8400-e29b-41d4-a716-446655440000@draft-{Interlocked.Increment(ref draftFeeds)}.example.test:443#draft");
         origin.MapGet("/skipped", () => $"vless://550e8400-e29b-41d4-a716-446655440000@skipped-{Interlocked.Increment(ref skippedFeeds)}.example.test:443#skipped");
+        origin.MapGet("/draft-window", () => $"vless://550e8400-e29b-41d4-a716-446655440000@window-{Interlocked.Increment(ref windowFeeds)}.example.test:443#window");
         await origin.StartAsync(ct);
 
         using var native = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { BaseAddress = new("http://127.0.0.1:9090/") };
@@ -125,6 +127,7 @@ internal static class MihomoDirectSubscriptionAcceptance
         start.Environment["Storage__DatabasePath"] = database;
         try
         {
+            await guard.VerifyTrafficAsync((_, token) => VerifyDraftCommitWindowAsync(token), TimeSpan.FromSeconds(55));
             await guard.VerifyTrafficAsync(async (_, trafficCt) =>
             {
                 var pid = guard.RuntimePid;
@@ -296,6 +299,92 @@ internal static class MihomoDirectSubscriptionAcceptance
             using var controller = new MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }), secrets, new());
             if (await controller.ReloadAsync(default) is not null)
                 throw new InvalidOperationException("Could not restore the private direct proxy configuration.");
+        }
+
+        async Task VerifyDraftCommitWindowAsync(CancellationToken token)
+        {
+            var draftDatabase = Path.Combine(start.WorkingDirectory, "draft-window.db");
+            var repository = new SqliteProxySubscriptionRepository(
+                new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { ContentRootPath = start.WorkingDirectory },
+                Microsoft.Extensions.Options.Options.Create(new RelaxKonOS.Server.Storage.StorageOptions { DatabasePath = draftDatabase }),
+                ManagedServiceChecks.OpenProtection(root));
+            start.Environment["Storage__DatabasePath"] = draftDatabase;
+            var key = Guid.NewGuid().ToString("N");
+            Guid operation;
+            ProxySubscriptionDto subscription;
+            ProxyDraftRefreshIntent intent;
+            string draftPath;
+            byte[] replaced;
+            DateTime written;
+            try
+            {
+                using (var server = ProxyAuthenticatedPublicationChecks.Start(start, Console.WriteLine))
+                {
+                    try
+                    {
+                        using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, token);
+                        subscription = await ImportAsync(client, "/draft-window", "draft-window", token);
+                        await SqlAsync("""
+                            CREATE TRIGGER reject_draft_receipt BEFORE UPDATE OF last_draft_refresh_operation_id ON proxy_subscriptions
+                            WHEN NEW.last_draft_refresh_operation_id IS NOT NULL
+                            BEGIN SELECT RAISE(ABORT, 'private draft receipt fault'); END;
+                            """);
+                        operation = await SubmitAsync(client, ProxyApiRoutes.SubscriptionsRefresh, key, token);
+                        var pending = await WaitForTerminalAsync(client, operation, token);
+                        var child = (await ReadBatchAsync(operation, token)).Single().OperationId;
+                        intent = await repository.ReadDraftRefreshIntentAsync(child, token)
+                            ?? throw new InvalidOperationException("Missing pre-replacement draft intent.");
+                        draftPath = ProxyDraftRefreshRecovery.ProfilePath(paths, subscription.ProfileId);
+                        replaced = await File.ReadAllBytesAsync(draftPath, token);
+                        written = File.GetLastWriteTimeUtc(draftPath);
+                        if (pending.Stage != "batch_pending" || pending.CompletedAt is not null
+                            || intent.SubscriptionId != subscription.Id || intent.ProfileId != subscription.ProfileId
+                            || Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(replaced)) != intent.Identity
+                            || !System.Text.Encoding.UTF8.GetString(replaced).Contains("window-2.example.test", StringComparison.Ordinal)
+                            || await repository.ReadDraftRefreshReceiptAsync(child, subscription.Id, token) is not null)
+                            throw new InvalidOperationException("The draft replacement or blocked SQLite receipt was not observed.");
+                        server.Kill();
+                        await server.WaitForExitAsync(token);
+                        if (server.ExitCode == 0) throw new InvalidOperationException("The draft Server did not crash.");
+                    }
+                    finally { await ProxyAuthenticatedPublicationChecks.StopAsync(server); }
+                }
+
+                await SqlAsync("DROP TRIGGER reject_draft_receipt;");
+                using var restarted = ProxyAuthenticatedPublicationChecks.Start(start, Console.WriteLine);
+                try
+                {
+                    using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(restarted, login, token);
+                    var terminal = await ReadOperationAsync(client, operation, token);
+                    var content = await client.GetFromJsonAsync<ProxySubscriptionContentDto>(
+                        SubscriptionRoute(ProxyApiRoutes.SubscriptionContentPattern, subscription.Id), RelaxKonOSJsonOptions.Default, token);
+                    if (terminal.State != ProxyOperationState.Interrupted || terminal.Stage != "batch_interrupted"
+                        || await SubmitAsync(client, ProxyApiRoutes.SubscriptionsRefresh, key, token) != operation
+                        || await ReadOperationAsync(client, operation, token) != terminal
+                        || (await ReadBatchAsync(operation, token)).Single().State != ProxyOperationStore.RefreshStepState.Succeeded
+                        || await repository.ReadDraftRefreshReceiptAsync(intent.OperationId, subscription.Id, token) != intent.RetrievedAt
+                        || await repository.ReadDraftRefreshIntentAsync(intent.OperationId, token) is not null
+                        || content?.RetrievedAt != intent.RetrievedAt
+                        || !content.Content.Contains("window-2.example.test", StringComparison.Ordinal)
+                        || content.Content.Contains(intent.OperationId.ToString("N"), StringComparison.Ordinal)
+                        || !(await File.ReadAllBytesAsync(draftPath, token)).SequenceEqual(replaced)
+                        || File.GetLastWriteTimeUtc(draftPath) != written || Volatile.Read(ref windowFeeds) != 2
+                        || Volatile.Read(ref reloadAttempts) != 0)
+                        throw new InvalidOperationException("Draft recovery changed the original bytes, fetched again, or missed the original receipt.");
+                    Console.WriteLine($"PASS AUTHENTICATED DRAFT COMMIT RECOVERY: batch {operation}, original child {intent.OperationId}; same YAML and one refresh download");
+                }
+                finally { await ProxyAuthenticatedPublicationChecks.StopAsync(restarted); }
+            }
+            finally { start.Environment["Storage__DatabasePath"] = database; }
+
+            async Task SqlAsync(string sql)
+            {
+                await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = draftDatabase }.ToString());
+                await connection.OpenAsync(token);
+                await using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                await command.ExecuteNonQueryAsync(token);
+            }
         }
 
         async Task<long> ReadRevisionAsync(Guid profile, CancellationToken token)

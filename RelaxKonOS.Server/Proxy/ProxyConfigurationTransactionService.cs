@@ -1,3 +1,6 @@
+using Microsoft.Data.Sqlite;
+using System.Security.Cryptography;
+using System.Text;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
@@ -7,11 +10,12 @@ using RelaxKonOS.Server.Proxy.Mihomo;
 namespace RelaxKonOS.Server.Proxy;
 
 public sealed record ProxyQueuedSubscriptionRefresh(Guid OperationId, MihomoSubscriptionRefresh Metadata, string Draft);
+public sealed record ProxyQueuedDraftRefresh(Guid SubscriptionId, Guid OperationId, DateTimeOffset RetrievedAt);
 
 /// <summary>Serializes raw-YAML application. Raw configuration is never returned through public contracts.</summary>
 public interface IProxyConfigurationTransactionService
 {
-    Task<string?> StoreAsync(Guid profileId, string yaml, CancellationToken cancellationToken);
+    Task<string?> StoreAsync(Guid profileId, string yaml, CancellationToken cancellationToken, ProxyQueuedDraftRefresh? draft = null);
     Task<string?> ReadStoredAsync(Guid profileId, CancellationToken cancellationToken);
     Task<string?> ActivateStoredAsync(Guid profileId, CancellationToken cancellationToken,
         ProxyQueuedSubscriptionRefresh? refresh = null);
@@ -28,7 +32,8 @@ public sealed class ProxyConfigurationTransactionService(
     IProxySettingsReader? settingsService = null,
     ILogger<ProxyConfigurationTransactionService>? logger = null,
     MihomoConfigurationPublicationService? managedPublication = null,
-    MihomoRuntimeService? managedRuntime = null) : IProxyConfigurationTransactionService
+    MihomoRuntimeService? managedRuntime = null,
+    IProxySubscriptionRepository? subscriptions = null) : IProxyConfigurationTransactionService
 {
     private SemaphoreSlim _gate => publication.Gate;
     public async Task<string?> ApplyAsync(Guid profileId, string yaml, CancellationToken cancellationToken)
@@ -37,7 +42,7 @@ public sealed class ProxyConfigurationTransactionService(
         return string.IsNullOrEmpty(stored) ? await ActivateStoredAsync(profileId, cancellationToken) : stored;
     }
 
-    public async Task<string?> StoreAsync(Guid profileId, string yaml, CancellationToken cancellationToken)
+    public async Task<string?> StoreAsync(Guid profileId, string yaml, CancellationToken cancellationToken, ProxyQueuedDraftRefresh? draft = null)
     {
         if (yaml.Length is 0 or > 1_048_576 || yaml.IndexOf('\0') >= 0) return ProxyProblemCodes.ConfigInvalid;
         var profile = await profiles.GetAsync(profileId, cancellationToken);
@@ -46,12 +51,15 @@ public sealed class ProxyConfigurationTransactionService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (subscriptions is not null && await subscriptions.HasPendingDraftForProfileAsync(profileId, cancellationToken))
+                return ProxyProblemCodes.RecoveryRequired;
             var state = await publication.ReadAsync(cancellationToken);
             if (state.Pending is not null) return ProxyProblemCodes.RecoveryRequired;
             var managed = engine.EngineId == MihomoEngine.Id && state.Published is not null;
             if (!managed && await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var directory = GetProfilesDirectory();
             var temporary = Path.Combine(directory, ".validate-" + Guid.NewGuid().ToString("N"));
+            var preparingDraft = false;
             try
             {
                 // Validate the same GEO policy that will be activated.  Validating the raw
@@ -60,6 +68,7 @@ public sealed class ProxyConfigurationTransactionService(
                 // Keep the original profile for later activation, but never let its download
                 // settings influence the validation process.
                 var validationYaml = PrepareStoredConfiguration(engine, yaml);
+                if (draft is not null) validationYaml = ProxyDraftRefreshRecovery.Mark(validationYaml, draft.OperationId);
                 await File.WriteAllTextAsync(temporary, validationYaml, cancellationToken); SetPrivateFile(temporary);
                 // Drafts are structurally bounded here. The installed target validates natively only
                 // inside the protected configuration transaction, never against live runtime data.
@@ -71,10 +80,26 @@ public sealed class ProxyConfigurationTransactionService(
                     File.Delete(temporary); return validation;
                 }
                 cancellationToken.ThrowIfCancellationRequested();
-                File.Move(temporary, ProfilePath(profileId), overwrite: true); SetPrivateFile(ProfilePath(profileId));
+                ProxyDraftRefreshIntent? intent = null;
+                if (draft is not null)
+                {
+                    if (subscriptions is null) return ProxyProblemCodes.NotSupported;
+                    intent = new(draft.SubscriptionId, profileId, draft.OperationId,
+                        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(validationYaml))), draft.RetrievedAt);
+                    preparingDraft = true;
+                    if (!await subscriptions.PrepareDraftRefreshAsync(intent, cancellationToken))
+                        return ProxyProblemCodes.ConfigApplyFailed;
+                }
+                var target = ProfilePath(profileId);
+                RuntimeSourceStore.RequireNoLinks(target);
+                File.Move(temporary, target, overwrite: true);
+                if (intent is not null && !await subscriptions!.CommitPreparedDraftRefreshAsync(intent, CancellationToken.None))
+                    return ProxyProblemCodes.RecoveryRequired;
                 logger?.LogInformation("Proxy profile configuration stored. ProfileId={ProfileId} EngineId={EngineId} Characters={Characters}", profileId, engine.EngineId, yaml.Length);
                 return null;
             }
+            catch (Exception error) when (preparingDraft && error is (SqliteException or IOException or UnauthorizedAccessException or RuntimePolicyException))
+            { return ProxyProblemCodes.RecoveryRequired; }
             catch (RuntimePolicyException) { return ProxyProblemCodes.ConfigInvalid; }
             catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }
             catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
@@ -92,7 +117,7 @@ public sealed class ProxyConfigurationTransactionService(
     {
         var storedPath = ProfilePath(profileId);
         if (!File.Exists(storedPath)) return null;
-        try { return await File.ReadAllTextAsync(storedPath, cancellationToken); }
+        try { return ProxyDraftRefreshRecovery.RemoveMarker(await File.ReadAllTextAsync(storedPath, cancellationToken)); }
         catch (IOException) { return null; }
         catch (UnauthorizedAccessException) { return null; }
     }
@@ -107,6 +132,8 @@ public sealed class ProxyConfigurationTransactionService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (subscriptions is not null && await subscriptions.HasPendingDraftForProfileAsync(profileId, cancellationToken))
+                return ProxyProblemCodes.RecoveryRequired;
             var state = await publication.ReadAsync(cancellationToken);
             if (state.Pending is not null) return ProxyProblemCodes.RecoveryRequired;
             var managed = engine.EngineId == MihomoEngine.Id && state.Published is not null;

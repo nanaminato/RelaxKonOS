@@ -13,11 +13,16 @@ public interface IProxySubscriptionRepository
     Task<IReadOnlyList<ProxySubscriptionDto>> ListAsync(CancellationToken cancellationToken);
     Task<ProxySubscriptionRecord?> GetAsync(Guid id, CancellationToken cancellationToken);
     Task<ProxySubscriptionDto> CreateAsync(string name, Guid profileId, string url, ProxySubscriptionDownloadRoute downloadRoute, CancellationToken cancellationToken);
-    Task CommitDraftRefreshAsync(Guid id, Guid operationId, DateTimeOffset updatedAt, CancellationToken cancellationToken);
-    Task<bool> HasDraftRefreshReceiptAsync(Guid id, Guid operationId, CancellationToken cancellationToken);
+    Task<bool> PrepareDraftRefreshAsync(ProxyDraftRefreshIntent intent, CancellationToken ct);
+    Task<bool> CommitPreparedDraftRefreshAsync(ProxyDraftRefreshIntent intent, CancellationToken ct);
+    Task<ProxyDraftRefreshIntent?> ReadDraftRefreshIntentAsync(Guid operationId, CancellationToken ct);
+    Task<DateTimeOffset?> ReadDraftRefreshReceiptAsync(Guid operationId, Guid? subscriptionId, CancellationToken ct);
+    Task<bool> HasPendingDraftForProfileAsync(Guid profileId, CancellationToken ct);
 }
 
 public sealed record ProxySubscriptionRecord(ProxySubscriptionDto Subscription, string Url, ProxySubscriptionDownloadRoute DownloadRoute);
+public sealed record ProxyDraftRefreshIntent(Guid SubscriptionId, Guid ProfileId, Guid OperationId,
+    string Identity, DateTimeOffset RetrievedAt);
 
 public sealed class SqliteProxySubscriptionRepository(
     IHostEnvironment environment,
@@ -78,30 +83,83 @@ public sealed class SqliteProxySubscriptionRepository(
         return new ProxySubscriptionDto(id, name.Trim(), profileId, false, now, now, now);
     }
 
-    public async Task CommitDraftRefreshAsync(Guid id, Guid operationId, DateTimeOffset updatedAt, CancellationToken cancellationToken)
-    {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
+    public Task<bool> PrepareDraftRefreshAsync(ProxyDraftRefreshIntent intent, CancellationToken ct) =>
+        WriteDraftRefreshAsync(intent, """
             UPDATE proxy_subscriptions
-            SET last_updated_at=$updated,updated_at=$updated,last_draft_refresh_operation_id=$operation
-            WHERE subscription_id=$id;
-            """;
-        command.Parameters.AddWithValue("$id", id.ToString("D"));
-        command.Parameters.AddWithValue("$operation", operationId.ToString("D"));
-        command.Parameters.AddWithValue("$updated", updatedAt.ToString("O"));
-        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
-            throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionInvalid);
+            SET pending_draft_operation_id=$operation,pending_draft_identity=$identity,pending_draft_retrieved_at=$retrieved
+            WHERE subscription_id=$id AND profile_id=$profile AND pending_draft_operation_id IS NULL
+              AND EXISTS (SELECT 1 FROM proxy_profiles WHERE profile_id=$profile AND is_active=0);
+            """, ct);
+
+    public Task<bool> CommitPreparedDraftRefreshAsync(ProxyDraftRefreshIntent intent, CancellationToken ct) =>
+        WriteDraftRefreshAsync(intent, """
+            UPDATE proxy_subscriptions
+            SET last_updated_at=$retrieved,updated_at=$retrieved,last_draft_refresh_operation_id=$operation,
+                pending_draft_operation_id=NULL,pending_draft_identity=NULL,pending_draft_retrieved_at=NULL
+            WHERE subscription_id=$id AND profile_id=$profile AND pending_draft_operation_id=$operation
+              AND pending_draft_identity=$identity AND pending_draft_retrieved_at=$retrieved
+              AND EXISTS (SELECT 1 FROM proxy_profiles WHERE profile_id=$profile AND is_active=0);
+            """, ct);
+
+    private async Task<bool> WriteDraftRefreshAsync(ProxyDraftRefreshIntent intent, string sql, CancellationToken ct)
+    {
+        await using var connection = await OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("$id", intent.SubscriptionId.ToString("D"));
+        command.Parameters.AddWithValue("$profile", intent.ProfileId.ToString("D"));
+        command.Parameters.AddWithValue("$operation", intent.OperationId.ToString("D"));
+        command.Parameters.AddWithValue("$identity", intent.Identity);
+        command.Parameters.AddWithValue("$retrieved", intent.RetrievedAt.ToString("O"));
+        return await command.ExecuteNonQueryAsync(ct) == 1;
     }
 
-    public async Task<bool> HasDraftRefreshReceiptAsync(Guid id, Guid operationId, CancellationToken cancellationToken)
+    public async Task<ProxyDraftRefreshIntent?> ReadDraftRefreshIntentAsync(Guid operationId, CancellationToken ct)
     {
-        await using var connection = await OpenAsync(cancellationToken);
+        await using var connection = await OpenAsync(ct);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT 1 FROM proxy_subscriptions WHERE subscription_id=$id AND last_draft_refresh_operation_id=$operation;";
-        command.Parameters.AddWithValue("$id", id.ToString("D"));
+        command.CommandText = """
+            SELECT subscription_id,profile_id,pending_draft_identity,pending_draft_retrieved_at
+            FROM proxy_subscriptions WHERE pending_draft_operation_id=$operation;
+            """;
         command.Parameters.AddWithValue("$operation", operationId.ToString("D"));
-        return await command.ExecuteScalarAsync(cancellationToken) is not null;
+        await using var row = await command.ExecuteReaderAsync(ct);
+        if (!await row.ReadAsync(ct)) return null;
+        if (!Guid.TryParse(row.GetString(0), out var subscription) || !Guid.TryParse(row.GetString(1), out var profile)
+            || row.IsDBNull(2) || row.IsDBNull(3)
+            || !DateTimeOffset.TryParseExact(row.GetString(3), "O", null, System.Globalization.DateTimeStyles.None, out var retrieved))
+            throw new InvalidDataException("Invalid draft refresh checkpoint.");
+        var intent = new ProxyDraftRefreshIntent(subscription, profile, operationId, row.GetString(2), retrieved);
+        if (await row.ReadAsync(ct)) throw new InvalidDataException("Duplicate draft refresh checkpoint.");
+        return intent;
+    }
+
+    public async Task<DateTimeOffset?> ReadDraftRefreshReceiptAsync(Guid operationId, Guid? subscriptionId, CancellationToken ct)
+    {
+        await using var connection = await OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT last_updated_at FROM proxy_subscriptions
+            WHERE last_draft_refresh_operation_id=$operation AND ($id IS NULL OR subscription_id=$id);
+            """;
+        command.Parameters.AddWithValue("$operation", operationId.ToString("D"));
+        command.Parameters.AddWithValue("$id", (object?)subscriptionId?.ToString("D") ?? DBNull.Value);
+        await using var row = await command.ExecuteReaderAsync(ct);
+        if (!await row.ReadAsync(ct)) return null;
+        if (row.IsDBNull(0) || !DateTimeOffset.TryParseExact(row.GetString(0), "O", null,
+            System.Globalization.DateTimeStyles.None, out var retrieved))
+            throw new InvalidDataException("Invalid draft refresh receipt.");
+        if (await row.ReadAsync(ct)) throw new InvalidDataException("Duplicate draft refresh receipt.");
+        return retrieved;
+    }
+
+    public async Task<bool> HasPendingDraftForProfileAsync(Guid profileId, CancellationToken ct)
+    {
+        await using var connection = await OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM proxy_subscriptions WHERE profile_id=$profile AND pending_draft_operation_id IS NOT NULL;";
+        command.Parameters.AddWithValue("$profile", profileId.ToString("D"));
+        return await command.ExecuteScalarAsync(ct) is not null;
     }
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)

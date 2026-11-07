@@ -49,13 +49,14 @@ public sealed class ProxySubscriptionService(
         var record = await subscriptions.GetAsync(subscriptionId, cancellationToken);
         if (record is null) return ProxyProblemCodes.SubscriptionInvalid;
         var source = await downloader.DownloadAsync(record.Url, record.DownloadRoute, cancellationToken);
+        var retrievedAt = DateTimeOffset.UtcNow;
+        if (!record.Subscription.IsActive)
+            return await configurations.StoreAsync(record.Subscription.ProfileId, source.Content, cancellationToken,
+                new(subscriptionId, operationId, retrievedAt));
         var problem = await configurations.StoreAsync(record.Subscription.ProfileId, source.Content, cancellationToken);
         if (!string.IsNullOrEmpty(problem)) return problem;
-        if (record.Subscription.IsActive)
-            return await configurations.ActivateStoredAsync(record.Subscription.ProfileId, cancellationToken,
-                new(operationId, new(subscriptionId, DateTimeOffset.UtcNow), source.Content));
-        await subscriptions.CommitDraftRefreshAsync(subscriptionId, operationId, DateTimeOffset.UtcNow, cancellationToken);
-        return null;
+        return await configurations.ActivateStoredAsync(record.Subscription.ProfileId, cancellationToken,
+            new(operationId, new(subscriptionId, retrievedAt), source.Content));
     }
 
     public async Task<string?> ActivateAsync(Guid subscriptionId, CancellationToken cancellationToken)

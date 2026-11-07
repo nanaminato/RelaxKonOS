@@ -259,7 +259,7 @@ internal static class ProxyObservationLeaseChecks
         public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken ct) => RunAsync(ct);
         public Task<string?> ApplyAsync(Guid profileId, string yaml, CancellationToken ct) => RunAsync(ct);
         public Task<string?> ActivateStoredAsync(Guid profileId, CancellationToken ct, ProxyQueuedSubscriptionRefresh? refresh = null) => RunAsync(ct);
-        public Task<string?> StoreAsync(Guid profileId, string yaml, CancellationToken ct) => throw new NotSupportedException();
+        public Task<string?> StoreAsync(Guid profileId, string yaml, CancellationToken ct, ProxyQueuedDraftRefresh? draft = null) => throw new NotSupportedException();
         public Task<string?> ReadStoredAsync(Guid profileId, CancellationToken ct) => throw new NotSupportedException();
 
         private async Task<string?> RunAsync(CancellationToken ct)

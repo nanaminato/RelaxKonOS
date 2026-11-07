@@ -1,4 +1,3 @@
-using Microsoft.Data.Sqlite;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
 
@@ -61,8 +60,7 @@ public sealed partial class ProxyOperationStore
         entry.Operation is { State: ProxyOperationState.Running, Stage: BatchPlanned } && entry.Batch is { } steps
             ? steps : throw new InvalidDataException("Missing running subscription batch.");
 
-    private static async Task<Entry> ReconcileBatchAsync(Entry entry, MihomoPublicationState? publication,
-        IProxySubscriptionRepository? subscriptions, CancellationToken ct)
+    private async Task<Entry> ReconcileBatchAsync(Entry entry, MihomoPublicationState? publication, CancellationToken ct)
     {
         var steps = entry.Batch!;
         var recovered = new RefreshStep[steps.Length];
@@ -72,7 +70,7 @@ public sealed partial class ProxyOperationStore
             recovered[index] = step.State switch
             {
                 RefreshStepState.Planned => step with { State = RefreshStepState.Skipped },
-                RefreshStepState.Running => step with { State = await ReconcileRunningStepAsync(step, publication, subscriptions, ct) },
+                RefreshStepState.Running => step with { State = await ReconcileRunningStepAsync(step, publication, ct) },
                 _ => step
             };
         }
@@ -92,19 +90,13 @@ public sealed partial class ProxyOperationStore
         };
     }
 
-    private static async Task<RefreshStepState> ReconcileRunningStepAsync(RefreshStep step, MihomoPublicationState? publication,
-        IProxySubscriptionRepository? subscriptions, CancellationToken ct)
+    private async Task<RefreshStepState> ReconcileRunningStepAsync(RefreshStep step, MihomoPublicationState? publication, CancellationToken ct)
     {
         if (publication?.SubscriptionRefreshCompletions?.GetValueOrDefault(step.OperationId) is { } proof)
             return proof.Confirmed ? RefreshStepState.Succeeded : RefreshStepState.Failed;
-        if (subscriptions is null) return RefreshStepState.Running;
-        try
-        {
-            if (await subscriptions.HasDraftRefreshReceiptAsync(step.SubscriptionId, step.OperationId, ct))
-                return RefreshStepState.Succeeded;
-        }
-        catch (SqliteException) { /* Unreadable proof leaves the original step pending. */ }
-        return RefreshStepState.Running;
+        if (publication is not null && HasPendingRefresh(publication, step.OperationId)) return RefreshStepState.Running;
+        return (await ReconcileDraftAsync(step.OperationId, step.SubscriptionId, ct)).CompletedAt is not null
+            ? RefreshStepState.Succeeded : RefreshStepState.Running;
     }
 
     private static bool IsSettledBatchInterruption(Entry entry) =>
