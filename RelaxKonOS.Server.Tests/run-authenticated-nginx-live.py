@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 
 
-def run(root, server, tests):
+def run(root, server, helper_binary, production_helper):
     credentials = json.loads(sys.stdin.readline())
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
@@ -110,7 +110,20 @@ def run(root, server, tests):
             return False
 
     web = "/api/v1.0/webservers"
-    executable = "/usr/local/sbin/nginx"
+    executable = "/usr/sbin/nginx" if production_helper else "/usr/local/sbin/nginx"
+    configuration = Path("/etc/nginx/nginx.conf") if production_helper else root / "nginx" / "nginx.conf"
+    helper_args = ([helper_binary, "--linux-service", "--config"] if production_helper
+                   else [helper_binary, "--isolated-certificate-pam-helper"])
+    nginx_pid_file = root / "nginx" / "nginx.pid"
+    socket_path = Path(env["PrivilegedHelper__SocketPath"])
+
+    def helper_ready():
+        try:
+            with socket.socket(socket.AF_UNIX) as client:
+                client.connect(str(socket_path))
+            return True
+        except OSError:
+            return False
     key = secrets.token_hex(16)
     helper_config = root / "helper.json"
     helper_config.write_text(json.dumps({"socketPath": env["PrivilegedHelper__SocketPath"],
@@ -131,17 +144,19 @@ def run(root, server, tests):
             time.sleep(0.1)
         raise RuntimeError("Dedicated Nginx did not serve the expected configuration")
 
-    with process([tests, "--isolated-certificate-pam-helper", helper_config], "helper") as helper:
-        wait_for(helper, Path(env["PrivilegedHelper__SocketPath"]).is_socket, "helper")
+    with process([*helper_args, helper_config], "initial-helper") as helper:
+        wait_for(helper, helper_ready, "initial-helper")
         with process([server], "initial-server") as initial:
             wait_for(initial, healthy, "initial-server")
             token = login()
-            matches = [item for item in request(web, token=token) if item["executablePath"] == executable]
+            matches = [item for item in request(web, token=token)
+                       if item["executablePath"] == executable and item["configurationPath"] == str(configuration)]
             assert len(matches) == 1, "The dedicated Nginx instance was not discovered"
             instance = matches[0]["id"]
             reload_route = f"{web}/{instance}/reload"
             request(reload_route, expected=401, method="POST", key=key)
             assert_served(b"original")
+            nginx_pid = int(nginx_pid_file.read_text())
             site = root / "nginx" / "conf.d" / "site.conf"
             site.write_text(site.read_text().replace("original", "updated"))
             accepted = request(reload_route, token=token, expected=202, method="POST", key=key)
@@ -154,8 +169,15 @@ def run(root, server, tests):
             assert str(active["state"]).lower() == "running"
             initial.kill()
             assert initial.wait(timeout=10) < 0
+            if production_helper:
+                helper.kill()
+                assert helper.wait(timeout=10) < 0
+                assert not helper_ready(), "The original production Helper is still reachable"
+                assert_served(b"updated")
             (root / "nginx" / "release").touch()
 
+    with process([*helper_args, helper_config], "restarted-helper") as helper:
+        wait_for(helper, helper_ready, "restarted-helper")
         with process([server], "restarted-server") as restarted:
             wait_for(restarted, healthy, "restarted-server")
             token = login()
@@ -166,9 +188,19 @@ def run(root, server, tests):
                 assert str(receipt["state"]).lower() == "failed"
                 assert receipt["problemCode"] == "webserver.operation_interrupted"
             assert_served(b"updated")
+            assert int(nginx_pid_file.read_text()) == nginx_pid
             assert witness.read_text().splitlines() == ["reload"]
+            if production_helper:
+                wait_for(restarted, (root / "nginx" / "reload-finished").is_file, "native reload completion")
+                print(f"PASS PRODUCTION NGINX SYSTEMD: original Helper killed, native master {nginx_pid} served HTTPS")
             print(f"PASS AUTHENTICATED SERVER NGINX RECEIPT: operation={operation}, Failed / webserver.operation_interrupted, one reload")
 
 
 if __name__ == "__main__":
-    run(*(Path(arg).resolve(strict=True) for arg in sys.argv[1:]))
+    arguments = sys.argv[1:]
+    systemd = arguments[-1:] == ["--systemd"]
+    if systemd:
+        arguments.pop()
+    if len(arguments) != 3:
+        raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [--systemd]")
+    run(*(Path(arg).resolve(strict=True) for arg in arguments), production_helper=systemd)

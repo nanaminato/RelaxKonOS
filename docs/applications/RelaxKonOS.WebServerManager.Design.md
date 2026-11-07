@@ -1718,3 +1718,5 @@ Linux 隔离 Nginx 已验证网站发布恢复后的生产 HTTP 同键响应。�
 直接 Nginx 操作在原 WebServer 台账准入后创建执行作用域，完成任务和作用域清理后提交终态。清理无法确认时保留原活跃回执。Linux 隔离实测覆盖重载后进程中断、同键恢复和 HTTP 断线排空，原 HTTPS 保持，重载一次。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-webserver-操作执行作用域)。
 
 Linux 完整 Server 实机复测通过管理员登录、真实集成 Nginx reload、管理进程强制中断及原回执恢复。同键和原 operationId 返回原中断回执，原 Nginx 持续服务 HTTPS，reload 只执行一次。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证-server-的-nginx-重载与重启)。
+
+系统包 Nginx 通过完整 Server、生产 Helper 和私有 systemd 的真实重载中断验收。Server 与 Helper 被终止期间，原 master 持续提供已更新的 HTTPS。重启后按原 ID 和同键返回原中断回执，实际重载一次。自然停机和取消排空仍待验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-系统包-nginx-经生产-helper-中断与恢复)。
