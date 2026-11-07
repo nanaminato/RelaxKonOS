@@ -362,3 +362,5 @@ MB-05 在隔离 Engine 上通过了 Docker HTTP 客户端断开验收。响应�
 HTTP 断开场景已使用生产 Docker resident 工作租约复测。终态事件仍在租约保护下，持久化后排空。见边界设计 §54。
 
 Docker stack 的 HTTP 202 回执在响应执行期间持有独立工作租约。Linux 专属 Engine 验证了客户端断开、业务终态已落盘且响应仍在执行的路径。响应任务退出后归还租约，同键重试仍返回原操作。
+
+Linux 隔离 Engine 已通过完整 System Mode Server 的认证回执验收。匿名请求被拒绝，通过专属 PAM Helper 登录后执行真实停止，重启并重新登录后同键取回原终态，停止只执行一次。

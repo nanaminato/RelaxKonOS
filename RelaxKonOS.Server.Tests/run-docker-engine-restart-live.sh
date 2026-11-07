@@ -115,7 +115,11 @@ dotnet "$tests" --docker-daemon-recovery-only "$ledger" "$compose" "$project" "$
 [[ $(docker inspect --format '{{.State.Status}}' "$id") == running ]]
 [[ $(docker logs "$id" | grep -Fxc stopping) == "$stops_before" ]]
 echo "PASS DOCKER DAEMON NO REPLAY: stop count before and after recovery=$stops_before"
-dotnet "$tests" --docker-live-http-disconnect "$ledger" "$compose" "$project" "$id"
+if [[ $# -ge 5 ]]; then
+    python3 "$5" "$(dirname "$tests")/RelaxKonOS.Server.dll" "$project" "$tests"
+else
+    dotnet "$tests" --docker-live-http-disconnect "$ledger" "$compose" "$project" "$id"
+fi
 [[ $(docker logs "$id" | grep -Fxc stopping) == "$((stops_before + 1))" ]]
 "${stack[@]}" down -v
 [[ -z $(docker ps -aq) && -z $(docker volume ls -q) ]]
