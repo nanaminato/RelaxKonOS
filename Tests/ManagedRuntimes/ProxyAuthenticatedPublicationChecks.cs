@@ -19,7 +19,7 @@ internal static class ProxyAuthenticatedPublicationChecks
 {
     internal static async Task RunAsync(string root, string assembly, string socket, ISingBoxArchiveHost host,
         ProxyFullServerTrafficProbe traffic, ProxyServerSecret retained, Func<RuntimeArchiveState> nativeState,
-        Func<Task> stopHelper, Func<Task> restartHelper)
+        Func<Task> stopHelper, Func<Task> restartHelper, ProxySystemdGuardProbe guard)
     {
         var login = ReadLogin();
         var store = ManagedServiceChecks.OpenFullServerStore(root);
@@ -101,6 +101,60 @@ internal static class ProxyAuthenticatedPublicationChecks
         }
         finally { await StopAsync(restarted); }
         await VerifyInFlightAsync(root, assembly, socket, host, traffic, retained, added, login, nativeState, stopHelper, restartHelper);
+        await VerifyMihomoOverviewRestartAsync(root, assembly, socket, login, nativeState, guard);
+    }
+
+    private static async Task VerifyMihomoOverviewRestartAsync(string root, string assembly, string socket, LoginRequest login,
+        Func<RuntimeArchiveState> nativeState, ProxySystemdGuardProbe guard)
+    {
+        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, socket, root, reuse: true);
+        start.Environment["Modules__Proxy__Enabled"] = "true";
+        start.Environment["Identity__LinuxPamTransport"] = "helper";
+        start.Environment["Certificate__StorageRoot"] = Path.Combine(start.WorkingDirectory, "certificate-fixture");
+        var revision = nativeState().Installation.StateRevision;
+        var originalPid = guard.RuntimePid;
+        await guard.VerifyTrafficAsync(async (port, ct) =>
+        {
+            async Task<string> ObserveAsync(HttpClient client)
+            {
+                using var anonymous = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { BaseAddress = client.BaseAddress };
+                using var rejected = await anonymous.GetAsync(ProxyApiRoutes.Overview, ct);
+                using var rejectedConnections = await anonymous.GetAsync(ProxyApiRoutes.Connections, ct);
+                if (rejected.StatusCode != HttpStatusCode.Unauthorized || rejectedConnections.StatusCode != HttpStatusCode.Unauthorized)
+                    throw new InvalidOperationException("Anonymous clients must not see the Mihomo overview or connection details.");
+                var overview = await client.GetFromJsonAsync<ProxyOverviewDto>(ProxyApiRoutes.Overview, RelaxKonOSJsonOptions.Default, ct);
+                var connections = await client.GetFromJsonAsync<ProxyConnectionDto[]>(ProxyApiRoutes.Connections, RelaxKonOSJsonOptions.Default, ct);
+                var target = connections?.SingleOrDefault(item => item.Destination == $"93.184.216.34:{port}");
+                if (overview is null || !overview.Health.ControllerReachable || overview.Recovery.RecoveryRequired
+                    || target is null || overview.ActiveConnections != connections!.Length)
+                    throw new InvalidOperationException("Production HTTP did not report the held Mihomo connection and current Core safety state.");
+                return target.Id;
+            }
+
+            string original;
+            using (var initial = Start(start))
+            {
+                try
+                {
+                    using var client = await ConnectAsync(initial, login, ct);
+                    original = await ObserveAsync(client);
+                    initial.Kill();
+                    await initial.WaitForExitAsync(ct);
+                    if (initial.ExitCode == 0) throw new InvalidOperationException("The original Server did not crash.");
+                }
+                finally { await StopAsync(initial); }
+            }
+            using var restarted = Start(start);
+            try
+            {
+                using var client = await ConnectAsync(restarted, login, ct);
+                if (await ObserveAsync(client) != original || guard.RuntimePid != originalPid
+                    || nativeState().Installation.StateRevision != revision)
+                    throw new InvalidOperationException("Server restart changed the original connection or publication revision.");
+            }
+            finally { await StopAsync(restarted); }
+        });
+        Console.WriteLine("PASS AUTHENTICATED MIHOMO OVERVIEW RESTART: original held HTTP connection, authenticated count and details, same runtime and publication revision");
     }
 
     private static async Task VerifyInFlightAsync(string root, string assembly, string socket, ISingBoxArchiveHost host,

@@ -171,22 +171,36 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
         Console.WriteLine("PASS FULL SERVER SYSTEM PROXY: Core guard corrected drift and real Mihomo forwarded HTTP");
     }
 
-    internal async Task VerifyTrafficAsync()
+    internal Task VerifyTrafficAsync() => VerifyTrafficAsync(null);
+
+    internal async Task VerifyTrafficAsync(Func<int, CancellationToken, Task>? observe)
     {
         if (mihomo.HasExited || ReadProxy() != ProxyUrl || !File.Exists(JournalPath))
             throw new InvalidOperationException("The system proxy endpoint or recovery journal was lost.");
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(observe is null ? 5 : 30));
         using var origin = new TcpListener(IPAddress.Parse("93.184.216.34"), 0);
         origin.Start();
         using var http = new HttpClient(new SocketsHttpHandler { Proxy = new WebProxy(ProxyUrl) });
-        var response = http.GetStringAsync($"http://93.184.216.34:{((IPEndPoint)origin.LocalEndpoint).Port}/", budget.Token);
+        var port = ((IPEndPoint)origin.LocalEndpoint).Port;
+        var response = http.GetStringAsync($"http://93.184.216.34:{port}/", budget.Token);
         using var connection = await origin.AcceptTcpClientAsync(budget.Token);
         using var stream = connection.GetStream();
         using var reader = new StreamReader(stream);
         while (await reader.ReadLineAsync(budget.Token) is { Length: > 0 }) { }
+        if (observe is not null)
+        {
+            var ownership = await File.ReadAllBytesAsync(JournalPath, budget.Token);
+            await observe(port, budget.Token);
+            var after = await File.ReadAllBytesAsync(JournalPath, budget.Token);
+            if (mihomo.HasExited || ReadProxy() != ProxyUrl
+                || !ownership.AsSpan().SequenceEqual(after))
+                throw new InvalidOperationException("Management restart changed the original proxy or its ownership journal.");
+        }
         await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nproxy-ok"u8.ToArray(), budget.Token);
         if (await response != "proxy-ok") throw new InvalidOperationException("Isolated HTTP forwarding did not return the origin response.");
     }
+
+    internal int RuntimePid => mihomo.Id;
 
     internal void VerifyOriginalRestored()
     {

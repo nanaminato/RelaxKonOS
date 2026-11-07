@@ -424,3 +424,5 @@ MB-04 隔离 Linux 的 Proxy 管理面静态配对基线已完成。三组管理
 MB-04 概览使用独立请求作用域、直接活动档案查询和连接计数投影。后台启停不解析概览执行图。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-概览与启停执行边界)。
 
 MB-04 Mihomo 连接快照使用共用流式读取器。连接概览不保留详情，读取期间的片段与投影均有上限。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接快照的流式读取)。
+
+MB-04 完整认证 Server 的概览和连接详情使用原 Mihomo 控制器。管理进程重启后的连接与系统代理责任由[联合验收](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的-mihomo-活动连接)追踪。

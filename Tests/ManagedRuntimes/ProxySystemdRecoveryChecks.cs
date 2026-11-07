@@ -207,7 +207,7 @@ internal static class ProxySystemdRecoveryChecks
                         var interrupted = await StopHelperAsync();
                         if (interrupted.ExitCode == 0 || ApplyCount(interrupted.Log) != 2)
                             throw new InvalidOperationException("The Helper must have two completed applies and one interrupted apply.");
-                    }, async () => { helper = await StartHelper(); });
+                    }, async () => { helper = await StartHelper(); }, guard);
             await guard.VerifyTrafficAsync();
             await guard.ApplyAsync(transport, enabled: false);
             guard.VerifyOriginalRestored();
