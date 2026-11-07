@@ -4,7 +4,7 @@ using System.Text;
 namespace RelaxKonOS.Server.Docker;
 
 /// <summary>Domain failure carrying a stable problem code. Status codes follow the existing REST convention.</summary>
-internal sealed class DockerStackException(string problemCode, int statusCode = 409) : Exception(problemCode)
+public sealed class DockerStackException(string problemCode, int statusCode = 409) : Exception(problemCode)
 {
     public string ProblemCode { get; } = problemCode;
     public int StatusCode { get; } = statusCode;
@@ -14,7 +14,7 @@ internal sealed class DockerStackException(string problemCode, int statusCode = 
 /// Stable problem codes of the Compose stack domain. They are part of the wire contract: a client
 /// explains a refusal from the code alone, so the spelling must not drift between releases.
 /// </summary>
-internal static class DockerStackProblem
+public static class DockerStackProblem
 {
     public const string InvalidName = "docker.stack_invalid_name";
     public const string InvalidCompose = "docker.stack_invalid_compose";
@@ -39,7 +39,7 @@ internal static class DockerStackProblem
 }
 
 /// <summary>Shared value rules for the Compose stack domain.</summary>
-internal static class DockerStackValidation
+public static class DockerStackValidation
 {
     /// <summary>A Compose project name is also the Docker resource prefix, so it stays narrow.</summary>
     public static bool IsValidProjectName(string? value) => value is { Length: >= 1 and <= 63 }

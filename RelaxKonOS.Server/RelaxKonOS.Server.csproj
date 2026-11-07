@@ -88,4 +88,9 @@
     <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Firewall/RelaxKonOS.ServerModule.Firewall.csproj" ReferenceOutputAssembly="false" />
     <Content Include="../ServerModules/RelaxKonOS.ServerModule.Firewall/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Firewall.dll" Link="Modules/Firewall/RelaxKonOS.ServerModule.Firewall.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Docker.Contracts/RelaxKonOS.ServerModule.Docker.Contracts.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Docker/RelaxKonOS.ServerModule.Docker.csproj" ReferenceOutputAssembly="false" />
+    <Content Include="../ServerModules/RelaxKonOS.ServerModule.Docker/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Docker.dll" Link="Modules/Docker/RelaxKonOS.ServerModule.Docker.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

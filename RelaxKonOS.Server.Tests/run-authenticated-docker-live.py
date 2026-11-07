@@ -51,6 +51,7 @@ def run(server, project, helper):
         read_barrier = root / "compose-read-barrier"
         if cancel_observation:
             read_barrier.mkdir()
+            env["DockerCompose__DataDirectory"] = str(root / "compose-data")
         if observation_outage:
             if outage_gate is None:
                 raise RuntimeError("Observation outage requires a dedicated Engine gate")
@@ -78,7 +79,7 @@ if args[:4] == ['ps', '--all', '--filter', {'label=com.docker.compose.project=' 
                 sys.exit('Real Compose service observation failed')
             (read_barrier / 'pid').write_text(str(os.getpid()))
             (read_barrier / 'received').touch()
-            deadline = time.monotonic() + 30
+            deadline = time.monotonic() + 60
             while not (read_barrier / 'release').exists():
                 if time.monotonic() >= deadline:
                     sys.exit('Held Compose response did not drain')
@@ -143,7 +144,8 @@ os.execv(docker, [docker, *args])
 
         def start():
             with (root / "startup.stderr").open("w") as errors:
-                process = subprocess.Popen(["dotnet", str(server)], cwd=root, env=env,
+                server_env = dict(env, DOTNET_STARTUP_HOOKS=str(helper)) if cancel_observation else env
+                process = subprocess.Popen(["dotnet", str(server)], cwd=root, env=server_env,
                     stdout=subprocess.DEVNULL, stderr=errors)
             try:
                 for _ in range(100):
@@ -182,6 +184,14 @@ os.execv(docker, [docker, *args])
             def active_leases():
                 return request("/api/v1.0/server/modules/relaxkonos.docker", token=token)["residency"]["activeLeases"]
 
+            def code_events():
+                prefix = "DOCKER COMPOSE ALC "
+                return [line.removeprefix(prefix) for line in (root / "startup.stderr").read_text().splitlines()
+                        if line.startswith(prefix)]
+
+            if code_events():
+                raise RuntimeError("Idle Server loaded Compose execution before authenticated work")
+
             (read_barrier / "armed").touch()
             with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
                 headers = (f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
@@ -193,20 +203,49 @@ os.execv(docker, [docker, *args])
                         raise TimeoutError("Real Compose service output was not held")
                     time.sleep(0.05)
                 command = Path("/proc", (read_barrier / "pid").read_text())
-                if active_leases() != 1 or not command.exists():
+                loaded = code_events()
+                if active_leases() != 1 or not command.exists() or len(loaded) != 1 or not loaded[0].startswith("load docker-compose:"):
                     raise RuntimeError("The held Compose command lost its work lease")
+                time.sleep(32)
+                if active_leases() != 1 or not command.exists() or code_events() != loaded:
+                    raise RuntimeError("The Compose generation unloaded while the original command was still held")
 
             deadline = time.monotonic() + 10
             while active_leases() != 0:
                 if time.monotonic() >= deadline:
                     raise TimeoutError("The cancelled Compose HTTP read did not drain")
                 time.sleep(0.05)
+            if command.exists():
+                raise RuntimeError("The cancelled Compose command was not reaped before lease release")
+            generation = loaded[0].removeprefix("load ")
+            deadline = time.monotonic() + 45
+            while code_events() == loaded:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("The idle Compose generation did not unload")
+                time.sleep(0.1)
+            unloaded = [*loaded, f"unload {generation}"]
+            if code_events() != unloaded:
+                raise RuntimeError("Compose idle unload did not release the original generation")
             services = request(path, token=token)
             stops = subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping")
-            if command.exists() or len(services) != 1 or services[0]["service"] != "witness" or stops != initial_stops:
+            woke = code_events()
+            if len(woke) != 3 or woke[:2] != unloaded or woke[-1] == loaded[0] or not woke[-1].startswith("load docker-compose:"):
+                raise RuntimeError("A new Compose generation did not wake for the original service read")
+            if len(services) != 1 or services[0]["service"] != "witness" or stops != initial_stops:
                 raise RuntimeError("The Compose read did not reap its command and preserve the original container")
             (read_barrier / "complete").touch()
+            stacks = request("/api/v1.0/docker/stacks", token=token)
+            definition = request(f"/api/v1.0/docker/stacks/{project}/definition", token=token)
+            preview = request("/api/v1.0/docker/stacks/preview", {
+                "name": project, "composeYaml": "services:\n  witness:\n    image: alpine:3.22\n"
+            }, token)
+            preview_root = root / "compose-data" / "preview"
+            if not any(stack["name"] == project for stack in stacks) or "witness:" not in definition["composeYaml"] \
+                    or [service["service"] for service in preview["services"]] != ["witness"] \
+                    or not preview_root.is_dir() or any(preview_root.iterdir()):
+                raise RuntimeError("The reloaded execution did not preserve Compose list, definition and preview cleanup")
             print("PASS AUTHENTICATED DOCKER COMPOSE READ: live Engine output, lease, client disconnect, process cleanup and fresh read")
+            print(f"PASS AUTHENTICATED DOCKER COMPOSE ALC: {generation} drained and unloaded; {woke[-1]}; same running service")
 
         def set_engine_state(state):
             (outage_gate / f"request-{state}").touch(exist_ok=False)

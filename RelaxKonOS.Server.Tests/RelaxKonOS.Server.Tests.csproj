@@ -46,6 +46,12 @@
     <Reference Include="RelaxKonOS.Server" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
       <HintPath>$(PrebuiltServerAssemblyPath)</HintPath>
     </Reference>
+    <Reference Include="RelaxKonOS.ServerModule.Docker.Contracts" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
+      <HintPath>$([System.IO.Path]::GetDirectoryName('$(PrebuiltServerAssemblyPath)'))/RelaxKonOS.ServerModule.Docker.Contracts.dll</HintPath>
+    </Reference>
+    <Content Include="$([System.IO.Path]::GetDirectoryName('$(PrebuiltServerAssemblyPath)'))/Modules/Docker/RelaxKonOS.ServerModule.Docker.dll"
+             Link="Modules/Docker/RelaxKonOS.ServerModule.Docker.dll" CopyToOutputDirectory="PreserveNewest"
+             Condition="'$(UsePrebuiltServerAssembly)' == 'true' and '$(PrebuiltServerAssemblyPath)' != ''" />
     <Reference Include="Microsoft.Data.Sqlite" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
       <HintPath>../RelaxKonOS.Server/bin/Debug/net10.0/Microsoft.Data.Sqlite.dll</HintPath>
     </Reference>

@@ -933,7 +933,7 @@ internal static async Task VerifyStackOperationsLiveAsync(string root)
     var project = "ad04live" + Guid.NewGuid().ToString("N")[..8];
     Console.WriteLine($"LIVE DOCKER FIXTURE project={project} image={image}");
     var volume = $"{project}_data";
-    var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
+    using var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
         Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory }));
     var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         { ContentRootPath = root, EnvironmentName = Microsoft.Extensions.Hosting.Environments.Production });
@@ -1183,7 +1183,7 @@ internal static async Task VerifyLiveHttpDisconnectAsync(string ledgerDirectory,
     const string key = "live-http-disconnect";
     using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
     var ct = budget.Token;
-    var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
+    using var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
         Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory }));
     var ownerBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
         { ContentRootPath = dataDirectory, EnvironmentName = Microsoft.Extensions.Hosting.Environments.Production });
@@ -1290,14 +1290,14 @@ internal static async Task RecoverAfterDaemonRestartAsync(string ledgerDirectory
     var observedScopes = 0;
     var composeEnvironment = new TestHostEnvironment(dataDirectory);
     var composeOptions = Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory, MaximumConcurrentOperations = 4 });
-    var scopes = new OperationTestScopeFactory<IDockerComposeService>(() =>
+    await using var services = new ServiceCollection().AddScoped<IDockerComposeService>(_ =>
     {
         Interlocked.Increment(ref observedScopes);
         return new DockerComposeService(composeEnvironment, composeOptions);
-    });
+    }).BuildServiceProvider();
     var original = NewStackStore(ledgerDirectory, 4).Get(operationId)?.Operation;
     TestAssert.Assert(original?.State == DockerStackOperationState.Running, "The interrupted worker must leave its original Running receipt.");
-    using var recovery = new DockerStackOperationCoordinator(NewStackStore(ledgerDirectory, 4), scopes, composeOptions,
+    using var recovery = new DockerStackOperationCoordinator(NewStackStore(ledgerDirectory, 4), services.GetRequiredService<IServiceScopeFactory>(), composeOptions,
         new TestApplicationLifetime(), new CaptureOperationalEvents(), NullLogger<DockerStackOperationCoordinator>.Instance,
         new TestResidentBackgroundLeases());
     await recovery.StartAsync(default);

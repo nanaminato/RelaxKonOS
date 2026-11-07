@@ -127,6 +127,11 @@ if (args is ["--docker-process-recovery-only"])
     await DockerProcessRecoveryChecks.RunAsync();
     return;
 }
+if (args.Contains("--docker-compose-code-only"))
+{
+    await DockerComposeExecutionChecks.RunAsync();
+    return;
+}
 if (args.Contains("--module-boundary-milestones-only"))
 {
     var milestoneRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-module-milestones-" + Guid.NewGuid().ToString("N"));
@@ -137,6 +142,7 @@ if (args.Contains("--module-boundary-milestones-only"))
         await DirectHttpChallengeLifetimeChecks.RunAsync();
         await ProxyObservationLeaseChecks.RunAsync();
         await DockerComposeHttpChecks.RunAsync();
+        await DockerComposeExecutionChecks.RunAsync();
         await ModuleBackgroundOwnershipChecks.RunAsync(milestoneRoot);
         await TerminalStreamFramesChecks.RunAsync();
         if (OperatingSystem.IsLinux()) await TerminalControlInputChecks.RunAsync();

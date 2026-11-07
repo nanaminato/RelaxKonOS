@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" /></ItemGroup>
+  <Target Name="ValidateDockerComposeContractBoundary" BeforeTargets="PrepareForBuild">
+    <PropertyGroup><DockerComposeProtocolProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj'))</DockerComposeProtocolProjectPath></PropertyGroup>
+    <ItemGroup>
+      <InvalidDockerComposeContractProject Include="@(ProjectReference)" Condition="'%(ProjectReference.FullPath)' != '$(DockerComposeProtocolProjectPath)'" />
+      <InvalidDockerComposeContractFramework Include="@(FrameworkReference)" Condition="'%(FrameworkReference.Identity)' != 'Microsoft.NETCore.App' or '%(FrameworkReference.IsImplicitlyDefined)' != 'true'" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidDockerComposeContractProject)' != '' or '@(Reference)' != '' or '@(PackageReference)' != '' or '@(InvalidDockerComposeContractFramework)' != '' or '@(COMReference)' != ''"
+           Text="DockerCompose contracts may reference only the canonical Protocol project and implicit .NET framework; Host and implementation dependencies are forbidden." />
+  </Target>
+</Project>

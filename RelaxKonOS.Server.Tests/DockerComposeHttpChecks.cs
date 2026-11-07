@@ -109,7 +109,7 @@ internal static class DockerComposeHttpChecks
         {
             fixture.Entered.TrySetResult();
             await fixture.ReleaseRead.Task;
-            if (fixture.FailCleanup) throw new DockerComposeCleanupException(new IOException("Unconfirmed test cleanup."));
+            if (fixture.FailCleanup) throw new DockerComposeCleanupException();
             return result;
         }
 

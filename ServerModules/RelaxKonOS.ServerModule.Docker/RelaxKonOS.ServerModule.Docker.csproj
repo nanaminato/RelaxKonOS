@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../Shared/RelaxKonOS.ServerModule.Docker.Contracts/RelaxKonOS.ServerModule.Docker.Contracts.csproj" /></ItemGroup>
+  <Target Name="ValidateDockerComposeExecutionBoundary" BeforeTargets="PrepareForBuild">
+    <PropertyGroup><DockerComposeContractProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../Shared/RelaxKonOS.ServerModule.Docker.Contracts/RelaxKonOS.ServerModule.Docker.Contracts.csproj'))</DockerComposeContractProjectPath></PropertyGroup>
+    <ItemGroup>
+      <InvalidDockerComposeImplementationProject Include="@(ProjectReference)" Condition="'%(ProjectReference.FullPath)' != '$(DockerComposeContractProjectPath)'" />
+      <InvalidDockerComposeImplementationFramework Include="@(FrameworkReference)" Condition="'%(FrameworkReference.Identity)' != 'Microsoft.NETCore.App' or '%(FrameworkReference.IsImplicitlyDefined)' != 'true'" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidDockerComposeImplementationProject)' != '' or '@(Reference)' != '' or '@(PackageReference)' != '' or '@(InvalidDockerComposeImplementationFramework)' != '' or '@(COMReference)' != ''"
+           Text="DockerCompose execution may reference only its canonical shared contract project and implicit .NET framework; Host, private packages and other implementations are forbidden." />
+  </Target>
+</Project>

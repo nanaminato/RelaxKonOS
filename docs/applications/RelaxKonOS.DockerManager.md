@@ -380,3 +380,5 @@ Docker Engine 离线时，服务列表返回 `503 / docker.unavailable`。Server
 用户取消已派发的变更时，若 Engine 暂时无法观察，原操作继续显示 Running / Observing。Server 完成原 CLI 清理并等待只读观察，以原 operationId 写入 Interrupted。同项目在观察恢复前保持互斥。完整认证 Server 已在私有 Engine 上验证首次观察取消、观察断线及原回执接续。见[取消与观察断线](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-用户取消与观察断线交叠)。
 
 Compose 列表、预览、定义与服务读取在认证后取得工作租约。CLI 与输出清理、实际响应及作用域结束后归还租约，无法核实 CLI 清理时保留故障责任。见[Compose 只读 HTTP 工作责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-只读-http-工作责任)。
+
+Compose CLI 执行、文件处理和输出解析使用按需加载的程序集。最后一个执行作用域结束 30 秒后可卸载，新工作会唤醒执行代码。容器由 Engine 持续管理，原操作回执与恢复由 Server 台账负责。见[Compose 独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-独立执行程序集)。

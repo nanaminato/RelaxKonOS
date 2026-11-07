@@ -126,7 +126,7 @@ if [[ $# -ge 5 ]]; then
     gate="$root/engine-outage"
     mkdir "$gate"
     wait_for_gate() {
-        for i in $(seq 1 300); do
+        for i in $(seq 1 "${2:-300}"); do
             [[ ! -f "$gate/request-$1" ]] || return 0
             kill -0 "$worker" 2>/dev/null || return 1
             sleep .1
@@ -137,7 +137,12 @@ if [[ $# -ge 5 ]]; then
     RELAXKONOS_TEST_DOCKER_OUTAGE_GATE="$gate" python3 "$5" "$6" "$project" "$tests" <&3 &
     worker=$!
     exec 3<&-
-    wait_for_gate offline
+    if [[ ${RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE:-} == cancel ]]; then
+        # This case first holds a real read across the active and idle ALC windows.
+        wait_for_gate offline 1200
+    else
+        wait_for_gate offline
+    fi
     kill -TERM "$pid"
     wait "$pid"
     pid=
