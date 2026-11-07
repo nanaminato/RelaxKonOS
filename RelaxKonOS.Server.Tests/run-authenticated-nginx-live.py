@@ -20,9 +20,10 @@ import uuid
 
 def run(root, server, helper_binary, mode):
     production_helper = mode is not None
-    website = mode in ("--systemd-website", "--systemd-website-verifying", "--systemd-website-acme")
+    website = mode in ("--systemd-website", "--systemd-website-verifying", "--systemd-website-acme", "--systemd-website-acme-success")
     verifying_website = mode == "--systemd-website-verifying"
-    acme_website = mode == "--systemd-website-acme"
+    acme_website = mode in ("--systemd-website-acme", "--systemd-website-acme-success")
+    acme_success = mode == "--systemd-website-acme-success"
     retire_retry = mode == "--systemd-retire-retry"
     relay_mode = retire_retry or mode in ("--systemd-response-loss", "--systemd-rejected")
     rejected = mode == "--systemd-rejected"
@@ -58,7 +59,7 @@ def run(root, server, helper_binary, mode):
         if verifying_website:
             env["SSL_CERT_FILE"] = str(root / "website-ca.pem")
         if acme_website:
-            env["SSL_CERT_FILE"] = str(root / "https.pem")
+            env["SSL_CERT_FILE"] = str(root / "trust.pem")
             env["Certificate__DirectoryUrl"] = "https://localhost:14000/dir"
     env["Modules__Certificates__Enabled"] = "true"
     env["Modules__WebServer__Enabled"] = "true"
@@ -319,6 +320,20 @@ def run(root, server, helper_binary, mode):
             (root / "nginx" / "release").touch()
         else:
             (upstream / "release").touch()
+        if acme_success:
+            (root / "nginx" / "release").touch()
+        if acme_website:
+            challenge_root = root / "challenge"
+            sentinel = challenge_root / "foreign-sentinel"
+            sentinel.write_text("untouched")
+            client = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=root / "issuing-root.pem")))
+
+        def assert_ca_once():
+            ca_log = (root / "ca.log").read_text()
+            assert ca_log.count("Added order") == ca_log.count("POST /finalize-order/") == 1
+            access = (root / "nginx" / "acme-access.log").read_text()
+            assert re.search(r'GET /\.well-known/acme-challenge/[^ ]+ HTTP/1\.1" 200 ', access)
         with process([*helper_args, helper_config], "website-helper") as helper:
             wait_for(helper, helper_ready, "website-helper")
             with process([server], "website-server") as initial:
@@ -373,17 +388,32 @@ def run(root, server, helper_binary, mode):
                 operation_id = original["operationId"]
                 operation_route = f"{publications}/operations/{operation_id}"
                 if acme_website:
-                    def terminal_failure():
+                    def acme_checkpoint():
                         current = request(operation_route, token=token)
-                        if current["state"].lower() in ("queued", "running"):
-                            return False
-                        assert (current["state"].lower(), current["problemCode"]) == (
-                            "failed", "certificate.port80_elevation_required"), current
-                        return True
+                        if acme_success and current["state"].lower() == "succeeded":
+                            return True
+                        if current["state"].lower() not in ("queued", "running"):
+                            raise RuntimeError(f"Website ACME failed: {current['problemCode']}")
+                        return not acme_success and (root / "certificate-response-held").is_file() and current["certificateOperationId"]
 
-                    wait_for(initial, terminal_failure, "website direct HTTP-01 authorization decision")
-                    failed = request(operation_route, token=token)
-                    assert not failed["certificateOperationId"] and not failed["certificateId"]
+                    wait_for(initial, acme_checkpoint, "real website ACME checkpoint", attempts=350)
+                    original_certificate = request(operation_route, token=token)["certificateOperationId"]
+                    assert original_certificate
+                    certificate_route = f"{certificates}/operations/{original_certificate}"
+                    assert_ca_once()
+                    if acme_success:
+                        wait_for(initial, published_body, "CA-issued HTTPS and real Docker upstream")
+                        assert request(certificate_route, token=token)["state"].lower() == "succeeded"
+                        assert request(app_route, token=token)["application"]["siteId"]
+                        assert list(challenge_root.iterdir()) == [sentinel] and sentinel.read_text() == "untouched"
+                        assert witness.read_text().splitlines() == ["reload"]
+                        print(f"PASS AUTHENTICATED WEBSITE ACME SUCCESS: publication={operation_id}; certificate={original_certificate}; real HTTPS and one reload")
+                        return
+                    active_tokens = [path for path in challenge_root.iterdir() if path != sentinel]
+                    assert len(active_tokens) == 1 and re.fullmatch(r"[A-Za-z0-9_-]+", active_tokens[0].name)
+                    challenge_url = f"http://{domain}/.well-known/acme-challenge/{active_tokens[0].name}"
+                    with opener.open(challenge_url, timeout=2) as response:
+                        assert response.read() == active_tokens[0].read_bytes()
                     assert not witness.exists()
                     assert_served(b"original")
                 else:
@@ -403,7 +433,9 @@ def run(root, server, helper_binary, mode):
                 master = nginx_pid_file.read_text()
                 initial.kill()
                 assert initial.wait(timeout=10) < 0
-                if not acme_website:
+                if acme_website:
+                    (root / "release-certificate-response").touch()
+                else:
                     (root / "nginx" / "release").touch()
                     (upstream / "release").touch()
 
@@ -417,15 +449,22 @@ def run(root, server, helper_binary, mode):
                 assert observed["operationId"] == operation_id
                 assert subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip() == "running"
                 if acme_website:
-                    assert observed == failed
+                    assert observed["state"].lower() == "interrupted" and observed["certificateOperationId"] == original_certificate
+                    certificate_receipt = request(certificate_route, token=token)
+                    assert certificate_receipt["problemCode"] == "certificate.operation_interrupted"
+                    order = request(certificate_route + "/acme-order", token=token)
+                    assert order["remoteStatus"] == "valid" and order["operation"]["operationId"] == original_certificate, order
                     assert not request(app_route, token=token)["application"]["siteId"]
                     assert not witness.exists() and nginx_pid_file.read_text() == master
                     assert_served(b"original")
-                    with socket.socket() as challenge:
-                        assert challenge.connect_ex(("127.0.0.1", 80)) != 0, "Unexpected Direct HTTP-01 listener"
-                    ca_log = (root / "ca.log").read_text()
-                    assert "GET /dir" in ca_log and "Added order" not in ca_log and "POST /finalize-order/" not in ca_log
-                    print(f"PASS AUTHENTICATED WEBSITE ACME AUTHORIZATION: publication={operation_id}; original failed receipt, no CA order or reload")
+                    assert list(challenge_root.iterdir()) == [sentinel] and sentinel.read_text() == "untouched"
+                    try:
+                        with opener.open(challenge_url, timeout=2):
+                            raise AssertionError("The original challenge remained served after restart")
+                    except urllib.error.HTTPError as error:
+                        assert error.code == 404
+                    assert_ca_once()
+                    print(f"PASS AUTHENTICATED WEBSITE ACME RECOVERY: publication={operation_id}; certificate={original_certificate}; original valid order, token removed, no reload")
                     return
                 assert observed["state"].lower() == "interrupted"
                 recovery = "website.recheck_required" if verifying_website else "website.site_application_unverified"
@@ -616,7 +655,8 @@ if __name__ == "__main__":
     arguments = sys.argv[1:]
     mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain", "--systemd-unknown", "--systemd-timeout", "--systemd-receipt",
                                                             "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry",
-                                                            "--systemd-website", "--systemd-website-verifying", "--systemd-website-acme") else None
+                                                            "--systemd-website", "--systemd-website-verifying", "--systemd-website-acme",
+                                                            "--systemd-website-acme-success") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

@@ -11,7 +11,8 @@ import time
 
 root = Path(sys.argv[1])
 schedule = sys.argv[2:] == ["schedule"]
-full_server = schedule or sys.argv[2:] == ["full-server"]
+website = sys.argv[2:] == ["website"]
+full_server = schedule or website or sys.argv[2:] == ["full-server"]
 ca_context = ssl.create_default_context(cafile=str(root / "https.pem"))
 
 
@@ -41,6 +42,13 @@ class Relay(BaseHTTPRequestHandler):
                 while not (root / "release-challenge-response").is_file():
                     if time.monotonic() >= deadline:
                         raise TimeoutError("The renewal shutdown fixture did not release the challenge response")
+                    time.sleep(0.05)
+            if website and self.path.startswith("/certZ/") and response.status == 200 and body.startswith(b"-----BEGIN CERTIFICATE-----"):
+                (root / "certificate-response-held").touch()
+                deadline = time.monotonic() + 25
+                while not (root / "release-certificate-response").is_file():
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("The website fixture did not release the certificate response")
                     time.sleep(0.05)
             truncate = (
                 selected == "order" and self.path == "/order-plz" and response.status == 201 and response.getheader("Location")

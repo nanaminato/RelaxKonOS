@@ -22,6 +22,8 @@ public static class WebsitePublicationEndpoints
         {
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, request.WebServerId))
                 return ElevationRequired();
+            if (request.CertificateId is null && !elevations.IsGranted(context.User, HostElevationCapability.CertificateIssue, "certificates/issue"))
+                return ElevationRequired("website.certificate_elevation_required");
             var operation = await coordinator.StartAsync(request, Actor(context.User), Key(context), ct);
             return new ResidentOperationResult(ServerModules.WebServerId, Results.Accepted(WebsitePublicationApiRoutes.Operation.Replace("{operationId}", operation.OperationId.ToString("D")), operation));
         })).RequireAuthorization(ApplicationDeploymentEndpoints.ManagePolicy);
@@ -38,8 +40,8 @@ public static class WebsitePublicationEndpoints
 
     private static string Key(HttpContext context) => context.Request.Headers["Idempotency-Key"].ToString();
     private static string Actor(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
-    private static IResult ElevationRequired() => Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "elevation-required",
-        type: "https://relaxkonos.app/problems/elevation-required", extensions: new Dictionary<string, object?> { ["problemCode"] = "elevation-required" });
+    private static IResult ElevationRequired(string code = "elevation-required") => Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: code,
+        type: "https://relaxkonos.app/problems/" + code, extensions: new Dictionary<string, object?> { ["problemCode"] = code });
     private static IResult Handle(Func<IResult> action)
     {
         try { return action(); }

@@ -21,6 +21,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
     private readonly HostOperationJournal _journal;
     private readonly ICertificateStore _certificates;
     private readonly CertificateRenewalAttemptRepository _renewalAttempts;
+    private readonly FileHttp01ChallengeStore? _challengeFiles;
     private readonly ResidentBackgroundWorkOwner _work;
     private bool _ready;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
@@ -28,12 +29,14 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
     private readonly ILogger<CertificateOperationStore> _logger;
 
     public CertificateOperationStore(IHostEnvironment environment, HostOperationJournal journal, ICertificateStore certificates,
-        CertificateRenewalAttemptRepository renewalAttempts, ILogger<CertificateOperationStore> logger, IResidentModuleWorkLeaseSource leases)
+        CertificateRenewalAttemptRepository renewalAttempts, ILogger<CertificateOperationStore> logger, IResidentModuleWorkLeaseSource leases,
+        FileHttp01ChallengeStore? challengeFiles = null)
     {
         _path = Path.Combine(environment.ContentRootPath, "data", "certificate-operations.json");
         _journal = journal;
         _certificates = certificates;
         _renewalAttempts = renewalAttempts;
+        _challengeFiles = challengeFiles;
         _logger = logger;
         _work = new(leases, ServerModules.CertificatesId);
     }
@@ -75,23 +78,27 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
     internal static string RequestScope(string requestKey, Guid certificateId, string kind, string? actor) =>
         JsonSerializer.Serialize(new[] { actor ?? "", kind, kind is "issue" or "create-self-signed" ? "" : certificateId.ToString("D"), requestKey });
 
+    private static string WebsiteRequestScope(Guid websitePublicationId, string? actor) =>
+        RequestScope(websitePublicationId.ToString("D"), Guid.Empty, "website-issue", actor);
+
     public Task<CertificateOperationDto> StartAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
         Func<CancellationToken, Task<string>> action, CancellationToken applicationStopping, CancellationToken admissionCancellation,
         bool automaticRenewal = false) =>
         StartCoreAsync(idempotencyKey, certificateId, kind, actor, (_, ct) => action(ct), applicationStopping, admissionCancellation, automaticRenewal);
 
     internal Task<CertificateOperationDto> StartOrderAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
-        Func<Func<AcmeOrderIdentity, Task>, CancellationToken, Task<string>> action, CancellationToken applicationStopping,
-        CancellationToken admissionCancellation, bool automaticRenewal = false) =>
-        StartCoreAsync(idempotencyKey, certificateId, kind, actor, (id, ct) => action(identity => RecordOrderAsync(id, identity), ct),
-            applicationStopping, admissionCancellation, automaticRenewal);
+        Func<Func<AcmeOrderIdentity, Task>, Func<WebRootChallengeFile, Task>, CancellationToken, Task<string>> action, CancellationToken applicationStopping,
+        CancellationToken admissionCancellation, bool automaticRenewal = false, Guid? websitePublicationId = null) =>
+        StartCoreAsync(idempotencyKey, certificateId, kind, actor,
+            (id, ct) => action(identity => RecordOrderAsync(id, identity), file => RecordChallengeAsync(id, file), ct),
+            applicationStopping, admissionCancellation, automaticRenewal, websitePublicationId);
 
     private async Task<CertificateOperationDto> StartCoreAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
         Func<Guid, CancellationToken, Task<string>> action, CancellationToken applicationStopping, CancellationToken admissionCancellation,
-        bool automaticRenewal = false)
+        bool automaticRenewal = false, Guid? websitePublicationId = null)
     {
         using var admission = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, admissionCancellation);
-        var key = RequestScope(idempotencyKey, certificateId, kind, actor);
+        var key = websitePublicationId is { } publicationId ? WebsiteRequestScope(publicationId, actor) : RequestScope(idempotencyKey, certificateId, kind, actor);
         await _gate.WaitAsync(admission.Token);
         try { RequireReady(); if (FindExistingRequest(key, certificateId, automaticRenewal) is { } replay) return replay.ToDto(); }
         finally { _gate.Release(); }
@@ -109,7 +116,8 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
             }
             admission.Token.ThrowIfCancellationRequested();
             work.Token.ThrowIfCancellationRequested();
-            operation = new PersistedOperation(Guid.NewGuid(), key, certificateId, kind, actor, CertificateOperationState.Queued, "queued", "", null, null);
+            operation = new PersistedOperation(Guid.NewGuid(), key, certificateId, kind, actor, CertificateOperationState.Queued, "queued", "", null, null,
+                WebsitePublicationId: websitePublicationId);
             _operations.Add(operation.OperationId, operation);
             _byIdempotency.Add(key, operation.OperationId);
             try { await SaveAsync(admission.Token); }
@@ -124,10 +132,33 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         return operation.ToDto();
     }
 
-    public async Task<CertificateOperationDto?> FindRequestAsync(string requestKey, Guid certificateId, string kind, string? actor,
-        CancellationToken cancellationToken, bool automaticRenewal = false)
+    internal async Task<CertificateOperationDto?> GetWebsiteIssueAsync(Guid websitePublicationId, CancellationToken ct)
     {
-        var key = RequestScope(requestKey, certificateId, kind, actor);
+        await _gate.WaitAsync(ct);
+        try { RequireReady(); return _operations.Values.SingleOrDefault(operation => operation.WebsitePublicationId == websitePublicationId)?.ToDto(); }
+        finally { _gate.Release(); }
+    }
+
+    private async Task RecordChallengeAsync(Guid id, WebRootChallengeFile file)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            var operation = _operations[id];
+            if (operation.State != CertificateOperationState.Running || (operation.Challenges?.Length ?? 0) >= 100
+                || _operations.Values.Any(item => item.Challenges?.Any(challenge => challenge.Token == file.Token) == true))
+                throw new CertificateOperationException("certificate.challenge_ownership_unconfirmed");
+            _operations[id] = operation with { Challenges = [.. operation.Challenges ?? [], file] };
+            try { await SaveLedgerAsync(CancellationToken.None); }
+            catch (Exception error) { _operations[id] = operation; throw new ResidentWorkCompletionException(error); }
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<CertificateOperationDto?> FindRequestAsync(string requestKey, Guid certificateId, string kind, string? actor,
+        CancellationToken cancellationToken, bool automaticRenewal = false, Guid? websitePublicationId = null)
+    {
+        var key = websitePublicationId is { } publicationId ? WebsiteRequestScope(publicationId, actor) : RequestScope(requestKey, certificateId, kind, actor);
         await _gate.WaitAsync(cancellationToken);
         try { RequireReady(); return FindExistingRequest(key, certificateId, automaticRenewal)?.ToDto(); }
         finally { _gate.Release(); }
@@ -312,7 +343,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
             if (operation.State == CertificateOperationState.Cancelled && state != CertificateOperationState.Cancelled) return;
             var interrupted = problemCode == InterruptedProblem;
             var completed = operation with { State = state, Stage = interrupted ? "interrupted" : state.ToString().ToLowerInvariant(),
-                ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow, Order = interrupted ? operation.Order : null };
+                ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow, Order = interrupted ? operation.Order : null, Challenges = null };
             _operations[id] = completed;
             try
             {
@@ -339,8 +370,10 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         {
             foreach (var item in JsonSerializer.Deserialize<PersistedOperation[]>(await File.ReadAllTextAsync(_path, ct), Json) ?? throw new JsonException("Certificate ledger must be an array."))
             {
+                foreach (var challenge in item.Challenges ?? [])
+                    await (_challengeFiles ?? throw new InvalidOperationException("WebRoot cleanup ownership is unavailable.")).RemoveOwnedAsync(challenge, ct);
                 var recovered = item.State is CertificateOperationState.Queued or CertificateOperationState.Running
-                    ? item with { State = CertificateOperationState.Failed, Stage = "interrupted", ProblemCode = InterruptedProblem, CompletedAt = DateTimeOffset.UtcNow }
+                    ? item with { State = CertificateOperationState.Failed, Stage = "interrupted", ProblemCode = InterruptedProblem, CompletedAt = DateTimeOffset.UtcNow, Challenges = null }
                     : item;
                 _operations[recovered.OperationId] = recovered;
                 _byIdempotency[recovered.IdempotencyKey] = recovered.OperationId;
@@ -370,7 +403,9 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
 
     private sealed record PersistedOperation(Guid OperationId, string IdempotencyKey, Guid CertificateId, string Kind, string? Actor,
         CertificateOperationState State, string Stage, string ProblemCode, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AcmeOrderIdentity? Order = null)
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AcmeOrderIdentity? Order = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] WebRootChallengeFile[]? Challenges = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? WebsitePublicationId = null)
     {
         public CertificateOperationDto ToDto() => new(OperationId, CertificateId, Kind, State, Stage, ProblemCode, StartedAt, CompletedAt);
     }

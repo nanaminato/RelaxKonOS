@@ -1485,6 +1485,8 @@ CA 已接单或签发后遇到无法确认结果的传输失败，证书操作�
 
 已有中断回执可用认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order` 查询。响应包含原 `operation` 和 `remoteStatus`。状态为 `pending`、`ready`、`processing`、`valid`、`invalid`、`identity-unavailable` 或 `unavailable`。查询使用相同 CA 和原账户密钥，只读取已记录的原订单。订单创建响应丢失且无身份时返回 `identity-unavailable`。远端状态单独呈现，原中断回执与当前证书保持，自动续期继续遵守原门禁。实测见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-原-ca-订单的只读对账)。
 
+WebRoot 签发和续期在发布 HTTP-01 文件前，在原证书操作记录挑战文件名及内容摘要。任务等待挑战清理后才提交终态。跨进程恢复在写入原中断回执前清理内容匹配的原文件。路径或内容无法确认时保留文件和恢复责任，并隔离证书工作准入。网站自动签发使用此路径，网站发布与原证书操作的关联同样持久化。CA 返回 `valid` 时仍应通过原发布和证书回执核实本地签发、部署各自的状态。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
+
 Linux 完整认证 Server 已通过真实 CA 断流与重启验收。专属 Nginx 承载 HTTP-01，重启后须重新登录查询原订单。同键重试返回原回执，原活动证书指纹保持，CA 无新增订单或签发提交。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证-server-的-ca-断流与重启)。
 
 Linux 私有 Pebble 实测覆盖自动续期已准入、扫描尚未关联原回执时的进程中断。恢复完成原扫描并持久化下次到期，未提交新订单。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书续期持久扫描与执行作用域)。

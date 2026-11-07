@@ -5,6 +5,7 @@ using System.Text;
 using Certify.ACME.Anvil;
 using Certify.ACME.Anvil.Acme;
 using RelaxKonOS.Protocol.Certificates;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Certificate;
 
@@ -12,7 +13,7 @@ internal interface IAcmeService
 {
     Task<CertificateMaterial> IssueAsync(Guid certificateId, IReadOnlyList<string> domains, CertificateChallengeType challengeType,
         CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken cancellationToken,
-        Func<AcmeOrderIdentity, Task>? recordOrder = null);
+        Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null);
     Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken cancellationToken);
     Task RevokeAsync(X509Certificate2 certificate, string contactEmail, CancellationToken cancellationToken);
 }
@@ -72,7 +73,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
     }
     public async Task<CertificateMaterial> IssueAsync(Guid certificateId, IReadOnlyList<string> domains, CertificateChallengeType challengeType,
         CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken cancellationToken,
-        Func<AcmeOrderIdentity, Task>? recordOrder = null)
+        Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null)
     {
         if (challengeType == CertificateChallengeType.Dns01)
             throw new CertificateOperationException("certificate.challenge_mode_not_available");
@@ -89,6 +90,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation("ACME order created. CertificateId={CertificateId}", certificateId);
         var challenges = new List<IChallengeContext>();
+        var ownedFiles = new List<WebRootChallengeFile>();
         Exception? issuanceFailure = null;
         try
         {
@@ -101,6 +103,13 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
                 if (resource.Status == Certify.ACME.Anvil.Acme.Resource.AuthorizationStatus.Valid) continue;
                 var challenge = await ObserveOrderAsync(() => authorization.Http(), cancellationToken);
                 if (challenge is null) throw new CertificateOperationException("certificate.http01_not_offered");
+                if (challengeType == CertificateChallengeType.WebRootHttp01 && recordChallenge is not null)
+                {
+                    webRootChallenges.RequireVacant(challenge.Token);
+                    var owned = WebRootChallengeFile.Describe(challenge.Token, challenge.KeyAuthz);
+                    await recordChallenge(owned);
+                    ownedFiles.Add(owned);
+                }
                 challenges.Add(challenge);
                 await challengesStore.PutAsync(challenge.Token, challenge.KeyAuthz, cancellationToken);
                 logger.LogInformation("ACME HTTP-01 challenge published. CertificateId={CertificateId} TokenLength={TokenLength}", certificateId, challenge.Token.Length);
@@ -136,6 +145,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             logger.LogInformation("ACME certificate issued. CertificateId={CertificateId}", certificateId);
             return new CertificateMaterial(certificateId, domains, challengeType, keyAlgorithm, contactEmail, certificate.ToPem(), certificateKey.ToPem(), DateTimeOffset.UtcNow);
         }
+        catch (ResidentWorkCompletionException error) { issuanceFailure = error; throw; }
         catch (CertificateOperationException error) { issuanceFailure = error; throw; }
         catch (OperationCanceledException error) { issuanceFailure = error; throw; }
         catch (NullReferenceException exception)
@@ -161,7 +171,9 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
             {
                 try
                 {
-                    await challengesStore.RemoveAsync(challenge.Token, CancellationToken.None);
+                    var owned = ownedFiles.FirstOrDefault(file => file.Token == challenge.Token);
+                    if (owned is null) await challengesStore.RemoveAsync(challenge.Token, CancellationToken.None);
+                    else await webRootChallenges.RemoveOwnedAsync(owned, CancellationToken.None);
                     logger.LogInformation("ACME HTTP-01 challenge removed. CertificateId={CertificateId} TokenLength={TokenLength}", certificateId, challenge.Token.Length);
                 }
                 catch (Exception error)

@@ -1733,4 +1733,6 @@ Linux 系统包重载的原回执保存在 Server。原终态持久化后，Help
 
 完整 Server 的认证网站发布已在既有 Linux 测试机通过生产 Helper、私有 systemd、实际 Nginx 和独立 Docker 上游的联合验收。配置阶段中断恢复原 `website.site_application_unverified` 回执且应用尚未关联。真实 HTTPS 探测期间中断恢复原 `website.recheck_required` 回执并保留应用关联。两条路径都保持现有 TLS 与上游服务，重启和同键查询未再次 reload。测试使用认证证书路由生成的专属自签证书。公共 CA 与发布的联合中断仍待验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证网站发布中断与恢复)。
 
-未指定证书 ID 的自动签发在当前生产配置受 Direct HTTP-01 权限门禁阻塞。Linux 完整 Server 将 `certificate.port80_elevation_required` 保存在原网站发布回执中，重启和同键查询返回该失败。私有 CA 无订单，Nginx 无重载。现有证书 ID 的绑定路径已通过上述实机验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布自动-acme-的权限阻塞)。
+未指定证书 ID 时，自动签发通过所选 Nginx 的现有 WebRoot HTTP-01 集成。发起者须同时具备所选实例的 `NginxConfigurationWrite` 与 `CertificateIssue`（目标 `certificates/issue`）。发布前须确认 CA 能用申请域名和 TCP 80 读取同一个挑战目录。首站和新域名需要预先配置可达的 HTTP-01 路由。缺少集成时，发布在创建 CA 订单前以 `website.acme_webroot_required` 结束。
+
+签发和清理完成后才进入站点配置。管理进程在签发中断时，原发布与证书回执可关联查询，证书台账负责清理原挑战文件和查询原 CA 订单。同键请求返回原发布回执。实机证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。

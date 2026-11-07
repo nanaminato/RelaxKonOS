@@ -46,10 +46,19 @@ class WebPublishingRepository(
             if (session.state.value !== owner) { answer?.password?.fill('\u0000'); verifyOwner() }
             answer
         }
-        val result = elevations.withElevation("nginxConfigurationWrite", request.webServerId, guarded) { url, token ->
+        suspend fun submit() = elevations.withElevation("nginxConfigurationWrite", request.webServerId, guarded) { url, token ->
             verifyOwner()
             gateway.publishWebsite(url, token, request, idempotencyKey)
         }
+        val initial = submit()
+        val result = if (request.certificateId == null && initial is ApiResult.Problem && initial.code == "website.certificate_elevation_required") {
+            when (val outcome = elevations.elevateHost("certificateIssue", "certificates/issue", guarded)) {
+                is ElevationOutcome.Granted -> submit()
+                is ElevationOutcome.Rejected -> ApiResult.Problem(403, outcome.code, null)
+                is ElevationOutcome.Transport -> ApiResult.Transport(outcome.detail)
+                ElevationOutcome.Cancelled -> initial
+            }
+        } else initial
         verifyOwner()
         if (result is ApiResult.Success && (result.value.applicationId != request.applicationId || result.value.webServerId != request.webServerId ||
                 result.value.domain != request.domain.trim().trimEnd('.').lowercase())) return ApiResult.Transport(null)

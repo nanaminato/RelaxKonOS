@@ -1,6 +1,7 @@
 using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Protocol.WebsitePublishing;
 using RelaxKonOS.Server.ApplicationDeployments;
+using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.Residency;
 using RelaxKonOS.Server.Startup;
 
@@ -69,6 +70,7 @@ internal sealed class WebsitePublicationCoordinator(
         try
         {
             recovery = await workOwner.AdmitAsync(cancellationToken);
+            await AttachInterruptedCertificateAsync(recovery.Token);
             _ = store.InterruptActive(); recovery.Token.ThrowIfCancellationRequested(); lock (gate) ready = true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -83,6 +85,21 @@ internal sealed class WebsitePublicationCoordinator(
         await workOwner.StopAsync(cancellationToken);
     }
     public void Dispose() => workOwner.Dispose();
+
+    private async Task AttachInterruptedCertificateAsync(CancellationToken ct)
+    {
+        var unlinked = store.Pending().Where(operation => operation.Stage == WebsitePublicationStage.Certificate
+            && operation.CertificateId is null && operation.CertificateOperationId is null).ToArray();
+        if (unlinked.Length == 0) return;
+        await using var scope = scopes.CreateAsyncScope();
+        var certificates = scope.ServiceProvider.GetRequiredService<CertificateOperationStore>();
+        foreach (var operation in unlinked)
+        {
+            if (await certificates.GetWebsiteIssueAsync(operation.OperationId, ct) is { } issued)
+                store.Update(operation.OperationId, current => current with
+                { CertificateId = issued.CertificateId, CertificateOperationId = issued.OperationId });
+        }
+    }
 
     private async Task RunAsync(Guid operationId, PublishWebsiteRequest request, string actor, CancellationToken stopping)
     {

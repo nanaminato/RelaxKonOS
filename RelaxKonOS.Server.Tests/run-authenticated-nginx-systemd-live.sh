@@ -3,12 +3,13 @@
 set -euo pipefail
 [[ ( $# == 2 || $# == 3 || $# == 5 ) && $EUID == 0 ]]
 mode=${3:---systemd}
-[[ $mode == --systemd || $mode == --systemd-drain || $mode == --systemd-unknown || $mode == --systemd-timeout || $mode == --systemd-receipt || $mode == --systemd-response-loss || $mode == --systemd-rejected || $mode == --systemd-retire-retry || $mode == --systemd-website || $mode == --systemd-website-verifying || $mode == --systemd-website-acme ]]
-pebble= dns=
-if [[ $mode == --systemd-website-acme ]]; then
+[[ $mode == --systemd || $mode == --systemd-drain || $mode == --systemd-unknown || $mode == --systemd-timeout || $mode == --systemd-receipt || $mode == --systemd-response-loss || $mode == --systemd-rejected || $mode == --systemd-retire-retry || $mode == --systemd-website || $mode == --systemd-website-verifying || $mode == --systemd-website-acme || $mode == --systemd-website-acme-success ]]
+pebble= dns= relay=
+if [[ $mode == --systemd-website-acme* ]]; then
     [[ $# == 5 ]]
     pebble=$(realpath -e -- "$4")
     dns=$(realpath -e -- "$5")
+    relay=$(realpath -e -- "$(dirname -- "$0")/acme-response-loss-relay.py")
 else
     [[ $# != 5 ]]
 fi
@@ -45,6 +46,7 @@ trap cleanup EXIT
 if [[ $mode == --systemd-website* ]]; then
     docker --host unix:///var/run/docker.sock image save alpine:3.22 > "$work/alpine.tar"
 fi
+if [[ $mode == --systemd-website-acme* ]]; then touch "$work/website-acme"; fi
 mkfifo -m 0600 "$work/credentials"
 exec 3<&0
 cat <&3 > "$work/credentials" &
@@ -55,10 +57,10 @@ cat > "$work/inside.sh" <<EOF
 #!/bin/bash
 set -euo pipefail
 exec > "$work/test.log" 2>&1
-daemon= ca= dns_server=
+daemon= ca= dns_server= acme_relay=
 finish() {
     code=\$?
-    for pid in "\$ca" "\$dns_server"; do
+    for pid in "\$acme_relay" "\$ca" "\$dns_server"; do
         if [[ -n \$pid ]]; then kill "\$pid" 2>/dev/null || :; wait "\$pid" || :; fi
     done
     if [[ -n \$daemon ]]; then
@@ -90,11 +92,11 @@ if [[ "$mode" == --systemd-website* ]]; then
     docker info --format '{{.DockerRootDir}}' | grep -Fxq "$work/docker-data"
     docker load -i "$work/alpine.tar"
 fi
-if [[ "$mode" == --systemd-website-acme ]]; then
+if [[ "$mode" == --systemd-website-acme* ]]; then
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
         -addext 'subjectAltName=DNS:localhost,IP:127.0.0.2' -keyout "$work/https.key" -out "$work/https.pem" >/dev/null 2>&1
     cat > "$work/pebble.json" <<JSON
-{"pebble":{"listenAddress":"127.0.0.1:14000","managementListenAddress":"127.0.0.1:15000","certificate":"$work/https.pem","privateKey":"$work/https.key","httpPort":80,"tlsPort":443,"retryAfter":{"authz":1,"order":1}}}
+{"pebble":{"listenAddress":"127.0.0.2:14000","managementListenAddress":"127.0.0.1:15000","certificate":"$work/https.pem","privateKey":"$work/https.key","httpPort":80,"tlsPort":443,"retryAfter":{"authz":1,"order":1}}}
 JSON
     "$dns" -dnsserver 127.0.0.1:8053 -defaultIPv4 127.0.0.1 -defaultIPv6 '' \
         -http01 '' -https01 '' -tlsalpn01 '' -doh '' -management 127.0.0.1:8055 > "$work/dns.log" 2>&1 &
@@ -102,12 +104,19 @@ JSON
     PEBBLE_VA_NOSLEEP=1 PEBBLE_WFE_NONCEREJECT=0 PEBBLE_AUTHZREUSE=0 "$pebble" \
         -config "$work/pebble.json" -dnsserver 127.0.0.1:8053 -strict=false > "$work/ca.log" 2>&1 &
     ca=\$!
+    : > "$work/response-fault"
+    relay_mode=website
+    if [[ "$mode" == --systemd-website-acme-success ]]; then relay_mode=full-server; fi
+    python3 "$relay" "$work" "\$relay_mode" > "$work/relay.log" 2>&1 &
+    acme_relay=\$!
     for attempt in \$(seq 1 100); do
         if curl --noproxy '*' --cacert "$work/https.pem" -fsS https://localhost:14000/dir >/dev/null 2>&1; then break; fi
-        kill -0 "\$ca" "\$dns_server"
+        kill -0 "\$ca" "\$dns_server" "\$acme_relay"
         sleep .1
     done
     curl --noproxy '*' --cacert "$work/https.pem" -fsS https://localhost:14000/dir >/dev/null
+    curl --noproxy '*' --cacert "$work/https.pem" -fsS https://localhost:15000/roots/0 > "$work/issuing-root.pem"
+    cat "$work/https.pem" "$work/issuing-root.pem" > "$work/trust.pem"
 fi
 systemctl start nginx.service
 python3 "$script" "$work" "$server" "$helper" "$mode" < "$work/credentials"
@@ -146,6 +155,20 @@ if [[ -f "$work/alpine.tar" ]]; then
     printf '\n127.0.0.1 website-mb05.test\n' >> /etc/hosts
 fi
 mkdir -p "$conf/relaxkonos.d" "$work/nginx" /var/lib/nginx
+if [[ -f "$work/website-acme" ]]; then
+    chmod 0711 "$work"
+    mkdir -m 0755 "$work/challenge"
+    printf '# Managed by RelaxKonOS. Do not edit.\nACME HTTP-01 enabled.\n' > "$conf/relaxkonos.d/acme-http01.enabled"
+    cat > "$conf/challenge.conf" <<EOF
+server {
+    listen 80 default_server;
+    server_name _;
+    access_log $work/nginx/acme-access.log;
+    location ^~ /.well-known/acme-challenge/ { alias $work/challenge/; }
+    location / { return 404; }
+}
+EOF
+fi
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=127.0.0.1 \
     -addext subjectAltName=IP:127.0.0.1 -keyout "$work/nginx/key.pem" -out "$work/nginx/cert.pem" >/dev/null 2>&1
 cat > /etc/nginx/nginx.conf <<EOF

@@ -171,6 +171,9 @@ internal sealed partial class NginxWebServerManager
         catch (UnauthorizedAccessException) { return false; }
     }
 
+    internal static bool HasAcmeWebRoot(WebServerDto instance) => GetSitesDirectory(instance) is { } directory
+        && !IsSymbolicLink(directory) && IsAcmeHttp01Enabled(directory);
+
     private async Task<bool> WriteNginxFileAsync(string path, string content, CancellationToken cancellationToken)
     {
         if (OperatingSystem.IsLinux() || OperatingSystem.IsWindows())

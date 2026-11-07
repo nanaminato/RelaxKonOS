@@ -1548,13 +1548,23 @@ Linux 私有 systemd 实测原 `04f1f463-a0cb-4197-a271-8ad1afb93c9d` 在 Server
 
 最终复验的原操作分别为 `3e073972-f898-42ab-ad2c-ff362435be20`（配置）、`4f891ce5-b66d-4475-8ca3-b4f35e94413f`（验证）和 `2ac65837-94cc-4069-82e5-1deac7f48dea`（直接重载回执）。Linux 日志为 `.artifacts/mb05-auth-website-final-website.log`、`.artifacts/mb05-auth-website-final-website-verifying.log` 和 `.artifacts/mb05-auth-website-final-receipt.log`，归档 SHA-256 为 `fb3aeac412206f5e0771a5b11795534f3345974871ee00907bf2587fc9857ef8`。Windows 日志为 `.artifacts/mb05-auth-website-win.log`，Docker 原操作 `9d25c4d8-aa4e-4f28-92c2-548bae0dfd9c`。
 
-### MB-05 网站发布自动 ACME 的权限阻塞
+### MB-05 网站发布自动 ACME 的原 Direct HTTP-01 阻塞
 
-完整认证 Server 的自动签发目前选择 Direct HTTP-01。生产 `HostPrivilegeService` 拒绝把 Server 的进程身份当作权限，当前没有接管此监听的生产 Helper 能力。实机在私有系统启动独立 Pebble 和 DNS，已探通 TLS 目录，实际发布仍在签发前返回 `certificate.port80_elevation_required`。故障发生在 CA 订单之前，公共域名或更换 CA 无法解除此门禁。
+旧网站自动签发路径选择 Direct HTTP-01。生产 `HostPrivilegeService` 拒绝把 Server 的进程身份当作权限，现有生产 Helper 无此监听能力。实机在私有系统启动独立 Pebble 和 DNS，已探通 TLS 目录，旧发布在签发前返回 `certificate.port80_elevation_required`。当前网站自动签发路径见下节。
 
-此路径的跨进程回归核对已持久化的原失败回执、同键和应用历史，检查证书操作 ID 缺失、CA 无新订单、没有打开 80 端口或重载 Nginx。原 HTTPS、原 Docker 上游和共享服务继续运行。需要先建立经过能力授权的挑战发布边界，明确挑战响应与清理 owner，再验收实际签发中断和原 CA 订单恢复。该路径保持关闭。
+此路径的跨进程回归核对已持久化的原失败回执、同键和应用历史，检查证书操作 ID 缺失、CA 无新订单、没有打开 80 端口或重载 Nginx。原 HTTPS、原 Docker 上游和共享服务继续运行。
 
 Linux 原发布 `929bf5d6-7e68-4df1-baca-8f503bb88af0` 跨重启返回原失败。首轮等待签发响应失败，第二轮通过生产回执确认拒绝原因，最终轮按拒绝路径验收。日志为 `.artifacts/mb05-acme-authorization-final-website-acme.log`，现有证书路径的 Verifying 回归见 `.artifacts/mb05-acme-authorization-final-website-verifying.log`。Release 归档与上一阶段相同。
+
+### MB-05 网站发布 WebRoot 签发与中断恢复
+
+自动签发要求所选实例已有 ACME WebRoot 集成，并检查实例配置权限与证书签发权限。新域名须预先从 CA 的网络通过 TCP 80 到达该 WebRoot。证书操作用原网站 operationId 持久化关联与独立的请求键范围，网站重启恢复可补齐尚未写入的原证书回执。WebRoot 签发和续期在写入前记录挑战文件名与内容摘要，原证书任务完成挑战清理后才提交终态。重启清理核对原路径与摘要，文件无法确认时保留并隔离证书工作准入。
+
+Linux x64 Release 使用完整 PAM/JWT Server、生产 Helper、私有 systemd、真实 Nginx 和 Docker Engine，以及专属 Pebble CA 和测试域名。夹具预置专属 Nginx HTTP-01 路由，CA 实际通过 Nginx 取挑战。在成功路径，正常签发并部署到真实 Docker 上游，TLS 客户端信任专属 CA 并核对实际响应，Nginx reload 一次，原挑战已清理。在中断路径，测试中继暂扣 CA 已签发的实际证书响应，此时终止 Server。重启后按原网站 ID、应用历史和同键返回同一中断回执，原证书操作 ID 可只读查询 CA `valid`。CA 只创建并 finalize 一次，网站未部署，原 TLS、Nginx master 和 Docker 上游继续运行。原挑战路径返回 404，无关测试文件保留，Nginx 无重载。
+
+最终中断发布 `a18aad80-5b6a-48a3-a131-25961501e8d6` 关联证书操作 `a1694919-20d1-4657-84ee-a2a0820a7546`。成功发布为 `7b65af66-eb68-4ac1-8103-491250e4f420`，原 Verifying 回归为 `f9cc0811-4dbd-4816-9bde-53d06c5a18b6`。三个 Linux 运行均清理专属 cgroup，宿主 Nginx/Docker PID 与 Nginx 配置指纹一致。日志为 `.artifacts/mb05-webroot-final--systemd-website-acme.log`、`.artifacts/mb05-webroot-final--systemd-website-acme-success.log` 与 `.artifacts/mb05-webroot-final--systemd-website-verifying.log`，Release 归档 SHA-256 为 `9cb6545d4a170606d6a6f854cb015315263a3dadc964ce4eaed7a61717094f9d`。首轮夹具误读 `remoteStatus`，修正后通过。Windows Release 模块边界回归（含跨进程 Docker 原回执与 WebRoot 台账恢复）及 Android 网站发布请求单测通过。Windows Direct HTTP 实监听因本地注册权限跳过。
+
+待验收范围包括公共 CA 与公共 DNS、首站自动建立 HTTP-01 路由、完整非管理员提升交互及整机掉电。独立执行程序集与动态休眠仍开放，Certificates 和 WebServer 保持 resident。本阶段记录任务及外部资源连续性。
 
 ### MB-04 入站授权到期的停机排空
 

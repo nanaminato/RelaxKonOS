@@ -65,6 +65,8 @@ internal sealed class WebsitePublicationExecution(
                 throw new WebsitePublicationException("website.domain_conflict");
 
             var siteId = application.SiteId ?? $"app{application.Id:N}";
+            if (request.CertificateId is null && !NginxWebServerManager.HasAcmeWebRoot(server))
+                throw new WebsitePublicationException("website.acme_webroot_required");
             var certificateId = await ResolveCertificateAsync(operationId, request, actor, stopping);
             SetStage(operationId, WebsitePublicationStage.Configuring, siteId: siteId, certificateId: certificateId);
 
@@ -135,8 +137,8 @@ internal sealed class WebsitePublicationExecution(
 
         SetStage(operationId, WebsitePublicationStage.Certificate);
         var issued = await certificates.RequestAsync($"website-{operationId:N}", new RequestCertificateRequest([request.Domain],
-            CertificateChallengeType.DirectHttp01, request.ContactEmail!, request.AcceptedTerms, CertificateKeyAlgorithm.EcdsaP256,
-            request.PublicReachabilityConfirmed), actor, stopping);
+            CertificateChallengeType.WebRootHttp01, request.ContactEmail!, request.AcceptedTerms, CertificateKeyAlgorithm.EcdsaP256,
+            request.PublicReachabilityConfirmed), actor, stopping, websitePublicationId: operationId);
         if (issued.OperationId == Guid.Empty) throw new WebsitePublicationException(issued.ProblemCode, 409);
         SetStage(operationId, WebsitePublicationStage.Certificate, certificateId: issued.CertificateId, certificateOperationId: issued.OperationId);
 

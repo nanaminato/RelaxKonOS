@@ -5,14 +5,16 @@ internal static class CertificateOperationReplayChecks
         Directory.CreateDirectory(root);
         var environment = new TestHostEnvironment(root);
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:Provider"] = "files" }).Build();
-        var options = new CertificateOptions { StorageRoot = Path.Combine(root, "material") };
+        var options = new CertificateOptions { StorageRoot = Path.Combine(root, "material"), ChallengeRoot = Path.Combine(root, "challenges") };
+        var challengeFiles = new FileHttp01ChallengeStore(options);
         var metadata = new CertificateMetadataRepository(environment, configuration);
         var certificates = new FileCertificateStore(environment, options, metadata);
         var journal = new HostOperationJournal(environment, configuration);
         var attempts = new CertificateRenewalAttemptRepository(environment, configuration, options);
         async Task<CertificateOperationStore> CreateAsync()
         {
-            var ledger = new CertificateOperationStore(environment, journal, certificates, attempts, NullLogger<CertificateOperationStore>.Instance, new TestResidentBackgroundLeases());
+            var ledger = new CertificateOperationStore(environment, journal, certificates, attempts, NullLogger<CertificateOperationStore>.Instance,
+                new TestResidentBackgroundLeases(), challengeFiles);
             await ledger.StartAsync(CancellationToken.None); return ledger;
         }
         var store = await CreateAsync();
@@ -77,5 +79,36 @@ internal static class CertificateOperationReplayChecks
             && await reopenedRuns.BeginDueAsync(now.AddHours(23), default) is null
             && (await reopenedRuns.BeginDueAsync(now.AddDays(1), default)) is { } next && next.Id != runId,
             "A completed scan must retain its next due boundary across reopening.");
+
+        var websiteId = Guid.NewGuid();
+        var challenge = WebRootChallengeFile.Describe("original-token", "original-authorization");
+        var written = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finish = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var issue = await store.StartOrderAsync("website", Guid.NewGuid(), "issue", "alice", async (_, recordChallenge, ct) =>
+        {
+            await recordChallenge(challenge);
+            await challengeFiles.PutAsync(challenge.Token, "original-authorization", ct);
+            written.SetResult();
+            return await finish.Task;
+        }, default, default, websitePublicationId: websiteId);
+        try
+        {
+            await written.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await challengeFiles.PutAsync("foreign-token", "foreign-authorization", default);
+            try
+            {
+                await challengeFiles.RemoveOwnedAsync(WebRootChallengeFile.Describe("foreign-token", "different-authorization"), default);
+                throw new InvalidOperationException("A WebRoot token with different content must not be removed.");
+            }
+            catch (CertificateOperationException error) when (error.ProblemCode == "certificate.challenge_ownership_unconfirmed") { }
+            var restarted = await CreateAsync();
+            var original = await restarted.GetWebsiteIssueAsync(websiteId, default);
+            TestAssert.Assert(original?.OperationId == issue.OperationId && original.CertificateId == issue.CertificateId
+                && original.ProblemCode == "certificate.operation_interrupted", "Startup must restore the original child receipt from the certificate ledger.");
+            TestAssert.Assert(Directory.EnumerateFiles(challengeFiles.RootPath).Select(Path.GetFileName).SequenceEqual(["foreign-token"]),
+                "Startup must remove the recorded challenge and preserve unrelated tokens.");
+        }
+        finally { finish.TrySetResult(""); }
+        await TestOperations.WaitForCertificateOperationAsync(store, issue.OperationId);
     }
 }

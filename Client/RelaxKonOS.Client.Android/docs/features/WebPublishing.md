@@ -4,7 +4,7 @@
 
 “管理 → 网站”按 `server.web-server` 门控。读取受管实例、配置语法检查、站点和 TLS 关联；证书读取另需 `server.certificates`。无权限或未核实不显示为无站点/无证书。
 
-发布需要运行中的应用、loopback 上游、受管 Web Server、可控域名与当前 `nginxConfigurationWrite` 授权。共享执行行为见 [Web Server 设计](../../../../docs/applications/RelaxKonOS.WebServerManager.Design.md) 和 [证书管理](../../../../docs/applications/RelaxKonOS.CertificateManager.md)。
+发布需要运行中的应用、loopback 上游、受管 Web Server、可控域名与当前 `nginxConfigurationWrite` 授权。自动申请还需要 `certificateIssue` 授权，并要求域名的 HTTP 80 已由 Nginx WebRoot 提供挑战路径。收到明确的签发授权拒绝后，客户端只在获得该授权时按原请求键重试。共享执行行为见 [Web Server 设计](../../../../docs/applications/RelaxKonOS.WebServerManager.Design.md) 和 [证书管理](../../../../docs/applications/RelaxKonOS.CertificateManager.md)。
 
 ## 2. 手机流程
 

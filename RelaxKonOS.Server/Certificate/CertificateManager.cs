@@ -16,7 +16,8 @@ internal interface ICertificateManager
     Task<IReadOnlyList<CertificateDto>> ListAsync(CancellationToken cancellationToken);
     Task<CertificateDto?> GetAsync(Guid certificateId, CancellationToken cancellationToken);
     Task<CertificatePreflightResultDto> PreflightAsync(CertificatePreflightRequest request, CancellationToken cancellationToken);
-    Task<CertificateOperationDto> RequestAsync(string idempotencyKey, RequestCertificateRequest request, string? actor, CancellationToken cancellationToken);
+    Task<CertificateOperationDto> RequestAsync(string idempotencyKey, RequestCertificateRequest request, string? actor,
+        CancellationToken cancellationToken, Guid? websitePublicationId = null);
     Task<CertificateOperationDto> CreateSelfSignedAsync(string idempotencyKey, CreateSelfSignedCertificateRequest request, string? actor, CancellationToken cancellationToken);
     Task<CertificateOperationDto> RenewAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken,
         bool automatic = false);
@@ -78,13 +79,14 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             domainResults, issue);
     }
 
-    public async Task<CertificateOperationDto> RequestAsync(string idempotencyKey, RequestCertificateRequest request, string? actor, CancellationToken cancellationToken)
+    public async Task<CertificateOperationDto> RequestAsync(string idempotencyKey, RequestCertificateRequest request, string? actor,
+        CancellationToken cancellationToken, Guid? websitePublicationId = null)
     {
         logger.LogInformation("Certificate issuance requested. Actor={Actor} ChallengeType={ChallengeType} KeyAlgorithm={KeyAlgorithm} DomainCount={DomainCount}",
             actor, request?.ChallengeType, request?.KeyAlgorithm, request?.Domains?.Count ?? 0);
         if (request is null)
             return Failure("issue", "certificate.request_invalid");
-        if (await operations.FindRequestAsync(idempotencyKey, Guid.Empty, "issue", actor, cancellationToken) is { } replay) return replay;
+        if (await operations.FindRequestAsync(idempotencyKey, Guid.Empty, "issue", actor, cancellationToken, websitePublicationId: websitePublicationId) is { } replay) return replay;
         if (!request.AcceptedTerms)
             return Failure("issue", "certificate.terms_not_accepted");
         if (!Enum.IsDefined(request.ChallengeType))
@@ -108,14 +110,14 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
         var certificateId = Guid.NewGuid();
         logger.LogInformation("Certificate issuance accepted. CertificateId={CertificateId} ChallengeType={ChallengeType} KeyAlgorithm={KeyAlgorithm} Domains={Domains}",
             certificateId, request.ChallengeType, request.KeyAlgorithm, string.Join(',', domains));
-        return await operations.StartOrderAsync(idempotencyKey, certificateId, "issue", actor, async (recordOrder, ct) =>
+        return await operations.StartOrderAsync(idempotencyKey, certificateId, "issue", actor, async (recordOrder, recordChallenge, ct) =>
         {
             logger.LogInformation("Certificate issuance ACME step started. CertificateId={CertificateId}", certificateId);
-            var material = await acme.IssueAsync(certificateId, domains, request.ChallengeType, request.KeyAlgorithm, request.ContactEmail, ct, recordOrder);
+            var material = await acme.IssueAsync(certificateId, domains, request.ChallengeType, request.KeyAlgorithm, request.ContactEmail, ct, recordOrder, recordChallenge);
             await certificates.SaveAsync(material, ct);
             logger.LogInformation("Certificate issuance material saved. CertificateId={CertificateId}", certificateId);
             return "";
-        }, lifetime.ApplicationStopping, cancellationToken);
+        }, lifetime.ApplicationStopping, cancellationToken, websitePublicationId: websitePublicationId);
     }
 
     public async Task<CertificateOperationDto> CreateSelfSignedAsync(string idempotencyKey, CreateSelfSignedCertificateRequest request, string? actor, CancellationToken cancellationToken)
@@ -181,10 +183,10 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
         if (existing.Kind == CertificateKind.SelfSigned) return Failure("renew", "certificate.self_signed_not_renewable");
         if (existing.Status == CertificateStatus.Revoked) return Failure("renew", "certificate.revoked");
         if (string.IsNullOrWhiteSpace(existing.ContactEmail)) return Failure("renew", "certificate.contact_unavailable");
-        return await operations.StartOrderAsync(idempotencyKey, certificateId, "renew", actor, async (recordOrder, ct) =>
+        return await operations.StartOrderAsync(idempotencyKey, certificateId, "renew", actor, async (recordOrder, recordChallenge, ct) =>
         {
             using var oldMaterial = await certificates.LoadCurrentAsync(certificateId, ct);
-            var material = await acme.IssueAsync(certificateId, existing.Domains, existing.ChallengeType, existing.KeyAlgorithm, existing.ContactEmail, ct, recordOrder);
+            var material = await acme.IssueAsync(certificateId, existing.Domains, existing.ChallengeType, existing.KeyAlgorithm, existing.ContactEmail, ct, recordOrder, recordChallenge);
             await certificates.SaveAsync(material with { LastRenewalAt = DateTimeOffset.UtcNow }, ct);
             if (oldMaterial is not null)
                 await renewalInfo.MarkReplacedAsync(oldMaterial, existing.ContactEmail, ct);
