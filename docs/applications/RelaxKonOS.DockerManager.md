@@ -366,3 +366,5 @@ Docker stack 的 HTTP 202 回执在响应执行期间持有独立工作租约。
 Linux 隔离 Engine 已通过完整 System Mode Server 的认证回执验收。匿名请求被拒绝，通过专属 PAM Helper 登录后执行真实停止，重启并重新登录后同键取回原终态，停止只执行一次。
 
 完整 Server 实机复测覆盖了客户端未读取原停止响应。按原幂等键确认受理后关闭连接，重启并重新认证仍取回原 Succeeded 回执，停止未重放。
+
+完整 Server 已通过停止仍在执行时的强制中断验收。Engine 已接受停止且原回执仍为 Running 时终止 Server，重启并重新认证后同键取回原 Interrupted 回执，停止未重放。

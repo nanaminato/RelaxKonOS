@@ -120,6 +120,12 @@ def run(server, project, helper):
             try:
                 request(route, {"confirmed": True}, expected=401)
                 token = login()
+                containers = subprocess.check_output(["docker", "ps", "-q", "--filter",
+                    f"label=com.docker.compose.project={project}"], text=True).split()
+                if len(containers) != 1:
+                    raise RuntimeError("Expected one running dedicated Docker witness")
+                container = containers[0]
+                initial_stops = subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping")
                 # Send the authenticated mutation on a separate connection and discard its response.
                 payload = b'{"confirmed":true}'
                 with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
@@ -140,21 +146,26 @@ def run(server, project, helper):
                     else:
                         raise RuntimeError("The original request did not establish a durable receipt")
                 operation = receipt["operationId"]
-                for _ in range(200):
-                    terminal = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
-                    if str(terminal["state"]).lower() == "succeeded":
+                for _ in range(100):
+                    if subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping") == initial_stops + 1:
                         break
-                    time.sleep(0.1)
+                    time.sleep(0.05)
                 else:
-                    raise RuntimeError("The original Docker operation did not succeed")
+                    raise RuntimeError("Engine did not accept the stop before interruption")
+                running = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
+                if str(running["state"]).lower() != "running":
+                    raise RuntimeError("Original receipt was not running at interruption")
+                process.kill()
+                if process.wait(timeout=10) >= 0:
+                    raise RuntimeError("Server did not terminate abnormally")
             finally:
                 stop(process)
             process = start()
             try:
                 replay = request(route, {"confirmed": True}, login(), expected=202)
-                if replay["operationId"] != operation or replay["state"] != terminal["state"]:
+                if replay["operationId"] != operation or str(replay["state"]).lower() != "interrupted":
                     raise RuntimeError("Server restart did not preserve the original Docker receipt")
-                print(f"PASS AUTHENTICATED SERVER DOCKER RECEIPT: operation={operation}; original response discarded")
+                print(f"PASS AUTHENTICATED SERVER DOCKER RECEIPT: operation={operation}; original response discarded; server killed while stop was running; recovered Interrupted")
             finally:
                 stop(process)
         finally:
