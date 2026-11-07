@@ -12,7 +12,8 @@ public sealed class MihomoTunRuntimeController(
     Platform.IProxyTunDeviceObserver devices,
     ILogger<MihomoTunRuntimeController>? logger = null) : IProxyTunRuntimeController
 {
-    public async Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
+    public async Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled,
+        Func<CancellationToken, Task>? beforeActivation, CancellationToken cancellationToken)
     {
         await publication.Gate.WaitAsync(cancellationToken);
         try
@@ -33,6 +34,11 @@ public sealed class MihomoTunRuntimeController(
 
             var exclusions = enabled ? BuildTunRouteExclusions(snapshot) : [];
             var updated = MihomoManagedConfiguration.WithManagedTunSettings(original, settings, enabled, exclusions);
+            if (enabled)
+            {
+                ArgumentNullException.ThrowIfNull(beforeActivation);
+                await beforeActivation(cancellationToken);
+            }
             var temporary = active + ".tun-" + Guid.NewGuid().ToString("N");
             try
             {

@@ -183,8 +183,29 @@ internal static class ProxyTunLiveChecks
                     TestAssert.Assert(await safety.DisableAsync(default) is null && !await DeviceExistsAsync(),
                         "The replacement TUN session must drain and remove its own device.");
                     if (mihomo is not null)
+                    {
                         TestAssert.Assert(!mihomo.HasExited && (await runtime.IsEnabledAsync(default)) is { Succeeded: true, Enabled: false },
                             "The original Mihomo process must remain reachable with TUN disabled.");
+                        var activePath = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
+                        var yaml = await File.ReadAllTextAsync(activePath);
+                        var publicationId = Guid.NewGuid();
+                        var candidate = new RelaxKonOS.Protocol.ManagedRuntimes.MihomoPublishedRuntime(
+                            yaml, [], port, "fixture-schedule-secret", [new("127.0.0.1", port)]);
+                        await publication.Gate.WaitAsync();
+                        try
+                        {
+                            var state = await publication.ReadAsync(default);
+                            await publication.BeginAsync(publicationId, state.Revision, candidate, default);
+                        }
+                        finally { publication.Gate.Release(); }
+                        var reloads = calls.Reloads;
+                        TestAssert.Assert(await safety.EnableAsync(Guid.NewGuid(), null, default) == ProxyProblemCodes.RecoveryRequired
+                            && await publication.ReadPendingIdentityAsync(default) == publicationId
+                            && await safety.CaptureRecoveryAsync(default) is null && !await DeviceExistsAsync()
+                            && calls.Reloads == reloads && await File.ReadAllTextAsync(activePath) == yaml && await ReadRulesAsync() == baselineRules,
+                            "A publication gate rejection must leave neither a new TUN marker nor a native mutation.");
+                        Console.WriteLine($"PASS MIHOMO LIVE TUN ADMISSION: publication={publicationId}; new TUN markers and reloads=0");
+                    }
                     Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, management disabled, same Core worker retried unsafe marker and verified route, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
                 }
                 finally { if (mihomo is not null) await DockerProcessRecoveryChecks.StopWorkerAsync(mihomo); }
@@ -384,13 +405,14 @@ internal static class ProxyTunLiveChecks
     {
         internal int Removals;
 
-        public async Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
+        public async Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled,
+            Func<CancellationToken, Task>? beforeActivation, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (inner is not null)
             {
                 var existed = await DeviceExistsAsync();
-                var problem = await inner.SetEnabledAsync(snapshot, enabled, cancellationToken);
+                var problem = await inner.SetEnabledAsync(snapshot, enabled, beforeActivation, cancellationToken);
                 if (problem is not null) return problem;
                 using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 budget.CancelAfter(Budget);
@@ -399,6 +421,7 @@ internal static class ProxyTunLiveChecks
             }
             else if (enabled)
             {
+                await beforeActivation!(cancellationToken);
                 await RunIpAsync("tuntap", "add", "dev", Device, "mode", "tun");
                 await RunIpAsync("link", "set", Device, "up");
             }

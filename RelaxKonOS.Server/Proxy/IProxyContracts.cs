@@ -93,7 +93,10 @@ public sealed record ProxyTunRecoveryReference(Guid OperationId, DateTimeOffset 
 /// </summary>
 public interface IProxyTunRuntimeController
 {
-    Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken);
+    /// <summary>For activation, commits the caller's recovery marker after admission and before
+    /// the first mutation. Rejected admission must leave the callback untouched.</summary>
+    Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled,
+        Func<CancellationToken, Task>? beforeActivation, CancellationToken cancellationToken);
 
     /// <summary>Asks the engine whether TUN is actually enabled.  Callers use it to keep reported
     /// state and durable markers honest; a failure means "unobserved", never "disabled".</summary>
@@ -107,7 +110,8 @@ public sealed record ProxyTunRuntimeObservation(bool Succeeded, bool Enabled, st
 /// <summary>Safe fallback for hosts where no local Mihomo configuration controller is installed.</summary>
 public sealed class UnavailableProxyTunRuntimeController : IProxyTunRuntimeController
 {
-    public Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
+    public Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled,
+        Func<CancellationToken, Task>? beforeActivation, CancellationToken cancellationToken)
         => Task.FromResult<string?>(ProxyProblemCodes.RuntimeNotInstalled);
 
     public Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken cancellationToken)

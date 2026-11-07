@@ -119,9 +119,10 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
     {
         public Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken ct) => runtime.IsEnabledAsync(ct);
 
-        public async Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken ct)
+        public async Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled,
+            Func<CancellationToken, Task>? beforeActivation, CancellationToken ct)
         {
-            var problem = await runtime.SetEnabledAsync(snapshot, enabled, ct);
+            var problem = await runtime.SetEnabledAsync(snapshot, enabled, beforeActivation, ct);
             if (enabled && problem is null)
             {
                 Console.WriteLine(ActivationBarrier);

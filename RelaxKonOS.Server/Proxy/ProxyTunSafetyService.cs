@@ -31,9 +31,14 @@ public sealed class ProxyTunSafetyService(
                 return ProxyProblemCodes.ManagementRouteUnsafe;
             }
             var marker = new RecoveryMarker(Guid.NewGuid(), profileId, snapshot, DateTimeOffset.UtcNow, false);
-            await WriteMarkerAsync(marker, cancellationToken);
-            logger?.LogInformation("TUN activation marker persisted. OperationId={OperationId} ProfileId={ProfileId} EgressInterface={EgressInterface} ManagementAddressCount={ManagementAddressCount}", marker.OperationId, profileId, snapshot.EgressInterface, snapshot.ManagementAddresses.Count);
-            var runtimeProblem = await _runtime.SetEnabledAsync(snapshot, true, cancellationToken);
+            var markerPersisted = false;
+            var runtimeProblem = await _runtime.SetEnabledAsync(snapshot, true, async ct =>
+            {
+                await WriteMarkerAsync(marker, ct);
+                markerPersisted = true;
+                logger?.LogInformation("TUN activation marker persisted. OperationId={OperationId} ProfileId={ProfileId} EgressInterface={EgressInterface} ManagementAddressCount={ManagementAddressCount}", marker.OperationId, profileId, snapshot.EgressInterface, snapshot.ManagementAddresses.Count);
+            }, cancellationToken);
+            if (!markerPersisted) return runtimeProblem ?? ProxyProblemCodes.TunActivationFailed;
             if (!string.IsNullOrEmpty(runtimeProblem)) return await RestoreAndReportAsync(marker, cancellationToken, runtimeProblem);
             if (!await platform.ApplyTunAsync(snapshot, cancellationToken)) return await RestoreAndReportAsync(marker, cancellationToken, ProxyProblemCodes.TunActivationFailed);
             if (!await platform.VerifyManagementRouteAsync(snapshot, cancellationToken)) return await RestoreAndReportAsync(marker, cancellationToken, ProxyProblemCodes.ManagementRouteUnsafe);
@@ -115,7 +120,7 @@ public sealed class ProxyTunSafetyService(
 
         // Disable Mihomo's TUN first; this is the component that owns routes and DNS.  We still
         // call the platform restore hook so it can verify that the original management path won.
-        var runtimeProblem = await _runtime.SetEnabledAsync(marker.Snapshot, false, CancellationToken.None);
+        var runtimeProblem = await _runtime.SetEnabledAsync(marker.Snapshot, false, null, CancellationToken.None);
         var restored = await platform.RestoreAsync(marker.Snapshot, cancellationToken);
         if (!restored || !string.IsNullOrEmpty(runtimeProblem))
         {

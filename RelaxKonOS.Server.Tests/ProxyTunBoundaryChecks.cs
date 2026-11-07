@@ -72,9 +72,11 @@ internal static class ProxyTunBoundaryChecks
             var operation = Guid.NewGuid();
             await f.Publication.BeginAsync(operation, 0, candidate, default);
             if (published) await f.Publication.ConfirmAsync(operation, MihomoPublicationStore.Identity(before), default);
-            Check(await f.Tun.SetEnabledAsync(f.Snapshot, true, default) is not null
-                && await f.Tun.SetEnabledAsync(f.Snapshot, false, default) is not null
-                && f.Reloads == 0 && await File.ReadAllTextAsync(f.Active) == before,
+            var expected = published ? ProxyProblemCodes.NotSupported : ProxyProblemCodes.RecoveryRequired;
+            Check(await f.Safety.EnableAsync(Guid.NewGuid(), null, default) == expected && !File.Exists(f.Marker)
+                && await f.Tun.SetEnabledAsync(f.Snapshot, false, null, default) == expected
+                && f.Reloads == 0 && f.Platform.ApplyCount == 0 && f.Platform.RestoreCount == 0
+                && await File.ReadAllTextAsync(f.Active) == before,
                 "Direct TUN transitions cannot bypass pending or confirmed managed publication: " + published);
         }
         using (var f = new Fixture())
@@ -118,14 +120,14 @@ internal static class ProxyTunBoundaryChecks
             var write = f.Writer().UpdateAsync(Request((await f.Reader.GetAsync(default)) with { MixedPort = 8123 }), default);
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             using var cancelled = new CancellationTokenSource();
-            var tun = f.Tun.SetEnabledAsync(f.Snapshot, false, cancelled.Token);
+            var tun = f.Safety.EnableAsync(Guid.NewGuid(), null, cancelled.Token);
             Check(!tun.IsCompleted, "TUN waits while an independent settings writer owns the publication gate");
             cancelled.Cancel();
             try { await tun; throw new Exception("Cancelled TUN acquired the writer gate"); }
             catch (OperationCanceledException) { }
             finally { release.TrySetResult(); }
-            Check(await write is null && await f.Tun.SetEnabledAsync(f.Snapshot, false, default) is null,
-                "Cancelled TUN does not release the writer gate and later teardown remains usable");
+            Check(await write is null && !File.Exists(f.Marker) && await f.Safety.EnableAsync(Guid.NewGuid(), null, default) is null,
+                "Cancellation before publication admission creates no marker and later activation remains usable");
         }
         using (var f = new Fixture())
         {

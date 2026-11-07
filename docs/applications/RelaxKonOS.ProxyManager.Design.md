@@ -4482,3 +4482,5 @@ Proxy 停用启动时，Server 对原台账中已受理的 Mihomo 配置发布�
 TUN 安全服务常驻，控制器和 HTTP 客户端只在实际观察或切换期间创建。Linux 完整 Server 的恢复实测确认，原 TUN 标记和路由仍由 Core 接续处理，Mihomo 转发和系统代理持续可用。
 
 Linux 隔离实测覆盖 TUN 激活重载已应用、持久标记尚未完成时的进程崩溃。完整 Server 以原标记关闭 TUN，验证管理路由和策略规则，同时保留 Mihomo 转发、系统代理 guard 和入站授权到期。证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-接续在途-tun-激活)。
+
+直接 TUN 激活先在原发布锁内通过发布准入，再持久化安全标记并开始配置变更。拒绝准入不产生待恢复的 TUN 操作。已经持久化的原标记继续由 Core 核验和补偿，Linux 真实设备及完整 Server 回归均通过。证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-tun-发布准入与恢复标记)。

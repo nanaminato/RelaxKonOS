@@ -6,11 +6,12 @@ namespace RelaxKonOS.Server.Proxy;
 /// <summary>Resolves a controller only for a TUN observation or transition.</summary>
 internal sealed class ScopedProxyTunRuntimeController(IServiceScopeFactory scopes) : IProxyTunRuntimeController
 {
-    public async Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
+    public async Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled,
+        Func<CancellationToken, Task>? beforeActivation, CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<MihomoTunRuntimeController>()
-            .SetEnabledAsync(snapshot, enabled, cancellationToken);
+            .SetEnabledAsync(snapshot, enabled, beforeActivation, cancellationToken);
     }
 
     public async Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken cancellationToken)
