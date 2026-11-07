@@ -1271,3 +1271,5 @@ Windows Release 的独立 Proxy Server 测试已接入现行持久调度索引�
 ### MB-04 到期索引从原台账重建
 
 到期扫描在原状态 gate 内从权威密文重建失配、损坏或缺失的索引，后续匹配扫描跳过台账解密。索引不可写时继续按原台账判断，未引入新的发布执行者。Windows Release Proxy Core 安全与生命周期作用域专项通过，日志为 .artifacts/mb04-index-repair-win.log。Linux 实机复测、安全责任交接和动态休眠仍开放。
+
+Linux x64 Release 复测通过。Proxy Core 安全专项确认失配索引重建后不再解密原台账。同一制品的专属 sing-box 实机验收确认到期前流量可达、切换后旧连接关闭、过期凭据拒绝、保留凭据可重新连接，丢失发布响应后只执行一次 apply。两项分别覆盖索引恢复和实际网络切换。日志为 .artifacts/mb04-index-repair-linux.log，归档 SHA-256 为 18ea160a65fb22fd1de1aa4575775ac8f07c68619801b743f808053c8829ed97。实机仍使用专属运行时切换夹具，跨进程发布恢复和调度责任交接仍开放。
