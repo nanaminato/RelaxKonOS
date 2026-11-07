@@ -32,6 +32,6 @@ public sealed class MihomoPublicationRecoveryScheduler(IServiceScopeFactory scop
     private async Task<Guid?> ReadPendingIdentityAsync(CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();
-        return (await scope.ServiceProvider.GetRequiredService<MihomoPublicationStore>().ReadAsync(ct)).Pending?.OperationId;
+        return await scope.ServiceProvider.GetRequiredService<MihomoPublicationStore>().ReadPendingIdentityAsync(ct);
     }
 }

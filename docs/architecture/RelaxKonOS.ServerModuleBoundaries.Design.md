@@ -1335,3 +1335,7 @@ Linux 完整认证 Server 复测中，独立 TCP 连接发送真实停止请求�
 Linux 完整认证 Server 的运行中崩溃路径通过。客户端未读取受理响应，通过原幂等键取到 operationId，确认专属容器的 TERM handler 已执行且原回执仍为 Running 后强制终止 Server。重启并重新认证后，同键返回原操作 39baf3ad-13d6-4333-9649-0310e61778b4 的 Interrupted 回执，停止日志只增加一次。日志为 .artifacts/mb05-auth-server-crash-live.log，归档 SHA-256 为 40c4adf9834c82b3d30cb6e3f50e4530b2ec5ac5b53430b23fa619e075e88416。
 
 完整 Server 去重续核在原 Engine 停止完成后显式重新启动同一专属容器，再启动 Server。登录后同键提交及按 ID 查询均返回原 Interrupted 操作 495e7459-98db-4e69-9d34-cf534fb9cace。容器仍在运行，停止日志只增加一次。Linux 实机日志为 .artifacts/mb05-auth-restarted-witness-live.log，归档 SHA-256 为 930f32b0ab2a0ebeae16a0a272a9b6b7cb45863693a3770e9d42314d4aaa7572。
+
+### MB-04 Mihomo 持久发布调度索引
+
+Core 发布恢复扫描使用加密索引，仅记录权威密文 SHA-256 和原待处理 operationId。匹配时按流核对密文，跳过完整发布图的解密和反序列化。失配、损坏、缺失或不可写时从同一权威文件读取原责任，能写时重建索引。原 gate、发布和恢复执行者及 30 秒扫描周期继续承担职责。Windows Release Mihomo 发布事务 109 项通过，日志为 .artifacts/mb04-mihomo-schedule-win.log。Linux 实机联合复测、动态休眠及生产内存测量仍开放。

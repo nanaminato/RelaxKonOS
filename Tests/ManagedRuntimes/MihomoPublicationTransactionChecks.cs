@@ -492,6 +492,20 @@ internal static class MihomoPublicationTransactionChecks
         await using var blockedProvider = collection.BuildServiceProvider();
         using var blockedScheduler = new MihomoPublicationRecoveryScheduler(blockedProvider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<MihomoPublicationRecoveryScheduler>.Instance);
+        var indexPath = Path.Combine(blocked.GetStateDirectory(), "mihomo-publication.protected.schedule");
+        var pendingId = (await blocked.Store.ReadAsync(default)).Pending!.OperationId;
+        await File.WriteAllTextAsync(indexPath, "corrupt");
+        check(await blocked.Store.ReadPendingIdentityAsync(default) == pendingId
+            && await File.ReadAllTextAsync(indexPath) != "corrupt",
+            "A damaged schedule index is rebuilt from the original pending identity");
+        File.Delete(indexPath);
+        Directory.CreateDirectory(indexPath);
+        try
+        {
+            check(await blocked.Store.ReadPendingIdentityAsync(default) == pendingId,
+                "An unwritable schedule index cannot suppress the original pending identity");
+        }
+        finally { Directory.Delete(indexPath); }
         var identity = await blockedScheduler.ScanAsync(null, default);
         check(identity == (await blocked.Store.ReadAsync(default)).Pending!.OperationId && blocked.RecoverCalls == 1,
             "An operator-required transaction remains a durable blocked identity");

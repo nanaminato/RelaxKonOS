@@ -35,6 +35,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
 {
     public SemaphoreSlim Gate { get; } = new(1, 1);
     private readonly IDataProtector protector = protection.CreateProtector("RelaxKonOS.Mihomo.Publication.v1");
+    private readonly IDataProtector scheduleProtector = protection.CreateProtector("RelaxKonOS.Mihomo.PublicationSchedule.v1");
     private string StatePath => Path.Combine(paths.GetStateDirectory(), "mihomo-publication.protected");
     private const int MaximumBytes = 32 * 1024 * 1024;
 
@@ -57,6 +58,11 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         RuntimeSourceStore.RequireNoLinks(StatePath);
         if (!File.Exists(StatePath)) return MihomoPublicationState.Empty;
         await using var input = new FileStream(StatePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        return await DecodeAsync(input, ct);
+    }
+
+    private async Task<MihomoPublicationState> DecodeAsync(FileStream input, CancellationToken ct)
+    {
         if (input.Length is 0 or > MaximumBytes) throw new RuntimePolicyException("runtime.publication_state_invalid");
         var bytes = new byte[checked((int)input.Length)]; await input.ReadExactlyAsync(bytes, ct);
         try
@@ -71,6 +77,55 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             finally { CryptographicOperations.ZeroMemory(plain); }
         }
         catch (CryptographicException) { throw new RuntimePolicyException("runtime.publication_state_invalid"); }
+    }
+
+    internal async Task<Guid?> ReadPendingIdentityAsync(CancellationToken ct)
+    {
+        await Gate.WaitAsync(ct);
+        try
+        {
+            RuntimeSourceStore.RequireNoLinks(StatePath);
+            if (!File.Exists(StatePath)) return (await ReadAsync(ct)).Pending?.OperationId;
+            await using var input = new FileStream(StatePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            if (input.Length is 0 or > MaximumBytes) throw new RuntimePolicyException("runtime.publication_state_invalid");
+            var digest = await SHA256.HashDataAsync(input, ct);
+            var indexPath = StatePath + ".schedule";
+            try
+            {
+                RuntimeSourceStore.RequireNoLinks(indexPath);
+                await using var index = new FileStream(indexPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+                var protectedIndex = new byte[1025];
+                var count = await index.ReadAtLeastAsync(protectedIndex, protectedIndex.Length, false, ct);
+                if (count < protectedIndex.Length)
+                {
+                    var bytes = scheduleProtector.Unprotect(protectedIndex[..count]);
+                    if (bytes.Length == 48 && bytes.AsSpan(0, 32).SequenceEqual(digest))
+                    {
+                        var operation = new Guid(bytes.AsSpan(32));
+                        return operation == Guid.Empty ? null : operation;
+                    }
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException or RuntimePolicyException) { }
+
+            input.Position = 0;
+            var pending = (await DecodeAsync(input, ct)).Pending?.OperationId;
+            await TrySaveScheduleAsync(digest, pending, ct);
+            return pending;
+        }
+        finally { Gate.Release(); }
+    }
+
+    private async Task TrySaveScheduleAsync(byte[] digest, Guid? pending, CancellationToken ct)
+    {
+        try
+        {
+            var bytes = new byte[48];
+            digest.CopyTo(bytes, 0);
+            (pending ?? Guid.Empty).TryWriteBytes(bytes.AsSpan(32));
+            await SaveAtomicAsync(StatePath + ".schedule", scheduleProtector.Protect(bytes), ct);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException or RuntimePolicyException) { }
     }
 
     public Task<MihomoPublicationState> BeginAsync(Guid operationId, long expectedRevision,
@@ -183,19 +238,30 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             if (OperatingSystem.IsWindows()) Directory.CreateDirectory(directory);
             else Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
-        var temporary = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".publication");
         var plain = RuntimeJson.Serialize(state);
         try
         {
             var bytes = protector.Protect(plain);
             if (bytes.Length > MaximumBytes) throw new RuntimePolicyException("runtime.publication_state_invalid");
+            await TrySaveScheduleAsync(SHA256.HashData(bytes), state.Pending?.OperationId, ct);
+            await SaveAtomicAsync(StatePath, bytes, ct);
+        }
+        finally { CryptographicOperations.ZeroMemory(plain); }
+    }
+
+    private static async Task SaveAtomicAsync(string path, byte[] bytes, CancellationToken ct)
+    {
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".publication";
+        try
+        {
             var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
             if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
             await using (var output = new FileStream(temporary, options)) { await output.WriteAsync(bytes, ct); output.Flush(true); }
-            RuntimeSourceStore.RequireNoLinks(StatePath);
-            File.Move(temporary, StatePath, true);
+            ct.ThrowIfCancellationRequested();
+            RuntimeSourceStore.RequireNoLinks(path);
+            File.Move(temporary, path, true);
         }
-        finally { CryptographicOperations.ZeroMemory(plain); File.Delete(temporary); }
+        finally { File.Delete(temporary); }
     }
 
     public static string Identity(string yaml) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(yaml)));

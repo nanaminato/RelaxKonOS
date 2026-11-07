@@ -4444,3 +4444,5 @@ Linux 系统代理 guard 和崩溃恢复已在私有挂载中经独立 Helper �
 Linux 系统代理独立 Helper 已验证现有非 root Server UID 可申请受管操作，同组未授权 UID 仍会被拒绝。
 
 Linux 系统代理周期 guard 与停用恢复已在独立 Helper 夹具中使用实际非 root Server UID 验证。
+
+Mihomo 的 Core 发布恢复扫描现在使用加密调度索引。索引匹配时无需解密完整发布台账。索引失效时读取原待处理操作，恢复仍使用原发布事务和锁。Windows Release 发布事务回归通过，Linux 实机联合复测仍开放。
