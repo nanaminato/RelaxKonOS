@@ -27,7 +27,8 @@ public sealed class ProxyRecoveryHostedService(IProxyTunSafetyService tunSafety,
                 logger.LogWarning("Proxy TUN recovery evaluation requires operator attention: {ProblemCode}", problem);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
-            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or System.Text.Json.JsonException
+                or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
             { logger.LogWarning("Proxy TUN recovery state could not be verified; recovery remains pending."); }
             try { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }

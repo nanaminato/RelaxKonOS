@@ -119,6 +119,21 @@ internal static class ProxyTunLiveChecks
                                 && await safety.CaptureRecoveryAsync(default) == original
                                 && calls.Reloads == disableRequests,
                                 "The same Core worker must retain the original marker while the route is missing.");
+                            var markerPath = Path.Combine(paths.GetStateDirectory(), "proxy-tun-recovery.json");
+                            var savedMarker = markerPath + ".fixture";
+                            File.Move(markerPath, savedMarker);
+                            try
+                            {
+                                File.CreateSymbolicLink(markerPath, savedMarker);
+                                await recoveryLog.Unreadable.Task.WaitAsync(TimeSpan.FromSeconds(45));
+                                TestAssert.Assert(!recovery.ExecuteTask.IsCompleted && calls.Reloads == disableRequests,
+                                    "A temporarily unsafe marker path must not end recovery or repeat the native reload.");
+                            }
+                            finally
+                            {
+                                File.Delete(markerPath);
+                                File.Move(savedMarker, markerPath);
+                            }
                             await AddDefaultRouteAsync();
                             await recovery.ExecuteTask.WaitAsync(TimeSpan.FromSeconds(45));
                         }
@@ -147,7 +162,7 @@ internal static class ProxyTunLiveChecks
                     if (mihomo is not null)
                         TestAssert.Assert(!mihomo.HasExited && (await runtime.IsEnabledAsync(default)) is { Succeeded: true, Enabled: false },
                             "The original Mihomo process must remain reachable with TUN disabled.");
-                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, same Core worker retried and verified route, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
+                    Console.WriteLine($"PASS TUN LIVE RECOVERY: operation={original.OperationId}; real device removed once, same Core worker retried unsafe marker and verified route, stale recovery rejected; initial recovery reloads={disableRequests}; auto-route={mihomo is not null}; dns={mihomo is not null}; mihomo={mihomo is not null}");
                 }
                 finally { if (mihomo is not null) await DockerProcessRecoveryChecks.StopWorkerAsync(mihomo); }
             }
@@ -251,15 +266,19 @@ internal static class ProxyTunLiveChecks
 
     private sealed class RecoveryAttemptLog : ILogger<ProxyRecoveryHostedService>
     {
+        internal readonly TaskCompletionSource Unreadable = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
         public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
-            if (level == LogLevel.Warning && formatter(state, exception).StartsWith(
-                "Proxy TUN recovery evaluation requires operator attention:", StringComparison.Ordinal))
+            if (level != LogLevel.Warning) return;
+            var message = formatter(state, exception);
+            if (message.StartsWith("Proxy TUN recovery evaluation requires operator attention:", StringComparison.Ordinal))
                 Pending.TrySetResult();
+            if (message == "Proxy TUN recovery state could not be verified; recovery remains pending.")
+                Unreadable.TrySetResult();
         }
     }
 
