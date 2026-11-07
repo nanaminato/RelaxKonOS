@@ -120,7 +120,25 @@ def run(server, project, helper):
             try:
                 request(route, {"confirmed": True}, expected=401)
                 token = login()
-                receipt = request(route, {"confirmed": True}, token, expected=202)
+                # Send the authenticated mutation on a separate connection and discard its response.
+                payload = b'{"confirmed":true}'
+                with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+                    headers = (f"POST {route} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+                               f"Authorization: Bearer {token}\r\nIdempotency-Key: {key}\r\n"
+                               f"Content-Type: application/json\r\nContent-Length: {len(payload)}\r\n"
+                               "Connection: close\r\n\r\n")
+                    connection.sendall(headers.encode("ascii") + payload)
+                    by_request = "/api/v1.0/docker/stack-operations/by-request"
+                    for _ in range(100):
+                        try:
+                            receipt = request(by_request, token=token)
+                            break
+                        except RuntimeError as error:
+                            if not str(error).startswith("Unexpected HTTP 404 "):
+                                raise
+                            time.sleep(0.05)
+                    else:
+                        raise RuntimeError("The original request did not establish a durable receipt")
                 operation = receipt["operationId"]
                 for _ in range(200):
                     terminal = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
@@ -136,7 +154,7 @@ def run(server, project, helper):
                 replay = request(route, {"confirmed": True}, login(), expected=202)
                 if replay["operationId"] != operation or replay["state"] != terminal["state"]:
                     raise RuntimeError("Server restart did not preserve the original Docker receipt")
-                print(f"PASS AUTHENTICATED SERVER DOCKER RECEIPT: operation={operation}")
+                print(f"PASS AUTHENTICATED SERVER DOCKER RECEIPT: operation={operation}; original response discarded")
             finally:
                 stop(process)
         finally:

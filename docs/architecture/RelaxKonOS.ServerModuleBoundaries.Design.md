@@ -1329,3 +1329,5 @@ Linux x64 Release 通过独立 Nginx reload 的生产 HTTP 同键回执断线验
 ### MB-05 完整 Server 认证回执
 
 Linux x64 Release 在私有 Engine 和回环网络中启动完整 System Mode Server，先确认匿名 Docker 请求被拒绝，再通过真实 Unix socket peer 校验及固定 PAM 认证操作登录。专属 Helper 只派发认证，其他操作拒绝，避免触及共享服务。真实 Docker 停止完成后重启 Server，再次登录并同键取回原 Succeeded 操作 fb400c0c-210b-42ed-84b9-b7d2ba085362。停止日志仅增加一次。日志为 .artifacts/mb05-auth-only-helper-live.log，归档 SHA-256 为 d779ce3adafcd0ee22836d2df45668afcd5ebcbfaf744c990e0adf47deac1c06。先前 in-process PAM 的 login 和 sshd 路径返回 401，生产 Helper 固定 PAM 路径通过。本次完整认证回执与响应屏障实测为独立路径。
+
+Linux 完整认证 Server 复测中，独立 TCP 连接发送真实停止请求，另一连接按原幂等键确认受理后，客户端关闭原连接且不读取响应。原操作 751cc66c-faad-4626-8c6e-e0f974db740d 完成并落盘，Server 重启和重新认证后返回原 Succeeded 回执。专属容器停止日志仅增加一次。日志为 .artifacts/mb05-auth-response-loss-live.log，归档 SHA-256 为 c518fb25902d0060a3a196c9d694da8ee1e97c8656d785a15fa9b7a7253bdec4。本项验证客户端丢失响应，不提供完整 Server 写出任务阻塞期间的租约观测。
