@@ -3,6 +3,7 @@ using System.Security.Claims;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Proxy;
+using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Endpoints;
@@ -145,9 +146,8 @@ public static class ProxyEndpoints
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyOverviewDto>();
         app.MapGet(ProxyApiRoutes.Connections, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteObservationAsync(context, leases, static async (services, ct) =>
         {
-            var engines = services.GetRequiredService<IProxyEngineRegistry>();
-            try { return Results.Ok(await engines.Find("mihomo")!.GetConnectionsAsync(ct)); }
-            catch (ProxyObservationException error) { return Problem(error.ProblemCode, StatusCodes.Status503ServiceUnavailable); }
+            var result = await services.GetRequiredService<IMihomoControllerClient>().GetConnectionsAsync(ct);
+            return result.Succeeded ? Results.Ok(result.Value) : Problem(result.ProblemCode, StatusCodes.Status503ServiceUnavailable);
         })).RequireAuthorization("ProxyRead").WithTags("Proxy");
     }
 

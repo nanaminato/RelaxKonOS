@@ -484,3 +484,5 @@ MB-05 的 Nginx 清理确认可在存活 Server 内按原 ID 重试。原工作�
 MB-05 WebRoot 挑战内容不匹配时，原证书台账保持活动清理责任并拒绝新证书操作。跨进程仍可认证查询原回执和原 CA 订单。Certificates 与 WebServer 保持 resident，见[挑战文件归属验收](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-挑战内容变化时保留原清理责任)。
 
 MB-05 已在隔离 Linux 验证生产续期 worker 的自然扫描遇到挑战归属阻塞时保持原扫描未完成。恢复后按同一扫描 ID 和原续期回执接续。见[续期扫描跨阻塞验收](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-续期扫描跨挑战归属阻塞恢复)。
+
+Mihomo 连接详情作用域直接构造控制器，工作租约继续覆盖真实响应及异步清理。原解析代次和 Core 恢复责任分别维持，Proxy 整体仍 resident。见[连接详情读取执行图](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接详情读取执行图)。

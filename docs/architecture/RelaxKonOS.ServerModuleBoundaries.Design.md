@@ -2040,3 +2040,11 @@ Linux Release 在私有 Pebble、DNS、Nginx、Docker 和完整认证 Server 上
 在私有 Pebble、DNS 和 Nginx 上签发短期证书。真实续期挑战响应在途时换入不同内容并终止 Server。重启后生产续期 worker 按原启动周期创建到期扫描，发现清理阻塞后保留扫描未完成及原证书操作。恢复匹配文件后再启动，由同一 worker 接续原扫描并关联原证书回执。测试使用 Pebble 短期证书和原到期回退规则，隔离网络内的 PAM 夹具只承载认证与管理员检查。
 
 Linux Release 验证原扫描 `a0ae423b-b106-480a-b0fe-cca9fdadcf65` 和原续期 `aba20dc2-767d-488e-900a-16cd868920ff`。第一次实际扫描保留空完成时间及零拒绝，旧文件和活动证书指纹保持。恢复原挑战字节后，下一次自然扫描使用同一 ID 和开始时间，关联原 Interrupted 回执。原键和原订单仍可读取，活动证书指纹一致。Pebble 共两张预期订单、一次签发提交，恢复零新增。强制终止首次 Server 后，测试中继向已关闭 socket 交付原响应得到 BrokenPipe，后续真实扫描和 CA 计数均通过。宿主 Nginx、Docker PID 与环境文件指纹保持。日志为 `.artifacts/mb05-natural-renewal-ownership/live.log`，归档 SHA-256 为 `34652357bb4a0846d608c2d5e82d704ded4877a8c7fe902d2e751a0f24e9304e`。Windows Release MB-05 夹具按原 `a1c1ff2d-364f-4d94-869d-fbedabee9988` 返回 Interrupted，受控副作用计数为一。
+
+### MB-04 Mihomo 连接详情读取执行图
+
+依据概览与运行时基线，连接详情路由直接从原工作作用域取得 Mihomo 控制器。该路径无需实例化管理引擎、配置验证器或引擎注册表。工作租约覆盖控制器任务、实际 HTTP 响应和作用域清理，原控制器认证、错误分类及可回收解析代次继续负责各自工作。Windows Release 使用实际 Kestrel，配置构造即失败的引擎注册表来验证连接路由的依赖边界，并覆盖控制器认证错误返回 HTTP 503、客户端断线、响应排空和清理失败。
+
+Linux 私有 systemd 使用同一批 512 条真实连接、三对交错制品和每轮 24 次概览加详情请求。候选的峰值 PSS 在三对中高 0.10、2.27、6.99 MiB，35 秒闲置 PSS 差分别为 −1.65、−3.37、+0.40 MiB，延迟变化方向不一致。采样限管理 Server PID，原 512 条连接均收到源站响应，原回执 `1bb7d583-4ddb-4d0d-a6e1-41459fcd280b`、原生 PID 和发布修订保持，测量期间配置与补偿派发均为零。保留有确定证据的执行边界调整，隔离数据未显示稳定的内存下降。
+
+同批原发布 `ed2602cc-e610-401e-a337-ea9df28d4e01` 在解析代次闲时卸载、唤醒及 Host 排空期间完成恢复。真实 Mihomo systemd 套件通过 177 项，专属 cgroup 清理，宿主共享服务及代理文件指纹一致。Windows Release Core 安全 37 项、驻留和生命周期作用域各 31 项通过，MB-05 跨进程按原 `9576e451-5cfb-4771-9cf7-4404bb69fbac` 返回 Interrupted，受控副作用计数为一。首轮实机夹具编译暴露一个仍调用旧引擎读取方法的测试，更新后完整运行。日志及摘要在 `.artifacts/mb04-connection-read-graph/`，Linux 归档 SHA-256 为 `ff2b275528460a3cba6904d051c14e33b5ed25e123decd1396a55cc1d7e14a8e`。Proxy 整体继续 resident。下一项审计流量与日志读取的工作租约和控制器响应生命周期。

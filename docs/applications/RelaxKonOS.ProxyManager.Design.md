@@ -4540,3 +4540,5 @@ Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。�
 若 Mihomo 拒绝候选且 Helper 证明已恢复上一配置，重启后同键可读取原 Failed 回执。隔离 Linux 验证了旧配置转发、原订阅时间与单次原生派发。见[活动订阅补偿回执](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅原生失败与补偿回执)。
 
 真实 Helper 的原发布回执在途期间，连接详情的解析代次可闲时卸载，后续认证读取加载新代次。隔离 Linux 验证前后观察到同一条真实连接，Core 继续完成原发布恢复，Server 排空退出后该连接收到源站响应。见[读取代次与原发布恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-读取代次闲时卸载与原发布恢复)。
+
+连接详情直接通过当前工作作用域的 Mihomo 控制器读取。控制器错误继续通过同一 HTTP 503 回执返回，工作租约覆盖实际响应和异步清理。见[连接详情读取执行图](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接详情读取执行图)。

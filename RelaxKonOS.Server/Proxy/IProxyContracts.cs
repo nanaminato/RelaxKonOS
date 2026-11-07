@@ -3,11 +3,6 @@ using RelaxKonOS.Server.Installations;
 
 namespace RelaxKonOS.Server.Proxy;
 
-public sealed class ProxyObservationException(string problemCode) : Exception(problemCode)
-{
-    public string ProblemCode { get; } = problemCode;
-}
-
 /// <summary>Engine-neutral Server boundary. Concrete controller schemas never cross it.</summary>
 public interface IProxyEngine
 {
@@ -21,7 +16,6 @@ public interface IProxyEngine
     Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken);
     Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken);
     Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken);
-    Task<IReadOnlyList<ProxyConnectionDto>> GetConnectionsAsync(CancellationToken cancellationToken);
     Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken);
     Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProxyLogEntryDto>> GetLogsAsync(int limit, CancellationToken cancellationToken);

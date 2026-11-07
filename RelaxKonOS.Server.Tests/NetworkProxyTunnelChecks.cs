@@ -200,11 +200,9 @@ internal static async Task VerifyMihomoLiveStreamsAsync()
     var unauthorized = new MihomoControllerClient(new HttpClient(new DelegateHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized)))), new StaticProxySecretStore(), options);
     TestAssert.Assert((await unauthorized.GetLogsAsync(10, CancellationToken.None)).ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed,
         "Stream authentication errors must remain distinguishable from quiet logs.");
-    var engine = new MihomoEngine(unauthorized, new UnavailableMihomoConfigurationValidator(), new TestProxyPaths(Path.GetTempPath()));
-    var failedRead = false;
-    try { await engine.GetConnectionsAsync(CancellationToken.None); }
-    catch (ProxyObservationException error) { failedRead = error.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed; }
-    TestAssert.Assert(failedRead, "A failed connection read must not become a successful empty list.");
+    var failedRead = await unauthorized.GetConnectionsAsync(CancellationToken.None);
+    TestAssert.Assert(!failedRead.Succeeded && failedRead.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed,
+        "A failed connection read must retain its authentication error.");
     var gate = new ProxyConnectionExecutionGate(TimeSpan.FromMilliseconds(50));
     var (code, retainedEntry) = await VerifyConnectionParserDrainAsync(gate);
     for (var i = 0; code.IsAlive && i < 50; i++)

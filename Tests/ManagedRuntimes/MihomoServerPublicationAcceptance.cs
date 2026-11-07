@@ -191,19 +191,19 @@ internal static class MihomoServerPublicationAcceptance
                 await using var overviewScope = controllers.CreateAsyncScope();
                 var controller = overviewScope.ServiceProvider.GetRequiredService<IMihomoControllerClient>();
                 var safety = new ProxyTunSafetyService(paths, new HostProxyNetworkSafetyPlatform());
-                var observer = new MihomoEngine(controller, new UnavailableMihomoConfigurationValidator(), paths, tunSafety: safety);
                 var recovery = new CountingRecoveryReader(safety);
                 var overview = new ProxyOverviewService(manager, controller, new ProxyPlatformService(systemProxy), publicationProfiles, recovery);
                 IReadOnlyList<ProxyConnectionDto>? retainedConnections = null;
                 Check(await probeWithConnection(originalPort + 2, async () =>
                 {
                     var observation = await overview.GetAsync(default);
-                    var connections = await observer.GetConnectionsAsync(default);
+                    var detail = await controller.GetConnectionsAsync(default);
                     if (observation.ActiveProfile?.Id != nextProfile.Id || observation.ActiveConnections < 1
                         || observation.Runtime.State != ProxyRuntimeState.Running || versionRequests != 3 || recovery.Reads != 1
-                        || observation.ActiveConnections != connections.Count || observation.Health.State != ProxyHealthState.Healthy)
+                        || !detail.Succeeded || observation.ActiveConnections != detail.Value!.Count
+                        || observation.Health.State != ProxyHealthState.Healthy)
                         throw new InvalidOperationException("Overview must read the original active profile and count the real held proxy connection.");
-                    retainedConnections = connections;
+                    retainedConnections = detail.Value;
                 }) && transport.ConfigureCalls == beforeProfileRecovery,
                     "Overview observes real forwarding without invoking publication.");
                 Console.WriteLine("PASS MIHOMO SCOPED OVERVIEW: real held connection counted and original profile observed");

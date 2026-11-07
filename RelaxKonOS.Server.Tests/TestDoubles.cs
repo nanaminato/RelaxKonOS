@@ -224,7 +224,6 @@ sealed class TransactionTestEngine : IProxyEngine
     public Task<ProxyRoutingModeDto> GetRoutingModeAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyRoutingModeDto(ProxyRoutingMode.Rule, ProxyProblemCodes.NotSupported));
     public Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken) => Task.FromResult<string?>(ProxyProblemCodes.NotSupported);
     public Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken) => Task.FromResult(new ProxyDelayDto(proxyName, null, false, ProxyProblemCodes.NotSupported));
-    public Task<IReadOnlyList<ProxyConnectionDto>> GetConnectionsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ProxyConnectionDto>>([]);
     public Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyTrafficDto(0, 0, 0, 0, 0));
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<string?>(ProxyProblemCodes.NotSupported);
     public Task<IReadOnlyList<ProxyLogEntryDto>> GetLogsAsync(int limit, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ProxyLogEntryDto>>([]);

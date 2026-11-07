@@ -29,7 +29,9 @@ internal static class ProxyObservationLeaseChecks
             services.GetRequiredService<ILogger<ModuleResidencyCoordinator>>(), residentWorkModuleIds: ids));
         builder.Services.AddSingleton<IResidentModuleWorkLeaseSource, CapturingLeaseSource>();
         var scenario = new Scenario(holdController: false);
-        builder.Services.AddScoped<IProxyEngineRegistry>(_ => new Registry(scenario));
+        builder.Services.AddScoped<IProxyEngineRegistry>(_ => throw new InvalidOperationException("Connection reads must not create the management engine graph."));
+        builder.Services.AddScoped(_ => new ControllerScope(scenario));
+        builder.Services.AddScoped<IMihomoControllerClient>(services => services.GetRequiredService<ControllerScope>().CreateClient());
         await using var app = builder.Build();
         var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -58,6 +60,16 @@ internal static class ProxyObservationLeaseChecks
             TestAssert.Assert(anonymous.StatusCode == HttpStatusCode.Unauthorized && !HasLease()
                 && !scenario.ControllerEntered.Task.IsCompleted, "Anonymous reads must not start the Proxy graph or take a work lease.");
         http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
+
+        scenario = new Scenario(holdController: false) { Status = HttpStatusCode.Unauthorized };
+        scenario.ReleaseResponse.TrySetResult();
+        scenario.ReleaseCleanup.TrySetResult();
+        using (var rejected = await http.GetAsync(ProxyApiRoutes.Connections, ct))
+            TestAssert.Assert(rejected.StatusCode == HttpStatusCode.ServiceUnavailable
+                && (await rejected.Content.ReadAsStringAsync(ct)).Contains(ProxyProblemCodes.ControllerAuthenticationFailed, StringComparison.Ordinal),
+                "Controller authentication failure must remain an explicit HTTP 503.");
+        await scenario.RequestExited.Task.WaitAsync(ct);
+        TestAssert.Assert(!HasLease(), "The error response must drain its scope and lease.");
 
         foreach (var holdController in new[] { true, false })
         {
@@ -114,6 +126,7 @@ internal static class ProxyObservationLeaseChecks
     {
         internal bool HoldController { get; } = holdController;
         internal bool FailCleanup { get; init; }
+        internal HttpStatusCode Status { get; init; } = HttpStatusCode.OK;
         internal readonly TaskCompletionSource ControllerEntered = Signal();
         internal readonly TaskCompletionSource ControllerCancelled = Signal();
         internal readonly TaskCompletionSource ResponseEntered = Signal();
@@ -127,20 +140,15 @@ internal static class ProxyObservationLeaseChecks
         private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
-    private sealed class Registry(Scenario scenario) : IProxyEngineRegistry, IAsyncDisposable
+    private sealed class ControllerScope(Scenario scenario) : IAsyncDisposable
     {
-        private readonly HttpClient _http = new(new ControllerTransport(scenario));
-
-        public IProxyEngine? Find(string engineId) => new MihomoEngine(
-            new MihomoControllerClient(_http, new StaticProxySecretStore(), new()),
-            new UnavailableMihomoConfigurationValidator(), new TestProxyPaths(Path.GetTempPath()));
-        public IReadOnlyList<IProxyEngine> List() => throw new NotSupportedException();
+        internal IMihomoControllerClient CreateClient() =>
+            new MihomoControllerClient(new HttpClient(new ControllerTransport(scenario)), new StaticProxySecretStore(), new());
 
         public async ValueTask DisposeAsync()
         {
             scenario.CleanupEntered.TrySetResult();
             await scenario.ReleaseCleanup.Task;
-            _http.Dispose();
             if (scenario.FailCleanup) throw new IOException("Unconfirmed fixture cleanup.");
         }
     }
@@ -162,7 +170,7 @@ internal static class ProxyObservationLeaseChecks
             scenario.ControllerEntered.TrySetResult();
             if (scenario.HoldController) await scenario.ReleaseController.Task;
             ct.ThrowIfCancellationRequested();
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"connections\":[]}") };
+            return new HttpResponseMessage(scenario.Status) { Content = new StringContent("{\"connections\":[]}") };
         }
     }
 }
