@@ -1890,3 +1890,15 @@ Linux 私有 systemd 复用同一受管 Mihomo PID `9841`、Helper、私有台�
 候选 35 秒 PSS 在三对中低 0.05–1.88 MiB，峰值增量和请求延迟均无一致改善。采样只覆盖 Server PID，延迟为概览加详情的顺序请求中位数。全部原连接收到响应，原 `64672698-7947-45e9-aa9b-d08914ea71b2` Interrupted 回执及发布修订保持一致。测量期间无配置或补偿派发。真实受管套件通过 177 项，专属 cgroup 已清理，宿主共享服务及代理文件通过核验。原始日志为 `.artifacts/mb04-token-count-live.log`，归档 SHA-256 为 `f18dd56fde63fab8e5c5374a7cc05055ea89c60eb9662b43c01193c4e8031cc3`，摘要为 `.artifacts/mb04-token-count-summary.json`。
 
 Proxy 继续 resident，整模块动态休眠及生产内存仍开放。下一项复验完整 Server 在真实 Helper 原回执等待期间收到 SIGTERM 时，Core 是否继续承担发布恢复与排空。
+
+### MB-04 完整 Server 在真实 Mihomo 回执等待时排空
+
+私有 Linux systemd 内，测试通过原发布服务提交真实 Mihomo 配置命令。Helper 记录一次派发，原生拒绝后补偿到原配置，应用侧故意丢弃响应并保留原待处理记录。完整非 root Server 启用 Proxy 启动，由原 Core 调度器按原 ID 查询。测试中继只截留该真实 Helper 终态响应，Helper 看到的是私有中继 UID，完整 Server 本身仍为非 root。
+
+SIGTERM 后观察到 Server 关闭监听，进程仍存活。释放回执前，原操作仍待处理，同一 Mihomo PID 保持真实 HTTP 转发。放行原回执后，Server 先确认并持久化清理，再正常退出。重启读取同一份台账，原待处理已清理、修订未推进，Helper 恢复阶段仅查询原回执一次，无配置或补偿派发。该验收使用已有 Core 调度器和原台账。
+
+Windows Release 发布事务 112 项及模块边界回归通过。MB-05 跨进程夹具按原 ID `aa6cb9a7-7559-403e-931a-9963dfe2e1ed` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-sigterm-drain-publication-win.log` 与 `.artifacts/mb04-sigterm-drain-boundaries-win.log`。
+
+真实受管套件通过 177 项。完整 Server 排空原 `0630dd48-c886-4e22-820a-acc46fed1786` Failed 回执，原中断补偿 `f17e3bcb-15a0-44df-8813-2bf8e8e87b61` 同批复验通过。专属 cgroup 清理完成，宿主服务与代理文件指纹一致。日志为 `.artifacts/mb04-sigterm-drain-native-live.log`，归档 SHA-256 为 `f5eee4a33cdc36302ab92add7254d866a57a289c0106003e5d209599f4796f47`。
+
+复用响应中继的完整认证回归通过，入站发布原 `70b314f0-daca-47fa-b8f0-68950f0ff6b4` 及补偿 `69188c47-0bbc-43d3-8874-503e82dec4bb` 未重放。概览重启、闲时唤醒和真实控制器取消通过，宿主指纹一致。日志为 `.artifacts/mb04-sigterm-drain-auth-live.log`，归档 SHA-256 为 `a99bb9167238760ae1b54a763b5c173f05fca1c6d906a286b3f2c0bf67b157e5`。本次验收限配置发布，其他 Core worker 的完整 Server 停机边界及整模块休眠仍开放。下一项验收系统代理 guard 在真实 Helper 已写入代理环境、响应尚未返回时的停机排空。

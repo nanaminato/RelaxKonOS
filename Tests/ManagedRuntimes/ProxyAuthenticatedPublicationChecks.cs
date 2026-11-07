@@ -452,24 +452,29 @@ internal static class ProxyAuthenticatedPublicationChecks
     private static async Task<ProxyOperationDto> ReadAsync(HttpClient client, Guid operation, CancellationToken ct) =>
         (await client.GetFromJsonAsync<ProxyOperationDto>($"{ProxyServerRoutes.Root}/operations/{operation:D}", RelaxKonOSJsonOptions.Default, ct))!;
 
-    private sealed class ReplyRelay : IAsyncDisposable
+    internal sealed class ReplyRelay : IAsyncDisposable
     {
         private readonly Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         private readonly CancellationTokenSource stopping;
         private readonly Task run;
         private readonly string upstream;
+        private readonly Func<string?, Guid, bool> hold;
+        private readonly TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal string Path { get; }
         internal TaskCompletionSource<Guid> Committed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        internal ReplyRelay(string path, string upstream, CancellationToken ct)
+        internal ReplyRelay(string path, string upstream, CancellationToken ct, Func<string?, Guid, bool>? hold = null)
         {
             Path = path; this.upstream = upstream;
+            this.hold = hold ?? ((operation, _) => operation == "ProxyServerApply");
             listener.Bind(new UnixDomainSocketEndPoint(path));
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherWrite);
             listener.Listen(16);
             stopping = CancellationTokenSource.CreateLinkedTokenSource(ct);
             run = RunAsync();
         }
+
+        internal void ReleaseHeldResponse() => release.TrySetResult();
 
         private async Task RunAsync()
         {
@@ -496,16 +501,18 @@ internal static class ProxyAuthenticatedPublicationChecks
                     var request = await ReadFrameAsync(client, ct);
                     if (request is null) return;
                     using var command = JsonDocument.Parse(request);
-                    var apply = command.RootElement.GetProperty("operation").GetString() == "ProxyServerApply";
+                    var operation = command.RootElement.GetProperty("operation").GetString();
+                    var held = command.RootElement.TryGetProperty("operationId", out var value)
+                        && value.ValueKind == JsonValueKind.String && value.TryGetGuid(out var id) && hold(operation, id);
                     await PrivilegedHelperSocketFraming.WriteAsync(helper, request, ct);
                     while (await ReadFrameAsync(helper, ct) is { } response)
                     {
                         using var frame = JsonDocument.Parse(response);
                         var terminal = frame.RootElement.GetProperty("Type").GetString() == "result";
-                        if (apply && terminal && frame.RootElement.GetProperty("Result").GetProperty("success").GetBoolean())
+                        if (held && terminal && frame.RootElement.GetProperty("Result").GetProperty("success").GetBoolean())
                         {
                             Committed.TrySetResult(command.RootElement.GetProperty("operationId").GetGuid());
-                            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                            await release.Task.WaitAsync(ct);
                         }
                         await PrivilegedHelperSocketFraming.WriteAsync(client, response, ct);
                         if (terminal) return;

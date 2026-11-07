@@ -4524,3 +4524,5 @@ Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。�
 概览计数与连接详情投影共用同一可回收读取代次。概览只取得计数，详情保持原协议。投影代次释放后，已返回的连接详情仍可使用。见[连接计数与详情投影](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接计数与详情投影随代次释放)。
 
 概览直接扫描连接 ID 所需的 JSON token，完整快照校验和详情协议保持原规则。隔离 Linux 两版共用同一受管 Mihomo 和 512 条原连接，全部完成转发。Proxy 管理模块继续常驻。见[计数配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览按-json-token-计数)。
+
+完整 Server 停机时，Core 会等已受理的 Mihomo 发布恢复读完原 Helper 回执并持久化清理。隔离 Linux 已验证 SIGTERM、重启及原 Mihomo 持续转发。见[完整 Server 排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-在真实-mihomo-回执等待时排空)。

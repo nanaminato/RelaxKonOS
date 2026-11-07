@@ -236,6 +236,110 @@ internal static class MihomoIpcStartupAcceptance
                     throw new InvalidOperationException("The read workload changed the original runtime, publication or recovery receipt.");
             }
         }
+
+        await VerifyPublicationShutdownAsync();
+
+        async Task VerifyPublicationShutdownAsync()
+        {
+            using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            var ct = budget.Token;
+            var drainId = Guid.NewGuid();
+            var pendingBase = await startupStore.ReadAsync(ct);
+            var nativeBefore = await lifecycle.QueryAsync(ct);
+            var drainPlan = plan with
+            {
+                ExpectedStateRevision = nativeBefore.Installation.StateRevision,
+                IdempotencyKey = "ipc-shutdown-drain"
+            };
+            var provider = new MihomoRuntimeAuthorizationProvider(startupStore, tunPaths, secrets);
+            var writer = new MihomoConfigurationPublicationService(startupStore, provider,
+                new(new LoseConfigureReply(transport), startupStore, provider, new SystemMode(), new DirectDownloads()), tunPaths);
+            await using (var preparing = await StartHelperAsync(helperAssembly, config, transport))
+            {
+                try
+                {
+                    await writer.PublishAsync(drainId, pendingBase.Revision, drainPlan, candidate, ct);
+                    throw new InvalidOperationException("The real configure reply was not lost before application confirmation.");
+                }
+                catch (IOException error) when (error.Message == LoseConfigureReply.Message) { }
+                var preparationLog = await preparing.StopAsync(drainCompletedRequests: true);
+                if (preparationLog.Split('\n').Count(line => line.Contains($"operation=MihomoRuntimeConfigure id={drainId} ", StringComparison.OrdinalIgnoreCase)) != 1)
+                    throw new InvalidOperationException("The original configure command did not execute exactly once.");
+            }
+            var nativeReceipt = await lifecycle.QueryAsync(ct, drainId);
+            var pending = await startupStore.ReadAsync(ct);
+            var nativePid = await ReadRuntimePidAsync();
+            if (nativeReceipt.Receipt is not { Outcome: RuntimeSwitchOutcome.Failed } failed || failed.OperationId != drainId
+                || pending.Pending?.OperationId != drainId || nativeReceipt.ConfigurationIdentity != identity || !await probe(port))
+                throw new InvalidOperationException("The original Helper outcome or live compensation was unavailable before shutdown.");
+            await NativeRuntimeProcess.RunAsync("/usr/bin/chown", ["-R", $"{uid}:{gid}", "--", ManagedServiceChecks.FullServerState], 256);
+
+            await using var helper = await StartHelperAsync(helperAssembly, config, transport);
+            await using var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-mihomo-drain.sock", socket, ct,
+                (kind, id) => kind == "MihomoRuntimeQuery" && id == drainId);
+            start.ArgumentList[^1] = Path.GetFullPath(serverAssembly);
+            start.Environment["Modules__Proxy__Enabled"] = "true";
+            start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
+            start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
+            var shuttingDown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Server for SIGTERM.");
+            process.OutputDataReceived += (_, args) =>
+            {
+                if (args.Data?.Contains("Application is shutting down", StringComparison.Ordinal) == true)
+                    shuttingDown.TrySetResult();
+            };
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            using var http = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+            try
+            {
+                if (await relay.Committed.Task.WaitAsync(ct) != drainId)
+                    throw new InvalidOperationException("The relay did not hold the original Helper response.");
+                var healthUrl = ManagedServiceChecks.FullServerUrl + "/healthz";
+                while (!process.HasExited)
+                {
+                    try { using var health = await http.GetAsync(healthUrl, ct); if (health.IsSuccessStatusCode) break; }
+                    catch (HttpRequestException) { }
+                    await Task.Delay(50, ct);
+                }
+                if (process.HasExited) throw new InvalidOperationException("Server exited before SIGTERM.");
+                await NativeRuntimeProcess.RunAsync("/usr/bin/kill", ["-TERM", process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)], 256);
+                await shuttingDown.Task.WaitAsync(ct);
+                while (!process.HasExited)
+                {
+                    try { using var health = await http.GetAsync(healthUrl, ct); }
+                    catch (HttpRequestException) { break; }
+                    await Task.Delay(50, ct);
+                }
+                if (process.HasExited || (await startupStore.ReadAsync(ct)).Pending?.OperationId != drainId
+                    || await ReadRuntimePidAsync() != nativePid || !await probe(port))
+                    throw new InvalidOperationException("SIGTERM dropped a pending recovery or its original native traffic.");
+                relay.ReleaseHeldResponse();
+                await process.WaitForExitAsync(ct);
+                var completed = await startupStore.ReadAsync(ct);
+                var observedAfter = await lifecycle.QueryAsync(ct, drainId);
+                if (process.ExitCode != 0 || completed.Pending is not null || completed.Identity != identity
+                    || observedAfter.Receipt != failed || observedAfter.Installation.StateRevision != nativeReceipt.Installation.StateRevision
+                    || await ReadRuntimePidAsync() != nativePid || !await probe(port))
+                    throw new InvalidOperationException("Server exited without durably draining the original recovery.");
+                start.Environment["PrivilegedHelper__SocketPath"] = socket;
+                await CheckStartupAsync(start, drainId, uid, ready: true);
+                var restarted = await startupStore.ReadAsync(ct);
+                var log = await helper.StopAsync(drainCompletedRequests: true);
+                if (restarted.Pending is not null || restarted.Revision != completed.Revision || restarted.Identity != identity
+                    || log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
+                    || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal)
+                    || log.Split('\n').Count(line => line.Contains($"operation=MihomoRuntimeQuery id={drainId} uid=0 success=True", StringComparison.OrdinalIgnoreCase)) != 1
+                    || !await probe(port))
+                    throw new InvalidOperationException("Shutdown and restart must not replay the original configure or recovery.");
+                Console.WriteLine($"PASS MIHOMO FULL SERVER SIGTERM DRAIN: original Failed receipt {drainId}, one query, durable cleanup, same runtime PID and live traffic");
+            }
+            finally
+            {
+                relay.ReleaseHeldResponse();
+                await ProxyAuthenticatedPublicationChecks.StopAsync(process);
+            }
+        }
     }
 
     private static async Task<string> ReadNetworkAsync() =>

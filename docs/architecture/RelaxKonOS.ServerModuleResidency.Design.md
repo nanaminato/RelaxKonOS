@@ -456,3 +456,5 @@ Mihomo 概览和连接详情的原模块工作租约覆盖控制器 Task、HTTP 
 Mihomo 连接计数和详情投影已进入现有可回收读取代次。Host 保留共享投影值或协议 DTO 不影响该代次回收。Proxy 整体继续 resident，安全及恢复责任沿用原所有者。见[连接计数与详情投影](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接计数与详情投影随代次释放)。
 
 Mihomo 概览按 token 计数，继续校验完整快照。固定快照解析分配下降。隔离 Linux 的三对样本中，候选 35 秒 PSS 低 0.05–1.88 MiB，峰值增量和延迟均无一致改善。Proxy 仍 resident，生产驻留保持开放。见[计数配对测量](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览按-json-token-计数)。
+
+完整 Server 经 SIGTERM 停止监听后，原 Core 调度器仍持有已受理的 Mihomo 发布恢复，直至真实 Helper 回执和持久清理完成。原 Mihomo 继续转发，重启保留同一终态。见[完整 Server 排空](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-在真实-mihomo-回执等待时排空)。
