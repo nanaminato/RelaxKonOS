@@ -36,7 +36,30 @@ internal static class QueueBoundaryChecks
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
         builder.Services.AddSingleton<ProxyServerOperationQueue>(); builder.Services.AddTransient<ProxyServerService>();
         builder.Services.AddScoped<IProxyEngineRegistry>(_ => new Engines(state));
-        await using var app = builder.Build(); app.UseAuthorization(); app.MapProxyServerEndpoints();
+        var writing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var aborted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseResponse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var responseExited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await using var app = builder.Build();
+        app.Use(async (context, next) =>
+        {
+            if (!context.Request.Headers.ContainsKey("X-Hold-Receipt"))
+            {
+                await next(context);
+                return;
+            }
+            using var registration = context.RequestAborted.Register(() => aborted.TrySetResult());
+            context.Response.OnStarting(async () =>
+            {
+                writing.TrySetResult();
+                await releaseResponse.Task.WaitAsync(budget.Token);
+            });
+            try { await next(context); }
+            finally { responseExited.TrySetResult(); }
+        });
+        app.UseAuthorization();
+        app.MapProxyServerEndpoints();
         try
         {
             await app.StartAsync();
@@ -49,6 +72,30 @@ internal static class QueueBoundaryChecks
             using var replay = await client.PutAsJsonAsync(ProxyServerRoutes.Configuration, new SaveProxyServerConfiguration(0, []));
             Require(replay.StatusCode == HttpStatusCode.Accepted && state.Created == 1, "Replay returns the protected receipt without another execution graph.");
             Require(responseLeases.Acquired == 2, "Original and replay responses each acquire their own lease.");
+            var original = await response.Content.ReadFromJsonAsync<ProxyOperationAcceptedDto>();
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(budget.Token);
+            using var held = new HttpRequestMessage(HttpMethod.Put, ProxyServerRoutes.Configuration)
+                { Content = JsonContent.Create(new SaveProxyServerConfiguration(0, [])) };
+            held.Headers.Add("X-Hold-Receipt", "1");
+            var send = client.SendAsync(held, cancellation.Token);
+            try
+            {
+                await writing.Task.WaitAsync(budget.Token);
+                cancellation.Cancel();
+                await aborted.Task.WaitAsync(budget.Token);
+                try { using var unexpected = await send; throw new InvalidOperationException("Expected receipt client disconnect."); }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+                Require(responseLeases.Active == 1 && !responseExited.Task.IsCompleted,
+                    "The disconnected replay keeps its response lease until execution exits.");
+            }
+            finally { releaseResponse.TrySetResult(); }
+            await responseExited.Task.WaitAsync(budget.Token);
+            Require(responseLeases.Active == 0 && state.Created == 1, "Response drain must not create another operation.");
+            using var retry = await client.PutAsJsonAsync(ProxyServerRoutes.Configuration, new SaveProxyServerConfiguration(0, []), budget.Token);
+            var retried = await retry.Content.ReadFromJsonAsync<ProxyOperationAcceptedDto>(budget.Token);
+            Require(original is not null && retried?.OperationId == original.OperationId && state.Created == 1,
+                "The retry after disconnect must return the original operation ID.");
+            Console.WriteLine($"PASS PROXY HTTP RECEIPT DRAIN: operation={original!.OperationId}");
             var stop = app.StopAsync(); Require(!stop.IsCompleted, "Shutdown must wait for the inbound operation's async cleanup.");
             state.Release.TrySetResult(); await stop.WaitAsync(TimeSpan.FromSeconds(5));
             Require(state.Disposed == 1 && (await app.Services.GetRequiredService<ProxyServerStore>().ReadAsync(default)).Configuration.Revision == 1,
