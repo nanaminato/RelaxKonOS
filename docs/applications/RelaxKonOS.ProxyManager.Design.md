@@ -4510,3 +4510,5 @@ Proxy 概览使用单独的请求作用域，从原档案库读取当前选中�
 隔离 Linux 的 512 条真实连接负载已完成缓冲与流式版本的配对测量。读接口结果与原连接集合一致。内存数据、延迟与适用范围见[验收台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-512-条真实连接的配对测量)。
 
 连接快照解析器在最后一次响应读取与清理结束后闲置 30 秒具备卸载条件。旧代待回收数量达到上限时继续复用当前可用代次。控制器认证、系统代理、TUN 和发布恢复由原服务持续负责。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-快照解析代码的闲时释放)。
+
+Linux 完整认证 HTTP 已验证解析代次在同一 Server 进程内闲时卸载，下一次概览和详情请求加载新代次。原代理连接持续转发，Mihomo 进程、发布修订和原系统代理所有权日志保持一致。Proxy 管理模块继续常驻。

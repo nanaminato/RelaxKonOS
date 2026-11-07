@@ -1725,4 +1725,8 @@ Windows Release 控制器专项覆盖分片、记录上限、截断、超长记�
 
 Windows Release 控制器专项验证并发读共享代次、实际异步清理阻止闲时卸载、旧代可回收及预算满时继续服务。Core Proxy 和模块边界回归通过，程序集依赖守卫 16 项通过。Linux Release 私有 systemd 最终 175 项通过。生产概览读取真实 Mihomo 连接后自然等待 30 秒卸载，测试 GC 确认旧 ALC 可回收。Mihomo 持续转发，后续真实连接唤醒新代，原配置未重发。
 
-同批原发布排空 `4492521f-9520-4f11-a1a9-b3503bda6118`、独立 Helper 原失败回执 `0cb059c0-7a5d-4328-b2d2-deee3960ed8f` 与原中断补偿 `87b33f2b-d44e-4649-ad3b-48325d470b07` 通过。专属 cgroup 已清理，宿主共享服务和代理文件指纹一致。日志为 `.artifacts/mb04-proxy-parser-alc-final-live.log`，归档 SHA-256 为 `a678895dec4489408d566301e0247e625da9c823ce845c7d81a4f364672d8e19`。闲时专项直接调用生产概览，完整认证 HTTP 的同进程闲时唤醒、整个管理面休眠和生产内存仍待验收。
+同批原发布排空 `4492521f-9520-4f11-a1a9-b3503bda6118`、独立 Helper 原失败回执 `0cb059c0-7a5d-4328-b2d2-deee3960ed8f` 与原中断补偿 `87b33f2b-d44e-4649-ad3b-48325d470b07` 通过。专属 cgroup 已清理，宿主共享服务和代理文件指纹一致。日志为 `.artifacts/mb04-proxy-parser-alc-final-live.log`，归档 SHA-256 为 `a678895dec4489408d566301e0247e625da9c823ce845c7d81a4f364672d8e19`。
+
+完整 PAM/JWT Server 随后在 Linux 私有 systemd 复验。杀掉并重启 Server 后，通过认证 HTTP 读取同一条真实 Mihomo 连接的概览和详情，匿名请求仍返回 401。在重启后的同一 Server 进程中停止读取，测试启动钩子观察原解析代次的卸载事件。再次读取时观察不同代次加载，原连接 ID、Mihomo PID、发布修订和系统代理所有权日志均保持一致，原 HTTP 转发成功收到上游正文。启动钩子只记录加载与卸载事件，该路径不强制 GC。弱引用回收由上一轮专项验证。整个管理面休眠和生产内存仍待验收。
+
+Linux 同批复验原发布 `c3736273-43a5-46a1-bab1-edba453528e4`、原补偿 `f7b20917-f4d9-4071-ac9c-6e38fa48ac79`、到期回执 `037a4904-8444-4f44-970b-5caac8a71fe8` 及 TUN 原操作 `3ea56d53-b983-4ca8-90a0-5a5f456319ec`。专属 cgroup 已清理，宿主共享服务与代理文件指纹一致。日志为 `.artifacts/mb04-auth-parser-idle-live.log`，归档 SHA-256 为 `6cb6959dc0a705a85afabfd1150f75408bd9970883d949bf11977326e869536c`。Windows Release 注册 23 项和模块里程碑回归在沙箱外通过。Docker 跨进程恢复读回原 `cf59a730-2f4d-448e-826c-e52e9e155ea6` 的 Interrupted 回执，副作用计数为一。首次沙箱运行遇到 TUN 测试控制器等待超时及证书台账恢复断言失败。

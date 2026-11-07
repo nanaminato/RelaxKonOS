@@ -173,11 +173,11 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
 
     internal Task VerifyTrafficAsync() => VerifyTrafficAsync(null);
 
-    internal async Task VerifyTrafficAsync(Func<int, CancellationToken, Task>? observe)
+    internal async Task VerifyTrafficAsync(Func<int, CancellationToken, Task>? observe, TimeSpan? timeout = null)
     {
         if (mihomo.HasExited || ReadProxy() != ProxyUrl || !File.Exists(JournalPath))
             throw new InvalidOperationException("The system proxy endpoint or recovery journal was lost.");
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(observe is null ? 5 : 30));
+        using var budget = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(observe is null ? 5 : 30));
         using var origin = new TcpListener(IPAddress.Parse("93.184.216.34"), 0);
         origin.Start();
         using var http = new HttpClient(new SocketsHttpHandler { Proxy = new WebProxy(ProxyUrl) });

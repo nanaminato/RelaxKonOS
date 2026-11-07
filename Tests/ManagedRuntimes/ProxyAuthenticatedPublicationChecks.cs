@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text.Json;
+using System.Threading.Channels;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Certificates;
@@ -146,17 +147,37 @@ internal static class ProxyAuthenticatedPublicationChecks
                 }
                 finally { await StopAsync(initial); }
             }
-            using var restarted = Start(start);
+            var parserEvents = Channel.CreateUnbounded<string>();
+            start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
+            using var restarted = Start(start, line =>
+            {
+                if (line.StartsWith(StartupHook.ParserEventPrefix, StringComparison.Ordinal))
+                    parserEvents.Writer.TryWrite(line[StartupHook.ParserEventPrefix.Length..]);
+            });
             try
             {
                 using var client = await ConnectAsync(restarted, login, ct);
                 if (await ObserveAsync(client) != original || guard.RuntimePid != originalPid
                     || nativeState().Installation.StateRevision != revision)
                     throw new InvalidOperationException("Server restart changed the original connection or publication revision.");
+
+                var loaded = await parserEvents.Reader.ReadAsync(ct);
+                if (!loaded.StartsWith("load ", StringComparison.Ordinal))
+                    throw new InvalidOperationException($"Expected the first parser generation to load, observed {loaded}.");
+                var unloaded = await parserEvents.Reader.ReadAsync(ct);
+                if (unloaded != $"unload {loaded[5..]}" || restarted.HasExited)
+                    throw new InvalidOperationException($"Expected idle unload in the same Server process, observed {unloaded}.");
+                if (await ObserveAsync(client) != original || guard.RuntimePid != originalPid
+                    || nativeState().Installation.StateRevision != revision || restarted.HasExited)
+                    throw new InvalidOperationException("Parser wake changed the connection, publication revision or process.");
+                var reloaded = await parserEvents.Reader.ReadAsync(ct);
+                if (!reloaded.StartsWith("load ", StringComparison.Ordinal) || reloaded == loaded)
+                    throw new InvalidOperationException($"Expected a new parser generation, observed {reloaded} after {loaded}.");
             }
             finally { await StopAsync(restarted); }
-        });
+        }, TimeSpan.FromSeconds(55));
         Console.WriteLine("PASS AUTHENTICATED MIHOMO OVERVIEW RESTART: original held HTTP connection, authenticated count and details, same runtime and publication revision");
+        Console.WriteLine("PASS AUTHENTICATED MIHOMO PARSER IDLE: same Server and held connection across parser unload and new generation");
     }
 
     private static async Task VerifyInFlightAsync(string root, string assembly, string socket, ISingBoxArchiveHost host,
@@ -294,9 +315,14 @@ internal static class ProxyAuthenticatedPublicationChecks
         await File.WriteAllTextAsync(Path.Combine(path, "current.json"), JsonSerializer.Serialize(metadata, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
     }
 
-    internal static Process Start(ProcessStartInfo start)
+    internal static Process Start(ProcessStartInfo start, Action<string>? onError = null)
     {
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the authenticated Server.");
+        if (onError is not null)
+            process.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data is { } line) onError(line);
+            };
         process.BeginOutputReadLine(); process.BeginErrorReadLine();
         return process;
     }
