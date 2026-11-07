@@ -30,7 +30,8 @@ internal static class ProxyTunLiveChecks
                 using var mihomo = mihomoExecutable is null ? null : await StartMihomoAsync(mihomoExecutable, directory.FullName, paths, port);
                 try
                 {
-                    var runtime = new NamespaceTunRuntime(inner: port == 0 ? null : CreateMihomoRuntime(paths, port, http));
+                    var publication = new MihomoPublicationStore(paths, new EphemeralDataProtectionProvider());
+                    var runtime = new NamespaceTunRuntime(inner: port == 0 ? null : CreateMihomoRuntime(paths, port, http, publication));
                     var safety = new ProxyTunSafetyService(paths, new HostProxyNetworkSafetyPlatform(), runtime);
                     using (var worker = DockerProcessRecoveryChecks.StartWorker("--proxy-tun-live-worker", originalNamespace, directory.FullName, port.ToString(System.Globalization.CultureInfo.InvariantCulture)))
                     {
@@ -61,6 +62,32 @@ internal static class ProxyTunLiveChecks
 
                     var original = await safety.CaptureRecoveryAsync(default)
                         ?? throw new InvalidOperationException("The original TUN marker was lost.");
+                    if (mihomo is not null)
+                    {
+                        var publicationId = Guid.NewGuid();
+                        var activePath = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
+                        var yaml = await File.ReadAllTextAsync(activePath);
+                        var candidate = new RelaxKonOS.Protocol.ManagedRuntimes.MihomoPublishedRuntime(
+                            yaml, [], port, "fixture-schedule-secret", [new("127.0.0.1", port)]);
+                        await publication.Gate.WaitAsync();
+                        try { await publication.BeginAsync(publicationId, 0, candidate, default); }
+                        finally { publication.Gate.Release(); }
+                        var schedulePath = Path.Combine(paths.GetStateDirectory(), "mihomo-publication.protected.schedule");
+                        File.Delete(schedulePath);
+                        TestAssert.Assert(await publication.ReadPendingIdentityAsync(default) == publicationId && File.Exists(schedulePath),
+                            "The schedule must rebuild the original pending publication identity.");
+                        TestAssert.Assert(await safety.RecoverAsync(original, default) == ProxyProblemCodes.RecoveryRequired
+                            && await DeviceExistsAsync() && calls.Reloads == 0
+                            && await File.ReadAllTextAsync(activePath) == yaml
+                            && await safety.CaptureRecoveryAsync(default) == original,
+                            "Pending publication must block a competing live TUN reload and preserve both authorities.");
+                        await publication.Gate.WaitAsync();
+                        try { await publication.AbortAsync(publicationId, null, notStarted: true, default); }
+                        finally { publication.Gate.Release(); }
+                        TestAssert.Assert(await publication.ReadPendingIdentityAsync(default) is null,
+                            "The schedule must observe the exact not-started publication closure.");
+                        Console.WriteLine($"PASS MIHOMO LIVE PUBLICATION GATE: publication={publicationId}; TUN recovery={original.OperationId}; competing reloads=0");
+                    }
                     await RunIpAsync("route", "del", "default", "via", "192.0.2.1", "dev", "rk-egress");
                     TestAssert.Assert(await safety.RecoverAsync(original, default) == ProxyProblemCodes.RecoveryRequired
                         && !await DeviceExistsAsync() && await safety.CaptureRecoveryAsync(default) == original,
@@ -146,9 +173,9 @@ internal static class ProxyTunLiveChecks
     private static MihomoControllerClient CreateController(int port, HttpClient http) =>
         new(http, new StaticProxySecretStore(), new MihomoControllerOptions { Endpoint = new($"http://127.0.0.1:{port}/") });
 
-    private static MihomoTunRuntimeController CreateMihomoRuntime(TestProxyPaths paths, int port, HttpClient http) =>
+    private static MihomoTunRuntimeController CreateMihomoRuntime(TestProxyPaths paths, int port, HttpClient http, MihomoPublicationStore? publication = null) =>
         new(paths, new NamespaceSettings(), CreateController(port, http),
-            new MihomoPublicationStore(paths, new EphemeralDataProtectionProvider()), new HostProxyTunDeviceObserver());
+            publication ?? new MihomoPublicationStore(paths, new EphemeralDataProtectionProvider()), new HostProxyTunDeviceObserver());
 
     private static async Task<Process> StartMihomoAsync(string executable, string root, TestProxyPaths paths, int port)
     {

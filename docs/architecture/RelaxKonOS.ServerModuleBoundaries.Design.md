@@ -1343,3 +1343,5 @@ Core 发布恢复扫描使用加密索引，仅记录权威密文 SHA-256 和原
 Linux x64 Release 的 Mihomo 发布事务专项通过 110 项，含损坏索引重建、不可写时保留原待处理身份，以及未知结果不自动重放。同一制品的隔离 sing-box Helper IPC 与原加密台账联合恢复通过 17 项。首轮外部执行脚本误用 Windows 的 109 项计数，修正后整批通过。日志为 .artifacts/mb04-mihomo-schedule-linux-final.log，归档 SHA-256 为 9a249eeb8322601e1ba964e6bf66a1cdf748f2e646d25946aa44f5865a5f018c。Mihomo 索引专项使用受控事务夹具，生产 systemd、责任交接与动态休眠仍待验收。
 
 Mihomo 原发布台账打开时只将文件或父目录确实缺失视为空；目录占用、权限或其他读取故障保留未知责任。Linux Release 事务专项 111 项通过，验证目录占用时不重放原发布，恢复原文件后继续原操作。隔离 sing-box 17 项同批通过。日志为 .artifacts/mb04-mihomo-authority-live.log，归档 SHA-256 为 7d6c047770d274e1a0ba6322f719aca8f362261780e95d80325dfc2ca8acbb95。Mihomo 权威异常通过受控事务夹具验收，真实网络联合故障仍开放。
+
+Linux x64 Release 在私有网络使用真实 Mihomo TUN、自动路由和 DNS 劫持，验证发布与 TUN 恢复共用的写入门禁。TUN 工作进程退出后，夹具建立待处理但确认未执行的发布 8f0dfd98-7736-4178-9e76-38438a7007cf 并删除派生索引。重建索引得到原发布 ID，原 TUN 恢复 27014fc4-38de-4b46-a797-7264396afc57 保留 marker、设备和原配置，竞争 reload 为零。夹具按未执行证明关闭待处理发布后，原 TUN 恢复仅执行一次真实禁用重载。日志为 .artifacts/mb04-mihomo-tun-gate-live.log，归档 SHA-256 为 1fcb943d66196812d3041de4984b8ca9d3f08798cf328a071d635179750a5b27。此项覆盖真实 TUN 与持久发布门禁竞争，生产发布事务实机恢复和动态休眠仍开放。
