@@ -1487,6 +1487,8 @@ CA 已接单或签发后遇到无法确认结果的传输失败，证书操作�
 
 WebRoot 签发和续期在发布 HTTP-01 文件前，在原证书操作记录挑战文件名及内容摘要。任务等待挑战清理后才提交终态。跨进程恢复在写入原中断回执前清理内容匹配的原文件。路径或内容无法确认时保留文件和恢复责任，并隔离证书工作准入。网站自动签发使用此路径，网站发布与原证书操作的关联同样持久化。CA 返回 `valid` 时仍应通过原发布和证书回执核实本地签发、部署各自的状态。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
+用户取消或 Server 停机时，已记录的 CA 订单仍可按取消回执的原 operationId 只读查询。任务完成并清理挑战后才写入 Cancelled。若被取消的续期已有订单身份，自动扫描沿用原回执，后续经明确授权完成的成功续期才解除该门禁。
+
 Linux 完整认证 Server 已通过真实 CA 断流与重启验收。专属 Nginx 承载 HTTP-01，重启后须重新登录查询原订单。同键重试返回原回执，原活动证书指纹保持，CA 无新增订单或签发提交。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证-server-的-ca-断流与重启)。
 
 Linux 私有 Pebble 实测覆盖自动续期已准入、扫描尚未关联原回执时的进程中断。恢复完成原扫描并持久化下次到期，未提交新订单。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书续期持久扫描与执行作用域)。

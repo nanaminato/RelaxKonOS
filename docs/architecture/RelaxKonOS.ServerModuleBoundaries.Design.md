@@ -144,7 +144,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 | MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现，Firewall-F1 独立契约/执行代码及构建门禁；回收验证见 §10/11/20～22/41 | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11）；镜像清理责任修复与真实 Engine 标签检查见 §43，离线 BuildKit 续核见 §44 | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵未完成；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
 | MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22）。Core 接续运行期 TUN，完整认证入站发布恢复与补偿见文末 | Proxy 整体仍 resident；安全职责持久调度交接、真实网络故障矩阵和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
-| MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空；证书取消只记录请求，真实任务决定终态。Docker 在途停止与原回执恢复见 §45，独立 Pebble、Nginx、Engine 实测见 §52～54，证书续期持久调度、网站发布、直接 WebServer 和 Docker Compose 执行作用域见文末 | 三域仍 resident；独立执行程序集和完整联合矩阵开放；跨文件事务和远端 CA 未知状态仍须恢复规则 | MB-05A 后台 owner/终态/禁用门槛已通过，保持 resident；整项还须验证持久调度、独立执行器、真实 Engine/CA/Nginx 重启连续性与休眠 |
+| MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空。Docker 在途停止与原回执恢复见 §45，独立 Pebble、Nginx、Engine 实测见 §52～54。完整认证网站 WebRoot 签发、崩溃恢复、取消与 SIGTERM 联验通过，见本文对应小节 | 三域仍 resident。独立执行程序集、完整故障矩阵、缺失身份的 CA 订单核实与整机掉电开放 | 后台 owner、终态与禁用门槛通过。按真实工作与安全责任边界推进独立执行器和动态休眠 |
 | MB-06 | **MB-06A/06B 阶段交付**（§39/40），Windows LocalSystem/S4U 安装夹具及 Core／Helper 崩溃恢复实测通过（§48） | 正式发行服务全链、Linux 固定启动器跨代故障、SDK 合作 drain/后台任务申报仍开放 | 整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
 | MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall-F1 代码回收与 Tailscale TS-01 持久责任跨对象代次验收交付（§41）；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
 | MB-08 | **未完成**。已有当前诊断 DTO/跨端管理契约及局部打包/ModuleHost 验证 | 安装包非完整目标 ABI；真实业务同构建内存/冷启动门槛、完整平台故障矩阵未有 | 发布包/私有依赖/各端调用一致；Windows/Linux 整个进程树与冷启动 p50/p95、错误率达到预先记录门槛，关联 RES-06/07 |
@@ -1562,9 +1562,17 @@ Linux 原发布 `929bf5d6-7e68-4df1-baca-8f503bb88af0` 跨重启返回原失败�
 
 Linux x64 Release 使用完整 PAM/JWT Server、生产 Helper、私有 systemd、真实 Nginx 和 Docker Engine，以及专属 Pebble CA 和测试域名。夹具预置专属 Nginx HTTP-01 路由，CA 实际通过 Nginx 取挑战。在成功路径，正常签发并部署到真实 Docker 上游，TLS 客户端信任专属 CA 并核对实际响应，Nginx reload 一次，原挑战已清理。在中断路径，测试中继暂扣 CA 已签发的实际证书响应，此时终止 Server。重启后按原网站 ID、应用历史和同键返回同一中断回执，原证书操作 ID 可只读查询 CA `valid`。CA 只创建并 finalize 一次，网站未部署，原 TLS、Nginx master 和 Docker 上游继续运行。原挑战路径返回 404，无关测试文件保留，Nginx 无重载。
 
-最终中断发布 `a18aad80-5b6a-48a3-a131-25961501e8d6` 关联证书操作 `a1694919-20d1-4657-84ee-a2a0820a7546`。成功发布为 `7b65af66-eb68-4ac1-8103-491250e4f420`，原 Verifying 回归为 `f9cc0811-4dbd-4816-9bde-53d06c5a18b6`。三个 Linux 运行均清理专属 cgroup，宿主 Nginx/Docker PID 与 Nginx 配置指纹一致。日志为 `.artifacts/mb05-webroot-final--systemd-website-acme.log`、`.artifacts/mb05-webroot-final--systemd-website-acme-success.log` 与 `.artifacts/mb05-webroot-final--systemd-website-verifying.log`，Release 归档 SHA-256 为 `9cb6545d4a170606d6a6f854cb015315263a3dadc964ce4eaed7a61717094f9d`。首轮夹具误读 `remoteStatus`，修正后通过。Windows Release 模块边界回归（含跨进程 Docker 原回执与 WebRoot 台账恢复）及 Android 网站发布请求单测通过。Windows Direct HTTP 实监听因本地注册权限跳过。
+最终中断发布 `a18aad80-5b6a-48a3-a131-25961501e8d6` 关联证书操作 `a1694919-20d1-4657-84ee-a2a0820a7546`。成功发布为 `7b65af66-eb68-4ac1-8103-491250e4f420`，原 Verifying 回归为 `f9cc0811-4dbd-4816-9bde-53d06c5a18b6`。三个 Linux 运行均清理专属 cgroup，宿主 Nginx/Docker PID 与 Nginx 配置指纹一致。日志为 `.artifacts/mb05-webroot-final--systemd-website-acme.log`、`.artifacts/mb05-webroot-final--systemd-website-acme-success.log` 与 `.artifacts/mb05-webroot-final--systemd-website-verifying.log`，Release 归档 SHA-256 为 `9cb6545d4a170606d6a6f854cb015315263a3dadc964ce4eaed7a61717094f9d`。首轮夹具误读 `remoteStatus`，修正后通过。Windows Release 模块边界回归（含跨进程 Docker 原回执与 WebRoot 台账恢复）及 Android 网站发布请求单测通过。Windows Direct HTTP 实监听在允许本地 URL 注册的运行中通过 16 项。
 
 待验收范围包括公共 CA 与公共 DNS、首站自动建立 HTTP-01 路由、完整非管理员提升交互及整机掉电。独立执行程序集与动态休眠仍开放，Certificates 和 WebServer 保持 resident。本阶段记录任务及外部资源连续性。
+
+### MB-05 网站 WebRoot 签发的取消与停机排空
+
+已记录 CA 订单的 Cancelled 回执保留原订单身份。原 ACME 只读对账路由也接受该回执。续期已记录订单时，下一次自动扫描沿用原回执，直到另一次明确授权的续期成功。
+
+同一 Linux 私有 systemd 设施中，Pebble 已实际签发，中继暂扣真实证书响应。认证取消返回原 Running / cancel-requested，挑战文件仍在。释放响应后，证书原回执为 Cancelled，网站发布原回执为 Failed / certificate.operation_cancelled。另一轮向完整 Server 发 SIGTERM，Server 先停止接收 HTTP，继续等待原 CA 响应且保留挑战文件。交付响应后，挑战清理与原证书回执落盘，Server 正常退出。重启后原网站发布标记 Interrupted。两轮均按原证书 operationId 查询 CA valid，原挑战清理，未新增订单、重载 Nginx 或提交新应用关联，旧 TLS 和真实 Docker 上游持续运行。
+
+取消发布为 `aa53d0b9-acc2-42cd-9347-f74b67e7a2e9`，证书操作为 `9222c5ac-cd33-4477-b8a1-129fdef81146`。SIGTERM 发布为 `d9257bbe-d069-4461-ab3e-835a206a586c`，证书操作为 `e446e203-0669-4b79-a358-a2b4c654c792`。日志为 `.artifacts/mb05-acme-drain--systemd-website-acme-cancel.log` 和 `.artifacts/mb05-acme-drain--systemd-website-acme-drain.log`，归档 SHA-256 为 `00bd22b753e8caa35ff9bfe68de0572bc7c305223c96a5ee9833edc25d4f20c0`。Windows Release 模块边界回归覆盖重开台账后下一次自动扫描保留原取消回执。自动续期取消的 CA 联合验证与主机掉电仍开放。
 
 ### MB-04 入站授权到期的停机排空
 

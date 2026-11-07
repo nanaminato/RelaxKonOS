@@ -20,10 +20,12 @@ import uuid
 
 def run(root, server, helper_binary, mode):
     production_helper = mode is not None
-    website = mode in ("--systemd-website", "--systemd-website-verifying", "--systemd-website-acme", "--systemd-website-acme-success")
+    acme_website = mode is not None and mode.startswith("--systemd-website-acme")
+    website = acme_website or mode in ("--systemd-website", "--systemd-website-verifying")
     verifying_website = mode == "--systemd-website-verifying"
-    acme_website = mode in ("--systemd-website-acme", "--systemd-website-acme-success")
     acme_success = mode == "--systemd-website-acme-success"
+    acme_cancel = mode == "--systemd-website-acme-cancel"
+    acme_drain = mode == "--systemd-website-acme-drain"
     retire_retry = mode == "--systemd-retire-retry"
     relay_mode = retire_retry or mode in ("--systemd-response-loss", "--systemd-rejected")
     rejected = mode == "--systemd-rejected"
@@ -431,11 +433,29 @@ def run(root, server, helper_binary, mode):
                         assert site_id
                     assert request(app_route, token=token)["application"]["siteId"] == site_id
                 master = nginx_pid_file.read_text()
-                initial.kill()
-                assert initial.wait(timeout=10) < 0
-                if acme_website:
+                if acme_drain:
+                    initial.terminate()
+                    wait_for(initial, lambda: not healthy(), "website shutdown stopped accepting HTTP")
+                    assert initial.poll() is None and active_tokens[0].is_file()
+                    assert_served(b"original")
                     (root / "release-certificate-response").touch()
+                    assert initial.wait(timeout=15) == 0
+                elif acme_cancel:
+                    cancelled = request(certificate_route + "/cancel", token=token, method="POST")
+                    assert cancelled["state"].lower() == "running" and cancelled["stage"] == "cancel-requested", cancelled
+                    assert request(certificate_route, token=token) == cancelled and active_tokens[0].is_file()
+                    assert_served(b"original")
+                    (root / "release-certificate-response").touch()
+                    wait_for(initial, lambda: request(operation_route, token=token)["state"].lower() == "failed",
+                             "website persisted cancelled certificate outcome")
+                    initial.terminate()
+                    assert initial.wait(timeout=15) == 0
                 else:
+                    initial.kill()
+                    assert initial.wait(timeout=10) < 0
+                if acme_website and not (acme_cancel or acme_drain):
+                    (root / "release-certificate-response").touch()
+                elif not acme_website:
                     (root / "nginx" / "release").touch()
                     (upstream / "release").touch()
 
@@ -449,9 +469,13 @@ def run(root, server, helper_binary, mode):
                 assert observed["operationId"] == operation_id
                 assert subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip() == "running"
                 if acme_website:
-                    assert observed["state"].lower() == "interrupted" and observed["certificateOperationId"] == original_certificate
+                    assert observed["state"].lower() == ("failed" if acme_cancel else "interrupted")
+                    assert observed["certificateOperationId"] == original_certificate
                     certificate_receipt = request(certificate_route, token=token)
-                    assert certificate_receipt["problemCode"] == "certificate.operation_interrupted"
+                    problem = "certificate.operation_cancelled" if acme_cancel or acme_drain else "certificate.operation_interrupted"
+                    assert certificate_receipt["problemCode"] == problem, certificate_receipt
+                    if acme_cancel:
+                        assert observed["problemCode"] == problem
                     order = request(certificate_route + "/acme-order", token=token)
                     assert order["remoteStatus"] == "valid" and order["operation"]["operationId"] == original_certificate, order
                     assert not request(app_route, token=token)["application"]["siteId"]
@@ -464,7 +488,8 @@ def run(root, server, helper_binary, mode):
                     except urllib.error.HTTPError as error:
                         assert error.code == 404
                     assert_ca_once()
-                    print(f"PASS AUTHENTICATED WEBSITE ACME RECOVERY: publication={operation_id}; certificate={original_certificate}; original valid order, token removed, no reload")
+                    outcome = "CANCEL" if acme_cancel else "DRAIN" if acme_drain else "RECOVERY"
+                    print(f"PASS AUTHENTICATED WEBSITE ACME {outcome}: publication={operation_id}; certificate={original_certificate}; original valid order, token removed, no reload")
                     return
                 assert observed["state"].lower() == "interrupted"
                 recovery = "website.recheck_required" if verifying_website else "website.site_application_unverified"
@@ -656,7 +681,8 @@ if __name__ == "__main__":
     mode = arguments.pop() if arguments and arguments[-1] in ("--systemd", "--systemd-drain", "--systemd-unknown", "--systemd-timeout", "--systemd-receipt",
                                                             "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry",
                                                             "--systemd-website", "--systemd-website-verifying", "--systemd-website-acme",
-                                                            "--systemd-website-acme-success") else None
+                                                            "--systemd-website-acme-success", "--systemd-website-acme-cancel",
+                                                            "--systemd-website-acme-drain") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

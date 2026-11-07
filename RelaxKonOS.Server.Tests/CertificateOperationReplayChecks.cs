@@ -110,5 +110,30 @@ internal static class CertificateOperationReplayChecks
         }
         finally { finish.TrySetResult(""); }
         await TestOperations.WaitForCertificateOperationAsync(store, issue.OperationId);
+
+        var recorded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var deliver = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var renewed = Guid.NewGuid();
+        var cancellation = await store.StartOrderAsync("cancelled-ca-order", renewed, "renew", CertificateOperationStore.AutomaticRenewalActor,
+            async (recordOrder, _, _) =>
+            {
+                await recordOrder(new(new("https://ca.example.test/directory"), new("https://ca.example.test/account/1"), "test-thumbprint",
+                    new("https://ca.example.test/order/1")));
+                recorded.SetResult();
+                return await deliver.Task;
+            }, default, default, automaticRenewal: true);
+        try
+        {
+            await recorded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            TestAssert.Assert(await store.CancelAsync(cancellation.OperationId, default) is
+                { State: CertificateOperationState.Running, Stage: "cancel-requested" }, "The order remains running before its response completes.");
+        }
+        finally { deliver.TrySetResult(""); }
+        var cancelled = await TestOperations.WaitForCertificateOperationAsync(store, cancellation.OperationId);
+        var reopened = await CreateAsync();
+        var nextScan = await reopened.StartAsync("next-scan", renewed, "renew", CertificateOperationStore.AutomaticRenewalActor,
+            _ => throw new InvalidOperationException("A later scan must not create another CA order."), default, default, automaticRenewal: true);
+        TestAssert.Assert(cancelled.State == CertificateOperationState.Cancelled && nextScan == cancelled,
+            "A later scan must retain the cancelled receipt with the original ACME order after restarting.");
     }
 }

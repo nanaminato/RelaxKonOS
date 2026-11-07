@@ -173,10 +173,13 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         var renewals = _operations.Values.Where(operation => operation.Kind == "renew" && operation.CertificateId == certificateId);
         if (renewals.FirstOrDefault(operation => operation.State is CertificateOperationState.Queued or CertificateOperationState.Running) is { } active)
             return active;
-        var lastKnownOrInterrupted = renewals.Where(operation => operation.State == CertificateOperationState.Succeeded
-            || operation.ProblemCode == InterruptedProblem).MaxBy(operation => operation.CompletedAt);
-        return lastKnownOrInterrupted?.ProblemCode == InterruptedProblem ? lastKnownOrInterrupted : null;
+        var lastKnownOrUnresolved = renewals.Where(operation => operation.State == CertificateOperationState.Succeeded
+            || RequiresOrderReconciliation(operation)).MaxBy(operation => operation.CompletedAt);
+        return lastKnownOrUnresolved is { } last && RequiresOrderReconciliation(last) ? last : null;
     }
+
+    private static bool RequiresOrderReconciliation(PersistedOperation operation) =>
+        operation.ProblemCode == InterruptedProblem || operation.State == CertificateOperationState.Cancelled && operation.Order is not null;
 
     public async Task<CertificateOperationDto?> GetAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -208,7 +211,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         try { RequireReady(); operation = _operations.GetValueOrDefault(id); }
         finally { _gate.Release(); }
         if (operation is null) return null;
-        if (operation.ProblemCode != InterruptedProblem || operation.Order is null)
+        if (!RequiresOrderReconciliation(operation) || operation.Order is null)
             return new(operation.ToDto(), "identity-unavailable");
 
         using var work = await _work.AdmitAsync(ct);
@@ -343,7 +346,8 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
             if (operation.State == CertificateOperationState.Cancelled && state != CertificateOperationState.Cancelled) return;
             var interrupted = problemCode == InterruptedProblem;
             var completed = operation with { State = state, Stage = interrupted ? "interrupted" : state.ToString().ToLowerInvariant(),
-                ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow, Order = interrupted ? operation.Order : null, Challenges = null };
+                ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow,
+                Order = interrupted || state == CertificateOperationState.Cancelled ? operation.Order : null, Challenges = null };
             _operations[id] = completed;
             try
             {

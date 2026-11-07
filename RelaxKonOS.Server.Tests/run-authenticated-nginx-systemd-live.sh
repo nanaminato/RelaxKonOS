@@ -3,7 +3,10 @@
 set -euo pipefail
 [[ ( $# == 2 || $# == 3 || $# == 5 ) && $EUID == 0 ]]
 mode=${3:---systemd}
-[[ $mode == --systemd || $mode == --systemd-drain || $mode == --systemd-unknown || $mode == --systemd-timeout || $mode == --systemd-receipt || $mode == --systemd-response-loss || $mode == --systemd-rejected || $mode == --systemd-retire-retry || $mode == --systemd-website || $mode == --systemd-website-verifying || $mode == --systemd-website-acme || $mode == --systemd-website-acme-success ]]
+case "$mode" in
+    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain) ;;
+    *) exit 2 ;;
+esac
 pebble= dns= relay=
 if [[ $mode == --systemd-website-acme* ]]; then
     [[ $# == 5 ]]

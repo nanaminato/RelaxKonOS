@@ -397,6 +397,8 @@ MB-05 完整认证网站发布通过 Linux 私有 systemd 的 Configuring 和 Ve
 
 MB-05 网站自动签发经既有 Nginx WebRoot 实测。证书 owner 在挑战写入前持久化归属，等待实际签发任务和清理结束后才提交终态。重启以原证书回执清理挑战、只读查询原 CA 订单，网站回执关联同一证书操作。原 Nginx、TLS 和 Docker 上游独立存续。Certificates 和 WebServer 保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
+MB-05 完整 Linux Server 的网站 WebRoot 签发通过认证取消和 SIGTERM 排空。实际 CA 响应和挑战清理结束前，原证书任务保有责任。已取消的原证书回执保留已知订单供只读对账。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站-webroot-签发的取消与停机排空)。
+
 MB-04 Core 到期 worker 按原索引创建执行作用域。原候选落盘后，Helper 响应、原终态提交和异步释放都纳入停机排空。Proxy 保持 resident。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站授权到期的停机排空)。
 
 MB-04 入站发布将原 Helper 操作 ID 保存在现有入站台账，恢复只读核对同一回执及配置摘要。在途或证据缺失保留原责任。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站发布按原-helper-回执恢复)。

@@ -1736,3 +1736,5 @@ Linux 系统包重载的原回执保存在 Server。原终态持久化后，Help
 未指定证书 ID 时，自动签发通过所选 Nginx 的现有 WebRoot HTTP-01 集成。发起者须同时具备所选实例的 `NginxConfigurationWrite` 与 `CertificateIssue`（目标 `certificates/issue`）。发布前须确认 CA 能用申请域名和 TCP 80 读取同一个挑战目录。首站和新域名需要预先配置可达的 HTTP-01 路由。缺少集成时，发布在创建 CA 订单前以 `website.acme_webroot_required` 结束。
 
 签发和清理完成后才进入站点配置。管理进程在签发中断时，原发布与证书回执可关联查询，证书台账负责清理原挑战文件和查询原 CA 订单。同键请求返回原发布回执。实机证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
+
+取消原证书操作后，网站发布等待证书回执终态，并按实际结果结束。若在签发阶段停止 Server，原证书任务继续排空，启动恢复将未完成发布标为 Interrupted。已知的原订单仍可通过原证书操作只读查询。
