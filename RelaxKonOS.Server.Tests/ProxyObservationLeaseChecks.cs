@@ -29,7 +29,8 @@ internal static class ProxyObservationLeaseChecks
             services.GetRequiredService<ILogger<ModuleResidencyCoordinator>>(), residentWorkModuleIds: ids));
         builder.Services.AddSingleton<IResidentModuleWorkLeaseSource, CapturingLeaseSource>();
         var scenario = new Scenario(holdController: false);
-        builder.Services.AddScoped<IProxyEngineRegistry>(_ => throw new InvalidOperationException("Connection reads must not create the management engine graph."));
+        builder.Services.AddScoped<IProxyEngineRegistry>(_ => throw new InvalidOperationException("Observation reads must not create the management engine graph."));
+        builder.Services.AddSingleton<IProxyDiagnosticLogStore, FixtureDiagnostics>();
         builder.Services.AddScoped(_ => new ControllerScope(scenario));
         builder.Services.AddScoped<IMihomoControllerClient>(services => services.GetRequiredService<ControllerScope>().CreateClient());
         await using var app = builder.Build();
@@ -56,9 +57,13 @@ internal static class ProxyObservationLeaseChecks
         using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
         scenario.ReleaseResponse.TrySetResult();
-        using (var anonymous = await http.GetAsync(ProxyApiRoutes.Connections, ct))
+        string[] routes = [ProxyApiRoutes.Connections, ProxyApiRoutes.Traffic, ProxyApiRoutes.Logs + "?limit=1"];
+        foreach (var route in routes)
+        {
+            using var anonymous = await http.GetAsync(route, ct);
             TestAssert.Assert(anonymous.StatusCode == HttpStatusCode.Unauthorized && !HasLease()
                 && !scenario.ControllerEntered.Task.IsCompleted, "Anonymous reads must not start the Proxy graph or take a work lease.");
+        }
         http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
 
         scenario = new Scenario(holdController: false) { Status = HttpStatusCode.Unauthorized };
@@ -71,11 +76,20 @@ internal static class ProxyObservationLeaseChecks
         await scenario.RequestExited.Task.WaitAsync(ct);
         TestAssert.Assert(!HasLease(), "The error response must drain its scope and lease.");
 
-        foreach (var holdController in new[] { true, false })
+        scenario = new Scenario(holdController: false) { Status = HttpStatusCode.Unauthorized };
+        scenario.ReleaseResponse.TrySetResult();
+        scenario.ReleaseCleanup.TrySetResult();
+        using (var logs = await http.GetAsync(ProxyApiRoutes.Logs + "?limit=1", ct))
+            TestAssert.Assert(logs.IsSuccessStatusCode
+                && (await logs.Content.ReadAsStringAsync(ct)).Contains("fixture diagnostic", StringComparison.Ordinal),
+                "A controller error must retain the bounded local diagnostics fallback.");
+        await scenario.RequestExited.Task.WaitAsync(ct);
+
+        foreach (var (route, holdController) in routes.SelectMany(route => new[] { (route, true), (route, false) }))
         {
             scenario = new Scenario(holdController);
             using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var request = http.GetAsync(ProxyApiRoutes.Connections, caller.Token);
+            var request = http.GetAsync(route, caller.Token);
             try
             {
                 var barrier = holdController ? scenario.ControllerEntered : scenario.ResponseEntered;
@@ -117,7 +131,7 @@ internal static class ProxyObservationLeaseChecks
                 "Cleanup failure must retain the work lease and block the original module owner.");
         }
         finally { source.Last?.Dispose(); }
-        Console.WriteLine("PASS PROXY OBSERVATION HTTP DRAIN: authorization, controller cancellation, response, asynchronous cleanup and failure");
+        Console.WriteLine("PASS PROXY OBSERVATION HTTP DRAIN: connections, traffic and logs preserve authorization, cancellation, response and cleanup");
 
         bool HasLease() => coordinator.HasBackgroundWork(ServerModules.ProxyId);
     }
@@ -170,7 +184,22 @@ internal static class ProxyObservationLeaseChecks
             scenario.ControllerEntered.TrySetResult();
             if (scenario.HoldController) await scenario.ReleaseController.Task;
             ct.ThrowIfCancellationRequested();
-            return new HttpResponseMessage(scenario.Status) { Content = new StringContent("{\"connections\":[]}") };
+            var body = request.RequestUri!.AbsolutePath switch
+            {
+                "/traffic" => "{\"up\":1,\"down\":2,\"upTotal\":3,\"downTotal\":4}\n",
+                "/memory" => "{\"inuse\":5}\n",
+                "/logs" => "{\"type\":\"info\",\"payload\":\"fixture\"}\n",
+                _ => "{\"connections\":[]}"
+            };
+            return new HttpResponseMessage(scenario.Status) { Content = new StringContent(body) };
         }
+    }
+
+    private sealed class FixtureDiagnostics : IProxyDiagnosticLogStore
+    {
+        public Task WriteAsync(string level, string message, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Observation must not write diagnostics.");
+        public Task<IReadOnlyList<ProxyLogEntryDto>> ReadAsync(int limit, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ProxyLogEntryDto>>([new(DateTimeOffset.UnixEpoch, "warning", "fixture diagnostic")]);
     }
 }

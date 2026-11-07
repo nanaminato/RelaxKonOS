@@ -486,3 +486,5 @@ MB-05 WebRoot 挑战内容不匹配时，原证书台账保持活动清理责任
 MB-05 已在隔离 Linux 验证生产续期 worker 的自然扫描遇到挑战归属阻塞时保持原扫描未完成。恢复后按同一扫描 ID 和原续期回执接续。见[续期扫描跨阻塞验收](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-续期扫描跨挑战归属阻塞恢复)。
 
 Mihomo 连接详情作用域直接构造控制器，工作租约继续覆盖真实响应及异步清理。原解析代次和 Core 恢复责任分别维持，Proxy 整体仍 resident。见[连接详情读取执行图](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接详情读取执行图)。
+
+Mihomo 流量与日志读取现在共享原工作租约、独立作用域和 HTTP 响应排空逻辑。Core 发布恢复继续由原 owner 承担。见[流量与日志读取租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-流量与日志读取租约)。

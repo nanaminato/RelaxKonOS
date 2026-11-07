@@ -301,8 +301,7 @@ internal static async Task VerifyProxyDiagnosticLogsAsync(string root)
     TestAssert.Assert(entries.Count == 1 && entries[0].Level == "warning" && !entries[0].Message.Contains("private-value", StringComparison.Ordinal)
         && entries[0].Message.Contains("[REDACTED]", StringComparison.Ordinal), "Proxy installation diagnostics were not retained and sanitized.");
 
-    var engine = new MihomoEngine(new HealthyMihomoController(), new UnavailableMihomoConfigurationValidator(), new TestProxyPaths(Path.Combine(root, "proxy-diagnostics")), diagnostics);
-    var combined = await engine.GetLogsAsync(10, CancellationToken.None);
+    var combined = await MihomoLogReader.ReadAsync(new HealthyMihomoController(), diagnostics, 10, CancellationToken.None);
     TestAssert.Assert(combined.Any(entry => entry.Message.Contains("Managed Mihomo service start failed", StringComparison.Ordinal)),
         "Proxy diagnostic logs were not exposed when the controller log was unavailable.");
 }

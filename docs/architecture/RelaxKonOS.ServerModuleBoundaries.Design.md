@@ -2048,3 +2048,11 @@ Linux Release 验证原扫描 `a0ae423b-b106-480a-b0fe-cca9fdadcf65` 和原续�
 Linux 私有 systemd 使用同一批 512 条真实连接、三对交错制品和每轮 24 次概览加详情请求。候选的峰值 PSS 在三对中高 0.10、2.27、6.99 MiB，35 秒闲置 PSS 差分别为 −1.65、−3.37、+0.40 MiB，延迟变化方向不一致。采样限管理 Server PID，原 512 条连接均收到源站响应，原回执 `1bb7d583-4ddb-4d0d-a6e1-41459fcd280b`、原生 PID 和发布修订保持，测量期间配置与补偿派发均为零。保留有确定证据的执行边界调整，隔离数据未显示稳定的内存下降。
 
 同批原发布 `ed2602cc-e610-401e-a337-ea9df28d4e01` 在解析代次闲时卸载、唤醒及 Host 排空期间完成恢复。真实 Mihomo systemd 套件通过 177 项，专属 cgroup 清理，宿主共享服务及代理文件指纹一致。Windows Release Core 安全 37 项、驻留和生命周期作用域各 31 项通过，MB-05 跨进程按原 `9576e451-5cfb-4771-9cf7-4404bb69fbac` 返回 Interrupted，受控副作用计数为一。首轮实机夹具编译暴露一个仍调用旧引擎读取方法的测试，更新后完整运行。日志及摘要在 `.artifacts/mb04-connection-read-graph/`，Linux 归档 SHA-256 为 `ff2b275528460a3cba6904d051c14e33b5ed25e123decd1396a55cc1d7e14a8e`。Proxy 整体继续 resident。下一项审计流量与日志读取的工作租约和控制器响应生命周期。
+
+### MB-04 Mihomo 流量与日志读取租约
+
+流量和日志路由复用连接详情的工作租约与实际响应作用域。流量按原顺序采集控制器流量与内存样本。日志保留控制器采样、脱敏、本地诊断合并及条数限制。两条路由从作用域直接取得读取依赖。Windows Release 的 Kestrel 夹具在控制器请求和实际 HTTP 响应两个位置分别注入客户端断线，核对原任务及异步作用域清理结束前租约持续，匿名请求无需构造读取执行图。
+
+Linux 私有 systemd 的完整 Server 在 Core 等待原发布 `0699bc25-8445-49d4-ace6-70052ed23b47` 时取得真实 Mihomo 日志，并保留原流量错误回执。原连接 `e04036b8-a270-4058-9f9c-1a200d042c66` 跨解析代次与 Server 排空收到源站响应。首轮流量成功断言失败，复核实际字段确认 1.19.10 的 `/traffic` 只有速率，1.19.30 同时带累计量。原适配器要求累计量，因此旧版返回 `proxy.controller_response_invalid`。两版 `/connections` 均提供累计量及内存字段，后续按共同数据源设计有界读取。Windows 的受控完整流量样本和日志诊断回退通过，旧版真实流量完整指标仍开放。
+
+最终 Linux 真实 Mihomo 套件通过 177 项，原发布和订阅恢复未重放，专属 cgroup 已清理，宿主共享服务与代理文件指纹一致。Windows Release 模块边界、控制器和 Core 安全专项通过，MB-05 原 `d25a004b-3a7f-42bc-9c3c-ff8ecdab9e97` 回执为 Interrupted，受控副作用计数为一。日志和实机字段探测位于 `.artifacts/mb04-traffic-log-drain/`，Linux 归档 SHA-256 为 `f80e488513d80ffb7910ee646f63237e735ae1d78f4bac6ebee32119e5a0ff9c`。Proxy 继续 resident，生产内存未测。

@@ -7,7 +7,6 @@ public sealed class MihomoEngine(
     IMihomoControllerClient controller,
     IMihomoConfigurationValidator validator,
     IProxyPlatformPaths paths,
-    IProxyDiagnosticLogStore? diagnostics = null,
     IProxyRecoveryService? tunSafety = null) : IProxyEngine
 {
     public const string Id = "mihomo";
@@ -69,18 +68,7 @@ public sealed class MihomoEngine(
     public Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken) => controller.SetRoutingModeAsync(mode, cancellationToken);
     public Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken) =>
         controller.TestProxyDelayAsync(proxyName, url, timeoutMilliseconds, cancellationToken);
-    public Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken) => controller.GetTrafficAsync(cancellationToken);
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => controller.CloseConnectionAsync(connectionId, cancellationToken);
-    public async Task<IReadOnlyList<ProxyLogEntryDto>> GetLogsAsync(int limit, CancellationToken cancellationToken)
-    {
-        var result = await controller.GetLogsAsync(limit, cancellationToken);
-        var controllerLogs = result.Succeeded ? result.Value! : [];
-        IReadOnlyList<ProxyLogEntryDto> diagnosticLogs = diagnostics is null ? [] : await diagnostics.ReadAsync(limit, cancellationToken);
-        return controllerLogs.Concat(diagnosticLogs)
-            .OrderByDescending(entry => entry.Timestamp)
-            .Take(Math.Clamp(limit, 1, 500))
-            .ToArray();
-    }
     public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => controller.GetDnsStatusAsync(cancellationToken);
 }
 
