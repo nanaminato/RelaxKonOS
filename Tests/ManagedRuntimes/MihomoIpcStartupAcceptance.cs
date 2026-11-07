@@ -238,6 +238,27 @@ internal static class MihomoIpcStartupAcceptance
         }
 
         await VerifyPublicationShutdownAsync();
+        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SUBSCRIPTION") == "1")
+        {
+            await using var helper = await StartHelperAsync(helperAssembly, config, transport);
+            var native = await lifecycle.QueryAsync(default, interrupted);
+            var application = await startupStore.ReadAsync(default);
+            var pid = await ReadRuntimePidAsync();
+            await MihomoSubscriptionQueueAcceptance.RunAsync(start, tunPaths, async ct =>
+            {
+                var observed = await lifecycle.QueryAsync(ct, interrupted);
+                var published = await startupStore.ReadAsync(ct);
+                if (observed.Receipt != native.Receipt || observed.Installation.StateRevision != native.Installation.StateRevision
+                    || observed.ConfigurationIdentity != native.ConfigurationIdentity || published.Revision != application.Revision
+                    || published.Identity != application.Identity || published.Pending is not null
+                    || await ReadRuntimePidAsync() != pid || !await probe(port))
+                    throw new InvalidOperationException("The subscription queue changed the original native publication or traffic.");
+            });
+            var log = await helper.StopAsync(drainCompletedRequests: true);
+            if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
+                || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
+                throw new InvalidOperationException("Refreshing an inactive profile dispatched a native publication.");
+        }
 
         async Task VerifyPublicationShutdownAsync()
         {

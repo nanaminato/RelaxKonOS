@@ -1956,3 +1956,15 @@ Windows Release 驻留专项验证流清理未结束时仍保留代次、保留�
 Linux 使用私有网络中的可控分段 HTTP 源站和生产下载器及连接策略。已见代次加载而源站仍暂停正文时，下载任务和代次均在途。放行后得到原转换格式，观察卸载；第二次读取加载独立代次并得到相同结果，最初的真实 Mihomo 连接完成转发。该下载路径在验收进程内使用生产注册，HTTP 源仅在专属夹具中启用。本轮证据分开记录真实流的卸载事件和本地弱引用回收。
 
 完整认证同批复验 Core 系统代理、TUN 和到期，以及原管理操作 `453002c0-267c-4da0-a48e-51e7864e15ea` 与原到期回执 `324a1e3f-c1c0-4093-8a93-1f1bc94d293f`，各一次原生 apply。专属 cgroup 清理，宿主服务与代理文件指纹一致。日志为 `.artifacts/mb04-sub-body-live.log`，归档 SHA-256 为 `c63115ccae7c18baa421d9bbc0d5a341b000cdd98eb4f0ee9aa436841b9aa2f4`。Proxy 继续 resident，生产 PSS 与整模块休眠仍开放。下一步联验真实受管 Mihomo 的完整认证订阅队列，核对转换代次释放与同一领域台账和发布责任的关系。
+
+### MB-04 真实受管 Mihomo 的完整认证订阅队列
+
+隔离 Linux 夹具在非 root 完整 Server 中使用 PAM/JWT 调用原订阅导入与刷新接口。测试源站提供真实分段 HTTP 响应，且仅在专属配置中启用 HTTP 源。导入的是不激活的订阅档案，刷新沿用原 HTTP operationId、工作租约和 Host 数据库。测试启动钩子观察订阅代次的加载与卸载事件。
+
+Windows Release 订阅边界 39 项与模块边界回归通过。MB-05 跨进程按原 `f9ca85a6-a130-47c5-a078-e7ed539ab26f` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-sub-queue-win.log` 与 `.artifacts/mb04-sub-queue-boundaries-win.log`。
+
+原刷新 `9dcac25e-dce2-4b52-88c1-82cefcd05cf8` 在源站暂停正文时为 Running，模块目录显示一份活动租约，转换代次保持加载。放行后观察到卸载，Host 数据库中的原档案更新，任务成功且活动租约归零。SIGTERM 正常退出后，重启用同键得到原 ID、完全一致的 HTTP 成功回执及相同档案内容。源站请求数仍为两次，重启未加载新转换代次。
+
+真实受管套件通过 177 项，原发布身份、修订、进程 PID 与转发通过前后核对，订阅刷新期间 Helper 未收到配置或补偿命令。原中断补偿 `ce2dc5ca-f98d-4002-a1f4-20d70d680725` 与完整 Server 发布排空 `9f4c9eff-e4d8-478d-8882-902e7b0bb01a` 同批复验。专属 cgroup 已清理，宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-sub-queue-live.log`，归档 SHA-256 为 `015e6681a03a89d8e87c5e7789d3fb1c807214b2ba13c4ac0023ec6f802792b6`。
+
+该路径限未激活档案刷新，Proxy 整体继续 resident。下一步验证活动订阅刷新在真实配置已提交、原回执仍在途时的重启对账，保留原队列 ID 并区分下载与配置副作用。

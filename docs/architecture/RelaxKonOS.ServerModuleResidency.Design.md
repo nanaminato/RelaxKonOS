@@ -468,3 +468,5 @@ Mihomo 概览按 token 计数，继续校验完整快照。固定快照解析分
 Proxy 管理队列保留原工作租约至实际清理和终态落盘。调用方可取消等待，Host 停机仍排空已受理任务。见[管理队列停机所有权](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理队列的-host-停机所有权)。
 
 已授权的订阅响应体由独立可回收代次读入、解码和转换，流清理完成后卸载。真实分段响应与 Mihomo 转发在隔离 Linux 联验，弱引用回收由本地 Release 验证。Proxy 整体仍 resident。见[订阅响应体执行边界](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅响应体的可回收执行边界)。
+
+完整认证 Server 的未激活订阅刷新已在真实受管 Mihomo 环境联验。下载在途持有工作租约，转换代次卸载后原档案与成功回执落盘。重启同键读取原结果，不重复下载。见[完整认证订阅队列](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-真实受管-mihomo-的完整认证订阅队列)。

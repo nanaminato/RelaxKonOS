@@ -4532,3 +4532,5 @@ Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。�
 隔离 Linux 已验证 TUN 恢复的 SIGTERM 排空。真实设备已撤销而控制器确认仍在途时，Core 保留原标记，收齐确认并核验管理路由后清理。重启未重发 reload，原代理连接持续转发。见[真实 TUN 停机排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-的真实-tun-停机排空)。
 
 订阅下载仍由 Host 校验地址、路由与 TLS。已授权响应流由可回收代次限长读取、严格解码和转换，流清理后卸载。隔离 Linux 验证了真实分段下载和下一次读取加载新代次。见[订阅响应体执行边界](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅响应体的可回收执行边界)。
+
+完整认证 Server 的未激活订阅刷新已验证真实分段响应、转换代次释放、原档案更新和持久回执。重启同键返回原成功回执，未再次下载或派发配置。见[完整认证订阅队列](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-真实受管-mihomo-的完整认证订阅队列)。
