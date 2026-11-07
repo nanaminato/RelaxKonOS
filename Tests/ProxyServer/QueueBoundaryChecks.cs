@@ -31,6 +31,8 @@ internal static class QueueBoundaryChecks
         builder.Services.AddSingleton<IProxyPlatformPaths>(new Paths(root)); builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         builder.Services.AddSingleton<IPrivilegedOperationTransport>(new Helper()); builder.Services.AddSingleton<IServerModeResolver>(new TestMode());
         builder.Services.AddSingleton<ProxyServerStore>(); builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); builder.Services.AddSingleton<ProxyOperationStore>(); builder.Services.AddSingleton<ProxyAuditStore>();
+        var responseLeases = new TestProxyWorkLeases();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>(responseLeases);
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
         builder.Services.AddSingleton<ProxyServerOperationQueue>(); builder.Services.AddTransient<ProxyServerService>();
         builder.Services.AddScoped<IProxyEngineRegistry>(_ => new Engines(state));
@@ -46,6 +48,7 @@ internal static class QueueBoundaryChecks
             Require(state.Created == 1 && state.Disposed == 0, "Only the execution scope may construct the engine registry; the request does not construct a management facade.");
             using var replay = await client.PutAsJsonAsync(ProxyServerRoutes.Configuration, new SaveProxyServerConfiguration(0, []));
             Require(replay.StatusCode == HttpStatusCode.Accepted && state.Created == 1, "Replay returns the protected receipt without another execution graph.");
+            Require(responseLeases.Acquired == 2, "Original and replay responses each acquire their own lease.");
             var stop = app.StopAsync(); Require(!stop.IsCompleted, "Shutdown must wait for the inbound operation's async cleanup.");
             state.Release.TrySetResult(); await stop.WaitAsync(TimeSpan.FromSeconds(5));
             Require(state.Disposed == 1 && (await app.Services.GetRequiredService<ProxyServerStore>().ReadAsync(default)).Configuration.Revision == 1,

@@ -1,3 +1,4 @@
+using RelaxKonOS.Server.Startup;
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.HostMode;
@@ -149,7 +150,7 @@ public static class ProxyEndpoints
         try
         {
             var item = await enqueue(key, actor, ct);
-            return Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId));
+            return new ResidentOperationResult(ServerModules.ProxyId, Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId)));
         }
         catch (ProxyOperationValidationException error) { return Problem(error.ProblemCode, StatusCodes.Status400BadRequest); }
     }
@@ -175,7 +176,7 @@ public static class ProxyEndpoints
         try
         {
             var item = await operations.EnqueueAsync(key, operation, id, actor, ct);
-            return Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId));
+            return new ResidentOperationResult(ServerModules.ProxyId, Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId)));
         }
         catch (ProxyOperationValidationException error) { return Problem(error.ProblemCode, StatusCodes.Status400BadRequest); }
     }

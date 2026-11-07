@@ -1,3 +1,4 @@
+using RelaxKonOS.Server.Startup;
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
@@ -236,7 +237,7 @@ public static class ProxyServerEndpoints
                     try { return await action(services.GetRequiredService<ProxyServerService>(), executionToken); }
                     catch (ProxyServerException ex) { return ex.Message; }
                 }, token), ct);
-            return Results.Accepted(ProxyServerRoutes.Root + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId));
+            return new ResidentOperationResult(ServerModules.ProxyId, Results.Accepted(ProxyServerRoutes.Root + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId)));
         }
         catch (ProxyServerException ex) { return Problem(ex.Message); }
         catch (ProxyOperationValidationException ex) { return Problem(ex.ProblemCode); }

@@ -1,3 +1,4 @@
+using RelaxKonOS.Server.Startup;
 using System.Security.Claims;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Proxy;
@@ -64,7 +65,7 @@ public static class GatewayProxyEndpoints
             var item = await store.EnqueueAsync("squid:" + key, "squid." + kind, (_, token) =>
                 ProxyOperationScope.RunAsync(scopes, actor, "squid." + kind,
                     (services, execution) => action(services.GetRequiredService<SquidGatewayService>(), execution), token), ct);
-            return Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId));
+            return new ResidentOperationResult(ServerModules.ProxyId, Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId)));
         }
         catch (ProxyOperationValidationException error) { return Results.BadRequest(new { problemCode = error.ProblemCode }); }
     }

@@ -1357,3 +1357,5 @@ Linux 私有网络中，真实 Mihomo 禁用已应用但管理路由仍不可验
 同一 Core TUN worker 的实机重试通过。worker 在管理默认路由缺失时报告原恢复未完成，继续运行且保留原标记。恢复默认路由后，同一 worker 按生产周期重新验证并关闭原操作 bb3f2bfe-c464-4821-a14d-9d91aafba279。真实禁用重载仍为一次。日志为 .artifacts/mb04-tun-core-retry-live.log，归档 SHA-256 为 c9f6778438045c909ed24d0f66966cc238fe4fe24c9582aada98947a2381b7cf。
 
 系统代理 guard 空闲优化后，Linux Release 专属 Helper IPC 实机回归通过。非 root Server UID 授权与未列入 UID 拒绝、原 journal 跨进程恢复、竞争修改保留、启用 guard 的稳定无写入周期均通过。日志为 .artifacts/mb04-guard-idle-ipc-live.log，归档 SHA-256 为 201e6c81490b2925e6e1a3b590aa670232368dc19eb8ba71fa57659968fbd52c。禁用 guard 的空闲构造证据来自 Core 专项。共享服务和宿主文件持续原状。
+
+MB-04 Proxy 订阅、生命周期、入站与网关队列的 HTTP 202 响应接入原驻留协调器，响应执行持有独立租约。Windows Release Proxy Server 回归验证原提交和同键响应各取得租约，业务只构造一次执行图并完成异步清理。日志为 .artifacts/mb04-proxy-receipt-win.log。Linux 真实断线排空及完整 Proxy 休眠仍开放。
