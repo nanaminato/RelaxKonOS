@@ -217,15 +217,15 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             else
             {
                 var draft = state is not null && HasPendingRefresh(state, operation.OperationId)
-                    ? (Pending: true, CompletedAt: (DateTimeOffset?)null)
+                    ? (Pending: true, Receipt: (ProxyDraftRefreshReceipt?)null)
                     : await ReconcileDraftAsync(operation.OperationId, null, ct);
-                if (draft.CompletedAt is not null)
+                if (draft.Receipt is { } receipt)
                     operation = operation with
                     {
-                        State = ProxyOperationState.Succeeded,
-                        Stage = "completed",
-                        ProblemCode = "",
-                        CompletedAt = DateTimeOffset.UtcNow
+                        State = receipt.Applied ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
+                        Stage = receipt.Applied ? "completed" : "failed",
+                        ProblemCode = receipt.Applied ? "" : ProxyProblemCodes.ConfigApplyFailed,
+                        CompletedAt = receipt.Applied ? DateTimeOffset.UtcNow : receipt.At
                     };
                 else if (draft.Pending)
                     operation = operation with
@@ -245,10 +245,10 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         await SaveAsync(entries, CancellationToken.None);
     }
 
-    private Task<(bool Pending, DateTimeOffset? CompletedAt)> ReconcileDraftAsync(Guid id, Guid? subscription, CancellationToken ct) =>
+    private Task<(bool Pending, ProxyDraftRefreshReceipt? Receipt)> ReconcileDraftAsync(Guid id, Guid? subscription, CancellationToken ct) =>
         subscriptions is not null && publication is not null
             ? new ProxyDraftRefreshRecovery(paths, subscriptions, publication).ReconcileAsync(id, subscription, ct)
-            : Task.FromResult<(bool, DateTimeOffset?)>(default);
+            : Task.FromResult<(bool, ProxyDraftRefreshReceipt?)>(default);
 
     private static bool HasPendingRefresh(MihomoPublicationState state, Guid id) =>
         (state.Pending?.OperationId == id && state.Pending.Profile?.Refresh is not null)
@@ -282,7 +282,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                         || state.SubscriptionRefreshCompletions?.ContainsKey(id) == true
                         || subscriptions is not null && await subscriptions.ReadDraftRefreshIntentAsync(id, CancellationToken.None) is not null;
                 }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException or SqliteException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
+                catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or SqliteException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
                 { publicationPending = true; }
                 if (publicationPending) problem = ProxyProblemCodes.OperationInterrupted;
             }

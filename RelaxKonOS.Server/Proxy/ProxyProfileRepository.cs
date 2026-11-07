@@ -176,7 +176,8 @@ public sealed class SqliteProxyProfileRepository(IHostEnvironment environment, I
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            UPDATE proxy_subscriptions SET last_updated_at=$updated,updated_at=$updated,last_draft_refresh_operation_id=NULL
+            UPDATE proxy_subscriptions SET last_updated_at=$updated,updated_at=$updated,
+                last_draft_refresh_operation_id=NULL,last_draft_not_applied_at=NULL
             WHERE subscription_id=$subscription AND profile_id=$profile AND pending_draft_operation_id IS NULL;
             """;
         command.Parameters.AddWithValue("$updated", refresh.RetrievedAt.ToString("O"));

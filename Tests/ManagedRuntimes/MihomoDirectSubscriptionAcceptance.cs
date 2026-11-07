@@ -362,7 +362,7 @@ internal static class MihomoDirectSubscriptionAcceptance
                         || await SubmitAsync(client, ProxyApiRoutes.SubscriptionsRefresh, key, token) != operation
                         || await ReadOperationAsync(client, operation, token) != terminal
                         || (await ReadBatchAsync(operation, token)).Single().State != ProxyOperationStore.RefreshStepState.Succeeded
-                        || await repository.ReadDraftRefreshReceiptAsync(intent.OperationId, subscription.Id, token) != intent.RetrievedAt
+                        || await repository.ReadDraftRefreshReceiptAsync(intent.OperationId, subscription.Id, token) != new ProxyDraftRefreshReceipt(true, intent.RetrievedAt)
                         || await repository.ReadDraftRefreshIntentAsync(intent.OperationId, token) is not null
                         || content?.RetrievedAt != intent.RetrievedAt
                         || !content.Content.Contains("window-2.example.test", StringComparison.Ordinal)
@@ -372,10 +372,87 @@ internal static class MihomoDirectSubscriptionAcceptance
                         || Volatile.Read(ref reloadAttempts) != 0)
                         throw new InvalidOperationException("Draft recovery changed the original bytes, fetched again, or missed the original receipt.");
                     Console.WriteLine($"PASS AUTHENTICATED DRAFT COMMIT RECOVERY: batch {operation}, original child {intent.OperationId}; same YAML and one refresh download");
+                    await VerifyUnappliedDraftAsync(restarted, client, subscription, draftPath, replaced, written, intent.RetrievedAt);
                 }
                 finally { await ProxyAuthenticatedPublicationChecks.StopAsync(restarted); }
             }
             finally { start.Environment["Storage__DatabasePath"] = database; }
+
+            async Task VerifyUnappliedDraftAsync(System.Diagnostics.Process server, HttpClient client, ProxySubscriptionDto draft,
+                string target, byte[] originalBytes, DateTime originalWrite, DateTimeOffset originalRetrievedAt)
+            {
+                await SqlAsync("""
+                    CREATE TRIGGER reject_draft_decision BEFORE UPDATE OF pending_draft_abandoning ON proxy_subscriptions
+                    WHEN NEW.pending_draft_abandoning=1 BEGIN SELECT RAISE(ABORT, 'private decision fault'); END;
+                    CREATE TRIGGER reject_unapplied_receipt BEFORE UPDATE OF last_draft_not_applied_at ON proxy_subscriptions
+                    WHEN NEW.last_draft_not_applied_at IS NOT NULL BEGIN SELECT RAISE(ABORT, 'private receipt fault'); END;
+                    """);
+                await NativeRuntimeProcess.RunAsync("/usr/bin/mount", ["--bind", target, target], 512);
+                var unappliedKey = Guid.NewGuid().ToString("N");
+                Guid batchId;
+                Guid stepId;
+                string staged;
+                try
+                {
+                    batchId = await SubmitAsync(client, ProxyApiRoutes.SubscriptionsRefresh, unappliedKey, token);
+                    var pending = await WaitForTerminalAsync(client, batchId, token);
+                    stepId = (await ReadBatchAsync(batchId, token)).Single().OperationId;
+                    var prepared = await repository.ReadDraftRefreshIntentAsync(stepId, token);
+                    staged = ProxyDraftRefreshRecovery.StagedPath(paths, stepId);
+                    if (pending is not { Stage: "batch_pending", CompletedAt: null } || prepared is not { Abandoning: false }
+                        || prepared.PreviousIdentity != Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(originalBytes))
+                        || await ProxyDraftRefreshRecovery.ReadIdentityAsync(staged, token, stepId) != prepared.Identity
+                        || !(await File.ReadAllBytesAsync(target, token)).SequenceEqual(originalBytes))
+                        throw new InvalidOperationException("The refused rename did not leave the original target and exact stage.");
+                    await CrashAsync(server);
+                }
+                finally { await NativeRuntimeProcess.RunAsync("/usr/bin/umount", [target], 512); }
+
+                await SqlAsync("DROP TRIGGER reject_draft_decision;");
+                using (var cleanup = ProxyAuthenticatedPublicationChecks.Start(start, Console.WriteLine))
+                {
+                    try
+                    {
+                        using var cleanupClient = await ProxyAuthenticatedPublicationChecks.ConnectAsync(cleanup, login, token);
+                        var pending = await ReadOperationAsync(cleanupClient, batchId, token);
+                        if (pending is not { Stage: "batch_pending", CompletedAt: null } || File.Exists(staged)
+                            || await repository.ReadDraftRefreshIntentAsync(stepId, token) is not { Abandoning: true }
+                            || await repository.ReadDraftRefreshReceiptAsync(stepId, draft.Id, token) is not null)
+                            throw new InvalidOperationException("The staged cleanup did not retain its durable unfinished receipt.");
+                        await CrashAsync(cleanup);
+                    }
+                    finally { await ProxyAuthenticatedPublicationChecks.StopAsync(cleanup); }
+                }
+
+                await SqlAsync("DROP TRIGGER reject_unapplied_receipt;");
+                using var reopened = ProxyAuthenticatedPublicationChecks.Start(start, Console.WriteLine);
+                try
+                {
+                    using var reopenedClient = await ProxyAuthenticatedPublicationChecks.ConnectAsync(reopened, login, token);
+                    var terminal = await ReadOperationAsync(reopenedClient, batchId, token);
+                    if (terminal is not { State: ProxyOperationState.Interrupted, Stage: "batch_interrupted", CompletedAt: not null }
+                        || await SubmitAsync(reopenedClient, ProxyApiRoutes.SubscriptionsRefresh, unappliedKey, token) != batchId
+                        || await ReadOperationAsync(reopenedClient, batchId, token) != terminal
+                        || (await ReadBatchAsync(batchId, token)).Single() is not { State: ProxyOperationStore.RefreshStepState.Failed } step
+                        || step.OperationId != stepId
+                        || await repository.ReadDraftRefreshReceiptAsync(stepId, draft.Id, token) is not { Applied: false }
+                        || await repository.ReadDraftRefreshIntentAsync(stepId, token) is not null || File.Exists(staged)
+                        || (await repository.GetAsync(draft.Id, token))?.Subscription.LastUpdatedAt != originalRetrievedAt
+                        || !(await File.ReadAllBytesAsync(target, token)).SequenceEqual(originalBytes)
+                        || File.GetLastWriteTimeUtc(target) != originalWrite || Volatile.Read(ref windowFeeds) != 3
+                        || Volatile.Read(ref reloadAttempts) != 0)
+                        throw new InvalidOperationException("Draft abandonment changed the previous draft or missed the original receipt.");
+                    Console.WriteLine($"PASS AUTHENTICATED DRAFT NOT APPLIED: batch {batchId}, original child {stepId}; two crashes, original YAML and timestamp, no replay");
+                }
+                finally { await ProxyAuthenticatedPublicationChecks.StopAsync(reopened); }
+
+                async Task CrashAsync(System.Diagnostics.Process process)
+                {
+                    process.Kill();
+                    await process.WaitForExitAsync(token);
+                    if (process.ExitCode == 0) throw new InvalidOperationException("The private Server did not crash.");
+                }
+            }
 
             async Task SqlAsync(string sql)
             {

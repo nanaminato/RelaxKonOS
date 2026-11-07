@@ -24,7 +24,7 @@ internal static async Task VerifyHostGlobalMigrationAsync(string root)
     await connection.OpenAsync();
     await using var command = connection.CreateCommand();
     command.CommandText = "SELECT MAX(version) FROM relaxkonos_host_schema_migrations;";
-    TestAssert.Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 19, "HostGlobal migrations did not reach the expected version.");
+    TestAssert.Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 20, "HostGlobal migrations did not reach the expected version.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='docker_proxy_settings');";
     TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Docker proxy settings table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='proxy_profile_publication');";
@@ -137,7 +137,7 @@ internal static async Task VerifyProxySubscriptionRepositoryAsync(string root)
         && steps[0].OperationId == childId && steps[0].State == ProxyOperationStore.RefreshStepState.Succeeded
         && steps[1].SubscriptionId == skippedId && steps[1].State == ProxyOperationStore.RefreshStepState.Skipped
         && (await reopened.InspectResponsibilitiesAsync(default)).Count == 0, "Draft proof must settle the original step without running the unstarted suffix.");
-    TestAssert.Assert(await repository.ReadDraftRefreshReceiptAsync(childId, created.Id, default) == timestamp
+    TestAssert.Assert(await repository.ReadDraftRefreshReceiptAsync(childId, created.Id, default) == new ProxyDraftRefreshReceipt(true, timestamp)
         && await repository.ReadDraftRefreshReceiptAsync(batchId, created.Id, default) is null
         && await repository.ReadDraftRefreshIntentAsync(childId, default) is null
         && (await repository.GetAsync(created.Id, default))?.Subscription.LastUpdatedAt == timestamp
@@ -163,6 +163,48 @@ internal static async Task VerifyProxySubscriptionRepositoryAsync(string root)
     TestAssert.Assert(singleReceipt is { State: ProxyOperationState.Succeeded, Stage: "completed", CompletedAt: not null }
         && await reopened.GetAsync(singleId, default) == singleReceipt && await File.ReadAllTextAsync(path) == singleCandidate,
         "Single draft recovery must close the original queue entry without rewriting the candidate.");
+
+    var unappliedId = Guid.NewGuid();
+    var unapplied = single with { OperationId = unappliedId };
+    await File.WriteAllTextAsync(ledgerPath, JsonSerializer.Serialize(new[] { new { IdempotencyKey = "unapplied", Operation = unapplied } }));
+    var stagedYaml = ProxyDraftRefreshRecovery.Mark(yaml, unappliedId);
+    var stagedPath = ProxyDraftRefreshRecovery.StagedPath(paths, unappliedId);
+    var unappliedIntent = intent with { OperationId = unappliedId, Identity = Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(stagedYaml))),
+        PreviousIdentity = await ProxyDraftRefreshRecovery.ReadIdentityAsync(path, default) };
+    TestAssert.Assert(await repository.PrepareDraftRefreshAsync(unappliedIntent, default), "The unapplied draft must reserve its original ID.");
+    var missingStage = await reopened.GetAsync(unappliedId, default);
+    TestAssert.Assert(missingStage is { Stage: "publication_pending", CompletedAt: null },
+        "An unchanged target with no stage is insufficient before a cleanup decision.");
+    await File.WriteAllTextAsync(stagedPath, stagedYaml + "# drift\n");
+    TestAssert.Assert(await reopened.GetAsync(unappliedId, default) == missingStage && File.Exists(stagedPath),
+        "Recovery must retain a changed staged file and its pending responsibility.");
+    await File.WriteAllTextAsync(stagedPath, stagedYaml);
+    command.CommandText = "UPDATE proxy_subscriptions SET pending_draft_identity='' WHERE subscription_id=$id;";
+    await command.ExecuteNonQueryAsync();
+    TestAssert.Assert(await reopened.GetAsync(unappliedId, default) == missingStage && File.Exists(stagedPath),
+        "A malformed saved digest must never match an unmarked target or authorize cleanup.");
+    command.CommandText = "UPDATE proxy_subscriptions SET pending_draft_identity=$identity WHERE subscription_id=$id;";
+    command.Parameters.AddWithValue("$identity", unappliedIntent.Identity);
+    await command.ExecuteNonQueryAsync();
+    command.CommandText = """
+        CREATE TRIGGER reject_draft_abandonment BEFORE UPDATE OF last_draft_not_applied_at ON proxy_subscriptions
+        WHEN NEW.last_draft_not_applied_at IS NOT NULL BEGIN SELECT RAISE(ABORT, 'test receipt failure'); END;
+        """;
+    await command.ExecuteNonQueryAsync();
+    TestAssert.Assert(await reopened.GetAsync(unappliedId, default) == missingStage && !File.Exists(stagedPath)
+        && await repository.ReadDraftRefreshIntentAsync(unappliedId, default) is { Abandoning: true },
+        "Cleanup must have a durable decision before removing the stage and preserve responsibility if its receipt fails.");
+    command.CommandText = "DROP TRIGGER reject_draft_abandonment;";
+    await command.ExecuteNonQueryAsync();
+    var unappliedQueue = new ProxyOperationStore(paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases(), publication, repository);
+    var notApplied = await unappliedQueue.EnqueueAsync("unapplied", single.Kind, (_, _) => throw new Exception("Replayed draft"), default);
+    TestAssert.Assert(notApplied is { State: ProxyOperationState.Failed, ProblemCode: ProxyProblemCodes.ConfigApplyFailed, CompletedAt: not null }
+        && await repository.ReadDraftRefreshReceiptAsync(unappliedId, created.Id, default) == new ProxyDraftRefreshReceipt(false, notApplied.CompletedAt.Value)
+        && await File.ReadAllTextAsync(path) == singleCandidate
+        && (await repository.GetAsync(created.Id, default))?.Subscription.LastUpdatedAt == timestamp
+        && (await unappliedQueue.InspectResponsibilitiesAsync(default)).Count == 0,
+        "The original not-applied receipt must close the operation without touching the previous draft or timestamp.");
 
     var downloadFactory = new FixtureHttpClientFactory(Encoding.UTF8.GetBytes("proxies: []\n"));
     var downloader = new ProxySubscriptionDownloader(downloadFactory, new StaticProxySettingsService());

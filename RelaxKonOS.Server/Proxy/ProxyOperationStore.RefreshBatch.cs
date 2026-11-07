@@ -95,8 +95,12 @@ public sealed partial class ProxyOperationStore
         if (publication?.SubscriptionRefreshCompletions?.GetValueOrDefault(step.OperationId) is { } proof)
             return proof.Confirmed ? RefreshStepState.Succeeded : RefreshStepState.Failed;
         if (publication is not null && HasPendingRefresh(publication, step.OperationId)) return RefreshStepState.Running;
-        return (await ReconcileDraftAsync(step.OperationId, step.SubscriptionId, ct)).CompletedAt is not null
-            ? RefreshStepState.Succeeded : RefreshStepState.Running;
+        return (await ReconcileDraftAsync(step.OperationId, step.SubscriptionId, ct)).Receipt?.Applied switch
+        {
+            true => RefreshStepState.Succeeded,
+            false => RefreshStepState.Failed,
+            null => RefreshStepState.Running
+        };
     }
 
     private static bool IsSettledBatchInterruption(Entry entry) =>

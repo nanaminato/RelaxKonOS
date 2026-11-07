@@ -58,8 +58,10 @@ public sealed class ProxyConfigurationTransactionService(
             var managed = engine.EngineId == MihomoEngine.Id && state.Published is not null;
             if (!managed && await publication.UncoordinatedWriteProblemAsync(cancellationToken) is { } publicationProblem) return publicationProblem;
             var directory = GetProfilesDirectory();
-            var temporary = Path.Combine(directory, ".validate-" + Guid.NewGuid().ToString("N"));
+            var temporary = draft is null ? Path.Combine(directory, ".validate-" + Guid.NewGuid().ToString("N"))
+                : ProxyDraftRefreshRecovery.StagedPath(paths, draft.OperationId);
             var preparingDraft = false;
+            var createdTemporary = false;
             try
             {
                 // Validate the same GEO policy that will be activated.  Validating the raw
@@ -69,7 +71,13 @@ public sealed class ProxyConfigurationTransactionService(
                 // settings influence the validation process.
                 var validationYaml = PrepareStoredConfiguration(engine, yaml);
                 if (draft is not null) validationYaml = ProxyDraftRefreshRecovery.Mark(validationYaml, draft.OperationId);
-                await File.WriteAllTextAsync(temporary, validationYaml, cancellationToken); SetPrivateFile(temporary);
+                var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+                if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+                await using (var output = new StreamWriter(new FileStream(temporary, options)))
+                {
+                    createdTemporary = true;
+                    await output.WriteAsync(validationYaml.AsMemory(), cancellationToken);
+                }
                 // Drafts are structurally bounded here. The installed target validates natively only
                 // inside the protected configuration transaction, never against live runtime data.
                 var validation = managed ? await ValidateManagedDraftAsync(yaml, state.Published!, cancellationToken)
@@ -77,22 +85,27 @@ public sealed class ProxyConfigurationTransactionService(
                 if (!string.IsNullOrEmpty(validation))
                 {
                     logger?.LogWarning("Proxy profile storage was rejected by configuration validation. ProfileId={ProfileId} EngineId={EngineId} ProblemCode={ProblemCode}", profileId, engine.EngineId, validation);
-                    File.Delete(temporary); return validation;
+                    return validation;
                 }
                 cancellationToken.ThrowIfCancellationRequested();
+                var target = ProfilePath(profileId);
+                RuntimeSourceStore.RequireNoLinks(target);
                 ProxyDraftRefreshIntent? intent = null;
                 if (draft is not null)
                 {
                     if (subscriptions is null) return ProxyProblemCodes.NotSupported;
                     intent = new(draft.SubscriptionId, profileId, draft.OperationId,
-                        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(validationYaml))), draft.RetrievedAt);
+                        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(validationYaml))), draft.RetrievedAt,
+                        await ProxyDraftRefreshRecovery.ReadIdentityAsync(target, cancellationToken));
                     preparingDraft = true;
                     if (!await subscriptions.PrepareDraftRefreshAsync(intent, cancellationToken))
+                    {
+                        preparingDraft = false;
                         return ProxyProblemCodes.ConfigApplyFailed;
+                    }
                 }
-                var target = ProfilePath(profileId);
-                RuntimeSourceStore.RequireNoLinks(target);
                 File.Move(temporary, target, overwrite: true);
+                createdTemporary = false;
                 if (intent is not null && !await subscriptions!.CommitPreparedDraftRefreshAsync(intent, CancellationToken.None))
                     return ProxyProblemCodes.RecoveryRequired;
                 logger?.LogInformation("Proxy profile configuration stored. ProfileId={ProfileId} EngineId={EngineId} Characters={Characters}", profileId, engine.EngineId, yaml.Length);
@@ -104,7 +117,7 @@ public sealed class ProxyConfigurationTransactionService(
             catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }
             catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
             catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            finally { if (createdTemporary && !preparingDraft) File.Delete(temporary); }
         }
         catch (RuntimePolicyException) { return ProxyProblemCodes.RecoveryRequired; }
         catch (IOException) { return ProxyProblemCodes.RecoveryRequired; }
