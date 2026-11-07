@@ -1319,3 +1319,5 @@ MB-05 将 Docker 已实机验证的响应租约机制复用于证书、WebServer
 Linux x64 Release 同制品通过证书 HTTP 绑定、回执、WebServer、模块边界回归，以及隔离 Nginx Configuring 阶段发布恢复。原发布 3c573041-4d2f-436b-98a1-4766d8cd1720 恢复为未知应用结果，发布重载一次。首轮因 Windows 打包未带 Linux apphost 执行位而中止，专属解包目录修正后通过。日志为 .artifacts/mb05-receipt-linux-final.log，归档 SHA-256 为 45f9d3b570a6c265a53b1d21f05fe10bc3aec29939773bfbf51f472a72f544df。此批次的 Nginx 发布故障走协调器入口，新增路由的实机断线联合排空仍开放。
 
 MB-05 证书生产路由在 Linux Kestrel 夹具上通过真实客户端断线测试。原证书绑定成功后，同键回执在响应头屏障处持有租约；客户端断线后租约仍在，实际响应退出后归还。再次提交原键得到原 Succeeded operationId。日志为 .artifacts/mb05-cert-drain-linux.log，归档 SHA-256 为 93c779be34d229c4f9b1a122bdd7f44669089ec06a5eb2100876932844cd081f。此项使用测试身份、响应屏障和观测租约，真实 CA 签发中断证据见 §52。
+
+Linux x64 Release 隔离 Nginx 发布恢复已走生产网站发布 HTTP 同键入口。原操作 663e2f69-beaa-4ea1-88e9-9178bf2d5421 在 Configuring 中断。恢复后的同键响应在写出前遇到真实客户端断线，实际响应退出前保留租约。后续重试返回原 Interrupted 回执及 website.site_application_unverified，HTTPS 继续代理，发布只重载一次。日志为 .artifacts/mb05-website-drain-live.log，归档 SHA-256 为 20a7a124f5311bc7b731d000d5516e87d3f2448eab6c0158ca11427b6740c6a7。故障由原协调器工作进程触发，Kestrel 夹具提供身份、响应屏障和租约观测。

@@ -1,3 +1,10 @@
+using System.Net.Http.Json;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using RelaxKonOS.Server.Endpoints;
 using System.Reflection;
 using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Protocol.ApplicationDeployments;
@@ -251,8 +258,8 @@ internal static class NginxProcessRecoveryChecks
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, new TestResidentBackgroundLeases());
             await restarted.StartAsync(cancellationToken);
             var restored = restarted.Get(operationId);
-            var replay = await restarted.StartAsync(new(app.Id, running!.WebServerId, PublicationDomain, running.CertificateId, Confirmed: true),
-                Actor, PublicationKey, cancellationToken);
+            var replay = await ReplayOverHttpAsync(restarted,
+                new(app.Id, running!.WebServerId, PublicationDomain, running.CertificateId, Confirmed: true), cancellationToken);
             TestAssert.Assert(restored is { State: WebsitePublicationState.Interrupted }
                 && restored.RecoveryProblemCode == (configuring ? WebsitePublicationStore.SiteApplicationUnverified : "website.recheck_required")
                 && replay.RecoveryProblemCode == restored.RecoveryProblemCode && replay.OperationId == operationId && replay.State == restored.State && replay.ProblemCode == restored.ProblemCode
@@ -268,7 +275,7 @@ internal static class NginxProcessRecoveryChecks
                 "Publication recovery must preserve live TLS, the association and the original reload count.");
             await responseTask;
             await restarted.StopAsync(cancellationToken);
-            Console.WriteLine($"PASS NGINX LIVE PUBLICATION CRASH: operation={operationId}; stage={stage}; recovery={restored!.RecoveryProblemCode}; publication reloads=1");
+            Console.WriteLine($"PASS NGINX LIVE PUBLICATION CRASH: operation={operationId}; stage={stage}; recovery={restored!.RecoveryProblemCode}; publication reloads=1; HTTP response drained after disconnect");
         }
         finally
         {
@@ -286,6 +293,85 @@ internal static class NginxProcessRecoveryChecks
             var bytes = "published upstream"u8.ToArray();
             response.ContentLength64 = bytes.Length;
             await response.OutputStream.WriteAsync(bytes, cancellationToken);
+        }
+    }
+
+    private static async Task<WebsitePublicationOperationDto> ReplayOverHttpAsync(
+        WebsitePublicationCoordinator coordinator, PublishWebsiteRequest publication, CancellationToken ct)
+    {
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", Actor),
+            new Claim("jti", "publication-fixture"), new Claim("amr", "alias")], "Fixture"));
+        var elevations = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new ProgressTestMode(), new HostElevationSessionState());
+        var leases = new TestResidentBackgroundLeases();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var aborted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddAuthorization(options =>
+        {
+            options.AddPolicy(ApplicationDeploymentEndpoints.ManagePolicy, policy => policy.RequireAuthenticatedUser());
+            options.AddPolicy(ApplicationDeploymentEndpoints.ReadPolicy, policy => policy.RequireAuthenticatedUser());
+        });
+        builder.Services.AddSingleton(coordinator);
+        builder.Services.AddSingleton<IHostElevationSessionStore>(elevations);
+        builder.Services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver, ProgressTestMode>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>(leases);
+        await using var app = builder.Build();
+        app.Use(async (context, next) =>
+        {
+            context.User = principal;
+            if (!context.Request.Headers.ContainsKey("X-Hold-Receipt"))
+            {
+                await next(context);
+                return;
+            }
+            using var registration = context.RequestAborted.Register(() => aborted.TrySetResult());
+            context.Response.OnStarting(async () => { entered.TrySetResult(); await release.Task.WaitAsync(ct); });
+            try { await next(context); }
+            finally { exited.TrySetResult(); }
+        });
+        app.UseAuthorization();
+        app.MapWebsitePublicationEndpoints();
+        await app.StartAsync(ct);
+        using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false })
+        {
+            BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())
+        };
+        using var abort = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var first = NewRequest(hold: true);
+        var send = client.SendAsync(first, abort.Token);
+        try
+        {
+            await entered.Task.WaitAsync(ct);
+            TestAssert.Assert(leases.Active == 1, "The website receipt must own its response lease.");
+            abort.Cancel();
+            await aborted.Task.WaitAsync(ct);
+            try { using var unexpected = await send; throw new InvalidOperationException("Expected website client disconnect."); }
+            catch (OperationCanceledException) when (abort.IsCancellationRequested) { }
+            TestAssert.Assert(leases.Active == 1 && !exited.Task.IsCompleted,
+                "The disconnected website receipt must keep its lease until response execution exits.");
+        }
+        finally { release.TrySetResult(); }
+        await exited.Task.WaitAsync(ct);
+        TestAssert.Assert(leases.Active == 0, "The website receipt must return its lease after response exit.");
+        using var retry = NewRequest(hold: false);
+        using var response = await client.SendAsync(retry, ct);
+        TestAssert.Assert(response.StatusCode == HttpStatusCode.Accepted,
+            $"Website retry returned {response.StatusCode}: {await response.Content.ReadAsStringAsync(ct)}");
+        return await response.Content.ReadFromJsonAsync<WebsitePublicationOperationDto>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new InvalidOperationException("Missing website replay response.");
+
+        HttpRequestMessage NewRequest(bool hold)
+        {
+            elevations.Grant(principal, HostElevationCapability.NginxConfigurationWrite, publication.WebServerId, false, "fixture");
+            var request = new HttpRequestMessage(HttpMethod.Post, WebsitePublicationApiRoutes.Root)
+                { Content = JsonContent.Create(publication, options: RelaxKonOSJsonOptions.Default) };
+            request.Headers.Add("Idempotency-Key", PublicationKey);
+            if (hold) request.Headers.Add("X-Hold-Receipt", "1");
+            return request;
         }
     }
 
