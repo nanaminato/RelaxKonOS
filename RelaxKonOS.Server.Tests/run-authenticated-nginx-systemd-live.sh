@@ -4,7 +4,7 @@ set -euo pipefail
 [[ ( $# == 2 || $# == 3 || $# == 5 ) && $EUID == 0 ]]
 mode=${3:---systemd}
 case "$mode" in
-    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-website-acme-bootstrap|--systemd-website-acme-bootstrap-success|--systemd-first-site-acme|--systemd-first-site-acme-success) ;;
+    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-website-acme-bootstrap|--systemd-website-acme-bootstrap-success|--systemd-website-acme-bootstrap-failure|--systemd-first-site-acme|--systemd-first-site-acme-success) ;;
     *) exit 2 ;;
 esac
 pebble= dns= relay=
@@ -56,6 +56,8 @@ cat <&3 > "$work/credentials" &
 writer=$!
 exec 3<&-
 
+validation_port=80
+if [[ "$mode" == --systemd-website-acme-bootstrap-failure ]]; then validation_port=5002; fi
 cat > "$work/inside.sh" <<EOF
 #!/bin/bash
 set -euo pipefail
@@ -99,7 +101,7 @@ if [[ -n "$pebble" ]]; then
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
         -addext 'subjectAltName=DNS:localhost,IP:127.0.0.2' -keyout "$work/https.key" -out "$work/https.pem" >/dev/null 2>&1
     cat > "$work/pebble.json" <<JSON
-{"pebble":{"listenAddress":"127.0.0.2:14000","managementListenAddress":"127.0.0.1:15000","certificate":"$work/https.pem","privateKey":"$work/https.key","httpPort":80,"tlsPort":443,"retryAfter":{"authz":1,"order":1}}}
+{"pebble":{"listenAddress":"127.0.0.2:14000","managementListenAddress":"127.0.0.1:15000","certificate":"$work/https.pem","privateKey":"$work/https.key","httpPort":$validation_port,"tlsPort":443,"retryAfter":{"authz":1,"order":1}}}
 JSON
     "$dns" -dnsserver 127.0.0.1:8053 -defaultIPv4 127.0.0.1 -defaultIPv6 '' \
         -http01 '' -https01 '' -tlsalpn01 '' -doh '' -management 127.0.0.1:8055 > "$work/dns.log" 2>&1 &

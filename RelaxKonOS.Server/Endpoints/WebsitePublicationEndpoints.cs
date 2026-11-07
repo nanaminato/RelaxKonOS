@@ -35,6 +35,15 @@ public static class WebsitePublicationEndpoints
         group.MapGet(WebsitePublicationApiRoutes.OperationPattern, (Guid operationId, WebsitePublicationCoordinator coordinator) =>
             Handle(() => coordinator.Get(operationId) is { } operation ? Results.Ok(operation) : Results.NotFound()))
             .RequireAuthorization(ApplicationDeploymentEndpoints.ReadPolicy);
+        group.MapPost(WebsitePublicationApiRoutes.CleanupBootstrapPattern, (Guid operationId, HttpContext context,
+            IHostElevationSessionStore elevations, WebsitePublicationCoordinator coordinator, CancellationToken ct) => HandleAsync(async () =>
+        {
+            if (coordinator.Get(operationId) is not { } operation) return Results.NotFound();
+            if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, operation.WebServerId))
+                return ElevationRequired();
+            var receipt = await coordinator.CleanupBootstrapAsync(operationId, ct);
+            return new ResidentOperationResult(ServerModules.WebServerId, Results.Ok(receipt));
+        })).RequireAuthorization(ApplicationDeploymentEndpoints.ManagePolicy);
         return app;
     }
 

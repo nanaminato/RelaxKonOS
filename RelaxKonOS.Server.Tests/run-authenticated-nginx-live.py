@@ -25,7 +25,8 @@ def run(root, server, helper_binary, mode):
     interrupt_first_site = mode == "--systemd-first-site-acme"
     website = acme_website or mode in ("--systemd-website", "--systemd-website-verifying")
     verifying_website = mode == "--systemd-website-verifying"
-    bootstrap_acme = mode in ("--systemd-website-acme-bootstrap", "--systemd-website-acme-bootstrap-success")
+    bootstrap_acme = mode is not None and mode.startswith("--systemd-website-acme-bootstrap")
+    bootstrap_failure = mode == "--systemd-website-acme-bootstrap-failure"
     acme_success = mode in ("--systemd-website-acme-success", "--systemd-website-acme-bootstrap-success")
     acme_cancel = mode == "--systemd-website-acme-cancel"
     acme_drain = mode == "--systemd-website-acme-drain"
@@ -327,7 +328,7 @@ def run(root, server, helper_binary, mode):
             (root / "nginx" / "release").touch()
         else:
             (upstream / "release").touch()
-        if acme_success:
+        if acme_success or bootstrap_failure:
             (root / "nginx" / "release").touch()
         if acme_website:
             challenge_root = root / "challenge"
@@ -422,6 +423,24 @@ def run(root, server, helper_binary, mode):
                 original = request(publications, token=token, payload=payload, key=key, expected=202)
                 operation_id = original["operationId"]
                 operation_route = f"{publications}/operations/{operation_id}"
+                if bootstrap_failure:
+                    wait_for(initial, lambda: request(operation_route, token=token)["state"].lower() == "failed",
+                             "known CA rejection and owned bootstrap cleanup", attempts=450)
+                    receipt = request(operation_route, token=token)
+                    assert receipt["problemCode"] == "certificate.validation_failed" and not receipt["recoveryProblemCode"]
+                    assert receipt["bootstrapCleanedAt"] and receipt["bootstrapCleanupOperationId"]
+                    cert = request(f"{certificates}/operations/{receipt['certificateOperationId']}", token=token)
+                    assert cert["state"].lower() == "failed" and cert["problemCode"] == "certificate.validation_failed"
+                    ca_log = (root / "ca.log").read_text()
+                    assert ca_log.count("Added order") == 1 and "POST /finalize-order/" not in ca_log
+                    assert list(challenge_root.iterdir()) == [sentinel]
+                    assert not list(Path("/etc/nginx/conf.d/relaxkonos.d").glob("app*.conf*"))
+                    assert witness.read_text().splitlines() == ["reload", "reload"]
+                    assert request(operation_route + "/cleanup-bootstrap", token=token, method="POST") == receipt
+                    assert not request(app_route, token=token)["application"]["siteId"]
+                    assert_served(b"original")
+                    print(f"PASS WEBSITE BOOTSTRAP KNOWN FAILURE CLEANUP: operation={operation_id}; cleanup={receipt['bootstrapCleanupOperationId']}; one rejected order, one cleanup reload")
+                    return
                 if bootstrap_acme and not acme_success:
                     wait_for(initial, witness.is_file, "first website bootstrap reload")
                     active = request(operation_route, token=token)
@@ -456,7 +475,9 @@ def run(root, server, helper_binary, mode):
                     assert_served(b"original")
                     initial.kill()
                     assert initial.wait(timeout=10) < 0
-                    (root / "nginx" / "release").touch()
+                    release = root / "nginx" / "release"
+                    finished = root / "nginx" / "reload-finished"
+                    cleanup_route = operation_route + "/cleanup-bootstrap"
                     with process([server], "bootstrap-restarted-server") as restarted:
                         wait_for(restarted, healthy, "bootstrap-restarted-server")
                         token = login()
@@ -476,6 +497,10 @@ def run(root, server, helper_binary, mode):
                         assert witness.read_text().splitlines() == ["reload"] and config.read_bytes() == original_config
                         assert nginx_pid_file.read_text() == master and bootstrap_serves_challenge()
                         assert_served(b"original")
+                        request(cleanup_route, method="POST", expected=401)
+                        request(cleanup_route, token=token, method="POST", expected=409, expected_problem="website.recheck_required")
+                        assert not request(operation_route, token=token)["bootstrapCleanupOperationId"]
+                        release.touch()
                         wait_for(helper, lambda: direct_helper_request("NginxReloadReceipt", operation_id)["success"],
                                  "original bootstrap native reload receipt")
                         native = direct_helper_request("NginxReloadReceipt", operation_id)["nginxReloadReceipt"]
@@ -483,6 +508,60 @@ def run(root, server, helper_binary, mode):
                         assert direct_helper_request("NginxTrackedReload", operation_id)["nginxReloadReceipt"] == native
                         assert witness.read_text().splitlines() == ["reload"]
                         print(f"PASS WEBSITE BOOTSTRAP INTERRUPTION: operation={operation_id}; original route and receipt, one reload and no CA order")
+                        changed = original_config + b"# external edit\n"
+                        config.write_bytes(changed)
+                        try:
+                            request(cleanup_route, token=token, method="POST", expected=409, expected_problem="website.recheck_required")
+                            assert config.read_bytes() == changed and witness.read_text().splitlines() == ["reload"]
+                        finally:
+                            config.write_bytes(original_config)
+                        release.unlink()
+                        finished.unlink()
+
+                        def disconnect_during_cleanup():
+                            try:
+                                request(cleanup_route, token=token, method="POST")
+                            except OSError:
+                                pass
+
+                        client = threading.Thread(target=disconnect_during_cleanup, daemon=True)
+                        client.start()
+                        wait_for(restarted, lambda: witness.read_text().splitlines() == ["reload", "reload"],
+                                 "authorized bootstrap cleanup reload")
+                        pending = request(operation_route, token=token)
+                        cleanup_id = pending["bootstrapCleanupOperationId"]
+                        backup = config.with_suffix(".conf.cleanup.rollback")
+                        assert cleanup_id and cleanup_id != operation_id and not pending["bootstrapCleanedAt"]
+                        assert backup.read_bytes() == original_config and not config.exists()
+                        assert not finished.exists()
+                        restarted.kill()
+                        assert restarted.wait(timeout=10) < 0
+                        client.join(timeout=10)
+                        assert not client.is_alive()
+                        release.touch()
+                        wait_for(helper, lambda: direct_helper_request("NginxReloadReceipt", cleanup_id)["success"],
+                                 "original cleanup native reload receipt")
+                    with process([server], "bootstrap-cleanup-restarted-server") as recovered:
+                        wait_for(recovered, healthy, "bootstrap-cleanup-restarted-server")
+                        token = login()
+                        cleaned = request(cleanup_route, token=token, method="POST")
+                        assert cleaned["state"] == receipt["state"] and cleaned["problemCode"] == receipt["problemCode"]
+                        assert cleaned["operationId"] == operation_id and cleaned["bootstrapCleanupOperationId"] == cleanup_id
+                        assert cleaned["bootstrapCleanedAt"] and not cleaned["recoveryProblemCode"]
+                        assert cleaned == request(cleanup_route, token=token, method="POST")
+                        assert cleaned == request(publications, token=token, payload=payload, key=key, expected=202)
+                        assert not config.exists() and not backup.exists() and not bootstrap_serves_challenge()
+                        assert witness.read_text().splitlines() == ["reload", "reload"] and nginx_pid_file.read_text() == master
+                        assert "Added order" not in (root / "ca.log").read_text()
+                        assert_served(b"original")
+                        fresh = request(publications, token=token, payload={**payload, "certificateId": str(uuid.uuid4())},
+                                        key=secrets.token_hex(16), expected=202)
+                        fresh_route = f"{publications}/operations/{fresh['operationId']}"
+                        wait_for(recovered, lambda: request(fresh_route, token=token)["state"].lower() == "failed",
+                                 "new publication admitted after cleanup")
+                        assert request(fresh_route, token=token)["problemCode"] == "website.certificate_not_found"
+                        assert witness.read_text().splitlines() == ["reload", "reload"] and "Added order" not in (root / "ca.log").read_text()
+                        print(f"PASS WEBSITE BOOTSTRAP AUTHORIZED CLEANUP: operation={operation_id}; cleanup={cleanup_id}; original receipt and no replay")
                     return
                 if acme_website:
                     def acme_checkpoint():
@@ -970,7 +1049,7 @@ if __name__ == "__main__":
                                                             "--systemd-website", "--systemd-website-verifying", "--systemd-website-acme",
                                                             "--systemd-website-acme-success", "--systemd-website-acme-cancel",
                                                             "--systemd-website-acme-drain", "--systemd-website-acme-bootstrap",
-                                                            "--systemd-website-acme-bootstrap-success", "--systemd-first-site-acme",
+                                                            "--systemd-website-acme-bootstrap-success", "--systemd-website-acme-bootstrap-failure", "--systemd-first-site-acme",
                                                             "--systemd-first-site-acme-success") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")

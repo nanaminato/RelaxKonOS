@@ -22,6 +22,7 @@ internal sealed class WebsitePublicationCoordinator(
 {
     private readonly object gate = new();
     private readonly ResidentBackgroundWorkOwner workOwner = new(leases, ServerModules.WebServerId);
+    private readonly SemaphoreSlim cleanupGate = new(1, 1);
     private bool ready;
     internal bool HasResponsibility => workOwner.HasResponsibility;
 
@@ -63,6 +64,39 @@ internal sealed class WebsitePublicationCoordinator(
 
     public WebsitePublicationOperationDto? Get(Guid operationId) => store.Get(operationId);
     public IReadOnlyList<WebsitePublicationOperationDto> History(Guid applicationId, int limit) => store.History(applicationId, limit);
+
+    internal async Task<WebsitePublicationOperationDto> CleanupBootstrapAsync(Guid operationId, CancellationToken ct)
+    {
+        using var work = await workOwner.AdmitAsync(ct);
+        WebsitePublicationOperationDto? receipt = null;
+        WebsitePublicationException? rejected = null;
+        lock (gate)
+        {
+            if (!ready || lifetime.ApplicationStopping.IsCancellationRequested)
+                throw new WebsitePublicationException("website.operation_store_unavailable", 503);
+            work.Token.ThrowIfCancellationRequested();
+            work.Run(async stopping =>
+            {
+                try
+                {
+                    await cleanupGate.WaitAsync(stopping);
+                    try
+                    {
+                        await using var scope = scopes.CreateAsyncScope();
+                        receipt = await scope.ServiceProvider.GetRequiredService<WebsitePublicationExecution>()
+                            .CleanupBootstrapAsync(operationId, stopping);
+                    }
+                    finally { cleanupGate.Release(); }
+                }
+                catch (WebsitePublicationException error) when (error.ProblemCode != "website.operation_store_unavailable") { rejected = error; }
+                catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+                { rejected = new WebsitePublicationException("website.recheck_required"); }
+            });
+        }
+        await work.Completion.WaitAsync(ct);
+        if (rejected is not null) throw rejected;
+        return receipt!;
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {

@@ -403,6 +403,8 @@ MB-05 网站自动签发经既有 Nginx WebRoot 实测。证书 owner 在挑战�
 
 首站自动 HTTP-01 由原发布租约执行。临时配置写入前持久化责任，原生重载确认后才进入签发。跨进程恢复保留原发布、原 Helper 证据及临时配置。Nginx 外部进程持续服务既有站点。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布自动建立首站-http-01-路由)。
 
+首站临时路由清理在原 WebServer 工作租约内等待实际重载、备份清理和终态持久化。中断后保留原发布及独立清理 ID，重试按原 Helper 证据接续。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站临时路由的授权清理)。
+
 MB-05 完整 Linux Server 的网站 WebRoot 签发通过认证取消和 SIGTERM 排空。实际 CA 响应和挑战清理结束前，原证书任务保有责任。已取消的原证书回执保留已知订单供只读对账。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站-webroot-签发的取消与停机排空)。
 
 首个独立 Nginx 站点的显式 WebRoot 启用和证书绑定已通过 Linux 实测。重载中断后原挑战路由与旧 TLS 持续，原启用回执按原 ID 读取。只有原生作业已排空且站点文件与持久定义匹配时，后续授权更新才会接续使用站点备份。见[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站-webroot-备份核验与授权-tls-绑定)。

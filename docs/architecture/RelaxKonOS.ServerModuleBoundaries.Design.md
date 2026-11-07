@@ -1604,7 +1604,7 @@ Linux 系统包 Nginx 在已集成、运行中且受管站点为空时支持首�
 
 原发布在任何配置写入前持久化站点 ID 和未核验责任。临时配置包含同一发布 ID，仅服务该域名的 HTTP-01，其他 Host 和请求路径返回 404。只有原 ID 的原生重载回执确认成功才允许提交 ACME。最终站点写入前逐字节核验临时配置和原 ID，成功后用正式 TLS 站点替换临时配置、保留该站点的挑战路由，再完成原应用关联。单站点标记独立于实例级 WebRoot 集成。
 
-重启原发布仅恢复原回执与未核验责任。该阶段中断时保留原文件及 Helper 证据，拒绝同目标新发布及直接覆盖。当前产品尚无跨中断的授权清理或接续流程，确定签发失败后的临时路由也保留供核验。网站发布和证书仍由原常驻 owner 管理。
+重启原发布仅恢复原回执与未核验责任。该阶段中断时保留原文件及 Helper 证据，拒绝同目标新发布及直接覆盖。后续授权清理见下节。网站发布和证书仍由原常驻 owner 管理。
 
 Linux Release 在私有 systemd、Docker、Nginx、Pebble 与 DNS 通过三轮。原发布 `612a9f7c-9b01-4cd4-80cc-6a70f63f2bf4` 由原生 Nginx 提供实际挑战，证书操作 `a458416c-b552-4fb2-86ef-c47eee91fe92` 只创建及签发一次，真实 HTTPS 返回容器正文。共两次重载，临时配置和备份均清理，原 Nginx master 的旧 TLS 持续。独立活动监听及未加载的 Nginx 端口配置均在写入和下单前被拒绝。
 
@@ -1613,6 +1613,18 @@ Linux Release 在私有 systemd、Docker、Nginx、Pebble 与 DNS 通过三轮�
 最终日志为 `.artifacts/mb05-website-bootstrap-final--systemd-website-acme-bootstrap-success.log`、`.artifacts/mb05-website-bootstrap-final--systemd-website-acme-bootstrap.log` 和 `.artifacts/mb05-website-bootstrap-final--systemd-website-acme-success.log`，归档 SHA-256 依次为 `d5417d2af3f11a2345250f2f9f91e820d1afe60c39946aa842bd1ae0322dd984`、`f892f7cda6d915e4631b90acf65a3479db16a8a0e24a563c2312cf0faac5c6fe` 和 `74c890658f2077b511f281946627d84ef9ba050c2589520af66fea93e664be18`。
 
 Windows Release 模块边界回归通过，Docker 跨进程原 `dba7519d-8ecb-4b6d-8aa6-a220662a1821` 返回 Interrupted，副作用计数为一。日志为 `.artifacts/mb05-website-bootstrap-win-final.log`。
+
+### MB-05 首站临时路由的授权清理
+
+授权清理按原发布 ID 提交并在原发布协调器的工作租约中排空。进入前核对原 Helper 重载回执、已结束的本地证书责任、站点未关联、已集成锚点和原临时配置字节。实际移动前在原发布台账持久化独立的清理重载 ID。临时配置移动到专属备份，原清理 ID 确认原生重载完成后才移除备份、提交清理时间并解除站点占用。原发布的状态、错误和关联证书保持。
+
+重新提交清理使用同一 Helper ID。原清理已确认时仅继续删除匹配备份或提交清理终态。原生作业仍在途、Helper 缺原回执、配置改动或证书责任未结束时保留原证据。确认的 CA 验证拒绝在挑战清理后由原发布自动执行同样流程。签发结果未知时仍保留原回执，启动不自动提交 CA 或重载。
+
+Linux Release 使用私有 systemd、Docker、Nginx、Pebble 和 DNS。专属 Pebble 验证端口不可达，实际创建一个订单并返回验证失败，未提交签发。发布 `0a923e1a-027b-4aa3-a483-af157d1c5aa2` 以清理 ID `1072ea25-10e7-43ef-9798-b9d7ee1a725e` 自动完成一次清理重载，原挑战和临时配置移除，原回执保持 `certificate.validation_failed`。正常发布对照 `8fe89344-f862-4a62-9595-5ad004c34479` 完成一次签发及两次预期重载。日志为 `.artifacts/mb05-bootstrap-cleanup-final--systemd-website-acme-bootstrap-failure.log` 与 `.artifacts/mb05-bootstrap-cleanup-final--systemd-website-acme-bootstrap-success.log`，归档 SHA-256 分别为 `4d00c410b9a43ce9e31cbb3d7cf9961119c3588ef848d6a1f508474a1e194e5c` 和 `fe681e2ef6cc09f2c71bb0719317ee7d2c3ed3e7ea8e5231854edd75e92ab2c8`。
+
+Windows Release 模块里程碑回归通过，Docker 跨进程原 `8ce9da8e-6b46-4eba-bec7-e73965d70454` 返回 Interrupted，副作用计数为一。日志为 `.artifacts/mb05-bootstrap-cleanup-win-final.log`。Linux 首轮夹具的 Pebble 端口变量在外层展开失败，修正后通过。
+
+授权清理最终复验中，发布 `78cf5d3d-bc48-4321-8c51-cc99e9bfd2ef` 的 Server 在原建路由重载期间被终止。重启后匿名清理、在途重载清理和被改动配置清理均被拒绝。原证据恢复后提交授权清理 `83cdfa90-c83a-4865-97f0-1ca16fba95e9`，实际清理重载开始后再次终止 Server。再次重启用原 ID 接续，移除匹配备份并持久化清理终态。同键仍返回原 Interrupted。总计一次建路由重载和一次清理重载，CA 零订单，原 HTTPS 保持。新键请求可进入证书校验并因测试证书不存在而结束，未新增重载或订单。各轮专属 cgroup 已清理，宿主 Nginx、Docker 和配置指纹一致。日志为 `.artifacts/mb05-bootstrap-cleanup-final-admission.log`，归档 SHA-256 为 `395b04e10dd7c5dd68e7a99cefe3fe09858903148d39bf4faa8c04e276a0e421`。
 
 ### MB-05 网站 WebRoot 签发的取消与停机排空
 

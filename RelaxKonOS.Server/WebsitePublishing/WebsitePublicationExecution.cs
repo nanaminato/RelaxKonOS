@@ -83,7 +83,17 @@ internal sealed class WebsitePublicationExecution(
                 }, stopping);
                 if (problem is not null) throw new WebsitePublicationException(problem);
             }
-            var certificateId = await ResolveCertificateAsync(operationId, request, actor, stopping);
+            Guid certificateId;
+            try { certificateId = await ResolveCertificateAsync(operationId, request, actor, stopping); }
+            catch (WebsitePublicationException error) when (bootstrapPending && error.ProblemCode == "certificate.validation_failed"
+                && !stopping.IsCancellationRequested)
+            {
+                var failed = await certificateOperations.GetWebsiteIssueAsync(operationId, stopping);
+                if (failed is { State: CertificateOperationState.Failed, CompletedAt: not null, ProblemCode: "certificate.validation_failed" }
+                    && await TryCleanupBootstrapAsync(store.Get(operationId)!, stopping))
+                    bootstrapPending = false;
+                throw;
+            }
             SetStage(operationId, WebsitePublicationStage.Configuring, siteId: siteId, certificateId: certificateId);
 
             var previousSite = existingSite;
@@ -143,6 +153,53 @@ internal sealed class WebsitePublicationExecution(
             Complete(operationId, WebsitePublicationState.Failed, "website.operation_failed",
                 bootstrapPending ? WebsitePublicationStore.SiteApplicationUnverified : null, checks);
         }
+    }
+
+    internal async Task<WebsitePublicationOperationDto> CleanupBootstrapAsync(Guid operationId, CancellationToken ct)
+    {
+        var operation = store.Get(operationId) ?? throw new WebsitePublicationException("website.operation_not_found", 404);
+        if (WebsitePublicationStore.Active(operation)) throw new WebsitePublicationException("website.operation_conflict");
+        if (operation.BootstrapCleanedAt is not null) return operation;
+        if (operation.RecoveryProblemCode != WebsitePublicationStore.SiteApplicationUnverified)
+            throw new WebsitePublicationException("website.recheck_required");
+        CertificateOperationDto? certificate;
+        try { certificate = await certificateOperations.GetWebsiteIssueAsync(operationId, ct); }
+        catch (ModuleUnavailableException) { throw new WebsitePublicationException("website.recheck_required"); }
+        if (certificate is not null && (certificate.CompletedAt is null
+                || certificate.State is CertificateOperationState.Queued or CertificateOperationState.Running)
+            || operation.CertificateOperationId is { } expected && certificate?.OperationId != expected
+            || !await TryCleanupBootstrapAsync(operation, ct))
+            throw new WebsitePublicationException("website.recheck_required");
+        return store.Get(operationId)!;
+    }
+
+    private async Task<bool> TryCleanupBootstrapAsync(WebsitePublicationOperationDto operation, CancellationToken ct)
+    {
+        if (nginx is null || operation.SiteId != $"app{operation.ApplicationId:N}"
+            || catalog.ReadApplications().Any(application => application.SiteInstanceId == operation.WebServerId
+                && application.SiteId == operation.SiteId)) return false;
+        var instance = (await webServers.ListAsync(ct)).SingleOrDefault(item => item.Id == operation.WebServerId);
+        if (instance is null) return false;
+        try
+        {
+            if (!await nginx.CleanupWebsiteWebRootAsync(instance, operation.OperationId, operation.SiteId, operation.Domain,
+                operation.BootstrapCleanupOperationId, () => store.Update(operation.OperationId, current => current with
+                {
+                    BootstrapCleanupOperationId = current.BootstrapCleanupOperationId ?? Guid.NewGuid(),
+                }).BootstrapCleanupOperationId!.Value, ct))
+                return false;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(error, "Website bootstrap cleanup remains unconfirmed. OperationId={OperationId}", operation.OperationId);
+            return false;
+        }
+        store.Update(operation.OperationId, current => current with
+        {
+            BootstrapCleanedAt = DateTimeOffset.UtcNow,
+            RecoveryProblemCode = null,
+        });
+        return true;
     }
 
     private async Task<Guid> ResolveCertificateAsync(Guid operationId, PublishWebsiteRequest request, string actor, CancellationToken stopping)

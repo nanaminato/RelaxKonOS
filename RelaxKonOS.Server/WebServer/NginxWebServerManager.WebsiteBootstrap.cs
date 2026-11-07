@@ -59,4 +59,54 @@ internal sealed partial class NginxWebServerManager
         Directory.Exists(directory) && Directory.EnumerateFiles(directory, "app*.conf*")
             .Any(path => !IsSymbolicLink(path) && File.ReadLines(path).Skip(1).FirstOrDefault()?.StartsWith(WebsiteBootstrapOwner, StringComparison.Ordinal) == true);
 
+    internal async Task<bool> CleanupWebsiteWebRootAsync(WebServerDto instance, Guid publicationId, string siteId, string domain,
+        Guid? cleanupId, Func<Guid> recordIntent, CancellationToken ct)
+    {
+        var directory = GetSitesDirectory(instance);
+        if (!UsesSystemPackageNginx(instance) || directory is null || !SiteIdPattern().IsMatch(siteId)
+            || !DomainPattern().IsMatch(domain) || !IsValidServerName(domain)) return false;
+        await IntegrationGate.WaitAsync(ct);
+        try
+        {
+            if (!Directory.Exists(directory) || IsSymbolicLink(directory)
+                || !await HasSuccessfulWebsiteReloadAsync(publicationId, ct)) return false;
+
+            var config = Path.Combine(directory, siteId + ".conf");
+            var backup = config + ".cleanup.rollback";
+            if (new FileInfo(config).LinkTarget is not null || new FileInfo(backup).LinkTarget is not null
+                || Directory.Exists(config) || Directory.Exists(backup)) return false;
+            var hasConfig = File.Exists(config);
+            var hasBackup = File.Exists(backup);
+            if (!hasConfig && !hasBackup)
+                return cleanupId is { } finished && await HasSuccessfulWebsiteReloadAsync(finished, ct);
+            if (hasConfig && hasBackup || hasBackup && cleanupId is null || File.Exists(config + ".rollback")
+                || (await ReadSitesAsync(instance, ct)).Count != 0
+                || !(await privilegedNginx.ConfirmServiceIdleAsync(ct)).Success) return false;
+
+            var anchor = Path.Combine(Path.GetDirectoryName(directory)!, OwnedFileName);
+            if (!File.Exists(anchor) || IsSymbolicLink(anchor) || await File.ReadAllTextAsync(anchor, ct) != AnchorContent(directory)
+                || !await MatchesSiteConfigAsync(hasConfig ? config : backup, RenderWebsiteBootstrap(publicationId, siteId, domain), ct))
+                return false;
+
+            var id = cleanupId ?? recordIntent();
+            if (hasConfig)
+            {
+                // A completed cleanup receipt cannot authorize removing a configuration that has reappeared.
+                if (await HasSuccessfulWebsiteReloadAsync(id, ct) || !await MoveNginxFileAsync(config, backup, overwrite: false, ct))
+                    return false;
+            }
+            if (await TestConfigurationAsync(instance, ct) is not null) return false;
+            var reload = await RunTrackedReloadAsync(id, ct);
+            if (!reload.Success || reload.NginxReloadReceipt is not { Succeeded: true } receipt || receipt.OperationId != id)
+                return false;
+            return await DeleteNginxFileAsync(backup, ct);
+        }
+        finally { IntegrationGate.Release(); }
+    }
+
+    private async Task<bool> HasSuccessfulWebsiteReloadAsync(Guid operationId, CancellationToken ct)
+    {
+        var observed = await privilegedNginx.QueryReloadReceiptAsync(operationId, ct);
+        return observed.Success && observed.NginxReloadReceipt is { Succeeded: true } receipt && receipt.OperationId == operationId;
+    }
 }

@@ -188,6 +188,8 @@ internal sealed class WebsitePublicationStore
         && !string.IsNullOrWhiteSpace(operation.WebServerId) && operation.WebServerId.Length <= 128
         && !string.IsNullOrWhiteSpace(operation.Domain) && operation.Domain.Length <= 253
         && operation.SiteId is null or { Length: > 0 and <= 128 }
+        && operation.BootstrapCleanupOperationId != Guid.Empty
+        && (operation.BootstrapCleanedAt is null || operation.BootstrapCleanupOperationId is not null)
         && Enum.IsDefined(operation.State) && Enum.IsDefined(operation.Stage) && operation.CreatedAt != default
         && operation.Checks is not null && operation.Checks.Count <= 8
         && operation.Checks.All(check => !string.IsNullOrWhiteSpace(check.Name) && check.Name.Length <= 32 && check.Observer.Length <= 32 && Enum.IsDefined(check.State))

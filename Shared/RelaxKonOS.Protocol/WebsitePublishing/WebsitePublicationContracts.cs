@@ -51,7 +51,9 @@ public sealed record WebsitePublicationOperationDto(
     [property: JsonPropertyName("checks")] IReadOnlyList<WebsitePublicationCheckDto> Checks,
     [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt,
     [property: JsonPropertyName("startedAt")] DateTimeOffset? StartedAt,
-    [property: JsonPropertyName("completedAt")] DateTimeOffset? CompletedAt);
+    [property: JsonPropertyName("completedAt")] DateTimeOffset? CompletedAt,
+    [property: JsonPropertyName("bootstrapCleanupOperationId")] Guid? BootstrapCleanupOperationId = null,
+    [property: JsonPropertyName("bootstrapCleanedAt")] DateTimeOffset? BootstrapCleanedAt = null);
 
 public static class WebsitePublicationApiRoutes
 {
@@ -63,4 +65,6 @@ public static class WebsitePublicationApiRoutes
     public const string ByApplicationPattern = "/applications/{applicationId:guid}";
     public const string Operation = $"{Root}/operations/{{operationId}}";
     public const string OperationPattern = "/operations/{operationId:guid}";
+    public const string CleanupBootstrap = $"{Operation}/cleanup-bootstrap";
+    public const string CleanupBootstrapPattern = OperationPattern + "/cleanup-bootstrap";
 }
