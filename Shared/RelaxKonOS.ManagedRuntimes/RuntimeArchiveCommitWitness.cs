@@ -1,5 +1,6 @@
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.ManagedRuntimes;
 
@@ -62,6 +63,7 @@ public sealed partial class RuntimeArchiveStateStore
         {
             if (!RuntimeJson.Serialize(ReadCommit(path)).AsSpan().SequenceEqual(bytes))
                 throw new RuntimePolicyException("runtime.commit_witness_conflict");
+            SyncCommittedWitness();
             return;
         }
         var temporary = Path.Combine(CommitsDirectory, Guid.NewGuid().ToString("N") + ".new");
@@ -72,6 +74,7 @@ public sealed partial class RuntimeArchiveStateStore
             using (var file = new FileStream(temporary, options)) { file.Write(bytes); file.Flush(true); }
             // Publish proof first. A crash leaves an ignored orphan until the exact success receipt commits.
             File.Move(temporary, path, overwrite: false);
+            SyncCommittedWitness();
         }
         finally
         {
@@ -79,6 +82,14 @@ public sealed partial class RuntimeArchiveStateStore
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
         }
+    }
+
+    private void SyncCommittedWitness()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        // Persist both the witness entry and its parent before the caller can replace archive-state.json.
+        LinuxDirectorySync.Flush(CommitsDirectory);
+        SyncDirectory();
     }
 
     private string CommitPath(Guid operationId) => Path.Combine(CommitsDirectory, operationId.ToString("D") + ".json");

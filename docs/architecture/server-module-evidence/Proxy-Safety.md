@@ -612,6 +612,12 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 同批用共享故障夹具复跑完整 PAM/JWT 停用门禁，原发布 `2ae29d21d49e48fcb5f302374b2bca0a` 通过。两场专属进程和 cgroup 清理以及宿主指纹核验均通过。日志为 `.artifacts/mb04-tun-publication-witness/linux.log`，归档 SHA-256 为 `bca6a4988fef77703efe377e6dd76500468fdeacf071e5e520a2a9302ccfae24`。
 
+### 原成功见证的目录持久化顺序
+
+**已实现且已验证。** Linux 受管归档在替换 `archive-state.json` 前同步 `commits` 目录及其父目录。首次发布和经精确匹配复用原见证都走同一顺序。主台账尚无原成功回执时，已发布见证无法认证成功。Linux Release 运行受管归档回归并跟踪实际系统调用，确认 30 次见证目录、父目录同步先于主台账替换，其中包含复用已有见证。首次跟踪用 `dotnet <dll>` 启动，依赖 apphost 的崩溃子进程无法启动。改用发布的 Linux apphost 后，归档 106 项、移除 17 项、配置事务 104 项、当前见证 29 项通过。Windows Release ManagedRuntimes 通过，可信下载探针缺少进程级 CA 覆盖。
+
+同一 Linux 归档复验专属 systemd 的真实原发布 `a8aa2fce00d44eeba4f333ebb3f27c9d`。候选 PID 313，配置身份 `75499326acd21767cf58d3783cc860606a2e3c508e3324a052e28bee3949903a`。管理选路、真实 HTTP 和分流 DNS、原回执、见证故障门禁与无重派结案均通过。专属进程退出、cgroup 清理和宿主指纹核验通过。日志为 `.artifacts/mb04-tun-durable-witness/linux-apphost.log`，归档 SHA-256 为 `3c01689770f5ead1da9f95fa3b8beb041cd96b6fe13b6787a33a7d4d6efb1049`。整机掉电、主台账替换后的目录耐久性、对象释放、ALC、隔离内存和生产收益仍待独立验收。
+
 **已实现但实机未验证。** 其他 Linux 架构。HTTP 实机使用等效角色策略和夹具 bearer，完整安装态 JWT 登录和 Android 客户端未参与。Windows 可信下载探针因缺少进程级测试 CA 覆盖跳过。
 
 具名启停响应丢失的原执行对账仍受门禁保护。Helper 无终态由后续[认证 HTTP 补偿](#mb-04-受管-tun-认证-http-补偿)覆盖。此批证据确认专属进程退出及清理，未测量对象释放、ALC 回收、隔离负载内存或生产收益。

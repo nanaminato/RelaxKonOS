@@ -30,7 +30,13 @@ internal static class SwitchChecks
         using (var f = new Fixture())
         {
             var operation = Guid.NewGuid(); var plan = f.Plan(RuntimeChange.Install, "release-1", "install");
-            Check((await f.Switch.ExecuteAsync(operation, plan, default)).Outcome == RuntimeSwitchOutcome.Succeeded, "First install transaction succeeds");
+            RuntimeArchiveState? beforeCommit = null;
+            var installing = new RuntimeArchiveSwitch(f.Store, f.Adapter, (stage, _) =>
+            {
+                if (stage == InstallationStage.HealthChecking) beforeCommit = f.Store.Read();
+                return Task.CompletedTask;
+            });
+            Check((await installing.ExecuteAsync(operation, plan, default)).Outcome == RuntimeSwitchOutcome.Succeeded, "First install transaction succeeds");
             var installed = f.Store.Read()!;
             Check(installed.Active!.RevisionId == operation && installed.Installation.Ownership == RuntimeOwnership.Managed
                 && installed.Pending is null && installed.Receipts.Length == 1, "Atomic active pointer and terminal receipt committed");
@@ -46,6 +52,14 @@ internal static class SwitchChecks
                 "Later state cannot be attributed to the original committed operation even when version and configuration match");
             var proofPath = Path.Combine(f.Root, "state", "commits", operation.ToString("D") + ".json");
             var proofBytes = File.ReadAllBytes(proofPath);
+            var pending = beforeCommit ?? throw new Exception("The original precommit state was not observed.");
+            File.WriteAllBytes(Path.Combine(f.Root, "state", "archive-state.json"), RuntimeJson.Serialize(pending));
+            Check(f.Store.ReadCommittedWitness(f.Store.Read()!, installed.Receipts[0]) is null,
+                "A prepublished witness cannot certify an uncommitted archive state");
+            using (var session = f.Store.Acquire()) session.Save(installed);
+            Check(File.ReadAllBytes(proofPath).AsSpan().SequenceEqual(proofBytes)
+                && f.Store.ReadCommittedWitness(f.Store.Read()!, installed.Receipts[0]) == committed,
+                "The original commit reuses its exact prepublished witness");
             File.Delete(proofPath);
             Check(f.Store.ReadCommittedWitness(installed, installed.Receipts[0]) is null && !File.Exists(proofPath),
                 "A missing success proof remains missing and is never regenerated from current host state");
