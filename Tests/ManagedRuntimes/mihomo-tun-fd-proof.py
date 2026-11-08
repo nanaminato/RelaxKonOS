@@ -1,6 +1,7 @@
 """Prove a restricted systemd service can forward through a pre-opened Linux TUN."""
 
 import base64
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import http.server
@@ -79,6 +80,23 @@ def sync_record(record):
 
 def network_baseline(table=None):
     return [ip('-4', 'route', 'get', '192.0.2.1', 'uid', str(pwd.getpwnam('nobody').pw_uid)), *rules(table)]
+
+
+@contextmanager
+def management_route_drift(table):
+    original = network_baseline(table)
+    ip('-4', 'address', 'add', '192.0.2.4/32', 'dev', 'rk-egress')
+    try:
+        ip('-4', 'route', 'add', '192.0.2.1/32', 'dev', 'rk-egress', 'src', '192.0.2.4')
+        try:
+            changed = network_baseline(table)
+            assert changed[0] != original[0] and 'src 192.0.2.4' in changed[0] and changed[1:] == original[1:]
+            yield changed
+        finally:
+            ip('-4', 'route', 'del', '192.0.2.1/32', 'dev', 'rk-egress')
+    finally:
+        ip('-4', 'address', 'del', '192.0.2.4/32', 'dev', 'rk-egress')
+    assert network_baseline(table) == original
 
 
 def route(table):
@@ -981,49 +999,73 @@ def proof_http_publication(owner, ipc, previous, case):
     scope_policy.unlink()
     probe(record, 'http-restarted-helper')
     (state_dir / 'http-ready').unlink()
+    if pending:
+        queue = state_dir / 'proxy-operations.json'
+        with management_route_drift(record['routing_table']) as drift:
+            with subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity) as drifted:
+                try:
+                    wait_file('http-ready', drifted)
+                    original, refused_correlation = wait_file('http-recovery-reply', drifted).read_text().split()
+                    assert original == operation and http('/fixture-work-leases')[1] >= 1
+                    observed = json.loads(checkpoint(record, 'observe-commit'))
+                    assert uuid.UUID(observed['pendingOperationId']).hex == operation
+                    assert observed['problemCode'] == 'runtime.management_route_changed' and not observed['receipt']
+                    operation_path = '/operations/' + str(uuid.UUID(operation))
+                    status, waiting = http(operation_path)
+                    assert status == 200 and waiting['state'] == 5 and waiting['stage'] == 'managed_tun' and not waiting['completedAt']
+                    original_queue = queue.read_bytes()
+                    assert accepted('/tun/enable', key, {'profileId': profile}) == operation
+                    blocked, detail = http('/tun/enable', 'managed-tun-compensation-drift', {'profileId': profile})
+                    assert blocked == 400 and detail['problemCode'] == 'proxy.operation_interrupted'
+                    probe(dict(record, baseline=drift), 'http-compensation-drift')
+                    assert queue.read_bytes() == original_queue and mirror.read_bytes() == previous.read_bytes()
+                    assert {file.name: file.read_bytes() for file in operation_dir.glob('tun-*.json')} == native
+                    assert not (root / 'rule-delete-attempts').exists()
+                    assert (root / 'dns-write-attempts').read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains', 'SetLinkDNS']
+                    log = ipc.log.read_text()
+                    assert 'operation=MihomoRuntimeConfigure ' not in log and log.count('operation=MihomoRuntimeRecover ') == 1
+                    (state_dir / 'http-recovery-release').touch()
+                    drained()
+                    assert http(operation_path) == (200, waiting)
+                finally:
+                    drifted.kill()
+        for name in ('http-recovery-reply', 'http-recovery-release', 'http-ready'):
+            (state_dir / name).unlink()
+        ipc.stop_helper()
+        ipc.start_helper()
+        probe(record, 'http-compensation-route-restored')
     if case == 'ipc-http-commit':
         queue = state_dir / 'proxy-operations.json'
         committed = json.loads(checkpoint(record, 'observe-commit'))
-        original_route = network_baseline(record['routing_table'])
-        ip('-4', 'address', 'add', '192.0.2.4/32', 'dev', 'rk-egress')
-        try:
-            ip('-4', 'route', 'add', '192.0.2.1/32', 'dev', 'rk-egress', 'src', '192.0.2.4')
-            try:
-                drift = network_baseline(record['routing_table'])
-                assert drift[0] != original_route[0] and 'src 192.0.2.4' in drift[0] and drift[1:] == original_route[1:]
-                unverified = json.loads(checkpoint(record, 'observe-commit'))
-                assert unverified['receipt'] == committed['receipt']
-                assert unverified['configurationIdentity'] == committed['configurationIdentity']
-                assert not unverified['mihomoTunPublicationId']
-                with subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity) as drifted:
-                    try:
-                        wait_file('http-ready', drifted)
-                        query = f'operation=MihomoRuntimeQuery id={uuid.UUID(operation)} '
-                        deadline = time.monotonic() + 8
-                        while query not in ipc.log.read_text():
-                            assert drifted.poll() is None and time.monotonic() < deadline
-                            time.sleep(.05)
-                        drained()
-                        original_queue = queue.read_bytes()
-                        assert accepted('/tun/enable', key, {'profileId': profile}) == operation
-                        status, waiting = http('/operations/' + str(uuid.UUID(operation)))
-                        assert status == 200 and waiting['state'] == 5 and waiting['stage'] == 'managed_tun' and not waiting['completedAt']
-                        blocked, detail = http('/tun/enable', 'managed-tun-route-drift', {'profileId': profile})
-                        assert blocked == 400 and detail['problemCode'] == 'proxy.operation_interrupted'
-                        probe(dict(record, baseline=drift), 'http-route-drift')
-                        assert queue.read_bytes() == original_queue and archive_state.read_bytes() == original_state
-                        assert mirror.read_bytes() == previous.read_bytes()
-                        assert all((operation_dir / name).read_bytes() == contents for name, contents in native.items())
-                        log = ipc.log.read_text()
-                        assert 'operation=MihomoRuntimeConfigure ' not in log and 'operation=MihomoRuntimeRecover ' not in log
-                    finally:
-                        drifted.kill()
-                (state_dir / 'http-ready').unlink()
-            finally:
-                ip('-4', 'route', 'del', '192.0.2.1/32', 'dev', 'rk-egress')
-        finally:
-            ip('-4', 'address', 'del', '192.0.2.4/32', 'dev', 'rk-egress')
-        assert network_baseline(record['routing_table']) == original_route
+        with management_route_drift(record['routing_table']) as drift:
+            unverified = json.loads(checkpoint(record, 'observe-commit'))
+            assert unverified['receipt'] == committed['receipt']
+            assert unverified['configurationIdentity'] == committed['configurationIdentity']
+            assert not unverified['mihomoTunPublicationId']
+            with subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity) as drifted:
+                try:
+                    wait_file('http-ready', drifted)
+                    query = f'operation=MihomoRuntimeQuery id={uuid.UUID(operation)} '
+                    deadline = time.monotonic() + 8
+                    while query not in ipc.log.read_text():
+                        assert drifted.poll() is None and time.monotonic() < deadline
+                        time.sleep(.05)
+                    drained()
+                    original_queue = queue.read_bytes()
+                    assert accepted('/tun/enable', key, {'profileId': profile}) == operation
+                    status, waiting = http('/operations/' + str(uuid.UUID(operation)))
+                    assert status == 200 and waiting['state'] == 5 and waiting['stage'] == 'managed_tun' and not waiting['completedAt']
+                    blocked, detail = http('/tun/enable', 'managed-tun-route-drift', {'profileId': profile})
+                    assert blocked == 400 and detail['problemCode'] == 'proxy.operation_interrupted'
+                    probe(dict(record, baseline=drift), 'http-route-drift')
+                    assert queue.read_bytes() == original_queue and archive_state.read_bytes() == original_state
+                    assert mirror.read_bytes() == previous.read_bytes()
+                    assert all((operation_dir / name).read_bytes() == contents for name, contents in native.items())
+                    log = ipc.log.read_text()
+                    assert 'operation=MihomoRuntimeConfigure ' not in log and 'operation=MihomoRuntimeRecover ' not in log
+                finally:
+                    drifted.kill()
+            (state_dir / 'http-ready').unlink()
         assert json.loads(checkpoint(record, 'observe-commit'))['commitWitness'] == committed['commitWitness']
     restarted = subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity, stdout=subprocess.PIPE, text=True)
     try:
@@ -1063,8 +1105,8 @@ def proof_http_publication(owner, ipc, previous, case):
             drained()
             print(f'PASS TUN AUTHENTICATED HTTP COMPENSATION: operation={operation}; '
                   f'candidate={record["credential"]}; restored={observed["configurationIdentity"]}; '
-                  f'candidate PID={record["service"][0]}; recovery IPC={correlation}; '
-                  'original Interrupted receipt, one recovery and no replay')
+                  f'candidate PID={record["service"][0]}; refused IPC={refused_correlation}; recovery IPC={correlation}; '
+                  'route drift refused before stop, original Interrupted receipt after one compensation and no replay')
             return
         terminal(operation)
         assert mirror.read_bytes() == config.read_bytes()

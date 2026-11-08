@@ -606,6 +606,14 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 **已实现但实机未验证。** Windows Release 回归通过，包含 112 项 Server 发布与 104 项配置事务检查。可信下载探针因缺少进程级测试 CA 跳过。其他 Linux 架构、完整安装态 JWT 和 Android 未参与。回归日志为 `.artifacts/mb04-tun-marker-sync/tun-http-pending-windows.log`。
 
+### 管理选路漂移时拒绝原补偿派发
+
+**已实现且已验证。** 原发布 `5af2fd875ab4414b91dbc4eba2e1648d` 在真实分流 DNS 已写入、Helper 尚无终态时中断。重启后管理选路的首选源地址已漂移，原恢复调用 `5c1a590f-fed4-44e4-ae97-24f4c5d8b21e` 返回待核验，Helper 记录 `runtime.management_route_changed`。响应扣留期间原恢复仍持有工作租约，同键返回原待核验回执，新键被拒绝。候选 PID 318、配置身份 `0dce43b188adb5d514b1e46ad042388ff45657d5f55c11c2a4addf7e11dc5054`、描述符、HTTP 与分流 DNS 均保持。原生检查点目录没有新文件或内容变化，规则删除为零，DNS 仍只有原三次写入。
+
+精确恢复管理选路后，用原发布 ID 重新核验并执行首次补偿，原 IPC 关联 ID 为 `ed1062e4-8f1e-4afa-828a-c277c30e0c31`。候选进程退出，旧配置身份恢复为 `4626AD14FC63DB84388733EF72742FE5034D09AC8A44A3C5D76A138BDC2AA203`，只删除一次原路由规则。Helper 持久化原 `Interrupted` 回执，HTTP 同键返回原失败终态，清理后租约归零，配置重派为零。Windows Release 模块边界回归通过。Linux 记录专属进程及 cgroup 清理和宿主指纹核验。对象释放、ALC、隔离负载内存及生产收益仍待独立测量。
+
+同一归档复跑已提交原发布 `e05b532739b54c42a4036691df46ee5c` 的漂移门禁和只读确认，两场均退出 0。归档 SHA-256 为 `f0348b2404b32305eab927380d83f6f52ff5332278821e0722c4dd879ddcf854`，日志为 `.artifacts/mb04-tun-route-drift/linux-compensation-final.log`。
+
 具名启停丢失响应由后续[具名启停回执](#mb-04-受管-tun-认证-http-具名启停回执)覆盖。本批确认候选进程退出及专属环境清理。对象释放、ALC 回收、隔离负载内存和生产收益未测量。
 
 ## MB-04 受管 TUN 认证 HTTP 具名启停回执
