@@ -270,4 +270,12 @@ Linux Release 使用私有挂载、PID 和网络命名空间。完整认证 Serv
 
 Linux 完整认证 Server 复验真实外部 Nginx。原 `541ff47d-b3b9-43a4-b53e-abef28cdb68b` 在 HTTPS 已更新且命令应答仍扣留时中断。重启不加载执行器，同键与按 ID 查询返回同一待核验回执。原恢复租约为一，同实例新键返回 409，真实 reload 一次，Nginx master 和 HTTPS 均保持。正常路径 `4fd70602-5fe1-4939-a139-bcd2a0fe652c` 同批复验工作租约、真实命令和响应收尾、旧执行 ALC 收集及新键加载下一代。宿主服务 PID、配置和环境文件指纹一致。
 
-日志在 `.artifacts/mb05-external-nginx-gate/`，归档 SHA-256 为 `6f3fa944f10d83571d4db2c6eacab9ad04174e4093d435f142eeb2df15f299aa`。Windows Release WebServer 和模块边界回归通过。本轮实机覆盖派发后丢失结果的进程中断与正常重载收尾。派发后取消与已确认阶段的进程中断仍缺外部实例实测。原操作可信确证入口、整机掉电和生产内存收益仍开放。WebServer 保持 resident。
+日志在 `.artifacts/mb05-external-nginx-gate/`，归档 SHA-256 为 `6f3fa944f10d83571d4db2c6eacab9ad04174e4093d435f142eeb2df15f299aa`。Windows Release WebServer 和模块边界回归通过。本轮实机覆盖派发后丢失结果的进程中断与正常重载收尾。派发后取消及已确认阶段的进程中断见下文。原操作可信确证入口、整机掉电和生产内存收益仍开放。WebServer 保持 resident。
+
+### 外部重载的取消与已确认阶段
+
+Linux 完整认证 Server 在真实外部 Nginx 已更新 HTTPS、命令包装器仍在运行时取消 `0c9ecbbb-ed67-4caf-9220-2ebaa1c2a0c2`。原命令进程退出后，原回执为 Running / `webserver.native_recovery_required`，工作租约仍为一。SIGTERM 后原 Server 正常退出。新进程恢复同一原回执和租约，同键与原 ID 结果相同，新键返回 409。执行代码没有重新加载，原 master 和 HTTPS 保持，实际重载一次。
+
+第二条原 `7dd8688c-8fa9-417e-bff2-ce0b8efe22bd` 在真实 HTTPS 已更新后用私有 SQLite 写锁暂停投影。命令退出且原文件台账已写 `direct-reload-confirmed`，终止 Server。释放锁并重启后，按原 ID 与同键读回同一成功终态，SQLite 投影补齐，执行器未加载，恢复租约归零。真实重载仍为一次，原 master 持续服务。
+
+两条路径分别记录命令进程退出、原回执与租约，未额外测量对象释放、ALC 收集、隔离负载或生产内存。专属资源清理，宿主指纹一致。日志为 `cancel-linux.log` 和 `confirm-linux.log`，位于 `.artifacts/mb05-external-nginx-gate/`。归档 SHA-256 分别为 `c21eb9389a87789c966805ae5ce23b5210472359db04069eb6bfb95615da43c3` 与 `6f9b02c32d9eef2d8024b3d9b53050946ce4ebbea201a47cdc23c4410ba3ae4d`。

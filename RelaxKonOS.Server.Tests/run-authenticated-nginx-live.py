@@ -22,7 +22,8 @@ import uuid
 
 def run(root, server, helper_binary, mode):
     production_helper = mode is not None
-    external_execution = not production_helper and os.environ.get("RELAXKONOS_TEST_NGINX_EXTERNAL_EXECUTION") == "1"
+    external_mode = os.environ.get("RELAXKONOS_TEST_NGINX_EXTERNAL_EXECUTION")
+    external_execution = not production_helper and external_mode in ("1", "cancel", "confirm")
     integration = mode is not None and mode.startswith("--systemd-integration-")
     integration_stage = mode == "--systemd-integration-stage"
     integration_live = mode == "--systemd-integration-live"
@@ -2032,6 +2033,56 @@ def run(root, server, helper_binary, mode):
                 assert_served(b"updated")
                 loaded = webserver_code_events("initial-server")
                 assert len(loaded) == 1 and loaded[0].startswith("load ") and active_leases(token) == 1
+                if external_mode == "cancel":
+                    cli = Path("/proc", (root / "nginx" / "reload-pid").read_text().strip())
+                    assert cli.is_dir() and request(operation_route + "/cancel", token=token, method="POST")["operationId"] == operation
+                    wait_for(initial, lambda: request(operation_route, token=token)["stage"] == "direct-reload-recovery-required"
+                             and not cli.exists(), "original direct CLI drain and unknown receipt")
+                    pending = request(operation_route, token=token)
+                    assert pending["state"] == "running" and pending.get("completedAt") is None
+                    assert pending == request(reload_route, token=token, method="POST", key=key, expected=202)
+                    request(reload_route, token=token, method="POST", key=secrets.token_hex(16), expected=409)
+                    assert active_leases(token) == 1 and int(nginx_pid_file.read_text()) == nginx_pid
+                    assert witness.read_text().splitlines() == ["reload"]
+                    initial.terminate()
+                    assert initial.wait(timeout=20) == 0
+                    with process([server], "external-cancel-restarted") as restarted:
+                        wait_for(restarted, healthy, "external cancellation restart")
+                        token = login()
+                        assert pending == request(operation_route, token=token)
+                        assert pending == request(reload_route, token=token, method="POST", key=key, expected=202)
+                        request(reload_route, token=token, method="POST", key=secrets.token_hex(16), expected=409)
+                        assert not webserver_code_events("external-cancel-restarted") and active_leases(token) == 1
+                        assert witness.read_text().splitlines() == ["reload"] and int(nginx_pid_file.read_text()) == nginx_pid
+                        assert_served(b"updated")
+                    print(f"PASS EXTERNAL NGINX CANCELLED RELOAD: {operation}; original command exited, same pending receipt, one reload")
+                    return
+                if external_mode == "confirm":
+                    ledger = root / "data" / "webserver-operations.json"
+                    cli = Path("/proc", (root / "nginx" / "reload-pid").read_text().strip())
+                    with sqlite3.connect(root / "identity.db") as database:
+                        database.execute("BEGIN IMMEDIATE")
+                        (root / "nginx" / "release").touch()
+                        def confirmed():
+                            return any(item["operationId"] == operation and item["state"] == "running"
+                                       and item["stage"] == "direct-reload-confirmed"
+                                       for item in json.loads(ledger.read_text()))
+                        wait_for(initial, lambda: confirmed() and not cli.exists(), "original direct confirmation before terminal journal")
+                        initial.kill()
+                        assert initial.wait(timeout=10) < 0
+                    with process([server], "external-confirmed-restarted") as restarted:
+                        wait_for(restarted, healthy, "external confirmation restart")
+                        token = login()
+                        terminal = request(operation_route, token=token)
+                        assert terminal["operationId"] == operation and terminal["state"] == "succeeded" and terminal["completedAt"]
+                        assert terminal == request(reload_route, token=token, method="POST", key=key, expected=202)
+                        assert not webserver_code_events("external-confirmed-restarted") and active_leases(token) == 0
+                        assert witness.read_text().splitlines() == ["reload"] and int(nginx_pid_file.read_text()) == nginx_pid
+                        assert_served(b"updated")
+                        with sqlite3.connect(root / "identity.db") as database:
+                            assert database.execute("SELECT state FROM webserver_operations WHERE operation_id = ?", (operation,)).fetchone() == ("Succeeded",)
+                    print(f"PASS EXTERNAL NGINX CONFIRMED RELOAD: {operation}; original success recovered after CLI exit; one reload")
+                    return
                 time.sleep(32)
                 assert request(operation_route, token=token)["state"].lower() == "running"
                 assert webserver_code_events("initial-server") == loaded and active_leases(token) == 1

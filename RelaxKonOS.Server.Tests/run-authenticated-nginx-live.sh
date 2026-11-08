@@ -65,9 +65,10 @@ if [[ $# == 1 && $1 == -V ]]; then
     printf '%s\nconfigure arguments: --conf-path=%s/nginx.conf\n' "$version" "$root"
 elif [[ $# == 2 && $1 == -s && $2 == reload ]]; then
     /usr/sbin/nginx -p "$root/" -c "$root/nginx.conf" -s reload
+    printf '%s\n' "$$" > "$root/reload-pid"
     echo reload >> "$root/reloads"
     attempts=150
-    if [[ ${RELAXKONOS_TEST_NGINX_EXTERNAL_EXECUTION:-} == 1 ]]; then attempts=650; fi
+    if [[ ${RELAXKONOS_TEST_NGINX_EXTERNAL_EXECUTION:-0} != 0 ]]; then attempts=650; fi
     for ((i=0; i<attempts; i++)); do
         [[ ! -f "$root/release" ]] || exit 0
         sleep .1
