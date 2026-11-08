@@ -54,6 +54,7 @@ def run(root, server, helper_binary, mode):
     rejected_rotation = mode == "--systemd-website-acme-renewal-rejected"
     native_rejected_rotation = mode == "--systemd-website-acme-renewal-native-rejected"
     grouped_rotation = mode == "--systemd-website-acme-renewal-grouped"
+    before_rotation_admission = mode == "--systemd-website-acme-renewal-before-admission"
     second_domain = "second-website-mb05.test"
     acme_success = acme_renewal or mode in ("--systemd-website-acme-success", "--systemd-website-acme-bootstrap-success")
     acme_cancel = mode == "--systemd-website-acme-cancel"
@@ -133,8 +134,12 @@ def run(root, server, helper_binary, mode):
             "deviceName": "Isolated Nginx acceptance", "clientVersion": "0.2.2"})["tokens"]["accessToken"]
 
     @contextmanager
-    def process(arguments, name):
-        child_env = dict(env, DOTNET_STARTUP_HOOKS=website_hook) if website_hook and arguments[0] == server else env
+    def process(arguments, name, overrides=None):
+        child_env = env.copy()
+        if overrides:
+            child_env.update(overrides)
+        if website_hook and arguments[0] == server:
+            child_env["DOTNET_STARTUP_HOOKS"] = website_hook
         if website_hook and (retire_live or integration_live or lifecycle or mode == "--systemd-first-site-acme-success") and arguments[0] == server:
             child_env["RELAXKONOS_TEST_WEBSERVER_COLLECT"] = "1"
         with (root / f"{name}.stderr").open("w") as errors, (root / f"{name}.stdout").open("w") as output:
@@ -577,7 +582,8 @@ def run(root, server, helper_binary, mode):
             access = (root / "nginx" / "acme-access.log").read_text()
             assert re.search(r'GET /\.well-known/acme-challenge/[^ ]+ HTTP/1\.1" 200 ', access)
 
-        def verify_rotation(initial, helper, token, instance, publication_route, certificate_id, app_route, published_body, other_app_route):
+        def verify_rotation(initial, helper, token, instance, publication_route, certificate_id, app_route, published_body,
+                            other_app_route, rotation_processes):
             certificate = f"{certificates}/{certificate_id}"
             renewal_key = "mb05-website-cert-renew"
             reload_route = f"{web}/{instance}/reload"
@@ -626,6 +632,17 @@ def run(root, server, helper_binary, mode):
             assert serving(old)
             release.unlink()
             finished.unlink()
+            if before_rotation_admission:
+                initial.terminate()
+                assert initial.wait(timeout=15) == 0
+                web_ledger = root / "data" / "webserver-operations.json"
+                web_before = web_ledger.read_bytes() if web_ledger.exists() else None
+                initial = rotation_processes.enter_context(process([server], "rotation-disabled-server",
+                    {"Modules__WebServer__Enabled": "false"}))
+                wait_for(initial, healthy, "rotation-disabled-server")
+                token = login()
+                request(web, token=token, expected=404)
+                assert serving(old)
             if rejected_rotation:
                 Path("/etc/nginx/conf.d/rotation-invalid.conf").write_text("deliberately_invalid_nginx_directive;\n")
             if native_rejected_rotation:
@@ -653,6 +670,22 @@ def run(root, server, helper_binary, mode):
             replacement = request(certificate, token=token)["fingerprintSha256"].replace(":", "")
             assert replacement != old
             version = json.loads((root / "material" / certificate_id / "current.json").read_bytes())["version"]
+            if before_rotation_admission:
+                certificate_ledger = root / "data" / "certificate-operations.json"
+                durable, = (item for item in json.loads(certificate_ledger.read_bytes()) if item["operationId"] == renewal_id)
+                assert durable["state"] == "succeeded" and durable["completedAt"]
+                assert durable["nginxRenewal"]["version"] == version and durable["nginxRenewal"]["targets"] is None
+                assert (web_ledger.read_bytes() if web_ledger.exists() else None) == web_before
+                assert deployment() is None and serving(old)
+                assert_counts(initial_reloads)
+                initial.kill()
+                assert initial.wait(timeout=10) < 0 and helper.poll() is None
+                assert serving(old) and deployment() is None
+                initial = rotation_processes.enter_context(process([server], "rotation-admitting-server"))
+                wait_for(initial, healthy, "rotation-admitting-server")
+                token = login()
+                assert request(renewal_route, token=token) == renewed
+                assert request(certificate + "/renew", token=token, payload={}, key=renewal_key, expected=202) == renewed
             wait_for(initial, lambda: (record := deployment()) and record["webserver_operation_id"],
                      "durable automatic certificate reload receipt")
             recorded = deployment()
@@ -733,6 +766,11 @@ def run(root, server, helper_binary, mode):
                 outcome = "UNKNOWN" if unknown_rotation else "CONFIRMED"
                 print(f"PASS WEBSITE AUTOMATIC CERTIFICATE ROTATION {outcome}: renewal={renewal_id}; reload={reload_id}; "
                       f"{len(hosts)} sites, original receipts, one rotation reload, no replay")
+                if before_rotation_admission:
+                    durable, = (item for item in json.loads(certificate_ledger.read_bytes()) if item["operationId"] == renewal_id)
+                    assert "nginxRenewal" not in durable
+                    print(f"PASS WEBSITE CERTIFICATE HANDOFF BEFORE ADMISSION: renewal={renewal_id}; reload={reload_id}; "
+                          "disabled Server interrupted before any WebServer receipt, one admission after restart")
 
         def start_upstream(token, name, port):
             app = request(applications, token=token, key=secrets.token_hex(16), payload={
@@ -755,7 +793,7 @@ def run(root, server, helper_binary, mode):
 
         with helper_connection() as (held, permit), process([*helper_args, helper_config], "website-helper") as helper:
             wait_for(helper, helper_ready, "website-helper")
-            with process([server], "website-server") as initial:
+            with ExitStack() as rotation_processes, process([server], "website-server") as initial:
                 wait_for(initial, healthy, "website-server")
                 token = login()
                 app_id, app_route, container = start_upstream(token, "mb05-publication", 18080)
@@ -1194,7 +1232,7 @@ def run(root, server, helper_binary, mode):
                                              "second site bound to the original certificate", attempts=350)
                                     assert published_body(second_domain)
                                 verify_rotation(initial, helper, token, matches[0]["id"], operation_route,
-                                                certificate_id, app_route, published_body, other_app_route)
+                                                certificate_id, app_route, published_body, other_app_route, rotation_processes)
                         return
                     active_tokens = [path for path in challenge_root.iterdir() if path != sentinel]
                     assert len(active_tokens) == 1 and re.fullmatch(r"[A-Za-z0-9_-]+", active_tokens[0].name)
@@ -2104,6 +2142,7 @@ if __name__ == "__main__":
                                                             "--systemd-website-acme-success", "--systemd-website-acme-renewal",
                                                             "--systemd-website-acme-renewal-unknown", "--systemd-website-acme-renewal-rejected",
                                                             "--systemd-website-acme-renewal-native-rejected",
+                                                            "--systemd-website-acme-renewal-before-admission",
                                                             "--systemd-website-acme-renewal-grouped",
                                                             "--systemd-website-acme-cancel", "--systemd-website-acme-challenge-changed",
                                                             "--systemd-website-acme-drain", "--systemd-website-acme-bootstrap",

@@ -2629,7 +2629,15 @@ Windows Release 证书绑定、请求回执及模块边界回归通过，配置�
 
 Linux 六场退出 0，宿主共享服务与文件指纹一致。Windows Release 证书、WebServer 和模块边界回归通过，Docker 跨进程原 `09314bc2-2e7f-410c-98c0-03e4449676f7` 返回 Interrupted，受控副作用计数为一。日志位于 `.artifacts/mb05-nginx-auto-renewal/linux-final.log`，归档 SHA-256 为 `9fe1b07f64763b9a6bbab1a0cd9d127e0db227f10b58ce119e634405bfc1483a`。
 
-证书成功落盘后、WebServer 准入前的专门断电点、其他平台的真实 Nginx、独立部署查询界面和生产内存测量仍开放。Certificates 与 WebServer 保持 resident。
+### MB-05 Nginx 自动部署准入前的进程中断
+
+先用完整认证 Server 发布站点，再重启独立 Server 并停用 WebServer 管理模块。原 Nginx master、旧叶证书和 Docker 上游继续服务，管理路由返回 404。实际 Pebble 续期 `eb23802c-d9d6-440a-b629-32db659983be` 成功后，证书台账持久化新版本及尚未分派目标的检查点。WebServer 台账字节、部署记录和原生 reload 计数核对均无新增，Nginx 仍提供旧指纹。
+
+强制终止该 Server 后重新启用 WebServer。生产协调器接续原续期，仅准入重载 `9fdf62e3-4f66-416c-a470-6266b5135fbc`。新指纹在实际 HTTPS 握手可见。重载期间再次终止 Server，原 Helper 确认后再启动，原回执恢复 Succeeded，部署记录与证书版本匹配，工作租约归还。首次发布和自动轮换各一次 reload，Pebble 共两张订单和两次签发提交。检查点在部署对账完成后清除。双站分组与未知回执场景同批回归，宿主共享服务和文件指纹一致。
+
+Linux 三场均退出 0。证据在 `.artifacts/mb05-nginx-before-admission/linux.log`，归档 SHA-256 为 `1fe5106390a88c746a55cd5568c47f9524d8bad06813530867d05b58d6dd7c5a`。Windows Release 证书续期、WebServer 和模块边界回归通过，Docker 跨进程原 `10baaeb2-08f2-4b70-8d31-854aa5fbb7df` 恢复 Interrupted，受控副作用计数为一。
+
+本轮采用管理模块停用来建立准入前边界。模块启用时目标已分派、WebServer 尚未准入的更窄进程中断点、整机掉电、其他平台的真实 Nginx、独立部署查询界面和生产内存测量仍开放。Certificates 与 WebServer 保持 resident。
 
 ### MB-05 网站发布独立执行程序集
 

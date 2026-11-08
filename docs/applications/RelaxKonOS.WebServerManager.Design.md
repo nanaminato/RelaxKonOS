@@ -1432,6 +1432,8 @@ NginxCertificateRenewalCoordinator
 
 Linux 系统包 Nginx 的实际验收见[续期自动部署台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-续期自动部署)。桌面和 Android 的独立 Nginx 部署状态展示及其他平台实机矩阵仍待完成。
 
+WebServer 管理模块停用期间，证书仍可续期，Nginx 继续使用其已加载的证书。重新启用管理模块时，协调器可从证书台账接续尚未准入的原续期。Linux 实测覆盖这期间的 Server 进程中断及重新启用后的单次重载。见[准入前进程中断](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署准入前的进程中断)。
+
 ---
 
 ### 第四阶段：跨 Web Server 扩展

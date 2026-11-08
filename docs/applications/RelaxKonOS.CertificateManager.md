@@ -1415,6 +1415,8 @@ Kestrel 随选中的活动叶证书发送对应中间链。Linux URL 与命名 H
 
 Nginx 的稳定 PEM 文件随续期更新。使用 SQLite 并启用 WebServer 管理模块时，协调器会为绑定该证书的受管实例提交独立重载。原续期与原重载各有操作回执，证书指纹变化本身不能确认重载终态。见[Nginx 续期自动部署](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-续期自动部署)。
 
+停用 WebServer 管理模块期间，成功续期仍在证书台账保留待部署版本。重新启用后协调器可接续原续期。见[准入前进程中断验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署准入前的进程中断)。
+
 Nginx 的受管证书站点绑定在配置副作用前校验状态/有效期与每个绑定的 SAN 覆盖，IDN/IP 规范化，通配符仅覆盖一层 DNS 名称；宿主 PEM 路径仍由配置语法/文件校验，不能把该模式当作受管元数据已核实。
 
 ### 35.4 Protocol 与操作模型

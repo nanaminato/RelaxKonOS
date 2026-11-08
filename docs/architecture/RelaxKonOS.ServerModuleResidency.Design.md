@@ -543,6 +543,8 @@ Nginx 显式证书轮换沿用原重载 owner、原生回执和待核验门禁�
 
 自动部署协调器空闲时等待证书台账信号，持久续期版本和目标用于重启接续。每次对账取得 WebServer 工作租约，实际重载和未核实原生结果继续由原 WebServer 操作 owner 持有。见[Nginx 续期自动部署](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-续期自动部署)。
 
+管理模块停用且续期成功时，Core 证书台账保留待交接版本，外部 Nginx 持续服务。Linux 验证了准入前进程中断及重新启用后一次接管，见[准入前进程中断](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署准入前的进程中断)。
+
 Proxy 同次停机联合验收中，原入站到期回执落盘后，Server 仍持有独立 TUN 清理责任。系统代理 guard 与 TUN 复用共享发布锁及原归属记录，已有网络转发继续。见[Proxy 联合安全责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。
 
 Proxy 设置写入的 resident 租约覆盖执行、审计、响应与异步作用域清理。受管发布的重启恢复继续读取原发布权威和 Helper 回执。见[设置写入工作租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-设置写入的工作租约)。
