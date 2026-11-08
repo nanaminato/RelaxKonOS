@@ -14,6 +14,7 @@
 - [MB-05 Docker 变更返回后的 Engine 观察中断](#mb-05-docker-变更返回后的-engine-观察中断)
 - [MB-05 Docker 用户取消与观察断线交叠](#mb-05-docker-用户取消与观察断线交叠)
 - [MB-05 Docker 变更 CLI 在途取消与 Engine 观察中断](#mb-05-docker-变更-cli-在途取消与-engine-观察中断)
+- [MB-05 Docker CLI 清理未知的持久门禁](#mb-05-docker-cli-清理未知的持久门禁)
 - [MB-05 Docker Compose 只读 HTTP 工作责任](#mb-05-docker-compose-只读-http-工作责任)
 - [MB-05 Docker Compose 独立执行程序集](#mb-05-docker-compose-独立执行程序集)
 
@@ -140,3 +141,11 @@ Linux Release 完整认证 Server 使用专属 Engine 和 Compose 项目。容�
 首轮将观察失败文件视为台账已经更新，复测改为等待原诊断和阶段。第二轮 daemon 停机与见证容器退出重叠，停止计数断言失败。最终轮等待原容器退出才让 daemon 停机，观察一直扣留在屏障内。复现模式为 `RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE=cancel-mutation`。日志在 `.artifacts/mb05-cancelled-mutation/`，Linux 归档 SHA-256 为 `6293af77038d7b5fc5ce6ab5581ee402f850f316553bff00878627b232187f02`。Windows Release 模块边界通过，跨进程原 `fc729a51-d953-46ca-8190-4cde784c24dc` 读回 Interrupted，受控副作用计数为一。
 
 本轮实测真实 CLI 退出、原租约和专属资源清理。独立 Linux 回归另验证五个闲时代次的 ALC 收集，覆盖保留 Task 和未知清理时钉住代次。本次实机故障路径未单独测量执行对象回收、ALC 收集或隔离负载内存。变更 CLI 清理不可核实仍仅有本地故障证据，整机掉电和生产内存收益仍待验收。Docker 保持 resident。
+
+## MB-05 Docker CLI 清理未知的持久门禁
+
+原 Compose 台账在发送用户取消前保存清理检查点。实际 CLI、输出与执行作用域确认排空后清除此检查点。无法确认清理时保留原活动回执、诊断和项目互斥。原进程的工作租约保留故障责任，重启由原协调器重建工作租约并等待清理证据。此类原记录跳过 Engine 观察对账。认证同键 POST 可直接读取原台账，原执行仍由故障租约或重建的租约负责。尚无正式的证据提交及解除门禁入口。
+
+Linux Release 完整 Server 在专属 PID 命名空间执行真实 `docker stop`。夹具子进程持有原输出管道，真实 CLI 及容器停止已结束，原任务仍为 Running。取消后生产执行器等待输出排空超时，原操作 `1486b548-301a-4e7d-ad5b-5c2f88e51385` 保留无完成时间的回执及一个租约。杀死 Server 时持管道的进程仍活着。重启原 Server 后，同键 POST 和按 ID 查询返回同一回执，新键返回 409，一个恢复租约接续。夹具释放并确认子进程退出，原回执仍等待可信清理证据。CLI 派发和容器停止信号各一次。专属 Engine 清理容器及卷，宿主服务、容器清单和代理文件指纹一致。
+
+首轮发现同键 POST 的 202 响应还会申请新模块租约，故障隔离使它返回 503。调整为读取持久回执后复验通过。日志在 `.artifacts/mb05-cli-cleanup/`，Linux 归档 SHA-256 为 `559749b0833df463b71f68917d1af9506b425290865952a372cff68df399dcfe`。Windows Release 模块边界通过，跨进程原 `2cef56de-0335-4f98-86bb-1f93b035e48a` 返回 Interrupted，受控副作用计数为一。Linux 独立 ALC 回归验证五代收集及未知清理保留代次。实机路径只确认两个实际 CLI 相关进程退出及责任保留，执行对象释放、故障代次的 GC、隔离负载和生产内存收益未单独测量。Docker 保持 resident，整机掉电未验收。

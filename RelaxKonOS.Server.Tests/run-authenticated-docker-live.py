@@ -22,6 +22,7 @@ def run(server, project, helper):
     cancel_observation = observation_mode == "cancel"
     cancel_mutation = observation_mode == "cancel-mutation"
     observation_outage = observation_mode in ("1", "cancel", "cancel-mutation")
+    cleanup_unknown = observation_mode == "cleanup-unknown"
 
     with tempfile.TemporaryDirectory(prefix="relaxkonos-auth-docker-") as directory:
         root = Path(directory)
@@ -53,7 +54,7 @@ def run(server, project, helper):
         if cancel_observation:
             read_barrier.mkdir()
             env["DockerCompose__DataDirectory"] = str(root / "compose-data")
-        if observation_outage:
+        if observation_outage or cleanup_unknown:
             if outage_gate is None:
                 raise RuntimeError("Observation outage requires a dedicated Engine gate")
             docker = shutil.which("docker")
@@ -71,11 +72,19 @@ docker = {docker!r}
 gate = Path({str(outage_gate)!r})
 cancel_observation = {cancel_observation!r}
 cancel_mutation = {cancel_mutation!r}
+cleanup_unknown = {cleanup_unknown!r}
 read_barrier = Path({str(read_barrier)!r})
 args = sys.argv[1:]
-if cancel_mutation and args[:1] == ['stop']:
+if (cancel_mutation or cleanup_unknown) and args[:1] == ['stop']:
     with (gate / 'mutation-pid').open('a') as marker:
         marker.write(str(os.getpid()) + '\\n')
+    if cleanup_unknown and os.fork() == 0:
+        # In the private PID namespace, inherit the CLI's output pipes past its exit.
+        (gate / 'output-holder').write_text(str(os.getpid()))
+        deadline = time.monotonic() + 75
+        while not (gate / 'release-output').exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        os._exit(0)
 if args[:4] == ['ps', '--all', '--filter', {'label=com.docker.compose.project=' + project!r}]:
     if cancel_observation and not (read_barrier / 'complete').exists():
         if (read_barrier / 'armed').exists() and not (read_barrier / 'received').exists():
@@ -263,6 +272,52 @@ os.execv(docker, [docker, *args])
                     raise TimeoutError(f"Dedicated Engine did not acknowledge {state}")
                 time.sleep(0.05)
 
+        def verify_unknown_cleanup(process, token, operation, container, initial_stops):
+            operation_route = f"/api/v1.0/docker/stack-operations/{operation}"
+            wait_for_gate("output-holder")
+            holder = Path("/proc", (outage_gate / "output-holder").read_text())
+            command = Path("/proc", (outage_gate / "mutation-pid").read_text().strip())
+            subprocess.run(["docker", "wait", container], check=True, timeout=15, stdout=subprocess.DEVNULL)
+            deadline = time.monotonic() + 5
+            while command.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            if command.exists() or not holder.exists() or active_leases(token) != 1:
+                raise RuntimeError("The real mutation did not leave an output pipe held after CLI exit")
+            ack = request(operation_route + "/cancel", {}, token)
+            if ack["operationId"] != operation or ack["cancellable"]:
+                raise RuntimeError("The original mutation did not accept cancellation")
+            deadline = time.monotonic() + 20
+            while "Compose process or output cleanup could not be verified" not in request(operation_route + "/diagnostics", token=token)["lines"]:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("The original cleanup fault was not persisted")
+                time.sleep(0.1)
+            original = request(operation_route, token=token)
+            if str(original["state"]).lower() != "running" or original.get("completedAt") is not None \
+                    or request(route, {"confirmed": True}, token, expected=202) != original or active_leases(token) != 1:
+                raise RuntimeError("The cleanup fault lost the original active receipt or lease")
+            process.kill()
+            process.wait(timeout=10)
+            recovery = start()
+            try:
+                token = login()
+                if not holder.exists() or request(operation_route, token=token) != original \
+                        or request(route, {"confirmed": True}, token, expected=202) != original or active_leases(token) != 1:
+                    raise RuntimeError("Restart released the original cleanup gate while the process remained alive")
+                request(route, {"confirmed": True}, token, expected=409, request_key=secrets.token_hex(16))
+                subprocess.run(["docker", "start", container], check=True, stdout=subprocess.DEVNULL)
+                (outage_gate / "release-output").touch()
+                deadline = time.monotonic() + 10
+                while holder.exists() and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                stops = subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping")
+                if holder.exists() or stops != initial_stops + 1 \
+                        or len((outage_gate / "mutation-pid").read_text().splitlines()) != 1 \
+                        or request(operation_route, token=token) != original:
+                    raise RuntimeError("Cleanup changed the receipt or repeated the mutation")
+                print(f"PASS AUTHENTICATED DOCKER UNKNOWN CLI CLEANUP: operation={operation}; detached output holder exited; original receipt and gate retained across Server restart")
+            finally:
+                stop(recovery)
+
         def verify_outage(process, token, operation, container, initial_stops):
             operation_route = f"/api/v1.0/docker/stack-operations/{operation}"
             if observation_outage:
@@ -369,6 +424,12 @@ os.execv(docker, [docker, *args])
                 running = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
                 if str(running["state"]).lower() != "running":
                     raise RuntimeError("Original receipt was not running at interruption")
+                if cleanup_unknown:
+                    try:
+                        verify_unknown_cleanup(process, token, operation, container, initial_stops)
+                    finally:
+                        (outage_gate / "release-output").touch()
+                    return
                 if observation_outage:
                     if cancel_observation or cancel_mutation:
                         marker = "mutation-pid" if cancel_mutation else "held-pid"

@@ -54,7 +54,7 @@ public static class DockerEndpoints
         // Every mutation is a durable operation. The 202 answers with the record that will still be
         // readable after the phone that asked for it is gone or the server has restarted.
         group.MapPost("/stacks/deploy", (DockerStackDeployRequest request, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator, CancellationToken ct) =>
-            HandleAsync(async () => Accepted(await coordinator.DeployAsync(request, Actor(http.User), Key(http), ct))));
+            HandleAsync(async () => Accepted(await coordinator.DeployAsync(request, Actor(http.User), Key(http), ct), coordinator)));
         group.MapGet("/stacks/{name}/operations", (string name, int? limit, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>
             Handle(() => Results.Ok(coordinator.History(name, limit ?? 20))));
         group.MapGet("/stacks/{name}/operations/active", (string name, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>
@@ -75,7 +75,7 @@ public static class DockerEndpoints
             async (compose, ct) => Results.Ok(await compose.ListServicesAsync(name, ct))));
         group.MapPost("/stacks/{name}/{action}", (string name, string action, DockerStackActionRequest request, HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator, CancellationToken ct) =>
             HandleAsync(async () => DockerStackActionRoutes.TryParseAction(action, out var kind)
-                ? Accepted(await coordinator.ApplyActionAsync(name, kind, request.Confirmed, Actor(http.User), Key(http), ct))
+                ? Accepted(await coordinator.ApplyActionAsync(name, kind, request.Confirmed, Actor(http.User), Key(http), ct), coordinator)
                 : Problem(RelaxKonOS.Server.Docker.DockerStackProblem.ValidationFailed, 400)));
         return app;
     }
@@ -91,8 +91,12 @@ public static class DockerEndpoints
     /// <summary>The actor is a stable identifier, never a display name, and is only ever stored hashed.</summary>
     private static string Actor(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
 
-    private static IResult Accepted(DockerStackOperationDto operation) =>
-        new ResidentOperationResult(ServerModules.DockerId, Results.Accepted(DockerApiRoutes.StackOperation(operation.OperationId), operation));
+    private static IResult Accepted(DockerStackOperationDto operation, DockerStackOperationCoordinator coordinator)
+    {
+        var receipt = Results.Accepted(DockerApiRoutes.StackOperation(operation.OperationId), operation);
+        // The original work owns the cleanup gate. Reading its durable receipt requires no new work.
+        return coordinator.HoldsCleanupResponsibility(operation.OperationId) ? receipt : new ResidentOperationResult(ServerModules.DockerId, receipt);
+    }
 
     private static IResult Handle(Func<IResult> action)
     {

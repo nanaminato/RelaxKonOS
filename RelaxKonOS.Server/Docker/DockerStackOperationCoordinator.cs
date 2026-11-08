@@ -65,6 +65,8 @@ internal sealed class DockerStackOperationCoordinator(
 
     public DockerStackOperationDto? Get(Guid operationId) => operations.Get(operationId)?.Operation;
 
+    public bool HoldsCleanupResponsibility(Guid operationId) => operations.Get(operationId) is { CleanupPending: true };
+
     public DockerStackOperationDto? GetByRequest(string actor, string key)
     {
         ValidateKey(key);
@@ -94,7 +96,7 @@ internal sealed class DockerStackOperationCoordinator(
             if (!entry.Operation.Cancellable || !cancellations.TryGetValue(operationId, out var source))
                 throw new DockerStackException(DockerStackProblem.NotCancellable);
 
-            var requested = operations.Update(operationId, operation => operation with { Cancellable = false }, "cancel-requested");
+            var requested = operations.Update(operationId, operation => operation with { Cancellable = false }, "cancel-requested", cleanupPending: true);
             source.Cancel();
             return requested;
         }
@@ -104,6 +106,8 @@ internal sealed class DockerStackOperationCoordinator(
         string actor, string key, string requestReference, CancellationToken ct)
     {
         ValidateKey(key);
+        ct.ThrowIfCancellationRequested();
+        if (operations.FindIdempotent(kind, actor, key, requestReference) is { } previous) return previous.Operation;
         using var work = await workOwner.AdmitAsync(ct);
 
         lock (gate)
@@ -146,6 +150,8 @@ internal sealed class DockerStackOperationCoordinator(
                 var compose = scope.ServiceProvider.GetRequiredService<IDockerComposeService>();
                 outcome = await ExecuteAsync(compose, id, kind, project, definition, cancellation, workStopping);
             }
+            if (cancellation.IsCancellationRequested)
+                operations.Update(id, current => current, "cleanup-drained", cleanupPending: false);
             if (outcome is { AwaitingObservation: true })
             {
                 using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(workStopping, lifetime.ApplicationStopping);
@@ -161,6 +167,11 @@ internal sealed class DockerStackOperationCoordinator(
             if (outcome is not null)
                 Complete(id, outcome.State, outcome.Problem, outcome.Recovery, outcome.Messages, outcome.Observed);
         }
+        catch (DockerComposeCleanupException)
+        {
+            RecordUnverifiedCleanup(id);
+            throw;
+        }
         catch (OperationCanceledException) when (workStopping.IsCancellationRequested || lifetime.ApplicationStopping.IsCancellationRequested)
         {
             // The durable active receipt remains available to startup reconciliation.
@@ -171,6 +182,10 @@ internal sealed class DockerStackOperationCoordinator(
             running.TryRemove(id, out _);
         }
     }
+
+    private void RecordUnverifiedCleanup(Guid operationId) =>
+        operations.Update(operationId, current => current with { Cancellable = false }, "cleanup-unverified",
+            ["Compose process or output cleanup could not be verified"], cleanupPending: true);
 
     private sealed record Outcome(DockerStackOperationState State, string? Problem, string? Recovery,
         IReadOnlyList<string> Messages, IReadOnlyList<DockerStackServiceDto>? Observed = null, bool AwaitingObservation = false);
@@ -377,9 +392,12 @@ internal sealed class DockerStackOperationCoordinator(
         using var recoveryWork = await workOwner.AdmitAsync(cancellationToken);
         using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, recoveryWork.Token);
         List<StackOperationEntry> awaitingEngine;
+        bool awaitingCleanup;
         try
         {
-            awaitingEngine = await ReconcileAsync(operations.Read().Where(entry => DockerStackOperationStore.Active(entry.Operation)), startup.Token);
+            var active = operations.Read().Where(entry => DockerStackOperationStore.Active(entry.Operation)).ToArray();
+            awaitingCleanup = active.Any(RequiresCleanupEvidence);
+            awaitingEngine = await ReconcileAsync(active.Where(entry => !RequiresCleanupEvidence(entry)), startup.Token);
         }
         catch (OperationCanceledException) when (startup.IsCancellationRequested) { throw; }
         catch (Exception error)
@@ -392,12 +410,15 @@ internal sealed class DockerStackOperationCoordinator(
         {
             if (stopping) return;
             startup.Token.ThrowIfCancellationRequested();
-            if (awaitingEngine.Count != 0) recoveryWork.Run(ct => RetryRecoveryAsync(awaitingEngine, ct));
+            if (awaitingEngine.Count != 0 || awaitingCleanup) recoveryWork.Run(ct => RetryRecoveryAsync(awaitingEngine, awaitingCleanup, ct));
             ready = true;
         }
     }
 
-    private async Task RetryRecoveryAsync(List<StackOperationEntry> awaitingEngine, CancellationToken ct)
+    private static bool RequiresCleanupEvidence(StackOperationEntry entry) =>
+        entry.CleanupPending && entry.Operation.State == DockerStackOperationState.Running;
+
+    private async Task RetryRecoveryAsync(List<StackOperationEntry> awaitingEngine, bool awaitingCleanup, CancellationToken ct)
     {
         try
         {
@@ -406,6 +427,7 @@ internal sealed class DockerStackOperationCoordinator(
                 await Task.Delay(ObservationRetryDelay, ct);
                 awaitingEngine = await ReconcileAsync(awaitingEngine, ct);
             }
+            if (awaitingCleanup) await Task.Delay(Timeout.InfiniteTimeSpan, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception error)
@@ -425,7 +447,13 @@ internal sealed class DockerStackOperationCoordinator(
             IReadOnlyList<DockerStackServiceDto> observed = [];
             if (operation.State == DockerStackOperationState.Running)
             {
-                var snapshot = await TryObserveProjectAsync(operation.ProjectName, ct);
+                IReadOnlyList<DockerStackServiceDto>? snapshot;
+                try { snapshot = await TryObserveProjectAsync(operation.ProjectName, ct); }
+                catch (DockerComposeCleanupException)
+                {
+                    RecordUnverifiedCleanup(operation.OperationId);
+                    throw;
+                }
                 if (snapshot is null)
                 {
                     awaitingEngine.Add(entry);

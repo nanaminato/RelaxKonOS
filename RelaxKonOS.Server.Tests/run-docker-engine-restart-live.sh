@@ -137,22 +137,27 @@ if [[ $# -ge 5 ]]; then
     RELAXKONOS_TEST_DOCKER_OUTAGE_GATE="$gate" python3 "$5" "$6" "$project" "$tests" <&3 &
     worker=$!
     exec 3<&-
-    if [[ ${RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE:-} == cancel ]]; then
+    if [[ ${RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE:-} == cleanup-unknown ]]; then
+        wait "$worker"
+        worker=
+    elif [[ ${RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE:-} == cancel ]]; then
         # This case first holds a real read across the active and idle ALC windows.
         wait_for_gate offline 1200
     else
         wait_for_gate offline
     fi
-    kill -TERM "$pid"
-    wait "$pid"
-    pid=
-    if docker version --format '{{.Server.Version}}' 2>/dev/null; then exit 1; fi
-    touch "$gate/offline"
-    wait_for_gate online
-    start
-    touch "$gate/online"
-    wait "$worker"
-    worker=
+    if [[ -n $worker ]]; then
+        kill -TERM "$pid"
+        wait "$pid"
+        pid=
+        if docker version --format '{{.Server.Version}}' 2>/dev/null; then exit 1; fi
+        touch "$gate/offline"
+        wait_for_gate online
+        start
+        touch "$gate/online"
+        wait "$worker"
+        worker=
+    fi
 else
     dotnet "$tests" --docker-live-http-disconnect "$ledger" "$compose" "$project" "$id"
 fi

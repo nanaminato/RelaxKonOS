@@ -14,7 +14,8 @@ internal sealed record StackOperationEntry(
     string RequestReference,
     string ProjectReference,
     string[]? Diagnostics = null,
-    bool DiagnosticsTruncated = false);
+    bool DiagnosticsTruncated = false,
+    bool CleanupPending = false);
 
 internal sealed record StackAudit(
     Guid OperationId,
@@ -167,13 +168,14 @@ internal sealed class DockerStackOperationStore
     }
 
     public DockerStackOperationDto Update(Guid operationId, Func<DockerStackOperationDto, DockerStackOperationDto> update,
-        string eventName, IReadOnlyList<string>? diagnostics = null, bool diagnosticsTruncated = false)
+        string eventName, IReadOnlyList<string>? diagnostics = null, bool diagnosticsTruncated = false, bool? cleanupPending = null)
     {
         lock (gate)
         {
             EnsureAvailable();
             var before = ledger.Entries.Single(x => x.Operation.OperationId == operationId);
-            var after = before with { Operation = update(before.Operation) };
+            var operation = update(before.Operation);
+            var after = before with { Operation = operation, CleanupPending = Active(operation) && (cleanupPending ?? before.CleanupPending) };
             if (diagnostics is { Count: > 0 })
             {
                 var bounded = BoundDiagnostics(diagnostics, diagnosticsTruncated);
@@ -183,6 +185,7 @@ internal sealed class DockerStackOperationStore
             if (after == before) return before.Operation;
             var audit = after.Operation.State != before.Operation.State
                 || after.Operation.Stage != before.Operation.Stage
+                || after.CleanupPending != before.CleanupPending
                 || eventName is "cancel-requested" or "recovered" or "completed" or "failed";
             Commit(new(
                 [.. ledger.Entries.Select(x => x.Operation.OperationId == operationId ? after : x)],
@@ -274,6 +277,7 @@ internal sealed class DockerStackOperationStore
         && DockerStackValidation.IsValidReference(operation.RequestedByReference)
         && operation.CreatedAt != default
         && operation.Services is not null
+        && (!entry.CleanupPending || Active(operation) && !operation.Cancellable)
         && operation.Services.Count <= 64
         && operation.Services.All(service => service.Service?.Length <= 63 && service.Container?.Length <= 128
             && service.Image?.Length <= 255 && service.State?.Length <= 32 && service.Status?.Length <= 256)
