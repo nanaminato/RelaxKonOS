@@ -16,13 +16,14 @@ website = sys.argv[2:] == ["website"]
 full_server = schedule or website or sys.argv[2:] == ["full-server"]
 ca_context = ssl.create_default_context(cafile=str(root / "https.pem"))
 revocation_path = None
+renewal_info_path = None
 
 
 class Relay(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def relay(self):
-        global revocation_path
+        global revocation_path, renewal_info_path
         length = int(self.headers.get("Content-Length", "0"))
         headers = {name: self.headers[name] for name in ("Host", "Content-Type", "User-Agent")
                    if name in self.headers}
@@ -33,14 +34,29 @@ class Relay(BaseHTTPRequestHandler):
             response = upstream.getresponse()
             body = response.read()
             if self.path == "/dir" and response.status == 200:
-                revocation_path = urlsplit(json.loads(body).get("revokeCert", "")).path
-            if schedule and self.path == "/dir" and response.status == 200:
                 directory = json.loads(body)
-                directory.pop("renewalInfo", None)
-                body = json.dumps(directory).encode()
+                revocation_path = urlsplit(directory.get("revokeCert", "")).path
+                renewal_info_path = urlsplit(directory.get("renewalInfo", "")).path.rstrip("/")
+                if schedule:
+                    directory.pop("renewalInfo", None)
+                    body = json.dumps(directory).encode()
             selected = self.headers.get("X-Fixture-Lose-Response")
             if full_server:
                 selected = (root / "response-fault").read_text(encoding="ascii").strip()
+            ari_resource = renewal_info_path and self.path.startswith(renewal_info_path + "/")
+            ari_lookup = self.command == "GET" and ari_resource and self.path != renewal_info_path + "/"
+            ari_window = json.loads(body).get("suggestedWindow") if ari_lookup and response.status == 200 \
+                and selected in ("hold-ari", "ari") else None
+            if ari_resource or (renewal_info_path and self.path == renewal_info_path):
+                with (root / "ari-results").open("a", encoding="ascii") as results:
+                    results.write(f"{self.command} {self.path} {response.status}\n")
+            if selected == "hold-ari" and ari_window:
+                (root / "ari-response-held").write_text(json.dumps({"path": self.path, "window": ari_window}), encoding="ascii")
+                deadline = time.monotonic() + 15
+                while not (root / "release-ari-response").is_file():
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("The renewal information response was not released")
+                    time.sleep(0.05)
             if self.command == "POST" and self.path == revocation_path:
                 with (root / "revocation-results").open("a", encoding="ascii") as results:
                     results.write(f"{response.status}\n")
@@ -77,6 +93,7 @@ class Relay(BaseHTTPRequestHandler):
                     time.sleep(0.05)
             truncate = (
                 selected == "order" and self.path == "/order-plz" and response.status == 201 and response.getheader("Location")
+                or selected == "ari" and ari_window
                 or selected == "certificate" and self.path.startswith("/certZ/") and response.status == 200
                 and body.startswith(b"-----BEGIN CERTIFICATE-----")
             )

@@ -1,6 +1,7 @@
 """Exercise the production certificate HTTP routes on a full private Linux Server."""
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -42,7 +43,7 @@ def run(root, server, tests, mode):
     })
     scheduled = mode in ("schedule", "schedule-cancel", "schedule-ownership")
     collectible = mode == "acme-execution"
-    if scheduled:
+    if scheduled or mode == "ari-fallback":
         env["Logging__LogLevel__RelaxKonOS.Server.Certificate.CertificateRenewalWorker"] = "Debug"
     for module in ("Terminal", "Firewall", "SystemPerformance", "Git", "Tailscale", "Docker", "WebServer", "Proxy"):
         env[f"Modules__{module}__Enabled"] = "false"
@@ -321,6 +322,70 @@ def run(root, server, tests, mode):
             assert native.read_text().splitlines() == ["200", "200"]
             print(f"PASS ACME REVOCATION UNKNOWN RECOVERY: {unknown_operation}; same receipt, zero replay", flush=True)
 
+    def verify_ari_fallback(initial, token, certificate, fingerprint):
+        fault = root / "response-fault"
+        held = root / "ari-response-held"
+        schedule = root / "data" / "certificate-renewal-runs.json"
+        ledger = root / "data" / "certificate-operations.json"
+        results = root / "ari-results"
+        module = "/api/v1.0/server/modules/relaxkonos.certificates"
+        fault.write_text("hold-ari")
+        try:
+            wait_for(initial, held.is_file, "initial-server", attempts=850)
+            response = json.loads(held.read_text())
+            path = response["path"]
+            now = datetime.now(timezone.utc)
+            window = response["window"]
+            assert now < datetime.fromisoformat(window["start"]) < datetime.fromisoformat(window["end"]), window
+            expires = datetime.fromisoformat(request(certificate, token)["notAfter"])
+            assert 0 < (expires - now).total_seconds() <= 604800, expires
+            assert results.read_text().splitlines() == [f"GET {path} 200"]
+            scan, = json.loads(schedule.read_bytes())
+            assert scan["Scheduled"] and scan["CompletedAt"] is None and scan["Operations"] == []
+            assert all(item["kind"] != "renew" for item in json.loads(ledger.read_bytes()))
+            assert request(module, token)["residency"]["activeLeases"] == 1
+            assert request(certificate, token)["fingerprintSha256"] == fingerprint
+            initial.kill()
+            assert initial.wait(timeout=10) < 0
+        finally:
+            fault.write_text("ari")
+            (root / "release-ari-response").touch()
+
+        with process([server], "ari-resumed") as resumed:
+            wait_for(resumed, healthy, "ari-resumed")
+            token = login()
+            wait_for(resumed, lambda: (root / "truncated-ari").is_file(), "ari-resumed", attempts=850)
+            assert (root / "truncated-ari").read_text() == "200"
+            wait_for(resumed, lambda: json.loads(schedule.read_bytes())[0]["CompletedAt"] is not None, "ari-resumed")
+            continued, = json.loads(schedule.read_bytes())
+            assert continued["Id"] == scan["Id"] and continued["StartedAt"] == scan["StartedAt"]
+            operation, = continued["Operations"]
+            assert continued["Rejected"] == 0 and not continued["RejectedCertificates"]
+            route = f"{certificates}/operations/{operation}"
+            final = terminal(token, request(route, token), "succeeded")
+            new_fingerprint = request(certificate, token)["fingerprintSha256"]
+            assert new_fingerprint and new_fingerprint != fingerprint
+            calls = results.read_text().splitlines()
+            assert calls[:2] == [f"GET {path} 200"] * 2
+            renewal_info = path.rsplit("/", 1)[0]
+            assert calls[2:] == [f"POST {renewal_info} 301", f"GET {renewal_info}/ 404"]
+            assert not list((root / "challenge").iterdir())
+            wait_for(resumed, lambda: request(module, token)["residency"]["activeLeases"] == 0, "ari-resumed")
+            assert resumed.poll() is None
+
+        with process([server], "ari-restarted") as restarted:
+            wait_for(restarted, healthy, "ari-restarted")
+            token = login()
+            wait_for(restarted, lambda: "Certificate renewal scan deferred until" in
+                     (root / "ari-restarted.stdout").read_text(), "ari-restarted", attempts=850)
+            assert request(route, token) == final
+            assert request(certificate, token)["fingerprintSha256"] == new_fingerprint
+            assert json.loads(schedule.read_bytes()) == [continued]
+            assert results.read_text().splitlines() == calls
+            assert not list((root / "challenge").iterdir())
+            print(f"PASS AUTHENTICATED ACME ARI FALLBACK: scan={scan['Id']}; renewal={operation}; "
+                  "advisory 301 to 404; same scan and receipt after restart", flush=True)
+
     def verify_scheduled_drain(initial, token):
         marker = root / "challenge-response-held"
         release = root / "release-challenge-response"
@@ -444,6 +509,9 @@ def run(root, server, tests, mode):
             certificate = f"{certificates}/{original['certificateId']}"
             fingerprint = request(certificate, token)["fingerprintSha256"]
             assert fingerprint
+            if mode == "ari-fallback":
+                verify_ari_fallback(initial, token, certificate, fingerprint)
+                return
             if mode == "schedule-ownership":
                 conflict = interrupt_renewal_with_changed_challenge(initial, token, certificate)
             elif scheduled:

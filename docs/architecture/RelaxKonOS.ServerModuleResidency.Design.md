@@ -531,6 +531,8 @@ MB-05 的 ACME SDK 与执行代码支持闲时卸载和按需唤醒。原证书 
 
 撤销工作在 CA 响应和终态清理期间保留 Core 租约。确认后清理受阻或 CA 结果待核验时，停机按已持久检查点交接，启动重新接管未决责任。SDK 执行代次在实际调用结束后可独立卸载。见[撤销确认与本地恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-acme-撤销确认与本地恢复)。
 
+ARI 查询由原续期扫描持有工作租约。进程中断后，原扫描可以重读 ARI，已经关联的续期继续由原操作台账负责。真实断流后的到期时间兜底见[ARI 断流与原扫描恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-ari-断流与原扫描恢复)。
+
 MB-05 的网站发布和具名首站恢复使用独立可回收执行代码。原 Nginx、TLS、发布台账及应用关联权威由 Host 保持，WebServer 管理模块继续 resident。见[网站发布独立执行程序集](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布独立执行程序集)。
 
 MB-05 直接重载与网站发布共享 WebServer 执行代次。新重载的代次随原工作保持到命令、终态和 Helper 回执清理结束。原回执恢复由 Host 负责，外部 Nginx 和 TLS 持续运行，WebServer 管理模块保持 resident。见[直接重载独立执行程序集](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-nginx-重载独立执行程序集)。

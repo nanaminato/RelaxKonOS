@@ -59,8 +59,12 @@ if [ -n "$server" ]; then
     relay_mode=full-server
     if [ "$schedule" = schedule ] || [ "$schedule" = schedule-cancel ] || [ "$schedule" = schedule-ownership ]; then
         relay_mode=schedule
+    fi
+    if [ "$relay_mode" = schedule ] || [ "$schedule" = ari-fallback ]; then
         authorization_reuse=0
-        profiles=',"profiles":{"default":{"description":"Private renewal scheduling fixture","validityPeriod":86400}}'
+        validity=86400
+        if [ "$schedule" = ari-fallback ]; then validity=604800; fi
+        profiles=',"profiles":{"default":{"description":"Private renewal scheduling fixture","validityPeriod":'${validity}'}}'
     fi
     cat > "$fixture/nginx.conf" <<NGINX
 daemon off;
@@ -117,13 +121,15 @@ if [ -n "$server" ]; then
     if [ "$relay_mode" = schedule ]; then
         [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 2 ]
         [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 1 ]
-    elif [ "$schedule" = revocation ]; then
+    elif [ "$schedule" = revocation ] || [ "$schedule" = ari-fallback ]; then
         [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 2 ]
         [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 2 ]
-        [ "$(grep -c '^200$' "$fixture/revocation-results")" -eq 2 ]
     else
         [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 3 ]
         [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 2 ]
+    fi
+    if [ "$schedule" = revocation ]; then
+        [ "$(grep -c '^200$' "$fixture/revocation-results")" -eq 2 ]
     fi
     grep -q 'GET /.well-known/acme-challenge/.*HTTP/1.1" 200 ' "$fixture/nginx-access.log"
 else
