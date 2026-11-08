@@ -208,6 +208,16 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
                 await VerifyRestoredNetworkAsync(pending, effect, ct);
                 return true;
             }
+            if (effect.Phase == MihomoTunPhase.NetworkDispatched)
+            {
+                RequireOriginalNetworkIntent(pending, effect);
+                await RequireMaterialAsync(pending, false, ct);
+                var identity = Hash(await ReadConfigurationAsync(Configuration, ct));
+                if (identity != pending.Plan.CandidateIdentity && identity != pending.Plan.PreviousIdentity)
+                    throw new RuntimePolicyException("runtime.configuration_drift");
+                await TunHost().CompleteUndeliveredTunAsync(effect, ct);
+                return true;
+            }
             if (effect.Phase is MihomoTunPhase.StopDispatched or MihomoTunPhase.RuleRemovalDispatched)
             {
                 await TunHost().CompleteTunStopAsync(pending.OperationId, ct);
@@ -346,12 +356,20 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     private static async Task VerifyRestoredNetworkAsync(RuntimePendingConfiguration pending, MihomoTunEffect effect, CancellationToken ct)
     {
+        RequireOriginalNetworkIntent(pending, effect);
+        if (effect.Phase == MihomoTunPhase.Intent)
+            await LinuxMihomoArchiveHost.VerifyUndispatchedTunNetworkAsync(effect, ct);
+        else if (effect.Phase == MihomoTunPhase.NetworkDispatched)
+            await LinuxMihomoArchiveHost.VerifyUndeliveredTunRestoredAsync(effect, ct);
+        else await LinuxMihomoArchiveHost.VerifyRestoredTunNetworkAsync(effect, ct);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static void RequireOriginalNetworkIntent(RuntimePendingConfiguration pending, MihomoTunEffect effect)
+    {
         var identity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(pending.OperationId, pending.Plan,
             LinuxMihomoArchiveHost.TunNetwork(effect.Intent));
         if (identity != pending.Plan.NetworkIntentIdentity) throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
-        if (effect.Phase == MihomoTunPhase.Intent)
-            await LinuxMihomoArchiveHost.VerifyUndispatchedTunNetworkAsync(effect, ct);
-        else await LinuxMihomoArchiveHost.VerifyRestoredTunNetworkAsync(effect, ct);
     }
 
     private async Task<RuntimeRestorationEvidence> ObserveRestoredServiceAsync(RuntimePendingConfiguration pending, MihomoTunEffect? effect,

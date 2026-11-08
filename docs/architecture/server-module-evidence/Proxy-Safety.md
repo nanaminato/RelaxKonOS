@@ -692,6 +692,16 @@ Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 
 
 **未实现或待验。** 网络已经派发、描述符尚未交付时仍由原待核验门禁保护。整机掉电和其他 Linux 架构未实测。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 保持 resident。
 
+### 候选启动派发前的原规则回收
+
+**已实现且已验证。** Linux x64 私有 systemd 在实际专用规则已装入、候选启动检查点即将写入时强制中断 Helper。原生检查点停在 `NetworkDispatched`，候选 broker、设备、地址及专用路由均已消失，候选 unit 未启动，内核规则仍在。同键返回同一待核验操作。隐藏规则见证或改变管理选路分别返回 `runtime.network_rule_ownership_unknown` 和 `runtime.management_route_changed`，两次均未派发删除。
+
+恢复见证和选路后，原 Helper 持久化删除派发，再删除原专用规则。在内核已删除但 Helper 尚未持久化还原时再次强制中断。同一原操作读取删除派发记录并确认规则缺席，恢复旧配置和数据，旧服务恢复。后续同键返回原 `Interrupted`，无候选启动派发，Helper 删除次数为一。首轮原操作为 `f9cb225df8a04832802ba648eb10a996`。复验原操作 `42975bb19c9840848ba08286f6a81ecc` 在中断后人为加入完全匹配的规则，核验返回 `runtime.network_rule_conflict`，未再次派发删除。清理注入规则后取得原回执，已还原 PID 465 保持。复验日志为同目录 `linux-reappeared-rule.log`，归档 SHA-256 为 `1adf6a6ee9d56a2e0acbe9a53b98027bf47b26a47bc8664edf5a5c5b57cda55c`。
+
+同版复验候选注册中断 `57c3196588174710b047306c50ff8090`、认证 HTTP 补偿 `3b2b22560c20455eb1ad41877658647b` 和成功发布 `3d4fe3e2b8db47708ce15a6c6d57eb23`，后两场覆盖实际 HTTP 和分流 DNS。四场专属进程及 cgroup 清理、宿主共享服务指纹核验通过。首轮日志为 `.artifacts/mb04-tun-network-before-launch/linux.log`，归档 SHA-256 为 `8357555275ef4b3df8771b26c6993d86d06728046aa5473359eb04c8eeae5777`。Windows Release 全套回归通过，含配置事务 106 项及发布事务 113 项。可信下载探针因缺进程级 CA 覆盖跳过。
+
+**未实现或待验。** `LaunchDispatched` 后，原启动命令的发送端可能仍存活，现有门禁继续保持。整机掉电和其他 Linux 架构仍待验收。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

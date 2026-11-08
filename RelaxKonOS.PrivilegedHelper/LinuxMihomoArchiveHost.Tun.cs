@@ -38,6 +38,11 @@ internal sealed partial class LinuxMihomoArchiveHost
         });
         await routes.ApplyAsync(descriptor);
         await routes.RequireManagementAsync(intent.ManagementHash, ownedRulePresent: true);
+        if (publication is not null)
+        {
+            var applied = checkpoint.Read() ?? throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+            await WriteUndeliveredCheckpointAsync(applied, "network-rule-verified", CancellationToken.None);
+        }
 
         using var listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         listener.Bind(new UnixDomainSocketEndPoint(checkpoint.SocketPath));

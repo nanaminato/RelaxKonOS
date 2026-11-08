@@ -660,6 +660,81 @@ def proof_undispatched_registration(owner, record, operation_dir, previous, sent
           f'original Interrupted without candidate network or launch, restored PID={restored_service[0]}')
 
 
+def proof_network_before_launch(owner, record, operation_dir, previous, sentinel, trace):
+    operation = record['operation']
+    assert owner.wait(timeout=15) in (-signal.SIGKILL, 128 + signal.SIGKILL)
+    print(trace.read_text().strip())
+    assert checkpoint(record, 'state') == 'NetworkDispatched'
+    network = operation_dir / 'tun-1.json'
+    witness = operation_dir / 'network-rule-verified.json'
+    frozen = network.read_bytes()
+    assert json.loads(witness.read_text()) == json.loads(frozen)
+    table = json.loads(frozen)['Intent']['RoutingTable']
+    broker = json.loads(frozen)['BrokerPid']
+    assert not Path('/proc', str(broker)).exists()
+    assert not (operation_dir / 'tun-2.json').exists() and device not in devices() and not route(table)
+    assert 'MainPID=0' in service('show', '-p', 'MainPID', unit)
+    assert network_baseline(table) == record['baseline'] and network_baseline() != record['baseline']
+    archive_state = archive / 'state' / 'archive-state.json'
+    original = archive_state.read_bytes()
+    result = json.loads(checkpoint(record, 'retry'))
+    assert uuid.UUID(result['OperationId']).hex == operation and result['Outcome'] == 'RecoveryRequired'
+    assert archive_state.read_bytes() == original
+
+    def pending(problem):
+        result = json.loads(checkpoint(record, 'recover'))
+        assert uuid.UUID(result['OperationId']).hex == operation and result['Outcome'] == 'RecoveryRequired'
+        state = json.loads(archive_state.read_text())
+        assert state['configuration']['recoveryProblemCode'] == problem and not state['receipts']
+        assert network.read_bytes() == frozen and not (root / 'rule-delete-attempts').exists()
+        assert 'MainPID=0' in service('show', '-p', 'MainPID', unit)
+
+    hidden = witness.with_suffix('.held')
+    witness.rename(hidden)
+    try:
+        pending('runtime.network_rule_ownership_unknown')
+    finally:
+        hidden.rename(witness)
+    with management_route_drift(table):
+        pending('runtime.management_route_changed')
+    assert network_baseline() != record['baseline']
+
+    cut = root / 'interrupt-rule-delete'
+    cut.touch()
+    try:
+        interrupted = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
+                                      str(root), operation, 'recover'], timeout=15)
+        assert interrupted.returncode == -signal.SIGKILL
+    finally:
+        cut.unlink()
+    assert (operation_dir / 'network-before-launch-removal-dispatched.json').is_file()
+    assert not (operation_dir / 'network-before-launch-restored.json').exists()
+    assert network_baseline() == record['baseline']
+    assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+    # A matching rule can reappear after an interrupted deletion. The original dispatch never authorizes another delete.
+    rule = ('priority', '11000', 'to', target + '/32', 'lookup', str(table), 'protocol', '186')
+    command(str(root / 'ip-real'), '-4', 'rule', 'add', *rule)
+    try:
+        refused = json.loads(checkpoint(record, 'recover'))
+        assert uuid.UUID(refused['OperationId']).hex == operation and refused['Outcome'] == 'RecoveryRequired'
+        state = json.loads(archive_state.read_text())
+        assert state['configuration']['recoveryProblemCode'] == 'runtime.network_rule_conflict' and not state['receipts']
+        assert network_baseline() != record['baseline']
+        assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+    finally:
+        command(str(root / 'ip-real'), '-4', 'rule', 'del', *rule)
+    terminal = json.loads(checkpoint(record, 'recover'))
+    assert uuid.UUID(terminal['OperationId']).hex == operation and terminal['Outcome'] == 'Interrupted'
+    assert (operation_dir / 'network-before-launch-restored.json').is_file()
+    restored = service_identity()
+    assert json.loads(checkpoint(record, 'retry')) == terminal and service_identity() == restored
+    assert not (operation_dir / 'tun-2.json').exists() and device not in devices() and not route(table)
+    assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
+    assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+    print(f'PASS TUN NETWORK BEFORE LAUNCH: original {operation}; exact rule witness required; '
+          f'one deletion and original Interrupted without candidate launch, restored PID={restored[0]}')
+
+
 def proof_committed(owner, operation, operation_dir, case):
     state_path = archive / 'state' / 'archive-state.json'
     deadline = time.monotonic() + 15
@@ -2469,11 +2544,21 @@ rules:
         renames = 'rename,renameat,renameat2'
         worker = [tracer, '-f', '-qq', '-yy', '-P', temporary, '-e', f'trace={renames}',
                   '-e', f'inject={renames}:error=EIO:signal=SIGKILL:when=1', '-o', str(trace), *worker]
+    if case == 'network-before-launch':
+        tracer = shutil.which('strace')
+        assert tracer, 'The dispatch proof requires strace'
+        trace = root / 'network-before-launch-fault.trace'
+        opens = 'open,openat,openat2'
+        worker = [tracer, '-f', '-qq', '-yy', '-P', str(operation_dir / 'tun-2.json'), '-e', f'trace={opens}',
+                  '-e', f'inject={opens}:error=EIO:signal=SIGKILL:when=1', '-o', str(trace), *worker]
     owner = subprocess.Popen(worker,
                              stdout=subprocess.PIPE, text=True, env=env)
     try:
         if case == 'registration-before-network':
             proof_undispatched_registration(owner, json.loads(journal.read_text()), operation_dir, previous, sentinel, trace)
+            return
+        if case == 'network-before-launch':
+            proof_network_before_launch(owner, json.loads(journal.read_text()), operation_dir, previous, sentinel, trace)
             return
         if case.startswith('ipc-'):
             assert owner.wait(timeout=15) == 0

@@ -113,6 +113,10 @@ internal sealed class LinuxMihomoTunRoutes
     internal async Task RequireRuleAsync(bool present) =>
         _ = RequireRule(await JsonAsync("-j", "-N", "-4", "rule", "show"), present);
 
+    internal async Task<bool> HasScopedRuleAsync() =>
+        (await JsonAsync("-j", "-N", "-4", "rule", "show")).EnumerateArray()
+            .Any(rule => HasPriority(rule) || HasString(rule, "table", table));
+
     internal Task RemoveRuleAsync() => IpAsync(RuleCommand("del"));
 
     private string[] RuleCommand(string action) =>
