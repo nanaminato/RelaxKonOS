@@ -68,10 +68,10 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
     }
 
     public Task<ProxyOperationDto> EnqueueAsync(string idempotencyKey, string kind, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, CancellationToken cancellationToken) =>
-        EnqueueIdentifiedAsync(idempotencyKey, kind, (_, stage, token) => operation(stage, token), cancellationToken);
+        EnqueueIdentifiedAsync(idempotencyKey, kind, (_, stage, _, token) => operation(stage, token), cancellationToken);
 
     internal async Task<ProxyOperationDto> EnqueueIdentifiedAsync(string idempotencyKey, string kind,
-        Func<Guid, ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, CancellationToken cancellationToken)
+        Func<Guid, ProxyOperationStageReporter, Action<IDisposable>, CancellationToken, Task<string?>> operation, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Length > 200)
             throw new ProxyOperationValidationException(ProxyProblemCodes.IdempotencyKeyRequired);
@@ -96,7 +96,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         finally { _gate.Release(); }
 
         logger.LogInformation("Proxy operation {OperationId} queued: {OperationKind}.", item.OperationId, kind);
-        _ = ExecuteTrackedAsync(item, (stage, token) => operation(item.OperationId, stage, token), work!);
+        _ = ExecuteTrackedAsync(item, (stage, holdExecution, token) => operation(item.OperationId, stage, holdExecution, token), work!);
         return item;
     }
 
@@ -128,15 +128,20 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         }
         catch { work?.Dispose(); throw; }
         finally { _gate.Release(); }
-        _ = ExecuteTrackedAsync(original, (_, token) => recover(original.OperationId, token), work!);
+        _ = ExecuteTrackedAsync(original, (_, _, token) => recover(original.OperationId, token), work!);
         return original;
     }
 
-    private async Task ExecuteTrackedAsync(ProxyOperationDto original, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation, RelaxKonOS.Server.Residency.IModuleWorkLease work)
+    private async Task ExecuteTrackedAsync(ProxyOperationDto original, Func<ProxyOperationStageReporter, Action<IDisposable>, CancellationToken, Task<string?>> operation, RelaxKonOS.Server.Residency.IModuleWorkLease work)
     {
         var id = original.OperationId;
         Exception? failure = null;
-        try { await ExecuteAsync(original, operation); }
+        IDisposable? execution = null;
+        try
+        {
+            try { await ExecuteAsync(original, (stage, token) => operation(stage, HoldExecution, token)); }
+            finally { execution?.Dispose(); }
+        }
         catch (Exception exception)
         {
             failure = exception;
@@ -153,6 +158,16 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             else { _recoveryBlocked = true; completion.TrySetException(failure); _ = completion.Task.Exception; }
         }
         finally { _gate.Release(); }
+
+        void HoldExecution(IDisposable code)
+        {
+            if (execution is not null)
+            {
+                code.Dispose();
+                throw new InvalidOperationException("Proxy operation already owns execution code.");
+            }
+            execution = code;
+        }
     }
 
     public async Task<ProxyOperationDto?> GetAsync(Guid id, CancellationToken cancellationToken)

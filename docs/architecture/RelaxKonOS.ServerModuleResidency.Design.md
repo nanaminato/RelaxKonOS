@@ -469,6 +469,8 @@ Proxy 管理队列保留原工作租约至实际清理和终态落盘。调用�
 
 已授权的订阅响应体由独立可回收代次读入、解码和转换，流清理完成后卸载。真实分段响应与 Mihomo 转发在隔离 Linux 联验，弱引用回收由本地 Release 验证。Proxy 整体仍 resident。见[订阅响应体执行边界](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅响应体的可回收执行边界)。
 
+排队订阅刷新、激活和批次共享原持久调度与发布恢复。新操作持有一个可回收执行代次至终态或待核验责任落盘，Host 继续独占发布权威和安全 owner。见[订阅后台执行图](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅后台执行图的可回收交接)。
+
 完整认证 Server 的未激活订阅刷新已在真实受管 Mihomo 环境联验。下载在途持有工作租约，转换代次卸载后原档案与成功回执落盘。重启同键读取原结果，不重复下载。见[完整认证订阅队列](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-真实受管-mihomo-的完整认证订阅队列)。
 
 单条活动订阅刷新用同一 operationId 贯穿队列、Core 发布和原生回执。原发布权威确认后，队列用原证据补写终态并持有工作租约至落盘。Linux 验证强制终止后重启与存活 Server 的原生回执断线均保持原刷新 ID 和真实转发。缺少证据仍保留责任。Proxy 整体继续 resident。见[活动订阅终态恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅刷新恢复原队列终态)。

@@ -131,7 +131,8 @@ internal static class ProxySubscriptionBoundaryChecks
         builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource, TestResidentBackgroundLeases>();
         builder.Services.AddSingleton<ProxySubscriptionOperations>();
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
-        builder.Services.AddScoped<IProxySubscriptionService>(_ => new Subscription(state));
+        builder.Services.AddScoped<IProxySubscriptionService>(_ => throw new NotSupportedException());
+        builder.Services.AddScoped<IProxySubscriptionActions>(_ => new Subscription(state));
         await using var app = builder.Build();
         Microsoft.AspNetCore.Builder.AuthAppBuilderExtensions.UseAuthentication(app);
         Microsoft.AspNetCore.Builder.AuthorizationAppBuilderExtensions.UseAuthorization(app);
@@ -200,7 +201,7 @@ internal static class ProxySubscriptionBoundaryChecks
             Paths = new(root); Directory.CreateDirectory(Paths.GetStateDirectory());
             var services = new ServiceCollection(); services.AddLogging(); services.AddSingleton<IProxyPlatformPaths>(Paths);
             services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); services.AddSingleton<ProxyOperationStore>(); services.AddSingleton<ProxyAuditStore>(); services.AddSingleton<ProxySubscriptionOperations>();
-            services.AddScoped<IProxySubscriptionService>(_ => new Subscription(State));
+            services.AddScoped<IProxySubscriptionActions>(_ => new Subscription(State));
             Provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         }
         public async ValueTask DisposeAsync()
@@ -221,7 +222,7 @@ internal static class ProxySubscriptionBoundaryChecks
         public TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously), Release = new(TaskCreationOptions.RunContinuationsAsynchronously),
             Disposing = new(TaskCreationOptions.RunContinuationsAsynchronously), ReleaseDisposal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
-    private sealed class Subscription : IProxySubscriptionService, IAsyncDisposable
+    private sealed class Subscription : IProxySubscriptionActions, IAsyncDisposable
     {
         private readonly State state;
         public Subscription(State state) { this.state = state; Interlocked.Increment(ref state.Created); state.Reference = new(this); }
@@ -231,14 +232,16 @@ internal static class ProxySubscriptionBoundaryChecks
             if (state.Failure == "exception") throw new IOException("Controlled subscription failure");
             return state.Failure == "domain" ? ProxyProblemCodes.SubscriptionInvalid : null;
         }
-        public Task<string?> RefreshAsync(Guid id, Guid operationId, CancellationToken ct) =>
-            Run(id == state.BatchSubscriptionId ? ProxySubscriptionOperation.RefreshAll : ProxySubscriptionOperation.Refresh, id, ct);
-        public Task<string?> ActivateAsync(Guid id, Guid operationId, CancellationToken ct) => Run(ProxySubscriptionOperation.Activate, id, ct);
-        public Task<IReadOnlyList<ProxySubscriptionDto>> ListAsync(CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<ProxySubscriptionDto>>([new(state.BatchSubscriptionId, "fixture", Guid.NewGuid(), false, null, default, default)]);
-        public Task<ProxySubscriptionDto> ImportAsync(ImportProxySubscriptionRequest request, CancellationToken ct) => throw new NotSupportedException();
-        public Task<ProxySubscriptionContentDto?> GetContentAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
-        public Task<ProxySubscriptionDownloadOptionsDto> GetDownloadOptionsAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProxySubscriptionTarget?> FindAsync(Guid id, CancellationToken ct) =>
+            Task.FromResult<ProxySubscriptionTarget?>(new(id, false, (_, _) => Task.FromResult("test-content")));
+        public Task<string?> StoreAsync(Guid profileId, string content, ProxySubscriptionRefresh? refresh, CancellationToken ct) =>
+            Run(profileId == state.BatchSubscriptionId ? ProxySubscriptionOperation.RefreshAll : ProxySubscriptionOperation.Refresh, profileId, ct);
+        public Task<string?> ActivateAsync(Guid profileId, Guid id, Guid operationId, CancellationToken ct) =>
+            Run(ProxySubscriptionOperation.Activate, id, ct);
+        public Task<IReadOnlyList<Guid>> ListIdsAsync(CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<Guid>>([state.BatchSubscriptionId]);
+        public Task<string?> PublishRefreshAsync(Guid profileId, string content, ProxySubscriptionRefresh refresh, CancellationToken ct) =>
+            throw new NotSupportedException();
         public async ValueTask DisposeAsync()
         {
             state.Disposing.TrySetResult(); await state.ReleaseDisposal.Task; Interlocked.Increment(ref state.Disposed);

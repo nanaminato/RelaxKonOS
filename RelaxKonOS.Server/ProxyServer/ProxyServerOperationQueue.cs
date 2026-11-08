@@ -50,7 +50,7 @@ public sealed class ProxyServerOperationQueue(ProxyServerStore store)
                 if (pending is not null && item is null)
                     throw new ProxyServerException("proxy_server.recovery_required");
             }
-            item ??= await operations.EnqueueIdentifiedAsync("proxy-server:" + scope, "proxy_server." + kind, async (id, _, token) =>
+            item ??= await operations.EnqueueIdentifiedAsync("proxy-server:" + scope, "proxy_server." + kind, async (id, _, _, token) =>
             {
                 try { return await action(id, token); }
                 catch (ProxyServerException ex) { return ex.Message; }

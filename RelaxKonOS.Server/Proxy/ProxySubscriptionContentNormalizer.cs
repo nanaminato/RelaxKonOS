@@ -10,6 +10,23 @@ internal static class ProxySubscriptionContentNormalizer
 
     internal static Task<ProxySubscriptionBody> ReadAsync(Stream stream, CancellationToken ct, Action<WeakReference>? observe = null) =>
         Gate.ReadAsync(stream, ct, observe);
+
+    internal static async Task<ProxySubscriptionBody> ReadOwnedBodyAsync(IProxySubscriptionNormalizer normalizer,
+        Stream stream, CancellationToken ct)
+    {
+        await using var body = stream;
+        return await ConvertAsync(normalizer, stream, ct);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static async Task<ProxySubscriptionBody> ConvertAsync(IProxySubscriptionNormalizer normalizer, Stream stream, CancellationToken ct)
+    {
+        try { return await normalizer.ReadAsync(stream, ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
+        catch (Exception) { throw new InvalidDataException("Proxy subscription conversion failed."); }
+    }
+
+    internal static ProxySubscriptionExecutionGate.Lease Acquire() => Gate.Acquire();
 }
 
 /// <summary>Bounds active and not-yet-collected conversion contexts without forcing GC.</summary>
@@ -22,46 +39,50 @@ internal sealed class ProxySubscriptionExecutionGate
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal async Task<ProxySubscriptionBody> ReadAsync(Stream stream, CancellationToken ct, Action<WeakReference>? observe = null)
     {
-        ProxyExecutionLoadContext? context = null;
+        ProxySubscriptionExecutionGate.Lease? code = null;
         try
         {
             await using var body = stream;
             ct.ThrowIfCancellationRequested();
-            var path = ProxyExecutionLoadContext.BundledAssemblyPath();
-            WeakReference code;
-            lock (_gate)
-            {
-                _code.RemoveAll(reference => !reference.IsAlive);
-                if (_code.Count >= MaxOutstandingContexts)
-                    throw new InvalidDataException("Proxy subscription code collection is pending; retry after collection or arrange host recovery.");
-                context = new ProxyExecutionLoadContext("subscription");
-                code = new WeakReference(context);
-                _code.Add(code);
-            }
-            observe?.Invoke(code);
-            return await ConvertAsync(context, path, stream, ct);
+            code = Acquire();
+            observe?.Invoke(code.Reference);
+            return await ProxySubscriptionContentNormalizer.ConvertAsync(
+                code.Create<IProxySubscriptionNormalizer>("RelaxKonOS.Server.Proxy.ProxySubscriptionNormalizer"), stream, ct);
         }
-        finally
-        {
-            context?.Unload();
-            context = null;
-        }
+        finally { code?.Dispose(); }
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static async Task<ProxySubscriptionBody> ConvertAsync(AssemblyLoadContext context, string path, Stream stream, CancellationToken ct)
+    internal Lease Acquire()
     {
-        try
+        var path = ProxyExecutionLoadContext.BundledAssemblyPath();
+        lock (_gate)
         {
-            var type = context.LoadFromAssemblyPath(path).GetType("RelaxKonOS.Server.Proxy.ProxySubscriptionNormalizer", true)!;
-            return await ((IProxySubscriptionNormalizer)Activator.CreateInstance(type)!).ReadAsync(stream, ct);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
-        catch (Exception)
-        {
-            // Do not leak a private exception/stack through a root operation record or logging pipeline.
-            throw new InvalidDataException("Proxy subscription conversion failed.");
+            _code.RemoveAll(reference => !reference.IsAlive);
+            if (_code.Count >= MaxOutstandingContexts)
+                throw new InvalidDataException("Proxy subscription code collection is pending; retry after collection or arrange host recovery.");
+            var context = new ProxyExecutionLoadContext("subscription");
+            var reference = new WeakReference(context);
+            _code.Add(reference);
+            return new Lease(context, path, reference);
         }
     }
 
+    internal sealed class Lease(ProxyExecutionLoadContext context, string path, WeakReference reference) : IDisposable
+    {
+        private AssemblyLoadContext? owner = context;
+        internal WeakReference Reference => reference;
+
+        internal T Create<T>(string name, params object[] args)
+        {
+            try
+            {
+                var code = owner ?? throw new ObjectDisposedException(nameof(Lease));
+                var type = code.LoadFromAssemblyPath(path).GetType(name, throwOnError: true)!;
+                return (T)Activator.CreateInstance(type, args)!;
+            }
+            catch (Exception) { throw new InvalidDataException("Proxy subscription execution could not be activated."); }
+        }
+
+        public void Dispose() => Interlocked.Exchange(ref owner, null)?.Unload();
+    }
 }

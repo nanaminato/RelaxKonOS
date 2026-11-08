@@ -11,8 +11,6 @@ public interface IProxySubscriptionService
 {
     Task<IReadOnlyList<ProxySubscriptionDto>> ListAsync(CancellationToken cancellationToken);
     Task<ProxySubscriptionDto> ImportAsync(ImportProxySubscriptionRequest request, CancellationToken cancellationToken);
-    Task<string?> RefreshAsync(Guid subscriptionId, Guid operationId, CancellationToken cancellationToken);
-    Task<string?> ActivateAsync(Guid subscriptionId, Guid operationId, CancellationToken cancellationToken);
     Task<ProxySubscriptionContentDto?> GetContentAsync(Guid subscriptionId, CancellationToken cancellationToken);
     Task<ProxySubscriptionDownloadOptionsDto> GetDownloadOptionsAsync(CancellationToken cancellationToken);
 }
@@ -44,31 +42,6 @@ public sealed class ProxySubscriptionService(
         }
     }
 
-    public async Task<string?> RefreshAsync(Guid subscriptionId, Guid operationId, CancellationToken cancellationToken)
-    {
-        var record = await subscriptions.GetAsync(subscriptionId, cancellationToken);
-        if (record is null) return ProxyProblemCodes.SubscriptionInvalid;
-        var source = await downloader.DownloadAsync(record.Url, record.DownloadRoute, cancellationToken);
-        var retrievedAt = DateTimeOffset.UtcNow;
-        if (!record.Subscription.IsActive)
-            return await configurations.StoreAsync(record.Subscription.ProfileId, source.Content, cancellationToken,
-                new(subscriptionId, operationId, retrievedAt));
-        var problem = await configurations.StoreAsync(record.Subscription.ProfileId, source.Content, cancellationToken);
-        if (!string.IsNullOrEmpty(problem)) return problem;
-        return await configurations.ActivateStoredAsync(record.Subscription.ProfileId, cancellationToken,
-            new(operationId, new(subscriptionId, retrievedAt), source.Content));
-    }
-
-    public async Task<string?> ActivateAsync(Guid subscriptionId, Guid operationId, CancellationToken cancellationToken)
-    {
-        var record = await subscriptions.GetAsync(subscriptionId, cancellationToken);
-        if (record is null) return ProxyProblemCodes.SubscriptionInvalid;
-        var problem = await configurations.ActivateStoredAsync(record.Subscription.ProfileId, cancellationToken,
-            activation: new(operationId, subscriptionId));
-        if (!string.IsNullOrEmpty(problem)) return problem;
-        return null;
-    }
-
     public async Task<ProxySubscriptionContentDto?> GetContentAsync(Guid subscriptionId, CancellationToken cancellationToken)
     {
         var record = await subscriptions.GetAsync(subscriptionId, cancellationToken);
@@ -91,9 +64,36 @@ public sealed class ProxySubscriptionService(
     }
 }
 
+internal sealed class ProxySubscriptionActions(IProxySubscriptionRepository subscriptions,
+    IProxyConfigurationTransactionService configurations, IProxySubscriptionDownloader downloader) : IProxySubscriptionActions
+{
+    public async Task<IReadOnlyList<Guid>> ListIdsAsync(CancellationToken ct) =>
+        (await subscriptions.ListAsync(ct)).Select(item => item.Id).ToArray();
+
+    public async Task<ProxySubscriptionTarget?> FindAsync(Guid subscriptionId, CancellationToken ct)
+    {
+        var record = await subscriptions.GetAsync(subscriptionId, ct);
+        if (record is null) return null;
+        return new(record.Subscription.ProfileId, record.Subscription.IsActive, async (normalizer, token) =>
+            (await downloader.DownloadAsync(record.Url, record.DownloadRoute, token, normalizer)).Content);
+    }
+
+    public Task<string?> StoreAsync(Guid profileId, string content, ProxySubscriptionRefresh? refresh, CancellationToken ct) =>
+        configurations.StoreAsync(profileId, content, ct, refresh is { } draft
+            ? new(draft.SubscriptionId, draft.OperationId, draft.RetrievedAt) : null);
+
+    public Task<string?> ActivateAsync(Guid profileId, Guid subscriptionId, Guid operationId, CancellationToken ct) =>
+        configurations.ActivateStoredAsync(profileId, ct, activation: new(operationId, subscriptionId));
+
+    public Task<string?> PublishRefreshAsync(Guid profileId, string content, ProxySubscriptionRefresh refresh, CancellationToken ct) =>
+        configurations.ActivateStoredAsync(profileId, ct,
+            new(refresh.OperationId, new(refresh.SubscriptionId, refresh.RetrievedAt), content));
+}
+
 public interface IProxySubscriptionDownloader
 {
-    Task<ProxySubscriptionDownload> DownloadAsync(string url, ProxySubscriptionDownloadRoute downloadRoute, CancellationToken cancellationToken);
+    Task<ProxySubscriptionDownload> DownloadAsync(string url, ProxySubscriptionDownloadRoute downloadRoute, CancellationToken cancellationToken,
+        IProxySubscriptionNormalizer? normalizer = null);
     Task<ProxySubscriptionDownloadOptionsDto> GetDownloadOptionsAsync(CancellationToken cancellationToken);
 }
 
@@ -108,7 +108,8 @@ public sealed class ProxySubscriptionDownloader(
     public Task<ProxySubscriptionDownloadOptionsDto> GetDownloadOptionsAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new ProxySubscriptionDownloadOptionsDto(ProxySubscriptionNetworkPolicy.HasSystemProxy()));
 
-    public async Task<ProxySubscriptionDownload> DownloadAsync(string url, ProxySubscriptionDownloadRoute downloadRoute, CancellationToken cancellationToken)
+    public async Task<ProxySubscriptionDownload> DownloadAsync(string url, ProxySubscriptionDownloadRoute downloadRoute, CancellationToken cancellationToken,
+        IProxySubscriptionNormalizer? normalizer = null)
     {
         var allowInsecureSources = (await settingsService.GetAsync(cancellationToken)).AllowInsecureSubscriptionSources;
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
@@ -160,7 +161,9 @@ public sealed class ProxySubscriptionDownloader(
         try
         {
             var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var body = await ProxySubscriptionContentNormalizer.ReadAsync(stream, cancellationToken);
+            var body = normalizer is null
+                ? await ProxySubscriptionContentNormalizer.ReadAsync(stream, cancellationToken)
+                : await ProxySubscriptionContentNormalizer.ReadOwnedBodyAsync(normalizer, stream, cancellationToken);
             if (body.TooLarge) throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionFetchFailed);
             if (body.Content is not { } normalized) throw new ProxySubscriptionException(ProxyProblemCodes.SubscriptionInvalid);
             logger?.LogInformation("Proxy subscription download completed. Route={Route} SourceHostHash={SourceHostHash} Bytes={Bytes} NormalizedCharacters={NormalizedCharacters}",

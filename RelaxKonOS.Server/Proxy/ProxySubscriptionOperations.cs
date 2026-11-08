@@ -2,8 +2,6 @@ using RelaxKonOS.Protocol.Proxy;
 
 namespace RelaxKonOS.Server.Proxy;
 
-public enum ProxySubscriptionOperation { RefreshAll, Refresh, Activate }
-
 /// <summary>Queues values only; accepted work owns a scope independent of the HTTP request.</summary>
 public sealed class ProxySubscriptionOperations(ProxyOperationStore operations, IServiceScopeFactory scopes)
 {
@@ -17,35 +15,42 @@ public sealed class ProxySubscriptionOperations(ProxyOperationStore operations, 
             ProxySubscriptionOperation.Activate => "subscription.activate",
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
-        return operations.EnqueueIdentifiedAsync(key, kind, (operationId, _, token) =>
-            ExecuteAsync(operation, subscriptionId, operationId, actor, kind, token), ct);
+        return operations.EnqueueIdentifiedAsync(key, kind, (operationId, _, holdExecution, token) =>
+            ProxyOperationScope.RunAsync(scopes, actor, kind, async (services, stopping) =>
+            {
+                var actions = services.GetRequiredService<IProxySubscriptionActions>();
+                var code = ProxySubscriptionContentNormalizer.Acquire();
+                holdExecution(code);
+                var executor = code.Create<IProxyQueuedSubscriptionExecutor>(
+                    "RelaxKonOS.Server.Proxy.ProxyQueuedSubscriptionExecutor", actions, new Batch(operations, actions));
+                return await RunAsync(executor, operation, subscriptionId, operationId, stopping);
+            }, token), ct);
     }
 
-    private Task<string?> ExecuteAsync(ProxySubscriptionOperation operation, Guid id, Guid operationId, string actor, string kind, CancellationToken ct) =>
-        ProxyOperationScope.RunAsync(scopes, actor, kind, (services, token) =>
-        {
-            var service = services.GetRequiredService<IProxySubscriptionService>();
-            return operation switch
-            {
-                ProxySubscriptionOperation.RefreshAll => RefreshBatchAsync(service, operationId, token),
-                ProxySubscriptionOperation.Refresh => service.RefreshAsync(id, operationId, token),
-                ProxySubscriptionOperation.Activate => service.ActivateAsync(id, operationId, token),
-                _ => throw new ArgumentOutOfRangeException(nameof(operation))
-            };
-        }, ct);
-
-    private async Task<string?> RefreshBatchAsync(IProxySubscriptionService service, Guid operationId, CancellationToken ct)
+    private static async Task<string?> RunAsync(IProxyQueuedSubscriptionExecutor executor, ProxySubscriptionOperation operation,
+        Guid subscriptionId, Guid operationId, CancellationToken ct)
     {
-        var subscriptions = await service.ListAsync(ct);
-        var plan = await operations.PlanRefreshBatchAsync(operationId, subscriptions.Select(item => item.Id), ct);
-        foreach (var step in plan)
+        try { return await executor.ExecuteAsync(operation, subscriptionId, operationId, ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
+        catch (ProxySubscriptionException error) { throw new ProxySubscriptionException(error.ProblemCode); }
+        catch (Exception) { throw new InvalidOperationException("Proxy subscription execution failed."); }
+    }
+
+    private sealed class Batch(ProxyOperationStore operations, IProxySubscriptionActions actions) : IProxySubscriptionBatch
+    {
+        public string InvalidSubscription => ProxyProblemCodes.SubscriptionInvalid;
+        public bool RequiresRecovery(string? problem) => problem == ProxyProblemCodes.RecoveryRequired;
+
+        public async Task<IReadOnlyList<ProxySubscriptionStep>> PlanAsync(Guid operationId, CancellationToken ct)
         {
-            await operations.StartRefreshStepAsync(operationId, step.OperationId);
-            var problem = await service.RefreshAsync(step.SubscriptionId, step.OperationId, ct);
-            if (problem == ProxyProblemCodes.RecoveryRequired) return problem;
-            await operations.FinishRefreshStepAsync(operationId, step.OperationId, problem);
-            if (!string.IsNullOrEmpty(problem)) return problem;
+            var ids = await actions.ListIdsAsync(ct);
+            var plan = await operations.PlanRefreshBatchAsync(operationId, ids, ct);
+            return plan.Select(step => new ProxySubscriptionStep(step.SubscriptionId, step.OperationId)).ToArray();
         }
-        return null;
+
+        public Task StartAsync(Guid operationId, Guid stepId) => operations.StartRefreshStepAsync(operationId, stepId);
+
+        public Task FinishAsync(Guid operationId, Guid stepId, string? problem) =>
+            operations.FinishRefreshStepAsync(operationId, stepId, problem);
     }
 }

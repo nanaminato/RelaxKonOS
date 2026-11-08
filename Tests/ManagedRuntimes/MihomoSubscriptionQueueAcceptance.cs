@@ -50,6 +50,7 @@ internal static class MihomoSubscriptionQueueAcceptance
             builder.WebHost.UseUrls("http://93.184.216.34:0");
             await using var origin = builder.Build();
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var bodyStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var requests = 0;
             origin.MapGet("/feed", async (HttpContext context) =>
             {
@@ -63,6 +64,7 @@ internal static class MihomoSubscriptionQueueAcceptance
                 if (request == 2)
                 {
                     await context.Response.Body.FlushAsync(context.RequestAborted);
+                    bodyStarted.TrySetResult();
                     await release.Task.WaitAsync(context.RequestAborted);
                 }
                 await context.Response.WriteAsync($"origin-{request}.example.test:443#fixture", context.RequestAborted);
@@ -70,9 +72,11 @@ internal static class MihomoSubscriptionQueueAcceptance
             await origin.StartAsync(ct);
             var endpoint = origin.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             var events = Channel.CreateUnbounded<string>();
+            var collections = Channel.CreateUnbounded<string>();
             start.Environment["Modules__Proxy__Enabled"] = "true";
             start.Environment["Identity__LinuxPamTransport"] = "helper";
             start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
+            start.Environment["RELAXKONOS_TEST_COLLECT_SUBSCRIPTION"] = "1";
             start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
             var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var key = Guid.NewGuid().ToString("N");
@@ -100,6 +104,7 @@ internal static class MihomoSubscriptionQueueAcceptance
                     subscriptionId = subscription.Id;
                     var first = await events.Reader.ReadAsync(ct);
                     await VerifyUnloadedAsync(first);
+                    await VerifyCollectedAsync(first);
                     refreshRoute = SubscriptionRoute(ProxyApiRoutes.SubscriptionRefreshPattern, subscription.Id);
                     contentRoute = SubscriptionRoute(ProxyApiRoutes.SubscriptionContentPattern, subscription.Id);
                     var initial = await client.GetFromJsonAsync<ProxySubscriptionContentDto>(contentRoute, RelaxKonOSJsonOptions.Default, ct);
@@ -108,6 +113,7 @@ internal static class MihomoSubscriptionQueueAcceptance
 
                     operation = await SubmitAsync(client, refreshRoute, key);
                     var second = await events.Reader.ReadAsync(ct);
+                    await bodyStarted.Task.WaitAsync(ct);
                     if (second == first || !second.StartsWith("load ", StringComparison.Ordinal)
                         || (await ReadOperationAsync(client, operation)).State != ProxyOperationState.Running
                         || await ReadLeasesAsync(client) != 1
@@ -116,12 +122,11 @@ internal static class MihomoSubscriptionQueueAcceptance
                     await verifyNative(ct);
                     release.TrySetResult();
                     await VerifyUnloadedAsync(second);
-                    do
-                    {
-                        terminal = await ReadOperationAsync(client, operation);
-                        if (terminal.State is not (ProxyOperationState.Queued or ProxyOperationState.Running)) break;
-                        await Task.Delay(25, ct);
-                    } while (true);
+                    terminal = await ReadOperationAsync(client, operation);
+                    if (terminal.State != ProxyOperationState.Succeeded)
+                        throw new InvalidOperationException("The subscription executor unloaded before the original terminal receipt.");
+                    await VerifyCollectedAsync(second);
+                    start.Environment.Remove("RELAXKONOS_TEST_COLLECT_SUBSCRIPTION");
                     updated = await client.GetFromJsonAsync<ProxySubscriptionContentDto>(contentRoute, RelaxKonOSJsonOptions.Default, ct)
                         ?? throw new InvalidOperationException("The refreshed draft was unavailable.");
                     if (terminal.State != ProxyOperationState.Succeeded || updated.SubscriptionId != subscription.Id
@@ -426,6 +431,16 @@ internal static class MihomoSubscriptionQueueAcceptance
             {
                 if (line.StartsWith(StartupHook.SubscriptionEventPrefix, StringComparison.Ordinal))
                     events.Writer.TryWrite(line[StartupHook.SubscriptionEventPrefix.Length..]);
+                if (line.StartsWith(StartupHook.SubscriptionCollectionPrefix, StringComparison.Ordinal))
+                    collections.Writer.TryWrite(line[StartupHook.SubscriptionCollectionPrefix.Length..]);
+            }
+
+            async Task VerifyCollectedAsync(string loaded)
+            {
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                deadline.CancelAfter(TimeSpan.FromSeconds(12));
+                if (await collections.Reader.ReadAsync(deadline.Token) != loaded[5..])
+                    throw new InvalidOperationException("The original subscription execution generation was not collected.");
             }
 
             async Task VerifyUnloadedAsync(string loaded)

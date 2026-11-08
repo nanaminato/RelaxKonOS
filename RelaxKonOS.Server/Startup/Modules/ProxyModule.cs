@@ -145,6 +145,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         {
             builder.Services.AddTransient<IProxyProfileService, ProxyProfileService>();
             builder.Services.AddScoped<IProxySubscriptionService, ProxySubscriptionService>();
+            builder.Services.AddScoped<IProxySubscriptionActions, ProxySubscriptionActions>();
             builder.Services.AddScoped<IProxyConfigurationTransactionService, ProxyConfigurationTransactionService>();
             builder.Services.AddScoped<IProxyConfigurationService, ProxyConfigurationService>();
         }
