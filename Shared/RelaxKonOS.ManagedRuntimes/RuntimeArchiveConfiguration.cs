@@ -213,6 +213,11 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
     private static bool TrySyncNetworkTransaction(RuntimeArchiveStateStore.Session session)
     {
         if (session.State!.Configuration!.Plan.NetworkIntentIdentity is null) return true;
+        return TrySyncDirectory(session);
+    }
+
+    private static bool TrySyncDirectory(RuntimeArchiveStateStore.Session session)
+    {
         try { session.SyncDirectory(); return true; }
         catch (IOException) { return false; }
     }
@@ -231,9 +236,14 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
         var state = session.State!;
         var pending = state.Configuration!;
         var receipt = new RuntimeSwitchReceipt(pending.OperationId, pending.RequestHash, pending.IdempotencyHash,
-            outcome, state.Active!.RevisionId, problem, DateTimeOffset.UtcNow, pending.Snapshot);
+            outcome, state.Active!.RevisionId, problem, DateTimeOffset.UtcNow, pending.Snapshot)
+        {
+            ConfigurationNetworkIntentIdentity = pending.Plan.NetworkIntentIdentity
+        };
         Save(session, state with { Configuration = null, Installation = state.Installation with { RecoveryRequired = false },
             Receipts = [.. state.Receipts, receipt], ActiveMihomoTun = ownership });
+        if (receipt.ConfigurationNetworkIntentIdentity is not null && !TrySyncDirectory(session))
+            return new(receipt.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
         return new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode);
     }
 

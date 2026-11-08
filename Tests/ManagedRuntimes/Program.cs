@@ -73,6 +73,13 @@ if (args is ["runtime-configuration-network-recovery-sync", "success" or "failur
     return;
 }
 
+if (args is ["runtime-configuration-network-terminal-sync", "activation" or "compensation", "none" or "terminal" or "query" or "admission"])
+{
+    await ConfigurationTransactionChecks.CheckNetworkTerminalSyncAsync(compensate: args[1] == "compensation", fault: args[2]);
+    Console.WriteLine($"PASS TUN ARCHIVE TERMINAL SYNC: {args[1]} {args[2]}");
+    return;
+}
+
 if (args is ["mihomo-removal-publication-only"])
 {
     Console.WriteLine($"Mihomo removal publication checks passed: {await MihomoRemovalPublicationChecks.RunAsync()}");

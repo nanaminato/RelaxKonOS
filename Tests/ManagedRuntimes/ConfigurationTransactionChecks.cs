@@ -29,6 +29,43 @@ internal static class ConfigurationTransactionChecks
 
     internal enum NetworkRecoverySyncFault { None, BeforeRecovery, BeforeCleanup }
 
+    internal static async Task CheckNetworkTerminalSyncAsync(bool compensate, string fault)
+    {
+        using var fixture = new Fixture();
+        var plan = fixture.Plan with { NetworkIntentIdentity = new string('e', 64) };
+        if (compensate) fixture.Adapter.Failure = "verify";
+        var terminal = new RuntimeSwitchResult(fixture.OperationId,
+            compensate ? RuntimeSwitchOutcome.Failed : RuntimeSwitchOutcome.Succeeded,
+            compensate ? "runtime.test_failure" : null);
+        var result = await fixture.Engine.ExecuteAsync(fixture.OperationId, plan, default);
+        var expected = fault == "terminal"
+            ? new RuntimeSwitchResult(fixture.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required")
+            : terminal;
+        if (result != expected)
+            throw new Exception("The original transaction must withhold its terminal response if the directory sync fails.");
+
+        var calls = fixture.Adapter.Calls.ToArray();
+        if (fault is "query" or "admission")
+        {
+            try
+            {
+                if (fault == "query") fixture.Store.Read();
+                else await fixture.Engine.ExecuteAsync(Guid.NewGuid(), plan with { IdempotencyKey = "different-key" }, default);
+                throw new Exception("An unconfirmed terminal replacement must block observation and admission.");
+            }
+            catch (RuntimePolicyException ex) when (ex.ProblemCode == "runtime.recovery_required") { }
+        }
+        var state = fixture.Store.Read()!;
+        var receipt = state.Receipts.Single();
+        if (state.Configuration is not null || receipt.OperationId != fixture.OperationId
+            || receipt.ConfigurationNetworkIntentIdentity != plan.NetworkIntentIdentity
+            || state.ConfigurationIdentity != (compensate ? plan.PreviousIdentity : plan.CandidateIdentity)
+            || (state.ActiveMihomoTun is null) != compensate
+            || await fixture.Engine.ExecuteAsync(Guid.NewGuid(), plan, default) != terminal
+            || !fixture.Adapter.Calls.SequenceEqual(calls))
+            throw new Exception("A confirmed replacement must expose the original terminal receipt without replaying native work.");
+    }
+
     internal static async Task CheckNetworkRecoverySyncAsync(NetworkRecoverySyncFault fault)
     {
         using var fixture = new Fixture();

@@ -34,6 +34,7 @@ public sealed record RuntimeSwitchReceipt(Guid OperationId, string RequestHash, 
     RuntimeServiceSnapshot? RetainedSnapshot)
 {
     public RuntimeMihomoTunOwnership? RemovedMihomoTun { get; init; }
+    public string? ConfigurationNetworkIntentIdentity { get; init; }
 }
 public sealed record RuntimePendingSwitch(Guid OperationId, string RequestHash, string IdempotencyHash,
     RuntimeChangePlan Plan, InstallationStage Stage, RuntimeStoredRevision? Previous,

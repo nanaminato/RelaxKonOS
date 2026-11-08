@@ -652,6 +652,16 @@ Windows Release ManagedRuntimes 回归通过，包含 105 项配置事务检查�
 
 **已实现但实机未验证。** 缺少新判据的历史 `PreviousRestored` 记录保持原待核验。此批注入为进程中断，整机掉电及其他 Linux 架构仍待独立验收。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 继续 resident。
 
+### 原终态替换后的目录同步
+
+**已实现且已验证。** 受管 TUN 配置事务在原回执中保留网络意图摘要。Linux Release 配置事务夹具用 `strace` 验证成功发布和补偿两个终态的主台账 `rename` 后均执行目录 `fsync`。六次分别注入 `EIO`，覆盖两个终态各自的写入返回、查询和后续变更准入。终态返回故障只提供原 ID 的待核验，查询和准入故障均拒绝继续。后续成功同步取得原终态，同键返回同一回执，适配器调用次数不变。
+
+同一 Linux Release 在专属 systemd 中通过认证 HTTP 补偿 `eeaadca64f62410fa83559b67a62dbe6` 和原发布 `470e70a45a4048dfa03c190ee2bf5fab`。补偿后恢复旧配置身份 `66edd932e23cd562d1b63187efa8e611be692b6f45616104086fdea6b50b9a72`，成功发布配置身份为 `686ecc08d6d929987ddfc2820ec8942d1b9c46877572b563e3292f76ab12beaf`。两场覆盖管理选路、真实上游 HTTP、分流 DNS、原回执和无重派。专属进程退出、cgroup 清理和宿主文件指纹核验通过。日志为 `.artifacts/mb04-tun-terminal-sync/linux.log`，归档 SHA-256 为 `6a82eca637d8248f911d8c891000f45afbdca5a6f22d96dd543c0ad046fce53d`。
+
+Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 项。发布专项验证同一原 ID 的暂缓终态响应可以由后续查询取得终态。主机缺进程级 CA 覆盖，可信下载探针跳过。日志为同目录 `windows-release.log`。
+
+**已实现但实机未验证。** 目录 `EIO` 注入限配置适配器夹具，真实 HTTP 矩阵使用未注入故障的同版制品。整机掉电、还原文件自身的掉电耐久性及其他 Linux 架构仍待独立环境。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 继续 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

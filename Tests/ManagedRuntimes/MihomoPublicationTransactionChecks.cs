@@ -53,6 +53,15 @@ internal static class MihomoPublicationTransactionChecks
         }
         using (var f = await Fixture.CreateAsync())
         {
+            f.Mode = "terminal-query";
+            var result = await f.PublishAsync();
+            Check(result is { Outcome: MihomoPublicationOutcome.Confirmed, Receipt.Outcome: RuntimeSwitchOutcome.Succeeded }
+                && result.OperationId == f.Operation && (await f.Store.ReadAsync(default)).Pending is null
+                && f.ConfigureCalls == 1 && f.RecoverCalls == 0,
+                "A nonterminal Helper response yields to the queried terminal receipt for the original operation");
+        }
+        using (var f = await Fixture.CreateAsync())
+        {
             f.Mode = "lost-response";
             try { await f.PublishAsync(); throw new Exception("Expected lost response"); } catch (IOException) { count++; }
             Check((await f.Store.ReadAsync(default)).Pending?.OperationId == f.Operation
@@ -691,6 +700,8 @@ internal static class MihomoPublicationTransactionChecks
                 return Json(new RuntimeSwitchResult(Operation, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required"));
             }
             Commit(Mode is "compensated" or "conflicting-receipt" ? RuntimeSwitchOutcome.Failed : RuntimeSwitchOutcome.Succeeded);
+            if (Mode == "terminal-query")
+                return Json(new RuntimeSwitchResult(Operation, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required"));
             if (Mode == "lost-response") throw new IOException("Simulated lost committed Helper response");
             if (Mode == "settings-drift")
             { Directory.CreateDirectory(GetStateDirectory()); await File.WriteAllTextAsync(SettingsPath, "unrelated settings"); }

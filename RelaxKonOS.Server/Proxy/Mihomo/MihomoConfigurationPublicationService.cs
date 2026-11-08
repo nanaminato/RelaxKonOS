@@ -161,6 +161,8 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
         var pending = state.Pending!;
         var plan = pending.ConfigurationPlan!;
         RequireInstance(plan, observed);
+        if (result is not null && result.OperationId != pending.OperationId)
+            throw new RuntimePolicyException("runtime.operation_id_conflict");
         if (observed.PendingOperationId == pending.OperationId)
         {
             if (result is not { Outcome: RuntimeSwitchOutcome.RecoveryRequired } || !observed.Installation.RecoveryRequired)
@@ -170,7 +172,9 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
         if (observed.PendingOperationId is not null || observed.Installation.RecoveryRequired)
             throw new RuntimePolicyException("runtime.recovery_required");
         var receipt = observed.Receipt;
-        if (receipt is not null && (receipt.OperationId != pending.OperationId || result is not null && receipt != result))
+        // A Helper can withhold its terminal response until a subsequent query confirms the same replacement.
+        if (receipt is not null && (receipt.OperationId != pending.OperationId
+            || result is { Outcome: not RuntimeSwitchOutcome.RecoveryRequired } && receipt != result))
             throw new RuntimePolicyException("runtime.operation_id_conflict");
         var files = new MihomoPublicationFiles(paths);
         if (receipt is { Outcome: RuntimeSwitchOutcome.Succeeded } && observed.ConfigurationIdentity == pending.Identity

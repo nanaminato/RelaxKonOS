@@ -31,7 +31,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
     public RuntimeArchiveState? Read()
     {
         Prepare();
-        return ReadCore();
+        return ReadConfirmed();
     }
 
     public Session Acquire()
@@ -44,8 +44,22 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
         if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         try { gate = new(path, options); }
         catch (IOException) { throw new RuntimePolicyException("runtime.instance_busy"); }
-        try { return new(this, gate, ReadCore()); }
+        try { return new(this, gate, ReadConfirmed()); }
         catch { gate.Dispose(); throw; }
+    }
+
+    private RuntimeArchiveState? ReadConfirmed()
+    {
+        var state = ReadCore();
+        // Another process can see the new name before the writer syncs it, or after its sync failed.
+        // Both observation and subsequent mutations must establish durability before using that receipt.
+        // Older receipts have passed this gate on a writer's acquisition before a newer receipt can be appended.
+        if (OperatingSystem.IsLinux() && state?.Receipts.LastOrDefault()?.ConfigurationNetworkIntentIdentity is not null)
+        {
+            try { SyncDirectory(); }
+            catch (IOException) { throw new RuntimePolicyException("runtime.recovery_required"); }
+        }
+        return state;
     }
 
     private void Prepare()
@@ -117,7 +131,10 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
             || state.Active is not null && state.ConfigurationIdentity is null
             || state.Active is not null && !state.Revisions.Any(r => Same(r, state.Active))
             || state.Receipts.Any(r => r is null || r.OperationId == Guid.Empty || !Digest(r.RequestHash) || !Digest(r.IdempotencyHash)
-                || !Enum.IsDefined(r.Outcome) || r.Outcome == RuntimeSwitchOutcome.RecoveryRequired)
+                || !Enum.IsDefined(r.Outcome) || r.Outcome == RuntimeSwitchOutcome.RecoveryRequired
+                || r.ConfigurationNetworkIntentIdentity is { } networkIntent && (!Digest(networkIntent)
+                    || installation.RuntimeId != "mihomo" || installation.Target.Os != "linux" || r.ActiveRevisionId is null
+                    || r.RemovedMihomoTun is not null))
             || state.Receipts.Select(r => r.OperationId).Distinct().Count() != state.Receipts.Length
             || state.Receipts.Select(r => r.IdempotencyHash).Distinct().Count() != state.Receipts.Length
             || !ValidTunStarts(state)
