@@ -16,28 +16,28 @@ internal interface ITrackedHostSystemProxy
 {
     bool Supported { get; }
     Task<bool> ApplyTrackedAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct);
-    Task<bool> MatchesTrackedEffectAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct);
+    Task<LinuxSystemProxyReceipt?> ObserveTrackedEffectAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct);
 }
 
 public sealed class HostSystemProxyService(IPrivilegedOperationTransport transport) : IHostSystemProxyService, ITrackedHostSystemProxy
 {
     bool ITrackedHostSystemProxy.Supported => OperatingSystem.IsLinux();
 
-    Task<bool> ITrackedHostSystemProxy.ApplyTrackedAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct) =>
-        TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyApplyTracked, operationId, settings, ct);
+    async Task<bool> ITrackedHostSystemProxy.ApplyTrackedAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct) =>
+        await TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyApplyTracked, operationId, settings, ct) is { Applied: true, Current: true };
 
-    Task<bool> ITrackedHostSystemProxy.MatchesTrackedEffectAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct) =>
+    Task<LinuxSystemProxyReceipt?> ITrackedHostSystemProxy.ObserveTrackedEffectAsync(Guid operationId, ProxySettingsDto settings, CancellationToken ct) =>
         TrackedAsync(PrivilegedOperationKind.LinuxSystemProxyReceipt, operationId, settings, ct);
 
-    private async Task<bool> TrackedAsync(PrivilegedOperationKind kind, Guid operationId, ProxySettingsDto settings, CancellationToken ct)
+    private async Task<LinuxSystemProxyReceipt?> TrackedAsync(PrivilegedOperationKind kind, Guid operationId, ProxySettingsDto settings, CancellationToken ct)
     {
         var options = settings.SystemProxy ?? ProxySystemProxyOptionsDto.Default;
-        if (!OperatingSystem.IsLinux() || settings.SystemProxyEnabled && options.UsePac) return false;
+        if (!OperatingSystem.IsLinux() || settings.SystemProxyEnabled && options.UsePac) return null;
         var result = await transport.ExecuteAsync(new(kind, OperationId: operationId,
             LinuxSystemProxy: new(settings.SystemProxyEnabled, settings.SystemProxyHost, settings.MixedPort,
                 options.UseDefaultBypass, options.BypassList)), ct);
-        return result is { Success: true, LinuxSystemProxyReceipt: { Applied: true, Current: true } receipt }
-            && receipt.OperationId == operationId;
+        return result is { Success: true, LinuxSystemProxyReceipt: { } receipt } && receipt.OperationId == operationId
+            ? receipt : null;
     }
 
     public async Task<ProxySystemProxyCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken)

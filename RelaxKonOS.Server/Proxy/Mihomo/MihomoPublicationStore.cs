@@ -22,10 +22,14 @@ public sealed record MihomoDirectReload(Guid OperationId, string? PreviousYaml, 
     MihomoProfilePublication? Profile = null, bool ProfileReloadConfirmed = false,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoSettingsPublication? ConfirmedSettings = null,
     bool TrackedHostPolicy = false, bool HostGuardSuperseded = false,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoDirectCompensation? Compensation = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoDirectCompensation? Compensation = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HostGuardDeferred = false)
 {
     [JsonIgnore]
-    internal bool CanCompensate => HostGuardSuperseded && PreviousYaml is not null;
+    internal bool CanCompensate => (HostGuardSuperseded || HostGuardDeferred) && PreviousYaml is not null;
+    [JsonIgnore]
+    internal bool RequiresSavedListener => TrackedHostPolicy && ConfirmedSettings is { Previous.SystemProxyEnabled: true } intent
+        && intent.Previous.MixedPort != intent.Candidate.MixedPort;
     [JsonIgnore]
     internal string ProblemCode => Compensation is not null ? MihomoPublicationStore.DirectCompensationPending
         : TrackedHostPolicy ? MihomoPublicationStore.DirectTrackedHostPending
@@ -151,7 +155,19 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         return SaveAsync(state with
         {
             Revision = checked(state.Revision + 1),
-            DirectReload = direct with { HostGuardSuperseded = true }
+            DirectReload = direct with { HostGuardSuperseded = true, HostGuardDeferred = false }
+        }, CancellationToken.None);
+    }
+
+    internal Task DeferTrackedHostGuardUnderGateAsync(MihomoPublicationState state)
+    {
+        if (state.DirectReload is not { RequiresSavedListener: true, HostGuardSuperseded: false } direct)
+            throw new RuntimePolicyException("runtime.publication_unconfirmed");
+        if (direct.HostGuardDeferred) return Task.CompletedTask;
+        return SaveAsync(state with
+        {
+            Revision = checked(state.Revision + 1),
+            DirectReload = direct with { HostGuardDeferred = true }
         }, CancellationToken.None);
     }
 
@@ -170,7 +186,12 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         var next = state with
         {
             Revision = checked(state.Revision + 1),
-            DirectReload = direct with { Compensation = new(direct.Compensation?.Id ?? Guid.NewGuid(), stage) }
+            DirectReload = direct with
+            {
+                HostGuardSuperseded = true,
+                HostGuardDeferred = false,
+                Compensation = new(direct.Compensation?.Id ?? Guid.NewGuid(), stage)
+            }
         };
         await SaveAsync(next, CancellationToken.None);
         return next;
@@ -529,7 +550,9 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             }
             if (direct.TrackedHostPolicy && direct.ConfirmedSettings is null || direct.HostGuardSuperseded && !direct.TrackedHostPolicy)
                 throw new RuntimePolicyException("runtime.publication_state_invalid");
-            if (direct.Compensation is { } compensation && (!direct.CanCompensate || compensation.Id == Guid.Empty
+            if (direct.HostGuardDeferred && (!direct.RequiresSavedListener || direct.HostGuardSuperseded))
+                throw new RuntimePolicyException("runtime.publication_state_invalid");
+            if (direct.Compensation is { } compensation && (!direct.HostGuardSuperseded || !direct.CanCompensate || compensation.Id == Guid.Empty
                 || compensation.Id == direct.OperationId || !Enum.IsDefined(compensation.Stage)))
                 throw new RuntimePolicyException("runtime.publication_state_invalid");
         }

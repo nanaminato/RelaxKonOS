@@ -119,6 +119,42 @@ internal static class SystemProxyChecks
         using (var fixture = new Fixture())
         {
             fixture.Host.Supported = true;
+            var saved = (await fixture.Reader.GetAsync(default)) with { SystemProxyEnabled = true };
+            await File.WriteAllBytesAsync(Path.Combine(fixture.Paths.GetStateDirectory(), "mihomo-settings.json"),
+                JsonSerializer.SerializeToUtf8Bytes(saved));
+            var changed = saved with { MixedPort = 8123 };
+            TestAssert.Assert(await fixture.Service.UpdateAsync(Request(changed), default) == ProxyProblemCodes.RecoveryRequired,
+                "The port switch must retain its original unconfirmed host receipt.");
+            var pending = (await fixture.Publication.ReadAsync(default)).DirectReload!;
+            await fixture.Publication.DeferTrackedHostGuardUnderGateAsync(await fixture.Publication.ReadAsync(default));
+            TestAssert.Assert((await fixture.Publication.ReadAsync(default)).DirectReload
+                is { HostGuardDeferred: true, HostGuardSuperseded: false }, "Deferral must preserve the original authority.");
+            fixture.Host.EffectMatches = true;
+            TestAssert.Assert(await fixture.Reconciler.ReconcileSystemProxyAsync(true, default) is null
+                && (await fixture.Publication.ReadAsync(default)).HasDirectCompletion(pending.OperationId)
+                && (await fixture.Reader.GetAsync(default)).MixedPort == changed.MixedPort && fixture.Host.Calls.Count == 0,
+                "Guard deferral must leave the original receipt eligible for read-only completion.");
+        }
+        using (var fixture = new Fixture())
+        {
+            fixture.Host.Supported = true;
+            var saved = (await fixture.Reader.GetAsync(default)) with
+            {
+                SystemProxyEnabled = true,
+                SystemProxy = ProxySystemProxyOptionsDto.Default with { GuardEnabled = true }
+            };
+            await File.WriteAllBytesAsync(Path.Combine(fixture.Paths.GetStateDirectory(), "mihomo-settings.json"),
+                JsonSerializer.SerializeToUtf8Bytes(saved));
+            TestAssert.Assert(await fixture.Service.UpdateAsync(Request(saved with { MixedPort = 8123 }), default)
+                == ProxyProblemCodes.RecoveryRequired, "The candidate receipt should still be pending.");
+            TestAssert.Assert(await fixture.Reconciler.ReconcileSystemProxyAsync(true, default) is null
+                && fixture.Host.Calls is [{ Enforce: true } call] && call.Settings == saved
+                && (await fixture.Publication.ReadAsync(default)).DirectReload is { HostGuardSuperseded: true, HostGuardDeferred: false },
+                "Without authenticated listener evidence, the guard must enforce the saved policy.");
+        }
+        using (var fixture = new Fixture())
+        {
+            fixture.Host.Supported = true;
             var current = await fixture.Reader.GetAsync(default);
             var candidate = current with { SystemProxyEnabled = true };
             TestAssert.Assert(await fixture.Service.UpdateAsync(Request(candidate with
@@ -217,10 +253,10 @@ internal static class SystemProxyChecks
             TrackedId = id;
             return Task.FromResult(false);
         }
-        public Task<bool> MatchesTrackedEffectAsync(Guid id, ProxySettingsDto settings, CancellationToken ct)
+        public Task<LinuxSystemProxyReceipt?> ObserveTrackedEffectAsync(Guid id, ProxySettingsDto settings, CancellationToken ct)
         {
             Queries++;
-            return Task.FromResult(id == TrackedId && EffectMatches);
+            return Task.FromResult<LinuxSystemProxyReceipt?>(id == TrackedId ? new(id, Applied: true, Current: EffectMatches) : null);
         }
         public ProxySystemProxyCapabilities Capabilities = new(true, false, true, true);
         public readonly List<(ProxySettingsDto Settings, bool Enforce)> Calls = [];

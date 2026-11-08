@@ -4573,6 +4573,8 @@ Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链�
 
 排队订阅刷新、激活和批量刷新在原后台工作租约内按需加载执行代码。一个批次内的响应体转换和分项调度共用该次执行，实际任务及异步清理结束、原终态或待核验责任落盘后才释放。启动恢复和同键请求继续按原队列、分项 ID 与发布或草稿证据核对。见[订阅后台执行图](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅后台执行图的可回收交接)。
 
+Linux 端口切换待核验时，guard 只有在原 Helper 应用回执与真实候选监听均得到核对后，才按已保存规则继续使用候选端口。旧监听恢复后可接续原策略。guard 的独立维护与原操作回执分开记录。见[guard 监听切换](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-系统代理-guard-监听切换)。
+
 Linux 直连监听补偿丢失应答时，再次确认原补偿可只读核对原配置摘要、认证控制器和新旧监听。证据吻合后用同一补偿 ID 完成宿主策略恢复。存在其他配置变化或候选监听仍活动时，原操作保持待核验。见[补偿效果对账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连监听补偿应答丢失的效果对账)。
 
 直连 Mihomo 档案激活与设置写入共用按需加载的执行代码。原发布检查点、系统代理归属和应用回执由 Server 保持。控制器应答丢失时，同一原操作继续等待核验，后续恢复按原 ID 读取证据。见[直连档案与设置发布执行器](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连档案与设置发布执行器)。

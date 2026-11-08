@@ -5,7 +5,7 @@ using RelaxKonOS.Server.ManagedRuntimes;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
-/// <summary>Guard execution under the existing publication authority; no settings writer or controller client.</summary>
+/// <summary>Guard execution under the existing publication authority.</summary>
 public sealed class MihomoSystemProxyReconciler(
     IProxyPlatformPaths paths,
     IProxySettingsReader settingsReader,
@@ -13,7 +13,8 @@ public sealed class MihomoSystemProxyReconciler(
     Platform.IHostSystemProxyService systemProxyService,
     MihomoPublicationStore publication,
     MihomoRuntimeService? managedRuntime = null,
-    MihomoSettingsPublicationFiles? settingsFiles = null) : IProxySystemProxyReconciler
+    MihomoSettingsPublicationFiles? settingsFiles = null,
+    Func<IMihomoControllerClient>? observeController = null) : IProxySystemProxyReconciler
 {
     public async Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken)
     {
@@ -43,6 +44,34 @@ public sealed class MihomoSystemProxyReconciler(
             var guarded = settings.SystemProxyEnabled && settings.SystemProxy?.GuardEnabled == true;
             if (!startup && !guarded) return null;
             cancellationToken.ThrowIfCancellationRequested();
+            if (state.DirectReload is { RequiresSavedListener: true } direct)
+            {
+                var intent = direct.ConfirmedSettings!;
+                if (settings != intent.Previous) return ProxyProblemCodes.RecoveryRequired;
+                var observed = observeController is null ? null : await observeController().GetListenerStateAsync(cancellationToken);
+                var readyPort = observed is { Succeeded: true, Value: { } listener } ? listener.MixedPort : 0;
+                if (!await IsListenerReadyAsync(settings, readyPort, cancellationToken)
+                    && settingsFiles is not null
+                    && (settings with { MixedPort = intent.Candidate.MixedPort, LogLevel = intent.Candidate.LogLevel }) == intent.Candidate
+                    && await IsListenerReadyAsync(intent.Candidate, readyPort, cancellationToken)
+                    && await settingsFiles.ObserveTrackedEffectAsync(direct.OperationId, intent, cancellationToken) is { Applied: true } effect)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (effect.Current)
+                    {
+                        if (unresolvedHost) await publication.DeferTrackedHostGuardUnderGateAsync(state);
+                        return ProxyProblemCodes.RecoveryRequired;
+                    }
+                    if (guarded)
+                    {
+                        // Preserve the saved host policy while the acknowledged candidate port is live.
+                        if (unresolvedHost) await publication.SupersedeTrackedHostPolicyUnderGateAsync(state);
+                        var problem = await systemProxyService.ApplyAsync(settings with { MixedPort = readyPort }, settings,
+                            enforce: true, CancellationToken.None);
+                        return problem ?? ProxyProblemCodes.RecoveryRequired;
+                    }
+                }
+            }
             // From this point a distinct safety write can alter the observed host policy.
             // Its effects must never be used later to settle the original transaction.
             if (unresolvedHost) await publication.SupersedeTrackedHostPolicyUnderGateAsync(state);
@@ -55,4 +84,6 @@ public sealed class MihomoSystemProxyReconciler(
         finally { publication.Gate.Release(); }
     }
 
+    private static async Task<bool> IsListenerReadyAsync(ProxySettingsDto settings, int observedPort, CancellationToken ct) =>
+        observedPort == settings.MixedPort && await MihomoListenerProbe.ObserveAsync(settings, ct, requireSocks: true) == true;
 }

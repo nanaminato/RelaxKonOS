@@ -59,12 +59,14 @@ internal static class ProxyRuntimeRegistration
         // ------------------------------------------------------------------ settings and system proxy
         // Shared by two Core consumers: the installation bootstrap selects material from these
         // settings, and DockerProxyResolver derives the managed outbound proxy endpoint from them.
-        // Observation and guard reconciliation do not depend on the settings writer/controller graph.
+        // Only a pending listener switch needs the guard's scoped controller observation.
         // Mutation, TUN and reconciliation still serialize through the same publication store gate.
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IHostSystemProxyService, RelaxKonOS.Server.Proxy.Platform.HostSystemProxyService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsReader, RelaxKonOS.Server.Proxy.ProxySettingsReader>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.IProxySettingsWriter>(services => services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>());
+        builder.Services.AddTransient<Func<RelaxKonOS.Server.Proxy.Mihomo.IMihomoControllerClient>>(services =>
+            () => services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.IMihomoControllerClient>());
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.IProxySystemProxyReconciler, RelaxKonOS.Server.Proxy.Mihomo.MihomoSystemProxyReconciler>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IProxyTunDeviceObserver, RelaxKonOS.Server.Proxy.Platform.HostProxyTunDeviceObserver>();
         builder.Services.AddScoped<RelaxKonOS.Server.Proxy.Mihomo.MihomoTunRuntimeController>();

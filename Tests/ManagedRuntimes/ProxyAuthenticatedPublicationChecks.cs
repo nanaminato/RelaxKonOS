@@ -465,7 +465,8 @@ internal static class ProxyAuthenticatedPublicationChecks
             ("tracked-host-disable", false, ""), ("tracked-host-enable", false, ""),
             ($"tracked-host-port-{newPort}", false, ""), ($"tracked-host-port-{newPort}", true, ""),
             ($"tracked-host-port-{newPort}", true, "-reload-loss"), ($"tracked-host-port-{newPort}", true, "-reload-unapplied"),
-            ($"tracked-host-port-{newPort}", true, "-reload-unobservable"), ($"tracked-host-port-{newPort}", true, "-helper-loss")
+            ($"tracked-host-port-{newPort}", true, "-reload-unobservable"), ($"tracked-host-port-{newPort}", true, "-helper-loss"),
+            ($"tracked-host-port-{newPort}", true, "-guard-ready"), ($"tracked-host-port-{newPort}", true, "-defer-current")
         })
         {
             await guard.VerifyTrafficAsync(async (_, ct) =>
@@ -533,7 +534,14 @@ internal static class ProxyAuthenticatedPublicationChecks
                 }
                 finally { await StopAsync(child); }
 
-                if (drift)
+                var deferCurrent = fault == "-defer-current";
+                byte[]? frozenCandidate = null;
+                if (deferCurrent)
+                {
+                    frozenCandidate = await File.ReadAllBytesAsync(active, ct);
+                    await File.AppendAllTextAsync(active, "\n# Private fixture drift\n", ct);
+                }
+                else if (drift)
                 {
                     var target = LinuxSystemProxyOperations.EnvironmentTarget;
                     var read = LinuxEnvironmentOperations.Execute(new(PrivilegedOperationKind.HostEnvironmentRead, EnvironmentTarget: target));
@@ -547,19 +555,22 @@ internal static class ProxyAuthenticatedPublicationChecks
                 var host = new HostSystemProxyService(transport);
                 var files = new MihomoSettingsPublicationFiles(settingsPaths, host);
                 var reopened = new MihomoPublicationStore(settingsPaths, protection);
-                var guardPass = new MihomoSystemProxyReconciler(settingsPaths, reader, secrets, host, reopened, settingsFiles: files);
+                var guardPass = new MihomoSystemProxyReconciler(settingsPaths, reader, secrets, host, reopened, settingsFiles: files,
+                    observeController: () => native);
                 var named = new MihomoRuntimeRecoveryService(reopened, null!, null!, null!, null!, settingsFiles: files);
                 var afterEffect = await File.ReadAllBytesAsync(environment, ct);
                 var afterEffectTime = File.GetLastWriteTimeUtc(environment);
-                if (await guardPass.ReconcileSystemProxyAsync(true, ct) is not null)
+                if (await guardPass.ReconcileSystemProxyAsync(true, ct) != (portDrift ? ProxyProblemCodes.RecoveryRequired : null))
                     throw new InvalidOperationException("The restarted guard did not maintain the persisted host policy.");
                 var receipt = await named.RetryAsync(id, ct);
                 var state = await reopened.ReadAsync(ct);
-                if (receipt.OperationId != id || transport.Observations != 1 || transport.GuardWrites != (drift ? 1 : 0)
+                if (receipt.OperationId != id || transport.Observations != (portDrift && !deferCurrent ? 2 : 1)
+                    || transport.GuardWrites != (drift && !deferCurrent ? 1 : 0)
                     || Volatile.Read(ref nativeWrites) != priorWrites + 1 || guard.RuntimePid != pid
                     || (drift
-                        ? receipt.Outcome != RuntimeSwitchOutcome.RecoveryRequired || state.DirectReload?.HostGuardSuperseded != true
-                            || await reader.GetAsync(ct) != prior || ReadEnvironment("http_proxy") != priorEndpoint
+                        ? receipt.Outcome != RuntimeSwitchOutcome.RecoveryRequired || state.DirectReload is null
+                            || state.DirectReload.HostGuardSuperseded != !deferCurrent || state.DirectReload.HostGuardDeferred != deferCurrent
+                            || await reader.GetAsync(ct) != prior || ReadEnvironment("http_proxy") != (portDrift ? expectedEndpoint : priorEndpoint)
                         : receipt.Outcome != RuntimeSwitchOutcome.Succeeded || state.DirectReload is not null
                             || await reader.GetAsync(ct) != candidate || !(await File.ReadAllBytesAsync(environment, ct)).SequenceEqual(afterEffect)
                             || File.GetLastWriteTimeUtc(environment) != afterEffectTime))
@@ -569,13 +580,52 @@ internal static class ProxyAuthenticatedPublicationChecks
                     await VerifyProxyListenerAsync(candidate.MixedPort, ct);
                     if (await CanConnectToProxyAsync(prior.MixedPort, ct))
                         throw new InvalidOperationException("Mihomo still accepted new connections on the old listener after the port changed.");
-                    if (drift)
-                        Console.WriteLine($"OBSERVED MIHOMO GUARD PORT GAP: original {id}, guard selected the old closed listener while the candidate listener forwarded");
+                    if (portDrift)
+                    {
+                        var guardedEffect = await File.ReadAllBytesAsync(environment, ct);
+                        var guardedTime = File.GetLastWriteTimeUtc(environment);
+                        var revision = state.Revision;
+                        var reloadedGuardStore = new MihomoPublicationStore(settingsPaths, protection);
+                        var restartedGuard = new MihomoSystemProxyReconciler(settingsPaths, reader, secrets, host, reloadedGuardStore,
+                            settingsFiles: files, observeController: () => native);
+                        if (await restartedGuard.ReconcileSystemProxyAsync(true, ct) != ProxyProblemCodes.RecoveryRequired
+                            || (await reloadedGuardStore.ReadAsync(ct)).Revision != revision || transport.GuardWrites != (deferCurrent ? 0 : 1)
+                            || !(await File.ReadAllBytesAsync(environment, ct)).SequenceEqual(guardedEffect)
+                            || File.GetLastWriteTimeUtc(environment) != guardedTime || ReadEnvironment("no_proxy") != originalBypass)
+                            throw new InvalidOperationException("Restarted guard changed the deferred host policy or its checkpoint.");
+                        Console.WriteLine($"PASS MIHOMO GUARD PORT DEFERRED: original {id}, forwarding candidate, {transport.GuardWrites} distinct guard writes");
+                    }
                 }
                 else if (name is "tracked-host-enable" or "tracked-host-disable")
                     await VerifyProxyListenerAsync(candidate.MixedPort, ct);
                 Console.WriteLine($"PASS MIHOMO TRACKED HOST SETTINGS: {caseName}, original {id}, {receipt.Outcome}, one original Helper mutation, {transport.GuardWrites} separate guard calls");
-                if (portDrift)
+                if (deferCurrent)
+                {
+                    await File.WriteAllBytesAsync(active, frozenCandidate!, ct);
+                    if (await guardPass.ReconcileSystemProxyAsync(true, ct) is not null || transport.GuardWrites != 0
+                        || (await named.RetryAsync(id, ct)).Outcome != RuntimeSwitchOutcome.Succeeded
+                        || ReadEnvironment("http_proxy") != expectedEndpoint)
+                        throw new InvalidOperationException("Deferral invalidated the original tracked receipt.");
+                    Console.WriteLine($"PASS MIHOMO GUARD ORIGINAL RECEIPT: original {id}, no host replay");
+                    await File.WriteAllBytesAsync(active, original, ct);
+                    if (await native.ReloadAsync(ct) is not null
+                        || await cleanupHost.ApplyAsync(prior, candidate, enforce: true, ct) is not null)
+                        throw new InvalidOperationException("Could not restore the disposable proxy fixture.");
+                }
+                else if (fault == "-guard-ready")
+                {
+                    await File.WriteAllBytesAsync(active, original, ct);
+                    if (await native.ReloadAsync(ct) is not null)
+                        throw new InvalidOperationException("Could not establish the restored private listener.");
+                    await VerifyProxyListenerAsync(prior.MixedPort, ct);
+                    if (await guardPass.ReconcileSystemProxyAsync(true, ct) is not null || transport.GuardWrites != 2
+                        || (await reopened.ReadAsync(ct)).DirectReload is not { HostGuardDeferred: false, HostGuardSuperseded: true }
+                        || (await named.RetryAsync(id, ct)).Outcome != RuntimeSwitchOutcome.RecoveryRequired
+                        || ReadEnvironment("http_proxy") != priorEndpoint)
+                        throw new InvalidOperationException("The guard did not resume the saved policy with a separate authority.");
+                    Console.WriteLine($"PASS MIHOMO GUARD PORT READY: original {id}, one distinct guard write, original still pending");
+                }
+                else if (portDrift)
                 {
                     await using var compensationRelay = new ReplyRelay("/run/rk-settings-compensate.sock", socket, ct,
                         (kind, _) => fault == "-helper-loss" && kind == "LinuxSystemProxyApplyTracked");
@@ -645,6 +695,14 @@ internal static class ProxyAuthenticatedPublicationChecks
                         || recovery.Applies > 0 && recovery.AppliedId != compensationId
                         || !(await File.ReadAllBytesAsync(active, ct)).SequenceEqual(baselineYaml))
                         throw new InvalidOperationException($"Compensation {caseName} returned {replay.Outcome} with {recovery.Applies} Helper applies, or lost the original evidence.");
+                    if (staysPending)
+                    {
+                        if (await guardPass.ReconcileSystemProxyAsync(true, ct) != (unapplied ? ProxyProblemCodes.RecoveryRequired : null)
+                            || transport.GuardWrites != (unapplied ? 1 : 2)
+                            || ReadEnvironment("http_proxy") != (unapplied ? expectedEndpoint : priorEndpoint)
+                            || (await named.RetryAsync(id, ct)) != originalReceipt)
+                            throw new InvalidOperationException("Guard maintenance claimed the pending compensation or chose an unready endpoint.");
+                    }
                     if (unapplied)
                     {
                         await VerifyProxyListenerAsync(candidate.MixedPort, ct);
@@ -662,6 +720,8 @@ internal static class ProxyAuthenticatedPublicationChecks
                         if (await native.ReloadAsync(ct) is not null)
                             throw new InvalidOperationException("Could not restore the private baseline configuration.");
                     }
+                    if (staysPending && await cleanupHost.ApplyAsync(prior, prior, enforce: true, ct) is not null)
+                        throw new InvalidOperationException("Could not restore the private host policy after the pending case.");
                 }
                 else
                 {

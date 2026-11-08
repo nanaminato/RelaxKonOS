@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Proxy.Platform;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
@@ -106,9 +107,12 @@ public sealed class MihomoSettingsPublicationFiles(IProxyPlatformPaths paths, IH
         systemProxy is ITrackedHostSystemProxy { Supported: true } tracked
             ? tracked.ApplyTrackedAsync(id, intent.Candidate, ct) : Task.FromResult(false);
 
-    internal Task<bool> MatchesTrackedEffectAsync(Guid id, MihomoSettingsPublication intent, CancellationToken ct) =>
+    internal async Task<bool> MatchesTrackedEffectAsync(Guid id, MihomoSettingsPublication intent, CancellationToken ct) =>
+        await ObserveTrackedEffectAsync(id, intent, ct) is { Applied: true, Current: true };
+
+    internal Task<LinuxSystemProxyReceipt?> ObserveTrackedEffectAsync(Guid id, MihomoSettingsPublication intent, CancellationToken ct) =>
         systemProxy is ITrackedHostSystemProxy { Supported: true } tracked
-            ? tracked.MatchesTrackedEffectAsync(id, intent.Candidate, ct) : Task.FromResult(false);
+            ? tracked.ObserveTrackedEffectAsync(id, intent.Candidate, ct) : Task.FromResult<LinuxSystemProxyReceipt?>(null);
 
     internal static bool HasSameHostProxyPolicy(ProxySettingsDto previous, ProxySettingsDto candidate) =>
         !previous.SystemProxyEnabled && !candidate.SystemProxyEnabled

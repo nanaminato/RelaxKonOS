@@ -76,7 +76,7 @@ public sealed class MihomoDirectSettingsCompensationService(IProxyPlatformPaths 
 
             async Task<bool> VerifyEffectAsync(CancellationToken token) =>
                 await VerifyListenerAsync(intent.Previous, token, requireObservedEffect: observableDelta)
-                && (!observableDelta || await ObserveListenerAsync(intent.Candidate, token) == false);
+                && (!observableDelta || await MihomoListenerProbe.ObserveAsync(intent.Candidate, token) == false);
         }
         catch (RuntimePolicyException ex) { throw new RuntimeLifecycleException(ex.ProblemCode); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or ProxyControllerSecretException)
@@ -126,10 +126,13 @@ public sealed class MihomoDirectSettingsCompensationService(IProxyPlatformPaths 
         var observed = await controller.GetListenerStateAsync(ct);
         return observed is { Succeeded: true, Value: { TunEnabled: false } listener }
             && listener.MixedPort == previous.MixedPort && (!requireObservedEffect || listener.LogLevel == previous.LogLevel)
-            && await ObserveListenerAsync(previous, ct, requireSocks: requireObservedEffect) == true;
+            && await MihomoListenerProbe.ObserveAsync(previous, ct, requireSocks: requireObservedEffect) == true;
     }
+}
 
-    private static async Task<bool?> ObserveListenerAsync(ProxySettingsDto settings, CancellationToken ct, bool requireSocks = false)
+internal static class MihomoListenerProbe
+{
+    internal static async Task<bool?> ObserveAsync(ProxySettingsDto settings, CancellationToken ct, bool requireSocks = false)
     {
         var address = settings.SystemProxyEnabled ? IPAddress.Parse(settings.SystemProxyHost) : IPAddress.Loopback;
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
