@@ -26,7 +26,7 @@ def run(root, server, tests, mode):
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
-    recovery = mode in ("recovery-plan", "recovery-apply")
+    recovery = mode in ("recovery-plan", "recovery-apply", "recovery-staged")
     https = mode in ("revocation", "revocation-configured") or recovery
     base = f"{'https' if https else 'http'}://127.0.0.1:{port}"
     env = {key: value for key, value in os.environ.items() if "__" not in key}
@@ -736,7 +736,7 @@ def run(root, server, tests, mode):
                 assert served_fingerprint() == active_fingerprint
                 print(f"PASS ACME KESTREL RECOVERY PLAN: operation={signed['operationId']}; active={proof['expectedActiveVersion']}; "
                       f"issued={proof['issuedFingerprintSha256']}; authority and drift gates preserved", flush=True)
-                if mode == "recovery-apply":
+                if mode in ("recovery-apply", "recovery-staged"):
                     apply_route = plan_route.removesuffix("/kestrel-plan") + "/kestrel-recovery"
                     apply_payload = {"planToken": proof["planToken"], "confirmed": True}
                     request(apply_route, login(standard), apply_payload, expected=403, expected_problem="elevation-required")
@@ -753,6 +753,35 @@ def run(root, server, tests, mode):
 
                     def recovery_leases():
                         return request("/api/v1.0/server/modules/relaxkonos.certificates", token)["residency"]["activeLeases"]
+
+                    if mode == "recovery-staged":
+                        with sqlite3.connect(root / "identity.db") as database:
+                            database.execute("BEGIN IMMEDIATE")
+                            request(apply_route, token, apply_payload, expected=409)
+                            database.rollback()
+                        assert not checkpoint()["completed"] and served_fingerprint() == active_fingerprint
+                        wait_for(restarted, lambda: recovery_leases() == 1, "staged-recovery-lease")
+                        traffic = (root / "relay.log").read_bytes()
+                        restarted.terminate()
+                        assert restarted.wait(timeout=20) == 0
+                        with process([server], "kestrel-recovery-staged") as recovered:
+                            wait_for(recovered, healthy, "kestrel-recovery-staged")
+                            token = login()
+                            assert not checkpoint()["completed"] and served_fingerprint() == active_fingerprint
+                            assert recovery_leases() == 1 and (root / "relay.log").read_bytes() == traffic
+                            assert request(renew, token, {}, "signed-loss", 202) == signed
+                            request(renew, token, {}, "staged-recovery-new-key", 409,
+                                    expected_problem="certificate.kestrel_recovery_pending")
+                            expected = {"operation": signed, "status": "applied", "fingerprintSha256": proof["issuedFingerprintSha256"]}
+                            assert request(apply_route, token, apply_payload) == expected
+                            wait_for(recovered, lambda: recovery_leases() == 0, "completed-staged-recovery-lease")
+                            assert checkpoint()["completed"] and served_fingerprint() == proof["issuedFingerprintSha256"]
+                            assert request(apply_route, token, apply_payload) == expected
+                            assert tuple(path.read_bytes() for path in stable_paths) == stable_bytes
+                            assert (root / "relay.log").read_bytes() == traffic
+                            print(f"PASS ACME KESTREL RECOVERY STAGED: operation={signed['operationId']}; "
+                                  f"served={proof['issuedFingerprintSha256']}; restarted pending and applied explicitly", flush=True)
+                        return
 
                     with sqlite3.connect(root / "identity.db") as database, ThreadPoolExecutor(max_workers=1) as executor:
                         database.execute("BEGIN IMMEDIATE")
