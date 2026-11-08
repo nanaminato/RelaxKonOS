@@ -4543,6 +4543,8 @@ Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停
 
 系统代理 guard 与受管停用共用发布锁。若 guard 已派发，停用保留原队列及租约，等 guard 响应后继续。sing-box 到期由独立责任方排空。已在同一次 SIGTERM 验证三者的响应顺序、原生状态和重启回执。见[同次停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-与-proxy-安全责任同次停机)。
 
+停用 Proxy 管理模块的计划、应用及禁用启动都会核验已确认受管 TUN 的原发布和当前 Helper 归属。Helper 不可用、设备归属漂移或存在原生待核验执行时，计划保留 `module-recovery-blocked`，启动拒绝并给出原发布或执行 ID。已确认的运行或停止不改变原运行时所有权。见[模块停用门禁](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-模块停用门禁)。
+
 DNS 写入已生效但应答未确认时，重启可按原操作和原 resolver 身份只读确认效果。resolver 换代后相同设置及真实流量仍保留待核验，Helper 未重发写入或派发停止。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。
 
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。

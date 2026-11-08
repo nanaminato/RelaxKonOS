@@ -110,7 +110,7 @@ internal static class MihomoTunDescriptorAcceptance
         Directory.CreateDirectory(paths.GetProtectedConfigurationDirectory());
         var publications = Publications(paths);
         var previousMaterial = MihomoConfigurationPolicy.Describe(await File.ReadAllTextAsync(previousPath)).Material;
-        if (serverCase is "ipc-http-full" or "ipc-http-joint")
+        if (serverCase is "ipc-http-full" or "ipc-http-joint" or "ipc-http-admission")
         {
             await MihomoTunFullServerAcceptance.SeedAsync(root, previousMaterial, previous, serverCase == "ipc-http-joint");
             await WriteScopeAsync(scope with { AllowManagedPublication = true });

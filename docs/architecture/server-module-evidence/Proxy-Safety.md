@@ -55,6 +55,7 @@
 - [MB-04 受管 TUN 认证 HTTP 具名启停回执](#mb-04-受管-tun-认证-http-具名启停回执)
 - [MB-04 完整 Server 的受管 TUN 停机排空](#mb-04-完整-server-的受管-tun-停机排空)
 - [MB-04 受管 TUN 与 Proxy 安全责任同次停机](#mb-04-受管-tun-与-proxy-安全责任同次停机)
+- [MB-04 受管 TUN 模块停用门禁](#mb-04-受管-tun-模块停用门禁)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -640,7 +641,21 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 **已实现但实机未验证。** 其他 Linux 架构及桌面会话代理后端未参与。Windows Release 回归通过，包括 104 项配置事务检查。进程级测试 CA 缺失，可信下载探针跳过。日志为 `.artifacts/mb04-tun-marker-sync/tun-joint-windows.log`。
 
-**未实现或仍受门禁保护。** 管理模块停用及禁用启动仍需核验独立 Helper 中待核验的受管 TUN 原生归属。整模块交接前 Proxy 保持 resident。本批核对原 Mihomo 与 Server 的实际退出及 cgroup 清理。对象释放、ALC 回收、隔离内存和生产收益未测量。
+管理模块停用及禁用启动由后续[模块停用门禁](#mb-04-受管-tun-模块停用门禁)覆盖。本批核对原 Mihomo 与 Server 的实际退出及 cgroup 清理。对象释放、ALC 回收、隔离内存和生产收益未测量。
+
+## MB-04 受管 TUN 模块停用门禁
+
+**已实现且已验证。** 在 Linux x64 私有 systemd 中，完整非 root Server 使用生产 PAM/JWT 和独立 root Helper，发布实际受管 TUN。生产模块停用计划在可核验状态通过。Helper 停止后，新计划包含 `module-recovery-blocked`，应用先前可用的计划也返回 409。Helper 恢复后再次得到可用计划。改变原 TUN 设备归属标签后，停用计划再次阻断。失联和漂移期间均核对同一 Mihomo 进程、配置身份、管理选路、真实上游 HTTP 和分流 DNS。
+
+归属漂移及 Helper 失联分别使禁用启动在监听前拒绝，诊断包含原发布 ID。恢复 Helper 和原标签后，禁用启动成功，管理 TUN 路由返回 404，原进程及实际流量继续，Server 队列、Helper 台账及配置镜像字节一致。随后独立 root 操作在具名停用信号已派发时中断，Server 队列没有这笔操作。停用计划及禁用启动均报告原停止 ID，读取后原台账字节不变。恢复该进程后，原 Helper 路径用同一停止 ID 确认清理，规则删除一次，Server 未派发停止。已确认的停止态再次通过禁用启动。
+
+最终发布 `f526f4997539432988b1027afa23cc44`，仅 Helper 持有的原停止 `4a449026-99c4-48b0-8c7d-e8cecc92c247`，原 Mihomo PID 393，配置身份 `cee974ee2eab04b0a9528aefc51e2eb97a6dd1ddad049f065e4cb3ce0d52ebdd`。首轮已产生门禁记录，模块清单未将其标为待核验，修正后同时核对计划、应用和清单。日志为 `.artifacts/mb04-tun-marker-sync/tun-admission-linux-first.log`、`.artifacts/mb04-tun-marker-sync/tun-admission-linux-second.log` 和 `.artifacts/mb04-tun-marker-sync/tun-admission-linux-final.log`。
+
+最终四组 Linux 通过，覆盖停用门禁、同次停机、独立停机及原生保留数据移除。归档 SHA-256 为 `40d54216383cfe23175ea47aff7d316ecb4cdae195cce339799bacf4a9859fd4`。四组专属 cgroup 清理通过，宿主运行时、代理和 resolver 指纹一致，完整 Server 场景的账户文件指纹一致。
+
+**已实现但实机未验证。** 保留数据移除的禁用启动分支要求原移除见证和当前确证缺席。原生保留数据移除单项已覆盖，未和禁用启动联验。其他 Linux 架构未参与。Windows Release 回归通过，含 104 项配置事务，可信下载探针因缺进程级测试 CA 跳过。日志为 `.artifacts/mb04-tun-marker-sync/tun-admission-windows.log`。
+
+**未实现或仍受门禁保护。** 管理入口禁用时，受管 TUN 持续转发、Core guard 纠偏和 sing-box 到期仍待联验。整模块交接前 Proxy 保持 resident。已核对专属 Server 和原 Mihomo 进程退出及 cgroup 清理。对象释放、ALC 回收、隔离负载内存及生产收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

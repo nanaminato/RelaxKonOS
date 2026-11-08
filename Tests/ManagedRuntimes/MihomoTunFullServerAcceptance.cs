@@ -42,10 +42,12 @@ internal static class MihomoTunFullServerAcceptance
     internal static async Task RunAsync(string root, string socket, string phase)
     {
         RequirePrivateFixture(root);
-        if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart"))
+        if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
+            or "admission-managed" or "admission-disabled"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
+        var disabled = phase == "admission-disabled";
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(joint ? 75 : 45));
         var ct = budget.Token;
@@ -60,16 +62,28 @@ internal static class MihomoTunFullServerAcceptance
         await using var relay = first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-tun-reply.sock", expiryRelay?.Path ?? socket, ct,
             (operation, _) => operation == "MihomoRuntimeTunStop") : null;
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? socket, root,
-            reuse: !first, seedProxyServer: false);
+            reuse: !first && phase != "admission", seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
-        start.Environment["Modules__Proxy__Enabled"] = "true";
+        start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
+        if (phase == "admission-managed")
+        {
+            foreach (var key in start.Environment.Keys.Where(key => key.StartsWith("Modules__", StringComparison.Ordinal)).ToArray())
+                start.Environment.Remove(key);
+            start.Environment["ModuleManagement__Authority"] = "managed";
+        }
         start.Environment["Identity__LinuxPamTransport"] = "helper";
         if (joint) start.Environment["Certificate__StorageRoot"] = Path.Combine(start.WorkingDirectory, "certificate-fixture");
         start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
         start.Environment["Logging__LogLevel__Microsoft.AspNetCore"] = "Warning";
         start.Environment["Logging__LogLevel__Microsoft.EntityFrameworkCore"] = "Warning";
         var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var server = ProxyAuthenticatedPublicationChecks.Start(start, Console.Error.WriteLine, line =>
+        var startupRefusal = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var server = ProxyAuthenticatedPublicationChecks.Start(start, line =>
+        {
+            Console.Error.WriteLine(line);
+            if (line.Contains("Refusing to start with unresolved durable work", StringComparison.Ordinal))
+                startupRefusal.TrySetResult(line);
+        }, line =>
         {
             Console.WriteLine(line);
             if (line.Contains("Application is shutting down", StringComparison.Ordinal)) stopping.TrySetResult();
@@ -105,6 +119,11 @@ internal static class MihomoTunFullServerAcceptance
                 relay.ReleaseHeldResponse();
             }
             await exited;
+            if (disabled && server.ExitCode != 0 && startupRefusal.Task.IsCompletedSuccessfully)
+            {
+                await WriteMarkerAsync(root, "full-startup-refused", await startupRefusal.Task);
+                return;
+            }
             if (server.ExitCode != 0) throw new InvalidOperationException($"Full Server exited with code {server.ExitCode}.");
         }
         finally { await ProxyAuthenticatedPublicationChecks.StopAsync(server); }

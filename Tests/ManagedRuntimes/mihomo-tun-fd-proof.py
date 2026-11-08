@@ -1096,7 +1096,9 @@ def proof_http_publication(owner, ipc, previous, case):
         restarted.stdout.close()
 
 
-def proof_full_http_shutdown(ipc, joint):
+def proof_full_http_shutdown(ipc, case):
+    joint = case == 'ipc-http-joint'
+    admission = case == 'ipc-http-admission'
     assert any(line.split()[4] == '/etc' and ' - overlay ' in line
                for line in Path('/proc/self/mountinfo').read_text().splitlines())
     base = 'http://192.0.2.2:18970'
@@ -1149,8 +1151,9 @@ def proof_full_http_shutdown(ipc, joint):
         path = root / name
         return until(lambda: path.read_text() if path.exists() else None, name)
 
-    def login():
-        until(lambda: request(api + '/tun')[0] == 401, 'protected TUN listener')
+    def login(disabled=False):
+        readiness = '/api/v1.0/server/modules' if disabled else api + '/tun'
+        until(lambda: request(readiness)[0] == 401, 'protected Server listener')
         status, body = request('/api/v1.0/auth/login', data={
             'identifier': identity, 'password': password, 'clientPlatform': 'linux',
             'deviceName': 'Private TUN acceptance', 'clientVersion': '0.2.2'})
@@ -1186,6 +1189,7 @@ def proof_full_http_shutdown(ipc, joint):
 
     def launch(phase):
         (root / 'full-server-pid').unlink(missing_ok=True)
+        (root / 'full-startup-refused').unlink(missing_ok=True)
         return subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-full-server',
                                  str(root), str(ipc.socket_path), ('joint-' if joint else '') + phase])
 
@@ -1193,7 +1197,109 @@ def proof_full_http_shutdown(ipc, joint):
         return any(line.partition('=')[2].strip('"') == 'http://127.0.0.1:18881'
                    for line in environment.read_text().splitlines() if line.startswith('http_proxy='))
 
-    worker = launch('drain')
+    def verify_admission(pid, record, publication):
+        nonlocal worker, token
+        modules = '/api/v1.0/server/modules'
+        module_id = 'relaxkonos.proxy'
+        native_ledger = archive / 'state' / 'archive-state.json'
+        before = (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes())
+        alias = link()['ifalias']
+
+        def plan(blocked_by=None, managed=True):
+            status, items = request(modules, token)
+            assert status == 200, (status, items)
+            proxy = next(item for item in items if item['id'] == module_id)
+            assert proxy['effectiveEnabled'] and proxy['configurationWritable'] == managed
+            status, preview = request('/api/v1.0/server/module-plans', token, data={
+                'serviceId': proxy['serviceId'], 'expectedRevision': proxy['desiredRevision'], 'action': 'Disable',
+                'moduleIds': [module_id], 'enabledModuleIds': [item['id'] for item in items
+                                                              if item['desiredEnabled'] and item['id'] != module_id],
+                'idempotencyKey': uuid.uuid4().hex})
+            assert status == 200 and preview['restartRequired'], (status, preview)
+            blockers = {item['problemCode'] for item in preview['blockedBy']}
+            if blocked_by:
+                assert 'module-recovery-blocked' in blockers and proxy['recoveryState'] == 'required', (blockers, proxy['recoveryState'])
+                assert any(str(uuid.UUID(blocked_by)) in item for item in proxy['orphanedWork']), proxy['orphanedWork']
+            else:
+                assert not proxy['orphanedWork'] and not blockers, (proxy['orphanedWork'], blockers)
+            return preview['planId']
+
+        def terminate(server_pid):
+            os.kill(server_pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0 and not Path(f'/proc/{server_pid}').exists()
+
+        def refused(operation):
+            refusal = root / 'full-startup-refused'
+            assert worker.wait(timeout=15) == 0
+            message = refusal.read_text()
+            assert module_id in message and str(uuid.UUID(operation)) in message, message
+
+        def start(phase):
+            nonlocal worker
+            worker = launch(phase)
+            return int(marker('full-server-pid'))
+
+        terminate(pid)
+        pid = start('admission-managed')
+        token = login()
+        ready_plan = plan()
+        ipc.stop_helper()
+        plan(publication)
+        status, blocked = request(f'/api/v1.0/server/module-plans/{ready_plan}/apply', token, key='apply-outage')
+        assert status == 409 and blocked['problemCode'] == 'module-recovery-blocked', (status, blocked)
+        probe(record, 'admission-helper-outage')
+        ipc.start_helper()
+        plan()
+        ip('link', 'set', 'dev', device, 'alias', 'foreign-admission-owner')
+        plan(publication)
+        probe(record, 'admission-native-drift')
+        terminate(pid)
+        worker = launch('admission-disabled')
+        refused(publication)
+        ip('link', 'set', 'dev', device, 'alias', alias)
+        ipc.stop_helper()
+        worker = launch('admission-disabled')
+        refused(publication)
+        ipc.start_helper()
+        pid = start('admission-disabled')
+        token = login(disabled=True)
+        status, detail = request(f'{modules}/{module_id}', token)
+        assert status == 200 and not detail['effectiveEnabled'] and request(api + '/tun', token)[0] == 404
+        probe(record, 'admission-verified-disabled')
+        assert (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes()) == before
+        terminate(pid)
+
+        pid = start('restart')
+        token = login()
+        pending = uuid.uuid4()
+        native_pid = record['service'][0]
+        os.kill(native_pid, signal.SIGSTOP)
+        try:
+            interrupted = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root),
+                                          publication, f'committed-stop-interrupt:{pending}'], timeout=10)
+            assert interrupted.returncode == -signal.SIGKILL and checkpoint(record, 'state') == 'StopDispatched'
+            held = native_ledger.read_bytes()
+            plan(pending.hex, managed=False)
+            assert queue.read_bytes() == before[0] and native_ledger.read_bytes() == held
+            terminate(pid)
+            worker = launch('admission-disabled')
+            refused(pending.hex)
+            assert native_ledger.read_bytes() == held and service_identity() == record['service']
+        finally:
+            os.kill(native_pid, signal.SIGCONT)
+        done = stop_native(publication, pending)
+        assert done.returncode == 0 and helper_result(done)['success']
+        assert not Path(f'/proc/{native_pid}').exists() and network_baseline() == record['baseline']
+        assert queue.read_bytes() == before[0] and mirror.read_bytes() == before[2]
+        pid = start('admission-disabled')
+        token = login(disabled=True)
+        terminate(pid)
+        assert 'operation=MihomoRuntimeTunStop ' not in ipc.log.read_text()
+        assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+        print(f'PASS TUN MODULE DEACTIVATION: publication={publication}; root-only-stop={pending}; '
+              f'configuration={record["credential"]}; original PID={native_pid}; outage and drift preserved original ownership')
+
+    worker = launch('admission' if admission else 'drain')
     first_worker = worker
     try:
         pid = int(marker('full-server-pid'))
@@ -1220,6 +1326,9 @@ with sqlite3.connect(sys.argv[1]) as database:
         prepare(published_effect['InterfaceIndex'], ipc.helper.pid)
         record = json.loads(journal.read_bytes())
         probe(record, 'jwt-before-shutdown')
+        if admission:
+            verify_admission(pid, record, publication)
+            return
         if joint:
             expiry = marker('full-expiry-response-held')
             pending_expiry = expiry_ledger.read_bytes()
@@ -1327,7 +1436,7 @@ def proof():
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
-    http_case = case in ('ipc-http-commit', 'ipc-http-pending', 'ipc-http-action', 'ipc-http-full', 'ipc-http-joint')
+    http_case = case in ('ipc-http-commit', 'ipc-http-pending', 'ipc-http-action', 'ipc-http-full', 'ipc-http-joint', 'ipc-http-admission')
     if http_case:
         ip('netns', 'add', 'rk-http-client')
         ip('link', 'set', 'rk-peer', 'netns', 'rk-http-client')
@@ -1405,8 +1514,8 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-joint'):
-                proof_full_http_shutdown(ipc, case == 'ipc-http-joint')
+            if case in ('ipc-http-full', 'ipc-http-joint', 'ipc-http-admission'):
+                proof_full_http_shutdown(ipc, case)
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,
                                      stdout=subprocess.PIPE, text=True)

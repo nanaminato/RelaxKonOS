@@ -1,7 +1,9 @@
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.GatewayProxy;
+using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Proxy.Platform;
@@ -196,9 +198,9 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         try
         {
             var state = await store.ReadAsync(cancellationToken);
-            if (state.DirectReload is { } direct)
+            if (!recoverConfiguration && state.DirectReload is { } direct)
                 // Core must still start its disk reconciliation, guard and TUN safety workers.
-                return recoverConfiguration ? [] : [new(Id, $"Mihomo direct reload {direct.OperationId} requires verification before deactivation.")];
+                return [new(Id, $"Mihomo direct reload {direct.OperationId} requires verification before deactivation.")];
             if (recoverConfiguration && state.Pending is { ConfigurationPlan: not null } accepted)
             {
                 try
@@ -214,13 +216,14 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
                 }
                 state = await store.ReadAsync(cancellationToken);
             }
-            return state.Pending is { } pending
-                ?
-                [
+            if (state.Pending is { } pending)
+                return [
                     new(Id, $"the mihomo runtime publication for operation {pending.OperationId} is unresolved; "
                         + "Core retains recovery ownership; reconcile the durable publication before deactivation."),
-                ]
-                : [];
+                ];
+            if (state.Published?.NetworkTransitionRequired == true)
+                return await InspectManagedTunAsync(services, store, state, cancellationToken);
+            return [];
         }
         catch (Exception exception) when (exception is RelaxKonOS.ManagedRuntimes.RuntimePolicyException
                                               or IOException or UnauthorizedAccessException)
@@ -233,6 +236,50 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
                     + "an unknown authority is not the same as no work to do."),
             ];
         }
+    }
+
+    private async Task<IReadOnlyList<ServerModuleOrphanedWork>> InspectManagedTunAsync(IServiceProvider services,
+        MihomoPublicationStore store, MihomoPublicationState state, CancellationToken ct)
+    {
+        var publication = state.LastOperationId!.Value;
+        var unverified = new ServerModuleOrphanedWork(Id,
+            $"Managed Mihomo TUN publication {publication:D} cannot be verified; original Helper ownership is retained.",
+            RecoveryRequired: true);
+        if (!await store.Gate.WaitAsync(0, ct)) return [unverified];
+        try
+        {
+            if ((await store.ReadAsync(ct)).Revision != state.Revision) return [unverified];
+            if (services.GetService<MihomoRuntimeService>() is not { } runtime) return [unverified];
+            var observed = await runtime.QueryHelperAsync(ct, publication);
+            if (observed.PendingOperationId is { } pending)
+                return [new(Id, $"Managed Mihomo TUN operation {pending:D} is unresolved; original Helper ownership is retained.",
+                    RecoveryRequired: true)];
+            if (observed.Installation.RuntimeId != "mihomo" || observed.Installation.RecoveryRequired || observed.ProblemCode is not null
+                || observed.ConfigurationIdentity != state.Identity
+                || await new MihomoPublicationFiles(services.GetRequiredService<IProxyPlatformPaths>()).IdentityAsync(ct) != state.Identity)
+                return [unverified];
+            if (observed.Installation.Ownership == RuntimeOwnership.Managed
+                && observed.MihomoTunPublicationId == publication && observed.MihomoTunRunning.HasValue
+                && observed.ActiveRevisionId is not null && observed.CommitWitness is { } proof
+                && proof.OperationId == publication && proof.ActiveRevisionId == observed.ActiveRevisionId
+                && proof.ConfigurationIdentity == state.Identity)
+                return [];
+
+            // A keep-data removal retains the descriptor YAML and the original publication ID.
+            if (observed.Installation.Ownership == RuntimeOwnership.Absent && state.LastRemoval is { Confirmed: true } removal)
+            {
+                var removed = await runtime.QueryHelperAsync(ct, removal.OperationId);
+                if (removed.Installation.RuntimeId == "mihomo" && removed.Installation.Ownership == RuntimeOwnership.Absent
+                    && removed.ConfigurationIdentity == state.Identity
+                    && removed.MihomoTunPublicationId is null && RuntimeCommitWitnessRules.Matches(removed.CommitWitness, removed))
+                    return [];
+            }
+            return [unverified];
+        }
+        catch (Exception error) when (error is RuntimeLifecycleException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException
+            or IOException or UnauthorizedAccessException)
+        { return [unverified]; }
+        finally { store.Gate.Release(); }
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ServerModuleContext context)
