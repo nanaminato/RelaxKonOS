@@ -175,6 +175,9 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
                     || restored.BootEnabled != before.BootEnabled) throw new RuntimePolicyException("runtime.compensation_health_failed");
                 Save(session, session.State with { ConfigurationIdentity = pending.Plan.PreviousIdentity,
                     Configuration = pending with { PreviousRestored = true } });
+                // Cleanup may discard temporary restoration material. Persist the verified checkpoint first.
+                if (!TrySyncNetworkTransaction(session))
+                    return new(pending.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
             }
             await adapter.CleanupPreparationAsync(session.State!.Configuration!, CancellationToken.None);
             return Complete(session, outcome, problem);

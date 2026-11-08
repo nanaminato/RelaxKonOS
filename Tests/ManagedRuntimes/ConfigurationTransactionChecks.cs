@@ -27,7 +27,9 @@ internal static class ConfigurationTransactionChecks
             throw new Exception("The synchronized archive transaction must activate and confirm the original TUN operation.");
     }
 
-    internal static async Task CheckNetworkRecoverySyncAsync(bool syncFailed)
+    internal enum NetworkRecoverySyncFault { None, BeforeRecovery, BeforeCleanup }
+
+    internal static async Task CheckNetworkRecoverySyncAsync(NetworkRecoverySyncFault fault)
     {
         using var fixture = new Fixture();
         var plan = fixture.Plan with { NetworkIntentIdentity = new string('e', 64) };
@@ -47,13 +49,24 @@ internal static class ConfigurationTransactionChecks
         var stateFile = Path.Combine(fixture.Root, "state", "archive-state.json");
         var before = File.ReadAllBytes(stateFile);
         var result = await fixture.Engine.RecoverAsync(original, default);
-        if (syncFailed)
+        if (fault == NetworkRecoverySyncFault.BeforeRecovery)
         {
             if (result != new RuntimeSwitchResult(original, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required")
                 || !File.ReadAllBytes(stateFile).AsSpan().SequenceEqual(before) || fixture.Adapter.Calls.Count != 0
                 || fixture.Adapter.RecoveryObservations != 0)
                 throw new Exception("A failed directory sync must retain the original recovery record without calling the adapter.");
             return;
+        }
+        if (fault == NetworkRecoverySyncFault.BeforeCleanup)
+        {
+            var pending = fixture.Store.Read()!;
+            if (result != new RuntimeSwitchResult(original, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required")
+                || pending.Configuration is not { PreviousRestored: true } checkpoint || checkpoint.OperationId != original
+                || pending.ConfigurationIdentity != plan.PreviousIdentity || pending.Receipts.Length != 0
+                || fixture.Adapter.RecoveryObservations != 2
+                || !fixture.Adapter.Calls.SequenceEqual(new[] { "stop", "authorize-restore", "restore" }))
+                throw new Exception("A failed restoration checkpoint sync must retain the original record before cleanup.");
+            result = await fixture.Engine.RecoverAsync(original, default);
         }
         var restored = fixture.Store.Read()!;
         if (result != new RuntimeSwitchResult(original, RuntimeSwitchOutcome.Interrupted, "runtime.operation_interrupted")
@@ -75,7 +88,7 @@ internal static class ConfigurationTransactionChecks
         }
 
         await CheckNetworkActivationSyncAsync(syncFailed: false);
-        await CheckNetworkRecoverySyncAsync(syncFailed: false);
+        await CheckNetworkRecoverySyncAsync(NetworkRecoverySyncFault.None);
         count += 2;
 
         using (var f = new Fixture())

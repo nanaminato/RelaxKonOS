@@ -60,9 +60,15 @@ if (args is ["runtime-configuration-network-sync", "success" or "failure"])
     return;
 }
 
-if (args is ["runtime-configuration-network-recovery-sync", "success" or "failure"])
+if (args is ["runtime-configuration-network-recovery-sync", "success" or "failure" or "cleanup-failure"])
 {
-    await ConfigurationTransactionChecks.CheckNetworkRecoverySyncAsync(syncFailed: args[1] == "failure");
+    var fault = args[1] switch
+    {
+        "failure" => ConfigurationTransactionChecks.NetworkRecoverySyncFault.BeforeRecovery,
+        "cleanup-failure" => ConfigurationTransactionChecks.NetworkRecoverySyncFault.BeforeCleanup,
+        _ => ConfigurationTransactionChecks.NetworkRecoverySyncFault.None
+    };
+    await ConfigurationTransactionChecks.CheckNetworkRecoverySyncAsync(fault);
     Console.WriteLine($"PASS TUN ARCHIVE RECOVERY SYNC: {args[1]}");
     return;
 }

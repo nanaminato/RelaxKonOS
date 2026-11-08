@@ -4571,6 +4571,8 @@ Linux Helper 先同步原见证及父目录，再替换原发布成功回执所�
 
 恢复调用也先同步原事务台账。同步失败时，Helper 返回同一操作的待核验结果，保留原记录及待执行的补偿。见[补偿前目录同步门禁](../architecture/server-module-evidence/Proxy-Safety.md#补偿前的原事务目录同步门禁)。
 
+原配置通过还原核验后，Helper 先同步已还原检查点，再清理临时材料。同步失败时原操作继续待核验。续接同一操作只完成清理和原回执。见[清理前目录同步门禁](../architecture/server-module-evidence/Proxy-Safety.md#清理前的已还原检查点同步门禁)。
+
 Helper 尚未提交且原候选仍在转发时，管理选路漂移也会阻止原补偿停止候选进程。同键保留原待核验回执。精确选路恢复后，原操作重新核验归属并补偿一次。见[原补偿门禁实机证据](../architecture/server-module-evidence/Proxy-Safety.md#管理选路漂移时拒绝原补偿派发)。
 
 Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停用。正常停机等待已受理的具名停用收到 Helper 响应、写入审计并持久化原队列终态后退出。重启仍可按原键取得原回执，再次启用沿用已确认发布。见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。
