@@ -219,49 +219,4 @@ internal sealed partial class NginxWebServerManager
         }
         finally { IntegrationGate.Release(); }
     }
-
-    private async Task<WebServerOperationResult> EnableAcmeHttp01CoreAsync(WebServerDto instance, CancellationToken cancellationToken)
-    {
-        var directory = GetSitesDirectory(instance);
-        if (directory is null) return new WebServerOperationResult("webserver.acme_integration_required");
-        await IntegrationGate.WaitAsync(cancellationToken);
-        try
-        {
-            var anchorProblem = await EnsureSiteIncludeAnchorAsync(instance, cancellationToken);
-            if (anchorProblem is not null) return new WebServerOperationResult("webserver.acme_integration_required");
-            if (IsSymbolicLink(directory)) return new WebServerOperationResult("webserver.unsafe_path");
-            if (!OperatingSystem.IsWindows()) Directory.CreateDirectory(directory);
-            var sites = await ReadSitesAsync(instance, cancellationToken);
-            if (sites.Count == 0) return new WebServerOperationResult("webserver.acme_no_managed_sites");
-
-            var marker = Path.Combine(directory, AcmeEnabledFileName);
-            if (File.Exists(marker) && !IsAcmeHttp01Enabled(directory)) return new WebServerOperationResult("webserver.ownership_conflict");
-            if (!File.Exists(marker))
-            {
-                var stage = marker + ".stage";
-                try
-                {
-                    if (!await WriteNginxFileAsync(stage, OwnershipMarker + "\nACME HTTP-01 enabled.\n", cancellationToken)
-                        || !await MoveNginxFileAsync(stage, marker, false, cancellationToken)) return new("webserver.config_elevation_required");
-                }
-                finally { if (File.Exists(stage)) await DeleteNginxFileAsync(stage, CancellationToken.None); }
-            }
-
-            foreach (var site in sites)
-            {
-                var problem = await WriteSiteConfigurationAsync(instance, site, cancellationToken);
-                if (problem is not null)
-                {
-                    logger.LogWarning("Nginx ACME HTTP-01 enablement could not update site. InstanceId={InstanceId} SiteId={SiteId} Problem={Problem}", instance.Id, site.Id, problem);
-                    return new WebServerOperationResult(problem);
-                }
-            }
-            logger.LogInformation("Nginx ACME HTTP-01 routing enabled. InstanceId={InstanceId} Sites={SiteCount} ChallengeRoot={ChallengeRoot}", instance.Id, sites.Count, webRootChallenges.RootPath);
-            return new WebServerOperationResult("");
-        }
-        catch (UnauthorizedAccessException) { return new WebServerOperationResult("webserver.config_elevation_required"); }
-        catch (IOException) { return new WebServerOperationResult("webserver.configuration_changed"); }
-        finally { IntegrationGate.Release(); }
-    }
-
 }

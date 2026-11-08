@@ -223,7 +223,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 state = string.IsNullOrEmpty(result.ProblemCode) ? WebServerOperationState.Succeeded : WebServerOperationState.Failed;
             }
             catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
-            catch (Exception exception) when (exception is not (NginxProcessCleanupException or ExecutionCleanupException or ResidentWorkCompletionException))
+            catch (Exception exception) when (exception is not (NginxProcessCleanupException or NginxWebRootCleanupException
+                or ExecutionCleanupException or ResidentWorkCompletionException))
             {
                 _logger.LogError(exception, "Web-server operation failed unexpectedly. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
             }
@@ -236,8 +237,11 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             {
                 // Shutdown leaves the original active receipt for startup reconciliation.
                 if (applicationStopping.IsCancellationRequested || workStopping.IsCancellationRequested) return;
-                state = WebServerOperationState.Cancelled;
-                result = new("webserver.operation_cancelled", result.SnapshotId);
+                if (result.ProblemCode != NginxWebServerManager.UnverifiedSiteReload)
+                {
+                    state = WebServerOperationState.Cancelled;
+                    result = new("webserver.operation_cancelled", result.SnapshotId);
+                }
             }
             if (await CompleteAsync(operationId, state, result.ProblemCode, result.SnapshotId))
                 await RetireNativeReceiptsAsync([operationId], workStopping);

@@ -19,8 +19,11 @@ namespace RelaxKonOS.Server.WebServer;
 
 internal sealed partial class NginxWebServerManager
 {
+    internal const string UnverifiedSiteReload = "webserver.site_reload_unverified";
+
     private async Task<string?> WriteSiteConfigurationAsync(WebServerDto instance, WebServerSiteDto site, CancellationToken cancellationToken,
-        WebServerSiteDto? previousSite = null, Func<WebServerSiteDto, string, Guid>? recordTrackedBinding = null)
+        WebServerSiteDto? previousSite = null, Func<WebServerSiteDto, string, Guid>? recordTrackedBinding = null,
+        bool preserveUnverifiedReload = false)
     {
         var directory = GetSitesDirectory(instance);
         if (directory is null) return "webserver.site_save_failed";
@@ -61,22 +64,43 @@ internal sealed partial class NginxWebServerManager
             if (!await MoveNginxFileAsync(stage, config, overwrite: false, cancellationToken)) return "webserver.site_save_failed";
             if (reloadId is { } tracked)
                 return await ReloadTrackedWebsiteBindingAsync(instance, tracked, cancellationToken);
-            var reloadProblem = await ReloadAfterTestAsync(instance, cancellationToken);
+            var completionToken = preserveUnverifiedReload ? CancellationToken.None : cancellationToken;
+            var reloadProblem = await ReloadAfterTestAsync(instance, completionToken, preserveUnverifiedReload);
             if (reloadProblem is null)
             {
-                if (File.Exists(backup)) _ = await DeleteNginxFileAsync(backup, cancellationToken);
+                if (File.Exists(backup) && !await DeleteNginxFileAsync(backup, completionToken) && preserveUnverifiedReload)
+                    throw new NginxWebRootCleanupException();
                 return null;
             }
-            _ = await DeleteNginxFileAsync(config, cancellationToken);
-            if (File.Exists(backup)) _ = await MoveNginxFileAsync(backup, config, overwrite: false, cancellationToken);
-            _ = await ReloadAfterTestAsync(instance, cancellationToken);
+            // A lost terminal frame is not a rejection. Preserve both files for the original operation.
+            if (reloadProblem == UnverifiedSiteReload) return reloadProblem;
+            if (!await DeleteNginxFileAsync(config, completionToken) && preserveUnverifiedReload)
+                throw new NginxWebRootCleanupException();
+            if (preserveUnverifiedReload)
+            {
+                // Keep the restore point until the compensation reload is confirmed too.
+                if (!IsRelaxKonOSSiteConfig(backup)
+                    || !await WriteNginxFileAsync(stage, await File.ReadAllTextAsync(backup, completionToken), completionToken)
+                    || !await MoveNginxFileAsync(stage, config, overwrite: false, completionToken))
+                    throw new NginxWebRootCleanupException();
+            }
+            else if (File.Exists(backup))
+                _ = await MoveNginxFileAsync(backup, config, overwrite: false, completionToken);
+            var compensation = await ReloadAfterTestAsync(instance, completionToken, preserveUnverifiedReload);
+            if (compensation == UnverifiedSiteReload) return compensation;
+            if (preserveUnverifiedReload && compensation is null && !await DeleteNginxFileAsync(backup, completionToken))
+                throw new NginxWebRootCleanupException();
             return reloadProblem;
         }
         finally
         {
-            if (File.Exists(stage)) _ = await DeleteNginxFileAsync(stage, CancellationToken.None);
+            if (File.Exists(stage) && !await DeleteNginxFileAsync(stage, CancellationToken.None) && preserveUnverifiedReload)
+                throw new NginxWebRootCleanupException();
             if (reloadId is null && File.Exists(backup) && !File.Exists(config))
-                _ = await MoveNginxFileAsync(backup, config, overwrite: false, CancellationToken.None);
+            {
+                if (!await MoveNginxFileAsync(backup, config, overwrite: false, CancellationToken.None) && preserveUnverifiedReload)
+                    throw new NginxWebRootCleanupException();
+            }
         }
     }
 
@@ -135,7 +159,7 @@ internal sealed partial class NginxWebServerManager
             ? "webserver.site_upstream_unresolvable"
             : "webserver.site_config_test_failed";
 
-    private async Task<string?> ReloadAfterTestAsync(WebServerDto instance, CancellationToken cancellationToken)
+    private async Task<string?> ReloadAfterTestAsync(WebServerDto instance, CancellationToken cancellationToken, bool preserveUnverifiedReload = false)
     {
         var testProblem = await TestConfigurationAsync(instance, cancellationToken);
         if (testProblem is not null) return testProblem;
@@ -148,6 +172,8 @@ internal sealed partial class NginxWebServerManager
         if (UsesSystemPackageNginx(instance))
         {
             var helper = await RunSystemdNginxOperationAsync("reload", cancellationToken);
+            if (preserveUnverifiedReload && helper.ProblemCode == PrivilegedProblemCode.RecoveryRequired)
+                return UnverifiedSiteReload;
             if (!helper.Success) return ToWebServerProblem(helper.ProblemCode, "webserver.site_reload_failed");
             return null;
         }

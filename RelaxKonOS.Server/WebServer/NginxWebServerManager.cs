@@ -275,7 +275,7 @@ internal sealed partial class NginxWebServerManager(
             if (instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed))
                 return Rejected(instanceId, "enable-acme-http01", "webserver.acme_integration_required");
             return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, "enable-acme-http01", actor, scopes,
-                (execution, _, ct) => execution.EnableAcmeHttp01Async(instance, ct), lifetime.ApplicationStopping);
+                (execution, progress, ct) => execution.EnableAcmeHttp01Async(instance, progress, ct), lifetime.ApplicationStopping);
         }
         if (instance.ManagementMode != WebServerManagementMode.Managed)
             return Rejected(instanceId, kind, "webserver.managed_required");
