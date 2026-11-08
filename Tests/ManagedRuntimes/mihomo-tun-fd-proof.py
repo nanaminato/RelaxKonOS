@@ -1100,6 +1100,7 @@ def proof_full_http_shutdown(ipc, case):
     joint = case == 'ipc-http-joint'
     admission = case == 'ipc-http-admission'
     handoff = case == 'ipc-http-handoff'
+    retained_removal = case == 'ipc-http-retained'
     assert any(line.split()[4] == '/etc' and ' - overlay ' in line
                for line in Path('/proc/self/mountinfo').read_text().splitlines())
     base = 'http://192.0.2.2:18970'
@@ -1404,7 +1405,107 @@ def proof_full_http_shutdown(ipc, case):
         print(f'PASS TUN MODULE DEACTIVATION: publication={publication}; root-only-stop={pending}; '
               f'configuration={record["credential"]}; original PID={native_pid}; outage and drift preserved original ownership')
 
-    worker = launch('admission' if admission or handoff else 'drain')
+    def verify_retained_removal(pid, record, publication):
+        nonlocal worker, token
+        native_ledger = archive / 'state' / 'archive-state.json'
+        published_ledger = queue.with_name('mihomo-publication.protected')
+        content = root / 'full-server'
+        secret = content / 'data' / 'proxy-controller.secret'
+        retained = archive / 'retained-data.json'
+        operation = uuid.uuid4()
+
+        def run_removal(phase):
+            return subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-retained-removal',
+                                     str(root), str(ipc.socket_path), str(operation), phase], **ipc.identity)
+
+        def terminate(server_pid):
+            os.kill(server_pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0 and not Path(f'/proc/{server_pid}').exists()
+
+        def refused(expected):
+            nonlocal worker
+            worker = launch('admission-disabled')
+            assert worker.wait(timeout=15) == 0
+            message = (root / 'full-startup-refused').read_text()
+            assert 'relaxkonos.proxy' in message and str(expected) in message, message
+
+        def observe():
+            result = json.loads(checkpoint(record, f'observe-action:{operation}'))
+            assert result['installation']['ownership'] == 'Absent' and not result['pendingOperationId']
+            assert result['receipt']['outcome'] == 'Succeeded' and uuid.UUID(result['commitWitness']['operationId']) == operation
+            assert result['configurationIdentity'].lower() == record['credential']
+            # Host dependency observations include free space, independent of the removal witness.
+            result.pop('environment', None)
+            return result
+
+        def original_host_proxy():
+            return any(line.partition('=')[2].strip('"') == 'http://127.0.0.1:1234'
+                       for line in environment.read_text().splitlines() if line.startswith('http_proxy='))
+
+        until(guard_applied, 'owned host proxy')
+        stopped = submit('disable', 'retained-stop')
+        until(lambda: terminal(stopped), 'original committed stop before removal')
+        assert network_baseline() == record['baseline'] and device not in devices()
+        assert not Path(f'/proc/{record["service"][0]}').exists()
+        before = (queue.read_bytes(), mirror.read_bytes(), secret.read_bytes())
+        original_network = {path: path.read_bytes() for path in (archive / 'operations' / publication).glob('tun-*.json')}
+        terminate(pid)
+        worker = run_removal('remove')
+        try:
+            held = content / 'retained-removal-held'
+            assert until(lambda: held.read_text() if held.exists() else None, 'committed Helper removal response') == operation.hex
+            worker.kill()
+            assert worker.wait(timeout=5) == -signal.SIGKILL
+        finally:
+            if worker.poll() is None:
+                worker.kill()
+                worker.wait(timeout=5)
+        assert service('show', '-p', 'LoadState', '--value', unit) == 'not-found'
+        assert not (archive / 'versions').exists() and retained.exists() and config.read_bytes() == before[1]
+        assert (archive / 'data' / uuid.UUID(record['revision']).hex / 'fixture-mutable-data').exists()
+        assert guard_applied() and guard_ledger.exists()
+        original = observe()
+        uncertain = (native_ledger.read_bytes(), published_ledger.read_bytes(), retained.read_bytes())
+        ipc.stop_helper()
+        ipc.start_helper()
+        refused(operation)
+        assert (native_ledger.read_bytes(), published_ledger.read_bytes(), retained.read_bytes()) == uncertain
+        worker = run_removal('recover')
+        assert worker.wait(timeout=12) == 0
+        assert observe() == original and native_ledger.read_bytes() == uncertain[0]
+        assert published_ledger.read_bytes() != uncertain[1] and original_host_proxy() and not guard_ledger.exists()
+        assert json.loads(queue.with_name('mihomo-settings.json').read_bytes())['SystemProxyEnabled'] is False
+        confirmed = published_ledger.read_bytes()
+        mirror.write_bytes(before[1] + b'\n# isolated drift\n')
+        refused(uuid.UUID(publication))
+        assert published_ledger.read_bytes() == confirmed and native_ledger.read_bytes() == uncertain[0]
+        mirror.write_bytes(before[1])
+        ipc.stop_helper()
+        refused(uuid.UUID(publication))
+        ipc.start_helper()
+        host_policy = (environment.read_bytes(), environment.stat().st_mtime_ns)
+        worker = launch('admission-disabled')
+        pid = int(marker('full-server-pid'))
+        token = login(disabled=True)
+        until(lambda: 'operation=LinuxSystemProxyApply ' in ipc.log.read_text(), 'startup guard on retained removal')
+        status, detail = request('/api/v1.0/server/modules/relaxkonos.proxy', token)
+        assert status == 200 and not detail['effectiveEnabled'] and request(api + '/tun', token)[0] == 404
+        assert (queue.read_bytes(), mirror.read_bytes(), secret.read_bytes()) == before
+        assert observe() == original and published_ledger.read_bytes() == confirmed
+        assert native_ledger.read_bytes() == uncertain[0] and retained.read_bytes() == uncertain[2]
+        assert all(path.read_bytes() == data for path, data in original_network.items())
+        assert network_baseline() == record['baseline'] and device not in devices()
+        assert original_host_proxy() and not guard_ledger.exists()
+        assert (environment.read_bytes(), environment.stat().st_mtime_ns) == host_policy
+        assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+        audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+        assert audit.count(f'operation=MihomoRuntimeExecute id={operation} ') == 1
+        assert 'operation=MihomoRuntimeRecover ' not in audit
+        terminate(pid)
+        print(f'PASS TUN RETAINED REMOVAL DISABLED STARTUP: publication={publication}; stop={stopped}; removal={operation}; '
+              f'configuration={record["credential"]}; original PID={record["service"][0]}; no replay')
+
+    worker = launch('admission' if admission or handoff or retained_removal else 'drain')
     first_worker = worker
     try:
         pid = int(marker('full-server-pid'))
@@ -1436,6 +1537,9 @@ with sqlite3.connect(sys.argv[1]) as database:
             return
         if handoff:
             verify_handoff(pid, record, publication)
+            return
+        if retained_removal:
+            verify_retained_removal(pid, record, publication)
             return
         if joint:
             expiry = marker('full-expiry-response-held')
@@ -1612,7 +1716,7 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff'):
+            if case in ('ipc-http-full', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained'):
                 proof_full_http_shutdown(ipc, case)
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,

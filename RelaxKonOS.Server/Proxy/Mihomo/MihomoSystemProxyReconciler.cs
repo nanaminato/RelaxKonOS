@@ -23,7 +23,13 @@ public sealed class MihomoSystemProxyReconciler(
         {
             var state = await publication.ReadAsync(cancellationToken);
             if (state.Pending is not null) return ProxyProblemCodes.RecoveryRequired;
-            if (state.Published is not null) await MihomoManagedPublicationVerification.VerifyAsync(paths, controllerSecrets, managedRuntime, state, cancellationToken);
+            if (state.Published is not null)
+            {
+                var allowRetainedRemoval = state.LastRemoval is { Confirmed: true }
+                    && !(await settingsReader.GetAsync(cancellationToken)).SystemProxyEnabled;
+                await MihomoManagedPublicationVerification.VerifyAsync(paths, controllerSecrets, managedRuntime, state,
+                    cancellationToken, allowRetainedRemoval);
+            }
             var unresolvedHost = state.DirectReload is { TrackedHostPolicy: true, HostGuardSuperseded: false };
             if (unresolvedHost && settingsFiles is not null)
             {

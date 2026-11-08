@@ -269,9 +269,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
             if (observed.Installation.Ownership == RuntimeOwnership.Absent && state.LastRemoval is { Confirmed: true } removal)
             {
                 var removed = await runtime.QueryHelperAsync(ct, removal.OperationId);
-                if (removed.Installation.RuntimeId == "mihomo" && removed.Installation.Ownership == RuntimeOwnership.Absent
-                    && removed.ConfigurationIdentity == state.Identity
-                    && removed.MihomoTunPublicationId is null && RuntimeCommitWitnessRules.Matches(removed.CommitWitness, removed))
+                if (MihomoManagedPublicationVerification.MatchesRetainedRemoval(state, removal.OperationId, removed))
                     return [];
             }
             return [unverified];
