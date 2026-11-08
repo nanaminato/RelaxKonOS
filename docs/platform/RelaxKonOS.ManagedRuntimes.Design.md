@@ -53,7 +53,9 @@ Linux 在替换主台账前同步 `commits` 目录及其父目录。重用原操
 
 原检查点为 `DescriptorDispatched` 时，仍运行的候选受原阶段、进程、配置和描述符门禁约束。原接收 PID 与 broker 均已退出，且原操作尚未进入 DNS 派发时，Helper 可以凭启动发送端与规则见证、systemd 任务归零、设备与专用路由缺席及原管理选路，按原操作清理。描述符交付结果仍未知时也不重发。见[描述符派发未确认且原进程已退出](../architecture/server-module-evidence/Proxy-Safety.md#描述符派发未确认且原进程已退出)。
 
-候选分流 DNS 的三个原发送进程均成功退出并排空输出后，Helper 持久化对应 `DnsDispatched` 的发送端见证。候选退出后，`DnsDispatched` 或 `DnsApplied` 还需该见证、原系统总线及 resolver owner、原链路 DNS 和域缺席、其他 DNS 设置吻合，才可继续原规则清理。读取 DNS 设置前后均核对解析器身份。见证缺失、解析器换主或设置漂移时保留待核验。见[DNS 派发后候选已退出的原解析器核验](../architecture/server-module-evidence/Proxy-Safety.md#dns-派发后候选已退出的原解析器核验)。
+候选分流 DNS 的三个原发送进程均成功退出并排空输出后，Helper 持久化对应 `DnsDispatched` 的发送端见证。三条调用均已派发且候选退出时，原规则清理需要该见证、原系统总线及 resolver owner、原链路 DNS 和域缺席、其他 DNS 设置吻合。读取 DNS 设置前后均核对解析器身份。见证缺失、解析器换主或设置漂移时保留待核验。见[DNS 派发后候选已退出的原解析器核验](../architecture/server-module-evidence/Proxy-Safety.md#dns-派发后候选已退出的原解析器核验)。
+
+新发布逐条保存 DNS 变更的派发及发送端退出见证。原候选已退出且原解析器与网络证据相符时，连续已确认的前序调用及后续派发记录缺席，可证明部分变更已结束。已派发但缺少退出见证的调用仍保留原待核验。Helper 不补发剩余 DNS 变更。见[分流 DNS 部分变更的原证据](../architecture/server-module-evidence/Proxy-Safety.md#分流-dns-部分变更的原证据)。
 
 TUN 配置事务把网络意图摘要保留在原终态回执中。发布或补偿完成后，Helper 替换主台账并同步其目录，随后才返回终态。同步失败返回原 ID 的待核验。查询和后续写入在使用这一主台账快照前也同步目录，同步失败时阻止继续。同步恢复后沿用原回执，Server 仍核对原操作、配置身份及成功见证。见[原终态替换后的目录同步](../architecture/server-module-evidence/Proxy-Safety.md#原终态替换后的目录同步)。
 

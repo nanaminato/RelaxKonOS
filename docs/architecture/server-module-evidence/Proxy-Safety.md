@@ -734,6 +734,16 @@ Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 
 
 **未实现或待验。** DNS 发送端中途退出且无完整原见证的部分效果仍保持待核验。整机掉电和其他 Linux 架构未实测。对象释放、ALC 回收、隔离内存和生产收益未测量。Proxy 保持 resident。
 
+### 分流 DNS 部分变更的原证据
+
+**已实现且已验证。** Linux x64 私有 systemd 原操作 `2765e61e3d9245d4836ed7f8a5d9d1a3` 在原 `SetLinkDefaultRoute`、`SetLinkDomains` 已收到结果并保存发送端退出见证后中断，第三条 `SetLinkDNS` 尚无派发记录。真实候选在 broker 中断前后均转发上游 HTTP，配置和描述符身份一致。候选退出后，原 resolver `:1.1` 的链路设置消失，其余设置与原快照一致。隐藏第二条退出见证或改变外部链路 DNS 时，原待核验和规则均保留。复原证据后，Helper 只删除一次原规则，旧配置、数据、管理选路恢复，同键返回原 `Interrupted`，已还原 PID 510 保持。原 DNS 调用计数为两条。
+
+原操作 `d44d7c591d3d4011a1fec9c6033be98d` 的第二条调用实际生效，但发送端结果被扣住。候选与 broker 退出后，虽原 DNS 设置已恢复，仍返回 `runtime.network_dns_sender_unconfirmed`。原规则和原待核验保持，第三条调用未派发，前两条均未重放。
+
+同版通过全部 DNS 发送端退出 `f8f3011a6daa4ccda9e8a3eb179f221d`、认证 HTTP 补偿 `743a11a0103b4b48b528c196a4b4ad39` 和成功发布 `c80c744c409246ffacedc039de409ded`，覆盖真实上游 HTTP 和分流 DNS。五场专属 cgroup 清理及宿主共享服务指纹核验通过。日志为 `.artifacts/mb04-tun-dns-partial/linux.log`，归档 SHA-256 为 `293836872e0d2ae6ddb318cfe2f064eb6185269dd091d65e574482996e50c227`。Windows Release 全套回归通过，含配置事务 106 项和发布事务 113 项。可信下载探针因本机缺进程级 CA 覆盖跳过。
+
+**未实现或待验。** DNS 只完成部分变更且候选仍运行时，原停止派发继续受原阶段门禁约束。原发送端结果未知仍保留待核验。整机掉电及其他 Linux 架构未实测。对象释放、ALC 回收、隔离内存和生产收益未测量。Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

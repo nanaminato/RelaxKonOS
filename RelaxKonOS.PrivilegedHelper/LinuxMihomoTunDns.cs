@@ -34,14 +34,23 @@ internal sealed class LinuxMihomoTunDns(string domain, IPAddress server, uint in
         return new(bus, owner, HashOther(snapshot));
     }
 
-    internal async Task ApplyAsync(MihomoTunDnsBaseline baseline)
+    internal const int WriteCount = 3;
+
+    internal async Task ApplyAsync(MihomoTunDnsBaseline baseline, Func<int, bool, Task>? record = null)
     {
         await VerifyAsync(baseline, present: false);
         var owner = baseline.Owner;
-        await CallAsync(owner, ManagerPath, Manager, "SetLinkDefaultRoute", "ib", linkIndex, "false");
-        await CallAsync(owner, ManagerPath, Manager, "SetLinkDomains", "ia(sb)", linkIndex, "1", domain, "true");
-        await CallAsync([owner, ManagerPath, Manager, "SetLinkDNS", "ia(iay)", linkIndex, "1", "2", "4",
+        await WriteAsync(1, owner, ManagerPath, Manager, "SetLinkDefaultRoute", "ib", linkIndex, "false");
+        await WriteAsync(2, owner, ManagerPath, Manager, "SetLinkDomains", "ia(sb)", linkIndex, "1", domain, "true");
+        await WriteAsync(WriteCount, [owner, ManagerPath, Manager, "SetLinkDNS", "ia(iay)", linkIndex, "1", "2", "4",
             .. address.Select(value => value.ToString(CultureInfo.InvariantCulture))]);
+
+        async Task WriteAsync(int step, params string[] arguments)
+        {
+            if (record is not null) await record(step, false);
+            await CallAsync(arguments);
+            if (record is not null) await record(step, true);
+        }
     }
 
     internal async Task VerifyAsync(MihomoTunDnsBaseline baseline, bool present)

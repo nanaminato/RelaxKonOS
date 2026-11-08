@@ -220,7 +220,7 @@ fi
     command('/usr/bin/mount', '--bind', str(wrapper), '/usr/sbin/ip')
 
 
-def install_dns_ack_boundary(hold_reply=True):
+def install_dns_ack_boundary(hold_reply=True, hold_method='SetLinkDNS'):
     original = root / 'busctl-real'
     wrapper = root / 'busctl-wrapper'
     shutil.copy2('/usr/bin/busctl', original)
@@ -231,7 +231,7 @@ case "${{8:-}}" in
     SetLinkDefaultRoute|SetLinkDomains|SetLinkDNS)
         printf '%s\n' "$8" >> {shlex.quote(str(root / 'dns-write-attempts'))}
         "$real" "$@"
-        if [[ "$8" == SetLinkDNS && {'yes' if hold_reply else 'no'} == yes ]]; then
+        if [[ "$8" == {hold_method} && {'yes' if hold_reply else 'no'} == yes ]]; then
             touch {shlex.quote(str(root / 'dns-effect-ready'))}
             parent=$PPID
             while kill -0 "$parent" 2>/dev/null; do sleep .05; done
@@ -869,14 +869,22 @@ def proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, 
 def proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, sentinel, trace, case, baseline_dns):
     sender = operation_dir / 'dns-senders-exited.json'
     applied = case == 'dns-applied-exited'
+    partial = case in ('dns-partial-exited', 'dns-partial-inflight')
+    inflight = case == 'dns-partial-inflight'
+    prefix = operation_dir / 'dns-step-2-exited.json'
+    ready = root / 'dns-effect-ready' if inflight else prefix if partial else sender
     deadline = time.monotonic() + 12
-    while not sender.is_file() or applied and json.loads(journal.read_text())['phase'] != 'dispatching':
+    while not ready.is_file() or applied and json.loads(journal.read_text())['phase'] != 'dispatching':
         assert owner.poll() is None and time.monotonic() < deadline
         time.sleep(.05)
-    effect = json.loads(sender.read_text())
     dns_dispatch = operation_dir / 'tun-4.json'
     frozen = dns_dispatch.read_bytes()
-    assert effect == json.loads(frozen)
+    effect = json.loads(frozen)
+    if not inflight:
+        assert effect == json.loads(ready.read_text())
+    if partial:
+        assert not sender.exists() and not (operation_dir / 'dns-step-3-dispatched.json').exists()
+        assert (operation_dir / 'dns-step-2-dispatched.json').is_file() and prefix.exists() != inflight
     if not applied:
         prepare(effect['InterfaceIndex'], effect['BrokerPid'])
     record = json.loads(journal.read_text())
@@ -890,7 +898,8 @@ def proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, se
         observe_runtime(record)
         assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
                        f'http://{target}:18880/mb04-dns-exit-{phase}') == 'upstream-through-inherited-tun'
-        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
+        if not partial:
+            assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
 
     def kill_exact(pid):
         fd = os.pidfd_open(pid)
@@ -931,7 +940,12 @@ def proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, se
         time.sleep(.05)
     assert device not in devices() and not route(table) and network_baseline(table) == record['baseline']
     assert network_baseline() != record['baseline']
-    if case == 'dns-exited-owner':
+    if inflight:
+        pending('runtime.network_dns_sender_unconfirmed')
+        assert resolver_snapshot() == baseline_dns and network_baseline() != record['baseline']
+        assert not prefix.exists()
+        print(f'PASS TUN DNS PARTIAL INFLIGHT GATE: original {operation}; second command not acknowledged; held pending')
+    elif case == 'dns-exited-owner':
         service('restart', 'systemd-resolved.service')
         seed_foreign_dns()
         current = resolver_snapshot()
@@ -940,12 +954,13 @@ def proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, se
         assert resolver_snapshot() == current and network_baseline() != record['baseline']
         print(f'PASS TUN DNS EXITED OWNER GATE: original {operation}; resolver {baseline_dns[0]} -> {current[0]}; held pending')
     else:
-        hidden = sender.with_suffix('.held')
-        sender.rename(hidden)
+        required = prefix if partial else sender
+        hidden = required.with_suffix('.held')
+        required.rename(hidden)
         try:
             pending('runtime.network_dns_sender_unconfirmed')
         finally:
-            hidden.rename(sender)
+            hidden.rename(required)
         try:
             resolver('domain', 'rk-egress', '~changed.fixture.test')
             pending('runtime.network_dns_conflict')
@@ -961,7 +976,10 @@ def proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, se
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         print(f'PASS TUN DNS AFTER CANDIDATE EXIT: original {operation}; {case}; resolver {baseline_dns[0]}; '
               f'original Interrupted, one rule deletion and restored PID={restored[0]}')
-    assert (root / 'dns-write-attempts').read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains', 'SetLinkDNS']
+    expected_writes = ['SetLinkDefaultRoute', 'SetLinkDomains']
+    if not partial:
+        expected_writes.append('SetLinkDNS')
+    assert (root / 'dns-write-attempts').read_text().splitlines() == expected_writes
 
 
 def proof_committed(owner, operation, operation_dir, case):
@@ -2699,11 +2717,14 @@ def proof():
         ip('netns', 'exec', 'rk-http-client', 'ip', 'address', 'add', '192.0.2.1/24', 'dev', 'rk-peer')
     if case in ('dns-receipt', 'dns-owner', 'dns-registration', 'ipc-server-pending', 'ipc-http-pending'):
         install_dns_ack_boundary()
-    if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited'):
+    if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited'):
         install_dns_ack_boundary(hold_reply=False)
+    if case == 'dns-partial-inflight':
+        install_dns_ack_boundary(hold_method='SetLinkDomains')
     service('start', 'systemd-resolved.service')
     seed_foreign_dns()
-    baseline_dns = resolver_snapshot() if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited') else None
+    baseline_dns = resolver_snapshot() if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited',
+                                                   'dns-partial-exited', 'dns-partial-inflight') else None
     other_dns = (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress'))
     refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
     assert refused.returncode == 1 and 'runtime.network_checkpoint_conflict' in refused.stderr
@@ -2787,6 +2808,14 @@ rules:
         cut = ':signal=SIGKILL' if case == 'network-before-launch' else ':delay_enter=5s'
         worker = [tracer, '-f', '-qq', '-yy', '-P', str(checkpoint_path), '-e', f'trace={opens}',
                   '-e', f'inject={opens}:error=EIO{cut}:when=1', '-o', str(trace), *worker]
+    if case == 'dns-partial-exited':
+        tracer = shutil.which('strace')
+        assert tracer, 'The partial DNS proof requires strace'
+        trace = root / 'dns-third-dispatch-fault.trace'
+        temporary = operation_dir / f'dns-step-3-dispatched.json.{operation}.restore'
+        renames = 'rename,renameat,renameat2'
+        worker = [tracer, '-f', '-qq', '-yy', '-P', str(temporary), '-e', f'trace={renames}',
+                  '-e', f'inject={renames}:error=EIO:delay_enter=5s:when=1', '-o', str(trace), *worker]
     owner = subprocess.Popen(worker,
                              stdout=subprocess.PIPE, text=True, env=env)
     try:
@@ -2799,9 +2828,9 @@ rules:
         if case == 'descriptor-outcome-unknown':
             proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, sentinel, trace)
             return
-        if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited'):
+        if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited', 'dns-partial-inflight'):
             proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, sentinel,
-                                           None if case == 'dns-applied-exited' else trace, case, baseline_dns)
+                                           None if case in ('dns-applied-exited', 'dns-partial-inflight') else trace, case, baseline_dns)
             return
         if case.startswith('ipc-'):
             assert owner.wait(timeout=15) == 0

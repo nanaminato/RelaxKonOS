@@ -79,9 +79,11 @@ internal sealed partial class LinuxMihomoArchiveHost
             var baseline = await dns.CaptureAsync();
             dispatched = dispatched with { Phase = MihomoTunPhase.DnsDispatched, Dns = baseline };
             await checkpoint.AppendAsync(dispatched);
-            await dns.ApplyAsync(baseline);
             if (publication is not null)
-                await WriteUndeliveredCheckpointAsync(dispatched, "dns-senders-exited", CancellationToken.None);
+                await WriteUndeliveredCheckpointAsync(dispatched, "dns-steps-prepared", CancellationToken.None);
+            var dnsEffect = dispatched;
+            await dns.ApplyAsync(baseline, publication is null ? null : (step, exited) =>
+                WriteUndeliveredCheckpointAsync(dnsEffect, DnsStepName(step, exited), CancellationToken.None));
             await dns.VerifyAsync(baseline, present: true);
             dispatched = dispatched with { Phase = MihomoTunPhase.DnsApplied };
             await checkpoint.AppendAsync(dispatched);
