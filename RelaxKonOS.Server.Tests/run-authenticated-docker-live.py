@@ -20,7 +20,8 @@ def run(server, project, helper):
     outage_gate = Path(outage).resolve(strict=True) if outage else None
     observation_mode = os.environ.get("RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE")
     cancel_observation = observation_mode == "cancel"
-    observation_outage = cancel_observation or observation_mode == "1"
+    cancel_mutation = observation_mode == "cancel-mutation"
+    observation_outage = observation_mode in ("1", "cancel", "cancel-mutation")
 
     with tempfile.TemporaryDirectory(prefix="relaxkonos-auth-docker-") as directory:
         root = Path(directory)
@@ -69,8 +70,12 @@ import time
 docker = {docker!r}
 gate = Path({str(outage_gate)!r})
 cancel_observation = {cancel_observation!r}
+cancel_mutation = {cancel_mutation!r}
 read_barrier = Path({str(read_barrier)!r})
 args = sys.argv[1:]
+if cancel_mutation and args[:1] == ['stop']:
+    with (gate / 'mutation-pid').open('a') as marker:
+        marker.write(str(os.getpid()) + '\\n')
 if args[:4] == ['ps', '--all', '--filter', {'label=com.docker.compose.project=' + project!r}]:
     if cancel_observation and not (read_barrier / 'complete').exists():
         if (read_barrier / 'armed').exists() and not (read_barrier / 'received').exists():
@@ -88,7 +93,7 @@ if args[:4] == ['ps', '--all', '--filter', {'label=com.docker.compose.project=' 
             sys.exit(0)
         os.execv(docker, [docker, *args])
     try:
-        (gate / 'request-offline').touch(exist_ok=False)
+        (gate / ('observation-ready' if cancel_mutation else 'request-offline')).touch(exist_ok=False)
     except FileExistsError:
         if cancel_observation and (gate / 'offline').exists() and not (gate / 'observation-failed').exists():
             result = subprocess.run([docker, *args], check=False)
@@ -179,11 +184,11 @@ os.execv(docker, [docker, *args])
             return request("/api/v1.0/auth/login", {**credentials, "clientPlatform": 1,
                 "deviceName": "Isolated Docker acceptance", "clientVersion": "0.2.2"})["tokens"]["accessToken"]
 
+        def active_leases(token):
+            return request("/api/v1.0/server/modules/relaxkonos.docker", token=token)["residency"]["activeLeases"]
+
         def verify_compose_read(token, container, initial_stops):
             path = f"/api/v1.0/docker/stacks/{project}/services"
-            def active_leases():
-                return request("/api/v1.0/server/modules/relaxkonos.docker", token=token)["residency"]["activeLeases"]
-
             def code_events():
                 prefix = "DOCKER COMPOSE ALC "
                 return [line.removeprefix(prefix) for line in (root / "startup.stderr").read_text().splitlines()
@@ -204,14 +209,14 @@ os.execv(docker, [docker, *args])
                     time.sleep(0.05)
                 command = Path("/proc", (read_barrier / "pid").read_text())
                 loaded = code_events()
-                if active_leases() != 1 or not command.exists() or len(loaded) != 1 or not loaded[0].startswith("load docker-compose:"):
+                if active_leases(token) != 1 or not command.exists() or len(loaded) != 1 or not loaded[0].startswith("load docker-compose:"):
                     raise RuntimeError("The held Compose command lost its work lease")
                 time.sleep(32)
-                if active_leases() != 1 or not command.exists() or code_events() != loaded:
+                if active_leases(token) != 1 or not command.exists() or code_events() != loaded:
                     raise RuntimeError("The Compose generation unloaded while the original command was still held")
 
             deadline = time.monotonic() + 10
-            while active_leases() != 0:
+            while active_leases(token) != 0:
                 if time.monotonic() >= deadline:
                     raise TimeoutError("The cancelled Compose HTTP read did not drain")
                 time.sleep(0.05)
@@ -264,10 +269,12 @@ os.execv(docker, [docker, *args])
                 deadline = time.monotonic() + 10
                 while True:
                     active = request(operation_route, token=token)
-                    if str(active["state"]).lower() != "running" or str(active["stage"]).lower() != "observing":
-                        raise RuntimeError("The first unavailable observation ended the active receipt")
+                    if str(active["state"]).lower() != "running":
+                        raise RuntimeError(f"The first unavailable observation ended operation {operation} "
+                                           f"with {active['state']}/{active['stage']}")
                     diagnostics = request(operation_route + "/diagnostics", token=token)
-                    if not active["cancellable"] and any("Engine observation was unavailable" in line for line in diagnostics["lines"]):
+                    if str(active["stage"]).lower() == "observing" and not active["cancellable"] \
+                            and any("Engine observation was unavailable" in line for line in diagnostics["lines"]):
                         break
                     if time.monotonic() >= deadline:
                         raise TimeoutError("The original work did not enter read-only observation recovery")
@@ -277,6 +284,8 @@ os.execv(docker, [docker, *args])
                 raise RuntimeError("An unavailable Engine ended the original active operation")
             request(f"/api/v1.0/docker/stacks/{project}/services", token=token, expected=503)
             request(route, {"confirmed": True}, token, expected=409, request_key=secrets.token_hex(16))
+            if cancel_mutation and active_leases(token) != 1:
+                raise RuntimeError("The unobserved mutation lost its work lease")
             set_engine_state("online")
             subprocess.run(["docker", "start", container], check=True, stdout=subprocess.DEVNULL)
             deadline = time.monotonic() + 25
@@ -295,6 +304,14 @@ os.execv(docker, [docker, *args])
             stops = subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping")
             if state != "running" or stops != initial_stops + 1:
                 raise RuntimeError("The original key repeated a stop after the witness was restarted")
+            if cancel_mutation:
+                deadline = time.monotonic() + 10
+                while active_leases(token) != 0:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("The recovered mutation did not release its work lease")
+                    time.sleep(0.05)
+                if len((outage_gate / "mutation-pid").read_text().splitlines()) != 1:
+                    raise RuntimeError("Recovery dispatched another Docker mutation CLI")
 
         helper_config = root / "helper.json"
         helper_config.write_text(json.dumps({"socketPath": env["PrivilegedHelper__SocketPath"],
@@ -353,17 +370,32 @@ os.execv(docker, [docker, *args])
                 if str(running["state"]).lower() != "running":
                     raise RuntimeError("Original receipt was not running at interruption")
                 if observation_outage:
-                    if cancel_observation:
-                        wait_for_gate("held-pid")
-                        wait_for_gate("offline")
+                    if cancel_observation or cancel_mutation:
+                        marker = "mutation-pid" if cancel_mutation else "held-pid"
+                        wait_for_gate(marker)
+                        command = Path("/proc", (outage_gate / marker).read_text().strip())
+                        if cancel_mutation:
+                            if str(running["stage"]).lower() != "applying" or not running["cancellable"] \
+                                    or not (command / "exe").samefile(shutil.which("docker")) or active_leases(token) != 1:
+                                raise RuntimeError("Cancellation requires the original live Docker mutation CLI and work lease")
+                        else:
+                            wait_for_gate("offline")
                         ack = request(f"/api/v1.0/docker/stack-operations/{operation}/cancel", {}, token)
                         if ack["operationId"] != operation or str(ack["state"]).lower() != "running" or ack["cancellable"]:
                             raise RuntimeError("Cancellation did not preserve the original active receipt")
+                    if cancel_mutation:
+                        wait_for_gate("observation-ready")
+                        if command.exists():
+                            raise RuntimeError("Observation began before the cancelled mutation CLI was reaped")
+                        subprocess.run(["docker", "wait", container], check=True, timeout=15, stdout=subprocess.DEVNULL)
+                        # Avoid adding a separate daemon-shutdown stop while the original container exits.
+                        set_engine_state("offline")
                     wait_for_gate("observation-failed")
-                    if cancel_observation and Path("/proc", (outage_gate / "held-pid").read_text()).exists():
-                        raise RuntimeError("Cancellation did not reap the first observation process")
+                    if (cancel_observation or cancel_mutation) and command.exists():
+                        raise RuntimeError("Cancellation did not reap the original Docker CLI")
                     verify_outage(process, token, operation, container, initial_stops)
-                    evidence = "CANCELLED OBSERVATION" if cancel_observation else "LIVE OBSERVATION OUTAGE"
+                    evidence = {"cancel": "CANCELLED OBSERVATION", "cancel-mutation": "CANCELLED MUTATION"}.get(
+                        observation_mode, "LIVE OBSERVATION OUTAGE")
                     print(f"PASS AUTHENTICATED DOCKER {evidence}: operation={operation}; original Server and work survived a failed native observation; no replay")
                     return
                 process.kill()

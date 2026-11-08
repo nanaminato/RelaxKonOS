@@ -382,3 +382,5 @@ Docker Engine 离线时，服务列表返回 `503 / docker.unavailable`。Server
 Compose 列表、预览、定义与服务读取在认证后取得工作租约。CLI 与输出清理、实际响应及作用域结束后归还租约，无法核实 CLI 清理时保留故障责任。见[Compose 只读 HTTP 工作责任](../architecture/server-module-evidence/Docker.md#mb-05-docker-compose-只读-http-工作责任)。
 
 Compose CLI 执行、文件处理和输出解析使用按需加载的程序集。最后一个执行作用域结束 30 秒后可卸载，新工作会唤醒执行代码。容器由 Engine 持续管理，原操作回执与恢复由 Server 台账负责。见[Compose 独立执行程序集](../architecture/server-module-evidence/Docker.md#mb-05-docker-compose-独立执行程序集)。
+
+Linux 私有 Engine 已实测在 `docker stop` 仍运行时取消。CLI 退出后，Engine 若暂时无法观察，原操作继续占用项目写入门禁和工作租约。恢复后原 ID 只读结案，同键仍返回原回执。见[变更 CLI 在途取消](../architecture/server-module-evidence/Docker.md#mb-05-docker-变更-cli-在途取消与-engine-观察中断)。

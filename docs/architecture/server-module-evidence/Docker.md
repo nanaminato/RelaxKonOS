@@ -13,6 +13,7 @@
 - [MB-05 Docker Engine 离线时的原启动对账](#mb-05-docker-engine-离线时的原启动对账)
 - [MB-05 Docker 变更返回后的 Engine 观察中断](#mb-05-docker-变更返回后的-engine-观察中断)
 - [MB-05 Docker 用户取消与观察断线交叠](#mb-05-docker-用户取消与观察断线交叠)
+- [MB-05 Docker 变更 CLI 在途取消与 Engine 观察中断](#mb-05-docker-变更-cli-在途取消与-engine-观察中断)
 - [MB-05 Docker Compose 只读 HTTP 工作责任](#mb-05-docker-compose-只读-http-工作责任)
 - [MB-05 Docker Compose 独立执行程序集](#mb-05-docker-compose-独立执行程序集)
 
@@ -129,3 +130,13 @@ Windows Release 模块边界回归通过。独立检查在保留成功与失败 
 Linux Release 的五代收集检查同样通过。完整认证 Server 在专属 Engine 中暂扣真实 `docker ps` 输出，跨 30 秒观察窗口保持原代次与一个工作租约。客户端断线后 CLI 包装进程已退出，工作租约归零，原代次报告闲时卸载，新请求加载下一代并读到原服务。新代次也通过真实列表、原定义读取及预览，预览目录确认清空。Core 的原操作 `e24ef921-2592-4b39-a596-df1f772d0c91`、`20168d97-2f95-43b1-99b5-d6c430e43845` 和 `3f21603a-a081-4e11-acc4-bb1f1af2b6ed` 分别在取消、存活 Server 失联和重启后 Engine 离线场景按原 ID 对账，停止未重放。专属资源清理完成，宿主服务、容器和代理文件指纹一致。
 
 首轮外层握手在空闲卸载窗口结束前停止专属 Engine，修正等待条件的期限后通过。构建守卫反向拒绝额外程序集引用。最终日志在 `.artifacts/mb05-compose-execution/`，Linux 归档 SHA-256 为 `7190796694ca3ffd9f27e3c898d7258b25f9e0d2be50976c25f421dd09020816`。未知清理保留代次在本地检查验证。Docker 管理模块继续 resident，生产资源测量及其余管理执行图继续开放。
+
+## MB-05 Docker 变更 CLI 在途取消与 Engine 观察中断
+
+Linux Release 完整认证 Server 使用专属 Engine 和 Compose 项目。容器已记录一次真实停止信号、原 `docker stop` 进程仍存活且回执为 Running / Applying 时，通过原 HTTP 接口取消 `fc83c587-fb62-4494-8826-5d84ed842886`。取消响应保留原 ID。首次观察屏障验证变更 CLI 已退出，再等待容器自行结束原停止，随后关闭专属 Engine 并放行真实观察命令。Engine 离线时原回执保持 Running / Observing，诊断记录观察失败，原工作租约仍为一。同键返回原回执，服务读取返回 503，同项目新键返回 409。
+
+重启专属 Engine 后，同一 Server 按原 ID 只读对账并持久化 Interrupted。按 ID 与同键读取的终态一致，工作租约归零。显式启动的见证容器保持运行，测试在原 CLI 的执行入口与容器日志分别核对停止派发、停止信号均只增加一次。同批独立 Engine 与命名卷重启验证通过，原 daemon 中断操作 `abce395c-1f22-4feb-ae1f-d848ee2e3dbf` 的恢复作用域为一次只读观察，执行作用域为零。专属容器和卷已清理，宿主共享服务、运行容器清单和代理文件指纹一致。
+
+首轮将观察失败文件视为台账已经更新，复测改为等待原诊断和阶段。第二轮 daemon 停机与见证容器退出重叠，停止计数断言失败。最终轮等待原容器退出才让 daemon 停机，观察一直扣留在屏障内。复现模式为 `RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE=cancel-mutation`。日志在 `.artifacts/mb05-cancelled-mutation/`，Linux 归档 SHA-256 为 `6293af77038d7b5fc5ce6ab5581ee402f850f316553bff00878627b232187f02`。Windows Release 模块边界通过，跨进程原 `fc729a51-d953-46ca-8190-4cde784c24dc` 读回 Interrupted，受控副作用计数为一。
+
+本轮实测真实 CLI 退出、原租约和专属资源清理。独立 Linux 回归另验证五个闲时代次的 ALC 收集，覆盖保留 Task 和未知清理时钉住代次。本次实机故障路径未单独测量执行对象回收、ALC 收集或隔离负载内存。变更 CLI 清理不可核实仍仅有本地故障证据，整机掉电和生产内存收益仍待验收。Docker 保持 resident。
