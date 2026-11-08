@@ -4541,6 +4541,8 @@ Linux Helper 的 `MihomoRuntimeTunStop` 接收具名停止 operationId 与原发
 
 原生检查点被截断或内部进程身份冲突时，Helper 保留历史发布回执，当前归属报告为未知。停用计划和禁用启动按原发布 ID 保留门禁，即使原进程仍能转发。精确记录恢复后可重新核验。见[检查点损坏的停用门禁](../architecture/server-module-evidence/Proxy-Safety.md#原生检查点损坏时的停用门禁)。
 
+Helper 也拒绝重复或未定义的检查点字段，含此类字段的记录继续受原操作门禁保护。正常检查点的写入格式保持。见[检查点字段核验](../architecture/server-module-evidence/Proxy-Safety.md#拒绝歧义检查点字段)。
+
 Helper 的具名启动与重启同时接收原发布 ID、新执行 ID 及临时授权回调。新派发核对已发布配置、宿主网络范围和受信制品，原成功回执继续可查。应答丢失时，同执行 ID 读取原阶段并核对实际效果，待核验期间拒绝新的执行和普通停止。公开入口继续受门禁保护。见[具名启动与重启证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后具名启动与重启)。
 
 提交态 TUN 移除沿用受管归档移除入口。Helper 只接受已完成原生清理的停止态。保留数据时保存原配置及数据来源，显式清除数据时删除配置和可变数据。两种模式都保留原发布回执、执行历史及不含配置正文的原生检查点。部分撤销或部分清理时继续按原移除 ID 待核验。见[提交后移除证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后移除)。

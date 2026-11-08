@@ -1,6 +1,7 @@
 using System.Net;
 using System.Runtime.Versioning;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 
@@ -22,6 +23,11 @@ internal sealed record MihomoTunEffect(MihomoTunPhase Phase, MihomoTunIntent Int
 [SupportedOSPlatform("linux")]
 internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Guid revisionId, string configurationHash)
 {
+    private static readonly JsonSerializerOptions CheckpointJson = new()
+    {
+        AllowDuplicateProperties = false,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+    };
     private readonly string directory = Path.Combine(root, "operations", operationId.ToString("N"));
     internal string SocketPath => Path.Combine(directory, "tun.sock");
 
@@ -47,7 +53,7 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
                 || new FileInfo(path).Length is <= 0 or > 4096)
                 throw Conflict();
             MihomoTunEffect entry;
-            try { entry = JsonSerializer.Deserialize<MihomoTunEffect>(File.ReadAllBytes(path)) ?? throw Conflict(); }
+            try { entry = JsonSerializer.Deserialize<MihomoTunEffect>(File.ReadAllBytes(path), CheckpointJson) ?? throw Conflict(); }
             catch (JsonException) { throw Conflict(); }
             if (entry.Phase != phase) throw Conflict();
             Validate(previous, entry);
@@ -67,7 +73,7 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
             UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
         }))
         {
-            await file.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(effect));
+            await file.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(effect, CheckpointJson));
             file.Flush(flushToDisk: true);
         }
         LinuxDirectorySync.Flush(directory);

@@ -1510,7 +1510,14 @@ def proof_full_http_shutdown(ipc, case):
         committed = query_publication()
         foreign = json.loads(witness)
         foreign['Process']['StartTicks'] += 1
-        for name, damaged in [('torn', witness[:len(witness) // 2]), ('foreign-process', json.dumps(foreign).encode())]:
+        assert witness.count(b'"StartTicks":') == 1 and witness.endswith(b'}')
+        damaged_records = [
+            ('duplicate-field', witness.replace(b'"StartTicks":', b'"StartTicks":0,"StartTicks":')),
+            ('unknown-field', witness[:-1] + b',"UnrecognizedEvidence":true}'),
+            ('torn', witness[:len(witness) // 2]),
+            ('foreign-process', json.dumps(foreign).encode()),
+        ]
+        for name, damaged in damaged_records:
             checkpoint_path.write_bytes(damaged)
             try:
                 observed = query_publication()
@@ -1593,7 +1600,7 @@ def proof_full_http_shutdown(ipc, case):
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         print(f'PASS TUN MODULE DEACTIVATION: publication={publication}; root-only-stop={pending}; '
               f'configuration={record["credential"]}; original PID={native_pid}; '
-              'damaged checkpoint and management drift after process exit blocked disable plan and startup')
+              'duplicate, unknown and damaged checkpoint fields blocked disable plan and startup')
 
     def verify_retained_removal(pid, record, publication):
         nonlocal worker, token

@@ -692,6 +692,14 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 恢复精确检查点后，Helper 重新核验同一原发布，禁用启动通过。首轮夹具的低层读取入口在损坏记录处提前失败，第二轮按错误的字段大小写读取 Helper 回执。改用真实查询入口和当前回执字段后，最终实测通过，并复验独立停止 `1418cd4b-d653-4b6c-8237-c58fe7b291c1` 的管理选路门禁。Windows Release 模块边界回归通过。专属进程退出、cgroup 清理及宿主指纹核验通过。日志为 `.artifacts/mb04-tun-checkpoint-admission/linux-final.log`，归档 SHA-256 为 `1c2a9d9dcf74fd8c64d91959f2dd218fb13d2a4d798a2aa8538ce0d85f5a89c0`。对象释放、ALC、隔离内存和生产收益仍待独立测量。
 
+### 拒绝歧义检查点字段
+
+**已实现且已验证。** 旧 Helper 接受了重复的嵌套进程启动时刻，后一个值覆盖前一个值，导致原归属仍被认可。新 Helper 拒绝重复与未定义字段，沿用 `runtime.network_checkpoint_conflict` 和原回执，正常写入格式保持。旧制品对照在第一项预期拒绝处失败，日志为 `.artifacts/mb04-tun-strict-checkpoint/linux-baseline.log`，归档 SHA-256 为 `e7c2f21e8156c0815e3e03b4b1b10914f791ebe2902aecc11dcd20fc25cb01d3`。
+
+最终原发布 `595c0389b0154f18a1a2bbfd6921a248`，PID 394，配置身份 `844af77ba6c86984c6aad2d591a852eb8db13e7de9d3a3c68d0825176d387837`。在实际 PAM/JWT Server 验证了重复字段、未知字段、截断和启动时刻冲突。当前归属未知，原历史回执保持，停用计划和禁用启动均按原 ID 拒绝。每种故障期间实际 HTTP、分流 DNS、管理选路和配置身份保持，台账未被重写，配置、补偿和停止均未派发。恢复精确记录后禁用启动通过。原停止 `923d038d-683c-4bf4-a0c5-e415a3d2014f` 的内核删除前中断回归通过。两场专属 cgroup 清理和宿主指纹核验通过。最终日志为 `.artifacts/mb04-tun-strict-checkpoint/linux-verified.log`，归档 SHA-256 为 `bcc01feca1974839bdb8a85ad721b13e966d455891efbcfac0e62394fcce927c`。
+
+Windows Release ManagedRuntimes 复跑通过，包含 104 项配置事务检查。第一次运行的临时文件替换被沙箱拒绝。可信下载探针仍缺少进程级 CA 覆盖。对象释放、ALC、隔离内存和生产收益未纳入本场测量。
+
 最终发布 `f526f4997539432988b1027afa23cc44`，仅 Helper 持有的原停止 `4a449026-99c4-48b0-8c7d-e8cecc92c247`，原 Mihomo PID 393，配置身份 `cee974ee2eab04b0a9528aefc51e2eb97a6dd1ddad049f065e4cb3ce0d52ebdd`。首轮已产生门禁记录，模块清单未将其标为待核验，修正后同时核对计划、应用和清单。日志为 `.artifacts/mb04-tun-marker-sync/tun-admission-linux-first.log`、`.artifacts/mb04-tun-marker-sync/tun-admission-linux-second.log` 和 `.artifacts/mb04-tun-marker-sync/tun-admission-linux-final.log`。
 
 最终四组 Linux 通过，覆盖停用门禁、同次停机、独立停机及原生保留数据移除。归档 SHA-256 为 `40d54216383cfe23175ea47aff7d316ecb4cdae195cce339799bacf4a9859fd4`。四组专属 cgroup 清理通过，宿主运行时、代理和 resolver 指纹一致，完整 Server 场景的账户文件指纹一致。
