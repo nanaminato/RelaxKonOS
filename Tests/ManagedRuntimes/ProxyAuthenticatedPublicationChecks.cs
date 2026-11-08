@@ -1656,7 +1656,7 @@ internal static class ProxyAuthenticatedPublicationChecks
     private static async Task<string> ReadNativePidAsync() => (await SingBoxOperations.RunAsync("/usr/bin/systemctl",
         ["show", LinuxSingBoxArchiveHost.Unit, "--property=MainPID", "--value"])).Trim();
 
-    private static async Task SeedCertificateAsync(string contentRoot, ProxyServerInbound inbound, ProxyServerTlsMaterial tls)
+    internal static async Task SeedCertificateAsync(string contentRoot, ProxyServerInbound inbound, ProxyServerTlsMaterial tls)
     {
         var id = inbound.CertificateId!.Value;
         var path = Directory.CreateDirectory(Path.Combine(contentRoot, "certificate-fixture", id.ToString("D"))).FullName;

@@ -44,6 +44,7 @@ internal static class ProxySystemdRecoveryChecks
         if (Directory.Exists(runtimeRoot)) throw new InvalidOperationException("The private runtime must be absent.");
         var root = Directory.CreateDirectory(Path.Combine(work, "fixture")).FullName;
         var states = new RuntimeArchiveStateStore(runtimeRoot + "/state", RuntimeSourceProtection.Protect);
+        var host = new LinuxSingBoxArchiveHost();
         using var traffic = new ProxyFullServerTrafficProbe();
         await using var guard = await ProxySystemdGuardProbe.StartAsync(work, root);
         using var port = new TcpListener(IPAddress.Loopback, 0);
@@ -58,37 +59,7 @@ internal static class ProxySystemdRecoveryChecks
         var material = traffic.CreateMaterial(new(new(1,
             [new(inboundId, "systemd-fixture", ProxyServerProtocol.VlessTls, "127.0.0.1",
                 inboundPort, "127.0.0.1", inboundPort, "proxy-fixture.example")]), [draining, expired, next, retained], []));
-        var binaryBytes = await File.ReadAllBytesAsync(executable);
-        var version = (await SingBoxOperations.RunAsync(executable, ["version"]))
-            .Split('\n', StringSplitOptions.TrimEntries)[0].Split(' ')[^1];
-        var revisionId = Guid.NewGuid();
-        var binary = runtimeRoot + "/versions/" + revisionId.ToString("N") + "/sing-box";
-        Directory.CreateDirectory(Path.GetDirectoryName(binary)!);
-        await File.WriteAllBytesAsync(binary, binaryBytes);
-        File.SetUnixFileMode(binary, (UnixFileMode)493);
-        var target = new RuntimeTarget("linux", RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "amd64",
-            null, null, RuntimeInstallMode.Archive, "systemd");
-        var artifact = new RuntimeArtifact("fixture-artifact", new string('c', 64), binaryBytes.Length, "tar.gz", "sing-box",
-            "fixture-key", new(binaryBytes.Length, 8, [new("sing-box", binaryBytes.Length, Digest(binaryBytes), true)]));
-        var release = new RuntimeRelease("fixture-release", "sing-box", "v" + version, version, RuntimeChannel.Stable,
-            "fixture-source", target, artifact, SingBoxRuntimeSupport.Capability, true,
-            RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, DateTimeOffset.UtcNow);
-        var hash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(material)));
-        await File.WriteAllTextAsync(runtimeRoot + "/config.json", SingBoxConfiguration.Render(material));
-        File.SetUnixFileMode(runtimeRoot + "/config.json", (UnixFileMode)384);
-        var initial = states.Initialize(new(Guid.NewGuid(), "isolated-systemd-host", "sing-box", 0,
-            RuntimeOwnership.Absent, target, null, false), hash);
-        using (var session = states.Acquire())
-            session.Save(initial with
-            {
-                Installation = initial.Installation with { StateRevision = 1, Ownership = RuntimeOwnership.Managed,
-                    ActiveReleaseId = release.ReleaseId },
-                Active = new(revisionId, release, version, hash, 1, 1),
-                ConfigurationIdentity = hash,
-                Revisions = [new(revisionId, release, version, hash, 1, 1)]
-            });
-
-        var host = new LinuxSingBoxArchiveHost();
+        var (binary, hash) = await SeedSingBoxAsync(executable, material, states);
         Process? helper = null;
         Task<string>? helperOutput = null;
         Task<string>? helperErrors = null;
@@ -278,6 +249,43 @@ internal static class ProxySystemdRecoveryChecks
             Console.WriteLine(log);
             return (process.ExitCode, log);
         }
+    }
+
+    internal static async Task<(string Binary, string Hash)> SeedSingBoxAsync(string executable, ProxyServerMaterial material,
+        RuntimeArchiveStateStore states)
+    {
+        const string runtimeRoot = LinuxSingBoxArchiveHost.Root;
+        var binaryBytes = await File.ReadAllBytesAsync(executable);
+        var version = (await SingBoxOperations.RunAsync(executable, ["version"]))
+            .Split('\n', StringSplitOptions.TrimEntries)[0].Split(' ')[^1];
+        var revisionId = Guid.NewGuid();
+        var binary = runtimeRoot + "/versions/" + revisionId.ToString("N") + "/sing-box";
+        Directory.CreateDirectory(Path.GetDirectoryName(binary)!);
+        await File.WriteAllBytesAsync(binary, binaryBytes);
+        File.SetUnixFileMode(binary, (UnixFileMode)493);
+        var target = new RuntimeTarget("linux", RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "amd64",
+            null, null, RuntimeInstallMode.Archive, "systemd");
+        var artifact = new RuntimeArtifact("fixture-artifact", new string('c', 64), binaryBytes.Length, "tar.gz", "sing-box",
+            "fixture-key", new(binaryBytes.Length, 8, [new("sing-box", binaryBytes.Length, Digest(binaryBytes), true)]));
+        var release = new RuntimeRelease("fixture-release", "sing-box", "v" + version, version, RuntimeChannel.Stable,
+            "fixture-source", target, artifact, SingBoxRuntimeSupport.Capability, true,
+            RuntimeTrust.Confirmed, RuntimeEvidence.Unverified, DateTimeOffset.UtcNow);
+        var hash = Digest(Encoding.UTF8.GetBytes(SingBoxConfiguration.Render(material)));
+        await File.WriteAllTextAsync(runtimeRoot + "/config.json", SingBoxConfiguration.Render(material));
+        File.SetUnixFileMode(runtimeRoot + "/config.json", (UnixFileMode)384);
+        var initial = states.Initialize(new(Guid.NewGuid(), "isolated-systemd-host", "sing-box", 0,
+            RuntimeOwnership.Absent, target, null, false), hash);
+        using (var session = states.Acquire())
+            session.Save(initial with
+            {
+                Installation = initial.Installation with { StateRevision = 1, Ownership = RuntimeOwnership.Managed,
+                    ActiveReleaseId = release.ReleaseId },
+                Active = new(revisionId, release, version, hash, 1, 1),
+                ConfigurationIdentity = hash,
+                Revisions = [new(revisionId, release, version, hash, 1, 1)]
+            });
+
+        return (binary, hash);
     }
 
     private static int ApplyCount(string log) => log.Split('\n').Count(line =>

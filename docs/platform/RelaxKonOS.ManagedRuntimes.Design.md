@@ -315,3 +315,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）具名停用在原 Helper 锁内持久记录新操作 ID、原发布 ID 和目标原生执行，原生停止及清理核对后确认同一回执。Server 按原队列 ID 只读核对具名启停终态，缺证据时继续待核验。见[具名启停实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http-具名启停回执)。
 
 2026-11-08（MR-03 / MB-04）Linux 完整 Server 已验证生产 PAM/JWT、受管发布及具名停用的 SIGTERM 排空。原队列终态与 Helper 停止回执在重启后保持，重新启用沿用原配置。范围见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。
+
+2026-11-08（MR-03 / MB-04）同次 SIGTERM 验证受管 TUN、系统代理 guard 与独立 sing-box 到期的原执行排空。重启保持 Mihomo 配置身份、原停止回执、guard 归属与 sing-box 到期回执。范围见[同次停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-与-proxy-安全责任同次停机)。

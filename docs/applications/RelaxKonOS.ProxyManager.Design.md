@@ -4541,6 +4541,8 @@ Server 重启后，尚待 Helper 核验的受管 TUN 操作保留原 ID 和空�
 
 Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停用。正常停机等待已受理的具名停用收到 Helper 响应、写入审计并持久化原队列终态后退出。重启仍可按原键取得原回执，再次启用沿用已确认发布。见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。
 
+系统代理 guard 与受管停用共用发布锁。若 guard 已派发，停用保留原队列及租约，等 guard 响应后继续。sing-box 到期由独立责任方排空。已在同一次 SIGTERM 验证三者的响应顺序、原生状态和重启回执。见[同次停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-与-proxy-安全责任同次停机)。
+
 DNS 写入已生效但应答未确认时，重启可按原操作和原 resolver 身份只读确认效果。resolver 换代后相同设置及真实流量仍保留待核验，Helper 未重发写入或派发停止。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。
 
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。

@@ -54,6 +54,7 @@
 - [MB-04 受管 TUN 认证 HTTP 补偿](#mb-04-受管-tun-认证-http-补偿)
 - [MB-04 受管 TUN 认证 HTTP 具名启停回执](#mb-04-受管-tun-认证-http-具名启停回执)
 - [MB-04 完整 Server 的受管 TUN 停机排空](#mb-04-完整-server-的受管-tun-停机排空)
+- [MB-04 受管 TUN 与 Proxy 安全责任同次停机](#mb-04-受管-tun-与-proxy-安全责任同次停机)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -625,7 +626,21 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 **已实现但实机未验证。** 其他 Linux 架构、Android 和正式安装服务包。认证与停机均走生产代码，试验由私有 systemd 夹具启动 Server。Windows Release 回归通过，包含 104 项配置事务检查。可信下载探针因缺进程级测试 CA 跳过，日志为 `.artifacts/mb04-tun-marker-sync/tun-full-windows-final.log`。
 
-**未实现或仍受门禁保护。** 受管 TUN 与系统代理 guard、授权到期的同次停机仍待验收。未知回执继续受原门禁保护。Proxy 保持 resident。本批确认专属 Server、原 Mihomo 进程退出及环境清理。对象释放、ALC 回收、隔离内存和生产收益未测量。
+受管 TUN 与系统代理 guard、授权到期由后续[同次停机](#mb-04-受管-tun-与-proxy-安全责任同次停机)覆盖。本批确认专属 Server、原 Mihomo 进程退出及环境清理。对象释放、ALC 回收、隔离内存和生产收益未测量。
+
+## MB-04 受管 TUN 与 Proxy 安全责任同次停机
+
+**已实现且已验证。** Linux x64 私有 systemd 的完整非 root Server 使用生产 PAM/JWT、独立 root Helper 和三个可分别释放响应的 AF_UNIX relay。使用两条真实 TLS VLESS 授权，先验证即将撤回的授权可转发，再以已到期状态启动生产到期 worker。原 Helper 提交后扣留到期响应，核对原回执和 Server 待确认状态。旧连接关闭、到期授权拒绝、保留授权继续转发。
+
+专属系统代理文件被竞争写入后，真实 guard 恢复受管代理值并写入原归属台账，响应被扣留。认证 TUN 停用在同一发布锁前等待，原队列为 Running 且至少持有一个工作租约，原 Mihomo 仍通过管理选路、实际 HTTP 和分流 DNS 检查。发送 SIGTERM 后先释放独立到期响应，确认原发布台账前进，Server 仍在排空，guard 和 TUN 责任继续保留。释放 guard 响应后，Helper 才收到具名停用并持久写入停止回执。确认进程退出、设备移除、路由回到基线和配置身份一致后，才释放停止响应，原队列及成功审计落盘，Server 以零退出。
+
+重启后，同键返回原停止回执，租约归零。guard 环境文件、归属台账字节及修改时间一致。sing-box PID、配置身份和原到期回执一致，撤回授权继续拒绝且保留授权转发。再次启用恢复原配置、管理选路和实际流量。Helper 审计分别记录一次原到期、一次原 guard 纠偏、一次原 TUN 配置和一次原具名停用，原路由删除一次。
+
+最终 Mihomo 原发布 `f16b3741b8da4cf8b23f388b9013f375`、停用 `b35f6711388e412fbdbc75890dbfbd53`、再次启用 `1ad2b42eaee246e39edff30bc0835253`，配置身份 `c2586a9389770fde2c37cb31b5176cacfccbe46000bf511fc2f8e49308c95286`。guard 关联 ID `73fbed86284944f4b8959e717ed29e67`，到期原 ID `9e20acb2da2d4a90ba97ef745ba1df1d`，sing-box PID 463，配置摘要 `a32f81f9822fa6f54804f6f1b249b393810ca8b5d2cc587bfd6df0b8b579a4b5`。首轮和最终复跑均通过，最终同批还通过单独 SIGTERM 和具名启停丢失响应。归档 SHA-256 为 `a573e3cd62e036a31d3e42d2a8afbaf503da8967e4588f96a948782fd7976878`，日志为 `.artifacts/mb04-tun-marker-sync/tun-joint-linux-first.log` 和 `.artifacts/mb04-tun-marker-sync/tun-joint-linux-final.log`。三组专属 cgroup 清理通过，宿主服务、系统代理、resolver 及完整 Server 场景的账户文件指纹一致。
+
+**已实现但实机未验证。** 其他 Linux 架构及桌面会话代理后端未参与。Windows Release 回归通过，包括 104 项配置事务检查。进程级测试 CA 缺失，可信下载探针跳过。日志为 `.artifacts/mb04-tun-marker-sync/tun-joint-windows.log`。
+
+**未实现或仍受门禁保护。** 管理模块停用及禁用启动仍需核验独立 Helper 中待核验的受管 TUN 原生归属。整模块交接前 Proxy 保持 resident。本批核对原 Mihomo 与 Server 的实际退出及 cgroup 清理。对象释放、ALC 回收、隔离内存和生产收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

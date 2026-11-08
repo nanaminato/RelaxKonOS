@@ -1096,13 +1096,16 @@ def proof_http_publication(owner, ipc, previous, case):
         restarted.stdout.close()
 
 
-def proof_full_http_shutdown(ipc):
+def proof_full_http_shutdown(ipc, joint):
     assert any(line.split()[4] == '/etc' and ' - overlay ' in line
                for line in Path('/proc/self/mountinfo').read_text().splitlines())
     base = 'http://192.0.2.2:18970'
     api = '/api/v1.0/proxy'
     queue = Path('/var/lib/relaxkonos/proxy/state/proxy-operations.json')
     mirror = Path('/etc/relaxkonos/proxy/active.yaml')
+    environment = Path('/etc/environment')
+    guard_ledger = Path('/var/lib/relaxkonos-system-proxy/recovery.json')
+    expiry_ledger = queue.with_name('proxy-server.protected')
     identity = 'rk-tun-' + uuid.uuid4().hex[:10]
     password = secrets.token_urlsafe(32)
     command('/usr/sbin/useradd', '-M', '-s', '/bin/bash', identity)
@@ -1184,9 +1187,14 @@ def proof_full_http_shutdown(ipc):
     def launch(phase):
         (root / 'full-server-pid').unlink(missing_ok=True)
         return subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-full-server',
-                                 str(root), str(ipc.socket_path), phase])
+                                 str(root), str(ipc.socket_path), ('joint-' if joint else '') + phase])
+
+    def guard_applied():
+        return any(line.partition('=')[2].strip('"') == 'http://127.0.0.1:18881'
+                   for line in environment.read_text().splitlines() if line.startswith('http_proxy='))
 
     worker = launch('drain')
+    first_worker = worker
     try:
         pid = int(marker('full-server-pid'))
         assert Path(f'/proc/{pid}').stat().st_uid == ipc.uid
@@ -1212,20 +1220,52 @@ with sqlite3.connect(sys.argv[1]) as database:
         prepare(published_effect['InterfaceIndex'], ipc.helper.pid)
         record = json.loads(journal.read_bytes())
         probe(record, 'jwt-before-shutdown')
+        if joint:
+            expiry = marker('full-expiry-response-held')
+            pending_expiry = expiry_ledger.read_bytes()
+            until(guard_applied, 'original guard')
+            drift = environment.read_text().replace('http://127.0.0.1:18881', 'http://127.0.0.1:14444', 1)
+            competing = environment.with_name('environment.guard-fixture-new')
+            competing.write_text(drift)
+            competing.chmod(environment.stat().st_mode & 0o777)
+            competing.replace(environment)
+            guard = marker('full-guard-response-held')
+            assert guard_applied()
+            guard_witness = (environment.read_bytes(), guard_ledger.read_bytes(),
+                             environment.stat().st_mtime_ns, guard_ledger.stat().st_mtime_ns)
         stopped = submit('disable', 'full-stop')
+        if joint:
+            until(lambda: read(stopped)['state'] == 'running', 'TUN waiting for the shared publication gate')
+            assert leases() >= 1 and not (root / 'full-tun-response-held').exists()
+            probe(record, 'joint-before-sigterm')
+            os.kill(pid, signal.SIGTERM)
+            assert marker('full-server-stopping') == 'stopping'
+            assert expiry_ledger.read_bytes() == pending_expiry and Path(f'/proc/{pid}').exists()
+            assert not (root / 'full-tun-response-held').exists()
+            (root / 'full-expiry-response-release').touch()
+            until(lambda: expiry_ledger.read_bytes() != pending_expiry, 'independent expiry confirmation')
+            assert Path(f'/proc/{pid}').exists() and not (root / 'full-tun-response-held').exists()
+            probe(record, 'joint-after-expiry')
+            (root / 'full-guard-response-release').touch()
         assert marker('full-tun-response-held') == stopped
-        assert read(stopped)['state'] == 'running' and leases() >= 1
+        if not joint:
+            assert read(stopped)['state'] == 'running' and leases() >= 1
         assert config.read_bytes() == mirror.read_bytes() and network_baseline() == record['baseline']
         assert not Path(f'/proc/{record["service"][0]}').exists() and device not in devices()
         stopped_receipt = json.loads(checkpoint(record, f'observe-action:{stopped}'))['mihomoTunAction']
         assert stopped_receipt['outcome'] == 'Succeeded' and uuid.UUID(stopped_receipt['operationId']).hex == stopped
         durable_running = queue.read_bytes()
-        os.kill(pid, signal.SIGTERM)
-        assert marker('full-server-stopping') == stopped
+        if not joint:
+            os.kill(pid, signal.SIGTERM)
+            assert marker('full-server-stopping') == stopped
         time.sleep(.2)
         assert worker.poll() is None and Path(f'/proc/{pid}').exists() and queue.read_bytes() == durable_running
         (root / 'full-tun-response-release').touch()
-        assert worker.wait(timeout=12) == 0 and not Path(f'/proc/{pid}').exists()
+        if joint:
+            assert marker('full-server-exited') == '0'
+        else:
+            assert worker.wait(timeout=12) == 0
+        assert not Path(f'/proc/{pid}').exists()
         persisted = queue.read_bytes()
         assert persisted != durable_running
         audit = [json.loads(line) for line in queue.with_name('proxy-audit.jsonl').read_text().splitlines()]
@@ -1248,11 +1288,21 @@ with sqlite3.connect(sys.argv[1]) as database:
                        routing_table=table, route=route(table))
         probe(current, 'jwt-after-shutdown')
         until(lambda: leases() == 0, 'drained work leases')
+        if joint:
+            assert guard_witness == (environment.read_bytes(), guard_ledger.read_bytes(),
+                                     environment.stat().st_mtime_ns, guard_ledger.stat().st_mtime_ns)
+            assert ipc.log.read_text().count(f'operation=LinuxSystemProxyApply id={uuid.UUID(guard)} ') == 1
+            assert ipc.log.read_text().count('operation=ProxyServerApply ') == 1
+            (root / 'full-joint-finish').touch()
+            assert first_worker.wait(timeout=12) == 0
         assert ipc.log.read_text().count(f'operation=MihomoRuntimeTunStop id={uuid.UUID(stopped)} ') == 1
         assert ipc.log.read_text().count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         os.kill(restart_pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
+        if joint:
+            print(f'PASS TUN JOINT SAFETY SHUTDOWN: publication={publication}; stop={stopped}; start={started}; '
+                  f'guard={guard}; expiry={expiry}; configuration={record["credential"]}; live PID={current["service"][0]}')
         print(f'PASS TUN FULL SERVER JWT SHUTDOWN: publication={publication}; stop={stopped}; start={started}; '
               f'Server PID {pid}->{restart_pid}; live PID={current["service"][0]}; configuration={record["credential"]}')
     finally:
@@ -1265,6 +1315,9 @@ with sqlite3.connect(sys.argv[1]) as database:
                     pass
             worker.kill()
             worker.wait(timeout=5)
+        if first_worker is not worker and first_worker.poll() is None:
+            first_worker.kill()
+            first_worker.wait(timeout=5)
 
 
 def proof():
@@ -1274,7 +1327,7 @@ def proof():
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
-    http_case = case in ('ipc-http-commit', 'ipc-http-pending', 'ipc-http-action', 'ipc-http-full')
+    http_case = case in ('ipc-http-commit', 'ipc-http-pending', 'ipc-http-action', 'ipc-http-full', 'ipc-http-joint')
     if http_case:
         ip('netns', 'add', 'rk-http-client')
         ip('link', 'set', 'rk-peer', 'netns', 'rk-http-client')
@@ -1352,8 +1405,8 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case == 'ipc-http-full':
-                proof_full_http_shutdown(ipc)
+            if case in ('ipc-http-full', 'ipc-http-joint'):
+                proof_full_http_shutdown(ipc, case == 'ipc-http-joint')
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,
                                      stdout=subprocess.PIPE, text=True)

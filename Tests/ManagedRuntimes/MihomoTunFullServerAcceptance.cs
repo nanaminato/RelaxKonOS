@@ -4,13 +4,14 @@ using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Proxy.Platform;
 
 [SupportedOSPlatform("linux")]
 internal static class MihomoTunFullServerAcceptance
 {
-    internal static async Task SeedAsync(string root, MihomoPublishedRuntime material, string identity)
+    internal static async Task SeedAsync(string root, MihomoPublishedRuntime material, string identity, bool joint)
     {
         RequirePrivateFixture(root);
         var paths = new ProxyPlatformPaths();
@@ -22,8 +23,9 @@ internal static class MihomoTunFullServerAcceptance
         var operation = Guid.NewGuid();
         await store.BeginAsync(operation, 0, material, CancellationToken.None);
         await store.ConfirmAsync(operation, identity, CancellationToken.None);
-        var settings = new ProxySettingsDto(false, false, false, false, false, "info", 18881,
-            Tun: new("gvisor", "rk-fd-proof", false, false, false, "", 1500));
+        var settings = new ProxySettingsDto(joint, false, false, false, false, "info", 18881,
+            Tun: new("gvisor", "rk-fd-proof", false, false, false, "", 1500),
+            SystemProxy: new(GuardEnabled: joint, GuardIntervalSeconds: 5));
         await File.WriteAllBytesAsync(Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json"),
             JsonSerializer.SerializeToUtf8Bytes(settings));
         var secretDirectory = Directory.CreateDirectory(Path.Combine(root, "full-server", "data")).FullName;
@@ -40,18 +42,29 @@ internal static class MihomoTunFullServerAcceptance
     internal static async Task RunAsync(string root, string socket, string phase)
     {
         RequirePrivateFixture(root);
-        if (phase is not ("drain" or "restart")) throw new ArgumentException("Unknown TUN shutdown phase.");
-        var first = phase == "drain";
+        if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart"))
+            throw new ArgumentException("Unknown TUN shutdown phase.");
+        var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
+        var first = phase.EndsWith("drain", StringComparison.Ordinal);
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(joint ? 75 : 45));
         var ct = budget.Token;
-        await using var relay = first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-tun-reply.sock", socket, ct,
+        using var expiry = joint && first ? new ProxyJointShutdownExpiry(root, socket) : null;
+        if (expiry is not null) await expiry.PrepareAsync(ct);
+        await using var guard = joint && first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-guard-reply.sock", socket, ct,
+            (operation, _) => operation == "LinuxSystemProxyApply"
+                && File.ReadLines("/etc/environment").Any(line => line == "http_proxy=http://127.0.0.1:14444"
+                    || line == "http_proxy=\"http://127.0.0.1:14444\"")) : null;
+        await using var expiryRelay = joint && first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-expiry-reply.sock",
+            guard!.Path, ct, (operation, _) => operation == "ProxyServerApply") : null;
+        await using var relay = first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-tun-reply.sock", expiryRelay?.Path ?? socket, ct,
             (operation, _) => operation == "MihomoRuntimeTunStop") : null;
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? socket, root,
             reuse: !first, seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
         start.Environment["Modules__Proxy__Enabled"] = "true";
         start.Environment["Identity__LinuxPamTransport"] = "helper";
+        if (joint) start.Environment["Certificate__StorageRoot"] = Path.Combine(start.WorkingDirectory, "certificate-fixture");
         start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
         start.Environment["Logging__LogLevel__Microsoft.AspNetCore"] = "Warning";
         start.Environment["Logging__LogLevel__Microsoft.EntityFrameworkCore"] = "Warning";
@@ -65,7 +78,22 @@ internal static class MihomoTunFullServerAcceptance
         {
             await WriteMarkerAsync(root, "full-server-pid", server.Id.ToString());
             var exited = server.WaitForExitAsync(ct);
-            if (relay is not null)
+            if (expiry is not null)
+            {
+                var guardDrain = DrainAsync(guard!, "guard");
+                var tunDrain = DrainAsync(relay!, "tun");
+                var expiryDrain = DrainExpiryAsync(expiryRelay!, expiry);
+                await stopping.Task.WaitAsync(ct);
+                await WriteMarkerAsync(root, "full-server-stopping", "stopping");
+                await Task.WhenAll(guardDrain, tunDrain, expiryDrain);
+                await exited;
+                if (server.ExitCode != 0) throw new InvalidOperationException($"Full Server exited with code {server.ExitCode}.");
+                await WriteMarkerAsync(root, "full-server-exited", "0");
+                var (receipt, pid) = await expiryDrain;
+                await WaitForMarkerAsync("full-joint-finish");
+                await expiry.VerifyTerminalAsync(receipt, pid, ct);
+            }
+            else if (relay is not null)
             {
                 if (await Task.WhenAny(relay.Committed.Task, exited) == exited)
                     throw new InvalidOperationException("Full Server stopped before the named TUN response reached the relay.");
@@ -80,6 +108,30 @@ internal static class MihomoTunFullServerAcceptance
             if (server.ExitCode != 0) throw new InvalidOperationException($"Full Server exited with code {server.ExitCode}.");
         }
         finally { await ProxyAuthenticatedPublicationChecks.StopAsync(server); }
+
+        async Task DrainAsync(ProxyAuthenticatedPublicationChecks.ReplyRelay barrier, string domain)
+        {
+            var original = await barrier.Committed.Task.WaitAsync(ct);
+            await WriteMarkerAsync(root, $"full-{domain}-response-held", original.ToString("N"));
+            await WaitForMarkerAsync($"full-{domain}-response-release");
+            barrier.ReleaseHeldResponse();
+        }
+
+        async Task<(ProxyServerPublicationReceipt Receipt, string Pid)> DrainExpiryAsync(
+            ProxyAuthenticatedPublicationChecks.ReplyRelay barrier, ProxyJointShutdownExpiry probe)
+        {
+            var original = await barrier.Committed.Task.WaitAsync(ct);
+            var observed = await probe.ObserveAsync(original, ct);
+            await WriteMarkerAsync(root, "full-expiry-response-held", original.ToString("N"));
+            await WaitForMarkerAsync("full-expiry-response-release");
+            barrier.ReleaseHeldResponse();
+            return observed;
+        }
+
+        async Task WaitForMarkerAsync(string name)
+        {
+            while (!File.Exists(Path.Combine(root, name))) await Task.Delay(25, ct);
+        }
     }
 
     private static void RequirePrivateFixture(string root)
