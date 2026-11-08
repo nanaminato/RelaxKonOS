@@ -23,7 +23,7 @@ public interface IRuntimeArchiveRemovalAdapter
     Task PreflightAsync(RuntimeChangePlan plan, RuntimeArchiveState current, CancellationToken ct);
     Task<RuntimeServiceSnapshot> CaptureAsync(Guid operationId, RuntimeArchiveState current, CancellationToken ct);
     Task RemoveAsync(RuntimeArchiveState current, RuntimeServiceSnapshot snapshot, CancellationToken ct);
-    Task<bool> VerifyRemovedAsync(CancellationToken ct);
+    Task<bool> VerifyRemovedAsync(RuntimeArchiveState current, CancellationToken ct);
     /// <summary>Restores the captured registration only while the recorded program and configuration still exist.</summary>
     Task<bool> RestoreAsync(RuntimeArchiveState current, RuntimeServiceSnapshot snapshot, CancellationToken ct);
     Task CleanupProgramAsync(RuntimeArchiveState current, CancellationToken ct);
@@ -54,13 +54,18 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
                 throw new RuntimePolicyException("runtime.idempotency_conflict");
             return new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode);
         }
-        if (current.Removal is { } pending && (pending.OperationId == operationId || pending.IdempotencyHash == keyHash)
-            && (pending.RequestHash != requestHash || pending.IdempotencyHash != keyHash))
-            throw new RuntimePolicyException("runtime.idempotency_conflict");
+        if (current.Removal is { } pending && (pending.OperationId == operationId || pending.IdempotencyHash == keyHash))
+        {
+            if (pending.RequestHash != requestHash || pending.IdempotencyHash != keyHash)
+                throw new RuntimePolicyException("runtime.idempotency_conflict");
+            if (current.ActiveMihomoTun is not null)
+                return new(pending.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
+        }
         if (current.Pending is not null || current.Removal is not null || current.Configuration is not null
-            || current.ProxyPublicationUnresolved || current.Installation.RecoveryRequired)
+            || current.ProxyPublicationUnresolved || current.Installation.RecoveryRequired || current.PendingMihomoTunStart is not null)
             throw new RuntimePolicyException("runtime.recovery_required");
-        if (current.ActiveMihomoTun is not null) throw new RuntimePolicyException("runtime.network_lifecycle_unverified");
+        if (current.MihomoTunStarts.Any(item => item.OperationId == operationId))
+            throw new RuntimePolicyException("runtime.idempotency_conflict");
         ValidatePlan(plan, current);
         ct.ThrowIfCancellationRequested();
         Save(session, current with
@@ -80,10 +85,13 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
             // Last cancellation boundary: once removal starts the operation must finish or restore.
             ct.ThrowIfCancellationRequested();
             Save(session, session.State! with { Removal = session.State.Removal! with { RemovalStarted = true } });
+            if (current.ActiveMihomoTun is not null) session.SyncDirectory();
             await adapter.RemoveAsync(session.State!, snapshot, CancellationToken.None);
+            if (current.ActiveMihomoTun is not null)
+                return await FinishTunRemovalAsync(session);
             UpdateRemoval(session, r => r with { Stage = InstallationStage.Verifying });
             await NotifyAsync(InstallationStage.Verifying, cancellable: false);
-            if (!await adapter.VerifyRemovedAsync(CancellationToken.None))
+            if (!await adapter.VerifyRemovedAsync(session.State!, CancellationToken.None))
                 throw new RuntimePolicyException("runtime.removal_incomplete");
             // Everything below is irreversible; a failure is reported, never compensated with a fake restore.
             Save(session, session.State! with { Removal = session.State.Removal! with { CleanupStarted = true } });
@@ -105,6 +113,8 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
             var cancelled = ex is OperationCanceledException && ct.IsCancellationRequested && !session.State!.Removal!.RemovalStarted;
             var problem = cancelled ? "runtime.operation_cancelled"
                 : ex is RuntimePolicyException policy ? policy.ProblemCode : "runtime.removal_failed";
+            if (current.ActiveMihomoTun is not null && session.State!.Removal!.RemovalStarted)
+                return RequireRecovery(session, problem, ex);
             return await CompensateAsync(session, problem, cancelled ? RuntimeSwitchOutcome.Cancelled : RuntimeSwitchOutcome.Failed);
         }
     }
@@ -117,10 +127,35 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
         if (session.State?.Removal is not { } pending) return null;
         if (pending.OperationId != operationId) throw new RuntimePolicyException("runtime.recovery_target_conflict");
         ct.ThrowIfCancellationRequested();
+        if (session.State.ActiveMihomoTun is not null && pending.RemovalStarted)
+        {
+            try { return await FinishTunRemovalAsync(session); }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            { return RequireRecovery(session, pending.ProblemCode ?? "runtime.operation_interrupted", ex); }
+        }
         if (pending.CleanupStarted)
             return CompleteRemoved(session, RuntimeSwitchOutcome.Interrupted,
                 pending.ProblemCode ?? "runtime.removal_cleanup_interrupted");
         return await CompensateAsync(session, pending.ProblemCode ?? "runtime.operation_interrupted", RuntimeSwitchOutcome.Interrupted);
+    }
+
+    private async Task<RuntimeSwitchResult> FinishTunRemovalAsync(RuntimeArchiveStateStore.Session session)
+    {
+        UpdateRemoval(session, removal => removal with { Stage = InstallationStage.Verifying });
+        await NotifyAsync(InstallationStage.Verifying, cancellable: false);
+        if (!await adapter.VerifyRemovedAsync(session.State!, CancellationToken.None))
+            throw new RuntimePolicyException("runtime.network_removal_unconfirmed");
+        if (!session.State!.Removal!.CleanupStarted)
+        {
+            UpdateRemoval(session, removal => removal with { CleanupStarted = true });
+            session.SyncDirectory();
+            await adapter.CleanupProgramAsync(session.State!, CancellationToken.None);
+            if (!session.State.Removal!.Plan.Request.KeepData) await adapter.DeleteDataAsync(CancellationToken.None);
+            await NotifyAsync(InstallationStage.HealthChecking, cancellable: false);
+            if (!await adapter.VerifyRemovedAsync(session.State!, CancellationToken.None))
+                throw new RuntimePolicyException("runtime.removal_cleanup_interrupted");
+        }
+        return CompleteRemoved(session, RuntimeSwitchOutcome.Succeeded, null);
     }
 
     private async Task<RuntimeSwitchResult> CompensateAsync(RuntimeArchiveStateStore.Session session, string problem,
@@ -145,21 +180,26 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
-            try
-            {
-                Save(session, session.State! with
-                {
-                    Installation = session.State!.Installation with { RecoveryRequired = true },
-                    Removal = session.State.Removal! with
-                    {
-                        Stage = InstallationStage.Interrupted, ProblemCode = problem,
-                        RecoveryProblemCode = ex is RuntimePolicyException policy ? policy.ProblemCode : "runtime.compensation_failed"
-                    }
-                });
-            }
-            catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException or RuntimePolicyException) { }
-            return new(session.State!.Removal!.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
+            return RequireRecovery(session, problem, ex);
         }
+    }
+
+    private static RuntimeSwitchResult RequireRecovery(RuntimeArchiveStateStore.Session session, string problem, Exception error)
+    {
+        try
+        {
+            Save(session, session.State! with
+            {
+                Installation = session.State!.Installation with { RecoveryRequired = true },
+                Removal = session.State.Removal! with
+                {
+                    Stage = InstallationStage.Interrupted, ProblemCode = problem,
+                    RecoveryProblemCode = error is RuntimePolicyException policy ? policy.ProblemCode : "runtime.compensation_failed"
+                }
+            });
+        }
+        catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException or RuntimePolicyException) { }
+        return new(session.State!.Removal!.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
     }
 
     /// <summary>Only reachable once the registration is proven gone; ownership leaves this installation.</summary>
@@ -170,12 +210,13 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
         var pending = state.Removal!;
         var keepData = pending.Plan.Request.KeepData;
         var receipt = new RuntimeSwitchReceipt(pending.OperationId, pending.RequestHash, pending.IdempotencyHash,
-            outcome, null, problem, DateTimeOffset.UtcNow, pending.Snapshot);
+            outcome, null, problem, DateTimeOffset.UtcNow, pending.Snapshot) { RemovedMihomoTun = state.ActiveMihomoTun };
         Save(session, state with
         {
             Installation = state.Installation with
             { Ownership = RuntimeOwnership.Absent, ActiveReleaseId = null, RecoveryRequired = false },
             Active = null,
+            ActiveMihomoTun = null,
             ConfigurationIdentity = keepData ? state.ConfigurationIdentity : null,
             Revisions = [],
             Removal = null, Receipts = [.. state.Receipts, receipt]

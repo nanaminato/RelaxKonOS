@@ -20,6 +20,7 @@ internal sealed class MihomoRemovalAdapter(string protectedRoot, IMihomoArchiveH
     private string Versions => Path.Combine(root, "versions");
     private string Staging => Path.Combine(root, "staging");
     private string DataRoot => Path.Combine(root, "data");
+    private string RetainedData => Path.Combine(root, "retained-data.json");
 
     public async Task PreflightAsync(RuntimeChangePlan plan, RuntimeArchiveState current, CancellationToken ct)
     {
@@ -29,6 +30,8 @@ internal sealed class MihomoRemovalAdapter(string protectedRoot, IMihomoArchiveH
             throw new RuntimePolicyException("runtime.not_managed");
         if (plan.RuntimeId != "mihomo" || active.Release.RuntimeId != "mihomo")
             throw new RuntimePolicyException("runtime.installation_mismatch");
+        if (current.ActiveMihomoTun is { } tun)
+            await TunHost().ReadCommittedTunIntentAsync(tun, current.Installation, current.CurrentMihomoTunExecution!.Value, stopped: true, ct);
         foreach (var directory in new[] { root, Operations, Versions, Staging }) Protect(directory);
         await VerifyFilesAsync(active, ct);
         var service = await host.ObserveAsync(ct);
@@ -56,18 +59,37 @@ internal sealed class MihomoRemovalAdapter(string protectedRoot, IMihomoArchiveH
 
     public async Task RemoveAsync(RuntimeArchiveState current, RuntimeServiceSnapshot snapshot, CancellationToken ct)
     {
+        if (current.ActiveMihomoTun is { } tun)
+        {
+            await TunHost().UnregisterCommittedTunAsync(tun, current.Installation, current.CurrentMihomoTunExecution!.Value, ct);
+            return;
+        }
         await host.StopAsync(ct);
         await host.RemoveOwnedRegistrationAsync(ct);
     }
 
-    public async Task<bool> VerifyRemovedAsync(CancellationToken ct)
+    public async Task<bool> VerifyRemovedAsync(RuntimeArchiveState current, CancellationToken ct)
     {
+        if (current.ActiveMihomoTun is { } tun)
+        {
+            await TunHost().VerifyUnregisteredTunAsync(tun, current.Installation, current.CurrentMihomoTunExecution!.Value, ct);
+            var removal = current.Removal!;
+            if (!removal.CleanupStarted || removal.Plan.Request.KeepData)
+            {
+                if (Hash(await ReadConfigurationAsync(Configuration, ct)) != tun.ConfigurationIdentity)
+                    throw new RuntimePolicyException("runtime.configuration_drift");
+            }
+            if (removal.CleanupStarted && !await VerifyTunCleanupAsync(current, ct))
+                throw new RuntimePolicyException("runtime.removal_cleanup_interrupted");
+            return true;
+        }
         var service = await host.ObserveAsync(ct);
         return !service.Exists && !service.Running;
     }
 
     public async Task<bool> RestoreAsync(RuntimeArchiveState current, RuntimeServiceSnapshot snapshot, CancellationToken ct)
     {
+        if (current.ActiveMihomoTun is not null) return false;
         if (current.Active is not { } active) return false;
         try
         {
@@ -142,26 +164,91 @@ internal sealed class MihomoRemovalAdapter(string protectedRoot, IMihomoArchiveH
             if (!Directory.EnumerateFileSystemEntries(Versions).Any()) Directory.Delete(Versions);
         }
         if (Directory.Exists(Staging)) DeleteTree(Staging);
-        if (Directory.Exists(Operations)) DeleteTree(Operations);
+        CleanOperations(TunEvidenceDirectories(current));
     }
+
+    private LinuxMihomoArchiveHost TunHost() => OperatingSystem.IsLinux() && host is LinuxMihomoArchiveHost linux
+        && root == LinuxMihomoArchiveHost.Root ? linux : throw new RuntimePolicyException("runtime.network_platform_unsupported");
+
+    private HashSet<string> TunEvidenceDirectories(RuntimeArchiveState current)
+    {
+        var ids = current.MihomoTunStarts.Select(item => item.OperationId)
+            .Concat(current.Receipts.Where(item => item.RemovedMihomoTun is not null).Select(item => item.RemovedMihomoTun!.OperationId));
+        if (current.ActiveMihomoTun is { } tun) ids = ids.Append(tun.OperationId);
+        return ids.Select(id => Path.Combine(Operations, id.ToString("N"))).ToHashSet(StringComparer.Ordinal);
+    }
+
+    private static bool IsTunEvidenceFile(string path) =>
+        Enum.GetValues<MihomoTunPhase>().Any(phase => Path.GetFileName(path) == $"tun-{(int)phase}.json") && File.Exists(path);
+
+    private void CleanOperations(HashSet<string> evidence)
+    {
+        RuntimeSourceStore.RequireNoLinks(Operations);
+        if (!Directory.Exists(Operations)) return;
+        if (evidence.Count == 0) { DeleteTree(Operations); return; }
+        foreach (var entry in Directory.EnumerateFileSystemEntries(Operations))
+        {
+            if (evidence.Contains(entry) && Directory.Exists(entry))
+            {
+                RuntimeSourceStore.RequireNoLinks(entry);
+                foreach (var item in Directory.EnumerateFileSystemEntries(entry))
+                    if (!IsTunEvidenceFile(item)) DeleteOperationEntry(item);
+            }
+            else DeleteOperationEntry(entry);
+        }
+    }
+
+    private static void DeleteOperationEntry(string entry)
+    {
+        RuntimeSourceStore.RequireNoLinks(entry);
+        if (Directory.Exists(entry)) DeleteTree(entry);
+        else File.Delete(entry);
+    }
+
+    private async Task<bool> VerifyTunCleanupAsync(RuntimeArchiveState current, CancellationToken ct)
+    {
+        foreach (var path in new[] { Versions, Staging, Operations }) RuntimeSourceStore.RequireNoLinks(path);
+        if (Path.Exists(Versions) || Path.Exists(Staging)) return false;
+        var evidence = TunEvidenceDirectories(current);
+        if (!Directory.Exists(Operations)) return false;
+        foreach (var directory in Directory.EnumerateFileSystemEntries(Operations))
+        {
+            RuntimeSourceStore.RequireNoLinks(directory);
+            if (!evidence.Contains(directory) || !Directory.Exists(directory)) return false;
+            foreach (var file in Directory.EnumerateFileSystemEntries(directory))
+            {
+                RuntimeSourceStore.RequireNoLinks(file);
+                if (!IsTunEvidenceFile(file)) return false;
+            }
+        }
+        if (!current.Removal!.Plan.Request.KeepData)
+        {
+            var dataPaths = DataFiles().Concat(DataDirectories()).ToArray();
+            foreach (var path in dataPaths) RuntimeSourceStore.RequireNoLinks(path);
+            return dataPaths.All(path => !Path.Exists(path));
+        }
+        var active = current.Active!;
+        RuntimeSourceStore.RequireNoLinks(Data(active));
+        RuntimeSourceStore.RequireNoLinks(RetainedData);
+        var expected = RuntimeJson.Serialize(active);
+        return Directory.Exists(Data(active)) && File.Exists(RetainedData) && new FileInfo(RetainedData).Length == expected.Length
+            && (await File.ReadAllBytesAsync(RetainedData, ct)).AsSpan().SequenceEqual(expected);
+    }
+
+    private string[] DataFiles() => [Configuration, PreviousConfiguration, Path.Combine(root, "candidate.yaml"), RetainedData];
+    private string[] DataDirectories() => [DataRoot, Path.Combine(root, "seed-data")];
 
     /// <summary>Only executed after explicit data deletion; the publication identity leaves the state with it.</summary>
     public Task DeleteDataAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        foreach (var path in new[] { Configuration, PreviousConfiguration })
+        foreach (var path in DataFiles())
         {
             RuntimeSourceStore.RequireNoLinks(path);
-            if (File.Exists(path)) File.Delete(path);
+            File.Delete(path);
         }
-        var candidate = Path.Combine(root, "candidate.yaml");
-        RuntimeSourceStore.RequireNoLinks(candidate);
-        if (File.Exists(candidate)) File.Delete(candidate);
-        foreach (var directory in new[] { DataRoot, Path.Combine(root, "seed-data") })
+        foreach (var directory in DataDirectories())
             if (Directory.Exists(directory)) DeleteTree(directory);
-        var retained = Path.Combine(root, "retained-data.json");
-        RuntimeSourceStore.RequireNoLinks(retained);
-        File.Delete(retained);
         return Task.CompletedTask;
     }
 

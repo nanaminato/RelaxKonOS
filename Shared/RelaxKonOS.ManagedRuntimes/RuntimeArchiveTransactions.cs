@@ -20,14 +20,17 @@ public sealed record RuntimeActivationEvidence(string MeasuredVersion, string Co
     RuntimeMihomoTunOwnership? MihomoTun = null);
 public sealed record RuntimeMihomoTunOwnership(Guid OperationId, Guid RevisionId, string ConfigurationIdentity, string NetworkIntentIdentity);
 public enum RuntimeMihomoTunStartStage { Stopping, Launching, Succeeded }
-public sealed record RuntimeMihomoTunStart(Guid OperationId, bool Restart, RuntimeMihomoTunStartStage Stage);
+public sealed record RuntimeMihomoTunStart(Guid OperationId, Guid PublicationId, bool Restart, RuntimeMihomoTunStartStage Stage);
 public sealed record RuntimeRestorationEvidence(string? MeasuredVersion, string? ConfigurationIdentity,
     bool Running, bool BootEnabled, bool OwnedResourcesRestored, bool Healthy);
 
 /// <summary>Helper receipt for an existing installation operation, not a second user-facing operation ledger.</summary>
 public sealed record RuntimeSwitchReceipt(Guid OperationId, string RequestHash, string IdempotencyHash,
     RuntimeSwitchOutcome Outcome, Guid? ActiveRevisionId, string? ProblemCode, DateTimeOffset CompletedAt,
-    RuntimeServiceSnapshot? RetainedSnapshot);
+    RuntimeServiceSnapshot? RetainedSnapshot)
+{
+    public RuntimeMihomoTunOwnership? RemovedMihomoTun { get; init; }
+}
 public sealed record RuntimePendingSwitch(Guid OperationId, string RequestHash, string IdempotencyHash,
     RuntimeChangePlan Plan, InstallationStage Stage, RuntimeStoredRevision? Previous,
     RuntimeServiceSnapshot? Snapshot, RuntimePreparedSwitch? Prepared, bool SwitchStarted, string? ProblemCode,
@@ -39,7 +42,8 @@ public sealed record RuntimeArchiveState(RuntimeInstallation Installation, Runti
     public RuntimeMihomoTunOwnership? ActiveMihomoTun { get; init; }
     public RuntimeMihomoTunStart[] MihomoTunStarts { get; init; } = [];
     [JsonIgnore]
-    public Guid? CurrentMihomoTunExecution => MihomoTunStarts.LastOrDefault(start => start.Stage == RuntimeMihomoTunStartStage.Succeeded)?.OperationId
+    public Guid? CurrentMihomoTunExecution => MihomoTunStarts.LastOrDefault(start =>
+        start.PublicationId == ActiveMihomoTun?.OperationId && start.Stage == RuntimeMihomoTunStartStage.Succeeded)?.OperationId
         ?? ActiveMihomoTun?.OperationId;
     [JsonIgnore]
     public RuntimeMihomoTunStart? PendingMihomoTunStart => MihomoTunStarts.LastOrDefault() is

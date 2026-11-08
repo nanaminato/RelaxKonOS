@@ -55,7 +55,7 @@ internal sealed class SingBoxRemovalAdapter(string protectedRoot, ISingBoxArchiv
         await host.RemoveOwnedRegistrationAsync(ct);
     }
 
-    public async Task<bool> VerifyRemovedAsync(CancellationToken ct)
+    public async Task<bool> VerifyRemovedAsync(RuntimeArchiveState current, CancellationToken ct)
     {
         var service = await host.ObserveAsync(ct);
         return !service.Exists && !service.Running;

@@ -301,3 +301,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）Linux Helper 已接入提交后具名停止，复用原实例锁、原归属及原生停止检查点。进程信号及规则删除应答未知时不重复派发。仍需验证具名启动、重启、移除及公开发布。见[具名停止证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后具名停止)。
 
 2026-11-08（MR-03 / MB-04）具名启动和重启在原归档锁下持久记录新执行 ID，并保留原发布归属。重启先接续原执行的停止检查点。新启动派发后只核对原执行和原生效果，证据不足时保留待核验。移除、公开发布和生产成功提交仍受门禁保护。见[具名启动与重启证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后具名启动与重启)。
+
+2026-11-08（MR-03 / MB-04）提交态 TUN 复用归档移除事务，先核对当前执行的停止及网络清理。撤销注册和清理的已派发效果按原移除 ID 对账，终态保留发布及执行归属。生产成功提交和公开发布仍受门禁保护。见[提交后移除证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后移除)。

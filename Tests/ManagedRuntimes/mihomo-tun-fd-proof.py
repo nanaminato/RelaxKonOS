@@ -429,11 +429,11 @@ def proof_committed(owner, operation, operation_dir, case):
     assert json.loads(checkpoint(record, 'retry')) == receipt
     assert state_path.read_bytes() == terminal and [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))] == initial
     assert service_identity() == record['service'] and not (root / 'rule-delete-attempts').exists()
-    if case in ('committed-stop', 'committed-start'):
+    if case != 'committed':
         ip('link', 'set', 'dev', device, 'alias', original_alias)
         proof_committed_stop(record, observed, state_path, terminal, operation_dir, initial)
-    if case == 'committed-start':
-        proof_committed_start(record, observed, state_path)
+    if case == 'committed-start' or case.startswith('committed-remove-'):
+        proof_committed_start(record, observed, state_path, case)
     print(f'PASS TUN COMMITTED OWNERSHIP: {operation}, PID={record["service"][0]}, ifindex={record["ifindex"]}, '
           f'credential={record["credential"]}; original success after response loss, live drift reported separately')
 
@@ -507,7 +507,7 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
           'same receipt, process and network effect gone')
 
 
-def proof_committed_start(record, observed, state_path):
+def proof_committed_start(record, observed, state_path, case):
     original = record['operation']
     first = uuid.uuid4().hex
     second = uuid.uuid4().hex
@@ -575,8 +575,17 @@ def proof_committed_start(record, observed, state_path):
     assert receipt('start', first) == first_result
     final = json.loads(checkpoint(record, 'observe-commit'))
     assert final['receipt'] == observed['receipt'] and final['commitWitness'] == observed['commitWitness']
+    removal = uuid.uuid4().hex
+    if case.startswith('committed-remove-'):
+        active = run('remove-plan-active', removal)
+        assert active['Plan'] is None and 'runtime.network_stop_unconfirmed' in active['Problems']
     assert helper_result(stop_native(original))['success']
     assert not Path(f'/proc/{second_pid[0]}').exists() and network_baseline() == record['baseline']
+
+    if case.startswith('committed-remove-'):
+        proof_committed_removal(record, observed, state_path, (original, first, second), removal,
+                                case == 'committed-remove-keep', run, interrupted)
+        return
 
     interrupted('start-undispatched', lost)
     uncertain = state_path.read_bytes()
@@ -586,6 +595,71 @@ def proof_committed_start(record, observed, state_path):
     assert network_baseline() == record['baseline'] and device not in devices()
     print(f'PASS TUN COMMITTED START: publication={original}; start={first} PID={first_pid[0]}; '
           f'restart={second} PID={second_pid[0]}; unknown={lost}')
+
+
+def proof_committed_removal(record, observed, state_path, executions, removal, keep, run, interrupted):
+    registration = archive / 'archive-service.json'
+    unit_file = Path('/etc/systemd/system') / unit
+    original_registration = registration.read_bytes()
+    versions = archive / 'versions'
+    data = archive / 'data' / uuid.UUID(record['revision']).hex
+    marker = archive / 'retained-data.json'
+    evidence = {file: file.read_bytes() for execution in executions
+                for file in (archive / 'operations' / execution).glob('tun-*.json')}
+    assert len(evidence) == 27
+    planned = run('remove-plan-keep' if keep else 'remove-plan-purge', removal)
+    assert planned['Plan']['Request']['KeepData'] == keep
+    interrupted('remove-interrupt' if keep else 'remove-cleanup-interrupt', removal)
+    assert not registration.exists() and not unit_file.exists()
+    assert service('show', '-p', 'LoadState', '--value', unit) == 'not-found'
+    assert network_baseline() == record['baseline'] and device not in devices()
+    pending = state_path.read_bytes()
+    assert json.loads(pending)['removal']['cleanupStarted'] != keep
+
+    def outcome(action, expected, request_id=removal):
+        reply = run(action, request_id)
+        assert reply['success'], reply['error']
+        receipt = json.loads(base64.b64decode(reply['outputBase64']))
+        assert uuid.UUID(receipt['OperationId']).hex == removal and receipt['Outcome'] == expected
+        return receipt
+
+    outcome('remove-retry', 'RecoveryRequired', uuid.uuid4().hex)
+    assert state_path.read_bytes() == pending
+    if keep:
+        assert versions.exists() and data.exists() and config.exists()
+        registration.write_bytes(original_registration)
+        registration.chmod(0o600)
+        outcome('remove-recover', 'RecoveryRequired')
+        assert registration.read_bytes() == original_registration and versions.exists()
+        registration.unlink()
+    else:
+        assert not versions.exists() and not config.exists() and not data.exists()
+        versions.mkdir(mode=0o700)
+        sentinel = versions / 'fixture-late-file'
+        sentinel.write_bytes(b'late')
+        outcome('remove-recover', 'RecoveryRequired')
+        assert sentinel.read_bytes() == b'late'
+        sentinel.unlink()
+        versions.rmdir()
+
+    done = outcome('remove-recover', 'Succeeded')
+    terminal = state_path.read_bytes()
+    assert outcome('remove-retry', 'Succeeded', uuid.uuid4().hex) == done
+    assert outcome('remove-recover', 'Succeeded') == done and state_path.read_bytes() == terminal
+    old = json.loads(checkpoint(record, 'observe-commit'))
+    assert old['receipt'] == observed['receipt'] and old['commitWitness'] == observed['commitWitness']
+    removed = run('remove-observe', removal)
+    assert removed['installation']['ownership'] == 'Absent' and removed['receipt']['outcome'] == 'Succeeded'
+    assert uuid.UUID(removed['commitWitness']['operationId']).hex == removal
+    assert removed['configurationIdentity'] == (observed['configurationIdentity'] if keep else None)
+    assert (config.exists(), data.exists(), marker.exists(), versions.exists()) == (keep, keep, keep, False)
+    if keep:
+        assert hashlib.sha256(config.read_bytes()).hexdigest() == record['credential']
+    assert evidence == {file: file.read_bytes() for file in evidence}
+    assert {file for file in (archive / 'operations').glob('*/*')} == set(evidence)
+    assert network_baseline() == record['baseline'] and target not in resolver('dns')
+    print(f'PASS TUN COMMITTED REMOVAL: publication={record["operation"]}; current={executions[-1]}; '
+          f'removal={removal}; keepData={keep}; original network and publication evidence retained')
 
 
 def proof():
@@ -656,7 +730,7 @@ rules:
     owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
                              stdout=subprocess.PIPE, text=True)
     try:
-        if case in ('committed', 'committed-stop', 'committed-start'):
+        if case in ('committed', 'committed-stop', 'committed-start') or case.startswith('committed-remove-'):
             proof_committed(owner, operation, operation_dir, case)
             return
         if case != 'full':
@@ -834,7 +908,8 @@ rules:
             owner.kill()
             owner.wait(timeout=5)
         owner.stdout.close()
-        service('stop', unit)
+        if service('show', '-p', 'LoadState', '--value', unit) != 'not-found':
+            service('stop', unit)
         server.server_close()
         dns_relay.server_close()
         dns_udp.close()

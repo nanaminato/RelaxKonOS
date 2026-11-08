@@ -23,6 +23,8 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
         var keyHash = Hash(Encoding.UTF8.GetBytes(plan.Request.HostId + "\n" + plan.Request.InstallationId + "\n" + key));
         using var session = store.Acquire();
         var current = session.State ?? throw new RuntimePolicyException("runtime.installation_observation_required");
+        if (current.MihomoTunStarts.Any(item => item.OperationId == operationId))
+            throw new RuntimePolicyException("runtime.idempotency_conflict");
         var receipt = current.Receipts.FirstOrDefault(r => r.OperationId == operationId || r.IdempotencyHash == keyHash);
         if (receipt is not null)
         {

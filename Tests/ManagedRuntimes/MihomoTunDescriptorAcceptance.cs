@@ -36,7 +36,8 @@ internal static class MihomoTunDescriptorAcceptance
             throw new InvalidOperationException("The original descriptor operation is not prepared.");
 
         var intentRoot = intent.RootElement;
-        var commit = intentRoot.GetProperty("case").GetString() is "committed" or "committed-stop" or "committed-start";
+        var commit = intentRoot.GetProperty("case").GetString() is
+            "committed" or "committed-stop" or "committed-start" or "committed-remove-keep" or "committed-remove-purge";
         var revisionId = intentRoot.GetProperty("revision").GetGuid();
         var previousPath = Path.Combine(root, "previous.yaml");
         var previousBytes = await File.ReadAllBytesAsync(previousPath);
@@ -228,6 +229,11 @@ internal static class MihomoTunDescriptorAcceptance
         }
         else if (action.Split(':') is [var verb, var id] && Guid.TryParseExact(id, "N", out var execution))
         {
+            if (verb.StartsWith("remove-", StringComparison.Ordinal))
+            {
+                await RemovalFixtureAsync(root, host, verb, execution);
+                return;
+            }
             var (kind, cut) = verb switch
             {
                 "start" => (PrivilegedOperationKind.MihomoRuntimeTunStart, (InstallationStage?)null),
@@ -263,6 +269,52 @@ internal static class MihomoTunDescriptorAcceptance
             Console.WriteLine(JsonSerializer.Serialize(result));
         }
         else throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static async Task RemovalFixtureAsync(string root, LinuxMihomoArchiveHost host, string verb, Guid operation)
+    {
+        var store = Store();
+        var sources = new RuntimeSourceStore(Path.Combine(root, "trust"), RuntimeSourceProtection.Protect);
+        MihomoRuntimeLifecycle Lifecycle() => new(Archive, store, sources, host, RuntimeSourceProtection.Protect);
+        if (verb == "remove-observe")
+        {
+            var snapshot = await Lifecycle().QueryAsync(CancellationToken.None, operation);
+            Console.WriteLine(System.Text.Encoding.UTF8.GetString(RuntimeJson.Serialize(snapshot)));
+            return;
+        }
+        var planPath = Path.Combine(root, "tun-removal-plan.json");
+        if (verb is "remove-plan-active" or "remove-plan-keep" or "remove-plan-purge")
+        {
+            var state = store.Read()!.Installation;
+            var result = await Lifecycle().PlanAsync("mihomo-acceptance", new(state.InstallationId, state.HostId,
+                RuntimeChange.Uninstall, state.StateRevision, 0, 0, null, operation.ToString("N"),
+                KeepData: verb != "remove-plan-purge"), CancellationToken.None);
+            if (result.Plan is { } plan) await File.WriteAllBytesAsync(planPath, RuntimeJson.Serialize(plan));
+            Console.WriteLine(JsonSerializer.Serialize(result));
+            return;
+        }
+        var frozen = RuntimeJson.Read<RuntimeChangePlan>(await File.ReadAllBytesAsync(planPath));
+        await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(operation, _ =>
+            Task.FromResult(new MihomoCurrentAuthorization(DateTimeOffset.UtcNow.AddMinutes(1), null)));
+        var (recover, cut) = verb switch
+        {
+            "remove-interrupt" => (false, InstallationStage.Verifying),
+            "remove-cleanup-interrupt" => (false, InstallationStage.HealthChecking),
+            "remove-retry" => (false, (InstallationStage?)null),
+            "remove-recover" => (true, (InstallationStage?)null),
+            _ => throw new InvalidOperationException("Unexpected TUN removal fixture action.")
+        };
+        var response = await MihomoRuntimeOperations.ExecuteAsync(new(
+            recover ? PrivilegedOperationKind.MihomoRuntimeRecover : PrivilegedOperationKind.MihomoRuntimeExecute,
+            OperationId: operation, RuntimeLifecycle: recover
+                ? new(Authorization: callback.Channel, RecoveryOperationId: operation)
+                : new(Authorization: callback.Channel, FrozenPlan: frozen)), Lifecycle, frame =>
+        {
+            if (frame.Stage == cut && cut is not null) System.Diagnostics.Process.GetCurrentProcess().Kill();
+            return Task.CompletedTask;
+        });
+        Console.WriteLine(JsonSerializer.Serialize(response));
     }
 
     [SupportedOSPlatform("linux")]

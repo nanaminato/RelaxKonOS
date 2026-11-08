@@ -6,6 +6,7 @@ using Microsoft.Win32.SafeHandles;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -129,7 +130,7 @@ internal sealed partial class LinuxMihomoArchiveHost
         return (registration, checkpoint, effect);
     }
 
-    internal async Task<MihomoTunIntent> ReadCommittedTunForLaunchAsync(RuntimeMihomoTunOwnership ownership,
+    internal async Task<MihomoTunIntent> ReadCommittedTunIntentAsync(RuntimeMihomoTunOwnership ownership,
         RuntimeInstallation installation, Guid previousExecution, bool stopped, CancellationToken ct)
     {
         var (registration, _, effect) = await ReadCommittedTunAsync(ownership, installation, previousExecution, ct);
@@ -137,6 +138,34 @@ internal sealed partial class LinuxMihomoArchiveHost
         else if (stopped) Fail("network_stop_unconfirmed");
         else await VerifyActiveTunAsync(registration, effect, ct);
         return effect.Intent;
+    }
+
+    internal async Task UnregisterCommittedTunAsync(RuntimeMihomoTunOwnership owner, RuntimeInstallation installation,
+        Guid executionId, CancellationToken ct)
+    {
+        await ReadCommittedTunIntentAsync(owner, installation, executionId, stopped: true, ct);
+        File.Delete(UnitPath);
+        File.Delete(RegistrationPath);
+        LinuxDirectorySync.Flush(Path.GetDirectoryName(UnitPath)!);
+        LinuxDirectorySync.Flush(Root);
+        await CommandAsync("daemon-reload", ct, unit: false);
+    }
+
+    internal async Task VerifyUnregisteredTunAsync(RuntimeMihomoTunOwnership owner, RuntimeInstallation installation,
+        Guid executionId, CancellationToken ct)
+    {
+        if (Path.Exists(UnitPath) || Path.Exists(RegistrationPath) || (await ObserveAsync(ct)).Exists)
+            Fail("network_removal_unconfirmed");
+        var checkpoint = new LinuxMihomoTunCheckpoint(Root, executionId, owner.RevisionId, owner.ConfigurationIdentity);
+        if (checkpoint.Read() is not { Phase: MihomoTunPhase.Restored } effect
+            || effect.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
+            || effect.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace()
+            || TunOwnership(effect, installation, owner.OperationId) != owner)
+            throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        var routes = TunRoutes(effect.Intent);
+        if (effect.Process is not { } process || Directory.Exists($"/proc/{process.Pid}")
+            || !await routes.IsAbsentAsync(effect.Intent.Device, effect.InterfaceIndex)) Fail("network_stop_unconfirmed");
+        await VerifyStoppedTunNetworkAsync(effect, routes);
     }
 
     internal async Task VerifyCommittedLaunchAsync(RuntimeMihomoTunOwnership ownership, RuntimeInstallation installation,
@@ -157,6 +186,11 @@ internal sealed partial class LinuxMihomoArchiveHost
     {
         var routes = TunRoutes(effect.Intent);
         if (!await HasStoppedTunAsync(effect, routes, ct)) Fail("network_stop_unconfirmed");
+        await VerifyStoppedTunNetworkAsync(effect, routes);
+    }
+
+    private static async Task VerifyStoppedTunNetworkAsync(MihomoTunEffect effect, LinuxMihomoTunRoutes routes)
+    {
         if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: false);
         await routes.RequireRuleAsync(present: false);
         await routes.RequireManagementAsync(effect.Intent.ManagementHash);

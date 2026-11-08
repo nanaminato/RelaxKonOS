@@ -51,6 +51,8 @@ public static class RuntimeArchiveRecovery
         var target = state.Pending?.OperationId ?? state.Removal?.OperationId ?? state.Configuration?.OperationId
             ?? throw new RuntimePolicyException("runtime.recovery_absent");
         if (target != operationId) throw new RuntimePolicyException("runtime.recovery_target_conflict");
+        if (state.ActiveMihomoTun is not null && state.Removal is { RemovalStarted: true })
+            throw new RuntimePolicyException("runtime.network_removal_unconfirmed");
         // Closing a merely unfinished transaction would skip compensation that is still expected to work.
         if (!state.Installation.RecoveryRequired) throw new RuntimePolicyException("runtime.recovery_not_required");
         if (!confirmed) throw new RuntimePolicyException("runtime.recovery_confirmation_required");

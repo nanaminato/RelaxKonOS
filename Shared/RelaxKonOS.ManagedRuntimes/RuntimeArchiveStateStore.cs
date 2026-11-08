@@ -124,7 +124,8 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
             || state.ActiveMihomoTun is { } tun && (installation.RuntimeId != "mihomo" || installation.Target.Os != "linux"
                 || tun.OperationId == Guid.Empty || state.Active?.RevisionId != tun.RevisionId
                 || state.ConfigurationIdentity != tun.ConfigurationIdentity || !Digest(tun.NetworkIntentIdentity)
-                || state.Pending is not null || state.Removal is not null || state.Configuration is not null
+                || state.Pending is not null || state.Configuration is not null
+                || state.Removal is not null && state.PendingMihomoTunStart is not null
                 || !state.Receipts.Any(r => r.OperationId == tun.OperationId && r.ActiveRevisionId == tun.RevisionId
                     && r.Outcome == RuntimeSwitchOutcome.Succeeded && r.ProblemCode is null))
             || state.ProxyPublication is { } publication && (installation.RuntimeId != "sing-box"
@@ -179,6 +180,8 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                     or Protocol.Installations.InstallationStage.Activating or Protocol.Installations.InstallationStage.Verifying
                     or Protocol.Installations.InstallationStage.RollingBack or Protocol.Installations.InstallationStage.Interrupted)
                 || removal.CleanupStarted && !removal.RemovalStarted
+                || state.ActiveMihomoTun is not null && (state.MihomoTunStarts.Any(item => item.OperationId == removal.OperationId)
+                    || removal.RemovalStarted && removal.Snapshot is not { Running: false, BootEnabled: false })
                 || removal.Snapshot is { } snapshot && ((snapshot.ConfigurationIdentity is null) != (snapshot.ConfigurationSnapshotId is null)
                     || snapshot.ConfigurationIdentity is not null && !Digest(snapshot.ConfigurationIdentity))
                 || removal.Snapshot is not null && removal.Snapshot.ConfigurationIdentity != state.ConfigurationIdentity
@@ -216,13 +219,25 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
     private static bool ValidTunStarts(RuntimeArchiveState state)
     {
         var starts = state.MihomoTunStarts;
-        return starts is { Length: <= 256 } && (starts.Length == 0 || state.ActiveMihomoTun is not null)
+        return starts is { Length: <= 256 }
+            && state.Receipts.Where(receipt => receipt.RemovedMihomoTun is not null).All(receipt =>
+                state.Installation.RuntimeId == "mihomo" && receipt.Outcome == RuntimeSwitchOutcome.Succeeded
+                && receipt.ActiveRevisionId is null && ValidRemovedTun(state, receipt.RemovedMihomoTun!))
             && starts.All(start => start is not null && start.OperationId != Guid.Empty && Enum.IsDefined(start.Stage)
                 && (start.Restart || start.Stage != RuntimeMihomoTunStartStage.Stopping)
+                && (start.PublicationId == state.ActiveMihomoTun?.OperationId
+                    || start.Stage == RuntimeMihomoTunStartStage.Succeeded
+                        && state.Receipts.Any(receipt => receipt.RemovedMihomoTun?.OperationId == start.PublicationId))
                 && !state.Receipts.Any(receipt => receipt.OperationId == start.OperationId))
             && starts.Select(start => start.OperationId).Distinct().Count() == starts.Length
             && starts.Take(starts.Length - 1).All(start => start.Stage == RuntimeMihomoTunStartStage.Succeeded);
     }
+
+    private static bool ValidRemovedTun(RuntimeArchiveState state, RuntimeMihomoTunOwnership owner) =>
+        owner.OperationId != state.ActiveMihomoTun?.OperationId && owner.RevisionId != Guid.Empty
+        && Digest(owner.ConfigurationIdentity) && Digest(owner.NetworkIntentIdentity)
+        && state.Receipts.Any(receipt => receipt.OperationId == owner.OperationId && receipt.Outcome == RuntimeSwitchOutcome.Succeeded
+            && receipt.ActiveRevisionId == owner.RevisionId);
 
     private static bool Digest(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
     private static bool Same(RuntimeStoredRevision? left, RuntimeStoredRevision? right) =>
@@ -249,12 +264,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                 || state.Installation.Target != previous.Installation.Target
                 || state.Installation.StateRevision != checked(previous.Installation.StateRevision + 1)))
                 throw new RuntimePolicyException("runtime.state_revision_conflict");
-            if (state.ActiveMihomoTun != State?.ActiveMihomoTun
-                && (State?.ActiveMihomoTun is not null
-                    || State?.Configuration is not { Stage: Protocol.Installations.InstallationStage.HealthChecking, SwitchStarted: true } original
-                    || original.Plan.NetworkIntentIdentity is not { } network
-                    || state.ActiveMihomoTun != new RuntimeMihomoTunOwnership(original.OperationId,
-                        original.Plan.ActiveRevisionId, original.Plan.CandidateIdentity, network)))
+            if (state.ActiveMihomoTun != State?.ActiveMihomoTun && !ValidTunOwnerTransition(State, state))
                 throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
             if (State?.ProxyPublication is { Outcome: ProxyServerPublicationOutcome.InFlight } publication
                 && (state.ProxyPublication != (publication with { Outcome = ProxyServerPublicationOutcome.Committed })
@@ -266,6 +276,18 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
             store.PersistCommittedWitness(State, state);
             store.WriteCore(state);
             State = state;
+        }
+
+        private static bool ValidTunOwnerTransition(RuntimeArchiveState? previous, RuntimeArchiveState next)
+        {
+            if (previous?.ActiveMihomoTun is { } removed)
+                return next.ActiveMihomoTun is null && next.Removal is null && next.Active is null
+                    && previous.Removal is { CleanupStarted: true } removal
+                    && next.Receipts.Any(receipt => receipt.OperationId == removal.OperationId && receipt.RemovedMihomoTun == removed);
+            return previous?.Configuration is { Stage: Protocol.Installations.InstallationStage.HealthChecking, SwitchStarted: true } original
+                && original.Plan.NetworkIntentIdentity is { } network
+                && next.ActiveMihomoTun == new RuntimeMihomoTunOwnership(original.OperationId,
+                    original.Plan.ActiveRevisionId, original.Plan.CandidateIdentity, network);
         }
 
         private static bool ValidTunStartTransition(RuntimeMihomoTunStart[] previous, RuntimeMihomoTunStart[] next)
