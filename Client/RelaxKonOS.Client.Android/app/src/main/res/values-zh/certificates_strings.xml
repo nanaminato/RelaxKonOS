@@ -70,6 +70,8 @@
     <string name="certificates_problem_contact">ACME 联系邮箱无效或缺失。</string>
     <string name="certificates_problem_dns">服务器 DNS 查询失败或未返回地址。</string>
     <string name="certificates_problem_input">服务端拒绝证书输入，请核对名称、挑战、密钥与有效期。</string>
+    <string name="certificates_problem_revocation_unknown">CA 撤销结果待核验。</string>
+    <string name="certificates_problem_revocation_cleanup">CA 已确认撤销，本地清理待完成。</string>
     <string name="certificates_problem_interrupted">服务端重启中断任务，提交新请求前核实事实。</string>
     <string name="certificates_problem_kestrel">Kestrel HTTPS 绑定或启用不可用。</string>
     <string name="certificates_problem_material">受保护证书材料不可用或路径不安全。</string>
@@ -120,6 +122,7 @@
     <string name="certificates_stage_unknown">阶段未核实</string>
     <string name="certificates_stage_validation">输入校验</string>
     <string name="certificates_state_cancelled">已取消</string>
+    <string name="certificates_stage_revocation_dispatched">等待 CA 撤销响应</string>
     <string name="certificates_stage_cancel_requested">已请求取消，等待实际工作结束</string>
     <string name="certificates_state_failed">已失败</string>
     <string name="certificates_state_queued">排队中</string>

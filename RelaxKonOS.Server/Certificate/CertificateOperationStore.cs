@@ -8,7 +8,7 @@ using RelaxKonOS.Server.Startup;
 namespace RelaxKonOS.Server.Certificate;
 
 /// <summary>Durable, secret-free operation ledger for certificate lifecycle tasks.</summary>
-internal sealed class CertificateOperationStore : IHostedService, IDisposable
+internal sealed partial class CertificateOperationStore : IHostedService, IDisposable
 {
     internal const string AutomaticRenewalActor = "renewal-worker";
     internal const string InterruptedProblem = "certificate.operation_interrupted";
@@ -31,13 +31,16 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
 
     public CertificateOperationStore(IHostEnvironment environment, HostOperationJournal journal, ICertificateStore certificates,
         CertificateRenewalAttemptRepository renewalAttempts, ILogger<CertificateOperationStore> logger, IResidentModuleWorkLeaseSource leases,
-        FileHttp01ChallengeStore? challengeFiles = null)
+        FileHttp01ChallengeStore? challengeFiles = null, KestrelCertificateRegistry? kestrel = null,
+        CertificateDeploymentRepository? deployments = null)
     {
         _path = Path.Combine(environment.ContentRootPath, "data", "certificate-operations.json");
         _journal = journal;
         _certificates = certificates;
         _renewalAttempts = renewalAttempts;
         _challengeFiles = challengeFiles;
+        _kestrel = kestrel;
+        _deployments = deployments;
         _logger = logger;
         _work = new(leases, ServerModules.CertificatesId);
     }
@@ -52,7 +55,13 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         {
             if (_ready) return;
             stopping.Token.ThrowIfCancellationRequested();
-            try { await LoadAndRecoverAsync(stopping.Token); _ready = true; }
+            try
+            {
+                await LoadAndRecoverAsync(stopping.Token);
+                if (_operations.Values.Any(operation => operation.Revocation is not null))
+                    recovery.Run(HoldPendingRevocationAsync);
+                _ready = true;
+            }
             catch (OperationCanceledException error) when (ct.IsCancellationRequested) { recovery.Fail(error); throw; }
             catch (Exception error)
             {
@@ -106,6 +115,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
             RequireReady();
             if (FindExistingRequest(key, certificateId, automaticRenewal) is { } replay) return replay.ToDto();
             if (HasUnconfirmedChallengeCleanup()) return ChallengeCleanupConflict(certificateId, kind, automaticRenewal);
+            if (HasPendingRevocation(certificateId)) return RevocationConflict(certificateId, kind);
         }
         finally { _gate.Release(); }
         using var work = await _work.AdmitAsync(admission.Token);
@@ -121,6 +131,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
                 return existing.ToDto();
             }
             if (HasUnconfirmedChallengeCleanup()) return ChallengeCleanupConflict(certificateId, kind, automaticRenewal);
+            if (HasPendingRevocation(certificateId)) return RevocationConflict(certificateId, kind);
             admission.Token.ThrowIfCancellationRequested();
             work.Token.ThrowIfCancellationRequested();
             operation = new PersistedOperation(Guid.NewGuid(), key, certificateId, kind, actor, CertificateOperationState.Queued, "queued", "", null, null,
@@ -133,7 +144,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
                 operation.OperationId, certificateId, kind, actor);
             var cancellation = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, work.Token);
             _cancellations[operation.OperationId] = cancellation;
-            work.Run(_ => RunAsync(operation.OperationId, operation.CertificateId, ct => action(operation.OperationId, ct), cancellation));
+            work.Run(_ => RunAsync(operation.OperationId, operation.CertificateId, kind, ct => action(operation.OperationId, ct), cancellation));
         }
         finally { _gate.Release(); }
         return operation.ToDto();
@@ -303,7 +314,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         {
             RequireReady();
             if (!_operations.TryGetValue(id, out var operation)) return null;
-            if (operation.ProblemCode == ChallengeOwnershipProblem) return operation.ToDto();
+            if (operation.ProblemCode == ChallengeOwnershipProblem || operation.Revocation is not null) return operation.ToDto();
             if (operation.State is CertificateOperationState.Succeeded or CertificateOperationState.Failed or CertificateOperationState.Cancelled) return operation.ToDto();
             _cancellations.TryGetValue(id, out source);
             _operations[id] = operation with { Stage = "cancel-requested" };
@@ -316,7 +327,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         return result;
     }
 
-    private async Task RunAsync(Guid id, Guid certificateId, Func<CancellationToken, Task<string>> action, CancellationTokenSource linked)
+    private async Task RunAsync(Guid id, Guid certificateId, string kind, Func<CancellationToken, Task<string>> action, CancellationTokenSource linked)
     {
         try
         {
@@ -329,10 +340,27 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
             {
                 var certificateGate = _certificateGates.GetOrAdd(certificateId, static _ => new SemaphoreSlim(1, 1));
                 await certificateGate.WaitAsync(linked.Token);
-                try { linked.Token.ThrowIfCancellationRequested(); problem = await action(linked.Token); }
+                try
+                {
+                    linked.Token.ThrowIfCancellationRequested();
+                    problem = await IsRevocationBlockedAsync(id, certificateId)
+                        ? RevocationRecoveryProblem : await action(linked.Token);
+                }
                 finally { certificateGate.Release(); }
-                state = linked.IsCancellationRequested ? CertificateOperationState.Cancelled : string.IsNullOrEmpty(problem) ? CertificateOperationState.Succeeded : CertificateOperationState.Failed;
-                if (linked.IsCancellationRequested) problem = "certificate.operation_cancelled";
+                if (kind == "revoke" && await HasRevocationCheckpointAsync(id))
+                {
+                    if (problem.Length != 0)
+                    {
+                        await HoldPendingRevocationAsync(linked.Token);
+                        return;
+                    }
+                    state = CertificateOperationState.Succeeded;
+                }
+                else
+                {
+                    state = linked.IsCancellationRequested ? CertificateOperationState.Cancelled : string.IsNullOrEmpty(problem) ? CertificateOperationState.Succeeded : CertificateOperationState.Failed;
+                    if (linked.IsCancellationRequested) problem = "certificate.operation_cancelled";
+                }
             }
             catch (CertificateChallengeCleanupException error)
             {
@@ -353,6 +381,11 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
             catch (CertificateOperationException error) { problem = error.ProblemCode; }
             catch (OperationCanceledException) { state = CertificateOperationState.Cancelled; problem = "certificate.operation_cancelled"; }
             catch (Exception error) { _logger.LogError(error, "Certificate operation failed. OperationId={OperationId}", id); problem = "certificate.operation_failed"; }
+            if (state != CertificateOperationState.Succeeded && kind == "revoke" && await HasRevocationCheckpointAsync(id))
+            {
+                await HoldPendingRevocationAsync(linked.Token);
+                return;
+            }
             await CompleteAsync(id, state, problem, CancellationToken.None);
         }
         finally { _cancellations.TryRemove(id, out _); linked.Dispose(); }
@@ -365,7 +398,8 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         {
             var operation = _operations[id];
             if (operation.State == CertificateOperationState.Cancelled) return false;
-            _operations[id] = operation with { State = CertificateOperationState.Running, Stage = "running", StartedAt = DateTimeOffset.UtcNow };
+            var stage = operation is { Kind: "revoke", Stage: "cancel-requested" } ? operation.Stage : "running";
+            _operations[id] = operation with { State = CertificateOperationState.Running, Stage = stage, StartedAt = DateTimeOffset.UtcNow };
             try { await SaveAsync(ct); }
             catch { _operations[id] = operation; throw; }
             return true;
@@ -383,7 +417,7 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
             var interrupted = problemCode == InterruptedProblem;
             var completed = operation with { State = state, Stage = interrupted ? "interrupted" : state.ToString().ToLowerInvariant(),
                 ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow,
-                Order = interrupted || state == CertificateOperationState.Cancelled ? operation.Order : null, Challenges = null };
+                Order = interrupted || state == CertificateOperationState.Cancelled ? operation.Order : null, Challenges = null, Revocation = null };
             _operations[id] = completed;
             try
             {
@@ -415,7 +449,8 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
                 {
                     foreach (var challenge in item.Challenges ?? [])
                         await (_challengeFiles ?? throw new InvalidOperationException("WebRoot cleanup ownership is unavailable.")).RemoveOwnedAsync(challenge, ct);
-                    recovered = item.State is CertificateOperationState.Queued or CertificateOperationState.Running
+                    recovered = item.Revocation is not null ? await RecoverRevocationAsync(item, ct)
+                        : item.State is CertificateOperationState.Queued or CertificateOperationState.Running
                         ? item with { State = CertificateOperationState.Failed, Stage = "interrupted", ProblemCode = InterruptedProblem, CompletedAt = DateTimeOffset.UtcNow, Challenges = null }
                         : item;
                 }
@@ -457,7 +492,8 @@ internal sealed class CertificateOperationStore : IHostedService, IDisposable
         CertificateOperationState State, string Stage, string ProblemCode, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AcmeOrderIdentity? Order = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] WebRootChallengeFile[]? Challenges = null,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? WebsitePublicationId = null)
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? WebsitePublicationId = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RevocationCheckpoint? Revocation = null)
     {
         public CertificateOperationDto ToDto() => new(OperationId, CertificateId, Kind, State, Stage, ProblemCode, StartedAt, CompletedAt);
     }

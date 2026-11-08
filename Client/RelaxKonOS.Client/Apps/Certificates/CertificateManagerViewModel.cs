@@ -371,6 +371,11 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
             _activeOperationId = operation.OperationId;
             CancelOperationCommand.NotifyCanExecuteChanged();
             operation = await PollOperationAsync(operation, token);
+            if (IsPendingRevocation(operation))
+            {
+                OperationText = LocalizedText.Ref("certificates.operation.recovery_pending", operation.OperationId, ProblemText(operation.ProblemCode));
+                return false;
+            }
             if (operation.State == CertificateOperationState.Succeeded)
             {
                 OperationText = LocalizedText.Ref("certificates.operation.succeeded", label);
@@ -410,7 +415,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
 
     private async Task<CertificateOperationDto> PollOperationAsync(CertificateOperationDto operation, CancellationToken cancellationToken)
     {
-        while (operation.State is CertificateOperationState.Queued or CertificateOperationState.Running)
+        while ((operation.State is CertificateOperationState.Queued or CertificateOperationState.Running) && !IsPendingRevocation(operation))
         {
             OperationText = LocalizedText.Ref("certificates.operation.progress", OperationName(operation.Kind), OperationStage(operation.Stage));
             await Task.Delay(PollInterval, cancellationToken);
@@ -420,6 +425,9 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         }
         return operation;
     }
+
+    private static bool IsPendingRevocation(CertificateOperationDto operation) =>
+        operation.Stage is "revocation-recovery-required" or "revocation-cleanup-required";
 
     private async Task SelectCertificateAsync(Guid id, CancellationToken ct)
     {
@@ -500,7 +508,9 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         "create-self-signed" => LocalizedText.Get("certificates.operation.stage.creating_self_signed"),
         "deploy-kestrel" => LocalizedText.Get("certificates.operation.stage.deploying"),
         "renew" => LocalizedText.Get("certificates.operation.stage.renewing"),
-        "revoke" => LocalizedText.Get("certificates.operation.stage.revoking"),
+        "revoke" or "revocation-dispatched" => LocalizedText.Get("certificates.operation.stage.revoking"),
+        "revocation-confirmed" or "revocation-cleanup-required" => ProblemText("certificate.revocation_cleanup_required"),
+        "revocation-recovery-required" => ProblemText("certificate.revocation_recovery_required"),
         "delete" => LocalizedText.Get("certificates.operation.stage.deleting"),
         "cancelled" => LocalizedText.Get("certificates.operation.stage.cancelled"),
         "cancel-requested" => LocalizedText.Get("certificates.operation.stage.cancel_requested"),

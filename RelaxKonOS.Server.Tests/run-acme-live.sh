@@ -117,6 +117,10 @@ if [ -n "$server" ]; then
     if [ "$relay_mode" = schedule ]; then
         [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 2 ]
         [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 1 ]
+    elif [ "$schedule" = revocation ]; then
+        [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 2 ]
+        [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 2 ]
+        [ "$(grep -c '^200$' "$fixture/revocation-results")" -eq 2 ]
     else
         [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 3 ]
         [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 2 ]

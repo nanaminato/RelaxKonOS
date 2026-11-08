@@ -70,6 +70,8 @@
     <string name="certificates_problem_contact">ACME contact email is invalid or unavailable.</string>
     <string name="certificates_problem_dns">Host DNS lookup failed or returned no addresses.</string>
     <string name="certificates_problem_input">The server rejected certificate input. Review names, challenge, key and validity.</string>
+    <string name="certificates_problem_revocation_unknown">The CA revocation result needs verification.</string>
+    <string name="certificates_problem_revocation_cleanup">The CA confirmed revocation. Local cleanup is pending.</string>
     <string name="certificates_problem_interrupted">Server restart interrupted this task. Inspect facts before submitting a new request.</string>
     <string name="certificates_problem_kestrel">Kestrel HTTPS binding or activation is unavailable.</string>
     <string name="certificates_problem_material">Protected certificate material is unavailable or its path is unsafe.</string>
@@ -120,6 +122,7 @@
     <string name="certificates_stage_unknown">Stage not verified</string>
     <string name="certificates_stage_validation">Validation</string>
     <string name="certificates_state_cancelled">Cancelled</string>
+    <string name="certificates_stage_revocation_dispatched">Waiting for the CA revocation response</string>
     <string name="certificates_stage_cancel_requested">Cancellation requested; waiting for work to finish</string>
     <string name="certificates_state_failed">Failed</string>
     <string name="certificates_state_queued">Queued</string>

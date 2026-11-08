@@ -19,7 +19,8 @@ public sealed class AnvilAcmeExecutor(AcmeExecutionPorts ports, ILogger logger) 
         try
         {
             var context = await LoadContextAsync(ValidateDirectoryUrl(ports.DirectoryUrl), contactEmail, cancellationToken);
-            await AcmeCallLifetime.AwaitAsync(() => context.RevokeCertificate(certificate.RawData, Certify.ACME.Anvil.Acme.Resource.RevocationReason.Unspecified, context.AccountKey), cancellationToken);
+            await AcmeCallLifetime.AwaitAsync(() => context.RevokeCertificate(certificate.RawData,
+                Certify.ACME.Anvil.Acme.Resource.RevocationReason.Unspecified, certificatePrivateKey: null), cancellationToken);
         }
         catch (OperationCanceledException) { throw; }
         catch (CertificateOperationException) { throw; }

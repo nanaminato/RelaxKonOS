@@ -1427,6 +1427,8 @@ StartedAt / CompletedAt
 
 当前签发与自签名的请求身份由账号、动作和原 `Idempotency-Key` 决定，不包含每次尝试临时生成的证书 ID；重试返回原证书/操作 ID，不重复创建。续期、撤销、删除和 Kestrel 部署的身份另包含目标证书 ID。客户端必须冻结原请求内容并复用原键；更改请求应等待原任务核实后再建立新意图。取消端点不要求幂等键，按原操作 ID 返回实际状态；预检也不要求幂等键。
 
+撤销进入 `revocation-dispatched` 后，取消返回原回执，CA 响应仍由 Server 排空。CA 已确认而本地清理未完成时返回 `Running / revocation-cleanup-required`，原证书退出 Kestrel 选择器，Server 启动时继续清理对应部署记录。CA 结果未知时返回 `Running / revocation-recovery-required`，保留原部署事实，阻止同一证书的新写入。使用原 operationId 或原键查询，Server 不会再次提交撤销。见[撤销确认与本地恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-acme-撤销确认与本地恢复)。
+
 当前只有按操作 ID 查询和取消，没有操作集合或按请求键查询接口。在宿主权限检查后，先查询当前账号/动作/目标/原键的持久账本；已知请求直接返回原任务，再次预检或目标已删除不会遮蔽原结果。首次请求才执行当前预检和目标有效性校验。权限拒绝或记录缺失不能据此推断原任务失败或成功。记录取消不证明副作用已回滚，仍需读取证书及关联服务事实。
 
 ### 35.5 持久化、并发与保留期

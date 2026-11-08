@@ -64,10 +64,12 @@ internal sealed class KestrelCertificateRegistry
         }
     }
 
-    public bool Deactivate(Guid certificateId)
+    public bool Deactivate(Guid certificateId, string? expectedSha256 = null)
     {
         lock (_gate)
         {
+            if (expectedSha256 is not null && (!_certificates.TryGetValue(certificateId, out var current)
+                || current.GetCertHashString(HashAlgorithmName.SHA256) != expectedSha256)) return false;
             if (!_certificates.Remove(certificateId, out var previous)) return false;
             if (previous is not null) _retired.Add(previous);
             foreach (var host in _hostBindings.Where(item => item.Value == certificateId).Select(item => item.Key).ToArray()) _hostBindings.Remove(host);

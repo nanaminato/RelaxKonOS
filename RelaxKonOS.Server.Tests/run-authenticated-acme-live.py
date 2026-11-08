@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import secrets
 import socket
+import sqlite3
 import struct
 import subprocess
 import sys
@@ -49,7 +50,7 @@ def run(root, server, tests, mode):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     certificates = "/api/v1.0/certificates"
 
-    def request(path, token=None, payload=None, key=None, expected=200):
+    def request(path, token=None, payload=None, key=None, expected=200, expected_problem=None):
         headers = {}
         if token:
             headers["Authorization"] = "Bearer " + token
@@ -65,7 +66,7 @@ def run(root, server, tests, mode):
                     assert response.headers["Cache-Control"] == "no-store"
                 return json.load(response)
         except urllib.error.HTTPError as error:
-            if error.code == expected:
+            if error.code == expected and expected_problem is None:
                 return None
             try:
                 problem = json.load(error).get("problemCode", "")
@@ -73,6 +74,8 @@ def run(root, server, tests, mode):
                 problem = ""
             if not isinstance(problem, str) or not re.fullmatch(r"[a-zA-Z0-9._-]{1,100}", problem):
                 problem = "unspecified"
+            if error.code == expected and problem == expected_problem:
+                return None
             raise RuntimeError(f"Unexpected HTTP {error.code} at {path} ({problem})") from None
 
     def login():
@@ -189,6 +192,135 @@ def run(root, server, tests, mode):
         return {"domains": [domain], "challengeType": "webRootHttp01", "contactEmail": "fixture@example.test",
                 "acceptedTerms": True, "publicReachabilityConfirmed": True}
 
+    def verify_revocation():
+        fault = root / "response-fault"
+        held = root / "revocation-response-held"
+        release = root / "release-revocation-response"
+        native = root / "revocation-results"
+        ledger = root / "data" / "certificate-operations.json"
+        database = root / "identity.db"
+
+        def stop(child):
+            child.kill()
+            assert child.wait(timeout=10) < 0
+
+        def seed_binding(certificate_id, version):
+            with sqlite3.connect(database) as connection:
+                connection.execute("""
+                    INSERT INTO certificate_deployment_records
+                        (deployment_id, certificate_id, target_type, target_name, current_version,
+                         last_successful_version, revision, created_at, updated_at)
+                    VALUES (?, ?, 'kestrel', 'relaxkonos', ?, ?, 1, '2026-01-01', '2026-01-01')
+                    """, (f"kestrel:{certificate_id}", certificate_id, version, version))
+
+        def binding_exists(certificate_id):
+            with sqlite3.connect(database) as connection:
+                return connection.execute("SELECT 1 FROM certificate_deployment_records WHERE certificate_id=?",
+                                          (certificate_id,)).fetchone() is not None
+
+        def record_for(operation):
+            return next(item for item in json.loads(ledger.read_bytes()) if item["operationId"] == operation)
+
+        def active_leases(token):
+            return request("/api/v1.0/server/modules/relaxkonos.certificates", token)["residency"]["activeLeases"]
+
+        with process([server], "revocation-setup") as setup:
+            wait_for(setup, healthy, "revocation-setup")
+            token = login()
+            first, second = [terminal(token, request(certificates, token, issue(domain), key, 202), "succeeded")
+                             for domain, key in (("baseline.mb05.test", "known-issue"), ("missing.mb05.test", "unknown-issue"))]
+            known_id, unknown_id = first["certificateId"], second["certificateId"]
+            known, unknown = f"{certificates}/{known_id}", f"{certificates}/{unknown_id}"
+            fingerprints = [request(path, token)["fingerprintSha256"] for path in (known, unknown)]
+        for certificate_id in (known_id, unknown_id):
+            metadata = json.loads((root / "material" / certificate_id / "current.json").read_bytes())
+            seed_binding(certificate_id, metadata["version"])
+        with sqlite3.connect(database) as connection:
+            connection.execute("""
+                CREATE TRIGGER hold_revocation_cleanup BEFORE DELETE ON certificate_deployment_records
+                BEGIN SELECT RAISE(ABORT, 'private fixture deployment cleanup failure'); END
+                """)
+
+        with process([server], "revocation-known") as active:
+            wait_for(active, healthy, "revocation-known")
+            token = login()
+            assert request(known + "/deployments/kestrel", token)["registered"]
+            fault.write_text("hold-revocation")
+            original = request(known + "/revoke", token, {"confirmed": True}, "known-revoke", 202)
+            operation = original["operationId"]
+            route = f"{certificates}/operations/{operation}"
+            try:
+                wait_for(active, held.is_file, "revocation-known")
+                assert request(route + "/cancel", token, {})["stage"] == "revocation-dispatched"
+                assert active_leases(token) == 1 and record_for(operation)["revocation"]["confirmed"] is False
+                assert request(known + "/deployments/kestrel", token)["registered"]
+            finally:
+                release.touch()
+                fault.write_text("")
+            wait_for(active, lambda: request(route, token)["stage"] == "revocation-cleanup-required", "revocation-known")
+            checkpoint = record_for(operation)["revocation"]
+            assert checkpoint["confirmed"] and checkpoint["sha256"] == fingerprints[0].replace(":", "")
+            assert request(known, token)["status"].lower() == "revoked" and binding_exists(known_id)
+            assert not request(known + "/deployments/kestrel", token)["registered"]
+            assert request(unknown + "/deployments/kestrel", token)["registered"]
+            assert active_leases(token) == 1
+            assert native.read_text().splitlines() == ["200"]
+            stop(active)
+
+        with process([server], "revocation-blocked") as blocked:
+            wait_for(blocked, healthy, "revocation-blocked")
+            token = login()
+            pending = request(route, token)
+            assert pending["stage"] == "revocation-cleanup-required" and pending["completedAt"] is None
+            assert request(known + "/revoke", token, {"confirmed": True}, "known-revoke", 202) == pending
+            request(known + "/revoke", token, {"confirmed": True}, "competing-revoke", 409,
+                    expected_problem="certificate.revocation_recovery_required")
+            assert binding_exists(known_id) and not request(known + "/deployments/kestrel", token)["registered"]
+            assert active_leases(token) == 1
+            assert native.read_text().splitlines() == ["200"]
+        with sqlite3.connect(database) as connection:
+            connection.execute("DROP TRIGGER hold_revocation_cleanup")
+
+        with process([server], "revocation-recovered") as recovered:
+            wait_for(recovered, healthy, "revocation-recovered")
+            token = login()
+            final = request(route, token)
+            assert final["operationId"] == operation and final["state"] == "succeeded" and not binding_exists(known_id)
+            assert request(known + "/revoke", token, {"confirmed": True}, "known-revoke", 202) == final
+            repeat = request(known + "/revoke", token, {"confirmed": True}, "already-revoked", 202)
+            terminal(token, repeat, "succeeded")
+            assert request(known, token)["fingerprintSha256"] == fingerprints[0]
+            assert not request(known + "/deployments/kestrel", token)["registered"]
+            wait_for(recovered, lambda: active_leases(token) == 0, "revocation-recovered")
+            assert native.read_text().splitlines() == ["200"]
+            print(f"PASS ACME REVOCATION CONFIRMED RECOVERY: {operation}; one CA dispatch, original local cleanup", flush=True)
+
+            fault.write_text("lose-revocation")
+            lost = request(unknown + "/revoke", token, {"confirmed": True}, "unknown-revoke", 202)
+            unknown_operation = lost["operationId"]
+            unknown_route = f"{certificates}/operations/{unknown_operation}"
+            wait_for(recovered, lambda: request(unknown_route, token)["stage"] == "revocation-recovery-required", "revocation-recovered")
+            fault.write_text("")
+            assert native.read_text().splitlines() == ["200", "200"]
+            stop(recovered)
+
+        with process([server], "revocation-unknown") as restarted:
+            wait_for(restarted, healthy, "revocation-unknown")
+            token = login()
+            original = request(unknown_route, token)
+            assert original["operationId"] == unknown_operation and original["state"] == "running" and original["completedAt"] is None
+            assert original["problemCode"] == "certificate.revocation_recovery_required"
+            assert request(unknown + "/revoke", token, {"confirmed": True}, "unknown-revoke", 202) == original
+            assert request(unknown_route + "/cancel", token, {}) == original
+            request(unknown + "/revoke", token, {"confirmed": True}, "unknown-new-key", 409,
+                    expected_problem="certificate.revocation_recovery_required")
+            assert request(unknown, token)["fingerprintSha256"] == fingerprints[1]
+            assert request(unknown, token)["status"].lower() == "active" and binding_exists(unknown_id)
+            assert request(unknown + "/deployments/kestrel", token)["registered"]
+            assert active_leases(token) == 1
+            assert native.read_text().splitlines() == ["200", "200"]
+            print(f"PASS ACME REVOCATION UNKNOWN RECOVERY: {unknown_operation}; same receipt, zero replay", flush=True)
+
     def verify_scheduled_drain(initial, token):
         marker = root / "challenge-response-held"
         release = root / "release-challenge-response"
@@ -302,6 +434,9 @@ def run(root, server, tests, mode):
         "socketGroupId": os.getegid(), "allowedUids": [os.geteuid()]}))
     with process([tests, "--isolated-certificate-pam-helper", helper_config], "helper") as helper:
         wait_for(helper, Path(env["PrivilegedHelper__SocketPath"]).is_socket, "helper")
+        if mode == "revocation":
+            verify_revocation()
+            return
         with process([server], "initial-server") as initial:
             wait_for(initial, healthy, "initial-server")
             token = login()

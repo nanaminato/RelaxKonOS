@@ -185,6 +185,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
         if (string.IsNullOrWhiteSpace(existing.ContactEmail)) return Failure("renew", "certificate.contact_unavailable");
         return await operations.StartOrderAsync(idempotencyKey, certificateId, "renew", actor, async (recordOrder, recordChallenge, ct) =>
         {
+            if ((await certificates.GetAsync(certificateId, ct)) is { Status: CertificateStatus.Revoked }) return "certificate.revoked";
             using var oldMaterial = await certificates.LoadCurrentAsync(certificateId, ct);
             var material = await acme.IssueAsync(certificateId, existing.Domains, existing.ChallengeType, existing.KeyAlgorithm, existing.ContactEmail, ct, recordOrder, recordChallenge);
             await certificates.SaveAsync(material with { LastRenewalAt = DateTimeOffset.UtcNow }, ct);
@@ -230,16 +231,8 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
         if (existing is null) return Failure("revoke", "certificate.not_found");
         if (existing.Kind == CertificateKind.SelfSigned) return Failure("revoke", "certificate.self_signed_not_revocable");
         if (string.IsNullOrWhiteSpace(existing.ContactEmail)) return Failure("revoke", "certificate.contact_unavailable");
-        return await operations.StartAsync(idempotencyKey, certificateId, "revoke", actor, async ct =>
-        {
-            using var material = await certificates.LoadCurrentAsync(certificateId, ct);
-            if (material is null) return "certificate.material_unavailable";
-            await acme.RevokeAsync(material, existing.ContactEmail, ct);
-            kestrel.Deactivate(certificateId);
-            await deployments.RemoveKestrelAsync(certificateId, ct);
-            await certificates.UpdateStatusAsync(certificateId, CertificateStatus.Revoked, ct);
-            return "";
-        }, lifetime.ApplicationStopping, cancellationToken);
+        return await operations.StartRevocationAsync(idempotencyKey, certificateId, actor, acme.RevokeAsync,
+            lifetime.ApplicationStopping, cancellationToken);
     }
 
     private static CertificateOperationDto Failure(string kind, string problem)

@@ -7,6 +7,7 @@ from pathlib import Path
 import ssl
 import sys
 import time
+from urllib.parse import urlsplit
 
 
 root = Path(sys.argv[1])
@@ -14,12 +15,14 @@ schedule = sys.argv[2:] == ["schedule"]
 website = sys.argv[2:] == ["website"]
 full_server = schedule or website or sys.argv[2:] == ["full-server"]
 ca_context = ssl.create_default_context(cafile=str(root / "https.pem"))
+revocation_path = None
 
 
 class Relay(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def relay(self):
+        global revocation_path
         length = int(self.headers.get("Content-Length", "0"))
         headers = {name: self.headers[name] for name in ("Host", "Content-Type", "User-Agent")
                    if name in self.headers}
@@ -29,6 +32,8 @@ class Relay(BaseHTTPRequestHandler):
             upstream.request(self.command, self.path, self.rfile.read(length) if length else None, headers)
             response = upstream.getresponse()
             body = response.read()
+            if self.path == "/dir" and response.status == 200:
+                revocation_path = urlsplit(json.loads(body).get("revokeCert", "")).path
             if schedule and self.path == "/dir" and response.status == 200:
                 directory = json.loads(body)
                 directory.pop("renewalInfo", None)
@@ -36,6 +41,19 @@ class Relay(BaseHTTPRequestHandler):
             selected = self.headers.get("X-Fixture-Lose-Response")
             if full_server:
                 selected = (root / "response-fault").read_text(encoding="ascii").strip()
+            if self.command == "POST" and self.path == revocation_path:
+                with (root / "revocation-results").open("a", encoding="ascii") as results:
+                    results.write(f"{response.status}\n")
+                if response.status == 200 and selected == "lose-revocation":
+                    self.close_connection = True
+                    return
+                if response.status == 200 and selected == "hold-revocation":
+                    (root / "revocation-response-held").touch()
+                    deadline = time.monotonic() + 15
+                    while not (root / "release-revocation-response").is_file():
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError("The revocation response was not released")
+                        time.sleep(0.05)
             if selected == "hold-observation" and self.command == "POST" and self.path.startswith("/my-order/") and response.status == 200:
                 (root / "order-observation-held").write_text(self.path, encoding="ascii")
                 deadline = time.monotonic() + 10

@@ -43,6 +43,9 @@ import app.relaxkonos.mobile.core.net.*
     "failed" -> R.string.certificates_state_failed
     "cancelled" -> R.string.certificates_state_cancelled
     "cancel-requested" -> R.string.certificates_stage_cancel_requested
+    "revocation-dispatched" -> R.string.certificates_stage_revocation_dispatched
+    "revocation-confirmed", "revocation-cleanup-required" -> R.string.certificates_problem_revocation_cleanup
+    "revocation-recovery-required" -> R.string.certificates_problem_revocation_unknown
     "interrupted" -> R.string.certificates_stage_interrupted
     "validation" -> R.string.certificates_stage_validation
     else -> R.string.certificates_stage_unknown
@@ -67,6 +70,8 @@ import app.relaxkonos.mobile.core.net.*
     "certificate.not_found" -> R.string.certificates_problem_missing
     "certificate.operation_cancelled" -> R.string.certificates_state_cancelled
     "certificate.operation_interrupted" -> R.string.certificates_problem_interrupted
+    "certificate.revocation_recovery_required" -> R.string.certificates_problem_revocation_unknown
+    "certificate.revocation_cleanup_required" -> R.string.certificates_problem_revocation_cleanup
     "certificate.not_usable" -> R.string.certificates_binding_status
     "certificate.deployment_not_ready" -> R.string.certificates_deployment_not_ready
     "certificate.kestrel_https_not_configured", "certificate.kestrel_activation_failed" -> R.string.certificates_problem_kestrel
