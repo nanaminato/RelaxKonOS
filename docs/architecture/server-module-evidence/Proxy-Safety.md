@@ -604,6 +604,14 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 精确恢复原管理选路后再次启动 Server，按原 Helper 见证确认并提交同一发布。期间 Helper 原配置派发一次，新进程配置或补偿派发均为零。随后具名停止 `b2f6bd9044dc4499be566331475faa1c`、具名启动 `72e49b8f805c49a09a2109737608149e` 及正常租约归零均通过。归档 SHA-256 为 `932294913eef160f370abaa31ac44bdf1abed3260f570288aef1fa4d37e5cf79`，日志为 `.artifacts/mb04-tun-route-drift/linux.log`。Windows Release ManagedRuntimes 通过，可信下载探针因缺少进程级 CA 覆盖跳过。记录了专属进程退出、cgroup 清理和宿主指纹核验。对象释放、ALC、隔离负载内存与生产收益分别待测。
 
+### 成功见证缺失或不匹配时的原发布恢复
+
+**已实现且已验证。** Linux 私有 systemd 原发布 `07bfb151d1d24d41bdc77197ff87b026` 的 Helper 已提交而 Server 尚未确认。重启后，分别注入管理选路漂移、移走原成功见证、替换见证的配置摘要。后两种情况下 Helper 保留原成功回执和当前发布身份，但每次 Server 重启查询后均保留 `managed_tun` 原待核验回执，完成时间为空，新键返回 `proxy.operation_interrupted`。原 PID 316、描述符、配置身份 `fc354a47748ed8a42d5a78014bd07de5a169e368a24148a10e36afef0583d682`、实际 HTTP 和分流 DNS 均通过核对。Server 镜像保持旧配置，原队列、Helper 台账和原生检查点逐字节一致，配置或补偿重派为零。
+
+恢复原见证后，再次启动 Server 按原 ID 确认原发布，实际工作租约归零。随后具名停止 `3a52f056768943bebe5bb2fbdb4153d4` 和启动 `3f222491985746e2aac975dd1c2aa63c` 均通过。Windows Release 模块边界回归通过。本场发布恢复沿用等效角色策略的 HTTP 夹具。对象释放、ALC、隔离内存和生产收益仍待独立测量。
+
+同批用共享故障夹具复跑完整 PAM/JWT 停用门禁，原发布 `2ae29d21d49e48fcb5f302374b2bca0a` 通过。两场专属进程和 cgroup 清理以及宿主指纹核验均通过。日志为 `.artifacts/mb04-tun-publication-witness/linux.log`，归档 SHA-256 为 `bca6a4988fef77703efe377e6dd76500468fdeacf071e5e520a2a9302ccfae24`。
+
 **已实现但实机未验证。** 其他 Linux 架构。HTTP 实机使用等效角色策略和夹具 bearer，完整安装态 JWT 登录和 Android 客户端未参与。Windows 可信下载探针因缺少进程级测试 CA 覆盖跳过。
 
 具名启停响应丢失的原执行对账仍受门禁保护。Helper 无终态由后续[认证 HTTP 补偿](#mb-04-受管-tun-认证-http-补偿)覆盖。此批证据确认专属进程退出及清理，未测量对象释放、ALC 回收、隔离负载内存或生产收益。

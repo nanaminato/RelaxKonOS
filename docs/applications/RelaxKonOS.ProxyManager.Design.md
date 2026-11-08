@@ -4563,6 +4563,8 @@ Server 重启后，尚待 Helper 核验的受管 TUN 操作保留原 ID 和空�
 
 原 Helper 已提交但 Server 尚未确认时，管理选路漂移会保留原待核验回执，即使当前仍能通过原 TUN 转发。恢复精确管理选路后，Server 在启动时按原 ID 核验配置身份、归属和 Helper 见证，再确认原发布。见[管理选路漂移实机证据](../architecture/server-module-evidence/Proxy-Safety.md#管理选路漂移后的原发布确认)。
 
+这一窗口中，原成功见证缺失或配置摘要不匹配同样阻止结案。原键继续返回同一待核验操作，Server 保留旧镜像并拒绝新键。恢复精确见证后，Server 可以只读核对原 Helper 回执并完成发布。见[原发布见证门禁](../architecture/server-module-evidence/Proxy-Safety.md#成功见证缺失或不匹配时的原发布恢复)。
+
 Helper 尚未提交且原候选仍在转发时，管理选路漂移也会阻止原补偿停止候选进程。同键保留原待核验回执。精确选路恢复后，原操作重新核验归属并补偿一次。见[原补偿门禁实机证据](../architecture/server-module-evidence/Proxy-Safety.md#管理选路漂移时拒绝原补偿派发)。
 
 Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停用。正常停机等待已受理的具名停用收到 Helper 响应、写入审计并持久化原队列终态后退出。重启仍可按原键取得原回执，再次启用沿用已确认发布。见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。

@@ -99,6 +99,25 @@ def management_route_drift(table):
     assert network_baseline(table) == original
 
 
+@contextmanager
+def commit_witness_fault(publication, mismatched):
+    path = archive / 'state' / 'commits' / f'{uuid.UUID(publication)}.json'
+    held = path.with_suffix('.held')
+    path.rename(held)
+    replacement = None
+    try:
+        if mismatched:
+            changed = json.loads(held.read_bytes())
+            changed['witness']['configurationIdentity'] = '0' * 64
+            replacement = json.dumps(changed).encode()
+            path.write_bytes(replacement)
+            path.chmod(0o600)
+        yield
+        assert (path.read_bytes() if path.exists() else None) == replacement
+    finally:
+        held.replace(path)
+
+
 def route(table):
     entries = json.loads(ip('-j', '-N', '-4', 'route', 'show', 'table', 'all'))
     return [entry for entry in entries if entry.get('table') == str(table)]
@@ -1078,35 +1097,51 @@ def proof_http_publication(owner, ipc, previous, case):
     if case == 'ipc-http-commit':
         queue = state_dir / 'proxy-operations.json'
         committed = json.loads(checkpoint(record, 'observe-commit'))
-        with management_route_drift(record['routing_table']) as drift:
-            unverified = json.loads(checkpoint(record, 'observe-commit'))
-            assert unverified['receipt'] == committed['receipt']
-            assert unverified['configurationIdentity'] == committed['configurationIdentity']
-            assert not unverified['mihomoTunPublicationId']
-            with subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity) as drifted:
+
+        def verify_unconfirmed(phase, live_record):
+            query = f'operation=MihomoRuntimeQuery id={uuid.UUID(operation)} '
+            prior_queries = ipc.log.read_text().count(query)
+            with subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity) as blocked_server:
                 try:
-                    wait_file('http-ready', drifted)
-                    query = f'operation=MihomoRuntimeQuery id={uuid.UUID(operation)} '
+                    wait_file('http-ready', blocked_server)
                     deadline = time.monotonic() + 8
-                    while query not in ipc.log.read_text():
-                        assert drifted.poll() is None and time.monotonic() < deadline
+                    while ipc.log.read_text().count(query) <= prior_queries:
+                        assert blocked_server.poll() is None and time.monotonic() < deadline
                         time.sleep(.05)
                     drained()
                     original_queue = queue.read_bytes()
                     assert accepted('/tun/enable', key, {'profileId': profile}) == operation
                     status, waiting = http('/operations/' + str(uuid.UUID(operation)))
                     assert status == 200 and waiting['state'] == 5 and waiting['stage'] == 'managed_tun' and not waiting['completedAt']
-                    blocked, detail = http('/tun/enable', 'managed-tun-route-drift', {'profileId': profile})
+                    blocked, detail = http('/tun/enable', f'managed-tun-{phase}', {'profileId': profile})
                     assert blocked == 400 and detail['problemCode'] == 'proxy.operation_interrupted'
-                    probe(dict(record, baseline=drift), 'http-route-drift')
+                    probe(live_record, f'http-{phase}')
                     assert queue.read_bytes() == original_queue and archive_state.read_bytes() == original_state
                     assert mirror.read_bytes() == previous.read_bytes()
                     assert all((operation_dir / name).read_bytes() == contents for name, contents in native.items())
                     log = ipc.log.read_text()
                     assert 'operation=MihomoRuntimeConfigure ' not in log and 'operation=MihomoRuntimeRecover ' not in log
                 finally:
-                    drifted.kill()
+                    blocked_server.kill()
             (state_dir / 'http-ready').unlink()
+
+        with management_route_drift(record['routing_table']) as drift:
+            unverified = json.loads(checkpoint(record, 'observe-commit'))
+            assert unverified['receipt'] == committed['receipt']
+            assert unverified['configurationIdentity'] == committed['configurationIdentity']
+            assert not unverified['mihomoTunPublicationId']
+            verify_unconfirmed('route-drift', dict(record, baseline=drift))
+
+        for mismatched in (False, True):
+            with commit_witness_fault(operation, mismatched):
+                observed = json.loads(checkpoint(record, 'observe-commit'))
+                assert observed['receipt'] == committed['receipt'] and observed['configurationIdentity'] == committed['configurationIdentity']
+                assert observed['mihomoTunPublicationId'] == committed['mihomoTunPublicationId']
+                if mismatched:
+                    assert observed['commitWitness']['configurationIdentity'] != observed['configurationIdentity']
+                else:
+                    assert observed['commitWitness'] is None
+                verify_unconfirmed('mismatched-witness' if mismatched else 'missing-witness', record)
         assert json.loads(checkpoint(record, 'observe-commit'))['commitWitness'] == committed['commitWitness']
     restarted = subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity, stdout=subprocess.PIPE, text=True)
     try:
@@ -1157,6 +1192,7 @@ def proof_http_publication(owner, ipc, previous, case):
             assert archive_state.read_bytes() == original_state and 'operation=MihomoRuntimeRecover ' not in ipc.log.read_text()
             print(f'PASS TUN MANAGEMENT ROUTE DRIFT: operation={operation}; configuration={record["credential"]}; '
                   f'PID={record["service"][0]}; original route restored and original publication confirmed without replay')
+            print(f'PASS TUN PUBLICATION WITNESS GATE: operation={operation}; missing and mismatched witnesses kept original publication pending')
         if action_cuts:
             arm('stop')
         stopped = accepted('/tun/disable', 'managed-tun-http-stop')
@@ -1544,28 +1580,17 @@ def proof_full_http_shutdown(ipc, case):
             finally:
                 checkpoint_path.write_bytes(witness)
 
-        commit_path = archive / 'state' / 'commits' / f'{uuid.UUID(publication)}.json'
-        held_commit = commit_path.with_suffix('.held')
-        commit_path.rename(held_commit)
-        try:
+        with commit_witness_fault(publication, mismatched=False):
             observed = query_publication()
             assert observed['Installation']['Ownership'] == 'Managed' and observed['Receipt'] == committed['Receipt']
             assert observed['MihomoTunPublicationId'] == committed['MihomoTunPublicationId'] and observed['CommitWitness'] is None
             verify_blocked_publication('admission-missing-commit-witness')
-            assert not commit_path.exists()
 
-            changed = json.loads(held_commit.read_bytes())
-            changed['witness']['configurationIdentity'] = '0' * 64
-            replacement = json.dumps(changed).encode()
-            commit_path.write_bytes(replacement)
-            commit_path.chmod(0o600)
+        with commit_witness_fault(publication, mismatched=True):
             observed = query_publication()
             assert observed['Receipt'] == committed['Receipt'] and observed['ConfigurationIdentity'] == committed['ConfigurationIdentity']
             assert observed['CommitWitness']['ConfigurationIdentity'] != observed['ConfigurationIdentity']
             verify_blocked_publication('admission-mismatched-commit-witness')
-            assert commit_path.read_bytes() == replacement
-        finally:
-            held_commit.replace(commit_path)
 
         restored = query_publication()
         assert restored['MihomoTunPublicationId'] == committed['MihomoTunPublicationId']
