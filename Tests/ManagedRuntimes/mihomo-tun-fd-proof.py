@@ -1507,6 +1507,21 @@ def proof_full_http_shutdown(ipc, case):
             process = subprocess.run([launcher], input=json.dumps(query), capture_output=True, text=True, timeout=12, check=True)
             return json.loads(base64.b64decode(helper_result(process)['outputBase64']))
 
+        def verify_blocked_publication(phase):
+            nonlocal worker, token
+            blocked_pid = start('restart')
+            token = login()
+            plan(publication, managed=False)
+            probe(record, phase)
+            terminate(blocked_pid)
+            worker = launch('admission-disabled')
+            refused(publication)
+            assert (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes()) == before
+            assert not (root / 'rule-delete-attempts').exists()
+            log = ipc.log.read_text()
+            assert all(f'operation={mutation} ' not in log for mutation in
+                       ('MihomoRuntimeConfigure', 'MihomoRuntimeRecover', 'MihomoRuntimeTunStop'))
+
         committed = query_publication()
         foreign = json.loads(witness)
         foreign['Process']['StartTicks'] += 1
@@ -1524,21 +1539,34 @@ def proof_full_http_shutdown(ipc, case):
                 assert observed['Installation']['Ownership'] == 'Unknown'
                 assert observed['ProblemCode'] == 'runtime.network_checkpoint_conflict'
                 assert observed['Receipt'] == committed['Receipt'] and observed['CommitWitness'] == committed['CommitWitness']
-                pid = start('restart')
-                token = login()
-                plan(publication, managed=False)
-                probe(record, f'admission-{name}-checkpoint')
-                terminate(pid)
-                worker = launch('admission-disabled')
-                refused(publication)
+                verify_blocked_publication(f'admission-{name}-checkpoint')
                 assert checkpoint_path.read_bytes() == damaged
-                assert (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes()) == before
-                assert not (root / 'rule-delete-attempts').exists()
-                log = ipc.log.read_text()
-                assert all(f'operation={mutation} ' not in log for mutation in
-                           ('MihomoRuntimeConfigure', 'MihomoRuntimeRecover', 'MihomoRuntimeTunStop'))
             finally:
                 checkpoint_path.write_bytes(witness)
+
+        commit_path = archive / 'state' / 'commits' / f'{uuid.UUID(publication)}.json'
+        held_commit = commit_path.with_suffix('.held')
+        commit_path.rename(held_commit)
+        try:
+            observed = query_publication()
+            assert observed['Installation']['Ownership'] == 'Managed' and observed['Receipt'] == committed['Receipt']
+            assert observed['MihomoTunPublicationId'] == committed['MihomoTunPublicationId'] and observed['CommitWitness'] is None
+            verify_blocked_publication('admission-missing-commit-witness')
+            assert not commit_path.exists()
+
+            changed = json.loads(held_commit.read_bytes())
+            changed['witness']['configurationIdentity'] = '0' * 64
+            replacement = json.dumps(changed).encode()
+            commit_path.write_bytes(replacement)
+            commit_path.chmod(0o600)
+            observed = query_publication()
+            assert observed['Receipt'] == committed['Receipt'] and observed['ConfigurationIdentity'] == committed['ConfigurationIdentity']
+            assert observed['CommitWitness']['ConfigurationIdentity'] != observed['ConfigurationIdentity']
+            verify_blocked_publication('admission-mismatched-commit-witness')
+            assert commit_path.read_bytes() == replacement
+        finally:
+            held_commit.replace(commit_path)
+
         restored = query_publication()
         assert restored['MihomoTunPublicationId'] == committed['MihomoTunPublicationId']
         assert restored['Receipt'] == committed['Receipt'] and restored['CommitWitness'] == committed['CommitWitness']
@@ -1600,7 +1628,7 @@ def proof_full_http_shutdown(ipc, case):
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         print(f'PASS TUN MODULE DEACTIVATION: publication={publication}; root-only-stop={pending}; '
               f'configuration={record["credential"]}; original PID={native_pid}; '
-              'duplicate, unknown and damaged checkpoint fields blocked disable plan and startup')
+              'missing or mismatched commit witness blocked disable plan and startup')
 
     def verify_retained_removal(pid, record, publication):
         nonlocal worker, token
