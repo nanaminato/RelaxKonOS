@@ -463,3 +463,11 @@ Windows Release 档案配置激活与回滚、设置边界 31 项、系统代理
 档案在 SQLite 提交前后中断的原 `f06880b1-fde2-4bb7-a0ca-ddd5e2d59128` 与 `beee4f10-8761-4a3e-8b44-e27703a3fb06` 各保持一次 reload、一次档案修订。设置文件提交前后中断各保持一次 reload 和一次真实宿主确认。原补偿 `e72436b8-231e-4604-ba0d-072a1a77b563` 的 reload 应答丢失后仍为 RecoveryRequired，未重放。TUN、系统代理、授权到期、发布补偿和订阅批次同制品通过，专属 cgroup 已清理，宿主服务和代理文件指纹一致。日志见 `.artifacts/mb04-direct-publication-execution/linux.log`，归档 SHA-256 为 `577f358a2782f806d816ba1029417ca1a89609e28ffdd3839229ce8e0d5b8800`。
 
 本切片覆盖直连档案与设置的提交和补偿流程。受管运行时安装、版本生命周期和受管发布事务由原实现负责。Proxy 整体保持 resident，整模块休眠及生产内存继续开放。
+
+## MB-04 受管 Mihomo 已恢复后的清理续接
+
+共享配置事务保存 `PreviousRestored` 后，按原 ID 恢复只清理剩余准备文件并写入原回执。此前清理失败会令同一次恢复再次执行停止、授权和恢复旧配置。配置事务仍在同一实例锁内，恢复确认未持久记录时沿用原补偿边界。
+
+Linux 私有 systemd 中，候选授权撤销触发恢复，受保护的临时目录路径冲突使清理以 `runtime.linked_path_forbidden` 停在原 `fa85d35c-a40d-495a-b03c-cf9ae3fd12cd`。此时旧配置已持久记录为已恢复，Mihomo 实际转发。解除临时路径冲突后，具名 Helper 恢复沿用同一 PID，授权通道读取为零，清理完成并读回原 `Interrupted` 回执。测试归档 SHA-256 为 `f20c204e923d393b17c3aafa6dedc02328df1367764649136a2e575e62f20ed0`，日志 `.artifacts/mb04-tun-marker-sync/tun-owner-managed-linux.log`。
+
+Linux 私有 systemd 回归 180 项通过，专属 cgroup 移除，宿主服务与代理文件指纹一致。Windows ManagedRuntimes Release 回归及模块边界回归通过，配置事务 92 项包括同键只读原回执与重试只执行清理。缺少进程级测试 CA 覆盖，可信下载探针跳过。该生产回归使用普通受管配置。受管 TUN 网络效果的双中断实证仍限专属夹具。见[原生效果的双中断核对](Proxy-Safety.md#mb-04-tun-原生效果的双中断核对)。

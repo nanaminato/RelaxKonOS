@@ -129,12 +129,12 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
             Update(session, p => p with { Stage = InstallationStage.RollingBack, ProblemCode = problem });
             await NotifyAsync(InstallationStage.RollingBack, false);
             var pending = session.State!.Configuration!;
-            if (pending.SwitchStarted)
+            if (pending.SwitchStarted && !pending.PreviousRestored)
             {
                 await adapter.StopForRecoveryAsync(pending, CancellationToken.None);
                 await adapter.ValidateRestoreAsync(pending, CancellationToken.None);
-                // Keep the candidate identity until restoration has actually been verified. A crash after
-                // restore simply replays the idempotent restoration rather than claiming it already worked.
+                // Keep the candidate identity until restoration has been verified and recorded.
+                // Once recorded, recovery can resume cleanup without restarting the restored service.
                 var restored = await adapter.RestoreAsync(pending, CancellationToken.None);
                 var before = pending.Snapshot!;
                 if (!restored.Healthy || !restored.OwnedResourcesRestored || restored.MeasuredVersion != session.State.Active!.MeasuredVersion

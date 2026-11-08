@@ -99,10 +99,20 @@ internal static class ConfigurationTransactionChecks
             await Refused("recovery_target_conflict", () => f.Engine.RecoverAsync(Guid.NewGuid(), default));
             if (failure == "authorize-restore") Check(!f.Adapter.Calls.Contains("restore"), "Revoked old configuration is never restarted");
             f.Adapter.RecoveryFailure = null;
+            var beforeRetry = f.Adapter.Calls.Count;
             var recovered = await f.Engine.RecoverAsync(f.OperationId, default);
             Check(recovered!.Outcome == RuntimeSwitchOutcome.Interrupted && f.Store.Read()!.ConfigurationIdentity == f.Plan.PreviousIdentity
                 && !f.Store.Read()!.Installation.RecoveryRequired, "Recovery retries compensation without preparing: " + failure);
             Check(f.Adapter.Calls.Count(c => c == "prepare") == 1, "Recovery never regenerates credentials or candidate: " + failure);
+            if (failure == "cleanup")
+            {
+                var receipt = f.Store.Read()!.Receipts.Single();
+                Check(f.Adapter.Calls.Skip(beforeRetry).SequenceEqual(["cleanup"])
+                    && receipt.OperationId == f.OperationId && receipt.Outcome == RuntimeSwitchOutcome.Interrupted,
+                    "Recovery of a verified restoration retries only cleanup and closes the original receipt");
+                Check(await f.Engine.ExecuteAsync(Guid.NewGuid(), f.Plan, default) == recovered
+                    && f.Adapter.Calls.Count == beforeRetry + 1, "Same-key retry reads the original receipt without native work");
+            }
         }
 
         using (var f = new Fixture())

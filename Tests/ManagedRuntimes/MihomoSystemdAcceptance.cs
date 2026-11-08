@@ -224,6 +224,51 @@ internal static class MihomoSystemdAcceptance
             }
             Check(await File.ReadAllTextAsync(configurationMarker) == "confirmed-data", "Delayed recovery restores the original data snapshot");
             denyCandidate = false; denyPrevious = false;
+
+            string? blockedCleanup = null;
+            configurationStage = stage =>
+            {
+                if (stage != InstallationStage.HealthChecking) return;
+                denyCandidate = true;
+                var pending = states.Read()!.Configuration!;
+                blockedCleanup = Path.Combine(root, "operations", pending.OperationId.ToString("N"), "check-data");
+                Directory.Move(blockedCleanup, blockedCleanup + ".fixture-saved");
+                Directory.CreateSymbolicLink(blockedCleanup, Path.Combine(root, "data"));
+            };
+            var cleanupPending = await ConfigureAsync(published, candidate, "configuration-restored-cleanup-pending");
+            configurationStage = null;
+            denyCandidate = false;
+            var restoredState = states.Read()!;
+            Check(cleanupPending.Outcome == RuntimeSwitchOutcome.RecoveryRequired
+                && restoredState.Configuration is { PreviousRestored: true } restored
+                && restored.OperationId == cleanupPending.OperationId
+                && restoredState.ConfigurationIdentity == restored.Plan.PreviousIdentity
+                && await HealthyAsync(host, published) && await ProbeAsync(mixedPort),
+                "Native restoration remains live while a protected cleanup is pending");
+            File.Delete(blockedCleanup!);
+            Directory.Move(blockedCleanup + ".fixture-saved", blockedCleanup!);
+            async Task<string> RuntimePidAsync() => await NativeRuntimeProcess.RunAsync("/usr/bin/systemctl",
+                ["show", LinuxMihomoArchiveHost.Unit, "--property=MainPID", "--value"], 64);
+            var originalPid = await RuntimePidAsync();
+            var cleanupRecovery = Guid.NewGuid();
+            var authorizationReads = 0;
+            await using (var callback = new RuntimeAuthorizationServer<MihomoConfigurationAuthorization>(cleanupRecovery, _ =>
+            {
+                authorizationReads++;
+                return Task.FromResult(new MihomoConfigurationAuthorization(cleanupPending.OperationId, DateTimeOffset.UtcNow.AddSeconds(30), null, null));
+            }))
+            {
+                var recovered = await HelperAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeRecover,
+                    OperationId: cleanupRecovery, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: cleanupPending.OperationId)));
+                var cleaned = states.Read()!;
+                Check(recovered.OperationId == cleanupPending.OperationId && recovered.Outcome == RuntimeSwitchOutcome.Interrupted
+                    && cleaned.Configuration is null && !Directory.Exists(blockedCleanup)
+                    && cleaned.Receipts.Single(item => item.OperationId == cleanupPending.OperationId).Outcome == RuntimeSwitchOutcome.Interrupted
+                    && authorizationReads == 0 && await RuntimePidAsync() == originalPid
+                    && await HealthyAsync(host, published) && await ProbeAsync(mixedPort),
+                    "Named cleanup recovery keeps the restored native process and closes the original receipt without replay");
+            }
+            Console.WriteLine($"PASS MIHOMO NATIVE RESTORED CLEANUP: original {cleanupPending.OperationId}, same PID and real traffic");
             await host.StopAsync(default);
             Check((await ConfigureAsync(published, candidate, "configuration-stopped")).Outcome == RuntimeSwitchOutcome.Succeeded
                 && (await host.ObserveAsync(default)) is { Running: false, BootEnabled: true },

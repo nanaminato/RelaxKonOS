@@ -265,3 +265,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）Linux 私有 systemd 复核受管 Mihomo TUN 门禁，直接读取进程启动凭据摘要和内核管理路由。两次拒绝均保留原配置补偿回执和真实转发。受管网络事务仍须证明原生设备与网络效果归属。见[门禁证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-linux-tun-标记持久化及受管门禁复核)。
 
 2026-11-08（MR-03 / MB-04）隔离夹具已验证 Mihomo v1.19.33 通过已打开的 Linux TUN 描述符转发和退出。生产 Helper 还须将设备及网络效果归属持久绑定到原运行时操作，受管配置准入维持现有门禁。见[描述符交付证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受限-mihomo-的-tun-描述符交付)。
+
+2026-11-08（MR-03 / MB-04）共享配置事务在旧配置和服务恢复已核验并持久记录后，具名恢复只续接清理和原回执，避免再次停启已恢复的服务。专属 TUN 夹具验证按原记录核对激活与停止的中断结果。生产受管 TUN 门禁仍生效。见[双中断核对证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-原生效果的双中断核对)。

@@ -4493,6 +4493,8 @@ Linux 上 Core 在替换直连 TUN 恢复标记后同步状态目录及其父目
 
 专属 Linux systemd 夹具已验证 Mihomo 使用既有 TUN 描述符时，无需网络管理能力或可见的 TUN 设备节点即可转发实际流量。应用的受管 TUN 仍受准入门禁保护。生产 Helper 的原生事务和按原 ID 恢复由后续验收覆盖。见[描述符交付证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受限-mihomo-的-tun-描述符交付)。
 
+专属夹具进一步覆盖描述符交付与停止命令已生效、原执行进程尚未写终态时的中断。设备归属不符时保留原记录与真实转发。生产配置事务已持久记录旧配置恢复成功时，具名恢复只续接剩余清理并结清原回执，保留已恢复的 Mihomo 进程。见[双中断核对证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-原生效果的双中断核对)及[配置清理续接证据](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-受管-mihomo-已恢复后的清理续接)。
+
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
 
 Core TUN worker 停止接收新扫描后，等待已发出的禁用请求、实际路由核验和原标记清理。停机等待方的期限不会打断已开始的恢复。如果控制器或管理路由仍无法核实，保留原标记供后续核验。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-core-tun-恢复的停机排空)。
