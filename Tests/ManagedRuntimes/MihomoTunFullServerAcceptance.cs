@@ -18,7 +18,7 @@ internal static class MihomoTunFullServerAcceptance
     internal static async Task ProbeSquidReceiptReplayAsync(string root, string socket, Guid operationId, int port)
     {
         RequirePrivateFixture(root);
-        if (port is not (18884 or 18885)) throw new ArgumentOutOfRangeException(nameof(port));
+        if (port is not (18884 or 18885 or 18886)) throw new ArgumentOutOfRangeException(nameof(port));
         var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
             NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -27,11 +27,21 @@ internal static class MihomoTunFullServerAcceptance
         var request = new PrivilegedOperationRequest(PrivilegedOperationKind.SquidApplyConfiguration, OperationId: operationId,
             SquidConfiguration: new(new SquidConfiguration { Port = port }));
         var duplicate = await transport.ExecuteAsync(request, budget.Token);
-        var conflict = await transport.ExecuteAsync(request with { SquidConfiguration = new(new SquidConfiguration { Port = 18886 }) }, budget.Token);
-        if (observation is not { Success: true, SquidPublicationReceipt: { } receipt }
-            || receipt.OperationId != operationId || duplicate.SquidPublicationReceipt != receipt || duplicate.Success != receipt.Applied
-            || conflict is not { Success: false, Error: "squid.idempotency_conflict", SquidPublicationReceipt: null })
-            throw new InvalidOperationException("The original Squid Helper ID did not preserve its receipt and reject a different candidate.");
+        var conflict = await transport.ExecuteAsync(request with { SquidConfiguration = new(new SquidConfiguration { Port = 18887 }) }, budget.Token);
+        if (conflict is not { Success: false, Error: "squid.idempotency_conflict", SquidPublicationReceipt: null })
+            throw new InvalidOperationException("The original Squid Helper ID admitted a different candidate.");
+        if (port == 18886)
+        {
+            var fresh = await transport.ExecuteAsync(request with { OperationId = Guid.NewGuid() }, budget.Token);
+            if (!Unconfirmed(observation) || !Unconfirmed(duplicate) || !Unconfirmed(fresh))
+                throw new InvalidOperationException("An unconfirmed native Squid publication did not retain the Helper gate.");
+        }
+        else if (observation is not { Success: true, SquidPublicationReceipt: { } receipt }
+            || receipt.OperationId != operationId || duplicate.SquidPublicationReceipt != receipt || duplicate.Success != receipt.Applied)
+            throw new InvalidOperationException("The original Squid Helper ID did not preserve its receipt.");
+
+        static bool Unconfirmed(PrivilegedOperationResult result) => result is
+            { Success: false, ProblemCode: PrivilegedProblemCode.RecoveryRequired, SquidPublicationReceipt: null };
     }
 
     internal static async Task SeedAsync(string root, MihomoPublishedRuntime material, string identity, bool joint)

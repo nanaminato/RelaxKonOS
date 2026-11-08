@@ -4421,6 +4421,8 @@ Squid 配置发布沿用原队列 ID 调用 Helper。请求响应或终态无法
 
 查询原操作或重试同键时，原队列可按 ID 读取 Helper 的持久回执。只有候选与原记录一致、当前配置摘要仍匹配、原生待清理标记已移除时，才确认原成功或已回滚的原失败。查询不重发配置或重载。证据缺失或漂移时继续等待核验。见[原回执实机证据](../architecture/server-module-evidence/Proxy-Squid.md#原成功与回滚回执)。
 
+Squid 已在新端口转发、Helper 却在保存终态前退出时，重启后仍显示原配置发布待核验。同键返回原操作，新发布和禁用启动继续受阻。实际监听与配置摘要供只读核对。见[Helper 中断实机证据](../architecture/server-module-evidence/Proxy-Squid.md#helper-在原生效果生效后中断)。
+
 2026-11-04：排队 Proxy 工作在持久 queued 前取得真实驻留工作租约，覆盖审计、异步清理和终态确认；失败 owner 隔离，不丢失恢复责任。订阅转换迁入独立 bundled 程序集，仅共享文本 ABI；按调用创建 collectible ALC，未引入私有实现静态引用。Core guard/TUN/到期/补偿责任保留，Proxy 仍 resident。完整当前事实见[边界设计 §20](../architecture/server-module-evidence/Milestones.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。
 
 订阅转换的活动/待回收代码代次最多 16 个，达到上限时转换失败，GC 自然回收后可重新准入；长期无法回收需安排宿主恢复，不能靠无限重载积累代码。生产不强制 GC，整个 Proxy 仍常驻。预算及验证范围见[边界设计 §21](../architecture/server-module-evidence/Proxy-Subscriptions.md#21-订阅转换待回收代码预算2026-11-04mb-04-部分)。

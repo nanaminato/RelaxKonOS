@@ -24,6 +24,18 @@ Linux 私有 systemd 的认证发布 `4cb221b8-d9a5-4b45-9f6c-2653e0913c3f` 将 
 
 Windows Release 的 Squid、Proxy Core 安全和 ManagedRuntimes 通过，可信下载探针缺进程级测试 CA 覆盖。同批 Linux 通过 Squid、受管 TUN 保留数据移除及禁用态安全交接，原 TUN 移除为 `7154d8e8-87c5-44f8-8f85-3a6f73c569a8`，原禁用计划为 `163c5afd-42a6-48e2-9652-157ff92c82cc`。三组专属 cgroup 已清理，宿主共享服务及文件指纹一致。最终归档 SHA-256 为 `456e552d9f077dc49e1f7bf7c63a5c6038a92bf3588480afd31f5b46adc97485`。日志在 `.artifacts/mb04-tun-marker-sync/`，最终实机为 `squid-receipt-linux-final.log`，本机为 `squid-receipt-final--squid-only.log`、`squid-receipt-final--proxy-core-safety-only.log` 和 `squid-receipt-final-windows.log`。
 
-**已实现但实机未验证。** 本阶段的回执缺失由隔离夹具暂移原受保护文件模拟。实际 Helper 在写候选后、结果落盘前被中断的窗口，以及整机掉电、账户与生命周期原操作仍待验收。
+**已实现但实机未验证。** 本阶段的回执缺失由隔离夹具暂移原受保护文件模拟。真实 Helper 进程中断见下节。整机掉电、账户与生命周期原操作仍待验收。
 
 **未实现或仍受门禁保护。** Helper 不从文件、进程或监听现状推导缺失终态。原生清理、发布身份或结果无法核验时仍保留原门禁。Proxy 保持 resident。分别验证了 Server 与 Helper 退出换代、Squid 进程连续性和专属进程树清理。对象释放、ALC 回收、隔离内存和生产收益未测量。
+
+## Helper 在原生效果生效后中断
+
+**已实现且已验证。** Linux 私有 systemd 在 Squid 实际收到重载指令后暂扣 `ExecReload` 完成。候选监听已向独立 HTTP 源站真实转发，上一监听关闭。原 Server 工作租约为一。原 Helper 发布记录只包含防重放身份，`Receipt` 为空，配置及原生待核验标记已持久存在。夹具终止 Helper，再让同一个原生 systemd 作业排空。
+
+替换 Helper 后，原 Server 将该操作保留为 `Interrupted / squid_publication`，无完成时间。原工作已排空，持久准入仍保留。Server 再重启后，同键返回原 ID，新键和禁用启动均被拒绝。读取显示候选配置摘要和原生待核验状态，未更新已确认的发布修订。直接访问重启后的 Helper，原 ID 查询、同 ID 派发及新 ID 均无法绕过门禁，换候选被拒绝。未增加回执文件、重载或补偿，原 Helper 台账、待核验标记、配置和 Server 台账字节保持。原 Squid PID 持续通过新端口转发。
+
+最终原操作为 `49dcce10-a43e-40c8-90b8-3929ea066e63`，候选 SHA-256 为 `0caad8443ae1d95af54d8ad96f1062065489beec75b6c8b06c0f6137b2d3c1f2`，Squid PID `265` 在端口 `18886` 持续转发。Helper 退出时确认原生 systemd 作业仍在，释放夹具后确认该作业排空。最终同时复验原成功 `becc3a39-a12b-428a-9bf9-ec2631c79ec1` 及回滚 `7987b450-bdbc-41e3-bfec-a59b7850b0a1`。专属 cgroup 已清理，宿主服务、Squid 配置、代理和账户文件指纹一致。Windows Release ManagedRuntimes 通过，可信下载探针缺进程级测试 CA 覆盖。归档 SHA-256 为 `73ebe06a73a448a9bce16c2b1686f8f3317e8b11694aed9ad79aa875b48dcfc5`。日志在 `.artifacts/mb04-tun-marker-sync/`，实机为 `squid-native-unknown-linux-final.log`，本机为 `squid-native-unknown-windows.log`。
+
+**已实现但实机未验证。** 本场覆盖真实重载生效后至 Helper 写终态之间的进程中断。整机掉电、其他原生阶段中断、账户与生命周期仍待验收。
+
+**未实现或仍受门禁保护。** 缺少原终态时没有可信的人工确证入口。Proxy 保持 resident。记录了两次换代、原生作业排空和专属进程树退出。对象释放、ALC 回收、隔离内存和生产收益未测量。
