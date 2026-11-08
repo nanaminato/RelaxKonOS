@@ -43,7 +43,8 @@ internal static class MihomoTunFullServerAcceptance
     {
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
-            or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"))
+            or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
+            or "squid-new" or "squid-cut" or "squid-restart"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
@@ -62,8 +63,10 @@ internal static class MihomoTunFullServerAcceptance
             guard!.Path, ct, (operation, _) => operation == "ProxyServerApply") : null;
         await using var relay = first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-tun-reply.sock", expiryRelay?.Path ?? socket, ct,
             (operation, _) => operation == "MihomoRuntimeTunStop") : null;
-        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? expiryRelay?.Path ?? socket, root,
-            reuse: !first && phase != "admission", seedProxyServer: false);
+        await using var squidRelay = phase == "squid-cut" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+            "/run/rk-squid-reply.sock", socket, ct, (operation, _) => operation == "SquidApplyConfiguration") : null;
+        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? expiryRelay?.Path ?? squidRelay?.Path ?? socket, root,
+            reuse: !first && phase is not ("admission" or "squid-new"), seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
         if (phase is "admission-managed" or "handoff-disabled" or "handoff-restart")
@@ -94,6 +97,16 @@ internal static class MihomoTunFullServerAcceptance
         {
             await WriteMarkerAsync(root, "full-server-pid", server.Id.ToString());
             var exited = server.WaitForExitAsync(ct);
+            if (squidRelay is not null)
+            {
+                if (await Task.WhenAny(squidRelay.Committed.Task, exited) == exited)
+                    throw new InvalidOperationException("Full Server stopped before the Squid publication reached the relay.");
+                var original = await squidRelay.Committed.Task.WaitAsync(ct);
+                await WriteMarkerAsync(root, "full-squid-response-held", original.ToString("N"));
+                await exited;
+                if (server.ExitCode == 137) return;
+                throw new InvalidOperationException($"Expected SIGKILL at the Squid publication boundary, got {server.ExitCode}.");
+            }
             if (expiry is not null)
             {
                 var guardDrain = DrainAsync(guard!, "guard");

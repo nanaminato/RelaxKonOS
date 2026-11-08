@@ -8,12 +8,12 @@ run_seconds=150
 if [[ ( $# == 3 || $# == 4 ) && $1 == --tun-fd ]]; then
     tun_fd=1
     tun_case=${4:-full}
-    case "$tun_case" in full|dns-receipt|dns-owner|committed|committed-stop|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained) ;; *) exit 2 ;; esac
+    case "$tun_case" in full|dns-receipt|dns-owner|committed|committed-stop|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained|ipc-http-squid) ;; *) exit 2 ;; esac
     fixture=$(realpath -e -- "$2")
     helper=$(realpath -e -- "$3")
     tun_script=$(realpath -e -- "$(dirname -- "$0")/mihomo-tun-fd-proof.py")
     run_seconds=60
-    if [[ $tun_case == ipc-http-full || $tun_case == ipc-http-joint || $tun_case == ipc-http-admission || $tun_case == ipc-http-handoff || $tun_case == ipc-http-retained ]]; then
+    if [[ $tun_case == ipc-http-full || $tun_case == ipc-http-joint || $tun_case == ipc-http-admission || $tun_case == ipc-http-handoff || $tun_case == ipc-http-retained || $tun_case == ipc-http-squid ]]; then
         run_seconds=110
         for artifact in RelaxKonOS.Server.dll RelaxKonOS.Server.deps.json RelaxKonOS.Server.runtimeconfig.json; do
             if [[ ! -f "$(dirname -- "$fixture")/$artifact" ]]; then
@@ -24,7 +24,7 @@ if [[ ( $# == 3 || $# == 4 ) && $1 == --tun-fd ]]; then
     fi
 else
     if [[ $# -lt 3 || $# -gt 6 || ( $# -ge 5 && $5 != --authenticated ) ]]; then
-        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd tests.dll Helper-apphost [full|dns-receipt|dns-owner|committed|committed-stop|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained]" >&2
+        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd tests.dll Helper-apphost [full|dns-receipt|dns-owner|committed|committed-stop|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained|ipc-http-squid]" >&2
         exit 2
     fi
     fixture=$(realpath -e -- "$1")
@@ -50,12 +50,12 @@ host_pidns=$(readlink /proc/1/ns/pid)
 host_netns=$(readlink /proc/self/ns/net)
 host_mntns=$(readlink /proc/self/ns/mnt)
 runtime_fingerprint() {
-    systemctl show relaxkonos-sing-box.service relaxkonos-mihomo.service --property=LoadState,ActiveState,MainPID
+    systemctl show relaxkonos-sing-box.service relaxkonos-mihomo.service squid.service --property=LoadState,ActiveState,MainPID
     if [[ $tun_fd == 1 ]]; then systemctl show systemd-resolved.service --property=LoadState,ActiveState,MainPID; fi
 }
 before=$(runtime_fingerprint)
 proxy_fingerprint() {
-    for file in /etc/environment /var/lib/relaxkonos-system-proxy/recovery.json /etc/resolv.conf; do
+    for file in /etc/environment /var/lib/relaxkonos-system-proxy/recovery.json /etc/resolv.conf /etc/squid/squid.conf; do
         if test -f "$file"; then
             stat -c '%n %s %y %z' "$file"
             sha256sum "$file"
@@ -66,7 +66,7 @@ proxy_fingerprint() {
 }
 proxy_before=$(proxy_fingerprint)
 account_before=
-if [[ $tun_case == ipc-http-full || $tun_case == ipc-http-joint || $tun_case == ipc-http-admission || $tun_case == ipc-http-handoff || $tun_case == ipc-http-retained ]]; then
+if [[ $tun_case == ipc-http-full || $tun_case == ipc-http-joint || $tun_case == ipc-http-admission || $tun_case == ipc-http-handoff || $tun_case == ipc-http-retained || $tun_case == ipc-http-squid ]]; then
     account_before=$(sha256sum /etc/passwd /etc/shadow /etc/group /etc/gshadow)
 fi
 credential_writer=

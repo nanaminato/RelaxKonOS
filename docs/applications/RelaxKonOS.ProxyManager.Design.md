@@ -4417,6 +4417,8 @@ mihomo 新增通用组件状态/计划适配，复用发布感知领域服务；
 
 订阅、运行启停、TUN 和 Squid 排队操作使用独立 async scope，受理只传固定操作/数据及操作者值，执行、审计、异步释放和终态确认由根台账完整跟踪。scope 清理失败保留 owner，关闭等待取消不会撤销已受理工作。历史台账按需读取，不在根服务永久缓存。Core 唯一承担系统代理 guard、同代 TUN 启动恢复及持续 Mihomo 发布恢复；关闭管理功能不能撤销其安全承诺。发布 pending、原共享 gate、人工阻塞和补偿规则保留，不自动重放订阅/prepare/install。当前仍为 resident，不声明真实网络、DLL 回收或生产内存收益；完整所有权及验证范围见[Server 边界设计 §19](../architecture/server-module-evidence/Proxy-Publication.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)。
 
+Squid 配置发布沿用原队列 ID 调用 Helper。请求响应或终态无法确认时，同键原请求返回原操作和待核验阶段，完成时间为空。更改同键发布内容或操作者会被拒绝。待核验时禁止新变更和停用 Proxy，Squid 继续由原系统服务运行。状态页面仍可读取当前配置摘要，但发布确认要求原操作证据。
+
 2026-11-04：排队 Proxy 工作在持久 queued 前取得真实驻留工作租约，覆盖审计、异步清理和终态确认；失败 owner 隔离，不丢失恢复责任。订阅转换迁入独立 bundled 程序集，仅共享文本 ABI；按调用创建 collectible ALC，未引入私有实现静态引用。Core guard/TUN/到期/补偿责任保留，Proxy 仍 resident。完整当前事实见[边界设计 §20](../architecture/server-module-evidence/Milestones.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。
 
 订阅转换的活动/待回收代码代次最多 16 个，达到上限时转换失败，GC 自然回收后可重新准入；长期无法回收需安排宿主恢复，不能靠无限重载积累代码。生产不强制 GC，整个 Proxy 仍常驻。预算及验证范围见[边界设计 §21](../architecture/server-module-evidence/Proxy-Subscriptions.md#21-订阅转换待回收代码预算2026-11-04mb-04-部分)。

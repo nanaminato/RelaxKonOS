@@ -53,7 +53,7 @@ internal static class ProxySafetyResponsibilities
             try
             {
                 var state = await store.ReadAsync(ct);
-                if (state.LastProblemCode is "squid.publication.unconfirmed" or "squid.helper.unavailable" or "squid.recovery.required" or "squid.io_or_busy")
+                if (SquidGatewayService.IsPublicationUnconfirmed(state.LastProblemCode))
                     facts.Add("Squid publication or native compensation requires reconciliation; retained intent must not be discarded.");
             }
             finally { store.Gate.Release(); }

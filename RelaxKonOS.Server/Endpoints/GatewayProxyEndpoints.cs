@@ -1,5 +1,7 @@
 using RelaxKonOS.Server.Startup;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text.Json;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.GatewayProxy;
@@ -31,13 +33,14 @@ public static class GatewayProxyEndpoints
             ProxyOperationStore operations, CancellationToken ct) =>
         {
             var preview = SquidConfigurationRenderer.Preview(request.Configuration);
-            return preview.Valid ? QueueAsync(context, operations, "configuration.apply", (execution, token) => execution.ApplyAsync(request, token), ct)
+            return preview.Valid ? QueueAsync(context, operations, "configuration.apply",
+                (execution, id, stage, token) => execution.ApplyAsync(id, request, stage, token), ct, request)
                 : Task.FromResult<IResult>(Results.BadRequest(preview));
         }).RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
         app.MapPost(GatewayProxyRoutes.Lifecycle, (SquidLifecycleRequest request, HttpContext context,
             ProxyOperationStore operations, CancellationToken ct) =>
             Enum.IsDefined(request.Action)
-                ? QueueAsync(context, operations, "lifecycle." + request.Action.ToString().ToLowerInvariant(), (execution, token) => execution.ExecuteAsync(request.Action, token), ct)
+                ? QueueAsync(context, operations, "lifecycle." + request.Action.ToString().ToLowerInvariant(), (execution, _, _, token) => execution.ExecuteAsync(request.Action, token), ct)
                 : Task.FromResult<IResult>(Results.BadRequest(new { problemCode = "squid.action.invalid" })))
             .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
         app.MapGet(GatewayProxyRoutes.Accounts, async (SquidGatewayService service, CancellationToken ct) =>
@@ -46,25 +49,29 @@ public static class GatewayProxyEndpoints
         app.MapPost(GatewayProxyRoutes.Accounts, (SquidAccountMutation request, HttpContext context,
             ProxyOperationStore operations, CancellationToken ct) =>
             SquidAccountValidation.Valid(request)
-                ? QueueAsync(context, operations, "accounts." + request.Action.ToString().ToLowerInvariant(), (execution, token) => execution.MutateAccountAsync(request, token), ct)
+                ? QueueAsync(context, operations, "accounts." + request.Action.ToString().ToLowerInvariant(), (execution, _, _, token) => execution.MutateAccountAsync(request, token), ct)
                 : Task.FromResult<IResult>(Results.BadRequest(new { problemCode = "squid.accounts.invalid" })))
             .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
         return app;
     }
 
     private static async Task<IResult> QueueAsync(HttpContext context, ProxyOperationStore store,
-        string kind, Func<SquidGatewayService, CancellationToken, Task<string?>> action, CancellationToken ct)
+        string kind, Func<SquidGatewayService, Guid, ProxyOperationStageReporter, CancellationToken, Task<string?>> action,
+        CancellationToken ct, ApplySquidConfigurationRequest? publication = null)
     {
         var key = context.Request.Headers["Idempotency-Key"].ToString();
         if (string.IsNullOrWhiteSpace(key) || key.Length > 160)
             return Results.BadRequest(new { problemCode = "squid.idempotency_key.required_or_too_long" });
         var actor = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User.FindFirstValue("sub") ?? "unknown";
         var scopes = context.RequestServices.GetRequiredService<IServiceScopeFactory>();
+        var requestIdentity = publication is null ? null
+            : Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { actor, publication })));
         try
         {
-            var item = await store.EnqueueAsync("squid:" + key, "squid." + kind, (_, token) =>
+            var item = await store.EnqueueIdentifiedAsync("squid:" + key, "squid." + kind, (id, stage, _, token) =>
                 ProxyOperationScope.RunAsync(scopes, actor, "squid." + kind,
-                    (services, execution) => action(services.GetRequiredService<SquidGatewayService>(), execution), token), ct);
+                    (services, execution) => action(services.GetRequiredService<SquidGatewayService>(), id, stage, execution), token),
+                ct, requestIdentity);
             return new ResidentOperationResult(ServerModules.ProxyId, Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId)));
         }
         catch (ProxyOperationValidationException error) { return Results.BadRequest(new { problemCode = error.ProblemCode }); }

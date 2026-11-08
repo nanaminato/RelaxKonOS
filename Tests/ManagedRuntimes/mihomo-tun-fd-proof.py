@@ -1101,6 +1101,7 @@ def proof_full_http_shutdown(ipc, case):
     admission = case == 'ipc-http-admission'
     handoff = case == 'ipc-http-handoff'
     retained_removal = case == 'ipc-http-retained'
+    squid = case == 'ipc-http-squid'
     assert any(line.split()[4] == '/etc' and ' - overlay ' in line
                for line in Path('/proc/self/mountinfo').read_text().splitlines())
     base = 'http://192.0.2.2:18970'
@@ -1505,12 +1506,125 @@ def proof_full_http_shutdown(ipc, case):
         print(f'PASS TUN RETAINED REMOVAL DISABLED STARTUP: publication={publication}; stop={stopped}; removal={operation}; '
               f'configuration={record["credential"]}; original PID={record["service"][0]}; no replay')
 
-    worker = launch('admission' if admission or handoff or retained_removal else 'drain')
+    def verify_squid_publication(pid):
+        nonlocal worker, token
+        api_root = '/api/v1.0/gateway-proxy/squid'
+        native = Path('/etc/squid/squid.conf')
+        desired = queue.with_name('squid-configuration.json')
+        reloads = root / 'squid-reloads'
+        reload_script = root / 'squid-reload.sh'
+        command('/usr/bin/mount', '-t', 'tmpfs', '-o', 'mode=0755', 'tmpfs', '/etc/squid')
+        Path('/var/log/squid').mkdir()
+        squid_user = pwd.getpwnam('proxy')
+        os.chown('/var/log/squid', squid_user.pw_uid, squid_user.pw_gid)
+        reload_script.write_text(f'#!/bin/sh\necho reload >> {reloads}\n'
+                                 'exec /usr/sbin/squid -k reconfigure -f /etc/squid/squid.conf\n')
+        reload_script.chmod(0o755)
+        Path('/etc/systemd/system/squid.service').write_text(
+            '[Unit]\nDefaultDependencies=no\n[Service]\nType=exec\n'
+            'ExecStart=/usr/sbin/squid -N -f /etc/squid/squid.conf\n'
+            f'ExecReload={reload_script}\nStandardOutput=append:{root / "squid-process.log"}\nStandardError=inherit\n')
+        service('daemon-reload')
+        # The production destination ACL only permits ports 80 and 443.
+        upstream = http.server.ThreadingHTTPServer(('192.0.2.2', 80), Upstream)
+        threading.Thread(target=upstream.serve_forever, daemon=True).start()
+
+        def publish(port, key, expected=202):
+            result = request(api_root + '/configuration/apply', token, key,
+                             {'configuration': {'accessMode': 'ipWhitelist', 'port': port}})
+            assert result[0] == expected, result
+            return result[1]
+
+        def forward(port, phase):
+            response = subprocess.run(['/usr/bin/curl', '--noproxy', '', '--silent', '--fail', '--max-time', '2',
+                                       '--proxy', f'http://127.0.0.1:{port}',
+                                       f'http://192.0.2.2:{upstream.server_port}/squid-{phase}'],
+                                      text=True, capture_output=True, timeout=4)
+            return response.returncode == 0 and response.stdout == 'upstream-through-inherited-tun'
+
+        def old_listener_closed():
+            with socket.socket() as connection:
+                connection.settimeout(1)
+                return connection.connect_ex(('127.0.0.1', 18883)) != 0
+
+        def restart(phase, current):
+            nonlocal worker, token
+            os.kill(current, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            worker = launch(phase)
+            token = login()
+            return int(marker('full-server-pid'))
+
+        assert request(api_root + '/configuration')[0] == 401
+        initial = publish(18883, 'squid-initial')['operationId']
+        until(lambda: terminal(initial), 'initial Squid configuration')
+        status, body = request(api_root + '/lifecycle', token, 'squid-start', {'action': 'Start'})
+        assert status == 202, (status, body)
+        until(lambda: terminal(body['operationId']), 'real Squid start')
+        try:
+            until(lambda: forward(18883, 'before'), 'old Squid listener')
+        except RuntimeError:
+            for path in (root / 'squid-process.log', Path('/var/log/squid/cache.log'), Path('/var/log/squid/access.log')):
+                if path.exists():
+                    print(path.name, path.read_text(errors='replace')[-4000:], file=sys.stderr)
+            raise
+        original_pid = int(service('show', '-p', 'MainPID', '--value', 'squid.service'))
+        assert original_pid > 1
+        before = json.loads(desired.read_bytes())
+        pid = restart('squid-cut', pid)
+        operation = publish(18884, 'squid-change')['operationId']
+        assert uuid.UUID(marker('full-squid-response-held')) == uuid.UUID(operation)
+        assert read(operation)['state'] == 'running' and leases() == 1
+        until(lambda: forward(18884, 'held'), 'candidate Squid listener')
+        until(old_listener_closed, 'old Squid listener closed')
+        assert publish(18885, 'squid-while-held', 400)['problemCode'] == 'proxy.operation_interrupted'
+        pending = json.loads(desired.read_bytes())
+        assert pending['PublishedRevision'] == before['PublishedRevision']
+        assert pending['DesiredRevision'] == before['DesiredRevision'] + 1
+        assert pending['LastProblemCode'] == 'squid.publication.unconfirmed'
+        persisted = (native.read_bytes(), desired.read_bytes(), queue.read_bytes())
+        digest = hashlib.sha256(persisted[0]).hexdigest()
+        os.kill(pid, signal.SIGKILL)
+        assert worker.wait(timeout=10) == 0 and not Path(f'/proc/{pid}').exists()
+        ipc.stop_helper()
+        ipc.start_helper()
+        worker = launch('squid-restart')
+        pid = int(marker('full-server-pid'))
+        token = login()
+        reply = read(operation)
+        assert reply['state'] == 'interrupted' and reply['stage'] == 'squid_publication' and not reply.get('completedAt'), reply
+        assert publish(18884, 'squid-change')['operationId'] == operation
+        assert publish(18885, 'squid-change', 400)['problemCode'] == 'proxy.idempotency_conflict'
+        assert publish(18885, 'squid-new-key', 400)['problemCode'] == 'proxy.operation_interrupted'
+        status, snapshot = request(api_root + '/configuration', token)
+        assert status == 200 and not snapshot['matchesPublishedConfiguration'], snapshot
+        assert snapshot['status']['configurationRevision'] == digest
+        assert int(service('show', '-p', 'MainPID', '--value', 'squid.service')) == original_pid
+        assert forward(18884, 'restarted') and old_listener_closed()
+        assert (native.read_bytes(), desired.read_bytes(), queue.read_bytes()) == persisted
+        assert reloads.read_text().splitlines() == ['reload']
+        audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+        assert audit.count(f'operation=SquidApplyConfiguration id={operation} ') == 1
+        os.kill(pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        worker = launch('admission-disabled')
+        assert worker.wait(timeout=15) == 0
+        refusal = (root / 'full-startup-refused').read_text()
+        assert 'relaxkonos.proxy' in refusal and operation in refusal, refusal
+        upstream.shutdown()
+        upstream.server_close()
+        print(f'PASS SQUID PUBLICATION GATE: original={operation}; configuration={digest}; PID={original_pid}; '
+              'same key, fresh key and disabled startup gated after real reload; no replay')
+
+    worker = launch('squid-new' if squid else 'admission' if admission or handoff or retained_removal else 'drain')
     first_worker = worker
     try:
         pid = int(marker('full-server-pid'))
         assert Path(f'/proc/{pid}').stat().st_uid == ipc.uid
         token = login()
+        if squid:
+            verify_squid_publication(pid)
+            return
         assert request(api + '/tun/disable', key='anonymous')[0] == 401
         assert request(api + '/tun/disable', 'invalid.jwt.signature', 'invalid-jwt')[0] == 401
         database = root / 'full-server' / 'data' / 'relaxkonos.db'
@@ -1716,7 +1830,7 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained'):
+            if case in ('ipc-http-full', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained', 'ipc-http-squid'):
                 proof_full_http_shutdown(ipc, case)
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,

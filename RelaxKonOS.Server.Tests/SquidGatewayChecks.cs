@@ -95,10 +95,16 @@ internal static class SquidGatewayChecks
         var directory = Path.Combine(Path.GetTempPath(), "squid-state-" + Guid.NewGuid().ToString("N"));
         var paths = new TestProxyPaths(directory);
         var service = new SquidGatewayService(helper, new SquidConfigurationStore(paths));
-        Check(await service.ApplyAsync(new(invalid[0]), default) == "squid.configuration.invalid" && helper.Requests.Count == 0,
+        var operation = Guid.NewGuid();
+        string? stage = null;
+        Task Report(string value) { stage = value; return Task.CompletedTask; }
+        Check(await service.ApplyAsync(operation, new(invalid[0]), Report, default) == "squid.configuration.invalid"
+            && helper.Requests.Count == 0 && stage is null,
             "Invalid requests must be rejected before privilege escalation.");
-        Check(await service.ApplyAsync(new(remote, true), default) is null, "Structured apply did not succeed.");
-        Check(helper.Requests.Single() is { Operation: PrivilegedOperationKind.SquidApplyConfiguration, Path: null, ContentBase64: null, SquidConfiguration.AdoptExistingConfiguration: true },
+        Check(await service.ApplyAsync(operation, new(remote, true), Report, default) is null
+            && stage == SquidGatewayService.PublicationPending, "Structured apply did not record its publication checkpoint.");
+        Check(helper.Requests.Single() is { Operation: PrivilegedOperationKind.SquidApplyConfiguration, Path: null, ContentBase64: null,
+            SquidConfiguration.AdoptExistingConfiguration: true } applied && applied.OperationId == operation,
             "The Helper must receive structured state, never caller configuration text or paths.");
         Check(await service.ExecuteAsync((SquidServiceAction)999, default) == "squid.action.invalid" && helper.Requests.Count == 1,
             "Unknown lifecycle verbs must fail before dispatch.");
@@ -143,7 +149,7 @@ internal static class SquidGatewayChecks
             "Publication receipt and editor state must survive service recreation.");
         Check(SquidConfigurationRenderer.Preview(snapshot.State.Configuration).Configuration == rendered, "Persisted editor configuration changed.");
         helper.Result = new(false, Error: "squid.configuration.parse_failed");
-        Check(await restarted.ApplyAsync(new(defaults), default) == "squid.configuration.parse_failed", "Apply failure was hidden.");
+        Check(await restarted.ApplyAsync(Guid.NewGuid(), new(defaults), Report, default) == "squid.configuration.parse_failed", "Apply failure was hidden.");
         helper.Result = new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(status with { RecoveryRequired = false })));
         snapshot = (await restarted.GetConfigurationAsync(default))!;
         Check(snapshot.State.DesiredRevision == 2 && snapshot.State.PublishedRevision == 1
@@ -220,6 +226,7 @@ internal static class SquidGatewayChecks
         builder.Services.AddSingleton<SquidConfigurationStore>();
         builder.Services.AddSingleton<SquidGatewayService>();
         builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); builder.Services.AddSingleton<ProxyOperationStore>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource, TestResidentBackgroundLeases>();
         builder.Services.AddSingleton<ProxyAuditStore>();
         var directory = Path.Combine(Path.GetTempPath(), "squid-route-check-" + Guid.NewGuid().ToString("N"));
         builder.Services.AddSingleton<IProxyPlatformPaths>(new TestProxyPaths(directory));
@@ -247,6 +254,9 @@ internal static class SquidGatewayChecks
         var second = await InvokeAsync(GatewayProxyRoutes.Apply, request, "same-key");
         var accepted = JsonSerializer.Deserialize<ProxyOperationAcceptedDto>(first.Body, RelaxKonOSJsonOptions.Default)!;
         Check(first.Status == 202 && second.Status == 202 && first.Body == second.Body, "Replaying a request key must return the original operation.");
+        var changed = await InvokeAsync(GatewayProxyRoutes.Apply, request with { AdoptExistingConfiguration = true }, "same-key");
+        Check(changed.Status == 400 && changed.Body.Contains(ProxyProblemCodes.IdempotencyConflict),
+            "A reused key with changed publication intent must be refused.");
         var operations = app.Services.GetRequiredService<ProxyOperationStore>();
         ProxyOperationDto? operation = null;
         for (var attempt = 0; attempt < 200; attempt++)

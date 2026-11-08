@@ -3,11 +3,19 @@ using System.Text;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.Proxy;
 
 namespace RelaxKonOS.Server.GatewayProxy;
 
 public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, SquidConfigurationStore configurations)
 {
+    internal const string PublicationPending = "squid_publication";
+    internal const string PublicationKind = "squid.configuration.apply";
+
+    internal static bool IsPublicationUnconfirmed(string? problem) => problem is "squid.publication.unconfirmed"
+        or "squid.helper.unavailable" or "squid.recovery.required" or "squid.io_or_busy" or "squid.runtime.unavailable"
+        or "squid.path.denied";
+
     public async Task<SquidStatus?> GetStatusAsync(CancellationToken ct)
     {
         var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidStatus), ct);
@@ -16,18 +24,23 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         catch (Exception ex) when (ex is JsonException or FormatException) { return null; }
     }
 
-    public async Task<string?> ApplyAsync(ApplySquidConfigurationRequest request, CancellationToken ct)
+    public async Task<string?> ApplyAsync(Guid operationId, ApplySquidConfigurationRequest request,
+        ProxyOperationStageReporter stage, CancellationToken ct)
     {
+        if (operationId == Guid.Empty) throw new ArgumentException("A Squid publication requires an operation ID.", nameof(operationId));
         var preview = SquidConfigurationRenderer.Preview(request.Configuration);
         if (!preview.Valid) return "squid.configuration.invalid";
         await configurations.Gate.WaitAsync(ct);
         try
         {
             var previous = await configurations.ReadAsync(ct);
+            if (IsPublicationUnconfirmed(previous.LastProblemCode)) return "squid.recovery.required";
             var pending = previous with { Configuration = request.Configuration, DesiredRevision = checked(previous.DesiredRevision + 1), LastProblemCode = "squid.publication.unconfirmed" };
+            await stage(PublicationPending);
             // Persist intent before invoking the Helper. An interruption must not look published.
             await configurations.WriteAsync(pending, ct);
-            var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidApplyConfiguration, SquidConfiguration: request), ct);
+            var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidApplyConfiguration,
+                OperationId: operationId, SquidConfiguration: request), ct);
             var problem = Problem(result);
             var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(preview.Configuration!))).ToLowerInvariant();
             await configurations.WriteAsync(problem is null

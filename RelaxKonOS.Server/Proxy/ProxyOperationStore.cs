@@ -3,6 +3,7 @@ using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.ManagedRuntimes;
+using RelaxKonOS.Server.GatewayProxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
 
 namespace RelaxKonOS.Server.Proxy;
@@ -93,7 +94,9 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                     throw new ProxyOperationValidationException(ProxyProblemCodes.IdempotencyConflict);
                 return Visible(prior.Operation);
             }
-            if (Volatile.Read(ref _stopping) || _recoveryBlocked || entries.Any(entry => IsUnresolved(entry) && !_running.ContainsKey(entry.Operation.OperationId)))
+            if (Volatile.Read(ref _stopping) || _recoveryBlocked || entries.Any(entry => IsUnresolved(entry)
+                && (!_running.ContainsKey(entry.Operation.OperationId)
+                    || kind.StartsWith("squid.", StringComparison.Ordinal) && entry.Operation.Kind == SquidGatewayService.PublicationKind)))
                 throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
             work = await workLeases.AcquireAsync(cancellationToken);
             item = new ProxyOperationDto(Guid.NewGuid(), kind, ProxyOperationState.Queued, "queued", "", null, null);
@@ -345,13 +348,13 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         if (operation.State is not (ProxyOperationState.Queued or ProxyOperationState.Running)
             || _running.ContainsKey(operation.OperationId))
             return operation;
-        var managedTunPending = MihomoManagedTunOperations.IsPendingStage(operation.Stage);
+        var pendingNative = IsPendingNativeStage(operation.Stage);
         return operation with
         {
             State = ProxyOperationState.Interrupted,
-            Stage = managedTunPending ? operation.Stage : "interrupted",
+            Stage = pendingNative ? operation.Stage : "interrupted",
             ProblemCode = ProxyProblemCodes.OperationInterrupted,
-            CompletedAt = managedTunPending ? null : DateTimeOffset.UtcNow
+            CompletedAt = pendingNative ? null : DateTimeOffset.UtcNow
         };
     }
 
@@ -371,7 +374,8 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             }, CancellationToken.None);
             var publicationPending = false;
             var batchPending = original.Kind == RefreshBatchKind && problem == ProxyProblemCodes.RecoveryRequired;
-            var managedTunPending = MihomoManagedTunOperations.IsPendingStage(lastStage) && problem == ProxyProblemCodes.RecoveryRequired;
+            var pendingNative = MihomoManagedTunOperations.IsPendingStage(lastStage) && problem == ProxyProblemCodes.RecoveryRequired
+                || lastStage == SquidGatewayService.PublicationPending && SquidGatewayService.IsPublicationUnconfirmed(problem);
             if (IsSubscriptionPublication(original.Kind) && problem == ProxyProblemCodes.RecoveryRequired && publication is not null)
             {
                 try
@@ -391,12 +395,12 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                 logger.LogInformation("Proxy operation {OperationId} completed.", id);
             await UpdateAsync(id, item => item with
             {
-                State = publicationPending || batchPending || managedTunPending ? ProxyOperationState.Interrupted
+                State = publicationPending || batchPending || pendingNative ? ProxyOperationState.Interrupted
                     : string.IsNullOrEmpty(problem) ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
-                Stage = managedTunPending ? lastStage
+                Stage = pendingNative ? lastStage
                     : batchPending ? BatchPending : publicationPending ? "publication_pending" : string.IsNullOrEmpty(problem) ? "completed" : "failed",
                 ProblemCode = batchPending ? ProxyProblemCodes.OperationInterrupted : problem ?? "",
-                CompletedAt = publicationPending || batchPending || managedTunPending ? null : DateTimeOffset.UtcNow,
+                CompletedAt = publicationPending || batchPending || pendingNative ? null : DateTimeOffset.UtcNow,
             });
         }
         catch (Exception exception)
@@ -412,13 +416,13 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             {
                 var pendingStep = exception is not ProxyOperationCleanupException
                     && entry.Batch?.Any(step => step.State == RefreshStepState.Running) == true;
-                var tunPending = MihomoManagedTunOperations.IsPendingStage(entry.Operation.Stage);
+                var pendingNative = IsPendingNativeStage(entry.Operation.Stage);
                 return entry with { Operation = entry.Operation with
                 {
-                    State = pendingStep || tunPending ? ProxyOperationState.Interrupted : ProxyOperationState.Failed,
-                    Stage = tunPending ? entry.Operation.Stage : pendingStep ? BatchPending : "failed",
+                    State = pendingStep || pendingNative ? ProxyOperationState.Interrupted : ProxyOperationState.Failed,
+                    Stage = pendingNative ? entry.Operation.Stage : pendingStep ? BatchPending : "failed",
                     ProblemCode = ProxyProblemCodes.OperationInterrupted,
-                    CompletedAt = pendingStep || tunPending ? null : DateTimeOffset.UtcNow
+                    CompletedAt = pendingStep || pendingNative ? null : DateTimeOffset.UtcNow
                 } };
             });
             if (exception is ProxyOperationCleanupException) throw;
@@ -444,9 +448,13 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
 
     private static bool IsUnresolved(Entry entry) => !IsSettledBatchInterruption(entry) && IsUnresolved(entry.Operation);
 
+    private static bool IsPendingNativeStage(string stage) => MihomoManagedTunOperations.IsPendingStage(stage)
+        || stage == SquidGatewayService.PublicationPending;
+
     private static bool IsUnresolved(ProxyOperationDto operation) =>
         operation.State is ProxyOperationState.Queued or ProxyOperationState.Running or ProxyOperationState.Interrupted
-        || operation.State == ProxyOperationState.Failed && operation.ProblemCode == ProxyProblemCodes.OperationInterrupted;
+        || operation.State == ProxyOperationState.Failed && (operation.ProblemCode == ProxyProblemCodes.OperationInterrupted
+            || operation.Kind == SquidGatewayService.PublicationKind && SquidGatewayService.IsPublicationUnconfirmed(operation.ProblemCode));
 
     private static async Task<Entry[]> ReadEntriesAsync(IProxyPlatformPaths paths, CancellationToken ct)
     {
