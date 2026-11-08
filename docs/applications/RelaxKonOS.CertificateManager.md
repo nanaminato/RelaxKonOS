@@ -1499,6 +1499,8 @@ CA 已接单或签发后遇到无法确认结果的传输失败，证书操作�
 
 已有中断回执可用认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order` 查询。响应包含原 `operation` 和 `remoteStatus`。状态为 `pending`、`ready`、`processing`、`valid`、`invalid`、`identity-unavailable` 或 `unavailable`。查询使用相同 CA 和原账户密钥，只读取已记录的原订单。订单创建响应丢失且无身份时返回 `identity-unavailable`。远端状态单独呈现，原中断回执与当前证书保持，自动续期继续遵守原门禁。实测见[模块边界台账](../architecture/server-module-evidence/Certificates.md#mb-05-原-ca-订单的只读对账)。
 
+Server 切换到不同 CA 目录后，查询旧订单返回 `identity-unavailable`，同键仍取得原操作回执，活动证书保持。恢复原目录和账户身份后可再次读取同一原订单。见[双 CA 实机验收](../architecture/server-module-evidence/Certificates.md#mb-05-切换-ca-时保留原订单身份)。
+
 WebRoot 签发和续期在发布 HTTP-01 文件前，在原证书操作记录挑战文件名及内容摘要。任务等待挑战清理后才提交终态。跨进程恢复在写入原中断回执前清理内容匹配的原文件。路径或内容无法确认时保留文件和恢复责任，并隔离证书工作准入。网站自动签发使用此路径，网站发布与原证书操作的关联同样持久化。CA 返回 `valid` 时仍应通过原发布和证书回执核实本地签发、部署各自的状态。见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
 挑战文件内容已变化时，原回执保持 `Running / challenge-cleanup-required`。重启仍可查询原操作及已知 CA 订单，新证书操作返回 `certificate.challenge_ownership_unconfirmed`。确认文件归属后，原清理在下次启动接续，原操作 ID 保持。见[挑战文件归属验收](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-webroot-挑战内容变化时保留原清理责任)。

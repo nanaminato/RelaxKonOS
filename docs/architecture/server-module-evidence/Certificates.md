@@ -18,6 +18,7 @@
 - [MB-05 ARI 断流与原扫描恢复](#mb-05-ari-断流与原扫描恢复)
 - [MB-05 Kestrel TLS 轮换与撤销连续性](#mb-05-kestrel-tls-轮换与撤销连续性)
 - [MB-05 Kestrel 动态证书链](#mb-05-kestrel-动态证书链)
+- [MB-05 切换 CA 时保留原订单身份](#mb-05-切换-ca-时保留原订单身份)
 
 ## 52. MB-05 真实 ACME CA 签发与取消
 
@@ -41,6 +42,18 @@ Linux x64 Release 日志见 `.artifacts/mb05-acme-verified.log`，归档 SHA-256
 
 Linux x64 Release 实机日志为 `.artifacts/mb05-acme-response-live.log`，归档 SHA-256 为 `c887deec74b97eebdb3ca21f3d13ca051e9d3046295dc5b4d481fbefd8e02db4`。外部 CA 已签发，本地未激活证书。该路径验证中断恢复与防重放，未验证从原 CA 订单补取并部署证书。
 
+## MB-05 切换 CA 时保留原订单身份
+
+**已实现且已验证。** Linux 完整认证 Server 在私有网络中使用两个独立 Pebble 进程。分别探测两个 TLS 目录和管理接口，并核对两个 CA 的签发根不同。第一个 CA 已实际签发续期，证书响应被截断后，原操作 `ca957fa1-a2f3-46b0-8e62-6b6bdf9e1035` 保留中断回执和原订单身份。
+
+将 Server 配置指向第二个 CA 并重启，按同一 ID 观察返回 `identity-unavailable`，同键续期返回原回执。原活动叶证书指纹和操作台账字节一致。原 TLS 中继、原 CA 和第二个 CA 的请求日志均无增量。第二个 CA 的目录探针在基线中可见。恢复原目录并重启后，同一原订单返回 `valid`。原 CA 观测在客户端断开和 SIGTERM 后仍按原责任排空。同批复验缺原订单身份的 `5f7693c3-7786-4314-ad70-3165169f9849`，仍返回 `identity-unavailable`。原 CA 全程三张订单和两次签发提交，切换和查询期间没有新增。
+
+Windows Release 证书绑定、创建回执、ACME 执行程序集及模块边界回归通过。Linux 私有环境清理后，宿主服务、账户和环境文件指纹一致。归档 SHA-256 为 `aa2484082049144c84761062da075a0c95c53d7ac8e7f7607f3514d386a1c600`，实机与本机日志在 `.artifacts/mb05-acme-cross-ca/`。
+
+**已实现但实机未验证。** 此轮验证配置切换和恢复。原订单观察仍要求原目录与原账户密钥。其他 CA 产品及整机掉电未纳入此轮。
+
+**未实现或仍受门禁保护。** 没有可信原订单标识时继续保护原操作。自动补取与部署仍需原证书密钥、原订单终态和本地部署授权。记录了 Server 退出、隔离服务清理和原证书保持。未测量本场景的对象释放、ALC 回收、隔离负载内存或生产收益。
+
 ## MB-05 证书自动续期跨日接续
 
 原证书操作台账在准入锁内为自动续期查找同一证书的在途操作和未被后续成功续期替代的中断回执。原键与新的自动日期键返回原 operationId，不写新任务或发新 ACME 订单。显式授权的人工续期仍可独立提交，后续成功才解除自动续期阻止。ACME 服务同时核对授权状态，已有效的授权无需再提交挑战。
@@ -57,7 +70,7 @@ Linux x64 Release 在独立 Pebble 与 DNS 命名空间中通过。TLS 中继收
 
 生产签发和续期在取得 CA 订单响应后，于提交挑战和请求签发前把原目录、账户、账户公钥指纹与订单 URI 持久化到同一 operationId 的台账。检查点失败按本地持久化故障保留工作责任。已知中断可通过认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order` 查询，响应为原 operation 与 remoteStatus。查询核对当前 CA 目录、原账户密钥及同源 HTTPS 身份，只允许目录读取、nonce 请求与原订单的 POST-as-GET，不跟随重定向，不返回内部 URI，不修改回执、台账或当前证书。无可信检查点返回 identity-unavailable。远端 valid 表示 CA 订单状态，本地依然按原中断回执和证书版本处理。
 
-Linux x64 Release 使用隔离 Pebble、真实 TLS 断流与生产证书管理器验证。创建响应丢失的原操作 `6d002ed8-eb47-4c10-a0b8-64c23bb19b6c` 返回 identity-unavailable。已签发响应丢失的 `6467531e-9b4d-460a-b974-3303381d5f5f` 与实际终止续期进程后的 `f65187c4-2aea-4f6f-830a-e91ff7a5afe6` 均在重开台账后观察到原 CA 订单 valid。传输断流后的查询前后台账字节一致，原证书指纹保持，下一日键继续命中原回执。整组共七张预期订单、四次预期签发提交，对账没有新增。日志为 .artifacts/mb05-acme-observe-live.log，归档 SHA-256 为 f379fec759de54010022835163f13c00815e2b0d50168b2812b13b04e162db18。Windows Release 模块边界回归通过，生产 HTTP 路由的隔离 Kestrel 测试核对原回执、禁止缓存和未知操作 404。已知订单与完整认证 Server 的联合实测、跨源 CA 身份、缺失订单身份的外部核实及独立执行图继续开放。
+Linux x64 Release 使用隔离 Pebble、真实 TLS 断流与生产证书管理器验证。创建响应丢失的原操作 `6d002ed8-eb47-4c10-a0b8-64c23bb19b6c` 返回 identity-unavailable。已签发响应丢失的 `6467531e-9b4d-460a-b974-3303381d5f5f` 与实际终止续期进程后的 `f65187c4-2aea-4f6f-830a-e91ff7a5afe6` 均在重开台账后观察到原 CA 订单 valid。传输断流后的查询前后台账字节一致，原证书指纹保持，下一日键继续命中原回执。整组共七张预期订单、四次预期签发提交，对账没有新增。日志为 .artifacts/mb05-acme-observe-live.log，归档 SHA-256 为 f379fec759de54010022835163f13c00815e2b0d50168b2812b13b04e162db18。Windows Release 模块边界回归通过，生产 HTTP 路由的隔离 Kestrel 测试核对原回执、禁止缓存和未知操作 404。已知订单与完整认证 Server 的联合实测、缺失订单身份的外部核实及独立执行图继续开放。
 
 ## MB-05 完整认证 Server 的 CA 断流与重启
 

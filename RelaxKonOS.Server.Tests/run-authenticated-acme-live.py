@@ -637,6 +637,27 @@ def run(root, server, tests, mode):
         if mode == "schedule-ownership":
             verify_schedule_ownership(*conflict, certificate, fingerprint)
             return
+        if mode == "cross-ca":
+            original_directory = env["Certificate__DirectoryUrl"]
+            ledger = root / "data" / "certificate-operations.json"
+            ledger_before = ledger.read_bytes()
+            ca_evidence = tuple(root / name for name in ("relay.log", "ca.log", "alternate-ca.log"))
+            traffic_before = tuple(path.read_bytes() for path in ca_evidence)
+            assert b"GET /dir" in traffic_before[2], "alternate CA HTTP request log is inactive"
+            observe = f"{certificates}/operations/{signed['operationId']}/acme-order"
+            env["Certificate__DirectoryUrl"] = "https://localhost:14002/dir"
+            try:
+                with process([server], "alternate-ca-server") as switched:
+                    wait_for(switched, healthy, "alternate-ca-server")
+                    token = login()
+                    assert request(observe, token) == {"operation": signed, "remoteStatus": "identity-unavailable"}
+                    assert request(renew, token, {}, "signed-loss", 202) == signed
+                    assert request(certificate, token)["fingerprintSha256"] == fingerprint
+            finally:
+                env["Certificate__DirectoryUrl"] = original_directory
+            assert ledger.read_bytes() == ledger_before
+            assert tuple(path.read_bytes() for path in ca_evidence) == traffic_before
+            print(f"PASS ACME DIRECTORY SWITCH: operation={signed['operationId']}; original receipt and deployed leaf retained; zero CA traffic", flush=True)
         with process([server], "restarted-server") as restarted:
             wait_for(restarted, healthy, "restarted-server")
             token = login()

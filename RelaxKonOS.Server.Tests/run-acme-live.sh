@@ -16,12 +16,13 @@ esac
 ip link set lo up
 fixture=$(mktemp -d /tmp/relaxkonos-acme.XXXXXXXX)
 ca_pid=
+alternate_ca_pid=
 dns_pid=
 relay_pid=
 nginx_pid=
 private_etc=
 cleanup() {
-    for pid in "$nginx_pid" "$relay_pid" "$ca_pid" "$dns_pid"; do
+    for pid in "$nginx_pid" "$relay_pid" "$alternate_ca_pid" "$ca_pid" "$dns_pid"; do
         if [ -n "$pid" ]; then kill -TERM "$pid" 2>/dev/null || true; wait "$pid" || true; fi
     done
     if [ -f "$fixture/dns.log" ]; then tail -15 "$fixture/dns.log" >&2; fi
@@ -33,6 +34,7 @@ cleanup() {
         printf 'Pebble finalizations recorded: '
         grep -c 'POST /finalize-order/' "$fixture/ca.log" || true
     fi
+    if [ -f "$fixture/alternate-ca.log" ]; then tail -15 "$fixture/alternate-ca.log" >&2; fi
     if [ -n "$private_etc" ]; then umount /etc; fi
     rm -rf -- "$fixture"
 }
@@ -123,6 +125,21 @@ for attempt in $(seq 1 100); do
     sleep .05
 done
 curl --noproxy '*' --cacert "$fixture/https.pem" -fsS "https://localhost:$relay_port/dir" >/dev/null
+if [ "$schedule" = cross-ca ]; then
+    sed -e 's/127\.0\.0\.2:14000/127.0.0.1:14002/' -e 's/127\.0\.0\.1:15000/127.0.0.1:15002/' \
+        "$fixture/pebble.json" > "$fixture/alternate-ca.json"
+    PEBBLE_VA_NOSLEEP=1 PEBBLE_WFE_NONCEREJECT=0 "$pebble" -config "$fixture/alternate-ca.json" \
+        -dnsserver 127.0.0.1:8053 -strict=false > "$fixture/alternate-ca.log" 2>&1 &
+    alternate_ca_pid=$!
+    for attempt in $(seq 1 100); do
+        if curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:14002/dir >/dev/null 2>&1; then break; fi
+        kill -0 "$alternate_ca_pid"
+        sleep .05
+    done
+    curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:14002/dir >/dev/null
+    curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:15002/roots/0 > "$fixture/alternate-root.pem"
+    if cmp -s "$fixture/issuance-root.pem" "$fixture/alternate-root.pem"; then exit 1; fi
+fi
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 if [ -n "$server" ]; then
     SSL_CERT_FILE="$fixture/https.pem" python3 "$(dirname "$0")/run-authenticated-acme-live.py" "$fixture" "$server" "$assembly" "${schedule:-$relay_mode}"
