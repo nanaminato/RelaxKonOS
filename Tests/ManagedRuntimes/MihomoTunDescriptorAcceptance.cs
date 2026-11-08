@@ -110,6 +110,12 @@ internal static class MihomoTunDescriptorAcceptance
         Directory.CreateDirectory(paths.GetProtectedConfigurationDirectory());
         var publications = Publications(paths);
         var previousMaterial = MihomoConfigurationPolicy.Describe(await File.ReadAllTextAsync(previousPath)).Material;
+        if (serverCase == "ipc-http-full")
+        {
+            await MihomoTunFullServerAcceptance.SeedAsync(root, previousMaterial, previous);
+            await WriteScopeAsync(scope with { AllowManagedPublication = true });
+            return;
+        }
         var bootstrap = Guid.NewGuid();
         await File.WriteAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"), previousMaterial.Yaml);
         await publications.BeginAsync(bootstrap, 0, previousMaterial, CancellationToken.None);

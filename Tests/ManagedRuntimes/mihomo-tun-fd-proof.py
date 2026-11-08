@@ -1,6 +1,7 @@
 """Prove a restricted systemd service can forward through a pre-opened Linux TUN."""
 
 import base64
+from datetime import datetime, timezone
 import hashlib
 import http.server
 import json
@@ -8,6 +9,7 @@ import os
 import pwd
 from pathlib import Path
 import select
+import secrets
 import shlex
 import shutil
 import signal
@@ -1094,6 +1096,177 @@ def proof_http_publication(owner, ipc, previous, case):
         restarted.stdout.close()
 
 
+def proof_full_http_shutdown(ipc):
+    assert any(line.split()[4] == '/etc' and ' - overlay ' in line
+               for line in Path('/proc/self/mountinfo').read_text().splitlines())
+    base = 'http://192.0.2.2:18970'
+    api = '/api/v1.0/proxy'
+    queue = Path('/var/lib/relaxkonos/proxy/state/proxy-operations.json')
+    mirror = Path('/etc/relaxkonos/proxy/active.yaml')
+    identity = 'rk-tun-' + uuid.uuid4().hex[:10]
+    password = secrets.token_urlsafe(32)
+    command('/usr/sbin/useradd', '-M', '-s', '/bin/bash', identity)
+    subprocess.run(['/usr/sbin/chpasswd'], input=f'{identity}:{password}\n', text=True, check=True, timeout=8)
+    profile = str(uuid.uuid4())
+
+    def request(path, token=None, key=None, data=None):
+        args = ['ip', 'netns', 'exec', 'rk-http-client', '/usr/bin/curl', '--noproxy', '*', '--silent',
+                '--show-error', '--max-time', '4', '--write-out', '\n%{http_code}']
+        contents = None
+        if token:
+            args += ['--config', '-']
+            contents = f'header = "Authorization: Bearer {token}"\n'
+        if data is not None:
+            if token:
+                contents += 'header = "Content-Type: application/json"\ndata = ' + json.dumps(json.dumps(data)) + '\n'
+            else:
+                args += ['-H', 'Content-Type: application/json', '--data-binary', '@-']
+                contents = json.dumps(data)
+        if key:
+            args += ['-X', 'POST', '-H', f'Idempotency-Key: {key}']
+        response = subprocess.run([*args, base + path], input=contents, text=True, capture_output=True, timeout=6)
+        if response.returncode != 0:
+            raise ConnectionError(response.stderr)
+        body, status = response.stdout.rsplit('\n', 1)
+        return int(status), json.loads(body) if body else None
+
+    def until(check, description):
+        deadline = time.monotonic() + 15
+        while worker.poll() is None and time.monotonic() < deadline:
+            try:
+                value = check()
+                if value:
+                    return value
+            except ConnectionError:
+                pass
+            time.sleep(.05)
+        raise RuntimeError(f'Full Server did not reach {description}')
+
+    def marker(name):
+        path = root / name
+        return until(lambda: path.read_text() if path.exists() else None, name)
+
+    def login():
+        until(lambda: request(api + '/tun')[0] == 401, 'protected TUN listener')
+        status, body = request('/api/v1.0/auth/login', data={
+            'identifier': identity, 'password': password, 'clientPlatform': 'linux',
+            'deviceName': 'Private TUN acceptance', 'clientVersion': '0.2.2'})
+        assert status == 200, f'Private PAM login returned HTTP {status}'
+        assert body['assignedRole'] == 'controller'
+        return body['tokens']['accessToken']
+
+    def submit(action, key, body=None):
+        status, reply = request(f'{api}/tun/{action}', token, key, body)
+        assert status == 202, (status, reply)
+        return uuid.UUID(reply['operationId']).hex
+
+    def read(operation):
+        status, reply = request(f'{api}/operations/{uuid.UUID(operation)}', token)
+        assert status == 200, (status, reply)
+        return reply
+
+    def terminal(operation):
+        reply = read(operation)
+        assert reply['state'] not in ('failed', 'interrupted'), reply
+        return reply if reply['state'] == 'succeeded' else None
+
+    def leases():
+        status, reply = request('/api/v1.0/server/modules/relaxkonos.proxy', token)
+        assert status == 200, (status, reply)
+        return reply['residency']['activeLeases']
+
+    def probe(record, phase):
+        observe_runtime(record)
+        assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
+                       f'http://{target}:18880/mb04-{phase}') == 'upstream-through-inherited-tun'
+        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
+
+    def launch(phase):
+        (root / 'full-server-pid').unlink(missing_ok=True)
+        return subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-full-server',
+                                 str(root), str(ipc.socket_path), phase])
+
+    worker = launch('drain')
+    try:
+        pid = int(marker('full-server-pid'))
+        assert Path(f'/proc/{pid}').stat().st_uid == ipc.uid
+        token = login()
+        assert request(api + '/tun/disable', key='anonymous')[0] == 401
+        assert request(api + '/tun/disable', 'invalid.jwt.signature', 'invalid-jwt')[0] == 401
+        database = root / 'full-server' / 'data' / 'relaxkonos.db'
+        timestamp = datetime.now(timezone.utc).isoformat()
+        # Insert only the confirmed fixture's profile into the production schema after startup migration.
+        subprocess.run(['/usr/bin/python3', '-I', '-c', '''
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as database:
+    database.execute("INSERT INTO proxy_profiles VALUES(?, 'Private TUN', 'mihomo', 1, 1, ?, ?)",
+                     (sys.argv[2], sys.argv[3], sys.argv[3]))
+''', str(database), profile, timestamp], **ipc.identity, check=True, timeout=8)
+        publication = submit('enable', 'full-publish', {'profileId': profile})
+        until(lambda: terminal(publication), 'original publication')
+        record = json.loads(journal.read_bytes())
+        record['operation'] = publication
+        sync_record(record)
+        operations = archive / 'operations'
+        published_effect = json.loads((operations / publication / 'tun-5.json').read_text())
+        prepare(published_effect['InterfaceIndex'], ipc.helper.pid)
+        record = json.loads(journal.read_bytes())
+        probe(record, 'jwt-before-shutdown')
+        stopped = submit('disable', 'full-stop')
+        assert marker('full-tun-response-held') == stopped
+        assert read(stopped)['state'] == 'running' and leases() >= 1
+        assert config.read_bytes() == mirror.read_bytes() and network_baseline() == record['baseline']
+        assert not Path(f'/proc/{record["service"][0]}').exists() and device not in devices()
+        stopped_receipt = json.loads(checkpoint(record, f'observe-action:{stopped}'))['mihomoTunAction']
+        assert stopped_receipt['outcome'] == 'Succeeded' and uuid.UUID(stopped_receipt['operationId']).hex == stopped
+        durable_running = queue.read_bytes()
+        os.kill(pid, signal.SIGTERM)
+        assert marker('full-server-stopping') == stopped
+        time.sleep(.2)
+        assert worker.poll() is None and Path(f'/proc/{pid}').exists() and queue.read_bytes() == durable_running
+        (root / 'full-tun-response-release').touch()
+        assert worker.wait(timeout=12) == 0 and not Path(f'/proc/{pid}').exists()
+        persisted = queue.read_bytes()
+        assert persisted != durable_running
+        audit = [json.loads(line) for line in queue.with_name('proxy-audit.jsonl').read_text().splitlines()]
+        assert len([entry for entry in audit if entry['action'] == 'tun.disable' and entry['result'] == 'succeeded']) == 1
+
+        worker = launch('restart')
+        restart_pid = int(marker('full-server-pid'))
+        assert restart_pid != pid and Path(f'/proc/{restart_pid}').stat().st_uid == ipc.uid
+        token = login()
+        original = until(lambda: terminal(stopped), 'persisted stop receipt')
+        assert original['completedAt'] and submit('disable', 'full-stop') == stopped and read(stopped) == original
+        assert queue.read_bytes() == persisted and leases() == 0
+        assert json.loads(checkpoint(record, f'observe-action:{stopped}'))['mihomoTunAction'] == stopped_receipt
+        assert network_baseline() == record['baseline']
+        started = submit('enable', 'full-start', {'profileId': profile})
+        until(lambda: terminal(started), 'named restart of the published configuration')
+        effect = json.loads((operations / started / 'tun-5.json').read_text())
+        table = effect['Intent']['RoutingTable']
+        current = dict(record, service=service_identity(), ifindex=effect['InterfaceIndex'],
+                       routing_table=table, route=route(table))
+        probe(current, 'jwt-after-shutdown')
+        until(lambda: leases() == 0, 'drained work leases')
+        assert ipc.log.read_text().count(f'operation=MihomoRuntimeTunStop id={uuid.UUID(stopped)} ') == 1
+        assert ipc.log.read_text().count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
+        assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+        os.kill(restart_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        print(f'PASS TUN FULL SERVER JWT SHUTDOWN: publication={publication}; stop={stopped}; start={started}; '
+              f'Server PID {pid}->{restart_pid}; live PID={current["service"][0]}; configuration={record["credential"]}')
+    finally:
+        if worker.poll() is None:
+            marker_path = root / 'full-server-pid'
+            if marker_path.exists():
+                try:
+                    os.kill(int(marker_path.read_text()), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            worker.kill()
+            worker.wait(timeout=5)
+
+
 def proof():
     assert os.geteuid() == 0 and Path('/proc/1/comm').read_text().strip() == 'systemd'
     mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines() if ' - tmpfs ' in line}
@@ -1101,7 +1274,7 @@ def proof():
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
-    http_case = case in ('ipc-http-commit', 'ipc-http-pending', 'ipc-http-action')
+    http_case = case in ('ipc-http-commit', 'ipc-http-pending', 'ipc-http-action', 'ipc-http-full')
     if http_case:
         ip('netns', 'add', 'rk-http-client')
         ip('link', 'set', 'rk-peer', 'netns', 'rk-http-client')
@@ -1179,6 +1352,9 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
+            if case == 'ipc-http-full':
+                proof_full_http_shutdown(ipc)
+                return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,
                                      stdout=subprocess.PIPE, text=True)
             if http_case:

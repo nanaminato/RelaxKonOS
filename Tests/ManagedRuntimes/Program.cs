@@ -203,6 +203,11 @@ if (args is ["runtime-mihomo-tun-checkpoint", var networkRoot, var networkOperat
     }
     return;
 }
+if (args is ["runtime-mihomo-tun-full-server", var tunFullRoot, var tunFullSocket, var tunFullPhase] && OperatingSystem.IsLinux())
+{
+    await MihomoTunFullServerAcceptance.RunAsync(tunFullRoot, tunFullSocket, tunFullPhase);
+    return;
+}
 if (args is ["runtime-mihomo-tun-ipc-server", var ipcTunRoot, var ipcTunPhase] && OperatingSystem.IsLinux())
 {
     try { await MihomoTunDescriptorAcceptance.RunIpcServerAsync(ipcTunRoot, ipcTunPhase); }

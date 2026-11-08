@@ -53,6 +53,7 @@
 - [MB-04 受管 TUN 认证 HTTP](#mb-04-受管-tun-认证-http)
 - [MB-04 受管 TUN 认证 HTTP 补偿](#mb-04-受管-tun-认证-http-补偿)
 - [MB-04 受管 TUN 认证 HTTP 具名启停回执](#mb-04-受管-tun-认证-http-具名启停回执)
+- [MB-04 完整 Server 的受管 TUN 停机排空](#mb-04-完整-server-的受管-tun-停机排空)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -606,9 +607,25 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 最终七组私有 systemd 场景通过，包含具名启停、发布补偿、原生停止中断、原生启动及重启、保留和清除数据移除，以及独立 IPC 发布与生命周期。七组 cgroup 均已清理，宿主服务、代理和 resolver 文件指纹一致。归档 SHA-256 为 `971047080de6e39efad8a9dae2d2e4f4f78c913e4d28bc013faad879822bcec3`。
 
-**已实现但实机未验证。** 其他 Linux 架构，完整 Server JWT 与同次停机，Android。Windows Release 回归通过，可信下载探针因缺进程级测试 CA 跳过。日志为 `.artifacts/mb04-tun-marker-sync/tun-http-action-windows-final.log`。
+**已实现但实机未验证。** 该批未覆盖其他 Linux 架构、完整 Server JWT、同次停机和 Android。完整 Server JWT 由后续[受管 TUN 停机排空](#mb-04-完整-server-的受管-tun-停机排空)覆盖。Windows Release 回归通过，可信下载探针因缺进程级测试 CA 跳过。日志为 `.artifacts/mb04-tun-marker-sync/tun-http-action-windows-final.log`。
 
 **未实现或仍受门禁保护。** 缺失或未确认的原生启停回执继续阻止新键。整模块交接前 Proxy 保持 resident。本批核对专属进程退出及环境清理。对象释放、ALC 回收、隔离负载内存和生产收益未测量。
+
+## MB-04 完整 Server 的受管 TUN 停机排空
+
+**已实现且已验证。** Linux x64 私有 systemd 中运行生产 Server 程序、非 root Server 进程和独立 root Helper。登录账户只存在于私有 `/etc` overlay。独立客户端网络命名空间走生产 PAM 登录获取 JWT，匿名和无效 JWT 被拒绝。认证入口读取生产 SQLite 中的活动档案和保护后的控制器凭据，完成真实受管 TUN 发布。核对管理选路、配置身份、上游 HTTP 和分流 DNS。
+
+专属 AF_UNIX relay 仅扣留原停止成功响应。Helper 已持久写入原停止回执，候选进程退出、设备移除、路由回到基线，配置身份保持。HTTP 队列仍为 Running，生产模块诊断报告至少一个工作租约。发送 SIGTERM 后，Server 已进入停机且原队列字节保持。释放响应后，原终态和一次成功审计持久化，Server 退出码为零。生产队列的执行路径在写入终态前等待作用域清理。此用例没有单独阻塞清理回调。
+
+重启后再次用 PAM 登录，同键返回原停止 ID 和原终态，队列台账字节及 Helper 停止回执一致，租约归零。再次启用沿用原发布和配置，新进程真实转发 HTTP 与分流 DNS，管理选路一致。Helper 审计中原配置和停止各派发一次，原规则删除一次。
+
+首次完整用例通过前有两处夹具问题。制品缺 Server 的 `.deps.json` 导致加载失败，补齐清单并加入运行前检查。远端客户端查询仅对本机开放的 `/healthz` 返回 404，改为以受保护 TUN 路由返回 401 作为就绪条件。失败日志为 `.artifacts/mb04-tun-marker-sync/tun-full-linux-first.log` 和 `.artifacts/mb04-tun-marker-sync/tun-full-linux-second.log`。
+
+最终原发布 `2d19f0aca80343a88f407dc34b9cd455`，停止 `5e57b294c4c6452e8a4944a86d5d2425`，再次启用 `af18c5dbbbda4265961b7d8a9c69a34a`。Server PID 180→690，重新启用后的 Mihomo PID 888，配置身份 `48688ff3698c68f4a70a47370fc18938a0f5dba8b76e4d9da371a9a53e41837f`。同批具名启停响应丢失和发布补偿两组通过。三组 cgroup 已清理，宿主运行时、代理、resolver 指纹一致，完整 Server 用例另核对宿主账户文件指纹一致。归档 SHA-256 为 `2c1338dffda26c7284cd79ac6bf353dee8ee5e6be0c9e3d46ebc68efee223224`，日志为 `.artifacts/mb04-tun-marker-sync/tun-full-linux-final.log`。
+
+**已实现但实机未验证。** 其他 Linux 架构、Android 和正式安装服务包。认证与停机均走生产代码，试验由私有 systemd 夹具启动 Server。Windows Release 回归通过，包含 104 项配置事务检查。可信下载探针因缺进程级测试 CA 跳过，日志为 `.artifacts/mb04-tun-marker-sync/tun-full-windows-final.log`。
+
+**未实现或仍受门禁保护。** 受管 TUN 与系统代理 guard、授权到期的同次停机仍待验收。未知回执继续受原门禁保护。Proxy 保持 resident。本批确认专属 Server、原 Mihomo 进程退出及环境清理。对象释放、ALC 回收、隔离内存和生产收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

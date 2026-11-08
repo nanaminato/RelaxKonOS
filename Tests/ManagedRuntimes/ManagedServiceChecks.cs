@@ -442,13 +442,14 @@ internal static class ManagedServiceChecks
 
     internal const string FullServerUrl = "http://127.0.0.1:18763";
 
-    internal static async Task<ProcessStartInfo> PrepareFullServerAsync(string assembly, string socketPath, string root, bool reuse = false)
+    internal static async Task<ProcessStartInfo> PrepareFullServerAsync(string assembly, string socketPath, string root,
+        bool reuse = false, bool seedProxyServer = true)
     {
         if (!File.ReadLines("/proc/self/mountinfo").Any(line =>
             line.Split(' ')[4] == "/var/lib" && line.Contains(" - tmpfs ", StringComparison.Ordinal)))
             throw new InvalidOperationException("The full Server fixture requires a private /var/lib tmpfs.");
         var statePath = FullServerState;
-        if (File.Exists(Path.Combine(statePath, "proxy-server.protected")) != reuse)
+        if (seedProxyServer && File.Exists(Path.Combine(statePath, "proxy-server.protected")) != reuse)
             throw new InvalidOperationException("The full Server fixture requires an empty private Proxy state mount.");
         Directory.CreateDirectory(statePath);
         var contentRoot = Directory.CreateDirectory(Path.Combine(root, "full-server")).FullName;
@@ -458,8 +459,9 @@ internal static class ManagedServiceChecks
         {
             foreach (var key in Directory.EnumerateFiles(Path.Combine(root, "fixture-keys"), "*.xml"))
                 File.Copy(key, Path.Combine(keyRing, Path.GetFileName(key)));
-            foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "server")))
-                File.Copy(file, Path.Combine(statePath, Path.GetFileName(file)));
+            if (seedProxyServer)
+                foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "server")))
+                    File.Copy(file, Path.Combine(statePath, Path.GetFileName(file)));
         }
 
         var start = new ProcessStartInfo("dotnet")
