@@ -19,6 +19,11 @@ fi
 server=$(realpath -e -- "$1")
 helper=$(realpath -e -- "$2")
 script=$(realpath -e -- "$(dirname -- "$0")/run-authenticated-nginx-live.py")
+website_hook=${RELAXKONOS_TEST_WEBSITE_EXECUTION_HOOK:-}
+if [[ -n $website_hook ]]; then
+    website_hook=$(realpath -e -- "$website_hook")
+    [[ $website_hook =~ ^/[a-zA-Z0-9_./-]+$ ]]
+fi
 work=$(mktemp -d /tmp/relaxkonos-nginx-systemd.XXXXXXXX)
 [[ $work =~ ^/tmp/relaxkonos-nginx-systemd\.[[:alnum:]]{8}$ ]]
 unit=relaxkonos-nginx-test-$(cat /proc/sys/kernel/random/uuid).service
@@ -124,7 +129,7 @@ JSON
     cat "$work/https.pem" "$work/issuing-root.pem" > "$work/trust.pem"
 fi
 systemctl start nginx.service
-python3 "$script" "$work" "$server" "$helper" "$mode" < "$work/credentials"
+RELAXKONOS_TEST_WEBSITE_EXECUTION_HOOK="$website_hook" python3 "$script" "$work" "$server" "$helper" "$mode" < "$work/credentials"
 systemctl is-active --quiet nginx.service
 systemctl stop nginx.service
 EOF

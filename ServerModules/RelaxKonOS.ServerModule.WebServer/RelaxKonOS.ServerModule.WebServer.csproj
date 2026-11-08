@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../Shared/RelaxKonOS.ServerModule.WebServer.Contracts/RelaxKonOS.ServerModule.WebServer.Contracts.csproj" /></ItemGroup>
+  <Target Name="ValidateWebsitePublicationExecutionBoundary" BeforeTargets="PrepareForBuild">
+    <PropertyGroup><WebsitePublicationContractProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../Shared/RelaxKonOS.ServerModule.WebServer.Contracts/RelaxKonOS.ServerModule.WebServer.Contracts.csproj'))</WebsitePublicationContractProjectPath></PropertyGroup>
+    <ItemGroup>
+      <InvalidWebsitePublicationImplementationProject Include="@(ProjectReference)" Condition="'%(ProjectReference.FullPath)' != '$(WebsitePublicationContractProjectPath)'" />
+      <InvalidWebsitePublicationImplementationFramework Include="@(FrameworkReference)" Condition="'%(FrameworkReference.Identity)' != 'Microsoft.NETCore.App' or '%(FrameworkReference.IsImplicitlyDefined)' != 'true'" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidWebsitePublicationImplementationProject)' != '' or '@(Reference)' != '' or '@(PackageReference)' != '' or '@(InvalidWebsitePublicationImplementationFramework)' != '' or '@(COMReference)' != ''"
+           Text="WebsitePublication execution may reference only its canonical shared contract project and implicit .NET framework; Host, private packages and other implementations are forbidden." />
+  </Target>
+</Project>

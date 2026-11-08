@@ -30,6 +30,7 @@ def run(root, server, helper_binary, mode):
     bootstrap_resume = mode in ("--systemd-website-acme-bootstrap-resume", "--systemd-website-acme-bootstrap-resume-interrupt")
     resume_interrupt = mode == "--systemd-website-acme-bootstrap-resume-interrupt"
     bind_interrupt = mode == "--systemd-website-acme-bootstrap-bind-interrupt"
+    website_hook = os.environ.get("RELAXKONOS_TEST_WEBSITE_EXECUTION_HOOK")
     acme_success = mode in ("--systemd-website-acme-success", "--systemd-website-acme-bootstrap-success")
     acme_cancel = mode == "--systemd-website-acme-cancel"
     acme_drain = mode == "--systemd-website-acme-drain"
@@ -108,8 +109,9 @@ def run(root, server, helper_binary, mode):
 
     @contextmanager
     def process(arguments, name):
+        child_env = dict(env, DOTNET_STARTUP_HOOKS=website_hook) if website_hook and arguments[0] == server else env
         with (root / f"{name}.stderr").open("w") as errors, (root / f"{name}.stdout").open("w") as output:
-            child = subprocess.Popen(["dotnet", *map(str, arguments)], cwd=root, env=env,
+            child = subprocess.Popen(["dotnet", *map(str, arguments)], cwd=root, env=child_env,
                                      stdin=subprocess.PIPE, stdout=output, stderr=errors)
         try:
             yield child
@@ -134,6 +136,11 @@ def run(root, server, helper_binary, mode):
                 return
             time.sleep(0.1)
         raise TimeoutError(f"{name} readiness check failed")
+
+    def website_code_events(name):
+        prefix = "WEBSITE EXECUTION "
+        return [line.removeprefix(prefix) for line in (root / f"{name}.stderr").read_text().splitlines()
+                if line.startswith(prefix)]
 
     def healthy():
         try:
@@ -500,6 +507,10 @@ def run(root, server, helper_binary, mode):
                     assert active["state"].lower() == "running" and active["stage"].lower() == "certificate"
                     issued = request(f"{certificates}/operations/{active['certificateOperationId']}", token=token)
                     assert issued["state"].lower() == "succeeded" and issued["certificateId"] == active["certificateId"]
+                    if website_hook:
+                        loaded = website_code_events("website-server")
+                        assert len(loaded) == 1 and loaded[0].startswith("load website-publication:")
+                        assert request("/api/v1.0/server/modules/relaxkonos.webserver", token=token)["residency"]["activeLeases"] == 1
                     assert witness.read_text().splitlines() == ["reload"] and list(challenge_root.iterdir()) == [sentinel]
                     assert_ca_once()
                     master = nginx_pid_file.read_text()
@@ -516,6 +527,8 @@ def run(root, server, helper_binary, mode):
                         assert receipt["state"].lower() == "interrupted" and receipt["interruptedFromStage"].lower() == "certificate"
                         assert receipt["certificateOperationId"] == issued["operationId"]
                         request(resume_route, method="POST", expected=401)
+                        if website_hook:
+                            assert not website_code_events("bootstrap-resume-server"), "Startup receipt and denied recovery resolved the executor"
                         bootstrap = site_file.read_bytes()
                         site_file.write_bytes(bootstrap + b"# external edit\n")
                         try:
@@ -536,6 +549,19 @@ def run(root, server, helper_binary, mode):
                             assert witness.read_text().splitlines() == ["reload", "reload"] and nginx_pid_file.read_text() == master
                             assert_ca_once()
                             assert_served(b"original")
+                            if website_hook:
+                                loaded = website_code_events("bootstrap-resume-server")
+                                assert len(loaded) == 1 and loaded[0].startswith("load website-publication:")
+                                unloaded = [*loaded, "unload " + loaded[0][5:]]
+                                wait_for(restarted, lambda: website_code_events("bootstrap-resume-server") == unloaded,
+                                         "bootstrap-resume-server", attempts=450)
+                                assert published_body() and nginx_pid_file.read_text() == master
+                                assert resumed == request(resume_route, token=token, method="POST")
+                                woke = website_code_events("bootstrap-resume-server")
+                                assert woke[:2] == unloaded and len(woke) == 3 and woke[-1].startswith("load website-publication:") and woke[-1] != loaded[0]
+                                assert witness.read_text().splitlines() == ["reload", "reload"]
+                                assert_ca_once()
+                                print(f"PASS AUTHENTICATED WEBSITE EXECUTION: publication={operation_id}; {loaded[0][5:]} unloaded; {woke[-1]}; same TLS and receipts")
                             print(f"PASS WEBSITE BOOTSTRAP RESUMED: operation={operation_id}; certificate={issued['operationId']}; original certificate and one binding reload")
                             return
 

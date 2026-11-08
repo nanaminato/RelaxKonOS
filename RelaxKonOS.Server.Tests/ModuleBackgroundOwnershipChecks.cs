@@ -360,8 +360,9 @@ internal static class ModuleBackgroundOwnershipChecks
                 TestAssert.Assert(await probe.GetStringAsync("https://localhost/probe").WaitAsync(TimeSpan.FromSeconds(10)) == "ready",
                     "The TLS fixture must authenticate the loopback service before running the cancellation check.");
             var verification = new LoopbackWebsiteVerification(port, fingerprint);
+            var verifyingCode = new WebsitePublicationCode(TimeSpan.FromMilliseconds(30));
             using var verifying = WebsitePublicationTestScopes.Create(reopened, applications, catalog, web, cert, f.Certificates, verification,
-                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
+                new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source, code: verifyingCode);
             await verifying.StartAsync(default);
             var verifyingReceipt = await verifying.StartAsync(httpsRequest, "actor", "https-drain");
             try { await enteredHttps.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
@@ -374,10 +375,25 @@ internal static class ModuleBackgroundOwnershipChecks
             Check(f.Active(ServerModules.WebServerId) == 1
                 && reopened.Get(verifyingReceipt.OperationId)?.Stage == WebsitePublicationStage.Verifying,
                 "Website HTTPS verification owns its lease while real TLS response headers are pending");
+            var code = verifyingCode.CurrentCode ?? throw new InvalidOperationException("Website execution did not load its collectible code.");
+            await Task.Delay(100);
+            Check(ReferenceEquals(code, verifyingCode.CurrentCode), "Website execution retains its generation across real in-flight TLS work");
             await verifying.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(10));
             await abortedHttps.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Check(f.Active(ServerModules.WebServerId) == 0 && WebsitePublicationStore.Active(reopened.Get(verifyingReceipt.OperationId)!),
                 "Stopping drains the real HTTPS request and leaves the original active receipt for recovery");
+            using (var collection = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+            {
+                while (verifyingCode.CurrentCode is not null) await Task.Delay(20, collection.Token);
+                while (code.IsAlive)
+                {
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    await Task.Delay(20, collection.Token);
+                }
+            }
+            Check(!System.Runtime.Loader.AssemblyLoadContext.Default.Assemblies.Any(assembly => assembly.GetName().Name == "RelaxKonOS.ServerModule.WebServer"),
+                "Drained website execution is collected and never loads into the default context");
             var httpsRecovery = new WebsitePublicationStore(f.Environment);
             using var recoveredHttps = WebsitePublicationTestScopes.Create(httpsRecovery, applications, catalog, web, cert, f.Certificates, verification,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source);
@@ -415,7 +431,7 @@ internal static class ModuleBackgroundOwnershipChecks
             await unknownRecovery.StartAsync(default);
             var unknownReplay = await unknownRecovery.StartAsync(failedRequest, "actor", "unknown-rollback");
             Check(unknownReplay.OperationId == failedReceipt.OperationId && unknownReplay.State == WebsitePublicationState.Failed
-                && unknownReplay.ProblemCode == WebsitePublicationStore.AssociationRecoveryFailed
+                && unknownReplay.ProblemCode == WebsitePublicationProblems.AssociationRecoveryFailed
                 && unknownReplay.RecoveryProblemCode == "website.recheck_required"
                 && unknownStore.Pending().Single().OperationId == failedReceipt.OperationId,
                 "Unknown website compensation survives restart and remains visible to the disable guard");
@@ -455,7 +471,7 @@ internal static class ModuleBackgroundOwnershipChecks
             await recoveredConfigure.StartAsync(default);
             var configureReplay = await recoveredConfigure.StartAsync(interruptedRequest, "actor", "interrupted-configure");
             Check(configureReplay.OperationId == configuringReceipt.OperationId && configureReplay.State == WebsitePublicationState.Interrupted
-                && configureReplay.RecoveryProblemCode == WebsitePublicationStore.SiteApplicationUnverified
+                && configureReplay.RecoveryProblemCode == WebsitePublicationProblems.SiteApplicationUnverified
                 && configureRecovery.Pending().Any(operation => operation.OperationId == configuringReceipt.OperationId),
                 "Website recovery keeps an interrupted configuring receipt visible to the disable guard");
             try

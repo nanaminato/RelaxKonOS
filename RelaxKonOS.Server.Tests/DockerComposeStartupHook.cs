@@ -13,10 +13,15 @@ internal static class StartupHook
                 Console.Error.WriteLine($"ACME EXECUTION sdk {AssemblyLoadContext.GetLoadContext(args.LoadedAssembly)?.Name}");
                 return;
             }
-            if (assemblyName is not ("RelaxKonOS.ServerModule.Docker" or "RelaxKonOS.ServerModule.Certificates")
+            if (assemblyName is not ("RelaxKonOS.ServerModule.Docker" or "RelaxKonOS.ServerModule.Certificates" or "RelaxKonOS.ServerModule.WebServer")
                 || AssemblyLoadContext.GetLoadContext(args.LoadedAssembly) is not { IsCollectible: true, Name: { } name } context)
                 return;
-            var prefix = assemblyName == "RelaxKonOS.ServerModule.Docker" ? "DOCKER COMPOSE ALC" : "ACME EXECUTION";
+            var prefix = assemblyName switch
+            {
+                "RelaxKonOS.ServerModule.Docker" => "DOCKER COMPOSE ALC",
+                "RelaxKonOS.ServerModule.Certificates" => "ACME EXECUTION",
+                _ => "WEBSITE EXECUTION",
+            };
             context.Unloading += unloading => Console.Error.WriteLine($"{prefix} unload {unloading.Name}");
             Console.Error.WriteLine($"{prefix} load {name}");
         };

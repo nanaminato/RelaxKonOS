@@ -1758,3 +1758,5 @@ Linux 系统包 Nginx 的 WebRoot 启用中断后，后续授权的 TLS 绑定�
 取消原证书操作后，网站发布等待证书回执终态，并按实际结果结束。若在签发阶段停止 Server，原证书任务继续排空，启动恢复将未完成发布标为 Interrupted。已知的原订单仍可通过原证书操作只读查询。
 
 专属 WebRoot 挑战文件内容无法与原摘要匹配时，证书操作保留清理责任和原订单。网站发布同键仍返回原中断回执，现有 Nginx 与 TLS 继续服务。见[挑战文件归属验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-挑战内容变化时保留原清理责任)。
+
+网站发布及具名首站恢复按需加载执行程序集。实际执行和终态提交结束、最后一个作用域释放后进入 30 秒闲时卸载窗口。站点转发、TLS 与原回执继续由 Nginx 和 Server 原服务负责。见[网站发布独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布独立执行程序集)。

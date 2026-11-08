@@ -523,6 +523,8 @@ MB-05 的 ACME 原订单观察由原证书 owner 持有一个工作租约，覆�
 
 MB-05 的 ACME SDK 与执行代码支持闲时卸载和按需唤醒。原证书 owner 继续负责原订单、挑战清理、续期及部署，Certificates 保持 resident。见[ACME SDK 独立执行程序集](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-acme-sdk-独立执行程序集)。
 
+MB-05 的网站发布和具名首站恢复使用独立可回收执行代码。原 Nginx、TLS、发布台账及应用关联权威由 Host 保持，WebServer 管理模块继续 resident。见[网站发布独立执行程序集](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布独立执行程序集)。
+
 Proxy 同次停机联合验收中，原入站到期回执落盘后，Server 仍持有独立 TUN 清理责任。系统代理 guard 与 TUN 复用共享发布锁及原归属记录，已有网络转发继续。见[Proxy 联合安全责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。
 
 Proxy 设置写入的 resident 租约覆盖执行、审计、响应与异步作用域清理。受管发布的重启恢复继续读取原发布权威和 Helper 回执。见[设置写入工作租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-设置写入的工作租约)。

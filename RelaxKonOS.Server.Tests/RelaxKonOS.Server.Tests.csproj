@@ -52,6 +52,12 @@
     <Reference Include="RelaxKonOS.ServerModule.Certificates.Contracts" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
       <HintPath>$([System.IO.Path]::GetDirectoryName('$(PrebuiltServerAssemblyPath)'))/RelaxKonOS.ServerModule.Certificates.Contracts.dll</HintPath>
     </Reference>
+    <Reference Include="RelaxKonOS.ServerModule.WebServer.Contracts" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
+      <HintPath>$([System.IO.Path]::GetDirectoryName('$(PrebuiltServerAssemblyPath)'))/RelaxKonOS.ServerModule.WebServer.Contracts.dll</HintPath>
+    </Reference>
+    <Content Include="$([System.IO.Path]::GetDirectoryName('$(PrebuiltServerAssemblyPath)'))/Modules/WebServer/RelaxKonOS.ServerModule.WebServer.dll"
+             Link="Modules/WebServer/RelaxKonOS.ServerModule.WebServer.dll" CopyToOutputDirectory="PreserveNewest"
+             Condition="'$(UsePrebuiltServerAssembly)' == 'true' and '$(PrebuiltServerAssemblyPath)' != ''" />
     <Content Include="$([System.IO.Path]::GetDirectoryName('$(PrebuiltServerAssemblyPath)'))/Modules/Certificates/*.dll"
              Link="Modules/Certificates/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest"
              Condition="'$(UsePrebuiltServerAssembly)' == 'true' and '$(PrebuiltServerAssemblyPath)' != ''" />

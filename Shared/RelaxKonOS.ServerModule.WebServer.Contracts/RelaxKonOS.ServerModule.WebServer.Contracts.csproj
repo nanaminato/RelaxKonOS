@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" /></ItemGroup>
+  <Target Name="ValidateWebsitePublicationContractBoundary" BeforeTargets="PrepareForBuild">
+    <PropertyGroup><WebsitePublicationProtocolProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj'))</WebsitePublicationProtocolProjectPath></PropertyGroup>
+    <ItemGroup>
+      <InvalidWebsitePublicationContractProject Include="@(ProjectReference)" Condition="'%(ProjectReference.FullPath)' != '$(WebsitePublicationProtocolProjectPath)'" />
+      <InvalidWebsitePublicationContractFramework Include="@(FrameworkReference)" Condition="'%(FrameworkReference.Identity)' != 'Microsoft.NETCore.App' or '%(FrameworkReference.IsImplicitlyDefined)' != 'true'" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidWebsitePublicationContractProject)' != '' or '@(Reference)' != '' or '@(PackageReference)' != '' or '@(InvalidWebsitePublicationContractFramework)' != '' or '@(COMReference)' != ''"
+           Text="WebsitePublication contracts may reference only the canonical Protocol project and implicit .NET framework; Host and implementation dependencies are forbidden." />
+  </Target>
+</Project>

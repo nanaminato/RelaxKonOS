@@ -275,7 +275,7 @@ internal static class NginxProcessRecoveryChecks
                 HostElevationCapability.NginxConfigurationWrite, publication.WebServerId,
                 () => JsonContent.Create(publication, options: RelaxKonOSJsonOptions.Default), cancellationToken);
             TestAssert.Assert(restored is { State: WebsitePublicationState.Interrupted }
-                && restored.RecoveryProblemCode == (configuring ? WebsitePublicationStore.SiteApplicationUnverified : "website.recheck_required")
+                && restored.RecoveryProblemCode == (configuring ? WebsitePublicationProblems.SiteApplicationUnverified : "website.recheck_required")
                 && replay.RecoveryProblemCode == restored.RecoveryProblemCode && replay.OperationId == operationId && replay.State == restored.State && replay.ProblemCode == restored.ProblemCode
                 && new WebsitePublicationStore(environment).Get(operationId)?.State == restored.State,
                 "Startup and same-key retry must preserve the original interrupted publication.");

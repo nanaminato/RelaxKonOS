@@ -99,4 +99,10 @@
     <Content Include="@(AcmeExecutionFile->'../ServerModules/RelaxKonOS.ServerModule.Certificates/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/%(Identity)')"
              Link="Modules/Certificates/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.WebServer.Contracts/RelaxKonOS.ServerModule.WebServer.Contracts.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.WebServer/RelaxKonOS.ServerModule.WebServer.csproj" ReferenceOutputAssembly="false" />
+    <Content Include="../ServerModules/RelaxKonOS.ServerModule.WebServer/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.WebServer.dll"
+             Link="Modules/WebServer/RelaxKonOS.ServerModule.WebServer.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

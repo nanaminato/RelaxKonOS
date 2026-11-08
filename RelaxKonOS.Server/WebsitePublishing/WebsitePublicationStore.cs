@@ -6,18 +6,10 @@ using RelaxKonOS.Protocol.WebsitePublishing;
 
 namespace RelaxKonOS.Server.WebsitePublishing;
 
-internal sealed class WebsitePublicationException(string problemCode, int statusCode = 409) : Exception(problemCode)
-{
-    public string ProblemCode { get; } = problemCode;
-    public int StatusCode { get; } = statusCode;
-}
-
 /// <summary>Crash-safe, secret-free authority for website-publishing work. Active work is never replayed on restart.</summary>
 internal sealed class WebsitePublicationStore
 {
     private const int RetainedOperations = 200;
-    internal const string SiteApplicationUnverified = "website.site_application_unverified";
-    internal const string AssociationRecoveryFailed = "website.application_association_recovery_failed";
     private readonly object gate = new();
     private readonly string path;
     private readonly Dictionary<Guid, Entry> entries = [];
@@ -28,9 +20,8 @@ internal sealed class WebsitePublicationStore
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    internal sealed record BootstrapBinding(WebServerSiteDto Site, string ConfigurationSha256, string CertificateFingerprint);
     internal sealed record Entry(WebsitePublicationOperationDto Operation, string ActorReference, string IdempotencyReference,
-        string RequestReference, BootstrapBinding? Binding = null);
+        string RequestReference, WebsiteBootstrapBinding? Binding = null);
 
     public WebsitePublicationStore(IHostEnvironment environment)
     {
@@ -84,12 +75,12 @@ internal sealed class WebsitePublicationStore
         lock (gate) { EnsureAvailable(); return entries.GetValueOrDefault(operationId)?.Operation; }
     }
 
-    internal BootstrapBinding? GetBootstrapBinding(Guid operationId)
+    internal WebsiteBootstrapBinding? GetBootstrapBinding(Guid operationId)
     {
         lock (gate) { EnsureAvailable(); return entries.GetValueOrDefault(operationId)?.Binding; }
     }
 
-    internal Guid RecordBootstrapBinding(Guid operationId, BootstrapBinding binding)
+    internal Guid RecordBootstrapBinding(Guid operationId, WebsiteBootstrapBinding binding)
     {
         lock (gate)
         {
@@ -167,7 +158,7 @@ internal sealed class WebsitePublicationStore
                     ProblemCode = "website.operation_interrupted",
                     RecoveryProblemCode = operation.Stage == WebsitePublicationStage.Configuring || HasUnverifiedSite(operation)
                         || operation.BootstrapBindingOperationId is not null
-                        ? SiteApplicationUnverified : "website.recheck_required",
+                        ? WebsitePublicationProblems.SiteApplicationUnverified : "website.recheck_required",
                     CompletedAt = now,
                 } };
             }
@@ -184,7 +175,7 @@ internal sealed class WebsitePublicationStore
         || (operation.WebServerId == request.WebServerId && operation.Domain == request.Domain);
 
     private static bool HasUnverifiedSite(WebsitePublicationOperationDto operation) =>
-        operation.ProblemCode == AssociationRecoveryFailed || operation.RecoveryProblemCode == SiteApplicationUnverified;
+        operation.ProblemCode == WebsitePublicationProblems.AssociationRecoveryFailed || operation.RecoveryProblemCode == WebsitePublicationProblems.SiteApplicationUnverified;
 
     private void Commit()
     {
