@@ -780,6 +780,92 @@ def proof_network_before_launch(owner, record, operation_dir, previous, sentinel
               f'one deletion and original Interrupted without candidate launch, restored PID={restored[0]}')
 
 
+def proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, sentinel, trace):
+    dispatched = operation_dir / 'tun-3.json'
+    deadline = time.monotonic() + 12
+    binary = archive / 'versions' / uuid.UUID(json.loads(journal.read_text())['revision']).hex / 'mihomo'
+    while owner.poll() is None and time.monotonic() < deadline:
+        if dispatched.is_file():
+            try:
+                effect = json.loads(dispatched.read_text())
+                process = Path('/proc', str(effect['Process']['Pid']))
+                if os.readlink(process / 'exe') == str(binary):
+                    break
+            except (OSError, ValueError, KeyError):
+                pass
+        time.sleep(.05)
+    else:
+        raise AssertionError('Expected the real Mihomo process with the original descriptor')
+    prepare(effect['InterfaceIndex'], effect['BrokerPid'])
+    record = json.loads(journal.read_text())
+    native = dispatched.read_bytes()
+    table = record['routing_table']
+    resolver_before = resolver_snapshot()
+    archive_state = archive / 'state' / 'archive-state.json'
+
+    def probe(phase):
+        observe_runtime(record)
+        result = command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
+                         f'http://{target}:18880/mb04-descriptor-{phase}')
+        assert result == 'upstream-through-inherited-tun'
+
+    def kill_exact(pid):
+        fd = os.pidfd_open(pid)
+        try:
+            signal.pidfd_send_signal(fd, signal.SIGKILL)
+        finally:
+            os.close(fd)
+
+    probe('before')
+    kill_exact(effect['BrokerPid'])
+    assert owner.wait(timeout=15) in (-signal.SIGKILL, 128 + signal.SIGKILL)
+    print(trace.read_text().strip())
+    assert dispatched.read_bytes() == native and not (operation_dir / 'tun-4.json').exists()
+    assert checkpoint(record, 'state') == 'DescriptorDispatched'
+    scope_policy.unlink()
+    probe('after')
+    assert resolver_snapshot() == resolver_before and len(Upstream.hits) == 2
+    state = archive_state.read_bytes()
+    retry = json.loads(checkpoint(record, 'retry'))
+    assert uuid.UUID(retry['OperationId']).hex == operation and retry['Outcome'] == 'RecoveryRequired'
+    assert archive_state.read_bytes() == state
+    refused = json.loads(checkpoint(record, 'recover'))
+    assert uuid.UUID(refused['OperationId']).hex == operation and refused['Outcome'] == 'RecoveryRequired'
+    pending = json.loads(archive_state.read_text())['configuration']
+    assert pending['recoveryProblemCode'] == 'runtime.network_checkpoint_conflict', pending['recoveryProblemCode']
+    assert pending['recoveryStopDispatched'] is False and service_identity() == record['service']
+    assert not (root / 'rule-delete-attempts').exists()
+
+    # End the fixture's verified candidate without asking the recovery Helper to send another signal.
+    kill_exact(record['service'][0])
+    deadline = time.monotonic() + 10
+    while process.exists():
+        assert time.monotonic() < deadline
+        time.sleep(.05)
+    properties = dict(line.split('=', 1) for line in service('show', '-p', 'MainPID', '-p', 'Job', unit).splitlines())
+    assert properties.get('MainPID') == '0' and properties.get('Job') in ('', '0')
+    assert device not in devices() and not route(table) and network_baseline(table) == record['baseline']
+    assert network_baseline() != record['baseline']
+    with management_route_drift(table):
+        refused = json.loads(checkpoint(record, 'recover'))
+        assert uuid.UUID(refused['OperationId']).hex == operation and refused['Outcome'] == 'RecoveryRequired'
+        pending = json.loads(archive_state.read_text())['configuration']
+        assert pending['recoveryProblemCode'] == 'runtime.management_route_changed', pending['recoveryProblemCode']
+        assert not (root / 'rule-delete-attempts').exists()
+    terminal = json.loads(checkpoint(record, 'recover'))
+    assert uuid.UUID(terminal['OperationId']).hex == operation and terminal['Outcome'] == 'Interrupted'
+    assert (operation_dir / 'network-before-launch-restored.json').is_file()
+    restored = service_identity()
+    assert json.loads(checkpoint(record, 'retry')) == terminal and service_identity() == restored
+    assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
+    assert network_baseline() == record['baseline'] and resolver_snapshot() == resolver_before
+    assert dispatched.read_bytes() == native and not (operation_dir / 'tun-4.json').exists()
+    assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+    print(f'PASS TUN DESCRIPTOR OUTCOME UNKNOWN: original {operation}; candidate PID={record["service"][0]}, '
+          f'configuration={record["credential"]}; real traffic survived broker exit; one rule deletion, '
+          f'original Interrupted and restored PID={restored[0]}')
+
+
 def proof_committed(owner, operation, operation_dir, case):
     state_path = archive / 'state' / 'archive-state.json'
     deadline = time.monotonic() + 15
@@ -2589,14 +2675,15 @@ rules:
         renames = 'rename,renameat,renameat2'
         worker = [tracer, '-f', '-qq', '-yy', '-P', temporary, '-e', f'trace={renames}',
                   '-e', f'inject={renames}:error=EIO:signal=SIGKILL:when=1', '-o', str(trace), *worker]
-    if case in ('network-before-launch', 'launch-before-descriptor'):
+    if case in ('network-before-launch', 'launch-before-descriptor', 'descriptor-outcome-unknown'):
         tracer = shutil.which('strace')
         assert tracer, 'The dispatch proof requires strace'
         trace = root / 'network-before-launch-fault.trace'
         opens = 'open,openat,openat2'
-        launched = case == 'launch-before-descriptor'
-        checkpoint_path = operation_dir / ('tun-3.json' if launched else 'tun-2.json')
-        cut = ':delay_enter=5s' if launched else ':signal=SIGKILL'
+        phase_file = {'network-before-launch': 'tun-2.json', 'launch-before-descriptor': 'tun-3.json',
+                      'descriptor-outcome-unknown': 'tun-4.json'}[case]
+        checkpoint_path = operation_dir / phase_file
+        cut = ':signal=SIGKILL' if case == 'network-before-launch' else ':delay_enter=5s'
         worker = [tracer, '-f', '-qq', '-yy', '-P', str(checkpoint_path), '-e', f'trace={opens}',
                   '-e', f'inject={opens}:error=EIO{cut}:when=1', '-o', str(trace), *worker]
     owner = subprocess.Popen(worker,
@@ -2607,6 +2694,9 @@ rules:
             return
         if case in ('network-before-launch', 'launch-before-descriptor'):
             proof_network_before_launch(owner, json.loads(journal.read_text()), operation_dir, previous, sentinel, trace)
+            return
+        if case == 'descriptor-outcome-unknown':
+            proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, sentinel, trace)
             return
         if case.startswith('ipc-'):
             assert owner.wait(timeout=15) == 0

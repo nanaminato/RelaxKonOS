@@ -51,6 +51,8 @@ Linux 在替换主台账前同步 `commits` 目录及其父目录。重用原操
 
 在 `LaunchDispatched` 后，Helper 等待原 `systemctl start --no-block` 发送进程成功退出及输出排空，再持久化原发送端退出见证。描述符尚未派发时，原操作还需核对 systemd 的任务和 PID 均为零、unit 停止、broker 已退出及原网络效果符合恢复证据。发送端退出见证缺失或任务未结束时保留原待核验。见[启动已派发且描述符未交付的原操作恢复](../architecture/server-module-evidence/Proxy-Safety.md#启动已派发且描述符未交付的原操作恢复)。
 
+原检查点为 `DescriptorDispatched` 时，仍运行的候选受原阶段、进程、配置和描述符门禁约束。原接收 PID 与 broker 均已退出，且原操作尚未进入 DNS 派发时，Helper 可以凭启动发送端与规则见证、systemd 任务归零、设备与专用路由缺席及原管理选路，按原操作清理。描述符交付结果仍未知时也不重发。见[描述符派发未确认且原进程已退出](../architecture/server-module-evidence/Proxy-Safety.md#描述符派发未确认且原进程已退出)。
+
 TUN 配置事务把网络意图摘要保留在原终态回执中。发布或补偿完成后，Helper 替换主台账并同步其目录，随后才返回终态。同步失败返回原 ID 的待核验。查询和后续写入在使用这一主台账快照前也同步目录，同步失败时阻止继续。同步恢复后沿用原回执，Server 仍核对原操作、配置身份及成功见证。见[原终态替换后的目录同步](../architecture/server-module-evidence/Proxy-Safety.md#原终态替换后的目录同步)。
 
 当前安装/任务证据 HTTP 与 Helper IPC 快照必须显式包含 `commitWitness`（IPC 使用 DTO 属性名）；允许 null，但拒绝省略、重复或身份错配。保存的历史观察不回填证明。查询 sing-box 成功原操作时，在安装锁内重新核对程序文件摘要、原生版本、自有服务、配置摘要和当前状态；其他操作造成修订变化或实际文件漂移不能借用旧证明报告恢复成功。Mihomo 沿用其程序/服务核验并核对保留配置摘要。

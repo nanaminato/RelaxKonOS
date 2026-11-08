@@ -22,13 +22,14 @@ internal sealed partial class LinuxMihomoArchiveHost
         var state = await StateAsync(ct);
         if (state.GetValueOrDefault("MainPID") != "0" || state.GetValueOrDefault("ActiveState") is not ("inactive" or "failed")
             || state.GetValueOrDefault("UnitFileState") != "disabled"
-            || effect.Phase == MihomoTunPhase.LaunchDispatched && state.GetValueOrDefault("Job") is not ("" or "0"))
+            || effect.Phase != MihomoTunPhase.NetworkDispatched && state.GetValueOrDefault("Job") is not ("" or "0"))
             Fail("network_stop_unconfirmed");
 
         var dispatched = await ReadUndeliveredCheckpointAsync(effect, "network-before-launch-removal-dispatched", ct);
         if (!dispatched && await routes.HasScopedRuleAsync())
         {
-            if (!await ReadUndeliveredCheckpointAsync(effect with { Phase = MihomoTunPhase.NetworkDispatched }, "network-rule-verified", ct))
+            if (!await ReadUndeliveredCheckpointAsync(effect with { Phase = MihomoTunPhase.NetworkDispatched, Process = null },
+                "network-rule-verified", ct))
                 Fail("network_rule_ownership_unknown");
             await routes.RequireRuleAsync(present: true);
             await routes.RequireManagementAsync(effect.Intent.ManagementHash, ownedRulePresent: true);
@@ -51,15 +52,18 @@ internal sealed partial class LinuxMihomoArchiveHost
     {
         ct.ThrowIfCancellationRequested();
         var intent = effect.Intent;
-        if (effect.Phase is not (MihomoTunPhase.NetworkDispatched or MihomoTunPhase.LaunchDispatched)
+        if (!SupportsUndeliveredRecovery(effect.Phase)
             || intent.BootId != LinuxMihomoTunCheckpoint.BootId()
             || intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
             Fail("network_checkpoint_conflict");
-        if (effect.Phase == MihomoTunPhase.LaunchDispatched
-            && !await ReadUndeliveredCheckpointAsync(effect, "launch-sender-exited", ct))
+        if (effect.Phase != MihomoTunPhase.NetworkDispatched
+            && !await ReadUndeliveredCheckpointAsync(effect with { Phase = MihomoTunPhase.LaunchDispatched, Process = null },
+                "launch-sender-exited", ct))
             Fail("network_launch_sender_unconfirmed");
         var routes = TunRoutes(intent);
-        if (Directory.Exists($"/proc/{effect.BrokerPid}") || !await routes.IsAbsentAsync(intent.Device, effect.InterfaceIndex))
+        if (Directory.Exists($"/proc/{effect.BrokerPid}")
+            || effect.Process is { } process && Directory.Exists($"/proc/{process.Pid}")
+            || !await routes.IsAbsentAsync(intent.Device, effect.InterfaceIndex))
             Fail("network_stop_unconfirmed");
         return routes;
     }
@@ -87,9 +91,12 @@ internal sealed partial class LinuxMihomoArchiveHost
     {
         var path = UndeliveredPath(effect, name);
         RuntimeSourceStore.RequireNoLinks(path);
-        if (effect.Phase is not (MihomoTunPhase.NetworkDispatched or MihomoTunPhase.LaunchDispatched) || Path.Exists(path))
+        if (!SupportsUndeliveredRecovery(effect.Phase) || Path.Exists(path))
             Fail("network_checkpoint_conflict");
         await WriteRestoreFileAsync(effect.Intent.OperationId, path, JsonSerializer.Serialize(effect),
             UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
     }
+
+    internal static bool SupportsUndeliveredRecovery(MihomoTunPhase phase) =>
+        phase is MihomoTunPhase.NetworkDispatched or MihomoTunPhase.LaunchDispatched or MihomoTunPhase.DescriptorDispatched;
 }
