@@ -2,6 +2,8 @@
 
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -9,6 +11,7 @@ import re
 import secrets
 import socket
 import sqlite3
+import ssl
 import struct
 import subprocess
 import sys
@@ -21,7 +24,9 @@ def run(root, server, tests, mode):
     credentials = json.loads(sys.stdin.readline())
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
-        base = f"http://127.0.0.1:{reservation.getsockname()[1]}"
+        port = reservation.getsockname()[1]
+    https = mode == "revocation"
+    base = f"{'https' if https else 'http'}://127.0.0.1:{port}"
     env = {key: value for key, value in os.environ.items() if "__" not in key}
     private_home = root / "home"
     private_home.mkdir(mode=0o700)
@@ -48,7 +53,18 @@ def run(root, server, tests, mode):
     for module in ("Terminal", "Firewall", "SystemPerformance", "Git", "Tailscale", "Docker", "WebServer", "Proxy"):
         env[f"Modules__{module}__Enabled"] = "false"
     env["Modules__Certificates__Enabled"] = "true"
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    handlers = [urllib.request.ProxyHandler({})]
+    if https:
+        env["Kestrel__Certificates__Default__Path"] = str(root / "kestrel.pfx")
+        env["Kestrel__Certificates__Default__Password"] = ""
+        management_tls = ssl.create_default_context(cafile=str(root / "https.pem"))
+        management_tls.load_verify_locations(root / "issuance-root.pem")
+        management_tls.load_verify_locations(root / "issuance-intermediate.pem")
+        management_tls.verify_flags &= ~ssl.VERIFY_X509_PARTIAL_CHAIN
+        # The management path uses a loopback IP. Dedicated probes below verify each DNS SNI.
+        management_tls.check_hostname = False
+        handlers.append(urllib.request.HTTPSHandler(context=management_tls))
+    opener = urllib.request.build_opener(*handlers)
     certificates = "/api/v1.0/certificates"
 
     def request(path, token=None, payload=None, key=None, expected=200, expected_problem=None):
@@ -200,19 +216,52 @@ def run(root, server, tests, mode):
         native = root / "revocation-results"
         ledger = root / "data" / "certificate-operations.json"
         database = root / "identity.db"
+        first_host, second_host = "baseline.mb05.test", "missing.mb05.test"
+        root_only = ssl.create_default_context(cafile=str(root / "issuance-root.pem"))
+        client_tls = ssl.create_default_context(cafile=str(root / "issuance-root.pem"))
+        client_tls.load_verify_locations(root / "issuance-intermediate.pem")
+        client_tls.verify_flags &= ~ssl.VERIFY_X509_PARTIAL_CHAIN
 
         def stop(child):
             child.kill()
             assert child.wait(timeout=10) < 0
 
-        def seed_binding(certificate_id, version):
-            with sqlite3.connect(database) as connection:
-                connection.execute("""
-                    INSERT INTO certificate_deployment_records
-                        (deployment_id, certificate_id, target_type, target_name, current_version,
-                         last_successful_version, revision, created_at, updated_at)
-                    VALUES (?, ?, 'kestrel', 'relaxkonos', ?, ?, 1, '2026-01-01', '2026-01-01')
-                    """, (f"kestrel:{certificate_id}", certificate_id, version, version))
+        def deploy(token, certificate_id):
+            grant = request("/api/v1.0/privileged/elevation", token, {
+                "capability": "CertificateReplaceServerHttps",
+                "target": f"certificates/{certificate_id}/server-https",
+                "password": credentials["password"],
+            })
+            assert grant["elevated"]
+            terminal(token, request(f"{certificates}/{certificate_id}/deployments/kestrel", token, {},
+                                    f"deploy-{certificate_id}", 202), "succeeded")
+
+        @contextmanager
+        def tls_connection(host, context=client_tls):
+            with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+                with context.wrap_socket(connection, server_hostname=host) as tls:
+                    yield tls
+
+        def fingerprint(tls):
+            return hashlib.sha256(tls.getpeercert(binary_form=True)).hexdigest().upper()
+
+        def assert_leaf(host, expected):
+            with tls_connection(host) as tls:
+                assert fingerprint(tls) == expected.replace(":", "")
+
+        def assert_unavailable(host):
+            try:
+                with tls_connection(host):
+                    raise AssertionError(f"Revoked TLS name {host} still authenticates")
+            except ssl.SSLCertVerificationError as error:
+                assert error.verify_code == 62, error.verify_message  # OpenSSL hostname mismatch.
+
+        def assert_healthy_connection(tls, host):
+            tls.sendall(f"GET /healthz HTTP/1.1\r\nHost: {host}\r\nConnection: keep-alive\r\n\r\n".encode("ascii"))
+            with http.client.HTTPResponse(tls) as response:
+                response.begin()
+                assert response.status == 200 and not response.will_close
+                response.read()
 
         def binding_exists(certificate_id):
             with sqlite3.connect(database) as connection:
@@ -229,13 +278,41 @@ def run(root, server, tests, mode):
             wait_for(setup, healthy, "revocation-setup")
             token = login()
             first, second = [terminal(token, request(certificates, token, issue(domain), key, 202), "succeeded")
-                             for domain, key in (("baseline.mb05.test", "known-issue"), ("missing.mb05.test", "unknown-issue"))]
+                             for domain, key in ((first_host, "known-issue"), (second_host, "unknown-issue"))]
             known_id, unknown_id = first["certificateId"], second["certificateId"]
             known, unknown = f"{certificates}/{known_id}", f"{certificates}/{unknown_id}"
             fingerprints = [request(path, token)["fingerprintSha256"] for path in (known, unknown)]
-        for certificate_id in (known_id, unknown_id):
-            metadata = json.loads((root / "material" / certificate_id / "current.json").read_bytes())
-            seed_binding(certificate_id, metadata["version"])
+            deploy(token, known_id)
+            deploy(token, unknown_id)
+            try:
+                with tls_connection(first_host, root_only):
+                    print("PASS KESTREL ROOT-ONLY CHAIN: listener presented a complete chain", flush=True)
+            except ssl.SSLCertVerificationError as error:
+                assert error.verify_code in (20, 21), error.verify_message
+                print(f"OBSERVED KESTREL ROOT-ONLY CHAIN FAILURE: verification code {error.verify_code}", flush=True)
+            assert_leaf(second_host, fingerprints[1])
+            with tls_connection(first_host) as original_tls:
+                assert fingerprint(original_tls) == fingerprints[0].replace(":", "")
+                assert_healthy_connection(original_tls, first_host)
+                fault.write_text("hold-renewal-certificate")
+                renewal = request(known + "/renew", token, {}, "tls-renewal", 202)
+                try:
+                    wait_for(setup, (root / "certificate-response-held").is_file, "revocation-setup")
+                    assert active_leases(token) == 1
+                    assert_leaf(first_host, fingerprints[0])
+                    assert_leaf(second_host, fingerprints[1])
+                finally:
+                    fault.write_text("")
+                    (root / "release-certificate-response").touch()
+                final_renewal = terminal(token, renewal, "succeeded")
+                renewed = request(known, token)["fingerprintSha256"]
+                assert renewed != fingerprints[0]
+                assert_leaf(first_host, renewed)
+                assert_leaf(second_host, fingerprints[1])
+                assert_healthy_connection(original_tls, first_host)
+                assert fingerprint(original_tls) == fingerprints[0].replace(":", "")
+                fingerprints[0] = renewed
+                print(f"PASS KESTREL TLS RENEWAL: {renewal['operationId']}; original connection and independent SNI survived", flush=True)
         with sqlite3.connect(database) as connection:
             connection.execute("""
                 CREATE TRIGGER hold_revocation_cleanup BEFORE DELETE ON certificate_deployment_records
@@ -246,6 +323,9 @@ def run(root, server, tests, mode):
             wait_for(active, healthy, "revocation-known")
             token = login()
             assert request(known + "/deployments/kestrel", token)["registered"]
+            assert request(known + "/renew", token, {}, "tls-renewal", 202) == final_renewal
+            assert_leaf(first_host, fingerprints[0])
+            assert_leaf(second_host, fingerprints[1])
             fault.write_text("hold-revocation")
             original = request(known + "/revoke", token, {"confirmed": True}, "known-revoke", 202)
             operation = original["operationId"]
@@ -255,6 +335,8 @@ def run(root, server, tests, mode):
                 assert request(route + "/cancel", token, {})["stage"] == "revocation-dispatched"
                 assert active_leases(token) == 1 and record_for(operation)["revocation"]["confirmed"] is False
                 assert request(known + "/deployments/kestrel", token)["registered"]
+                assert_leaf(first_host, fingerprints[0])
+                assert_leaf(second_host, fingerprints[1])
             finally:
                 release.touch()
                 fault.write_text("")
@@ -264,6 +346,8 @@ def run(root, server, tests, mode):
             assert request(known, token)["status"].lower() == "revoked" and binding_exists(known_id)
             assert not request(known + "/deployments/kestrel", token)["registered"]
             assert request(unknown + "/deployments/kestrel", token)["registered"]
+            assert_unavailable(first_host)
+            assert_leaf(second_host, fingerprints[1])
             assert active_leases(token) == 1
             assert native.read_text().splitlines() == ["200"]
             stop(active)
@@ -277,6 +361,8 @@ def run(root, server, tests, mode):
             request(known + "/revoke", token, {"confirmed": True}, "competing-revoke", 409,
                     expected_problem="certificate.revocation_recovery_required")
             assert binding_exists(known_id) and not request(known + "/deployments/kestrel", token)["registered"]
+            assert_unavailable(first_host)
+            assert_leaf(second_host, fingerprints[1])
             assert active_leases(token) == 1
             assert native.read_text().splitlines() == ["200"]
         with sqlite3.connect(database) as connection:
@@ -292,6 +378,8 @@ def run(root, server, tests, mode):
             terminal(token, repeat, "succeeded")
             assert request(known, token)["fingerprintSha256"] == fingerprints[0]
             assert not request(known + "/deployments/kestrel", token)["registered"]
+            assert_unavailable(first_host)
+            assert_leaf(second_host, fingerprints[1])
             wait_for(recovered, lambda: active_leases(token) == 0, "revocation-recovered")
             assert native.read_text().splitlines() == ["200"]
             print(f"PASS ACME REVOCATION CONFIRMED RECOVERY: {operation}; one CA dispatch, original local cleanup", flush=True)
@@ -318,6 +406,8 @@ def run(root, server, tests, mode):
             assert request(unknown, token)["fingerprintSha256"] == fingerprints[1]
             assert request(unknown, token)["status"].lower() == "active" and binding_exists(unknown_id)
             assert request(unknown + "/deployments/kestrel", token)["registered"]
+            assert_unavailable(first_host)
+            assert_leaf(second_host, fingerprints[1])
             assert active_leases(token) == 1
             assert native.read_text().splitlines() == ["200", "200"]
             print(f"PASS ACME REVOCATION UNKNOWN RECOVERY: {unknown_operation}; same receipt, zero replay", flush=True)

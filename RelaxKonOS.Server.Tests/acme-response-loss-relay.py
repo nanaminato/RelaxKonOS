@@ -84,7 +84,8 @@ class Relay(BaseHTTPRequestHandler):
                     if time.monotonic() >= deadline:
                         raise TimeoutError("The renewal shutdown fixture did not release the challenge response")
                     time.sleep(0.05)
-            if website and self.path.startswith("/certZ/") and response.status == 200 and body.startswith(b"-----BEGIN CERTIFICATE-----"):
+            if (website or selected == "hold-renewal-certificate") and self.path.startswith("/certZ/") \
+                    and response.status == 200 and body.startswith(b"-----BEGIN CERTIFICATE-----"):
                 (root / "certificate-response-held").touch()
                 deadline = time.monotonic() + 25
                 while not (root / "release-certificate-response").is_file():
