@@ -8,14 +8,14 @@ run_seconds=150
 if [[ ( $# == 3 || $# == 4 ) && $1 == --tun-fd ]]; then
     tun_fd=1
     tun_case=${4:-full}
-    case "$tun_case" in full|dns-receipt|dns-owner|committed) ;; *) exit 2 ;; esac
+    case "$tun_case" in full|dns-receipt|dns-owner|committed|committed-stop) ;; *) exit 2 ;; esac
     fixture=$(realpath -e -- "$2")
     helper=$(realpath -e -- "$3")
     tun_script=$(realpath -e -- "$(dirname -- "$0")/mihomo-tun-fd-proof.py")
     run_seconds=60
 else
     if [[ $# -lt 3 || $# -gt 6 || ( $# -ge 5 && $5 != --authenticated ) ]]; then
-        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd tests.dll Helper-apphost [full|dns-receipt|dns-owner|committed]" >&2
+        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd tests.dll Helper-apphost [full|dns-receipt|dns-owner|committed|committed-stop]" >&2
         exit 2
     fi
     fixture=$(realpath -e -- "$1")

@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.PrivilegedHelper;
@@ -73,9 +74,7 @@ internal sealed partial class LinuxMihomoArchiveHost
     internal async Task<MihomoTunEffect> VerifyTunAsync(Guid operation, CancellationToken ct)
     {
         var (registration, _, effect) = await ReadTunOperationAsync(operation, ct);
-        RequireActiveTunPhase(effect);
-        await VerifyTunEffectAsync(registration, effect, ct);
-        if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: true);
+        await VerifyActiveTunAsync(registration, effect, ct);
         return effect;
     }
 
@@ -83,12 +82,65 @@ internal sealed partial class LinuxMihomoArchiveHost
         CancellationToken ct)
     {
         var effect = await VerifyTunAsync(operation, ct);
+        return TunOwnership(effect, installation);
+    }
+
+    internal async Task VerifyCommittedTunAsync(RuntimeMihomoTunOwnership ownership, RuntimeInstallation installation,
+        CancellationToken ct)
+    {
+        var (registration, _, effect) = await ReadCommittedTunAsync(ownership, installation, ct);
+        if (effect.Phase == MihomoTunPhase.Restored)
+        {
+            var routes = TunRoutes(effect.Intent);
+            if (!await HasStoppedTunAsync(effect, routes, ct)) Fail("network_stop_unconfirmed");
+            if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: false);
+            await routes.RequireRuleAsync(present: false);
+            await routes.RequireManagementAsync(effect.Intent.ManagementHash);
+            return;
+        }
+        if (effect.Phase is MihomoTunPhase.StopDispatched or MihomoTunPhase.RuleRemovalDispatched)
+            Fail("network_stop_unconfirmed");
+        await VerifyActiveTunAsync(registration, effect, ct);
+    }
+
+    // The caller holds the archive instance lock for the entire stop, including the final observation.
+    internal async Task StopCommittedTunAsync(RuntimeMihomoTunOwnership ownership, RuntimeInstallation installation,
+        RuntimeStageReporter? progress, CancellationToken ct)
+    {
+        var (_, _, effect) = await ReadCommittedTunAsync(ownership, installation, ct);
+        if (effect.Phase is not (MihomoTunPhase.StopDispatched or MihomoTunPhase.RuleRemovalDispatched or MihomoTunPhase.Restored))
+        {
+            await DispatchTunStopAsync(ownership.OperationId, ct);
+            if (progress is not null)
+            {
+                try { await progress(InstallationStage.Verifying, false); }
+                catch (IOException) { }
+                catch (ObjectDisposedException) { }
+            }
+        }
+        await CompleteTunStopAsync(ownership.OperationId, CancellationToken.None);
+        await VerifyCommittedTunAsync(ownership, installation, CancellationToken.None);
+    }
+
+    private static async Task<(Registration, LinuxMihomoTunCheckpoint, MihomoTunEffect)> ReadCommittedTunAsync(
+        RuntimeMihomoTunOwnership ownership, RuntimeInstallation installation, CancellationToken ct)
+    {
+        var (registration, checkpoint, effect) = await ReadTunOperationAsync(ownership.OperationId, ct);
+        if (TunOwnership(effect, installation) != ownership) Fail("network_checkpoint_conflict");
+        RequireProtected(Root + "/active.yaml");
+        if (MihomoArchiveAdapter.Hash(await MihomoArchiveAdapter.ReadConfigurationAsync(Root + "/active.yaml", ct))
+            != ownership.ConfigurationIdentity) Fail("configuration_drift");
+        return (registration, checkpoint, effect);
+    }
+
+    private static RuntimeMihomoTunOwnership TunOwnership(MihomoTunEffect effect, RuntimeInstallation installation)
+    {
         var intent = effect.Intent;
         var network = new MihomoTunNetworkIntent(intent.Device, intent.Address, intent.Destination,
             intent.ManagementAddress, intent.ManagementUserId, intent.ManagementHash, intent.DnsRoutingDomain);
-        var identity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(operation, installation.InstallationId,
+        var identity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(intent.OperationId, installation.InstallationId,
             installation.HostId, intent.RevisionId, intent.ConfigurationHash, network);
-        return new(operation, intent.RevisionId, intent.ConfigurationHash, identity);
+        return new(intent.OperationId, intent.RevisionId, intent.ConfigurationHash, identity);
     }
 
     internal async Task ReconcileTunDnsAsync(Guid operation, CancellationToken ct)
@@ -123,17 +175,12 @@ internal sealed partial class LinuxMihomoArchiveHost
     {
         var (_, checkpoint, effect) = await ReadTunOperationAsync(operation, ct);
         if (effect.Phase == MihomoTunPhase.Restored) return;
-        if (effect.Process is not { } process
-            || effect.Phase is not (MihomoTunPhase.StopDispatched or MihomoTunPhase.RuleRemovalDispatched))
+        if (effect.Phase is not (MihomoTunPhase.StopDispatched or MihomoTunPhase.RuleRemovalDispatched))
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         var routes = TunRoutes(effect.Intent);
         for (var attempt = 0; attempt < 50; attempt++)
         {
-            var state = await StateAsync(ct);
-            if (state.GetValueOrDefault("MainPID") == "0"
-                && state.GetValueOrDefault("ActiveState") is "inactive" or "failed"
-                && !Directory.Exists($"/proc/{process.Pid}")
-                && await routes.IsAbsentAsync(effect.Intent.Device, effect.InterfaceIndex))
+            if (await HasStoppedTunAsync(effect, routes, ct))
             {
                 if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: false);
                 if (effect.Phase == MihomoTunPhase.StopDispatched)
@@ -151,6 +198,23 @@ internal sealed partial class LinuxMihomoArchiveHost
             await Task.Delay(100, ct);
         }
         Fail("network_stop_unconfirmed");
+    }
+
+    private static async Task<bool> HasStoppedTunAsync(MihomoTunEffect effect, LinuxMihomoTunRoutes routes, CancellationToken ct)
+    {
+        var state = await StateAsync(ct);
+        return state.GetValueOrDefault("MainPID") == "0"
+            && state.GetValueOrDefault("ActiveState") is "inactive" or "failed"
+            && state.GetValueOrDefault("UnitFileState") == "disabled"
+            && effect.Process is { } process && !Directory.Exists($"/proc/{process.Pid}")
+            && await routes.IsAbsentAsync(effect.Intent.Device, effect.InterfaceIndex);
+    }
+
+    private static async Task VerifyActiveTunAsync(Registration registration, MihomoTunEffect effect, CancellationToken ct)
+    {
+        RequireActiveTunPhase(effect);
+        await VerifyTunEffectAsync(registration, effect, ct);
+        if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: true);
     }
 
     private static async Task<(Registration, LinuxMihomoTunCheckpoint, MihomoTunEffect)> ReadTunOperationAsync(Guid operation, CancellationToken ct)

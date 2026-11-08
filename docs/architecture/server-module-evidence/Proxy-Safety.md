@@ -45,6 +45,7 @@
 - [MB-04 TUN DNS 应答中断与 resolver 换代](#mb-04-tun-dns-应答中断与-resolver-换代)
 - [MB-04 受管 TUN 宿主范围](#mb-04-受管-tun-宿主范围)
 - [MB-04 受管 TUN 提交态归属](#mb-04-受管-tun-提交态归属)
+- [MB-04 受管 TUN 提交后具名停止](#mb-04-受管-tun-提交后具名停止)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -479,6 +480,22 @@ Linux x64 私有 systemd 的 `committed` 场景使用真实候选验证器和归
 **已实现但实机未验证。** 本轮实机为 Linux x64，其他架构未验证。Windows Release 通过，包括 104 项配置事务检查，可信下载探针因缺进程级测试 CA 跳过。
 
 **未实现或仍受门禁保护。** 提交后的具名启停、重启、移除，公开发布、生产成功提交及该入口的实际工作租约仍待验收。进程退出仅指专属环境清理和原事务进程的强制中断，另有候选补偿路径验证具名停止。对象释放、ALC 回收、隔离负载和生产内存收益未测量。Proxy 保持 resident。
+
+## MB-04 受管 TUN 提交后具名停止
+
+Helper 本地协议新增 `MihomoRuntimeTunStop`，请求使用原发布 operationId 和标准关联字段。归档实例锁覆盖原归属核对、停止派发、清理及最终观察。重试由原网络检查点裁决。历史发布回执与具名停止结果通过各自的查询语义返回，归档活动配置继续保留。
+
+**已实现且已验证。** Linux x64 私有 systemd 场景的原操作 `1127100c8f0f4f31a31121aea4f83552`，Mihomo PID 252，ifindex 4，候选配置摘要 `1e266605502cd646c8da3a4b7ce827a73906cc6affff26296805b98e304b1325`。夹具限定允许写入成功态，跨原发布应答丢失仍有真实 HTTP、分流 DNS 及一致的管理选路。错误 ID 在真实 Helper 入口拒绝。夹具暂停原进程，Helper 落盘 `StopDispatched` 并通过 pidfd 发送真实 SIGTERM，随后在进度边界强制终止停止 worker。原 SIGTERM 已在内核排队。原进程仍暂停时，新的真实 Helper 返回 `runtime.network_stop_unconfirmed`，没有派发规则删除，原检查点和历史回执保持。
+
+夹具恢复原进程后，原 SIGTERM 使其退出。Helper 先落盘 `RuleRemovalDispatched`，真实规则删除后再次强制中断。同 ID 重试遇到夹具重建的同值规则时返回 `runtime.network_rule_conflict`，未重删。撤掉夹具规则后，同 ID 只读确认原规则缺席并完成停止，重复请求返回相同结果。真实规则删除派发一次。原 PID、设备、路由和本链路 DNS 均缺席，管理选路及外来链路 DNS 保持，原配置字节、历史发布成功回执和提交见证保持。
+
+首轮及诊断轮因夹具把无连字符的日志 ID 当作协议 GUID 字符串而被入口拒绝，修正线上 GUID 格式后重跑。Windows Release 通过，包括 104 项配置事务检查。可信下载探针因缺少进程级测试 CA 覆盖跳过。
+
+同批提交态归属原 `adb2e34709be4b68a1e38f125abdd513`、完整补偿原 `f5e456b6ce324dfd9d2bc9ad1b16e81f`、DNS 应答中断原 `0d557befe81b4d31ae4e03b6b44ed8af`、resolver 换代原 `3e142ca1935f498ba5d826cd8aae56cf` 全部通过。五个专属 cgroup 已清理，宿主服务、代理和 resolver 文件指纹一致。归档 SHA-256 为 `99d00c0ce8d1841fc39b22c8a05f5ffbe9268a7f7504d867921f549ac89bebd2`。最终日志在 `.artifacts/mb04-tun-marker-sync/committed-stop-linux-final.log` 和 `.artifacts/mb04-tun-marker-sync/committed-stop-windows.log`。
+
+**已实现但实机未验证。** 其他 Linux 架构和持久 AF_UNIX 通道。本轮停止重试经真实 Helper 单次进程入口。
+
+**未实现或仍受门禁保护。** 具名启动、重启、移除、公开发布、生产成功提交及公开入口工作租约仍待验收。已确认真实 Mihomo 退出和专属 cgroup 清理。对象释放、ALC 回收、隔离负载内存及生产内存收益未测量。Proxy 保持 resident。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

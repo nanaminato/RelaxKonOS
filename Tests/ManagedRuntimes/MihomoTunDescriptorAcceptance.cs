@@ -8,6 +8,7 @@ using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
@@ -35,7 +36,7 @@ internal static class MihomoTunDescriptorAcceptance
             throw new InvalidOperationException("The original descriptor operation is not prepared.");
 
         var intentRoot = intent.RootElement;
-        var commit = intentRoot.GetProperty("case").GetString() == "committed";
+        var commit = intentRoot.GetProperty("case").GetString() is "committed" or "committed-stop";
         var revisionId = intentRoot.GetProperty("revision").GetGuid();
         var previousPath = Path.Combine(root, "previous.yaml");
         var previousBytes = await File.ReadAllBytesAsync(previousPath);
@@ -205,6 +206,18 @@ internal static class MihomoTunDescriptorAcceptance
         if (action == "state") Console.WriteLine(current.Phase);
         else if (action == "observe") await host.VerifyTunAsync(operation, CancellationToken.None);
         else if (action == "ordinary-stop") await host.StopAsync(CancellationToken.None);
+        else if (action == "committed-stop-interrupt")
+        {
+            var result = await MihomoRuntimeOperations.ExecuteAsync(
+                new(PrivilegedOperationKind.MihomoRuntimeTunStop, OperationId: operation), report: frame =>
+                {
+                    if (frame.Stage != InstallationStage.Verifying || frame.Cancellable)
+                        throw new InvalidOperationException("Unexpected committed stop boundary.");
+                    System.Diagnostics.Process.GetCurrentProcess().Kill();
+                    return Task.CompletedTask;
+                });
+            throw new InvalidOperationException($"Committed stop missed its dispatch boundary: {result.Error}.");
+        }
         else if (action == "observe-commit")
         {
             var store = Store();

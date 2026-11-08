@@ -297,3 +297,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）生产 Server 规划器从 Linux 固定宿主策略冻结受管 TUN 范围，Helper 在候选激活前独立核对。原操作的恢复仍使用原归档回执、旧配置授权和原网络归属证据。成功提交后的启停、重启及移除、公开发布与实际工作租约仍需联合验收。见[宿主范围证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-宿主范围)。
 
 2026-11-08（MR-03 / MB-04）受管 TUN 的活动归属可随原成功回执原子写入归档台账。Helper 重新核对当前网络效果，历史回执独立保留。生产成功提交和普通后续生命周期写入继续受门禁保护，需在原归属下验证启停、重启和移除。见[提交态归属证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交态归属)。
+
+2026-11-08（MR-03 / MB-04）Linux Helper 已接入提交后具名停止，复用原实例锁、原归属及原生停止检查点。进程信号及规则删除应答未知时不重复派发。仍需验证具名启动、重启、移除及公开发布。见[具名停止证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后具名停止)。

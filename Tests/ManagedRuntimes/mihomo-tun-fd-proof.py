@@ -1,5 +1,6 @@
 """Prove a restricted systemd service can forward through a pre-opened Linux TUN."""
 
+import base64
 import hashlib
 import http.server
 import json
@@ -379,7 +380,7 @@ def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, que
     assert len(Upstream.hits) == 3 and len(set(queries)) == 3
 
 
-def proof_committed(owner, operation, operation_dir):
+def proof_committed(owner, operation, operation_dir, stop):
     state_path = archive / 'state' / 'archive-state.json'
     deadline = time.monotonic() + 15
     while True:
@@ -420,6 +421,7 @@ def proof_committed(owner, operation, operation_dir):
     refused = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root),
                               operation, 'ordinary-stop'], capture_output=True, text=True, timeout=8)
     assert refused.returncode == 3 and 'runtime.network_transaction_required' in refused.stderr
+    original_alias = link()['ifalias']
     ip('link', 'set', 'dev', device, 'alias', 'foreign-owner')
     unknown = json.loads(checkpoint(record, 'observe-commit'))
     assert unknown['installation']['ownership'] == 'Unknown' and unknown['problemCode'] == 'runtime.network_device_identity_unknown'
@@ -427,8 +429,78 @@ def proof_committed(owner, operation, operation_dir):
     assert json.loads(checkpoint(record, 'retry')) == receipt
     assert state_path.read_bytes() == terminal and [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))] == initial
     assert service_identity() == record['service'] and not (root / 'rule-delete-attempts').exists()
+    if stop:
+        ip('link', 'set', 'dev', device, 'alias', original_alias)
+        proof_committed_stop(record, observed, state_path, terminal, operation_dir, initial)
     print(f'PASS TUN COMMITTED OWNERSHIP: {operation}, PID={record["service"][0]}, ifindex={record["ifindex"]}, '
           f'credential={record["credential"]}; original success after response loss, live drift reported separately')
+
+
+def proof_committed_stop(record, observed, state_path, terminal, operation_dir, initial):
+    operation = record['operation']
+    pid = record['service'][0]
+
+    def stop_native(operation_id):
+        request = {'version': '1.1', 'operation': 'MihomoRuntimeTunStop', 'operationId': str(uuid.UUID(operation_id)),
+                   'correlation': {'correlationId': str(uuid.uuid4())}}
+        return subprocess.run([launcher], input=json.dumps(request), capture_output=True, text=True, timeout=20)
+
+    def result(process):
+        return json.loads(process.stdout.splitlines()[-1])['Result']
+
+    wrong = stop_native(str(uuid.uuid4()))
+    assert wrong.returncode == 1 and result(wrong)['error'] == 'runtime.recovery_target_conflict'
+    observe(record)
+    other_dns = (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress'))
+    os.kill(pid, signal.SIGSTOP)  # Keep the real SIGTERM pending while the first worker is interrupted.
+    try:
+        interrupted = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root),
+                                      operation, 'committed-stop-interrupt'], timeout=10)
+        assert interrupted.returncode == -signal.SIGKILL
+        assert checkpoint(record, 'state') == 'StopDispatched'
+        status = dict(line.split(':', 1) for line in Path(f'/proc/{pid}/status').read_text().splitlines() if ':' in line)
+        assert int(status['ShdPnd'], 16) & (1 << (signal.SIGTERM - 1))
+        pending = json.loads(checkpoint(record, 'observe-commit'))
+        assert pending['installation']['ownership'] == 'Unknown' and pending['problemCode'] == 'runtime.network_stop_unconfirmed'
+        assert pending['receipt'] == observed['receipt']
+        refused = stop_native(operation)
+        assert refused.returncode == 1 and result(refused)['error'] == 'runtime.network_stop_unconfirmed', (
+            refused.returncode, refused.stdout, refused.stderr)
+        assert checkpoint(record, 'state') == 'StopDispatched' and service_identity() == record['service']
+        assert network_baseline(record['routing_table']) == record['baseline']
+        assert not (root / 'rule-delete-attempts').exists()
+    finally:
+        os.kill(pid, signal.SIGCONT)
+
+    (root / 'interrupt-rule-delete').touch()
+    interrupted_rule = stop_native(operation)
+    assert interrupted_rule.returncode == -signal.SIGKILL and checkpoint(record, 'state') == 'RuleRemovalDispatched'
+    assert network_baseline() == record['baseline']
+    rule = ('priority', '11000', 'to', target + '/32', 'lookup', str(record['routing_table']), 'protocol', '186')
+    command(root / 'ip-real', '-4', 'rule', 'add', *rule)
+    refused = stop_native(operation)
+    assert refused.returncode == 1 and result(refused)['error'] == 'runtime.network_rule_conflict'
+    assert checkpoint(record, 'state') == 'RuleRemovalDispatched'
+    command(root / 'ip-real', '-4', 'rule', 'del', *rule)
+    done = stop_native(operation)
+    assert done.returncode == 0 and result(done)['success']
+    stop_receipt = json.loads(base64.b64decode(result(done)['outputBase64']))
+    assert uuid.UUID(stop_receipt['OperationId']).hex == operation and stop_receipt['Outcome'] == 'Succeeded'
+    assert result(stop_native(operation)) == result(done)
+    final = json.loads(checkpoint(record, 'observe-commit'))
+    assert final['installation']['ownership'] == 'Managed' and final['problemCode'] is None
+    assert final['receipt'] == observed['receipt'] and final['commitWitness'] == observed['commitWitness']
+    assert checkpoint(record, 'state') == 'Restored' and state_path.read_bytes() == terminal
+    checkpoints = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
+    assert len(checkpoints) == 9 and checkpoints[:6] == initial
+    assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+    assert not Path(f'/proc/{pid}').exists() and device not in devices() and not route(record['routing_table'])
+    assert hashlib.sha256(config.read_bytes()).hexdigest() == record['credential']
+    assert network_baseline() == record['baseline']
+    assert (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress')) == other_dns
+    assert target not in resolver('dns') and '~tun.fixture.test' not in resolver('domain')
+    print(f'PASS TUN COMMITTED STOP: {operation}; signal and rule deletion crossed worker interruption, '
+          'same receipt, process and network effect gone')
 
 
 def proof():
@@ -499,8 +571,8 @@ rules:
     owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
                              stdout=subprocess.PIPE, text=True)
     try:
-        if case == 'committed':
-            proof_committed(owner, operation, operation_dir)
+        if case in ('committed', 'committed-stop'):
+            proof_committed(owner, operation, operation_dir, stop=case == 'committed-stop')
             return
         if case != 'full':
             proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, queries)

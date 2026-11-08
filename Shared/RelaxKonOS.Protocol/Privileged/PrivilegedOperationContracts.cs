@@ -54,6 +54,8 @@ public enum PrivilegedOperationKind
     /// <summary>Places the declared GEO resource set from the installed package into the managed data directory.</summary>
     MihomoRuntimeResources,
     MihomoRuntimeResourceQuery,
+    /// <summary>Stops the active committed TUN by its original publication operation ID.</summary>
+    MihomoRuntimeTunStop,
     ProxyServerStatus,
     ProxyServerAction,
     ProxyServerValidate,

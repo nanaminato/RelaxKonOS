@@ -74,10 +74,12 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             var service = await host.ObserveAsync(ct);
             if (service.TunOperation != state.ActiveMihomoTun?.OperationId)
                 throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
-            if (state.ActiveMihomoTun is { } tun
-                && (host is not LinuxMihomoArchiveHost linux || !OperatingSystem.IsLinux()
-                    || await linux.ObserveTunOwnershipAsync(tun.OperationId, state.Installation, ct) != tun))
-                throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+            if (state.ActiveMihomoTun is { } tun)
+            {
+                if (!OperatingSystem.IsLinux() || host is not LinuxMihomoArchiveHost linux)
+                    throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+                await linux.VerifyCommittedTunAsync(tun, state.Installation, ct);
+            }
             if (state.Active is null)
             {
                 if (service.Exists) return (state.Installation with { Ownership = RuntimeOwnership.External }, "runtime.external_installation");
@@ -184,6 +186,21 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         await EnsureStateAsync(ct);
         using var cancellation = RuntimeCancellation.Watch(root, operationId, ct);
         return await Configuration(channel, progress).ExecuteAsync(operationId, plan, cancellation.Token);
+    }
+
+    internal async Task<RuntimeSwitchResult> StopCommittedTunAsync(Guid operationId, CancellationToken ct, RuntimeStageReporter? progress = null)
+    {
+        await EnsureStateAsync(ct);
+        using var session = states.Acquire();
+        var state = session.State!;
+        if (HasPending(state)) throw new RuntimePolicyException("runtime.recovery_required");
+        if (state.ActiveMihomoTun is not { } ownership || ownership.OperationId != operationId)
+            throw new RuntimePolicyException("runtime.recovery_target_conflict");
+        if (!OperatingSystem.IsLinux() || host is not LinuxMihomoArchiveHost linux)
+            throw new RuntimePolicyException("runtime.network_platform_unsupported");
+        await linux.StopCommittedTunAsync(ownership, state.Installation, progress, ct);
+        // The stop result is separate from the immutable publication receipt under this ID.
+        return new(operationId, RuntimeSwitchOutcome.Succeeded, null);
     }
 
     internal async Task<RuntimeSwitchResult?> RecoverAsync(RuntimeAuthorizationChannel channel, Guid operationId, CancellationToken ct,

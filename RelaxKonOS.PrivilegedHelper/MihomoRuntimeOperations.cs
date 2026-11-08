@@ -21,7 +21,7 @@ internal static class MihomoRuntimeOperations
             return new(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: "runtime.request_invalid");
         var valid = request.Operation switch
         {
-            PrivilegedOperationKind.MihomoRuntimeQuery => input is null,
+            PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.MihomoRuntimeTunStop => input is null,
             PrivilegedOperationKind.MihomoRuntimeConfigure => input is { SourceId: null, Plan: null, Authorization: not null,
                 FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: null, ConfigurationPlan: { RuntimeId: "mihomo" } },
             PrivilegedOperationKind.MihomoRuntimePlan => input is { Plan: not null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: null }
@@ -57,6 +57,7 @@ internal static class MihomoRuntimeOperations
             return request.Operation switch
             {
                 PrivilegedOperationKind.MihomoRuntimeQuery => Json(await lifecycle.QueryAsync(default, id)),
+                PrivilegedOperationKind.MihomoRuntimeTunStop => Json(await lifecycle.StopCommittedTunAsync(id, default, progress)),
                 PrivilegedOperationKind.MihomoRuntimeConfigure => Json(await lifecycle.ConfigureAsync(id, input!.ConfigurationPlan!, input.Authorization!, default, progress)),
                 PrivilegedOperationKind.MihomoRuntimePlan => Json(await lifecycle.PlanAsync(input!.SourceId!, input.Plan!, default)),
                 PrivilegedOperationKind.MihomoRuntimeExecute => Json(await lifecycle.ExecuteAsync(id, input!.FrozenPlan!, input.Authorization!, default, progress, request.DownloadProxy)),
@@ -70,10 +71,9 @@ internal static class MihomoRuntimeOperations
             };
         }
         catch (RuntimePolicyException ex) { return new(false, 1, Error: ex.ProblemCode, ProblemCode: PrivilegedProblemCode.Conflict); }
-        catch (TimeoutException) when (request.Operation == PrivilegedOperationKind.MihomoRuntimeQuery)
+        catch (TimeoutException) when (request.Operation is PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.MihomoRuntimeTunStop)
         {
-            // The fixed native observation timed out. The original journal is still authoritative,
-            // and the Server can retry this read without dispatching the configuration again.
+            // The original journal remains authoritative across a timed-out observation or stop.
             return new(false, 124, ProblemCode: PrivilegedProblemCode.TimedOut);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException
