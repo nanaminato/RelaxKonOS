@@ -1408,6 +1408,8 @@ IHttp01WebServerIntegrator
 
 当前证书存储会原子替换 Nginx 使用的稳定 PEM 路径，但 Nginx 不会因文件变化自动重新读取证书。因此，首个自动化目标是：**仅对 RelaxKonOS 管理的、引用该证书的 Nginx 站点，在 ACME 续期成功后执行一次安全 reload**；不修改站点配置。发现到未受管 Nginx 时，必须先经显式集成成为 `Integrated`，才可能拥有 RelaxKonOS 管理的站点并成为自动重载目标。
 
+现有显式轮换路径通过独立的续期和重载回执管理。生产 Helper 的原生回执确认后可恢复原重载终态；只有新证书握手证据时，重载保持待核验。见[Nginx 显式证书轮换](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-显式证书轮换与原重载回执)。
+
 ```text
 CertificateOperation(renew) succeeded
         │

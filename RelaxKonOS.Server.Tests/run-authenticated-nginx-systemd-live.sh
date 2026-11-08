@@ -6,6 +6,7 @@ mode=${3:---systemd}
 case "$mode" in
     --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-retire-live|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-website-acme-challenge-changed|--systemd-website-acme-bootstrap|--systemd-website-acme-bootstrap-success|--systemd-website-acme-bootstrap-failure|--systemd-website-acme-bootstrap-resume|--systemd-website-acme-bootstrap-resume-interrupt|--systemd-website-acme-bootstrap-bind-interrupt|--systemd-first-site-acme|--systemd-first-site-acme-success|--systemd-first-site-acme-response-loss|--systemd-first-site-acme-rejected|--systemd-first-site-acme-multi|--systemd-first-site-acme-cleanup-loss|--systemd-first-site-acme-named-compensation|--systemd-integration-live|--systemd-integration-receipt|--systemd-integration-stage|--systemd-integration-rejected|--systemd-integration-compensation|--systemd-integration-compensation-response-loss) ;;
     --systemd-lifecycle|--systemd-lifecycle-unknown) ;;
+    --systemd-website-acme-renewal|--systemd-website-acme-renewal-unknown) ;;
     *) exit 2 ;;
 esac
 pebble= dns= relay=
@@ -117,7 +118,7 @@ JSON
     ca=\$!
     : > "$work/response-fault"
     relay_mode=website
-    if [[ "$mode" == --systemd-website-acme-success || "$mode" == --systemd-website-acme-bootstrap-success || "$mode" == --systemd-website-acme-bootstrap-resume* || "$mode" == --systemd-website-acme-bootstrap-bind-interrupt || "$mode" == --systemd-first-site-acme* ]]; then relay_mode=full-server; fi
+    if [[ "$mode" == --systemd-website-acme-success || "$mode" == --systemd-website-acme-renewal* || "$mode" == --systemd-website-acme-bootstrap-success || "$mode" == --systemd-website-acme-bootstrap-resume* || "$mode" == --systemd-website-acme-bootstrap-bind-interrupt || "$mode" == --systemd-first-site-acme* ]]; then relay_mode=full-server; fi
     python3 "$relay" "$work" "\$relay_mode" > "$work/relay.log" 2>&1 &
     acme_relay=\$!
     for attempt in \$(seq 1 100); do
@@ -191,6 +192,9 @@ server {
 }
 EOF
     fi
+fi
+if [[ "$mode" == --systemd-website-acme-renewal* ]]; then
+    access_log="$work/nginx/acme-access.log"
 fi
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=127.0.0.1 \
     -addext subjectAltName=IP:127.0.0.1 -keyout "$work/nginx/key.pem" -out "$work/nginx/cert.pem" >/dev/null 2>&1
