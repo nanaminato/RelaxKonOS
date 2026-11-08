@@ -172,7 +172,10 @@ internal static async Task VerifyProxyTunSafetyAsync(string root)
     var service = new ProxyTunSafetyService(new TestProxyPaths(Path.Combine(root, "proxy-tun")), platform, runtime);
     TestAssert.Assert(await service.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) is null, "TUN safety transaction rejected a safe management route.");
     TestAssert.Assert((await service.GetStatusAsync(CancellationToken.None)).HasRecoveryMarker, "TUN marker was not durable before network activation.");
-    TestAssert.Assert(await service.EmergencyDisableAsync(CancellationToken.None) is null && platform.RestoreCount == 1,
+    var original = await service.CaptureRecoveryAsync(includeCurrentSession: true, default);
+    TestAssert.Assert(original?.OperationId == runtime.LastOperationId, "Activation did not receive the original marker identity.");
+    TestAssert.Assert(await service.EmergencyDisableAsync(CancellationToken.None) is null && platform.RestoreCount == 1
+        && original?.OperationId == runtime.LastOperationId,
         "Emergency TUN disable did not restore the captured management route.");
     platform.SnapshotSafe = false;
     TestAssert.Assert(await service.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) == ProxyProblemCodes.ManagementRouteUnsafe && platform.ApplyCount == 1,

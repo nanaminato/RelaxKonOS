@@ -84,7 +84,7 @@ internal static class ProxyTunBoundaryChecks
             if (published) await f.Publication.ConfirmAsync(operation, MihomoPublicationStore.Identity(before), default);
             var expected = published ? ProxyProblemCodes.NotSupported : ProxyProblemCodes.RecoveryRequired;
             Check(await f.Safety.EnableAsync(Guid.NewGuid(), null, default) == expected && !File.Exists(f.Marker)
-                && await f.Tun.SetEnabledAsync(f.Snapshot, false, null, default) == expected
+                && await f.Tun.SetEnabledAsync(Guid.NewGuid(), f.Snapshot, false, null, default) == expected
                 && f.Reloads == 0 && f.Platform.ApplyCount == 0 && f.Platform.RestoreCount == 0
                 && await File.ReadAllTextAsync(f.Active) == before,
                 "Direct TUN transitions cannot bypass pending or confirmed managed publication: " + published);
@@ -97,7 +97,7 @@ internal static class ProxyTunBoundaryChecks
             var checkpoint = await f.Publication.BeginDirectReloadAsync(original, candidate, default);
             await File.WriteAllTextAsync(f.Active, candidate);
             var reloads = f.Reloads;
-            Check(await f.Tun.SetEnabledAsync(f.Snapshot, true, _ => throw new Exception("Blocked activation persisted a marker"), default)
+            Check(await f.Tun.SetEnabledAsync(Guid.NewGuid(), f.Snapshot, true, _ => throw new Exception("Blocked activation persisted a marker"), default)
                 == ProxyProblemCodes.RecoveryRequired && f.Reloads == reloads,
                 "A direct checkpoint blocks TUN activation without dispatch");
             Check(await f.Safety.EmergencyDisableAsync(default) is null && f.Reloads == reloads + 1 && !File.Exists(f.Marker)

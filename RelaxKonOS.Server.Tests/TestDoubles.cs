@@ -257,14 +257,16 @@ sealed class TestProxyTunRuntimeController : IProxyTunRuntimeController
     public int EnableCount { get; private set; }
     public int DisableCount { get; private set; }
     public ProxyManagementRouteSnapshot? LastSnapshot { get; private set; }
+    public Guid LastOperationId { get; private set; }
     public bool EngineReportsEnabled { get; set; }
     public bool ObservationFails { get; set; }
 
-    public async Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled,
+    public async Task<string?> SetEnabledAsync(Guid operationId, ProxyManagementRouteSnapshot snapshot, bool enabled,
         Func<CancellationToken, Task>? beforeActivation, CancellationToken cancellationToken)
     {
         if (enabled) await beforeActivation!(cancellationToken);
         LastSnapshot = snapshot;
+        LastOperationId = operationId;
         if (enabled) EnableCount++; else DisableCount++;
         EngineReportsEnabled = enabled;
         return null;

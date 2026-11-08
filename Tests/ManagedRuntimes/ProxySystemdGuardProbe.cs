@@ -120,10 +120,10 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
     {
         public Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken ct) => runtime.IsEnabledAsync(ct);
 
-        public async Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled,
+        public async Task<string?> SetEnabledAsync(Guid operationId, ProxyManagementRouteSnapshot snapshot, bool enabled,
             Func<CancellationToken, Task>? beforeActivation, CancellationToken ct)
         {
-            var problem = await runtime.SetEnabledAsync(snapshot, enabled, beforeActivation, ct);
+            var problem = await runtime.SetEnabledAsync(operationId, snapshot, enabled, beforeActivation, ct);
             if (enabled && problem is null)
             {
                 Console.WriteLine(ActivationBarrier);
@@ -186,7 +186,13 @@ internal sealed class ProxySystemdGuardProbe(Process mihomo, int proxyPort, Prox
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(12));
         while (ReadProxy() != ProxyUrl) await Task.Delay(100, budget.Token);
-        while (File.Exists(MarkerPath) || TunActive()) await Task.Delay(100, budget.Token);
+        try { while (File.Exists(MarkerPath) || TunActive()) await Task.Delay(100, budget.Token); }
+        catch (OperationCanceledException) when (budget.IsCancellationRequested)
+        {
+            var actual = await new HostProxyNetworkSafetyPlatform().CaptureManagementRouteAsync(IPAddress.Parse("192.0.2.3"), default);
+            Console.WriteLine($"TUN route probe: original={JsonSerializer.Serialize(route.LinuxRoutes)} current={JsonSerializer.Serialize(actual?.LinuxRoutes)}");
+            throw;
+        }
         if (await ReadRulesAsync() != rules || !await new HostProxyNetworkSafetyPlatform().VerifyManagementRouteAsync(route, budget.Token))
             throw new InvalidOperationException("Core recovery did not restore the original management route and rules.");
         await VerifyTrafficAsync();

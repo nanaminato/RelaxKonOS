@@ -30,6 +30,7 @@
 - [MB-04 Linux TUN 标记持久化及受管门禁复核](#mb-04-linux-tun-标记持久化及受管门禁复核)
 - [MB-04 受限 Mihomo 的 TUN 描述符交付](#mb-04-受限-mihomo-的-tun-描述符交付)
 - [MB-04 TUN 原生效果的双中断核对](#mb-04-tun-原生效果的双中断核对)
+- [MB-04 Linux 管理端点实际路由与原操作](#mb-04-linux-管理端点实际路由与原操作)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -288,6 +289,20 @@ Windows ManagedRuntimes Release 回归通过，可信下载探针因缺少进程
 故意替换设备归属后，恢复以冲突退出，原记录逐字节一致，运行进程和转发继续。恢复原归属后，停止命令已派发时强制终止恢复进程，留下原停止意图。下一进程核对原进程、设备和目标路由均消失且管理路径未变，完成同一记录。重复恢复与查询返回原回执。三次独立 HTTP 请求均到达真实上游，专属 cgroup 移除，宿主服务及代理文件指纹一致。原始日志 `.artifacts/mb04-tun-marker-sync/tun-fd-owner-linux-current.log`，SHA-256 为 `fff5e85473b3525a2b57e476d9292429dd52db4a4eefd37ab47430fdc1fef4dc`。
 
 已实现且已验证的范围为夹具原操作归属、拒绝冲突、停止结果核对和进程退出。夹具使用专属目标路由与自己的日志，恢复基线为测试单元停止。生产 Helper 尚未把受管 TUN 网络所有权和 Core 标记写入原事务，也未验收生产策略规则、DNS、实际工作租约或整机掉电。Proxy 保持 resident。未测量对象释放、ALC 回收、隔离内存或生产收益。
+
+## MB-04 Linux 管理端点实际路由与原操作
+
+Core 在 Linux 直连 TUN 的原保护标记中记录内核为网关和管理端点选择的路径。路由验证比较接口、下一跳、源地址、路由类型和外部路径的路由表。IPv4 映射地址先按原 IPv4 目的地查询。较早的直连标记仅有网关和出口身份，恢复仍要求管理目的地解析为本地路径或符合已记录的出口。所有激活、补偿和恢复调用携带同一标记 ID。命令只读取内核路由。[Linux `ip route get` 定义](https://man7.org/linux/man-pages/man8/ip-route.8.html)
+
+私有 Linux 网络中，实际 Mihomo 设备已经由原操作 `19a20b2c-42d0-47ae-ae4e-df3e18de19d7` 禁用一次。保留默认网关及其出口，仅将管理端点的精确路由改到另一 veth，恢复保留同一操作且未重发 reload。解除专属路由偏移后原 Core 恢复收尾，设备、路由和规则恢复基线。真实自动路由及 DNS 劫持同轮通过，宿主共享服务和代理文件指纹一致。原始日志 `.artifacts/mb04-tun-marker-sync/tun-route-native-final.log`，归档 SHA-256 `6e9966d0760d1b783b95fabdd5fe45e496f6e2fabbbae083b2a842a4e0a5ee31`。
+
+完整非 root Server 首轮在本机管理路径上保留原标记。诊断确认 `dev lo`、源地址及本地交付类型一致，唯一差异是 `ip` 输出的 `local` 表标签由省略变为显式。仅规范化 loopback 本地交付的表标签，外部管理路径的路由表和下一跳仍参与比较。失败日志 `.artifacts/mb04-tun-marker-sync/tun-route-managed-linux.log` 和 `tun-route-core-diag.log`。
+
+最终非 root Server 私有 systemd 阶段按原 `3adf3e45-53d1-45fa-8d3c-08b187cd96cf` 恢复，保留实际 Mihomo 进程及转发。原网络设备和规则清理完成，宿主指纹一致。Windows Release TUN 边界 38 项、Core 安全及工作作用域、配置回滚和模块边界回归通过。日志前缀 `.artifacts/mb04-tun-marker-sync/tun-route-final-`。
+
+另一私有 systemd 单元完成受管回归 185 项。两次受管 TUN 请求均被拒绝，原补偿 `e6b43569-3245-442f-9663-8980ac89ee16`、原生配置、选路及转发保持，新增标记和控制器请求为零。订阅 Helper 中断 `19878e1d-74ba-44d8-ad78-0893b5ef1e5f` 按原回执恢复。两组专属 cgroup 均移除，宿主服务和代理文件指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-route-managed-final.log`，归档 SHA-256 `87ccd164e8714682808e2368e20afad0575408c70d5546a802e6ff8ae347112f`。
+
+该证据覆盖 Core 操作关联和直连内核路由。路由查找验证本次查询上下文的内核选路，实际管理 TCP 会话的标记和端口策略仍需受管事务联合验收。生产 Helper 的 TUN 描述符交付、设备、规则及 DNS 的持久归属仍缺，受管 TUN 门禁继续生效。Proxy 保持 resident。本轮未测量对象释放、ALC、隔离内存或生产收益。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

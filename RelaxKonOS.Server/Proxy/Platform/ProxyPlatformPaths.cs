@@ -31,7 +31,8 @@ public sealed class ProxyPlatformService(IHostSystemProxyService systemProxy) : 
     public async Task<RelaxKonOS.Protocol.Proxy.ProxyPlatformCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken)
     {
         var supported = OperatingSystem.IsWindows() || OperatingSystem.IsLinux();
-        var tunAvailable = OperatingSystem.IsWindows() || File.Exists("/dev/net/tun");
+        var tunAvailable = OperatingSystem.IsWindows() || OperatingSystem.IsLinux()
+            && File.Exists("/dev/net/tun") && LinuxProxyManagementRoutes.Available;
         return new RelaxKonOS.Protocol.Proxy.ProxyPlatformCapabilities(
             SupportsTun: supported && tunAvailable,
             SupportsAutoRoute: supported,

@@ -10,45 +10,47 @@ namespace RelaxKonOS.Server.Proxy.Platform;
 /// </summary>
 public sealed class HostProxyNetworkSafetyPlatform(ILogger<HostProxyNetworkSafetyPlatform>? logger = null) : IProxyNetworkSafetyPlatform
 {
-    public Task<ProxyManagementRouteSnapshot?> CaptureManagementRouteAsync(System.Net.IPAddress? managementAddress, CancellationToken cancellationToken)
+    public async Task<ProxyManagementRouteSnapshot?> CaptureManagementRouteAsync(System.Net.IPAddress? managementAddress, CancellationToken cancellationToken)
     {
-        if (OperatingSystem.IsWindows()) return Task.FromResult(CaptureWindowsRoute(managementAddress));
-        if (!OperatingSystem.IsLinux()) return Task.FromResult<ProxyManagementRouteSnapshot?>(null);
+        if (OperatingSystem.IsWindows()) return CaptureWindowsRoute(managementAddress);
+        if (!OperatingSystem.IsLinux()) return null;
         try
         {
             var route = File.ReadLines("/proc/net/route").Skip(1).Select(ParseRoute).FirstOrDefault(item => item is not null);
             if (route is null || !NetworkInterface.GetAllNetworkInterfaces().Any(item => item.Name == route.Interface && item.OperationalStatus == OperationalStatus.Up))
-                return Task.FromResult<ProxyManagementRouteSnapshot?>(null);
+                return null;
             // System bypasses are invariant safety requirements, not user-editable proxy rules.
             IReadOnlyList<string> bypass = ["loopback", "relaxkonos-listeners", "active-management-session", "default-gateway", "lan", "ssh", "rdp"];
             var addresses = ManagementAddresses(managementAddress);
             var snapshot = new ProxyManagementRouteSnapshot(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, true, route.Interface, route.Gateway, bypass, addresses);
+            var routes = await LinuxProxyManagementRoutes.ReadAsync(snapshot, cancellationToken);
+            if (routes is null) return null;
             logger?.LogInformation("Captured Linux proxy management route. EgressInterface={EgressInterface} Gateway={Gateway} ManagementAddressCount={ManagementAddressCount}", route.Interface, route.Gateway, addresses.Count);
-            return Task.FromResult<ProxyManagementRouteSnapshot?>(snapshot);
+            return snapshot with { LinuxRoutes = routes };
         }
-        catch (IOException exception) { logger?.LogWarning(exception, "Could not capture the Linux proxy management route."); return Task.FromResult<ProxyManagementRouteSnapshot?>(null); }
-        catch (UnauthorizedAccessException exception) { logger?.LogWarning(exception, "Access was denied while capturing the Linux proxy management route."); return Task.FromResult<ProxyManagementRouteSnapshot?>(null); }
+        catch (IOException exception) { logger?.LogWarning(exception, "Could not capture the Linux proxy management route."); return null; }
+        catch (UnauthorizedAccessException exception) { logger?.LogWarning(exception, "Access was denied while capturing the Linux proxy management route."); return null; }
     }
-    public Task<bool> ApplyTunAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken)
+    public async Task<bool> ApplyTunAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken)
     {
         // The preceding managed Mihomo reload owns the actual TUN route/DNS mutation.  Do not
         // duplicate it with shell commands here; only accept a transition when its original
         // physical egress interface and gateway are still present.
-        var available = HasTunCapability() && HasManagementRoute(snapshot);
+        var available = HasTunCapability() && await HasManagementRouteAsync(snapshot, cancellationToken);
         if (!available) logger?.LogWarning("Rejected TUN activation because the captured management route is no longer present. EgressInterface={EgressInterface}", snapshot.EgressInterface);
-        return Task.FromResult(available);
+        return available;
     }
-    public Task<bool> VerifyManagementRouteAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken)
+    public async Task<bool> VerifyManagementRouteAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken)
     {
-        var reachable = HasManagementRoute(snapshot);
+        var reachable = await HasManagementRouteAsync(snapshot, cancellationToken);
         if (!reachable) logger?.LogError("TUN transition removed the captured management route. EgressInterface={EgressInterface}", snapshot.EgressInterface);
-        return Task.FromResult(reachable);
+        return reachable;
     }
-    public Task<bool> RestoreAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken)
+    public async Task<bool> RestoreAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken)
     {
-        var restored = HasManagementRoute(snapshot);
+        var restored = await HasManagementRouteAsync(snapshot, cancellationToken);
         if (!restored) logger?.LogError("TUN recovery could not verify the original management route. EgressInterface={EgressInterface}", snapshot.EgressInterface);
-        return Task.FromResult(restored);
+        return restored;
     }
 
     private ProxyManagementRouteSnapshot? CaptureWindowsRoute(System.Net.IPAddress? managementAddress)
@@ -70,7 +72,33 @@ public sealed class HostProxyNetworkSafetyPlatform(ILogger<HostProxyNetworkSafet
 
     private static bool HasTunCapability() => OperatingSystem.IsWindows() || OperatingSystem.IsLinux() && File.Exists("/dev/net/tun");
     private static IReadOnlyList<string> ManagementAddresses(System.Net.IPAddress? address)
-        => address is null || System.Net.IPAddress.IsLoopback(address) ? [] : [address.ToString()];
+    {
+        if (address?.IsIPv4MappedToIPv6 == true) address = address.MapToIPv4();
+        return address is null || System.Net.IPAddress.IsLoopback(address) ? [] : [address.ToString()];
+    }
+
+    private async Task<bool> HasManagementRouteAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken ct)
+    {
+        if (!HasManagementRoute(snapshot)) return false;
+        if (!OperatingSystem.IsLinux()) return true;
+        var actual = await LinuxProxyManagementRoutes.ReadAsync(snapshot, ct);
+        if (actual is null)
+        {
+            logger?.LogWarning("Linux kernel route readback was unavailable for the original TUN snapshot.");
+            return false;
+        }
+        if (snapshot.LinuxRoutes is { } original)
+        {
+            var matches = actual.SequenceEqual(original);
+            if (!matches) logger?.LogWarning("Linux kernel route selection differs from the original TUN snapshot.");
+            return matches;
+        }
+
+        // Older direct markers recorded only the gateway and egress. Keep recovery possible when
+        // each destination still resolves locally or through the only egress identity they hold.
+        return actual.All(route => route.Type == "local" || route.Interface == snapshot.EgressInterface
+            && (route.Gateway is null || route.Gateway == snapshot.DefaultGateway));
+    }
     private static bool HasManagementRoute(ProxyManagementRouteSnapshot snapshot)
     {
         try

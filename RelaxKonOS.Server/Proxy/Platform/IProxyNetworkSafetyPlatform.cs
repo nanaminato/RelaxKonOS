@@ -17,7 +17,12 @@ public sealed record ProxyManagementRouteSnapshot(
     string EgressInterface,
     string DefaultGateway,
     IReadOnlyList<string> SystemBypass,
-    IReadOnlyList<string> ManagementAddresses);
+    IReadOnlyList<string> ManagementAddresses)
+{
+    public IReadOnlyList<ProxyLinuxRouteIdentity>? LinuxRoutes { get; init; }
+}
+
+public sealed record ProxyLinuxRouteIdentity(string Destination, string Interface, string? Gateway, string? Source, string? Table, string Type);
 
 /// <summary>Conservative default until the platform-specific route/DNS implementation is validated.</summary>
 public sealed class UnavailableProxyNetworkSafetyPlatform : IProxyNetworkSafetyPlatform

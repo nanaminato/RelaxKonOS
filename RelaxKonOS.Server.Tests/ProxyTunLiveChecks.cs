@@ -5,6 +5,7 @@ using System.Diagnostics;
 internal static class ProxyTunLiveChecks
 {
     private const string Device = "rk-mb04-tun";
+    private const string ManagementPeer = "192.0.2.4";
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(15);
 
     internal static async Task RunAsync(string originalNamespace, string? mihomoExecutable = null)
@@ -110,6 +111,23 @@ internal static class ProxyTunLiveChecks
 
                     var disableRequests = calls.Reloads;
                     if (mihomo is not null) TestAssert.Assert(disableRequests == 1 && calls.DroppedResponses == 1, "Initial recovery must issue exactly one real disable reload.");
+                    await AddDefaultRouteAsync();
+                    await RunIpAsync("route", "add", ManagementPeer + "/32", "dev", "rk-peer");
+                    try
+                    {
+                        TestAssert.Assert((await RunIpAsync("route", "get", "192.0.2.1")).Contains(" dev rk-egress ", StringComparison.Ordinal)
+                            && (await RunIpAsync("route", "get", ManagementPeer)).Contains(" dev rk-peer ", StringComparison.Ordinal)
+                            && await safety.RecoverAsync(original, default) == ProxyProblemCodes.RecoveryRequired
+                            && await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) == original
+                            && runtime.LastOperationId == original.OperationId && calls.Reloads == disableRequests,
+                            "A peer-route override must retain the original recovery even with the default gateway present.");
+                        Console.WriteLine($"PASS TUN MANAGEMENT PEER ROUTE: operation={original.OperationId}; default route present, wrong peer route retained original marker; no reload replay");
+                    }
+                    finally
+                    {
+                        await RunIpAsync("route", "del", ManagementPeer + "/32", "dev", "rk-peer");
+                        await RunIpAsync("route", "del", "default", "via", "192.0.2.1", "dev", "rk-egress");
+                    }
                     var recoveryLog = new RecoveryAttemptLog();
                     var builder = WebApplication.CreateBuilder();
                     builder.Logging.ClearProviders();
@@ -360,7 +378,7 @@ internal static class ProxyTunLiveChecks
         using var http = new HttpClient(new SocketsHttpHandler { UseProxy = false });
         var runtime = new NamespaceTunRuntime(pauseAfterCreate: true, inner: port == 0 ? null : CreateMihomoRuntime(paths, port, http));
         var safety = new ProxyTunSafetyService(paths, new HostProxyNetworkSafetyPlatform(), runtime);
-        await safety.EnableAsync(Guid.NewGuid(), null, default);
+        await safety.EnableAsync(Guid.NewGuid(), IPAddress.Parse(ManagementPeer).MapToIPv6(), default);
         throw new InvalidOperationException("The TUN activation crash barrier was bypassed.");
     }
 
@@ -557,15 +575,17 @@ internal static class ProxyTunLiveChecks
     private sealed class NamespaceTunRuntime(bool pauseAfterCreate = false, IProxyTunRuntimeController? inner = null) : IProxyTunRuntimeController
     {
         internal int Removals;
+        internal Guid LastOperationId;
 
-        public async Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled,
+        public async Task<string?> SetEnabledAsync(Guid operationId, ProxyManagementRouteSnapshot snapshot, bool enabled,
             Func<CancellationToken, Task>? beforeActivation, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            LastOperationId = operationId;
             if (inner is not null)
             {
                 var existed = await DeviceExistsAsync();
-                var problem = await inner.SetEnabledAsync(snapshot, enabled, beforeActivation, cancellationToken);
+                var problem = await inner.SetEnabledAsync(operationId, snapshot, enabled, beforeActivation, cancellationToken);
                 if (problem is not null) return problem;
                 using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 budget.CancelAfter(Budget);

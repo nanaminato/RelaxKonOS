@@ -79,13 +79,13 @@ public sealed record ProxyTunRecoveryReference(Guid OperationId, DateTimeOffset 
 
 /// <summary>
 /// Owns the one permitted live TUN configuration transition.  The caller supplies only the
-/// already-captured management-route snapshot; profile YAML can never choose routes or bypasses.
+/// original operation identity and already-captured management route. Profile YAML cannot choose routes or bypasses.
 /// </summary>
 public interface IProxyTunRuntimeController
 {
     /// <summary>For activation, commits the caller's recovery marker after admission and before
     /// the first mutation. Rejected admission must leave the callback untouched.</summary>
-    Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled,
+    Task<string?> SetEnabledAsync(Guid operationId, RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled,
         Func<CancellationToken, Task>? beforeActivation, CancellationToken cancellationToken);
 
     /// <summary>Asks the engine whether TUN is actually enabled.  Callers use it to keep reported
@@ -100,7 +100,7 @@ public sealed record ProxyTunRuntimeObservation(bool Succeeded, bool Enabled, st
 /// <summary>Safe fallback for hosts where no local Mihomo configuration controller is installed.</summary>
 public sealed class UnavailableProxyTunRuntimeController : IProxyTunRuntimeController
 {
-    public Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled,
+    public Task<string?> SetEnabledAsync(Guid operationId, RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled,
         Func<CancellationToken, Task>? beforeActivation, CancellationToken cancellationToken)
         => Task.FromResult<string?>(ProxyProblemCodes.RuntimeNotInstalled);
 

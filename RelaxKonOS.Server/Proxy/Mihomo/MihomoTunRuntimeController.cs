@@ -12,9 +12,10 @@ public sealed class MihomoTunRuntimeController(
     Platform.IProxyTunDeviceObserver devices,
     ILogger<MihomoTunRuntimeController>? logger = null) : IProxyTunRuntimeController
 {
-    public async Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled,
+    public async Task<string?> SetEnabledAsync(Guid operationId, RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled,
         Func<CancellationToken, Task>? beforeActivation, CancellationToken cancellationToken)
     {
+        if (operationId == Guid.Empty) return ProxyProblemCodes.RecoveryRequired;
         await publication.Gate.WaitAsync(cancellationToken);
         try
         {
@@ -92,8 +93,8 @@ public sealed class MihomoTunRuntimeController(
                         logger?.LogWarning("Mihomo TUN configuration transition was rolled back because the Windows TUN adapter did not become active. DeviceName={DeviceName}", deviceName);
                         return ProxyProblemCodes.TunActivationFailed;
                     }
-                    logger?.LogInformation("Mihomo TUN configuration transition completed. Enabled={Enabled} EgressInterface={EgressInterface} ExclusionCount={ExclusionCount}",
-                        enabled, snapshot.EgressInterface, exclusions.Count);
+                    logger?.LogInformation("Mihomo TUN configuration transition completed. OperationId={OperationId} Enabled={Enabled} EgressInterface={EgressInterface} ExclusionCount={ExclusionCount}",
+                        operationId, enabled, snapshot.EgressInterface, exclusions.Count);
                     return null;
                 }
 
