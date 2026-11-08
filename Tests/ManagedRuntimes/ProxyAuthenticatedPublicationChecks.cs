@@ -464,7 +464,8 @@ internal static class ProxyAuthenticatedPublicationChecks
             ("tracked-host-reply", false, ""), ("tracked-host-drift", true, ""),
             ("tracked-host-disable", false, ""), ("tracked-host-enable", false, ""),
             ($"tracked-host-port-{newPort}", false, ""), ($"tracked-host-port-{newPort}", true, ""),
-            ($"tracked-host-port-{newPort}", true, "-reload-loss"), ($"tracked-host-port-{newPort}", true, "-helper-loss")
+            ($"tracked-host-port-{newPort}", true, "-reload-loss"), ($"tracked-host-port-{newPort}", true, "-reload-unapplied"),
+            ($"tracked-host-port-{newPort}", true, "-reload-unobservable"), ($"tracked-host-port-{newPort}", true, "-helper-loss")
         })
         {
             await guard.VerifyTrafficAsync(async (_, ct) =>
@@ -492,6 +493,16 @@ internal static class ProxyAuthenticatedPublicationChecks
                 }
                 var priorEndpoint = ReadEnvironment("http_proxy");
                 var candidate = TrackedCandidate(prior, name);
+                var baselineYaml = original;
+                if (fault is "-reload-loss" or "-reload-unapplied")
+                {
+                    var baselineFiles = new MihomoSettingsPublicationFiles(settingsPaths, cleanupHost);
+                    var baselineWriter = new MihomoSettingsService(settingsPaths, native, secrets, nativeOptions,
+                        cleanupHost, store, baselineFiles);
+                    if (await baselineWriter.UpdateAsync(SettingsRequest(prior), ct) is not null)
+                        throw new InvalidOperationException("Could not establish the application's canonical starting configuration.");
+                    baselineYaml = await File.ReadAllBytesAsync(active, ct);
+                }
                 var expectedEndpoint = candidate.SystemProxyEnabled ? $"http://127.0.0.1:{candidate.MixedPort}" : null;
                 var priorWrites = Volatile.Read(ref nativeWrites);
                 await using var hostRelay = new ReplyRelay("/run/rk-tracked-settings.sock", socket, ct,
@@ -576,7 +587,10 @@ internal static class ProxyAuthenticatedPublicationChecks
                     var service = new MihomoDirectSettingsCompensationService(settingsPaths, reopened, compensationFiles, controller, secrets);
                     var attemptsBefore = Volatile.Read(ref relayWrites);
                     RuntimeSwitchResult restored;
-                    Volatile.Write(ref dropAppliedReloadReply, fault == "-reload-loss");
+                    var unapplied = fault == "-reload-unapplied";
+                    var staysPending = unapplied || fault == "-reload-unobservable";
+                    Volatile.Write(ref dropAppliedReloadReply, fault is "-reload-loss" or "-reload-unobservable");
+                    if (unapplied) Volatile.Write(ref dropAfterDispatch, false);
                     try
                     {
                         var compensate = service.CompensateAsync(id, true, ct);
@@ -588,23 +602,66 @@ internal static class ProxyAuthenticatedPublicationChecks
                         }
                         restored = await compensate;
                     }
-                    finally { Volatile.Write(ref dropAppliedReloadReply, false); }
+                    finally
+                    {
+                        Volatile.Write(ref dropAppliedReloadReply, false);
+                        if (unapplied) Volatile.Write(ref dropAfterDispatch, true);
+                    }
                     if (restored.CompensationOperationId is not { } compensationId || compensationId == id
                         || restored.OperationId != id || restored.Outcome != (fault == "" ? RuntimeSwitchOutcome.Interrupted : RuntimeSwitchOutcome.RecoveryRequired))
                         throw new InvalidOperationException("Compensation did not return a separate operation identity and the expected original state.");
-                    var reopenedCompensation = new MihomoDirectSettingsCompensationService(settingsPaths,
-                        new MihomoPublicationStore(settingsPaths, protection), compensationFiles, controller, secrets);
-                    var replay = await reopenedCompensation.CompensateAsync(id, true, ct);
+                    CompensationRecovery recovery;
+                    if (fault is "-reload-loss" or "-reload-unapplied" or "-reload-unobservable")
+                    {
+                        var recover = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true };
+                        foreach (var argument in new[] { typeof(ProxyAuthenticatedPublicationChecks).Assembly.Location,
+                            "runtime-proxy-direct-compensation-recover", root, stateDir, address, compensationRelay.Path, id.ToString() })
+                            recover.ArgumentList.Add(argument);
+                        using var restarted = Process.Start(recover) ?? throw new InvalidOperationException("Could not restart compensation recovery.");
+                        try
+                        {
+                            var output = await restarted.StandardOutput.ReadToEndAsync(ct);
+                            await restarted.WaitForExitAsync(ct);
+                            if (restarted.ExitCode != 0 || JsonSerializer.Deserialize<CompensationRecovery>(output) is not { } observed)
+                                throw new InvalidOperationException("The fresh compensation reader did not return its original receipt.");
+                            recovery = observed;
+                        }
+                        finally { await StopAsync(restarted); }
+                    }
+                    else
+                    {
+                        var reopenedCompensation = new MihomoDirectSettingsCompensationService(settingsPaths,
+                            new MihomoPublicationStore(settingsPaths, protection), compensationFiles, controller, secrets);
+                        var recovered = await reopenedCompensation.CompensateAsync(id, true, ct);
+                        recovery = new(recovered, compensationTransport.Applies, compensationTransport.AppliedId);
+                    }
+                    var replay = recovery.Result;
                     var originalReceipt = await named.RetryAsync(id, ct);
+                    var nativeCompensationReloads = unapplied ? 0 : 1;
                     if (replay != originalReceipt || replay.CompensationOperationId != compensationId
-                        || replay.Outcome != (fault == "-reload-loss" ? RuntimeSwitchOutcome.RecoveryRequired : RuntimeSwitchOutcome.Interrupted)
-                        || Volatile.Read(ref relayWrites) != attemptsBefore + 1 || Volatile.Read(ref nativeWrites) != priorWrites + 2
-                        || compensationTransport.Applies != (fault == "-reload-loss" ? 0 : 1) || guard.RuntimePid != pid
-                        || compensationTransport.Applies > 0 && compensationTransport.AppliedId != compensationId
-                        || !(await File.ReadAllBytesAsync(active, ct)).SequenceEqual(original))
-                        throw new InvalidOperationException("Compensation replayed a side effect or lost the original durable outcome.");
+                        || replay.Outcome != (staysPending ? RuntimeSwitchOutcome.RecoveryRequired : RuntimeSwitchOutcome.Interrupted)
+                        || Volatile.Read(ref relayWrites) != attemptsBefore + 1 || Volatile.Read(ref nativeWrites) != priorWrites + 1 + nativeCompensationReloads
+                        || recovery.Applies != (staysPending ? 0 : 1) || guard.RuntimePid != pid
+                        || recovery.Applies > 0 && recovery.AppliedId != compensationId
+                        || !(await File.ReadAllBytesAsync(active, ct)).SequenceEqual(baselineYaml))
+                        throw new InvalidOperationException($"Compensation {caseName} returned {replay.Outcome} with {recovery.Applies} Helper applies, or lost the original evidence.");
+                    if (unapplied)
+                    {
+                        await VerifyProxyListenerAsync(candidate.MixedPort, ct);
+                        if (await CanConnectToProxyAsync(prior.MixedPort, ct))
+                            throw new InvalidOperationException("The blocked reload unexpectedly restored the original listener.");
+                        // Only the disposable fixture resets the service after checking the unchanged pending receipt.
+                        if (await native.ReloadAsync(ct) is not null)
+                            throw new InvalidOperationException("Could not restore the private listener for the next test.");
+                    }
                     await VerifyProxyListenerAsync(prior.MixedPort, ct);
-                    Console.WriteLine($"PASS MIHOMO EXPLICIT PORT COMPENSATION: {caseName}, original {id}, compensation {compensationId}, {replay.Outcome}, reload once");
+                    Console.WriteLine($"PASS MIHOMO EXPLICIT PORT COMPENSATION: {caseName}, original {id}, compensation {compensationId}, {replay.Outcome}, one reload attempt, {nativeCompensationReloads} native reloads, {recovery.Applies} Helper applies");
+                    if (!baselineYaml.SequenceEqual(original))
+                    {
+                        await File.WriteAllBytesAsync(active, original, ct);
+                        if (await native.ReloadAsync(ct) is not null)
+                            throw new InvalidOperationException("Could not restore the private baseline configuration.");
+                    }
                 }
                 else
                 {
@@ -647,6 +704,27 @@ internal static class ProxyAuthenticatedPublicationChecks
         }
     }
 
+    internal sealed record CompensationRecovery(RuntimeSwitchResult Result, int Applies, Guid? AppliedId);
+
+    internal static async Task<CompensationRecovery> RecoverDirectCompensationFixtureAsync(string root, string state, string relay,
+        string socket, Guid operationId, CancellationToken ct)
+    {
+        MihomoIpcStartupAcceptance.RequirePrivateHost();
+        var paths = new DirectReloadFixturePaths(state);
+        var protection = ManagedServiceChecks.OpenProtection(root);
+        var secrets = new DataProtectionProxyControllerSecretStore(
+            new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { ContentRootPath = Path.Combine(root, "full-server") }, protection);
+        using var controller = new MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }), secrets,
+            new() { Endpoint = new(relay + "/") });
+        var transport = new CompensationTransport(new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance), operationId);
+        var store = new MihomoPublicationStore(paths, protection);
+        var files = new MihomoSettingsPublicationFiles(paths, new HostSystemProxyService(transport));
+        var result = await new MihomoDirectSettingsCompensationService(paths, store, files, controller, secrets)
+            .CompensateAsync(operationId, true, ct);
+        return new(result, transport.Applies, transport.AppliedId);
+    }
+
     internal static async Task ExecuteDirectSettingsCommitFixtureAsync(string root, string state, string relay,
         string socket, string barrier, CancellationToken ct)
     {
@@ -680,9 +758,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         var prior = await new ProxySettingsReader(paths).GetAsync(ct);
         var candidate = barrier.StartsWith("tracked-host-", StringComparison.Ordinal) ? TrackedCandidate(prior, barrier)
             : prior with { LogLevel = "warning" };
-        var problem = await writer.UpdateAsync(new(candidate.SystemProxyEnabled, candidate.AllowLan, candidate.DnsEnabled, candidate.Ipv6Enabled,
-            candidate.UnifiedDelay, candidate.LogLevel, candidate.MixedPort, candidate.AllowInsecureSubscriptionSources,
-            candidate.SystemProxyHost, candidate.Tun, candidate.SystemProxy), ct);
+        var problem = await writer.UpdateAsync(SettingsRequest(candidate), ct);
         throw new InvalidOperationException($"The direct settings writer returned before the barrier. Problem={problem}.");
 
         void Block()
@@ -691,6 +767,10 @@ internal static class ProxyAuthenticatedPublicationChecks
             Thread.Sleep(Timeout.Infinite);
         }
     }
+
+    private static UpdateProxySettingsRequest SettingsRequest(ProxySettingsDto value) =>
+        new(value.SystemProxyEnabled, value.AllowLan, value.DnsEnabled, value.Ipv6Enabled, value.UnifiedDelay, value.LogLevel,
+            value.MixedPort, value.AllowInsecureSubscriptionSources, value.SystemProxyHost, value.Tun, value.SystemProxy);
 
     private static ProxySettingsDto TrackedCandidate(ProxySettingsDto previous, string variant)
     {

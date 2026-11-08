@@ -7,6 +7,19 @@ internal static class SystemProxyChecks
         TestAssert.Assert(wire.Contains("\"supported\":true") && wire.Contains("\"supportsPac\":false"), "Helper capability names must match the public wire contract.");
         try { JsonSerializer.Deserialize<ProxySystemProxyCapabilities>("{\"supported\":true}"); throw new Exception("Missing capability fields were accepted."); }
         catch (JsonException) { }
+        var prior = ProxySettingsReader.Defaults with { MixedPort = 7890, LogLevel = "info" };
+        var listenerCandidate = prior with { MixedPort = 8123, LogLevel = "warning" };
+        var intent = new MihomoSettingsPublication(null, prior, listenerCandidate);
+        const string previousYaml = "mode: rule\nmixed-port: 7890\nlog-level: info\n";
+        const string candidateYaml = "mode: rule\nmixed-port: 8123\nlog-level: warning\n";
+        TestAssert.Assert(MihomoDirectSettingsCompensationService.HasObservableListenerDelta(previousYaml,
+            MihomoPublicationStore.Identity(candidateYaml), intent), "The exact observable listener delta was rejected.");
+        TestAssert.Assert(!MihomoDirectSettingsCompensationService.HasObservableListenerDelta(previousYaml,
+            MihomoPublicationStore.Identity(candidateYaml + "ipv6: true\n"), intent), "An unobserved YAML change was accepted.");
+        TestAssert.Assert(!MihomoDirectSettingsCompensationService.HasObservableListenerDelta(previousYaml,
+            MihomoPublicationStore.Identity(candidateYaml),
+            intent with { Candidate = listenerCandidate with { AllowLan = !listenerCandidate.AllowLan } }),
+            "An unobserved settings change was accepted.");
         using (var fixture = new Fixture())
         {
             var original = await File.ReadAllTextAsync(fixture.Active);

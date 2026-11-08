@@ -256,4 +256,4 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 
 2026-11-08（MR-03 / MB-04 配置恢复）Linux 直连宿主代理策略变更在原运行时确认后冻结意图，按原 ID 核对 Helper 回执及实际代理效果。guard 独立接管时保留待处理结果。见[Linux 直连宿主策略变更恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连宿主策略变更恢复)。
 
-2026-11-08（MR-03 / MB-04 配置恢复）guard 已接管的 Linux 直连设置可经具名授权执行独立补偿。原操作保留中断及补偿 ID，补偿重载未知时继续待处理。见[Linux 直连监听显式补偿](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连监听显式补偿)。
+2026-11-08（MR-03 / MB-04 配置恢复）guard 已接管的 Linux 直连设置可经具名授权执行独立补偿。原操作保留中断及补偿 ID。应答丢失后，仅端口与日志级别的可观察变更可凭原配置和真实监听证据续接，其他未知结果保持待处理。见[Linux 直连监听显式补偿](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连监听显式补偿)。

@@ -23,6 +23,15 @@ if (args is ["runtime-proxy-direct-settings-crash", var settingsRoot, var settin
     throw new InvalidOperationException("The private settings writer unexpectedly returned.");
 }
 
+if (args is ["runtime-proxy-direct-compensation-recover", var recoveryRoot, var recoveryState,
+    var recoveryRelay, var recoverySocket, var recoveryId])
+{
+    var recovery = await ProxyAuthenticatedPublicationChecks.RecoverDirectCompensationFixtureAsync(recoveryRoot,
+        recoveryState, recoveryRelay, recoverySocket, Guid.Parse(recoveryId), default);
+    Console.WriteLine(JsonSerializer.Serialize(recovery));
+    return;
+}
+
 if (args is ["docker-service-override-only"])
 {
     Console.WriteLine($"Docker service override checks passed: {DockerServiceOverrideChecks.Run()}");

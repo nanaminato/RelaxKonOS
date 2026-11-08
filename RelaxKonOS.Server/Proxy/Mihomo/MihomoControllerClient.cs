@@ -24,9 +24,11 @@ public interface IMihomoControllerClient
     Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken);
     Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken);
     Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken);
-    Task<ControllerResult<int>> GetMixedPortAsync(CancellationToken cancellationToken);
+    Task<ControllerResult<MihomoListenerState>> GetListenerStateAsync(CancellationToken cancellationToken);
     Task<string?> ReloadAsync(CancellationToken cancellationToken);
 }
+
+public sealed record MihomoListenerState(int MixedPort, string LogLevel, bool TunEnabled);
 
 public sealed record ControllerResult<T>(T? Value, string ProblemCode)
 {
@@ -118,16 +120,19 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
         finally { result.Value?.Dispose(); }
     }
 
-    public async Task<ControllerResult<int>> GetMixedPortAsync(CancellationToken cancellationToken)
+    public async Task<ControllerResult<MihomoListenerState>> GetListenerStateAsync(CancellationToken cancellationToken)
     {
         var result = await GetJsonAsync("configs", cancellationToken);
-        if (!result.Succeeded) return ControllerResult<int>.Failure(result.ProblemCode);
+        if (!result.Succeeded) return ControllerResult<MihomoListenerState>.Failure(result.ProblemCode);
         using var document = result.Value!;
         var root = document.RootElement;
-        return root.ValueKind == JsonValueKind.Object && root.TryGetProperty("mixed-port", out var port)
+        var tun = ReadTunEnabled(root);
+        return tun.Succeeded && root.TryGetProperty("mixed-port", out var port)
             && port.ValueKind == JsonValueKind.Number && port.TryGetInt32(out var value) && value is > 0 and <= 65535
-            ? ControllerResult<int>.Success(value)
-            : ControllerResult<int>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+            && root.TryGetProperty("log-level", out var log) && log.ValueKind == JsonValueKind.String
+            && log.GetString() is ("silent" or "error" or "warning" or "info" or "debug") and var logLevel
+            ? ControllerResult<MihomoListenerState>.Success(new(value, logLevel, tun.Value))
+            : ControllerResult<MihomoListenerState>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
     }
 
     public Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken)
@@ -251,20 +256,20 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
     {
         var result = await GetJsonAsync("configs", cancellationToken);
         if (!result.Succeeded) return ControllerResult<bool>.Failure(result.ProblemCode);
-        try
-        {
-            // Mihomo omits the block when TUN was never configured, and reporting that as an
-            // unreadable response would turn a disabled TUN into a controller failure.
-            var root = result.Value!.RootElement;
-            if (root.ValueKind != JsonValueKind.Object)
-                return ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
-            if (!root.TryGetProperty("tun", out var tun)) return ControllerResult<bool>.Success(false);
-            if (tun.ValueKind != JsonValueKind.Object || !tun.TryGetProperty("enable", out var enabled)
-                || enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                return ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
-            return ControllerResult<bool>.Success(enabled.GetBoolean());
-        }
-        finally { result.Value?.Dispose(); }
+        using var document = result.Value!;
+        return ReadTunEnabled(document.RootElement);
+    }
+
+    private static ControllerResult<bool> ReadTunEnabled(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+        // Mihomo omits the block when TUN was never configured.
+        if (!root.TryGetProperty("tun", out var tun)) return ControllerResult<bool>.Success(false);
+        if (tun.ValueKind != JsonValueKind.Object || !tun.TryGetProperty("enable", out var enabled)
+            || enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            return ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+        return ControllerResult<bool>.Success(enabled.GetBoolean());
     }
 
     public async Task<string?> ReloadAsync(CancellationToken cancellationToken)

@@ -551,7 +551,7 @@ Linux 直连设置按原 ID 核对宿主策略变更。guard 可完成已证实�
 
 真实端口漂移回退已复现旧监听关闭后的新连接缺口。该路径保留原待恢复责任和 resident 门槛。见[Linux 宿主代理切换验收矩阵](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-宿主代理切换验收矩阵)。
 
-旧监听与宿主策略的显式补偿通过同一发布锁和独立 ID 接续。原终态保留补偿 ID，结果未知时继续占用原恢复责任。见[Linux 直连监听显式补偿](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连监听显式补偿)。
+旧监听与宿主策略的显式补偿通过同一发布锁和独立 ID 接续。原终态保留补偿 ID，结果未知时继续占用原恢复责任。 丢失控制器应答后，可凭仅涉及端口和日志级别的原配置证据与真实监听状态接续，宿主效果仍按原补偿 ID 核对。见[补偿效果对账](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连监听补偿应答丢失的效果对账)。见[Linux 直连监听显式补偿](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连监听显式补偿)。
 
 完整 Linux Server 的直连活动订阅刷新在原确认落盘、SQLite 提交受阻期间持有工作租约。实际 Server 被终止后，由 Core 恢复原档案提交，原队列以同一 ID 和幂等键确认终态，Mihomo 继续转发。见[直连活动订阅队列的进程中断恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连活动订阅队列的进程中断恢复)。
 
