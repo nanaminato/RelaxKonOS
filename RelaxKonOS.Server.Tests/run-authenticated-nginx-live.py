@@ -2209,15 +2209,16 @@ def run(root, server, helper_binary, mode):
             observed = request(operation_route, token=token)
             if mode == "--systemd-receipt" or retire_retry:
                 expected = ("succeeded", "")
-            elif production_helper:
-                expected = ("running", "webserver.native_recovery_required")
             else:
-                expected = ("failed", "webserver.operation_interrupted")
+                expected = ("running", "webserver.native_recovery_required")
             for receipt in (replay, observed):
                 assert receipt["operationId"] == operation
                 assert (receipt["state"].lower(), receipt["problemCode"]) == expected
-            if production_helper and mode != "--systemd-receipt" and not retire_retry:
+            if mode != "--systemd-receipt" and not retire_retry:
                 request(reload_route, token=token, expected=409, method="POST", key=secrets.token_hex(16))
+            if not production_helper:
+                assert observed["stage"] == "direct-reload-recovery-required" and observed.get("completedAt") is None
+                assert active_leases(token) == 1 and replay == observed
             assert_served(b"updated")
             assert int(nginx_pid_file.read_text()) == nginx_pid
             assert witness.read_text().splitlines() == ["reload"]

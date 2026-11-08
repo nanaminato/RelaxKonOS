@@ -28,6 +28,9 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
 {
     internal const string NativeReloadDispatchStage = "native-reload-dispatch";
     internal const string NativeReloadConfirmedStage = "native-reload-confirmed";
+    internal const string DirectReloadDispatchStage = "direct-reload-dispatch";
+    internal const string DirectReloadConfirmedStage = "direct-reload-confirmed";
+    internal const string DirectReloadUnconfirmedStage = "direct-reload-recovery-required";
     internal const string NativeLifecycleDispatchStage = "native-lifecycle-dispatch";
     internal const string NativeLifecycleConfirmedStage = "native-lifecycle-confirmed";
     internal const string NativeRecoveryRequired = NginxReloadOutcome.RecoveryRequired;
@@ -153,6 +156,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
             if (_operations.Values.Any(operation => operation.InstanceId == instanceId
                 && (operation.ProblemCode is NativeRecoveryRequired or IntegrationCleanupRequired
                     || operation is { Integration: not null, Stage: NativeReloadDispatchStage }
+                    || operation.Stage is DirectReloadDispatchStage or DirectReloadConfirmedStage
                     || operation.Stage is NativeLifecycleDispatchStage or NativeLifecycleConfirmedStage
                     || operation is { WebRoot: not null, State: WebServerOperationState.Running })))
                 return new(Guid.Empty, instanceId, kind, WebServerOperationState.Failed, "validation",
@@ -275,6 +279,11 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
         try
         {
             var operation = await ReadOperationAsync(operationId, stoppingToken);
+            if (operation.Stage == DirectReloadUnconfirmedStage)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+                return false;
+            }
             if (operation.WebRoot is not null) return await ReconcileWebRootAsync(operation, stoppingToken);
             var integration = operation.Integration;
             var lifecycle = NativeLifecycleAction(operation.Kind);
@@ -486,6 +495,9 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
                 { State: WebServerOperationState.Running, WebRoot: not null } => MarkNativeUnconfirmed(item),
                 { State: WebServerOperationState.Running, Stage: NativeReloadDispatchStage or NativeReloadConfirmedStage } => MarkNativeUnconfirmed(item),
                 { State: WebServerOperationState.Running, Stage: NativeLifecycleDispatchStage or NativeLifecycleConfirmedStage } => MarkNativeUnconfirmed(item),
+                { State: WebServerOperationState.Running, Stage: DirectReloadDispatchStage } => MarkNativeUnconfirmed(item),
+                { State: WebServerOperationState.Running, Stage: DirectReloadConfirmedStage } =>
+                    item with { State = WebServerOperationState.Succeeded, Stage = "succeeded", CompletedAt = DateTimeOffset.UtcNow },
                 { State: WebServerOperationState.Running, Stage: IntegrationStaging } =>
                     item with { ProblemCode = IntegrationCleanupRequired },
                 { ProblemCode: NativeRecoveryRequired } => item,
@@ -504,7 +516,8 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
     }
 
     private static PersistedOperation MarkNativeUnconfirmed(PersistedOperation operation) =>
-        operation with { Stage = "native-recovery-required", ProblemCode = NativeRecoveryRequired };
+        operation with { Stage = operation.Stage is DirectReloadDispatchStage or DirectReloadUnconfirmedStage
+            ? DirectReloadUnconfirmedStage : "native-recovery-required", ProblemCode = NativeRecoveryRequired };
 
     internal static NginxSystemServiceAction? NativeLifecycleAction(string kind) => kind switch
     {

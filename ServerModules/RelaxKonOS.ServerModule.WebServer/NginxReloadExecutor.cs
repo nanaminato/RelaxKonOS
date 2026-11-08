@@ -6,10 +6,21 @@ public sealed class NginxReloadExecutor(INginxReloadPorts ports) : INginxReloadE
 {
     public async Task<string> ReloadAsync(CancellationToken cancellationToken)
     {
-        if (!ports.UsesSystemPackage)
-            return await ports.RunDirectAsync(cancellationToken) ? "" : "webserver.reload_failed";
-
         await ports.ReportDispatchAsync(cancellationToken);
+        if (!ports.UsesSystemPackage)
+        {
+            try
+            {
+                if (!await ports.RunDirectAsync(cancellationToken)) return NginxReloadOutcome.RecoveryRequired;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return NginxReloadOutcome.RecoveryRequired;
+            }
+            await ports.ReportResponseAsync(confirmed: true);
+            return "";
+        }
+
         var helper = await ports.RunTrackedAsync(ports.OperationId, cancellationToken);
         var receipt = helper.NginxReloadReceipt;
         if (helper.ProblemCode == PrivilegedProblemCode.RecoveryRequired

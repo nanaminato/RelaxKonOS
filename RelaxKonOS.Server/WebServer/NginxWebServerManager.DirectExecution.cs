@@ -73,7 +73,8 @@ internal sealed partial class NginxWebServerManager
             var lease = WebServerExecutionCode.Shared.Acquire<INginxReloadExecutor>(
                 "RelaxKonOS.Server.WebServer.NginxReloadExecutor", new ReloadPorts(nginx, instance, progress));
             progress.HoldExecution(lease);
-            return new(await RunReloadAsync(lease.Executor, ct));
+            var problem = await RunReloadAsync(lease.Executor, ct);
+            return new(problem, NativeCompletionConfirmed: problem.Length == 0 && !nginx.UsesSystemPackageNginx(instance));
         }
 
         private static async Task<string> RunReloadAsync(INginxReloadExecutor executor, CancellationToken ct)
@@ -84,7 +85,8 @@ internal sealed partial class NginxWebServerManager
             {
                 throw new NginxProcessCleanupException(new InvalidOperationException("Direct reload did not drain."));
             }
-            catch (Exception) { throw new InvalidOperationException("Nginx reload execution failed."); }
+            catch (Exception error) when (error is not ResidentWorkCompletionException)
+            { throw new InvalidOperationException("Nginx reload execution failed."); }
         }
 
         private sealed class ReloadPorts(NginxWebServerManager nginx, WebServerDto instance, WebServerOperationStore.OperationProgress progress) : INginxReloadPorts
@@ -93,10 +95,12 @@ internal sealed partial class NginxWebServerManager
             public bool UsesSystemPackage => nginx.UsesSystemPackageNginx(instance);
 
             public Task ReportDispatchAsync(CancellationToken cancellationToken) =>
-                progress.ReportAsync(WebServerOperationStore.NativeReloadDispatchStage, cancellationToken);
+                progress.ReportAsync(UsesSystemPackage ? WebServerOperationStore.NativeReloadDispatchStage
+                    : WebServerOperationStore.DirectReloadDispatchStage, cancellationToken);
 
             public Task ReportResponseAsync(bool confirmed) => progress.ReportAsync(
-                confirmed ? WebServerOperationStore.NativeReloadConfirmedStage : "running", CancellationToken.None);
+                confirmed ? UsesSystemPackage ? WebServerOperationStore.NativeReloadConfirmedStage
+                    : WebServerOperationStore.DirectReloadConfirmedStage : "running", CancellationToken.None);
 
             public Task<PrivilegedOperationResult> RunTrackedAsync(Guid operationId, CancellationToken cancellationToken) =>
                 nginx.RunTrackedReloadAsync(operationId, cancellationToken);

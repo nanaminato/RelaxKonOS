@@ -18,6 +18,7 @@ internal sealed partial class WebServerOperationStore
         {
             return _operations.Values.Any(item => item.InstanceId == instanceId && item.State == WebServerOperationState.Running
                 && (item.WebRoot is not null || item.Stage is NativeLifecycleDispatchStage or NativeLifecycleConfirmedStage
+                    or DirectReloadDispatchStage or DirectReloadConfirmedStage or DirectReloadUnconfirmedStage
                     || item.ProblemCode == NativeRecoveryRequired && NativeLifecycleAction(item.Kind) is not null));
         }
         finally { _gate.Release(); }

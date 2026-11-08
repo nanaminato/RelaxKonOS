@@ -27,6 +27,7 @@
 - [MB-05 网站发布独立执行程序集](#mb-05-网站发布独立执行程序集)
 - [MB-05 直接 Nginx 重载独立执行程序集](#mb-05-直接-nginx-重载独立执行程序集)
 - [MB-05 Linux 外部 Nginx 重载执行代次](#mb-05-linux-外部-nginx-重载执行代次)
+- [MB-05 外部 Nginx 重载结果待核验](#mb-05-外部-nginx-重载结果待核验)
 - [MB-05 Nginx 集成检查点与执行代次](#mb-05-nginx-集成检查点与执行代次)
 - [MB-05 已知 Nginx 集成失败的具名补偿](#mb-05-已知-nginx-集成失败的具名补偿)
 - [MB-05 Linux Nginx 启动、停止与重启的原回执](#mb-05-linux-nginx-启动停止与重启的原回执)
@@ -262,3 +263,11 @@ Linux Release 使用私有挂载、PID 和网络命名空间。完整认证 Serv
 另一轮在真实 HTTPS 已更新、命令仍在途时终止 Server。重启不加载执行代码，按原 ID `2ffccb46-536d-4ad9-b131-d3646bbfa0b7` 及同键返回 `Failed / webserver.operation_interrupted`，真实 reload 一次，原 Nginx 进程及 HTTPS 继续。外部实例只有命令完成证据，此路径的原回执记录了中断。两轮专属进程由夹具及命名空间清理，宿主服务 PID、配置与代理环境文件指纹一致。
 
 日志在 `.artifacts/mb05-external-nginx/`，归档 SHA-256 为 `b384275ecfe7121b860fe09cf3b8b3513e0d1333a2d485a5b082ae15fbac9dfa`。Windows Release WebServer 和模块边界回归通过。此次确认外部 Linux 重载命令收尾及 ALC 收集，执行对象释放、隔离负载内存和生产收益未单独测量。外部实例的原生启停、自动续期部署及整机掉电仍开放。WebServer 保持 resident。
+
+## MB-05 外部 Nginx 重载结果待核验
+
+外部命令派发前在原 WebServer 台账持久化原 ID 与直接重载检查点。命令成功返回并通过原响应检查点后，原操作可持久化成功。重启遇到已派发但尚无命令确认的记录，原协调器保留 `Running / webserver.native_recovery_required`、无完成时间、同实例后台变更和配置写入门禁，以及原恢复租约。外部命令结果未知时没有 Helper 回执可查询，协调器等待同一操作的可信证据，重启只重建责任。直接命令派发后的取消或不明确失败也进入待核验。已持久化的直接命令成功阶段可在重启时补写原终态。
+
+Linux 完整认证 Server 复验真实外部 Nginx。原 `541ff47d-b3b9-43a4-b53e-abef28cdb68b` 在 HTTPS 已更新且命令应答仍扣留时中断。重启不加载执行器，同键与按 ID 查询返回同一待核验回执。原恢复租约为一，同实例新键返回 409，真实 reload 一次，Nginx master 和 HTTPS 均保持。正常路径 `4fd70602-5fe1-4939-a139-bcd2a0fe652c` 同批复验工作租约、真实命令和响应收尾、旧执行 ALC 收集及新键加载下一代。宿主服务 PID、配置和环境文件指纹一致。
+
+日志在 `.artifacts/mb05-external-nginx-gate/`，归档 SHA-256 为 `6f3fa944f10d83571d4db2c6eacab9ad04174e4093d435f142eeb2df15f299aa`。Windows Release WebServer 和模块边界回归通过。本轮实机覆盖派发后丢失结果的进程中断与正常重载收尾。派发后取消与已确认阶段的进程中断仍缺外部实例实测。原操作可信确证入口、整机掉电和生产内存收益仍开放。WebServer 保持 resident。
