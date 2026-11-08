@@ -752,7 +752,7 @@ def run(root, server, tests, mode):
                         record, = [item for item in json.loads(ledger.read_bytes()) if item["operationId"] == signed["operationId"]]
                         return record.get("kestrelRecovery")
 
-                    def recovery_leases():
+                    def recovery_leases(token):
                         return request("/api/v1.0/server/modules/relaxkonos.certificates", token)["residency"]["activeLeases"]
 
                     if mode == "recovery-staged":
@@ -761,7 +761,7 @@ def run(root, server, tests, mode):
                             request(apply_route, token, apply_payload, expected=409)
                             database.rollback()
                         assert not checkpoint()["completed"] and served_fingerprint() == active_fingerprint
-                        wait_for(restarted, lambda: recovery_leases() == 1, "staged-recovery-lease")
+                        wait_for(restarted, lambda: recovery_leases(token) == 1, "staged-recovery-lease")
                         traffic = (root / "relay.log").read_bytes()
                         restarted.terminate()
                         assert restarted.wait(timeout=20) == 0
@@ -769,7 +769,7 @@ def run(root, server, tests, mode):
                             wait_for(recovered, healthy, "kestrel-recovery-staged")
                             token = login()
                             assert not checkpoint()["completed"] and served_fingerprint() == active_fingerprint
-                            assert recovery_leases() == 1 and (root / "relay.log").read_bytes() == traffic
+                            assert recovery_leases(token) == 1 and (root / "relay.log").read_bytes() == traffic
                             assert request(renew, token, {}, "signed-loss", 202) == signed
                             request(renew, token, {}, "staged-recovery-new-key", 409,
                                     expected_problem="certificate.kestrel_recovery_pending")
@@ -783,13 +783,13 @@ def run(root, server, tests, mode):
                                 assert not chain.exists()
                                 chain.write_bytes(saved_chain.read_bytes() + b"\n")
                                 request(apply_route, token, apply_payload, expected=409)
-                                assert served_fingerprint() == active_fingerprint and recovery_leases() == 1
+                                assert served_fingerprint() == active_fingerprint and recovery_leases(token) == 1
                                 assert ledger.read_bytes() == pending_ledger and (root / "relay.log").read_bytes() == traffic
                             finally:
                                 saved_chain.replace(chain)
                             expected = {"operation": signed, "status": "applied", "fingerprintSha256": proof["issuedFingerprintSha256"]}
                             assert request(apply_route, token, apply_payload) == expected
-                            wait_for(recovered, lambda: recovery_leases() == 0, "completed-staged-recovery-lease")
+                            wait_for(recovered, lambda: recovery_leases(token) == 0, "completed-staged-recovery-lease")
                             assert checkpoint()["completed"] and served_fingerprint() == proof["issuedFingerprintSha256"]
                             assert request(apply_route, token, apply_payload) == expected
                             assert tuple(path.read_bytes() for path in stable_paths) == stable_bytes
@@ -810,7 +810,7 @@ def run(root, server, tests, mode):
                         try:
                             application.result(timeout=10)
                             assert served_fingerprint() == proof["issuedFingerprintSha256"] and not checkpoint()["completed"]
-                            wait_for(restarted, lambda: recovery_leases() == 1, "retained-recovery-lease")
+                            wait_for(restarted, lambda: recovery_leases(token) == 1, "retained-recovery-lease")
                             restarted.kill()
                             assert restarted.wait(timeout=10) < 0
                         finally:
@@ -825,25 +825,47 @@ def run(root, server, tests, mode):
                                                      "WHERE target_type='kestrel' AND current_version=?", (version,)).fetchone()
                     assert deployed == hashlib.sha256(original_chain).hexdigest().upper() == checkpoint()["chainHash"]
                     fallback = ssl.PEM_cert_to_DER_cert((root / "https.pem").read_text())
-                    chain.write_bytes(original_chain + b"\n")
-                    try:
-                        with process([server], "kestrel-recovery-startup-drift") as drifted:
-                            wait_for(drifted, healthy, "kestrel-recovery-startup-drift")
+                    pending_ledger = ledger.read_bytes()
+
+                    def verify_unavailable_recovery(fault):
+                        name = "kestrel-recovery-startup-" + fault
+                        with process([server], name) as drifted:
+                            wait_for(drifted, healthy, name)
                             token = login()
                             assert served_fingerprint(management_tls) == hashlib.sha256(fallback).hexdigest().upper()
-                            assert not checkpoint()["completed"] and recovery_leases() == 1
+                            assert not checkpoint()["completed"] and recovery_leases(token) == 1
                             request(apply_route, token, apply_payload, expected=409)
                             assert request(renew, token, {}, "signed-loss", 202) == signed
                             request(renew, token, {}, "startup-drift-new-key", 409,
                                     expected_problem="certificate.kestrel_recovery_pending")
+                            assert ledger.read_bytes() == pending_ledger
                             assert (root / "relay.log").read_bytes() == traffic
+
+                    saved_chain = chain.with_suffix(".held")
+                    chain.rename(saved_chain)
+                    try:
+                        verify_unavailable_recovery("missing-chain")
+                        chain.symlink_to(saved_chain.name)
+                        verify_unavailable_recovery("linked-chain")
+                        chain.unlink()
+                        chain.write_bytes(original_chain + b"\n")
+                        verify_unavailable_recovery("changed-chain")
                     finally:
-                        chain.write_bytes(original_chain)
+                        saved_chain.replace(chain)
+
+                    key = chain.with_name("private.key")
+                    original_key = key.read_bytes()
+                    old_key = chain.parent.with_name(proof["expectedActiveVersion"]) / "private.key"
+                    try:
+                        key.write_bytes(old_key.read_bytes())
+                        verify_unavailable_recovery("wrong-key")
+                    finally:
+                        key.write_bytes(original_key)
                     with process([server], "kestrel-recovery-restarted") as recovered:
                         wait_for(recovered, healthy, "kestrel-recovery-restarted")
                         token = login()
                         assert checkpoint()["completed"]
-                        wait_for(recovered, lambda: recovery_leases() == 0, "completed-recovery-lease")
+                        wait_for(recovered, lambda: recovery_leases(token) == 0, "completed-recovery-lease")
                         terminal_bytes = ledger.read_bytes()
                         expected = {"operation": signed, "status": "applied", "fingerprintSha256": proof["issuedFingerprintSha256"]}
                         assert request(apply_route, token, apply_payload) == expected
@@ -854,7 +876,7 @@ def run(root, server, tests, mode):
                         assert tuple(path.read_bytes() for path in stable_paths) == stable_bytes
                         assert ledger.read_bytes() == terminal_bytes and (root / "relay.log").read_bytes() == traffic
                         print(f"PASS ACME KESTREL RECOVERY APPLY: operation={signed['operationId']}; "
-                              f"served={proof['issuedFingerprintSha256']}; drifted startup rejected and terminal recovered without reapplying", flush=True)
+                              f"served={proof['issuedFingerprintSha256']}; missing, linked and changed chain and wrong key refused before original recovery", flush=True)
                 return
             if mode == "key-checkpoint":
                 assert (root / "key-before-finalize").read_text() == signed["operationId"]
