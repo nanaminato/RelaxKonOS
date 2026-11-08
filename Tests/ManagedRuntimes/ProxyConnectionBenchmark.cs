@@ -43,7 +43,7 @@ internal static class ProxyConnectionBenchmark
         LoginRequest login, Uri runtimeProxy, Func<string, Task<ProcessStartInfo>> prepare, Func<Task> verify,
         bool requireManaged, int? pollingRuntimePid = null, bool controlReads = false, bool compareSplitConfiguration = false,
         MihomoObservationCancellationRelay? sharedTrafficRelay = null, MihomoObservationCancellationRelay? overviewBurstRelay = null,
-        bool mixedRuntimeReads = false)
+        bool mixedRuntimeReads = false, MihomoObservationCancellationRelay? connectionBurstRelay = null)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(requireManaged ? 420 : 85));
         var ct = budget.Token;
@@ -73,6 +73,7 @@ internal static class ProxyConnectionBenchmark
             string[]? original = null;
             JsonElement[]? originalControl = null;
             JsonElement? originalOverview = null;
+            ProxyConnectionDto[]? originalDetails = null;
             for (var pair = 1; pair <= 3; pair++)
             {
                 foreach (var input in pair == 2 ? inputs.Reverse() : inputs)
@@ -94,7 +95,8 @@ internal static class ProxyConnectionBenchmark
                         var timings = new List<double>();
                         var readers = sharedTrafficRelay is null ? 1 : 4;
                         var trafficBefore = sharedTrafficRelay?.TrafficRequests;
-                        var connectionsBefore = (sharedTrafficRelay ?? overviewBurstRelay)?.ConnectionRequests;
+                        var connectionRelay = sharedTrafficRelay ?? overviewBurstRelay ?? connectionBurstRelay;
+                        var connectionsBefore = connectionRelay?.ConnectionRequests;
                         var versionsBefore = overviewBurstRelay?.VersionRequests;
                         var serverCpuStart = ReadCpu(process);
                         var runtimeCpuStart = runtime is null ? TimeSpan.Zero : ReadCpu(runtime);
@@ -106,7 +108,7 @@ internal static class ProxyConnectionBenchmark
                         }
                         await load;
                         var trafficRequests = sharedTrafficRelay?.TrafficRequests - trafficBefore;
-                        var connectionRequests = (sharedTrafficRelay ?? overviewBurstRelay)?.ConnectionRequests - connectionsBefore;
+                        var connectionRequests = connectionRelay?.ConnectionRequests - connectionsBefore;
                         var versionRequests = overviewBurstRelay?.VersionRequests - versionsBefore;
                         var expectedSamples = input.Mode == baselineMode ? readers * TrafficPolls : TrafficPolls;
                         if (sharedTrafficRelay is not null && (trafficRequests != expectedSamples || connectionRequests != expectedSamples))
@@ -115,6 +117,9 @@ internal static class ProxyConnectionBenchmark
                             || (input.Mode == baselineMode ? versionRequests != 4 * RequestsPerRoute
                                 : versionRequests is null || versionRequests < RequestsPerRoute || versionRequests >= 4 * RequestsPerRoute)))
                             throw new InvalidOperationException($"The overview burst counted {versionRequests} version and {connectionRequests} connection reads.");
+                        if (connectionBurstRelay is not null && (input.Mode == baselineMode ? connectionRequests != 4 * RequestsPerRoute
+                            : connectionRequests is null || connectionRequests < RequestsPerRoute || connectionRequests >= 4 * RequestsPerRoute))
+                            throw new InvalidOperationException($"The detail burst counted {connectionRequests} native connection reads.");
                         var serverCpuMs = (ReadCpu(process) - serverCpuStart).TotalMilliseconds;
                         var runtimeCpuMs = runtime is null ? 0 : (ReadCpu(runtime) - runtimeCpuStart).TotalMilliseconds;
                         var cooldown = new List<MemoryPoint>();
@@ -138,6 +143,7 @@ internal static class ProxyConnectionBenchmark
                             TrafficReaders = runtime is null ? 0 : readers, TrafficRequests = trafficRequests, ConnectionRequests = connectionRequests,
                             OverviewReaders = overviewBurstRelay is null ? 0 : mixedRuntimeReads ? 1 : 4,
                             RuntimeReaders = mixedRuntimeReads ? 3 : 0, VersionRequests = versionRequests,
+                            ConnectionReaders = connectionBurstRelay is null ? 0 : 4,
                             ServerCpuMs = serverCpuMs, RuntimeCpuMs = runtimeCpuMs
                         }));
 
@@ -169,12 +175,28 @@ internal static class ProxyConnectionBenchmark
                             for (var i = 0; i < RequestsPerRoute; i++)
                             {
                                 var watch = Stopwatch.StartNew();
-                                if (mixedRuntimeReads) await ObserveMixedRuntimeAsync();
+                                if (connectionBurstRelay is not null) await ObserveConnectionBurstAsync();
+                                else if (mixedRuntimeReads) await ObserveMixedRuntimeAsync();
                                 else if (overviewBurstRelay is not null) await ObserveOverviewBurstAsync();
                                 else if (controlReads) await ObserveControlAsync();
                                 else if (!(await ObserveAsync(client, destination, requireManaged, ct)).SequenceEqual(original))
                                     throw new InvalidOperationException("A measured request saw a different active connection set.");
                                 timings.Add(watch.Elapsed.TotalMilliseconds);
+                            }
+                        }
+
+                        async Task ObserveConnectionBurstAsync()
+                        {
+                            var values = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
+                                client.GetFromJsonAsync<ProxyConnectionDto[]>(ProxyApiRoutes.Connections, RelaxKonOSJsonOptions.Default, ct)));
+                            foreach (var details in values)
+                            {
+                                if (details?.Length != ConnectionCount || details.Any(item => item.Destination != destination))
+                                    throw new InvalidOperationException("The detail burst did not return the original native connection set.");
+                                var ordered = details.OrderBy(item => item.Id, StringComparer.Ordinal).ToArray();
+                                originalDetails ??= ordered;
+                                if (!ordered.Select(item => item.Id).SequenceEqual(original) || !ordered.SequenceEqual(originalDetails))
+                                    throw new InvalidOperationException("The detail burst changed a connection identifier or its public projection.");
                             }
                         }
 

@@ -521,6 +521,8 @@ MB-04 的重叠概览请求共用一次受管运行时、活动档案、恢复�
 
 MB-04 的重叠流量请求共用一个控制器采样和连接快照读取。采样租约负责实际控制器任务与作用域清理，各请求的租约负责自身 HTTP 响应。最后一个客户端取消后，新请求等原采样清理再读取。Proxy 继续 resident。见[重叠流量采样](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-重叠流量采样)。
 
+MB-04 的重叠连接详情请求共用一次在途读取与投影。采样工作和各 HTTP 响应分别持有原租约，清理失败保留恢复责任。概览计数和流量统计保留各自投影。见[重叠连接详情采样](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-重叠连接详情采样)。
+
 MB-05 的四条 Compose 只读 HTTP 路由使用工作租约保护 CLI、响应及异步作用域清理。未核实的 CLI 清理保留恢复责任，Docker 继续 resident。见[Compose 只读 HTTP 工作责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-只读-http-工作责任)。
 
 MB-05 的 Compose 执行代码在所有作用域结束后可闲时卸载。Core 保有共享 Engine、原栈操作台账和终态恢复，Docker 管理模块继续 resident。见[Compose 独立执行程序集](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-独立执行程序集)。

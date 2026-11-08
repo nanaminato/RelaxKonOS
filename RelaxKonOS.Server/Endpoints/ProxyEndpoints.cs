@@ -164,7 +164,7 @@ public static class ProxyEndpoints
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyOverviewDto>();
         app.MapGet(ProxyApiRoutes.Connections, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteScopedAsync(context, leases, static async (services, ct) =>
         {
-            var result = await services.GetRequiredService<IMihomoControllerClient>().GetConnectionsAsync(ct);
+            var result = await services.GetRequiredService<ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>>().ReadAsync(ct);
             return result.Succeeded ? Results.Ok(result.Value) : Problem(result.ProblemCode, StatusCodes.Status503ServiceUnavailable);
         })).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Traffic, (HttpContext context, IResidentModuleWorkLeaseSource leases) =>

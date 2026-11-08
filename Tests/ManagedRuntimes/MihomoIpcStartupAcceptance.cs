@@ -215,6 +215,9 @@ internal static class MihomoIpcStartupAcceptance
         var overviewBurst = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_OVERVIEW_BURST") == "1";
         var mixedRuntimeReads = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_MIXED_RUNTIME_READS") == "1";
         var controlReads = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_CONTROL_READS") == "1";
+        var connectionBurst = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_CONNECTION_BURST") == "1";
+        if (connectionBurst && (trafficPolling || sharedTraffic || overviewBurst || controlReads || string.IsNullOrEmpty(baseline)))
+            throw new InvalidOperationException("Connection detail bursts require a dedicated baseline.");
         if (sharedTraffic && (trafficPolling || controlReads || string.IsNullOrEmpty(baseline)))
             throw new InvalidOperationException("Shared-traffic measurement requires a separate traffic baseline.");
         if (overviewBurst && (trafficPolling || sharedTraffic || controlReads || string.IsNullOrEmpty(baseline)))
@@ -234,7 +237,7 @@ internal static class MihomoIpcStartupAcceptance
             start.Environment["Modules__Proxy__Enabled"] = "true";
             start.Environment["Identity__LinuxPamTransport"] = "helper";
             await using var helper = await StartHelperAsync(helperAssembly, config, transport);
-            await using var workloadRelay = sharedTraffic || overviewBurst
+            await using var workloadRelay = sharedTraffic || overviewBurst || connectionBurst
                 ? await MihomoObservationCancellationRelay.StartAsync(original.ControllerPort, default) : null;
             const string controllerEndpoint = "Proxy__Mihomo__Controller__Endpoint";
             var endpoint = start.Environment[controllerEndpoint];
@@ -244,13 +247,15 @@ internal static class MihomoIpcStartupAcceptance
                 login!, new Uri($"http://127.0.0.1:{port}/"), PrepareAsync, VerifyAsync, requireManaged: true,
                 pollingRuntimePid: trafficPolling || sharedTraffic ? runtimePid : null, controlReads: controlReads,
                 compareSplitConfiguration: compareSplitConfiguration, sharedTrafficRelay: sharedTraffic ? workloadRelay : null,
-                overviewBurstRelay: overviewBurst ? workloadRelay : null, mixedRuntimeReads: mixedRuntimeReads);
+                overviewBurstRelay: overviewBurst ? workloadRelay : null, mixedRuntimeReads: mixedRuntimeReads,
+                connectionBurstRelay: connectionBurst ? workloadRelay : null);
             start.Environment[controllerEndpoint] = endpoint;
             var log = await helper.StopAsync(drainCompletedRequests: true);
             if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
                 throw new InvalidOperationException("The read workload dispatched a native publication action.");
-            var measurement = mixedRuntimeReads ? "MIXED RUNTIME" : overviewBurst ? "OVERVIEW BURST" : sharedTraffic ? "SHARED TRAFFIC"
+            var measurement = connectionBurst ? "CONNECTION BURST" : mixedRuntimeReads ? "MIXED RUNTIME"
+                : overviewBurst ? "OVERVIEW BURST" : sharedTraffic ? "SHARED TRAFFIC"
                 : trafficPolling ? "TRAFFIC POLLING" : controlReads ? "CONTROL READS" : "OVERVIEW";
             Console.WriteLine($"PASS MANAGED MIHOMO {measurement} BENCHMARK: native PID {runtimePid}, original receipt {interrupted}, no configure or recover");
 
@@ -594,6 +599,29 @@ internal static class MihomoIpcStartupAcceptance
                     throw new InvalidOperationException($"Live observation failed during recovery. Logs={logs?.Length}, traffic={traffic}, pending={(await startupStore.ReadAsync(ct)).Pending?.OperationId == drainId}, forwardingCompleted={forwarding.IsCompleted}.");
                 await ShareTrafficAsync(client, drainId);
                 await ShareOverviewAsync(client, drainId);
+                var detailRequests = controllerRelay!.ConnectionRequests;
+                var heldDetail = controllerRelay.HoldNext("/connections");
+                using (var firstCaller = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    var first = client.GetAsync(ProxyApiRoutes.Connections, firstCaller.Token);
+                    await heldDetail.Received.Task.WaitAsync(ct);
+                    var remaining = ObserveConnectionAsync();
+                    try
+                    {
+                        while (await ActiveLeasesAsync(client) != 3) await Task.Delay(25, ct);
+                        await firstCaller.CancelAsync();
+                        try { using var unexpected = await first; throw new InvalidOperationException("The first detail reader did not cancel."); }
+                        catch (OperationCanceledException) when (firstCaller.IsCancellationRequested) { }
+                    }
+                    finally { heldDetail.Release.TrySetResult(); }
+                    if (await remaining != originalConnection || heldDetail.Drained.Task.IsCompleted
+                        || controllerRelay.ConnectionRequests != detailRequests + 1)
+                        throw new InvalidOperationException("The remaining reader did not receive the original detail sample.");
+                }
+                await CancelObservationAsync(client, ProxyApiRoutes.Connections, "/connections", expectedLeases: 2);
+                if (controllerRelay.ConnectionRequests != detailRequests + 3)
+                    throw new InvalidOperationException("The last-reader cancellation did not drain before a fresh detail read.");
+                Console.WriteLine($"PASS MIHOMO NATIVE SHARED CONNECTIONS: {drainId}; shared native detail and independent cancellation, fresh detail after drain");
                 await CancelObservationAsync(client, ProxyApiRoutes.Overview, "/connections", expectedLeases: 2);
                 await CancelObservationAsync(client, ProxyApiRoutes.Traffic, "/traffic", expectedLeases: 2);
                 Console.WriteLine($"PASS MIHOMO NATIVE TRAFFIC CANCELLATION: {drainId}; held native sample drained and a fresh request completed");

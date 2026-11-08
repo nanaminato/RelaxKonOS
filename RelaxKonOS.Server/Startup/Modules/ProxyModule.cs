@@ -73,6 +73,8 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
                 services.GetRequiredService<ProxyReadSampler<MihomoRuntimeObservation>>().ReadAsync, ct));
         ProxyReadSampler<ProxyTrafficDto>.Register(builder.Services,
             static (services, ct) => services.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(ct));
+        ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>.Register(builder.Services,
+            static (services, ct) => services.GetRequiredService<IMihomoControllerClient>().GetConnectionsAsync(ct));
 
         // Core provides the one shared TUN safety owner to both routes and engine recovery hooks.
 

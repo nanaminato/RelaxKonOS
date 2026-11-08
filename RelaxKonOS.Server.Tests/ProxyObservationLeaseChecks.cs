@@ -36,6 +36,8 @@ internal static class ProxyObservationLeaseChecks
         builder.Services.AddSingleton<IResidentModuleWorkLeaseSource, CapturingLeaseSource>();
         ProxyReadSampler<ProxyTrafficDto>.Register(builder.Services,
             static (services, ct) => services.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(ct));
+        ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>.Register(builder.Services,
+            static (services, ct) => services.GetRequiredService<IMihomoControllerClient>().GetConnectionsAsync(ct));
         ProxyReadSampler<MihomoRuntimeObservation>.Register(builder.Services, static async (services, ct) =>
         {
             var reachable = await services.GetRequiredService<IMihomoControllerClient>().IsReachableAsync(ct);
@@ -145,7 +147,8 @@ internal static class ProxyObservationLeaseChecks
         foreach (var (route, holdController) in routes.SelectMany(route => new[] { (route, true), (route, false) }))
         {
             scenario = new Scenario(holdController);
-            var cleanupBeforeResponse = (route == ProxyApiRoutes.Traffic || route == ProxyApiRoutes.Overview || route == ProxyApiRoutes.Runtime)
+            var cleanupBeforeResponse = (route == ProxyApiRoutes.Connections || route == ProxyApiRoutes.Traffic
+                || route == ProxyApiRoutes.Overview || route == ProxyApiRoutes.Runtime)
                 && !holdController;
             if (cleanupBeforeResponse) scenario.ReleaseCleanup.TrySetResult();
             using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -298,7 +301,8 @@ internal static class ProxyObservationLeaseChecks
         {
             await scenario.RequestExited.Task.WaitAsync(ct);
             using var reply = await failed;
-            TestAssert.Assert(reply.IsSuccessStatusCode && HasLease()
+            TestAssert.Assert(reply.StatusCode == HttpStatusCode.InternalServerError
+                && coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases == 1
                 && coordinator.Describe(ServerModules.ProxyId)?.BlockedBy == "module-recovery-blocked",
                 "Cleanup failure must retain the work lease and block the original module owner.");
         }
