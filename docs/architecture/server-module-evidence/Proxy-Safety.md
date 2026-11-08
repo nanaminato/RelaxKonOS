@@ -27,6 +27,7 @@
 - [MB-04 完整 Server 接续在途 TUN 激活](#mb-04-完整-server-接续在途-tun-激活)
 - [MB-04 TUN 发布准入与恢复标记](#mb-04-tun-发布准入与恢复标记)
 - [MB-04 已确认受管发布的真实 TUN 门禁](#mb-04-已确认受管发布的真实-tun-门禁)
+- [MB-04 Linux TUN 标记持久化及受管门禁复核](#mb-04-linux-tun-标记持久化及受管门禁复核)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -257,6 +258,18 @@ Linux x64 Release 在私有 systemd、D-Bus 和网络内复测独立 Helper 及�
 Windows Release TUN 边界 34 项、Core 安全所有权 37 项、工作作用域 31 项及模块边界回归通过。Linux x64 Release 在私有网络、挂载和 PID 命名空间用实际 Mihomo 验证。原崩溃操作 `5c9f30ec-7db1-4cee-a8ee-0777fc08b82a` 恢复时经历真实路由缺失、控制器响应丢失与不安全标记路径，原禁用 reload 一次。随后同一 Core worker 保留已完成的新会话。删除专属默认路由后显式关闭会话，原 `bb1ba90e-4e66-4237-ac4b-bf527f374067` 仍以未完成标记存在。路由恢复后，同一 worker 关闭原标记，设备和策略规则回到基线，未追加禁用 reload。宿主 Mihomo、sing-box PID 与代理文件指纹一致。日志为 .artifacts/mb04-tun-rescan-live-final.log，归档 SHA-256 为 befc69710c42c3a2d6844a2037396bb8bae39ab1a59dd646faf78d6caad3eeed。首轮本地重启夹具误用原 owner，已用两个 owner 复测。首轮远端包装器引号错误，在连接前退出，修正后通过。受管发布仍保留网络事务门禁，Proxy 保持 resident。
 
 Linux 完整非 root Server、独立 Helper 与私有 systemd 联合回归也通过。完整 Server 恢复在途激活 `b5a3586c-3afb-4f92-9e67-2e86a5e75518` 的原标记和路由，Mihomo 继续运行，系统代理纠偏、sing-box 授权到期及真实转发接续，专属 cgroup 清理且宿主指纹一致。日志为 .artifacts/mb04-tun-rescan-systemd-live.log，归档 SHA-256 为 1e837ca6a8a4fa02c1b967d37906ee05e183f5cac44a47dfcb102f714e091a19。
+
+## MB-04 Linux TUN 标记持久化及受管门禁复核
+
+Core 在 Linux 按原格式写入 TUN 标记，文件内容同步并原子替换后同步状态目录及其父目录，删除标记后同步状态目录。所有权仍在原 Core 服务。受管 Mihomo 在现有 systemd 单元中隔离 `/dev/net/tun`，配置适配器拒绝需要宿主网络变更的配置。私有 systemd 复核使用实际 `ip -4 route get` 查询管理网关，并对 Mihomo 进程命名空间的 `active.yaml` 启动凭据取摘要。两次门禁请求维持原配置修订、PID、管理路由、规则、设备列表与真实 HTTP 转发。原补偿 `9b9e212b-68a3-41d5-b3d7-ce10a8d031ff` 仍可读取，新增标记与控制器请求均为零。
+
+Windows Release ManagedRuntimes、TUN 边界 38 项、Core 安全 40 项、驻留及独立程序集 31 项、工作作用域 31 项及模块边界回归通过。可信下载探针因缺少进程级测试 CA 覆盖而跳过。Linux x64 Release 私有网络验收中，原直连操作 `700f289a-cd49-432c-be8a-63cde830bb28` 在启动方强制退出后恢复，实际设备撤除一次，恢复管理路由且保持其他操作的门禁。原关闭 `c179090c-61cd-4b42-8ec5-5947a25e7e72` 在路由恢复后结案，禁用未重复。宿主服务 PID 与代理文件指纹一致。日志目录 `.artifacts/mb04-tun-marker-sync/`，`tun-linux.log` 归档 SHA-256 为 `387fad8bafb1ec613e792b3d2c31a1c610a47e79aabc7b28c8d7c5026c7d6c4f`。
+
+受管 Mihomo 私有 systemd 回归 178 项通过。独立 Helper 和 Server 的原回执恢复继续通过，专属 cgroup 已移除，宿主服务及代理文件指纹一致。`managed-linux.log` 归档 SHA-256 为 `33a2b4757bc236c53de8d33e3c5fb2881bb836b0e9718d47a18bd3e7302f51a6`。
+
+已实现但实机未验证的部分为整机掉电后的标记目录持久性。受管 TUN 设备交付、规则与 DNS 效果归属、原生网络回执及其与 Core 标记的绑定均未实现。未核实的效果维持准入门禁，Proxy 保持 resident。本轮分别观察 Core 工作作用域释放和恢复夹具进程退出。未测量 ALC 回收、隔离负载内存或生产内存收益。
+
+下一项原生夹具可验证已有 TUN 描述符的交付。Mihomo v1.19.33 接收 `file-descriptor`，其 sing-tun v0.4.28 的 Linux 初始化在该分支使用已有描述符并跳过设备创建和配置。须用实际系统服务证明描述符关联的设备身份、无网络管理能力时的真实 TUN 转发，以及描述符和网络效果如何随原操作收尾。[Mihomo 配置源码](https://github.com/MetaCubeX/mihomo/blob/v1.19.33/listener/config/tun.go) · [sing-tun Linux 源码](https://github.com/MetaCubeX/sing-tun/blob/v0.4.28/tun_linux.go)
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Proxy.Platform;
 
@@ -186,10 +187,19 @@ public sealed class ProxyTunSafetyService(
             }
             cancellationToken.ThrowIfCancellationRequested();
             File.Move(temporary, MarkerPath(), overwrite: true);
+            if (OperatingSystem.IsLinux())
+            {
+                LinuxDirectorySync.Flush(directory);
+                LinuxDirectorySync.Flush(Path.GetDirectoryName(directory)!);
+            }
         }
         finally { File.Delete(temporary); }
     }
-    private void DeleteMarker() { if (File.Exists(MarkerPath())) File.Delete(MarkerPath()); }
+    private void DeleteMarker()
+    {
+        File.Delete(MarkerPath());
+        if (OperatingSystem.IsLinux()) LinuxDirectorySync.Flush(paths.GetStateDirectory());
+    }
     private string MarkerPath() => Path.Combine(paths.GetStateDirectory(), "proxy-tun-recovery.json");
     private sealed record RecoveryMarker(Guid OperationId, Guid ProfileId, ProxyManagementRouteSnapshot Snapshot, DateTimeOffset CreatedAt, bool ActivationCompleted);
 }

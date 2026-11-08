@@ -185,29 +185,40 @@ internal static class MihomoIpcStartupAcceptance
         var safety = new ProxyTunSafetyService(tunPaths, platform,
             new MihomoTunRuntimeController(tunPaths, new ProxySettingsReader(tunPaths), controller, startupStore,
                 new HostProxyTunDeviceObserver()));
-        var managementAddress = IPAddress.Parse("192.0.2.3");
+        var managementAddress = IPAddress.Parse("192.0.2.1");
         var route = await platform.CaptureManagementRouteAsync(managementAddress, default)
             ?? throw new InvalidOperationException("The private systemd fixture has no management route.");
         var networkBefore = await ReadNetworkAsync();
         var pidBefore = await ReadRuntimePidAsync();
         if (!int.TryParse(pidBefore, out var runtimePid) || runtimePid <= 0)
             throw new InvalidOperationException("The confirmed Mihomo systemd process is not running.");
+        var processRoot = $"/proc/{runtimePid}/root";
+        var credential = $"{processRoot}/run/credentials/{LinuxMihomoArchiveHost.Unit}/active.yaml";
+        var credentialBefore = MihomoPublicationStore.Identity(await File.ReadAllTextAsync(credential));
+        var nativeRouteBefore = await ReadManagementRouteAsync();
+        if (credentialBefore != identity || !nativeRouteBefore.Contains($" dev {route.EgressInterface} ", StringComparison.Ordinal)
+            || File.Exists($"{processRoot}/dev/net/tun"))
+            throw new InvalidOperationException("The native configuration, management route or TUN device isolation was not established.");
         var activeBefore = await File.ReadAllBytesAsync(active);
         var publicationBefore = await startupStore.ReadAsync(default);
         var rejected = await safety.EnableAsync(Guid.NewGuid(), managementAddress, default);
+        var retried = await safety.EnableAsync(Guid.NewGuid(), managementAddress, default);
         var after = await lifecycle.QueryAsync(default, interrupted);
         var publicationAfter = await startupStore.ReadAsync(default);
         var activeAfter = await File.ReadAllBytesAsync(active);
-        if (rejected != ProxyProblemCodes.NotSupported || await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) is not null
+        if (rejected != ProxyProblemCodes.NotSupported || retried != rejected
+            || await safety.CaptureRecoveryAsync(includeCurrentSession: true, default) is not null
             || requests.Count != 0 || !activeBefore.SequenceEqual(activeAfter)
             || after.Receipt != final.Receipt || after.Installation.StateRevision != final.Installation.StateRevision
             || after.ConfigurationIdentity != final.ConfigurationIdentity
             || publicationAfter.Revision != publicationBefore.Revision || publicationAfter.Identity != publicationBefore.Identity
             || publicationAfter.Pending is not null
             || await ReadNetworkAsync() != networkBefore || !await platform.VerifyManagementRouteAsync(route, default)
+            || await ReadManagementRouteAsync() != nativeRouteBefore
+            || MihomoPublicationStore.Identity(await File.ReadAllTextAsync(credential)) != credentialBefore
             || await ReadRuntimePidAsync() != pidBefore || !await probe(port))
             throw new InvalidOperationException("Rejected TUN activation changed the confirmed native publication, network or recovery authority.");
-        Console.WriteLine($"PASS MIHOMO CONFIRMED TUN GATE: original compensation {interrupted}, native PID preserved, no marker or controller request");
+        Console.WriteLine($"PASS MIHOMO CONFIRMED TUN GATE: original compensation {interrupted}, native credential and route preserved, repeated rejection without marker or controller request");
 
         var baseline = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_OVERVIEW_BASELINE");
         var trafficPolling = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_TRAFFIC_POLLING") == "1";
@@ -796,6 +807,9 @@ internal static class MihomoIpcStartupAcceptance
         await NativeRuntimeProcess.RunAsync("/usr/sbin/ip", ["-4", "rule", "show"], 4096)
         + await NativeRuntimeProcess.RunAsync("/usr/sbin/ip", ["-6", "rule", "show"], 4096)
         + string.Join(',', NetworkInterface.GetAllNetworkInterfaces().Select(item => item.Name).Order(StringComparer.Ordinal));
+
+    private static Task<string> ReadManagementRouteAsync() =>
+        NativeRuntimeProcess.RunAsync("/usr/sbin/ip", ["-4", "route", "get", "192.0.2.1"], 4096);
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     private static Task<string> ReadRuntimePidAsync() =>
