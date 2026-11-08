@@ -17,6 +17,8 @@
 
 2026-11-07（MB-04 / MR-03 执行作用域）：安装台账适配器仅在实际执行或恢复时解析安装引导、安装发布及移除发布。运行时管理器只在状态探测和启动就绪检查中创建 HTTP 控制器。锁、冻结计划、原 operationId 和 Helper 回执仍由原服务负责。验收见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-运行时与安装执行作用域)。
 
+2026-11-08（MB-04 / MR-03 配置补偿）：Linux 专属 systemd 验证有效订阅候选开始转发后停止、原 Helper 补偿并恢复旧配置，以及 Server 按原回执恢复。范围限现有受管配置事务。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-受管-mihomo-切换后的订阅激活补偿)。
+
 ## Windows 日常安装入口调整（2026-10-27，MR-03/04/05）
 
 按产品要求，Windows Nginx、Mihomo、frpc/frps 的日常安装采用官方版本列表和文件安装，不再要求管理员先部署签名目录、录入摘要或确认发布源。Nginx 解析 nginx.org 下载页，Mihomo/FRP 解析固定官方 GitHub 仓库的 Releases API（最多三页、每页 5 条，取得首批匹配当前宿主架构的稳定版即返回；启用 HTTP 压缩，排除 draft/prerelease），选择具体版本后走既有安装台账。sing-box 的组件及来源平台配置仅声明 Linux，不支持 Windows；组件中心按通用平台配置过滤，不为 sing-box 编写隐藏特例。此配置描述 RelaxKonOS 的组件支持范围，不表示上游没有 Windows 二进制。

@@ -591,6 +591,8 @@ Linux 直连设置按原 ID 核对宿主策略变更。guard 可完成已证实�
 
 订阅激活的明确失败按原 ID 保留终态，应答未知继续占用原发布责任。见[订阅激活未知与失败的实机回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅激活未知与失败的实机回执)。
 
+受管 Mihomo 候选已实际服务后停止时，生产 Helper 负责恢复旧配置。Server 工作租约覆盖原 Helper 应答，进程中断后按原回执核对终态和补偿结果。见[切换后的订阅激活补偿](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-受管-mihomo-切换后的订阅激活补偿)。
+
 直连 Mihomo 档案与设置发布在原发布锁内按需加载执行代次。实际 reload、结果核验、持久确认及临时文件清理结束后释放，HTTP 工作责任继续保护响应。Core 继续负责原检查点、系统代理和 TUN。见[直连档案与设置发布执行器](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连档案与设置发布执行器)。
 
 显式 WebRoot 启用复用 WebServer 可回收执行代次。原 Nginx、站点配置、TLS 和未知回执继续由 Host 与原 Helper 边界负责。见[直接 WebRoot 启用执行器](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-webroot-启用执行器)。

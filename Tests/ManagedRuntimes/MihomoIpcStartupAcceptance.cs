@@ -284,7 +284,7 @@ internal static class MihomoIpcStartupAcceptance
             var native = await lifecycle.QueryAsync(default, interrupted);
             var application = await startupStore.ReadAsync(default);
             var pid = await ReadRuntimePidAsync();
-            await MihomoSubscriptionQueueAcceptance.RunAsync(start, tunPaths, port, startupStore, lifecycle, login!, probe, async ct =>
+            var postSwitch = await MihomoSubscriptionQueueAcceptance.RunAsync(start, tunPaths, port, startupStore, lifecycle, login!, probe, async ct =>
             {
                 var observed = await lifecycle.QueryAsync(ct, interrupted);
                 var published = await startupStore.ReadAsync(ct);
@@ -295,7 +295,9 @@ internal static class MihomoIpcStartupAcceptance
                     throw new InvalidOperationException("The subscription queue changed the original native publication or traffic.");
             });
             var log = await helper.StopAsync(drainCompletedRequests: true);
-            if (log.Split('\n').Count(line => line.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)) != 5
+            var dispatches = log.Split('\n').Where(line => line.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)).ToArray();
+            if (dispatches.Length != (postSwitch is null ? 5 : 6)
+                || (postSwitch is not null && dispatches.Count(line => line.Contains($"id={postSwitch} ", StringComparison.OrdinalIgnoreCase)) != 1)
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
                 throw new InvalidOperationException("Subscription activation and each refresh must configure once without native replay.");
         }

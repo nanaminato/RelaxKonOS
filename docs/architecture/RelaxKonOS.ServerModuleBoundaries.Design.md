@@ -2451,7 +2451,19 @@ Windows Release 配置、订阅边界 40 项、ManagedRuntimes 和模块边界�
 
 直连激活 `8db17423-7d06-4def-a445-d4c7eec3268a` 在 Server 已替换配置、真实控制器尚未读取时损坏隔离候选 YAML。真实 Mihomo 返回 HTTP 400，原事务重载旧配置一次。认证控制器读到旧节点，原档案修订和草稿时间保持，原失败回执跨进程读取一致。另一原激活 `de7c6260-9a03-4ccb-91c3-3993c31aa063` 实际加载候选后暂扣应答并强制终止 Server。重启恢复旧磁盘配置，真实进程仍报告候选节点，原激活保持 `publication_pending`、无完成时间，目标档案仍未激活，新键被拒绝。两条路径均无重复下载或重载，原进程跨中断 HTTP 转发通过。
 
-直连首轮在并行运行期间触及 250 秒运行窗口，未产生终态。最终轮在同一运行窗口内通过，两轮专属 cgroup 均已清理，宿主运行时与代理文件指纹一致。最终日志为 `.artifacts/mb04-activation-failure/live-final.log`，归档 SHA-256 为 `e2030e4f66464a7157124c511301c80e603797f8f9269b6b2e6c96690a10c973`。受管激活切换后的故障补偿尚未联合实测。Proxy 保持 resident，动态休眠和生产内存未验收。
+直连首轮在并行运行期间触及 250 秒运行窗口，未产生终态。最终轮在同一运行窗口内通过，两轮专属 cgroup 均已清理，宿主运行时与代理文件指纹一致。最终日志为 `.artifacts/mb04-activation-failure/live-final.log`，归档 SHA-256 为 `e2030e4f66464a7157124c511301c80e603797f8f9269b6b2e6c96690a10c973`。受管激活切换后的故障补偿见下节。Proxy 保持 resident，动态休眠和生产内存未验收。
+
+### MB-04 受管 Mihomo 切换后的订阅激活补偿
+
+完整认证 Server 提交有效的新订阅档案。私有挂载、网络与 systemd 夹具暂扣一次真实 `systemctl start` 的完成，确认候选新进程的实际凭据配置摘要等于原 pending 候选，并通过真实上游转发。随后实际停止该候选，再放行生产 Helper 的健康核验。Helper 按原发布事务重启旧配置并通过转发。候选停止到旧进程就绪期间存在服务切换窗口。
+
+中继暂扣原 Helper 失败回执时，Server 仍显示 Running 并持有工作租约。强制终止 Server 后，重启按原 operationId 和原键读取 Failed，活动订阅和候选草稿记录一致，恢复后的原配置身份、Helper 修订及 Mihomo PID 保持，工作租约排空。Helper 日志按原 ID 核对一次配置派发，零额外恢复派发，激活无新增订阅下载。生产补偿与恢复仍由原 Helper 和发布台账负责。
+
+隔离夹具在 `RELAXKONOS_TEST_MIHOMO_SUBSCRIPTION=1` 时以 `RELAXKONOS_TEST_MIHOMO_POST_SWITCH=1` 启用切换故障。在私有挂载、PID、网络和 systemd 命名空间内安装测试用 `mihomo-post-switch-systemctl.sh`，并检查宿主指纹。首轮候选补偿通过，但套件仍按旧配置派发总数校验而失败。第二轮发现 `systemctl start` 完成早于候选监听就绪，随后改为先核对实际 TCP 监听，再完成 HTTP 转发并验证进程身份。
+
+最终 Linux 原生套件 178 项通过。新故障原激活 ID 为 `64e3b00e-896b-4a3a-bbf5-6499c1e3176d`，专属 cgroup 已清理，宿主运行时和代理文件指纹一致。证据为 `.artifacts/mb04-post-switch/linux-verified.log`，归档 SHA-256 为 `9a78d3336c6ac27cfe4a5c1b6f39b16a99dcf6461efce6497f5772e76f7f684b`。
+
+Windows Release 订阅边界 40 项、配置与模块边界回归通过。MB-05 跨进程夹具按原 `f7b5875c-bd0e-427c-a555-55a2c64191bd` 返回 Interrupted，受控副作用计数为一。补偿本身失败后的原 ID 接管、Proxy 整体动态休眠及生产内存仍待验收。
 
 ### MB-04 Mihomo 重叠流量采样
 

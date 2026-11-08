@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
+using System.Runtime.Versioning;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.Builder;
@@ -20,11 +23,12 @@ using RelaxKonOS.Server.Proxy.Mihomo;
 
 internal static class MihomoSubscriptionQueueAcceptance
 {
-    internal static async Task RunAsync(ProcessStartInfo start, IProxyPlatformPaths paths, int port,
+    internal static async Task<Guid?> RunAsync(ProcessStartInfo start, IProxyPlatformPaths paths, int port,
         MihomoPublicationStore publication, MihomoRuntimeLifecycle lifecycle, LoginRequest login, Func<int, Task<bool>> probe,
         Func<CancellationToken, Task> verifyNative)
     {
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(145));
+        var postSwitch = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_POST_SWITCH") == "1";
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(postSwitch ? 200 : 145));
         var ct = budget.Token;
         var settingsFile = Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json");
         var original = File.Exists(settingsFile) ? await File.ReadAllBytesAsync(settingsFile, ct) : null;
@@ -35,7 +39,7 @@ internal static class MihomoSubscriptionQueueAcceptance
         try
         {
             await NativeRuntimeProcess.RunAsync("/usr/bin/chown", [owner, "--", settingsFile], 256);
-            await VerifyAsync();
+            return await VerifyAsync();
         }
         finally
         {
@@ -43,7 +47,7 @@ internal static class MihomoSubscriptionQueueAcceptance
             else await File.WriteAllBytesAsync(settingsFile, original);
         }
 
-        async Task VerifyAsync()
+        async Task<Guid?> VerifyAsync()
         {
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
@@ -160,6 +164,7 @@ internal static class MihomoSubscriptionQueueAcceptance
             await VerifyActiveRefreshResponseLossAsync();
             await VerifyFailedPublicationAsync(activation: false);
             await VerifyFailedPublicationAsync(activation: true);
+            return postSwitch && OperatingSystem.IsLinux() ? await VerifyPostSwitchCompensationAsync() : null;
 
             async Task VerifyActiveRefreshAsync()
             {
@@ -425,6 +430,133 @@ internal static class MihomoSubscriptionQueueAcceptance
                         : $"PASS MANAGED MIHOMO ACTIVE SUBSCRIPTION COMPENSATION: original failed {id}, previous traffic and timestamp preserved, no replay");
                 }
                 finally { await ProxyAuthenticatedPublicationChecks.StopAsync(recovery); }
+            }
+
+            [SupportedOSPlatform("linux")]
+            async Task<Guid> VerifyPostSwitchCompensationAsync()
+            {
+                const string fault = "/run/relaxkonos-mihomo-start-fault";
+                if (!File.Exists(Path.Combine(fault, "systemctl")))
+                    throw new InvalidOperationException("The private Mihomo systemd fault boundary is unavailable.");
+                var previous = await publication.ReadAsync(ct);
+                var socket = start.Environment["PrivilegedHelper__SocketPath"]!;
+                var key = Guid.NewGuid().ToString("N");
+                var writes = 0;
+                string route;
+                Guid id;
+                ProxySubscriptionDto draft;
+                ProxySubscriptionDto originalSubscription;
+                RuntimeInstallationSnapshot failed;
+                int restoredPid;
+                await using (var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-post-switch.sock", socket, ct,
+                    (kind, _) =>
+                    {
+                        if (kind != "MihomoRuntimeConfigure") return false;
+                        Interlocked.Increment(ref writes);
+                        return true;
+                    }))
+                {
+                    start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
+                    using var server = ProxyAuthenticatedPublicationChecks.Start(start, OnError);
+                    try
+                    {
+                        using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, ct);
+                        originalSubscription = await ReadSubscriptionAsync(client);
+                        using var imported = await client.PostAsJsonAsync(ProxyApiRoutes.Subscriptions,
+                            new ImportProxySubscriptionRequest(endpoint + "/feed", "post-switch-fault"), RelaxKonOSJsonOptions.Default, ct);
+                        imported.EnsureSuccessStatusCode();
+                        draft = await imported.Content.ReadFromJsonAsync<ProxySubscriptionDto>(RelaxKonOSJsonOptions.Default, ct)
+                            ?? throw new InvalidOperationException("The valid activation draft was not created.");
+                        route = SubscriptionRoute(ProxyApiRoutes.SubscriptionActivatePattern, draft.Id);
+                        var originalPid = await ReadPidAsync();
+                        if (!originalSubscription.IsActive || draft.IsActive || originalPid <= 0 || !await probe(port))
+                            throw new InvalidOperationException("The original managed publication is not active.");
+                        File.WriteAllText(Path.Combine(fault, "armed"), "candidate");
+                        id = await SubmitAsync(client, route, key);
+                        while (!File.Exists(Path.Combine(fault, "started")))
+                        {
+                            if ((await ReadOperationAsync(client, id)).CompletedAt is not null)
+                                throw new InvalidOperationException("The original activation terminated before the native switch.");
+                            await Task.Delay(25, ct);
+                        }
+                        var pending = (await publication.ReadAsync(ct)).Pending;
+                        var candidatePid = await ReadPidAsync();
+                        if (pending?.OperationId != id || pending.Profile?.ActivationSubscriptionId != draft.Id
+                            || pending.Identity == previous.Identity || candidatePid <= 0 || candidatePid == originalPid
+                            || !string.Equals(await ReadConfigurationIdentityAsync(candidatePid), pending.Identity, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException("The original activation did not start the expected candidate configuration.");
+                        using (var ready = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                        {
+                            ready.CancelAfter(TimeSpan.FromSeconds(5));
+                            while (true)
+                            {
+                                using var connection = new TcpClient();
+                                try { await connection.ConnectAsync(IPAddress.Loopback, port, ready.Token); break; }
+                                catch (SocketException error) when (error.SocketErrorCode == SocketError.ConnectionRefused)
+                                { await Task.Delay(25, ready.Token); }
+                            }
+                        }
+                        if (!await probe(port) || await ReadPidAsync() != candidatePid || await ReadLeasesAsync(client) != 1)
+                            throw new InvalidOperationException("The original activation did not serve real traffic from the candidate configuration.");
+                        await NativeRuntimeProcess.RunAsync("/usr/bin/systemctl", ["stop", LinuxMihomoArchiveHost.Unit], 1024);
+                        if (await ReadPidAsync() != 0)
+                            throw new InvalidOperationException("The isolated candidate did not stop.");
+                        File.WriteAllText(Path.Combine(fault, "release"), "stopped");
+                        if (await WaitForNativeCommitAsync(client, id, relay) != id)
+                            throw new InvalidOperationException("The Helper replied for a different activation.");
+                        failed = await lifecycle.QueryAsync(ct, id);
+                        restoredPid = await ReadPidAsync();
+                        if (failed.Receipt is not { Outcome: RuntimeSwitchOutcome.Failed }
+                            || failed.ConfigurationIdentity != previous.Identity || restoredPid <= 0 || restoredPid == candidatePid
+                            || !string.Equals(await ReadConfigurationIdentityAsync(restoredPid), previous.Identity, StringComparison.OrdinalIgnoreCase)
+                            || !await probe(port) || (await ReadOperationAsync(client, id)).State != ProxyOperationState.Running
+                            || await ReadLeasesAsync(client) != 1 || Volatile.Read(ref writes) != 1)
+                            throw new InvalidOperationException("Native compensation did not restore the previous serving configuration.");
+                        server.Kill();
+                        await server.WaitForExitAsync(ct);
+                    }
+                    finally
+                    {
+                        File.WriteAllText(Path.Combine(fault, "release"), "cleanup");
+                        await ProxyAuthenticatedPublicationChecks.StopAsync(server);
+                        start.Environment["PrivilegedHelper__SocketPath"] = socket;
+                    }
+                }
+
+                using var recovery = ProxyAuthenticatedPublicationChecks.Start(start, OnError);
+                try
+                {
+                    using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(recovery, login, ct);
+                    ProxyOperationDto final;
+                    do
+                    {
+                        final = await ReadOperationAsync(client, id);
+                        if (final.State != ProxyOperationState.Interrupted) break;
+                        await Task.Delay(50, ct);
+                    } while (true);
+                    var observed = await lifecycle.QueryAsync(ct, id);
+                    var state = await publication.ReadAsync(ct);
+                    var subscriptions = await client.GetFromJsonAsync<ProxySubscriptionDto[]>(ProxyApiRoutes.Subscriptions, RelaxKonOSJsonOptions.Default, ct);
+                    if (final.State != ProxyOperationState.Failed || final.ProblemCode != ProxyProblemCodes.ConfigApplyFailed
+                        || final.CompletedAt is null || state.Pending is not null || state.Identity != previous.Identity
+                        || state.SubscriptionActivationCompletions?.GetValueOrDefault(id)?.Confirmed != false
+                        || observed.Receipt != failed.Receipt || observed.ConfigurationIdentity != previous.Identity
+                        || observed.Installation.StateRevision != failed.Installation.StateRevision || await ReadPidAsync() != restoredPid
+                        || await ReadSubscriptionAsync(client) != originalSubscription
+                        || subscriptions?.Single(item => item.Id == draft.Id) != draft || await SubmitAsync(client, route, key) != id
+                        || await ReadOperationAsync(client, id) != final || Volatile.Read(ref requests) != 6
+                        || await ReadLeasesAsync(client) != 0 || !await probe(port))
+                        throw new InvalidOperationException("Restart did not recover the original compensated activation without replay.");
+                    Console.WriteLine($"PASS MANAGED MIHOMO POST-SWITCH COMPENSATION: {id}; real candidate traffic, native stop, restored original identity and receipt");
+                }
+                finally { await ProxyAuthenticatedPublicationChecks.StopAsync(recovery); }
+                return id;
+
+                async Task<int> ReadPidAsync() => int.Parse((await NativeRuntimeProcess.RunAsync("/usr/bin/systemctl",
+                    ["show", LinuxMihomoArchiveHost.Unit, "--property=MainPID", "--value"], 1024)).Trim());
+
+                async Task<string> ReadConfigurationIdentityAsync(int pid) => Convert.ToHexString(SHA256.HashData(
+                    await File.ReadAllBytesAsync($"/proc/{pid}/root/run/credentials/{LinuxMihomoArchiveHost.Unit}/active.yaml", ct)));
             }
 
             void OnError(string line)
