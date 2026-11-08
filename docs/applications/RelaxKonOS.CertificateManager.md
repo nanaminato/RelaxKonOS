@@ -960,7 +960,7 @@ NotAfter
 
 扫描本身发生错误时保留原扫描，稍后从原状态继续。已准入的续期继续受原操作回执、退避和未知结果门禁约束。分钟级退避会在下一次每日扫描时重新核对。
 
-读取 ARI 发生传输错误且无法取得有效窗口时，扫描按 `NotAfter` 兜底判断。若进程在 ARI 读取期间退出，启动后沿用原扫描 ID，必要时重新读取只读 ARI 资源。续期成功后的 ARI 替换通知属于提示，通知失败时保留成功的替代证书与原回执。见[ARI 断流与原扫描恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-ari-断流与原扫描恢复)。
+读取 ARI 发生传输错误且无法取得有效窗口时，扫描按 `NotAfter` 兜底判断。若进程在 ARI 读取期间退出，启动后沿用原扫描 ID，必要时重新读取只读 ARI 资源。续期成功后的 ARI 替换通知属于提示，通知失败时保留成功的替代证书与原回执。见[ARI 断流与原扫描恢复](../architecture/server-module-evidence/Certificates.md#mb-05-ari-断流与原扫描恢复)。
 
 ACME 请求失败时，应支持：
 
@@ -1411,15 +1411,15 @@ Kestrel 部署必须先实现，不能只在签发成功后尝试替换文件。
 
 部署要求 Issued/Active 且当前有效，选择器校验实际材料私钥与有效期。精确名称优先，再匹配单层 DNS 通配符，最后使用默认证书。服务器 HTTPS 换证显式切换并持久化默认选择；其他证书续期保持原默认，删除默认后选择剩余证书。新连接使用新选择，已建立连接可保留旧材料。启动恢复跳过已撤销记录，失败不替换现有有效选择。实际选择器事实不证明公网前端或客户端信任；部署不改变监听地址/端口，也不改客户端 URL 或证书信任。
 
-Kestrel 随选中的活动叶证书发送对应中间链。Linux URL 与命名 HTTPS 端点通过仅信任私有 CA 根的握手验收，覆盖续期期间的旧连接、替代证书的新握手，以及确认撤销后对新握手的影响。Windows 托管 TLS 和 HTTP/3 仍待实机验证。见[Kestrel 动态证书链](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-kestrel-动态证书链)。
+Kestrel 随选中的活动叶证书发送对应中间链。Linux URL 与命名 HTTPS 端点通过仅信任私有 CA 根的握手验收，覆盖续期期间的旧连接、替代证书的新握手，以及确认撤销后对新握手的影响。Windows 托管 TLS 和 HTTP/3 仍待实机验证。见[Kestrel 动态证书链](../architecture/server-module-evidence/Certificates.md#mb-05-kestrel-动态证书链)。
 
-Nginx 的稳定 PEM 文件随续期更新。使用 SQLite 并启用 WebServer 管理模块时，协调器会为绑定该证书的受管实例提交独立重载。原续期与原重载各有操作回执，证书指纹变化本身不能确认重载终态。见[Nginx 续期自动部署](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-续期自动部署)。
+Nginx 的稳定 PEM 文件随续期更新。使用 SQLite 并启用 WebServer 管理模块时，协调器会为绑定该证书的受管实例提交独立重载。原续期与原重载各有操作回执，证书指纹变化本身不能确认重载终态。见[Nginx 续期自动部署](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-nginx-续期自动部署)。
 
-停用 WebServer 管理模块期间，成功续期仍在证书台账保留待部署版本。重新启用后协调器可接续原续期。见[准入前进程中断验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署准入前的进程中断)。
+停用 WebServer 管理模块期间，成功续期仍在证书台账保留待部署版本。重新启用后协调器可接续原续期。见[准入前进程中断验收](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-nginx-自动部署准入前的进程中断)。
 
-目标已保存而重载未能写入 WebServer 台账时，证书台账保留原续期回执、版本和目标。Linux 实测确认进程重启后接续原回执，CA 无新增订单或签发提交。见[目标检查点恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署的目标检查点恢复)。
+目标已保存而重载未能写入 WebServer 台账时，证书台账保留原续期回执、版本和目标。Linux 实测确认进程重启后接续原回执，CA 无新增订单或签发提交。见[目标检查点恢复](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-nginx-自动部署的目标检查点恢复)。
 
-自动重载已分配持久回执但在派发前中断时，证书续期保留成功回执，部署记录指向原重载的失败终态。见[派发前的原回执恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动重载在派发前的原回执恢复)。
+自动重载已分配持久回执但在派发前中断时，证书续期保留成功回执，部署记录指向原重载的失败终态。见[派发前的原回执恢复](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-nginx-自动重载在派发前的原回执恢复)。
 
 Nginx 的受管证书站点绑定在配置副作用前校验状态/有效期与每个绑定的 SAN 覆盖，IDN/IP 规范化，通配符仅覆盖一层 DNS 名称；宿主 PEM 路径仍由配置语法/文件校验，不能把该模式当作受管元数据已核实。
 
@@ -1439,7 +1439,7 @@ StartedAt / CompletedAt
 
 当前签发与自签名的请求身份由账号、动作和原 `Idempotency-Key` 决定，不包含每次尝试临时生成的证书 ID；重试返回原证书/操作 ID，不重复创建。续期、撤销、删除和 Kestrel 部署的身份另包含目标证书 ID。客户端必须冻结原请求内容并复用原键；更改请求应等待原任务核实后再建立新意图。取消端点不要求幂等键，按原操作 ID 返回实际状态；预检也不要求幂等键。
 
-撤销进入 `revocation-dispatched` 后，取消返回原回执，CA 响应仍由 Server 排空。CA 已确认而本地清理未完成时返回 `Running / revocation-cleanup-required`，原证书退出 Kestrel 选择器，Server 启动时继续清理对应部署记录。CA 结果未知时返回 `Running / revocation-recovery-required`，保留原部署事实，阻止同一证书的新写入。使用原 operationId 或原键查询，Server 不会再次提交撤销。见[撤销确认与本地恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-acme-撤销确认与本地恢复)。
+撤销进入 `revocation-dispatched` 后，取消返回原回执，CA 响应仍由 Server 排空。CA 已确认而本地清理未完成时返回 `Running / revocation-cleanup-required`，原证书退出 Kestrel 选择器，Server 启动时继续清理对应部署记录。CA 结果未知时返回 `Running / revocation-recovery-required`，保留原部署事实，阻止同一证书的新写入。使用原 operationId 或原键查询，Server 不会再次提交撤销。见[撤销确认与本地恢复](../architecture/server-module-evidence/Certificates.md#mb-05-acme-撤销确认与本地恢复)。
 
 当前只有按操作 ID 查询和取消，没有操作集合或按请求键查询接口。在宿主权限检查后，先查询当前账号/动作/目标/原键的持久账本；已知请求直接返回原任务，再次预检或目标已删除不会遮蔽原结果。首次请求才执行当前预检和目标有效性校验。权限拒绝或记录缺失不能据此推断原任务失败或成功。记录取消不证明副作用已回滚，仍需读取证书及关联服务事实。
 
@@ -1479,7 +1479,7 @@ Windows 服务与个人模式均在 `appsettings.host.json` 设置 `Certificate.
 桌面端服务器换证入口位于“设置 → 系统 → 服务器 HTTPS”，证书管理器列表仅提供证书申请、创建、续期、吊销和删除。换证界面展示域名、到期时间和 SHA-256 指纹，提示重连或重新信任证书；只有用户点击“更换服务器 HTTPS 证书”才提交。成功换证同时更新 SNI 绑定与无 SNI 连接使用的默认证书，默认选择独立持久化并在重启时恢复；普通续期保持原默认选择。该操作不会修改部署用启动 PFX，也不会把 HTTP 监听自动改为 HTTPS。
 
 
-2026-11-06 MB-05 隔离预检：当前共享测试机 PATH 中未发现 Pebble 或 step-ca。真实 ACME 中断恢复需提供可控 ACME 目录、受信 CA 及专属挑战名称和解析。 [验收台账 §50](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#50-mb-0305-隔离测试设施复核2026-11-06)
+2026-11-06 MB-05 隔离预检：当前共享测试机 PATH 中未发现 Pebble 或 step-ca。真实 ACME 中断恢复需提供可控 ACME 目录、受信 CA 及专属挑战名称和解析。 [验收台账 §50](../architecture/server-module-evidence/Milestones.md#50-mb-0305-隔离测试设施复核2026-11-06)
 
 既有 Linux 测试机通过隔离 Pebble 的真实 HTTP-01 签发和取消。取消持有原工作租约直至实际响应排空，复开台账后同键返回原回执，CA 未收到新增订单。见边界设计 §52。
 
@@ -1493,30 +1493,30 @@ Linux Release 证书 HTTP 绑定与原回执回归已通过。证书响应在真
 
 Linux Release 证书绑定 HTTP 回执已通过真实客户端断线验收。原操作成功后，同键响应在断线后仍持有租约，实际响应退出后归还，重试取回原终态。
 
-自动续期换日后仍查询同一证书的原在途或中断回执。中断回执保留原 operationId，后续明确成功的续期解除自动续期阻止。Linux 私有 Pebble 实测覆盖 CA 已签发、续期进程未接收证书的情况。重启以原键和下一日键查询，原活动证书指纹保持，CA 无新增订单。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书自动续期跨日接续)。
+自动续期换日后仍查询同一证书的原在途或中断回执。中断回执保留原 operationId，后续明确成功的续期解除自动续期阻止。Linux 私有 Pebble 实测覆盖 CA 已签发、续期进程未接收证书的情况。重启以原键和下一日键查询，原活动证书指纹保持，CA 无新增订单。见[模块边界台账](../architecture/server-module-evidence/Certificates.md#mb-05-证书自动续期跨日接续)。
 
-CA 已接单或签发后遇到无法确认结果的传输失败，证书操作等待真实 SDK Task 和挑战清理，再记录原 operationId 的中断回执。自动续期用下一日键也返回原回执，保留原活动证书。Linux 私有 Pebble 已验证订单和证书响应截断，以及重开台账后的原回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书-ca-传输中断与原回执)。
+CA 已接单或签发后遇到无法确认结果的传输失败，证书操作等待真实 SDK Task 和挑战清理，再记录原 operationId 的中断回执。自动续期用下一日键也返回原回执，保留原活动证书。Linux 私有 Pebble 已验证订单和证书响应截断，以及重开台账后的原回执。见[模块边界台账](../architecture/server-module-evidence/Certificates.md#mb-05-证书-ca-传输中断与原回执)。
 
-已有中断回执可用认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order` 查询。响应包含原 `operation` 和 `remoteStatus`。状态为 `pending`、`ready`、`processing`、`valid`、`invalid`、`identity-unavailable` 或 `unavailable`。查询使用相同 CA 和原账户密钥，只读取已记录的原订单。订单创建响应丢失且无身份时返回 `identity-unavailable`。远端状态单独呈现，原中断回执与当前证书保持，自动续期继续遵守原门禁。实测见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-原-ca-订单的只读对账)。
+已有中断回执可用认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order` 查询。响应包含原 `operation` 和 `remoteStatus`。状态为 `pending`、`ready`、`processing`、`valid`、`invalid`、`identity-unavailable` 或 `unavailable`。查询使用相同 CA 和原账户密钥，只读取已记录的原订单。订单创建响应丢失且无身份时返回 `identity-unavailable`。远端状态单独呈现，原中断回执与当前证书保持，自动续期继续遵守原门禁。实测见[模块边界台账](../architecture/server-module-evidence/Certificates.md#mb-05-原-ca-订单的只读对账)。
 
-WebRoot 签发和续期在发布 HTTP-01 文件前，在原证书操作记录挑战文件名及内容摘要。任务等待挑战清理后才提交终态。跨进程恢复在写入原中断回执前清理内容匹配的原文件。路径或内容无法确认时保留文件和恢复责任，并隔离证书工作准入。网站自动签发使用此路径，网站发布与原证书操作的关联同样持久化。CA 返回 `valid` 时仍应通过原发布和证书回执核实本地签发、部署各自的状态。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
+WebRoot 签发和续期在发布 HTTP-01 文件前，在原证书操作记录挑战文件名及内容摘要。任务等待挑战清理后才提交终态。跨进程恢复在写入原中断回执前清理内容匹配的原文件。路径或内容无法确认时保留文件和恢复责任，并隔离证书工作准入。网站自动签发使用此路径，网站发布与原证书操作的关联同样持久化。CA 返回 `valid` 时仍应通过原发布和证书回执核实本地签发、部署各自的状态。见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
-挑战文件内容已变化时，原回执保持 `Running / challenge-cleanup-required`。重启仍可查询原操作及已知 CA 订单，新证书操作返回 `certificate.challenge_ownership_unconfirmed`。确认文件归属后，原清理在下次启动接续，原操作 ID 保持。见[挑战文件归属验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-挑战内容变化时保留原清理责任)。
+挑战文件内容已变化时，原回执保持 `Running / challenge-cleanup-required`。重启仍可查询原操作及已知 CA 订单，新证书操作返回 `certificate.challenge_ownership_unconfirmed`。确认文件归属后，原清理在下次启动接续，原操作 ID 保持。见[挑战文件归属验收](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-webroot-挑战内容变化时保留原清理责任)。
 
-自动续期扫描遇到上述阻塞时保留原扫描的待处理状态。隔离 Linux 上的生产 worker 在恢复后沿用同一扫描并关联原续期回执，未新增 CA 订单。见[续期扫描跨阻塞验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-续期扫描跨挑战归属阻塞恢复)。
+自动续期扫描遇到上述阻塞时保留原扫描的待处理状态。隔离 Linux 上的生产 worker 在恢复后沿用同一扫描并关联原续期回执，未新增 CA 订单。见[续期扫描跨阻塞验收](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-续期扫描跨挑战归属阻塞恢复)。
 
 用户取消或 Server 停机时，已记录的 CA 订单仍可按取消回执的原 operationId 只读查询。任务完成并清理挑战后才写入 Cancelled。若被取消的续期已有订单身份，自动扫描沿用原回执，后续经明确授权完成的成功续期才解除该门禁。
 
-Linux 完整认证 Server 已通过真实 CA 断流与重启验收。专属 Nginx 承载 HTTP-01，重启后须重新登录查询原订单。同键重试返回原回执，原活动证书指纹保持，CA 无新增订单或签发提交。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证-server-的-ca-断流与重启)。
+Linux 完整认证 Server 已通过真实 CA 断流与重启验收。专属 Nginx 承载 HTTP-01，重启后须重新登录查询原订单。同键重试返回原回执，原活动证书指纹保持，CA 无新增订单或签发提交。见[模块边界台账](../architecture/server-module-evidence/Certificates.md#mb-05-完整认证-server-的-ca-断流与重启)。
 
-Linux 私有 Pebble 实测覆盖自动续期已准入、扫描尚未关联原回执时的进程中断。恢复完成原扫描并持久化下次到期，未提交新订单。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-证书续期持久扫描与执行作用域)。
+Linux 私有 Pebble 实测覆盖自动续期已准入、扫描尚未关联原回执时的进程中断。恢复完成原扫描并持久化下次到期，未提交新订单。见[模块边界台账](../architecture/server-module-evidence/Certificates.md#mb-05-证书续期持久扫描与执行作用域)。
 
-完整 Server 的自然续期停机路径已在 Linux 私有 Pebble 和 Nginx 上通过验收。收到 SIGTERM 后，Server 等待原 CA 挑战响应和清理完成，再提交原取消回执。重启后读取原下次到期时间，保留当前证书和原回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整-server-自然续期与停机排空)。
+完整 Server 的自然续期停机路径已在 Linux 私有 Pebble 和 Nginx 上通过验收。收到 SIGTERM 后，Server 等待原 CA 挑战响应和清理完成，再提交原取消回执。重启后读取原下次到期时间，保留当前证书和原回执。见[模块边界台账](../architecture/server-module-evidence/Milestones.md#mb-05-完整-server-自然续期与停机排空)。
 
-认证用户取消正在进行的自然续期时，原回执先进入 `Running / cancel-requested`，待挑战清理后成为 Cancelled。Linux 实测中，重启后重复取消返回相同终态，按原 operationId 只读查询原订单返回 `ready`，活动证书与下次扫描时间保持，CA 未创建新订单。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整-server-自然续期的认证取消)。
+认证用户取消正在进行的自然续期时，原回执先进入 `Running / cancel-requested`，待挑战清理后成为 Cancelled。Linux 实测中，重启后重复取消返回相同终态，按原 operationId 只读查询原订单返回 `ready`，活动证书与下次扫描时间保持，CA 未创建新订单。见[模块边界台账](../architecture/server-module-evidence/Milestones.md#mb-05-完整-server-自然续期的认证取消)。
 
-认证原订单观察使用一个工作租约，覆盖 CA 调用、HTTP 响应和异步清理。客户端断线或 Server 停机时，仍在途的 CA 调用排空后才释放责任。Linux 私有 CA 已验证断线与停机后按原 ID 读取同一回执，活动证书保持。见[原订单观察](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-acme-原订单观察的-http-工作责任)。
+认证原订单观察使用一个工作租约，覆盖 CA 调用、HTTP 响应和异步清理。客户端断线或 Server 停机时，仍在途的 CA 调用排空后才释放责任。Linux 私有 CA 已验证断线与停机后按原 ID 读取同一回执，活动证书保持。见[原订单观察](../architecture/server-module-evidence/Certificates.md#mb-05-acme-原订单观察的-http-工作责任)。
 
-ACME SDK 在签发、撤销、订单观察或 ARI 工作开始时按需加载。最后一个 SDK 调用及挑战清理结束 30 秒后可卸载，新工作会唤醒执行代码。原账户、证书存储、回执和 TLS 部署仍由 Server 原服务负责。见[ACME SDK 独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-acme-sdk-独立执行程序集)。
+ACME SDK 在签发、撤销、订单观察或 ARI 工作开始时按需加载。最后一个 SDK 调用及挑战清理结束 30 秒后可卸载，新工作会唤醒执行代码。原账户、证书存储、回执和 TLS 部署仍由 Server 原服务负责。见[ACME SDK 独立执行程序集](../architecture/server-module-evidence/Certificates.md#mb-05-acme-sdk-独立执行程序集)。
 
-网站发布的自动签发采用所选 Nginx 的 WebRoot HTTP-01 集成。旧 Direct HTTP-01 发布路径曾因缺少经能力授权的生产监听入口而返回 `certificate.port80_elevation_required`。当前路径的签发、挑战清理及中断恢复已通过私有 Pebble 实测。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
+网站发布的自动签发采用所选 Nginx 的 WebRoot HTTP-01 集成。旧 Direct HTTP-01 发布路径曾因缺少经能力授权的生产监听入口而返回 `certificate.port80_elevation_required`。当前路径的签发、挑战清理及中断恢复已通过私有 Pebble 实测。见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-网站发布-webroot-签发与中断恢复)。

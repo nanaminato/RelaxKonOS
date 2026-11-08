@@ -1408,7 +1408,7 @@ IHttp01WebServerIntegrator
 
 证书续期更新稳定 PEM 路径。启用 WebServer 模块并使用 SQLite 时，Server 为引用该证书的 RelaxKonOS 受管站点协调重载，同一实例的多个站点共享一次操作，站点配置保持。未集成的发现候选项不进入目标列表。
 
-现有显式轮换路径通过独立的续期和重载回执管理。生产 Helper 的原生回执确认后可恢复原重载终态；只有新证书握手证据时，重载保持待核验。见[Nginx 显式证书轮换](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-显式证书轮换与原重载回执)。
+现有显式轮换路径通过独立的续期和重载回执管理。生产 Helper 的原生回执确认后可恢复原重载终态；只有新证书握手证据时，重载保持待核验。见[Nginx 显式证书轮换](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-nginx-显式证书轮换与原重载回执)。
 
 ```text
 CertificateOperation(renew) succeeded
@@ -1430,13 +1430,13 @@ NginxCertificateRenewalCoordinator
 
 `certificate_deployment_records` 关联原续期和原重载 ID，保存目标版本、协调器最近确认的成功版本及问题码。首次接管前的历史部署保持原有证据范围。配置检查或重载失败后，新 PEM 与成功续期回执保留，管理员可处理失败原因后显式重载。原生结果未知时，同一原重载保持待核验，后续对账只读原生回执。
 
-Linux 系统包 Nginx 的实际验收见[续期自动部署台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-续期自动部署)。桌面和 Android 的独立 Nginx 部署状态展示及其他平台实机矩阵仍待完成。
+Linux 系统包 Nginx 的实际验收见[续期自动部署台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-nginx-续期自动部署)。桌面和 Android 的独立 Nginx 部署状态展示及其他平台实机矩阵仍待完成。
 
-WebServer 管理模块停用期间，证书仍可续期，Nginx 继续使用其已加载的证书。重新启用管理模块时，协调器可从证书台账接续尚未准入的原续期。Linux 实测覆盖这期间的 Server 进程中断及重新启用后的单次重载。见[准入前进程中断](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署准入前的进程中断)。
+WebServer 管理模块停用期间，证书仍可续期，Nginx 继续使用其已加载的证书。重新启用管理模块时，协调器可从证书台账接续尚未准入的原续期。Linux 实测覆盖这期间的 Server 进程中断及重新启用后的单次重载。见[准入前进程中断](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-nginx-自动部署准入前的进程中断)。
 
-管理模块启用时，重载台账的准入写入失败会保留工作租约和恢复阻塞，Nginx 继续提供已加载的证书。原进程终止并恢复写入后，协调器用证书台账中原有目标只准入一次重载。见[目标检查点恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署的目标检查点恢复)。
+管理模块启用时，重载台账的准入写入失败会保留工作租约和恢复阻塞，Nginx 继续提供已加载的证书。原进程终止并恢复写入后，协调器用证书台账中原有目标只准入一次重载。见[目标检查点恢复](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-nginx-自动部署的目标检查点恢复)。
 
-自动重载的排队回执已落盘且实际执行尚未派发时，重启按原 operationId 持久化 `Failed / interrupted`。隔离 Linux 验证 SQLite 投影故障和后续重启，原生重载次数保持，Nginx 继续提供已加载的证书。见[派发前的原回执恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动重载在派发前的原回执恢复)。
+自动重载的排队回执已落盘且实际执行尚未派发时，重启按原 operationId 持久化 `Failed / interrupted`。隔离 Linux 验证 SQLite 投影故障和后续重启，原生重载次数保持，Nginx 继续提供已加载的证书。见[派发前的原回执恢复](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-nginx-自动重载在派发前的原回执恢复)。
 
 ---
 
@@ -1673,7 +1673,7 @@ Linux 桌面 Web 服务器管理器隐藏实例选择、发现、集成、安装
 客户端保留空列表的来源修订，清除失效版本选择；缺少批准版本显示宿主策略要求，检查失败撤下旧安装计划。此项只修复版本候选和计划准入，未实测服务安装、跨版本更新、卸载或回滚。部署需更新 Client、Server 和 Helper；仅更新客户端不能给旧 Helper 增加默认归档。
 
 
-2026-11-06 MB-05 隔离预检：测试机有共享 Nginx 实例。应用层中断验收须另用专属配置、PID、回环端口及测试证书，检查原发布回执与实际 HTTPS 服务连续性。 [验收台账 §50](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#50-mb-0305-隔离测试设施复核2026-11-06)
+2026-11-06 MB-05 隔离预检：测试机有共享 Nginx 实例。应用层中断验收须另用专属配置、PID、回环端口及测试证书，检查原发布回执与实际 HTTPS 服务连续性。 [验收台账 §50](../architecture/server-module-evidence/Milestones.md#50-mb-0305-隔离测试设施复核2026-11-06)
 
 既有 Linux 测试机已通过专属 Nginx 的真实重载及操作工作进程崩溃恢复。生产操作台账以原 operationId 持久化 interrupted，重试后原实例持续服务，实际重载仍为一次。完整 provider、网站发布与 CA 连续性继续开放，见边界设计 §50。
 
@@ -1703,27 +1703,27 @@ Linux 隔离 Nginx 已验证网站发布恢复后的生产 HTTP 同键响应。�
 
 独立 Nginx reload 的生产 HTTP 回执也通过 Linux 断线验收。原管理实例从发现移除后，同键仍返回原中断回执。响应执行退出后归还租约，原 HTTPS 服务继续运行，reload 未重放。
 
-网站发布以原持久台账准入，并在原工作租约内创建执行作用域。恢复或同键查询直接返回原回执。Linux 隔离 Nginx 已验证配置提交和 HTTPS 验证中的进程崩溃。恢复保留原回执与现有 TLS，未追加发布重载。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布准入与执行作用域)。
+网站发布以原持久台账准入，并在原工作租约内创建执行作用域。恢复或同键查询直接返回原回执。Linux 隔离 Nginx 已验证配置提交和 HTTPS 验证中的进程崩溃。恢复保留原回执与现有 TLS，未追加发布重载。见[模块边界台账](../architecture/server-module-evidence/WebServer.md#mb-05-网站发布准入与执行作用域)。
 
-直接 Nginx 操作在原 WebServer 台账准入后创建执行作用域，完成任务和作用域清理后提交终态。清理无法确认时保留原活跃回执。Linux 隔离实测覆盖重载后进程中断、同键恢复和 HTTP 断线排空，原 HTTPS 保持，重载一次。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-webserver-操作执行作用域)。
+直接 Nginx 操作在原 WebServer 台账准入后创建执行作用域，完成任务和作用域清理后提交终态。清理无法确认时保留原活跃回执。Linux 隔离实测覆盖重载后进程中断、同键恢复和 HTTP 断线排空，原 HTTPS 保持，重载一次。见[模块边界台账](../architecture/server-module-evidence/WebServer.md#mb-05-直接-webserver-操作执行作用域)。
 
-Linux 完整 Server 实机复测通过管理员登录、真实集成 Nginx reload、管理进程强制中断及原回执恢复。同键和原 operationId 返回原中断回执，原 Nginx 持续服务 HTTPS，reload 只执行一次。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证-server-的-nginx-重载与重启)。
+Linux 完整 Server 实机复测通过管理员登录、真实集成 Nginx reload、管理进程强制中断及原回执恢复。同键和原 operationId 返回原中断回执，原 Nginx 持续服务 HTTPS，reload 只执行一次。见[模块边界台账](../architecture/server-module-evidence/WebServer.md#mb-05-完整认证-server-的-nginx-重载与重启)。
 
-系统包 Nginx 通过完整 Server、生产 Helper 和私有 systemd 的真实重载中断验收。Server 与 Helper 被终止期间，原 master 持续提供已更新的 HTTPS。重启后按原 ID 和同键返回原中断回执，实际重载一次。自然停机和取消排空见下文。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-系统包-nginx-经生产-helper-中断与恢复)。
+系统包 Nginx 通过完整 Server、生产 Helper 和私有 systemd 的真实重载中断验收。Server 与 Helper 被终止期间，原 master 持续提供已更新的 HTTPS。重启后按原 ID 和同键返回原中断回执，实际重载一次。自然停机和取消排空见下文。见[模块边界台账](../architecture/server-module-evidence/WebServer.md#mb-05-系统包-nginx-经生产-helper-中断与恢复)。
 
-Linux 系统包 Nginx 的重载请求提交给生产 Helper 后，取消或自然停机等待原响应。实机验证取消回执在原 reload 完成后才落盘，SIGTERM 后原作业结束才退出，重启未追加 reload。Helper 自身超时后的作业对账仍开放。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-已提交-nginx-systemd-作业的取消与停机排空)。
+Linux 系统包 Nginx 的重载请求提交给生产 Helper 后，取消或自然停机等待原响应。实机验证取消回执在原 reload 完成后才落盘，SIGTERM 后原作业结束才退出，重启未追加 reload。Helper 自身超时后的作业对账仍开放。见[模块边界台账](../architecture/server-module-evidence/WebServer.md#mb-05-已提交-nginx-systemd-作业的取消与停机排空)。
 
-Linux 系统包直接重载在派发前持久化原检查点。生产 Helper 超时、连接丢失或 Server 在原响应前退出时，原 ID 和同键可查询待核验回执，同实例新后台操作暂缓。Linux 专属 systemd 已验证三条路径及一次实际重载。原生成功终态查询和解除待核验门禁见下文。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原生重载结果待核验)。
+Linux 系统包直接重载在派发前持久化原检查点。生产 Helper 超时、连接丢失或 Server 在原响应前退出时，原 ID 和同键可查询待核验回执，同实例新后台操作暂缓。Linux 专属 systemd 已验证三条路径及一次实际重载。原生成功终态查询和解除待核验门禁见下文。见[模块边界台账](../architecture/server-module-evidence/WebServer.md#mb-05-nginx-原生重载结果待核验)。
 
-Linux 系统包直接重载现在可以在重启后按原 ID 对账。生产 Helper 持久化原 systemctl 成功证据后，Server 只读核验并完成原回执，同键不会重载。缺少匹配证据时继续显示待核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原-helper-回执对账)。
+Linux 系统包直接重载现在可以在重启后按原 ID 对账。生产 Helper 持久化原 systemctl 成功证据后，Server 只读核验并完成原回执，同键不会重载。缺少匹配证据时继续显示待核验。见[模块边界台账](../architecture/server-module-evidence/WebServer.md#mb-05-nginx-原-helper-回执对账)。
 
-Linux 系统包重载的原回执对账覆盖明确成功及原生作业明确失败。响应丢失后读取原 ID，原 HTTPS 持续，原作业只尝试一次。Helper 无原作业终态证据时仍显示待核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-存活进程响应丢失和失败回执)。
+Linux 系统包重载的原回执对账覆盖明确成功及原生作业明确失败。响应丢失后读取原 ID，原 HTTPS 持续，原作业只尝试一次。Helper 无原作业终态证据时仍显示待核验。见[模块边界台账](../architecture/server-module-evidence/WebServer.md#mb-05-nginx-存活进程响应丢失和失败回执)。
 
-Linux 系统包受管 Nginx 的启动、停止与重启使用原 `operationId` 查询。启动或重启仍会先启用服务。作业派发后取消会等待实际结果，确认成功或失败后保存终态。同键查询返回原操作。Helper 应答丢失时 Server 只读取匹配动作的原持久回执，证据缺失时显示待核验，并拒绝同实例新的后台变更和站点写入。见[启停与重启验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-linux-nginx-启动停止与重启的原回执)。
+Linux 系统包受管 Nginx 的启动、停止与重启使用原 `operationId` 查询。启动或重启仍会先启用服务。作业派发后取消会等待实际结果，确认成功或失败后保存终态。同键查询返回原操作。Helper 应答丢失时 Server 只读取匹配动作的原持久回执，证据缺失时显示待核验，并拒绝同实例新的后台变更和站点写入。见[启停与重启验收](../architecture/server-module-evidence/WebServer.md#mb-05-linux-nginx-启动停止与重启的原回执)。
 
-Linux 系统包重载的原回执保存在 Server。原终态持久化后，Helper 压缩原详情并保留防重放标记。清理确认丢失时，存活 Server 按原 ID 重试清理，工作租约持续到确认落盘。停机仍待确认时，由重启后的同一工作 owner 接续。旧 ID 在 Helper 重启后仍拒绝重载，待核验记录保留详情。见[清理确认验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原回执清理确认与租约)。
+Linux 系统包重载的原回执保存在 Server。原终态持久化后，Helper 压缩原详情并保留防重放标记。清理确认丢失时，存活 Server 按原 ID 重试清理，工作租约持续到确认落盘。停机仍待确认时，由重启后的同一工作 owner 接续。旧 ID 在 Helper 重启后仍拒绝重载，待核验记录保留详情。见[清理确认验收](../architecture/server-module-evidence/WebServer.md#mb-05-nginx-原回执清理确认与租约)。
 
-完整 Server 的认证网站发布已在既有 Linux 测试机通过生产 Helper、私有 systemd、实际 Nginx 和独立 Docker 上游的联合验收。配置阶段中断恢复原 `website.site_application_unverified` 回执且应用尚未关联。真实 HTTPS 探测期间中断恢复原 `website.recheck_required` 回执并保留应用关联。两条路径都保持现有 TLS 与上游服务，重启和同键查询未再次 reload。测试使用认证证书路由生成的专属自签证书。公共 CA 与发布的联合中断仍待验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证网站发布中断与恢复)。
+完整 Server 的认证网站发布已在既有 Linux 测试机通过生产 Helper、私有 systemd、实际 Nginx 和独立 Docker 上游的联合验收。配置阶段中断恢复原 `website.site_application_unverified` 回执且应用尚未关联。真实 HTTPS 探测期间中断恢复原 `website.recheck_required` 回执并保留应用关联。两条路径都保持现有 TLS 与上游服务，重启和同键查询未再次 reload。测试使用认证证书路由生成的专属自签证书。公共 CA 与发布的联合中断仍待验收。见[模块边界台账](../architecture/server-module-evidence/WebServer.md#mb-05-完整认证网站发布中断与恢复)。
 
 未指定证书 ID 时，自动签发使用所选 Nginx 的 WebRoot HTTP-01。发起者须同时具备所选实例的 `NginxConfigurationWrite` 与 `CertificateIssue`（目标 `certificates/issue`），并确认 CA 能通过申请域名的 TCP 80 到达该实例。已启用的集成或已记录 HTTP-01 的同域名站点沿用原挑战路由。
 
@@ -1731,34 +1731,34 @@ Linux 系统包重载的原回执保存在 Server。原终态持久化后，Help
 
 临时配置写入前，发布台账已记录原操作的站点责任。原生重载中断后，同键取回原回执。启动恢复保留临时配置及原 Helper 证据，新发布和直接覆盖仍受核验门禁约束。
 
-具备应用部署管理权限和目标 Nginx 配置权限的操作者，可向原发布发送 `POST /api/v1.0/website-publications/operations/{operationId}/cleanup-bootstrap`。清理须确认原生重载结果、原文件内容和证书任务已结束。原回执追加 `bootstrapCleanupOperationId` 与 `bootstrapCleanedAt`。清理请求或 Server 中断时，再次提交同一路径接续同一清理，原发布状态保持。已确认的 CA 验证拒绝在挑战清理后走同一流程。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站临时路由的授权清理)。
+具备应用部署管理权限和目标 Nginx 配置权限的操作者，可向原发布发送 `POST /api/v1.0/website-publications/operations/{operationId}/cleanup-bootstrap`。清理须确认原生重载结果、原文件内容和证书任务已结束。原回执追加 `bootstrapCleanupOperationId` 与 `bootstrapCleanedAt`。清理请求或 Server 中断时，再次提交同一路径接续同一清理，原发布状态保持。已确认的 CA 验证拒绝在挑战清理后走同一流程。见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-首站临时路由的授权清理)。
 
 同等授权下，`POST /api/v1.0/website-publications/operations/{operationId}/resume-bootstrap` 可用本地已成功落盘的原证书完成 TLS 绑定。原中断阶段必须为证书阶段，当前应用和临时路由须通过核验。原回执保留中断状态，并记录 `bootstrapResumeStartedAt`、`bootstrapBindingOperationId` 与 `bootstrapResumedAt`。已完成续接的重复请求读取原回执。
 
-绑定期间再次中断时，再次提交续接会核对原绑定 ID 的 Helper 成功回执、正式配置摘要、原证书指纹、应用上游和原备份。证据匹配时只补写站点与应用关联并清理备份，原生重载和 CA 请求无新增。缺少证据或内容已变更时返回 `website.recheck_required`，保留原配置和回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站续接绑定的原生回执对账)。
+绑定期间再次中断时，再次提交续接会核对原绑定 ID 的 Helper 成功回执、正式配置摘要、原证书指纹、应用上游和原备份。证据匹配时只补写站点与应用关联并清理备份，原生重载和 CA 请求无新增。缺少证据或内容已变更时返回 `website.recheck_required`，保留原配置和回执。见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-首站续接绑定的原生回执对账)。
 
-自动建立 WebRoot 的首次正式 TLS 绑定也记录 `bootstrapBindingOperationId`。首次绑定重载期间中断后，同一续接 API 使用原成功回执补写本地关联。正常首站发布返回 Succeeded，保留绑定 ID。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站首次-tls-绑定的原生回执对账)。
+自动建立 WebRoot 的首次正式 TLS 绑定也记录 `bootstrapBindingOperationId`。首次绑定重载期间中断后，同一续接 API 使用原成功回执补写本地关联。正常首站发布返回 Succeeded，保留绑定 ID。见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-首站首次-tls-绑定的原生回执对账)。
 
 发布进行期间，同一应用或同一 Nginx 实例内的同一域名只允许一个发布操作。不同应用尝试同时发布到该域名会收到 `409 / website.operation_conflict`。原请求使用同一个幂等键仍可读取原回执。
 
 首个独立 Nginx 站点可先保存 HTTP 配置，再执行实例的 `EnableAcmeHttp01` 操作。空实例会返回 `webserver.acme_no_managed_sites`。若启用操作在原生重载期间中断，同键查询返回原操作回执。后续签发需先独立核验该域名的 HTTP-01 路由，再发起新的证书请求，签发成功后可将证书绑定到原站点。
 
-Linux 系统包 Nginx 的 WebRoot 启用中断后，Server 用原站点 Helper 回执和配置摘要核对清理。证据不足时保留原操作待核验，站点更新返回 `webserver.site_save_failed`。已派发站点核对完成后，未派发的站点保持原配置，父操作报告中断。见[WebRoot 逐站点回执](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-逐站点回执与清理恢复)。
+Linux 系统包 Nginx 的 WebRoot 启用中断后，Server 用原站点 Helper 回执和配置摘要核对清理。证据不足时保留原操作待核验，站点更新返回 `webserver.site_save_failed`。已派发站点核对完成后，未派发的站点保持原配置，父操作报告中断。见[WebRoot 逐站点回执](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-webroot-逐站点回执与清理恢复)。
 
-向 `POST /api/v1.0/webservers/operations/{operationId}/compensate-webroot` 提交 `{"confirmed":true}`，可为已有 Helper 失败回执的 Linux 系统包 WebRoot 操作发起具名补偿。需要原实例的 Nginx 配置写入授权。原生作业须空闲，活动文件与备份须匹配原摘要，且暂存文件须不存在。受理和重复请求均返回原父操作及同一个 `compensationOperationId`。核验补偿成功并清理后，原操作仍为 Failed，问题码为 `webserver.site_reload_failed`。证据不足时操作继续待核验。见[WebRoot 具名补偿](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-已知拒绝的具名补偿)。
+向 `POST /api/v1.0/webservers/operations/{operationId}/compensate-webroot` 提交 `{"confirmed":true}`，可为已有 Helper 失败回执的 Linux 系统包 WebRoot 操作发起具名补偿。需要原实例的 Nginx 配置写入授权。原生作业须空闲，活动文件与备份须匹配原摘要，且暂存文件须不存在。受理和重复请求均返回原父操作及同一个 `compensationOperationId`。核验补偿成功并清理后，原操作仍为 Failed，问题码为 `webserver.site_reload_failed`。证据不足时操作继续待核验。见[WebRoot 具名补偿](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-webroot-已知拒绝的具名补偿)。
 
-签发和清理完成后才进入站点配置。管理进程在签发中断时，原发布与证书回执可关联查询，证书台账负责清理原挑战文件和查询原 CA 订单。同键请求返回原发布回执。实机证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
+签发和清理完成后才进入站点配置。管理进程在签发中断时，原发布与证书回执可关联查询，证书台账负责清理原挑战文件和查询原 CA 订单。同键请求返回原发布回执。实机证据见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
 取消原证书操作后，网站发布等待证书回执终态，并按实际结果结束。若在签发阶段停止 Server，原证书任务继续排空，启动恢复将未完成发布标为 Interrupted。已知的原订单仍可通过原证书操作只读查询。
 
-专属 WebRoot 挑战文件内容无法与原摘要匹配时，证书操作保留清理责任和原订单。网站发布同键仍返回原中断回执，现有 Nginx 与 TLS 继续服务。见[挑战文件归属验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-挑战内容变化时保留原清理责任)。
+专属 WebRoot 挑战文件内容无法与原摘要匹配时，证书操作保留清理责任和原订单。网站发布同键仍返回原中断回执，现有 Nginx 与 TLS 继续服务。见[挑战文件归属验收](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-webroot-挑战内容变化时保留原清理责任)。
 
-网站发布及具名首站恢复按需加载执行程序集。实际执行和终态提交结束、最后一个作用域释放后进入 30 秒闲时卸载窗口。站点转发、TLS 与原回执继续由 Nginx 和 Server 原服务负责。见[网站发布独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布独立执行程序集)。
+网站发布及具名首站恢复按需加载执行程序集。实际执行和终态提交结束、最后一个作用域释放后进入 30 秒闲时卸载窗口。站点转发、TLS 与原回执继续由 Nginx 和 Server 原服务负责。见[网站发布独立执行程序集](../architecture/server-module-evidence/WebServer.md#mb-05-网站发布独立执行程序集)。
 
-获准的直接 Nginx 重载与网站发布共享按需加载的 WebServer 执行代次。命令、原终态和 Helper 回执清理全部完成后，最后一个作用域释放并开始闲时计时。原 ID 的同键查询和启动对账由 Server 台账处理。闲时执行代码卸载期间，Nginx 保持站点转发和 TLS。见[直接重载独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-nginx-重载独立执行程序集)。
+获准的直接 Nginx 重载与网站发布共享按需加载的 WebServer 执行代次。命令、原终态和 Helper 回执清理全部完成后，最后一个作用域释放并开始闲时计时。原 ID 的同键查询和启动对账由 Server 台账处理。闲时执行代码卸载期间，Nginx 保持站点转发和 TLS。见[直接重载独立执行程序集](../architecture/server-module-evidence/WebServer.md#mb-05-直接-nginx-重载独立执行程序集)。
 
 显式启用 HTTP-01 按需加载 WebServer 执行代码。Linux 系统包 Nginx 的每个站点以独立 Helper ID 跟踪 reload。应答丢失时，Server 按原 ID 查询并核对备份，原父操作可通过同键继续读取。
 
-Linux Nginx 集成在锚点提交前保存原操作与主配置快照。Server 重启后按原 ID 查询 Helper，并核对当前锚点与快照。同键请求返回原回执。缺少成功证据或配置漂移时保持待核验，拒绝同实例新的后台变更。见[Nginx 集成检查点](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-集成检查点与执行代次)。
+Linux Nginx 集成在锚点提交前保存原操作与主配置快照。Server 重启后按原 ID 查询 Helper，并核对当前锚点与快照。同键请求返回原回执。缺少成功证据或配置漂移时保持待核验，拒绝同实例新的后台变更。见[Nginx 集成检查点](../architecture/server-module-evidence/WebServer.md#mb-05-nginx-集成检查点与执行代次)。
 
-可向 `POST /api/v1.0/webservers/operations/{operationId}/compensate-integration` 提交 `{"confirmed":true}`，为已由 Helper 明确记录失败的原集成操作发起具名补偿。需要原实例的 Nginx 配置写入授权。Server 核对锚点、原快照、站点依赖和原生作业状态。受理后原回执关联唯一 `compensationOperationId`，重复请求读取同一回执。成功补偿保留原 Failed 状态并返回 `webserver.integration_compensated`。缺少证据时原操作继续待核验。见[集成具名补偿](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-已知-nginx-集成失败的具名补偿)。
+可向 `POST /api/v1.0/webservers/operations/{operationId}/compensate-integration` 提交 `{"confirmed":true}`，为已由 Helper 明确记录失败的原集成操作发起具名补偿。需要原实例的 Nginx 配置写入授权。Server 核对锚点、原快照、站点依赖和原生作业状态。受理后原回执关联唯一 `compensationOperationId`，重复请求读取同一回执。成功补偿保留原 Failed 状态并返回 `webserver.integration_compensated`。缺少证据时原操作继续待核验。见[集成具名补偿](../architecture/server-module-evidence/WebServer.md#mb-05-已知-nginx-集成失败的具名补偿)。

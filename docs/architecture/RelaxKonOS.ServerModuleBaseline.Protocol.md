@@ -1,6 +1,6 @@
 # Server 当前版本资源基线测量方案（MB-01）
 
-状态：2026-11-05 的预定测量口径；文档和采样器的存在不代表业务矩阵已运行。实施结果由[模块边界台账](RelaxKonOS.ServerModuleBoundaries.Design.md#8-实施顺序与跟踪项)记录。[资源清单](RelaxKonOS.ServerModuleResources.Inventory.md)负责资源所有者；本文负责测量方法，不改变模块策略或恢复权威。
+状态：2026-11-05 的预定测量口径；文档和采样器的存在不代表业务矩阵已运行。实施结果由[模块边界进度](RelaxKonOS.ServerModuleBoundaries.Progress.md#当前里程碑)记录。[资源清单](RelaxKonOS.ServerModuleResources.Inventory.md)负责资源所有者；本文负责测量方法，不改变模块策略或恢复权威。
 
 ## 固定输入与运行清单
 

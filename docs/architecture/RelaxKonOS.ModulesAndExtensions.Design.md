@@ -433,4 +433,4 @@ Docker 不能像 Terminal/Git 那样整体迁入：审计发现同一个 `RelaxK
 
 “组件中心 → 服务端模块”的目标入口、启用集合、计划/操作协议、重启核实及实施跟踪由[服务端模块管理完整设计](RelaxKonOS.ServerModuleManagement.Design.md)统一规定。本文的包信任与模块边界继续有效；管理界面和新增写入路由均未因设计发布而实现。
 
-2026-11-03 MB-04 已完成 Proxy 共享读取与写入/对账接口分离和 Host 平台原语归属调整；恢复/guard/到期职责交接及 Proxy 休眠仍开放，见[边界实施记录](RelaxKonOS.ServerModuleBoundaries.Design.md#12-proxy-共享读取与写入安全边界2026-11-03mb-04-部分)。
+2026-11-03 MB-04 已完成 Proxy 共享读取与写入/对账接口分离和 Host 平台原语归属调整；恢复/guard/到期职责交接及 Proxy 休眠仍开放，见[边界实施记录](server-module-evidence/Proxy-Publication.md#12-proxy-共享读取与写入安全边界2026-11-03mb-04-部分)。

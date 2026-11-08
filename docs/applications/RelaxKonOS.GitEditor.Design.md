@@ -184,6 +184,6 @@ Rider 的代码分析、重构、构建/调试、第三方托管平台集成不�
 
 ### 服务端构建取消与清理
 
-已受理的构建在客户端断开后继续由服务端跟踪。取消请求保留原构建 ID，镜像标签清理确认后才记录终态。若 Engine 无法确认清理，原回执保留为 interrupted，问题码为 git-build.image-cleanup-unverified，服务端阻止新构建及模块休眠，等待恢复核实。同一幂等键继续返回原回执。实机覆盖范围见[服务端模块边界台账 §43](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#43-mb-03-构建清理责任与测试机预检2026-11-06)。
+已受理的构建在客户端断开后继续由服务端跟踪。取消请求保留原构建 ID，镜像标签清理确认后才记录终态。若 Engine 无法确认清理，原回执保留为 interrupted，问题码为 git-build.image-cleanup-unverified，服务端阻止新构建及模块休眠，等待恢复核实。同一幂等键继续返回原回执。实机覆盖范围见[服务端模块边界台账 §43](../architecture/server-module-evidence/Git.md#43-mb-03-构建清理责任与测试机预检2026-11-06)。
 
-离线 rootless BuildKit 制品已校验并导入测试机。专用 builder 被测试机的 user namespace 权限阻塞，仍需可达的 HTTPS 测试仓库和可运行的专用 builder，才能验收实际构建中的取消与恢复。详见[服务端模块边界台账 §44](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#44-mb-03-离线-buildkit-与-mb-05-隔离设施续核2026-11-06)。
+离线 rootless BuildKit 制品已校验并导入测试机。专用 builder 被测试机的 user namespace 权限阻塞，仍需可达的 HTTPS 测试仓库和可运行的专用 builder，才能验收实际构建中的取消与恢复。详见[服务端模块边界台账 §44](../architecture/server-module-evidence/Milestones.md#44-mb-03-离线-buildkit-与-mb-05-隔离设施续核2026-11-06)。

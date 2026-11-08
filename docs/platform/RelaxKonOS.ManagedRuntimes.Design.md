@@ -5,19 +5,19 @@
 > 当前逐组件实施状态与 Nginx 平台边界见[组件中心实施进度](RelaxKonOS.ComponentCenter.Progress.md)；下文历史切片的验收范围保持原记录。
 > 签名目录的生产与登记流程见[发布签名运行时目录](RelaxKonOS.RuntimeCatalog.Publishing.md)。
 
-2026-11-03（MB-04 / MR-01 边界）：安装引导与宿主下载只依赖轻量设置 reader，写入/对账权威保持原实现；损坏初始设置在生成凭据或冻结发布前返回 `runtime.settings_drift`，已有操作继续按冻结材料重放。冻结、Helper、回执及补偿规则未放宽，未扩展真实运行时生命周期验收；代码与证据由[模块边界 §12](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#12-proxy-共享读取与写入安全边界2026-11-03mb-04-部分)追踪。
+2026-11-03（MB-04 / MR-01 边界）：安装引导与宿主下载只依赖轻量设置 reader，写入/对账权威保持原实现；损坏初始设置在生成凭据或冻结发布前返回 `runtime.settings_drift`，已有操作继续按冻结材料重放。冻结、Helper、回执及补偿规则未放宽，未扩展真实运行时生命周期验收；代码与证据由[模块边界 §12](../architecture/server-module-evidence/Proxy-Publication.md#12-proxy-共享读取与写入安全边界2026-11-03mb-04-部分)追踪。
 
-2026-11-03（MB-04 / MR-03 续核）：guard 对账已拆为窄实现，仍在原发布锁内复用 writer 的既有身份核验，不重新授信、不生成凭据，也不承担安装/移除/配置补偿执行权。Core 原发布恢复及 TUN 标记恢复继续保留，MR-03 未新增真实生命周期验收；两平台夹具结果和引用审计见[模块边界 §14](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#14-系统代理-guard-窄执行边界与安全责任审计2026-11-03mb-04-部分)。
+2026-11-03（MB-04 / MR-03 续核）：guard 对账已拆为窄实现，仍在原发布锁内复用 writer 的既有身份核验，不重新授信、不生成凭据，也不承担安装/移除/配置补偿执行权。Core 原发布恢复及 TUN 标记恢复继续保留，MR-03 未新增真实生命周期验收；两平台夹具结果和引用审计见[模块边界 §14](../architecture/server-module-evidence/Proxy-Safety.md#14-系统代理-guard-窄执行边界与安全责任审计2026-11-03mb-04-部分)。
 
-2026-11-03（MB-04 / MR-03 TUN 边界）：TUN runtime controller 与设置 writer 已分离，继续共用 publication gate；原受管 publication 对直接 TUN 转换的拒绝保持，未新增受管 TUN 事务支持。安装/移除/配置发布补偿执行权未转移，MR-03 不关闭，详见[边界设计 §15](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)。
+2026-11-03（MB-04 / MR-03 TUN 边界）：TUN runtime controller 与设置 writer 已分离，继续共用 publication gate；原受管 publication 对直接 TUN 转换的拒绝保持，未新增受管 TUN 事务支持。安装/移除/配置发布补偿执行权未转移，MR-03 不关闭，详见[边界设计 §15](../architecture/server-module-evidence/Proxy-Safety.md#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)。
 
-2026-11-03（MB-04 / MR-03 发布恢复作用域）：startup worker 每轮按 pending 类型临时解析协调器；原共享 gate、冻结计划、受理后收尾、Helper 同操作证明、profile/settings 提交与补偿规则不变。安装/人工恢复的独立根引用仍保留，未增加真实生命周期验收，MR-03 不关闭，见[边界设计 §16](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#16-发布恢复临时作用域与-profile-执行图审计2026-11-03mb-04-部分)。
+2026-11-03（MB-04 / MR-03 发布恢复作用域）：startup worker 每轮按 pending 类型临时解析协调器；原共享 gate、冻结计划、受理后收尾、Helper 同操作证明、profile/settings 提交与补偿规则不变。安装/人工恢复的独立根引用仍保留，未增加真实生命周期验收，MR-03 不关闭，见[边界设计 §16](../architecture/server-module-evidence/Proxy-Publication.md#16-发布恢复临时作用域与-profile-执行图审计2026-11-03mb-04-部分)。
 
-2026-11-07（MB-04 / MR-03 发布恢复排空）：Core 调度器停止新扫描后，等待原领域恢复响应、终态写入和异步作用域清理。配置、安装与移除仍由原领域协调器和原事务回执裁决。验收范围见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-mihomo-发布恢复的停机排空)。
+2026-11-07（MB-04 / MR-03 发布恢复排空）：Core 调度器停止新扫描后，等待原领域恢复响应、终态写入和异步作用域清理。配置、安装与移除仍由原领域协调器和原事务回执裁决。验收范围见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-core-mihomo-发布恢复的停机排空)。
 
-2026-11-07（MB-04 / MR-03 执行作用域）：安装台账适配器仅在实际执行或恢复时解析安装引导、安装发布及移除发布。运行时管理器只在状态探测和启动就绪检查中创建 HTTP 控制器。锁、冻结计划、原 operationId 和 Helper 回执仍由原服务负责。验收见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-运行时与安装执行作用域)。
+2026-11-07（MB-04 / MR-03 执行作用域）：安装台账适配器仅在实际执行或恢复时解析安装引导、安装发布及移除发布。运行时管理器只在状态探测和启动就绪检查中创建 HTTP 控制器。锁、冻结计划、原 operationId 和 Helper 回执仍由原服务负责。验收见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-运行时与安装执行作用域)。
 
-2026-11-08（MB-04 / MR-03 配置补偿）：Linux 专属 systemd 验证有效订阅候选开始转发后停止、原 Helper 补偿并恢复旧配置，以及 Server 按原回执恢复。范围限现有受管配置事务。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-受管-mihomo-切换后的订阅激活补偿)。
+2026-11-08（MB-04 / MR-03 配置补偿）：Linux 专属 systemd 验证有效订阅候选开始转发后停止、原 Helper 补偿并恢复旧配置，以及 Server 按原回执恢复。范围限现有受管配置事务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Subscriptions.md#mb-04-受管-mihomo-切换后的订阅激活补偿)。
 
 ## Windows 日常安装入口调整（2026-10-27，MR-03/04/05）
 
@@ -234,28 +234,28 @@ Linux nginx 首次冻结安装从组件中心经产品提权进入统一安装�
 
 ## 2026-11-03 Proxy 发布恢复所有权收尾
 
-Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending，按类型在独立 async scope 中执行配置/安装/移除恢复；busy/Helper 不可用仍重试同一意图，operator-required 身份保留并不自动重放，新操作身份可再次扫描。原冻结计划、共享 publication gate、摘要/回执核实、补偿和原生生命周期 authority 不变；不重复 prepare/install 或以当前健康认定原任务成功。sing-box 到期的 Core 窄执行器也沿用原 protected state 与 Helper 证明。MR-02/03/04 及真实 OS 服务验收不因 scope/注册检查而关闭；当前 Proxy 仍 resident，完整证据与限制见[边界设计 §19](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)。
+Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending，按类型在独立 async scope 中执行配置/安装/移除恢复；busy/Helper 不可用仍重试同一意图，operator-required 身份保留并不自动重放，新操作身份可再次扫描。原冻结计划、共享 publication gate、摘要/回执核实、补偿和原生生命周期 authority 不变；不重复 prepare/install 或以当前健康认定原任务成功。sing-box 到期的 Core 窄执行器也沿用原 protected state 与 Helper 证明。MR-02/03/04 及真实 OS 服务验收不因 scope/注册检查而关闭；当前 Proxy 仍 resident，完整证据与限制见[边界设计 §19](../architecture/server-module-evidence/Proxy-Publication.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)。
 
 2026-11-07（MB-04 / MR-03 配置恢复）：Proxy 停用启动门禁复用原配置发布恢复入口，核对同一 operationId 的 Helper 回执和配置权威。原生发布及补偿验证见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)。本阶段范围为已受理配置发布恢复，MR-03 安装和版本生命周期沿用各自验收记录。
 
 2026-11-07（MB-04 / MR-03 配置恢复）：真实独立 Helper IPC 验收确认 Mihomo 同一发布 ID 可在配置前后用于只读查询。候选转发期间 Helper 中断后的补偿由完整非 root Server 按原 operationId 执行，恢复旧配置及原回执。证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)。
 
-2026-11-07（MR-03 / MB-04）已确认受管发布后的直接 TUN 拒绝路径通过 Linux 私有 systemd 验收。原具名配置补偿回执和真实流量持续，拒绝未生成新恢复标记或控制器请求。受管 TUN 网络事务仍开放。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-已确认受管发布的真实-tun-门禁)。
+2026-11-07（MR-03 / MB-04）已确认受管发布后的直接 TUN 拒绝路径通过 Linux 私有 systemd 验收。原具名配置补偿回执和真实流量持续，拒绝未生成新恢复标记或控制器请求。受管 TUN 网络事务仍开放。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-已确认受管发布的真实-tun-门禁)。
 
-2026-11-07（MR-02 / MB-04）受管 sing-box 入站发布将最近一次原生发布回执保存在原归档及实例锁中。入站台账按原 ID 恢复。原生结果仍在途时，归档切换和移除门禁保留责任。证据及待实现的在途补偿入口见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站发布按原-helper-回执恢复)。
+2026-11-07（MR-02 / MB-04）受管 sing-box 入站发布将最近一次原生发布回执保存在原归档及实例锁中。入站台账按原 ID 恢复。原生结果仍在途时，归档切换和移除门禁保留责任。证据及待实现的在途补偿入口见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-入站发布按原-helper-回执恢复)。
 
-2026-11-07（MR-02 / MB-04）在途入站发布可通过原 ID 显式补偿。原归档实例锁、程序核验和配置备份共同限定恢复范围。还原时保持停止，后续启动重新核验授权。此项属于入站配置事务恢复。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-在途入站发布的原-id-补偿)。
+2026-11-07（MR-02 / MB-04）在途入站发布可通过原 ID 显式补偿。原归档实例锁、程序核验和配置备份共同限定恢复范围。还原时保持停止，后续启动重新核验授权。此项属于入站配置事务恢复。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-在途入站发布的原-id-补偿)。
 
 2026-11-08（MR-02 回归）Windows Release 生命周期夹具使用 `sing-box.exe` 作为签名制品入口，使伪造归档布局和证据信任用例通过平台预检并到达 Helper 独立信任复核。专项 28 项通过，使用 Windows apphost 的 ManagedRuntimes 广跑也通过。可信下载传输探针因该主机缺少进程级 CA 覆盖而跳过。此次验证范围为本地回归夹具。
 
-2026-11-08（MR-03 / MB-04）直连配置待恢复时，Mihomo 受管计划和发布保持原恢复门禁。既有直接安装入口在激活前复核同一检查点，下载阶段不占用 Core 安全共用发布锁。见[直连 reload 持久检查点](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连-reload-持久检查点)。
+2026-11-08（MR-03 / MB-04）直连配置待恢复时，Mihomo 受管计划和发布保持原恢复门禁。既有直接安装入口在激活前复核同一检查点，下载阶段不占用 Core 安全共用发布锁。见[直连 reload 持久检查点](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-直连-reload-持久检查点)。
 
-2026-11-08（MR-03 / MB-04）Mihomo 运行时恢复入口按原 ID 区分 Server 直连检查点与 Helper 事务。直连查询和磁盘重试可独立于 Helper；恢复响应保留原 ID 和 `RecoveryRequired`。特权事务的停止、关账和已有版本生命周期按各自台账处理。见[直连具名恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连具名恢复)。
+2026-11-08（MR-03 / MB-04）Mihomo 运行时恢复入口按原 ID 区分 Server 直连检查点与 Helper 事务。直连查询和磁盘重试可独立于 Helper；恢复响应保留原 ID 和 `RecoveryRequired`。特权事务的停止、关账和已有版本生命周期按各自台账处理。见[直连具名恢复](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-直连具名恢复)。
 
-2026-11-08（MR-03 / MB-04 配置恢复）直连档案发布已持久记录原生确认时，按原 ID 接续已有 SQLite 档案提交，完成后可读回原成功回执。未记录确认的原 reload 继续待恢复。见[直连档案提交恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连档案提交恢复)。
+2026-11-08（MR-03 / MB-04 配置恢复）直连档案发布已持久记录原生确认时，按原 ID 接续已有 SQLite 档案提交，完成后可读回原成功回执。未记录确认的原 reload 继续待恢复。见[直连档案提交恢复](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-直连档案提交恢复)。
 
-2026-11-08（MR-03 / MB-04 配置恢复）宿主代理策略一致，且已收到运行时与宿主成功应答的直连设置，可按原 ID 完成本地提交及回执。见[直连设置提交恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连设置提交恢复)。
+2026-11-08（MR-03 / MB-04 配置恢复）宿主代理策略一致，且已收到运行时与宿主成功应答的直连设置，可按原 ID 完成本地提交及回执。见[直连设置提交恢复](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-直连设置提交恢复)。
 
-2026-11-08（MR-03 / MB-04 配置恢复）Linux 直连宿主代理策略变更在原运行时确认后冻结意图，按原 ID 核对 Helper 回执及实际代理效果。guard 独立接管时保留待处理结果。见[Linux 直连宿主策略变更恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连宿主策略变更恢复)。
+2026-11-08（MR-03 / MB-04 配置恢复）Linux 直连宿主代理策略变更在原运行时确认后冻结意图，按原 ID 核对 Helper 回执及实际代理效果。guard 独立接管时保留待处理结果。见[Linux 直连宿主策略变更恢复](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-linux-直连宿主策略变更恢复)。
 
-2026-11-08（MR-03 / MB-04 配置恢复）guard 已接管的 Linux 直连设置可经具名授权执行独立补偿。原操作保留中断及补偿 ID。应答丢失后，仅端口与日志级别的可观察变更可凭原配置和真实监听证据续接，其他未知结果保持待处理。见[Linux 直连监听显式补偿](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-linux-直连监听显式补偿)。
+2026-11-08（MR-03 / MB-04 配置恢复）guard 已接管的 Linux 直连设置可经具名授权执行独立补偿。原操作保留中断及补偿 ID。应答丢失后，仅端口与日志级别的可观察变更可凭原配置和真实监听证据续接，其他未知结果保持待处理。见[Linux 直连监听显式补偿](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-linux-直连监听显式补偿)。

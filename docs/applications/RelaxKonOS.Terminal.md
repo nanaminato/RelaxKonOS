@@ -54,7 +54,7 @@ sudo bash deployment/linux/install-relaxkonos-privileged-helper-development.sh "
 
 ---
 
-2026-11-05 Terminal-T2 阶段验收：Windows 当前账号、Linux 本地同 UID 与当前 Helper 永久降权三条真实树路径各17项通过，含根先退出0/7、脱组后代、无关同身份进程保留和真实工作租约排空；真实 EPERM 失败保留路径与打开管道部分帧取消亦通过。Linux 本地每会话新增 .NET worker 有额外内存成本，不称作内存下降；完整证据、点样和仍开放的安装/崩溃矩阵由[模块边界设计 §40](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#40-mb-06b-与-terminal-t2原生进程树验收2026-11-05)拥有。
+2026-11-05 Terminal-T2 阶段验收：Windows 当前账号、Linux 本地同 UID 与当前 Helper 永久降权三条真实树路径各17项通过，含根先退出0/7、脱组后代、无关同身份进程保留和真实工作租约排空；真实 EPERM 失败保留路径与打开管道部分帧取消亦通过。Linux 本地每会话新增 .NET worker 有额外内存成本，不称作内存下降；完整证据、点样和仍开放的安装/崩溃矩阵由[模块边界设计 §40](../architecture/server-module-evidence/ModuleHost-Terminal.md#40-mb-06b-与-terminal-t2原生进程树验收2026-11-05)拥有。
 
 ## 1. 定位
 

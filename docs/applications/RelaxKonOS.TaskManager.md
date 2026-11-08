@@ -8,23 +8,23 @@
 
 `ISystemPerformanceSource` 隔离 Windows 原生 API 与 Linux `/proc`、`/sys` 原始读取。`PerformanceSampler` 统一使用相邻计数器和实际单调时间间隔计算速率，每秒采样，保存最多 60 点内存历史；不接入数据库。至少一个订阅者存在或 REST 申请有界 demand 时才采样，无订阅者后清除基线与历史。首次原始读取只建立基线，不把差分未就绪显示为 0%。
 
-2026-11-04：实际采样读取至同步事件分发使用驻留协调器工作租约，停机等待超时不提前释放未完成的源读取。每个连接独立登记，需求代次阻止旧读取晚到后污染新基线/历史。Windows 新增 18 项检查通过，本轮 Linux 尚未运行；静态信息读取、REST 等待者与 Hub 网络发送的完整寿命仍待接入，模块继续 resident，范围见[边界设计 §29](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#29-实际采样工作租约与需求代次2026-11-04mb-07-部分)。
+2026-11-04：实际采样读取至同步事件分发使用驻留协调器工作租约，停机等待超时不提前释放未完成的源读取。每个连接独立登记，需求代次阻止旧读取晚到后污染新基线/历史。Windows 新增 18 项检查通过，本轮 Linux 尚未运行；静态信息读取、REST 等待者与 Hub 网络发送的完整寿命仍待接入，模块继续 resident，范围见[边界设计 §29](../architecture/server-module-evidence/SystemPerformance.md#29-实际采样工作租约与需求代次2026-11-04mb-07-部分)。
 
-后续静态信息读取也已接入工作租约与独立请求 owner：关闭准入后拒绝新读取，实际源 Task 完成前保留保护，不创建实时采样 demand。Windows 驻留检查累计 28 项通过，Linux 本轮未执行；REST 等待者和 Hub 网络发送仍待接入，详见[边界设计 §30](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#30-性能静态信息读取的工作保护2026-11-04mb-07-部分)。
+后续静态信息读取也已接入工作租约与独立请求 owner：关闭准入后拒绝新读取，实际源 Task 完成前保留保护，不创建实时采样 demand。Windows 驻留检查累计 28 项通过，Linux 本轮未执行；REST 等待者和 Hub 网络发送仍待接入，详见[边界设计 §30](../architecture/server-module-evidence/SystemPerformance.md#30-性能静态信息读取的工作保护2026-11-04mb-07-部分)。
 
-REST 快照后续：缓存命中和等待均接入工作租约，取消/超时释放本请求需求，关闭能唤醒等待；底层未完成的采样读取继续独立受保护。Windows/Linux 驻留检查累计各 42 项与原性能专项通过，Windows 默认模块回归通过。Hub 连续订阅与网络发送仍待接入，模块保持 resident，范围见[边界设计 §31](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#31-rest-快照等待者的完整调用保护2026-11-04mb-07-部分)。
+REST 快照后续：缓存命中和等待均接入工作租约，取消/超时释放本请求需求，关闭能唤醒等待；底层未完成的采样读取继续独立受保护。Windows/Linux 驻留检查累计各 42 项与原性能专项通过，Windows 默认模块回归通过。Hub 连续订阅与网络发送仍待接入，模块保持 resident，范围见[边界设计 §31](../architecture/server-module-evidence/SystemPerformance.md#31-rest-快照等待者的完整调用保护2026-11-04mb-07-部分)。
 
-Hub 广播后续：实际发送 Task 已受工作租约保护，保持 4 条 DropOldest 队列，慢网络不阻塞采样；停机等待超时不提前释放在途发送。Windows/Linux 新增广播各 15 项通过，原性能驻留各 42 项及专项通过；连续连接/组成员仍待接入，详见[边界设计 §32](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#32-hub-广播实际发送的工作寿命2026-11-04mb-07-部分)。
+Hub 广播后续：实际发送 Task 已受工作租约保护，保持 4 条 DropOldest 队列，慢网络不阻塞采样；停机等待超时不提前释放在途发送。Windows/Linux 新增广播各 15 项通过，原性能驻留各 42 项及专项通过；连续连接/组成员仍待接入，详见[边界设计 §32](../architecture/server-module-evidence/SystemPerformance.md#32-hub-广播实际发送的工作寿命2026-11-04mb-07-部分)。
 
-连续连接后续：Hub 连接从 OnConnected 到组清理实际结束持有工作租约；仅连接不触发采样，退订后连接仍受保护。重复订阅不重复入组，断线/停机的晚到入组不会恢复采样需求；未知退组失败保留责任，不自动重放。Windows/Linux 最终连接各 25 项及原专项通过，详见[边界设计 §33](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#33-连续-hub-连接与组成员-owner2026-11-04mb-07-部分)。模块仍 resident，真实网络故障及生产内存收益尚未验收。
+连续连接后续：Hub 连接从 OnConnected 到组清理实际结束持有工作租约；仅连接不触发采样，退订后连接仍受保护。重复订阅不重复入组，断线/停机的晚到入组不会恢复采样需求；未知退组失败保留责任，不自动重放。Windows/Linux 最终连接各 25 项及原专项通过，详见[边界设计 §33](../architecture/server-module-evidence/SystemPerformance.md#33-连续-hub-连接与组成员-owner2026-11-04mb-07-部分)。模块仍 resident，真实网络故障及生产内存收益尚未验收。
 
-只读接口后续：最新快照和历史采用可取消的 `GetLatestAsync` / `GetHistoryAsync`，包括空缓存和命中均先取得工作保护，HTTP 历史路由与 JSON 不变，不触发额外采样。Windows/Linux 性能驻留各 53 项及原专项通过，详见[边界设计 §34](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#34-历史与最新快照的异步读取保护2026-11-04mb-07-部分)。保护至物化返回，不包含后续响应传输，模块仍 resident。
+只读接口后续：最新快照和历史采用可取消的 `GetLatestAsync` / `GetHistoryAsync`，包括空缓存和命中均先取得工作保护，HTTP 历史路由与 JSON 不变，不触发额外采样。Windows/Linux 性能驻留各 53 项及原专项通过，详见[边界设计 §34](../architecture/server-module-evidence/SystemPerformance.md#34-历史与最新快照的异步读取保护2026-11-04mb-07-部分)。保护至物化返回，不包含后续响应传输，模块仍 resident。
 
-HTTP 响应后续：已授权结果的实际 JSON 序列化、图标写入等执行另持工作租约，取消不提前释放未完成的响应 Task，结束后恢复原请求令牌。响应不可用不重放已执行的终止操作。Windows/Linux 新增 HTTP 各 15 项及原专项通过，详见[边界设计 §35](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#35-http-性能响应执行保护2026-11-04mb-07-部分)；不宣称物理网络送达或整体模块回收，模块仍 resident。
+HTTP 响应后续：已授权结果的实际 JSON 序列化、图标写入等执行另持工作租约，取消不提前释放未完成的响应 Task，结束后恢复原请求令牌。响应不可用不重放已执行的终止操作。Windows/Linux 新增 HTTP 各 15 项及原专项通过，详见[边界设计 §35](../architecture/server-module-evidence/SystemPerformance.md#35-http-性能响应执行保护2026-11-04mb-07-部分)；不宣称物理网络送达或整体模块回收，模块仍 resident。
 
-连接预算后续：性能 Hub owner 最多持有 128 个准入中、存活或故障连接，超限直接拒绝；正常清理可补位，取消通知不提前释放名额，未知故障继续占用。Windows/Linux 新增预算各 13 项及原专项通过，范围见[边界设计 §36](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#36-连续-hub-连接的准入数量预算2026-11-04mb-07-部分)；不是整个 Server 的内存上限，模块仍 resident。
+连接预算后续：性能 Hub owner 最多持有 128 个准入中、存活或故障连接，超限直接拒绝；正常清理可补位，取消通知不提前释放名额，未知故障继续占用。Windows/Linux 新增预算各 13 项及原专项通过，范围见[边界设计 §36](../architecture/server-module-evidence/SystemPerformance.md#36-连续-hub-连接的准入数量预算2026-11-04mb-07-部分)；不是整个 Server 的内存上限，模块仍 resident。
 
-管理员图标后续：Helper 编码图标先检查 349528 字符预算，再解码并保留 256 KiB 输出检查，避免超大输入先分配解码数组；超预算仍按原缺失图标回退，不重放 Helper。Windows/Linux 各14项及原专项通过，范围见[边界设计 §37](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#37-管理员图标-base64-解码前预算2026-11-04mb-07-部分)。本轮不改变权限/进程实例核验，也不声称整个传输或进程树内存已受此预算限制。
+管理员图标后续：Helper 编码图标先检查 349528 字符预算，再解码并保留 256 KiB 输出检查，避免超大输入先分配解码数组；超预算仍按原缺失图标回退，不重放 Helper。Windows/Linux 各14项及原专项通过，范围见[边界设计 §37](../architecture/server-module-evidence/SystemPerformance.md#37-管理员图标-base64-解码前预算2026-11-04mb-07-部分)。本轮不改变权限/进程实例核验，也不声称整个传输或进程树内存已受此预算限制。
 
 `PerformanceInfoDto` 包含低频 CPU、内存、文件系统、磁盘、网络身份及显式能力位；`PerformanceRealtimeSnapshotDto` 包含递增 sequence、UTC timestamp、CPU、内存、文件系统容量、磁盘 I/O、网络计数与速率、uptimeSeconds、health。文件系统容量和块设备 I/O 分开显示。未知增强指标保留 null；能力 false 时不显示伪造的数值。当前性能契约没有 GPU 实时数据，GPU/传感器为后续扩展。
 
@@ -50,17 +50,17 @@ HTTP 响应后续：已授权结果的实际 JSON 序列化、图标写入等执
 
 进程图标单独按 `(PID, StartTime)` 请求，避免进程列表轮询反复传输图像。客户端仅在虚拟化列表需要显示该行时请求；Server 验证当前实例并按可执行文件缓存图标。Windows 在选定执行上下文中核对同一进程句柄的创建时间，并使用 QueryFullProcessImageName 读取可执行文件路径、提取 PNG；Ubuntu 从匹配的 `.desktop` 项查找 PNG/SVG 图标。图标缺失、权限不足或不支持的图像格式返回 404，客户端使用类别图标回退。
 
-2026-11-04：普通图标缓存归 Server `ProcessSampler` 的 provider 实例，管理员图标归 Helper 独立 owner；每个缓存最多 512 条（含缺失结果）及 8 MiB 已完成图像载荷，按 FIFO 淘汰。文件路径、长度或修改时间变化产生新键。销毁 sampler 时清理图标及 desktop 索引引用，在途加载完成不能重新写回。授权与 PID/启动时间验证仍逐请求执行，不因缓存命中省略。当前没有闲时缓存清理或整个性能模块休眠，预算不涵盖 desktop 索引、在途解码峰值及调用者持有的数据；验证范围见[Server 边界设计 §23](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#23-进程图标缓存实例所有权与载荷预算2026-11-04mb-07-部分)。
+2026-11-04：普通图标缓存归 Server `ProcessSampler` 的 provider 实例，管理员图标归 Helper 独立 owner；每个缓存最多 512 条（含缺失结果）及 8 MiB 已完成图像载荷，按 FIFO 淘汰。文件路径、长度或修改时间变化产生新键。销毁 sampler 时清理图标及 desktop 索引引用，在途加载完成不能重新写回。授权与 PID/启动时间验证仍逐请求执行，不因缓存命中省略。当前没有闲时缓存清理或整个性能模块休眠，预算不涵盖 desktop 索引、在途解码峰值及调用者持有的数据；验证范围见[Server 边界设计 §23](../architecture/server-module-evidence/SystemPerformance.md#23-进程图标缓存实例所有权与载荷预算2026-11-04mb-07-部分)。
 
-desktop 图像读取另有限额：SVG 原文最多 256 KiB；PNG 编码最多 1 MiB，且源图每边最多 1024px，在分配目标像素前检查。正常 PNG 仍输出有透明边距的 32×32 图标；超限、损坏或编码不符时使用原缺失图标回退。此预算不等于整个解码过程、目录索引或服务进程的内存上限，验证见[Server 边界设计 §24](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#24-desktop-图像输入与目标位图分配预算2026-11-04mb-07-部分)。
+desktop 图像读取另有限额：SVG 原文最多 256 KiB；PNG 编码最多 1 MiB，且源图每边最多 1024px，在分配目标像素前检查。正常 PNG 仍输出有透明边距的 32×32 图标；超限、损坏或编码不符时使用原缺失图标回退。此预算不等于整个解码过程、目录索引或服务进程的内存上限，验证见[Server 边界设计 §24](../architecture/server-module-evidence/SystemPerformance.md#24-desktop-图像输入与目标位图分配预算2026-11-04mb-07-部分)。
 
-desktop 索引现按有限根目录、深度和条目流式扫描：每文件 64 KiB、总读取 8 MiB，最多保留 2048 项及 512 KiB 键值文本；主题发现和路径探测也有整轮预算。超限时保留已找到的图标，其余使用默认图标，不影响已授权进程列表。目录符号链接不递归，desktop 文件链接仍经过有界读取；当前未增加定时刷新或模块休眠。具体工作预算与验收见[Server 边界设计 §25](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#25-desktop-流式扫描与索引工作预算2026-11-04mb-07-部分)。
+desktop 索引现按有限根目录、深度和条目流式扫描：每文件 64 KiB、总读取 8 MiB，最多保留 2048 项及 512 KiB 键值文本；主题发现和路径探测也有整轮预算。超限时保留已找到的图标，其余使用默认图标，不影响已授权进程列表。目录符号链接不递归，desktop 文件链接仍经过有界读取；当前未增加定时刷新或模块休眠。具体工作预算与验收见[Server 边界设计 §25](../architecture/server-module-evidence/SystemPerformance.md#25-desktop-流式扫描与索引工作预算2026-11-04mb-07-部分)。
 
-普通和管理员图标读取现在共享每个 Server owner 的 4 个执行名额及 32 个额外等待名额，provider/Helper 各自另有限额。排队取消不启动读取，超载或停机使用原默认图标回退；已开始的读取不会因客户端取消而提前释放资源，实际完成后才报告取消。ProcessSampler 的 Host Stop 阶段关闭图标准入并等待在途读取，超时仅取消等待，资源在真实工作结束后清理。进程终止行为、权限、PID/启动时间核验及图标缓存预算不变；这尚不是整个性能模块休眠，验证范围见[Server 边界设计 §26](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#26-图标并发准入取消与-owner-停机排空2026-11-04mb-07-部分)。
+普通和管理员图标读取现在共享每个 Server owner 的 4 个执行名额及 32 个额外等待名额，provider/Helper 各自另有限额。排队取消不启动读取，超载或停机使用原默认图标回退；已开始的读取不会因客户端取消而提前释放资源，实际完成后才报告取消。ProcessSampler 的 Host Stop 阶段关闭图标准入并等待在途读取，超时仅取消等待，资源在真实工作结束后清理。进程终止行为、权限、PID/启动时间核验及图标缓存预算不变；这尚不是整个性能模块休眠，验证范围见[Server 边界设计 §26](../architecture/server-module-evidence/SystemPerformance.md#26-图标并发准入取消与-owner-停机排空2026-11-04mb-07-部分)。
 
-图标等待/执行已进一步接入同一驻留协调器的真实工作租约；排队保护也会计入模块目录的 activeLeases，不等于同时执行的 OS 读取数。协调器关闭能撤销等待，实际读取结束前仍保留在途保护；准入失败不会继续调用 Helper 或原生读取。SystemPerformance 仍 resident，不支持闲时释放配置；采样和 Hub 等整体生命周期尚未全部接入，详见[Server 边界设计 §27](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#27-图标工作接入常驻协调器租约2026-11-04mb-07-部分)。
+图标等待/执行已进一步接入同一驻留协调器的真实工作租约；排队保护也会计入模块目录的 activeLeases，不等于同时执行的 OS 读取数。协调器关闭能撤销等待，实际读取结束前仍保留在途保护；准入失败不会继续调用 Helper 或原生读取。SystemPerformance 仍 resident，不支持闲时释放配置；采样和 Hub 等整体生命周期尚未全部接入，详见[Server 边界设计 §27](../architecture/server-module-evidence/SystemPerformance.md#27-图标工作接入常驻协调器租约2026-11-04mb-07-部分)。
 
-进程查询（包括缓存命中）和有效终止请求也已取得同一协调器的工作保护；停止 owner 后拒绝新调用，等待已准入调用完成后清理普通/管理员快照与 CPU 差分缓存。原查询/终止请求令牌、PID/完整启动时间核验、权限失败及未确认回执不变，不增加自动提升或终止重放。已返回的物化结果不因缓存清理而失效；这仍不表示整个性能模块可休眠。范围与验证见[Server 边界设计 §28](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#28-进程查询终止工作保护与快照-owner-排空2026-11-04mb-07-部分)。
+进程查询（包括缓存命中）和有效终止请求也已取得同一协调器的工作保护；停止 owner 后拒绝新调用，等待已准入调用完成后清理普通/管理员快照与 CPU 差分缓存。原查询/终止请求令牌、PID/完整启动时间核验、权限失败及未确认回执不变，不增加自动提升或终止重放。已返回的物化结果不因缓存清理而失效；这仍不表示整个性能模块可休眠。范围与验证见[Server 边界设计 §28](../architecture/server-module-evidence/SystemPerformance.md#28-进程查询终止工作保护与快照-owner-排空2026-11-04mb-07-部分)。
 
 请求只接受当前实例契约：
 

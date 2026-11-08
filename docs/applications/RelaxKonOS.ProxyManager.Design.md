@@ -1,12 +1,12 @@
 # RelaxKonOS 内置代理管理器实现规范
 
-> 2026-11-03 任务责任门禁：Proxy 禁用检查同时读取活动任务、保留的失败 scope 和持久 operation ledger；损坏/未知执行责任拒绝禁用与新键受理，检查不改台账也不启动任务。原 publication pending 门禁保留；持续安全责任的跨禁用交接仍未完成，Proxy 继续 resident。见[边界设计 §18](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#18-proxy-任务准入停机与禁用责任门禁2026-11-03mb-04-部分)。
+> 2026-11-03 任务责任门禁：Proxy 禁用检查同时读取活动任务、保留的失败 scope 和持久 operation ledger；损坏/未知执行责任拒绝禁用与新键受理，检查不改台账也不启动任务。原 publication pending 门禁保留；持续安全责任的跨禁用交接仍未完成，Proxy 继续 resident。见[边界设计 §18](../architecture/server-module-evidence/Proxy-Publication.md#18-proxy-任务准入停机与禁用责任门禁2026-11-03mb-04-部分)。
 
-> 2026-11-03：共享设置观察已改为 Core 的 `IProxySettingsReader` / `ProxySettingsReader`，Docker、运行时下载和安装材料选择不再依赖设置管理实现；系统代理对账与 TUN 控制分别由 `MihomoSystemProxyReconciler`、`MihomoTunRuntimeController` 执行，设置 writer 按调用创建；三者继续共用原发布锁，受管写入/对账仍核验当前身份。损坏元数据拒绝回落默认值，首次安装在凭据/发布意图前以 `runtime.settings_drift` 拒绝。Proxy 的 guard、TUN 恢复与授权到期职责未交接，聚合模块仍常驻，未宣称休眠或生产内存收益。接口与共享读取见边界设计 §12；guard 审计见 §14，当前 TUN/writer 引用、恢复/补偿及锁竞争验证见[边界实施记录 §15](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)。
+> 2026-11-03：共享设置观察已改为 Core 的 `IProxySettingsReader` / `ProxySettingsReader`，Docker、运行时下载和安装材料选择不再依赖设置管理实现；系统代理对账与 TUN 控制分别由 `MihomoSystemProxyReconciler`、`MihomoTunRuntimeController` 执行，设置 writer 按调用创建；三者继续共用原发布锁，受管写入/对账仍核验当前身份。损坏元数据拒绝回落默认值，首次安装在凭据/发布意图前以 `runtime.settings_drift` 拒绝。Proxy 的 guard、TUN 恢复与授权到期职责未交接，聚合模块仍常驻，未宣称休眠或生产内存收益。接口与共享读取见边界设计 §12；guard 审计见 §14，当前 TUN/writer 引用、恢复/补偿及锁竞争验证见[边界实施记录 §15](../architecture/server-module-evidence/Proxy-Safety.md#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)。
 
-> 2026-11-03 订阅后台边界：排队刷新/激活仅传值，独立 scope 覆盖业务、审计与异步释放，原台账跟踪至终态持久化；Host 停机等待已受理工作，清理/终态确认失败保留恢复责任。发布补偿与权限不变，Proxy 仍 resident；模块工作租约尚未实现，见[边界设计 §17](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#17-订阅后台任务独立作用域与完整寿命2026-11-03mb-04-部分)。
+> 2026-11-03 订阅后台边界：排队刷新/激活仅传值，独立 scope 覆盖业务、审计与异步释放，原台账跟踪至终态持久化；Host 停机等待已受理工作，清理/终态确认失败保留恢复责任。发布补偿与权限不变，Proxy 仍 resident；模块工作租约尚未实现，见[边界设计 §17](../architecture/server-module-evidence/Proxy-Subscriptions.md#17-订阅后台任务独立作用域与完整寿命2026-11-03mb-04-部分)。
 
-> 2026-11-03 发布恢复续核：Core worker 每轮临时解析对应发布协调器，完整等待恢复与异步 scope 释放后再重试；profile 持久选择、SQLite 操作标记和原补偿权威不变。安装/人工恢复仍有独立根引用，订阅排队执行尚无模块工作租约，Proxy 保持 resident。详见[边界设计 §16](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#16-发布恢复临时作用域与-profile-执行图审计2026-11-03mb-04-部分)。
+> 2026-11-03 发布恢复续核：Core worker 每轮临时解析对应发布协调器，完整等待恢复与异步 scope 释放后再重试；profile 持久选择、SQLite 操作标记和原补偿权威不变。安装/人工恢复仍有独立根引用，订阅排队执行尚无模块工作租约，Proxy 保持 resident。详见[边界设计 §16](../architecture/server-module-evidence/Proxy-Publication.md#16-发布恢复临时作用域与-profile-执行图审计2026-11-03mb-04-部分)。
 
 > 2026-11-02：组件中心的 Mihomo 列表、平台/架构与官方归档入口已由[本地 manifest](../platform/RelaxKonOS.ComponentCatalog.Design.md) 声明；GitHub Releases 与制品选择已经过通用注册表，固定仓库与资产身份仍独立核对；安装仍走原代理运行时/发布协调器和安装台账，不由 manifest 执行命令或授信。未新增真实安装、跨版本和恢复验收。
 
@@ -4415,13 +4415,13 @@ mihomo 新增通用组件状态/计划适配，复用发布感知领域服务；
 
 ## 2026-11-03 常驻执行与安全所有权
 
-订阅、运行启停、TUN 和 Squid 排队操作使用独立 async scope，受理只传固定操作/数据及操作者值，执行、审计、异步释放和终态确认由根台账完整跟踪。scope 清理失败保留 owner，关闭等待取消不会撤销已受理工作。历史台账按需读取，不在根服务永久缓存。Core 唯一承担系统代理 guard、同代 TUN 启动恢复及持续 Mihomo 发布恢复；关闭管理功能不能撤销其安全承诺。发布 pending、原共享 gate、人工阻塞和补偿规则保留，不自动重放订阅/prepare/install。当前仍为 resident，不声明真实网络、DLL 回收或生产内存收益；完整所有权及验证范围见[Server 边界设计 §19](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)。
+订阅、运行启停、TUN 和 Squid 排队操作使用独立 async scope，受理只传固定操作/数据及操作者值，执行、审计、异步释放和终态确认由根台账完整跟踪。scope 清理失败保留 owner，关闭等待取消不会撤销已受理工作。历史台账按需读取，不在根服务永久缓存。Core 唯一承担系统代理 guard、同代 TUN 启动恢复及持续 Mihomo 发布恢复；关闭管理功能不能撤销其安全承诺。发布 pending、原共享 gate、人工阻塞和补偿规则保留，不自动重放订阅/prepare/install。当前仍为 resident，不声明真实网络、DLL 回收或生产内存收益；完整所有权及验证范围见[Server 边界设计 §19](../architecture/server-module-evidence/Proxy-Publication.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)。
 
-2026-11-04：排队 Proxy 工作在持久 queued 前取得真实驻留工作租约，覆盖审计、异步清理和终态确认；失败 owner 隔离，不丢失恢复责任。订阅转换迁入独立 bundled 程序集，仅共享文本 ABI；按调用创建 collectible ALC，未引入私有实现静态引用。Core guard/TUN/到期/补偿责任保留，Proxy 仍 resident。完整当前事实见[边界设计 §20](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。
+2026-11-04：排队 Proxy 工作在持久 queued 前取得真实驻留工作租约，覆盖审计、异步清理和终态确认；失败 owner 隔离，不丢失恢复责任。订阅转换迁入独立 bundled 程序集，仅共享文本 ABI；按调用创建 collectible ALC，未引入私有实现静态引用。Core guard/TUN/到期/补偿责任保留，Proxy 仍 resident。完整当前事实见[边界设计 §20](../architecture/server-module-evidence/Milestones.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。
 
-订阅转换的活动/待回收代码代次最多 16 个，达到上限时转换失败，GC 自然回收后可重新准入；长期无法回收需安排宿主恢复，不能靠无限重载积累代码。生产不强制 GC，整个 Proxy 仍常驻。预算及验证范围见[边界设计 §21](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#21-订阅转换待回收代码预算2026-11-04mb-04-部分)。
+订阅转换的活动/待回收代码代次最多 16 个，达到上限时转换失败，GC 自然回收后可重新准入；长期无法回收需安排宿主恢复，不能靠无限重载积累代码。生产不强制 GC，整个 Proxy 仍常驻。预算及验证范围见[边界设计 §21](../architecture/server-module-evidence/Proxy-Subscriptions.md#21-订阅转换待回收代码预算2026-11-04mb-04-部分)。
 
-2026-11-04 续核：独立转换器及共享契约已有构建期依赖守卫，防止误加 Host、其他实现或未设计的私有依赖。Windows/Ubuntu 26.04 各 28 项驻留检查通过，包含保留失败异常和 100 轮转换后的代码回收；此证据不等于整个管理模块休眠或生产内存下降。当前范围见[边界设计 §22](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#22-proxy-依赖守卫与测试机回收续核2026-11-04mb-0204-部分)。
+2026-11-04 续核：独立转换器及共享契约已有构建期依赖守卫，防止误加 Host、其他实现或未设计的私有依赖。Windows/Ubuntu 26.04 各 28 项驻留检查通过，包含保留失败异常和 100 轮转换后的代码回收；此证据不等于整个管理模块休眠或生产内存下降。当前范围见[边界设计 §22](../architecture/server-module-evidence/Proxy-Publication.md#22-proxy-依赖守卫与测试机回收续核2026-11-04mb-0204-部分)。
 
 既有 Linux 测试机已在私有网络命名空间验证真实 TUN 中断。原管理路由不可核实时保留恢复 marker，恢复路由后原操作完成，旧恢复引用不会影响新 TUN 会话。验收范围见边界设计 §51。
 
@@ -4481,102 +4481,102 @@ Proxy 停用启动时，Server 对原台账中已受理的 Mihomo 配置发布�
 
 TUN 安全服务常驻，控制器和 HTTP 客户端只在实际观察或切换期间创建。Linux 完整 Server 的恢复实测确认，原 TUN 标记和路由仍由 Core 接续处理，Mihomo 转发和系统代理持续可用。
 
-Linux 隔离实测覆盖 TUN 激活重载已应用、持久标记尚未完成时的进程崩溃。完整 Server 以原标记关闭 TUN，验证管理路由和策略规则，同时保留 Mihomo 转发、系统代理 guard 和入站授权到期。证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-接续在途-tun-激活)。
+Linux 隔离实测覆盖 TUN 激活重载已应用、持久标记尚未完成时的进程崩溃。完整 Server 以原标记关闭 TUN，验证管理路由和策略规则，同时保留 Mihomo 转发、系统代理 guard 和入站授权到期。证据见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-接续在途-tun-激活)。
 
-直接 TUN 激活先在原发布锁内通过发布准入，再持久化安全标记并开始配置变更。拒绝准入不产生待恢复的 TUN 操作。已经持久化的原标记继续由 Core 核验和补偿，Linux 真实设备及完整 Server 回归均通过。证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-tun-发布准入与恢复标记)。
+直接 TUN 激活先在原发布锁内通过发布准入，再持久化安全标记并开始配置变更。拒绝准入不产生待恢复的 TUN 操作。已经持久化的原标记继续由 Core 核验和补偿，Linux 真实设备及完整 Server 回归均通过。证据见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-发布准入与恢复标记)。
 
-已确认的受管 Mihomo 发布在 Linux 私有 systemd 实测中拒绝直接 TUN 激活。原 Helper 补偿回执、Mihomo PID、真实转发和管理路由保持可核验，门禁未生成恢复标记或发送控制器请求。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-已确认受管发布的真实-tun-门禁)。
+已确认的受管 Mihomo 发布在 Linux 私有 systemd 实测中拒绝直接 TUN 激活。原 Helper 补偿回执、Mihomo PID、真实转发和管理路由保持可核验，门禁未生成恢复标记或发送控制器请求。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-已确认受管发布的真实-tun-门禁)。
 
-Core TUN worker 可在同一 Server 进程内接手未完成关闭。关闭前持久化原标记，管理路由故障时保留同一 ID。Linux 私有网络实测确认路由恢复后只核验并结清原标记，不重复禁用，已经完成的当前会话继续运行。受管发布下的 TUN 网络事务仍由现有门禁阻止。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-接续运行期-tun-恢复)。
+Core TUN worker 可在同一 Server 进程内接手未完成关闭。关闭前持久化原标记，管理路由故障时保留同一 ID。Linux 私有网络实测确认路由恢复后只核验并结清原标记，不重复禁用，已经完成的当前会话继续运行。受管发布下的 TUN 网络事务仍由现有门禁阻止。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-core-接续运行期-tun-恢复)。
 
-Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
+Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
 
-Core TUN worker 停止接收新扫描后，等待已发出的禁用请求、实际路由核验和原标记清理。停机等待方的期限不会打断已开始的恢复。如果控制器或管理路由仍无法核实，保留原标记供后续核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-tun-恢复的停机排空)。
+Core TUN worker 停止接收新扫描后，等待已发出的禁用请求、实际路由核验和原标记清理。停机等待方的期限不会打断已开始的恢复。如果控制器或管理路由仍无法核实，保留原标记供后续核验。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-core-tun-恢复的停机排空)。
 
-系统代理 guard 停机时排空已派发的对账任务，Helper 响应返回前保留原发布锁。停机本身不会撤销系统代理设置。Linux 已验证真实环境改写、原日志恢复及外部修改保留。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-系统代理-guard-的停机排空)。
+系统代理 guard 停机时排空已派发的对账任务，Helper 响应返回前保留原发布锁。停机本身不会撤销系统代理设置。Linux 已验证真实环境改写、原日志恢复及外部修改保留。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-core-系统代理-guard-的停机排空)。
 
-Mihomo 发布恢复调度器停机时等待已开始的原回执核验、应用台账写入和异步作用域清理。恢复仍按原 operationId 与 Helper 证据执行。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-core-mihomo-发布恢复的停机排空)。
+Mihomo 发布恢复调度器停机时等待已开始的原回执核验、应用台账写入和异步作用域清理。恢复仍按原 operationId 与 Helper 证据执行。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-core-mihomo-发布恢复的停机排空)。
 
-Mihomo 状态读取按调用使用独立控制器，启动就绪检查在一次检查期间复用同一个控制器。安装与移除的执行作用域由原安装台账适配器按需创建。状态刷新不会触发配置发布或服务启停，原发布锁、系统代理、TUN 与恢复责任仍由 Core 持续负责。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-运行时与安装执行作用域)。
+Mihomo 状态读取按调用使用独立控制器，启动就绪检查在一次检查期间复用同一个控制器。安装与移除的执行作用域由原安装台账适配器按需创建。状态刷新不会触发配置发布或服务启停，原发布锁、系统代理、TUN 与恢复责任仍由 Core 持续负责。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-运行时与安装执行作用域)。
 
-隔离 Linux 的空状态配对测量将概览与运行时读取列为下一项执行图审计对象。该证据覆盖认证请求后的 Server 驻留窗口。见[配对数据与限制](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理面的配对驻留基线)。
+隔离 Linux 的空状态配对测量将概览与运行时读取列为下一项执行图审计对象。该证据覆盖认证请求后的 Server 驻留窗口。见[配对数据与限制](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-proxy-管理面的配对驻留基线)。
 
 Proxy 概览使用单独的请求作用域，从原档案库读取当前选中项，并按连接详情的记录规则统计活动连接。只有连接详情请求才映射地址、规则、链路和时间。概览沿用原控制器认证、健康状态和 TUN 恢复状态。
 
 概览和详情以流式方式读取同一 Mihomo 连接快照，最多投影前 2,000 条记录。快照完整验证后才返回计数或明细。默认 5 秒控制器期限覆盖响应体，单条记录或待解析片段上限为 256 KiB，整个响应上限为 32 MiB。超限、截断和无效 JSON 返回控制器响应错误。请求取消继续传递给读取任务。
 
-完整认证 HTTP 的真实连接与管理进程重启由私有 Linux systemd 夹具验收。连接详情和概览计数复用原控制器，实际转发与系统代理日志继续由各自的运行时和 Helper 负责。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的-mihomo-活动连接)。
+完整认证 HTTP 的真实连接与管理进程重启由私有 Linux systemd 夹具验收。连接详情和概览计数复用原控制器，实际转发与系统代理日志继续由各自的运行时和 Helper 负责。见[模块边界台账](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-完整认证-server-的-mihomo-活动连接)。
 
-隔离 Linux 的 512 条真实连接负载已完成缓冲与流式版本的配对测量。读接口结果与原连接集合一致。内存数据、延迟与适用范围见[验收台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-512-条真实连接的配对测量)。
+隔离 Linux 的 512 条真实连接负载已完成缓冲与流式版本的配对测量。读接口结果与原连接集合一致。内存数据、延迟与适用范围见[验收台账](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-512-条真实连接的配对测量)。
 
-连接快照解析器在最后一次响应读取与清理结束后闲置 30 秒具备卸载条件。旧代待回收数量达到上限时继续复用当前可用代次。控制器认证、系统代理、TUN 和发布恢复由原服务持续负责。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-快照解析代码的闲时释放)。
+连接快照解析器在最后一次响应读取与清理结束后闲置 30 秒具备卸载条件。旧代待回收数量达到上限时继续复用当前可用代次。控制器认证、系统代理、TUN 和发布恢复由原服务持续负责。见[模块边界台账](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-快照解析代码的闲时释放)。
 
 Linux 完整认证 HTTP 已验证解析代次在同一 Server 进程内闲时卸载，下一次概览和详情请求加载新代次。原代理连接持续转发，Mihomo 进程、发布修订和原系统代理所有权日志保持一致。Proxy 管理模块继续常驻。
 
-Mihomo 概览读取一次 Core 恢复状态。概览与独立运行时 GET 重叠时，共享在途运行时判定及可用的版本探测。若原运行时判定跳过版本探测，只有概览再读取控制器健康。见[跨路由运行时采样](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-跨路由运行时采样)。控制器拒绝认证时，运行时仍可显示 Running，管理健康显示认证失败，连接数为零。若 Core 存在待恢复责任，健康继续显示恢复状态。
+Mihomo 概览读取一次 Core 恢复状态。概览与独立运行时 GET 重叠时，共享在途运行时判定及可用的版本探测。若原运行时判定跳过版本探测，只有概览再读取控制器健康。见[跨路由运行时采样](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-跨路由运行时采样)。控制器拒绝认证时，运行时仍可显示 Running，管理健康显示认证失败，连接数为零。若 Core 存在待恢复责任，健康继续显示恢复状态。
 
-Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。完整认证 Server 重启及连接解析器卸载与重载期间，原连接持续转发。验收范围见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览的单次观测)。
+Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。完整认证 Server 重启及连接解析器卸载与重载期间，原连接持续转发。验收范围见[模块边界台账](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-概览的单次观测)。
 
-概览与详情的两版配对测量共用同一受管 Mihomo 和 512 条真实代理连接。六轮均核验运行时完整性，全部原连接完成转发，原发布与恢复回执保持一致。Proxy 管理模块保持常驻。隔离负载的内存及延迟数据见[配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-受管-mihomo-概览的配对驻留测量)。
+概览与详情的两版配对测量共用同一受管 Mihomo 和 512 条真实代理连接。六轮均核验运行时完整性，全部原连接完成转发，原发布与恢复回执保持一致。Proxy 管理模块保持常驻。隔离负载的内存及延迟数据见[配对测量](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-受管-mihomo-概览的配对驻留测量)。
 
-概览和连接详情的认证 HTTP 请求持有原 Proxy 工作租约，直至控制器读取、响应和读取作用域清理结束。重叠概览共用一次在途采样，各自持有响应租约。最后一个概览读者断开才取消该次采样，随后请求等待清理完成后取得新样本。见[重叠概览采样](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-重叠概览采样)。验收边界见[HTTP 工作责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览和连接详情的-http-工作责任)。
+概览和连接详情的认证 HTTP 请求持有原 Proxy 工作租约，直至控制器读取、响应和读取作用域清理结束。重叠概览共用一次在途采样，各自持有响应租约。最后一个概览读者断开才取消该次采样，随后请求等待清理完成后取得新样本。见[重叠概览采样](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-重叠概览采样)。验收边界见[HTTP 工作责任](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-概览和连接详情的-http-工作责任)。
 
-概览计数与连接详情投影共用同一可回收读取代次。概览只取得计数，详情保持原协议。投影代次释放后，已返回的连接详情仍可使用。见[连接计数与详情投影](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接计数与详情投影随代次释放)。
+概览计数与连接详情投影共用同一可回收读取代次。概览只取得计数，详情保持原协议。投影代次释放后，已返回的连接详情仍可使用。见[连接计数与详情投影](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-连接计数与详情投影随代次释放)。
 
-概览直接扫描连接 ID 所需的 JSON token，完整快照校验和详情协议保持原规则。隔离 Linux 两版共用同一受管 Mihomo 和 512 条原连接，全部完成转发。Proxy 管理模块继续常驻。见[计数配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览按-json-token-计数)。
+概览直接扫描连接 ID 所需的 JSON token，完整快照校验和详情协议保持原规则。隔离 Linux 两版共用同一受管 Mihomo 和 512 条原连接，全部完成转发。Proxy 管理模块继续常驻。见[计数配对测量](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-概览按-json-token-计数)。
 
-完整 Server 停机时，Core 会等已受理的 Mihomo 发布恢复读完原 Helper 回执并持久化清理。隔离 Linux 已验证 SIGTERM、重启及原 Mihomo 持续转发。见[完整 Server 排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-在真实-mihomo-回执等待时排空)。
+完整 Server 停机时，Core 会等已受理的 Mihomo 发布恢复读完原 Helper 回执并持久化清理。隔离 Linux 已验证 SIGTERM、重启及原 Mihomo 持续转发。见[完整 Server 排空](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-完整-server-在真实-mihomo-回执等待时排空)。
 
-系统代理 guard 即使在 Proxy 管理面停用时仍由 Core 运行。隔离 Linux 已验证真实 Helper 写入后遇到 SIGTERM，Server 等待原响应，重启核对保留代理值和归属记录，原连接持续转发。见[系统代理 guard 排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-的系统代理-guard-停机排空)。
+系统代理 guard 即使在 Proxy 管理面停用时仍由 Core 运行。隔离 Linux 已验证真实 Helper 写入后遇到 SIGTERM，Server 等待原响应，重启核对保留代理值和归属记录，原连接持续转发。见[系统代理 guard 排空](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的系统代理-guard-停机排空)。
 
-隔离 Linux 已验证 TUN 恢复的 SIGTERM 排空。真实设备已撤销而控制器确认仍在途时，Core 保留原标记，收齐确认并核验管理路由后清理。重启未重发 reload，原代理连接持续转发。见[真实 TUN 停机排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-的真实-tun-停机排空)。
+隔离 Linux 已验证 TUN 恢复的 SIGTERM 排空。真实设备已撤销而控制器确认仍在途时，Core 保留原标记，收齐确认并核验管理路由后清理。重启未重发 reload，原代理连接持续转发。见[真实 TUN 停机排空](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的真实-tun-停机排空)。
 
-订阅下载仍由 Host 校验地址、路由与 TLS。已授权响应流由可回收代次限长读取、严格解码和转换，流清理后卸载。隔离 Linux 验证了真实分段下载和下一次读取加载新代次。见[订阅响应体执行边界](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅响应体的可回收执行边界)。
+订阅下载仍由 Host 校验地址、路由与 TLS。已授权响应流由可回收代次限长读取、严格解码和转换，流清理后卸载。隔离 Linux 验证了真实分段下载和下一次读取加载新代次。见[订阅响应体执行边界](../architecture/server-module-evidence/Proxy-Subscriptions.md#mb-04-订阅响应体的可回收执行边界)。
 
-完整认证 Server 的未激活订阅刷新已验证真实分段响应、转换代次释放、原档案更新和持久回执。重启同键返回原成功回执，未再次下载或派发配置。见[完整认证订阅队列](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-真实受管-mihomo-的完整认证订阅队列)。
+完整认证 Server 的未激活订阅刷新已验证真实分段响应、转换代次释放、原档案更新和持久回执。重启同键返回原成功回执，未再次下载或派发配置。见[完整认证订阅队列](../architecture/server-module-evidence/Proxy-Subscriptions.md#mb-04-真实受管-mihomo-的完整认证订阅队列)。
 
-单条活动订阅刷新在受管 Mihomo 中使用同一队列和 Helper 操作 ID。Core 对账确认配置和原回执，原刷新时间随档案一起提交。查询原操作或重试原键可在原证据存在时读到持久终态，缺少证据时保留中断责任。隔离 Linux 已验证 Server 重启和只丢失原生回执两条路径，均未再次下载或派发配置。见[活动订阅终态恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅刷新恢复原队列终态)。
+单条活动订阅刷新在受管 Mihomo 中使用同一队列和 Helper 操作 ID。Core 对账确认配置和原回执，原刷新时间随档案一起提交。查询原操作或重试原键可在原证据存在时读到持久终态，缺少证据时保留中断责任。隔离 Linux 已验证 Server 重启和只丢失原生回执两条路径，均未再次下载或派发配置。见[活动订阅终态恢复](../architecture/server-module-evidence/Proxy-Subscriptions.md#mb-04-活动订阅刷新恢复原队列终态)。
 
-若 Mihomo 拒绝候选且 Helper 证明已恢复上一配置，重启后同键可读取原 Failed 回执。隔离 Linux 验证了旧配置转发、原订阅时间与单次原生派发。见[活动订阅补偿回执](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-活动订阅原生失败与补偿回执)。
+若 Mihomo 拒绝候选且 Helper 证明已恢复上一配置，重启后同键可读取原 Failed 回执。隔离 Linux 验证了旧配置转发、原订阅时间与单次原生派发。见[活动订阅补偿回执](../architecture/server-module-evidence/Proxy-Subscriptions.md#mb-04-活动订阅原生失败与补偿回执)。
 
-真实 Helper 的原发布回执在途期间，连接详情的解析代次可闲时卸载，后续认证读取加载新代次。隔离 Linux 验证前后观察到同一条真实连接，Core 继续完成原发布恢复，Server 排空退出后该连接收到源站响应。见[读取代次与原发布恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-读取代次闲时卸载与原发布恢复)。
+真实 Helper 的原发布回执在途期间，连接详情的解析代次可闲时卸载，后续认证读取加载新代次。隔离 Linux 验证前后观察到同一条真实连接，Core 继续完成原发布恢复，Server 排空退出后该连接收到源站响应。见[读取代次与原发布恢复](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-读取代次闲时卸载与原发布恢复)。
 
-重叠的认证连接详情请求共用一次 Mihomo 控制器读取和投影，各 HTTP 响应分别受工作租约保护。最后一个读者取消后，后续请求等待原采样清理，再读取新快照。控制器错误仍返回 HTTP 503。见[重叠连接详情采样](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-重叠连接详情采样)。
+重叠的认证连接详情请求共用一次 Mihomo 控制器读取和投影，各 HTTP 响应分别受工作租约保护。最后一个读者取消后，后续请求等待原采样清理，再读取新快照。控制器错误仍返回 HTTP 503。见[重叠连接详情采样](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-重叠连接详情采样)。
 
-流量与日志读取使用同样的响应工作租约。流量返回原控制器指标与错误字段，日志保留脱敏和本地诊断，控制器流和请求作用域均完成清理后才释放工作责任。见[流量与日志读取租约](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-流量与日志读取租约)。
+流量与日志读取使用同样的响应工作租约。流量返回原控制器指标与错误字段，日志保留脱敏和本地诊断，控制器流和请求作用域均完成清理后才释放工作责任。见[流量与日志读取租约](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-流量与日志读取租约)。
 
-Mihomo 流量速率来自实时流量样本，累计上传、累计下载和内存来自同一份有界连接快照。读取统计时只解码所需的根级字段，连接详情按独立请求取得。见[流量累计量读取](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-流量累计量使用有界连接快照)。
+Mihomo 流量速率来自实时流量样本，累计上传、累计下载和内存来自同一份有界连接快照。读取统计时只解码所需的根级字段，连接详情按独立请求取得。见[流量累计量读取](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-流量累计量使用有界连接快照)。
 
-Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链和开始时间。候选投影及实机资源测量见[连接详情按需解码评估](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接详情按需解码评估)。
+Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链和开始时间。候选投影及实机资源测量见[连接详情按需解码评估](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-连接详情按需解码评估)。
 
-桌面概览以两秒间隔请求流量，每个工作区最多持有一个在途请求。离开概览时取消，重新打开后等待原请求结束，丢弃迟到结果。见[流量轮询排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-桌面-mihomo-流量轮询排空)和[高连接数流量轮询基线](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-高连接数流量轮询基线)。
+桌面概览以两秒间隔请求流量，每个工作区最多持有一个在途请求。离开概览时取消，重新打开后等待原请求结束，丢弃迟到结果。见[流量轮询排空](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-桌面-mihomo-流量轮询排空)和[高连接数流量轮询基线](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-高连接数流量轮询基线)。
 
-服务端认证后将重叠的流量请求合并为一次 `/traffic` 样本与一次连接快照读取。一个客户端断开时，其余客户端仍能收到该样本。最后一个客户端断开后取消并排空采样，后续请求读取新样本。每个 HTTP 响应都有独立的工作租约，采样结束后释放控制器作用域。见[重叠流量采样](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-重叠流量采样)。
+服务端认证后将重叠的流量请求合并为一次 `/traffic` 样本与一次连接快照读取。一个客户端断开时，其余客户端仍能收到该样本。最后一个客户端断开后取消并排空采样，后续请求读取新样本。每个 HTTP 响应都有独立的工作租约，采样结束后释放控制器作用域。见[重叠流量采样](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-重叠流量采样)。
 
-运行时、代理组、路由和 DNS 读取的工作责任覆盖控制器读取、响应和清理。代理组仍按配置顺序显示。见[控制面读取责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-运行时与控制面读取责任)。
+运行时、代理组、路由和 DNS 读取的工作责任覆盖控制器读取、响应和清理。代理组仍按配置顺序显示。见[控制面读取责任](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-运行时与控制面读取责任)。
 
-四条控制面接口已用相同的 512 条真实连接和配对请求复测。各轮返回结果一致，Server 峰值 PSS 和延迟变化未形成稳定改善。见[控制面读取配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-控制面读取配对测量)。
+四条控制面接口已用相同的 512 条真实连接和配对请求复测。各轮返回结果一致，Server 峰值 PSS 和延迟变化未形成稳定改善。见[控制面读取配对测量](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-控制面读取配对测量)。
 
-桌面路由和 DNS 状态通过 `GET /api/v1.0/proxy/controller-config` 一次读取。两项结果来自同一份 Mihomo 配置样本，分别携带问题码。路由设置仍通过原 PUT 保存。见[路由和 DNS 单次采样](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-路由和-dns-单次采样)。
+桌面路由和 DNS 状态通过 `GET /api/v1.0/proxy/controller-config` 一次读取。两项结果来自同一份 Mihomo 配置样本，分别携带问题码。路由设置仍通过原 PUT 保存。见[路由和 DNS 单次采样](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-路由和-dns-单次采样)。
 
-合并前后对比了同一批 512 条真实连接上的认证请求，路由与 DNS 结果一致。合并后配置请求减半，隔离负载的 35 秒 PSS 较低，Server CPU 增加。见[配置合并读取配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-配置合并读取配对测量)。
+合并前后对比了同一批 512 条真实连接上的认证请求，路由与 DNS 结果一致。合并后配置请求减半，隔离负载的 35 秒 PSS 较低，Server CPU 增加。见[配置合并读取配对测量](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-配置合并读取配对测量)。
 
-停用管理面时，TUN 的真实禁用确认与入站到期回执可同时在途。到期终态完成后，原 TUN 标记仍保留至路由验证和清理结束。重启由原 guard 核对系统代理归属，Mihomo 原连接继续转发。见[Proxy 联合安全责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。
+停用管理面时，TUN 的真实禁用确认与入站到期回执可同时在途。到期终态完成后，原 TUN 标记仍保留至路由验证和清理结束。重启由原 guard 核对系统代理归属，Mihomo 原连接继续转发。见[Proxy 联合安全责任](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-同次停机的-proxy-安全责任与恢复)。
 
-设置保存使用原鉴权、响应与发布台账。调用方断线后，已受理的受管发布继续由原 operationId 对账。直连设置替换活动文件后继续完成写入或补偿，系统代理 guard 等待同一发布锁。见[设置写入工作租约](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-设置写入的工作租约)。
+设置保存使用原鉴权、响应与发布台账。调用方断线后，已受理的受管发布继续由原 operationId 对账。直连设置替换活动文件后继续完成写入或补偿，系统代理 guard 等待同一发布锁。见[设置写入工作租约](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-proxy-设置写入的工作租约)。
 
-档案激活和配置应用在原工作租约内完成执行、审计和响应。直连配置替换活动文件后继续核对 reload 并完成档案写入或补偿。受管配置应用用原发布回执和原档案意图恢复选择。见[档案发布工作租约](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-档案发布的工作租约)。
+档案激活和配置应用在原工作租约内完成执行、审计和响应。直连配置替换活动文件后继续核对 reload 并完成档案写入或补偿。受管配置应用用原发布回执和原档案意图恢复选择。见[档案发布工作租约](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-proxy-档案发布的工作租约)。
 
-直连 Mihomo reload 响应丢失时，档案与设置保留原磁盘配置和应用元数据，并返回待恢复。运行中的 Mihomo 可能已经应用候选配置，控制器恢复可达后仍需要核实其状态。见[直连 reload 回执丢失](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连-reload-回执丢失)。
+直连 Mihomo reload 响应丢失时，档案与设置保留原磁盘配置和应用元数据，并返回待恢复。运行中的 Mihomo 可能已经应用候选配置，控制器恢复可达后仍需要核实其状态。见[直连 reload 回执丢失](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-直连-reload-回执丢失)。
 
-直连档案与设置在切换前持久保存原操作和磁盘检查点。Server 重启会还原仍匹配的磁盘候选并保留待恢复状态，后续配置写入被拦截。系统代理 guard 与 TUN 紧急禁用仍可接续。见[直连 reload 持久检查点](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连-reload-持久检查点)。
+直连档案与设置在切换前持久保存原操作和磁盘检查点。Server 重启会还原仍匹配的磁盘候选并保留待恢复状态，后续配置写入被拦截。系统代理 guard 与 TUN 紧急禁用仍可接续。见[直连 reload 持久检查点](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-直连-reload-持久检查点)。
 
-排队订阅刷新、激活和批量刷新在原后台工作租约内按需加载执行代码。一个批次内的响应体转换和分项调度共用该次执行，实际任务及异步清理结束、原终态或待核验责任落盘后才释放。启动恢复和同键请求继续按原队列、分项 ID 与发布或草稿证据核对。见[订阅后台执行图](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅后台执行图的可回收交接)。
+排队订阅刷新、激活和批量刷新在原后台工作租约内按需加载执行代码。一个批次内的响应体转换和分项调度共用该次执行，实际任务及异步清理结束、原终态或待核验责任落盘后才释放。启动恢复和同键请求继续按原队列、分项 ID 与发布或草稿证据核对。见[订阅后台执行图](../architecture/server-module-evidence/Proxy-Subscriptions.md#mb-04-订阅后台执行图的可回收交接)。
 
-Linux 已实测受管订阅激活的候选完成真实转发后停止。原 Helper 恢复旧配置，Server 重启按原激活 ID 读回失败，原活动订阅和候选草稿均保留。见[切换后的订阅激活补偿](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-受管-mihomo-切换后的订阅激活补偿)。
+Linux 已实测受管订阅激活的候选完成真实转发后停止。原 Helper 恢复旧配置，Server 重启按原激活 ID 读回失败，原活动订阅和候选草稿均保留。见[切换后的订阅激活补偿](../architecture/server-module-evidence/Proxy-Subscriptions.md#mb-04-受管-mihomo-切换后的订阅激活补偿)。
 
-Linux 端口切换待核验时，guard 只有在原 Helper 应用回执与真实候选监听均得到核对后，才按已保存规则继续使用候选端口。旧监听恢复后可接续原策略。guard 的独立维护与原操作回执分开记录。见[guard 监听切换](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-系统代理-guard-监听切换)。
+Linux 端口切换待核验时，guard 只有在原 Helper 应用回执与真实候选监听均得到核对后，才按已保存规则继续使用候选端口。旧监听恢复后可接续原策略。guard 的独立维护与原操作回执分开记录。见[guard 监听切换](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-系统代理-guard-监听切换)。
 
-Linux 直连监听补偿丢失应答时，再次确认原补偿可只读核对原配置摘要、认证控制器和新旧监听。证据吻合后用同一补偿 ID 完成宿主策略恢复。存在其他配置变化或候选监听仍活动时，原操作保持待核验。见[补偿效果对账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连监听补偿应答丢失的效果对账)。
+Linux 直连监听补偿丢失应答时，再次确认原补偿可只读核对原配置摘要、认证控制器和新旧监听。证据吻合后用同一补偿 ID 完成宿主策略恢复。存在其他配置变化或候选监听仍活动时，原操作保持待核验。见[补偿效果对账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-直连监听补偿应答丢失的效果对账)。
 
-直连 Mihomo 档案激活与设置写入共用按需加载的执行代码。原发布检查点、系统代理归属和应用回执由 Server 保持。控制器应答丢失时，同一原操作继续等待核验，后续恢复按原 ID 读取证据。见[直连档案与设置发布执行器](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连档案与设置发布执行器)。
+直连 Mihomo 档案激活与设置写入共用按需加载的执行代码。原发布检查点、系统代理归属和应用回执由 Server 保持。控制器应答丢失时，同一原操作继续等待核验，后续恢复按原 ID 读取证据。见[直连档案与设置发布执行器](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-直连档案与设置发布执行器)。

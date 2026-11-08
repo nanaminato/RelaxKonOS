@@ -1,6 +1,6 @@
 # RelaxKonOS GitClient 模块设计
 
-> 2026-11-03 内存边界：Git 仓库、CLI 与构建实现已迁到 `ServerModules/RelaxKonOS.ServerModule.Git/`，由原 `relaxkonos.git` 运行时按代次加载/释放；台账格式、权限、静态路由和后台租约沿用当前契约。Host 通过窄端口持有元数据存储、当前身份、Helper 和冲突文件访问，仓库业务代码不再引用 EF/Server 实现。真实仓库与执行 DLL 的循环回收已验证，未宣称生产内存收益或真实 BuildKit 生命周期已验收。发布必须包含 `Modules/Git/RelaxKonOS.ServerModule.Git.dll` 及共享契约，缺失时调用明确失败；详见[边界实施记录](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#11-git-仓库实现与-host-端口2026-11-03mb-0203-后续)。
+> 2026-11-03 内存边界：Git 仓库、CLI 与构建实现已迁到 `ServerModules/RelaxKonOS.ServerModule.Git/`，由原 `relaxkonos.git` 运行时按代次加载/释放；台账格式、权限、静态路由和后台租约沿用当前契约。Host 通过窄端口持有元数据存储、当前身份、Helper 和冲突文件访问，仓库业务代码不再引用 EF/Server 实现。真实仓库与执行 DLL 的循环回收已验证，未宣称生产内存收益或真实 BuildKit 生命周期已验收。发布必须包含 `Modules/Git/RelaxKonOS.ServerModule.Git.dll` 及共享契约，缺失时调用明确失败；详见[边界实施记录](../architecture/server-module-evidence/Git.md#11-git-仓库实现与-host-端口2026-11-03mb-0203-后续)。
 
 > **模块归属（2026-10-28）**：Git 客户端与源码构建归官方模块 `relaxkonos.git`，默认启用。设置 `Modules:Git:Enabled=false` 并重启后，`IGitRepositoryService`、`GitBuildService`、`/api/v1.0/git/*`（含 workspace/build 路由）与 `server.git` 能力一并消失，桌面项目编辑器因缺少该能力在启动前被拒绝。部署域通过 `IDeploymentImageBuildSource` 端口询问某次源码构建能否作为镜像来源，因此禁用 Git 时部署返回 `application-deployment.git_build_unavailable`(503)，不会误报「找不到镜像」，也不会改用归档来源。该开关不删除服务器上的仓库、构建账本或项目文件；详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#git-模块与部署端口拆分2026-10-28)。
 
@@ -642,7 +642,7 @@ SSH 继续使用宿主 SSH 配置，HTTP 和本地传输不附带 HTTPS 令牌�
 
 2026-10-29：Project Editor 没有设置页，依赖区从“工具 → 组件依赖”以对话框打开；“Git 引擎不可用”对话框不再有安装按钮，只保留重新检测与退出，并说明安装只在组件中心进行。进入应用时通用启动门禁读取 `GET /components/git/state`：缺失时提示并可跳转，未知/无权限不跳转。Windows 仍只观测已有 Git 程序，组件中心不声明可安装版本。
 
-构建运行时在调用 BuildKit 前先持久化派发检查点。重启时，能证明未派发且无预检 CLI 清理责任的记录沿用原 ID 并持久化为 interrupted，同键只读回原结果。已可能派发、预检中断或缺少检查点的记录继续保留恢复门禁，仍可查询原回执。能证明未派发的记录收尾后可按正常门禁唤醒或卸载 Git。见[构建派发恢复台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-03-git-构建派发检查点与重启对账)。
+构建运行时在调用 BuildKit 前先持久化派发检查点。重启时，能证明未派发且无预检 CLI 清理责任的记录沿用原 ID 并持久化为 interrupted，同键只读回原结果。已可能派发、预检中断或缺少检查点的记录继续保留恢复门禁，仍可查询原回执。能证明未派发的记录收尾后可按正常门禁唤醒或卸载 Git。见[构建派发恢复台账](../architecture/server-module-evidence/Git.md#mb-03-git-构建派发检查点与重启对账)。
 
 
 ### Server资源基线（2026-11-05）
@@ -654,8 +654,8 @@ SSH 继续使用宿主 SSH 配置，HTTP 和本地传输不附带 HTTPS 令牌�
 Windows 与 Linux 完整宿主均实测了认证后的仓库列表、300 秒自然 Dormant 和第二代唤醒。本轮使用空仓库列表，非空工作树与真实构建属于独立验收。[MB-01B 报告](../architecture/RelaxKonOS.ServerModuleBaseline.20261106.md)
 
 
-2026-11-06 MB-03 预检复核：测试账户创建非特权 user namespace 仍失败。真实构建中的取消、断连、原回执恢复及 ALC 联合验收等待专属 rootless builder 和受信 HTTPS 仓库。 [验收台账 §50](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#50-mb-0305-隔离测试设施复核2026-11-06)
+2026-11-06 MB-03 预检复核：测试账户创建非特权 user namespace 仍失败。真实构建中的取消、断连、原回执恢复及 ALC 联合验收等待专属 rootless builder 和受信 HTTPS 仓库。 [验收台账 §50](../architecture/server-module-evidence/Milestones.md#50-mb-0305-隔离测试设施复核2026-11-06)
 
 Git 构建只接受报告单一指定容器端点的专用 remote builder。Linux Release 已验证相似容器名和附加节点在准入前被拒绝。独立 Engine 上的 RootlessKit 仍受宿主用户命名空间限制，实际构建取消与恢复尚待实机联合验收。
 
-已在同一 Linux 测试机建立隔离的 HTTPS 443 源仓库。宿主 Git 与 rootless BuildKit 镜像内的 Git 都验证了专属 CA 信任及浅克隆。实际 BuildKit 取源、取消和恢复仍待专属 RootlessKit 启动后验收。见[HTTPS 源仓库夹具](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-03-专属-https-源仓库夹具)。
+已在同一 Linux 测试机建立隔离的 HTTPS 443 源仓库。宿主 Git 与 rootless BuildKit 镜像内的 Git 都验证了专属 CA 信任及浅克隆。实际 BuildKit 取源、取消和恢复仍待专属 RootlessKit 启动后验收。见[HTTPS 源仓库夹具](../architecture/server-module-evidence/Git.md#mb-03-专属-https-源仓库夹具)。

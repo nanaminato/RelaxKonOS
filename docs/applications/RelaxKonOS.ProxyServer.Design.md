@@ -1,6 +1,6 @@
 # RelaxKonOS 内置代理服务端应用设计
 
-> 对象边界（2026-11-03）：凭据到期调度器每轮临时解析执行服务并释放作用域，入站管理服务不再注册为单例；共享状态锁、原发布/补偿及到期策略保持原权威。Proxy 仍常驻，Core 持久调度交接与代码回收尚未实现，验证证据见[模块边界 §13](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#13-sing-box-到期调度与执行实例分离2026-11-03mb-04-部分)。
+> 对象边界（2026-11-03）：凭据到期调度器每轮临时解析执行服务并释放作用域，入站管理服务不再注册为单例；共享状态锁、原发布/补偿及到期策略保持原权威。Proxy 仍常驻，Core 持久调度交接与代码回收尚未实现，验证证据见[模块边界 §13](../architecture/server-module-evidence/Proxy-Safety.md#13-sing-box-到期调度与执行实例分离2026-11-03mb-04-部分)。
 
 > 组件中心入口调整（2026-10-24，桌面已接入、端到端待验收）：桌面 sing-box 生命周期、版本目录与领域恢复入口已迁入[组件中心](../platform/RelaxKonOS.ComponentCenter.Design.md)，由 CC-03 追踪；代理服务端保留业务配置、发布、服务启停、配置回滚及管理跳转。Android 页面保持其应用内实现。下文领域事务记录仍有效，不能将桌面入口迁移等同于新增平台验收。
 >
@@ -311,9 +311,9 @@ sing-box 成功归档操作保存不可变原操作提交证明；查询指定�
 
 ## 2026-11-03 常驻到期责任与后台 scope
 
-Core 唯一到期 worker 每轮独立 scope 使用 `ProxyServerPublicationService`，只依赖 protected store、Helper 与模式；不持有管理 facade、引擎注册表或证书加载图。管理共用同一 store gate、pending 及候选/前态摘要证明，保留发布响应丢失后的对账和补偿。HTTP 排队受理使用 store-only `ProxyServerOperationQueue` 保存原操作者/幂等回执，后台独立 scope 才解析 facade，并完成审计和异步清理后确认终态；幂等重放不构造第二份管理图。Core 到期责任跨管理禁用保留，未知 published state 阻止不安全禁用。Proxy 仍 resident，未证明代码卸载或原生服务进程中断联合验收，详见[Server 边界设计 §19](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)。
+Core 唯一到期 worker 每轮独立 scope 使用 `ProxyServerPublicationService`，只依赖 protected store、Helper 与模式；不持有管理 facade、引擎注册表或证书加载图。管理共用同一 store gate、pending 及候选/前态摘要证明，保留发布响应丢失后的对账和补偿。HTTP 排队受理使用 store-only `ProxyServerOperationQueue` 保存原操作者/幂等回执，后台独立 scope 才解析 facade，并完成审计和异步清理后确认终态；幂等重放不构造第二份管理图。Core 到期责任跨管理禁用保留，未知 published state 阻止不安全禁用。Proxy 仍 resident，未证明代码卸载或原生服务进程中断联合验收，详见[Server 边界设计 §19](../architecture/server-module-evidence/Proxy-Publication.md#19-proxy-常驻责任与完整执行寿命收尾2026-11-03)。
 
-2026-11-04：入站排队操作经共用 `ProxyOperationStore` 取得 coordinator 后台工作租约，直到业务、审计、异步 scope 清理与终态确认完成；清理/落盘失败隔离原 owner。Core 到期及 protected publication 恢复仍按原 gate 和摘要证明执行，管理租约不代替其常驻责任。Proxy 继续 resident；详见[边界设计 §20](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。
+2026-11-04：入站排队操作经共用 `ProxyOperationStore` 取得 coordinator 后台工作租约，直到业务、审计、异步 scope 清理与终态确认完成；清理/落盘失败隔离原 owner。Core 到期及 protected publication 恢复仍按原 gate 和摘要证明执行，管理租约不代替其常驻责任。Proxy 继续 resident；详见[边界设计 §20](../architecture/server-module-evidence/Milestones.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。
 
 授权到期由 Core 的唯一 worker 从原加密状态读取截止时间及待恢复标志。未到期且没有待恢复发布时不会构造发布执行器。待恢复和失效凭据仍由原发布协调路径处理。
 
@@ -373,22 +373,22 @@ Linux 私有 systemd 的联合验收同时启用系统代理。独立 Helper 中
 
 同一 Linux 隔离宿主已联合验证 TUN 恢复、系统代理与授权到期。Helper 中断期间保留 TUN 标记，非 root 完整 Server 重启后由 Core 移除设备并恢复原路由规则。Mihomo 继续转发，入站原候选按台账确认，后续到期各自提交一次。
 
-到期发布的候选落盘后，原任务继续接收 Helper 响应并提交终态。Core 停机等待原任务及异步作用域清理。原受保护台账和到期索引继续承载恢复与调度责任。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站授权到期的停机排空)。
+到期发布的候选落盘后，原任务继续接收 Helper 响应并提交终态。Core 停机等待原任务及异步作用域清理。原受保护台账和到期索引继续承载恢复与调度责任。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-入站授权到期的停机排空)。
 
-完整非 root Server 已在隔离 Linux 验证 SIGTERM。真实 Helper 撤销到期授权后，Server 停止监听并等待原回执，持久化后正常退出。重启保留原回执及原生修订，过期授权仍被拒绝，保留授权继续转发。见[完整 Server 排空](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整-server-的入站授权到期停机排空)。
+完整非 root Server 已在隔离 Linux 验证 SIGTERM。真实 Helper 撤销到期授权后，Server 停止监听并等待原回执，持久化后正常退出。重启保留原回执及原生修订，过期授权仍被拒绝，保留授权继续转发。见[完整 Server 排空](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的入站授权到期停机排空)。
 
-受管 sing-box 的入站发布按原 Helper 操作 ID 和候选、旧配置摘要恢复。已提交候选按原回执确认。已补偿或明确拒绝还需核实旧配置。单凭旧配置仍存在，恢复会保留原候选并显示待核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-入站发布按原-helper-回执恢复)。
+受管 sing-box 的入站发布按原 Helper 操作 ID 和候选、旧配置摘要恢复。已提交候选按原回执确认。已补偿或明确拒绝还需核实旧配置。单凭旧配置仍存在，恢复会保留原候选并显示待核验。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-入站发布按原-helper-回执恢复)。
 
-存在可核实的在途证据时，显式恢复可以按原 ID 补偿。已核实仍在运行的原配置继续服务。需要还原的服务保持停止并解除开机启动，后续通过正常启动入口重新校验授权。同一原 ID 重试返回原补偿回执。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-在途入站发布的原-id-补偿)。
+存在可核实的在途证据时，显式恢复可以按原 ID 补偿。已核实仍在运行的原配置继续服务。需要还原的服务保持停止并解除开机启动，后续通过正常启动入口重新校验授权。同一原 ID 重试返回原补偿回执。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-在途入站发布的原-id-补偿)。
 
-管理发布或回滚中断后，若原操作有匹配的入站证据，恢复请求返回原操作 ID。原发布键和恢复键可查询同一回执。已补偿的发布以 `proxy_server.config_apply_failed` 结案，已提交的发布返回成功。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-原管理发布队列的恢复)。
+管理发布或回滚中断后，若原操作有匹配的入站证据，恢复请求返回原操作 ID。原发布键和恢复键可查询同一回执。已补偿的发布以 `proxy_server.config_apply_failed` 结案，已提交的发布返回成功。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-原管理发布队列的恢复)。
 
-完整 Server 的生产 PAM 登录、管理队列和生产 Helper 已在 Linux 联合验证原生发布完成后的响应丢失。Server 重启后恢复原操作回执，真实 sing-box 持续服务，保留和新增授权可转发。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的原入站发布回执)。
+完整 Server 的生产 PAM 登录、管理队列和生产 Helper 已在 Linux 联合验证原生发布完成后的响应丢失。Server 重启后恢复原操作回执，真实 sing-box 持续服务，保留和新增授权可转发。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-完整认证-server-的原入站发布回执)。
 
-Linux 联合验收也覆盖候选已注册、尚未启动时 Server 和 Helper 中断。恢复原配置并结案原发布后，服务保持停止。经认证的正常启动恢复已有授权的转发，未提交的候选授权被拒绝。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-完整认证-server-的在途入站发布补偿)。
+Linux 联合验收也覆盖候选已注册、尚未启动时 Server 和 Helper 中断。恢复原配置并结案原发布后，服务保持停止。经认证的正常启动恢复已有授权的转发，未提交的候选授权被拒绝。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-完整认证-server-的在途入站发布补偿)。
 
-Host 停机关闭管理队列准入，并等待已受理任务写入原终态。隔离 Linux 已验证真实 Helper 响应在途时的 SIGTERM，重启后同键返回原成功回执，保留和新增授权继续转发。见[管理队列停机所有权](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-管理队列的-host-停机所有权)。
+Host 停机关闭管理队列准入，并等待已受理任务写入原终态。隔离 Linux 已验证真实 Helper 响应在途时的 SIGTERM，重启后同键返回原成功回执，保留和新增授权继续转发。见[管理队列停机所有权](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-proxy-管理队列的-host-停机所有权)。
 
 Windows Release 的生命周期回归使用符合平台的 `sing-box.exe` 测试制品入口，验证 Helper 拒绝与签名清单不符的归档布局和验证证据。见[受管运行时回归记录](../platform/RelaxKonOS.ManagedRuntimes.Design.md#2026-11-03-proxy-发布恢复所有权收尾)。
 
-隔离 Linux 联合停机中，真实撤销的原回执先完成入站终态，Server 仍等待独立的 TUN 恢复。重启后按原 ID 核对 Helper 回执，过期授权继续被拒绝，保留授权仍可转发。见[Proxy 联合安全责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。
+隔离 Linux 联合停机中，真实撤销的原回执先完成入站终态，Server 仍等待独立的 TUN 恢复。重启后按原 ID 核对 Helper 回执，过期授权继续被拒绝，保留授权仍可转发。见[Proxy 联合安全责任](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-同次停机的-proxy-安全责任与恢复)。

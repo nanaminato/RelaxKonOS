@@ -339,10 +339,10 @@ Compose 操作轮询持久操作记录与诊断快照，阶段变化记入日志
 
 ### 栈操作中断与原回执恢复（2026-11-06）
 
-服务端取消或超时后先清理本地 Docker CLI 并排空输出，清理无法核实则保留原台账和恢复责任。协调器重启后观察真实 Engine，以原 operationId 将未决操作记为 Interrupted。相同请求和幂等键读回原回执，不会再次运行停止命令。Engine 已接受的动作可能在 CLI 断开后完成，操作员应以当前项目观察判断后续动作。测试覆盖和剩余范围见[模块边界台账 §45](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#45-mb-05-docker-应用层在途中断与回执恢复2026-11-06)。
+服务端取消或超时后先清理本地 Docker CLI 并排空输出，清理无法核实则保留原台账和恢复责任。协调器重启后观察真实 Engine，以原 operationId 将未决操作记为 Interrupted。相同请求和幂等键读回原回执，不会再次运行停止命令。Engine 已接受的动作可能在 CLI 断开后完成，操作员应以当前项目观察判断后续动作。测试覆盖和剩余范围见[模块边界台账 §45](../architecture/server-module-evidence/Docker.md#45-mb-05-docker-应用层在途中断与回执恢复2026-11-06)。
 
 
-2026-11-06 MB-05 隔离预检：当前共享测试机的只读复核确认普通测试账户无 Docker socket 权限且非特权 user namespace 创建失败。独立 Engine daemon 重启、整个 Server 进程故障和真实 HTTP 响应排空仍待验收。 [验收台账 §50](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#50-mb-0305-隔离测试设施复核2026-11-06)
+2026-11-06 MB-05 隔离预检：当前共享测试机的只读复核确认普通测试账户无 Docker socket 权限且非特权 user namespace 创建失败。独立 Engine daemon 重启、整个 Server 进程故障和真实 HTTP 响应排空仍待验收。 [验收台账 §50](../architecture/server-module-evidence/Milestones.md#50-mb-0305-隔离测试设施复核2026-11-06)
 
 
 Windows Release 已通过 Docker 跨进程回执夹具。真实测试进程在持久 Running 回执和受控部署见证写入后被终止，新进程保留原 operationId 并记录 Interrupted，同键请求返回相同回执且没有新增部署见证。真实 Engine 故障验收仍见边界设计 §45/50。
@@ -371,14 +371,14 @@ Linux 隔离 Engine 已通过完整 System Mode Server 的认证回执验收。�
 
 完整 Server 重启前重新启动同一专属容器后，已验证原键重试仍返回原中断回执，且容器保持运行。按原 operationId 的查询也返回同一回执。
 
-MB-05 Compose 的执行图在原协调器持久化准入后按操作创建，异步清理结束后才写终态。Linux 私有 Engine 强制中断与完整 Server 经认证停止请求中断均通过原回执恢复验收。恢复只观察容器状态，同键重试未再次停止容器。Docker 管理模块保持 resident。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-准入与执行作用域)。
+MB-05 Compose 的执行图在原协调器持久化准入后按操作创建，异步清理结束后才写终态。Linux 私有 Engine 强制中断与完整 Server 经认证停止请求中断均通过原回执恢复验收。恢复只观察容器状态，同键重试未再次停止容器。Docker 管理模块保持 resident。见[模块边界台账](../architecture/server-module-evidence/Docker.md#mb-05-docker-compose-准入与执行作用域)。
 
-Docker Engine 离线时，服务列表返回 `503 / docker.unavailable`。Server 启动后保留等待核验的原栈操作，原键仍返回原回执，同一项目的新变更返回 HTTP 409。Engine 恢复后，原协调器读取项目状态并以原 operationId 写入 Interrupted。完整认证 Server 与私有 Engine 联验通过。见[Engine 离线启动对账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-engine-离线时的原启动对账)。
+Docker Engine 离线时，服务列表返回 `503 / docker.unavailable`。Server 启动后保留等待核验的原栈操作，原键仍返回原回执，同一项目的新变更返回 HTTP 409。Engine 恢复后，原协调器读取项目状态并以原 operationId 写入 Interrupted。完整认证 Server 与私有 Engine 联验通过。见[Engine 离线启动对账](../architecture/server-module-evidence/Docker.md#mb-05-docker-engine-离线时的原启动对账)。
 
-变更命令返回后若 Engine 暂时无法提供观察，原操作保持 Running / Observing。进入只读恢复后，Server 继续观察原项目，直到能以原 operationId 记录 Interrupted。同项目的新变更在此期间返回 HTTP 409。完整认证 Server 已在私有 Engine 上通过首次观察实际断线验收。见[变更后的观察中断](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-变更返回后的-engine-观察中断)。
+变更命令返回后若 Engine 暂时无法提供观察，原操作保持 Running / Observing。进入只读恢复后，Server 继续观察原项目，直到能以原 operationId 记录 Interrupted。同项目的新变更在此期间返回 HTTP 409。完整认证 Server 已在私有 Engine 上通过首次观察实际断线验收。见[变更后的观察中断](../architecture/server-module-evidence/Docker.md#mb-05-docker-变更返回后的-engine-观察中断)。
 
-用户取消已派发的变更时，若 Engine 暂时无法观察，原操作继续显示 Running / Observing。Server 完成原 CLI 清理并等待只读观察，以原 operationId 写入 Interrupted。同项目在观察恢复前保持互斥。完整认证 Server 已在私有 Engine 上验证首次观察取消、观察断线及原回执接续。见[取消与观察断线](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-用户取消与观察断线交叠)。
+用户取消已派发的变更时，若 Engine 暂时无法观察，原操作继续显示 Running / Observing。Server 完成原 CLI 清理并等待只读观察，以原 operationId 写入 Interrupted。同项目在观察恢复前保持互斥。完整认证 Server 已在私有 Engine 上验证首次观察取消、观察断线及原回执接续。见[取消与观察断线](../architecture/server-module-evidence/Docker.md#mb-05-docker-用户取消与观察断线交叠)。
 
-Compose 列表、预览、定义与服务读取在认证后取得工作租约。CLI 与输出清理、实际响应及作用域结束后归还租约，无法核实 CLI 清理时保留故障责任。见[Compose 只读 HTTP 工作责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-只读-http-工作责任)。
+Compose 列表、预览、定义与服务读取在认证后取得工作租约。CLI 与输出清理、实际响应及作用域结束后归还租约，无法核实 CLI 清理时保留故障责任。见[Compose 只读 HTTP 工作责任](../architecture/server-module-evidence/Docker.md#mb-05-docker-compose-只读-http-工作责任)。
 
-Compose CLI 执行、文件处理和输出解析使用按需加载的程序集。最后一个执行作用域结束 30 秒后可卸载，新工作会唤醒执行代码。容器由 Engine 持续管理，原操作回执与恢复由 Server 台账负责。见[Compose 独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-独立执行程序集)。
+Compose CLI 执行、文件处理和输出解析使用按需加载的程序集。最后一个执行作用域结束 30 秒后可卸载，新工作会唤醒执行代码。容器由 Engine 持续管理，原操作回执与恢复由 Server 台账负责。见[Compose 独立执行程序集](../architecture/server-module-evidence/Docker.md#mb-05-docker-compose-独立执行程序集)。

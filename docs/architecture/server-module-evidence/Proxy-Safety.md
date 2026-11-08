@@ -1,0 +1,385 @@
+# MB-04 Proxy 系统代理、TUN 与授权到期
+
+系统代理 guard、TUN、sing-box 授权到期及共同停机排空的原始证据。 [当前进度与验收入口](../RelaxKonOS.ServerModuleBoundaries.Progress.md)。
+
+## 场景目录
+
+- [13. sing-box 到期调度与执行实例分离（2026-11-03，MB-04 部分）](#13-sing-box-到期调度与执行实例分离2026-11-03mb-04-部分)
+- [14. 系统代理 guard 窄执行边界与安全责任审计（2026-11-03，MB-04 部分）](#14-系统代理-guard-窄执行边界与安全责任审计2026-11-03mb-04-部分)
+- [15. TUN 运行控制与设置写入执行边界（2026-11-03，MB-04 部分）](#15-tun-运行控制与设置写入执行边界2026-11-03mb-04-部分)
+- [51. MB-04 sing-box 授权到期执行边界](#51-mb-04-sing-box-授权到期执行边界)
+- [MB-04 sing-box 授权到期的真实网络续核](#mb-04-sing-box-授权到期的真实网络续核)
+- [MB-04 sing-box 持久到期索引](#mb-04-sing-box-持久到期索引)
+- [MB-04 TUN 私有网络命名空间故障恢复](#mb-04-tun-私有网络命名空间故障恢复)
+- [MB-04 TUN 未知 marker 的紧急停用边界](#mb-04-tun-未知-marker-的紧急停用边界)
+- [MB-04 真实 Mihomo 控制器与 TUN 恢复](#mb-04-真实-mihomo-控制器与-tun-恢复)
+- [MB-04 TUN 路由重试去重与设备清理证明](#mb-04-tun-路由重试去重与设备清理证明)
+- [MB-04 真实 Mihomo 自动路由恢复](#mb-04-真实-mihomo-自动路由恢复)
+- [MB-04 真实 Mihomo TUN DNS 劫持](#mb-04-真实-mihomo-tun-dns-劫持)
+- [MB-04 Linux 系统代理后端跨进程恢复](#mb-04-linux-系统代理后端跨进程恢复)
+- [MB-04 Linux 系统代理 guard 与真实文件后端](#mb-04-linux-系统代理-guard-与真实文件后端)
+- [MB-04 独立 Linux Helper 的系统代理 IPC](#mb-04-独立-linux-helper-的系统代理-ipc)
+- [MB-04 系统代理 IPC 非 root 身份](#mb-04-系统代理-ipc-非-root-身份)
+- [MB-04 非 root Core guard 与恢复](#mb-04-非-root-core-guard-与恢复)
+- [MB-04 Proxy Server 授权到期回归](#mb-04-proxy-server-授权到期回归)
+- [MB-04 到期索引从原台账重建](#mb-04-到期索引从原台账重建)
+- [MB-04 sing-box 到期发布跨进程恢复](#mb-04-sing-box-到期发布跨进程恢复)
+- [MB-04 完整 Server 接续在途 TUN 激活](#mb-04-完整-server-接续在途-tun-激活)
+- [MB-04 TUN 发布准入与恢复标记](#mb-04-tun-发布准入与恢复标记)
+- [MB-04 已确认受管发布的真实 TUN 门禁](#mb-04-已确认受管发布的真实-tun-门禁)
+- [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
+- [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
+- [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
+- [MB-04 Core TUN 恢复的停机排空](#mb-04-core-tun-恢复的停机排空)
+- [MB-04 Core 系统代理 guard 的停机排空](#mb-04-core-系统代理-guard-的停机排空)
+- [MB-04 完整 Server 的系统代理 guard 停机排空](#mb-04-完整-server-的系统代理-guard-停机排空)
+- [MB-04 完整 Server 的真实 TUN 停机排空](#mb-04-完整-server-的真实-tun-停机排空)
+- [MB-04 完整 Server 的入站授权到期停机排空](#mb-04-完整-server-的入站授权到期停机排空)
+- [MB-04 同次停机的 Proxy 安全责任与恢复](#mb-04-同次停机的-proxy-安全责任与恢复)
+- [MB-04 Linux 系统代理原生回执](#mb-04-linux-系统代理原生回执)
+- [MB-04 Linux 直连宿主策略变更恢复](#mb-04-linux-直连宿主策略变更恢复)
+- [MB-04 Linux 宿主代理切换验收矩阵](#mb-04-linux-宿主代理切换验收矩阵)
+- [MB-04 系统代理 guard 监听切换](#mb-04-系统代理-guard-监听切换)
+
+## 13. sing-box 到期调度与执行实例分离（2026-11-03，MB-04 部分）
+
+`ProxyServerExpiryService` 不再在构造时持有 `ProxyServerService`，只持有作用域工厂与日志。启动立即检查、此后每 30 秒检查；每轮在独立异步作用域解析 `IProxyServerExpiryExecutor`，等待完成并释放作用域后才等待下一轮。作用域局部变量位于独立异步方法，不留在长期计时器状态机上。领域失败记录后继续下一轮；停机同时覆盖正在执行和等待计时器两种取消路径。
+
+`ProxyServerService` 与到期执行接口改为 transient：HTTP 请求或已排队的领域操作持有自己的实例直至完成，后台计时器不再给管理实例增加单例根引用。`ProxyServerStore` 仍是 Core 单例，所有实例共用原状态锁；到期继续读取受保护材料、仅剔除已发布授权中的失效凭据，不发布未应用草稿，保留原发布/对账/补偿实现。没有新增第二个到期循环，也没有转移 Helper 权限或改变运行时安装生命周期。
+
+这只是对象持有边界：引擎注册表等依赖仍有独立常驻引用，Proxy 仍为 resident；调度器仍由 `ProxyModule` 注册，尚无跨禁用的持久调度索引、租约交接或 collectible Proxy 实现。不能据此宣称程序集卸载或生产 RSS 降低，MB-04 继续开放。
+
+Windows / Linux 验证使用生产 30 秒周期，覆盖懒构造、失败后释放、下一轮新实例、成功后释放、等待期间弱引用回收、执行中取消并等待异步释放；同时运行原 Proxy Server 配置、加密、凭据、订阅、发布、回滚、到期、导出与幂等回归。Windows 默认注册专项由 8 增至 **10** 项，新增非单例执行器与单一到期调度器检查。证据保存在 `.artifacts/proxy-expiry-boundary-20261103/` 的 `windows-final.log`、`linux-final.log` 和 `registration-final.log`，本轮未部署生产。
+
+一次使用错误参数的 Windows 注册运行实际进入 ManagedRuntimes 全套，并在 `LifecycleChecks` 的伪造制品布局授权断言失败（`registration-windows.log`）；未诊断或修复此全套失败，不将它作为通过证据。改用当前无前导横线参数后，独立注册专项 10 项通过；本节只宣称上述专项及 Proxy Server 两平台回归通过。
+
+续核（2026-11-03）：确认上述实现、测试与日志均已落地，保留全部未提交实现。补强执行中取消测试：执行器的 `DisposeAsync` 在测试闸门上真正异步等待，断言 `StopAsync` 在闸门释放前不能完成，释放后才确认作用域销毁和停机完成。当前 Windows Release Proxy Server 全回归及注册专项 10 项再次通过，记录为 `windows-disposal-recheck-final.log`、`registration-recheck.log`；新增闸门检查尚未重跑 Linux，前述 Linux 记录对应补强前测试。默认并行构建无诊断失败，改用 `--no-restore -m:1` 构建成功；沙箱内回归在临时状态文件原子替换时被拒绝，批准沙箱外运行后通过，失败记录 `windows-disposal-recheck.log` 不作成功证据。
+
+下一切片先审计系统代理 guard、TUN 恢复与发布补偿的根引用、共享锁和持久责任，再确定窄执行端口；在持久调度交接及故障验收完成前继续保留现有 worker。此次不扩大为 Proxy 休眠、不移交安全责任，也不关闭 MB-04。
+
+## 14. 系统代理 guard 窄执行边界与安全责任审计（2026-11-03，MB-04 部分）
+
+### 根引用、锁与持久责任
+
+本表记录 guard 切片完成时的引用图；TUN 与 writer 的后续分离见 §15。
+
+| 职责 | 根引用及当前锁 | 持久责任与本轮处理 |
+| --- | --- | --- |
+| 系统代理 guard | 根 HostedService → reader + `IProxySystemProxyReconciler`；原接口映射到设置单例，从而带入控制器客户端和配置发布图 | 拆为 Core 单例 `MihomoSystemProxyReconciler`，仍取得唯一 `MihomoPublicationStore.Gate` 后读取设置及执行。启动失败继续保留 startup 标志，原间隔与重试规则不变 |
+| TUN 启停及启动恢复 | `ProxyRecoveryHostedService`、生命周期 recovery 接口及管理调用 → 同一 `ProxyTunSafetyService` → `IProxyTunRuntimeController` → 设置单例；安全服务私有 `_gate`，随后取得发布 gate | `proxy-tun-recovery.json` 先于网络变更落盘，区分未完成转换与已激活会话；先停引擎 TUN 再恢复/核实管理路径，失败保留 marker。未移动、改锁或停止此责任，仍会构造管理图 |
+| 配置、安装、移除发布补偿 | Core `MihomoPublicationRecoveryService` 长期持有三个发布协调器；各协调器共用 publication gate，授权回调在持锁期间不重入 | `mihomo-publication.protected` 保存已确认身份、Pending 冻结计划、设置/档案意图与完成回执；按原 operationId 观察 Helper、确认或补偿。busy/helper 不可用继续原操作重试，不能重新准备或以当前健康推导成功。此次不改注册时机、执行器或恢复循环 |
+| OS 系统代理 | Core `HostSystemProxyService` → 既有特权传输；Linux Helper 使用环境 provider 的同一命名 mutex | Linux `/var/lib/relaxkonos-system-proxy/recovery.json` 与所有权快照仍由 Helper 事务拥有；Windows 仍为交互用户 HKCU 原语，不宣称具备同等持久 journal。无新增 OS 权限或真实系统代理写入验收 |
+
+TUN 的安全锁不能简单改成每请求对象锁；发布 gate 也不能按新执行实例复制。恢复 worker 根引用不是全部可删除的缓存：在持久责任、执行租约和禁用交接得到验证前必须保留。当前锁顺序和责任单一性保持原实现，本次不宣称全部跨域锁竞态已验收。
+
+### 已实现的窄边界
+
+系统代理对账从 `MihomoSettingsService` 直接迁至 `MihomoSystemProxyReconciler`，旧类不再实现 reconciler 或保留转发方法。writer 与 TUN 控制仍是同一设置单例；guard 不再引用该单例、直接控制器客户端或配置发布执行器。所有调用方与注册测试同步使用当前接口，没有兼容别名。
+
+已发布状态的检查提取为无缓存的 `MihomoManagedPublicationVerification.VerifyAsync`，供 writer 与 guard 在原发布 gate 内复用：只读取现有控制器秘密，核对 active YAML 身份，查询真实 Helper 的受管归属、活动修订、pending/recovery 和配置身份。撤销不生成凭据；不明或漂移时返回原 recovery-required，不能写 OS。guard 仍依赖运行时只读观察、授权和传输图，并未使整个 Proxy 脱离根 DI。
+
+### 验证与范围
+
+新增注册构造陷阱：替换设置管理单例和控制器客户端为抛异常工厂后，生产 guard 与 reconciler 仍能构造。系统代理夹具用独立 reconciler 与 writer 验证共锁、禁用后不复活、startup 清理、pending 拒绝，并增加等待锁取消及后续可用检查。发布夹具增加凭据撤销、YAML 漂移、设置损坏、pending、Helper recovery 与外部所有权六种 guard 拒绝场景，各自核对无宿主写入、无原生配置执行且锁可再获取。
+
+Linux 在用户指定的 `192.168.1.9` 测试机独立目录 `/home/nanami/component-catalog-20261102/phase23/proxy-guard-boundary-20261103/expiry/` 已补跑 §13 新增的真实异步释放闸门检查与完整 Proxy Server 回归，通过；首次旧地址超时和 SSH 历史密钥不匹配均未作为成功。用户确认密钥变更后固定核对观察到的测试机密钥，未修改本机 known_hosts。产物和日志仅用于测试，没有替换运行中的 Server/Helper。
+
+Windows/Linux 默认注册各 **11 项**、配置发布事务分别 **96/97 项**、系统代理共锁/取消与 TUN 专项均通过。Release Server.Tests 构建及 Linux framework-dependent 发布通过；runtimes Linux 发布首次缺少 RID 还原目标，完成正常 restore 后成功。证据统一保存于 `.artifacts/proxy-guard-boundary-20261103/`：`expiry-linux-final.log`、`system-proxy-{windows-final,linux}.log`、`registration-{windows-final,linux}.log`、`publication-{windows-final,linux}.log`、`tun-{windows,linux}.log` 以及构建/发布日志；复跑命令见同目录 `verification.txt`。测试使用隔离状态、伪造 Helper/系统代理后端和受控网络，不证明真实 OS 代理、TUN 或安装故障的端到端验收。
+
+Proxy 继续 **resident**，MB-04/RES-05 保持开放。下一边界需先为 TUN 运行控制与配置写入明确当前意图核验端口，再验证完整启停/恢复/补偿和锁竞争；不能先把安全服务改为 transient 或移除恢复 worker。Core 持久调度、跨禁用安全责任交接、collectible Proxy 与生产内存测量仍未实现。
+
+## 15. TUN 运行控制与设置写入执行边界（2026-11-03，MB-04 部分）
+
+### 本轮实现
+
+`MihomoSettingsService` 只实现 `IProxySettingsWriter`，不再实现或转发 `IProxyTunRuntimeController`。TUN 的设置读取、实时配置改写、路由排除、controller 可达性/重载、回滚及 live flag 观察直接迁到 `MihomoTunRuntimeController`。没有保留旧方法或双入口，公开 HTTP/配置契约不变。
+
+Core 保留单例 TUN 控制器，依赖 paths、reader、controller、publication store 与设备观察端口；它不依赖 settings writer、配置发布执行器、系统代理 writer 或安装器。原 Windows 适配器确认移到 `IProxyTunDeviceObserver` / `HostProxyTunDeviceObserver`：同名活动网卡、10 秒等待与取消规则保持原实现，Linux 仍无该 Windows 专项等待；测试注入受控观察器，不创建真实 TUN。TUN 重载成功不等于 Windows 适配器已激活的门禁仍然存在。
+
+设置 writer 的具体类与接口改为 transient。当前内仓产品调用者只有设置 PUT 入口；每次调用持有自己的 writer，完成后根 DI 不再保留该管理实例。writer 本身没有计时器、私有锁或需迁移的实例缓存，controller/运行时/发布依赖仍按原所有者驻留，不宣称这一步释放这些依赖或已测得堆/RSS 收益。
+
+### 锁、恢复与补偿
+
+`ProxyTunSafetyService`、`IProxyRecoveryService` 映射及启动恢复 worker 保持原单例/注册，不把安全锁改为每调用私有锁。顺序仍为 safety gate → publication gate；writer、guard、TUN 控制与发布事务共用同一个 `MihomoPublicationStore.Gate`。writer 不在持有 publication gate 时反向获取 safety gate。新 DI 构造陷阱验证 TUN startup recovery 在 settings writer 构造即抛异常时仍可解析。
+
+TUN marker 仍在接触引擎前落盘。reload、设备确认或管理路由核验失败继续由原安全服务驱动停 TUN 与管理路径恢复；恢复失败保留同一 marker。reload 中取消可能已替换 YAML，不推断已经回滚；marker 保留，随后启动恢复重新取得两把锁完成 teardown。controller 原先不可达时不发 reload，恢复未核实不清 marker。设置写入继续保留 live TUN flag 与精确 exclusions，不把普通设置更新当成 TUN 转换。
+
+**没有新增受管发布下的 TUN 支持**：存在 confirmed publication 或 pending 时，直接 TUN 启用和停用仍走原 `UncoordinatedWriteProblemAsync` 拒绝，不能绕过授权、发布或网络事务门禁。若因此不能完成安全恢复，仍保留恢复阻止与 marker，不能伪报已清理。Core 三个发布协调器及恢复 worker、冻结计划、Helper 回执、settings/profile 补偿意图均未迁移或削减。
+
+### 验证与未完成边界
+
+新增 `ProxyTunBoundaryChecks`，接入 `--proxy-tun-boundary-only`、`--proxy-tun-only` 与默认 Server.Tests 入口。24 项覆盖真实 TUN 执行器与安全服务组合：启停、marker-before-engine、路由排除、writer 保留 live TUN、reload/设备/管理路径失败补偿、不可达恢复、未知观察、pending/confirmed 拒绝、平台补偿失败重试、reload 中取消及恢复、writer/TUN/安全停机竞争和等待锁取消。这里的“真实执行器”指生产 C# 实现；controller、设备与网络平台是受控夹具，不代表实机 TUN 或 Windows Wintun 验收。
+
+Windows/Linux Release 新边界各 **24 项**、完整 TUN 与系统代理专项、默认注册各 **13 项**、配置发布事务分别 **96/97 项**通过。Server.Tests/ManagedRuntimes.Tests 构建和 framework-dependent Linux 发布成功；存在既有 nullable/未使用参数/平台分析警告，Helper 构建另有无法取得 NuGet 漏洞数据的 NU1900 警告，不宣称完成漏洞检查。Linux 在已确认测试机的 `/home/nanami/component-catalog-20261102/phase23/proxy-tun-boundary-20261103/` 独立目录执行。证据目录 `.artifacts/proxy-tun-boundary-20261103/`：`tun-windows-final.log`、`tun-linux.log`、`system-proxy-{windows,linux}.log`、`registration-{windows,linux}.log`、`publication-{windows,linux}.log` 以及构建/发布日志；复跑命令见 `verification.txt`，源码与 Linux 产物摘要见 `provenance.json`。本轮保留全部未提交实现，未提交、推送或部署，也未更改生产配置/组件数据。
+
+最终结果：完整 solution Release 构建通过（0 错误、2 个既有 Server 告警）。Windows 模块默认全量及最终 ModuleHost 定向检查通过；Linux 模块默认全量在已补齐 Git 的隔离镜像通过，包含真实子进程和异架构包拒绝。最小 ASP.NET 镜像首轮缺少 Git 的失败保留，不作为产品回归失败或通过证据。新增工作租约/独立代码专项 Windows/Linux 各 **23** 项；原 Core 安全所有权各 **17**、lifecycle/TUN scope 各 **31**、责任 **45/46**、订阅各 **37**、TUN 执行各 **30**、settings **31/32**、Mihomo 注册各 **15**、配置发布 **107/108**、安装发布各 **88**、移除发布各 **92**、profile 各 **19**、runtime HTTP 各 **46** 项通过，Squid、出站代理、入站原回归与到期/HTTP 队列专项均通过。本轮不重复原生归档/固定系统服务验收；保留 §19 已有证据的原范围。
+
+Proxy 仍为 **resident**，MB-04/RES-05 保持开放。配置档案事务、引擎注册表、controller、TUN 安全 owner 与 Core 发布恢复仍有独立根引用；还没有按需执行租约、持久调度和跨禁用安全责任交接，也没有 collectible Proxy 或生产内存基线。下个切片须先审计发布协调器与 profile 执行图的持久意图和请求/后台所有权，不能因为 writer 已 transient 就移除补偿 worker 或给整个 Proxy 添加可释放标记。
+
+## 51. MB-04 sing-box 授权到期执行边界
+
+Core 唯一到期 worker 先在原加密领域台账和原 gate 下读取最早到期时间、失效凭据及 pending publication 信号。扫描只向调度循环返回截止时间和待恢复标志，未到期时不构造发布执行器。已到期、已禁用或已经替换的发布凭据，以及 pending publication，仍进入原单一发布执行器。执行器重新读取领域状态并按原规则核对 Helper。共享服务及原事务恢复语义不变。
+
+这是原持久台账的调度投影，仍在每轮反序列化台账，完整持久调度索引、运行时安全责任交接、真实网络故障和动态休眠继续开放。未停用既有 worker，未改变 30 秒扫描节奏，也未测量生产内存。
+
+Windows 与既有 Linux 测试机的 Release Proxy Core 安全 25 项及关联驻留和作用域专项通过。验证了截止边界、空闲不构造执行器、待确认发布和禁用凭据仍需要执行，以及受控 Helper 回执丢失后只有一次发布。日志见 `.artifacts/mb04-expiry-win.log`、`.artifacts/mb04-expiry-linux.log`。同机只读检查发现 `/usr/bin/sing-box` 和 `/dev/net/tun`，未启动实例或变更网络。
+
+### MB-04 sing-box 授权到期的真实网络续核
+
+既有 Linux 测试机用普通账户运行已安装的 `/usr/bin/sing-box`。专属实例和源站仅监听随机回环端口，TLS 验证核对专属证书指纹和主机名。真实 sing-box 使用生产渲染的 VLESS/TLS 入站和用户配置。夹具仅替换自身路由，放行一个回环源端口并拒绝其他目的地址。共享配置、服务和网络保持原状。
+
+原凭据通过实际 VLESS/TLS 转发。写入未来到期时间后，等系统时钟达到该截止点，再调用生产到期扫描与原发布执行器。专属 Helper 传输完成真实 sing-box 配置切换后注入回执丢失。通过真实连接确认过期 UUID 无法到达源站，未到期 UUID 仍可双向传输。重开原加密台账后，发布执行器核对已应用材料，清除 PendingPublication，实际应用调用总计一次。
+
+本项验证真实网络授权行为及生产台账的回执丢失恢复。运行时应用和状态证明由夹具 Helper 传输提供，正式 Helper、系统代理/TUN、既有连接撤销及动态休眠仍开放。
+
+Linux x64 Release 日志见 `.artifacts/mb04-expiry-live-final.log`，制品归档 SHA-256 为 `799158891686780343c27b08dc2c085e917db963f0445588fb5d1b7629ce6d8e`。专属进程退出后临时目录已清理。
+
+既有连接续核通过。到期前分别为即将到期和无到期时间的凭据建立真实 VLESS/TLS 双向流，并保持客户端和回环源站两端打开。专属实例切换后，两条旧流的客户端和源站均实际观察到 EOF 或断开。新连接中，过期 UUID 不能到达源站，未到期 UUID 能重新转发。故障回执恢复后仍只应用一次。此结果量化了夹具停旧启新的连接影响，正式 Helper/systemd 的运行时切换仍待验收。日志见 `.artifacts/mb04-streams-live.log`，归档 SHA-256 为 `9080c25e5cab568d85d2e4e48e1588861e90014f13ff7fd03722aa9d06f0b0ad`。
+
+### MB-04 sing-box 持久到期索引
+
+原 ProxyServerStore 在写入加密领域台账时同步生成独立受保护的到期索引。索引只包含原密文的 SHA-256、最早到期时间及待确认发布标志，不含凭据。两份文件分别原子替换，索引先写。启动或扫描只信任能通过数据保护校验、且摘要与所打开原台账一致的索引。索引失配、损坏、缺失或写入失败时，原台账继续提供到期和恢复责任。领域台账格式不变。
+
+匹配的扫描按流计算密文摘要，跳过完整台账解密和对象反序列化。单一 Core worker、原 gate、原发布执行器和 30 秒扫描节奏继续承担授权及未知结果恢复。本项只交付 sing-box 到期索引，尚未将 Proxy 安全职责整体交接到持久调度，也未验证动态休眠或生产内存收益。
+
+Windows 与既有 Linux 测试机的 Release Core Proxy 安全各 31 项、关联驻留与作用域专项通过。确认匹配索引不解密原状态，旧索引、损坏、缺失和写入失败均不遗漏待恢复或已禁用凭据。Linux 专属 sing-box 实机回归再次通过，原应用调用一次。日志见 `.artifacts/mb04-index-win.log`、`.artifacts/mb04-index-linux.log`、`.artifacts/mb04-index-live.log`。同机网络命名空间预检确认普通 user namespace 映射被拒绝，既有提权路径可创建进程私有网络命名空间。尚未在其中创建 TUN 或注入故障。
+
+### MB-04 TUN 私有网络命名空间故障恢复
+
+既有 Linux 测试机使用提权后的进程私有网络命名空间，启动前核对其与宿主命名空间不同且无既有接口。生产 ProxyTunSafetyService 与 HostProxyNetworkSafetyPlatform 观察真实 veth 默认网关。专属 runtime 夹具在原 marker 持久化后创建真实 TUN，再停在进程终止屏障。强制终止该工作进程后，原 TUN 和未完成 marker 仍存在。
+
+移除私有默认路由后恢复原操作 `b99267b4-e215-49ac-9086-e6abb6d5e3c2`，实际删除 TUN 一次，但因原网关不可核实而保留 marker，新启用被拒绝。恢复默认路由后复查原操作并清除 marker，未再删除设备。新代启用后，重试原恢复引用不会移除新 TUN。专属接口和目录已清理，宿主路由与共享服务未修改。日志见 `.artifacts/mb04-tun-live.log`，Linux Release 制品 SHA-256 为 `21a96189d17ca64b3c8608a50911be7f047483b55997c7f7f20a13bd5a74ae64`。
+
+本项验证生产 marker 和真实内核设备、路由状态。设备切换由夹具 runtime 提供，Mihomo 控制器、DNS、系统代理和动态休眠联合故障仍待验收。
+
+### MB-04 TUN 未知 marker 的紧急停用边界
+
+自动恢复和紧急停用均拒绝无法核实的 marker。损坏内容或缺少可信管理网关时，原文件保留，Mihomo 切换和路由恢复均不调用。新 marker 在原子替换前刷新到磁盘，停机取消保留先前已提交的证据。
+
+Windows Release TUN 专项通过，覆盖损坏 JSON 和不可核实网关在自动恢复及紧急停用入口的拒绝。同机只读确认正式 Mihomo 1.19.33 二进制存在且共享服务 active，后续可使用独立配置和控制端口验证实际 Mihomo 切换，无需修改共享服务。
+
+Linux Release 私有命名空间的真实 TUN 崩溃恢复复测通过，原操作为 `f3fcb878-dbe5-4eed-adb1-48a6e9bc1816`。Windows 与 Linux 日志见 `.artifacts/mb04-tun-marker-win.log`、`.artifacts/mb04-tun-marker-live.log`。
+
+### MB-04 真实 Mihomo 控制器与 TUN 恢复
+
+既有 Linux 测试机在全新私有网络命名空间复用已安装的 Mihomo 1.19.33 二进制。专属配置、控制端口和目录均独立。生产 MihomoTunRuntimeController、MihomoControllerClient、ProxyTunSafetyService 和路由验证平台共同执行。真实重载创建内核 TUN 后终止管理工作进程，保留未完成 marker。默认路由不可核实时，原恢复删除真实设备但保留 marker；恢复私有默认路由后清除原 marker。迟到的原恢复引用不会移除新会话。专属 Mihomo 在整个管理崩溃及恢复期间保持可达，最后随夹具清理退出。
+
+原操作为 `380b5c87-bf26-45b2-ad4a-7d1024f3453a`，日志见 `.artifacts/mb04-mihomo-tun-live.log`，制品归档 SHA-256 为 `a95640fef4bc7bb30800a6868dab36eb22e5d90abdb2cdf101b2e2321b70968b`。本轮核对实际设备只删除一次，控制器重载次数尚未核对。夹具关闭自动路由，真实自动路由、DNS、系统代理、动态休眠及生产内存收益仍开放。共享 Mihomo、宿主网络和安装状态持续运行。
+
+### MB-04 TUN 路由重试去重与设备清理证明
+
+恢复发现磁盘配置已关闭 TUN 时，先查询真实控制器。控制器也确认关闭且原设备已不活动时，只继续管理路由核对，无需再写配置或发重载。控制器不可观测或设备仍活动时保留 marker 和恢复责任。首次关闭重载确认后同样等待设备清理证据。Linux 要求设备消失，Windows 接受设备消失或明确停止状态。
+
+私有命名空间实机夹具记录生产控制器的 PUT 次数，将首次关闭和仅恢复管理路由的后续重试分开计数。自动路由、DNS、系统代理和动态休眠仍待联合验收。
+
+Windows Release TUN 边界 32 项及关联专项通过。真实 Linux Mihomo 复测操作 `9c7336bf-4f89-4741-95e6-ff1d532e8156`，首次恢复 PUT 为一次，恢复原网关后的重试没有新增 PUT。无效控制器响应保持未知。日志见 `.artifacts/mb04-tun-reload-win-final.log` 与 `.artifacts/mb04-tun-reload-live-final.log`。
+
+### MB-04 真实 Mihomo 自动路由恢复
+
+同机 Linux 私有网络命名空间开启 Mihomo 自动路由。配置应用后实际内核路由查询对保留测试地址选择 TUN，对管理网关仍选择原 veth。故障前确认策略规则偏离基线，随后终止管理工作进程。删除私有默认路由后原恢复保留 marker，恢复原网关后同一操作完成。IPv4/IPv6 策略规则与初始快照相同，测试地址再次通过原默认网关。原关闭重载仍为一次。
+
+原 operationId 为 `86899a7b-b6d0-425d-869e-5f40da657a40`，日志见 `.artifacts/mb04-auto-route-live.log`，归档 SHA-256 为 `ab4961e556d7654ffaec89eee67b67abe74c5db3b7440ea63d66b0f74e81aa19`。本轮验证真实内核选路和规则清理；没有向外网发送流量，DNS 和系统代理行为另行验收。
+
+### MB-04 真实 Mihomo TUN DNS 劫持
+
+既有 Linux 测试机在私有网络命名空间以实际 UDP 查询向保留地址 `198.51.100.53:53` 发出 DNS 请求。内核选路指向 TUN，Mihomo 对夹具记录 `mb04.test` 返回预设 A 记录 `203.0.113.42`。检查核对事务 ID、成功状态和应答地址。管理进程崩溃恢复后，策略规则回到基线，同一 DNS 目的地址回到原 veth 默认路由，原恢复仍只发送一次关闭重载。使用独立配置及无外网出口的命名空间，宿主解析器和共享 Mihomo 持续运行。
+
+原 operationId 为 `505d8b43-bdb3-427a-bb52-65a2a527e7c7`，日志见 `.artifacts/mb04-tun-dns-live.log`，Linux Release 制品 SHA-256 为 `c39749a1db2f4069208db7f0836f281f62fe7b7ad41fc2b3fabf05f187907286`。本轮恢复后验证内核选路及规则清理，未向原上游发查询。系统代理和动态休眠仍待联合验收。
+
+### MB-04 Linux 系统代理后端跨进程恢复
+
+既有 Linux 测试机在私有挂载及网络命名空间使用生产 LinuxSystemProxyOperations、原事务和环境文件后端。独立挂载的 `/etc` 和 `/var/lib` 提供专属环境文件和恢复台账，独立 `/run` 隔离宿主桌面会话。测试在原进程确认写入代理键且恢复台账存在后强制终止它。在恢复前，用生产环境接口写入一个竞争代理值和无关键。恢复只撤销原操作仍拥有的值，保留竞争编辑；重复停用后环境文件字节一致，台账已清理。
+
+Windows Release 事务专项及 Linux 实机均通过。实机前后核对宿主环境文件和恢复台账摘要一致。日志见 `.artifacts/mb04-system-proxy-live-final.log`，制品归档 SHA-256 为 `8d5413332ae0441ece4279fd092b7958571a1f66e209952a48eab0b33b4c5f03`。本轮使用真实文件后端，未连接共享 Helper 服务或桌面会话；guard 与动态休眠的联合验收仍开放。
+
+### MB-04 Linux 系统代理 guard 与真实文件后端
+
+生产 Core guard、MihomoSystemProxyReconciler、HostSystemProxyService 和 Linux Helper 文件后端在私有挂载中联合执行。测试未加载 Proxy 管理门面。启用 guard 后，已确认且未变更的环境键不再改写环境或所有权台账。仅对环境文件优化，桌面会话通知路径仍保持原行为。竞争编辑触发 guard 回到配置值；停止 guard 后，启动恢复只还原仍由原台账拥有的键，保留更新的竞争值。
+
+系统代理文件后端和 Core guard 使用生产实现。Helper 传输由同进程专属适配器转接，正式独立 Helper、桌面会话和动态休眠联合验收仍开放。
+
+Windows Release 事务专项通过，Linux 实机核对宿主环境文件和台账摘要前后一致。日志见 `.artifacts/mb04-guard-final-win.log` 与 `.artifacts/mb04-guard-final-live.log`。Linux 制品归档 SHA-256 为 `34e49e11f7f8c85c8319aafe857f92451811d174900a333ca5f3357fbd1c9664`。
+
+### MB-04 独立 Linux Helper 的系统代理 IPC
+
+既有 Linux 测试机在私有挂载和网络命名空间启动当前 Release 的真实 Linux Helper 服务入口。专属 root-owned 配置、独立 socket 及授权 UID 0 仅用于测试。生产 UnixSocketPrivilegedOperationTransport 经实际握手和帧传输执行原启动、崩溃恢复、周期 guard 与停止路径。记录七次成功的 LinuxSystemProxyApply 请求。原操作进程异常退出后恢复只撤销仍拥有的键，重复恢复无改写，竞争写入保留，稳定 guard 扫描不重写台账。
+
+专属 Helper 收到 TERM 后正常退出且 socket 移除。宿主环境和恢复台账前后摘要一致。日志见 `.artifacts/mb04-guard-ipc-live.log`，归档 SHA-256 为 `0e57085a42b85a484ea2c6678c9ae514ed13e09c3e1abf69cb38e9711b87070e`。本轮没有测试正式非 root Server 身份、共享 systemd 服务重启、桌面会话或动态休眠。
+
+### MB-04 系统代理 IPC 非 root 身份
+
+同机私有命名空间复用现有 Server UID 999 及 GID 983。专属 Helper 仅授权该 UID 和恢复观察者 UID 0。未授权 UID 65534 使用同一 socket 组，Helper 在 peer 校验中拒绝，环境文件和台账无变化。已授权 Server UID 通过实际 socket 写入系统代理，Helper 回执操作 ID 为 `276c7916-634f-48a4-95ac-ea8a724cba42`。强制终止操作进程后，专属 root 观察者走同一 socket 完成原台账恢复和 guard 检查。
+
+首轮拒绝事件正确，但客户端收到 socket 提前关闭映射的 HelperUnavailable。最终夹具以 Helper 拒绝日志和无副作用联合判定，仍校验非 root 成功事件。专属 Helper 正常退出，宿主环境和台账摘要一致。日志见 `.artifacts/mb04-guard-peer-final.log`，归档 SHA-256 为 `af8e8054e237c3946bff93a13691baaed06ecb3e8645be7c2e07b9652ae018e7`。正式 systemd 服务、非 root 常驻 guard 与桌面会话未纳入本轮。
+
+### MB-04 非 root Core guard 与恢复
+
+在同一隔离 Linux Helper 夹具中，周期 guard、生产对账和停用恢复改由现有 Server UID 999 的独立非 root 进程经真实 IPC 执行。root 观察者仅在 guard 阶段负责核对文件和注入竞争编辑。首轮写入后，稳定扫描保持环境值和台账；竞争写入被 guard 纠正。停止 guard 后写入新的竞争值，非 root 启动恢复撤销受管值并保留该编辑。夹具要求 Helper 日志恰有五次成功的 UID 999 操作，包括先前的崩溃组初始写入，以及 guard 的三轮和停用恢复。崩溃组本身的首轮台账恢复仍由 root 测试观察者执行。
+
+共享 systemd 服务、桌面会话和 Proxy 管理模块动态休眠继续开放。
+
+Linux Release 验收通过，Helper 日志确认五次 UID 999 成功请求并拒绝未授权 UID。专属 Helper 正常退出，宿主环境和台账摘要不变。日志见 `.artifacts/mb04-guard-nonroot-live.log`，归档 SHA-256 为 `7e47efcf9290814db088268c43b1ffd501b80792eaee596d78cbf2c622565f58`。
+
+## MB-04 Proxy Server 授权到期回归
+
+Windows Release 的独立 Proxy Server 测试已接入现行持久调度索引。使用原台账中的待处理发布触发生产 30 秒调度器，验证失败释放作用域、下一轮新建执行器、取消时等待异步清理，以及 HTTP 队列原回执。日志为 .artifacts/mb04-proxy-server-release-final.log。此轮为本地回归，Proxy 安全责任交接和动态休眠仍开放。
+
+## MB-04 到期索引从原台账重建
+
+到期扫描在原状态 gate 内从权威密文重建失配、损坏或缺失的索引，后续匹配扫描跳过台账解密。索引不可写时继续按原台账判断，未引入新的发布执行者。Windows Release Proxy Core 安全与生命周期作用域专项通过，日志为 .artifacts/mb04-index-repair-win.log。Linux 实机复测、安全责任交接和动态休眠仍开放。
+
+Linux x64 Release 复测通过。Proxy Core 安全专项确认失配索引重建后不再解密原台账。同一制品的专属 sing-box 实机验收确认到期前流量可达、切换后旧连接关闭、过期凭据拒绝、保留凭据可重新连接，丢失发布响应后只执行一次 apply。两项分别覆盖索引恢复和实际网络切换。日志为 .artifacts/mb04-index-repair-linux.log，归档 SHA-256 为 18ea160a65fb22fd1de1aa4575775ac8f07c68619801b743f808053c8829ed97。实机仍使用专属运行时切换夹具，跨进程发布恢复和调度责任交接仍开放。
+
+## MB-04 sing-box 到期发布跨进程恢复
+
+Linux x64 Release 隔离夹具复用持久保护密钥。发布进程通过生产执行器落盘候选配置并停在 Helper 响应前。父进程用原候选配置切换真实 sing-box，随后强制终止发布进程。原 PendingPublication 保留。实际网络观察到旧流关闭、过期凭据拒绝和保留凭据重连。移除派生索引后，恢复进程重新打开原加密台账，重建索引并按实际应用配置摘要确认原候选，apply 共一次。
+
+日志为 .artifacts/mb04-expiry-crash-live.log，归档 SHA-256 为 2b2143ce124c35224c72502ad569334be77c22bb7bd0371ded73adec28f18e9d。运行时切换及状态响应由专属 transport 夹具承载。此处调度依据原 PendingPublication，授权到期 worker 没有用户操作回执。生产 Helper 事务联合验收及动态休眠仍开放。
+
+## MB-04 完整 Server 接续在途 TUN 激活
+
+Linux x64 Release 在原私有 systemd 夹具中使用生产 TUN 安全服务和实际 Mihomo。子进程已完成真实控制器重载、设备创建和策略规则变更，在写入激活完成标记前强制终止。原操作 `23ff134e-a01c-4970-9268-63ca3b352731` 在同一私有持久状态目录经过独立 Helper 退出及完整 Server 拒绝启动后仍保持未完成。Helper 恢复后，非 root 完整 Server 的 Core 日志确认原 ID，禁用 TUN、恢复管理路由及 IPv4/IPv6 规则，Mihomo 继续提供实际 HTTP 转发。系统代理漂移纠正和 sing-box 后续授权到期同时通过，两代 Helper 各收到一次入站 apply。专属 cgroup 清理完成，宿主 sing-box、Mihomo 及代理文件指纹一致。证据为 .artifacts/mb04-tun-activation-crash-live.log，归档 SHA-256 为 d0a258b8484b3e48cf32517cdb5ca98b5c34a756ad93bd379bf91ce57e128e65。Windows Release 受管服务 15 项及模块边界回归通过，Docker 跨进程夹具返回原 Interrupted 回执，副作用一次。Mihomo 使用专属直连配置。确认受管发布后的 TUN 事务、Proxy 动态休眠和生产内存测量仍开放。
+
+## MB-04 TUN 发布准入与恢复标记
+
+TUN 激活在既有发布锁内通过待处理和确认发布门禁，并完成配置读取和计算后才提交恢复标记。恢复标记落盘后才允许首次文件和网络变更。拒绝准入或等待发布锁时取消，不产生虚假的 TUN 恢复责任。已有原标记遇到发布竞争仍保留原责任，不追加 reload。
+
+Windows Release TUN 边界 33 项及模块边界回归通过，覆盖待处理和已确认发布、准入前取消、写入后取消、补偿及锁竞争。Linux x64 Release 私有网络专项首轮夹具使用旧发布修订号，修正为读取原台账后通过。原待处理发布 `b1bd32c1-b530-4990-918a-37cac406a530` 拒绝新的 TUN 激活，新增标记、reload、配置和规则变更均为零。另一条真实 TUN 恢复 `1a6ac90c-aeec-484b-a9ad-113e44ff17b3` 保留原标记直到路由可核实，原禁用 reload 一次。日志为 .artifacts/mb04-tun-admission-linux.log，归档 SHA-256 为 9d4bee3b1861cf0d42f01266c36b79f6d199c999eb15a79f920a425aa293bc18。完整非 root Server、独立 Helper 和私有 systemd 同批复测恢复原激活操作 `0719d031-b697-42db-82ed-d59526826165`，系统代理和授权到期持续，宿主服务状态及代理文件指纹一致。日志为 .artifacts/mb04-tun-admission-systemd-live.log，归档 SHA-256 为 d8e8a862bdefee52516f8ff640c02c9b2e44c881e499ff561a2327aea1ecdf74。此切片验证发布准入和原补偿，不启用已确认受管发布下的 TUN 网络事务。Proxy 保持 resident。
+
+## MB-04 已确认受管发布的真实 TUN 门禁
+
+Linux x64 Release 在私有 systemd、D-Bus 和网络内复测独立 Helper 及非 root 完整 Server。原受管配置中断后只执行一次具名补偿，原 `c130d33d-de2b-493a-b0f4-ce0c41019b5a` 回执为 Interrupted，原端口恢复实际转发。随后生产 TUN 安全服务从已确认的 Server 台账拒绝直接激活。无控制器请求及新恢复标记，受管状态修订、原回执、配置字节、运行 PID、管理路由、IPv4/IPv6 规则和真实转发均通过前后核验。专属 cgroup 已清理，宿主服务状态与代理文件指纹一致。Linux 原生套件通过 171 项及完整 IPC 路径，Windows Release 受管服务 15 项通过。日志为 .artifacts/mb04-confirmed-tun-live.log，归档 SHA-256 为 97ca5ce3b2e788e7ac7d39434f052f42d032c0bb5ff2caf4d048d60bb0ff61fe。此项覆盖受管发布后的拒绝与责任保留，受管 TUN 网络事务与 Proxy 动态休眠仍开放。
+
+## MB-04 Core 接续运行期 TUN 恢复
+
+原 Core TUN worker 在启动后持续扫描原持久标记。同一安全服务在原 gate 内识别当前进程已完成的会话，扫描不会拆除该会话。主动关闭在首次运行时或路由变更前将原标记置为未完成，保留原标记 ID 和路由快照。旧进程遗留或当前未完成的标记由原安全服务恢复。控制器或路由结果不可核实时继续持有原标记，只有控制器、设备和管理路由都核实后才清理。空闲扫描不解析控制器或管理执行图。
+
+Windows Release TUN 边界 34 项、Core 安全所有权 37 项、工作作用域 31 项及模块边界回归通过。Linux x64 Release 在私有网络、挂载和 PID 命名空间用实际 Mihomo 验证。原崩溃操作 `5c9f30ec-7db1-4cee-a8ee-0777fc08b82a` 恢复时经历真实路由缺失、控制器响应丢失与不安全标记路径，原禁用 reload 一次。随后同一 Core worker 保留已完成的新会话。删除专属默认路由后显式关闭会话，原 `bb1ba90e-4e66-4237-ac4b-bf527f374067` 仍以未完成标记存在。路由恢复后，同一 worker 关闭原标记，设备和策略规则回到基线，未追加禁用 reload。宿主 Mihomo、sing-box PID 与代理文件指纹一致。日志为 .artifacts/mb04-tun-rescan-live-final.log，归档 SHA-256 为 befc69710c42c3a2d6844a2037396bb8bae39ab1a59dd646faf78d6caad3eeed。首轮本地重启夹具误用原 owner，已用两个 owner 复测。首轮远端包装器引号错误，在连接前退出，修正后通过。受管发布仍保留网络事务门禁，Proxy 保持 resident。
+
+Linux 完整非 root Server、独立 Helper 与私有 systemd 联合回归也通过。完整 Server 恢复在途激活 `b5a3586c-3afb-4f92-9e67-2e86a5e75518` 的原标记和路由，Mihomo 继续运行，系统代理纠偏、sing-box 授权到期及真实转发接续，专属 cgroup 清理且宿主指纹一致。日志为 .artifacts/mb04-tun-rescan-systemd-live.log，归档 SHA-256 为 1e837ca6a8a4fa02c1b967d37906ee05e183f5cac44a47dfcb102f714e091a19。
+
+## MB-04 实际 TUN 激活期间取消与同进程补偿
+
+Linux x64 Release 在私有网络、挂载和 PID 命名空间中等待实际 Mihomo 接受 reload。设备及策略规则已经创建，生产 TUN 安全任务仍等待响应。测试驱动在响应交付处触发取消，并暂时移除专属默认路由，原任务以取消退出，保留标记 `777a7afa-2958-421d-81cf-c98dadc34745`。管理路由恢复后，原 Core worker 在 Proxy 管理图缺席时接手，同一 Mihomo 的激活和禁用各 reload 一次，设备和规则回到基线。测试屏障仅用于控制取消时点。Windows Release 模块里程碑回归通过，Docker 跨进程原回执保持 Interrupted，副作用一次。Linux 宿主共享服务 PID 和代理文件指纹一致。日志为 .artifacts/mb04-tun-cancel-live.log，归档 SHA-256 为 15ab51cafa0b3fdd7ce9efc1e24118636dc5dc2e350a1aba3417477ded3c5589。
+
+此项验证现有直接 TUN 安全任务取消及 Core 接续。完整 HTTP 已受理任务仍由原队列持有，不随 HTTP 断开取消。受管 TUN 继续开放。当前 Linux Mihomo 受管单元隔离设备且能力集仅含 CAP_NET_BIND_SERVICE，控制器配置入口本身不提供受管的设备、路由和补偿权威。
+
+## MB-04 入站授权到期的停机排空
+
+Core 继续使用原受保护台账和摘要绑定的到期索引，只有到期或存在待确认候选才创建执行作用域。入站发布写入候选后，原 Helper 调用及终态提交继续执行，调用方取消不截断响应。到期 worker 停止接收新扫描并等待实际任务与异步作用域释放，停机调用者的等待期限不充当清理完成证明。管理队列继续使用原操作租约，Core 到期执行不依赖管理模块启用。
+
+Linux x64 Release 在私有 systemd、生产 Helper 和真实 sing-box 上通过。原 Helper apply `d14b9cfa-b26d-42ed-ac99-01a91ff64514` 生效后，夹具暂缓向 Core 交付实际响应。用已取消的停机令牌调用 worker Stop，原发布仍持有领域锁和持久候选。交付响应后确认原终态已落盘，Stop 继续等待异步作用域清理。此次实际配置修订仅增加一次，保留授权完成真实转发。同批用另一次到期 `207e2563-c2ed-422c-9b04-77fc03bd4f80` 复验跨进程恢复。Helper 不可达时完整 Server 保留原候选，重启 Helper 后按原摘要确认，后续授权自然到期并拒绝真实认证。系统代理、TUN 和保留授权接续通过，宿主状态与文件指纹一致，专属 cgroup 已清理。
+
+Linux 日志为 `.artifacts/mb04-expiry-drain-live.log`，归档 SHA-256 为 `9aaa2a7a57f4dc4fb1d7ab013d28ff5a5f44da0923f8486fa1b9c30858e37751`。Windows Release 独立 Proxy Server 与模块边界回归通过，日志为 `.artifacts/mb04-expiry-drain-proxy-win.log`、`.artifacts/mb04-expiry-drain-milestones-win.log`。本次停机直接驱动生产 worker，响应交付与作用域清理屏障由夹具注入，完整 Server 的 SIGTERM 同时命中这两个边界仍待实测。
+
+原入站台账仍是恢复权威。此阶段没有为 Core 到期发布新增独立 Helper 终态回执。候选摘要可用于确认已提交的配置，尚缺原配置摘要仍存在时区分未派发和已补偿的原操作证据。Proxy 保持 resident。
+
+## MB-04 Core TUN 恢复的停机排空
+
+Core TUN worker 停止调度后仍等待已接受的恢复任务。接受前尊重取消。原标记写入未完成状态并发出实际禁用后，控制器响应、管理路由验证和原标记清理在同一次执行内完成。等待方的停机期限不会归还责任。无法确认禁用或路由时，原标记仍是恢复权威。
+
+Linux x64 Release 私有网络命名空间使用真实 Mihomo。夹具暂扣实际禁用响应，并用已取消的等待令牌调用生产 worker 的 Stop。原 Task 和标记均保持活跃，交付响应后恢复基线路由与规则、移除设备并结清标记 `af65c4e5-5881-470f-a6af-6739756adec5`。实际禁用 reload 一次，Mihomo 继续运行。同批复验发布门禁、响应丢失、DNS 劫持、路由故障、旧恢复引用与激活取消。宿主服务 PID 和代理文件指纹一致。日志为 `.artifacts/mb04-tun-drain-final-live.log`，归档 SHA-256 为 `d714219fad46c5866967d4d2a577af5380ef7990fc4a1474ca00c3a85f2fefe3`。首轮新增用例通过，旧累计计数断言因统计范围扩大失败，调整断言位置后全组通过。
+
+Windows Release TUN 34 项、Core 安全 37 项、驻留 28 项、工作作用域 31 项和模块边界回归通过。停机专项直接驱动生产 worker。完整 Server 的 SIGTERM 联验、其他 Core 安全 worker 的停机交接和 Proxy 动态休眠仍开放。
+
+## MB-04 Core 系统代理 guard 的停机排空
+
+Core guard 停止调度后等待实际对账任务与执行作用域。对账取得原发布锁并重新核验设置后，派发前仍可取消。已派发的系统代理写入使用原发布锁等待 Helper 返回。Helper 的环境所有权日志继续负责中断恢复和外部修改保护。
+
+Linux x64 Release 在私有挂载和网络命名空间使用非 root Server 身份与独立生产 Helper Unix socket。先核验未变化的 guard 扫描不改写所有权日志，再注入专属环境值冲突。Helper 实际纠正冲突后，测试传输暂扣交付给 guard 的结果。用已取消的等待令牌调用生产 guard 的 Stop，任务与原发布锁保持活跃，私有环境和原恢复日志可核验。交付结果后同一任务释放锁，未追加 apply。随后停用恢复保留了更新的外部设置。真实 Helper 纠正请求为 `72564240-2c8f-468c-9a99-b17447eabfbc`，日志为 `.artifacts/mb04-system-proxy-drain-live.log`，归档 SHA-256 为 `b78e7956222ade99b316dd85aab1f067cf2f52b149b542a5c4a58ffa9467a83b`。宿主环境和恢复日志指纹一致。
+
+Windows Release 系统代理、Core Proxy 安全与模块边界回归均通过。此次故障屏障在 guard 的传输边界，覆盖停机等待取消。完整 Server 的 SIGTERM、真实 IPC 断流时的联合排空、Windows 原生代理环境和 Proxy 动态休眠仍待验收。
+
+## MB-04 完整 Server 的系统代理 guard 停机排空
+
+验收使用私有 Linux systemd、网络和可写 `/etc` 覆盖层。将专属代理环境改为竞争值，再启动停用 Proxy 管理面的非 root Server，由 Core guard 调用原 Helper 修正漂移。响应中继截留真实成功回执。夹具同时保持一条已到源站的真实代理连接，并以代理文件与原归属日志的内容、写入时间区分重启核对与再次写入。
+
+Windows Release 系统代理和模块边界回归通过。MB-05 跨进程夹具按原 `06a4b7dc-2bdd-43bd-9dc8-74a766317f17` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-guard-sigterm-proxy-win.log` 和 `.artifacts/mb04-guard-sigterm-boundaries-win.log`。
+
+真实 Helper 原操作 `8b4ae9fc-604f-45c0-b75a-9c8241e5bcd5` 在回复前已修正漂移，保留原归属。SIGTERM 后 Server 关闭监听并继续等待；放行原回执后正常退出。重启的启动核对使用新 ID `8af1379b-3f50-4508-a4b5-abb9f7192626`，原代理文件和归属日志内容、写入时间一致。Mihomo PID、原入站修订均保持，源站响应通过最初的连接交付。测试退出显式恢复私有环境，专属 cgroup 清理完成，宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-guard-sigterm-auth-live.log`，归档 SHA-256 为 `cce50caac87aae2084f223915f708fa8ff7b003d65d97fcd5b8c382eace6bce1`。
+
+共用停机测试工具的受管 Mihomo 套件复验通过 177 项，原发布排空回执为 `1fabc0ea-f689-452f-885e-97b6534241fd`。日志为 `.artifacts/mb04-guard-sigterm-native-live.log`，归档 SHA-256 为 `027cb2e33dd22efb95086a6e6a69874a836f40a24594e23ad4ba56deb966318e`。本轮证据限 Linux 原 guard 与发布恢复。Windows 原生停机及整模块休眠仍开放。下一项验证真实 TUN 已撤销但原控制器响应尚未返回时，完整 Server 是否保留原恢复标记直至排空。
+
+## MB-04 完整 Server 的真实 TUN 停机排空
+
+私有 Linux systemd 和网络内，测试工作进程在真实激活后、完成标记提交前终止。停用 Proxy 管理面的完整非 root Server 使用原 Core worker 读取同一标记。回环中继将真实 reload 和后续读取转发至原 Mihomo，截留显示 TUN 已禁用的真实控制器响应。夹具在发送 SIGTERM 前核验设备、IPv4/IPv6 规则、管理路由和原标记。
+
+Windows Release TUN 边界 34 项及模块边界通过。MB-05 跨进程夹具按原 `41612b18-54ab-412e-a743-3f7c0ba8ef09` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-tun-sigterm-win.log` 与 `.artifacts/mb04-tun-sigterm-boundaries-win.log`。
+
+原 TUN 操作 `44a0b476-2e7f-4dd5-98f8-3a55504a7ab9` 在设备已撤销、管理路由及策略规则恢复后仍保留标记。SIGTERM 关闭监听，Server 持续等待原禁用确认。放行响应后，Core 记录原操作，完成标记清理，Server 正常退出。重启后确认没有第二次 reload，Mihomo PID、原入站修订及已到达源站的代理连接保持，原连接收到响应。
+
+同批系统代理 guard 排空原 `06219350-801c-44e7-a8ba-c0d5f084b691`、入站发布恢复 `9f5c1791-a665-448f-9c74-b76ef2fc8cad` 及补偿 `a3adbc1e-2a5e-47d1-a08d-a7a6c56cc4b9` 通过。专属 cgroup 清理完成，宿主服务和代理文件指纹一致。日志为 `.artifacts/mb04-tun-sigterm-live.log`，归档 SHA-256 为 `7735b1b31fdda665e473272707268afc25eee1fdbae60c59869eee79da9d48aa`。本次验收使用独立直连 Mihomo 配置。已确认受管发布的 TUN 事务、Windows 原生停机及整模块休眠仍开放。下一项用完整 Server 联验入站授权到期在真实 Helper 提交后、原回执仍在途时的 SIGTERM。
+
+## MB-04 完整 Server 的入站授权到期停机排空
+
+私有 Linux systemd 中，先使用已发布授权建立真实 VLESS TLS 连接，再为该授权设置临近的到期时间。停用 Proxy 管理面的完整非 root Server 通过原 Core 持久索引发现到期，真实 Helper 提交撤销。回环中继截留原成功响应，夹具从 Helper 另行读取同一 operationId 的原生回执，同时核对原应用候选和修订。撤销后检查原连接关闭、到期授权被拒绝、保留授权可转发。
+
+Windows Release Core 安全与模块边界回归通过。MB-05 跨进程夹具按原 `7f407d28-1991-4966-89de-df88ce2ea2e3` 读回 Interrupted，副作用计数为一。日志为 `.artifacts/mb04-expiry-sigterm-core-win.log` 与 `.artifacts/mb04-expiry-sigterm-boundaries-win.log`。
+
+真实原回执 `b2e22e1a-55e5-45cc-b859-5a38168a0644` 为 Committed。SIGTERM 后 Server 停止监听，仍持有同一待处理操作；保留授权继续转发，原生 PID 仍是撤销提交后的进程。放行原响应后，Server 持久化已发布结果并正常退出。重启核对索引无待处理或到期工作，仍从原 Helper 按 ID 读到完全一致的回执。到期授权继续被拒绝，保留授权可重连，原生修订仅增加一次，Helper 日志确认这一阶段仅一次 apply。
+
+同批系统代理 guard 和 TUN 停机、入站发布原恢复及补偿路径通过。专属 cgroup 清理完成，宿主服务和代理文件指纹一致。首轮认证 runner 在 150 秒上限到达后未产生终态；延长认证窗口至 210 秒后全套通过，仍要求实际结果与全部标记。失败日志为 `.artifacts/mb04-expiry-sigterm-live.log`，通过日志为 `.artifacts/mb04-expiry-sigterm-final-live.log`，归档 SHA-256 为 `ede13aa743ab9f232db9f10d08c3bb4c005b499a6509d4cfd1b97ca0e6637a67`。
+
+四条 Core 安全路径已有 Linux 完整 Server 停机证据。Proxy 仍 resident，Windows 原生与动态休眠保持开放。下一项核对管理队列的准入、真实收尾和停机期限之间的所有权，保证已受理工作能在原台账完成终态。
+
+## MB-04 同次停机的 Proxy 安全责任与恢复
+
+完整非 root Server 停用 Proxy 管理面，在私有 Linux systemd、网络及宿主代理文件覆盖层中运行。原 Core TUN worker 恢复真实未完成标记，控制器已禁用 TUN 并恢复管理路由和策略规则，真实确认响应暂扣。原到期 worker 同时经 Helper 提交 sing-box 撤销，原回执另按 operationId 读取，主响应暂扣。撤销关闭到期连接并拒绝该凭据，保留授权仍可通过真实 TLS 转发。
+
+在 TUN 持有共享发布锁时写入专属系统代理的竞争值，再发送 SIGTERM。Server 停止监听。先放行到期响应并核对原应用终态、原生回执和调度索引，Server 仍存活并保留原 TUN 标记，guard 未覆盖竞争值。随后放行真实 TUN 确认，原 worker 完成清理。重启使用原系统代理归属记录。若原 guard 已在释放发布锁后提交修复，重启仅核对文件和日志指纹；若竞争值仍在，由启动 guard 修复。到期撤销和 TUN reload 各一次，原 Mihomo 连接贯穿停机与重启。
+
+最终实机复验的到期原回执为 `06a3af0b-905c-4976-a586-881df5da8272`，TUN 原标记为 `5712993f-0771-459e-8eb6-92dc4b41e35f`。guard 在重启后以 `714b8016-a916-4562-a85f-f93957e09900` 修正测试漂移，原归属保留。最终制品未观测到 guard 在重启前提交的交错顺序。同批原入站恢复 `d4f8e6b3-01a1-4146-910e-2941865f5424`、原补偿 `60285cab-6dc6-4aa9-90f3-884fe5a68612` 与管理队列停机 `b359ee89-caf5-4b80-a565-28b77504e09c` 通过，均核对原回执与派发次数。专属 runtime 注册及 cgroup 已清理，宿主 runtime 服务和代理文件指纹一致。
+
+首轮联合夹具在准备非 root Server 后又写入私有台账，Server 启动退出。调整为先写台账再赋予专属状态目录和文件的非 root 所有权，随后两轮实机通过。日志在 `.artifacts/mb04-joint-safety/`，最终 Linux 归档 SHA-256 为 `b81cedb11c2a4ca891da7a80b9c175572954d44fe2ae1d511b6d95c46598c4fc`。Windows Release Core 安全 37 项、TUN 边界 34 项、Proxy Server 和模块边界回归通过，MB-05 跨进程原 `b091593e-78b6-4316-a626-632defedf9e0` 返回 Interrupted，受控副作用计数为一。
+
+联合实测使用独立直连 Mihomo 的 TUN，受管发布下的 TUN 网络事务、整个 Proxy 的动态休眠和生产内存继续开放。下一项核对设置写入的工作租约、真实响应和清理边界，以及现有原发布回执在 HTTP 断线后的恢复。
+
+## MB-04 Linux 系统代理原生回执
+
+Linux Helper 的具名代理写入仍在原环境互斥锁内使用已有归属事务和后端。在写入前以原 ID 持久记录请求摘要。完成原生写入和回读后，再保存目标范围、代理键和归属台账的效果摘要。启用核对当前代理键及其归属，禁用核对归属已清理并保留实际恢复结果，包括原事务保留的外部值。回执目录由 Helper 持有，查询只返回原 ID、历史提交和当前匹配两个独立状态。
+
+查询未知 ID 返回空。未确认的已受理 ID 继续待核对。同 ID 改变请求返回冲突。同 ID 重复写入只核对回执及现状，已出现独立修改时返回历史已提交与当前不匹配。查询和重复请求均不写代理键。连续系统代理 guard 仍使用原安全事务和所有权记录。Server 直连设置尚待将策略变化接入具名 Helper 操作和本地提交门禁，端到端恢复暂未交付。
+
+Windows Release 的系统代理专项、ManagedRuntimes 和模块边界回归通过。受控 GNOME 和 KDE 后端核对原 ID 去重、独立修改和禁用恢复。MB-05 跨进程原 `96dae2e0-c3cb-497d-aca1-dc6b72854590` 返回 Interrupted，受控副作用计数为一。设置广跑在未改动的 UI 硬编码颜色检查处停止，可信下载探针缺少进程级测试 CA 覆盖。日志在 `.artifacts/mb04-linux-host-receipt/`。
+
+同一 Linux 测试机以私有挂载和网络启动真实 Helper。非 root 客户端派发原 `630a7065-c07e-4f8b-97c3-464c047397c8` 后断开套接字，真实环境代理改到专属端口。强制终止并重启独立 Helper 后，原回执可读。同 ID 重复派发后，环境文件字节、修改时间及归属台账字节保持。改变请求被拒绝，未知 ID 为空。独立修改后，原回执仍确认历史提交，当前效果报告不匹配。专属禁用 `056b5f58-2379-4d46-a635-1394dbde2945` 保留外部代理值并留下回执。共享环境文件和归属台账指纹一致。实机覆盖 Linux 环境后端。首轮脚本启动参数错误，随后实机发现通用进程内缓存拦截原 ID，修正由持久台账承担这两个动词的防重放并通过 AF_UNIX 回归。归档 SHA-256 为 `4aa881369dc15b60976ecbab55b78cdad7a40516421067903bb7ab4a3d38a5bf`。
+
+## MB-04 Linux 直连宿主策略变更恢复
+
+Linux 直连设置校验代理策略后，持有原发布锁执行控制器 reload。收到控制器确认后，先持久化冻结设置与原 ID，再以该 ID 派发一次 Helper 变更。宿主应答未知时保留候选文件和待处理意图。具名恢复、Core 启动和 guard 共用原发布锁，核对候选文件、原 Helper 回执及当前效果。匹配才提交本地设置并保存原 ID 回执。恢复只查询 Helper，控制器结果缺失和外部文件改写继续待处理。
+
+guard 在自己需要执行安全策略时先尝试原回执核对。原效果仍无法确认时，guard 在接管前持久记录该事实，随后独立执行已保存的安全策略。后续即使宿主值再次与候选相同，原操作也不会据此结案。环境后端继续使用原有的同值跳过规则，GNOME 和 KDE 仍按原流程维护桌面通知。TUN 安全恢复仍使用原标记。
+
+Windows Release 的 Linux 代理协议夹具、系统代理与 guard、TUN 边界、Core 安全、ManagedRuntimes 和模块边界通过。非法 Linux 旁路值在写入检查点前拒绝。受控原效果未知时，独立 guard 写入只执行一次，之后的同 ID 重试仍待恢复。MB-05 跨进程原 `deefdc2e-b7a3-41fc-8571-00728d93a5f7` 返回 Interrupted，受控副作用计数为一。缺少进程级测试 CA 覆盖，可信下载探针跳过。
+
+同一 Linux 测试机私有 systemd 环境两轮通过。最终制品以真实 Mihomo 和 Helper 执行旁路变化，Helper 完成后在本地提交前暂扣应答并强制终止写入进程。原 `36d5198c-1fc7-4931-9813-42939eb0cb47` 在 guard 接续时只查询一次并提交设置，环境文件字节与时间戳保持，额外 guard 写入为零。独立修改 `no_proxy` 的原 `5a0d6688-929d-4575-9e39-e84971906890` 持续返回 `RecoveryRequired`，guard 以独立调用执行一次已保存策略。两条路径各一次候选 Mihomo reload、一次原 Helper 变更，原运行时 PID 和跨中断转发保持。专属 cgroup 已清理，共享服务和代理文件指纹一致。最终归档 SHA-256 为 `970fe49854efaa7488f76a99c0f0af5b835d62707eaf72a74f297c73711cfedc`，日志在 `.artifacts/mb04-tracked-settings-final/`。
+
+本阶段覆盖 Linux 环境代理旁路策略变化。监听端口变化时，guard 独立执行旧策略之后的转发连续性与显式补偿仍待验收。Windows 仍使用现有宿主路径。Proxy 保持 resident，动态休眠与生产内存未验收。
+
+## MB-04 Linux 宿主代理切换验收矩阵
+
+在同一私有 Mihomo 与 Helper 环境中，将原回执恢复矩阵扩展为旁路、启用、禁用和监听端口变化。每个场景先收到真实 Helper 成功并暂扣响应，再终止写入进程。重启路径按原 ID 核对真实宿主效果和本地文件。持续的旧连接与新建连接分别检查，端口漂移回退还检查 guard 写入的目标和实际监听状态。夹具恢复原策略及运行配置后再结束。
+
+Windows Release ManagedRuntimes 广跑和模块边界回归通过。MB-05 跨进程原 `aee02c9f-e638-45ac-8000-245e576d1090` 返回 Interrupted，受控副作用计数为一。进程级测试 CA 覆盖缺失，可信下载探针跳过。
+
+隔离 Linux 两轮通过六场景矩阵。最终轮的禁用 `58ea48ff-30a0-49d2-bf07-ecfe0186f314`、启用 `75c22ff5-ebee-469b-bb61-55052acdcf79`、监听端口切换 `c10ab973-0a85-4252-96bf-d5d54ed61a8e` 均按原 ID 返回成功。每次只有一次原 Helper 变更和一次候选 reload，恢复中无额外宿主写入。禁用后实际归属台账移除且 Mihomo 仍接收新连接，启用后宿主指向真实代理端口。端口切换后，新端口完成真实 HTTP 转发，旧端口拒绝新 TCP 连接。
+
+最终轮旁路漂移 `d711ec92-94df-4d09-9136-e11686e1f90e` 和端口漂移 `a24374ec-2bf1-438e-a5f2-6da9ed256a03` 都保留 `RecoveryRequired`，各有一次独立 guard 操作和零原变更重放。跨场景既有连接完成转发，专属资源已清理，宿主服务和代理文件指纹一致。最终归档 SHA-256 为 `4de199b81f2859dbc20d45620f6192f799b63bb1da32d5c8890e32926b2ce127`。日志在 `.artifacts/mb04-host-policy-matrix-final/`。
+
+监听端口漂移路径已在 Linux 复现。guard 按保存策略把宿主环境指回旧端口后，真实 Mihomo 仍在候选端口转发，新连旧端口被明确拒绝。原 ID 保持 `RecoveryRequired`。既有连接是否继续传输单独核对，不能作为新连接可用的证据。显式补偿仍需单独操作 ID，核对原持久策略、监听和宿主效果后才能结清。Proxy 保持 resident，动态休眠与生产内存未验收。
+
+## MB-04 系统代理 guard 监听切换
+
+原宿主策略变更已由 Helper 持久确认，候选只改变端口及可选日志级别，且认证控制器和 SOCKS 协商都确认候选端口在服务时，guard 可以在旧端口未就绪期间沿用候选端口。绕过规则、代理地址和其他策略来自已保存设置。控制器读取只在有在途端口变更时解析，仍使用既有 guard、作用域、发布锁和租约。
+
+候选宿主效果仍匹配原回执时，guard 持久记录延期并保留原对账资格。需要纠正外部漂移且 guard 已启用时，先在原台账记录 guard 接管，再以独立调用按已保存规则维护可用端口。旧监听恢复后，guard 可以继续应用旧策略，独立动作不结清原操作。未取得原 Helper 应用证据、候选策略差异扩大或候选监听不可核实时，仍走原宿主安全策略。显式补偿用既有补偿 ID 和真实监听证据完成原操作。
+
+Windows Release 系统代理、TUN 边界、Core 安全、ManagedRuntimes 和模块边界回归通过。控制器证据缺失时原安全策略照常执行。MB-05 跨进程夹具按原 `0bd19b9c-1884-4b47-abea-275c656a58da` 返回 Interrupted，受控副作用计数为一。可信下载探针因缺少进程级测试 CA 覆盖跳过。
+
+Linux 私有 Mihomo 与生产 Helper 验证真实监听与宿主环境。原 `3af4c2e5-d919-4dba-b7ec-c6d501ff5205` 的旧端口拒绝新连接时，guard 使用一次独立写入纠正外部绕过规则，宿主保留可真实转发的候选端口。重开台账再次检查未增加写入。具名补偿 `31201734-ce2f-4c4e-98c0-4613d37d23f6` 一次重载并恢复旧策略，原回执为 Interrupted。
+
+原 `ce95abd9-eb23-4bbf-97dc-d43484aa3d44` 的旧监听重新就绪后，guard 再用一次独立写入应用已保存地址，原回执保持待核验。原 `700cc500-a317-4024-871f-ef7b5ed8e799` 的候选宿主效果一直与原 Helper 回执一致。候选文件漂移期间持久延期，复查零写入，精确候选恢复后原 ID 直接成功。应答丢失、未应用及差异不可完整观察的补偿路径同批通过，后两条均未调用宿主补偿。
+
+专属 cgroup 已清理，宿主共享服务和代理文件指纹一致。日志为 `.artifacts/mb04-guard-listener/linux.log`，归档 SHA-256 为 `8995c884fa4204dcaa01015f8ea12722c83a114f689d44b9f649d2aa02ebc881`。
+
+Proxy 保持 resident。无法认证任何监听时，安全策略可能仍指向暂不可用的旧端口。跨休眠交接与生产内存继续开放。
