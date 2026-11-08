@@ -438,8 +438,9 @@ def proof_committed(owner, operation, operation_dir, case):
           f'credential={record["credential"]}; original success after response loss, live drift reported separately')
 
 
-def stop_native(operation_id):
-    request = {'version': '1.1', 'operation': 'MihomoRuntimeTunStop', 'operationId': str(uuid.UUID(operation_id)),
+def stop_native(publication_id, operation_id=None):
+    request = {'version': '1.1', 'operation': 'MihomoRuntimeTunStop', 'operationId': str(operation_id or uuid.uuid4()),
+               'runtimeLifecycle': {'MihomoTunPublicationId': str(uuid.UUID(publication_id))},
                'correlation': {'correlationId': str(uuid.uuid4())}}
     return subprocess.run([launcher], input=json.dumps(request), capture_output=True, text=True, timeout=20)
 
@@ -450,16 +451,18 @@ def helper_result(process):
 
 def proof_committed_stop(record, observed, state_path, terminal, operation_dir, initial):
     operation = record['operation']
+    stop = uuid.uuid4()
     pid = record['service'][0]
 
     wrong = stop_native(str(uuid.uuid4()))
-    assert wrong.returncode == 1 and helper_result(wrong)['error'] == 'runtime.recovery_target_conflict'
+    assert wrong.returncode == 1 and helper_result(wrong)['error'] == 'runtime.recovery_target_conflict', (
+        wrong.returncode, wrong.stdout, wrong.stderr)
     observe(record)
     other_dns = (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress'))
     os.kill(pid, signal.SIGSTOP)  # Keep the real SIGTERM pending while the first worker is interrupted.
     try:
         interrupted = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root),
-                                      operation, 'committed-stop-interrupt'], timeout=10)
+                                      operation, f'committed-stop-interrupt:{stop}'], timeout=10)
         assert interrupted.returncode == -signal.SIGKILL
         assert checkpoint(record, 'state') == 'StopDispatched'
         status = dict(line.split(':', 1) for line in Path(f'/proc/{pid}/status').read_text().splitlines() if ':' in line)
@@ -467,7 +470,8 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
         pending = json.loads(checkpoint(record, 'observe-commit'))
         assert pending['installation']['ownership'] == 'Unknown' and pending['problemCode'] == 'runtime.network_stop_unconfirmed'
         assert pending['receipt'] == observed['receipt']
-        refused = stop_native(operation)
+        assert helper_result(stop_native(operation))['error'] == 'runtime.recovery_required'
+        refused = stop_native(operation, stop)
         assert refused.returncode == 1 and helper_result(refused)['error'] == 'runtime.network_stop_unconfirmed', (
             refused.returncode, refused.stdout, refused.stderr)
         assert checkpoint(record, 'state') == 'StopDispatched' and service_identity() == record['service']
@@ -477,24 +481,30 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
         os.kill(pid, signal.SIGCONT)
 
     (root / 'interrupt-rule-delete').touch()
-    interrupted_rule = stop_native(operation)
+    interrupted_rule = stop_native(operation, stop)
     assert interrupted_rule.returncode == -signal.SIGKILL and checkpoint(record, 'state') == 'RuleRemovalDispatched'
     assert network_baseline() == record['baseline']
     rule = ('priority', '11000', 'to', target + '/32', 'lookup', str(record['routing_table']), 'protocol', '186')
     command(root / 'ip-real', '-4', 'rule', 'add', *rule)
-    refused = stop_native(operation)
+    refused = stop_native(operation, stop)
     assert refused.returncode == 1 and helper_result(refused)['error'] == 'runtime.network_rule_conflict'
     assert checkpoint(record, 'state') == 'RuleRemovalDispatched'
     command(root / 'ip-real', '-4', 'rule', 'del', *rule)
-    done = stop_native(operation)
+    done = stop_native(operation, stop)
     assert done.returncode == 0 and helper_result(done)['success']
     stop_receipt = json.loads(base64.b64decode(helper_result(done)['outputBase64']))
-    assert uuid.UUID(stop_receipt['OperationId']).hex == operation and stop_receipt['Outcome'] == 'Succeeded'
-    assert helper_result(stop_native(operation)) == helper_result(done)
+    assert uuid.UUID(stop_receipt['OperationId']) == stop and stop_receipt['Outcome'] == 'Succeeded'
+    settled = state_path.read_bytes()
+    assert helper_result(stop_native(operation, stop)) == helper_result(done)
+    assert state_path.read_bytes() == settled
     final = json.loads(checkpoint(record, 'observe-commit'))
     assert final['installation']['ownership'] == 'Managed' and final['problemCode'] is None
     assert final['receipt'] == observed['receipt'] and final['commitWitness'] == observed['commitWitness']
-    assert checkpoint(record, 'state') == 'Restored' and state_path.read_bytes() == terminal
+    assert checkpoint(record, 'state') == 'Restored'
+    before, after = json.loads(terminal), json.loads(settled)
+    assert after['activeMihomoTun'] == before['activeMihomoTun'] and after['receipts'] == before['receipts']
+    stop_state = after['mihomoTunStops'][-1]
+    assert uuid.UUID(stop_state['operationId']) == stop and stop_state['confirmed']
     checkpoints = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
     assert len(checkpoints) == 9 and checkpoints[:6] == initial
     assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
@@ -824,7 +834,9 @@ def proof_server_publication(owner, operation, operation_dir, previous, case, ip
           f'PID={record["service"][0]}; outcome={result["outcome"]}; original receipt, real traffic, resident work lease')
 
 
-def proof_http_publication(owner, ipc, previous, pending):
+def proof_http_publication(owner, ipc, previous, case):
+    pending = case == 'ipc-http-pending'
+    action_cuts = case == 'ipc-http-action'
     state_dir = root / 'authorization-state'
     api = 'http://192.0.2.2:18970/api/v1.0/proxy'
     profile = '8fec824f-778c-4cf5-b81d-94fb4618cae5'
@@ -890,6 +902,29 @@ def proof_http_publication(owner, ipc, previous, pending):
         while http('/fixture-work-leases') != (200, 0):
             assert time.monotonic() < deadline
             time.sleep(.05)
+
+    def arm(boundary):
+        (state_dir / 'http-action-cut').write_text(boundary)
+
+    def restart_after_action(process, action_id, boundary):
+        assert wait_file('http-action-ready', process).read_text() == f'{action_id} {boundary}'
+        assert http('/fixture-work-leases')[1] >= 1
+        process.kill()
+        assert process.wait(timeout=5) == -signal.SIGKILL
+        process.stdout.close()
+        ipc.stop_helper()
+        for name in ('http-action-cut', 'http-action-ready', 'http-ready'):
+            (state_dir / name).unlink()
+        ipc.start_helper()
+        return subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity, stdout=subprocess.PIPE, text=True)
+
+    def native_receipt(action_id, kind, target_execution):
+        receipt = json.loads(checkpoint(record, f'observe-action:{action_id}'))['mihomoTunAction']
+        assert receipt['action'] == kind and receipt['outcome'] == 'Succeeded'
+        assert uuid.UUID(receipt['operationId']).hex == action_id
+        assert uuid.UUID(receipt['publicationId']).hex == operation
+        assert uuid.UUID(receipt['targetExecutionId']).hex == target_execution
+        return receipt
 
     wait_file('http-ready', owner)
     assert http('/tun/enable', key, {'profileId': profile}, role=None)[0] == 401
@@ -989,22 +1024,67 @@ def proof_http_publication(owner, ipc, previous, pending):
         assert mirror.read_bytes() == config.read_bytes()
         assert http('/tun')[1]['hasRecoveryMarker'] is False
         probe(record, 'http-after-crash')
+        if action_cuts:
+            arm('stop')
         stopped = accepted('/tun/disable', 'managed-tun-http-stop')
+        if action_cuts:
+            assert wait_file('http-action-ready', restarted).read_text() == f'{stopped} after'
+            assert not Path(f'/proc/{record["service"][0]}').exists() and device not in devices()
+            assert network_baseline() == record['baseline'] and config.read_bytes() == mirror.read_bytes()
+            stop_receipt = native_receipt(stopped, 2, operation)
+            stopped_state = archive_state.read_bytes()
+            assert ipc.log.read_text().count(f'operation=MihomoRuntimeTunStop id={uuid.UUID(stopped)}') == 1
+            restarted = restart_after_action(restarted, stopped, 'after')
+            wait_file('http-ready', restarted)
+            assert accepted('/tun/disable', 'managed-tun-http-stop') == stopped
+            assert native_receipt(stopped, 2, operation) == stop_receipt and archive_state.read_bytes() == stopped_state
+            assert 'operation=MihomoRuntimeTunStop ' not in ipc.log.read_text()
         terminal(stopped)
         assert not Path(f'/proc/{record["service"][0]}').exists() and device not in devices()
         assert network_baseline() == record['baseline']
         scope_policy.write_bytes(policy)
         scope_policy.chmod(0o644)
+        if action_cuts:
+            arm('start')
         started = accepted('/tun/enable', 'managed-tun-http-start', {'profileId': profile})
-        terminal(started)
-        assert accepted('/tun/enable', 'managed-tun-http-start', {'profileId': profile}) == started
+        if action_cuts:
+            assert wait_file('http-action-ready', restarted).read_text() == f'{started} after'
+        else:
+            terminal(started)
         active = json.loads((archive / 'operations' / started / 'tun-5.json').read_text())
         table = active['Intent']['RoutingTable']
         current = dict(record, service=service_identity(), ifindex=active['InterfaceIndex'],
                        routing_table=table, route=route(table))
         probe(current, 'http-started')
+        if action_cuts:
+            start_receipt = native_receipt(started, 0, operation)
+            started_state = archive_state.read_bytes()
+            assert ipc.log.read_text().count(f'operation=MihomoRuntimeTunStart id={uuid.UUID(started)}') == 1
+            restarted = restart_after_action(restarted, started, 'after')
+            wait_file('http-ready', restarted)
+            assert native_receipt(started, 0, operation) == start_receipt and archive_state.read_bytes() == started_state
+            terminal(started)
+            probe(current, 'http-start-confirmed')
+            assert 'operation=MihomoRuntimeTunStart ' not in ipc.log.read_text()
+        assert accepted('/tun/enable', 'managed-tun-http-start', {'profileId': profile}) == started
         drained()
         assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
+        if action_cuts:
+            arm('stop-before')
+            unknown = accepted('/tun/disable', 'managed-tun-http-unknown')
+            restarted = restart_after_action(restarted, unknown, 'before')
+            wait_file('http-ready', restarted)
+            assert accepted('/tun/disable', 'managed-tun-http-unknown') == unknown
+            status, waiting = http('/operations/' + str(uuid.UUID(unknown)))
+            assert status == 200 and waiting['state'] == 5 and waiting['stage'] == 'managed_tun_action' and not waiting['completedAt']
+            assert http('/tun/disable', 'managed-tun-http-other')[0] == 400
+            assert not json.loads(checkpoint(record, f'observe-action:{unknown}'))['mihomoTunAction']
+            assert archive_state.read_bytes() == started_state
+            assert 'operation=MihomoRuntimeTunStop ' not in ipc.log.read_text()
+            probe(current, 'http-unknown-no-replay')
+            assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+            print(f'PASS TUN AUTHENTICATED HTTP ACTIONS: publication={operation}; stop={stopped}; start={started}; '
+                  f'unknown={unknown}; credential={record["credential"]}; live PID={current["service"][0]}; no replay')
         print(f'PASS TUN AUTHENTICATED HTTP: publication={operation}; stop={stopped}; start={started}; '
               f'credential={record["credential"]}; active PID={current["service"][0]}; same key and no configure replay')
     finally:
@@ -1021,7 +1101,7 @@ def proof():
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
-    http_case = case in ('ipc-http-commit', 'ipc-http-pending')
+    http_case = case in ('ipc-http-commit', 'ipc-http-pending', 'ipc-http-action')
     if http_case:
         ip('netns', 'add', 'rk-http-client')
         ip('link', 'set', 'rk-peer', 'netns', 'rk-http-client')
@@ -1102,7 +1182,7 @@ rules:
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,
                                      stdout=subprocess.PIPE, text=True)
             if http_case:
-                proof_http_publication(owner, ipc, previous, case == 'ipc-http-pending')
+                proof_http_publication(owner, ipc, previous, case)
             else:
                 proof_server_publication(owner, operation, operation_dir, previous, case, ipc)
             return

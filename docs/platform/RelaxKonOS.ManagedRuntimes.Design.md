@@ -310,4 +310,6 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 
 2026-11-08（MR-03 / MB-04）现有认证 TUN HTTP 路由接入受管发布及具名启停。首次发布绑定原队列 ID，宿主显式准入继续生效。同键查询依据原确认回执，副作用未知时保留原责任。见[认证 HTTP 实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http)。
 
-2026-11-08（MR-03 / MB-04）认证 HTTP 已验证 Helper 无终态时按原发布 ID 补偿。原队列在恢复响应交付前保留待核验阶段和准入门禁，恢复旧配置及原回执后结案。具名启停响应丢失的回执对账仍待验证。见[认证 HTTP 补偿实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http-补偿)。
+2026-11-08（MR-03 / MB-04）认证 HTTP 已验证首次启用在 Helper 无终态时按原发布 ID 补偿。原队列在恢复响应交付前保留待核验阶段和准入门禁，恢复旧配置及原回执后结案。见[认证 HTTP 补偿实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http-补偿)。
+
+2026-11-08（MR-03 / MB-04）具名停用在原 Helper 锁内持久记录新操作 ID、原发布 ID 和目标原生执行，原生停止及清理核对后确认同一回执。Server 按原队列 ID 只读核对具名启停终态，缺证据时继续待核验。见[具名启停实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http-具名启停回执)。

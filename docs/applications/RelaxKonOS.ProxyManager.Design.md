@@ -4525,7 +4525,7 @@ Linux 受管 TUN 试运行的固定范围文件为 `/etc/relaxkonos/mihomo-tun-n
 
 归档配置事务可将活动 TUN 归属与原成功回执一起持久保存。Helper 查询从固定单元和原生检查点复核当前效果，外部漂移时报告当前归属未知，同时保留历史回执。专属 Linux 夹具仅在验证成功写入时通过生产候选验证器，公开发布和生产成功提交仍受门禁保护。见[活动归属实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交态归属)。
 
-Linux Helper 的 `MihomoRuntimeTunStop` 按原发布 operationId 具名停止提交态 TUN。停止进程和移除原规则的派发均在原检查点持久记录，应答丢失时仍用原 ID 对账。已验证停止后保留原配置和历史发布回执。启动、重启、移除和公开入口继续受准入条件约束。见[具名停止实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后具名停止)。
+Linux Helper 的 `MihomoRuntimeTunStop` 接收具名停止 operationId 与原发布 ID，绑定停止目标的原生执行。停止进程和移除原规则的派发均在原检查点持久记录。停止确认后保留原配置、历史发布回执及独立停止回执。见[具名启停实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http-具名启停回执)。
 
 Helper 的具名启动与重启同时接收原发布 ID、新执行 ID 及临时授权回调。新派发核对已发布配置、宿主网络范围和受信制品，原成功回执继续可查。应答丢失时，同执行 ID 读取原阶段并核对实际效果，待核验期间拒绝新的执行和普通停止。公开入口继续受门禁保护。见[具名启动与重启证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后具名启动与重启)。
 
@@ -4537,7 +4537,7 @@ Linux 非 root Server 可经固定 AF_UNIX 通道调用独立 Helper，按原发
 
 Linux 受管启用、停用及紧急停用使用现有认证 TUN 路由。首次启用仅处理当前活动 Mihomo 档案，并要求宿主范围显式允许发布。客户端断连后，使用相同键查询原队列操作；同键改换操作者、动作或档案会返回冲突。受管停用由 Helper 核对当前归属并停止，已提交的配置保持可供再次启用。见[认证 HTTP 实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http)。
 
-Server 重启后，尚待 Helper 核验的受管 TUN 操作保留原 ID、`managed_tun` 阶段和空完成时间。恢复完成前的新键会收到 `proxy.operation_interrupted`。如果 Helper 按原发布 ID 补偿并确认恢复了旧配置，原启用操作终止为 `proxy.config_apply_failed`。
+Server 重启后，尚待 Helper 核验的受管 TUN 操作保留原 ID 和空完成时间。首次启用保留 `managed_tun`，具名启停保留 `managed_tun_action`。恢复完成前的新键会收到 `proxy.operation_interrupted`。如果 Helper 按原发布 ID 补偿并确认恢复了旧配置，原启用操作终止为 `proxy.config_apply_failed`。如果具名启停已在 Helper 确认，Server 通过原队列 ID 只读确认同动作回执并结案。
 
 DNS 写入已生效但应答未确认时，重启可按原操作和原 resolver 身份只读确认效果。resolver 换代后相同设置及真实流量仍保留待核验，Helper 未重发写入或派发停止。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。
 

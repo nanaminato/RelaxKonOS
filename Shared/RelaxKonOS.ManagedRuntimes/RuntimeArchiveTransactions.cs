@@ -21,6 +21,7 @@ public sealed record RuntimeActivationEvidence(string MeasuredVersion, string Co
 public sealed record RuntimeMihomoTunOwnership(Guid OperationId, Guid RevisionId, string ConfigurationIdentity, string NetworkIntentIdentity);
 public enum RuntimeMihomoTunStartStage { Stopping, Launching, Succeeded }
 public sealed record RuntimeMihomoTunStart(Guid OperationId, Guid PublicationId, bool Restart, RuntimeMihomoTunStartStage Stage);
+public sealed record RuntimeMihomoTunStop(Guid OperationId, Guid PublicationId, Guid TargetExecutionId, bool Confirmed);
 public sealed record RuntimeRestorationEvidence(string? MeasuredVersion, string? ConfigurationIdentity,
     bool Running, bool BootEnabled, bool OwnedResourcesRestored, bool Healthy);
 
@@ -41,6 +42,9 @@ public sealed record RuntimeArchiveState(RuntimeInstallation Installation, Runti
 {
     public RuntimeMihomoTunOwnership? ActiveMihomoTun { get; init; }
     public RuntimeMihomoTunStart[] MihomoTunStarts { get; init; } = [];
+    public RuntimeMihomoTunStop[] MihomoTunStops { get; init; } = [];
+    [JsonIgnore]
+    public RuntimeMihomoTunStop? PendingMihomoTunStop => MihomoTunStops.LastOrDefault() is { Confirmed: false } stop ? stop : null;
     [JsonIgnore]
     public Guid? CurrentMihomoTunExecution => MihomoTunStarts.LastOrDefault(start =>
         start.PublicationId == ActiveMihomoTun?.OperationId && start.Stage == RuntimeMihomoTunStartStage.Succeeded)?.OperationId
@@ -48,6 +52,8 @@ public sealed record RuntimeArchiveState(RuntimeInstallation Installation, Runti
     [JsonIgnore]
     public RuntimeMihomoTunStart? PendingMihomoTunStart => MihomoTunStarts.LastOrDefault() is
         { Stage: not RuntimeMihomoTunStartStage.Succeeded } start ? start : null;
+    internal bool HasMihomoTunAction(Guid id) => MihomoTunStarts.Any(start => start.OperationId == id)
+        || MihomoTunStops.Any(stop => stop.OperationId == id);
     public Protocol.ProxyServer.ProxyServerPublicationReceipt? ProxyPublication { get; init; }
     public ProxyPublicationServiceBaseline? ProxyPublicationBaseline { get; init; }
     [JsonIgnore] public bool ProxyPublicationUnresolved =>

@@ -1,6 +1,8 @@
 using Microsoft.Data.Sqlite;
 using System.Text.Json;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.Proxy.Mihomo;
 
 namespace RelaxKonOS.Server.Proxy;
@@ -13,7 +15,7 @@ public delegate Task ProxyOperationStageReporter(string stage);
 /// </summary>
 public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger,
     IProxyWorkLeaseSource workLeases, MihomoPublicationStore? publication = null,
-    IProxySubscriptionRepository? subscriptions = null) : IHostedService
+    IProxySubscriptionRepository? subscriptions = null, MihomoRuntimeService? mihomoRuntime = null) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private static readonly JsonSerializerOptions Json = new()
@@ -198,7 +200,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                 && operation.ProblemCode == ProxyProblemCodes.OperationInterrupted);
 
     private bool NeedsReconciliation(Entry entry) => IsInterruptedSubscriptionPublication(entry.Operation)
-        || entry.Operation.Stage == MihomoManagedTunOperations.QueueStage && !_running.ContainsKey(entry.Operation.OperationId)
+        || MihomoManagedTunOperations.IsPendingStage(entry.Operation.Stage) && !_running.ContainsKey(entry.Operation.OperationId)
         || entry.Batch is not null && !_running.ContainsKey(entry.Operation.OperationId)
             && (entry.Operation.State is ProxyOperationState.Queued or ProxyOperationState.Running || entry.Operation.Stage == BatchPending);
 
@@ -218,6 +220,20 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             var operation = entry.Operation;
             if (!NeedsReconciliation(entry) || requested is not null && requested != operation.OperationId)
                 continue;
+
+            if (operation.Stage == MihomoManagedTunOperations.ActionQueueStage)
+            {
+                if (!await HasConfirmedTunActionAsync(operation, ct)) continue;
+                entries[index] = entry with { Operation = operation with
+                {
+                    State = ProxyOperationState.Succeeded,
+                    Stage = "completed",
+                    ProblemCode = "",
+                    CompletedAt = DateTimeOffset.UtcNow
+                } };
+                changed = true;
+                continue;
+            }
 
             if (operation.Stage == MihomoManagedTunOperations.QueueStage)
             {
@@ -282,6 +298,27 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         await SaveAsync(entries, CancellationToken.None);
     }
 
+    private async Task<bool> HasConfirmedTunActionAsync(ProxyOperationDto operation, CancellationToken ct)
+    {
+        if (mihomoRuntime is null) return false;
+        var expected = operation.Kind switch
+        {
+            "tun.enable" => MihomoTunActionKind.Start,
+            "tun.disable" or "tun.emergency-disable" => MihomoTunActionKind.Stop,
+            _ => (MihomoTunActionKind?)null
+        };
+        if (expected is null) return false;
+        try
+        {
+            var observed = await mihomoRuntime.QueryHelperAsync(ct, operation.OperationId);
+            return observed.MihomoTunAction is { Outcome: RuntimeSwitchOutcome.Succeeded } receipt
+                && receipt.OperationId == operation.OperationId && receipt.Action == expected;
+        }
+        catch (Exception error) when (error is RuntimeLifecycleException or IOException or UnauthorizedAccessException
+            or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
+        { return false; }
+    }
+
     private Task<(bool Pending, ProxyDraftRefreshReceipt? Receipt)> ReconcileDraftAsync(Guid id, Guid? subscription, CancellationToken ct) =>
         subscriptions is not null && publication is not null
             ? new ProxyDraftRefreshRecovery(paths, subscriptions, publication).ReconcileAsync(id, subscription, ct)
@@ -308,7 +345,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         if (operation.State is not (ProxyOperationState.Queued or ProxyOperationState.Running)
             || _running.ContainsKey(operation.OperationId))
             return operation;
-        var managedTunPending = operation.Stage == MihomoManagedTunOperations.QueueStage;
+        var managedTunPending = MihomoManagedTunOperations.IsPendingStage(operation.Stage);
         return operation with
         {
             State = ProxyOperationState.Interrupted,
@@ -334,7 +371,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             }, CancellationToken.None);
             var publicationPending = false;
             var batchPending = original.Kind == RefreshBatchKind && problem == ProxyProblemCodes.RecoveryRequired;
-            var managedTunPending = lastStage == MihomoManagedTunOperations.QueueStage && problem == ProxyProblemCodes.RecoveryRequired;
+            var managedTunPending = MihomoManagedTunOperations.IsPendingStage(lastStage) && problem == ProxyProblemCodes.RecoveryRequired;
             if (IsSubscriptionPublication(original.Kind) && problem == ProxyProblemCodes.RecoveryRequired && publication is not null)
             {
                 try
@@ -356,7 +393,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             {
                 State = publicationPending || batchPending || managedTunPending ? ProxyOperationState.Interrupted
                     : string.IsNullOrEmpty(problem) ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
-                Stage = managedTunPending ? MihomoManagedTunOperations.QueueStage
+                Stage = managedTunPending ? lastStage
                     : batchPending ? BatchPending : publicationPending ? "publication_pending" : string.IsNullOrEmpty(problem) ? "completed" : "failed",
                 ProblemCode = batchPending ? ProxyProblemCodes.OperationInterrupted : problem ?? "",
                 CompletedAt = publicationPending || batchPending || managedTunPending ? null : DateTimeOffset.UtcNow,
@@ -375,11 +412,11 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             {
                 var pendingStep = exception is not ProxyOperationCleanupException
                     && entry.Batch?.Any(step => step.State == RefreshStepState.Running) == true;
-                var tunPending = entry.Operation.Stage == MihomoManagedTunOperations.QueueStage;
+                var tunPending = MihomoManagedTunOperations.IsPendingStage(entry.Operation.Stage);
                 return entry with { Operation = entry.Operation with
                 {
                     State = pendingStep || tunPending ? ProxyOperationState.Interrupted : ProxyOperationState.Failed,
-                    Stage = tunPending ? MihomoManagedTunOperations.QueueStage : pendingStep ? BatchPending : "failed",
+                    Stage = tunPending ? entry.Operation.Stage : pendingStep ? BatchPending : "failed",
                     ProblemCode = ProxyProblemCodes.OperationInterrupted,
                     CompletedAt = pendingStep || tunPending ? null : DateTimeOffset.UtcNow
                 } };

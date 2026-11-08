@@ -103,11 +103,12 @@ internal sealed partial class LinuxMihomoArchiveHost
 
     // The caller holds the archive instance lock for the entire stop, including the final observation.
     internal async Task StopCommittedTunAsync(RuntimeMihomoTunOwnership ownership, RuntimeInstallation installation,
-        Guid executionId, RuntimeStageReporter? progress, CancellationToken ct)
+        Guid executionId, RuntimeStageReporter? progress, CancellationToken ct, bool allowDispatch = true)
     {
         var (_, _, effect) = await ReadCommittedTunAsync(ownership, installation, executionId, ct);
         if (effect.Phase is not (MihomoTunPhase.StopDispatched or MihomoTunPhase.RuleRemovalDispatched or MihomoTunPhase.Restored))
         {
+            if (!allowDispatch) Fail("network_stop_unconfirmed");
             await DispatchTunStopAsync(executionId, ct);
             if (progress is not null)
             {

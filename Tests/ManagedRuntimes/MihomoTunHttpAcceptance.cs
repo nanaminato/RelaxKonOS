@@ -115,8 +115,20 @@ internal static class MihomoTunHttpAcceptance
 
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
         {
+            var cut = Path.Combine(state, "http-action-cut");
+            var action = request.Operation switch
+            {
+                PrivilegedOperationKind.MihomoRuntimeTunStart => "start",
+                PrivilegedOperationKind.MihomoRuntimeTunStop => "stop",
+                _ => null
+            };
+            var boundary = action is not null && File.Exists(cut) ? await File.ReadAllTextAsync(cut, ct) : null;
+            if (boundary is not null && boundary == action + "-before")
+                await HoldTunActionAsync(request, "before");
             var result = await inner.ExecuteAsync(request, ct);
             if (!result.Success) return result;
+            if (boundary is not null && boundary == action)
+                await HoldTunActionAsync(request, "after");
             if (firstRun && !pending && request.Operation == PrivilegedOperationKind.MihomoRuntimeConfigure)
             {
                 if (coordinator.Describe(ServerModules.ProxyId) is not { ActiveLeases: >= 2 })
@@ -137,6 +149,16 @@ internal static class MihomoTunHttpAcceptance
                     await Task.Delay(25, timeout.Token);
             }
             return result;
+        }
+
+        private async Task HoldTunActionAsync(PrivilegedOperationRequest request, string boundary)
+        {
+            if (coordinator.Describe(ServerModules.ProxyId) is not { ActiveLeases: >= 1 })
+                throw new InvalidOperationException("The named TUN action lost its work lease.");
+            var ready = Path.Combine(state, "http-action-ready");
+            await File.WriteAllTextAsync(ready + ".new", $"{request.OperationId!.Value:N} {boundary}");
+            File.Move(ready + ".new", ready);
+            await Task.Delay(Timeout.InfiniteTimeSpan);
         }
     }
 

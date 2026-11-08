@@ -28,24 +28,40 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         var state = await EnsureStateAsync(ct);
         var receipt = state.Receipts.FirstOrDefault(r => r.OperationId == receiptOperationId);
         var launch = state.MihomoTunStarts.FirstOrDefault(item => item.OperationId == receiptOperationId);
+        var stop = state.MihomoTunStops.FirstOrDefault(item => item.OperationId == receiptOperationId);
+        var action = ReadTunActionReceipt(state, launch, stop);
         var observation = HasPending(state) ? (state.Installation, (string?)null, (bool?)null)
             : await ObserveInstallationAsync(state, ct);
         var verified = observation.Item1.Ownership == RuntimeOwnership.Managed;
         return new(observation.Item1, verified ? state.Active?.MeasuredVersion : null, verified ? state.Active?.RevisionId : null, state.ConfigurationIdentity,
-            state.Pending?.OperationId ?? state.Removal?.OperationId ?? state.Configuration?.OperationId ?? state.PendingMihomoTunStart?.OperationId,
+            state.Pending?.OperationId ?? state.Removal?.OperationId ?? state.Configuration?.OperationId
+                ?? state.PendingMihomoTunStart?.OperationId ?? state.PendingMihomoTunStop?.OperationId,
             state.Pending?.Stage ?? state.Removal?.Stage ?? state.Configuration?.Stage
-                ?? (state.PendingMihomoTunStart is null ? null : InstallationStage.Interrupted),
+                ?? (state.PendingMihomoTunStart is null && state.PendingMihomoTunStop is null ? null : InstallationStage.Interrupted),
             state.Pending?.RecoveryProblemCode ?? state.Pending?.ProblemCode
                 ?? state.Removal?.RecoveryProblemCode ?? state.Removal?.ProblemCode
                 ?? state.Configuration?.RecoveryProblemCode ?? state.Configuration?.ProblemCode ?? observation.Item2,
             receipt is not null ? new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode)
-                : launch is null ? null : launch.Stage == RuntimeMihomoTunStartStage.Succeeded
-                    ? new(launch.OperationId, RuntimeSwitchOutcome.Succeeded, null)
-                    : new(launch.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.network_start_unconfirmed"),
+                : action is null ? null : new(action.OperationId, action.Outcome,
+                    action.Outcome == RuntimeSwitchOutcome.Succeeded ? null
+                        : stop is null ? "runtime.network_start_unconfirmed" : "runtime.network_stop_unconfirmed"),
             state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray(),
             // Read-only environment facts, so a refusal can be explained before anyone presses install.
             RuntimeDependencyProbe.Environment(environment, root), states.ReadCommittedWitness(state, receipt),
-            verified && !HasPending(state) ? state.ActiveMihomoTun?.OperationId : null, observation.Item3);
+            verified && !HasPending(state) ? state.ActiveMihomoTun?.OperationId : null, observation.Item3, action);
+    }
+
+    private static MihomoTunActionReceipt? ReadTunActionReceipt(RuntimeArchiveState state, RuntimeMihomoTunStart? launch,
+        RuntimeMihomoTunStop? stop)
+    {
+        if (stop is not null)
+            return new(stop.OperationId, stop.PublicationId, stop.TargetExecutionId, MihomoTunActionKind.Stop,
+                stop.Confirmed ? RuntimeSwitchOutcome.Succeeded : RuntimeSwitchOutcome.RecoveryRequired);
+        if (launch is null) return null;
+        var target = state.MihomoTunStarts.TakeWhile(item => item.OperationId != launch.OperationId)
+            .LastOrDefault(item => item.PublicationId == launch.PublicationId)?.OperationId ?? launch.PublicationId;
+        return new(launch.OperationId, launch.PublicationId, target, launch.Restart ? MihomoTunActionKind.Restart : MihomoTunActionKind.Start,
+            launch.Stage == RuntimeMihomoTunStartStage.Succeeded ? RuntimeSwitchOutcome.Succeeded : RuntimeSwitchOutcome.RecoveryRequired);
     }
 
     internal async Task<RuntimePlanResult> PlanAsync(string sourceId, RuntimePlanRequest request, CancellationToken ct)
@@ -56,7 +72,8 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         if (HasPending(state)) return new(null, ["runtime.recovery_required"]);
         if (state.ActiveMihomoTun is { } tun)
         {
-            if (state.PendingMihomoTunStart is not null) return new(null, ["runtime.recovery_required"]);
+            if (state.PendingMihomoTunStart is not null || state.PendingMihomoTunStop is not null)
+                return new(null, ["runtime.recovery_required"]);
             if (request.Change != RuntimeChange.Uninstall) return new(null, ["runtime.network_lifecycle_unverified"]);
             if (!OperatingSystem.IsLinux() || host is not LinuxMihomoArchiveHost linux)
                 return new(null, ["runtime.network_platform_unsupported"]);
@@ -87,6 +104,8 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         {
             if (state.PendingMihomoTunStart is not null)
                 throw new RuntimePolicyException("runtime.network_start_unconfirmed");
+            if (state.PendingMihomoTunStop is not null)
+                throw new RuntimePolicyException("runtime.network_stop_unconfirmed");
             var service = await host.ObserveAsync(ct);
             bool? tunRunning = null;
             if (service.TunOperation != state.CurrentMihomoTunExecution)
@@ -205,19 +224,35 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         return await Configuration(channel, progress).ExecuteAsync(operationId, plan, cancellation.Token);
     }
 
-    internal async Task<RuntimeSwitchResult> StopCommittedTunAsync(Guid operationId, CancellationToken ct, RuntimeStageReporter? progress = null)
+    internal async Task<RuntimeSwitchResult> StopCommittedTunAsync(Guid operationId, Guid publicationId, CancellationToken ct,
+        RuntimeStageReporter? progress = null)
     {
         await EnsureStateAsync(ct);
         using var session = states.Acquire();
         var state = session.State!;
-        if (HasPending(state) || state.PendingMihomoTunStart is not null)
+        var stop = state.MihomoTunStops.SingleOrDefault(item => item.OperationId == operationId);
+        if (state.Receipts.Any(item => item.OperationId == operationId) || state.MihomoTunStarts.Any(item => item.OperationId == operationId)
+            || stop is not null && stop.PublicationId != publicationId)
+            throw new RuntimePolicyException("runtime.idempotency_conflict");
+        if (stop is { Confirmed: true }) return new(operationId, RuntimeSwitchOutcome.Succeeded, null);
+        if (HasPending(state) || state.PendingMihomoTunStart is not null
+            || state.PendingMihomoTunStop is { } pending && pending.OperationId != operationId)
             throw new RuntimePolicyException("runtime.recovery_required");
-        if (state.ActiveMihomoTun is not { } ownership || ownership.OperationId != operationId)
+        if (state.ActiveMihomoTun is not { } ownership || ownership.OperationId != publicationId)
             throw new RuntimePolicyException("runtime.recovery_target_conflict");
         if (!OperatingSystem.IsLinux() || host is not LinuxMihomoArchiveHost linux)
             throw new RuntimePolicyException("runtime.network_platform_unsupported");
-        await linux.StopCommittedTunAsync(ownership, state.Installation, state.CurrentMihomoTunExecution!.Value, progress, ct);
-        // The stop result is separate from the immutable publication receipt under this ID.
+        var firstDispatch = stop is null;
+        if (stop is null)
+        {
+            if (state.MihomoTunStops.Length == 256) throw new RuntimePolicyException("runtime.transaction_state_limit");
+            var target = state.CurrentMihomoTunExecution!.Value;
+            await linux.VerifyCommittedTunAsync(ownership, state.Installation, target, ct);
+            stop = new(operationId, publicationId, target, false);
+            session.RecordMihomoTunStop(stop);
+        }
+        await linux.StopCommittedTunAsync(ownership, state.Installation, stop.TargetExecutionId, progress, ct, firstDispatch);
+        session.RecordMihomoTunStop(stop with { Confirmed = true });
         return new(operationId, RuntimeSwitchOutcome.Succeeded, null);
     }
 
@@ -232,11 +267,13 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         if (state.ActiveMihomoTun is not { } owner || owner.OperationId != publicationId || state.Active is not { } revision)
             throw new RuntimePolicyException("runtime.recovery_target_conflict");
         var start = state.MihomoTunStarts.SingleOrDefault(item => item.OperationId == operationId);
-        if (start is not null && start.Restart != restart || state.Receipts.Any(item => item.OperationId == operationId))
+        if (start is not null && start.Restart != restart || state.Receipts.Any(item => item.OperationId == operationId)
+            || state.MihomoTunStops.Any(item => item.OperationId == operationId))
             throw new RuntimePolicyException("runtime.idempotency_conflict");
         if (start?.Stage == RuntimeMihomoTunStartStage.Succeeded)
             return new(operationId, RuntimeSwitchOutcome.Succeeded, null);
-        if (HasPending(state) || state.PendingMihomoTunStart is { } pending && pending.OperationId != operationId)
+        if (HasPending(state) || state.PendingMihomoTunStop is not null
+            || state.PendingMihomoTunStart is { } pending && pending.OperationId != operationId)
             throw new RuntimePolicyException("runtime.recovery_required");
 
         var previous = state.CurrentMihomoTunExecution!.Value;

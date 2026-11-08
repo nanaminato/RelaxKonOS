@@ -134,11 +134,13 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         return result;
     }
 
-    internal async Task<RuntimeSwitchResult> StopManagedTunUnderGateAsync(Guid publicationId, CancellationToken ct)
+    internal async Task<RuntimeSwitchResult> StopManagedTunUnderGateAsync(Guid operationId, Guid publicationId, CancellationToken ct)
     {
-        if (publicationId == Guid.Empty) throw new RuntimePolicyException("runtime.operation_id_invalid");
-        var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeTunStop, OperationId: publicationId), ct);
-        if (result.OperationId != publicationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
+        if (operationId == Guid.Empty || publicationId == Guid.Empty || operationId == publicationId)
+            throw new RuntimePolicyException("runtime.operation_id_invalid");
+        var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeTunStop, OperationId: operationId,
+            RuntimeLifecycle: new(MihomoTunPublicationId: publicationId)), ct);
+        if (result.OperationId != operationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
         return result;
     }
 
@@ -346,7 +348,8 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
                 throw new RuntimeLifecycleException("runtime.helper_response_invalid");
             if (value is RuntimeSwitchResult receipt && !ValidReceipt(receipt)
                 || value is RuntimeInstallationSnapshot snapshot && (snapshot.Installation is null
-                    || snapshot.Receipt is { } observed && (!ValidReceipt(observed) || observed.OperationId != request.OperationId))
+                    || snapshot.Receipt is { } observed && (!ValidReceipt(observed) || observed.OperationId != request.OperationId)
+                    || snapshot.MihomoTunAction is { } action && !ValidTunAction(action, snapshot.Receipt))
                 || value is RuntimeRecoverySnapshot recovery && !ValidRecovery(recovery)
                 || value is RuntimeResourceReport resources && !ValidResources(resources)
                 || value is RuntimeResourceSnapshot resourceSnapshot && !ValidResourceSnapshot(resourceSnapshot))
@@ -359,6 +362,11 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
 
     private static bool ValidReceipt(RuntimeSwitchResult receipt) => receipt.OperationId != Guid.Empty && Enum.IsDefined(receipt.Outcome)
         && (receipt.Outcome == RuntimeSwitchOutcome.Succeeded ? receipt.ProblemCode is null : PublicCode(receipt.ProblemCode));
+    private static bool ValidTunAction(MihomoTunActionReceipt action, RuntimeSwitchResult? receipt) =>
+        receipt is not null && action.OperationId == receipt.OperationId && action.Outcome == receipt.Outcome
+        && action.Outcome is RuntimeSwitchOutcome.Succeeded or RuntimeSwitchOutcome.RecoveryRequired
+        && action.PublicationId != Guid.Empty && action.PublicationId != action.OperationId
+        && action.TargetExecutionId != Guid.Empty && action.TargetExecutionId != action.OperationId && Enum.IsDefined(action.Action);
     /// <summary>A required recovery must still name the one transaction it belongs to; open codes stay closed.</summary>
     private static bool ValidRecovery(RuntimeRecoverySnapshot recovery) =>
         (!recovery.Required || recovery.OperationId is { } id && id != Guid.Empty)

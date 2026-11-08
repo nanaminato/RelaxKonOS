@@ -24,7 +24,8 @@ public static partial class PrivilegedOperationExecutor
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
         if (request.RuntimeLifecycle?.MihomoTunPublicationId is not null
-            && request.Operation is not (PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart))
+            && request.Operation is not (PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart
+                or PrivilegedOperationKind.MihomoRuntimeTunStop))
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "TUN publication identity requires a dedicated operation");
         if (request.Operation != PrivilegedOperationKind.FileSetUnixOwnership
             && (request.UnixOwner is not null || request.UnixGroup is not null))

@@ -21,7 +21,10 @@ internal static class MihomoRuntimeOperations
             return new(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: "runtime.request_invalid");
         var valid = request.Operation switch
         {
-            PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.MihomoRuntimeTunStop => input is null,
+            PrivilegedOperationKind.MihomoRuntimeQuery => input is null,
+            PrivilegedOperationKind.MihomoRuntimeTunStop => input is { SourceId: null, Plan: null, Authorization: null,
+                FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: null, MihomoTunPublicationId: { } owner }
+                && owner != Guid.Empty && owner != request.OperationId,
             PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart =>
                 input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: null, Confirmed: false,
                     RecoveryOperationId: null, CancelOperationId: null, MihomoTunPublicationId: { } publication } && publication != Guid.Empty,
@@ -60,7 +63,7 @@ internal static class MihomoRuntimeOperations
             return request.Operation switch
             {
                 PrivilegedOperationKind.MihomoRuntimeQuery => Json(await lifecycle.QueryAsync(default, id)),
-                PrivilegedOperationKind.MihomoRuntimeTunStop => Json(await lifecycle.StopCommittedTunAsync(id, default, progress)),
+                PrivilegedOperationKind.MihomoRuntimeTunStop => Json(await lifecycle.StopCommittedTunAsync(id, input!.MihomoTunPublicationId!.Value, default, progress)),
                 PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart =>
                     Json(await lifecycle.StartCommittedTunAsync(id, input!.MihomoTunPublicationId!.Value,
                         request.Operation == PrivilegedOperationKind.MihomoRuntimeTunRestart, input.Authorization!, default, progress)),

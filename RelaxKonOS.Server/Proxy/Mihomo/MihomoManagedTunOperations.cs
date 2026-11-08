@@ -13,6 +13,9 @@ internal sealed class MihomoManagedTunOperations(MihomoPublicationStore store, M
     IProxyNetworkSafetyPlatform platform, IProxyTunSafetyService direct)
 {
     internal const string QueueStage = "managed_tun";
+    internal const string ActionQueueStage = "managed_tun_action";
+
+    internal static bool IsPendingStage(string stage) => stage is QueueStage or ActionQueueStage;
 
     internal async Task<(bool Managed, string? Problem)> TryExecuteAsync(Guid operationId, ProxyTunOperation action,
         Guid profileId, IPAddress? managementAddress, ProxyOperationStageReporter stage, CancellationToken ct)
@@ -40,8 +43,9 @@ internal sealed class MihomoManagedTunOperations(MihomoPublicationStore store, M
             {
                 if (observed.MihomoTunPublicationId is { } owner)
                 {
+                    await stage(ActionQueueStage);
                     dispatched = true;
-                    return (true, Problem(await runtime.StopManagedTunUnderGateAsync(owner, CancellationToken.None)));
+                    return (true, Problem(await runtime.StopManagedTunUnderGateAsync(operationId, owner, CancellationToken.None)));
                 }
                 return (true, material.NetworkTransitionRequired ? ProxyProblemCodes.RuntimeStateUnknown : null);
             }
@@ -54,6 +58,7 @@ internal sealed class MihomoManagedTunOperations(MihomoPublicationStore store, M
                 if (observed.MihomoTunRunning == true) return (true, null);
                 if (observed.MihomoTunRunning != false) return (true, ProxyProblemCodes.RuntimeStateUnknown);
                 if (!LinuxMihomoTunScope.Read().AllowManagedPublication) return (true, ProxyProblemCodes.NotSupported);
+                await stage(ActionQueueStage);
                 dispatched = true;
                 return (true, Problem(await runtime.StartManagedTunUnderGateAsync(operationId, committed, restart: false, CancellationToken.None)));
             }

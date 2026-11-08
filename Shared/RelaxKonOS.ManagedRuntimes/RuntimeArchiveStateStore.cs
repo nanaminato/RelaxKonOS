@@ -121,6 +121,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
             || state.Receipts.Select(r => r.OperationId).Distinct().Count() != state.Receipts.Length
             || state.Receipts.Select(r => r.IdempotencyHash).Distinct().Count() != state.Receipts.Length
             || !ValidTunStarts(state)
+            || !ValidTunStops(state)
             || state.ActiveMihomoTun is { } tun && (installation.RuntimeId != "mihomo" || installation.Target.Os != "linux"
                 || tun.OperationId == Guid.Empty || state.Active?.RevisionId != tun.RevisionId
                 || state.ConfigurationIdentity != tun.ConfigurationIdentity || !Digest(tun.NetworkIntentIdentity)
@@ -180,7 +181,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                     or Protocol.Installations.InstallationStage.Activating or Protocol.Installations.InstallationStage.Verifying
                     or Protocol.Installations.InstallationStage.RollingBack or Protocol.Installations.InstallationStage.Interrupted)
                 || removal.CleanupStarted && !removal.RemovalStarted
-                || state.ActiveMihomoTun is not null && (state.MihomoTunStarts.Any(item => item.OperationId == removal.OperationId)
+                || state.ActiveMihomoTun is not null && (state.HasMihomoTunAction(removal.OperationId)
                     || removal.RemovalStarted && removal.Snapshot is not { Running: false, BootEnabled: false })
                 || removal.Snapshot is { } snapshot && ((snapshot.ConfigurationIdentity is null) != (snapshot.ConfigurationSnapshotId is null)
                     || snapshot.ConfigurationIdentity is not null && !Digest(snapshot.ConfigurationIdentity))
@@ -239,6 +240,23 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
         && state.Receipts.Any(receipt => receipt.OperationId == owner.OperationId && receipt.Outcome == RuntimeSwitchOutcome.Succeeded
             && receipt.ActiveRevisionId == owner.RevisionId);
 
+    private static bool ValidTunStops(RuntimeArchiveState state)
+    {
+        var stops = state.MihomoTunStops;
+        if (stops is not { Length: <= 256 }) return false;
+        var ids = state.Receipts.Select(receipt => receipt.OperationId)
+            .Concat(state.MihomoTunStarts.Select(start => start.OperationId)).ToHashSet();
+        return stops.All(stop => stop is not null && stop.OperationId != Guid.Empty && ids.Add(stop.OperationId)
+                && (stop.PublicationId == state.ActiveMihomoTun?.OperationId
+                    || stop.Confirmed && state.Receipts.Any(receipt => receipt.RemovedMihomoTun?.OperationId == stop.PublicationId))
+                && (stop.TargetExecutionId == stop.PublicationId || state.MihomoTunStarts.Any(start =>
+                    start.OperationId == stop.TargetExecutionId && start.PublicationId == stop.PublicationId
+                    && start.Stage == RuntimeMihomoTunStartStage.Succeeded)))
+            && stops.Take(stops.Length - 1).All(stop => stop.Confirmed)
+            && (state.PendingMihomoTunStop is not { } pending || pending.TargetExecutionId == state.CurrentMihomoTunExecution
+                && state.PendingMihomoTunStart is null && state.Removal is null);
+    }
+
     private static bool Digest(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
     private static bool Same(RuntimeStoredRevision? left, RuntimeStoredRevision? right) =>
         RuntimeJson.Serialize(left).AsSpan().SequenceEqual(RuntimeJson.Serialize(right));
@@ -272,6 +290,8 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                 throw new RuntimePolicyException("runtime.publication_receipt_conflict");
             Validate(state);
             if (!ValidTunStartTransition(State?.MihomoTunStarts ?? [], state.MihomoTunStarts))
+                throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+            if (!ValidTunStopTransition(State?.MihomoTunStops ?? [], state.MihomoTunStops))
                 throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
             store.PersistCommittedWitness(State, state);
             store.WriteCore(state);
@@ -309,6 +329,26 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
             RuntimeMihomoTunStart[] next = prior.LastOrDefault()?.OperationId == start.OperationId
                 ? [.. prior.Take(prior.Length - 1), start] : [.. prior, start];
             Save(current with { MihomoTunStarts = next, Installation = current.Installation with
+                { StateRevision = checked(current.Installation.StateRevision + 1) } });
+            SyncDirectory();
+        }
+
+        private static bool ValidTunStopTransition(RuntimeMihomoTunStop[] previous, RuntimeMihomoTunStop[] next)
+        {
+            if (previous.SequenceEqual(next)) return true;
+            if (previous.Length + 1 == next.Length && previous.SequenceEqual(next.Take(previous.Length)))
+                return previous.LastOrDefault() is null or { Confirmed: true } && !next[^1].Confirmed;
+            return previous.Length == next.Length && previous.Length > 0 && !previous[^1].Confirmed
+                && previous.Take(previous.Length - 1).SequenceEqual(next.Take(next.Length - 1))
+                && next[^1] == previous[^1] with { Confirmed = true };
+        }
+
+        public void RecordMihomoTunStop(RuntimeMihomoTunStop stop)
+        {
+            var current = State ?? throw new RuntimePolicyException("runtime.state_unknown");
+            var prior = current.MihomoTunStops;
+            RuntimeMihomoTunStop[] next = stop.Confirmed ? [.. prior.Take(prior.Length - 1), stop] : [.. prior, stop];
+            Save(current with { MihomoTunStops = next, Installation = current.Installation with
                 { StateRevision = checked(current.Installation.StateRevision + 1) } });
             SyncDirectory();
         }

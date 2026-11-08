@@ -121,7 +121,7 @@ internal static class MihomoTunDescriptorAcceptance
         driftedPlan = driftedPlan with { NetworkIntentIdentity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(operationId, driftedPlan, network) };
         await RefusesAsync("runtime.network_intent_invalid", () => publications.BeginConfigurationAsync(operationId, confirmed.Revision,
             autoRoute, driftedPlan, CancellationToken.None, tunIntent: network));
-        if (serverCase is "ipc-server-commit" or "ipc-server-pending" or "ipc-http-commit" or "ipc-http-pending")
+        if (serverCase is "ipc-server-commit" or "ipc-server-pending" or "ipc-http-commit" or "ipc-http-pending" or "ipc-http-action")
         {
             var input = IpcPlanPath(paths);
             await File.WriteAllBytesAsync(input, RuntimeJson.Serialize(new IpcPublicationInput(operationId, serverCase, frozen)));
@@ -191,7 +191,7 @@ internal static class MihomoTunDescriptorAcceptance
             throw new InvalidOperationException("The managed publication IPC Server requires the isolated unprivileged worker.");
         var paths = new AuthorizationPaths(root);
         var input = RuntimeJson.Read<IpcPublicationInput>(await File.ReadAllBytesAsync(IpcPlanPath(paths)));
-        if (input.Scenario is ("ipc-http-commit" or "ipc-http-pending") && phase is ("http" or "http-recover"))
+        if (input.Scenario is ("ipc-http-commit" or "ipc-http-pending" or "ipc-http-action") && phase is ("http" or "http-recover"))
         {
             await MihomoTunHttpAcceptance.RunAsync(root, Publications(paths), paths, paths, paths, IpcSocketPath,
                 phase == "http", input.Scenario == "ipc-http-pending");
@@ -264,10 +264,12 @@ internal static class MihomoTunDescriptorAcceptance
         if (action == "state") Console.WriteLine(current.Phase);
         else if (action == "observe") await host.VerifyTunAsync(operation, CancellationToken.None);
         else if (action == "ordinary-stop") await host.StopAsync(CancellationToken.None);
-        else if (action == "committed-stop-interrupt")
+        else if (action.StartsWith("committed-stop-interrupt:", StringComparison.Ordinal))
         {
+            var stop = Guid.Parse(action["committed-stop-interrupt:".Length..]);
             var result = await MihomoRuntimeOperations.ExecuteAsync(
-                new(PrivilegedOperationKind.MihomoRuntimeTunStop, OperationId: operation), report: frame =>
+                new(PrivilegedOperationKind.MihomoRuntimeTunStop, OperationId: stop,
+                    RuntimeLifecycle: new(MihomoTunPublicationId: operation)), report: frame =>
                 {
                     if (frame.Stage != InstallationStage.Verifying || frame.Cancellable)
                         throw new InvalidOperationException("Unexpected committed stop boundary.");
@@ -276,12 +278,13 @@ internal static class MihomoTunDescriptorAcceptance
                 });
             throw new InvalidOperationException($"Committed stop missed its dispatch boundary: {result.Error}.");
         }
-        else if (action == "observe-commit")
+        else if (action == "observe-commit" || action.StartsWith("observe-action:", StringComparison.Ordinal))
         {
             var store = Store();
             var sources = new RuntimeSourceStore(Path.Combine(root, "trust"), RuntimeSourceProtection.Protect);
             var lifecycle = new MihomoRuntimeLifecycle(Archive, store, sources, host, RuntimeSourceProtection.Protect);
-            var observed = await lifecycle.QueryAsync(CancellationToken.None, operation);
+            var receiptId = action == "observe-commit" ? operation : Guid.Parse(action["observe-action:".Length..]);
+            var observed = await lifecycle.QueryAsync(CancellationToken.None, receiptId);
             Console.WriteLine(System.Text.Encoding.UTF8.GetString(RuntimeJson.Serialize(observed)));
         }
         else if (action == "server-recover")
@@ -422,7 +425,7 @@ internal static class MihomoTunDescriptorAcceptance
             using var work = await leases.AcquireAsync(CancellationToken.None);
             var start = Guid.NewGuid();
             var restart = Guid.NewGuid();
-            var stopped = await runtime.StopManagedTunUnderGateAsync(publicationId, CancellationToken.None);
+            var stopped = await runtime.StopManagedTunUnderGateAsync(Guid.NewGuid(), publicationId, CancellationToken.None);
             var started = await runtime.StartManagedTunUnderGateAsync(start, publicationId, restart: false, CancellationToken.None);
             var restarted = await runtime.StartManagedTunUnderGateAsync(restart, publicationId, restart: true, CancellationToken.None);
             var historical = await runtime.StartManagedTunUnderGateAsync(start, publicationId, restart: false, CancellationToken.None);

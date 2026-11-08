@@ -52,6 +52,7 @@
 - [MB-04 受管 TUN AF_UNIX 发布与恢复](#mb-04-受管-tun-af_unix-发布与恢复)
 - [MB-04 受管 TUN 认证 HTTP](#mb-04-受管-tun-认证-http)
 - [MB-04 受管 TUN 认证 HTTP 补偿](#mb-04-受管-tun-认证-http-补偿)
+- [MB-04 受管 TUN 认证 HTTP 具名启停回执](#mb-04-受管-tun-认证-http-具名启停回执)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -489,7 +490,7 @@ Linux x64 私有 systemd 的 `committed` 场景使用真实候选验证器和归
 
 ## MB-04 受管 TUN 提交后具名停止
 
-Helper 本地协议新增 `MihomoRuntimeTunStop`，请求使用原发布 operationId 和标准关联字段。归档实例锁覆盖原归属核对、停止派发、清理及最终观察。重试由原网络检查点裁决。历史发布回执与具名停止结果通过各自的查询语义返回，归档活动配置继续保留。
+此批 Helper 本地协议的 `MihomoRuntimeTunStop` 使用原发布 operationId 和标准关联字段。后续协议接收独立停止 ID 和原发布 ID，见[具名启停回执](#mb-04-受管-tun-认证-http-具名启停回执)。归档实例锁覆盖原归属核对、停止派发、清理及最终观察。重试由原网络检查点裁决。
 
 **已实现且已验证。** Linux x64 私有 systemd 场景的原操作 `1127100c8f0f4f31a31121aea4f83552`，Mihomo PID 252，ifindex 4，候选配置摘要 `1e266605502cd646c8da3a4b7ce827a73906cc6affff26296805b98e304b1325`。夹具限定允许写入成功态，跨原发布应答丢失仍有真实 HTTP、分流 DNS 及一致的管理选路。错误 ID 在真实 Helper 入口拒绝。夹具暂停原进程，Helper 落盘 `StopDispatched` 并通过 pidfd 发送真实 SIGTERM，随后在进度边界强制终止停止 worker。原 SIGTERM 已在内核排队。原进程仍暂停时，新的真实 Helper 返回 `runtime.network_stop_unconfirmed`，没有派发规则删除，原检查点和历史回执保持。
 
@@ -593,7 +594,21 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 **已实现但实机未验证。** Windows Release 回归通过，包含 112 项 Server 发布与 104 项配置事务检查。可信下载探针因缺少进程级测试 CA 跳过。其他 Linux 架构、完整安装态 JWT 和 Android 未参与。回归日志为 `.artifacts/mb04-tun-marker-sync/tun-http-pending-windows.log`。
 
-**未实现或仍受门禁保护。** 具名启停丢失响应仍待绑定原 HTTP 队列 ID 和 Helper 原生回执。证据不足时保留待核验，Proxy 保持 resident。本批确认候选进程退出及专属环境清理。对象释放、ALC 回收、隔离负载内存和生产收益未测量。
+具名启停丢失响应由后续[具名启停回执](#mb-04-受管-tun-认证-http-具名启停回执)覆盖。本批确认候选进程退出及专属环境清理。对象释放、ALC 回收、隔离负载内存和生产收益未测量。
+
+## MB-04 受管 TUN 认证 HTTP 具名启停回执
+
+**已实现且已验证。** Linux x64 专属 systemd 中，以实际认证 Proxy HTTP 队列、非 root Server、独立 root Helper 与 AF_UNIX 验证原执行对账。停用先持久绑定停止操作、发布与目标原生执行。Helper 确认真实进程退出、设备和规则清理后写入停止回执，配置身份及历史发布回执保持。启动沿用既有持久台账，回执绑定原发布与前一执行。
+
+两次分别在 Helper 成功响应到达、Server 尚未确认队列终态时观察在途租约并终止两个进程。重启后，同键或查询只读核对原操作同动作回执，停止、启动的归档字节及回执保持，Helper 各收到一次原动作。停止后路由恢复基线，启动前后验证真实上游 HTTP、分流 DNS、管理选路及相同配置凭据。终态和清理后租约归零。另一次在已持久写入队列阶段、尚无 Helper 回执时终止进程。重启后原操作保持 `managed_tun_action` 待核验且完成时间为空，新键被拒绝，原进程和流量保持，停止未派发。
+
+原发布 `2673d842eb804e2bb815e43d0dc5e79f`，停止 `82e12b58a9844aafac340bcc982d2097`，启动 `4f41da4114cc434ea2accc8c9e8864df`，无回执 `8469a7e0d3ed4d7eb0f365253efe4222`。重启后的活动 PID 829，配置身份 `8735deabb9cd3aae3aafbd8b28745b66ee2812adfa3b9f8a265df09eb3ebd84c`。首轮 HTTP 实测通过，直接调用 Helper 的 Python 夹具把嵌套字段大小写写错，触发请求校验。修正后具名停止的信号与规则删除断点复测通过。首轮日志为 `.artifacts/mb04-tun-marker-sync/tun-http-action-linux.log`，复测日志为 `.artifacts/mb04-tun-marker-sync/tun-http-action-linux-second.log`。
+
+最终七组私有 systemd 场景通过，包含具名启停、发布补偿、原生停止中断、原生启动及重启、保留和清除数据移除，以及独立 IPC 发布与生命周期。七组 cgroup 均已清理，宿主服务、代理和 resolver 文件指纹一致。归档 SHA-256 为 `971047080de6e39efad8a9dae2d2e4f4f78c913e4d28bc013faad879822bcec3`。
+
+**已实现但实机未验证。** 其他 Linux 架构，完整 Server JWT 与同次停机，Android。Windows Release 回归通过，可信下载探针因缺进程级测试 CA 跳过。日志为 `.artifacts/mb04-tun-marker-sync/tun-http-action-windows-final.log`。
+
+**未实现或仍受门禁保护。** 缺失或未确认的原生启停回执继续阻止新键。整模块交接前 Proxy 保持 resident。本批核对专属进程退出及环境清理。对象释放、ALC 回收、隔离负载内存和生产收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

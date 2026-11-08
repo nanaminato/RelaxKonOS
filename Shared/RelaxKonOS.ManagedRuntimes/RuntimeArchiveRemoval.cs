@@ -62,9 +62,10 @@ public sealed class RuntimeArchiveRemoval(RuntimeArchiveStateStore store, IRunti
                 return new(pending.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
         }
         if (current.Pending is not null || current.Removal is not null || current.Configuration is not null
-            || current.ProxyPublicationUnresolved || current.Installation.RecoveryRequired || current.PendingMihomoTunStart is not null)
+            || current.ProxyPublicationUnresolved || current.Installation.RecoveryRequired
+            || current.PendingMihomoTunStart is not null || current.PendingMihomoTunStop is not null)
             throw new RuntimePolicyException("runtime.recovery_required");
-        if (current.MihomoTunStarts.Any(item => item.OperationId == operationId))
+        if (current.HasMihomoTunAction(operationId))
             throw new RuntimePolicyException("runtime.idempotency_conflict");
         ValidatePlan(plan, current);
         ct.ThrowIfCancellationRequested();
