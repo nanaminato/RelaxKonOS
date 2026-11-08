@@ -45,7 +45,11 @@ internal sealed partial class WebServerOperationStore
             if (plan.Current is { } step)
             {
                 while (!await NginxWebServerManager.ReconcileWebRootStepAsync(_nativeOperations, plan.Instance, step, ct))
+                {
+                    // A named recovery owner now holds the only compensation dispatch authority.
+                    if ((await ReadOperationAsync(original.OperationId, ct)).WebRoot?.Current != step) return false;
                     await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                }
                 plan = EndWebRootStep(plan, step, applied: step.Dispatched && step.CompensationId is null);
                 await UpdateWebRootAsync(original.OperationId, _ => plan, ct);
             }
@@ -54,6 +58,47 @@ internal sealed partial class WebServerOperationStore
                 allApplied ? "" : plan.Problem ?? "webserver.operation_interrupted", null);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { return false; }
+    }
+
+    internal async Task<WebServerOperationDto?> CompensateWebRootAsync(Guid id, string? actor, CancellationToken ct)
+    {
+        var original = await ReadOperationAsync(id, ct);
+        if (original.Compensation is not null) return original.ToDto();
+        if (original is not { Kind: "enable-acme-http01", State: WebServerOperationState.Running,
+                ProblemCode: NativeRecoveryRequired, WebRoot: { Current: { Dispatched: true, CompensationId: null } step } plan }
+            || plan.Instance.Id != original.InstanceId || _nativeOperations is null
+            || !await NginxWebServerManager.VerifyNamedWebRootCompensationAsync(_nativeOperations, plan.Instance, step, ct))
+            return null;
+
+        using var work = await _workOwner.AdmitAsync(ct);
+        await _gate.WaitAsync(ct);
+        try
+        {
+            RequireReady();
+            var current = _operations[id];
+            if (current.Compensation is not null) return current.ToDto();
+            if (current != original) return null;
+            work.Token.ThrowIfCancellationRequested();
+            var compensation = new NamedCompensation(Guid.NewGuid(), actor);
+            var next = step with { CompensationId = compensation.Id };
+            var accepted = current with { Compensation = compensation, Stage = "webroot-compensation-dispatch",
+                WebRoot = plan with { Current = next } };
+            _operations[id] = accepted;
+            try { await SaveAsync(CancellationToken.None); }
+            catch (Exception error) { work.Fail(error); throw; }
+            work.Run(async token =>
+            {
+                try
+                {
+                    await NginxWebServerManager.ExecuteNamedWebRootCompensationAsync(_nativeOperations, plan.Instance, next, token);
+                    if (await ReconcileWebRootAsync(accepted, token))
+                        await RetireNativeReceiptsAsync([id], token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+            });
+            return accepted.ToDto();
+        }
+        finally { _gate.Release(); }
     }
 
     private static NginxWebRootCheckpoint EndWebRootStep(NginxWebRootCheckpoint plan, NginxWebRootStep step, bool applied, string? problem = null)

@@ -37,6 +37,7 @@ public static class WebServerApiRoutes
     public const string Operations = $"{WebServers}/operations/{{operationId}}";
     public const string OperationsPattern = "/operations/{operationId:guid}";
     public const string CompensateIntegrationPattern = OperationsPattern + "/compensate-integration";
+    public const string CompensateWebRootPattern = OperationsPattern + "/compensate-webroot";
     public const string CancelOperation = $"{WebServers}/operations/{{operationId}}/cancel";
     public const string CancelOperationPattern = "/operations/{operationId:guid}/cancel";
 }

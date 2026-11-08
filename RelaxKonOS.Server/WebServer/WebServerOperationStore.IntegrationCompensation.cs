@@ -7,7 +7,7 @@ internal sealed partial class WebServerOperationStore
 {
     private const string IntegrationCompensated = "webserver.integration_compensated";
 
-    private sealed record IntegrationCompensation(Guid Id, string? Actor);
+    private sealed record NamedCompensation(Guid Id, string? Actor);
 
     internal async Task<WebServerOperationDto?> CompensateIntegrationAsync(Guid id, string? actor, CancellationToken ct)
     {

@@ -1753,6 +1753,8 @@ Linux 系统包重载的原回执保存在 Server。原终态持久化后，Help
 
 Linux 系统包 Nginx 的 WebRoot 启用中断后，Server 用原站点 Helper 回执和配置摘要核对清理。证据不足时保留原操作待核验，站点更新返回 `webserver.site_save_failed`。已派发站点核对完成后，未派发的站点保持原配置，父操作报告中断。见[WebRoot 逐站点回执](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-逐站点回执与清理恢复)。
 
+向 `POST /api/v1.0/webservers/operations/{operationId}/compensate-webroot` 提交 `{"confirmed":true}`，可为已有 Helper 失败回执的 Linux 系统包 WebRoot 操作发起具名补偿。需要原实例的 Nginx 配置写入授权。原生作业须空闲，活动文件与备份须匹配原摘要，且暂存文件须不存在。受理和重复请求均返回原父操作及同一个 `compensationOperationId`。核验补偿成功并清理后，原操作仍为 Failed，问题码为 `webserver.site_reload_failed`。证据不足时操作继续待核验。见[WebRoot 具名补偿](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-已知拒绝的具名补偿)。
+
 签发和清理完成后才进入站点配置。管理进程在签发中断时，原发布与证书回执可关联查询，证书台账负责清理原挑战文件和查询原 CA 订单。同键请求返回原发布回执。实机证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
 取消原证书操作后，网站发布等待证书回执终态，并按实际结果结束。若在签发阶段停止 Server，原证书任务继续排空，启动恢复将未完成发布标为 Interrupted。已知的原订单仍可通过原证书操作只读查询。

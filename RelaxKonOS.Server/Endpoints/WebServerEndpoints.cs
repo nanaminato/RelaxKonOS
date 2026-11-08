@@ -124,6 +124,19 @@ public static class WebServerEndpoints
                 ? Results.Conflict(new { problemCode = "webserver.integration_compensation_unavailable" })
                 : Results.Accepted(value: accepted);
         });
+        group.MapPost(WebServerApiRoutes.CompensateWebRootPattern, async (Guid operationId, IntegrateWebServerRequest request,
+            HttpContext context, IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.WebServerOperationStore operations, CancellationToken ct) =>
+        {
+            var original = await operations.GetAsync(operationId, ct);
+            if (original is not { Kind: "enable-acme-http01" }) return Results.NotFound();
+            if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, original.InstanceId))
+                return ElevationRequired("Nginx WebRoot compensation needs administrator authorization for the original instance.");
+            if (!request.Confirmed) return Results.BadRequest(new { problemCode = "webserver.confirmation_required" });
+            var accepted = await operations.CompensateWebRootAsync(operationId, Actor(context), ct);
+            return accepted is null
+                ? Results.Conflict(new { problemCode = "webserver.webroot_compensation_unavailable" })
+                : Results.Accepted(value: accepted);
+        });
         group.MapPost(WebServerApiRoutes.CancelOperationPattern, async (Guid operationId, RelaxKonOS.Server.WebServer.WebServerOperationStore operations, CancellationToken ct) =>
             await operations.CancelAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());
         return app;

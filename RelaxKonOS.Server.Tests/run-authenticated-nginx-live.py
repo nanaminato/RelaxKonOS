@@ -35,6 +35,8 @@ def run(root, server, helper_binary, mode):
     webroot_cleanup_held = threading.Event()
     interrupt_first_site = mode == "--systemd-first-site-acme" or multi_webroot
     lose_first_site_reply = mode == "--systemd-first-site-acme-response-loss"
+    named_webroot = mode == "--systemd-first-site-acme-named-compensation"
+    webroot_rejection_held = threading.Event()
     reject_first_site_reload = mode == "--systemd-first-site-acme-rejected"
     drop_webroot_reply = threading.Event()
     website = acme_website or mode in ("--systemd-website", "--systemd-website-verifying")
@@ -172,7 +174,7 @@ def run(root, server, helper_binary, mode):
                    else [helper_binary, "--isolated-certificate-pam-helper"])
     nginx_pid_file = root / "nginx" / "nginx.pid"
     socket_path = Path(env["PrivilegedHelper__SocketPath"])
-    if relay_mode or bootstrap_resume or lose_first_site_reply or integration_stage or lose_compensation_reply or cleanup_reply_loss:
+    if relay_mode or bootstrap_resume or lose_first_site_reply or integration_stage or lose_compensation_reply or cleanup_reply_loss or named_webroot:
         env["PrivilegedHelper__SocketPath"] = str(root / "relay.sock")
 
     def frame(stream):
@@ -205,7 +207,7 @@ def run(root, server, helper_binary, mode):
 
     @contextmanager
     def helper_connection():
-        if not relay_mode and not bootstrap_resume and not lose_first_site_reply and not integration_stage and not lose_compensation_reply and not cleanup_reply_loss:
+        if not relay_mode and not bootstrap_resume and not lose_first_site_reply and not integration_stage and not lose_compensation_reply and not cleanup_reply_loss and not named_webroot:
             yield None, None
             return
         dropped = threading.Event()
@@ -246,6 +248,13 @@ def run(root, server, helper_binary, mode):
                                 assert response["Result"]["nginxReloadReceipt"]["OperationId"] == request["operationId"]
                                 dropped.set()
                                 return
+                            if (named_webroot and terminal and kind == "NginxTrackedReload"
+                                    and not webroot_rejection_held.is_set()):
+                                assert not response["Result"]["success"]
+                                assert response["Result"]["nginxReloadReceipt"]["OperationId"] == request["operationId"]
+                                webroot_rejection_held.set()
+                                assert permit_query.wait(15), "The fixture did not release the original WebRoot rejection"
+                                return
                             if (lose_first_site_reply and drop_webroot_reply.is_set() and not dropped.is_set()
                                     and terminal and kind == "NginxTrackedReload"):
                                 assert response["Result"]["success"]
@@ -274,7 +283,8 @@ def run(root, server, helper_binary, mode):
                             try:
                                 self.connection.sendall(response_bytes)
                             except BrokenPipeError:
-                                if not bootstrap_resume and not retire_retry and not integration_stage:
+                                if not (bootstrap_resume or retire_retry or integration_stage
+                                        or (named_webroot and kind == "NginxTrackedReload")):
                                     raise
                                 return
                             if terminal:
@@ -1025,6 +1035,72 @@ def run(root, server, helper_binary, mode):
             except OSError:
                 return False
 
+        def verify_named_compensation(helper, operation, operation_route, enable, instance, child, original_receipt):
+            compensate = operation_route + "/compensate-webroot"
+            payload = {"confirmed": True}
+            attempts = root / "nginx" / "reload-attempts"
+            previous = rollback.read_bytes()
+
+            def grant(token):
+                elevated = request("/api/v1.0/privileged/elevation", token=token, payload={
+                    "capability": "NginxConfigurationWrite", "target": instance["id"], "password": credentials["password"]})
+                assert elevated["elevated"]
+
+            with process([server], "webroot-named-server") as named:
+                wait_for(named, healthy, "webroot-named-server")
+                token = login()
+                assert request(operation_route, token=token)["problemCode"] == "webserver.native_recovery_required"
+                assert attempts.read_text().splitlines() == ["attempt", "attempt"] and not challenge_is_served()
+                request(compensate, payload=payload, expected=401)
+                grant(token)
+                request(compensate, token=token, payload={"confirmed": False}, expected=400,
+                        expected_problem="webserver.confirmation_required")
+                rollback.write_bytes(previous + b"# External drift\n")
+                request(compensate, token=token, payload=payload, expected=409,
+                        expected_problem="webserver.webroot_compensation_unavailable")
+                assert rollback.read_bytes() == previous + b"# External drift\n"
+                assert attempts.read_text().splitlines() == ["attempt", "attempt"]
+                rollback.write_bytes(previous)
+
+                accepted = request(compensate, token=token, payload=payload, expected=202)
+                compensation = accepted["compensationOperationId"]
+                assert accepted["operationId"] == operation and compensation not in (None, child, operation)
+                wait_for(named, lambda: witness.read_text().splitlines() == ["reload", "reload"], "real named WebRoot compensation")
+                assert request(compensate, token=token, payload=payload, expected=202)["compensationOperationId"] == compensation
+                assert request(operation_route, token=token)["state"].lower() == "running"
+                assert rollback.read_bytes() == previous and not finished.exists()
+                assert_served(b"original")
+                named.kill()
+                assert named.wait(timeout=10) < 0
+                release.touch()
+                compensation_receipt = original_receipt.with_name(compensation.replace("-", "") + ".json")
+                wait_for(helper, lambda: compensation_receipt.is_file()
+                         and json.loads(compensation_receipt.read_text()).get("Completed") is True,
+                         "durable named WebRoot compensation receipt")
+
+            with process([server], "webroot-named-restarted") as recovered:
+                wait_for(recovered, healthy, "webroot-named-restarted")
+                token = login()
+                grant(token)
+                wait_for(recovered, lambda: request(operation_route, token=token)["state"].lower() == "failed",
+                         "original WebRoot failure after named compensation")
+                wait_for(recovered, lambda: original_receipt.stat().st_size == 0 and compensation_receipt.stat().st_size == 0,
+                         "both WebRoot native receipts retired")
+                receipt = request(operation_route, token=token)
+                assert receipt["operationId"] == operation and receipt["compensationOperationId"] == compensation
+                assert receipt["problemCode"] == "webserver.site_reload_failed"
+                assert receipt == request(enable, token=token, method="POST", key=key, expected=202)
+                assert receipt == request(compensate, token=token, payload=payload, expected=202)
+                assert not rollback.exists() and not challenge_is_served() and nginx_pid_file.read_text() == master
+                assert not direct_helper_request("NginxTrackedReload", child)["success"]
+                assert not direct_helper_request("NginxTrackedReload", compensation)["success"]
+                assert attempts.read_text().splitlines() == ["attempt"] * 3
+                assert witness.read_text().splitlines() == ["reload", "reload"]
+                if website_hook:
+                    assert not webserver_code_events("webroot-named-restarted")
+                assert_served(b"original")
+                print(f"PASS WEBROOT NAMED COMPENSATION: {operation}, {child}, {compensation}; one compensation and original TLS")
+
         with ExitStack() as helpers:
             dropped, permit_query = helpers.enter_context(helper_connection())
             helper = helpers.enter_context(process([*helper_args, helper_config], "first-site-helper"))
@@ -1064,9 +1140,10 @@ def run(root, server, helper_binary, mode):
                 finished.unlink()
                 request(enable, method="POST", key=key, expected=401)
                 drop_webroot_reply.set()
-                if reject_first_site_reload:
+                if reject_first_site_reload or named_webroot:
                     (root / "nginx" / "reject-next").touch()
-                    release.touch()
+                    if reject_first_site_reload:
+                        release.touch()
                 operation = request(enable, token=token, method="POST", key=key, expected=202)["operationId"]
                 operation_route = f"{web}/operations/{operation}"
                 if reject_first_site_reload:
@@ -1088,6 +1165,22 @@ def run(root, server, helper_binary, mode):
                              "rejected reload and compensation receipt retirement")
                     assert_served(b"original")
                     print(f"PASS FIRST SITE ACME REJECTED: {operation}; known rejection and one confirmed compensation")
+                    return
+
+                if named_webroot:
+                    assert webroot_rejection_held.wait(12) and rollback.is_file()
+                    ledger = root / "data" / "webserver-operations.json"
+                    durable = next(row for row in json.loads(ledger.read_text()) if row["operationId"] == operation)
+                    step = durable["webRoot"]["current"]
+                    assert step["dispatched"] and step["compensationId"] is None
+                    child = step["reloadId"]
+                    original_receipt = Path("/var/lib/relaxkonos-nginx-reloads") / (child.replace("-", "") + ".json")
+                    original_native = json.loads(original_receipt.read_text())
+                    assert original_native["OperationId"] == child and original_native["Completed"] and original_native["Failed"]
+                    initial.kill()
+                    assert initial.wait(timeout=10) < 0
+                    permit_query.set()
+                    verify_named_compensation(helper, operation, operation_route, enable, instance, child, original_receipt)
                     return
 
                 def active_route():
@@ -1685,7 +1778,8 @@ if __name__ == "__main__":
                                                             "--systemd-website-acme-bootstrap-bind-interrupt", "--systemd-first-site-acme",
                                                             "--systemd-first-site-acme-success", "--systemd-first-site-acme-response-loss",
                                                             "--systemd-first-site-acme-rejected", "--systemd-first-site-acme-multi",
-                                                            "--systemd-first-site-acme-cleanup-loss", "--systemd-integration-live",
+                                                            "--systemd-first-site-acme-cleanup-loss", "--systemd-first-site-acme-named-compensation",
+                                                            "--systemd-integration-live",
                                                             "--systemd-integration-receipt", "--systemd-integration-stage",
                                                             "--systemd-integration-rejected", "--systemd-integration-compensation",
                                                             "--systemd-integration-compensation-response-loss") else None

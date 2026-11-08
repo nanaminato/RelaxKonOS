@@ -78,7 +78,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
                     using var continuation = await _workOwner.AdmitAsync(stopping.Token);
                     continuation.Run(async token =>
                     {
-                        if (operation.Compensation is not null)
+                        if (operation.Integration is not null && operation.Compensation is not null)
                             await ReconcileIntegrationCompensationAsync(operation, token);
                         else if (await ReconcileNativeReloadAsync(operation.OperationId, token))
                             await RetireNativeReceiptsAsync([operation.OperationId], token);
@@ -403,7 +403,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
         var receipts = original.WebRootReceiptIds ?? [id];
         foreach (var receipt in receipts)
             if (!(await _nativeOperations!.RetireReloadReceiptAsync(receipt, stoppingToken)).Success) return false;
-        if (original.Compensation is { } compensation
+        if (original.WebRootReceiptIds is null && original.Compensation is { } compensation
             && !(await _nativeOperations!.RetireReloadReceiptAsync(compensation.Id, stoppingToken)).Success)
             return false;
 
@@ -522,7 +522,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
     private sealed record PersistedOperation(Guid OperationId, string IdempotencyKey, string InstanceId, string Kind, string? Actor,
         WebServerOperationState State, string Stage, string ProblemCode, string? SnapshotId, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
         bool NativeReceiptRetirementPending = false, NginxIntegrationCheckpoint? Integration = null,
-        IntegrationCompensation? Compensation = null, NginxWebRootCheckpoint? WebRoot = null, Guid[]? WebRootReceiptIds = null)
+        NamedCompensation? Compensation = null, NginxWebRootCheckpoint? WebRoot = null, Guid[]? WebRootReceiptIds = null)
     {
         public WebServerOperationDto ToDto() => new(OperationId, InstanceId, Kind, State, Stage, ProblemCode, SnapshotId, StartedAt, CompletedAt,
             Compensation?.Id);

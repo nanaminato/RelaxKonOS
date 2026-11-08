@@ -71,24 +71,12 @@ internal sealed partial class NginxWebServerManager
             if (!receipt.Succeeded)
             {
                 var compensation = step with { CompensationId = Guid.NewGuid() };
-                if (await ReadWebRootHashAsync(backup, completion) != step.PreviousHash
-                    || await ReadWebRootHashAsync(config, completion) != step.CandidateHash)
+                var previous = await ReadWebRootRestoreBytesAsync(directory, compensation, completion);
+                if (previous is null)
                     return WebServerOperationStore.NativeRecoveryRequired;
-                var previous = await File.ReadAllTextAsync(backup, completion);
-                if (Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(previous))) != step.PreviousHash)
-                    return WebServerOperationStore.NativeRecoveryRequired;
-                var compensationStage = WebRootStage(directory, compensation.CompensationId.Value);
-                if (!IsAbsent(compensationStage)) return WebServerOperationStore.NativeRecoveryRequired;
                 await progress.AdvanceWebRootStepAsync(step, compensation, completion);
                 step = compensation;
-                if (!await WriteNginxFileAsync(compensationStage, previous, completion)
-                    || await ReadWebRootHashAsync(config, completion) != step.CandidateHash
-                    || !await MoveNginxFileAsync(compensationStage, config, overwrite: true, completion)
-                    || await TestConfigurationAsync(instance, completion) is not null)
-                    return WebServerOperationStore.NativeRecoveryRequired;
-                var restored = await RunTrackedReloadAsync(step.CompensationId!.Value, completion);
-                if (restored is not { Success: true, NginxReloadReceipt: { Succeeded: true } restoredReceipt }
-                    || restoredReceipt.OperationId != step.CompensationId.Value)
+                if (!await RestoreTrackedWebRootSiteAsync(privilegedNginx, directory, step, previous))
                     return WebServerOperationStore.NativeRecoveryRequired;
             }
             if (!await CleanWebRootStepUnderGateAsync(privilegedNginx, instance, step, completion))
@@ -101,6 +89,63 @@ internal sealed partial class NginxWebServerManager
             // The existing owner must retain the checkpoint even if cancellation arrived during staging.
             return WebServerOperationStore.NativeRecoveryRequired;
         }
+    }
+
+    internal static Task<bool> VerifyNamedWebRootCompensationAsync(IPrivilegedNginxOperations native, WebServerDto instance,
+        NginxWebRootStep step, CancellationToken ct) => WithNamedWebRootEvidenceAsync(native, instance, step, dispatch: false, ct);
+
+    internal static Task<bool> ExecuteNamedWebRootCompensationAsync(IPrivilegedNginxOperations native, WebServerDto instance,
+        NginxWebRootStep step, CancellationToken ct) => WithNamedWebRootEvidenceAsync(native, instance, step, dispatch: true, ct);
+
+    private static async Task<bool> WithNamedWebRootEvidenceAsync(IPrivilegedNginxOperations native, WebServerDto instance,
+        NginxWebRootStep step, bool dispatch, CancellationToken ct)
+    {
+        await IntegrationGate.WaitAsync(ct);
+        try
+        {
+            if (GetTrackedWebRootDirectory(instance, step) is not { } directory
+                || !IsAbsent(Path.Combine(directory, AcmeEnabledFileName + ".stage")))
+                return false;
+            var result = await native.QueryReloadReceiptAsync(step.ReloadId, ct);
+            if (result is not { Success: true, NginxReloadReceipt: { Succeeded: false } receipt }
+                || receipt.OperationId != step.ReloadId || !(await native.ConfirmServiceIdleAsync(ct)).Success)
+                return false;
+            var previous = await ReadWebRootRestoreBytesAsync(directory, step, ct);
+            if (previous is null) return false;
+            ct.ThrowIfCancellationRequested();
+            return !dispatch || await RestoreTrackedWebRootSiteAsync(native, directory, step, previous);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException) { return false; }
+        finally { IntegrationGate.Release(); }
+    }
+
+    private static async Task<byte[]?> ReadWebRootRestoreBytesAsync(string directory, NginxWebRootStep step, CancellationToken ct)
+    {
+        var config = Path.Combine(directory, step.SiteId + ".conf");
+        var backup = config + ".rollback";
+        if (!IsAbsent(WebRootStage(directory, step.ReloadId))
+            || step.CompensationId is { } compensation && !IsAbsent(WebRootStage(directory, compensation))
+            || await ReadWebRootHashAsync(config, ct) != step.CandidateHash
+            || await ReadWebRootHashAsync(backup, ct) != step.PreviousHash)
+            return null;
+        var previous = await File.ReadAllBytesAsync(backup, ct);
+        return Convert.ToHexString(SHA256.HashData(previous)) == step.PreviousHash ? previous : null;
+    }
+
+    private static async Task<bool> RestoreTrackedWebRootSiteAsync(IPrivilegedNginxOperations native, string directory,
+        NginxWebRootStep step, byte[] previous)
+    {
+        if (step.CompensationId is not { } compensation) return false;
+        var stage = WebRootStage(directory, compensation);
+        var config = Path.Combine(directory, step.SiteId + ".conf");
+        var completion = CancellationToken.None;
+        if (!(await native.WriteManagedFileAsync(stage, previous, completion)).Success
+            || await ReadWebRootHashAsync(config, completion) != step.CandidateHash
+            || !(await native.MoveManagedFileAsync(stage, config, overwrite: true, completion)).Success
+            || !(await native.TestConfigurationAsync(completion)).Success)
+            return false;
+        var restored = await native.RunTrackedReloadAsync(compensation, completion);
+        return restored is { Success: true, NginxReloadReceipt: { Succeeded: true } receipt } && receipt.OperationId == compensation;
     }
 
     internal static async Task<bool> ReconcileWebRootStepAsync(IPrivilegedNginxOperations native, WebServerDto instance,
@@ -125,11 +170,7 @@ internal sealed partial class NginxWebServerManager
     private static async Task<bool> CleanWebRootStepUnderGateAsync(IPrivilegedNginxOperations native, WebServerDto instance,
         NginxWebRootStep step, CancellationToken ct)
     {
-        if (!OperatingSystem.IsLinux() || instance.ExecutablePath != "/usr/sbin/nginx" || instance.ConfigurationPath != "/etc/nginx/nginx.conf"
-            || instance.Id != InstanceId(instance.ExecutablePath) || !SiteIdPattern().IsMatch(step.SiteId)
-            || GetSitesDirectory(instance) is not { } directory || directory != "/etc/nginx/conf.d/relaxkonos.d" || IsSymbolicLink(directory)
-            || !IsAcmeHttp01Enabled(directory))
-            return false;
+        if (GetTrackedWebRootDirectory(instance, step) is not { } directory) return false;
         var config = Path.Combine(directory, step.SiteId + ".conf");
         var backup = config + ".rollback";
         var stage = WebRootStage(directory, step.ReloadId);
@@ -141,6 +182,12 @@ internal sealed partial class NginxWebServerManager
             return false;
         return await DeleteMatchingWebRootFileAsync(native, backup, step.PreviousHash, ct);
     }
+
+    private static string? GetTrackedWebRootDirectory(WebServerDto instance, NginxWebRootStep step) =>
+        OperatingSystem.IsLinux() && instance.ExecutablePath == "/usr/sbin/nginx" && instance.ConfigurationPath == "/etc/nginx/nginx.conf"
+            && instance.Id == InstanceId(instance.ExecutablePath) && SiteIdPattern().IsMatch(step.SiteId)
+            && GetSitesDirectory(instance) is "/etc/nginx/conf.d/relaxkonos.d" and var directory
+            && !IsSymbolicLink(directory) && IsAcmeHttp01Enabled(directory) ? directory : null;
 
     private static string WebRootStage(string directory, Guid id) => Path.Combine(directory, $"relaxkonos.{id:N}.conf");
 
