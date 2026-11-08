@@ -1766,3 +1766,5 @@ Linux 系统包 Nginx 的 WebRoot 启用中断后，后续授权的 TLS 绑定�
 显式启用 HTTP-01 按需加载 WebServer 执行代码。Linux 系统包 Nginx 的 Helper reload 应答丢失时，原启用回执返回 `webserver.site_reload_unverified`，保留活动文件和原备份。备份未核验时阻止再次启用。具备权限的站点更新仍按原文件、站点定义和原生作业空闲状态核验备份。同键请求读取原回执。见[直接 WebRoot 启用执行器](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-webroot-启用执行器)。
 
 Linux Nginx 集成在锚点提交前保存原操作与主配置快照。Server 重启后按原 ID 查询 Helper，并核对当前锚点与快照。同键请求返回原回执。缺少成功证据或配置漂移时保持待核验，拒绝同实例新的后台变更。见[Nginx 集成检查点](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-集成检查点与执行代次)。
+
+可向 `POST /api/v1.0/webservers/operations/{operationId}/compensate-integration` 提交 `{"confirmed":true}`，为已由 Helper 明确记录失败的原集成操作发起具名补偿。需要原实例的 Nginx 配置写入授权。Server 核对锚点、原快照、站点依赖和原生作业状态。受理后原回执关联唯一 `compensationOperationId`，重复请求读取同一回执。成功补偿保留原 Failed 状态并返回 `webserver.integration_compensated`。缺少证据时原操作继续待核验。见[集成具名补偿](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-已知-nginx-集成失败的具名补偿)。

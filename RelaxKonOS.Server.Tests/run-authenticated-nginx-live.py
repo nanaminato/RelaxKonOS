@@ -23,7 +23,10 @@ def run(root, server, helper_binary, mode):
     integration = mode is not None and mode.startswith("--systemd-integration-")
     integration_stage = mode == "--systemd-integration-stage"
     integration_live = mode == "--systemd-integration-live"
-    integration_rejected = mode == "--systemd-integration-rejected"
+    compensate_integration = mode in ("--systemd-integration-compensation", "--systemd-integration-compensation-response-loss")
+    lose_compensation_reply = mode == "--systemd-integration-compensation-response-loss"
+    drop_compensation_reply = threading.Event()
+    integration_rejected = mode == "--systemd-integration-rejected" or compensate_integration
     integration_test_held = threading.Event()
     acme_website = mode is not None and mode.startswith("--systemd-website-acme")
     first_site_acme = mode is not None and mode.startswith("--systemd-first-site-acme")
@@ -166,7 +169,7 @@ def run(root, server, helper_binary, mode):
                    else [helper_binary, "--isolated-certificate-pam-helper"])
     nginx_pid_file = root / "nginx" / "nginx.pid"
     socket_path = Path(env["PrivilegedHelper__SocketPath"])
-    if relay_mode or bootstrap_resume or lose_first_site_reply or integration_stage:
+    if relay_mode or bootstrap_resume or lose_first_site_reply or integration_stage or lose_compensation_reply:
         env["PrivilegedHelper__SocketPath"] = str(root / "relay.sock")
 
     def frame(stream):
@@ -199,7 +202,7 @@ def run(root, server, helper_binary, mode):
 
     @contextmanager
     def helper_connection():
-        if not relay_mode and not bootstrap_resume and not lose_first_site_reply and not integration_stage:
+        if not relay_mode and not bootstrap_resume and not lose_first_site_reply and not integration_stage and not lose_compensation_reply:
             yield None, None
             return
         dropped = threading.Event()
@@ -232,6 +235,12 @@ def run(root, server, helper_binary, mode):
                                 assert response["Result"]["success"]
                                 integration_test_held.set()
                                 assert permit_query.wait(15), "The fixture did not release the original configuration test"
+                            if (lose_compensation_reply and drop_compensation_reply.is_set() and not dropped.is_set()
+                                    and terminal and kind == "NginxTrackedReload"):
+                                assert response["Result"]["success"]
+                                assert response["Result"]["nginxReloadReceipt"]["OperationId"] == request["operationId"]
+                                dropped.set()
+                                return
                             if (lose_first_site_reply and drop_webroot_reply.is_set() and not dropped.is_set()
                                     and terminal and kind == "NginxSystemServiceAction"):
                                 assert response["Result"]["success"]
@@ -1216,7 +1225,23 @@ def run(root, server, helper_binary, mode):
         def active_leases(token):
             return request("/api/v1.0/server/modules/relaxkonos.webserver", token=token)["residency"]["activeLeases"]
 
-        with helper_connection() as (_, permit_test), process([*helper_args, helper_config], "integration-helper") as helper:
+        def assert_compensated(process_handle, token):
+            wait_for(process_handle, lambda: request(path, token=token)["problemCode"] == "webserver.integration_compensated",
+                     "original operation closed by matching compensation")
+            wait_for(process_handle, lambda: native_receipt.stat().st_size == 0 and child_receipt.stat().st_size == 0,
+                     "both original native receipts retired")
+            closed = request(path, token=token)
+            assert closed["state"].lower() == "failed" and closed["operationId"] == operation
+            assert closed["compensationOperationId"] == child and closed["snapshotId"] == pending["snapshotId"]
+            assert request(compensate, token=token, payload=payload, expected=202) == closed
+            assert request(route, token=token, payload=payload, key=key, expected=202) == closed
+            assert not direct_helper_request("NginxTrackedReload", operation)["success"]
+            assert not direct_helper_request("NginxTrackedReload", child)["success"]
+            assert not anchor.exists() and nginx_pid_file.read_text() == master
+            assert witness.read_text().splitlines() == ["reload"] and attempts.read_text().splitlines() == ["attempt", "attempt"]
+            assert_served(b"original")
+
+        with helper_connection() as (dropped, permit_test), process([*helper_args, helper_config], "integration-helper") as helper:
             wait_for(helper, helper_ready, "integration-helper")
             with process([server], "integration-server") as initial:
                 wait_for(initial, healthy, "integration-server")
@@ -1319,6 +1344,8 @@ def run(root, server, helper_binary, mode):
                         result = "REJECTION RETAINED"
                     else:
                         assert anchor.read_bytes() == expected_anchor + b"# External drift\n"
+                        request(path + "/compensate-integration", token=token, payload=payload, expected=409,
+                                expected_problem="webserver.integration_compensation_unavailable")
                         request(route, token=token, payload=payload, key=secrets.token_hex(16), expected=409)
                         anchor.write_bytes(expected_anchor)
                         wait_for(restarted, lambda: request(path, token=token)["state"].lower() == "succeeded",
@@ -1333,6 +1360,58 @@ def run(root, server, helper_binary, mode):
                 assert nginx_pid_file.read_text() == master
                 assert_served(b"original")
                 print(f"PASS NGINX INTEGRATION {result}: {operation}; original receipt, no replay, TLS continuous")
+                if not compensate_integration:
+                    return
+
+                compensate = path + "/compensate-integration"
+                request(compensate, payload=payload, expected=401)
+                request(compensate, token=token, payload={"confirmed": False}, expected=400,
+                        expected_problem="webserver.confirmation_required")
+                foreign = anchor.parent / "relaxkonos.d" / "unrelated.conf"
+                foreign.write_text("# A separate site owns this entry\n")
+                try:
+                    request(compensate, token=token, payload=payload, expected=409,
+                            expected_problem="webserver.integration_compensation_unavailable")
+                    assert foreign.read_text() == "# A separate site owns this entry\n"
+                    assert anchor.read_bytes() == expected_anchor and not witness.exists()
+                finally:
+                    foreign.unlink()
+
+                release.unlink()
+                drop_compensation_reply.set()
+                accepted = request(compensate, token=token, payload=payload, expected=202)
+                child = accepted["compensationOperationId"]
+                assert accepted["operationId"] == operation and child and child != operation
+                child_receipt = native_receipt.with_name(child.replace("-", "") + ".json")
+                wait_for(restarted, witness.is_file, "original compensation native dispatch")
+                assert not anchor.exists() and active_leases(token) > 0
+                assert request(compensate, token=token, payload=payload, expected=202)["compensationOperationId"] == child
+                assert attempts.read_text().splitlines() == ["attempt", "attempt"]
+                assert request(path, token=token)["state"].lower() == "running"
+                assert_served(b"original")
+
+                if lose_compensation_reply:
+                    release.touch()
+                    assert dropped.wait(12), "The compensation Helper reply was not dropped"
+                    assert_compensated(restarted, token)
+                    print(f"PASS NGINX INTEGRATION COMPENSATION RESPONSE LOSS: {operation}, {child}; one compensation")
+                    return
+
+                restarted.kill()
+                assert restarted.wait(timeout=10) < 0
+                release.touch()
+                wait_for(helper, lambda: child_receipt.is_file()
+                         and json.loads(child_receipt.read_text()).get("Completed") is True,
+                         "durable compensation Helper receipt")
+
+            with process([server], "integration-compensation-restarted") as recovered:
+                wait_for(recovered, healthy, "integration-compensation-restarted")
+                token = login()
+                grant(token, instance)
+                assert_compensated(recovered, token)
+                if website_hook:
+                    assert not webserver_code_events("integration-compensation-restarted")
+                print(f"PASS NGINX INTEGRATION COMPENSATION RESTART: {operation}, {child}; one compensation")
 
     if integration:
         verify_integration()
@@ -1579,7 +1658,8 @@ if __name__ == "__main__":
                                                             "--systemd-first-site-acme-success", "--systemd-first-site-acme-response-loss",
                                                             "--systemd-first-site-acme-rejected", "--systemd-integration-live",
                                                             "--systemd-integration-receipt", "--systemd-integration-stage",
-                                                            "--systemd-integration-rejected") else None
+                                                            "--systemd-integration-rejected", "--systemd-integration-compensation",
+                                                            "--systemd-integration-compensation-response-loss") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

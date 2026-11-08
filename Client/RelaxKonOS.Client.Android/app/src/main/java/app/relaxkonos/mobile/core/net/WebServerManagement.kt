@@ -24,4 +24,4 @@ data class WebServerInstallCatalog(val mainlineVersion: String?, val stableVersi
 data class WebServerInstallDownload(val version: String, val url: String)
 data class WebServerOperation(val operationId: String, val instanceId: String, val kind: String,
     val state: WebServerOperationState, val stage: String, val problemCode: String, val snapshotId: String?,
-    val startedAtMillis: Long?, val completedAtMillis: Long?)
+    val startedAtMillis: Long?, val completedAtMillis: Long?, val compensationOperationId: String? = null)

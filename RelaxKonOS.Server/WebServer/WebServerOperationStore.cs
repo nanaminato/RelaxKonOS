@@ -24,7 +24,7 @@ internal interface IWebServerOperationProgress
 
 /// <summary>Durable idempotency ledger for host-global web-server changes.
 /// It contains only operation metadata and stable problem codes, never config content or command output.</summary>
-internal sealed class WebServerOperationStore : IHostedService, IDisposable
+internal sealed partial class WebServerOperationStore : IHostedService, IDisposable
 {
     internal const string NativeReloadDispatchStage = "native-reload-dispatch";
     internal const string NativeReloadConfirmedStage = "native-reload-confirmed";
@@ -78,7 +78,9 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                     using var continuation = await _workOwner.AdmitAsync(stopping.Token);
                     continuation.Run(async token =>
                     {
-                        if (await ReconcileNativeReloadAsync(operation.OperationId, token))
+                        if (operation.Compensation is not null)
+                            await ReconcileIntegrationCompensationAsync(operation, token);
+                        else if (await ReconcileNativeReloadAsync(operation.OperationId, token))
                             await RetireNativeReceiptsAsync([operation.OperationId], token);
                     });
                 }
@@ -272,6 +274,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             var integration = operation.Integration;
             while (!stoppingToken.IsCancellationRequested)
             {
+                if (integration is not null && (await ReadOperationAsync(operationId, stoppingToken)).Compensation is not null)
+                    return false;
                 var result = _nativeOperations is null
                     ? null : await _nativeOperations.QueryReloadReceiptAsync(operationId, stoppingToken);
                 if (integration is not null && _nativeOperations is not null
@@ -392,6 +396,10 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
     {
         var result = await _nativeOperations.RetireReloadReceiptAsync(id, stoppingToken);
         if (!result.Success) return false;
+        var original = await ReadOperationAsync(id, stoppingToken);
+        if (original.Compensation is { } compensation
+            && !(await _nativeOperations.RetireReloadReceiptAsync(compensation.Id, stoppingToken)).Success)
+            return false;
 
         await _gate.WaitAsync();
         try
@@ -506,9 +514,11 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
 
     private sealed record PersistedOperation(Guid OperationId, string IdempotencyKey, string InstanceId, string Kind, string? Actor,
         WebServerOperationState State, string Stage, string ProblemCode, string? SnapshotId, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
-        bool NativeReceiptRetirementPending = false, NginxIntegrationCheckpoint? Integration = null)
+        bool NativeReceiptRetirementPending = false, NginxIntegrationCheckpoint? Integration = null,
+        IntegrationCompensation? Compensation = null)
     {
-        public WebServerOperationDto ToDto() => new(OperationId, InstanceId, Kind, State, Stage, ProblemCode, SnapshotId, StartedAt, CompletedAt);
+        public WebServerOperationDto ToDto() => new(OperationId, InstanceId, Kind, State, Stage, ProblemCode, SnapshotId, StartedAt, CompletedAt,
+            Compensation?.Id);
     }
 
     private sealed class ExecutionCleanupException(Exception inner) : InvalidOperationException("Web-server execution scope did not drain.", inner);

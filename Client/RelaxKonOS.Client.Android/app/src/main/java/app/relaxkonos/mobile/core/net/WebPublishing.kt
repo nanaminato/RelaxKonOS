@@ -149,7 +149,8 @@ internal object WebPublishingWire {
         WebServerOperation(InstallationRoutes.canonicalId(json.getString("operationId")), json.getString("instanceId"),
             json.getString("kind"), WebServerOperationState.entries.single { it.wire == json.getString("state") },
             json.getString("stage"), json.getString("problemCode"), json.nullableText("snapshotId"),
-            json.nullableInstant("startedAt"), json.nullableInstant("completedAt"))
+            json.nullableInstant("startedAt"), json.nullableInstant("completedAt"),
+            json.nullableText("compensationOperationId")?.let(InstallationRoutes::canonicalId))
     }
 
     fun status(payload: String): WebServerStatus = JSONObject(payload).let { json ->

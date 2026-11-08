@@ -2563,4 +2563,18 @@ Linux 私有 systemd 使用生产 Helper 与实际 Nginx。正常集成 `b451924
 
 派发前中断的 `785a57a4-659d-454a-a2da-4c612ba63562` 在暂存内容漂移时保留文件和门禁，内容恢复后只清理原暂存并完成原中断回执，实际重载为零。已知拒绝 `da83770c-2feb-4276-9d48-76e7d40205c8` 保留原 Helper 失败回执与锚点，重启后未派发补偿。各场景维持原 Nginx master 和 HTTPS，专属 cgroup 已清理，宿主服务及文件指纹一致。首次夹具用了普通私有配置目录，漂移复验另修正了实例发现入口。最终日志见 `.artifacts/mb05-nginx-integration-execution/linux-release.log`，归档 SHA-256 为 `e640ce1504c6db6e4d774c4d40b579d1e97d09f3a93f1b347f5fa9dcbf97c38e`。
 
-WebServer 整体保持 resident。失败或缺失 Helper 回执的具名补偿、其他平台的集成、整机掉电与生产内存继续开放。
+WebServer 整体保持 resident。已知失败的具名补偿见下节。缺失 Helper 回执、其他平台的集成、整机掉电与生产内存继续开放。
+
+### MB-05 已知 Nginx 集成失败的具名补偿
+
+具备原实例 Nginx 配置写入授权的操作者，可确认后对原集成 ID 发起具名补偿。受理要求原 Helper 持久失败回执、原主配置快照、原锚点内容匹配，且原生作业空闲、无原暂存文件和受管站点。授权、确认或证据不足时拒绝，原锚点与回执保留。
+
+原 WebServer 台账在变更文件前持久化唯一补偿 ID 与操作者。原工作 owner 排空实际删除、配置验证与跟踪 reload。重启和重复请求只查询同一补偿 ID。只有匹配的原 Helper 补偿成功回执、原配置摘要及锚点确已移除才能完成原操作。原操作保持 Failed 并报告 `webserver.integration_compensated`，关联 `compensationOperationId`。终态落盘后压缩两条 Helper 回执，保留各自的防重放标记。
+
+Windows Release WebServer 与模块边界通过，跨进程夹具按原 `c65c9631-8b7e-4973-b188-31676ed11258` 返回 Interrupted，受控副作用计数为一。Android Nginx 管理与原回执相关 26 项通过，桌面 Release 编译通过。
+
+Linux 私有 systemd 中，Server 在实际补偿 reload 执行时被终止。重启核对原集成 `5c5d7612-32c0-42d4-874e-2725a290da3e` 和原补偿 `cf2dbcb0-9647-4dca-844f-0dd328cbe1ab`，并完成原回执。存活 Server 的应答丢失以原集成 `390e4099-019a-4580-8485-8faed857894e` 和原补偿 `2fd91c11-84bb-4d21-bbd6-728d0d665dcb` 复验通过。各场景实际补偿一次，旧 ID 重试均拒绝再次 reload。匿名、未确认、有独立站点文件及原成功回执均未进入补偿。
+
+同制品复验原集成成功证据、暂存清理及直接 reload 取消和 SIGTERM 排空。原 Nginx master 和 TLS 继续服务，专属 cgroup 已清理，宿主服务和配置指纹一致。日志为 `.artifacts/mb05-nginx-integration-compensation/linux.log`，归档 SHA-256 为 `40781d62a63ac1deb2445f84a9b6f42a8559caa39684194982a88ae1f5f9f811`。
+
+缺失原 Helper 终态，或补偿 ID 已落盘但无匹配的成功回执时，原操作继续待核验。WebServer 整体保持 resident，外部 Nginx 和 TLS 由原服务负责。

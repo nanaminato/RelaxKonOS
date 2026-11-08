@@ -111,6 +111,19 @@ public static class WebServerEndpoints
         });
         group.MapGet(WebServerApiRoutes.OperationsPattern, async (Guid operationId, RelaxKonOS.Server.WebServer.WebServerOperationStore operations, CancellationToken ct) =>
             await operations.GetAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());
+        group.MapPost(WebServerApiRoutes.CompensateIntegrationPattern, async (Guid operationId, IntegrateWebServerRequest request,
+            HttpContext context, IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.WebServerOperationStore operations, CancellationToken ct) =>
+        {
+            var original = await operations.GetAsync(operationId, ct);
+            if (original is not { Kind: "integrate" }) return Results.NotFound();
+            if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, original.InstanceId))
+                return ElevationRequired("Nginx integration compensation needs administrator authorization for the original instance.");
+            if (!request.Confirmed) return Results.BadRequest(new { problemCode = "webserver.confirmation_required" });
+            var accepted = await operations.CompensateIntegrationAsync(operationId, Actor(context), ct);
+            return accepted is null
+                ? Results.Conflict(new { problemCode = "webserver.integration_compensation_unavailable" })
+                : Results.Accepted(value: accepted);
+        });
         group.MapPost(WebServerApiRoutes.CancelOperationPattern, async (Guid operationId, RelaxKonOS.Server.WebServer.WebServerOperationStore operations, CancellationToken ct) =>
             await operations.CancelAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());
         return app;

@@ -18,6 +18,8 @@ class WebServerManagementWireTest {
         assertEquals("nginx", op.instanceId)
         assertFalse(runCatching { WebPublishingRoutes.operation("../bad") }.isSuccess)
         assertFalse(runCatching { WebPublishingWire.operation(WEB_OPERATION.replace("running", "interrupted")) }.isSuccess)
+        val compensated = WEB_OPERATION.dropLast(1) + ""","compensationOperationId":"C0112233-4455-6677-8899-AABBCCDDEEFF"}"""
+        assertEquals("c0112233-4455-6677-8899-aabbccddeeff", WebPublishingWire.operation(compensated).compensationOperationId)
     }
     @Test fun `capabilities are authoritative for each instance`() {
         val server = WebPublishingWire.servers(WEB_SERVER).single()
