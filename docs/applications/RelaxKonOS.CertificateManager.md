@@ -1413,7 +1413,7 @@ Kestrel 部署必须先实现，不能只在签发成功后尝试替换文件。
 
 Kestrel 随选中的活动叶证书发送对应中间链。Linux URL 与命名 HTTPS 端点通过仅信任私有 CA 根的握手验收，覆盖续期期间的旧连接、替代证书的新握手，以及确认撤销后对新握手的影响。Windows 托管 TLS 和 HTTP/3 仍待实机验证。见[Kestrel 动态证书链](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-kestrel-动态证书链)。
 
-Nginx 的稳定 PEM 文件随续期更新，运行中的 worker 在显式重载后才开始提供替代证书。原续期与原重载有各自的操作回执，证书指纹变化本身不能确认重载终态。自动重载协调器仍待实现。见[Nginx 显式证书轮换](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-显式证书轮换与原重载回执)。
+Nginx 的稳定 PEM 文件随续期更新。使用 SQLite 并启用 WebServer 管理模块时，协调器会为绑定该证书的受管实例提交独立重载。原续期与原重载各有操作回执，证书指纹变化本身不能确认重载终态。见[Nginx 续期自动部署](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-续期自动部署)。
 
 Nginx 的受管证书站点绑定在配置副作用前校验状态/有效期与每个绑定的 SAN 覆盖，IDN/IP 规范化，通配符仅覆盖一层 DNS 名称；宿主 PEM 路径仍由配置语法/文件校验，不能把该模式当作受管元数据已核实。
 

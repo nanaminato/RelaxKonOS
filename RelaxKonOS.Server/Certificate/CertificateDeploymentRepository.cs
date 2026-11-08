@@ -15,6 +15,7 @@ internal sealed class CertificateDeploymentRepository
     private const string KestrelDefaultType = "kestrel-default";
     private readonly string _connectionString;
     private readonly bool _enabled;
+    internal bool IsPersistent => _enabled;
 
     public CertificateDeploymentRepository(IHostEnvironment environment, IConfiguration configuration)
     {
@@ -99,5 +100,39 @@ internal sealed class CertificateDeploymentRepository
         command.Parameters.AddWithValue("$defaultType", KestrelDefaultType);
         command.Parameters.AddWithValue("$name", KestrelTargetName);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    internal async Task RecordNginxRenewalAsync(PendingNginxRenewal renewal, string instanceId, Guid? operationId,
+        bool succeeded, string? problemCode, CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO certificate_deployment_records(deployment_id,certificate_id,target_type,target_name,current_version,
+                last_successful_version,last_health_check_at,problem_code,revision,created_at,updated_at,renewal_operation_id,webserver_operation_id)
+            VALUES($id,$certificate,'nginx',$instance,$version,
+                CASE WHEN $succeeded THEN $version END,CASE WHEN $succeeded THEN $now END,$problem,1,$now,$now,$renewal,$operation)
+            ON CONFLICT(certificate_id,target_type,target_name) DO UPDATE SET
+                current_version=excluded.current_version,
+                last_successful_version=COALESCE(excluded.last_successful_version,certificate_deployment_records.last_successful_version),
+                last_health_check_at=COALESCE(excluded.last_health_check_at,certificate_deployment_records.last_health_check_at),
+                problem_code=excluded.problem_code,renewal_operation_id=excluded.renewal_operation_id,
+                webserver_operation_id=excluded.webserver_operation_id,revision=certificate_deployment_records.revision+1,updated_at=excluded.updated_at
+            WHERE certificate_deployment_records.current_version IS NOT excluded.current_version
+                OR certificate_deployment_records.problem_code IS NOT excluded.problem_code
+                OR certificate_deployment_records.webserver_operation_id IS NOT excluded.webserver_operation_id
+                OR ($succeeded AND certificate_deployment_records.last_successful_version IS NOT excluded.last_successful_version);
+            """;
+        command.Parameters.AddWithValue("$id", $"nginx:{renewal.CertificateId:D}:{instanceId}");
+        command.Parameters.AddWithValue("$certificate", renewal.CertificateId.ToString("D"));
+        command.Parameters.AddWithValue("$instance", instanceId);
+        command.Parameters.AddWithValue("$version", renewal.Version);
+        command.Parameters.AddWithValue("$renewal", renewal.OperationId.ToString("D"));
+        command.Parameters.AddWithValue("$operation", (object?)operationId?.ToString("D") ?? DBNull.Value);
+        command.Parameters.AddWithValue("$succeeded", succeeded);
+        command.Parameters.AddWithValue("$problem", (object?)problemCode ?? DBNull.Value);
+        command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+        await command.ExecuteNonQueryAsync(ct);
     }
 }

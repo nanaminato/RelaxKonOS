@@ -417,11 +417,13 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
             var interrupted = problemCode == InterruptedProblem;
             var completed = operation with { State = state, Stage = interrupted ? "interrupted" : state.ToString().ToLowerInvariant(),
                 ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow,
-                Order = interrupted || state == CertificateOperationState.Cancelled ? operation.Order : null, Challenges = null, Revocation = null };
+                Order = interrupted || state == CertificateOperationState.Cancelled ? operation.Order : null, Challenges = null, Revocation = null,
+                NginxRenewal = state == CertificateOperationState.Succeeded ? operation.NginxRenewal : null };
             _operations[id] = completed;
             try
             {
                 await SaveAsync(ct);
+                if (completed.NginxRenewal is not null && _nginxRenewalsChanged.CurrentCount == 0) _nginxRenewalsChanged.Release();
                 _logger.LogInformation("Certificate operation completed. OperationId={OperationId} CertificateId={CertificateId} Kind={Kind} State={State} ProblemCode={ProblemCode}",
                     id, completed.CertificateId, completed.Kind, state, problemCode);
                 if (completed.Kind == "renew" && !interrupted)
@@ -451,7 +453,8 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
                         await (_challengeFiles ?? throw new InvalidOperationException("WebRoot cleanup ownership is unavailable.")).RemoveOwnedAsync(challenge, ct);
                     recovered = item.Revocation is not null ? await RecoverRevocationAsync(item, ct)
                         : item.State is CertificateOperationState.Queued or CertificateOperationState.Running
-                        ? item with { State = CertificateOperationState.Failed, Stage = "interrupted", ProblemCode = InterruptedProblem, CompletedAt = DateTimeOffset.UtcNow, Challenges = null }
+                        ? item with { State = CertificateOperationState.Failed, Stage = "interrupted", ProblemCode = InterruptedProblem, CompletedAt = DateTimeOffset.UtcNow,
+                            Challenges = null, NginxRenewal = null }
                         : item;
                 }
                 catch (CertificateOperationException error) when (error.ProblemCode == ChallengeOwnershipProblem)
@@ -493,7 +496,8 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AcmeOrderIdentity? Order = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] WebRootChallengeFile[]? Challenges = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? WebsitePublicationId = null,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RevocationCheckpoint? Revocation = null)
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RevocationCheckpoint? Revocation = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] NginxRenewalCheckpoint? NginxRenewal = null)
     {
         public CertificateOperationDto ToDto() => new(OperationId, CertificateId, Kind, State, Stage, ProblemCode, StartedAt, CompletedAt);
     }

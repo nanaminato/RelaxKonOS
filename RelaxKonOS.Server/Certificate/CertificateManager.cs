@@ -183,28 +183,28 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
         if (existing.Kind == CertificateKind.SelfSigned) return Failure("renew", "certificate.self_signed_not_renewable");
         if (existing.Status == CertificateStatus.Revoked) return Failure("renew", "certificate.revoked");
         if (string.IsNullOrWhiteSpace(existing.ContactEmail)) return Failure("renew", "certificate.contact_unavailable");
-        return await operations.StartOrderAsync(idempotencyKey, certificateId, "renew", actor, async (recordOrder, recordChallenge, ct) =>
+        return await operations.StartRenewalAsync(idempotencyKey, certificateId, actor, async (recordOrder, recordChallenge, ct) =>
         {
-            if ((await certificates.GetAsync(certificateId, ct)) is { Status: CertificateStatus.Revoked }) return "certificate.revoked";
+            if ((await certificates.GetAsync(certificateId, ct)) is { Status: CertificateStatus.Revoked }) return ("certificate.revoked", null);
             using var oldMaterial = await certificates.LoadCurrentAsync(certificateId, ct);
             var material = await acme.IssueAsync(certificateId, existing.Domains, existing.ChallengeType, existing.KeyAlgorithm, existing.ContactEmail, ct, recordOrder, recordChallenge);
             await certificates.SaveAsync(material with { LastRenewalAt = DateTimeOffset.UtcNow }, ct);
             if (oldMaterial is not null)
                 await renewalInfo.MarkReplacedAsync(oldMaterial, existing.ContactEmail, ct);
+            var replacementRecord = await certificates.GetAsync(certificateId, ct);
+            if (replacementRecord is null) return ("certificate.material_unavailable", null);
             if (kestrel.IsActive(certificateId))
             {
-                var replacementRecord = await certificates.GetAsync(certificateId, ct);
-                if (replacementRecord is null) return "certificate.material_unavailable";
                 var replacement = await certificates.LoadKestrelVersionAsync(certificateId, replacementRecord.Version, ct);
                 if (replacement is null || !kestrel.Activate(certificateId, replacement, replacementRecord.Domains))
                 {
                     replacement?.TargetCertificate.Dispose();
                     await deployments.RecordKestrelAsync(replacementRecord, false, "certificate.kestrel_activation_failed", ct);
-                    return "certificate.kestrel_activation_failed";
+                    return ("certificate.kestrel_activation_failed", null);
                 }
                 await deployments.RecordKestrelAsync(replacementRecord, true, null, ct);
             }
-            return "";
+            return ("", replacementRecord.Version);
         }, lifetime.ApplicationStopping, cancellationToken, automatic);
     }
 

@@ -541,6 +541,8 @@ MB-05 直接重载与网站发布共享 WebServer 执行代次。新重载的代
 
 Nginx 显式证书轮换沿用原重载 owner、原生回执和待核验门禁。专属 Nginx 可以在 Server 中断时持续提供替代证书，恢复仍按 Helper 的原生证据决定终态。见[Nginx 显式证书轮换](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-显式证书轮换与原重载回执)。
 
+自动部署协调器空闲时等待证书台账信号，持久续期版本和目标用于重启接续。每次对账取得 WebServer 工作租约，实际重载和未核实原生结果继续由原 WebServer 操作 owner 持有。见[Nginx 续期自动部署](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-续期自动部署)。
+
 Proxy 同次停机联合验收中，原入站到期回执落盘后，Server 仍持有独立 TUN 清理责任。系统代理 guard 与 TUN 复用共享发布锁及原归属记录，已有网络转发继续。见[Proxy 联合安全责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-同次停机的-proxy-安全责任与恢复)。
 
 Proxy 设置写入的 resident 租约覆盖执行、审计、响应与异步作用域清理。受管发布的重启恢复继续读取原发布权威和 Helper 回执。见[设置写入工作租约](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-proxy-设置写入的工作租约)。

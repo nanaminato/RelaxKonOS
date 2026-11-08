@@ -1,5 +1,6 @@
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebServers;
+using RelaxKonOS.Server.Certificate;
 using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.WebServer;
@@ -47,12 +48,32 @@ internal sealed partial class NginxWebServerManager
             await IntegrationGate.WaitAsync(ct);
             try
             {
-                var lease = WebServerExecutionCode.Shared.Acquire<INginxReloadExecutor>(
-                    "RelaxKonOS.Server.WebServer.NginxReloadExecutor", new ReloadPorts(nginx, instance, progress));
-                progress.HoldExecution(lease);
-                return new(await RunReloadAsync(lease.Executor, ct));
+                return await ReloadUnderGateAsync(instance, progress, ct);
             }
             finally { IntegrationGate.Release(); }
+        }
+
+        internal Task<WebServerOperationResult> ReloadRenewedCertificateAsync(PendingNginxRenewal renewal, string instanceId,
+            CertificateOperationStore certificateOperations, WebServerOperationStore.OperationProgress progress, CancellationToken ct) =>
+            certificateOperations.UnderCertificateGateAsync(renewal.CertificateId, async token =>
+            {
+                await IntegrationGate.WaitAsync(token);
+                try
+                {
+                    var instance = (await nginx.DiscoverAsync(token)).FirstOrDefault(item => item.Id == instanceId);
+                    var problem = await nginx.ValidateCertificateReloadAsync(renewal, instance, token);
+                    return problem is null ? await ReloadUnderGateAsync(instance!, progress, token) : new(problem);
+                }
+                finally { IntegrationGate.Release(); }
+            }, ct);
+
+        private async Task<WebServerOperationResult> ReloadUnderGateAsync(WebServerDto instance,
+            WebServerOperationStore.OperationProgress progress, CancellationToken ct)
+        {
+            var lease = WebServerExecutionCode.Shared.Acquire<INginxReloadExecutor>(
+                "RelaxKonOS.Server.WebServer.NginxReloadExecutor", new ReloadPorts(nginx, instance, progress));
+            progress.HoldExecution(lease);
+            return new(await RunReloadAsync(lease.Executor, ct));
         }
 
         private static async Task<string> RunReloadAsync(INginxReloadExecutor executor, CancellationToken ct)

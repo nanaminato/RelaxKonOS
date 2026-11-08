@@ -9,6 +9,7 @@ import re
 import secrets
 import socket
 import socketserver
+import sqlite3
 import ssl
 import subprocess
 import sys
@@ -48,8 +49,12 @@ def run(root, server, helper_binary, mode):
     resume_interrupt = mode == "--systemd-website-acme-bootstrap-resume-interrupt"
     bind_interrupt = mode == "--systemd-website-acme-bootstrap-bind-interrupt"
     website_hook = os.environ.get("RELAXKONOS_TEST_WEBSITE_EXECUTION_HOOK")
-    acme_renewal = mode in ("--systemd-website-acme-renewal", "--systemd-website-acme-renewal-unknown")
+    acme_renewal = mode is not None and mode.startswith("--systemd-website-acme-renewal")
     unknown_rotation = mode == "--systemd-website-acme-renewal-unknown"
+    rejected_rotation = mode == "--systemd-website-acme-renewal-rejected"
+    native_rejected_rotation = mode == "--systemd-website-acme-renewal-native-rejected"
+    grouped_rotation = mode == "--systemd-website-acme-renewal-grouped"
+    second_domain = "second-website-mb05.test"
     acme_success = acme_renewal or mode in ("--systemd-website-acme-success", "--systemd-website-acme-bootstrap-success")
     acme_cancel = mode == "--systemd-website-acme-cancel"
     acme_drain = mode == "--systemd-website-acme-drain"
@@ -87,7 +92,7 @@ def run(root, server, helper_binary, mode):
         env[f"Modules__{module}__Enabled"] = "false"
     if website:
         env["Modules__Docker__Enabled"] = "true"
-        env["no_proxy"] = env["NO_PROXY"] = "website-mb05.test,127.0.0.1,localhost"
+        env["no_proxy"] = env["NO_PROXY"] = f"website-mb05.test,{second_domain},127.0.0.1,localhost"
         if verifying_website:
             env["SSL_CERT_FILE"] = str(root / "website-ca.pem")
     if acme_website or first_site_acme:
@@ -572,62 +577,108 @@ def run(root, server, helper_binary, mode):
             access = (root / "nginx" / "acme-access.log").read_text()
             assert re.search(r'GET /\.well-known/acme-challenge/[^ ]+ HTTP/1\.1" 200 ', access)
 
-        def verify_rotation(initial, helper, token, instance, publication_route, certificate_id, app_route, published_body):
+        def verify_rotation(initial, helper, token, instance, publication_route, certificate_id, app_route, published_body, other_app_route):
             certificate = f"{certificates}/{certificate_id}"
             renewal_key = "mb05-website-cert-renew"
-            reload_key = "mb05-website-cert-reload"
             reload_route = f"{web}/{instance}/reload"
             leases = "/api/v1.0/server/modules/relaxkonos.webserver"
             release = root / "nginx" / "release"
             finished = root / "nginx" / "reload-finished"
             attempts = root / "nginx" / "reload-attempts"
             ca_log = root / "ca.log"
-            master = nginx_pid_file.read_text()
+            master = nginx_pid_file.read_text().strip()
+            worker_file = Path(f"/proc/{master}/task/{master}/children")
+            old_workers = set(worker_file.read_text().split())
+            assert old_workers
             publication = request(publication_route, token=token)
-            site = request(app_route, token=token)["application"]["siteId"]
-            config = Path("/etc/nginx/conf.d/relaxkonos.d") / (site + ".conf")
-            original_config = config.read_bytes()
+            app_routes = (app_route, other_app_route) if other_app_route else (app_route,)
+            hosts = (domain, second_domain) if other_app_route else (domain,)
+            initial_reloads = len(app_routes)
+            sites = [request(route, token=token)["application"]["siteId"] for route in app_routes]
+            configs = [Path("/etc/nginx/conf.d/relaxkonos.d") / (site + ".conf") for site in sites]
+            original_configs = [config.read_bytes() for config in configs]
 
-            def served_fingerprint():
+            def served_fingerprint(host):
                 with socket.create_connection(("127.0.0.1", 443), timeout=2) as connection:
-                    with acme_tls.wrap_socket(connection, server_hostname=domain) as tls:
+                    with acme_tls.wrap_socket(connection, server_hostname=host) as tls:
                         return hashlib.sha256(tls.getpeercert(binary_form=True)).hexdigest().upper()
 
-            def assert_counts():
-                assert witness.read_text().splitlines() == ["reload", "reload"]
-                assert attempts.read_text().splitlines() == ["attempt", "attempt"]
+            def serving(fingerprint):
+                return all(served_fingerprint(host) == fingerprint and published_body(host) for host in hosts)
+
+            def assert_counts(count=initial_reloads + 1, rejected_attempts=0):
+                assert witness.read_text().splitlines() == ["reload"] * count
+                assert attempts.read_text().splitlines() == ["attempt"] * (count + rejected_attempts)
                 ca = ca_log.read_text()
                 assert ca.count("Added order") == ca.count("POST /finalize-order/") == 2
-                access = (root / "nginx" / "acme-access.log").read_text()
-                challenges = re.findall(r'GET /\.well-known/acme-challenge/([^ ]+) HTTP/1\.1" 200 ', access)
-                assert len(set(challenges)) == 2
                 assert list(challenge_root.iterdir()) == [sentinel] and sentinel.read_text() == "untouched"
-                assert config.read_bytes() == original_config and nginx_pid_file.read_text() == master
+                assert [config.read_bytes() for config in configs] == original_configs and nginx_pid_file.read_text().strip() == master
+
+            def deployment():
+                with sqlite3.connect(root / "identity.db") as connection:
+                    connection.row_factory = sqlite3.Row
+                    return connection.execute("""
+                        SELECT current_version, last_successful_version, problem_code, renewal_operation_id, webserver_operation_id
+                        FROM certificate_deployment_records WHERE certificate_id=? AND target_type='nginx' AND target_name=?
+                        """, (certificate_id, instance)).fetchone()
 
             old = request(certificate, token=token)["fingerprintSha256"].replace(":", "")
-            assert served_fingerprint() == old
+            assert serving(old)
+            release.unlink()
+            finished.unlink()
+            if rejected_rotation:
+                Path("/etc/nginx/conf.d/rotation-invalid.conf").write_text("deliberately_invalid_nginx_directive;\n")
+            if native_rejected_rotation:
+                (root / "nginx" / "reject-next").touch()
+            fault = root / "response-fault"
+            fault.write_text("hold-renewal-certificate")
             renewal = request(certificate + "/renew", token=token, payload={}, key=renewal_key, expected=202)
             renewal_id = renewal["operationId"]
             renewal_route = f"{certificates}/operations/{renewal_id}"
+            try:
+                wait_for(initial, (root / "certificate-response-held").is_file, "original renewal response held", attempts=350)
+                assert serving(old)
+                assert witness.read_text().splitlines() == ["reload"] * initial_reloads and deployment() is None
+                tokens = {file.name for file in challenge_root.iterdir() if file != sentinel}
+                assert len(tokens) == len(hosts), f"Unexpected number of actual renewal challenges: {len(tokens)}"
+                access = (root / "nginx" / "acme-access.log").read_text()
+                challenges = set(re.findall(r'GET /\.well-known/acme-challenge/([^ ]+) HTTP/1\.1" 200 ', access))
+                assert tokens <= challenges, f"Successful requests for {len(tokens & challenges)} of {len(tokens)} renewal challenges"
+            finally:
+                fault.write_text("")
+                (root / "release-certificate-response").touch()
             wait_for(initial, lambda: request(renewal_route, token=token)["state"].lower() == "succeeded",
                      "original website certificate renewal", attempts=350)
             renewed = request(renewal_route, token=token)
             replacement = request(certificate, token=token)["fingerprintSha256"].replace(":", "")
-            assert replacement != old and served_fingerprint() == old and published_body()
-            assert witness.read_text().splitlines() == ["reload"] and attempts.read_text().splitlines() == ["attempt"]
-
-            release.unlink()
-            finished.unlink()
-            reload = request(reload_route, token=token, method="POST", key=reload_key, expected=202)
-            reload_id = reload["operationId"]
+            assert replacement != old
+            version = json.loads((root / "material" / certificate_id / "current.json").read_bytes())["version"]
+            wait_for(initial, lambda: (record := deployment()) and record["webserver_operation_id"],
+                     "durable automatic certificate reload receipt")
+            recorded = deployment()
+            assert recorded["renewal_operation_id"] == renewal_id and recorded["current_version"] == version
+            reload_id = recorded["webserver_operation_id"]
             operation = f"{web}/operations/{reload_id}"
+
+            if rejected_rotation or native_rejected_rotation:
+                wait_for(initial, lambda: deployment()["problem_code"] == "certificate.nginx_reload_failed",
+                         "independent deployment failure")
+                final = request(operation, token=token)
+                problem = "webserver.reload_failed" if native_rejected_rotation else "webserver.site_config_test_failed"
+                assert final["state"].lower() == "failed" and final["problemCode"] == problem
+                assert deployment()["last_successful_version"] is None
+                assert request(renewal_route, token=token) == renewed and serving(old)
+                assert_counts(initial_reloads, rejected_attempts=int(native_rejected_rotation))
+                outcome = "NATIVE REJECTED" if native_rejected_rotation else "REJECTED"
+                print(f"PASS WEBSITE AUTOMATIC CERTIFICATE ROTATION {outcome}: renewal={renewal_id}; reload={reload_id}; "
+                      f"{problem}, old HTTPS served")
+                return
             try:
-                wait_for(initial, lambda: served_fingerprint() == replacement, "new leaf on live Nginx")
+                wait_for(initial, lambda: old_workers.isdisjoint(worker_file.read_text().split()) and serving(replacement),
+                         "old Nginx workers drained and new leaf on both live sites")
                 pending = request(operation, token=token)
                 assert pending["state"].lower() == "running" and not finished.exists()
-                assert request(leases, token=token)["residency"]["activeLeases"] == 1
-                assert request(reload_route, token=token, method="POST", key=reload_key, expected=202) == pending
-                assert published_body()
+                assert request(leases, token=token)["residency"]["activeLeases"] >= 1
                 assert_served(b"original")
                 assert_counts()
                 initial.kill()
@@ -636,7 +687,7 @@ def run(root, server, helper_binary, mode):
                 if unknown_rotation:
                     helper.kill()
                     assert helper.wait(timeout=10) < 0 and not helper_ready()
-                assert served_fingerprint() == replacement and published_body()
+                assert serving(replacement)
             finally:
                 release.touch()
 
@@ -659,26 +710,29 @@ def run(root, server, helper_binary, mode):
                 final = request(operation, token=token)
                 assert final["operationId"] == reload_id and final["problemCode"] == (
                     "webserver.native_recovery_required" if unknown_rotation else "")
-                assert request(reload_route, token=token, method="POST", key=reload_key, expected=202) == final
                 assert request(renewal_route, token=token) == renewed
                 assert request(certificate + "/renew", token=token, payload={}, key=renewal_key, expected=202) == renewed
                 assert request(publication_route, token=token) == publication
-                assert request(app_route, token=token)["application"]["siteId"] == site
+                assert [request(route, token=token)["application"]["siteId"] for route in app_routes] == sites
                 if unknown_rotation:
-                    assert request(leases, token=token)["residency"]["activeLeases"] == 1
+                    wait_for(restarted, lambda: deployment()["problem_code"] == "webserver.native_recovery_required",
+                             "original unknown deployment projection")
+                    assert request(leases, token=token)["residency"]["activeLeases"] >= 1
                     request(reload_route, token=token, method="POST", key=secrets.token_hex(16), expected=409,
                             expected_problem="webserver.native_recovery_required")
                     assert json.loads(native.read_text()).get("Completed") is not True
                 else:
                     wait_for(restarted, lambda: native.stat().st_size == 0
+                             and deployment()["last_successful_version"] == version
                              and request(leases, token=token)["residency"]["activeLeases"] == 0, "original Helper receipt retired")
                     assert not direct_helper_request("NginxTrackedReload", reload_id)["success"]
-                assert served_fingerprint() == replacement and published_body()
+                assert deployment()["webserver_operation_id"] == reload_id and deployment()["renewal_operation_id"] == renewal_id
+                assert serving(replacement)
                 assert_served(b"original")
                 assert_counts()
                 outcome = "UNKNOWN" if unknown_rotation else "CONFIRMED"
-                print(f"PASS WEBSITE NGINX CERTIFICATE ROTATION {outcome}: renewal={renewal_id}; reload={reload_id}; "
-                      "original receipts, one rotation reload, no replay")
+                print(f"PASS WEBSITE AUTOMATIC CERTIFICATE ROTATION {outcome}: renewal={renewal_id}; reload={reload_id}; "
+                      f"{len(hosts)} sites, original receipts, one rotation reload, no replay")
 
         def start_upstream(token, name, port):
             app = request(applications, token=token, key=secrets.token_hex(16), payload={
@@ -705,12 +759,24 @@ def run(root, server, helper_binary, mode):
                 wait_for(initial, healthy, "website-server")
                 token = login()
                 app_id, app_route, container = start_upstream(token, "mb05-publication", 18080)
+                other_app_route = None
+                preissued = None
                 contender_id = None
                 if mode == "--systemd-website-acme":
                     contender_id, _, _ = start_upstream(token, "mb05-competing-publication", 18081)
                 certificate_options = {"contactEmail": "fixture@example.test", "acceptedTerms": True,
                                        "publicReachabilityConfirmed": True}
-                if not acme_website:
+                if grouped_rotation:
+                    other_app_id, other_app_route, _ = start_upstream(token, "mb05-publication-second", 18081)
+                    receipt = request(certificates, token=token, expected=202, key=secrets.token_hex(16), payload={
+                        **certificate_options, "domains": [domain, second_domain], "challengeType": "webRootHttp01",
+                    })
+                    preissued = receipt["operationId"]
+                    cert_route = f"{certificates}/operations/{preissued}"
+                    wait_for(initial, lambda: request(cert_route, token=token)["state"].lower() == "succeeded",
+                             "shared ACME certificate issuance", attempts=350)
+                    certificate_options = {"certificateId": request(cert_route, token=token)["certificateId"]}
+                elif not acme_website:
                     cert = request(certificates + "/self-signed", token=token, expected=202,
                                    key=secrets.token_hex(16), payload={"domains": [domain], "validityDays": 1})
                     cert_route = f"{certificates}/operations/{cert['operationId']}"
@@ -724,9 +790,9 @@ def run(root, server, helper_binary, mode):
                         urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=ca_file)))
                     certificate_options = {"certificateId": certificate_id}
 
-                def published_body():
+                def published_body(host=domain):
                     try:
-                        with client.open(f"https://{domain}/", timeout=1) as response:
+                        with client.open(f"https://{host}/", timeout=1) as response:
                             return response.read() == expected_body
                     except OSError:
                         return False
@@ -1086,7 +1152,7 @@ def run(root, server, helper_binary, mode):
                         return not acme_success and (root / "certificate-response-held").is_file() and current["certificateOperationId"]
 
                     wait_for(initial, acme_checkpoint, "real website ACME checkpoint", attempts=350)
-                    original_certificate = request(operation_route, token=token)["certificateOperationId"]
+                    original_certificate = preissued or request(operation_route, token=token)["certificateOperationId"]
                     assert original_certificate
                     certificate_route = f"{certificates}/operations/{original_certificate}"
                     assert_ca_once()
@@ -1120,8 +1186,15 @@ def run(root, server, helper_binary, mode):
                             print(f"PASS AUTHENTICATED WEBSITE ACME SUCCESS: publication={operation_id}; certificate={original_certificate}; real HTTPS and one reload")
                             if acme_renewal:
                                 certificate_id = request(certificate_route, token=token)["certificateId"]
+                                if grouped_rotation:
+                                    second = request(publications, token=token, key=secrets.token_hex(16), expected=202,
+                                        payload={**payload, "applicationId": other_app_id, "domain": second_domain})
+                                    second_route = f"{publications}/operations/{second['operationId']}"
+                                    wait_for(initial, lambda: request(second_route, token=token)["state"].lower() == "succeeded",
+                                             "second site bound to the original certificate", attempts=350)
+                                    assert published_body(second_domain)
                                 verify_rotation(initial, helper, token, matches[0]["id"], operation_route,
-                                                certificate_id, app_route, published_body)
+                                                certificate_id, app_route, published_body, other_app_route)
                         return
                     active_tokens = [path for path in challenge_root.iterdir() if path != sentinel]
                     assert len(active_tokens) == 1 and re.fullmatch(r"[A-Za-z0-9_-]+", active_tokens[0].name)
@@ -2029,7 +2102,10 @@ if __name__ == "__main__":
                                                             "--systemd-response-loss", "--systemd-rejected", "--systemd-retire-retry", "--systemd-retire-live",
                                                             "--systemd-website", "--systemd-website-verifying", "--systemd-website-acme",
                                                             "--systemd-website-acme-success", "--systemd-website-acme-renewal",
-                                                            "--systemd-website-acme-renewal-unknown", "--systemd-website-acme-cancel", "--systemd-website-acme-challenge-changed",
+                                                            "--systemd-website-acme-renewal-unknown", "--systemd-website-acme-renewal-rejected",
+                                                            "--systemd-website-acme-renewal-native-rejected",
+                                                            "--systemd-website-acme-renewal-grouped",
+                                                            "--systemd-website-acme-cancel", "--systemd-website-acme-challenge-changed",
                                                             "--systemd-website-acme-drain", "--systemd-website-acme-bootstrap",
                                                             "--systemd-website-acme-bootstrap-success", "--systemd-website-acme-bootstrap-failure",
                                                             "--systemd-website-acme-bootstrap-resume", "--systemd-website-acme-bootstrap-resume-interrupt",
