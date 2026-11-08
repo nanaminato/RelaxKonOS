@@ -293,3 +293,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）Linux x64 私有 resolver 已验证原 TUN 接口的分流 DNS、冲突拒绝和清理，真实上游通过。DNS 写入尚未确认时的断点、resolver 换代、生产范围和发布入口、提交后生命周期及工作租约待联合验收。见[分流 DNS 证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-分流-dns-归属)。
 
 2026-11-08（MR-03 / MB-04）Linux x64 私有 resolver 已通过 DNS 写入后应答中断和 resolver 换代验收。原身份可只读确认及恢复，换代保留原待核验。生产范围及发布、成功提交后生命周期、同键 HTTP 和工作租约仍待联合验收。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。
+
+2026-11-08（MR-03 / MB-04）生产 Server 规划器从 Linux 固定宿主策略冻结受管 TUN 范围，Helper 在候选激活前独立核对。原操作的恢复仍使用原归档回执、旧配置授权和原网络归属证据。成功提交后的启停、重启及移除、公开发布与实际工作租约仍需联合验收。见[宿主范围证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-宿主范围)。

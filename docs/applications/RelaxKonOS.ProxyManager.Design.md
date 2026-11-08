@@ -4521,6 +4521,8 @@ Helper 已验证单个精确 IPv4 目标的专用路由表和策略规则归属�
 
 受管 TUN 的可选分流 DNS 已在私有 resolver 验证。Helper 仅为原接口设置分流域和目标 DNS，Mihomo 显式关闭默认 DNS 劫持。原接口退出后只读确认其 DNS 缺席，其他链路设置保持原样。生产准入和成功提交门禁继续生效。见[分流 DNS 证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-分流-dns-归属)。
 
+Linux 受管 TUN 试运行的固定范围文件为 `/etc/relaxkonos/mihomo-tun-network.json`，字段为 `device`、`address`、`destination`、`serverUserId` 及可选 `dnsRoutingDomain`。源与目标各为一个规范 IPv4 地址。文件及父目录由 root 持有，组与其他用户无写权限，目录需要允许 Server 遍历，文件需要允许 Server 读取。安装流程不创建该文件。宿主管理员更新时使用原子替换，策略缺失、格式无效或与冻结意图不一致时拒绝新候选。已派发操作按原配置及原生归属证据恢复。公开发布与成功提交继续受门禁保护。见[宿主范围证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-宿主范围)。
+
 DNS 写入已生效但应答未确认时，重启可按原操作和原 resolver 身份只读确认效果。resolver 换代后相同设置及真实流量仍保留待核验，Helper 未重发写入或派发停止。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。
 
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。

@@ -66,18 +66,30 @@ internal static class MihomoTunDescriptorAcceptance
         var draft = await File.ReadAllTextAsync(Path.Combine(root, "candidate.yaml"));
         var inputPlan = new RuntimeConfigurationPlan(before.Installation.InstallationId, before.Installation.HostId, "mihomo",
             1, revisionId, previous, MihomoPublicationStore.Identity(draft), "tun-publication");
+        var scope = new LinuxMihomoTunScope(DeviceName, intentRoot.GetProperty("address").GetString()!,
+            intentRoot.GetProperty("target").GetString()!, intentRoot.GetProperty("uid").GetUInt32(), "tun.fixture.test");
+        await RefusesAsync("runtime.network_scope_unavailable", () => Task.FromResult(LinuxMihomoTunScope.Read()));
+        await WriteScopeAsync(scope);
+        File.SetUnixFileMode(LinuxMihomoTunScope.Path, File.GetUnixFileMode(LinuxMihomoTunScope.Path) | UnixFileMode.GroupWrite);
+        await RefusesAsync("runtime.network_scope_unavailable", () => Task.FromResult(LinuxMihomoTunScope.Read()));
+        var scopeTarget = LinuxMihomoTunScope.Path + ".target";
+        File.Move(LinuxMihomoTunScope.Path, scopeTarget);
+        File.SetUnixFileMode(scopeTarget, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherRead);
+        File.CreateSymbolicLink(LinuxMihomoTunScope.Path, scopeTarget);
+        await RefusesAsync("runtime.network_scope_unavailable", () => Task.FromResult(LinuxMihomoTunScope.Read()));
+        File.Delete(LinuxMihomoTunScope.Path);
+        File.Move(scopeTarget, LinuxMihomoTunScope.Path);
         var planInput = Path.Combine(root, "tun-plan-input.json");
         await File.WriteAllBytesAsync(planInput, RuntimeJson.Serialize(new FreezeInput(operationId, inputPlan, draft,
-            intentRoot.GetProperty("address").GetString()!, intentRoot.GetProperty("target").GetString()!,
-            intentRoot.GetProperty("management").GetString()!)));
+            scope.Address, intentRoot.GetProperty("management").GetString()!)));
         File.SetUnixFileMode(planInput, UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
         var frozen = RuntimeJson.Read<MihomoManagedTunPlan>(System.Text.Encoding.UTF8.GetBytes(
             await NativeRuntimeProcess.RunAsync("/usr/sbin/runuser", ["-u", "nobody", "--", "/usr/bin/dotnet",
                 intentRoot.GetProperty("fixture").GetString()!, "runtime-mihomo-tun-freeze", planInput], 32768)));
         File.Delete(planInput);
         var (plan, candidate, network) = frozen;
-        if (network.ManagementUserId != intentRoot.GetProperty("uid").GetUInt32() || network.ManagementHash != ManagementHash(intentRoot))
-            throw new InvalidOperationException("Server and isolated management route observations differ.");
+        if (!scope.Matches(network) || network.ManagementHash != ManagementHash(intentRoot))
+            throw new InvalidOperationException("Server policy or management route observations differ.");
         var paths = new AuthorizationPaths(root);
         Directory.CreateDirectory(paths.GetProtectedConfigurationDirectory());
         var publications = Publications(paths);
@@ -96,6 +108,21 @@ internal static class MihomoTunDescriptorAcceptance
         await publications.BeginConfigurationAsync(operationId, confirmed.Revision, candidate, plan, CancellationToken.None, tunIntent: network);
         await File.WriteAllBytesAsync(Path.Combine(root, "tun-plan.json"), RuntimeJson.Serialize(plan));
         var adapter = new MihomoConfigurationAdapter(Archive, store, sources, host, new Authorization(root, operationId), RuntimeSourceProtection.Protect);
+        var pending = new RuntimePendingConfiguration(operationId, "", "", plan, default, null, false, false, null, null);
+        var oldService = await host.ObserveAsync(CancellationToken.None);
+        var oldPid = await ReadPidAsync();
+        var operationDirectory = Path.Combine(Archive, "operations", operationId.ToString("N"));
+        await WriteScopeAsync(scope with { Destination = "198.51.100.54" });
+        await RefusesAsync("runtime.network_scope_changed", () => adapter.PreflightAsync(plan,
+            store.Read()! with { Configuration = pending }, CancellationToken.None));
+        await RefusesAsync("runtime.network_scope_changed", () => adapter.ActivateAsync(pending, CancellationToken.None));
+        var unchanged = await File.ReadAllBytesAsync(configuration);
+        if (await host.ObserveAsync(CancellationToken.None) != oldService || await ReadPidAsync() != oldPid
+            || !previousBytes.AsSpan().SequenceEqual(unchanged)
+            || store.Read()?.Configuration is not null || Directory.EnumerateFileSystemEntries(operationDirectory).Any())
+            throw new InvalidOperationException("Helper touched the old service or original operation with a different host scope.");
+        await WriteScopeAsync(scope);
+        Console.Error.WriteLine("PASS MANAGED TUN HOST SCOPE: protected policy, unprivileged planner, Helper preflight and activation drift refusal");
         InstallationStage stage = default;
         var transaction = new RuntimeArchiveConfiguration(store, new FixtureAdapter(adapter), async (next, _) =>
         {
@@ -114,6 +141,9 @@ internal static class MihomoTunDescriptorAcceptance
         });
         var outcome = await transaction.ExecuteAsync(operationId, plan, CancellationToken.None);
         throw new InvalidOperationException($"The fixture exited before interruption: {stage}, {outcome.Outcome}, {outcome.ProblemCode}, {store.Read()?.Configuration?.RecoveryProblemCode}.");
+
+        static Task<string> ReadPidAsync() => NativeRuntimeProcess.RunAsync("/usr/bin/systemctl",
+            ["show", LinuxMihomoArchiveHost.Unit, "--property=MainPID", "--value"], 64);
     }
 
     internal static async Task FreezeAsync(string inputPath)
@@ -126,18 +156,24 @@ internal static class MihomoTunDescriptorAcceptance
             ?? throw new InvalidOperationException("The Server did not observe a management route.");
         var draft = MihomoConfigurationPolicy.Describe(input.Yaml).Material;
         var settings = new ProxyTunSettingsDto("gvisor", DeviceName, false, false, false, "", 1500);
-        var source = IPAddress.Parse(input.Source);
-        var destination = IPAddress.Parse(input.Destination);
         await RefusesAsync("runtime.network_transaction_required", () => MihomoManagedTunPlan.FreezeAsync(
-            input.Operation, input.Plan, draft, ProxyTunSettingsDto.Default, snapshot, source, destination, CancellationToken.None));
+            input.Operation, input.Plan, draft, ProxyTunSettingsDto.Default, snapshot, CancellationToken.None));
+        await RefusesAsync("runtime.network_scope_changed", () => MihomoManagedTunPlan.FreezeAsync(
+            input.Operation, input.Plan, draft, settings with { DeviceName = "other-device" }, snapshot, CancellationToken.None));
         await RefusesAsync("runtime.management_route_unknown", () => MihomoManagedTunPlan.FreezeAsync(
-            input.Operation, input.Plan, draft, settings, snapshot, source, IPAddress.Parse(snapshot.DefaultGateway), CancellationToken.None));
-        var frozen = await MihomoManagedTunPlan.FreezeAsync(input.Operation, input.Plan, draft, settings, snapshot, source, destination,
-            CancellationToken.None, dnsRoutingDomain: "tun.fixture.test");
+            input.Operation, input.Plan, draft, settings, snapshot with { DefaultGateway = input.Address }, CancellationToken.None));
+        var frozen = await MihomoManagedTunPlan.FreezeAsync(input.Operation, input.Plan, draft, settings, snapshot, CancellationToken.None);
         Console.WriteLine(System.Text.Encoding.UTF8.GetString(RuntimeJson.Serialize(frozen)));
     }
 
-    private sealed record FreezeInput(Guid Operation, RuntimeConfigurationPlan Plan, string Yaml, string Source, string Destination, string Management);
+    private sealed record FreezeInput(Guid Operation, RuntimeConfigurationPlan Plan, string Yaml, string Address, string Management);
+
+    [SupportedOSPlatform("linux")]
+    private static async Task WriteScopeAsync(LinuxMihomoTunScope scope)
+    {
+        await File.WriteAllBytesAsync(LinuxMihomoTunScope.Path, RuntimeJson.Serialize(scope));
+        File.SetUnixFileMode(LinuxMihomoTunScope.Path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherRead);
+    }
 
     [SupportedOSPlatform("linux")]
     internal static async Task CheckpointAsync(string root, Guid operation, string action)

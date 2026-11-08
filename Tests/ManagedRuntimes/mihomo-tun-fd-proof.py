@@ -30,6 +30,7 @@ address = '198.18.0.1'
 script = root / 'mihomo-tun-fd-proof.py'
 journal = root / 'tun-operation.json'
 config = archive / 'active.yaml'
+scope_policy = Path('/etc/relaxkonos/mihomo-tun-network.json')
 
 
 def command(*args):
@@ -318,6 +319,7 @@ def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, que
     probe('before')
     owner.kill()
     assert owner.wait(timeout=5) == -signal.SIGKILL
+    scope_policy.unlink()
     assert journal.read_bytes() == original and checkpoint(record, 'state') == 'DnsDispatched'
     assert checkpoints == [file.read_bytes() for file in initial_files]
     archive_state = archive / 'state' / 'archive-state.json'
@@ -475,6 +477,7 @@ rules:
         assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', 'before.tun.fixture.test')
         owner.kill()
         assert owner.wait(timeout=5) == -signal.SIGKILL
+        scope_policy.unlink()
         assert journal.read_bytes() == original
         archive_state = archive / 'state' / 'archive-state.json'
         pending = archive_state.read_bytes()

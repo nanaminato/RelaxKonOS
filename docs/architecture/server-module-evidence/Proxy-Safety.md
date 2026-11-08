@@ -43,6 +43,7 @@
 - [MB-04 TUN 策略规则归属及删除中断](#mb-04-tun-策略规则归属及删除中断)
 - [MB-04 TUN 分流 DNS 归属](#mb-04-tun-分流-dns-归属)
 - [MB-04 TUN DNS 应答中断与 resolver 换代](#mb-04-tun-dns-应答中断与-resolver-换代)
+- [MB-04 受管 TUN 宿主范围](#mb-04-受管-tun-宿主范围)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -445,6 +446,24 @@ Windows ManagedRuntimes Release 通过，含 104 项配置事务。可信下载�
 `full` 原操作 `6bdcae6f539240418968af3b76813574` 同批通过。三轮均核对专属 cgroup 清理及宿主共享服务、代理和 resolver 文件指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-dns-ack-linux.log`，归档 SHA-256 `071c02f28dce63e6260643f98f0659ff680642884625cce0fec9333f96fdfdd7`。Windows ManagedRuntimes Release 通过，含 104 项配置事务检查，可信下载探针因缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-dns-ack-win.log`。
 
 生产范围、发布入口、成功提交后生命周期、同键 HTTP 与实际工作租约仍待联合验收。公开准入和成功提交门禁继续生效，Proxy 保持 resident。已确认专属进程退出，对象释放、ALC 回收、隔离负载内存与生产内存收益未测量。
+
+## MB-04 受管 TUN 宿主范围
+
+Server 规划器从固定的 `/etc/relaxkonos/mihomo-tun-network.json` 冻结设备、源和目标 IPv4、管理 UID 及可选分流域。Server 以实际 UID 核对策略及管理选路，Helper 依据独立读取的同一宿主策略复核原授权。文件严格解析且限 4 KiB，读取依次固定 root 所有且不可由组或其他用户写入的目录描述符，拒绝符号链接和非普通文件。原恢复路径仍由原归档检查点、旧配置授权和原网络效果归属裁决。
+
+**已实现且已验证。** Linux x64 三个独立私有 systemd 环境均拒绝缺失、组可写及符号链接策略。非特权规划器拒绝设备名不符和管理网关重叠。冻结后替换目标地址，真实 Helper 的前置检查及激活均返回 `runtime.network_scope_changed`，旧 PID、配置字节和原操作目录内容保持。恢复合法策略后实际运行候选，原 Helper 强制中断后撤掉策略文件，核对管理路由、原配置和真实上游。
+
+| 路径 | 原 operationId | 原候选身份与结果 |
+| --- | --- | --- |
+| 已应用 | `c69aab810cc34b4e8b90d488b6b7f4de` | `de91273a5cc05c8eb38deaccfd20d9768a47d54dfacf492797bae2f8a14f37de`，PID 249，ifindex 4。实际 HTTP 和分流 DNS 各三次，跨中断的原回执先待核验、后 `Interrupted`，具名停止与规则删除无重放 |
+| DNS 写入后应答丢失 | `16fbf99ab9fc4b29a431a0f6044fc7d3` | `b3c137058f21aba31d5d158f8befa7f5b1269e846747803459b542a92e268b86`，PID 253，ifindex 4。分流域漂移保持原待核验，原 resolver 设置恢复后只读确认并返回原 `Interrupted` |
+| resolver 换代 | `e889655d1f3640828d847fe7648d55dc` | `9d140ab7f718d9645ed87477971b9af04f686f9f7dcbeb010127de75f92c791b`，PID 250，ifindex 4。设置与流量一致仍返回原 `RecoveryRequired`，未重发 DNS、停止或规则删除 |
+
+首轮夹具把预建的空原操作目录误判为 Helper 写入，旧服务仍在运行且宿主清理通过。调整断言后最终三轮通过。三轮专属 cgroup 均清理，宿主共享服务、代理和 resolver 文件指纹一致。最终归档 SHA-256 为 `ab8cd5c581cb0b2e3d23cb6d3ddeab688ac79904b2b445ee40217b88be762a06`。日志在 `.artifacts/mb04-tun-marker-sync/`，首轮 `host-scope-linux.log`，最终 `host-scope-linux-final.log` 和 `host-scope-windows-final.log`。Windows Release 包含 104 项配置事务检查，可信下载探针因缺进程级测试 CA 覆盖跳过。
+
+**已实现但实机未验证。** Linux arm64 的策略读取分支已实现，本轮实机为 x64。
+
+**未实现或仍受门禁保护。** 成功提交后的持久归属定位、生命周期、公开发布、同键 HTTP 和该入口的实际工作租约仍待验收。已确认专属进程退出。对象释放、ALC 回收、隔离负载内存及生产内存收益未测量。Proxy 保持 resident。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

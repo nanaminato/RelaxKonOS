@@ -13,11 +13,8 @@ public static class MihomoRuntimeMaterial
     {
         if (operationId == Guid.Empty || plan.RuntimeId != "mihomo" || plan.ActiveRevisionId == Guid.Empty
             || !IsDigest(plan.CandidateIdentity) || !IsDigest(intent.ManagementHash)
-            || intent.Device is not { Length: > 0 and < 16 } device || !char.IsAsciiLetterOrDigit(device[0])
-            || device.Any(ch => !char.IsAsciiLetterOrDigit(ch) && ch is not ('-' or '_' or '.'))
-            || !CanonicalIPv4(intent.Address) || !CanonicalIPv4(intent.Destination) || !CanonicalIPv4(intent.ManagementAddress)
-            || intent.DnsRoutingDomain is { } domain && !ValidDnsRoutingDomain(domain)
-            || intent.Address == intent.Destination || intent.Address == intent.ManagementAddress || intent.Destination == intent.ManagementAddress)
+            || !ValidTunScope(intent.Device, intent.Address, intent.Destination, intent.DnsRoutingDomain)
+            || !CanonicalIPv4(intent.ManagementAddress) || intent.Address == intent.ManagementAddress || intent.Destination == intent.ManagementAddress)
             throw new RuntimePolicyException("runtime.network_intent_invalid");
         return Convert.ToHexString(SHA256.HashData(RuntimeJson.Serialize(new
         {
@@ -37,6 +34,12 @@ public static class MihomoRuntimeMaterial
     }
 
     private static bool IsDigest(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
+
+    internal static bool ValidTunScope(string device, string address, string destination, string? dnsRoutingDomain) =>
+        device is { Length: > 0 and < 16 } && char.IsAsciiLetterOrDigit(device[0])
+        && device.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')
+        && CanonicalIPv4(address) && CanonicalIPv4(destination) && address != destination
+        && (dnsRoutingDomain is null || ValidDnsRoutingDomain(dnsRoutingDomain));
 
     public static bool ValidDnsRoutingDomain(string domain)
     {

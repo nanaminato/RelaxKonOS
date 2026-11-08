@@ -308,6 +308,9 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             || grant.Candidate is not { } material || grant.TunIntent is not { } network)
             throw new RuntimePolicyException("runtime.authorization_unavailable");
         MihomoRuntimeMaterial.RequireConfigurationTunIntent(pending.OperationId, pending.Plan, material, network);
+        if (!OperatingSystem.IsLinux()) throw new RuntimePolicyException("runtime.network_platform_unsupported");
+        if (!LinuxMihomoTunScope.Read().Matches(network))
+            throw new RuntimePolicyException("runtime.network_scope_changed");
         return (material, network);
     }
 
