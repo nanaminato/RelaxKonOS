@@ -77,7 +77,7 @@ internal static class MihomoTunFullServerAcceptance
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
-            or "squid-new" or "squid-cut" or "squid-restart"))
+            or "squid-new" or "squid-cut" or "squid-restart" or "zero-dns-publish" or "zero-dns-recover"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
@@ -99,8 +99,11 @@ internal static class MihomoTunFullServerAcceptance
         await using var squidRelay = phase == "squid-cut" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-squid-reply.sock", socket, ct, (operation, _) => operation == "SquidApplyConfiguration",
             holdConfirmedSquidRollback: true) : null;
-        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? expiryRelay?.Path ?? squidRelay?.Path ?? socket, root,
-            reuse: !first && phase is not ("admission" or "squid-new"), seedProxyServer: false);
+        await using var recoveryRelay = phase == "zero-dns-recover" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+            "/run/rk-zero-dns-reply.sock", socket, ct, (operation, _) => operation == "MihomoRuntimeRecover") : null;
+        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly,
+            relay?.Path ?? expiryRelay?.Path ?? squidRelay?.Path ?? recoveryRelay?.Path ?? socket, root,
+            reuse: !first && phase is not ("admission" or "squid-new" or "zero-dns-publish"), seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
         if (phase is "admission-managed" or "handoff-disabled" or "handoff-restart")
@@ -131,15 +134,17 @@ internal static class MihomoTunFullServerAcceptance
         {
             await WriteMarkerAsync(root, "full-server-pid", server.Id.ToString());
             var exited = server.WaitForExitAsync(ct);
-            if (squidRelay is not null)
+            var committedReply = squidRelay ?? recoveryRelay;
+            if (committedReply is not null)
             {
-                if (await Task.WhenAny(squidRelay.Committed.Task, exited) == exited)
-                    throw new InvalidOperationException("Full Server stopped before the Squid publication reached the relay.");
-                var original = await squidRelay.Committed.Task.WaitAsync(ct);
-                await WriteMarkerAsync(root, "full-squid-response-held", original.ToString("N"));
+                if (await Task.WhenAny(committedReply.Committed.Task, exited) == exited)
+                    throw new InvalidOperationException("Full Server stopped before the original response reached the relay.");
+                var original = await committedReply.Committed.Task.WaitAsync(ct);
+                var marker = recoveryRelay is not null ? "full-zero-dns-recovery-held" : "full-squid-response-held";
+                await WriteMarkerAsync(root, marker, original.ToString("N"));
                 await exited;
                 if (server.ExitCode == 137) return;
-                throw new InvalidOperationException($"Expected SIGKILL at the Squid publication boundary, got {server.ExitCode}.");
+                throw new InvalidOperationException($"Expected SIGKILL at the original response boundary, got {server.ExitCode}.");
             }
             if (expiry is not null)
             {
@@ -174,6 +179,7 @@ internal static class MihomoTunFullServerAcceptance
                 relay.ReleaseHeldResponse();
             }
             await exited;
+            if (phase == "zero-dns-publish" && server.ExitCode == 137) return;
             if (disabled && server.ExitCode != 0 && startupRefusal.Task.IsCompletedSuccessfully)
             {
                 await WriteMarkerAsync(root, "full-startup-refused", await startupRefusal.Task);

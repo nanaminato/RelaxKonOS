@@ -762,7 +762,19 @@ Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 
 
 同版复验描述符派发后候选退出 `74ab0ca3b6b34f9183a90016487a6fd5`、部分 DNS 原候选停止 `5a6d8262ac87488a8cadb56226f3ff5e`、认证 HTTP 补偿 `47342785f4794787acf6009eb38224b9` 和成功发布 `b46e6cb598b342f197c7e59199efbf59`。认证场景覆盖真实上游 HTTP、分流 DNS 和原回执。五场专属 cgroup 清理及宿主服务指纹核对通过。日志为 `.artifacts/mb04-tun-before-dns-live-stop/linux.log`，归档 SHA-256 为 `02aafdaabb979ab646e068c7ad6b3ac9f1ea220b9903ef9119b90ec12abf82e7`。Windows Release 全套回归通过，含配置事务 106 项和发布事务 113 项。可信下载探针因本机缺少进程级 CA 覆盖跳过。
 
-**未实现或待验。** 缺少描述符交付前原基线的同类操作继续待核验。完整认证 Server 队列中零 DNS 补偿与在途租约的联合中断路径、整机掉电及其他 Linux 架构待验。对象释放、ALC 回收、隔离内存和生产收益未测量。Proxy 保持 resident。
+**未实现或待验。** 缺少描述符交付前原基线的同类操作继续待核验。完整认证 Server 队列续验见下节。整机掉电及其他 Linux 架构待验。对象释放、ALC 回收、隔离内存和生产收益未测量。Proxy 保持 resident。
+
+### 完整认证队列的零 DNS 补偿与工作租约
+
+2026-11-09 在既有 Linux 测试机的私有 systemd、真实 Mihomo、独立 root Helper 与非 root Release Server 运行 `ipc-http-zero-dns`。使用隔离 PAM 普通账号获取 JWT，通过生产 TUN HTTP 路由受理原操作 `cdce4c3d02774d96ab807d7257aa992d`。在真实 TUN 描述符交付且候选能转发 HTTP、DNS 尚未派发时暂停 Helper，先终止 Server 再终止 Helper。切断前租约至少两份。同键返回原操作。只重启 Helper 后，候选仍通过 TUN 到达真实上游，原归档状态、解析器快照和 Server 镜像保持一致。
+
+Server 重启以原 ID 发起补偿。AF_UNIX 中继在 Helper 持久保存原 `Interrupted` 回执后截留原应答，传输关联号为 `1836e696ba604b10b9372b83a0ffe04f`。HTTP 原操作处于 `interrupted / managed_tun` 且无结束时间，工作租约仍在。同键仍返回原操作，异键以 `proxy.operation_interrupted` 被拒绝。核对原配置 SHA-256、原网络和解析器快照，确认候选退出、原规则恰好删除一次、没有 DNS 写入或 `tun-4.json`，也没有再次配置或增加第二次补偿。
+
+在应答仍截留时再次终止 Server，重启 Helper 和 Server。Server 以只读查询确认同一归档终态。同键继续返回原操作，HTTP 原回执最终为 `failed / proxy.config_apply_failed` 且有结束时间，工作租约随后归零。恢复的 Mihomo PID 为 `645`，真实上游 HTTP 经恢复后的普通代理转发成功。清理检查确认专属 cgroup 已移除，共享运行时服务、系统代理与解析器文件保持原状。首次试跑暴露夹具写入空断点标记，修正后复跑又校正了原生 `Interrupted` 与 HTTP 补偿终态的断言。重新打包仅含本阶段变更的制品时发现缺少 Helper 测试程序集引用，补齐既有制品后通过。该独立复验的原操作为 `6fa27f965b7d4b5a96abcbb998fcc71f`，补偿传输关联号为 `38eb6113e16443bd93cbc6652adb70f3`，恢复的 Mihomo PID 为 `641`。
+
+- **已实现且已验证**。Windows Release ManagedRuntimes 回归及 Linux Release 专项均通过。上传测试归档 SHA-256 为 `aa0df0dd366b1fe6d925a5d8cca2b26a95b5addc3cba8e0533d3840e375bfc19`，Linux 原始输出 SHA-256 为 `e06c2f212019175db33727daf5ba9f9f411ca5bd623295311aaa3ff834af127e`。仅含本阶段变更的复验归档 SHA-256 为 `9c84c9b8c566e34976c3834e16da57bf2e666282bce2d0424bb34c150654e36d`，原始输出 `.artifacts/mb04-tun-full-zero-dns/linux-staged-retest.log` 的 SHA-256 为 `d565c0c5c2deb734b1c627e8b16ba89f8a9e5e7a5b4bb5d7004721632a3188cc`。进程退出已验证，分别观察到候选退出及旧 Server、Helper 结束。
+- **已实现但实机未验证**。此专项只覆盖 DNS 派发前的零写入补偿；整机掉电不在此次运行范围。工作租约归零是责任排空证据。对象释放和 ALC 回收本次未测。
+- **未实现或阻塞**。整模块安全交接仍待验收，Proxy 保持 resident。此专项未测隔离内存差值和生产内存收益。
 
 ## MB-04 受管 TUN 认证 HTTP 补偿
 

@@ -201,6 +201,15 @@ def install_rule_failure_boundary():
     wrapper.write_text(f'''#!/bin/bash
 set -eu
 real={shlex.quote(str(original))}
+broker={shlex.quote(str(root / 'full-zero-dns-broker'))}
+if [[ -f "$broker" && "$PPID" == "$(cat "$broker")" && "$*" == "-j link show dev {device}" ]] &&
+    compgen -G "{archive}/operations/*/tun-3.json" >/dev/null; then
+    "$real" "$@"
+    printf '%s\n' ready > {shlex.quote(str(root / 'full-zero-dns-live'))}
+    parent=$PPID
+    while kill -0 "$parent" 2>/dev/null; do sleep .05; done
+    exit 0
+fi
 if [[ "$*" == "-4 rule del priority 11000 to {target}/32 lookup "* ]]; then
     if [[ -f {shlex.quote(str(root / 'interrupt-before-rule-delete'))} ]]; then
         touch {shlex.quote(str(root / 'rule-delete-before-kernel'))}
@@ -1920,6 +1929,7 @@ def proof_full_http_shutdown(ipc, case):
     removal_http = case == 'ipc-http-retained-installation'
     retained_removal = removal_http or case == 'ipc-http-retained'
     squid = case == 'ipc-http-squid'
+    zero_dns = case == 'ipc-http-zero-dns'
     assert any(line.split()[4] == '/etc' and ' - overlay ' in line
                for line in Path('/proc/self/mountinfo').read_text().splitlines())
     base = 'http://192.0.2.2:18970'
@@ -2007,6 +2017,83 @@ def proof_full_http_shutdown(ipc, case):
         assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
                        f'http://{target}:18880/mb04-{phase}') == 'upstream-through-inherited-tun'
         assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
+
+    def verify_zero_dns(pid, publication):
+        nonlocal worker, token
+        key = 'full-publish'
+        marker('full-zero-dns-live')
+        operation_dir = archive / 'operations' / publication
+        effect = json.loads((operation_dir / 'tun-3.json').read_text())
+        record = json.loads(journal.read_bytes())
+        record['operation'] = publication
+        sync_record(record)
+        prepare(effect['InterfaceIndex'], ipc.helper.pid)
+        record = json.loads(journal.read_bytes())
+        state_file = archive / 'state' / 'archive-state.json'
+        pending_state = state_file.read_bytes()
+        resolver_before = resolver_snapshot()
+        original_mirror = mirror.read_bytes()
+        assert not (operation_dir / 'tun-4.json').exists() and leases() >= 2
+        assert read(publication)['state'] == 'running'
+        assert submit('enable', key, {'profileId': profile}) == publication
+
+        def forward(phase):
+            observe_runtime(record)
+            assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
+                           f'http://{target}:18880/mb04-zero-dns-{phase}') == 'upstream-through-inherited-tun'
+
+        forward('before')
+        os.kill(pid, signal.SIGKILL)
+        assert worker.wait(timeout=8) == 0
+        original_helper_pid = ipc.helper.pid
+        ipc.stop_helper()
+        (root / 'full-zero-dns-broker').unlink()
+        ipc.start_helper()
+        assert ipc.helper.pid != original_helper_pid and state_file.read_bytes() == pending_state
+        forward('after-helper-restart')
+        assert resolver_snapshot() == resolver_before and mirror.read_bytes() == original_mirror
+        worker = launch('zero-dns-recover')
+        recovery_pid = int(marker('full-server-pid'))
+        correlation = marker('full-zero-dns-recovery-held')
+        token = login()
+        waiting = read(publication)
+        assert waiting['state'] == 'interrupted' and waiting['stage'] == 'managed_tun' and not waiting.get('completedAt'), waiting
+        assert leases() >= 1 and submit('enable', key, {'profileId': profile}) == publication
+        status, blocked = request(api + '/tun/enable', token, 'full-while-recovering', {'profileId': profile})
+        assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+        observed = json.loads(checkpoint(record, 'observe-commit'))
+        receipt = observed['receipt']
+        assert observed['configurationIdentity'].lower() == hashlib.sha256(original_mirror).hexdigest()
+        assert uuid.UUID(receipt['operationId']).hex == publication and receipt['outcome'] == 'Interrupted'
+        assert config.read_bytes() == original_mirror and network_baseline() == record['baseline']
+        assert resolver_snapshot() == resolver_before and not Path('/proc', str(record['service'][0])).exists()
+        assert not (root / 'dns-write-attempts').exists() and not (operation_dir / 'tun-4.json').exists()
+        assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+        assert ipc.log.read_text().count(f'operation=MihomoRuntimeRecover id={uuid.UUID(correlation)} ') == 1
+        assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
+        restored = service_identity()
+        terminal_state = state_file.read_bytes()
+
+        os.kill(recovery_pid, signal.SIGKILL)
+        assert worker.wait(timeout=8) == 0
+        ipc.stop_helper()
+        ipc.start_helper()
+        worker = launch('restart')
+        restart_pid = int(marker('full-server-pid'))
+        token = login()
+        original = until(lambda: (reply if (reply := read(publication)).get('completedAt') else None),
+                         'original compensated queue receipt')
+        until(lambda: leases() == 0, 'recovery work lease release')
+        assert original['state'] == 'failed' and original['problemCode'] == 'proxy.config_apply_failed', original
+        assert submit('enable', key, {'profileId': profile}) == publication
+        assert read(publication) == original and service_identity() == restored and state_file.read_bytes() == terminal_state
+        assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text() and 'operation=MihomoRuntimeRecover ' not in ipc.log.read_text()
+        assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
+                       '--max-time', '3', f'http://{target}:18880/mb04-zero-dns-restored') == 'upstream-through-inherited-tun'
+        os.kill(restart_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        print(f'PASS TUN FULL JWT ZERO DNS: original={publication}; recovery IPC={correlation}; '
+              f'restored PID={restored[0]}; one rule removal, original receipt and work lease drained')
 
     def launch(phase):
         (root / 'full-server-pid').unlink(missing_ok=True)
@@ -2665,7 +2752,8 @@ def proof_full_http_shutdown(ipc, case):
         print(f'PASS SQUID NATIVE UNKNOWN: original={unknown}; configuration={unknown_digest}; PID={original_pid}; '
               'real upstream after Helper exit; both ledgers unchanged and no replay')
 
-    worker = launch('squid-new' if squid else 'admission' if admission or handoff or retained_removal else 'drain')
+    worker = launch('zero-dns-publish' if zero_dns else 'squid-new' if squid
+                    else 'admission' if admission or handoff or retained_removal else 'drain')
     first_worker = worker
     try:
         pid = int(marker('full-server-pid'))
@@ -2685,7 +2773,12 @@ with sqlite3.connect(sys.argv[1]) as database:
     database.execute("INSERT INTO proxy_profiles VALUES(?, 'Private TUN', 'mihomo', 1, 1, ?, ?)",
                      (sys.argv[2], sys.argv[3], sys.argv[3]))
 ''', str(database), profile, timestamp], **ipc.identity, check=True, timeout=8)
+        if zero_dns:
+            (root / 'full-zero-dns-broker').write_text(str(ipc.helper.pid))
         publication = submit('enable', 'full-publish', {'profileId': profile})
+        if zero_dns:
+            verify_zero_dns(pid, publication)
+            return
         until(lambda: terminal(publication), 'original publication')
         record = json.loads(journal.read_bytes())
         record['operation'] = publication
@@ -2809,7 +2902,8 @@ def proof():
         ip('netns', 'exec', 'rk-http-client', 'ip', 'address', 'add', '192.0.2.1/24', 'dev', 'rk-peer')
     if case in ('dns-receipt', 'dns-owner', 'dns-registration', 'ipc-server-pending', 'ipc-http-pending'):
         install_dns_ack_boundary()
-    if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited', 'dns-partial-live', 'descriptor-live-stop'):
+    if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited', 'dns-partial-live',
+                'descriptor-live-stop', 'ipc-http-zero-dns'):
         install_dns_ack_boundary(hold_reply=False)
     if case == 'dns-partial-inflight':
         install_dns_ack_boundary(hold_method='SetLinkDomains')
@@ -2930,7 +3024,7 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
+            if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-squid'):
                 proof_full_http_shutdown(ipc, case)
                 return

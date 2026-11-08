@@ -4557,7 +4557,7 @@ Linux Server 内部发布协调器已接入冻结 TUN 意图、原发布回执�
 
 Linux 非 root Server 可经固定 AF_UNIX 通道调用独立 Helper，按原发布 ID 恢复受管 TUN。提交后的具名启停和重启复用该通道及原发布授权。客户端公开入口和同键 HTTP 仍待联合验收。见[分进程实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-af_unix-发布与恢复)。
 
-Linux 受管启用、停用及紧急停用使用现有认证 TUN 路由。首次启用仅处理当前活动 Mihomo 档案，并要求宿主范围显式允许发布。客户端断连后，使用相同键查询原队列操作；同键改换操作者、动作或档案会返回冲突。受管停用由 Helper 核对当前归属并停止，已提交的配置保持可供再次启用。见[认证 HTTP 实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http)。
+Linux 受管启用、停用及紧急停用使用现有认证 TUN 路由。首次启用仅处理当前活动 Mihomo 档案，并要求宿主范围显式允许发布。客户端断连后，使用相同键查询原队列操作；同键改换操作者、动作或档案会返回冲突。受管停用由 Helper 核对当前归属并停止，已提交的配置保持可供再次启用。见[认证 HTTP 实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http)。完整认证 Server 已验证 DNS 派发前原候选真实转发及中断补偿。Helper 补偿已落盘而应答丢失时，队列继续保留原租约，重启后凭原回执关闭同键操作。见[完整认证队列实机证据](../architecture/server-module-evidence/Proxy-Safety.md#完整认证队列的零-dns-补偿与工作租约)。
 
 Server 重启后，尚待 Helper 核验的受管 TUN 操作保留原 ID 和空完成时间。首次启用保留 `managed_tun`，具名启停保留 `managed_tun_action`。恢复完成前的新键会收到 `proxy.operation_interrupted`。如果 Helper 按原发布 ID 补偿并确认恢复了旧配置，原启用操作终止为 `proxy.config_apply_failed`。如果具名启停已在 Helper 确认，Server 通过原队列 ID 只读确认同动作回执并结案。
 
