@@ -22,6 +22,9 @@ internal static class MihomoRuntimeOperations
         var valid = request.Operation switch
         {
             PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.MihomoRuntimeTunStop => input is null,
+            PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart =>
+                input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: null, Confirmed: false,
+                    RecoveryOperationId: null, CancelOperationId: null, MihomoTunPublicationId: { } publication } && publication != Guid.Empty,
             PrivilegedOperationKind.MihomoRuntimeConfigure => input is { SourceId: null, Plan: null, Authorization: not null,
                 FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: null, ConfigurationPlan: { RuntimeId: "mihomo" } },
             PrivilegedOperationKind.MihomoRuntimePlan => input is { Plan: not null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: null }
@@ -58,6 +61,9 @@ internal static class MihomoRuntimeOperations
             {
                 PrivilegedOperationKind.MihomoRuntimeQuery => Json(await lifecycle.QueryAsync(default, id)),
                 PrivilegedOperationKind.MihomoRuntimeTunStop => Json(await lifecycle.StopCommittedTunAsync(id, default, progress)),
+                PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart =>
+                    Json(await lifecycle.StartCommittedTunAsync(id, input!.MihomoTunPublicationId!.Value,
+                        request.Operation == PrivilegedOperationKind.MihomoRuntimeTunRestart, input.Authorization!, default, progress)),
                 PrivilegedOperationKind.MihomoRuntimeConfigure => Json(await lifecycle.ConfigureAsync(id, input!.ConfigurationPlan!, input.Authorization!, default, progress)),
                 PrivilegedOperationKind.MihomoRuntimePlan => Json(await lifecycle.PlanAsync(input!.SourceId!, input.Plan!, default)),
                 PrivilegedOperationKind.MihomoRuntimeExecute => Json(await lifecycle.ExecuteAsync(id, input!.FrozenPlan!, input.Authorization!, default, progress, request.DownloadProxy)),

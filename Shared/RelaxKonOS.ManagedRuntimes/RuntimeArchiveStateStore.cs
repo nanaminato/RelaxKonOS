@@ -120,6 +120,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                 || !Enum.IsDefined(r.Outcome) || r.Outcome == RuntimeSwitchOutcome.RecoveryRequired)
             || state.Receipts.Select(r => r.OperationId).Distinct().Count() != state.Receipts.Length
             || state.Receipts.Select(r => r.IdempotencyHash).Distinct().Count() != state.Receipts.Length
+            || !ValidTunStarts(state)
             || state.ActiveMihomoTun is { } tun && (installation.RuntimeId != "mihomo" || installation.Target.Os != "linux"
                 || tun.OperationId == Guid.Empty || state.Active?.RevisionId != tun.RevisionId
                 || state.ConfigurationIdentity != tun.ConfigurationIdentity || !Digest(tun.NetworkIntentIdentity)
@@ -212,6 +213,17 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
         else if (installation.RecoveryRequired) throw new RuntimePolicyException("runtime.transaction_state_invalid");
     }
 
+    private static bool ValidTunStarts(RuntimeArchiveState state)
+    {
+        var starts = state.MihomoTunStarts;
+        return starts is { Length: <= 256 } && (starts.Length == 0 || state.ActiveMihomoTun is not null)
+            && starts.All(start => start is not null && start.OperationId != Guid.Empty && Enum.IsDefined(start.Stage)
+                && (start.Restart || start.Stage != RuntimeMihomoTunStartStage.Stopping)
+                && !state.Receipts.Any(receipt => receipt.OperationId == start.OperationId))
+            && starts.Select(start => start.OperationId).Distinct().Count() == starts.Length
+            && starts.Take(starts.Length - 1).All(start => start.Stage == RuntimeMihomoTunStartStage.Succeeded);
+    }
+
     private static bool Digest(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
     private static bool Same(RuntimeStoredRevision? left, RuntimeStoredRevision? right) =>
         RuntimeJson.Serialize(left).AsSpan().SequenceEqual(RuntimeJson.Serialize(right));
@@ -249,9 +261,34 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                     || state.ConfigurationIdentity != publication.CandidateHash))
                 throw new RuntimePolicyException("runtime.publication_receipt_conflict");
             Validate(state);
+            if (!ValidTunStartTransition(State?.MihomoTunStarts ?? [], state.MihomoTunStarts))
+                throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
             store.PersistCommittedWitness(State, state);
             store.WriteCore(state);
             State = state;
+        }
+
+        private static bool ValidTunStartTransition(RuntimeMihomoTunStart[] previous, RuntimeMihomoTunStart[] next)
+        {
+            if (previous.SequenceEqual(next)) return true;
+            if (previous.Length + 1 == next.Length && previous.SequenceEqual(next.Take(previous.Length)))
+                return previous.LastOrDefault() is null or { Stage: RuntimeMihomoTunStartStage.Succeeded }
+                    && next[^1].Stage == (next[^1].Restart ? RuntimeMihomoTunStartStage.Stopping : RuntimeMihomoTunStartStage.Launching);
+            return previous.Length == next.Length && previous.Length != 0
+                && previous.Take(previous.Length - 1).SequenceEqual(next.Take(next.Length - 1))
+                && previous[^1].Stage != RuntimeMihomoTunStartStage.Succeeded
+                && next[^1] == previous[^1] with { Stage = previous[^1].Stage + 1 };
+        }
+
+        public void RecordMihomoTunStart(RuntimeMihomoTunStart start)
+        {
+            var current = State ?? throw new RuntimePolicyException("runtime.state_unknown");
+            var prior = current.MihomoTunStarts;
+            RuntimeMihomoTunStart[] next = prior.LastOrDefault()?.OperationId == start.OperationId
+                ? [.. prior.Take(prior.Length - 1), start] : [.. prior, start];
+            Save(current with { MihomoTunStarts = next, Installation = current.Installation with
+                { StateRevision = checked(current.Installation.StateRevision + 1) } });
+            SyncDirectory();
         }
         // Intent and failed-attempt evidence do not change the observed installation revision.
         // A successful native configuration commit still advances the revision through Save.

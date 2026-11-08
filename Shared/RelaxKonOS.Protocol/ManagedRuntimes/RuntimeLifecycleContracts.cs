@@ -36,7 +36,8 @@ public sealed record RuntimeSwitchResult(Guid OperationId, RuntimeSwitchOutcome 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record RuntimeLifecycleRequest(string? SourceId = null, RuntimePlanRequest? Plan = null,
     RuntimeAuthorizationChannel? Authorization = null, RuntimeChangePlan? FrozenPlan = null, Guid? RecoveryOperationId = null,
-    bool Confirmed = false, Guid? CancelOperationId = null, RuntimeConfigurationPlan? ConfigurationPlan = null);
+    bool Confirmed = false, Guid? CancelOperationId = null, RuntimeConfigurationPlan? ConfigurationPlan = null,
+    Guid? MihomoTunPublicationId = null);
 
 /// <summary>
 /// Whether a cancellation request was recorded for one transaction. It says nothing about the outcome:

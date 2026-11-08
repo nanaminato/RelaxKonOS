@@ -28,7 +28,7 @@ public static class MihomoConfigurationPolicy
         return description;
     }
 
-    internal static void RequireDescriptorTun(MihomoPublishedRuntime published, string device)
+    public static void RequireDescriptorTun(MihomoPublishedRuntime published, string device)
     {
         var description = Validate(published);
         var root = MihomoYaml.Parse(published.Yaml);

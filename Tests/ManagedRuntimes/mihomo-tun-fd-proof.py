@@ -380,7 +380,7 @@ def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, que
     assert len(Upstream.hits) == 3 and len(set(queries)) == 3
 
 
-def proof_committed(owner, operation, operation_dir, stop):
+def proof_committed(owner, operation, operation_dir, case):
     state_path = archive / 'state' / 'archive-state.json'
     deadline = time.monotonic() + 15
     while True:
@@ -429,27 +429,31 @@ def proof_committed(owner, operation, operation_dir, stop):
     assert json.loads(checkpoint(record, 'retry')) == receipt
     assert state_path.read_bytes() == terminal and [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))] == initial
     assert service_identity() == record['service'] and not (root / 'rule-delete-attempts').exists()
-    if stop:
+    if case in ('committed-stop', 'committed-start'):
         ip('link', 'set', 'dev', device, 'alias', original_alias)
         proof_committed_stop(record, observed, state_path, terminal, operation_dir, initial)
+    if case == 'committed-start':
+        proof_committed_start(record, observed, state_path)
     print(f'PASS TUN COMMITTED OWNERSHIP: {operation}, PID={record["service"][0]}, ifindex={record["ifindex"]}, '
           f'credential={record["credential"]}; original success after response loss, live drift reported separately')
+
+
+def stop_native(operation_id):
+    request = {'version': '1.1', 'operation': 'MihomoRuntimeTunStop', 'operationId': str(uuid.UUID(operation_id)),
+               'correlation': {'correlationId': str(uuid.uuid4())}}
+    return subprocess.run([launcher], input=json.dumps(request), capture_output=True, text=True, timeout=20)
+
+
+def helper_result(process):
+    return json.loads(process.stdout.splitlines()[-1])['Result']
 
 
 def proof_committed_stop(record, observed, state_path, terminal, operation_dir, initial):
     operation = record['operation']
     pid = record['service'][0]
 
-    def stop_native(operation_id):
-        request = {'version': '1.1', 'operation': 'MihomoRuntimeTunStop', 'operationId': str(uuid.UUID(operation_id)),
-                   'correlation': {'correlationId': str(uuid.uuid4())}}
-        return subprocess.run([launcher], input=json.dumps(request), capture_output=True, text=True, timeout=20)
-
-    def result(process):
-        return json.loads(process.stdout.splitlines()[-1])['Result']
-
     wrong = stop_native(str(uuid.uuid4()))
-    assert wrong.returncode == 1 and result(wrong)['error'] == 'runtime.recovery_target_conflict'
+    assert wrong.returncode == 1 and helper_result(wrong)['error'] == 'runtime.recovery_target_conflict'
     observe(record)
     other_dns = (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress'))
     os.kill(pid, signal.SIGSTOP)  # Keep the real SIGTERM pending while the first worker is interrupted.
@@ -464,7 +468,7 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
         assert pending['installation']['ownership'] == 'Unknown' and pending['problemCode'] == 'runtime.network_stop_unconfirmed'
         assert pending['receipt'] == observed['receipt']
         refused = stop_native(operation)
-        assert refused.returncode == 1 and result(refused)['error'] == 'runtime.network_stop_unconfirmed', (
+        assert refused.returncode == 1 and helper_result(refused)['error'] == 'runtime.network_stop_unconfirmed', (
             refused.returncode, refused.stdout, refused.stderr)
         assert checkpoint(record, 'state') == 'StopDispatched' and service_identity() == record['service']
         assert network_baseline(record['routing_table']) == record['baseline']
@@ -479,14 +483,14 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
     rule = ('priority', '11000', 'to', target + '/32', 'lookup', str(record['routing_table']), 'protocol', '186')
     command(root / 'ip-real', '-4', 'rule', 'add', *rule)
     refused = stop_native(operation)
-    assert refused.returncode == 1 and result(refused)['error'] == 'runtime.network_rule_conflict'
+    assert refused.returncode == 1 and helper_result(refused)['error'] == 'runtime.network_rule_conflict'
     assert checkpoint(record, 'state') == 'RuleRemovalDispatched'
     command(root / 'ip-real', '-4', 'rule', 'del', *rule)
     done = stop_native(operation)
-    assert done.returncode == 0 and result(done)['success']
-    stop_receipt = json.loads(base64.b64decode(result(done)['outputBase64']))
+    assert done.returncode == 0 and helper_result(done)['success']
+    stop_receipt = json.loads(base64.b64decode(helper_result(done)['outputBase64']))
     assert uuid.UUID(stop_receipt['OperationId']).hex == operation and stop_receipt['Outcome'] == 'Succeeded'
-    assert result(stop_native(operation)) == result(done)
+    assert helper_result(stop_native(operation)) == helper_result(done)
     final = json.loads(checkpoint(record, 'observe-commit'))
     assert final['installation']['ownership'] == 'Managed' and final['problemCode'] is None
     assert final['receipt'] == observed['receipt'] and final['commitWitness'] == observed['commitWitness']
@@ -501,6 +505,87 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
     assert target not in resolver('dns') and '~tun.fixture.test' not in resolver('domain')
     print(f'PASS TUN COMMITTED STOP: {operation}; signal and rule deletion crossed worker interruption, '
           'same receipt, process and network effect gone')
+
+
+def proof_committed_start(record, observed, state_path):
+    original = record['operation']
+    first = uuid.uuid4().hex
+    second = uuid.uuid4().hex
+    lost = uuid.uuid4().hex
+    (root / 'interrupt-rule-delete').unlink()
+
+    def interrupted(action, execution):
+        process = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root),
+                                  original, f'{action}:{execution}'], capture_output=True, text=True, timeout=20)
+        assert process.returncode == -signal.SIGKILL, (process.returncode, process.stdout, process.stderr)
+
+    def run(action, execution):
+        return json.loads(checkpoint(record, f'{action}:{execution}'))
+
+    def receipt(action, execution, outcome='Succeeded'):
+        reply = run(action, execution)
+        assert reply['success'], reply['error']
+        result = json.loads(base64.b64decode(reply['outputBase64']))
+        assert uuid.UUID(result['OperationId']).hex == execution and result['Outcome'] == outcome
+        return result
+
+    def probe(execution, phase):
+        folder = archive / 'operations' / execution
+        effect = json.loads((folder / 'tun-5.json').read_text())
+        assert uuid.UUID(effect['Intent']['OperationId']).hex == execution
+        current = dict(record, operation=execution, service=service_identity(), ifindex=effect['InterfaceIndex'],
+                       routing_table=effect['Intent']['RoutingTable'], route=route(effect['Intent']['RoutingTable']))
+        observe_runtime(current)
+        assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
+                       f'http://{target}:18880/mb04-{phase}') == 'upstream-through-inherited-tun'
+        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
+        return current['service'], [file.read_bytes() for file in sorted(folder.glob('tun-*.json'))]
+
+    stopped = state_path.read_bytes()
+    assert run('start', first)['error'] == 'runtime.network_scope_unavailable'
+    assert state_path.read_bytes() == stopped
+    scope_policy.write_text(json.dumps({'device': device, 'address': address, 'destination': target,
+                                        'serverUserId': record['uid'], 'dnsRoutingDomain': 'tun.fixture.test'}))
+    scope_policy.chmod(0o644)
+    interrupted('start-interrupt', first)
+    pending = state_path.read_bytes()
+    old = json.loads(checkpoint(record, 'observe-commit'))
+    assert old['problemCode'] == 'runtime.network_start_unconfirmed' and old['receipt'] == observed['receipt']
+    assert uuid.UUID(old['pendingOperationId']).hex == first
+    assert run('start', uuid.uuid4().hex)['error'] == 'runtime.recovery_required'
+    assert helper_result(stop_native(original))['error'] == 'runtime.recovery_required'
+    assert state_path.read_bytes() == pending
+    first_pid, first_files = probe(first, 'start-before-receipt')
+    alias = link()['ifalias']
+    ip('link', 'set', 'dev', device, 'alias', 'foreign-launch')
+    assert receipt('start', first, 'RecoveryRequired')['ProblemCode'] == 'runtime.network_device_identity_unknown'
+    assert state_path.read_bytes() == pending
+    ip('link', 'set', 'dev', device, 'alias', alias)
+    first_result = receipt('start', first)
+    assert receipt('start', first) == first_result and probe(first, 'start-after-receipt') == (first_pid, first_files)
+
+    interrupted('restart-stop-interrupt', second)
+    pending_restart = json.loads(state_path.read_bytes())['mihomoTunStarts'][-1]
+    assert pending_restart['stage'] == 0 and not (archive / 'operations' / second).exists()
+    assert run('start', second)['error'] == 'runtime.idempotency_conflict'
+    second_result = receipt('restart', second)
+    second_pid, second_files = probe(second, 'restart-after-receipt')
+    assert second_pid != first_pid and not Path(f'/proc/{first_pid[0]}').exists()
+    assert receipt('restart', second) == second_result and probe(second, 'restart-repeat') == (second_pid, second_files)
+    assert receipt('start', first) == first_result
+    final = json.loads(checkpoint(record, 'observe-commit'))
+    assert final['receipt'] == observed['receipt'] and final['commitWitness'] == observed['commitWitness']
+    assert helper_result(stop_native(original))['success']
+    assert not Path(f'/proc/{second_pid[0]}').exists() and network_baseline() == record['baseline']
+
+    interrupted('start-undispatched', lost)
+    uncertain = state_path.read_bytes()
+    assert receipt('start', lost, 'RecoveryRequired')['ProblemCode'] == 'runtime.network_checkpoint_conflict'
+    assert run('start', uuid.uuid4().hex)['error'] == 'runtime.recovery_required'
+    assert not (archive / 'operations' / lost).exists() and state_path.read_bytes() == uncertain
+    assert network_baseline() == record['baseline'] and device not in devices()
+    print(f'PASS TUN COMMITTED START: publication={original}; start={first} PID={first_pid[0]}; '
+          f'restart={second} PID={second_pid[0]}; unknown={lost}')
 
 
 def proof():
@@ -571,8 +656,8 @@ rules:
     owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
                              stdout=subprocess.PIPE, text=True)
     try:
-        if case in ('committed', 'committed-stop'):
-            proof_committed(owner, operation, operation_dir, stop=case == 'committed-stop')
+        if case in ('committed', 'committed-stop', 'committed-start'):
+            proof_committed(owner, operation, operation_dir, case)
             return
         if case != 'full':
             proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, queries)

@@ -4527,6 +4527,8 @@ Linux 受管 TUN 试运行的固定范围文件为 `/etc/relaxkonos/mihomo-tun-n
 
 Linux Helper 的 `MihomoRuntimeTunStop` 按原发布 operationId 具名停止提交态 TUN。停止进程和移除原规则的派发均在原检查点持久记录，应答丢失时仍用原 ID 对账。已验证停止后保留原配置和历史发布回执。启动、重启、移除和公开入口继续受准入条件约束。见[具名停止实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后具名停止)。
 
+Helper 的具名启动与重启同时接收原发布 ID、新执行 ID 及临时授权回调。新派发核对已发布配置、宿主网络范围和受信制品，原成功回执继续可查。应答丢失时，同执行 ID 读取原阶段并核对实际效果，待核验期间拒绝新的执行和普通停止。公开入口继续受门禁保护。见[具名启动与重启证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后具名启动与重启)。
+
 DNS 写入已生效但应答未确认时，重启可按原操作和原 resolver 身份只读确认效果。resolver 换代后相同设置及真实流量仍保留待核验，Helper 未重发写入或派发停止。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。
 
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。

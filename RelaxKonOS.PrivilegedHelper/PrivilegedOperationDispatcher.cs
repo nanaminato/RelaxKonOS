@@ -23,6 +23,9 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
+        if (request.RuntimeLifecycle?.MihomoTunPublicationId is not null
+            && request.Operation is not (PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart))
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "TUN publication identity requires a dedicated operation");
         if (request.Operation != PrivilegedOperationKind.FileSetUnixOwnership
             && (request.UnixOwner is not null || request.UnixGroup is not null))
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "ownership fields require an ownership operation");
@@ -42,7 +45,8 @@ public static partial class PrivilegedOperationExecutor
             or PrivilegedOperationKind.MihomoRuntimeCancel or PrivilegedOperationKind.MihomoRuntimeRecoveryQuery
             or PrivilegedOperationKind.MihomoRuntimeRecoveryStop or PrivilegedOperationKind.MihomoRuntimeRecoveryClose
             or PrivilegedOperationKind.MihomoRuntimeConfigure or PrivilegedOperationKind.MihomoRuntimeResources
-            or PrivilegedOperationKind.MihomoRuntimeResourceQuery or PrivilegedOperationKind.MihomoRuntimeTunStop)
+            or PrivilegedOperationKind.MihomoRuntimeResourceQuery or PrivilegedOperationKind.MihomoRuntimeTunStop
+            or PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart)
             return await MihomoRuntimeOperations.ExecuteAsync(request, report: progress);
         if (request.RuntimeLifecycle is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime lifecycle fields require a dedicated operation");

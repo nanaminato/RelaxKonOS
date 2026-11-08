@@ -287,13 +287,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
     private async Task AuthorizeProgramAsync(RuntimePendingConfiguration pending, CancellationToken ct)
     {
         var revision = Revision(pending);
-        MihomoRuntimePreparation.RequireSupportedRelease(revision.Release);
-        var source = sources.Read(revision.Release.SourceId) ?? throw new RuntimePolicyException("runtime.source_not_found");
-        var permitted = sources.AuthorizeRelease(source.Source.SourceId, revision.Release.ReleaseId,
-            source.Cached?.Catalog.Revision ?? 0, source.Source.TrustRevision, revision.Release.Target,
-            revision.Release.Channel == RuntimeChannel.Prerelease, DateTimeOffset.UtcNow);
-        if (!RuntimeJson.Serialize(revision.Release).AsSpan().SequenceEqual(RuntimeJson.Serialize(permitted.CatalogRelease)))
-            throw new RuntimePolicyException("runtime.release_untrusted");
+        RequireTrustedRevision(sources, revision);
         await Tools(pending, false).VerifyFilesAsync(revision, ct);
     }
 

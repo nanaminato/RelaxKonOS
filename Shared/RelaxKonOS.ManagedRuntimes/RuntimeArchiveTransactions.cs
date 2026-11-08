@@ -19,6 +19,8 @@ public sealed record RuntimeActivationEvidence(string MeasuredVersion, string Co
     bool NativeConfigurationValid, bool Healthy, bool Running, bool BootEnabled,
     RuntimeMihomoTunOwnership? MihomoTun = null);
 public sealed record RuntimeMihomoTunOwnership(Guid OperationId, Guid RevisionId, string ConfigurationIdentity, string NetworkIntentIdentity);
+public enum RuntimeMihomoTunStartStage { Stopping, Launching, Succeeded }
+public sealed record RuntimeMihomoTunStart(Guid OperationId, bool Restart, RuntimeMihomoTunStartStage Stage);
 public sealed record RuntimeRestorationEvidence(string? MeasuredVersion, string? ConfigurationIdentity,
     bool Running, bool BootEnabled, bool OwnedResourcesRestored, bool Healthy);
 
@@ -35,6 +37,13 @@ public sealed record RuntimeArchiveState(RuntimeInstallation Installation, Runti
     RuntimePendingRemoval? Removal = null, [property: JsonRequired] RuntimePendingConfiguration? Configuration = null)
 {
     public RuntimeMihomoTunOwnership? ActiveMihomoTun { get; init; }
+    public RuntimeMihomoTunStart[] MihomoTunStarts { get; init; } = [];
+    [JsonIgnore]
+    public Guid? CurrentMihomoTunExecution => MihomoTunStarts.LastOrDefault(start => start.Stage == RuntimeMihomoTunStartStage.Succeeded)?.OperationId
+        ?? ActiveMihomoTun?.OperationId;
+    [JsonIgnore]
+    public RuntimeMihomoTunStart? PendingMihomoTunStart => MihomoTunStarts.LastOrDefault() is
+        { Stage: not RuntimeMihomoTunStartStage.Succeeded } start ? start : null;
     public Protocol.ProxyServer.ProxyServerPublicationReceipt? ProxyPublication { get; init; }
     public ProxyPublicationServiceBaseline? ProxyPublicationBaseline { get; init; }
     [JsonIgnore] public bool ProxyPublicationUnresolved =>

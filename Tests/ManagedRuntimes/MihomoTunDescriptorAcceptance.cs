@@ -36,7 +36,7 @@ internal static class MihomoTunDescriptorAcceptance
             throw new InvalidOperationException("The original descriptor operation is not prepared.");
 
         var intentRoot = intent.RootElement;
-        var commit = intentRoot.GetProperty("case").GetString() is "committed" or "committed-stop";
+        var commit = intentRoot.GetProperty("case").GetString() is "committed" or "committed-stop" or "committed-start";
         var revisionId = intentRoot.GetProperty("revision").GetGuid();
         var previousPath = Path.Combine(root, "previous.yaml");
         var previousBytes = await File.ReadAllBytesAsync(previousPath);
@@ -225,6 +225,30 @@ internal static class MihomoTunDescriptorAcceptance
             var lifecycle = new MihomoRuntimeLifecycle(Archive, store, sources, host, RuntimeSourceProtection.Protect);
             var observed = await lifecycle.QueryAsync(CancellationToken.None, operation);
             Console.WriteLine(System.Text.Encoding.UTF8.GetString(RuntimeJson.Serialize(observed)));
+        }
+        else if (action.Split(':') is [var verb, var id] && Guid.TryParseExact(id, "N", out var execution))
+        {
+            var (kind, cut) = verb switch
+            {
+                "start" => (PrivilegedOperationKind.MihomoRuntimeTunStart, (InstallationStage?)null),
+                "start-interrupt" => (PrivilegedOperationKind.MihomoRuntimeTunStart, InstallationStage.HealthChecking),
+                "start-undispatched" => (PrivilegedOperationKind.MihomoRuntimeTunStart, InstallationStage.Activating),
+                "restart" => (PrivilegedOperationKind.MihomoRuntimeTunRestart, (InstallationStage?)null),
+                "restart-stop-interrupt" => (PrivilegedOperationKind.MihomoRuntimeTunRestart, InstallationStage.Verifying),
+                _ => throw new InvalidOperationException("Unexpected TUN launch fixture action.")
+            };
+            var material = (await ReadGrantAsync(root, operation, CancellationToken.None)).Candidate!;
+            await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(execution, _ =>
+                Task.FromResult(new MihomoCurrentAuthorization(DateTimeOffset.UtcNow.AddMinutes(1), material)));
+            var result = await MihomoRuntimeOperations.ExecuteAsync(new(kind, OperationId: execution,
+                RuntimeLifecycle: new(Authorization: callback.Channel, MihomoTunPublicationId: operation)),
+                () => new(Archive, Store(), new RuntimeSourceStore(Path.Combine(root, "trust"), RuntimeSourceProtection.Protect),
+                    host, RuntimeSourceProtection.Protect), report: frame =>
+                {
+                    if (frame.Stage == cut && cut is not null) System.Diagnostics.Process.GetCurrentProcess().Kill();
+                    return Task.CompletedTask;
+                });
+            Console.WriteLine(JsonSerializer.Serialize(result));
         }
         else if (action is "retry" or "recover" or "recover-interrupt")
         {

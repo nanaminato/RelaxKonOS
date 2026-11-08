@@ -56,6 +56,8 @@ public enum PrivilegedOperationKind
     MihomoRuntimeResourceQuery,
     /// <summary>Stops the active committed TUN by its original publication operation ID.</summary>
     MihomoRuntimeTunStop,
+    MihomoRuntimeTunStart,
+    MihomoRuntimeTunRestart,
     ProxyServerStatus,
     ProxyServerAction,
     ProxyServerValidate,
