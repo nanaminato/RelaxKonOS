@@ -92,6 +92,45 @@ internal sealed class FileCertificateStore : ICertificateStore
         await ReadMaterialIndexAsync(current.Id, ct) is { } index && index.Id == current.Id && index.Version == current.Version
         && string.Equals(index.FingerprintSha256, current.FingerprintSha256, StringComparison.OrdinalIgnoreCase);
 
+    internal async Task StageKestrelRecoveryAsync(Guid certificateId, Guid operationId, string pem, string key, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            EnsureSafeCertificateRoot(certificateId);
+            var versions = Path.Combine(CertificateRoot(certificateId), "versions");
+            var target = Path.Combine(versions, operationId.ToString("N"));
+            if (IsSymbolicLink(target)) throw new CertificateOperationException("certificate.unsafe_path");
+            if (Directory.Exists(target))
+            {
+                if (!await KestrelRecoveryChainMatchesAsync(certificateId, operationId, PemHash(pem), ct))
+                    throw new CertificateOperationException("certificate.recovery_material_changed");
+                return;
+            }
+            var stage = Path.Combine(versions, "." + Guid.NewGuid().ToString("N") + ".tmp");
+            CreateProtectedDirectory(stage);
+            try
+            {
+                await WriteProtectedAsync(Path.Combine(stage, "fullchain.pem"), pem, ct);
+                await WriteProtectedAsync(Path.Combine(stage, "private.key"), key, ct);
+                Directory.Move(stage, target);
+            }
+            finally { if (Directory.Exists(stage)) Directory.Delete(stage, recursive: true); }
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal async Task<bool> KestrelRecoveryChainMatchesAsync(Guid certificateId, Guid operationId, string hash, CancellationToken ct)
+    {
+        if (!IsSafeCertificateRoot(certificateId)) return false;
+        var directory = Path.Combine(CertificateRoot(certificateId), "versions", operationId.ToString("N"));
+        var chain = Path.Combine(directory, "fullchain.pem");
+        return !IsSymbolicLink(directory) && !IsSymbolicLink(chain) && new FileInfo(chain) is { Exists: true, Length: > 0 and <= 1048576 }
+            && PemHash(await File.ReadAllTextAsync(chain, ct)) == hash;
+    }
+
+    internal static string PemHash(string pem) => Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(pem)));
+
     private async Task<StoredCertificate?> ReadMaterialIndexAsync(Guid certificateId, CancellationToken cancellationToken)
     {
         if (!IsSafeCertificateRoot(certificateId)) return null;
@@ -153,7 +192,8 @@ internal sealed class FileCertificateStore : ICertificateStore
         var versionRoot = Path.Combine(CertificateRoot(certificateId), "versions", version);
         var certificate = Path.Combine(versionRoot, "fullchain.pem");
         var privateKey = Path.Combine(versionRoot, "private.key");
-        if (!File.Exists(certificate) || !File.Exists(privateKey)) return null;
+        if (!File.Exists(certificate) || !File.Exists(privateKey) || IsSymbolicLink(versionRoot)
+            || IsSymbolicLink(certificate) || IsSymbolicLink(privateKey)) return null;
         X509Certificate2? leaf = null;
         try
         {

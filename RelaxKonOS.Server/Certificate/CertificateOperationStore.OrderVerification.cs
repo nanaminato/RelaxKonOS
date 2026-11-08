@@ -15,22 +15,29 @@ internal sealed partial class CertificateOperationStore
         try { RequireReady(); operation = _operations.GetValueOrDefault(id); }
         finally { _gate.Release(); }
         if (operation is null) return null;
+        return (await ReadVerifiedOrderMaterialAsync(operation, resolveAcme, ct)).Proof;
+    }
+
+    private async Task<(CertificateOrderVerificationDto Proof, string? Pem, string? Key)> ReadVerifiedOrderMaterialAsync(
+        PersistedOperation operation, Func<IAcmeService> resolveAcme, CancellationToken ct)
+    {
         var receipt = operation.ToDto();
         if (operation is not { State: CertificateOperationState.Failed, ProblemCode: InterruptedProblem,
                 Order: { } order, Challenges: null })
-            return new(receipt, "identity-unavailable");
+            return (new(receipt, "identity-unavailable"), null, null);
         if (_protection is null || operation.ProtectedOrderKey is not { } protectedKey)
-            return new(receipt, "key-unavailable");
+            return (new(receipt, "key-unavailable"), null, null);
 
         var issued = await resolveAcme().ReadIssuedCertificateAsync(order, ct);
-        if (issued.Status != "valid") return new(receipt, issued.Status);
+        if (issued.Status != "valid") return (new(receipt, issued.Status), null, null);
         if (issued is not { ChainPem: { Length: > 0 and <= 1048576 } pem, DnsNames: { Length: > 0 } names })
-            return new(receipt, "invalid-certificate");
+            return (new(receipt, "invalid-certificate"), null, null);
 
         string privateKey;
-        try { privateKey = OrderKeyProtector(_protection, id, operation.CertificateId, order).Unprotect(protectedKey); }
-        catch (CryptographicException) { return new(receipt, "key-unavailable"); }
-        return VerifyChain(receipt, pem, names, privateKey);
+        try { privateKey = OrderKeyProtector(_protection, operation.OperationId, operation.CertificateId, order).Unprotect(protectedKey); }
+        catch (CryptographicException) { return (new(receipt, "key-unavailable"), null, null); }
+        var proof = VerifyChain(receipt, pem, names, privateKey);
+        return proof.Status == "verified" ? (proof, pem, privateKey) : (proof, null, null);
     }
 
     private static CertificateOrderVerificationDto VerifyChain(CertificateOperationDto receipt, string pem, string[] names, string privateKey)

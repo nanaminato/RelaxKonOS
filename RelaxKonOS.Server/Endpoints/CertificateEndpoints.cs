@@ -79,6 +79,24 @@ public static class CertificateEndpoints
                 return await operations.PlanKestrelRecoveryUnderLeaseAsync(operationId, subject,
                     services.GetRequiredService<IAcmeService>, ct) is { } plan ? Results.Ok(plan) : Results.NotFound();
             }));
+        group.MapPost(CertificateApiRoutes.ApplyKestrelRecoveryPattern, (Guid operationId, ApplyCertificateOrderRecoveryRequest request,
+            CertificateOperationStore operations, HttpContext context, IHostElevationSessionStore elevations) =>
+            ResidentScopedResponse.ExecuteAsync(context, operations.AdmitOrderObservationAsync, async (services, ct) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                if (await operations.GetAsync(operationId, ct) is not { } receipt) return Results.NotFound();
+                if (!elevations.IsGranted(context.User, HostElevationCapability.CertificateReplaceServerHttps,
+                    $"certificates/{receipt.CertificateId:D}/server-https"))
+                    return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                        extensions: new Dictionary<string, object?> { ["problemCode"] = "elevation-required" });
+                if (!request.Confirmed) return Results.BadRequest(new { problemCode = "certificate.confirmation_required" });
+                var subject = context.User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value
+                    ?? context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(subject)) return Results.Forbid();
+                var result = await operations.ApplyKestrelRecoveryUnderLeaseAsync(operationId, subject, request.PlanToken,
+                    services.GetRequiredService<IAcmeService>, ct);
+                return result is null ? Results.NotFound() : result.Status == "applied" ? Results.Ok(result) : Results.Conflict(result);
+            }));
         group.MapPost(CertificateApiRoutes.CancelOperationPattern, async (Guid operationId, RelaxKonOS.Server.Certificate.CertificateOperationStore operations, CancellationToken ct) =>
             await operations.CancelAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());
         return app;

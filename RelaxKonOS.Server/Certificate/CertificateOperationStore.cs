@@ -61,6 +61,11 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
             try
             {
                 await LoadAndRecoverAsync(stopping.Token);
+                foreach (var pending in _operations.Values.Where(operation => operation.KestrelRecovery is { Completed: false }))
+                {
+                    using var responsibility = await _work.AdmitAsync(stopping.Token);
+                    HoldKestrelRecovery(pending.OperationId, responsibility);
+                }
                 if (_operations.Values.Any(operation => operation.Revocation is not null))
                     recovery.Run(HoldPendingRevocationAsync);
                 _ready = true;
@@ -84,7 +89,8 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
         if (Directory.Exists(path)) throw new IOException("Certificate operation ledger path is not a file.");
         if (!File.Exists(path)) return [];
         return (JsonSerializer.Deserialize<PersistedOperation[]>(File.ReadAllText(path), Json) ?? throw new JsonException("Certificate ledger must be an array."))
-            .Where(o => o.State is CertificateOperationState.Queued or CertificateOperationState.Running).Select(o => o.OperationId).ToArray();
+            .Where(o => o.State is CertificateOperationState.Queued or CertificateOperationState.Running || o.KestrelRecovery is { Completed: false })
+            .Select(o => o.OperationId).ToArray();
     }
 
     // Creation retries have a freshly proposed certificate ID; it cannot be part of their request identity.
@@ -121,6 +127,7 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
             if (FindExistingRequest(key, certificateId, automaticRenewal) is { } replay) return replay.ToDto();
             if (HasUnconfirmedChallengeCleanup()) return ChallengeCleanupConflict(certificateId, kind, automaticRenewal);
             if (HasPendingRevocation(certificateId)) return RevocationConflict(certificateId, kind);
+            if (HasPendingKestrelRecovery(certificateId)) return KestrelRecoveryConflict(certificateId, kind);
         }
         finally { _gate.Release(); }
         using var work = await _work.AdmitAsync(admission.Token);
@@ -137,6 +144,7 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
             }
             if (HasUnconfirmedChallengeCleanup()) return ChallengeCleanupConflict(certificateId, kind, automaticRenewal);
             if (HasPendingRevocation(certificateId)) return RevocationConflict(certificateId, kind);
+            if (HasPendingKestrelRecovery(certificateId)) return KestrelRecoveryConflict(certificateId, kind);
             admission.Token.ThrowIfCancellationRequested();
             work.Token.ThrowIfCancellationRequested();
             operation = new PersistedOperation(Guid.NewGuid(), key, certificateId, kind, actor, CertificateOperationState.Queued, "queued", "", null, null,
@@ -378,8 +386,8 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
                 try
                 {
                     linked.Token.ThrowIfCancellationRequested();
-                    problem = await IsRevocationBlockedAsync(id, certificateId)
-                        ? RevocationRecoveryProblem : await action(linked.Token);
+                    problem = await IsRevocationBlockedAsync(id, certificateId) ? RevocationRecoveryProblem
+                        : await IsKestrelRecoveryBlockedAsync(certificateId) ? KestrelRecoveryPending : await action(linked.Token);
                 }
                 finally { certificateGate.Release(); }
                 if (kind == "revoke" && await HasRevocationCheckpointAsync(id))
@@ -498,6 +506,8 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
                 {
                     recovered = MarkChallengeCleanupPending(item);
                 }
+                if (recovered.KestrelRecovery is { Completed: false } checkpoint && await IsKestrelRecoveryCommittedAsync(checkpoint, ct))
+                    recovered = CompleteKestrelRecovery(recovered, checkpoint);
                 _operations[recovered.OperationId] = recovered;
                 _byIdempotency[recovered.IdempotencyKey] = recovered.OperationId;
             }
@@ -536,7 +546,8 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RevocationCheckpoint? Revocation = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] NginxRenewalCheckpoint? NginxRenewal = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProtectedOrderKey = null,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProtectedRenewalBaseline = null)
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProtectedRenewalBaseline = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] KestrelRecoveryCheckpoint? KestrelRecovery = null)
     {
         public CertificateOperationDto ToDto() => new(OperationId, CertificateId, Kind, State, Stage, ProblemCode, StartedAt, CompletedAt);
     }

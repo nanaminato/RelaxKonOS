@@ -88,6 +88,46 @@ internal sealed class CertificateDeploymentRepository
         return records;
     }
 
+    internal bool TryCommitKestrelRecovery(Guid certificateId, RenewalRecoveryBaseline expected, string version)
+    {
+        if (!_enabled) return false;
+        // This compare-and-set is serialized with the in-memory SNI check. Bound SQLite lock wait.
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder(_connectionString) { DefaultTimeout = 1 }.ConnectionString);
+        connection.Open();
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE certificate_deployment_records
+            SET current_version=$version,last_successful_version=$version,last_health_check_at=$now,
+                problem_code=NULL,revision=revision+1,updated_at=$now
+            WHERE certificate_id=$id AND target_type='kestrel' AND target_name='relaxkonos'
+                AND current_version=$expected AND last_successful_version=$expected
+                AND EXISTS(SELECT 1 FROM certificate_records WHERE certificate_id=$id AND current_version=$expected
+                    AND upper(replace(fingerprint_sha256,':',''))=$fingerprint AND status!='Revoked')
+                AND EXISTS(SELECT 1 FROM certificate_deployment_records WHERE deployment_id='kestrel-default:relaxkonos'
+                    AND certificate_id=$id)=$default;
+            """;
+        command.Parameters.AddWithValue("$id", certificateId.ToString("D"));
+        command.Parameters.AddWithValue("$expected", expected.Version);
+        command.Parameters.AddWithValue("$fingerprint", expected.Fingerprint);
+        command.Parameters.AddWithValue("$version", version);
+        command.Parameters.AddWithValue("$default", expected.IsDefault);
+        command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+        if (command.ExecuteNonQuery() != 1) return false;
+        if (expected.IsDefault)
+        {
+            command.CommandText = """
+                UPDATE certificate_deployment_records SET current_version=$version,last_successful_version=$version,
+                    last_health_check_at=$now,revision=revision+1,updated_at=$now
+                WHERE deployment_id='kestrel-default:relaxkonos' AND certificate_id=$id;
+                """;
+            if (command.ExecuteNonQuery() != 1) return false;
+        }
+        transaction.Commit();
+        return true;
+    }
+
     public async Task RemoveKestrelAsync(Guid certificateId, CancellationToken cancellationToken)
     {
         if (!_enabled) return;

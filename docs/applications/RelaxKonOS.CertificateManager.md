@@ -1507,6 +1507,10 @@ Server 切换到不同 CA 目录后，查询旧订单返回 `identity-unavailabl
 
 已有 Kestrel 绑定的续期中断时，具备该证书 HTTPS 部署授权的操作者可在上述地址后追加 `/kestrel-plan` 获取恢复计划。`ready` 返回绑定该操作者、原操作、活动版本和签发指纹的保护令牌。活动版本、材料索引或部署记录发生漂移时返回 `active-version-changed`。缺少原恢复基线时返回 `baseline-unavailable`。此入口只生成计划。见[Kestrel 恢复计划实机证据](../architecture/server-module-evidence/Certificates.md#mb-05-kestrel-原证书恢复计划)。
 
+同一操作者可向原证书核验地址追加 `/kestrel-recovery` 发起 POST，提交 `planToken` 和 `confirmed: true`。Server 重新检查当前证书的 HTTPS 部署授权、计划与活动绑定。HTTP 200 的 `applied` 返回原中断回执及实际部署的叶证书 SHA-256。恢复范围限计划中的 Kestrel 绑定，包括原绑定的默认选择状态。证书目录活动索引与 Nginx 稳定材料独立管理。
+
+待核验检查点阻止同证书的新变更及证书模块停用。重启用原操作版本、持久部署记录、证书链摘要和恢复后的 Kestrel 选择核实已提交的效果，核实后补齐原恢复终态。同一计划可取得已持久化的应用结果，原续期键仍返回原中断回执。HTTP 409 的 `recovery-required` 表示仍待核验。若证据只确认旧绑定完整保留，须由操作者显式提交同一计划才能继续。见[Kestrel 应用及恢复实机证据](../architecture/server-module-evidence/Certificates.md#mb-05-kestrel-原证书恢复应用)。
+
 WebRoot 签发和续期在发布 HTTP-01 文件前，在原证书操作记录挑战文件名及内容摘要。任务等待挑战清理后才提交终态。跨进程恢复在写入原中断回执前清理内容匹配的原文件。路径或内容无法确认时保留文件和恢复责任，并隔离证书工作准入。网站自动签发使用此路径，网站发布与原证书操作的关联同样持久化。CA 返回 `valid` 时仍应通过原发布和证书回执核实本地签发、部署各自的状态。见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
 挑战文件内容已变化时，原回执保持 `Running / challenge-cleanup-required`。重启仍可查询原操作及已知 CA 订单，新证书操作返回 `certificate.challenge_ownership_unconfirmed`。确认文件归属后，原清理在下次启动接续，原操作 ID 保持。见[挑战文件归属验收](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-webroot-挑战内容变化时保留原清理责任)。

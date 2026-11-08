@@ -19,6 +19,9 @@ public sealed record CertificateOrderRecoveryPlanDto(CertificateOperationDto Ope
     string? ExpectedActiveVersion = null, string? ExpectedActiveFingerprintSha256 = null,
     string? IssuedFingerprintSha256 = null, string? PlanToken = null);
 
+public sealed record ApplyCertificateOrderRecoveryRequest(string PlanToken, bool Confirmed);
+public sealed record CertificateOrderRecoveryResultDto(CertificateOperationDto Operation, string Status, string? FingerprintSha256 = null);
+
 public sealed record CertificateDto(
     [property: JsonPropertyName("id")] Guid Id,
     [property: JsonPropertyName("primaryDomain")] string PrimaryDomain,

@@ -48,6 +48,23 @@ internal sealed class KestrelCertificateRegistry
         lock (_gate) return _certificates.ContainsKey(certificateId);
     }
 
+    internal bool TryApplyRecovery(Guid certificateId, RenewalRecoveryBaseline expected, SslStreamCertificateContext replacement,
+        Func<bool> commit)
+    {
+        var leaf = replacement.TargetCertificate;
+        if (!leaf.HasPrivateKey || leaf.NotBefore.ToUniversalTime() > DateTime.UtcNow || leaf.NotAfter.ToUniversalTime() <= DateTime.UtcNow)
+            return false;
+        lock (_gate)
+        {
+            var current = Snapshot(certificateId);
+            if (!current.Registered || current.FingerprintSha256 != expected.Fingerprint || current.IsDefault != expected.IsDefault
+                || !current.HostNames.SequenceEqual(expected.HostNames) || !commit()) return false;
+            // Binding and default identity already match. Swap only the immutable TLS material.
+            _certificates[certificateId] = replacement;
+            return true;
+        }
+    }
+
     public bool Activate(Guid certificateId, SslStreamCertificateContext context, IReadOnlyList<string> hostNames, bool makeDefault = false)
     {
         var certificate = context.TargetCertificate;

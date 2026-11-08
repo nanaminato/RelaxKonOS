@@ -1,6 +1,7 @@
 """Exercise the production certificate HTTP routes on a full private Linux Server."""
 
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 import http.client
@@ -25,7 +26,8 @@ def run(root, server, tests, mode):
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
-    https = mode in ("revocation", "revocation-configured", "recovery-plan")
+    recovery = mode in ("recovery-plan", "recovery-apply")
+    https = mode in ("revocation", "revocation-configured") or recovery
     base = f"{'https' if https else 'http'}://127.0.0.1:{port}"
     env = {key: value for key, value in os.environ.items() if "__" not in key}
     private_home = root / "home"
@@ -600,7 +602,7 @@ def run(root, server, tests, mode):
             certificate = f"{certificates}/{original['certificateId']}"
             fingerprint = request(certificate, token)["fingerprintSha256"]
             assert fingerprint
-            if mode == "recovery-plan":
+            if recovery:
                 terminal(token, request(certificate + "/deployments/kestrel", token, {}, "original-deploy", 202), "succeeded")
                 assert request(certificate + "/deployments/kestrel", token)["registered"]
             if mode == "ari-fallback":
@@ -673,7 +675,7 @@ def run(root, server, tests, mode):
             token = login()
             ledger = root / "data" / "certificate-operations.json"
             before = ledger.read_bytes()
-            if mode == "recovery-plan":
+            if recovery:
                 def served_fingerprint():
                     trust = ssl.create_default_context(cafile=str(root / "issuance-root.pem"))
                     with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
@@ -700,6 +702,10 @@ def run(root, server, tests, mode):
                     traffic = (root / "relay.log").read_bytes()
                     refused = request(plan_route, token)
                     assert refused["operation"] == signed and refused["status"] == "active-version-changed" and not refused.get("planToken"), refused
+                    if mode == "recovery-apply":
+                        request(plan_route.removesuffix("/kestrel-plan") + "/kestrel-recovery", token,
+                                {"planToken": proof["planToken"], "confirmed": True}, expected=409)
+                        assert ledger.read_bytes() == before
                     assert (root / "relay.log").read_bytes() == traffic
 
                 with sqlite3.connect(root / "identity.db") as database:
@@ -730,6 +736,59 @@ def run(root, server, tests, mode):
                 assert served_fingerprint() == active_fingerprint
                 print(f"PASS ACME KESTREL RECOVERY PLAN: operation={signed['operationId']}; active={proof['expectedActiveVersion']}; "
                       f"issued={proof['issuedFingerprintSha256']}; authority and drift gates preserved", flush=True)
+                if mode == "recovery-apply":
+                    apply_route = plan_route.removesuffix("/kestrel-plan") + "/kestrel-recovery"
+                    apply_payload = {"planToken": proof["planToken"], "confirmed": True}
+                    request(apply_route, login(standard), apply_payload, expected=403, expected_problem="elevation-required")
+                    request(apply_route, token, {**apply_payload, "confirmed": False}, expected=400,
+                            expected_problem="certificate.confirmation_required")
+                    request(apply_route, token, {**apply_payload, "planToken": "invalid"}, expected=409)
+                    stable_paths = (index, index.with_name("nginx-fullchain.pem"), index.with_name("nginx-private.key"))
+                    stable_bytes = tuple(path.read_bytes() for path in stable_paths)
+                    pending_write = ledger.with_suffix(".json.tmp")
+
+                    def checkpoint():
+                        record, = [item for item in json.loads(ledger.read_bytes()) if item["operationId"] == signed["operationId"]]
+                        return record.get("kestrelRecovery")
+
+                    def recovery_leases():
+                        return request("/api/v1.0/server/modules/relaxkonos.certificates", token)["residency"]["activeLeases"]
+
+                    with sqlite3.connect(root / "identity.db") as database, ThreadPoolExecutor(max_workers=1) as executor:
+                        database.execute("BEGIN IMMEDIATE")
+                        application = executor.submit(request, apply_route, token, apply_payload, expected=500)
+                        try:
+                            wait_for(restarted, lambda: checkpoint() is not None, "recovery-checkpoint", attempts=100)
+                            assert not checkpoint()["completed"]
+                            pending_write.mkdir()
+                        finally:
+                            database.rollback()
+                        try:
+                            application.result(timeout=10)
+                            assert served_fingerprint() == proof["issuedFingerprintSha256"] and not checkpoint()["completed"]
+                            wait_for(restarted, lambda: recovery_leases() == 1, "retained-recovery-lease")
+                            restarted.kill()
+                            assert restarted.wait(timeout=10) < 0
+                        finally:
+                            pending_write.rmdir()
+
+                    traffic = (root / "relay.log").read_bytes()
+                    with process([server], "kestrel-recovery-restarted") as recovered:
+                        wait_for(recovered, healthy, "kestrel-recovery-restarted")
+                        token = login()
+                        assert checkpoint()["completed"]
+                        wait_for(recovered, lambda: recovery_leases() == 0, "completed-recovery-lease")
+                        terminal_bytes = ledger.read_bytes()
+                        expected = {"operation": signed, "status": "applied", "fingerprintSha256": proof["issuedFingerprintSha256"]}
+                        assert request(apply_route, token, apply_payload) == expected
+                        assert request(apply_route, token, apply_payload) == expected
+                        assert request(renew, token, {}, "signed-loss", 202) == signed
+                        assert served_fingerprint() == proof["issuedFingerprintSha256"]
+                        assert request(certificate, token)["fingerprintSha256"] == fingerprint
+                        assert tuple(path.read_bytes() for path in stable_paths) == stable_bytes
+                        assert ledger.read_bytes() == terminal_bytes and (root / "relay.log").read_bytes() == traffic
+                        print(f"PASS ACME KESTREL RECOVERY APPLY: operation={signed['operationId']}; "
+                              f"served={proof['issuedFingerprintSha256']}; original terminal recovered without reapplying", flush=True)
                 return
             if mode == "key-checkpoint":
                 assert (root / "key-before-finalize").read_text() == signed["operationId"]
