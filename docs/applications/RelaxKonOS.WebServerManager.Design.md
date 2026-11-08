@@ -1434,6 +1434,8 @@ Linux 系统包 Nginx 的实际验收见[续期自动部署台账](../architectu
 
 WebServer 管理模块停用期间，证书仍可续期，Nginx 继续使用其已加载的证书。重新启用管理模块时，协调器可从证书台账接续尚未准入的原续期。Linux 实测覆盖这期间的 Server 进程中断及重新启用后的单次重载。见[准入前进程中断](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署准入前的进程中断)。
 
+管理模块启用时，重载台账的准入写入失败会保留工作租约和恢复阻塞，Nginx 继续提供已加载的证书。原进程终止并恢复写入后，协调器用证书台账中原有目标只准入一次重载。见[目标检查点恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署的目标检查点恢复)。
+
 ---
 
 ### 第四阶段：跨 Web Server 扩展

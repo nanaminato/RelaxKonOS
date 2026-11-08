@@ -2637,7 +2637,17 @@ Linux 六场退出 0，宿主共享服务与文件指纹一致。Windows Release
 
 Linux 三场均退出 0。证据在 `.artifacts/mb05-nginx-before-admission/linux.log`，归档 SHA-256 为 `1fe5106390a88c746a55cd5568c47f9524d8bad06813530867d05b58d6dd7c5a`。Windows Release 证书续期、WebServer 和模块边界回归通过，Docker 跨进程原 `10baaeb2-08f2-4b70-8d31-854aa5fbb7df` 恢复 Interrupted，受控副作用计数为一。
 
-本轮采用管理模块停用来建立准入前边界。模块启用时目标已分派、WebServer 尚未准入的更窄进程中断点、整机掉电、其他平台的真实 Nginx、独立部署查询界面和生产内存测量仍开放。Certificates 与 WebServer 保持 resident。
+本轮采用管理模块停用来建立准入前边界。模块启用时的目标检查点恢复见下节。整机掉电、其他平台的真实 Nginx、独立部署查询界面和生产内存测量仍开放。Certificates 与 WebServer 保持 resident。
+
+### MB-05 Nginx 自动部署的目标检查点恢复
+
+完整认证 Server 保持 WebServer 管理启用。在独立 Linux systemd 环境内，以同名目录阻断 WebServer 台账临时文件的实际打开。Pebble 续期 `63f847e4-dfed-4fe3-b674-20ecec0da0e4` 已成功，证书台账保留新版本和准确的 Nginx 目标。WebServer 原 owner 显示 `module-recovery-blocked` 并持有工作租约。原 WebServer 台账字节、部署记录及原生重载计数均表明新重载尚未持久准入，旧 HTTPS 指纹和 Docker 上游继续服务。
+
+强制终止 Server，确认原检查点保持，再移除独立故障目录并重启。以原续期键和原 operationId 读取同一回执。协调器从原检查点仅持久准入重载 `e10c0f39-8ed5-4fb2-b6c8-25b3a6066f8d`，新指纹由实际 HTTPS 握手确认。重载期间再次终止 Server，原 Helper 完成后，重启以同一重载 ID 得到 Succeeded。原生回执退役及工作租约归还后，证书检查点清除，WebServer 台账只存在一条对应键的成功回执。Pebble 仍只有预期的两张订单和两次签发提交，原生轮换重载恰好一次。
+
+Linux 四场退出 0。管理停用、双站分组和未知原生回执对照均通过，未知回执 `6741d85b-dfae-4566-8463-b09a3d6ba5b5` 继续持有原恢复责任。每场清理专属 cgroup，宿主 Nginx、Docker 及文件指纹一致。日志在 `.artifacts/mb05-nginx-blocked-admission/linux.log`，归档 SHA-256 为 `3dd4963c7999308a5a162c84b0e2d7650b020fd13b0ff4d396c96a1f0af79934`。
+
+Windows Release 证书续期、WebServer 和模块边界回归通过。Docker 跨进程夹具以原 `44464f7d-4b88-4682-8319-0b193b68e91c` 返回 Interrupted，受控副作用计数为一。重载回执已落盘但执行尚未派发的进程中断路径仍待实测。
 
 ### MB-05 网站发布独立执行程序集
 

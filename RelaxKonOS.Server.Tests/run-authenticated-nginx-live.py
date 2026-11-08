@@ -55,6 +55,7 @@ def run(root, server, helper_binary, mode):
     native_rejected_rotation = mode == "--systemd-website-acme-renewal-native-rejected"
     grouped_rotation = mode == "--systemd-website-acme-renewal-grouped"
     before_rotation_admission = mode == "--systemd-website-acme-renewal-before-admission"
+    blocked_rotation_admission = mode == "--systemd-website-acme-renewal-blocked-admission"
     second_domain = "second-website-mb05.test"
     acme_success = acme_renewal or mode in ("--systemd-website-acme-success", "--systemd-website-acme-bootstrap-success")
     acme_cancel = mode == "--systemd-website-acme-cancel"
@@ -632,17 +633,22 @@ def run(root, server, helper_binary, mode):
             assert serving(old)
             release.unlink()
             finished.unlink()
+            web_ledger = root / "data" / "webserver-operations.json"
+            web_write_blocker = web_ledger.with_suffix(".json.tmp")
             if before_rotation_admission:
                 initial.terminate()
                 assert initial.wait(timeout=15) == 0
-                web_ledger = root / "data" / "webserver-operations.json"
-                web_before = web_ledger.read_bytes() if web_ledger.exists() else None
+            web_before = web_ledger.read_bytes() if web_ledger.exists() else None
+            if before_rotation_admission:
                 initial = rotation_processes.enter_context(process([server], "rotation-disabled-server",
                     {"Modules__WebServer__Enabled": "false"}))
                 wait_for(initial, healthy, "rotation-disabled-server")
                 token = login()
                 request(web, token=token, expected=404)
                 assert serving(old)
+            if blocked_rotation_admission:
+                # Fail the isolated WebServer ledger's actual temporary-file open without changing its durable bytes.
+                web_write_blocker.mkdir()
             if rejected_rotation:
                 Path("/etc/nginx/conf.d/rotation-invalid.conf").write_text("deliberately_invalid_nginx_directive;\n")
             if native_rejected_rotation:
@@ -670,16 +676,32 @@ def run(root, server, helper_binary, mode):
             replacement = request(certificate, token=token)["fingerprintSha256"].replace(":", "")
             assert replacement != old
             version = json.loads((root / "material" / certificate_id / "current.json").read_bytes())["version"]
-            if before_rotation_admission:
-                certificate_ledger = root / "data" / "certificate-operations.json"
-                durable, = (item for item in json.loads(certificate_ledger.read_bytes()) if item["operationId"] == renewal_id)
+            certificate_ledger = root / "data" / "certificate-operations.json"
+
+            def durable_renewal():
+                item, = (item for item in json.loads(certificate_ledger.read_bytes()) if item["operationId"] == renewal_id)
+                return item
+
+            if before_rotation_admission or blocked_rotation_admission:
+                if blocked_rotation_admission:
+                    def admission_blocked():
+                        residency = request(leases, token=token)["residency"]
+                        return (residency["blockedBy"] == "module-recovery-blocked" and residency["activeLeases"] >= 1
+                                and str(web_write_blocker) in (root / "website-server.stdout").read_text())
+
+                    wait_for(initial, admission_blocked, "original WebServer admission write failure")
+                durable = durable_renewal()
                 assert durable["state"] == "succeeded" and durable["completedAt"]
-                assert durable["nginxRenewal"]["version"] == version and durable["nginxRenewal"]["targets"] is None
+                assert durable["nginxRenewal"]["version"] == version
+                assert durable["nginxRenewal"]["targets"] == ([instance] if blocked_rotation_admission else None)
                 assert (web_ledger.read_bytes() if web_ledger.exists() else None) == web_before
                 assert deployment() is None and serving(old)
                 assert_counts(initial_reloads)
                 initial.kill()
                 assert initial.wait(timeout=10) < 0 and helper.poll() is None
+                assert durable_renewal() == durable
+                if blocked_rotation_admission:
+                    web_write_blocker.rmdir()
                 assert serving(old) and deployment() is None
                 initial = rotation_processes.enter_context(process([server], "rotation-admitting-server"))
                 wait_for(initial, healthy, "rotation-admitting-server")
@@ -766,11 +788,17 @@ def run(root, server, helper_binary, mode):
                 outcome = "UNKNOWN" if unknown_rotation else "CONFIRMED"
                 print(f"PASS WEBSITE AUTOMATIC CERTIFICATE ROTATION {outcome}: renewal={renewal_id}; reload={reload_id}; "
                       f"{len(hosts)} sites, original receipts, one rotation reload, no replay")
+                if before_rotation_admission or blocked_rotation_admission:
+                    wait_for(restarted, lambda: "nginxRenewal" not in durable_renewal(), "original renewal checkpoint completion")
+                    key = f"reload:{instance}:certificate-renew:{certificate_id}:{version}"
+                    matching, = (item for item in json.loads(web_ledger.read_bytes()) if item["idempotencyKey"] == key)
+                    assert matching["operationId"] == reload_id and matching["state"] == "succeeded"
                 if before_rotation_admission:
-                    durable, = (item for item in json.loads(certificate_ledger.read_bytes()) if item["operationId"] == renewal_id)
-                    assert "nginxRenewal" not in durable
                     print(f"PASS WEBSITE CERTIFICATE HANDOFF BEFORE ADMISSION: renewal={renewal_id}; reload={reload_id}; "
                           "disabled Server interrupted before any WebServer receipt, one admission after restart")
+                if blocked_rotation_admission:
+                    print(f"PASS WEBSITE CERTIFICATE HANDOFF AFTER TARGET CHECKPOINT: renewal={renewal_id}; reload={reload_id}; "
+                          "active owner blocked by ledger I/O, one admission after restart")
 
         def start_upstream(token, name, port):
             app = request(applications, token=token, key=secrets.token_hex(16), payload={
@@ -2143,6 +2171,7 @@ if __name__ == "__main__":
                                                             "--systemd-website-acme-renewal-unknown", "--systemd-website-acme-renewal-rejected",
                                                             "--systemd-website-acme-renewal-native-rejected",
                                                             "--systemd-website-acme-renewal-before-admission",
+                                                            "--systemd-website-acme-renewal-blocked-admission",
                                                             "--systemd-website-acme-renewal-grouped",
                                                             "--systemd-website-acme-cancel", "--systemd-website-acme-challenge-changed",
                                                             "--systemd-website-acme-drain", "--systemd-website-acme-bootstrap",
