@@ -88,10 +88,20 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             || observed.Running && observed.AppliedConfigurationIdentity != pending.Plan.PreviousIdentity)
             throw new RuntimePolicyException("runtime.state_revision_conflict");
         await CheckNativeAsync(pending, true, FileIn(pending, "check-data"), ct);
+        if (pending.Plan.NetworkIntentIdentity is not null)
+        {
+            // Capture and preparation flushed the files. Publish their names before admitting the switch.
+            var operation = Operation(pending.OperationId);
+            MihomoRuntimeData.SyncConfigurationDirectory(operation);
+            MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(operation)!);
+            MihomoRuntimeData.SyncConfigurationDirectory(root);
+        }
     }
 
     public async Task ActivateAsync(RuntimePendingConfiguration pending, CancellationToken ct)
     {
+        var tun = pending.Plan.NetworkIntentIdentity is not null;
+        var operation = Operation(pending.OperationId);
         await RequireMaterialAsync(pending, true, ct);
         await host.StopAsync(ct);
         var revision = Revision(pending);
@@ -100,17 +110,20 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         if (observed.Running) throw new RuntimePolicyException("runtime.state_unknown");
         var partial = FileIn(pending, "data-backup.partial");
         var backup = FileIn(pending, "data-backup");
-        await MihomoRuntimeData.CopyAsync(Data(revision), partial, protect, ct);
+        await MihomoRuntimeData.CopyAsync(Data(revision), partial, protect, ct, durable: tun);
         RuntimeSourceStore.RequireNoLinks(backup);
         Directory.Move(partial, backup); // Presence proves that the complete bounded copy finished.
+        if (tun) MihomoRuntimeData.SyncConfigurationDirectory(operation);
         await WriteNewAsync(FileIn(pending, "data-mutation"), pending.OperationId.ToByteArray(), ct);
+        if (tun) MihomoRuntimeData.SyncConfigurationDirectory(operation);
         await CheckNativeAsync(pending, true, Data(revision), ct);
         await RequireMaterialAsync(pending, true, ct);
         await Tools(pending, true).ReplaceConfigurationAsync(await CandidateBytesAsync(pending, true, ct), ct);
         var binary = Tools(pending, true).Binary(revision);
-        if (pending.Plan.NetworkIntentIdentity is not null)
+        if (tun)
         {
             if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_platform_unsupported");
+            MihomoRuntimeData.SyncConfigurationDirectory(root);
             var (_, network) = await RequireTunMaterialAsync(pending, ct);
             var intent = new MihomoTunIntent(pending.OperationId, revision.RevisionId, pending.Plan.CandidateIdentity,
                 LinuxMihomoTunCheckpoint.BootId(), LinuxMihomoTunCheckpoint.NetworkNamespace(),
@@ -223,6 +236,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
 
     public async Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct)
     {
+        var tun = pending.Plan.NetworkIntentIdentity is not null;
         var revision = Revision(pending);
         var effect = ReadTunEffect(pending);
         if (effect is not null)
@@ -238,14 +252,23 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             // Keep the immutable backup throughout every retry. Prepare a complete replacement before
             // removing failed live data; a crash between delete/move is recoverable from this same backup.
             var replacement = FileIn(pending, "data-restore");
+            var operation = Operation(pending.OperationId);
+            var data = Data(revision);
+            if (tun) MihomoRuntimeData.SyncConfigurationDirectory(operation);
             Discard(replacement);
-            await MihomoRuntimeData.CopyAsync(backup, replacement, protect, ct);
-            Discard(Data(revision));
-            Directory.Move(replacement, Data(revision));
+            await MihomoRuntimeData.CopyAsync(backup, replacement, protect, ct, durable: tun);
+            Discard(data);
+            Directory.Move(replacement, data);
+            if (tun)
+            {
+                MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(data)!);
+                MihomoRuntimeData.SyncConfigurationDirectory(operation);
+            }
         }
         await RequireMaterialAsync(pending, false, ct);
         var bytes = await CandidateBytesAsync(pending, false, ct);
         await Tools(pending, false).ReplaceConfigurationAsync(bytes, ct);
+        if (tun) MihomoRuntimeData.SyncConfigurationDirectory(root);
         var build = await CheckNativeAsync(pending, false, Data(revision), ct);
         await host.ConfigureAsync(Tools(pending, false).Binary(revision), Data(revision), Configuration,
             pending.Plan.PreviousIdentity, pending.Snapshot!.BootEnabled, ct);
@@ -270,7 +293,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             || observed.AppliedConfigurationIdentity == identity && await host.ListenersHealthyAsync(material, ct));
         return new(build.Version, identity, observed.Running, observed.BootEnabled!.Value, true, healthy)
         {
-            RestoredNetworkCheckpoint = pending.Plan.NetworkIntentIdentity is not null ? effect is not null : null
+            RestoredNetworkCheckpoint = tun ? effect is not null : null
         };
     }
 

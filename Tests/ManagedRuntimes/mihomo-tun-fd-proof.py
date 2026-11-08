@@ -409,12 +409,54 @@ def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, que
     else:
         resolver('domain', device, '~tun.fixture.test')
         probe('restored')
-        interrupted = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
-                                      str(root), operation, 'recover-cleanup-interrupt'], timeout=12)
-        assert interrupted.returncode == -signal.SIGKILL
+        trace = root / 'restore-storage.trace'
+        tracer = shutil.which('strace')
+        assert tracer, 'The restoration durability proof requires strace'
+        fault_trace = root / 'restore-storage-fault.trace'
+        previous_bytes = previous.read_bytes()
+        for directory, expected_config in ((sentinel.parent.parent, config.read_bytes()), (archive, previous_bytes)):
+            fault = json.loads(command(tracer, '-f', '-qq', '-yy', '-P', str(directory),
+                                       '-e', 'trace=fsync', '-e', 'inject=fsync:error=EIO:when=1', '-o', str(fault_trace),
+                                       'dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root), operation, 'recover'))
+            assert uuid.UUID(fault['OperationId']).hex == operation and fault['Outcome'] == 'RecoveryRequired'
+            fault_event = [line for line in fault_trace.read_text().splitlines() if '(INJECTED)' in line]
+            assert len(fault_event) == 1 and f'<{directory}>' in fault_event[0] and 'EIO' in fault_event[0]
+            state = json.loads(archive_state.read_text())
+            pending = state['configuration']
+            assert uuid.UUID(pending['operationId']).hex == operation and not pending['previousRestored']
+            assert pending['recoveryProblemCode'] == 'runtime.configuration_storage_unconfirmed'
+            assert all(uuid.UUID(receipt['operationId']).hex != operation for receipt in state['receipts'])
+            assert checkpoint(record, 'state') == 'Restored' and (operation_dir / 'data-backup').is_dir()
+            assert config.read_bytes() == expected_config and not Path('/proc', str(record['service'][0])).exists()
+            assert 'MainPID=0' in service('show', '-p', 'MainPID', unit)
+            assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+            print(fault_event[0])
+
+        interrupted = subprocess.run([tracer, '-f', '-qq', '-yy', '-s', '400',
+                                      '-e', 'trace=fsync,rename,renameat,renameat2', '-o', str(trace),
+                                      'dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
+                                      str(root), operation, 'recover-cleanup-interrupt'], timeout=20)
+        assert interrupted.returncode in (-signal.SIGKILL, 128 + signal.SIGKILL)
+        events = trace.read_text().splitlines()
+
+        def event_after(start, syscall, path):
+            return next(index for index, line in enumerate(events) if index > start and syscall in line
+                        and path in line and line.rstrip().endswith('= 0'))
+
+        staging = operation_dir / 'data-restore'
+        nested = event_after(-1, 'fsync(', f'<{staging / "fixture-nested"}>')
+        tree = event_after(nested, 'fsync(', f'<{staging}>')
+        data_move = event_after(tree, 'rename', f'"{staging}", "{sentinel.parent}"')
+        data_parent = event_after(data_move, 'fsync(', f'<{sentinel.parent.parent}>')
+        source_parent = event_after(data_parent, 'fsync(', f'<{operation_dir}>')
+        config_move = event_after(source_parent, 'rename', f', "{config}"')
+        config_parent = event_after(config_move, 'fsync(', f'<{archive}>')
+        restored_checkpoint = event_after(config_parent, 'rename', f', "{archive_state}"')
+        archive_parent = event_after(restored_checkpoint, 'fsync(', f'<{archive_state.parent}>')
+        print(*(events[index] for index in (nested, tree, data_move, data_parent, source_parent,
+                                            config_move, config_parent, restored_checkpoint, archive_parent)), sep='\n')
         restored_service = service_identity()
         assert restored_service != record['service'] and not Path('/proc', str(record['service'][0])).exists()
-        previous_bytes = previous.read_bytes()
         assert config.read_bytes() == previous_bytes and checkpoint(record, 'state') == 'Restored'
         assert (operation_dir / 'check-data').is_dir()
 
@@ -451,12 +493,15 @@ def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, que
         assert json.loads(checkpoint(record, 'retry')) == terminal
         assert checkpoint(record, 'state') == 'Restored'
         assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
+        assert (sentinel.parent / 'fixture-nested' / 'marker').read_text() == 'previous-nested-data'
         assert service_identity() == restored_service and not (operation_dir / 'check-data').exists()
         assert not route(table) and network_baseline() == record['baseline'] and device not in devices()
         assert target not in resolver('dns') and '~tun.fixture.test' not in resolver('domain')
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         print(f'PASS TUN RESTORED CHECKPOINT: original {operation}; route, configuration and missing native proof held pending; '
               f'original Interrupted without restarting restored PID {restored_service[0]}')
+        print(f'PASS TUN RESTORED STORAGE: original {operation}; data and configuration parent EIO held pending; '
+              'nested data and both rename parents synced before archive checkpoint')
         print(f'PASS TUN DNS LOST RECEIPT: original {operation}, ifindex={record["ifindex"]}, PID={record["service"][0]}, '
               f'credential={record["credential"]}; {expected} held original, then read-only DNS recognition and Interrupted')
 
@@ -2227,6 +2272,9 @@ def proof():
     data.mkdir(mode=0o700, parents=True)
     sentinel = data / 'fixture-mutable-data'
     sentinel.write_text('previous-data')
+    if case == 'dns-receipt':
+        (data / 'fixture-nested').mkdir(mode=0o700)
+        (data / 'fixture-nested' / 'marker').write_text('previous-nested-data')
     previous = root / 'previous.yaml'
     listeners = ('mixed-port: 18881\nexternal-controller: 127.0.0.1:18882\n'
                  'secret: mb04-private-fixture-controller\n')

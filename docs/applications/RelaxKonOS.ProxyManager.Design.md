@@ -4575,6 +4575,8 @@ Linux Helper 先同步原见证及父目录，再替换原发布成功回执所�
 
 TUN 发布或补偿的原终态只有在 Helper 主台账目录同步后才可用于确认。同步失败时，原操作保持待核验并阻止后续变更。目录可同步后，由查询取得原回执并按既有规则确认。见[终态目录同步实机证据](../architecture/server-module-evidence/Proxy-Safety.md#原终态替换后的目录同步)。
 
+TUN 补偿在重新启动旧服务前同步还原数据树、数据替换的父目录及旧配置的父目录。同步失败时保留原快照和原待核验，由原操作续接。见[原配置与数据的还原落盘顺序](../architecture/server-module-evidence/Proxy-Safety.md#原配置与数据的还原落盘顺序)。
+
 Helper 尚未提交且原候选仍在转发时，管理选路漂移也会阻止原补偿停止候选进程。同键保留原待核验回执。精确选路恢复后，原操作重新核验归属并补偿一次。见[原补偿门禁实机证据](../architecture/server-module-evidence/Proxy-Safety.md#管理选路漂移时拒绝原补偿派发)。
 
 Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停用。正常停机等待已受理的具名停用收到 Helper 响应、写入审计并持久化原队列终态后退出。重启仍可按原键取得原回执，再次启用沿用已确认发布。见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。

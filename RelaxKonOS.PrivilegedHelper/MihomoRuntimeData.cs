@@ -1,5 +1,6 @@
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -60,7 +61,8 @@ internal static class MihomoRuntimeData
         return data;
     }
 
-    internal static async Task CopyAsync(string source, string destination, Action<string> protect, CancellationToken ct)
+    internal static async Task CopyAsync(string source, string destination, Action<string> protect, CancellationToken ct,
+        bool durable = false)
     {
         source = Path.GetFullPath(source);
         destination = Path.GetFullPath(destination);
@@ -111,6 +113,15 @@ internal static class MihomoRuntimeData
                 }
                 output.Flush(true);
             }
+            if (durable) SyncConfigurationDirectory(to);
         }
+    }
+
+    internal static void SyncConfigurationDirectory(string directory)
+    {
+        if (!OperatingSystem.IsLinux()) throw new RuntimePolicyException("runtime.network_platform_unsupported");
+        RuntimeSourceStore.RequireNoLinks(directory);
+        try { LinuxDirectorySync.Flush(directory); }
+        catch (IOException) { throw new RuntimePolicyException("runtime.configuration_storage_unconfirmed"); }
     }
 }

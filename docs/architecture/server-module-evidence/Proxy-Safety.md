@@ -662,6 +662,16 @@ Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 
 
 **已实现但实机未验证。** 目录 `EIO` 注入限配置适配器夹具，真实 HTTP 矩阵使用未注入故障的同版制品。整机掉电、还原文件自身的掉电耐久性及其他 Linux 架构仍待独立环境。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 继续 resident。
 
+### 原配置与数据的还原落盘顺序
+
+**已实现且已验证。** Linux x64 专属 systemd 中，候选 Mihomo 在原 DNS 回应丢失前后均承载真实上游 HTTP 和分流 DNS。按原操作 `f1bf3c7c33a047fe90592780d137e1c8` 补偿，在同一个实际恢复路径的两次续接中，分别向活动数据父目录和配置父目录的 `fsync` 注入 `EIO`。两次都保留原 `RecoveryRequired` 和备份，记 `runtime.configuration_storage_unconfirmed`，无 `PreviousRestored` 或终态回执。候选 PID 250 已退出，原服务未启动，专用规则删除累计一次。
+
+移除故障后，`strace` 确认还原子目录和树根同步，随后原子替换活动数据并同步目标、源父目录，再替换旧 `active.yaml` 并同步其父目录，最后替换并同步含 `PreviousRestored` 的主台账。清理前再次中断进程，续接仍通过原只读核验。旧配置字节和两级数据哨兵一致，原管理选路恢复，候选 TUN、路由和 DNS 已清理。同键返回原 `Interrupted`，已还原服务 PID 672 保持不变。
+
+认证 HTTP 补偿 `7573fccb7d9848e4b9ccddb3e0f9677c` 和成功发布 `2c5b364e43514c558716f61e979a2f44` 同版复验通过。三场专属 cgroup 清理及宿主文件和服务指纹核验通过。日志为 `.artifacts/mb04-tun-restored-storage/linux.log`，归档 SHA-256 为 `7d6b88125968bdeaf00c66f6bbeec936924de4e27791feeefbcbf0905ae7f46c`。Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 项。可信下载探针因主机缺进程级 CA 覆盖跳过。Windows 日志为同目录 `windows-release.log`。
+
+**实机待验证。** 切换前备份的目录同步已实现，本场故障注入覆盖实际还原。整机掉电、原服务注册文件与 systemd unit 的独立持久化、其他 Linux 架构仍待验收。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 继续 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。
