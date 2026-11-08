@@ -70,6 +70,12 @@ internal static class MihomoRuntimeOperations
             };
         }
         catch (RuntimePolicyException ex) { return new(false, 1, Error: ex.ProblemCode, ProblemCode: PrivilegedProblemCode.Conflict); }
+        catch (TimeoutException) when (request.Operation == PrivilegedOperationKind.MihomoRuntimeQuery)
+        {
+            // The fixed native observation timed out. The original journal is still authoritative,
+            // and the Server can retry this read without dispatching the configuration again.
+            return new(false, 124, ProblemCode: PrivilegedProblemCode.TimedOut);
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException
             or JsonException or System.ComponentModel.Win32Exception or System.Security.Cryptography.CryptographicException)
         { return new(false, 1, Error: "runtime.state_unknown", ProblemCode: PrivilegedProblemCode.InternalError); }

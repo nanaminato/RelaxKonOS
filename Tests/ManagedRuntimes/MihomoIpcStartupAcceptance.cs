@@ -281,25 +281,48 @@ internal static class MihomoIpcStartupAcceptance
         if (subscriptionsEnabled)
         {
             await using var helper = await StartHelperAsync(helperAssembly, config, transport);
+            HelperProcess? restartedHelper = null;
+            string? interruptedLog = null;
+            var interruptHelper = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_POST_SWITCH") == "interrupt";
             var native = await lifecycle.QueryAsync(default, interrupted);
             var application = await startupStore.ReadAsync(default);
             var pid = await ReadRuntimePidAsync();
-            var postSwitch = await MihomoSubscriptionQueueAcceptance.RunAsync(start, tunPaths, port, startupStore, lifecycle, login!, probe, async ct =>
+            try
             {
-                var observed = await lifecycle.QueryAsync(ct, interrupted);
-                var published = await startupStore.ReadAsync(ct);
-                if (observed.Receipt != native.Receipt || observed.Installation.StateRevision != native.Installation.StateRevision
-                    || observed.ConfigurationIdentity != native.ConfigurationIdentity || published.Revision != application.Revision
-                    || published.Identity != application.Identity || published.Pending is not null
-                    || await ReadRuntimePidAsync() != pid || !await probe(port))
-                    throw new InvalidOperationException("The subscription queue changed the original native publication or traffic.");
-            });
-            var log = await helper.StopAsync(drainCompletedRequests: true);
-            var dispatches = log.Split('\n').Where(line => line.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)).ToArray();
-            if (dispatches.Length != (postSwitch is null ? 5 : 6)
-                || (postSwitch is not null && dispatches.Count(line => line.Contains($"id={postSwitch} ", StringComparison.OrdinalIgnoreCase)) != 1)
-                || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
-                throw new InvalidOperationException("Subscription activation and each refresh must configure once without native replay.");
+                var postSwitch = await MihomoSubscriptionQueueAcceptance.RunAsync(start, tunPaths, port, startupStore, lifecycle, login!, probe, async ct =>
+                {
+                    var observed = await lifecycle.QueryAsync(ct, interrupted);
+                    var published = await startupStore.ReadAsync(ct);
+                    if (observed.Receipt != native.Receipt || observed.Installation.StateRevision != native.Installation.StateRevision
+                        || observed.ConfigurationIdentity != native.ConfigurationIdentity || published.Revision != application.Revision
+                        || published.Identity != application.Identity || published.Pending is not null
+                        || await ReadRuntimePidAsync() != pid || !await probe(port))
+                        throw new InvalidOperationException("The subscription queue changed the original native publication or traffic.");
+                }, interruptHelper ? async verifyPending =>
+                {
+                    interruptedLog = await helper.StopAsync();
+                    await verifyPending();
+                    restartedHelper = await StartHelperAsync(helperAssembly, config, transport);
+                } : null);
+                var log = interruptedLog ?? await helper.StopAsync(drainCompletedRequests: true);
+                var dispatches = log.Split('\n').Where(line => line.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)).ToArray();
+                var compensatedBeforeRestart = postSwitch is not null && !interruptHelper;
+                if (dispatches.Length != (compensatedBeforeRestart ? 6 : 5)
+                    || (compensatedBeforeRestart && dispatches.Count(line => line.Contains($"id={postSwitch} ", StringComparison.OrdinalIgnoreCase)) != 1)
+                    || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
+                    throw new InvalidOperationException("Subscription activation and each refresh must configure once without native replay.");
+                if (interruptHelper)
+                {
+                    if (postSwitch is null || restartedHelper is null)
+                        throw new InvalidOperationException("The subscription activation interruption was not exercised.");
+                    var recoveredLog = await restartedHelper.StopAsync(drainCompletedRequests: true);
+                    var recoveries = recoveredLog.Split('\n').Where(line => line.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal)).ToArray();
+                    if (recoveredLog.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
+                        || recoveries.Length != 1 || !recoveries[0].Contains($"uid={uid} success=True", StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("The restarted Helper must compensate once under the original activation ID.");
+                }
+            }
+            finally { if (restartedHelper is not null) await restartedHelper.DisposeAsync(); }
         }
         if (settingsEnabled) await VerifyWriteDisconnectAsync(login!, profileWrite: false);
         if (profileEnabled) await VerifyWriteDisconnectAsync(login!, profileWrite: true);

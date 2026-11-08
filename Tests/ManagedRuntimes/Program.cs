@@ -89,6 +89,12 @@ if (args is ["mihomo-runtime-http-only"])
     return;
 }
 
+if (args is ["mihomo-lifecycle-only"])
+{
+    Console.WriteLine($"Mihomo lifecycle boundary checks passed: {await MihomoLifecycleBoundaryChecks.RunAsync()}");
+    return;
+}
+
 if (args is ["runtime-download-proxy-only"])
 {
     Console.WriteLine($"Runtime download proxy/retry checks passed: {await DownloadProxyChecks.RunAsync()}");

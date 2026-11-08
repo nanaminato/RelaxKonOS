@@ -57,6 +57,12 @@ internal static class MihomoLifecycleBoundaryChecks
                 "Failed service observation never becomes an absent installation");
             host.Unavailable = false;
             var beforeObservation = states.Read()!;
+            host.ObservationTimedOut = true;
+            var timedOut = await MihomoRuntimeOperations.ExecuteAsync(query, Create);
+            Check(!timedOut.Success && timedOut.ProblemCode == PrivilegedProblemCode.TimedOut
+                && states.Read()!.Installation.StateRevision == beforeObservation.Installation.StateRevision,
+                "A timed-out native receipt observation can be retried without rewriting the journal");
+            host.ObservationTimedOut = false;
             host.Observation = new(true, false, false, false, "/outside/mihomo", null, "/outside/data");
             var external = await lifecycle.QueryAsync(default);
             Check(external.Installation.Ownership == RuntimeOwnership.External && external.ProblemCode == "runtime.external_installation"
@@ -170,10 +176,15 @@ internal static class MihomoLifecycleBoundaryChecks
     private sealed class Host : IMihomoArchiveHost
     {
         internal bool Unavailable;
+        internal bool ObservationTimedOut;
         internal bool AllowRecoveryMutation;
         internal MihomoServiceObservation Observation = new(false, true, false, false, null, null, null);
-        public Task<MihomoServiceObservation> ObserveAsync(CancellationToken ct) => Unavailable
-            ? throw new RuntimePolicyException("runtime.state_unknown") : Task.FromResult(Observation);
+        public Task<MihomoServiceObservation> ObserveAsync(CancellationToken ct)
+        {
+            if (ObservationTimedOut) throw new TimeoutException();
+            if (Unavailable) throw new RuntimePolicyException("runtime.state_unknown");
+            return Task.FromResult(Observation);
+        }
         public Task<RuntimeServiceObservation> ObserveRegistrationAsync(CancellationToken ct) => Observation.Owned
             ? Task.FromResult(new RuntimeServiceObservation(Observation.Exists, Observation.Running, Observation.BootEnabled))
             : throw new RuntimePolicyException("runtime.external_installation");

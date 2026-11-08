@@ -4575,6 +4575,8 @@ Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链�
 
 Linux 已实测受管订阅激活的候选完成真实转发后停止。原 Helper 恢复旧配置，Server 重启按原激活 ID 读回失败，原活动订阅和候选草稿均保留。见[切换后的订阅激活补偿](../architecture/server-module-evidence/Proxy-Subscriptions.md#mb-04-受管-mihomo-切换后的订阅激活补偿)。
 
+受管订阅激活期间，候选已经转发但 Helper 尚无终态时中断，重启由原发布恢复器按原激活 ID 核对并完成具名补偿。原活动订阅和草稿保持，同键返回原失败回执。原生只读查询超时仍保留待核验责任。见[Helper 中断实测](../architecture/server-module-evidence/Proxy-Subscriptions.md#mb-04-受管订阅激活期间-helper-中断)。
+
 Linux 端口切换待核验时，guard 只有在原 Helper 应用回执与真实候选监听均得到核对后，才按已保存规则继续使用候选端口。旧监听恢复后可接续原策略。guard 的独立维护与原操作回执分开记录。见[guard 监听切换](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-系统代理-guard-监听切换)。
 
 Linux 直连监听补偿丢失应答时，再次确认原补偿可只读核对原配置摘要、认证控制器和新旧监听。证据吻合后用同一补偿 ID 完成宿主策略恢复。存在其他配置变化或候选监听仍活动时，原操作保持待核验。见[补偿效果对账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-直连监听补偿应答丢失的效果对账)。

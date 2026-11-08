@@ -252,6 +252,8 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 
 2026-11-08（MR-03 / MB-04）Mihomo 运行时恢复入口按原 ID 区分 Server 直连检查点与 Helper 事务。直连查询和磁盘重试可独立于 Helper；恢复响应保留原 ID 和 `RecoveryRequired`。特权事务的停止、关账和已有版本生命周期按各自台账处理。见[直连具名恢复](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-直连具名恢复)。
 
+2026-11-08（MR-03 / MB-04 配置恢复）受管订阅激活在候选开始真实转发且 Helper 尚无终态时强制中断，重启按原配置事务 ID 完成具名补偿。原生只读超时报告为暂时不可用，由原发布恢复器继续核对同一 ID。该证据覆盖配置激活的中断恢复。见[受管订阅激活实机证据](../architecture/server-module-evidence/Proxy-Subscriptions.md#mb-04-受管订阅激活期间-helper-中断)。
+
 2026-11-08（MR-03 / MB-04 配置恢复）直连档案发布已持久记录原生确认时，按原 ID 接续已有 SQLite 档案提交，完成后可读回原成功回执。未记录确认的原 reload 继续待恢复。见[直连档案提交恢复](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-直连档案提交恢复)。
 
 2026-11-08（MR-03 / MB-04 配置恢复）宿主代理策略一致，且已收到运行时与宿主成功应答的直连设置，可按原 ID 完成本地提交及回执。见[直连设置提交恢复](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-mihomo-直连设置提交恢复)。

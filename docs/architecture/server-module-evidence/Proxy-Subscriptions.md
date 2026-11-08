@@ -19,6 +19,7 @@ Mihomo 订阅下载、转换、排队、发布激活、草稿和分项原回执�
 - [MB-04 排队订阅激活的原发布回执](#mb-04-排队订阅激活的原发布回执)
 - [MB-04 订阅激活未知与失败的实机回执](#mb-04-订阅激活未知与失败的实机回执)
 - [MB-04 受管 Mihomo 切换后的订阅激活补偿](#mb-04-受管-mihomo-切换后的订阅激活补偿)
+- [MB-04 受管订阅激活期间 Helper 中断](#mb-04-受管订阅激活期间-helper-中断)
 - [MB-04 订阅后台执行图的可回收交接](#mb-04-订阅后台执行图的可回收交接)
 
 ## 17. 订阅后台任务独立作用域与完整寿命（2026-11-03，MB-04 部分）
@@ -202,6 +203,16 @@ Windows Release 配置、订阅边界 40 项、ManagedRuntimes 和模块边界�
 最终 Linux 原生套件 178 项通过。新故障原激活 ID 为 `64e3b00e-896b-4a3a-bbf5-6499c1e3176d`，专属 cgroup 已清理，宿主运行时和代理文件指纹一致。证据为 `.artifacts/mb04-post-switch/linux-verified.log`，归档 SHA-256 为 `9a78d3336c6ac27cfe4a5c1b6f39b16a99dcf6461efce6497f5772e76f7f684b`。
 
 Windows Release 订阅边界 40 项、配置与模块边界回归通过。MB-05 跨进程夹具按原 `f7b5875c-bd0e-427c-a555-55a2c64191bd` 返回 Interrupted，受控副作用计数为一。补偿本身失败后的原 ID 接管、Proxy 整体动态休眠及生产内存仍待验收。
+
+## MB-04 受管订阅激活期间 Helper 中断
+
+Linux Release 完整 PAM/JWT Server、生产 Helper 与真实 Mihomo 运行在私有 systemd 中。测试在 systemd 已启动候选、Helper 尚未确认激活时暂扣返回。原激活 `dcc0f2af-bb92-42cf-a895-00c1daf04146` 为 Running，持有一个工作租约。核对候选进程 `15116` 的实际配置摘要等于原意图，并验证真实上游转发。随后终止 Server 与 Helper。原 Helper 台账仍在 Activating，无原生终态，候选仍以同一 PID 转发。
+
+重启后由原 Core 发布恢复器触发一次具名补偿。原 Helper 台账得到同一 operationId 的 `Interrupted`，恢复原配置摘要和真实转发。原队列回执完成为 `Failed / proxy.config_apply_failed`，保持原活动订阅、候选草稿及订阅时间。同键和原 ID 返回同一回执，工作租约归零。夹具计数一次原配置请求，恢复 Helper 只收到一次补偿请求，零新增配置或下载。原生套件 178 项通过，专属 cgroup 清理，宿主运行时和代理文件指纹一致。
+
+前两轮原回执未完成。第二轮确认原 Helper 已执行补偿，但紧接的原生只读查询超时使 IPC 返回协议错误，Server 将发布留待核验。Helper 现将该只读超时报告为 TimedOut，原恢复器按既有暂时不可用规则继续核对原台账。最终系统测试通过，故障原回执与原配置身份均可读。Linux 定向生命周期回归 39 项覆盖只读超时分类。Windows Release 的发布事务 112 项、注册 24 项和运行时 HTTP 57 项通过。日志在 `.artifacts/mb04-helper-interruption/`，实机归档 SHA-256 为 `17c94947229a2a4f048c457c4125e927fab22d7ae35c67d72f053a8ecf894413`。
+
+此路径验证真实进程中断、原工作租约与候选切回旧配置。期间可能有服务切换窗口。旧执行对象释放、该故障路径的 ALC 收集、隔离负载与生产内存收益未单独测量。Proxy 保持 resident。
 
 ## MB-04 订阅后台执行图的可回收交接
 

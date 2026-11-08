@@ -25,9 +25,9 @@ internal static class MihomoSubscriptionQueueAcceptance
 {
     internal static async Task<Guid?> RunAsync(ProcessStartInfo start, IProxyPlatformPaths paths, int port,
         MihomoPublicationStore publication, MihomoRuntimeLifecycle lifecycle, LoginRequest login, Func<int, Task<bool>> probe,
-        Func<CancellationToken, Task> verifyNative)
+        Func<CancellationToken, Task> verifyNative, Func<Func<Task>, Task>? restartHelper = null)
     {
-        var postSwitch = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_POST_SWITCH") == "1";
+        var postSwitch = restartHelper is not null || Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_POST_SWITCH") == "1";
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(postSwitch ? 200 : 145));
         var ct = budget.Token;
         var settingsFile = Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json");
@@ -446,8 +446,9 @@ internal static class MihomoSubscriptionQueueAcceptance
                 Guid id;
                 ProxySubscriptionDto draft;
                 ProxySubscriptionDto originalSubscription;
-                RuntimeInstallationSnapshot failed;
-                int restoredPid;
+                RuntimeInstallationSnapshot? failed = null;
+                int? restoredPid = null;
+                int candidatePid;
                 await using (var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-post-switch.sock", socket, ct,
                     (kind, _) =>
                     {
@@ -480,7 +481,7 @@ internal static class MihomoSubscriptionQueueAcceptance
                             await Task.Delay(25, ct);
                         }
                         var pending = (await publication.ReadAsync(ct)).Pending;
-                        var candidatePid = await ReadPidAsync();
+                        candidatePid = await ReadPidAsync();
                         if (pending?.OperationId != id || pending.Profile?.ActivationSubscriptionId != draft.Id
                             || pending.Identity == previous.Identity || candidatePid <= 0 || candidatePid == originalPid
                             || !string.Equals(await ReadConfigurationIdentityAsync(candidatePid), pending.Identity, StringComparison.OrdinalIgnoreCase))
@@ -496,24 +497,44 @@ internal static class MihomoSubscriptionQueueAcceptance
                                 { await Task.Delay(25, ready.Token); }
                             }
                         }
-                        if (!await probe(port) || await ReadPidAsync() != candidatePid || await ReadLeasesAsync(client) != 1)
+                        if (!await probe(port) || await ReadPidAsync() != candidatePid || await ReadLeasesAsync(client) != 1
+                            || (await ReadOperationAsync(client, id)).State != ProxyOperationState.Running || Volatile.Read(ref writes) != 1)
                             throw new InvalidOperationException("The original activation did not serve real traffic from the candidate configuration.");
-                        await NativeRuntimeProcess.RunAsync("/usr/bin/systemctl", ["stop", LinuxMihomoArchiveHost.Unit], 1024);
-                        if (await ReadPidAsync() != 0)
-                            throw new InvalidOperationException("The isolated candidate did not stop.");
-                        File.WriteAllText(Path.Combine(fault, "release"), "stopped");
-                        if (await WaitForNativeCommitAsync(client, id, relay) != id)
-                            throw new InvalidOperationException("The Helper replied for a different activation.");
-                        failed = await lifecycle.QueryAsync(ct, id);
-                        restoredPid = await ReadPidAsync();
-                        if (failed.Receipt is not { Outcome: RuntimeSwitchOutcome.Failed }
-                            || failed.ConfigurationIdentity != previous.Identity || restoredPid <= 0 || restoredPid == candidatePid
-                            || !string.Equals(await ReadConfigurationIdentityAsync(restoredPid), previous.Identity, StringComparison.OrdinalIgnoreCase)
-                            || !await probe(port) || (await ReadOperationAsync(client, id)).State != ProxyOperationState.Running
-                            || await ReadLeasesAsync(client) != 1 || Volatile.Read(ref writes) != 1)
-                            throw new InvalidOperationException("Native compensation did not restore the previous serving configuration.");
-                        server.Kill();
-                        await server.WaitForExitAsync(ct);
+                        if (restartHelper is not null)
+                        {
+                            server.Kill();
+                            await server.WaitForExitAsync(ct);
+                            await restartHelper(async () =>
+                            {
+                                var unresolved = await lifecycle.QueryAsync(ct, id);
+                                if (unresolved.PendingOperationId != id || unresolved.Receipt is not null
+                                    || (await publication.ReadAsync(ct)).Pending?.OperationId != id
+                                    || await ReadPidAsync() != candidatePid || !await probe(port))
+                                    throw new InvalidOperationException("The interrupted Helper did not leave the original unresolved activation serving traffic.");
+                                Console.WriteLine($"MIHOMO ACTIVATION PENDING: {id}; native stage {unresolved.PendingStage}, candidate PID {candidatePid}, no native receipt");
+                                File.WriteAllText(Path.Combine(fault, "release"), "helper-interrupted");
+                            });
+                        }
+                        else
+                        {
+                            await NativeRuntimeProcess.RunAsync("/usr/bin/systemctl", ["stop", LinuxMihomoArchiveHost.Unit], 1024);
+                            if (await ReadPidAsync() != 0)
+                                throw new InvalidOperationException("The isolated candidate did not stop.");
+                            File.WriteAllText(Path.Combine(fault, "release"), "stopped");
+                            if (await WaitForNativeCommitAsync(client, id, relay) != id)
+                                throw new InvalidOperationException("The Helper replied for a different activation.");
+                            failed = await lifecycle.QueryAsync(ct, id);
+                            var pid = await ReadPidAsync();
+                            if (failed.Receipt is not { Outcome: RuntimeSwitchOutcome.Failed }
+                                || failed.ConfigurationIdentity != previous.Identity || pid <= 0 || pid == candidatePid
+                                || !string.Equals(await ReadConfigurationIdentityAsync(pid), previous.Identity, StringComparison.OrdinalIgnoreCase)
+                                || !await probe(port) || (await ReadOperationAsync(client, id)).State != ProxyOperationState.Running
+                                || await ReadLeasesAsync(client) != 1 || Volatile.Read(ref writes) != 1)
+                                throw new InvalidOperationException("Native compensation did not restore the previous serving configuration.");
+                            restoredPid = pid;
+                            server.Kill();
+                            await server.WaitForExitAsync(ct);
+                        }
                     }
                     finally
                     {
@@ -523,7 +544,11 @@ internal static class MihomoSubscriptionQueueAcceptance
                     }
                 }
 
-                using var recovery = ProxyAuthenticatedPublicationChecks.Start(start, OnError);
+                using var recovery = ProxyAuthenticatedPublicationChecks.Start(start, OnError, line =>
+                {
+                    if (restartHelper is not null && line.Contains(id.ToString(), StringComparison.OrdinalIgnoreCase)
+                        && line.Contains("Mihomo", StringComparison.Ordinal)) Console.WriteLine(line);
+                });
                 try
                 {
                     using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(recovery, login, ct);
@@ -532,22 +557,28 @@ internal static class MihomoSubscriptionQueueAcceptance
                     {
                         final = await ReadOperationAsync(client, id);
                         if (final.State != ProxyOperationState.Interrupted) break;
-                        await Task.Delay(50, ct);
+                        await Task.Delay(250, ct);
                     } while (true);
                     var observed = await lifecycle.QueryAsync(ct, id);
                     var state = await publication.ReadAsync(ct);
                     var subscriptions = await client.GetFromJsonAsync<ProxySubscriptionDto[]>(ProxyApiRoutes.Subscriptions, RelaxKonOSJsonOptions.Default, ct);
+                    var pid = await ReadPidAsync();
+                    var nativeOutcome = restartHelper is null ? RuntimeSwitchOutcome.Failed : RuntimeSwitchOutcome.Interrupted;
                     if (final.State != ProxyOperationState.Failed || final.ProblemCode != ProxyProblemCodes.ConfigApplyFailed
                         || final.CompletedAt is null || state.Pending is not null || state.Identity != previous.Identity
                         || state.SubscriptionActivationCompletions?.GetValueOrDefault(id)?.Confirmed != false
-                        || observed.Receipt != failed.Receipt || observed.ConfigurationIdentity != previous.Identity
-                        || observed.Installation.StateRevision != failed.Installation.StateRevision || await ReadPidAsync() != restoredPid
+                        || observed.PendingOperationId is not null || observed.Receipt is not { } receipt
+                        || receipt.OperationId != id || receipt.Outcome != nativeOutcome || observed.ConfigurationIdentity != previous.Identity
+                        || (failed is not null && (receipt != failed.Receipt || observed.Installation.StateRevision != failed.Installation.StateRevision))
+                        || pid <= 0 || pid == candidatePid || (restoredPid is not null && pid != restoredPid)
+                        || !string.Equals(await ReadConfigurationIdentityAsync(pid), previous.Identity, StringComparison.OrdinalIgnoreCase)
                         || await ReadSubscriptionAsync(client) != originalSubscription
                         || subscriptions?.Single(item => item.Id == draft.Id) != draft || await SubmitAsync(client, route, key) != id
                         || await ReadOperationAsync(client, id) != final || Volatile.Read(ref requests) != 6
                         || await ReadLeasesAsync(client) != 0 || !await probe(port))
                         throw new InvalidOperationException("Restart did not recover the original compensated activation without replay.");
-                    Console.WriteLine($"PASS MANAGED MIHOMO POST-SWITCH COMPENSATION: {id}; real candidate traffic, native stop, restored original identity and receipt");
+                    var boundary = restartHelper is null ? "POST-SWITCH COMPENSATION" : "POST-SWITCH HELPER INTERRUPTION";
+                    Console.WriteLine($"PASS MANAGED MIHOMO {boundary}: {id}; real candidate traffic, native {nativeOutcome}, restored original identity and receipt");
                 }
                 finally { await ProxyAuthenticatedPublicationChecks.StopAsync(recovery); }
                 return id;
