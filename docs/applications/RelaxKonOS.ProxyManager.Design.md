@@ -4507,6 +4507,8 @@ Helper 在专属夹具内已验证原操作 ID 标签、TUN 地址及单一精�
 
 固定受管单元的 TUN 启动已在私有 systemd 中验证。Helper 在 systemd 启动前落盘原派发，启动器校验进程、凭据和描述符，终态后重启被拒绝。生产归档事务的执行和恢复仍待接入，受管 TUN 准入门禁继续生效。见[固定单元证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-mihomo-固定-tun-单元)。
 
+归档宿主已在隔离实机完成设备准备、原描述符交付和具名停止。管理选路或设备证据漂移时保留原记录及进程。停止派发中断后只读确认原效果退出，生产归档事务授权与调用待接入。见[交付与具名停止证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-接管-tun-交付与具名停止)。
+
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
 
 Core TUN worker 停止接收新扫描后，等待已发出的禁用请求、实际路由核验和原标记清理。停机等待方的期限不会打断已开始的恢复。如果控制器或管理路由仍无法核实，保留原标记供后续核验。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-core-tun-恢复的停机排空)。

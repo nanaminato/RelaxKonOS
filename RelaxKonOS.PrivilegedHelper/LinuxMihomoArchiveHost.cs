@@ -16,7 +16,7 @@ namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>One fixed systemd scope. Registration metadata alone never proves a running configuration.</summary>
 [SupportedOSPlatform("linux")]
-internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
+internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
 {
     internal const string Root = "/var/lib/relaxkonos/managed-mihomo";
     internal const string Unit = "relaxkonos-mihomo.service";

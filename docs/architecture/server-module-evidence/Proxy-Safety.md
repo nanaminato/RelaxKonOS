@@ -35,6 +35,7 @@
 - [MB-04 Helper TUN 设备和精确路由归属](#mb-04-helper-tun-设备和精确路由归属)
 - [MB-04 Helper TUN 原归档操作检查点](#mb-04-helper-tun-原归档操作检查点)
 - [MB-04 受管 Mihomo 固定 TUN 单元](#mb-04-受管-mihomo-固定-tun-单元)
+- [MB-04 Helper 接管 TUN 交付与具名停止](#mb-04-helper-接管-tun-交付与具名停止)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -349,6 +350,18 @@ Linux x64 原操作 `891316628d634f4f982fc1261c86f76e`，`rk-fd-proof` ifindex 4
 Windows ManagedRuntimes Release 通过，含配置事务 99 项。可信下载探针因宿主缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-fixed-win.log`。
 
 实机使用生产固定单元与 Helper apphost，仍由夹具组装原配置、创建 broker、编排具名停止及终态回执。生产归档事务尚未调用 TUN 写入和启动，策略规则与 DNS 的归属和清理、同键生产回执、实际工作租约待联合验收。生产受管 TUN 准入门禁继续生效，Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
+
+## MB-04 Helper 接管 TUN 交付与具名停止
+
+归档宿主在实例锁内持久记录原意图，创建专属设备、路由和 broker，依据 systemd MainPID、InvocationID、进程启动时刻及 Unix 对端凭据确定描述符接收者。它在发出描述符前写入原派发记录，之后核对实际 Mihomo 可执行程序、配置凭据、FD、设备和精确目标路由。Helper 直接读取单个 IPv4 管理端点的选路及 IPv4/IPv6 规则，激活和停止均复核冻结摘要。
+
+具名停止以 pidfd 固定原进程，在重新核对实时身份和路由后落盘停止派发，发送一次 SIGTERM。重启后的完成路径只核对固定单元、原进程、设备、源地址、精确目标路由和管理基线；确认清理才追加原终态。同一已派发停止请求无重发入口。缺少 pidfd 支持时在网络变更前拒绝激活。[pidfd_open](https://man7.org/linux/man-pages/man2/pidfd_open.2.html) · [pidfd_send_signal](https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html)
+
+Linux x64 私有 systemd 的原操作 `8a9005b2656e49679400ca5edbd1eb90`，设备 `rk-fd-proof` ifindex 4，接收与运行 PID 100，凭据摘要 `94454d6d3dcedf92c068203e61ab14ae5c0bae88b179417be9a18e7c49e89112`。真实上游收到三次请求。原执行进程在效果产生后强制退出，管理选路、配置和原记录一致。专属管理路由下一跳漂移时，Helper 返回 `runtime.management_route_changed`，保持原进程与待核验记录。设备标签漂移、精确路由丢失、半写记录、重复激活及重复停止也被拒绝。停止派发后再次强制退出，下一进程从同一检查点只读确认清理，原 ID 重复查询得到相同夹具回执。专属进程及 cgroup 清理，宿主共享服务与代理文件指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-broker-linux.log`，归档 SHA-256 `b60713aff5e3455854659931ca6e995ba0b2f24661c97d75a1f6720a99209244`。
+
+Windows ManagedRuntimes Release 通过，含配置事务 99 项。可信下载探针因宿主缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-broker-win.log`。
+
+实机通过夹具调用生产归档宿主，夹具提供冻结意图、实例锁和中断控制，并投影回执。生产配置事务的授权及调用尚未接入。当前核对单个 IPv4 管理目的地与现有策略规则，策略规则写入、DNS 所有权、同键 HTTP 及实际工作租约仍待验证。受管 TUN 门禁继续生效，Proxy 保持 resident。已核验专属进程退出，对象释放、ALC 回收、隔离负载内存及生产收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

@@ -9,7 +9,7 @@ namespace RelaxKonOS.PrivilegedHelper;
 internal enum MihomoTunPhase { Intent, NetworkDispatched, LaunchDispatched, DescriptorDispatched, StopDispatched, Restored }
 
 internal sealed record MihomoTunIntent(Guid OperationId, Guid RevisionId, string ConfigurationHash,
-    Guid BootId, string NetworkNamespace, string Device, string Address, string Destination, string ManagementHash);
+    Guid BootId, string NetworkNamespace, string Device, string Address, string Destination, string ManagementAddress, string ManagementHash);
 
 internal sealed record MihomoTunProcess(int Pid, Guid InvocationId, ulong StartTicks);
 
@@ -86,6 +86,7 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
             || intent.BootId == Guid.Empty || string.IsNullOrEmpty(intent.NetworkNamespace)
             || string.IsNullOrEmpty(intent.Device) || !LinuxMihomoTunDescriptor.ValidName(intent.Device)
             || !IPAddress.TryParse(intent.Address, out var address) || !IPAddress.TryParse(intent.Destination, out var destination)
+            || !IPAddress.TryParse(intent.ManagementAddress, out var management)
             || (current.InterfaceIndex == 0) != (current.Phase == MihomoTunPhase.Intent)
             || (current.Phase == MihomoTunPhase.Intent ? current.BrokerPid != 0 : current.BrokerPid <= 1)
             || (current.Process is null) != (current.Phase < MihomoTunPhase.DescriptorDispatched)
@@ -95,7 +96,7 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
                 || previous.BrokerPid != 0 && previous.BrokerPid != current.BrokerPid
                 || previous.Process is not null && previous.Process != current.Process))
             throw Conflict();
-        _ = new LinuxMihomoTunRoutes(address, destination);
+        _ = new LinuxMihomoTunRoutes(address, destination, management);
     }
 
     private static RuntimePolicyException Conflict() => new("runtime.network_checkpoint_conflict");

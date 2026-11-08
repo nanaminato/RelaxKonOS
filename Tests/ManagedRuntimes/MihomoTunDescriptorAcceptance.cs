@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Net;
-using System.Net.Sockets;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes;
@@ -26,68 +24,22 @@ internal static class MihomoTunDescriptorAcceptance
             throw new InvalidOperationException("The original descriptor operation is not prepared.");
 
         var intentRoot = intent.RootElement;
-        var ledger = Ledger(operationId, intentRoot);
         var frozen = new MihomoTunIntent(operationId, intentRoot.GetProperty("revision").GetGuid(),
             intentRoot.GetProperty("credential").GetString()!, LinuxMihomoTunCheckpoint.BootId(),
             LinuxMihomoTunCheckpoint.NetworkNamespace(), DeviceName, intentRoot.GetProperty("address").GetString()!,
-            intentRoot.GetProperty("target").GetString()!, ManagementHash(intentRoot));
-        var initial = new MihomoTunEffect(MihomoTunPhase.Intent, frozen);
-        await ledger.AppendAsync(initial);
-        using var descriptor = LinuxMihomoTunDescriptor.Create(operationId, DeviceName);
-        Refuses("runtime.network_device_unavailable", () =>
-        {
-            using var duplicate = LinuxMihomoTunDescriptor.Create(operationId, DeviceName);
-        });
-        var network = initial with { Phase = MihomoTunPhase.NetworkDispatched, InterfaceIndex = descriptor.InterfaceIndex,
-            BrokerPid = Environment.ProcessId };
-        await ledger.AppendAsync(network);
-        var routes = Routes(frozen);
-        await routes.ApplyAsync(descriptor);
-        try
-        {
-            await routes.ApplyAsync(descriptor);
-            throw new InvalidOperationException("The owned TUN route was applied twice.");
-        }
-        catch (RuntimePolicyException error) when (error.ProblemCode == "runtime.network_route_conflict") { }
-
-        using var broker = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        var endpoint = ledger.SocketPath;
-        broker.Bind(new UnixDomainSocketEndPoint(endpoint));
-        File.SetUnixFileMode(endpoint, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        broker.Listen(1);
-        var host = new LinuxMihomoArchiveHost();
+            intentRoot.GetProperty("target").GetString()!, intentRoot.GetProperty("management").GetString()!, ManagementHash(intentRoot));
         var archive = LinuxMihomoArchiveHost.Root;
         var binary = Path.Combine(archive, "versions", frozen.RevisionId.ToString("N"), "mihomo");
         var data = Path.Combine(archive, "data", frozen.RevisionId.ToString("N"));
-        await host.ConfigureTunAsync(binary, data, frozen.ConfigurationHash, operationId, CancellationToken.None);
-        await host.DispatchTunStartAsync(operationId, CancellationToken.None);
-        try
-        {
-            await host.DispatchTunStartAsync(operationId, CancellationToken.None);
-            throw new InvalidOperationException("The fixed Mihomo launch was dispatched twice.");
-        }
-        catch (RuntimePolicyException error) when (error.ProblemCode == "runtime.network_checkpoint_conflict") { }
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-        using var connection = await broker.AcceptAsync(deadline.Token);
+        var host = new LinuxMihomoArchiveHost();
+        var effect = await host.ActivateTunAsync(frozen, binary, data, CancellationToken.None);
+        await RefusesAsync("runtime.network_checkpoint_conflict", () => host.DispatchTunStartAsync(operationId, CancellationToken.None));
+        await RefusesAsync("runtime.network_checkpoint_conflict", () => host.ActivateTunAsync(frozen, binary, data, CancellationToken.None));
         await NativeRuntimeProcess.RunAsync("/usr/bin/python3", ["-I", Path.Combine(root, "mihomo-tun-fd-proof.py"),
-            "prepare", root, descriptor.InterfaceIndex.ToString(CultureInfo.InvariantCulture),
+            "prepare", root, effect.InterfaceIndex.ToString(CultureInfo.InvariantCulture),
             Environment.ProcessId.ToString(CultureInfo.InvariantCulture)], 1024);
-
-        using var dispatched = JsonDocument.Parse(await File.ReadAllBytesAsync(journal));
-        var checkpoint = dispatched.RootElement;
-        if (checkpoint.GetProperty("operation").GetString() != operation || checkpoint.GetProperty("phase").GetString() != "dispatching"
-            || checkpoint.GetProperty("ifindex").GetUInt32() != descriptor.InterfaceIndex
-            || checkpoint.GetProperty("broker").GetInt32() != Environment.ProcessId)
-            throw new InvalidOperationException("The descriptor recipient and device identity are not in the original journal.");
-
-        var recipient = checkpoint.GetProperty("service")[0].GetInt32();
-        await ledger.AppendAsync(network with { Phase = MihomoTunPhase.DescriptorDispatched, Process = Process(checkpoint) });
-        Refuses("runtime.recovery_target_conflict", () => descriptor.SendTo(connection, Guid.NewGuid(), recipient, 0));
-        Refuses("runtime.network_recipient_mismatch", () => descriptor.SendTo(connection, operationId, Environment.ProcessId, 0));
-        descriptor.SendTo(connection, operationId, recipient, 0);
-        Refuses("runtime.network_descriptor_already_dispatched", () => descriptor.SendTo(connection, operationId, recipient, 0));
         Console.WriteLine(operation);
-        Console.WriteLine($"PASS HELPER NATIVE TUN DESCRIPTOR: {operation}; {descriptor.Name} ifindex={descriptor.InterfaceIndex}, receiver PID={recipient}, exclusive open and single authenticated dispatch");
+        Console.WriteLine($"PASS HELPER NATIVE TUN DESCRIPTOR: {operation}; {frozen.Device} ifindex={effect.InterfaceIndex}, receiver PID={effect.Process!.Pid}, authenticated single dispatch and duplicate activation refused");
         await Task.Delay(Timeout.InfiniteTimeSpan);
     }
 
@@ -109,16 +61,11 @@ internal static class MihomoTunDescriptorAcceptance
             || current.Intent.ManagementHash != ManagementHash(state) || current.Process != Process(state)
             || current.InterfaceIndex != state.GetProperty("ifindex").GetUInt32())
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        var host = new LinuxMihomoArchiveHost();
         if (action == "state") Console.WriteLine(current.Phase);
-        else if (action == "observe" && current.Phase == MihomoTunPhase.DescriptorDispatched)
-            await Routes(current.Intent).VerifyAsync(operation, current.Intent.Device, current.InterfaceIndex);
-        else if (action == "stop" && current.Phase == MihomoTunPhase.DescriptorDispatched)
-        {
-            await Routes(current.Intent).VerifyAsync(operation, current.Intent.Device, current.InterfaceIndex);
-            await ledger.AppendAsync(current with { Phase = MihomoTunPhase.StopDispatched });
-        }
-        else if (action == "restored" && current.Phase == MihomoTunPhase.StopDispatched)
-            await ledger.AppendAsync(current with { Phase = MihomoTunPhase.Restored });
+        else if (action == "observe") await host.VerifyTunAsync(operation, CancellationToken.None);
+        else if (action == "stop") await host.DispatchTunStopAsync(operation, CancellationToken.None);
+        else if (action == "restored") await host.CompleteTunStopAsync(operation, CancellationToken.None);
         else throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
     }
 
@@ -136,14 +83,10 @@ internal static class MihomoTunDescriptorAcceptance
             ulong.Parse(service[2].GetString()!, CultureInfo.InvariantCulture));
     }
 
-    [SupportedOSPlatform("linux")]
-    private static LinuxMihomoTunRoutes Routes(MihomoTunIntent intent) =>
-        new(IPAddress.Parse(intent.Address), IPAddress.Parse(intent.Destination));
-
-    private static void Refuses(string code, Action action)
+    private static async Task RefusesAsync(string code, Func<Task> action)
     {
-        try { action(); }
+        try { await action(); }
         catch (RuntimePolicyException error) when (error.ProblemCode == code) { return; }
-        throw new InvalidOperationException($"Expected native descriptor refusal {code}.");
+        throw new InvalidOperationException($"Expected native TUN refusal {code}.");
     }
 }

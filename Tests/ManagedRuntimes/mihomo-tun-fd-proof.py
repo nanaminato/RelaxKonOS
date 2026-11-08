@@ -92,9 +92,9 @@ def checkpoint(record, action):
 
 
 def observe(record):
+    checkpoint(record, 'observe')
     if network_baseline() != record['baseline'] or service_identity() != record['service']:
         raise ValueError('management route or systemd process identity differs')
-    checkpoint(record, 'observe')
     if route() != record['route']:
         raise ValueError('TUN route differs')
     process = Path('/proc', str(record['service'][0]))
@@ -134,7 +134,6 @@ def reconcile(action, operation):
         if action == 'observe':
             return record
         checkpoint(record, 'stop')
-        service('kill', '--signal=KILL', unit)
         if action == 'recover-interrupt':
             os.kill(os.getpid(), signal.SIGKILL)
     elif phase != 'StopDispatched' or action == 'observe':
@@ -229,7 +228,7 @@ rules:
     identity = hashlib.sha256(config.read_bytes()).hexdigest()
     sync_record({'phase': 'prepared', 'operation': operation, 'credential': identity,
                  'revision': str(revision),
-                 'fixture': sys.argv[3], 'address': address, 'target': target,
+                 'fixture': sys.argv[3], 'address': address, 'target': target, 'management': '192.0.2.1',
                  'namespace': os.readlink('/proc/self/ns/net'), 'baseline': baseline})
     invocation = [sys.executable, '-I', script]
     owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
@@ -288,12 +287,18 @@ rules:
         assert refused.returncode == 3 and journal.read_bytes() == original and not route()
         assert service_identity() == record['service']
         ip('-4', 'route', 'add', target + '/32', 'dev', device, 'src', address, 'scope', 'link')
+        ip('-4', 'route', 'add', '192.0.2.1/32', 'via', '192.0.2.3', 'dev', 'rk-egress')
+        refused = subprocess.run([*invocation, 'recover', root, operation], timeout=8)
+        assert refused.returncode == 3 and journal.read_bytes() == original
+        assert service_identity() == record['service']
+        ip('-4', 'route', 'del', '192.0.2.1/32', 'via', '192.0.2.3', 'dev', 'rk-egress')
         assert Upstream.hits == ['/mb04-before', '/mb04-after', '/mb04-conflict']
         assert Upstream.tunnels == [target + ':18880'] * 3
         print(native)
         print(f'PASS MIHOMO INHERITED TUN: {operation}, credential {identity}, '
               'same PID, FD and management route, three upstream requests across dispatch crash and conflict')
-        print('PASS HELPER TUN ROUTE OWNERSHIP: refused duplicate apply, changed alias and missing route; no replay')
+        print('PASS HELPER TUN ROUTE OWNERSHIP: refused duplicate activation, changed alias and missing route; no replay')
+        print('PASS HELPER MANAGEMENT ROUTE GUARD: refused stop after management next-hop changed')
 
         interrupted = subprocess.run([*invocation, 'recover-interrupt', root, operation], timeout=8)
         assert interrupted.returncode == -signal.SIGKILL
