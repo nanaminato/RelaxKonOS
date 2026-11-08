@@ -281,3 +281,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）Linux x64 私有 systemd 已验证归档宿主的原 TUN broker、管理选路复核和具名停止。停止绑定 pidfd 并先保存原派发，重启只读确认清理。生产归档配置授权、网络规则与 DNS 归属、同键回执和工作租约仍待联合验收，准入门禁继续生效。见[交付与具名停止证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-接管-tun-交付与具名停止)。
 
 2026-11-08（MR-03 / MB-04）Linux x64 私有 systemd 已验证同一配置事务按幂等键返回原待核验和终态回执。验收使用真实归档事务和 Helper 归档宿主，冻结网络意图及授权由夹具提供。生产发布授权、同键 HTTP、规则及 DNS 归属与实际工作租约仍待联合验收。见[同键回执证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-归档事务同键回执)。
+
+2026-11-08（MR-03 / MB-04）Linux x64 私有 systemd 已验证冻结网络意图绑定原配置计划，完整意图经加密台账和原候选授权回读。归档宿主调用仍由测试适配器完成。生产生成意图、配置事务调用、规则及 DNS 归属和同键 HTTP 及工作租约待联合验收，准入门禁继续生效。见[冻结意图证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-冻结-tun-意图授权)。

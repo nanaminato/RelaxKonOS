@@ -36,12 +36,20 @@ public sealed record MihomoCurrentAuthorization(DateTimeOffset ValidUntil, Mihom
     public static string RuntimeId => "mihomo";
 }
 
+/// <summary>Frozen local network material. The public plan carries only its digest.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record MihomoTunNetworkIntent(string Device, string Address, string Destination, string ManagementAddress, string ManagementHash)
+{
+    public override string ToString() => "MihomoTunNetworkIntent { protected material }";
+}
+
 /// <summary>One named publication only. A missing side denies that side; revoked candidate material must
 /// not prevent independently authorized compensation to the previous publication.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record MihomoConfigurationAuthorization([property: JsonRequired] Guid OperationId,
     [property: JsonRequired] DateTimeOffset ValidUntil, [property: JsonRequired] MihomoPublishedRuntime? Previous,
-    [property: JsonRequired] MihomoPublishedRuntime? Candidate) : IRuntimeAuthorizationGrant
+    [property: JsonRequired] MihomoPublishedRuntime? Candidate,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoTunNetworkIntent? TunIntent = null) : IRuntimeAuthorizationGrant
 {
     public static string RuntimeId => "mihomo";
     public override string ToString() => $"MihomoConfigurationAuthorization {{ OperationId = {OperationId}, protected material }}";

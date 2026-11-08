@@ -192,9 +192,11 @@ def proof():
     shutil.copy2(root / 'mihomo', binary)
     (archive / 'data' / revision.hex).mkdir(mode=0o700, parents=True)
     previous = root / 'previous.yaml'
-    previous.write_text('mode: rule\nrules:\n  - MATCH,DIRECT\n')
+    listeners = ('mixed-port: 18881\nexternal-controller: 127.0.0.1:18882\n'
+                 'secret: mb04-private-fixture-controller\n')
+    previous.write_text(listeners + 'mode: rule\nrules:\n  - MATCH,DIRECT\n')
     candidate = root / 'candidate.yaml'
-    candidate.write_text(f'''mode: rule
+    candidate.write_text(listeners + f'''mode: rule
 log-level: info
 ipv6: false
 tun:

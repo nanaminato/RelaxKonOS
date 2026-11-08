@@ -76,6 +76,8 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
             throw new RuntimePolicyException("runtime.state_revision_conflict");
         if (!Digest(plan.PreviousIdentity) || !Digest(plan.CandidateIdentity))
             throw new RuntimePolicyException("runtime.configuration_invalid");
+        if (plan.NetworkIntentIdentity is { } network && (plan.RuntimeId != "mihomo" || !Digest(network)))
+            throw new RuntimePolicyException("runtime.network_intent_invalid");
         if (plan.PreviousIdentity != current.ConfigurationIdentity) throw new RuntimePolicyException("runtime.configuration_drift");
         if (plan.PreviousIdentity == plan.CandidateIdentity) throw new RuntimePolicyException("runtime.target_unchanged");
         if (current.Receipts.Length >= 4096) throw new RuntimePolicyException("runtime.transaction_state_limit");

@@ -4509,7 +4509,9 @@ Helper 在专属夹具内已验证原操作 ID 标签、TUN 地址及单一精�
 
 归档宿主已在隔离实机完成设备准备、原描述符交付和具名停止。管理选路或设备证据漂移时保留原记录及进程。停止派发中断后只读确认原效果退出，生产归档事务授权与调用待接入。见[交付与具名停止证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-接管-tun-交付与具名停止)。
 
-同键重试已在隔离实机通过真实归档事务验证。候选已转发但原事务待核验时返回原 ID，具名恢复结束后取回同一原操作回执。生产网络意图授权仍待接入，受管 TUN 准入门禁继续生效。见[同键回执证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-归档事务同键回执)。
+同键重试已在隔离实机通过真实归档事务验证。候选已转发但原事务待核验时返回原 ID，具名恢复结束后取回同一原操作回执。见[同键回执证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-归档事务同键回执)。
+
+冻结 TUN 意图已通过原发布计划摘要、加密台账和新鲜授权回读联合验证。描述符模式拒绝篡改的目标及 Mihomo 自动路由。生产意图生成与配置事务调用待接入，受管 TUN 准入门禁继续生效。见[冻结意图证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-冻结-tun-意图授权)。
 
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
 

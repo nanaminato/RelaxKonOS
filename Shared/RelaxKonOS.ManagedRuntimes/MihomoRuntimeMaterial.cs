@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Security.Cryptography;
 using RelaxKonOS.Protocol.ManagedRuntimes;
@@ -8,6 +9,38 @@ namespace RelaxKonOS.ManagedRuntimes;
 /// <summary>Shape and bounds of local published-state material. Does not parse YAML or authorize paths.</summary>
 public static class MihomoRuntimeMaterial
 {
+    public static string ConfigurationTunIntentIdentity(Guid operationId, RuntimeConfigurationPlan plan, MihomoTunNetworkIntent intent)
+    {
+        if (operationId == Guid.Empty || plan.RuntimeId != "mihomo" || plan.ActiveRevisionId == Guid.Empty
+            || !IsDigest(plan.CandidateIdentity) || !IsDigest(intent.ManagementHash)
+            || intent.Device is not { Length: > 0 and < 16 } device || !char.IsAsciiLetterOrDigit(device[0])
+            || device.Any(ch => !char.IsAsciiLetterOrDigit(ch) && ch is not ('-' or '_' or '.'))
+            || !CanonicalIPv4(intent.Address) || !CanonicalIPv4(intent.Destination) || !CanonicalIPv4(intent.ManagementAddress)
+            || intent.Address == intent.Destination || intent.Address == intent.ManagementAddress || intent.Destination == intent.ManagementAddress)
+            throw new RuntimePolicyException("runtime.network_intent_invalid");
+        return Convert.ToHexString(SHA256.HashData(RuntimeJson.Serialize(new
+        {
+            operationId, plan.InstallationId, plan.HostId, plan.ActiveRevisionId, plan.CandidateIdentity, intent
+        })));
+    }
+
+    public static void RequireConfigurationTunIntent(Guid operationId, RuntimeConfigurationPlan plan,
+        MihomoPublishedRuntime? candidate, MihomoTunNetworkIntent? intent)
+    {
+        if (intent is null && plan.NetworkIntentIdentity is null) return;
+        if (intent is null || candidate is not { NetworkTransitionRequired: true }
+            || Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(candidate.Yaml))) != plan.CandidateIdentity
+            || plan.NetworkIntentIdentity != ConfigurationTunIntentIdentity(operationId, plan, intent))
+            throw new RuntimePolicyException("runtime.authorization_changed");
+        MihomoConfigurationPolicy.RequireDescriptorTun(candidate, intent.Device);
+    }
+
+    private static bool IsDigest(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
+
+    private static bool CanonicalIPv4(string value) => IPAddress.TryParse(value, out var address)
+        && address.AddressFamily == AddressFamily.InterNetwork && address.ToString() == value
+        && !IPAddress.IsLoopback(address) && address.GetAddressBytes()[0] is > 0 and < 224;
+
     public static string InstallationPlanIdentity(RuntimeChangePlan plan)
     {
         if (plan is null || plan.RuntimeId != "mihomo" || plan.Request is null || plan.Request.Change != RuntimeChange.Install || plan.Release is null)

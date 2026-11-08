@@ -13,7 +13,8 @@ public sealed record MihomoPendingPublication(Guid OperationId, MihomoPublishedR
     [property: JsonRequired] RuntimeChangePlan? InstallationPlan,
     [property: JsonRequired] RuntimeChangePlan? RemovalPlan,
     [property: JsonRequired] MihomoSettingsPublication? Settings,
-    [property: JsonRequired] MihomoProfilePublication? Profile);
+    [property: JsonRequired] MihomoProfilePublication? Profile,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MihomoTunNetworkIntent? TunIntent = null);
 public sealed record MihomoPublicationCompletion(Guid OperationId, string RequestHash, bool Confirmed, bool NotStarted);
 public sealed record MihomoSubscriptionPublicationCompletion(bool Confirmed, DateTimeOffset CompletedAt);
 public enum MihomoDirectCompensationStage { ReloadDispatched, ReloadConfirmed, HostDispatched }
@@ -364,8 +365,9 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
         MihomoPublishedRuntime candidate, CancellationToken ct) => BeginCoreAsync(operationId, expectedRevision, candidate, null, null, null, ct);
 
     public Task<MihomoPublicationState> BeginConfigurationAsync(Guid operationId, long expectedRevision,
-        MihomoPublishedRuntime candidate, RuntimeConfigurationPlan plan, CancellationToken ct, MihomoSettingsPublication? settings = null, MihomoProfilePublication? profile = null) =>
-        BeginCoreAsync(operationId, expectedRevision, candidate, plan, null, null, ct, settings, profile);
+        MihomoPublishedRuntime candidate, RuntimeConfigurationPlan plan, CancellationToken ct, MihomoSettingsPublication? settings = null,
+        MihomoProfilePublication? profile = null, MihomoTunNetworkIntent? tunIntent = null) =>
+        BeginCoreAsync(operationId, expectedRevision, candidate, plan, null, null, ct, settings, profile, tunIntent);
 
     public Task<MihomoPublicationState> BeginInstallationAsync(Guid operationId, long expectedRevision,
         MihomoPublishedRuntime candidate, RuntimeChangePlan plan, CancellationToken ct) =>
@@ -382,7 +384,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
 
     private async Task<MihomoPublicationState> BeginCoreAsync(Guid operationId, long expectedRevision,
         MihomoPublishedRuntime candidate, RuntimeConfigurationPlan? plan, RuntimeChangePlan? installationPlan,
-        RuntimeChangePlan? removalPlan, CancellationToken ct, MihomoSettingsPublication? settings = null, MihomoProfilePublication? profile = null)
+        RuntimeChangePlan? removalPlan, CancellationToken ct, MihomoSettingsPublication? settings = null,
+        MihomoProfilePublication? profile = null, MihomoTunNetworkIntent? tunIntent = null)
     {
         if (operationId == Guid.Empty) throw new RuntimePolicyException("runtime.operation_id_invalid");
         MihomoRuntimeMaterial.Validate(candidate);
@@ -397,7 +400,8 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
                 if (RuntimeJson.Serialize(pending.InstallationPlan).AsSpan().SequenceEqual(RuntimeJson.Serialize(installationPlan))
                     && RuntimeJson.Serialize(pending.RemovalPlan).AsSpan().SequenceEqual(RuntimeJson.Serialize(removalPlan))
                     && RuntimeJson.Serialize(pending.Settings).AsSpan().SequenceEqual(RuntimeJson.Serialize(settings))
-                    && RuntimeJson.Serialize(pending.Profile).AsSpan().SequenceEqual(RuntimeJson.Serialize(profile))) return current;
+                    && RuntimeJson.Serialize(pending.Profile).AsSpan().SequenceEqual(RuntimeJson.Serialize(profile))
+                    && pending.TunIntent == tunIntent) return current;
                 throw new RuntimePolicyException("runtime.idempotency_conflict");
             }
             throw new RuntimePolicyException("runtime.publication_unconfirmed");
@@ -406,7 +410,7 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
             throw new RuntimePolicyException("runtime.state_revision_conflict");
         if (current.SubscriptionActivationCompletions?.ContainsKey(operationId) == true)
             throw new RuntimePolicyException("runtime.idempotency_conflict");
-        var next = current with { Revision = checked(current.Revision + 1), Pending = new(operationId, candidate, identity, plan, installationPlan, removalPlan, settings, profile) };
+        var next = current with { Revision = checked(current.Revision + 1), Pending = new(operationId, candidate, identity, plan, installationPlan, removalPlan, settings, profile, tunIntent) };
         await SaveAsync(next, ct);
         return next;
     }
@@ -626,6 +630,9 @@ public sealed class MihomoPublicationStore(IProxyPlatformPaths paths, IDataProte
                 || (plan.PreviousIdentity == plan.CandidateIdentity && pending.Settings is null && pending.Profile is null) || string.IsNullOrWhiteSpace(plan.IdempotencyKey)
                 || plan.IdempotencyKey.Length > 128 || plan.IdempotencyKey.Any(c => c < 33 || c > 126)))
                 throw new RuntimePolicyException("runtime.publication_state_invalid");
+            if (pending.ConfigurationPlan is { } configuration)
+                MihomoRuntimeMaterial.RequireConfigurationTunIntent(pending.OperationId, configuration, pending.Candidate, pending.TunIntent);
+            else if (pending.TunIntent is not null) throw new RuntimePolicyException("runtime.publication_state_invalid");
         }
     }
 }

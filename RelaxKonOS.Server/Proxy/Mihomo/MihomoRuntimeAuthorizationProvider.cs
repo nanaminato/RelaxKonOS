@@ -55,8 +55,9 @@ public sealed class MihomoRuntimeAuthorizationProvider(MihomoPublicationStore st
         // are recoverable while this named publication remains pending; unrelated drafts remain forbidden.
         if (identity != state.Identity && identity != pending.Identity) throw new RuntimePolicyException("runtime.publication_unconfirmed");
         var secret = await ReadSecretAsync(ct);
+        var candidate = Matches(secret, pending.Candidate) ? pending.Candidate : null;
         return new(operationId, (time ?? TimeProvider.System).GetUtcNow().AddSeconds(30),
-            Matches(secret, previous) ? previous : null, Matches(secret, pending.Candidate) ? pending.Candidate : null);
+            Matches(secret, previous) ? previous : null, candidate, candidate is null ? null : pending.TunIntent);
     }
 
     private async Task<string?> ReadSecretAsync(CancellationToken ct)

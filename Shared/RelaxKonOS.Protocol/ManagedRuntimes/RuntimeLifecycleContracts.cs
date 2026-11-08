@@ -7,7 +7,8 @@ namespace RelaxKonOS.Protocol.ManagedRuntimes;
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record RuntimeConfigurationPlan(Guid InstallationId, string HostId, string RuntimeId,
     long ExpectedStateRevision, Guid ActiveRevisionId, string PreviousIdentity, string CandidateIdentity,
-    string IdempotencyKey);
+    string IdempotencyKey,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? NetworkIntentIdentity = null);
 
 /// <summary>
 /// One program revision the host still stores. Only these are eligible rollback targets, and the

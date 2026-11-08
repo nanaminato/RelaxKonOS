@@ -271,6 +271,8 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         {
             var grant = await authorization.ReadAsync(ct);
             if (grant.OperationId != pending.OperationId) throw new RuntimePolicyException("runtime.authorization_unavailable");
+            if (candidate && grant.Candidate is not null)
+                MihomoRuntimeMaterial.RequireConfigurationTunIntent(pending.OperationId, pending.Plan, grant.Candidate, grant.TunIntent);
             return new(grant.ValidUntil, candidate ? grant.Candidate : grant.Previous);
         }
     }

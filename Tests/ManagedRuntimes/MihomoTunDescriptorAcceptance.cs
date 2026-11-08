@@ -1,13 +1,17 @@
 using System.Globalization;
 using System.Runtime.Versioning;
 using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Server.Proxy;
+using RelaxKonOS.Server.Proxy.Mihomo;
 
 internal static class MihomoTunDescriptorAcceptance
 {
     private const string DeviceName = "rk-fd-proof";
+    private const string FixtureSecret = "mb04-private-fixture-controller";
     private static string Archive => LinuxMihomoArchiveHost.Root;
     private static RuntimeArchiveStateStore Store() => new(Path.Combine(Archive, "state"), RuntimeSourceProtection.Protect);
 
@@ -26,11 +30,11 @@ internal static class MihomoTunDescriptorAcceptance
             throw new InvalidOperationException("The original descriptor operation is not prepared.");
 
         var intentRoot = intent.RootElement;
-        var frozen = new MihomoTunIntent(operationId, intentRoot.GetProperty("revision").GetGuid(),
-            intentRoot.GetProperty("credential").GetString()!.ToUpperInvariant(), LinuxMihomoTunCheckpoint.BootId(),
-            LinuxMihomoTunCheckpoint.NetworkNamespace(), DeviceName, intentRoot.GetProperty("address").GetString()!,
+        var revisionId = intentRoot.GetProperty("revision").GetGuid();
+        var candidateHash = intentRoot.GetProperty("credential").GetString()!.ToUpperInvariant();
+        var network = new MihomoTunNetworkIntent(DeviceName, intentRoot.GetProperty("address").GetString()!,
             intentRoot.GetProperty("target").GetString()!, intentRoot.GetProperty("management").GetString()!, ManagementHash(intentRoot));
-        var adapter = new ArchiveAdapter(root, frozen.RevisionId, frozen);
+        var adapter = new ArchiveAdapter(root, revisionId);
         var previous = MihomoArchiveAdapter.Hash(await File.ReadAllBytesAsync(adapter.Previous));
         await adapter.InstallConfigurationAsync(adapter.Previous, previous);
         var store = Store();
@@ -40,14 +44,32 @@ internal static class MihomoTunDescriptorAcceptance
         var digest = MihomoArchiveAdapter.Hash(binary);
         var artifact = new RuntimeArtifact("fixture", digest, binary.Length, "gz", "mihomo", "signed-manifest:fixture",
             new(binary.Length, 1, [new("mihomo", binary.Length, digest, true)]));
-        var revision = new RuntimeStoredRevision(frozen.RevisionId, new("fixture-release", "mihomo", "v1.19.33", "1.19.33",
+        var revision = new RuntimeStoredRevision(revisionId, new("fixture-release", "mihomo", "v1.19.33", "1.19.33",
             RuntimeChannel.Stable, "fixture-source", target, artifact, "mihomo-v1", true, RuntimeTrust.Confirmed,
             RuntimeEvidence.NativeConfiguration, DateTimeOffset.UtcNow), "1.19.33", previous, 1, 1);
         using (var session = store.Acquire())
             session.Save(before with { Active = revision, Revisions = [revision], Installation = before.Installation with
                 { StateRevision = 1, Ownership = RuntimeOwnership.Managed, ActiveReleaseId = revision.Release.ReleaseId } });
         var plan = new RuntimeConfigurationPlan(before.Installation.InstallationId, before.Installation.HostId, "mihomo",
-            1, frozen.RevisionId, previous, frozen.ConfigurationHash, "tun-publication");
+            1, revisionId, previous, candidateHash, "tun-publication");
+        plan = plan with { NetworkIntentIdentity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(operationId, plan, network) };
+        var paths = new AuthorizationPaths(root);
+        Directory.CreateDirectory(paths.GetProtectedConfigurationDirectory());
+        var publications = Publications(paths);
+        var previousMaterial = MihomoConfigurationPolicy.Describe(await File.ReadAllTextAsync(adapter.Previous)).Material;
+        var candidate = MihomoConfigurationPolicy.Describe(await File.ReadAllTextAsync(Path.Combine(root, "candidate.yaml"))).Material;
+        var bootstrap = Guid.NewGuid();
+        await File.WriteAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"), previousMaterial.Yaml);
+        await publications.BeginAsync(bootstrap, 0, previousMaterial, CancellationToken.None);
+        var confirmed = await publications.ConfirmAsync(bootstrap, previous, CancellationToken.None);
+        await RefusesAsync("runtime.authorization_changed", () => publications.BeginConfigurationAsync(operationId, confirmed.Revision,
+            candidate, plan, CancellationToken.None, tunIntent: network with { Destination = "198.51.100.54" }));
+        var autoRoute = MihomoConfigurationPolicy.Describe(candidate.Yaml.Replace("auto-route: false", "auto-route: true", StringComparison.Ordinal)).Material;
+        var driftedPlan = plan with { CandidateIdentity = MihomoPublicationStore.Identity(autoRoute.Yaml) };
+        driftedPlan = driftedPlan with { NetworkIntentIdentity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(operationId, driftedPlan, network) };
+        await RefusesAsync("runtime.network_intent_invalid", () => publications.BeginConfigurationAsync(operationId, confirmed.Revision,
+            autoRoute, driftedPlan, CancellationToken.None, tunIntent: network));
+        await publications.BeginConfigurationAsync(operationId, confirmed.Revision, candidate, plan, CancellationToken.None, tunIntent: network);
         await File.WriteAllBytesAsync(Path.Combine(root, "tun-plan.json"), RuntimeJson.Serialize(plan));
         var outcome = await new RuntimeArchiveConfiguration(store, adapter).ExecuteAsync(operationId, plan, CancellationToken.None);
         throw new InvalidOperationException($"The fixture exited before interruption: {outcome.Outcome}, {outcome.ProblemCode}, {store.Read()?.Configuration?.RecoveryProblemCode}.");
@@ -77,7 +99,7 @@ internal static class MihomoTunDescriptorAcceptance
         else if (action is "retry" or "recover" or "recover-interrupt")
         {
             var plan = RuntimeJson.Read<RuntimeConfigurationPlan>(await File.ReadAllBytesAsync(Path.Combine(root, "tun-plan.json")));
-            var adapter = new ArchiveAdapter(root, plan.ActiveRevisionId, intent: null, interruptStop: action == "recover-interrupt");
+            var adapter = new ArchiveAdapter(root, plan.ActiveRevisionId, interruptStop: action == "recover-interrupt");
             var transaction = new RuntimeArchiveConfiguration(Store(), adapter);
             var result = action == "retry"
                 ? await transaction.ExecuteAsync(Guid.NewGuid(), plan, CancellationToken.None)
@@ -109,7 +131,7 @@ internal static class MihomoTunDescriptorAcceptance
     }
 
     [SupportedOSPlatform("linux")]
-    private sealed class ArchiveAdapter(string root, Guid revision, MihomoTunIntent? intent, bool interruptStop = false)
+    private sealed class ArchiveAdapter(string root, Guid revision, bool interruptStop = false)
         : IRuntimeArchiveConfigurationAdapter
     {
         private readonly LinuxMihomoArchiveHost host = new();
@@ -143,9 +165,12 @@ internal static class MihomoTunDescriptorAcceptance
 
         public async Task ActivateAsync(RuntimePendingConfiguration pending, CancellationToken ct)
         {
-            if (intent is null || intent.OperationId != pending.OperationId || intent.RevisionId != pending.Plan.ActiveRevisionId
-                || intent.ConfigurationHash != pending.Plan.CandidateIdentity)
-                throw new RuntimePolicyException("runtime.authorization_changed");
+            var grant = await ReadGrantAsync(root, pending.OperationId, ct);
+            MihomoRuntimeMaterial.RequireConfigurationTunIntent(pending.OperationId, pending.Plan, grant.Candidate, grant.TunIntent);
+            var network = grant.TunIntent ?? throw new RuntimePolicyException("runtime.authorization_unavailable");
+            var intent = new MihomoTunIntent(pending.OperationId, pending.Plan.ActiveRevisionId, pending.Plan.CandidateIdentity,
+                LinuxMihomoTunCheckpoint.BootId(), LinuxMihomoTunCheckpoint.NetworkNamespace(),
+                network.Device, network.Address, network.Destination, network.ManagementAddress, network.ManagementHash);
             await CopyConfigurationAsync(Path.Combine(root, "candidate.yaml"), pending.Plan.CandidateIdentity);
             MihomoTunEffect effect;
             try { effect = await host.ActivateTunAsync(intent, Binary, Data, ct); }
@@ -184,8 +209,13 @@ internal static class MihomoTunDescriptorAcceptance
             if (interruptStop) ProcessKill();
         }
 
-        public Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct) =>
-            RequireHashAsync(Previous, pending.Plan.PreviousIdentity);
+        public async Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+        {
+            var grant = await ReadGrantAsync(root, pending.OperationId, ct);
+            if (grant.Previous is null || MihomoPublicationStore.Identity(grant.Previous.Yaml) != pending.Plan.PreviousIdentity)
+                throw new RuntimePolicyException("runtime.authorization_changed");
+            await RequireHashAsync(Previous, pending.Plan.PreviousIdentity);
+        }
 
         public async Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct)
         {
@@ -205,5 +235,31 @@ internal static class MihomoTunDescriptorAcceptance
         }
 
         private static void ProcessKill() => System.Diagnostics.Process.GetCurrentProcess().Kill();
+    }
+
+    private static MihomoPublicationStore Publications(AuthorizationPaths paths) => new(paths,
+        DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(paths.Root, "authorization-keys"))));
+
+    private static async Task<MihomoConfigurationAuthorization> ReadGrantAsync(string root, Guid operation, CancellationToken ct)
+    {
+        var paths = new AuthorizationPaths(root);
+        var provider = new MihomoRuntimeAuthorizationProvider(Publications(paths), paths, paths);
+        await using var callback = new RuntimeAuthorizationServer<MihomoConfigurationAuthorization>(Guid.NewGuid(),
+            token => provider.ReadConfigurationAsync(operation, token));
+        var grant = await RuntimeAuthorizationClient.ReadAsync<MihomoConfigurationAuthorization>(
+            callback.Channel, callback.Channel.OperationId, ct);
+        if (grant.OperationId != operation) throw new RuntimePolicyException("runtime.authorization_unavailable");
+        return grant;
+    }
+
+    private sealed record AuthorizationPaths(string Root) : IProxyPlatformPaths, IProxyControllerSecretStore
+    {
+        public string GetProtectedConfigurationDirectory() => Path.Combine(Root, "authorization");
+        public string GetStateDirectory() => Path.Combine(Root, "authorization-state");
+        public string GetEngineVersionsDirectory(string engineId) => throw new NotSupportedException();
+        public string GetEngineDataDirectory(string engineId) => throw new NotSupportedException();
+        public string GetSanitizedLogDirectory() => throw new NotSupportedException();
+        public Task<string> GetOrCreateAsync(CancellationToken cancellationToken) => Task.FromResult(FixtureSecret);
+        public Task<string?> ReadExistingAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(FixtureSecret);
     }
 }

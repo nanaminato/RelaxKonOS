@@ -188,6 +188,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                 || plan.RuntimeId != installation.RuntimeId || plan.ActiveRevisionId != state.Active.RevisionId
                 || plan.ExpectedStateRevision < 0 || plan.ExpectedStateRevision >= installation.StateRevision
                 || !Digest(plan.PreviousIdentity) || !Digest(plan.CandidateIdentity) || plan.PreviousIdentity == plan.CandidateIdentity
+                || plan.NetworkIntentIdentity is { } network && (plan.RuntimeId != "mihomo" || !Digest(network))
                 || configuration.Stage is not (Protocol.Installations.InstallationStage.Preflight
                     or Protocol.Installations.InstallationStage.Preparing or Protocol.Installations.InstallationStage.Verifying
                     or Protocol.Installations.InstallationStage.Activating or Protocol.Installations.InstallationStage.HealthChecking

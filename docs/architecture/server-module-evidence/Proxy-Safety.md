@@ -37,6 +37,7 @@
 - [MB-04 受管 Mihomo 固定 TUN 单元](#mb-04-受管-mihomo-固定-tun-单元)
 - [MB-04 Helper 接管 TUN 交付与具名停止](#mb-04-helper-接管-tun-交付与具名停止)
 - [MB-04 TUN 归档事务同键回执](#mb-04-tun-归档事务同键回执)
+- [MB-04 冻结 TUN 意图授权](#mb-04-冻结-tun-意图授权)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -373,6 +374,16 @@ Windows ManagedRuntimes Release 通过，含配置事务 99 项。可信下载�
 具名归档恢复在原 Helper 停止已派发后再次被强制终止。下一进程确认网络清理、恢复原配置和停止状态，归档事务持久返回原 `Interrupted`。再次同键调用读到相同回执，状态文件仍逐字节一致。专属进程、设备、路由和 cgroup 已清理，宿主共享服务与代理文件指纹一致。首轮因夹具候选摘要大小写与 Helper 规范不同而在准备阶段退出，日志 `.artifacts/mb04-tun-marker-sync/tun-receipt-linux.log`。统一摘要格式后复验通过，日志 `.artifacts/mb04-tun-marker-sync/tun-receipt-linux-retry.log`，归档 SHA-256 `922da1b5f5691035fedf813c3c31df1a8dc6cdb439569956b827b3c9c4ab807a`。
 
 Windows ManagedRuntimes Release 通过，配置事务 104 项，可信下载探针因宿主缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-receipt-win.log`。本次使用真实归档事务和 Helper 归档宿主，冻结意图与配置授权仍由测试适配器提供。生产配置事务的网络授权与宿主调用、策略规则及 DNS 归属、同键 HTTP 和真实工作租约待验证。受管 TUN 准入门禁继续生效，Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
+
+## MB-04 冻结 TUN 意图授权
+
+配置计划仅保存网络意图摘要。摘要覆盖原操作 ID、安装、主机、活动制品修订、候选配置身份及规范化网络意图。完整意图保存在 Server 加密发布台账，只随同一原操作的新鲜候选授权回读。旧配置授权仍独立。Helper 的配置适配器重新校验意图与原计划的绑定。描述符模式核对设备、FD 198 和允许的 TUN 字段，拒绝 Mihomo 自行添加路由、重定向和配置 DNS 劫持。生产发布入口继续拒绝该模式。
+
+Linux x64 私有 systemd 夹具使用生产加密台账、真实授权提供器和认证授权通道。篡改目标地址及重新计算摘要后启用自动路由均在归档派发前被拒绝。原操作 `c19d90cc545b4b71866a4a26a5339bfc` 使用 `rk-fd-proof` ifindex 4、Mihomo PID 115 和配置摘要 `0cb1d0d4c49b7884603fc8c91941b83121970a285189c19c3e88076de35b8f4b`。原进程强制中断后，同键返回原 `RecoveryRequired`，选路及配置身份维持，真实上游收到三次请求。停止派发后再次中断，新进程从同一加密台账回读原配置授权、只读确认网络清理并恢复旧配置，同键读到原 `Interrupted`。专属进程及 cgroup 清理，宿主共享服务与代理文件指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-auth-linux.log`，归档 SHA-256 `175dd3334e55c834a33fb2b400c95c61e388c216ed9c3dc62d501e5a5f43939b`。
+
+Windows ManagedRuntimes Release 通过，含 104 项配置事务检查。可信下载探针因缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-auth-win.log`。
+
+夹具仍提供最初网络意图，通过测试适配器调用生产归档事务及 Helper 宿主，并在同进程内建立认证回读通道。生产 Server 生成意图、生产配置适配器调用归档宿主、策略规则及 DNS 归属、生产同键 HTTP 和真实工作租约待验收。Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

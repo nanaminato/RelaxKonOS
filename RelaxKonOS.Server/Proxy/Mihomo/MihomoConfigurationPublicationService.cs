@@ -33,7 +33,7 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
             throw new RuntimePolicyException("runtime.request_invalid");
         MihomoRuntimeMaterial.Validate(candidate);
         var description = MihomoConfigurationPolicy.Validate(candidate);
-        if (description.Material.NetworkTransitionRequired || candidate.NetworkTransitionRequired)
+        if (description.Material.NetworkTransitionRequired || candidate.NetworkTransitionRequired || plan.NetworkIntentIdentity is not null)
             throw new RuntimePolicyException("runtime.network_transaction_required");
         if (MihomoPublicationStore.Identity(candidate.Yaml) != plan.CandidateIdentity)
             throw new RuntimePolicyException("runtime.configuration_drift");
