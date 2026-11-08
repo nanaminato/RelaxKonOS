@@ -1,6 +1,5 @@
 """Prove a restricted systemd service can forward through a pre-opened Linux TUN."""
 
-import fcntl
 import hashlib
 import http.server
 import json
@@ -128,26 +127,14 @@ def reconcile(action, operation):
         raise ValueError('operation or network namespace differs')
     phase = checkpoint(record, 'state')
     if phase == 'Restored':
-        return {**record, 'phase': 'restored'}
+        return json.loads(checkpoint(record, 'retry'))
     if phase == 'DescriptorDispatched':
         observe(record)
         if action == 'observe':
             return record
-        checkpoint(record, 'stop')
-        if action == 'recover-interrupt':
-            os.kill(os.getpid(), signal.SIGKILL)
     elif phase != 'StopDispatched' or action == 'observe':
         raise ValueError('effect is not attributable to the original dispatch')
-    pid = record['service'][0]
-    deadline = time.monotonic() + 5
-    while device in devices() or Path('/proc', str(pid)).exists():
-        if time.monotonic() >= deadline:
-            raise ValueError('TUN cleanup remains unresolved')
-        time.sleep(.05)
-    if route() or network_baseline() != record['baseline'] or service('show', '-p', 'MainPID', '--value', unit) != '0':
-        raise ValueError('network was not restored')
-    checkpoint(record, 'restored')
-    return {**record, 'phase': 'restored'}
+    return json.loads(checkpoint(record, 'recover'))
 
 
 class Upstream(http.server.BaseHTTPRequestHandler):
@@ -204,7 +191,10 @@ def proof():
     binary.parent.mkdir(parents=True)
     shutil.copy2(root / 'mihomo', binary)
     (archive / 'data' / revision.hex).mkdir(mode=0o700, parents=True)
-    config.write_text(f'''mode: rule
+    previous = root / 'previous.yaml'
+    previous.write_text('mode: rule\nrules:\n  - MATCH,DIRECT\n')
+    candidate = root / 'candidate.yaml'
+    candidate.write_text(f'''mode: rule
 log-level: info
 ipv6: false
 tun:
@@ -224,8 +214,8 @@ proxies:
 rules:
   - MATCH,fixture-upstream
 ''')
-    config.chmod(0o600)
-    identity = hashlib.sha256(config.read_bytes()).hexdigest()
+    candidate.chmod(0o600)
+    identity = hashlib.sha256(candidate.read_bytes()).hexdigest()
     sync_record({'phase': 'prepared', 'operation': operation, 'credential': identity,
                  'revision': str(revision),
                  'fixture': sys.argv[3], 'address': address, 'target': target, 'management': '192.0.2.1',
@@ -261,6 +251,11 @@ rules:
         owner.kill()
         assert owner.wait(timeout=5) == -signal.SIGKILL
         assert journal.read_bytes() == original
+        archive_state = archive / 'state' / 'archive-state.json'
+        pending = archive_state.read_bytes()
+        pending_receipt = json.loads(checkpoint(record, 'retry'))
+        assert uuid.UUID(pending_receipt['OperationId']).hex == operation
+        assert pending_receipt['Outcome'] == 'RecoveryRequired' and archive_state.read_bytes() == pending
         assert json.loads(command(*invocation, 'observe', root, operation)) == record
         probe('after')
 
@@ -300,22 +295,18 @@ rules:
         print('PASS HELPER TUN ROUTE OWNERSHIP: refused duplicate activation, changed alias and missing route; no replay')
         print('PASS HELPER MANAGEMENT ROUTE GUARD: refused stop after management next-hop changed')
 
-        interrupted = subprocess.run([*invocation, 'recover-interrupt', root, operation], timeout=8)
+        refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
+        assert refused.returncode == 1 and 'runtime.service_scope_invalid' in refused.stderr
+        interrupted = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
+                                      str(root), operation, 'recover-interrupt'], timeout=8)
         assert interrupted.returncode == -signal.SIGKILL
         assert checkpoint(record, 'state') == 'StopDispatched'
         assert journal.read_bytes() == original
-        duplicate = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
-                                    str(root), operation, 'stop'], timeout=8)
-        assert duplicate.returncode == 3
-        receipt = command(*invocation, 'recover', root, operation)
-        assert json.loads(receipt) == {**record, 'phase': 'restored'}
-        assert command(*invocation, 'recover', root, operation) == receipt
-        assert command(*invocation, 'observe', root, operation) == receipt
-        all_checkpoints = sorted(operation_dir.glob('tun-*.json'))
-        assert len(all_checkpoints) == 6 and [file.read_bytes() for file in all_checkpoints[:4]] == original_checkpoints
-        assert checkpoint(record, 'state') == 'Restored'
-        refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
-        assert refused.returncode == 1 and 'runtime.service_scope_invalid' in refused.stderr
+        deadline = time.monotonic() + 5
+        while service('show', '-p', 'MainPID', '--value', unit) != '0':
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Mihomo did not finish the original stop')
+            time.sleep(.05)
         service('start', unit)
         deadline = time.monotonic() + 5
         while service('show', '-p', 'ActiveState', '--value', unit) != 'failed':
@@ -323,7 +314,18 @@ rules:
                 raise RuntimeError('The fixed TUN unit did not reject an unsolicited restart')
             time.sleep(.05)
         assert service('show', '-p', 'MainPID', '--value', unit) == '0' and not route()
+        receipt = command(*invocation, 'recover', root, operation)
+        result = json.loads(receipt)
+        assert uuid.UUID(result['OperationId']).hex == operation and result['Outcome'] == 'Interrupted'
+        assert config.read_bytes() == previous.read_bytes() and not route() and network_baseline() == baseline
+        terminal = archive_state.read_bytes()
+        assert command(*invocation, 'recover', root, operation) == receipt
+        assert command(*invocation, 'observe', root, operation) == receipt
+        assert archive_state.read_bytes() == terminal
+        all_checkpoints = sorted(operation_dir.glob('tun-*.json'))
+        assert len(all_checkpoints) == 6 and [file.read_bytes() for file in all_checkpoints[:4]] == original_checkpoints
         assert checkpoint(record, 'state') == 'Restored'
+        print('PASS ARCHIVE TUN RECEIPT: same key returned original pending and terminal results without replay')
         print('PASS FIXED MIHOMO TUN UNIT: real launcher and credential; restart refused without original dispatch')
         print('PASS HELPER TUN CHECKPOINTS: original intent immutable; incomplete checkpoint and duplicate stop refused')
         print(f'PASS MIHOMO INHERITED TUN CLEANUP: {operation}, interrupted stop reconciled without replay; '
@@ -347,11 +349,9 @@ if action == 'proof':
 elif action == 'prepare':
     prepare(int(sys.argv[3]), int(sys.argv[4]))
 else:
-    with (archive / 'state' / 'instance.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        assert action in ('observe', 'recover', 'recover-interrupt')
-        try:
-            print(json.dumps(reconcile(action, sys.argv[3]), sort_keys=True))
-        except (ValueError, OSError, subprocess.SubprocessError) as error:
-            print(f'TUN recovery required: {error}', file=sys.stderr)
-            sys.exit(3)
+    assert action in ('observe', 'recover')
+    try:
+        print(json.dumps(reconcile(action, sys.argv[3]), sort_keys=True))
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        print(f'TUN recovery required: {error}', file=sys.stderr)
+        sys.exit(3)

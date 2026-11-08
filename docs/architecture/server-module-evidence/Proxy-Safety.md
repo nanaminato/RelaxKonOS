@@ -36,6 +36,7 @@
 - [MB-04 Helper TUN 原归档操作检查点](#mb-04-helper-tun-原归档操作检查点)
 - [MB-04 受管 Mihomo 固定 TUN 单元](#mb-04-受管-mihomo-固定-tun-单元)
 - [MB-04 Helper 接管 TUN 交付与具名停止](#mb-04-helper-接管-tun-交付与具名停止)
+- [MB-04 TUN 归档事务同键回执](#mb-04-tun-归档事务同键回执)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -362,6 +363,16 @@ Linux x64 私有 systemd 的原操作 `8a9005b2656e49679400ca5edbd1eb90`，设�
 Windows ManagedRuntimes Release 通过，含配置事务 99 项。可信下载探针因宿主缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-broker-win.log`。
 
 实机通过夹具调用生产归档宿主，夹具提供冻结意图、实例锁和中断控制，并投影回执。生产配置事务的授权及调用尚未接入。当前核对单个 IPv4 管理目的地与现有策略规则，策略规则写入、DNS 所有权、同键 HTTP 及实际工作租约仍待验证。受管 TUN 门禁继续生效，Proxy 保持 resident。已核验专属进程退出，对象释放、ALC 回收、隔离负载内存及生产收益未测量。
+
+## MB-04 TUN 归档事务同键回执
+
+`RuntimeArchiveConfiguration` 在归档实例锁内按原操作 ID 或同一幂等键查找待处理配置。冻结请求摘要和键均匹配时直接返回原 ID 和 `RecoveryRequired`，请求或键冲突仍拒绝。终态沿用原归档回执。等待实例锁期间的并发行为沿用原门禁。
+
+私有 systemd 夹具改用真实归档配置事务持有实例锁，并由测试适配器把原计划绑定到候选配置摘要、活动修订和 Helper 归档宿主。Linux x64 复验的原操作 `089af3acd05747c0a6ec2f3f382da847`，接口 `rk-fd-proof` ifindex 4、Mihomo PID 115、配置凭据摘要 `406d1075c5aaff0cc7035c103620087d4a1cfa041ea354285a8bca6a9518c275`。候选已真实转发且归档事务尚未确认时终止执行进程。同键新请求 ID 返回原 `RecoveryRequired`，归档状态文件逐字节一致。管理选路和配置身份维持，真实上游收到三次请求；管理路由漂移、设备标签冲突、精确路由丢失及半写记录保持待核验。
+
+具名归档恢复在原 Helper 停止已派发后再次被强制终止。下一进程确认网络清理、恢复原配置和停止状态，归档事务持久返回原 `Interrupted`。再次同键调用读到相同回执，状态文件仍逐字节一致。专属进程、设备、路由和 cgroup 已清理，宿主共享服务与代理文件指纹一致。首轮因夹具候选摘要大小写与 Helper 规范不同而在准备阶段退出，日志 `.artifacts/mb04-tun-marker-sync/tun-receipt-linux.log`。统一摘要格式后复验通过，日志 `.artifacts/mb04-tun-marker-sync/tun-receipt-linux-retry.log`，归档 SHA-256 `922da1b5f5691035fedf813c3c31df1a8dc6cdb439569956b827b3c9c4ab807a`。
+
+Windows ManagedRuntimes Release 通过，配置事务 104 项，可信下载探针因宿主缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-receipt-win.log`。本次使用真实归档事务和 Helper 归档宿主，冻结意图与配置授权仍由测试适配器提供。生产配置事务的网络授权与宿主调用、策略规则及 DNS 归属、同键 HTTP 和真实工作租约待验证。受管 TUN 准入门禁继续生效，Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

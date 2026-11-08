@@ -3,10 +3,13 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 
 internal static class MihomoTunDescriptorAcceptance
 {
     private const string DeviceName = "rk-fd-proof";
+    private static string Archive => LinuxMihomoArchiveHost.Root;
+    private static RuntimeArchiveStateStore Store() => new(Path.Combine(Archive, "state"), RuntimeSourceProtection.Protect);
 
     [SupportedOSPlatform("linux")]
     internal static async Task RunAsync(string root)
@@ -15,7 +18,6 @@ internal static class MihomoTunDescriptorAcceptance
         if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK"))
             throw new InvalidOperationException("The descriptor test requires its private systemd work directory.");
 
-        using var gate = new RuntimeArchiveStateStore(Path.Combine(LinuxMihomoArchiveHost.Root, "state"), RuntimeSourceProtection.Protect).Acquire();
         var journal = Path.Combine(root, "tun-operation.json");
         using var intent = JsonDocument.Parse(await File.ReadAllBytesAsync(journal));
         var operation = intent.RootElement.GetProperty("operation").GetString();
@@ -25,22 +27,30 @@ internal static class MihomoTunDescriptorAcceptance
 
         var intentRoot = intent.RootElement;
         var frozen = new MihomoTunIntent(operationId, intentRoot.GetProperty("revision").GetGuid(),
-            intentRoot.GetProperty("credential").GetString()!, LinuxMihomoTunCheckpoint.BootId(),
+            intentRoot.GetProperty("credential").GetString()!.ToUpperInvariant(), LinuxMihomoTunCheckpoint.BootId(),
             LinuxMihomoTunCheckpoint.NetworkNamespace(), DeviceName, intentRoot.GetProperty("address").GetString()!,
             intentRoot.GetProperty("target").GetString()!, intentRoot.GetProperty("management").GetString()!, ManagementHash(intentRoot));
-        var archive = LinuxMihomoArchiveHost.Root;
-        var binary = Path.Combine(archive, "versions", frozen.RevisionId.ToString("N"), "mihomo");
-        var data = Path.Combine(archive, "data", frozen.RevisionId.ToString("N"));
-        var host = new LinuxMihomoArchiveHost();
-        var effect = await host.ActivateTunAsync(frozen, binary, data, CancellationToken.None);
-        await RefusesAsync("runtime.network_checkpoint_conflict", () => host.DispatchTunStartAsync(operationId, CancellationToken.None));
-        await RefusesAsync("runtime.network_checkpoint_conflict", () => host.ActivateTunAsync(frozen, binary, data, CancellationToken.None));
-        await NativeRuntimeProcess.RunAsync("/usr/bin/python3", ["-I", Path.Combine(root, "mihomo-tun-fd-proof.py"),
-            "prepare", root, effect.InterfaceIndex.ToString(CultureInfo.InvariantCulture),
-            Environment.ProcessId.ToString(CultureInfo.InvariantCulture)], 1024);
-        Console.WriteLine(operation);
-        Console.WriteLine($"PASS HELPER NATIVE TUN DESCRIPTOR: {operation}; {frozen.Device} ifindex={effect.InterfaceIndex}, receiver PID={effect.Process!.Pid}, authenticated single dispatch and duplicate activation refused");
-        await Task.Delay(Timeout.InfiniteTimeSpan);
+        var adapter = new ArchiveAdapter(root, frozen.RevisionId, frozen);
+        var previous = MihomoArchiveAdapter.Hash(await File.ReadAllBytesAsync(adapter.Previous));
+        await adapter.InstallConfigurationAsync(adapter.Previous, previous);
+        var store = Store();
+        var target = new RuntimeTarget("linux", "amd64", null, null, RuntimeInstallMode.Archive, "systemd");
+        var before = store.Initialize(new(Guid.NewGuid(), "test-host", "mihomo", 0, RuntimeOwnership.Absent, target, null, false), previous);
+        var binary = await File.ReadAllBytesAsync(adapter.Binary);
+        var digest = MihomoArchiveAdapter.Hash(binary);
+        var artifact = new RuntimeArtifact("fixture", digest, binary.Length, "gz", "mihomo", "signed-manifest:fixture",
+            new(binary.Length, 1, [new("mihomo", binary.Length, digest, true)]));
+        var revision = new RuntimeStoredRevision(frozen.RevisionId, new("fixture-release", "mihomo", "v1.19.33", "1.19.33",
+            RuntimeChannel.Stable, "fixture-source", target, artifact, "mihomo-v1", true, RuntimeTrust.Confirmed,
+            RuntimeEvidence.NativeConfiguration, DateTimeOffset.UtcNow), "1.19.33", previous, 1, 1);
+        using (var session = store.Acquire())
+            session.Save(before with { Active = revision, Revisions = [revision], Installation = before.Installation with
+                { StateRevision = 1, Ownership = RuntimeOwnership.Managed, ActiveReleaseId = revision.Release.ReleaseId } });
+        var plan = new RuntimeConfigurationPlan(before.Installation.InstallationId, before.Installation.HostId, "mihomo",
+            1, frozen.RevisionId, previous, frozen.ConfigurationHash, "tun-publication");
+        await File.WriteAllBytesAsync(Path.Combine(root, "tun-plan.json"), RuntimeJson.Serialize(plan));
+        var outcome = await new RuntimeArchiveConfiguration(store, adapter).ExecuteAsync(operationId, plan, CancellationToken.None);
+        throw new InvalidOperationException($"The fixture exited before interruption: {outcome.Outcome}, {outcome.ProblemCode}, {store.Read()?.Configuration?.RecoveryProblemCode}.");
     }
 
     [SupportedOSPlatform("linux")]
@@ -64,8 +74,16 @@ internal static class MihomoTunDescriptorAcceptance
         var host = new LinuxMihomoArchiveHost();
         if (action == "state") Console.WriteLine(current.Phase);
         else if (action == "observe") await host.VerifyTunAsync(operation, CancellationToken.None);
-        else if (action == "stop") await host.DispatchTunStopAsync(operation, CancellationToken.None);
-        else if (action == "restored") await host.CompleteTunStopAsync(operation, CancellationToken.None);
+        else if (action is "retry" or "recover" or "recover-interrupt")
+        {
+            var plan = RuntimeJson.Read<RuntimeConfigurationPlan>(await File.ReadAllBytesAsync(Path.Combine(root, "tun-plan.json")));
+            var adapter = new ArchiveAdapter(root, plan.ActiveRevisionId, intent: null, interruptStop: action == "recover-interrupt");
+            var transaction = new RuntimeArchiveConfiguration(Store(), adapter);
+            var result = action == "retry"
+                ? await transaction.ExecuteAsync(Guid.NewGuid(), plan, CancellationToken.None)
+                : await transaction.RecoverAsync(operation, CancellationToken.None);
+            Console.WriteLine(JsonSerializer.Serialize(result));
+        }
         else throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
     }
 
@@ -88,5 +106,104 @@ internal static class MihomoTunDescriptorAcceptance
         try { await action(); }
         catch (RuntimePolicyException error) when (error.ProblemCode == code) { return; }
         throw new InvalidOperationException($"Expected native TUN refusal {code}.");
+    }
+
+    [SupportedOSPlatform("linux")]
+    private sealed class ArchiveAdapter(string root, Guid revision, MihomoTunIntent? intent, bool interruptStop = false)
+        : IRuntimeArchiveConfigurationAdapter
+    {
+        private readonly LinuxMihomoArchiveHost host = new();
+        internal string Previous => Path.Combine(root, "previous.yaml");
+        internal string Binary => Path.Combine(Archive, "versions", revision.ToString("N"), "mihomo");
+        private string Data => Path.Combine(Archive, "data", revision.ToString("N"));
+        private static string Configuration => Path.Combine(Archive, "active.yaml");
+
+        internal async Task InstallConfigurationAsync(string source, string hash)
+        {
+            await CopyConfigurationAsync(source, hash);
+            await host.ConfigureAsync(Binary, Data, Configuration, hash, false, CancellationToken.None);
+        }
+
+        private static async Task CopyConfigurationAsync(string source, string hash)
+        {
+            var content = await File.ReadAllBytesAsync(source);
+            if (MihomoArchiveAdapter.Hash(content) != hash) throw new RuntimePolicyException("runtime.configuration_drift");
+            await File.WriteAllBytesAsync(Configuration, content);
+            File.SetUnixFileMode(Configuration, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+
+        public Task PreflightAsync(RuntimeConfigurationPlan plan, RuntimeArchiveState current, CancellationToken ct) =>
+            ValidateRestoreAsync(current.Configuration!, ct);
+        public Task<RuntimeServiceSnapshot> CaptureAsync(Guid operation, RuntimeArchiveState current, CancellationToken ct) =>
+            Task.FromResult(new RuntimeServiceSnapshot(false, false, current.ConfigurationIdentity, operation, operation));
+        public Task PrepareAsync(RuntimePendingConfiguration pending, CancellationToken ct) =>
+            RequireHashAsync(Path.Combine(root, "candidate.yaml"), pending.Plan.CandidateIdentity);
+        public Task ValidateSwitchAsync(RuntimePendingConfiguration pending, CancellationToken ct) =>
+            RequireHashAsync(Configuration, pending.Plan.PreviousIdentity);
+
+        public async Task ActivateAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+        {
+            if (intent is null || intent.OperationId != pending.OperationId || intent.RevisionId != pending.Plan.ActiveRevisionId
+                || intent.ConfigurationHash != pending.Plan.CandidateIdentity)
+                throw new RuntimePolicyException("runtime.authorization_changed");
+            await CopyConfigurationAsync(Path.Combine(root, "candidate.yaml"), pending.Plan.CandidateIdentity);
+            MihomoTunEffect effect;
+            try { effect = await host.ActivateTunAsync(intent, Binary, Data, ct); }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine(error);
+                throw;
+            }
+            await RefusesAsync("runtime.network_checkpoint_conflict", () => host.DispatchTunStartAsync(pending.OperationId, ct));
+            await NativeRuntimeProcess.RunAsync("/usr/bin/python3", ["-I", Path.Combine(root, "mihomo-tun-fd-proof.py"),
+                "prepare", root, effect.InterfaceIndex.ToString(CultureInfo.InvariantCulture),
+                Environment.ProcessId.ToString(CultureInfo.InvariantCulture)], 1024);
+            Console.WriteLine(pending.OperationId.ToString("N"));
+            Console.WriteLine($"PASS HELPER NATIVE TUN DESCRIPTOR: {pending.OperationId:N}; {intent.Device} ifindex={effect.InterfaceIndex}, receiver PID={effect.Process!.Pid}");
+            await Task.Delay(Timeout.InfiniteTimeSpan);
+        }
+
+        public Task<RuntimeActivationEvidence> VerifyAsync(RuntimePendingConfiguration pending, CancellationToken ct) =>
+            throw new InvalidOperationException("The test interrupts before configuration confirmation.");
+
+        public async Task<bool> ObserveStoppedForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+        {
+            var checkpoint = new LinuxMihomoTunCheckpoint(Archive, pending.OperationId, revision, pending.Plan.CandidateIdentity);
+            if (checkpoint.Read() is { Phase: MihomoTunPhase.DescriptorDispatched })
+            {
+                await host.VerifyTunAsync(pending.OperationId, ct);
+                return false;
+            }
+            await host.CompleteTunStopAsync(pending.OperationId, ct);
+            return true;
+        }
+
+        public async Task StopForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+        {
+            await host.DispatchTunStopAsync(pending.OperationId, ct);
+            if (interruptStop) ProcessKill();
+        }
+
+        public Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct) =>
+            RequireHashAsync(Previous, pending.Plan.PreviousIdentity);
+
+        public async Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+        {
+            await InstallConfigurationAsync(Previous, pending.Plan.PreviousIdentity);
+            var observed = await host.ObserveAsync(ct);
+            await RequireHashAsync(Configuration, pending.Plan.PreviousIdentity);
+            return new("1.19.33", pending.Plan.PreviousIdentity, observed.Running, observed.BootEnabled!.Value,
+                observed.Owned && observed.Executable == Binary, !observed.Running);
+        }
+
+        public Task CleanupPreparationAsync(RuntimePendingConfiguration pending, CancellationToken ct) => Task.CompletedTask;
+
+        private static async Task RequireHashAsync(string path, string hash)
+        {
+            if (MihomoArchiveAdapter.Hash(await File.ReadAllBytesAsync(path)) != hash)
+                throw new RuntimePolicyException("runtime.configuration_drift");
+        }
+
+        private static void ProcessKill() => System.Diagnostics.Process.GetCurrentProcess().Kill();
     }
 }

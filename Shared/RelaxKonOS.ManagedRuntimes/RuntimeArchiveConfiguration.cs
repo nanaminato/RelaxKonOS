@@ -60,9 +60,12 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
                 throw new RuntimePolicyException("runtime.idempotency_conflict");
             return new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode);
         }
-        if (current.Configuration is { } pending && (pending.OperationId == operationId || pending.IdempotencyHash == keyHash)
-            && (pending.RequestHash != requestHash || pending.IdempotencyHash != keyHash))
-            throw new RuntimePolicyException("runtime.idempotency_conflict");
+        if (current.Configuration is { } pending && (pending.OperationId == operationId || pending.IdempotencyHash == keyHash))
+        {
+            if (pending.RequestHash != requestHash || pending.IdempotencyHash != keyHash)
+                throw new RuntimePolicyException("runtime.idempotency_conflict");
+            return new(pending.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
+        }
         if (current.Pending is not null || current.Removal is not null || current.Configuration is not null
             || current.ProxyPublicationUnresolved || current.Installation.RecoveryRequired) throw new RuntimePolicyException("runtime.recovery_required");
         if (plan.InstallationId != current.Installation.InstallationId || plan.HostId != current.Installation.HostId

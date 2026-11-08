@@ -87,6 +87,9 @@ internal static class ConfigurationTransactionChecks
                 && snapshot.TargetReleaseId == snapshot.PreviousReleaseId, "Recovery names a configuration-only transaction: " + failure);
             Check(after.ConfigurationIdentity == (failure == "cleanup" ? f.Plan.PreviousIdentity : f.Plan.CandidateIdentity),
                 "Only verified restoration changes the durable configuration identity: " + failure);
+            var callsBeforeRetry = f.Adapter.Calls.Count;
+            Check(await f.Engine.ExecuteAsync(Guid.NewGuid(), f.Plan, default) == result && f.Adapter.Calls.Count == callsBeforeRetry,
+                "Same-key retry returns the original pending result without compensation: " + failure);
             await Refused("recovery_required", () => f.Engine.ExecuteAsync(Guid.NewGuid(), f.Plan with { IdempotencyKey = "other" }, default));
             var state = f.Store.Read()!;
             var releasePlan = new RuntimeChangePlan(new(state.Installation.InstallationId, state.Installation.HostId,
