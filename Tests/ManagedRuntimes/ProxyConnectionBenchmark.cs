@@ -42,7 +42,8 @@ internal static class ProxyConnectionBenchmark
     internal static async Task RunAsync(string baseline, string candidate, string baselineMode, string candidateMode,
         LoginRequest login, Uri runtimeProxy, Func<string, Task<ProcessStartInfo>> prepare, Func<Task> verify,
         bool requireManaged, int? pollingRuntimePid = null, bool controlReads = false, bool compareSplitConfiguration = false,
-        MihomoObservationCancellationRelay? sharedTrafficRelay = null, MihomoObservationCancellationRelay? overviewBurstRelay = null)
+        MihomoObservationCancellationRelay? sharedTrafficRelay = null, MihomoObservationCancellationRelay? overviewBurstRelay = null,
+        bool mixedRuntimeReads = false)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(requireManaged ? 420 : 85));
         var ct = budget.Token;
@@ -110,7 +111,7 @@ internal static class ProxyConnectionBenchmark
                         var expectedSamples = input.Mode == baselineMode ? readers * TrafficPolls : TrafficPolls;
                         if (sharedTrafficRelay is not null && (trafficRequests != expectedSamples || connectionRequests != expectedSamples))
                             throw new InvalidOperationException($"Expected {expectedSamples} native traffic and connection samples, got {trafficRequests} and {connectionRequests}.");
-                        if (overviewBurstRelay is not null && (versionRequests != connectionRequests
+                        if (overviewBurstRelay is not null && ((mixedRuntimeReads ? connectionRequests != RequestsPerRoute : versionRequests != connectionRequests)
                             || (input.Mode == baselineMode ? versionRequests != 4 * RequestsPerRoute
                                 : versionRequests is null || versionRequests < RequestsPerRoute || versionRequests >= 4 * RequestsPerRoute)))
                             throw new InvalidOperationException($"The overview burst counted {versionRequests} version and {connectionRequests} connection reads.");
@@ -135,7 +136,8 @@ internal static class ProxyConnectionBenchmark
                             Idle = idle, Samples = samples, Cooldown = cooldown,
                             PairRequestMs = runtime is null ? timings : null, TrafficPollMs = runtime is null ? null : timings,
                             TrafficReaders = runtime is null ? 0 : readers, TrafficRequests = trafficRequests, ConnectionRequests = connectionRequests,
-                            OverviewReaders = overviewBurstRelay is null ? 0 : 4, VersionRequests = versionRequests,
+                            OverviewReaders = overviewBurstRelay is null ? 0 : mixedRuntimeReads ? 1 : 4,
+                            RuntimeReaders = mixedRuntimeReads ? 3 : 0, VersionRequests = versionRequests,
                             ServerCpuMs = serverCpuMs, RuntimeCpuMs = runtimeCpuMs
                         }));
 
@@ -167,7 +169,8 @@ internal static class ProxyConnectionBenchmark
                             for (var i = 0; i < RequestsPerRoute; i++)
                             {
                                 var watch = Stopwatch.StartNew();
-                                if (overviewBurstRelay is not null) await ObserveOverviewBurstAsync();
+                                if (mixedRuntimeReads) await ObserveMixedRuntimeAsync();
+                                else if (overviewBurstRelay is not null) await ObserveOverviewBurstAsync();
                                 else if (controlReads) await ObserveControlAsync();
                                 else if (!(await ObserveAsync(client, destination, requireManaged, ct)).SequenceEqual(original))
                                     throw new InvalidOperationException("A measured request saw a different active connection set.");
@@ -185,6 +188,22 @@ internal static class ProxyConnectionBenchmark
                                         Runtime: { Mode: ProxyRuntimeMode.Managed, State: ProxyRuntimeState.Running, IntegrityVerified: true } }
                                 || values.Any(value => !JsonElement.DeepEquals(value, originalOverview.Value)))
                                 throw new InvalidOperationException("The overview burst did not preserve the full native observation.");
+                        }
+
+                        async Task ObserveMixedRuntimeAsync()
+                        {
+                            var overview = client.GetFromJsonAsync<JsonElement>(ProxyApiRoutes.Overview, RelaxKonOSJsonOptions.Default, ct);
+                            var runtime = Task.WhenAll(Enumerable.Range(0, 3).Select(_ =>
+                                client.GetFromJsonAsync<ProxyRuntimeDto>(ProxyApiRoutes.Runtime, RelaxKonOSJsonOptions.Default, ct)));
+                            await Task.WhenAll(overview, runtime);
+                            var value = await overview;
+                            originalOverview ??= value;
+                            if (value.Deserialize<ProxyOverviewDto>(RelaxKonOSJsonOptions.Default)
+                                    is not { ActiveConnections: ConnectionCount, Health.ControllerReachable: true,
+                                        Runtime: { Mode: ProxyRuntimeMode.Managed, State: ProxyRuntimeState.Running, IntegrityVerified: true } measured }
+                                || (await runtime).Any(item => item != measured)
+                                || !JsonElement.DeepEquals(value, originalOverview.Value))
+                                throw new InvalidOperationException("The mixed workload changed the overview or standalone runtime response.");
                         }
 
                         async Task ObserveControlAsync()

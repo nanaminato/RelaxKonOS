@@ -192,11 +192,12 @@ internal static class MihomoServerPublicationAcceptance
                 var controller = overviewScope.ServiceProvider.GetRequiredService<IMihomoControllerClient>();
                 var safety = new ProxyTunSafetyService(paths, new HostProxyNetworkSafetyPlatform());
                 var recovery = new CountingRecoveryReader(safety);
-                var overview = new ProxyOverviewService(manager, controller, new ProxyPlatformService(systemProxy), publicationProfiles, recovery);
+                var overview = new ProxyOverviewService(controller, new ProxyPlatformService(systemProxy), publicationProfiles, recovery);
+                Task<MihomoRuntimeObservation> ObserveRuntimeAsync(CancellationToken ct) => manager.GetObservedAsync(controller.IsReachableAsync, ct);
                 IReadOnlyList<ProxyConnectionDto>? retainedConnections = null;
                 Check(await probeWithConnection(originalPort + 2, async () =>
                 {
-                    var observation = await overview.GetAsync(default);
+                    var observation = await overview.GetAsync(ObserveRuntimeAsync, default);
                     var detail = await controller.GetConnectionsAsync(default);
                     if (observation.ActiveProfile?.Id != nextProfile.Id || observation.ActiveConnections < 1
                         || observation.Runtime.State != ProxyRuntimeState.Running || versionRequests != 3 || recovery.Reads != 1
@@ -226,7 +227,7 @@ internal static class MihomoServerPublicationAcceptance
                 Console.WriteLine("PASS MIHOMO RETAINED CONNECTION PROJECTION: Server kept real connection DTOs while the old generation collected");
                 Check(await probeWithConnection(originalPort + 2, async () =>
                 {
-                    var observation = await overview.GetAsync(parserBudget.Token);
+                    var observation = await overview.GetAsync(ObserveRuntimeAsync, parserBudget.Token);
                     if (observation.ActiveConnections < 1 || versionRequests != 4 || recovery.Reads != 2
                         || ProxyConnectionExecutionGate.Shared.CurrentCode is not { } next
                         || ReferenceEquals(originalParser, next))
@@ -239,7 +240,7 @@ internal static class MihomoServerPublicationAcceptance
                 {
                     var protector = protection.CreateProtector("RelaxKonOS.Proxy.ControllerSecret.v1");
                     await File.WriteAllTextAsync(controllerSecret, protector.Protect(Guid.NewGuid().ToString("N")));
-                    var unauthorized = await overview.GetAsync(default);
+                    var unauthorized = await overview.GetAsync(ObserveRuntimeAsync, default);
                     Check(unauthorized.Runtime.State == ProxyRuntimeState.Running
                         && unauthorized.Health is { ControllerReachable: false, ProblemCode: ProxyProblemCodes.ControllerAuthenticationFailed }
                         && unauthorized.ActiveConnections == 0 && versionRequests == 5 && recovery.Reads == 3,

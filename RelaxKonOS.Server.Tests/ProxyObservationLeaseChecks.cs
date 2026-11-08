@@ -36,12 +36,18 @@ internal static class ProxyObservationLeaseChecks
         builder.Services.AddSingleton<IResidentModuleWorkLeaseSource, CapturingLeaseSource>();
         ProxyReadSampler<ProxyTrafficDto>.Register(builder.Services,
             static (services, ct) => services.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(ct));
-        ProxyReadSampler<ProxyOverviewDto>.Register(builder.Services, static async (services, ct) =>
+        ProxyReadSampler<MihomoRuntimeObservation>.Register(builder.Services, static async (services, ct) =>
         {
             var reachable = await services.GetRequiredService<IMihomoControllerClient>().IsReachableAsync(ct);
+            var runtime = new ProxyRuntimeDto(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Running,
+                "1.19.10", null, true, false, reachable.ProblemCode);
+            return new(runtime, reachable);
+        });
+        ProxyReadSampler<ProxyOverviewDto>.Register(builder.Services, static async (services, ct) =>
+        {
+            var sample = await services.GetRequiredService<ProxyReadSampler<MihomoRuntimeObservation>>().ReadAsync(ct);
             return new(MihomoEngine.Id, MihomoEngine.Capabilities, new(false, false, false, false, false, false, new(false, false, false, false)),
-                new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Running, "1.19.10", null, true, false),
-                new(ProxyRuntimeState.Running, ProxyTunState.Disabled, ProxyHealthState.Healthy, reachable.Succeeded, true, true),
+                sample.Runtime, new(ProxyRuntimeState.Running, ProxyTunState.Disabled, ProxyHealthState.Healthy, sample.Controller!.Succeeded, true, true),
                 ProxyOperatingMode.ListenerOnly, null, 1, new(false, false, null));
         });
         var scenario = new Scenario(holdController: false);
@@ -57,7 +63,6 @@ internal static class ProxyObservationLeaseChecks
         builder.Services.AddScoped<IProxyConfigurationTransactionService>(_ => new FixtureWrite(scenario));
         builder.Services.AddScoped(_ => new ControllerScope(scenario));
         builder.Services.AddScoped<IMihomoControllerClient>(services => services.GetRequiredService<ControllerScope>().CreateClient());
-        builder.Services.AddScoped<IProxyRuntimeManager, FixtureRuntime>();
         await using var app = builder.Build();
         var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -140,7 +145,8 @@ internal static class ProxyObservationLeaseChecks
         foreach (var (route, holdController) in routes.SelectMany(route => new[] { (route, true), (route, false) }))
         {
             scenario = new Scenario(holdController);
-            var cleanupBeforeResponse = (route == ProxyApiRoutes.Traffic || route == ProxyApiRoutes.Overview) && !holdController;
+            var cleanupBeforeResponse = (route == ProxyApiRoutes.Traffic || route == ProxyApiRoutes.Overview || route == ProxyApiRoutes.Runtime)
+                && !holdController;
             if (cleanupBeforeResponse) scenario.ReleaseCleanup.TrySetResult();
             using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var request = http.GetAsync(route, caller.Token);
@@ -180,14 +186,14 @@ internal static class ProxyObservationLeaseChecks
             var remaining = http.GetFromJsonAsync<ProxyOverviewDto>(ProxyApiRoutes.Overview, RelaxKonOSJsonOptions.Default, ct);
             try
             {
-                while (coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 3) await Task.Delay(10, ct);
+                while (coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 4) await Task.Delay(10, ct);
                 await firstCaller.CancelAsync();
                 try { using var unexpected = await first; throw new Exception("Expected overview client cancellation."); }
                 catch (OperationCanceledException) when (firstCaller.IsCancellationRequested) { }
                 scenario.ReleaseController.TrySetResult();
                 await scenario.CleanupEntered.Task.WaitAsync(ct);
                 TestAssert.Assert(!scenario.ControllerCancelled.Task.IsCompleted && scenario.ControllerCalls == 1 && !remaining.IsCompleted
-                    && coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases == 3,
+                    && coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases == 4,
                     "Overlapping overview reads must share execution and retain the response leases through async cleanup.");
             }
             finally
@@ -196,6 +202,33 @@ internal static class ProxyObservationLeaseChecks
                 scenario.ReleaseCleanup.TrySetResult();
             }
             TestAssert.Assert(await remaining is { ActiveConnections: 1 }, "The other overview reader must receive the original sample.");
+            while (HasLease()) await Task.Delay(10, ct);
+        }
+        scenario = new Scenario(holdController: true);
+        using (var runtimeCaller = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            var runtime = http.GetAsync(ProxyApiRoutes.Runtime, runtimeCaller.Token);
+            await scenario.ControllerEntered.Task.WaitAsync(ct);
+            var overview = http.GetFromJsonAsync<ProxyOverviewDto>(ProxyApiRoutes.Overview, RelaxKonOSJsonOptions.Default, ct);
+            try
+            {
+                while (coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 4) await Task.Delay(10, ct);
+                await runtimeCaller.CancelAsync();
+                try { using var unexpected = await runtime; throw new Exception("Expected runtime client cancellation."); }
+                catch (OperationCanceledException) when (runtimeCaller.IsCancellationRequested) { }
+                scenario.ReleaseController.TrySetResult();
+                await scenario.CleanupEntered.Task.WaitAsync(ct);
+                TestAssert.Assert(scenario.ControllerCalls == 1 && !scenario.ControllerCancelled.Task.IsCompleted && !overview.IsCompleted
+                    && coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases == 4,
+                    "Runtime and overview must retain the same in-flight observation through cleanup.");
+            }
+            finally
+            {
+                scenario.ReleaseController.TrySetResult();
+                scenario.ReleaseCleanup.TrySetResult();
+            }
+            TestAssert.Assert(await overview is { ActiveConnections: 1, Runtime.State: ProxyRuntimeState.Running },
+                "The overview must finish using the shared runtime observation.");
             while (HasLease()) await Task.Delay(10, ct);
         }
         scenario = new Scenario(holdController: true);
@@ -444,19 +477,6 @@ internal static class ProxyObservationLeaseChecks
             };
             return new HttpResponseMessage(scenario.Status) { Content = new StringContent(body) };
         }
-    }
-
-    private sealed class FixtureRuntime(IMihomoControllerClient controller) : IProxyRuntimeManager
-    {
-        public async Task<ProxyRuntimeDto> GetAsync(string engineId, CancellationToken ct)
-        {
-            var result = await controller.IsReachableAsync(ct);
-            return new(engineId, ProxyRuntimeMode.Managed, result.Succeeded ? ProxyRuntimeState.Running : ProxyRuntimeState.Stopped,
-                "1.19.10", null, true, false, result.ProblemCode);
-        }
-
-        public Task<ProxyRuntimeDto> DetectExternalAsync(string engineId, string executablePath, CancellationToken ct) =>
-            throw new InvalidOperationException("Runtime status must not probe an external executable.");
     }
 
     private sealed class FixtureDiagnostics : IProxyDiagnosticLogStore

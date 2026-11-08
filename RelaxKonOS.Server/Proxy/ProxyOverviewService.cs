@@ -5,24 +5,19 @@ using RelaxKonOS.Server.Proxy.Mihomo;
 namespace RelaxKonOS.Server.Proxy;
 
 internal sealed class ProxyOverviewService(
-    MihomoRuntimeManager runtime,
     IMihomoControllerClient controller,
     IProxyPlatformService platform,
     IProxyProfileRepository profiles,
     IProxyRecoveryService recovery)
 {
-    internal async Task<ProxyOverviewDto> GetAsync(CancellationToken ct)
+    internal async Task<ProxyOverviewDto> GetAsync(Func<CancellationToken, Task<MihomoRuntimeObservation>> observeRuntime, CancellationToken ct)
     {
         var active = await profiles.GetActiveAsync(ct);
         var recoveryState = await recovery.GetStatusAsync(ct);
-        Task<ControllerResult<bool>>? observation = null;
-        Task<ControllerResult<bool>> ObserveAsync(CancellationToken token) =>
-            observation ??= controller.IsReachableAsync(token);
-
-        // Managed-runtime classification samples the same controller under its existing gate.
-        // When the runtime has no verified installation, health can still observe the controller.
-        var runtimeState = await runtime.GetObservedAsync(ObserveAsync, ct);
-        var health = await MihomoEngine.ProjectHealthAsync(controller, await ObserveAsync(ct), recoveryState, ct);
+        var sample = await observeRuntime(ct);
+        // An absent or unverified runtime may skip the version probe. Only overview still needs health.
+        var reachable = sample.Controller ?? await controller.IsReachableAsync(ct);
+        var health = await MihomoEngine.ProjectHealthAsync(controller, reachable, recoveryState, ct);
         var connectionCount = 0;
         if (health.ControllerReachable)
         {
@@ -31,7 +26,7 @@ internal sealed class ProxyOverviewService(
             else health = health with { State = ProxyHealthState.Degraded, ProblemCode = count.ProblemCode };
         }
         return new ProxyOverviewDto(MihomoEngine.Id, MihomoEngine.Capabilities, await platform.GetCapabilitiesAsync(ct),
-            runtimeState, health, health.TunState == ProxyTunState.Enabled ? ProxyOperatingMode.Tun : ProxyOperatingMode.ListenerOnly,
+            sample.Runtime, health, health.TunState == ProxyTunState.Enabled ? ProxyOperatingMode.Tun : ProxyOperatingMode.ListenerOnly,
             active, connectionCount, recoveryState, RuntimeInformation.OSDescription);
     }
 }

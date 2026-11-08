@@ -15,6 +15,8 @@ using RelaxKonOS.Server.Docker;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
+internal sealed record MihomoRuntimeObservation(ProxyRuntimeDto Runtime, ControllerResult<bool>? Controller);
+
 /// <summary>
 /// Owns only RelaxKonOS-managed Mihomo artifacts. Release directories are immutable; the active
 /// pointer changes only after the constrained service boundary and loopback controller both pass.
@@ -116,8 +118,16 @@ public sealed class MihomoRuntimeManager(
     public Task<ProxyRuntimeDto> GetAsync(string engineId, CancellationToken cancellationToken) =>
         GetCoreAsync(engineId, ObserveControllerAsync, cancellationToken);
 
-    internal Task<ProxyRuntimeDto> GetObservedAsync(Func<CancellationToken, Task<ControllerResult<bool>>> observeController,
-        CancellationToken cancellationToken) => GetCoreAsync(MihomoEngine.Id, observeController, cancellationToken);
+    internal async Task<MihomoRuntimeObservation> GetObservedAsync(Func<CancellationToken, Task<ControllerResult<bool>>> observeController,
+        CancellationToken cancellationToken)
+    {
+        ControllerResult<bool>? observation = null;
+        var runtime = await GetCoreAsync(MihomoEngine.Id, ObserveAsync, cancellationToken);
+        return new(runtime, observation);
+
+        async Task<ControllerResult<bool>> ObserveAsync(CancellationToken ct) =>
+            observation = await observeController(ct);
+    }
 
     private async Task<ProxyRuntimeDto> GetCoreAsync(string engineId,
         Func<CancellationToken, Task<ControllerResult<bool>>> observeController, CancellationToken cancellationToken)

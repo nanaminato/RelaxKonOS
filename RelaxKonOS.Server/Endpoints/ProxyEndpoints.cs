@@ -150,7 +150,7 @@ public static class ProxyEndpoints
     internal static void MapProxyObservationEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet(ProxyApiRoutes.Runtime, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteScopedAsync(context, leases,
-            static async (services, ct) => Results.Ok(await services.GetRequiredService<IProxyRuntimeManager>().GetAsync(MihomoEngine.Id, ct))))
+            static async (services, ct) => Results.Ok((await services.GetRequiredService<ProxyReadSampler<MihomoRuntimeObservation>>().ReadAsync(ct)).Runtime)))
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyRuntimeDto>();
         app.MapGet(ProxyApiRoutes.Groups, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteScopedAsync(context, leases,
             static async (services, ct) => Results.Ok(await MihomoProxyGroupOrder.ReadGroupsAsync(

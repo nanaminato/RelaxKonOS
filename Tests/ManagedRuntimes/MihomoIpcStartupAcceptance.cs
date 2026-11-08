@@ -213,11 +213,14 @@ internal static class MihomoIpcStartupAcceptance
         var trafficPolling = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_TRAFFIC_POLLING") == "1";
         var sharedTraffic = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_SHARED_TRAFFIC") == "1";
         var overviewBurst = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_OVERVIEW_BURST") == "1";
+        var mixedRuntimeReads = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_MIXED_RUNTIME_READS") == "1";
         var controlReads = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_CONTROL_READS") == "1";
         if (sharedTraffic && (trafficPolling || controlReads || string.IsNullOrEmpty(baseline)))
             throw new InvalidOperationException("Shared-traffic measurement requires a separate traffic baseline.");
         if (overviewBurst && (trafficPolling || sharedTraffic || controlReads || string.IsNullOrEmpty(baseline)))
             throw new InvalidOperationException("Overview bursts require a dedicated overview baseline.");
+        if (mixedRuntimeReads && !overviewBurst)
+            throw new InvalidOperationException("Mixed runtime reads require the overview burst workload.");
         var compareSplitConfiguration = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_COMPARE_SPLIT_CONFIG") == "1";
         if (compareSplitConfiguration && (!controlReads || trafficPolling || string.IsNullOrEmpty(baseline)))
             throw new InvalidOperationException("The split-configuration measurement requires a control-read baseline.");
@@ -241,13 +244,13 @@ internal static class MihomoIpcStartupAcceptance
                 login!, new Uri($"http://127.0.0.1:{port}/"), PrepareAsync, VerifyAsync, requireManaged: true,
                 pollingRuntimePid: trafficPolling || sharedTraffic ? runtimePid : null, controlReads: controlReads,
                 compareSplitConfiguration: compareSplitConfiguration, sharedTrafficRelay: sharedTraffic ? workloadRelay : null,
-                overviewBurstRelay: overviewBurst ? workloadRelay : null);
+                overviewBurstRelay: overviewBurst ? workloadRelay : null, mixedRuntimeReads: mixedRuntimeReads);
             start.Environment[controllerEndpoint] = endpoint;
             var log = await helper.StopAsync(drainCompletedRequests: true);
             if (log.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)
                 || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
                 throw new InvalidOperationException("The read workload dispatched a native publication action.");
-            var measurement = overviewBurst ? "OVERVIEW BURST" : sharedTraffic ? "SHARED TRAFFIC"
+            var measurement = mixedRuntimeReads ? "MIXED RUNTIME" : overviewBurst ? "OVERVIEW BURST" : sharedTraffic ? "SHARED TRAFFIC"
                 : trafficPolling ? "TRAFFIC POLLING" : controlReads ? "CONTROL READS" : "OVERVIEW";
             Console.WriteLine($"PASS MANAGED MIHOMO {measurement} BENCHMARK: native PID {runtimePid}, original receipt {interrupted}, no configure or recover");
 
@@ -519,7 +522,8 @@ internal static class MihomoIpcStartupAcceptance
                 await CheckStartupAsync(start, drainId, uid, ready: true, afterReady: login is null ? null : async restartedProcess =>
                 {
                     using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(restartedProcess, login, ct);
-                    await CancelObservationAsync(client, ProxyApiRoutes.Runtime, "/version");
+                    await ShareRuntimeAsync(client);
+                    await CancelObservationAsync(client, ProxyApiRoutes.Runtime, "/version", expectedLeases: 2);
                     Console.WriteLine($"PASS MIHOMO NATIVE OBSERVATION CANCELLATION: {drainId}; runtime after recovery, groups and combined configuration drained their leases");
                 });
                 start.Environment[controllerEndpoint] = originalEndpoint;
@@ -593,8 +597,10 @@ internal static class MihomoIpcStartupAcceptance
                 await CancelObservationAsync(client, ProxyApiRoutes.Overview, "/connections", expectedLeases: 2);
                 await CancelObservationAsync(client, ProxyApiRoutes.Traffic, "/traffic", expectedLeases: 2);
                 Console.WriteLine($"PASS MIHOMO NATIVE TRAFFIC CANCELLATION: {drainId}; held native sample drained and a fresh request completed");
+                var beforeUnverifiedRuntime = controllerRelay.VersionRequests;
                 var runtime = await client.GetFromJsonAsync<ProxyRuntimeDto>(ProxyApiRoutes.Runtime, RelaxKonOSJsonOptions.Default, ct);
-                if (runtime is not { State: ProxyRuntimeState.Failed, ProblemCode: ProxyProblemCodes.RuntimeStateUnknown })
+                if (runtime is not { State: ProxyRuntimeState.Failed, ProblemCode: ProxyProblemCodes.RuntimeStateUnknown }
+                    || controllerRelay.VersionRequests != beforeUnverifiedRuntime)
                     throw new InvalidOperationException("Runtime observation did not retain the pending publication authority.");
                 await CancelObservationAsync(client, ProxyApiRoutes.Groups, "/proxies");
                 var requestsBefore = controllerRelay!.ConfigurationRequests;
@@ -693,6 +699,32 @@ internal static class MihomoIpcStartupAcceptance
                     throw new InvalidOperationException("The second overview reader did not finish the original native sample.");
                 while (await ActiveLeasesAsync(client) != 0) await Task.Delay(25, ct);
                 Console.WriteLine($"PASS MIHOMO NATIVE SHARED OVERVIEW: {operationId}; one version and connection scan, one reader cancelled");
+            }
+
+            async Task ShareRuntimeAsync(HttpClient client)
+            {
+                while (await ActiveLeasesAsync(client) != 0) await Task.Delay(25, ct);
+                var versions = controllerRelay!.VersionRequests;
+                var connections = controllerRelay.ConnectionRequests;
+                var held = controllerRelay.HoldNext("/version");
+                using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                var runtime = client.GetAsync(ProxyApiRoutes.Runtime, caller.Token);
+                await held.Received.Task.WaitAsync(ct);
+                var overview = client.GetFromJsonAsync<ProxyOverviewDto>(ProxyApiRoutes.Overview, RelaxKonOSJsonOptions.Default, ct);
+                try
+                {
+                    while (await ActiveLeasesAsync(client) != 4) await Task.Delay(25, ct);
+                    await caller.CancelAsync();
+                    try { using var unexpected = await runtime; throw new InvalidOperationException("The runtime reader did not cancel."); }
+                    catch (OperationCanceledException) when (caller.IsCancellationRequested) { }
+                }
+                finally { held.Release.TrySetResult(); }
+                if (await overview is not { Health.ControllerReachable: true, Runtime: { State: ProxyRuntimeState.Running, IntegrityVerified: true } }
+                    || held.Drained.Task.IsCompleted || controllerRelay.VersionRequests != versions + 1
+                    || controllerRelay.ConnectionRequests != connections + 1)
+                    throw new InvalidOperationException("The overview did not reuse the native runtime observation.");
+                while (await ActiveLeasesAsync(client) != 0) await Task.Delay(25, ct);
+                Console.WriteLine($"PASS MIHOMO NATIVE SHARED RUNTIME: {drainId}; one version across routes, runtime reader cancelled");
             }
 
             async Task DrainAsync()

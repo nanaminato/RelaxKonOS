@@ -517,6 +517,8 @@ MB-03 在私有 Linux Engine 网络上验证了宿主和 builder 镜像内 Git �
 
 MB-04 的重叠概览请求共用一次受管运行时、活动档案、恢复状态及连接计数。原采样的租约覆盖实际读取和清理，已认证请求各自持有响应租约。见[重叠概览采样](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-重叠概览采样)。
 
+概览与独立运行时读取可以共享在途运行时判定和版本探测。共享采样持有执行与清理责任，两个入口各自排空响应。见[跨路由运行时采样](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-跨路由运行时采样)。
+
 MB-04 的重叠流量请求共用一个控制器采样和连接快照读取。采样租约负责实际控制器任务与作用域清理，各请求的租约负责自身 HTTP 响应。最后一个客户端取消后，新请求等原采样清理再读取。Proxy 继续 resident。见[重叠流量采样](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-重叠流量采样)。
 
 MB-05 的四条 Compose 只读 HTTP 路由使用工作租约保护 CLI、响应及异步作用域清理。未核实的 CLI 清理保留恢复责任，Docker 继续 resident。见[Compose 只读 HTTP 工作责任](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-docker-compose-只读-http-工作责任)。

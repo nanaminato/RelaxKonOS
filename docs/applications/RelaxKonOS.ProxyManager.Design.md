@@ -4513,7 +4513,7 @@ Proxy 概览使用单独的请求作用域，从原档案库读取当前选中�
 
 Linux 完整认证 HTTP 已验证解析代次在同一 Server 进程内闲时卸载，下一次概览和详情请求加载新代次。原代理连接持续转发，Mihomo 进程、发布修订和原系统代理所有权日志保持一致。Proxy 管理模块继续常驻。
 
-Mihomo 概览在一次请求内共用一次控制器版本探测和一次 Core 恢复状态读取。独立运行时读取每次自行探测。控制器拒绝认证时，运行时仍可显示 Running，管理健康显示认证失败，连接数为零。若 Core 存在待恢复责任，健康继续显示恢复状态。
+Mihomo 概览读取一次 Core 恢复状态。概览与独立运行时 GET 重叠时，共享在途运行时判定及可用的版本探测。若原运行时判定跳过版本探测，只有概览再读取控制器健康。见[跨路由运行时采样](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-跨路由运行时采样)。控制器拒绝认证时，运行时仍可显示 Running，管理健康显示认证失败，连接数为零。若 Core 存在待恢复责任，健康继续显示恢复状态。
 
 Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。完整认证 Server 重启及连接解析器卸载与重载期间，原连接持续转发。验收范围见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览的单次观测)。
 
