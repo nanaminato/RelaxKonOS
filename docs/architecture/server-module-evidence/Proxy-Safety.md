@@ -39,6 +39,7 @@
 - [MB-04 TUN 归档事务同键回执](#mb-04-tun-归档事务同键回执)
 - [MB-04 冻结 TUN 意图授权](#mb-04-冻结-tun-意图授权)
 - [MB-04 生产归档配置适配器的 TUN 恢复](#mb-04-生产归档配置适配器的-tun-恢复)
+- [MB-04 Server 生成 TUN 意图及管理 UID 复核](#mb-04-server-生成-tun-意图及管理-uid-复核)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -395,6 +396,16 @@ Linux x64 私有 systemd 最终轮使用真实生产配置适配器、Helper 固
 首轮夹具签名密钥标识错误，在目录验签前置检查被拒绝，见 `.artifacts/mb04-tun-marker-sync/tun-adapter-linux.log`。修正后发现隔离环境缺少 `systemd-run --pipe` 所需的系统总线，见 `.artifacts/mb04-tun-marker-sync/tun-adapter-linux-native-diag.log`。夹具在私有 `/etc` 和 `/run` 内加载专属 D-Bus 单元后通过，宿主共享服务继续按原指纹核对。Windows ManagedRuntimes Release 通过，含 104 项配置事务。可信下载探针因缺进程级测试 CA 覆盖跳过，见 `.artifacts/mb04-tun-marker-sync/tun-adapter-win.log`。
 
 夹具仍提供初始意图、测试信任源和两个中断时点。生产 Server 意图生成、策略规则与 DNS 归属、正常成功提交后启停与移除、生产同键 HTTP 和实际工作租约待验收。Proxy 保持 resident。已确认专属进程退出，对象释放、ALC 回收、隔离内存与生产收益未测量。
+
+## MB-04 Server 生成 TUN 意图及管理 UID 复核
+
+Server 规划器从受控设置、可信 IPv4 源和目标范围、Core 观察到的管理路由及候选配置生成固定描述符模式。拒绝默认自动路由、DNS 劫持和把受保护网关纳入 TUN。使用同一读取逻辑，Server 冻结其有效 UID 的 IPv4 管理端点选路及 IPv4/IPv6 规则摘要，Helper 以原 UID 独立复核。规划只产生材料及摘要，网络写入仍由原 Helper 执行。 [iproute2 的 UID 选路参数](https://raw.githubusercontent.com/iproute2/iproute2/main/man/man8/ip-route.8.in)
+
+Linux x64 私有 systemd 让非特权 Server 进程以 nobody UID 生成候选和意图，root Helper 使用原计划派发。原操作 `d13ee83cd0b94eeaa367adfa63474541`，`rk-fd-proof` ifindex 4、候选 PID 223、配置摘要 `2599973f214f2bb41dd3b5c0cab7f21d7f6c25695b124f52e1a3a0c4b92a109d`。拒绝默认自动路由设置及网关目标，授权通道也拒绝换目标和开启自动路由。效果已产生后强制中断，管理选路和配置身份一致，真实上游共收到三次请求。专属策略规则仅改变 Server UID 的下一跳，root 路由未变，Helper 仍拒绝停止并保留原进程及台账。移除夹具的故障注入后继续原具名恢复，原停止已派发时再次强制中断。后续恢复旧配置、数据及监听，同键重读原 `Interrupted`。专属 cgroup 清理，共享服务与代理文件指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-plan-linux.log`，归档 SHA-256 `98c720d4999a2f961090e30a94bd5d4a89f87491ea2c9066e064e95e0e600f41`。
+
+Windows ManagedRuntimes Release 通过，含 104 项配置事务，可信下载探针因缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-plan-win.log`。
+
+本轮只覆盖单个 IPv4 管理端点、一个精确 TUN 目标和 UID 选路。策略规则由夹具注入以验证漂移拒绝。生产受控范围来源及发布入口、规则和 DNS 写入所有权、成功提交后的生命周期、同键 HTTP 和实际工作租约待验收。公开准入与成功提交门禁继续生效，Proxy 保持 resident。已确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

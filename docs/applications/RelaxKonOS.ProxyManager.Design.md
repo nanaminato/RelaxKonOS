@@ -4515,6 +4515,8 @@ Helper 在专属夹具内已验证原操作 ID 标签、TUN 地址及单一精�
 
 生产归档配置适配器已在私有 systemd 实测调用固定 TUN 宿主，两次中断后按原操作恢复旧配置、数据和监听。生产公开发布与成功提交门禁继续生效，生产意图生成、规则及 DNS 归属和提交后生命周期待接入。见[生产适配器恢复证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-生产归档配置适配器的-tun-恢复)。
 
+Server 规划器已在非特权进程中生成固定描述符配置和意图。Helper 以原 Server UID 核对管理选路，单独影响该 UID 的策略变化会保留待核验。生产受控范围来源、发布入口、规则及 DNS 归属待接入。见[管理 UID 复核证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-server-生成-tun-意图及管理-uid-复核)。
+
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
 
 Core TUN worker 停止接收新扫描后，等待已发出的禁用请求、实际路由核验和原标记清理。停机等待方的期限不会打断已开始的恢复。如果控制器或管理路由仍无法核实，保留原标记供后续核验。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-core-tun-恢复的停机排空)。

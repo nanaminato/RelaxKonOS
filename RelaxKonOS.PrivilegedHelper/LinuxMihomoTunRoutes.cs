@@ -13,16 +13,18 @@ internal sealed class LinuxMihomoTunRoutes
 {
     private readonly string address;
     private readonly string target;
-    private readonly string management;
+    private readonly IPAddress management;
+    private readonly uint managementUserId;
 
-    internal LinuxMihomoTunRoutes(IPAddress address, IPAddress target, IPAddress management)
+    internal LinuxMihomoTunRoutes(IPAddress address, IPAddress target, IPAddress management, uint managementUserId)
     {
         if (!IsUnicast(address) || !IsUnicast(target) || !IsUnicast(management)
             || address.Equals(target) || address.Equals(management) || target.Equals(management))
             throw new RuntimePolicyException("runtime.network_route_invalid");
         this.address = address.ToString();
         this.target = target.ToString();
-        this.management = management.ToString();
+        this.management = management;
+        this.managementUserId = managementUserId;
     }
 
     private static bool IsUnicast(IPAddress address) => address.AddressFamily == AddressFamily.InterNetwork
@@ -74,20 +76,11 @@ internal sealed class LinuxMihomoTunRoutes
 
     private Task<JsonElement> ReadRouteAsync() => JsonAsync("-j", "-4", "route", "show", "table", "main", "exact", target + "/32");
 
-    internal async Task<string> ReadManagementHashAsync()
-    {
-        var snapshot = new[]
-        {
-            (await IpAsync("-4", "route", "get", management)).Trim(),
-            (await IpAsync("-4", "rule", "show")).Trim(),
-            (await IpAsync("-6", "rule", "show")).Trim()
-        };
-        return MihomoArchiveAdapter.Hash(JsonSerializer.SerializeToUtf8Bytes(snapshot));
-    }
-
     internal async Task RequireManagementAsync(string expected)
     {
-        if (await ReadManagementHashAsync() != expected)
+        var measured = await MihomoLinuxManagementBaseline.ReadAsync(management, managementUserId,
+            async (arguments, _) => await IpAsync(arguments), CancellationToken.None);
+        if (measured != expected)
             throw new RuntimePolicyException("runtime.management_route_changed");
     }
 

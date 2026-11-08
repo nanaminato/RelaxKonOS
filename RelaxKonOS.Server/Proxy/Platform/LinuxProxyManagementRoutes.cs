@@ -35,13 +35,33 @@ internal static class LinuxProxyManagementRoutes
 
     private static async Task<ProxyLinuxRouteIdentity?> LookupAsync(IPAddress destination, CancellationToken ct)
     {
+        var output = await RunIpAsync(["-j", destination.AddressFamily == AddressFamily.InterNetwork ? "-4" : "-6",
+            "route", "get", destination.ToString()], ct);
+        if (output is null) return null;
+        try
+        {
+            using var json = JsonDocument.Parse(output);
+            if (json.RootElement.ValueKind != JsonValueKind.Array || json.RootElement.GetArrayLength() != 1) return null;
+            var entry = json.RootElement[0];
+            var network = Property(entry, "dev");
+            var type = Property(entry, "type") ?? "unicast";
+            if (string.IsNullOrWhiteSpace(network) || type is not ("unicast" or "local")) return null;
+            // ip may include or omit the local table without changing delivery to this host.
+            var table = type == "local" && network == "lo" ? null : Property(entry, "table");
+            return new(destination.ToString(), network, Property(entry, "gateway"),
+                Property(entry, "prefsrc") ?? Property(entry, "src"), table, type);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException) { return null; }
+    }
+
+    internal static async Task<string?> RunIpAsync(string[] arguments, CancellationToken ct)
+    {
         var executable = Executable;
         if (executable is null) return null;
         using var command = new Process { StartInfo = new(executable) { UseShellExecute = false,
             RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
         TrustedProcessEnvironment.Apply(command.StartInfo);
-        foreach (var argument in new[] { "-j", destination.AddressFamily == AddressFamily.InterNetwork ? "-4" : "-6",
-                     "route", "get", destination.ToString() })
+        foreach (var argument in arguments)
             command.StartInfo.ArgumentList.Add(argument);
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -55,21 +75,10 @@ internal static class LinuxProxyManagementRoutes
             var read = await command.StandardOutput.ReadBlockAsync(buffer.AsMemory(), deadline.Token);
             if (read == buffer.Length) return null;
             await Task.WhenAll(errors, command.WaitForExitAsync(deadline.Token));
-            if (command.ExitCode != 0) return null;
-            using var json = JsonDocument.Parse(new string(buffer, 0, read));
-            if (json.RootElement.ValueKind != JsonValueKind.Array || json.RootElement.GetArrayLength() != 1) return null;
-            var entry = json.RootElement[0];
-            var network = Property(entry, "dev");
-            var type = Property(entry, "type") ?? "unicast";
-            if (string.IsNullOrWhiteSpace(network) || type is not ("unicast" or "local")) return null;
-            // A local destination is delivered to this host. ip can omit or emit its local table
-            // after a rule is rebuilt without changing the interface, source or delivery type.
-            var table = type == "local" && network == "lo" ? null : Property(entry, "table");
-            return new(destination.ToString(), network, Property(entry, "gateway"),
-                Property(entry, "prefsrc") ?? Property(entry, "src"), table, type);
+            return command.ExitCode == 0 ? new string(buffer, 0, read) : null;
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return null; }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception or JsonException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
         { return null; }
         finally
         {

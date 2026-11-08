@@ -147,7 +147,8 @@ internal sealed partial class LinuxMihomoArchiveHost
     }
 
     private static LinuxMihomoTunRoutes TunRoutes(MihomoTunIntent intent) =>
-        new(IPAddress.Parse(intent.Address), IPAddress.Parse(intent.Destination), IPAddress.Parse(intent.ManagementAddress));
+        new(IPAddress.Parse(intent.Address), IPAddress.Parse(intent.Destination), IPAddress.Parse(intent.ManagementAddress),
+            intent.ManagementUserId);
 
     private static void RequirePidFdSupport()
     {

@@ -9,7 +9,8 @@ namespace RelaxKonOS.PrivilegedHelper;
 internal enum MihomoTunPhase { Intent, NetworkDispatched, LaunchDispatched, DescriptorDispatched, StopDispatched, Restored }
 
 internal sealed record MihomoTunIntent(Guid OperationId, Guid RevisionId, string ConfigurationHash,
-    Guid BootId, string NetworkNamespace, string Device, string Address, string Destination, string ManagementAddress, string ManagementHash);
+    Guid BootId, string NetworkNamespace, string Device, string Address, string Destination, string ManagementAddress,
+    uint ManagementUserId, string ManagementHash);
 
 internal sealed record MihomoTunProcess(int Pid, Guid InvocationId, ulong StartTicks);
 
@@ -96,7 +97,7 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
                 || previous.BrokerPid != 0 && previous.BrokerPid != current.BrokerPid
                 || previous.Process is not null && previous.Process != current.Process))
             throw Conflict();
-        _ = new LinuxMihomoTunRoutes(address, destination, management);
+        _ = new LinuxMihomoTunRoutes(address, destination, management, intent.ManagementUserId);
     }
 
     private static RuntimePolicyException Conflict() => new("runtime.network_checkpoint_conflict");

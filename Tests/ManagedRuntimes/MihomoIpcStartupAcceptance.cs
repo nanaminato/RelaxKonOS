@@ -24,9 +24,9 @@ using RelaxKonOS.Server.Proxy.Platform;
 
 internal static class MihomoIpcStartupAcceptance
 {
-    internal static void RequirePrivateHost()
+    internal static void RequirePrivateHost(bool rootRequired = true)
     {
-        if (!OperatingSystem.IsLinux() || !Environment.IsPrivilegedProcess)
+        if (!OperatingSystem.IsLinux() || rootRequired && !Environment.IsPrivilegedProcess)
             throw new InvalidOperationException("Mihomo IPC acceptance requires private Linux systemd.");
         var mounts = File.ReadLines("/proc/self/mountinfo")
             .Where(line => line.Contains(" - tmpfs ", StringComparison.Ordinal))

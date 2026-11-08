@@ -109,7 +109,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             var (_, network) = await RequireTunMaterialAsync(pending, ct);
             var intent = new MihomoTunIntent(pending.OperationId, revision.RevisionId, pending.Plan.CandidateIdentity,
                 LinuxMihomoTunCheckpoint.BootId(), LinuxMihomoTunCheckpoint.NetworkNamespace(),
-                network.Device, network.Address, network.Destination, network.ManagementAddress, network.ManagementHash);
+                network.Device, network.Address, network.Destination, network.ManagementAddress, network.ManagementUserId, network.ManagementHash);
             await TunHost().ActivateTunAsync(intent, binary, Data(revision), ct);
             return;
         }

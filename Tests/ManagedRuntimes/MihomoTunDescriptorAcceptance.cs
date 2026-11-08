@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -7,8 +8,10 @@ using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
+using RelaxKonOS.Server.Proxy.Platform;
 
 internal static class MihomoTunDescriptorAcceptance
 {
@@ -33,9 +36,6 @@ internal static class MihomoTunDescriptorAcceptance
 
         var intentRoot = intent.RootElement;
         var revisionId = intentRoot.GetProperty("revision").GetGuid();
-        var candidateHash = intentRoot.GetProperty("credential").GetString()!.ToUpperInvariant();
-        var network = new MihomoTunNetworkIntent(DeviceName, intentRoot.GetProperty("address").GetString()!,
-            intentRoot.GetProperty("target").GetString()!, intentRoot.GetProperty("management").GetString()!, ManagementHash(intentRoot));
         var previousPath = Path.Combine(root, "previous.yaml");
         var previousBytes = await File.ReadAllBytesAsync(previousPath);
         var previous = MihomoArchiveAdapter.Hash(previousBytes);
@@ -63,14 +63,25 @@ internal static class MihomoTunDescriptorAcceptance
         using (var session = store.Acquire())
             session.Save(before with { Active = revision, Revisions = [revision], Installation = before.Installation with
                 { StateRevision = 1, Ownership = RuntimeOwnership.Managed, ActiveReleaseId = revision.Release.ReleaseId } });
-        var plan = new RuntimeConfigurationPlan(before.Installation.InstallationId, before.Installation.HostId, "mihomo",
-            1, revisionId, previous, candidateHash, "tun-publication");
-        plan = plan with { NetworkIntentIdentity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(operationId, plan, network) };
+        var draft = await File.ReadAllTextAsync(Path.Combine(root, "candidate.yaml"));
+        var inputPlan = new RuntimeConfigurationPlan(before.Installation.InstallationId, before.Installation.HostId, "mihomo",
+            1, revisionId, previous, MihomoPublicationStore.Identity(draft), "tun-publication");
+        var planInput = Path.Combine(root, "tun-plan-input.json");
+        await File.WriteAllBytesAsync(planInput, RuntimeJson.Serialize(new FreezeInput(operationId, inputPlan, draft,
+            intentRoot.GetProperty("address").GetString()!, intentRoot.GetProperty("target").GetString()!,
+            intentRoot.GetProperty("management").GetString()!)));
+        File.SetUnixFileMode(planInput, UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+        var frozen = RuntimeJson.Read<MihomoManagedTunPlan>(System.Text.Encoding.UTF8.GetBytes(
+            await NativeRuntimeProcess.RunAsync("/usr/sbin/runuser", ["-u", "nobody", "--", "/usr/bin/dotnet",
+                intentRoot.GetProperty("fixture").GetString()!, "runtime-mihomo-tun-freeze", planInput], 32768)));
+        File.Delete(planInput);
+        var (plan, candidate, network) = frozen;
+        if (network.ManagementUserId != intentRoot.GetProperty("uid").GetUInt32() || network.ManagementHash != ManagementHash(intentRoot))
+            throw new InvalidOperationException("Server and isolated management route observations differ.");
         var paths = new AuthorizationPaths(root);
         Directory.CreateDirectory(paths.GetProtectedConfigurationDirectory());
         var publications = Publications(paths);
         var previousMaterial = MihomoConfigurationPolicy.Describe(await File.ReadAllTextAsync(previousPath)).Material;
-        var candidate = MihomoConfigurationPolicy.Describe(await File.ReadAllTextAsync(Path.Combine(root, "candidate.yaml"))).Material;
         var bootstrap = Guid.NewGuid();
         await File.WriteAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"), previousMaterial.Yaml);
         await publications.BeginAsync(bootstrap, 0, previousMaterial, CancellationToken.None);
@@ -90,7 +101,8 @@ internal static class MihomoTunDescriptorAcceptance
         {
             stage = next;
             if (next != InstallationStage.HealthChecking) return;
-            var effect = Ledger(operationId, intentRoot).Read() ?? throw new InvalidOperationException("Missing original native dispatch.");
+            var effect = new LinuxMihomoTunCheckpoint(Archive, operationId, revisionId, plan.CandidateIdentity).Read()
+                ?? throw new InvalidOperationException("Missing original native dispatch.");
             await RefusesAsync("runtime.network_lifecycle_unverified", () => adapter.VerifyAsync(store.Read()!.Configuration!, CancellationToken.None));
             await RefusesAsync("runtime.network_checkpoint_conflict", () => host.DispatchTunStartAsync(operationId, CancellationToken.None));
             await NativeRuntimeProcess.RunAsync("/usr/bin/python3", ["-I", Path.Combine(root, "mihomo-tun-fd-proof.py"),
@@ -103,6 +115,28 @@ internal static class MihomoTunDescriptorAcceptance
         var outcome = await transaction.ExecuteAsync(operationId, plan, CancellationToken.None);
         throw new InvalidOperationException($"The fixture exited before interruption: {stage}, {outcome.Outcome}, {outcome.ProblemCode}, {store.Read()?.Configuration?.RecoveryProblemCode}.");
     }
+
+    internal static async Task FreezeAsync(string inputPath)
+    {
+        MihomoIpcStartupAcceptance.RequirePrivateHost(rootRequired: false);
+        if (Environment.IsPrivilegedProcess) throw new InvalidOperationException("The Server planner must run unprivileged.");
+        var input = RuntimeJson.Read<FreezeInput>(await File.ReadAllBytesAsync(inputPath));
+        var platform = new HostProxyNetworkSafetyPlatform();
+        var snapshot = await platform.CaptureManagementRouteAsync(IPAddress.Parse(input.Management), CancellationToken.None)
+            ?? throw new InvalidOperationException("The Server did not observe a management route.");
+        var draft = MihomoConfigurationPolicy.Describe(input.Yaml).Material;
+        var settings = new ProxyTunSettingsDto("gvisor", DeviceName, false, false, false, "", 1500);
+        var source = IPAddress.Parse(input.Source);
+        var destination = IPAddress.Parse(input.Destination);
+        await RefusesAsync("runtime.network_transaction_required", () => MihomoManagedTunPlan.FreezeAsync(
+            input.Operation, input.Plan, draft, ProxyTunSettingsDto.Default, snapshot, source, destination, CancellationToken.None));
+        await RefusesAsync("runtime.management_route_unknown", () => MihomoManagedTunPlan.FreezeAsync(
+            input.Operation, input.Plan, draft, settings, snapshot, source, IPAddress.Parse(snapshot.DefaultGateway), CancellationToken.None));
+        var frozen = await MihomoManagedTunPlan.FreezeAsync(input.Operation, input.Plan, draft, settings, snapshot, source, destination, CancellationToken.None);
+        Console.WriteLine(System.Text.Encoding.UTF8.GetString(RuntimeJson.Serialize(frozen)));
+    }
+
+    private sealed record FreezeInput(Guid Operation, RuntimeConfigurationPlan Plan, string Yaml, string Source, string Destination, string Management);
 
     [SupportedOSPlatform("linux")]
     internal static async Task CheckpointAsync(string root, Guid operation, string action)
@@ -119,7 +153,8 @@ internal static class MihomoTunDescriptorAcceptance
         var current = ledger.Read() ?? throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         if (current.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
             || current.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace()
-            || current.Intent.ManagementHash != ManagementHash(state) || current.Process != Process(state)
+            || current.Intent.ManagementHash != ManagementHash(state) || current.Intent.ManagementUserId != state.GetProperty("uid").GetUInt32()
+            || current.Process != Process(state)
             || current.InterfaceIndex != state.GetProperty("ifindex").GetUInt32())
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         var host = new LinuxMihomoArchiveHost();

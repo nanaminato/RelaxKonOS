@@ -38,7 +38,8 @@ public sealed record MihomoCurrentAuthorization(DateTimeOffset ValidUntil, Mihom
 
 /// <summary>Frozen local network material. The public plan carries only its digest.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record MihomoTunNetworkIntent(string Device, string Address, string Destination, string ManagementAddress, string ManagementHash)
+public sealed record MihomoTunNetworkIntent(string Device, string Address, string Destination, string ManagementAddress,
+    [property: JsonRequired] uint ManagementUserId, string ManagementHash)
 {
     public override string ToString() => "MihomoTunNetworkIntent { protected material }";
 }

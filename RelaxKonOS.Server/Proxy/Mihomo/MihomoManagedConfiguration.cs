@@ -92,6 +92,14 @@ internal static class MihomoManagedConfiguration
         return builder.ToString();
     }
 
+    internal static string WithDescriptorTun(string yaml, string device)
+    {
+        var content = RemoveTopLevelKeys(yaml, TunSettingsKeys).TrimEnd('\r', '\n');
+        return content + "\ntun:\n  enable: true\n  stack: gvisor\n  device: \""
+            + EscapeYamlDoubleQuotedScalar(device)
+            + "\"\n  file-descriptor: 198\n  auto-route: false\n  auto-redirect: false\n  auto-detect-interface: false\n  gso: false\n";
+    }
+
     /// <summary>
     /// Reads the live TUN activation out of a managed configuration.  Activation belongs to the
     /// safety transaction rather than to the Manager settings written next to it, so any rewrite

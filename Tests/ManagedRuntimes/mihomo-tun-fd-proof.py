@@ -4,6 +4,7 @@ import hashlib
 import http.server
 import json
 import os
+import pwd
 from pathlib import Path
 import select
 import shutil
@@ -64,7 +65,7 @@ def sync_record(record):
 
 
 def network_baseline():
-    return [ip('-4', 'route', 'get', '192.0.2.1'), *rules()]
+    return [ip('-4', 'route', 'get', '192.0.2.1', 'uid', str(pwd.getpwnam('nobody').pw_uid)), *rules()]
 
 
 def route():
@@ -116,8 +117,8 @@ def prepare(index, broker):
     record = json.loads(journal.read_text())
     assert record['phase'] == 'prepared' and link()['ifindex'] == index and route()
     assert record['namespace'] == os.readlink('/proc/self/ns/net') and record['baseline'] == network_baseline()
-    assert record['credential'] == hashlib.sha256(config.read_bytes()).hexdigest()
-    record.update(phase='dispatching', service=service_identity(), ifindex=index, broker=broker, route=route())
+    record.update(phase='dispatching', service=service_identity(), ifindex=index, broker=broker, route=route(),
+                  credential=hashlib.sha256(config.read_bytes()).hexdigest())
     sync_record(record)
 
 
@@ -202,15 +203,6 @@ def proof():
     candidate.write_text(listeners + f'''mode: rule
 log-level: info
 ipv6: false
-tun:
-  enable: true
-  device: {device}
-  stack: gvisor
-  auto-route: false
-  auto-redirect: false
-  auto-detect-interface: false
-  file-descriptor: 198
-  gso: false
 proxies:
   - name: fixture-upstream
     type: http
@@ -220,8 +212,7 @@ rules:
   - MATCH,fixture-upstream
 ''')
     candidate.chmod(0o600)
-    identity = hashlib.sha256(candidate.read_bytes()).hexdigest()
-    sync_record({'phase': 'prepared', 'operation': operation, 'credential': identity,
+    sync_record({'phase': 'prepared', 'operation': operation, 'uid': pwd.getpwnam('nobody').pw_uid,
                  'revision': str(revision),
                  'fixture': sys.argv[3], 'address': address, 'target': target, 'management': '192.0.2.1',
                  'namespace': os.readlink('/proc/self/ns/net'), 'baseline': baseline})
@@ -235,6 +226,7 @@ rules:
         assert native.startswith(f'PASS HELPER NATIVE TUN DESCRIPTOR: {operation};')
         original = journal.read_bytes()
         record = json.loads(original)
+        identity = record['credential']
         original_checkpoints = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
         assert len(original_checkpoints) == 4
         executable = Path('/proc', str(record['service'][0]), 'exe')
@@ -291,18 +283,25 @@ rules:
         assert refused.returncode == 3 and journal.read_bytes() == original and not route()
         assert service_identity() == record['service']
         ip('-4', 'route', 'add', target + '/32', 'dev', device, 'src', address, 'scope', 'link')
-        ip('-4', 'route', 'add', '192.0.2.1/32', 'via', '192.0.2.3', 'dev', 'rk-egress')
+        management = '192.0.2.1'
+        uid_range = f"{record['uid']}-{record['uid']}"
+        root_route = ip('-4', 'route', 'get', management, 'uid', '0')
+        ip('-4', 'route', 'add', 'table', '190', management + '/32', 'via', '192.0.2.3', 'dev', 'rk-egress')
+        ip('-4', 'rule', 'add', 'priority', '190', 'to', management + '/32', 'uidrange', uid_range, 'lookup', '190')
+        assert ip('-4', 'route', 'get', management, 'uid', '0') == root_route
+        assert 'via 192.0.2.3' in network_baseline()[0]
         refused = subprocess.run([*invocation, 'recover', root, operation], timeout=8)
         assert refused.returncode == 3 and journal.read_bytes() == original
         assert service_identity() == record['service']
-        ip('-4', 'route', 'del', '192.0.2.1/32', 'via', '192.0.2.3', 'dev', 'rk-egress')
+        ip('-4', 'rule', 'del', 'priority', '190', 'to', management + '/32', 'uidrange', uid_range, 'lookup', '190')
+        ip('-4', 'route', 'del', 'table', '190', management + '/32', 'via', '192.0.2.3', 'dev', 'rk-egress')
         assert Upstream.hits == ['/mb04-before', '/mb04-after', '/mb04-conflict']
         assert Upstream.tunnels == [target + ':18880'] * 3
         print(native)
         print(f'PASS MIHOMO INHERITED TUN: {operation}, credential {identity}, '
               'same PID, FD and management route, three upstream requests across dispatch crash and conflict')
         print('PASS HELPER TUN ROUTE OWNERSHIP: refused duplicate activation, changed alias and missing route; no replay')
-        print('PASS HELPER MANAGEMENT ROUTE GUARD: refused stop after management next-hop changed')
+        print('PASS HELPER MANAGEMENT ROUTE GUARD: refused stop after Server UID route changed while root route stayed intact')
 
         refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
         assert refused.returncode == 1 and 'runtime.service_scope_invalid' in refused.stderr

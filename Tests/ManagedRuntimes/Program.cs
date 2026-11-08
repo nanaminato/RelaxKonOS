@@ -188,6 +188,11 @@ if (args is ["runtime-mihomo-tun-descriptor-worker", var descriptorRoot] && Oper
     await MihomoTunDescriptorAcceptance.RunAsync(descriptorRoot);
     return;
 }
+if (args is ["runtime-mihomo-tun-freeze", var freezeInput] && OperatingSystem.IsLinux())
+{
+    await MihomoTunDescriptorAcceptance.FreezeAsync(freezeInput);
+    return;
+}
 if (args is ["runtime-mihomo-tun-checkpoint", var networkRoot, var networkOperation, var networkAction] && OperatingSystem.IsLinux())
 {
     try { await MihomoTunDescriptorAcceptance.CheckpointAsync(networkRoot, Guid.ParseExact(networkOperation, "N"), networkAction); }
