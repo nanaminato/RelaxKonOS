@@ -586,6 +586,12 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 最终 HTTP 单项复跑通过。实际队列终态和清理后，租约观察值归零。原发布 `d30d3451a5b24af99a323872b68c4f2a`，停止队列 ID `efd2ff92570946de87152f9dcd4a4e20`，重新启动 `fa8ffea281864bdcb2a75cac684e8a06`，重新启动 PID 686。归档 SHA-256 为 `3cd588d832a7d07674023c0446ed4796ca2b0e7b731a5be249b72d7382f16509`，日志为 `.artifacts/mb04-tun-marker-sync/tun-http-linux-lease.log`。
 
+### 管理选路漂移后的原发布确认
+
+**已实现且已验证。** 原发布 `59ec1d52b28747c78d660c022cb2a518` 的 Helper 成功帧已产生，Server 尚未确认时终止两进程。在专属网络命名空间改变非 root Server 到管理目标的 IPv4 首选源地址，保留原策略规则、专属 TUN 路由和监听地址。Helper 原成功回执与配置身份 `2ad152a58560fce8c312f0ef14272cf46f0d46d5bf0f66a595f96749414c8205` 保持，当前 TUN 发布归属无法核验。Server 重启后的只读查询排空，同键返回原 `managed_tun` 待核验回执，新键返回 `proxy.operation_interrupted`。PID 314、继承的 TUN 描述符、实际 HTTP 转发及分流 DNS 都通过。原队列、Helper 归档和原生检查点逐字节保持，应用侧配置镜像保持旧版本。
+
+精确恢复原管理选路后再次启动 Server，按原 Helper 见证确认并提交同一发布。期间 Helper 原配置派发一次，新进程配置或补偿派发均为零。随后具名停止 `b2f6bd9044dc4499be566331475faa1c`、具名启动 `72e49b8f805c49a09a2109737608149e` 及正常租约归零均通过。归档 SHA-256 为 `932294913eef160f370abaa31ac44bdf1abed3260f570288aef1fa4d37e5cf79`，日志为 `.artifacts/mb04-tun-route-drift/linux.log`。Windows Release ManagedRuntimes 通过，可信下载探针因缺少进程级 CA 覆盖跳过。记录了专属进程退出、cgroup 清理和宿主指纹核验。对象释放、ALC、隔离负载内存与生产收益分别待测。
+
 **已实现但实机未验证。** 其他 Linux 架构。HTTP 实机使用等效角色策略和夹具 bearer，完整安装态 JWT 登录和 Android 客户端未参与。Windows 可信下载探针因缺少进程级测试 CA 覆盖跳过。
 
 具名启停响应丢失的原执行对账仍受门禁保护。Helper 无终态由后续[认证 HTTP 补偿](#mb-04-受管-tun-认证-http-补偿)覆盖。此批证据确认专属进程退出及清理，未测量对象释放、ALC 回收、隔离负载内存或生产收益。

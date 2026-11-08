@@ -4549,6 +4549,8 @@ Linux 受管启用、停用及紧急停用使用现有认证 TUN 路由。首次
 
 Server 重启后，尚待 Helper 核验的受管 TUN 操作保留原 ID 和空完成时间。首次启用保留 `managed_tun`，具名启停保留 `managed_tun_action`。恢复完成前的新键会收到 `proxy.operation_interrupted`。如果 Helper 按原发布 ID 补偿并确认恢复了旧配置，原启用操作终止为 `proxy.config_apply_failed`。如果具名启停已在 Helper 确认，Server 通过原队列 ID 只读确认同动作回执并结案。
 
+原 Helper 已提交但 Server 尚未确认时，管理选路漂移会保留原待核验回执，即使当前仍能通过原 TUN 转发。恢复精确管理选路后，Server 在启动时按原 ID 核验配置身份、归属和 Helper 见证，再确认原发布。见[管理选路漂移实机证据](../architecture/server-module-evidence/Proxy-Safety.md#管理选路漂移后的原发布确认)。
+
 Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停用。正常停机等待已受理的具名停用收到 Helper 响应、写入审计并持久化原队列终态后退出。重启仍可按原键取得原回执，再次启用沿用已确认发布。见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。
 
 系统代理 guard 与受管停用共用发布锁。若 guard 已派发，停用保留原队列及租约，等 guard 响应后继续。sing-box 到期由独立责任方排空。已在同一次 SIGTERM 验证三者的响应顺序、原生状态和重启回执。见[同次停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-与-proxy-安全责任同次停机)。
