@@ -160,7 +160,9 @@ public static partial class PrivilegedOperationExecutor
             return OperatingSystem.IsWindows()
                 ? await WindowsManagedRuntimeHost.PinnedNginxAsync(request, policy.WindowsRuntimes)
                 : Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx archive host unsupported");
-        if (request.Operation is PrivilegedOperationKind.SquidStatus or PrivilegedOperationKind.SquidApplyConfiguration or PrivilegedOperationKind.SquidServiceAction or PrivilegedOperationKind.SquidValidateConfiguration or PrivilegedOperationKind.SquidAccountsRead or PrivilegedOperationKind.SquidAccountMutate)
+        if (request.Operation is PrivilegedOperationKind.SquidStatus or PrivilegedOperationKind.SquidApplyConfiguration
+            or PrivilegedOperationKind.SquidConfigurationReceipt or PrivilegedOperationKind.SquidServiceAction
+            or PrivilegedOperationKind.SquidValidateConfiguration or PrivilegedOperationKind.SquidAccountsRead or PrivilegedOperationKind.SquidAccountMutate)
             return await SquidOperations.ExecuteAsync(request);
         if (request.SquidConfiguration is not null || request.SquidServiceAction is not null || request.SquidAccount is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "Squid fields require a dedicated operation");

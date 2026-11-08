@@ -1751,10 +1751,12 @@ internal static class ProxyAuthenticatedPublicationChecks
         internal string Path { get; }
         internal TaskCompletionSource<Guid> Committed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        internal ReplyRelay(string path, string upstream, CancellationToken ct, Func<string?, Guid, bool>? hold = null)
+        internal ReplyRelay(string path, string upstream, CancellationToken ct, Func<string?, Guid, bool>? hold = null,
+            bool holdConfirmedSquidRollback = false)
         {
             Path = path; this.upstream = upstream;
             this.hold = hold ?? ((operation, _) => operation == "ProxyServerApply");
+            this.holdConfirmedSquidRollback = holdConfirmedSquidRollback;
             listener.Bind(new UnixDomainSocketEndPoint(path));
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherWrite);
             listener.Listen(16);
@@ -1764,6 +1766,8 @@ internal static class ProxyAuthenticatedPublicationChecks
 
         internal void ReleaseHeldResponse() => release.TrySetResult(true);
         internal void DropHeldResponse() => release.TrySetResult(false);
+
+        private readonly bool holdConfirmedSquidRollback;
 
         private async Task RunAsync()
         {
@@ -1798,7 +1802,7 @@ internal static class ProxyAuthenticatedPublicationChecks
                     {
                         using var frame = JsonDocument.Parse(response);
                         var terminal = frame.RootElement.GetProperty("Type").GetString() == "result";
-                        if (held && terminal && frame.RootElement.GetProperty("Result").GetProperty("success").GetBoolean())
+                        if (held && terminal && Confirmed(frame.RootElement.GetProperty("Result")))
                         {
                             Committed.TrySetResult(command.RootElement.GetProperty("operationId").GetGuid());
                             if (!await release.Task.WaitAsync(ct)) return;
@@ -1811,6 +1815,10 @@ internal static class ProxyAuthenticatedPublicationChecks
                 catch (IOException) when (ct.IsCancellationRequested) { }
             }
         }
+
+        private bool Confirmed(JsonElement result) => result.GetProperty("success").GetBoolean()
+            || holdConfirmedSquidRollback && result.TryGetProperty("squidPublicationReceipt", out var receipt)
+                && receipt.ValueKind == JsonValueKind.Object;
 
         private static Task<byte[]?> ReadFrameAsync(Stream stream, CancellationToken ct) =>
             PrivilegedHelperSocketFraming.ReadAsync(stream, PrivilegedHelperTransportProtocol.MaximumFrameBytes, ct);

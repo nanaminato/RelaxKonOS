@@ -3,6 +3,7 @@ using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.SystemMonitor;
+using RelaxKonOS.Protocol.GatewayProxy;
 
 namespace RelaxKonOS.Protocol.Privileged;
 
@@ -218,6 +219,7 @@ public enum PrivilegedOperationKind
     SquidValidateConfiguration,
     SquidAccountsRead,
     SquidAccountMutate,
+    SquidConfigurationReceipt,
     ProxyServerPublicationReceipt,
     ProxyServerRecoverPublication,
     LinuxSystemProxyApplyTracked,
@@ -503,7 +505,8 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("processTermination")] KillProcessResultDto? ProcessTermination = null,
     [property: JsonPropertyName("processIconContentType")] string? ProcessIconContentType = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version,
-    [property: JsonPropertyName("linuxSystemProxyReceipt")] LinuxSystemProxyReceipt? LinuxSystemProxyReceipt = null);
+    [property: JsonPropertyName("linuxSystemProxyReceipt")] LinuxSystemProxyReceipt? LinuxSystemProxyReceipt = null,
+    [property: JsonPropertyName("squidPublicationReceipt")] SquidPublicationReceipt? SquidPublicationReceipt = null);
 
 /// <summary>Root-owned terminal evidence for a fixed Nginx reload.</summary>
 public sealed record NginxNativeReloadReceipt(Guid OperationId, [property: JsonRequired] bool Succeeded);

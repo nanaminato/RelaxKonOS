@@ -1,16 +1,39 @@
 using System.Runtime.Versioning;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.PrivilegedHelper;
+using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Proxy.Platform;
+using RelaxKonOS.Server.Privileged;
 
 [SupportedOSPlatform("linux")]
 internal static class MihomoTunFullServerAcceptance
 {
+    internal static async Task ProbeSquidReceiptReplayAsync(string root, string socket, Guid operationId, int port)
+    {
+        RequirePrivateFixture(root);
+        if (port is not (18884 or 18885)) throw new ArgumentOutOfRangeException(nameof(port));
+        var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var observation = await transport.ExecuteAsync(new(PrivilegedOperationKind.SquidConfigurationReceipt,
+            OperationId: operationId), budget.Token);
+        var request = new PrivilegedOperationRequest(PrivilegedOperationKind.SquidApplyConfiguration, OperationId: operationId,
+            SquidConfiguration: new(new SquidConfiguration { Port = port }));
+        var duplicate = await transport.ExecuteAsync(request, budget.Token);
+        var conflict = await transport.ExecuteAsync(request with { SquidConfiguration = new(new SquidConfiguration { Port = 18886 }) }, budget.Token);
+        if (observation is not { Success: true, SquidPublicationReceipt: { } receipt }
+            || receipt.OperationId != operationId || duplicate.SquidPublicationReceipt != receipt || duplicate.Success != receipt.Applied
+            || conflict is not { Success: false, Error: "squid.idempotency_conflict", SquidPublicationReceipt: null })
+            throw new InvalidOperationException("The original Squid Helper ID did not preserve its receipt and reject a different candidate.");
+    }
+
     internal static async Task SeedAsync(string root, MihomoPublishedRuntime material, string identity, bool joint)
     {
         RequirePrivateFixture(root);
@@ -64,7 +87,8 @@ internal static class MihomoTunFullServerAcceptance
         await using var relay = first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-tun-reply.sock", expiryRelay?.Path ?? socket, ct,
             (operation, _) => operation == "MihomoRuntimeTunStop") : null;
         await using var squidRelay = phase == "squid-cut" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
-            "/run/rk-squid-reply.sock", socket, ct, (operation, _) => operation == "SquidApplyConfiguration") : null;
+            "/run/rk-squid-reply.sock", socket, ct, (operation, _) => operation == "SquidApplyConfiguration",
+            holdConfirmedSquidRollback: true) : null;
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? expiryRelay?.Path ?? squidRelay?.Path ?? socket, root,
             reuse: !first && phase is not ("admission" or "squid-new"), seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";

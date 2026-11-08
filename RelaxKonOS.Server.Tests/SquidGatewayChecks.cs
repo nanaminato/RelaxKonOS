@@ -393,6 +393,16 @@ internal static class SquidGatewayChecks
         public List<PrivilegedOperationRequest> Requests { get; } = [];
         public PrivilegedOperationResult Result { get; set; } = new(true);
         public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
-        { Requests.Add(request); return Task.FromResult(Result); }
+        {
+            Requests.Add(request);
+            if (Result.Success && request is { Operation: PrivilegedOperationKind.SquidApplyConfiguration,
+                    OperationId: { } id, SquidConfiguration.Configuration: { } configuration })
+            {
+                var rendered = SquidConfigurationRenderer.Preview(configuration).Configuration!;
+                var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(rendered)));
+                return Task.FromResult(Result with { SquidPublicationReceipt = new(id, hash, hash, true) });
+            }
+            return Task.FromResult(Result);
+        }
     }
 }

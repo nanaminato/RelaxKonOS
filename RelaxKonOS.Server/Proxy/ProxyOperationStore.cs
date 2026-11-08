@@ -16,7 +16,8 @@ public delegate Task ProxyOperationStageReporter(string stage);
 /// </summary>
 public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger,
     IProxyWorkLeaseSource workLeases, MihomoPublicationStore? publication = null,
-    IProxySubscriptionRepository? subscriptions = null, MihomoRuntimeService? mihomoRuntime = null) : IHostedService
+    IProxySubscriptionRepository? subscriptions = null, MihomoRuntimeService? mihomoRuntime = null,
+    IServiceScopeFactory? scopes = null) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private static readonly JsonSerializerOptions Json = new()
@@ -203,7 +204,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                 && operation.ProblemCode == ProxyProblemCodes.OperationInterrupted);
 
     private bool NeedsReconciliation(Entry entry) => IsInterruptedSubscriptionPublication(entry.Operation)
-        || MihomoManagedTunOperations.IsPendingStage(entry.Operation.Stage) && !_running.ContainsKey(entry.Operation.OperationId)
+        || IsPendingNativeStage(entry.Operation.Stage) && !_running.ContainsKey(entry.Operation.OperationId)
         || entry.Batch is not null && !_running.ContainsKey(entry.Operation.OperationId)
             && (entry.Operation.State is ProxyOperationState.Queued or ProxyOperationState.Running || entry.Operation.Stage == BatchPending);
 
@@ -211,10 +212,11 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
     private async Task ReconcileRefreshesAsync(Entry[] entries, Guid? requested, CancellationToken ct)
     {
         if (Volatile.Read(ref _stopping)) return;
-        MihomoPublicationState? state;
+        MihomoPublicationState? state = null;
+        var mihomoReadable = true;
         try { state = publication is null ? null : await publication.ReadAsync(ct); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
-        { return; }
+        { mihomoReadable = false; }
         using var work = await workLeases.AcquireAsync(ct);
         var changed = false;
         for (var index = 0; index < entries.Length; index++)
@@ -223,6 +225,45 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             var operation = entry.Operation;
             if (!NeedsReconciliation(entry) || requested is not null && requested != operation.OperationId)
                 continue;
+
+            if (operation.Stage == SquidGatewayService.PublicationPending)
+            {
+                if (scopes is null || operation.Kind != SquidGatewayService.PublicationKind
+                    || _cleanupFailures.ContainsKey(operation.OperationId)) continue;
+                var scope = scopes.CreateAsyncScope();
+                RelaxKonOS.Protocol.GatewayProxy.SquidPublicationReceipt? receipt = null;
+                try
+                {
+                    receipt = await scope.ServiceProvider.GetRequiredService<SquidGatewayService>()
+                        .RecoverPublicationAsync(operation.OperationId, ct);
+                }
+                catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException
+                    or JsonException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
+                { logger.LogWarning(error, "Original Squid publication could not be verified. OperationId={OperationId}", operation.OperationId); }
+                finally
+                {
+                    try { await scope.DisposeAsync(); }
+                    catch (Exception error)
+                    {
+                        work.RequireRecovery();
+                        _recoveryBlocked = true;
+                        _cleanupFailures[operation.OperationId] = new(scope, error);
+                        throw;
+                    }
+                }
+                if (receipt is null) continue;
+                entries[index] = entry with { Operation = operation with
+                {
+                    State = receipt.Applied ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
+                    Stage = receipt.Applied ? "completed" : "failed",
+                    ProblemCode = receipt.Applied ? "" : SquidGatewayService.RolledBack,
+                    CompletedAt = DateTimeOffset.UtcNow
+                } };
+                changed = true;
+                continue;
+            }
+
+            if (!mihomoReadable) continue;
 
             if (operation.Stage == MihomoManagedTunOperations.ActionQueueStage)
             {

@@ -1193,6 +1193,7 @@ def proof_full_http_shutdown(ipc, case):
     def launch(phase):
         (root / 'full-server-pid').unlink(missing_ok=True)
         (root / 'full-startup-refused').unlink(missing_ok=True)
+        (root / 'full-squid-response-held').unlink(missing_ok=True)
         return subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-full-server',
                                  str(root), str(ipc.socket_path), ('joint-' if joint else '') + phase])
 
@@ -1513,11 +1514,13 @@ def proof_full_http_shutdown(ipc, case):
         desired = queue.with_name('squid-configuration.json')
         reloads = root / 'squid-reloads'
         reload_script = root / 'squid-reload.sh'
+        reject = root / 'squid-reject-next-reload'
         command('/usr/bin/mount', '-t', 'tmpfs', '-o', 'mode=0755', 'tmpfs', '/etc/squid')
         Path('/var/log/squid').mkdir()
         squid_user = pwd.getpwnam('proxy')
         os.chown('/var/log/squid', squid_user.pw_uid, squid_user.pw_gid)
         reload_script.write_text(f'#!/bin/sh\necho reload >> {reloads}\n'
+                                 f'if test -f {reject}; then rm -- {reject}; exit 1; fi\n'
                                  'exec /usr/sbin/squid -k reconfigure -f /etc/squid/squid.conf\n')
         reload_script.chmod(0o755)
         Path('/etc/systemd/system/squid.service').write_text(
@@ -1555,6 +1558,26 @@ def proof_full_http_shutdown(ipc, case):
             token = login()
             return int(marker('full-server-pid'))
 
+        def cut(current):
+            os.kill(current, signal.SIGKILL)
+            assert worker.wait(timeout=10) == 0 and not Path(f'/proc/{current}').exists()
+            ipc.stop_helper()
+
+        def relaunch():
+            nonlocal worker, token
+            ipc.start_helper()
+            worker = launch('squid-restart')
+            current = int(marker('full-server-pid'))
+            token = login()
+            return current
+
+        def require_pending(operation):
+            reply = read(operation)
+            assert reply['state'] == 'interrupted' and reply['stage'] == 'squid_publication' and not reply.get('completedAt'), reply
+
+        def receipt_path(operation):
+            return native.parent / 'relaxkonos-publications' / (uuid.UUID(operation).hex + '.json')
+
         assert request(api_root + '/configuration')[0] == 401
         initial = publish(18883, 'squid-initial')['operationId']
         until(lambda: terminal(initial), 'initial Squid configuration')
@@ -1584,15 +1607,14 @@ def proof_full_http_shutdown(ipc, case):
         assert pending['LastProblemCode'] == 'squid.publication.unconfirmed'
         persisted = (native.read_bytes(), desired.read_bytes(), queue.read_bytes())
         digest = hashlib.sha256(persisted[0]).hexdigest()
-        os.kill(pid, signal.SIGKILL)
-        assert worker.wait(timeout=10) == 0 and not Path(f'/proc/{pid}').exists()
-        ipc.stop_helper()
-        ipc.start_helper()
-        worker = launch('squid-restart')
-        pid = int(marker('full-server-pid'))
-        token = login()
-        reply = read(operation)
-        assert reply['state'] == 'interrupted' and reply['stage'] == 'squid_publication' and not reply.get('completedAt'), reply
+        receipt = receipt_path(operation)
+        original_receipt = receipt.read_bytes()
+        assert json.loads(original_receipt)['Receipt']['Applied'] is True
+        cut(pid)
+        missing = receipt.with_suffix('.held')
+        receipt.rename(missing)
+        pid = relaunch()
+        require_pending(operation)
         assert publish(18884, 'squid-change')['operationId'] == operation
         assert publish(18885, 'squid-change', 400)['problemCode'] == 'proxy.idempotency_conflict'
         assert publish(18885, 'squid-new-key', 400)['problemCode'] == 'proxy.operation_interrupted'
@@ -1603,18 +1625,66 @@ def proof_full_http_shutdown(ipc, case):
         assert forward(18884, 'restarted') and old_listener_closed()
         assert (native.read_bytes(), desired.read_bytes(), queue.read_bytes()) == persisted
         assert reloads.read_text().splitlines() == ['reload']
-        audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
-        assert audit.count(f'operation=SquidApplyConfiguration id={operation} ') == 1
         os.kill(pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
         worker = launch('admission-disabled')
         assert worker.wait(timeout=15) == 0
         refusal = (root / 'full-startup-refused').read_text()
         assert 'relaxkonos.proxy' in refusal and operation in refusal, refusal
+        missing.rename(receipt)
+        native.write_bytes(persisted[0] + b'\n# isolated drift\n')
+        worker = launch('squid-restart')
+        pid = int(marker('full-server-pid'))
+        token = login()
+        require_pending(operation)
+        assert (desired.read_bytes(), queue.read_bytes(), receipt.read_bytes()) == (*persisted[1:], original_receipt)
+        native.write_bytes(persisted[0])
+        assert terminal(operation)['completedAt'] and publish(18884, 'squid-change')['operationId'] == operation
+        status, snapshot = request(api_root + '/configuration', token)
+        assert status == 200 and snapshot['matchesPublishedConfiguration']
+        assert snapshot['state']['publicationOperationId'] == operation and snapshot['status']['configurationRevision'] == digest
+        assert leases() == 0
+
+        pid = restart('squid-cut', pid)
+        reject.touch()
+        rollback = publish(18885, 'squid-rollback')['operationId']
+        assert uuid.UUID(marker('full-squid-response-held')) == uuid.UUID(rollback)
+        rollback_receipt = receipt_path(rollback)
+        rollback_record = rollback_receipt.read_bytes()
+        evidence = json.loads(rollback_record)['Receipt']
+        assert evidence['Applied'] is False and evidence['ObservedHash'] == digest and evidence['CandidateHash'] != digest
+        assert read(rollback)['state'] == 'running' and leases() == 1 and forward(18884, 'rollback-held')
+        cut(pid)
+        pid = relaunch()
+        original_rollback = read(rollback)
+        assert original_rollback['state'] == 'failed' and original_rollback['completedAt']
+        assert original_rollback['problemCode'] == 'squid.apply.failed_rolled_back'
+        assert publish(18885, 'squid-rollback')['operationId'] == rollback and read(rollback) == original_rollback
+        assert native.read_bytes() == persisted[0] and receipt.read_bytes() == original_receipt
+        assert rollback_receipt.read_bytes() == rollback_record and leases() == 0
+        assert forward(18884, 'rollback-restarted') and old_listener_closed()
+        assert int(service('show', '-p', 'MainPID', '--value', 'squid.service')) == original_pid
+        assert reloads.read_text().splitlines() == ['reload', 'reload', 'reload']
+        audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+        for original in (operation, rollback):
+            assert audit.count(f'operation=SquidApplyConfiguration id={original} ') == 1
+            assert f'operation=SquidConfigurationReceipt id={original} ' in audit
+        for original, port in ((operation, '18884'), (rollback, '18885')):
+            command('/usr/bin/dotnet', sys.argv[3], 'runtime-squid-publication-replay', str(root), str(ipc.socket_path), original, port)
+        assert native.read_bytes() == persisted[0] and receipt.read_bytes() == original_receipt
+        assert rollback_receipt.read_bytes() == rollback_record and reloads.read_text().splitlines() == ['reload', 'reload', 'reload']
+        os.kill(pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        worker = launch('admission-disabled')
+        pid = int(marker('full-server-pid'))
+        token = login(disabled=True)
+        assert request(api_root + '/configuration', token)[0] == 404
+        os.kill(pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
         upstream.shutdown()
         upstream.server_close()
-        print(f'PASS SQUID PUBLICATION GATE: original={operation}; configuration={digest}; PID={original_pid}; '
-              'same key, fresh key and disabled startup gated after real reload; no replay')
+        print(f'PASS SQUID PUBLICATION GATE: original={operation}; rollback={rollback}; configuration={digest}; PID={original_pid}; '
+              'missing and drift gated; success and rollback recovered; no replay')
 
     worker = launch('squid-new' if squid else 'admission' if admission or handoff or retained_removal else 'drain')
     first_worker = worker

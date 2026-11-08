@@ -117,8 +117,10 @@ public static class ProxyEndpoints
         app.MapPost(ProxyApiRoutes.TunEmergencyDisable, (HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
             QueueValueAsync(context, (key, actor, token) => operations.EnqueueTunAsync(key, ProxyTunOperation.EmergencyDisable, Guid.Empty, null, actor, token), ct))
             .RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapGet(Route(ProxyApiRoutes.OperationsPattern), (Guid operationId, ProxyOperationStore operations, CancellationToken ct) =>
-            operations.GetAsync(operationId, ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapGet(Route(ProxyApiRoutes.OperationsPattern), (Guid operationId, HttpContext context, IResidentModuleWorkLeaseSource leases) =>
+            ExecuteScopedAsync(context, leases, async (services, ct) =>
+                Results.Json(await services.GetRequiredService<ProxyOperationStore>().GetAsync(operationId, ct))))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyOperationDto>();
     }
 
     internal static void MapProxySettingsUpdateEndpoint(this IEndpointRouteBuilder app)

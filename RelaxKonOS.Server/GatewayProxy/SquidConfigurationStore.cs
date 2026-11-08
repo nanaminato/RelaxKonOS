@@ -21,7 +21,8 @@ public sealed class SquidConfigurationStore(IProxyPlatformPaths paths)
                 new JsonSerializerOptions { RespectRequiredConstructorParameters = true,
                     UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow }, ct)
                 ?? throw new InvalidDataException("Invalid Squid configuration state.");
-            if (state.DesiredRevision < 0 || state.PublishedRevision is { } revision && (revision < 0 || revision > state.DesiredRevision))
+            if (state.DesiredRevision < 0 || state.PublicationOperationId == Guid.Empty
+                || state.PublishedRevision is { } revision && (revision < 0 || revision > state.DesiredRevision))
                 throw new InvalidDataException("Invalid Squid configuration revision.");
             return state;
         }

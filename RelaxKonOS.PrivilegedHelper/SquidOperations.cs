@@ -35,6 +35,10 @@ internal static partial class SquidOperations
             SquidServiceAction: request.Operation == PrivilegedOperationKind.SquidServiceAction ? request.SquidServiceAction : null,
             SquidAccount: request.Operation == PrivilegedOperationKind.SquidAccountMutate ? request.SquidAccount : null);
         if (request != clean) return Failure("squid.request.invalid", PrivilegedProblemCode.InvalidRequest);
+        var queryPublication = request.Operation == PrivilegedOperationKind.SquidConfigurationReceipt;
+        if ((queryPublication || request.Operation == PrivilegedOperationKind.SquidApplyConfiguration)
+            && (request.OperationId is null || request.OperationId == Guid.Empty))
+            return Failure("squid.request.invalid", PrivilegedProblemCode.InvalidRequest);
         if (!OperatingSystem.IsLinux())
             return request.Operation == PrivilegedOperationKind.SquidStatus
                 ? Json(new SquidStatus(false, false, false, false, false, "", false))
@@ -53,11 +57,15 @@ internal static partial class SquidOperations
             var lockPath = DirectoryPath + "/relaxkonos.lock";
             EnsurePlainProtectedPath(lockPath);
             // The Helper is a separate process per request; a Server-only semaphore is insufficient.
-            using var gate = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            File.SetUnixFileMode(lockPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            using var gate = new FileStream(lockPath, queryPublication ? FileMode.Open : FileMode.OpenOrCreate,
+                FileAccess.ReadWrite, FileShare.None);
+            if (!queryPublication) File.SetUnixFileMode(lockPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             EnsurePlainProtectedPath(ConfigurationPath);
             EnsurePlainProtectedPath(BackupPath);
             EnsurePlainProtectedPath(PendingPath);
+            if (queryPublication) return await ObservePublicationAsync(request.OperationId!.Value);
+            if (request.Operation == PrivilegedOperationKind.SquidApplyConfiguration)
+                return await RunPublicationAsync(request.OperationId!.Value, request.SquidConfiguration);
             if (request.Operation == PrivilegedOperationKind.SquidAccountMutate)
                 return File.Exists(PendingPath) ? Failure("squid.recovery.required") : await MutateAccountAsync(request.SquidAccount);
             if (request.Operation == PrivilegedOperationKind.SquidValidateConfiguration)
@@ -65,8 +73,6 @@ internal static partial class SquidOperations
             // A process/host crash after publication requires operator recovery, never silently claim success.
             if (File.Exists(PendingPath) && request.SquidServiceAction is not (SquidServiceAction.Stop or SquidServiceAction.Disable))
                 return Failure("squid.recovery.required");
-            if (request.Operation == PrivilegedOperationKind.SquidApplyConfiguration)
-                return await ApplyAsync(request.SquidConfiguration);
             if (request.SquidServiceAction is not { } action || !Enum.IsDefined(action))
                 return Failure("squid.action.invalid", PrivilegedProblemCode.InvalidRequest);
             if (action is not (SquidServiceAction.Stop or SquidServiceAction.Disable) && !await IsManagedAsync())
@@ -156,23 +162,21 @@ internal static partial class SquidOperations
     }
 
     [SupportedOSPlatform("linux")]
-    private static async Task<PrivilegedOperationResult> ApplyAsync(ApplySquidConfigurationRequest? request)
+    private static async Task<PrivilegedOperationResult> ApplyAsync(ApplySquidConfigurationRequest request, string rendered)
     {
-        var authProblem = await CheckAuthenticationAsync(request?.Configuration);
+        var authProblem = await CheckAuthenticationAsync(request.Configuration);
         if (authProblem is not null) return Failure(authProblem);
-        var preview = SquidConfigurationRenderer.Preview(request?.Configuration);
-        if (!preview.Valid) return Failure("squid.configuration.invalid: " + string.Join(", ", preview.Errors), PrivilegedProblemCode.InvalidRequest);
-        if (File.Exists(ConfigurationPath) && !await IsManagedAsync() && !request!.AdoptExistingConfiguration)
+        if (File.Exists(ConfigurationPath) && !await IsManagedAsync() && !request.AdoptExistingConfiguration)
             return Failure("squid.configuration.adoption_required");
         // A published file that cannot bind is worse than a refusal: the operator would only learn
         // about it when the service fails to start, long after the change looked applied.
-        if (!IsLocalBindAddress(request!.Configuration.BindAddress))
+        if (!IsLocalBindAddress(request.Configuration.BindAddress))
             return Failure(ListenerAddressUnavailable);
         // Keep the original untouched until Squid has parsed the complete candidate.
         var candidate = DirectoryPath + "/relaxkonos-" + Guid.NewGuid().ToString("N") + ".conf";
         try
         {
-            await WriteNewAsync(candidate, preview.Configuration!);
+            await WriteNewAsync(candidate, rendered);
             var parsed = await RunAsync(Binary, ["-f", candidate, "-k", "parse"]);
             if (!parsed.Success) return parsed with { Error = "squid.configuration.parse_failed" };
             var wasRunning = (await RunAsync(Systemctl, ["is-active", "--quiet", "squid.service"])).Success;
@@ -191,11 +195,12 @@ internal static partial class SquidOperations
             }
             // Journal is intentionally durable before replacing the active config.
             await WriteNewAsync(PendingPath, existed ? "restore relaxkonos.previous.conf\n" : "remove squid.conf\n");
+            LinuxDirectorySync.Flush(DirectoryPath);
             File.Move(candidate, ConfigurationPath, true);
-            if (!wasRunning) { File.Delete(PendingPath); return new(true); }
+            if (!wasRunning) return new(true);
             var reload = await RunAsync(Systemctl, ["reload", "squid.service"]);
             var active = reload.Success && (await RunAsync(Systemctl, ["is-active", "--quiet", "squid.service"])).Success;
-            if (active) { File.Delete(PendingPath); return new(true); }
+            if (active) return new(true);
             // Restore bytes atomically, then reconfigure the old service. Preserve the journal if recovery fails.
             if (existed)
             {
@@ -206,7 +211,6 @@ internal static partial class SquidOperations
             else File.Delete(ConfigurationPath);
             var restored = existed && (await RunAsync(Systemctl, ["reload", "squid.service"])).Success
                 && (await RunAsync(Systemctl, ["is-active", "--quiet", "squid.service"])).Success;
-            if (restored) File.Delete(PendingPath);
             return Failure(restored ? "squid.apply.failed_rolled_back" : "squid.recovery.required");
         }
         finally { File.Delete(candidate); }

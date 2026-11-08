@@ -39,8 +39,10 @@ public sealed record SquidStatus(bool Supported, bool Installed, bool Running, b
 
 /// <summary>Last submitted editor state and publication receipt; never a runtime applied claim.</summary>
 public sealed record SquidConfigurationState(SquidConfiguration? Configuration, long DesiredRevision,
-    long? PublishedRevision, string? PublishedConfigurationHash, string? LastProblemCode);
+    long? PublishedRevision, string? PublishedConfigurationHash, string? LastProblemCode, Guid? PublicationOperationId = null);
 public sealed record SquidConfigurationSnapshot(SquidConfigurationState State, SquidStatus Status, bool MatchesPublishedConfiguration);
+
+public sealed record SquidPublicationReceipt(Guid OperationId, string CandidateHash, string ObservedHash, bool Applied);
 
 [JsonConverter(typeof(SquidAccessModeJsonConverter))]
 public enum SquidAccessMode { IpWhitelist, Password, PasswordAndIpWhitelist }

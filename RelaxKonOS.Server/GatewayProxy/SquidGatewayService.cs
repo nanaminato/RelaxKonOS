@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text;
+using System.Security.Cryptography;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
@@ -30,25 +31,64 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         if (operationId == Guid.Empty) throw new ArgumentException("A Squid publication requires an operation ID.", nameof(operationId));
         var preview = SquidConfigurationRenderer.Preview(request.Configuration);
         if (!preview.Valid) return "squid.configuration.invalid";
+        await stage(PublicationPending);
         await configurations.Gate.WaitAsync(ct);
         try
         {
             var previous = await configurations.ReadAsync(ct);
             if (IsPublicationUnconfirmed(previous.LastProblemCode)) return "squid.recovery.required";
-            var pending = previous with { Configuration = request.Configuration, DesiredRevision = checked(previous.DesiredRevision + 1), LastProblemCode = "squid.publication.unconfirmed" };
-            await stage(PublicationPending);
+            var pending = previous with { Configuration = request.Configuration, DesiredRevision = checked(previous.DesiredRevision + 1),
+                LastProblemCode = "squid.publication.unconfirmed", PublicationOperationId = operationId };
             // Persist intent before invoking the Helper. An interruption must not look published.
             await configurations.WriteAsync(pending, ct);
             var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidApplyConfiguration,
                 OperationId: operationId, SquidConfiguration: request), ct);
+            if (result.Success || result.Error == RolledBack)
+            {
+                if (result.SquidPublicationReceipt is not { } receipt || result.Success != receipt.Applied
+                    || !Matches(pending, receipt)) return "squid.recovery.required";
+                await ConfirmAsync(pending, receipt);
+                return receipt.Applied ? null : RolledBack;
+            }
             var problem = Problem(result);
-            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(preview.Configuration!))).ToLowerInvariant();
-            await configurations.WriteAsync(problem is null
-                ? pending with { PublishedRevision = pending.DesiredRevision, PublishedConfigurationHash = hash, LastProblemCode = null }
-                : pending with { LastProblemCode = problem }, CancellationToken.None);
+            await configurations.WriteAsync(pending with { LastProblemCode = problem }, CancellationToken.None);
             return problem;
         }
         finally { configurations.Gate.Release(); }
+    }
+
+    internal const string RolledBack = "squid.apply.failed_rolled_back";
+
+    internal async Task<SquidPublicationReceipt?> RecoverPublicationAsync(Guid operationId, CancellationToken ct)
+    {
+        await configurations.Gate.WaitAsync(ct);
+        try
+        {
+            var state = await configurations.ReadAsync(ct);
+            if (state.PublicationOperationId != operationId) return null;
+            var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidConfigurationReceipt, OperationId: operationId), CancellationToken.None);
+            if (result is not { Success: true, SquidPublicationReceipt: { } receipt } || !Matches(state, receipt)) return null;
+            await ConfirmAsync(state, receipt);
+            return receipt;
+        }
+        finally { configurations.Gate.Release(); }
+    }
+
+    private static bool Matches(SquidConfigurationState state, SquidPublicationReceipt receipt)
+    {
+        var preview = SquidConfigurationRenderer.Preview(state.Configuration);
+        return receipt.OperationId != Guid.Empty && receipt.OperationId == state.PublicationOperationId && preview.Valid
+            && receipt.CandidateHash == Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(preview.Configuration!)))
+            && receipt.ObservedHash is { Length: 64 } hash && hash.All(Uri.IsHexDigit)
+            && (!receipt.Applied || receipt.ObservedHash == receipt.CandidateHash);
+    }
+
+    private async Task ConfirmAsync(SquidConfigurationState state, SquidPublicationReceipt receipt)
+    {
+        var confirmed = receipt.Applied ? state with { PublishedRevision = state.DesiredRevision,
+            PublishedConfigurationHash = receipt.CandidateHash, LastProblemCode = null }
+            : state with { LastProblemCode = RolledBack };
+        if (confirmed != state) await configurations.WriteAsync(confirmed, CancellationToken.None);
     }
 
     public async Task<SquidConfigurationSnapshot?> GetConfigurationAsync(CancellationToken ct)
