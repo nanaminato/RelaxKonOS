@@ -84,7 +84,7 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
     {
         ct.ThrowIfCancellationRequested();
         var output = await RunAsync("/usr/bin/systemctl", ["show", Unit,
-            "--property=LoadState,ActiveState,SubState,MainPID,UnitFileState,FragmentPath,DropInPaths,NeedDaemonReload,Result,InvocationID"]);
+            "--property=LoadState,ActiveState,SubState,MainPID,UnitFileState,FragmentPath,DropInPaths,NeedDaemonReload,Result,InvocationID,Job"]);
         var state = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Split('=', 2)).ToDictionary(parts => parts[0], parts => parts.Length == 2 ? parts[1] : "");
         if (state.GetValueOrDefault("LoadState") != "loaded" || state.GetValueOrDefault("FragmentPath") != UnitPath
@@ -172,7 +172,7 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         await ConfigureCoreAsync(binary, data, Root + "/active.yaml", configurationIdentity, false, operation, ct);
     }
 
-    internal async Task DispatchTunStartAsync(Guid operation, CancellationToken ct)
+    internal async Task DispatchTunStartAsync(Guid operation, CancellationToken ct, bool recordSenderExit = false)
     {
         var registration = await ReadRegistrationAsync(ct);
         if (registration is null || registration.TunOperation != operation) Fail("network_checkpoint_conflict");
@@ -184,8 +184,11 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         if (state.GetValueOrDefault("ActiveState") != "inactive" || state.GetValueOrDefault("UnitFileState") != "disabled")
             Fail("state_unknown");
         ct.ThrowIfCancellationRequested();
-        await checkpoint.AppendAsync(armed with { Phase = MihomoTunPhase.LaunchDispatched });
+        var dispatched = armed with { Phase = MihomoTunPhase.LaunchDispatched };
+        await checkpoint.AppendAsync(dispatched);
         await RunAsync("/usr/bin/systemctl", ["start", "--no-block", Unit]);
+        if (recordSenderExit)
+            await WriteUndeliveredCheckpointAsync(dispatched, "launch-sender-exited", CancellationToken.None);
     }
 
     private async Task ConfigureCoreAsync(string verifiedBinary, string protectedDataDirectory, string protectedConfiguration,

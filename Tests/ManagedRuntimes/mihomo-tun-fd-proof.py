@@ -662,9 +662,31 @@ def proof_undispatched_registration(owner, record, operation_dir, previous, sent
 
 def proof_network_before_launch(owner, record, operation_dir, previous, sentinel, trace):
     operation = record['operation']
+    launched = record['case'] == 'launch-before-descriptor'
+    sender = operation_dir / 'launch-sender-exited.json'
+    candidate = None
+    if launched:
+        deadline = time.monotonic() + 12
+        while owner.poll() is None and time.monotonic() < deadline:
+            if sender.is_file():
+                try:
+                    current = service_identity()
+                    if os.readlink(f'/proc/{current[0]}/exe') == launcher:
+                        broker = json.loads(sender.read_text())['BrokerPid']
+                        broker_fd = os.pidfd_open(broker)
+                        try:
+                            signal.pidfd_send_signal(broker_fd, signal.SIGKILL)
+                        finally:
+                            os.close(broker_fd)
+                        candidate = current
+                        break
+                except (OSError, ValueError):
+                    pass
+            time.sleep(.05)
+        assert candidate is not None, 'Expected the real launcher before the descriptor checkpoint'
     assert owner.wait(timeout=15) in (-signal.SIGKILL, 128 + signal.SIGKILL)
     print(trace.read_text().strip())
-    assert checkpoint(record, 'state') == 'NetworkDispatched'
+    assert checkpoint(record, 'state') == ('LaunchDispatched' if launched else 'NetworkDispatched')
     network = operation_dir / 'tun-1.json'
     witness = operation_dir / 'network-rule-verified.json'
     frozen = network.read_bytes()
@@ -672,7 +694,18 @@ def proof_network_before_launch(owner, record, operation_dir, previous, sentinel
     table = json.loads(frozen)['Intent']['RoutingTable']
     broker = json.loads(frozen)['BrokerPid']
     assert not Path('/proc', str(broker)).exists()
-    assert not (operation_dir / 'tun-2.json').exists() and device not in devices() and not route(table)
+    if launched:
+        assert json.loads(sender.read_text()) == json.loads((operation_dir / 'tun-2.json').read_text())
+        deadline = time.monotonic() + 10
+        while True:
+            state = service('show', '-p', 'MainPID', '-p', 'Job', unit)
+            properties = dict(line.split('=', 1) for line in state.splitlines())
+            if not Path('/proc', str(candidate[0])).exists() and properties.get('MainPID') == '0' and properties.get('Job') in ('', '0'):
+                break
+            assert time.monotonic() < deadline, state
+            time.sleep(.05)
+    assert not (operation_dir / ('tun-3.json' if launched else 'tun-2.json')).exists()
+    assert device not in devices() and not route(table)
     assert 'MainPID=0' in service('show', '-p', 'MainPID', unit)
     assert network_baseline(table) == record['baseline'] and network_baseline() != record['baseline']
     archive_state = archive / 'state' / 'archive-state.json'
@@ -695,6 +728,13 @@ def proof_network_before_launch(owner, record, operation_dir, previous, sentinel
         pending('runtime.network_rule_ownership_unknown')
     finally:
         hidden.rename(witness)
+    if launched:
+        hidden_sender = sender.with_suffix('.held')
+        sender.rename(hidden_sender)
+        try:
+            pending('runtime.network_launch_sender_unconfirmed')
+        finally:
+            hidden_sender.rename(sender)
     with management_route_drift(table):
         pending('runtime.management_route_changed')
     assert network_baseline() != record['baseline']
@@ -728,11 +768,16 @@ def proof_network_before_launch(owner, record, operation_dir, previous, sentinel
     assert (operation_dir / 'network-before-launch-restored.json').is_file()
     restored = service_identity()
     assert json.loads(checkpoint(record, 'retry')) == terminal and service_identity() == restored
-    assert not (operation_dir / 'tun-2.json').exists() and device not in devices() and not route(table)
+    assert not (operation_dir / ('tun-3.json' if launched else 'tun-2.json')).exists()
+    assert device not in devices() and not route(table)
     assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
     assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
-    print(f'PASS TUN NETWORK BEFORE LAUNCH: original {operation}; exact rule witness required; '
-          f'one deletion and original Interrupted without candidate launch, restored PID={restored[0]}')
+    if launched:
+        print(f'PASS TUN LAUNCH BEFORE DESCRIPTOR: original {operation}; original sender exited and launcher PID {candidate[0]} gone; '
+              f'one deletion and original Interrupted without descriptor dispatch, restored PID={restored[0]}')
+    else:
+        print(f'PASS TUN NETWORK BEFORE LAUNCH: original {operation}; exact rule witness required; '
+              f'one deletion and original Interrupted without candidate launch, restored PID={restored[0]}')
 
 
 def proof_committed(owner, operation, operation_dir, case):
@@ -2544,20 +2589,23 @@ rules:
         renames = 'rename,renameat,renameat2'
         worker = [tracer, '-f', '-qq', '-yy', '-P', temporary, '-e', f'trace={renames}',
                   '-e', f'inject={renames}:error=EIO:signal=SIGKILL:when=1', '-o', str(trace), *worker]
-    if case == 'network-before-launch':
+    if case in ('network-before-launch', 'launch-before-descriptor'):
         tracer = shutil.which('strace')
         assert tracer, 'The dispatch proof requires strace'
         trace = root / 'network-before-launch-fault.trace'
         opens = 'open,openat,openat2'
-        worker = [tracer, '-f', '-qq', '-yy', '-P', str(operation_dir / 'tun-2.json'), '-e', f'trace={opens}',
-                  '-e', f'inject={opens}:error=EIO:signal=SIGKILL:when=1', '-o', str(trace), *worker]
+        launched = case == 'launch-before-descriptor'
+        checkpoint_path = operation_dir / ('tun-3.json' if launched else 'tun-2.json')
+        cut = ':delay_enter=5s' if launched else ':signal=SIGKILL'
+        worker = [tracer, '-f', '-qq', '-yy', '-P', str(checkpoint_path), '-e', f'trace={opens}',
+                  '-e', f'inject={opens}:error=EIO{cut}:when=1', '-o', str(trace), *worker]
     owner = subprocess.Popen(worker,
                              stdout=subprocess.PIPE, text=True, env=env)
     try:
         if case == 'registration-before-network':
             proof_undispatched_registration(owner, json.loads(journal.read_text()), operation_dir, previous, sentinel, trace)
             return
-        if case == 'network-before-launch':
+        if case in ('network-before-launch', 'launch-before-descriptor'):
             proof_network_before_launch(owner, json.loads(journal.read_text()), operation_dir, previous, sentinel, trace)
             return
         if case.startswith('ipc-'):

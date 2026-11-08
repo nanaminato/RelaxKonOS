@@ -702,6 +702,16 @@ Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 
 
 **未实现或待验。** `LaunchDispatched` 后，原启动命令的发送端可能仍存活，现有门禁继续保持。整机掉电和其他 Linux 架构仍待验收。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 保持 resident。
 
+### 启动已派发且描述符未交付的原操作恢复
+
+**已实现且已验证。** Linux x64 私有 systemd 原操作 `c89d6bce3e524343a98b63ebcb6d2d74` 在原 `systemctl start --no-block` 发送端退出并持久化见证后启动了真实候选 launcher（PID 243）。夹具在描述符检查点写入前暂停该写入，核对进程身份后以 pidfd 中断原 broker。原检查点停在 `LaunchDispatched`，无描述符派发记录。launcher 退出，systemd 报告 `MainPID=0` 和空 `Job` 字段，设备、地址和专用路由消失，原规则仍在。
+
+隐藏原发送端退出见证、隐藏规则见证、改变管理选路均保留原待核验及规则。恢复证据后，Helper 持久化原删除派发并删除一次，在删除生效后再次中断。重新注入匹配规则仍被原门禁拒绝，Helper 删除计数保持一。移除注入后，同键返回原 `Interrupted`，已还原 PID 506 保持，旧配置、数据和管理选路一致。首次注入产生 I/O 错误，改用 pidfd 中断后复验，并根据实机输出将显式空 `Job` 识别为无任务。
+
+同版通过启动前原规则回收 `89bc46ff358745bf95cd17eb1fdbd1b5`、认证 HTTP 补偿 `6fd322ead53e4d72a05d053f42106375` 和发布 `0276418accd3470cbba7c58de2daf9ad`。认证 HTTP 场景验证真实上游 HTTP、分流 DNS 和原回执。四场专属进程及 cgroup 清理、宿主共享服务指纹核验通过。日志为 `.artifacts/mb04-tun-launch-before-descriptor/linux-verified.log`，归档 SHA-256 为 `d3927f42a5d0e2a36653f8a1eee1100c040f9b36321cdf70c23440726405963c`。Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 项。可信下载探针因本机缺少进程级 CA 覆盖跳过，日志为同目录 `windows-final.log`。
+
+**未实现或待验。** 缺少原发送端退出见证的启动派发继续待核验。描述符派发已持久化但交付结果未知、整机掉电及其他 Linux 架构仍待独立验收。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

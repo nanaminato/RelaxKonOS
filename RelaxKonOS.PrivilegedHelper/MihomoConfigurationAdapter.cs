@@ -208,7 +208,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
                 await VerifyRestoredNetworkAsync(pending, effect, ct);
                 return true;
             }
-            if (effect.Phase == MihomoTunPhase.NetworkDispatched)
+            if (effect.Phase is MihomoTunPhase.NetworkDispatched or MihomoTunPhase.LaunchDispatched)
             {
                 RequireOriginalNetworkIntent(pending, effect);
                 await RequireMaterialAsync(pending, false, ct);
@@ -359,7 +359,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         RequireOriginalNetworkIntent(pending, effect);
         if (effect.Phase == MihomoTunPhase.Intent)
             await LinuxMihomoArchiveHost.VerifyUndispatchedTunNetworkAsync(effect, ct);
-        else if (effect.Phase == MihomoTunPhase.NetworkDispatched)
+        else if (effect.Phase is MihomoTunPhase.NetworkDispatched or MihomoTunPhase.LaunchDispatched)
             await LinuxMihomoArchiveHost.VerifyUndeliveredTunRestoredAsync(effect, ct);
         else await LinuxMihomoArchiveHost.VerifyRestoredTunNetworkAsync(effect, ct);
     }

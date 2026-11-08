@@ -256,9 +256,14 @@ internal static class MihomoTunDescriptorAcceptance
             throw new InvalidOperationException("The network check requires its private systemd work directory.");
         using var intent = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(root, "tun-operation.json")));
         var state = intent.RootElement;
-        var earlyNetwork = state.GetProperty("case").GetString() == "network-before-launch";
-        var prelaunch = (earlyNetwork || state.GetProperty("case").GetString() == "registration-before-network")
-            && state.GetProperty("phase").GetString() == "prepared";
+        var earlyPhase = state.GetProperty("case").GetString() switch
+        {
+            "registration-before-network" => MihomoTunPhase.Intent,
+            "network-before-launch" => MihomoTunPhase.NetworkDispatched,
+            "launch-before-descriptor" => MihomoTunPhase.LaunchDispatched,
+            _ => (MihomoTunPhase?)null
+        };
+        var prelaunch = earlyPhase is not null && state.GetProperty("phase").GetString() == "prepared";
         if (operation == Guid.Empty || state.GetProperty("operation").GetString() != operation.ToString("N")
             || !prelaunch && state.GetProperty("phase").GetString() != "dispatching")
             throw new InvalidOperationException("The network check requires the original dispatched operation.");
@@ -270,7 +275,7 @@ internal static class MihomoTunDescriptorAcceptance
         if (current is null ? action != "recover" : current.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
             || current.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace()
             || current.Intent.ManagementHash != ManagementHash(state) || current.Intent.ManagementUserId != state.GetProperty("uid").GetUInt32()
-            || (prelaunch ? current.Phase != (earlyNetwork ? MihomoTunPhase.NetworkDispatched : MihomoTunPhase.Intent)
+            || (prelaunch ? current.Phase != earlyPhase
                 : current.Process != Process(state) || current.InterfaceIndex != state.GetProperty("ifindex").GetUInt32()))
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         var host = new LinuxMihomoArchiveHost();

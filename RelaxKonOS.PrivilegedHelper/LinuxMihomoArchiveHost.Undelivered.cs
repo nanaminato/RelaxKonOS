@@ -5,8 +5,8 @@ namespace RelaxKonOS.PrivilegedHelper;
 
 internal sealed partial class LinuxMihomoArchiveHost
 {
-    // Recovery holds the original archive instance lock. A launch dispatch may leave a systemctl sender
-    // alive after the broker exits; this path requires that the launch checkpoint was never written.
+    // Recovery holds the original archive instance lock. A dispatched launch may leave a systemctl sender
+    // alive after the broker exits; a successful, reaped sender and a settled unit are required in that case.
     internal async Task CompleteUndeliveredTunAsync(MihomoTunEffect effect, CancellationToken ct)
     {
         var routes = await RequireUndeliveredNetworkAsync(effect, ct);
@@ -21,13 +21,14 @@ internal sealed partial class LinuxMihomoArchiveHost
             Fail("network_checkpoint_conflict");
         var state = await StateAsync(ct);
         if (state.GetValueOrDefault("MainPID") != "0" || state.GetValueOrDefault("ActiveState") is not ("inactive" or "failed")
-            || state.GetValueOrDefault("UnitFileState") != "disabled")
+            || state.GetValueOrDefault("UnitFileState") != "disabled"
+            || effect.Phase == MihomoTunPhase.LaunchDispatched && state.GetValueOrDefault("Job") is not ("" or "0"))
             Fail("network_stop_unconfirmed");
 
         var dispatched = await ReadUndeliveredCheckpointAsync(effect, "network-before-launch-removal-dispatched", ct);
         if (!dispatched && await routes.HasScopedRuleAsync())
         {
-            if (!await ReadUndeliveredCheckpointAsync(effect, "network-rule-verified", ct))
+            if (!await ReadUndeliveredCheckpointAsync(effect with { Phase = MihomoTunPhase.NetworkDispatched }, "network-rule-verified", ct))
                 Fail("network_rule_ownership_unknown");
             await routes.RequireRuleAsync(present: true);
             await routes.RequireManagementAsync(effect.Intent.ManagementHash, ownedRulePresent: true);
@@ -50,9 +51,13 @@ internal sealed partial class LinuxMihomoArchiveHost
     {
         ct.ThrowIfCancellationRequested();
         var intent = effect.Intent;
-        if (effect.Phase != MihomoTunPhase.NetworkDispatched || intent.BootId != LinuxMihomoTunCheckpoint.BootId()
+        if (effect.Phase is not (MihomoTunPhase.NetworkDispatched or MihomoTunPhase.LaunchDispatched)
+            || intent.BootId != LinuxMihomoTunCheckpoint.BootId()
             || intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
             Fail("network_checkpoint_conflict");
+        if (effect.Phase == MihomoTunPhase.LaunchDispatched
+            && !await ReadUndeliveredCheckpointAsync(effect, "launch-sender-exited", ct))
+            Fail("network_launch_sender_unconfirmed");
         var routes = TunRoutes(intent);
         if (Directory.Exists($"/proc/{effect.BrokerPid}") || !await routes.IsAbsentAsync(intent.Device, effect.InterfaceIndex))
             Fail("network_stop_unconfirmed");
@@ -82,7 +87,8 @@ internal sealed partial class LinuxMihomoArchiveHost
     {
         var path = UndeliveredPath(effect, name);
         RuntimeSourceStore.RequireNoLinks(path);
-        if (effect.Phase != MihomoTunPhase.NetworkDispatched || Path.Exists(path)) Fail("network_checkpoint_conflict");
+        if (effect.Phase is not (MihomoTunPhase.NetworkDispatched or MihomoTunPhase.LaunchDispatched) || Path.Exists(path))
+            Fail("network_checkpoint_conflict");
         await WriteRestoreFileAsync(effect.Intent.OperationId, path, JsonSerializer.Serialize(effect),
             UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
     }

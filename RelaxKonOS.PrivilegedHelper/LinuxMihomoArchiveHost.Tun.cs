@@ -55,7 +55,7 @@ internal sealed partial class LinuxMihomoArchiveHost
             RequireProtected(TunLauncher);
             RequireProtected(checkpoint.SocketPath);
         }
-        await DispatchTunStartAsync(intent.OperationId, CancellationToken.None);
+        await DispatchTunStartAsync(intent.OperationId, CancellationToken.None, recordSenderExit: publication is not null);
 
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         using var connection = await listener.AcceptAsync(deadline.Token);

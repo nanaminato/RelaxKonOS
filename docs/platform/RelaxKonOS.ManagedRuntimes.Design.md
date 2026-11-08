@@ -47,7 +47,9 @@ Linux 在替换主台账前同步 `commits` 目录及其父目录。重用原操
 
 新 TUN 配置发布在创建设备前持久化候选注册转换和两个文件的目录项。只持有原 `Intent` 时，原 Helper 先核验启动尚未派发、设备和专用网络效果均缺席、管理选路等于原快照，以及活动配置摘要属于原事务，再按精确注册记录逆序还原。已经越过该窗口的未知状态继续由原检查点门禁裁决。见[候选注册中断与原启动准入](../architecture/server-module-evidence/Proxy-Safety.md#候选注册中断与原启动准入)。
 
-新发布在核对实际网络效果与管理选路后，先持久化专用规则见证，再允许候选启动派发。仍处于 `NetworkDispatched` 时，原 Helper 核对 broker 已退出、原设备与地址和专用路由均已消失，以及受管 unit 停止。残留规则只有在精确见证和管理选路相符时才可按原操作删除。删除派发先持久化，未知结果只核对缺席。`LaunchDispatched` 仍等待独立的启动派发结果证据。见[候选启动派发前的原规则回收](../architecture/server-module-evidence/Proxy-Safety.md#候选启动派发前的原规则回收)。
+新发布在核对实际网络效果与管理选路后，先持久化专用规则见证，再允许候选启动派发。仍处于 `NetworkDispatched` 时，原 Helper 核对 broker 已退出、原设备与地址和专用路由均已消失，以及受管 unit 停止。残留规则只有在精确见证和管理选路相符时才可按原操作删除。删除派发先持久化，未知结果只核对缺席。见[候选启动派发前的原规则回收](../architecture/server-module-evidence/Proxy-Safety.md#候选启动派发前的原规则回收)。
+
+在 `LaunchDispatched` 后，Helper 等待原 `systemctl start --no-block` 发送进程成功退出及输出排空，再持久化原发送端退出见证。描述符尚未派发时，原操作还需核对 systemd 的任务和 PID 均为零、unit 停止、broker 已退出及原网络效果符合恢复证据。发送端退出见证缺失或任务未结束时保留原待核验。见[启动已派发且描述符未交付的原操作恢复](../architecture/server-module-evidence/Proxy-Safety.md#启动已派发且描述符未交付的原操作恢复)。
 
 TUN 配置事务把网络意图摘要保留在原终态回执中。发布或补偿完成后，Helper 替换主台账并同步其目录，随后才返回终态。同步失败返回原 ID 的待核验。查询和后续写入在使用这一主台账快照前也同步目录，同步失败时阻止继续。同步恢复后沿用原回执，Server 仍核对原操作、配置身份及成功见证。见[原终态替换后的目录同步](../architecture/server-module-evidence/Proxy-Safety.md#原终态替换后的目录同步)。
 
