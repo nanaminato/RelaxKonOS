@@ -267,3 +267,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）隔离夹具已验证 Mihomo v1.19.33 通过已打开的 Linux TUN 描述符转发和退出。生产 Helper 还须将设备及网络效果归属持久绑定到原运行时操作，受管配置准入维持现有门禁。见[描述符交付证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受限-mihomo-的-tun-描述符交付)。
 
 2026-11-08（MR-03 / MB-04）共享配置事务在旧配置和服务恢复已核验并持久记录后，具名恢复只续接清理和原回执，避免再次停启已恢复的服务。专属 TUN 夹具验证按原记录核对激活与停止的中断结果。生产受管 TUN 门禁仍生效。见[双中断核对证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-原生效果的双中断核对)。
+
+2026-11-08（MR-03 / MB-04）Mihomo 配置补偿在原 Helper 台账内持久记录停止派发。停止结果不确定时先只读核对，服务仍在运行则维持待恢复，显式应急停止共用原实例锁。此规则用于受管配置补偿，受管 TUN 网络效果仍需独立归属证明。见[停止与关账](RelaxKonOS.ManagedRuntimes.Transactions.md#mihomo-停止与关账-http)。

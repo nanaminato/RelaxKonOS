@@ -52,7 +52,7 @@ internal static class RuntimeSourceProtection
         foreach (var path in Directory.EnumerateFileSystemEntries(directory).Prepend(directory)) RequireRootOwned(path);
     }
 
-    private static void RequireRootOwned(string path)
+    internal static void RequireRootOwned(string path)
     {
         RuntimeSourceStore.RequireNoLinks(path);
         if (statx(-100, path, 0x100, 0x1f, out var state) != 0 || (state.Mask & 0xb) != 0xb

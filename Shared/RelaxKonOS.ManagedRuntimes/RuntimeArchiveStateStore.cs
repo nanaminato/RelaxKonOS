@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.ProxyServer;
 
 namespace RelaxKonOS.ManagedRuntimes;
@@ -193,6 +194,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                     or Protocol.Installations.InstallationStage.RollingBack or Protocol.Installations.InstallationStage.Interrupted)
                 || configuration.SwitchStarted && configuration.Snapshot is null
                 || configuration.PreviousRestored && !configuration.SwitchStarted
+                || configuration.RecoveryStopDispatched is true && !configuration.SwitchStarted
                 || state.ConfigurationIdentity != (configuration.SwitchStarted && !configuration.PreviousRestored
                     ? plan.CandidateIdentity : plan.PreviousIdentity)
                 || configuration.Snapshot is { } before && (before.ConfigurationIdentity != plan.PreviousIdentity
@@ -215,6 +217,11 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
         internal Session(RuntimeArchiveStateStore store, FileStream gate, RuntimeArchiveState? state)
         { this.store = store; this.gate = gate; State = state; }
         public RuntimeArchiveState? State { get; private set; }
+        internal void SyncDirectory()
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (OperatingSystem.IsLinux()) store.SyncDirectory();
+        }
         public void Save(RuntimeArchiveState state)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
@@ -253,4 +260,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
 
         public void Dispose() { if (disposed) return; disposed = true; gate.Dispose(); }
     }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private void SyncDirectory() => LinuxDirectorySync.Flush(directory);
 }

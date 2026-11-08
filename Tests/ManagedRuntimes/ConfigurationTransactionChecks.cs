@@ -99,11 +99,30 @@ internal static class ConfigurationTransactionChecks
             await Refused("recovery_target_conflict", () => f.Engine.RecoverAsync(Guid.NewGuid(), default));
             if (failure == "authorize-restore") Check(!f.Adapter.Calls.Contains("restore"), "Revoked old configuration is never restarted");
             f.Adapter.RecoveryFailure = null;
+            if (failure == "stop")
+            {
+                var unresolved = await f.Engine.RecoverAsync(f.OperationId, default);
+                Check(unresolved is { Outcome: RuntimeSwitchOutcome.RecoveryRequired } && unresolved.OperationId == f.OperationId
+                    && f.Store.Read()!.Configuration is { RecoveryStopDispatched: true, RecoveryProblemCode: "runtime.recovery_stop_unconfirmed" }
+                    && f.Adapter.Calls.Count(call => call == "stop") == 1 && !f.Adapter.Calls.Contains("restore"),
+                    "Unconfirmed native stop retains the original intent and is never sent twice");
+                using (var session = f.Store.Acquire())
+                {
+                    var interruptedState = session.State!;
+                    session.Save(interruptedState with { Configuration = interruptedState.Configuration! with { RecoveryStopDispatched = null },
+                        Installation = interruptedState.Installation with { StateRevision = interruptedState.Installation.StateRevision + 1 } });
+                }
+                Check((await f.Engine.RecoverAsync(f.OperationId, default))?.Outcome == RuntimeSwitchOutcome.RecoveryRequired
+                    && f.Adapter.Calls.Count(call => call == "stop") == 1,
+                    "A record without a stop checkpoint cannot authorize a new native stop");
+                f.Adapter.Stopped = true;
+            }
             var beforeRetry = f.Adapter.Calls.Count;
             var recovered = await f.Engine.RecoverAsync(f.OperationId, default);
             Check(recovered!.Outcome == RuntimeSwitchOutcome.Interrupted && f.Store.Read()!.ConfigurationIdentity == f.Plan.PreviousIdentity
                 && !f.Store.Read()!.Installation.RecoveryRequired, "Recovery retries compensation without preparing: " + failure);
             Check(f.Adapter.Calls.Count(c => c == "prepare") == 1, "Recovery never regenerates credentials or candidate: " + failure);
+            Check(f.Adapter.Calls.Count(c => c == "stop") == 1, "Readback prevents replaying the original native stop: " + failure);
             if (failure == "cleanup")
             {
                 var receipt = f.Store.Read()!.Receipts.Single();
@@ -238,6 +257,7 @@ internal static class ConfigurationTransactionChecks
         internal Action? OnValidate { get; set; }
         internal Action? OnActivate { get; set; }
         internal bool ActivationTokenWasUncancelled { get; private set; }
+        internal bool Stopped { get; set; }
         private Task Call(string name)
         {
             Calls.Add(name);
@@ -253,7 +273,9 @@ internal static class ConfigurationTransactionChecks
         { ActivationTokenWasUncancelled = !ct.CanBeCanceled; await Call("activate"); OnActivate?.Invoke(); }
         public async Task<RuntimeActivationEvidence> VerifyAsync(RuntimePendingConfiguration pending, CancellationToken ct)
         { await Call("verify"); return new("1.19.30", pending.Plan.CandidateIdentity, true, true, true, false); }
-        public Task StopForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct) => Call("stop");
+        public Task<bool> ObserveStoppedForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct) => Task.FromResult(Stopped);
+        public async Task StopForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+        { await Call("stop"); Stopped = true; }
         public Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct) => Call("authorize-restore");
         public async Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct)
         { await Call("restore"); return new("1.19.30", pending.Plan.PreviousIdentity, true, false, true, RecoveryFailure != "restore-evidence"); }

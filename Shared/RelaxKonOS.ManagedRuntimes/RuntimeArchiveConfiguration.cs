@@ -7,7 +7,11 @@ namespace RelaxKonOS.ManagedRuntimes;
 
 public sealed record RuntimePendingConfiguration(Guid OperationId, string RequestHash, string IdempotencyHash,
     RuntimeConfigurationPlan Plan, InstallationStage Stage, RuntimeServiceSnapshot? Snapshot,
-    bool SwitchStarted, bool PreviousRestored, string? ProblemCode, string? RecoveryProblemCode);
+    bool SwitchStarted, bool PreviousRestored, string? ProblemCode, string? RecoveryProblemCode)
+{
+    // A record without a stop checkpoint cannot prove the command was never sent.
+    public bool? RecoveryStopDispatched { get; init; }
+}
 
 /// <summary>
 /// Preparation must leave live configuration and data untouched. Activation must stop the owned service,
@@ -23,6 +27,7 @@ public interface IRuntimeArchiveConfigurationAdapter
     Task ValidateSwitchAsync(RuntimePendingConfiguration pending, CancellationToken ct);
     Task ActivateAsync(RuntimePendingConfiguration pending, CancellationToken ct);
     Task<RuntimeActivationEvidence> VerifyAsync(RuntimePendingConfiguration pending, CancellationToken ct);
+    Task<bool> ObserveStoppedForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct);
     Task StopForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct);
     Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct);
     Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct);
@@ -73,7 +78,7 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
         if (current.Receipts.Length >= 4096) throw new RuntimePolicyException("runtime.transaction_state_limit");
         ct.ThrowIfCancellationRequested();
         Save(session, current with { Configuration = new(operationId, requestHash, keyHash, plan,
-            InstallationStage.Preflight, null, false, false, null, null) });
+            InstallationStage.Preflight, null, false, false, null, null) { RecoveryStopDispatched = false } });
         try
         {
             await NotifyAsync(InstallationStage.Preflight, true);
@@ -131,7 +136,17 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
             var pending = session.State!.Configuration!;
             if (pending.SwitchStarted && !pending.PreviousRestored)
             {
-                await adapter.StopForRecoveryAsync(pending, CancellationToken.None);
+                if (!await adapter.ObserveStoppedForRecoveryAsync(pending, CancellationToken.None))
+                {
+                    if (pending.RecoveryStopDispatched != false)
+                        throw new RuntimePolicyException("runtime.recovery_stop_unconfirmed");
+                    Update(session, p => p with { RecoveryStopDispatched = true });
+                    session.SyncDirectory();
+                    pending = session.State!.Configuration!;
+                    await adapter.StopForRecoveryAsync(pending, CancellationToken.None);
+                    if (!await adapter.ObserveStoppedForRecoveryAsync(pending, CancellationToken.None))
+                        throw new RuntimePolicyException("runtime.recovery_stop_unconfirmed");
+                }
                 await adapter.ValidateRestoreAsync(pending, CancellationToken.None);
                 // Keep the candidate identity until restoration has been verified and recorded.
                 // Once recorded, recovery can resume cleanup without restarting the restored service.

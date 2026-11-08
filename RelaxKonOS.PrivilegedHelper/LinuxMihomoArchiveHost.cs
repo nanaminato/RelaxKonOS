@@ -38,14 +38,14 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
     private static string UnitText(Registration registration) =>
         $"# RelaxKonOS managed archive Mihomo\n[Unit]\nDescription=RelaxKonOS Mihomo\nAfter=network-online.target\n[Service]\nType=simple\nUser=root\nLoadCredential=active.yaml:{Root}/active.yaml\nExecStart={registration.Binary} -d {registration.Data} -f %d/active.yaml\nRestart=on-failure\nNoNewPrivileges=yes\nPrivateTmp=yes\nPrivateDevices=yes\nProtectSystem=strict\nProtectHome=yes\nInaccessiblePaths=-/etc/relaxkonos -/opt/relaxkonos\nReadWritePaths={registration.Data}\nAmbientCapabilities=CAP_NET_BIND_SERVICE\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK\n[Install]\nWantedBy=multi-user.target\n";
 
-    private static async Task RequireProtectedAsync(string path)
+    private static void RequireProtected(string path)
     {
-        RuntimeSourceStore.RequireNoLinks(path);
-        for (string? entry = path; entry is not null; entry = Path.GetDirectoryName(entry))
+        try
         {
-            var fields = (await RunAsync("/usr/bin/stat", ["-c", "%u %a", "--", entry])).Trim().Split(' ');
-            if (fields.Length != 2 || fields[0] != "0" || (Convert.ToInt32(fields[1], 8) & 0x12) != 0) Fail("service_scope_invalid");
+            for (string? entry = path; entry is not null; entry = Path.GetDirectoryName(entry))
+                RuntimeSourceProtection.RequireRootOwned(entry);
         }
+        catch (UnauthorizedAccessException) { Fail("service_scope_invalid"); }
     }
 
     private static async Task<Registration?> ReadRegistrationAsync(CancellationToken ct)
@@ -54,8 +54,8 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
         RuntimeSourceStore.RequireNoLinks(RegistrationPath);
         if (!File.Exists(UnitPath) && !File.Exists(RegistrationPath)) return null;
         if (!File.Exists(UnitPath) || !File.Exists(RegistrationPath)) Fail("external_installation");
-        await RequireProtectedAsync(UnitPath);
-        await RequireProtectedAsync(RegistrationPath);
+        RequireProtected(UnitPath);
+        RequireProtected(RegistrationPath);
         if (new FileInfo(RegistrationPath).Length > 8192 || new FileInfo(UnitPath).Length > 8192) Fail("service_scope_invalid");
         var registration = JsonSerializer.Deserialize<Registration>(await File.ReadAllTextAsync(RegistrationPath, ct));
         if (registration is null) Fail("state_unknown");
@@ -97,7 +97,7 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
         if (executable != registration.Binary) Fail("state_unknown");
         var arguments = Encoding.UTF8.GetString(await File.ReadAllBytesAsync(proc + "/cmdline", ct)).Split('\0');
         if (!arguments.SequenceEqual(new[] { registration.Binary, "-d", registration.Data, "-f", Credential, "" })) Fail("state_unknown");
-        await RequireProtectedAsync(registration.Binary);
+        RequireProtected(registration.Binary);
         if (!string.Equals(await DigestAsync(proc + "/exe", ct), registration.BinaryHash, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(await DigestAsync(proc + "/root" + Credential, ct), registration.ConfigurationHash, StringComparison.OrdinalIgnoreCase)) Fail("configuration_drift");
         using var after = Process.GetProcessById(processId);
@@ -118,9 +118,9 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
         var state = await StateAsync(ct);
         // Stopped services have no process proof. Their program, configuration and writable data scope
         // still need the same ownership/write protection checked before start.
-        await RequireProtectedAsync(registration.Binary);
-        await RequireProtectedAsync(Root + "/active.yaml");
-        await RequireProtectedAsync(registration.Data);
+        RequireProtected(registration.Binary);
+        RequireProtected(Root + "/active.yaml");
+        RequireProtected(registration.Data);
         bool? boot = state.GetValueOrDefault("UnitFileState") switch { "enabled" => true, "disabled" => false, _ => null };
         var process = await VerifyProcessAsync(registration, state, ct);
         return new(true, true, process is not null, boot, registration.Binary, process?.Identity, registration.Data);
@@ -147,8 +147,8 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
         var previous = await ReadRegistrationAsync(ct);
         if (previous is null) await ObserveAsync(ct);
         else if ((await StateAsync(ct)).GetValueOrDefault("MainPID") != "0") Fail("state_unknown");
-        await RequireProtectedAsync(verifiedBinary); await RequireProtectedAsync(protectedConfiguration);
-        await RequireProtectedAsync(protectedDataDirectory);
+        RequireProtected(verifiedBinary); RequireProtected(protectedConfiguration);
+        RequireProtected(protectedDataDirectory);
         if (!string.Equals(await DigestAsync(protectedConfiguration, ct), configurationIdentity, StringComparison.OrdinalIgnoreCase)) Fail("configuration_drift");
         var report = await MihomoOperations.VersionAsync(verifiedBinary);
         var tag = report.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(2) ?? "";
@@ -203,8 +203,8 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
     public async Task StartAsync(CancellationToken ct)
     {
         var registration = await ReadRegistrationAsync(ct) ?? throw new RuntimePolicyException("runtime.state_unknown");
-        await StateAsync(ct); await RequireProtectedAsync(registration.Binary); await RequireProtectedAsync(Root + "/active.yaml");
-        await RequireProtectedAsync(registration.Data);
+        await StateAsync(ct); RequireProtected(registration.Binary); RequireProtected(Root + "/active.yaml");
+        RequireProtected(registration.Data);
         if (!string.Equals(await DigestAsync(registration.Binary, ct), registration.BinaryHash, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(await DigestAsync(Root + "/active.yaml", ct), registration.ConfigurationHash, StringComparison.OrdinalIgnoreCase)) Fail("configuration_drift");
         // This is an explicit, verified management start, including compensation. Clear a prior failed
@@ -219,10 +219,12 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
             await CommandAsync("reset-failed", ct);
             await CommandAsync("start", ct);
         }
-        // A simple unit is briefly "activating" after systemctl start returns. Observing that window would
-        // report state_unknown for a service that is starting exactly as configured.
+        // A simple unit may report running before ExecStart has switched to the registered binary.
+        // Wait for that transition without treating a launcher as the owned Mihomo process.
         await WaitAsync(state => state.GetValueOrDefault("ActiveState") is "inactive" or "failed"
-            || state.GetValueOrDefault("ActiveState") == "active" && state.GetValueOrDefault("SubState") == "running", ct);
+            || state.GetValueOrDefault("ActiveState") == "active" && state.GetValueOrDefault("SubState") == "running"
+            && int.TryParse(state.GetValueOrDefault("MainPID"), out var pid) && pid > 1
+            && new FileInfo($"/proc/{pid}/exe").LinkTarget == registration.Binary, ct);
         await ObserveAsync(ct);
     }
 

@@ -120,12 +120,28 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
 
     public async Task StopForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
     {
-        // A failed/crashed owned unit need not have an observable running process. The fixed host verifies
-        // registration ownership while stopping; insist on the complete observation after it settles.
+        // Only a process serving one of this operation's two frozen configurations is in scope.
+        var revision = Revision(pending);
+        var before = await host.ObserveAsync(ct);
+        RequireService(before, revision);
+        if (!before.Running) return;
+        if (before.AppliedConfigurationIdentity != pending.Plan.PreviousIdentity
+            && before.AppliedConfigurationIdentity != pending.Plan.CandidateIdentity)
+            throw new RuntimePolicyException("runtime.configuration_drift");
         await host.StopAsync(ct);
         var observed = await host.ObserveAsync(ct);
-        RequireService(observed, Revision(pending));
+        RequireService(observed, revision);
         if (observed.Running) throw new RuntimePolicyException("runtime.recovery_stop_failed");
+    }
+
+    public async Task<bool> ObserveStoppedForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+    {
+        var observed = await host.ObserveRegistrationAsync(ct);
+        if (!observed.Exists || observed.BootEnabled is null) throw new RuntimePolicyException("runtime.state_unknown");
+        if (observed.Running) return false;
+        var stopped = await host.ObserveAsync(ct);
+        RequireService(stopped, Revision(pending));
+        return !stopped.Running;
     }
 
     public async Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct)
@@ -162,7 +178,15 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         if (pending.Snapshot.Running)
         {
             await RequireMaterialAsync(pending, false, ct);
-            await host.StartAsync(ct);
+            try { await host.StartAsync(ct); }
+            catch (Exception error) when (error is InvalidOperationException or TimeoutException)
+            {
+                // systemd may have started the restored program before its command failed to return.
+                // The full process, credential and listener verification below still decides the result.
+                var started = await host.ObserveAsync(ct);
+                RequireService(started, revision);
+                if (!started.Running || started.AppliedConfigurationIdentity != pending.Plan.PreviousIdentity) throw;
+            }
         }
         var material = await RequireMaterialAsync(pending, false, ct);
         var observed = await host.ObserveAsync(ct);

@@ -471,3 +471,17 @@ Windows Release 档案配置激活与回滚、设置边界 31 项、系统代理
 Linux 私有 systemd 中，候选授权撤销触发恢复，受保护的临时目录路径冲突使清理以 `runtime.linked_path_forbidden` 停在原 `fa85d35c-a40d-495a-b03c-cf9ae3fd12cd`。此时旧配置已持久记录为已恢复，Mihomo 实际转发。解除临时路径冲突后，具名 Helper 恢复沿用同一 PID，授权通道读取为零，清理完成并读回原 `Interrupted` 回执。测试归档 SHA-256 为 `f20c204e923d393b17c3aafa6dedc02328df1367764649136a2e575e62f20ed0`，日志 `.artifacts/mb04-tun-marker-sync/tun-owner-managed-linux.log`。
 
 Linux 私有 systemd 回归 180 项通过，专属 cgroup 移除，宿主服务与代理文件指纹一致。Windows ManagedRuntimes Release 回归及模块边界回归通过，配置事务 92 项包括同键只读原回执与重试只执行清理。缺少进程级测试 CA 覆盖，可信下载探针跳过。该生产回归使用普通受管配置。受管 TUN 网络效果的双中断实证仍限专属夹具。见[原生效果的双中断核对](Proxy-Safety.md#mb-04-tun-原生效果的双中断核对)。
+
+## MB-04 受管 Mihomo 停止结果未知时的原操作核对
+
+原配置事务保存停止派发意图后，在 Linux 同步台账目录，随后只对固定受管单元且应用原操作两份冻结配置之一的进程执行停止。具名重试复核停止状态及程序修订。原记录不能证明停止从未派发时，仍在运行的服务保留待核验，自动派发次数不增加。应急停止使用同一实例锁和原目标 ID。
+
+Linux 私有 systemd 的两个故障窗口均通过。原 `1238b55d-1779-46c3-9691-cd4b598b861a` 的停止在送达系统管理器前失败，原候选 PID 和真实流量持续。原 ID 重试返回 `runtime.recovery_stop_unconfirmed`，停止派发仍一次。显式应急停止后，同一原操作恢复旧配置及真实转发。原 `a415761f-2fda-4dfc-98f8-587511697bc1` 的停止实际生效但返回失败。重试核对服务已停止，恢复旧配置与原 `Interrupted` 回执，停止共一次。聚焦实机 185 项通过，专属 cgroup 移除，宿主服务及代理文件指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-stop-scope-linux.log`，归档 SHA-256 `4cfd6a60138776a510cf4bb7220072d1799023cfb21e12e39bac3652c464c755`。
+
+Windows ManagedRuntimes Release 回归通过，配置事务 99 项包括停止未确认及缺少历史检查点时拒绝重放。可信下载探针缺少进程级测试 CA 覆盖。真实 TUN 描述符双中断夹具同批复测通过，原记录 `8bb98aca42da45c8a1d099b41bccb3d9`，日志 `.artifacts/mb04-tun-marker-sync/tun-stop-tun-proof.log`，SHA-256 `577293aa997902f312bc4997440326bb362c2044cef791f3a4d23bbacd7271b9`。生产受管 TUN 设备、规则及 DNS 的持久归属仍未接入，准入门禁继续生效。
+
+完整回归曾在受管订阅的 Helper 中断恢复段超时。只读观测确认原配置已重新运行，但保护路径检查的 `stat` 子进程已退出，Helper 仍在等待回收，原回执保留待恢复。补偿启动命令未确认时改为实测程序修订、运行凭据摘要与健康监听，证据不足时保留原回执待核验。该改动使原订阅 Helper 中断 `8560469c-95fe-4d97-a5f1-c57128b29d9e` 恢复通过。固定单元的保护检查随后复用已有 `statx` 实现，继续核对 root 所有权、链接和组及其他用户写权限。两次超时记录见 `.artifacts/mb04-tun-marker-sync/tun-stop-linux.log` 和 `tun-stop-serial-linux.log`，启动读回复测见 `tun-stop-recheck-linux.log`。
+
+首轮 `statx` 回归揭示 systemd simple 单元报告运行时，进程可尚未执行已登记的 Mihomo 程序。启动等待改为同时核对原生执行文件，随后再做完整的命令行、凭据和健康验证。失败记录 `.artifacts/mb04-tun-marker-sync/tun-stop-statx-linux.log`。
+
+最终完整 Linux Release 私有 systemd 回归通过 185 项。原订阅 Helper 中断 `4bc608bc-cbfb-4d4e-8db2-8ffb9031f17a` 按原回执补偿，停止未知的两条原操作 `00d8792b-7933-45fc-81b4-c122ade32aa3` 和 `ee1187b6-a36e-4ee9-bf2a-1ccc43e7b7e3` 通过。后一条同时注入实际启动后应答失败，仍凭原生证据完成原回执。专属 cgroup 移除，宿主指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-stop-final2-linux.log`，归档 SHA-256 `cda2cdaa4d43f37f11ded690c1e5c828c49c2a710f163698353ff439af043041`。最终 Windows 首轮在 Core 持续恢复调度断言处失败，同一制品串行复测通过，日志 `tun-stop-final2-win.log` 与 `tun-stop-final2-win-retry.log`。Windows 模块边界回归也通过，日志 `tun-stop-server-win.log`。

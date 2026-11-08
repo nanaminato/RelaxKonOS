@@ -2,6 +2,20 @@
 # Bind over systemctl only inside the private test mount and systemd namespaces.
 set -euo pipefail
 fault=/run/relaxkonos-mihomo-start-fault
+if [[ $# == 2 && $1 == stop && $2 == relaxkonos-mihomo.service && -f $fault/stop-count ]]; then
+    printf 'stop\n' >> "$fault/stop-count"
+    if [[ -f $fault/stop-armed ]]; then
+        mode=$(cat "$fault/stop-armed")
+        mv -- "$fault/stop-armed" "$fault/stop-consumed"
+        if [[ $mode == after ]]; then "$fault/systemctl" "$@"; fi
+        exit 1
+    fi
+fi
+if [[ $# == 2 && $1 == start && $2 == relaxkonos-mihomo.service && -f $fault/restore-start-armed ]]; then
+    mv -- "$fault/restore-start-armed" "$fault/restore-start-consumed"
+    "$fault/systemctl" "$@"
+    exit 1
+fi
 if [[ $# != 2 || $1 != start || $2 != relaxkonos-mihomo.service || ! -f $fault/armed ]]; then
     exec "$fault/systemctl" "$@"
 fi

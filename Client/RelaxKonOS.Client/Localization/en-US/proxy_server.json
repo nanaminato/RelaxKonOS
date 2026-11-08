@@ -414,6 +414,7 @@
     "proxy_server.runtime_problem.recovery_confirmation_required": "This needs an explicit confirmation.",
     "proxy_server.runtime_problem.recovery_stop_required": "The service must be stopped first.",
     "proxy_server.runtime_problem.recovery_stop_failed": "The service could not be stopped.",
+    "proxy_server.runtime_problem.recovery_stop_unconfirmed": "The previous stop is unconfirmed. The service is still running and recovery will not send another stop command.",
     "proxy_server.runtime_problem.service_observation_failed": "The service state could not be observed.",
     "proxy_server.runtime_problem.recovery_closed_by_operator": "The transaction was closed by an operator and has not been re-validated.",
     "proxy_server.runtime_problem.elevation_cancelled": "Elevation was cancelled; nothing was executed."

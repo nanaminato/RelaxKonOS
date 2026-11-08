@@ -227,7 +227,9 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
     /// </summary>
     internal async Task<RuntimeRecoverySnapshot> StopAsync(Guid operationId, CancellationToken ct)
     {
-        var snapshot = RuntimeArchiveRecovery.Require(RuntimeArchiveRecovery.Describe(await EnsureStateAsync(ct)), operationId);
+        await EnsureStateAsync(ct);
+        using var session = states.Acquire();
+        var snapshot = RuntimeArchiveRecovery.Require(RuntimeArchiveRecovery.Describe(session.State!), operationId);
         // A unit this installation does not own must not be stopped by its emergency entry.
         var observed = await host.ObserveRegistrationAsync(ct);
         if (observed.Exists)

@@ -414,6 +414,7 @@
     "proxy_server.runtime_problem.recovery_confirmation_required": "続行には確認が必要です。",
     "proxy_server.runtime_problem.recovery_stop_required": "先にサービスを停止する必要があります。",
     "proxy_server.runtime_problem.recovery_stop_failed": "サービスを停止できませんでした。",
+    "proxy_server.runtime_problem.recovery_stop_unconfirmed": "前回の停止は確認できていません。サービスは稼働中で、復旧処理は停止コマンドを再送しません。",
     "proxy_server.runtime_problem.service_observation_failed": "サービスの状態を確認できませんでした。",
     "proxy_server.runtime_problem.recovery_closed_by_operator": "トランザクションは管理者によって閉じられ、まだ再検証されていません。",
     "proxy_server.runtime_problem.elevation_cancelled": "昇格がキャンセルされたため、何も実行されていません。"

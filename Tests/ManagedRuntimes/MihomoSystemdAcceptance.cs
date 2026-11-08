@@ -269,6 +269,73 @@ internal static class MihomoSystemdAcceptance
                     "Named cleanup recovery keeps the restored native process and closes the original receipt without replay");
             }
             Console.WriteLine($"PASS MIHOMO NATIVE RESTORED CLEANUP: original {cleanupPending.OperationId}, same PID and real traffic");
+
+            if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_POST_SWITCH") == "interrupt")
+            {
+                MihomoIpcStartupAcceptance.RequirePrivateHost();
+                const string fault = "/run/relaxkonos-mihomo-start-fault";
+                var counter = Path.Combine(fault, "stop-count");
+                foreach (var effect in new[] { "before", "after" })
+                {
+                    try
+                    {
+                        configurationStage = stage =>
+                        {
+                            if (stage == InstallationStage.HealthChecking) denyCandidate = true;
+                            if (stage != InstallationStage.RollingBack) return;
+                            File.WriteAllText(counter, "");
+                            File.WriteAllText(Path.Combine(fault, "stop-armed"), effect);
+                        };
+                        var unknown = await ConfigureAsync(published, candidate, "configuration-stop-unknown-" + effect);
+                        configurationStage = null;
+                        denyCandidate = false;
+                        var pending = states.Read()!.Configuration;
+                        var stopObservation = await host.ObserveRegistrationAsync(default);
+                        Check(unknown.Outcome == RuntimeSwitchOutcome.RecoveryRequired
+                            && pending is { RecoveryStopDispatched: true } && pending.OperationId == unknown.OperationId
+                            && stopObservation.Running == (effect == "before") && File.ReadAllLines(counter).Length == 1,
+                            "Unknown stop keeps its own native dispatch intent and measured service state");
+
+                        async Task<RuntimeSwitchResult> ResumeAsync()
+                        {
+                            var request = Guid.NewGuid();
+                            await using var callback = new RuntimeAuthorizationServer<MihomoConfigurationAuthorization>(request, _ =>
+                                Task.FromResult(new MihomoConfigurationAuthorization(unknown.OperationId, DateTimeOffset.UtcNow.AddSeconds(30), published, null)));
+                            return await HelperAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeRecover,
+                                OperationId: request, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: unknown.OperationId)));
+                        }
+
+                        if (effect == "before")
+                        {
+                            var candidatePid = await RuntimePidAsync();
+                            var unresolved = await ResumeAsync();
+                            Check(unresolved.OperationId == unknown.OperationId && unresolved.Outcome == RuntimeSwitchOutcome.RecoveryRequired
+                                && states.Read()!.Configuration?.RecoveryProblemCode == "runtime.recovery_stop_unconfirmed"
+                                && File.ReadAllLines(counter).Length == 1 && await RuntimePidAsync() == candidatePid
+                                && await ProbeAsync(mixedPort + 1), "Named retry preserves a still-live candidate and does not reissue an unconfirmed stop");
+                            await HelperAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryStop,
+                                OperationId: Guid.NewGuid(), RuntimeLifecycle: new(RecoveryOperationId: unknown.OperationId)));
+                        }
+                        var startFault = Path.Combine(fault, "restore-start-armed");
+                        if (effect == "after") File.WriteAllText(startFault, "after");
+                        var recovered = await ResumeAsync();
+                        Check(recovered.OperationId == unknown.OperationId && recovered.Outcome == RuntimeSwitchOutcome.Interrupted
+                            && states.Read()!.Configuration is null && File.ReadAllLines(counter).Length == (effect == "before" ? 2 : 1)
+                            && (effect != "after" || !File.Exists(startFault) && File.Exists(Path.Combine(fault, "restore-start-consumed")))
+                            && await HealthyAsync(host, published) && await ProbeAsync(mixedPort),
+                            "Observed stop resumes the original compensation without another stop and restores real traffic");
+                        Console.WriteLine($"PASS MIHOMO NATIVE STOP RECONCILIATION: {effect} effect, original {unknown.OperationId}");
+                    }
+                    finally
+                    {
+                        configurationStage = null;
+                        denyCandidate = false;
+                        File.Delete(counter);
+                        File.Delete(Path.Combine(fault, "stop-armed"));
+                        File.Delete(Path.Combine(fault, "restore-start-armed"));
+                    }
+                }
+            }
             await host.StopAsync(default);
             Check((await ConfigureAsync(published, candidate, "configuration-stopped")).Outcome == RuntimeSwitchOutcome.Succeeded
                 && (await host.ObserveAsync(default)) is { Running: false, BootEnabled: true },

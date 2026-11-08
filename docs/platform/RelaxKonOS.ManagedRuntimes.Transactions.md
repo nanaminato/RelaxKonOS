@@ -349,6 +349,10 @@ systemd 专项运行的是重命名测试 apphost，并非 sing-box，未验证�
 
 `POST /managed-runtimes/mihomo/recovery/stop` 与 `/close` 与重试同门禁：RuntimeManage、Mihomo 安装权限及目标为 `mihomo` 的 MihomoInstall 提权；空操作 ID 在触达 Helper 前被拒绝。关账还须显式 `confirmed`，否则 400 `runtime.recovery_confirmation_required`。
 
+具名配置补偿先核对原受管服务是否已经停止。若需要停止且原记录证明从未派发，Helper 先在原配置事务持久记录派发意图，再对服务执行原生命令。重试先复核固定注册和停止状态。服务仍在运行且停止已派发或原记录缺少派发证据时，报告 `runtime.recovery_stop_unconfirmed` 并保留原操作，禁止自动再派发。显式紧急停止继续使用原操作 ID 和相同实例锁，核对停止后可以接续原补偿。
+
+补偿启动的返回结果未知时，Helper 核对固定注册、原配置的运行凭据摘要以及健康监听。只有原生读回及授权均通过才确认原补偿，核对不足则保留待恢复。
+
 停止不要求发布权威可用，也不修改原生台账或 Server 记录，因此存在未确认提交时仍可执行；关账结算的是原生事务，所以同一操作存在 Server 未确认提交时返回 409 `runtime.publication_unconfirmed`，避免留下永远无法确认的发布；权威不可读返回 409 `runtime.publication_state_invalid`。两项判定都在发布 Gate 内完成，关账不会与进行中的提交并发。
 
 常规 1249 项通过（HTTP 34、Helper/Server 集成 39），真实 systemd 167 项通过；客户端 `RemoteRuntimeCatalogClient` 已按运行时绑定各自闭合的停止/关账路由。桌面 Mihomo 恢复 UI、生产安装注册与资源分发仍未接通。

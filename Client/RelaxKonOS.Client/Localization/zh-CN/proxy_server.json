@@ -414,6 +414,7 @@
     "proxy_server.runtime_problem.recovery_confirmation_required": "需要确认后才能继续。",
     "proxy_server.runtime_problem.recovery_stop_required": "必须先停止服务才能继续。",
     "proxy_server.runtime_problem.recovery_stop_failed": "服务未能停止。",
+    "proxy_server.runtime_problem.recovery_stop_unconfirmed": "上次停止尚未确认。服务仍在运行，恢复不会再次发送停止命令。",
     "proxy_server.runtime_problem.service_observation_failed": "无法观测服务状态。",
     "proxy_server.runtime_problem.recovery_closed_by_operator": "事务已由管理员关账，尚未重新校验。",
     "proxy_server.runtime_problem.elevation_cancelled": "已取消提权，操作未执行。"
