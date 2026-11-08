@@ -772,6 +772,20 @@ def run(root, server, tests, mode):
                             assert request(renew, token, {}, "signed-loss", 202) == signed
                             request(renew, token, {}, "staged-recovery-new-key", 409,
                                     expected_problem="certificate.kestrel_recovery_pending")
+                            version = signed["operationId"].replace("-", "")
+                            chain = index.parent / "versions" / version / "fullchain.pem"
+                            saved_chain = chain.with_suffix(".held")
+                            pending_ledger = ledger.read_bytes()
+                            chain.rename(saved_chain)
+                            try:
+                                request(apply_route, token, apply_payload, expected=409)
+                                assert not chain.exists()
+                                chain.write_bytes(saved_chain.read_bytes() + b"\n")
+                                request(apply_route, token, apply_payload, expected=409)
+                                assert served_fingerprint() == active_fingerprint and recovery_leases() == 1
+                                assert ledger.read_bytes() == pending_ledger and (root / "relay.log").read_bytes() == traffic
+                            finally:
+                                saved_chain.replace(chain)
                             expected = {"operation": signed, "status": "applied", "fingerprintSha256": proof["issuedFingerprintSha256"]}
                             assert request(apply_route, token, apply_payload) == expected
                             wait_for(recovered, lambda: recovery_leases() == 0, "completed-staged-recovery-lease")
@@ -780,7 +794,7 @@ def run(root, server, tests, mode):
                             assert tuple(path.read_bytes() for path in stable_paths) == stable_bytes
                             assert (root / "relay.log").read_bytes() == traffic
                             print(f"PASS ACME KESTREL RECOVERY STAGED: operation={signed['operationId']}; "
-                                  f"served={proof['issuedFingerprintSha256']}; restarted pending and applied explicitly", flush=True)
+                                  f"served={proof['issuedFingerprintSha256']}; refused missing and changed chain before explicit apply", flush=True)
                         return
 
                     with sqlite3.connect(root / "identity.db") as database, ThreadPoolExecutor(max_workers=1) as executor:
