@@ -36,6 +36,7 @@ public sealed class RuntimeArchiveSwitch(RuntimeArchiveStateStore store, IRuntim
         if (current.Pending is not null || current.Removal is not null || current.Configuration is not null
             || current.ProxyPublicationUnresolved || current.Installation.RecoveryRequired)
             throw new RuntimePolicyException("runtime.recovery_required");
+        if (current.ActiveMihomoTun is not null) throw new RuntimePolicyException("runtime.network_lifecycle_unverified");
         ValidatePlan(plan, current);
         ct.ThrowIfCancellationRequested();
         Save(session, current with

@@ -11,14 +11,22 @@ public static class MihomoRuntimeMaterial
 {
     public static string ConfigurationTunIntentIdentity(Guid operationId, RuntimeConfigurationPlan plan, MihomoTunNetworkIntent intent)
     {
-        if (operationId == Guid.Empty || plan.RuntimeId != "mihomo" || plan.ActiveRevisionId == Guid.Empty
-            || !IsDigest(plan.CandidateIdentity) || !IsDigest(intent.ManagementHash)
+        if (plan.RuntimeId != "mihomo") throw new RuntimePolicyException("runtime.network_intent_invalid");
+        return ConfigurationTunIntentIdentity(operationId, plan.InstallationId, plan.HostId, plan.ActiveRevisionId,
+            plan.CandidateIdentity, intent);
+    }
+
+    public static string ConfigurationTunIntentIdentity(Guid operationId, Guid installationId, string hostId,
+        Guid activeRevisionId, string candidateIdentity, MihomoTunNetworkIntent intent)
+    {
+        if (operationId == Guid.Empty || activeRevisionId == Guid.Empty
+            || !IsDigest(candidateIdentity) || !IsDigest(intent.ManagementHash)
             || !ValidTunScope(intent.Device, intent.Address, intent.Destination, intent.DnsRoutingDomain)
             || !CanonicalIPv4(intent.ManagementAddress) || intent.Address == intent.ManagementAddress || intent.Destination == intent.ManagementAddress)
             throw new RuntimePolicyException("runtime.network_intent_invalid");
         return Convert.ToHexString(SHA256.HashData(RuntimeJson.Serialize(new
         {
-            operationId, plan.InstallationId, plan.HostId, plan.ActiveRevisionId, plan.CandidateIdentity, intent
+            operationId, installationId, hostId, activeRevisionId, candidateIdentity, intent
         })));
     }
 

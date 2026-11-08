@@ -120,6 +120,12 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                 || !Enum.IsDefined(r.Outcome) || r.Outcome == RuntimeSwitchOutcome.RecoveryRequired)
             || state.Receipts.Select(r => r.OperationId).Distinct().Count() != state.Receipts.Length
             || state.Receipts.Select(r => r.IdempotencyHash).Distinct().Count() != state.Receipts.Length
+            || state.ActiveMihomoTun is { } tun && (installation.RuntimeId != "mihomo" || installation.Target.Os != "linux"
+                || tun.OperationId == Guid.Empty || state.Active?.RevisionId != tun.RevisionId
+                || state.ConfigurationIdentity != tun.ConfigurationIdentity || !Digest(tun.NetworkIntentIdentity)
+                || state.Pending is not null || state.Removal is not null || state.Configuration is not null
+                || !state.Receipts.Any(r => r.OperationId == tun.OperationId && r.ActiveRevisionId == tun.RevisionId
+                    && r.Outcome == RuntimeSwitchOutcome.Succeeded && r.ProblemCode is null))
             || state.ProxyPublication is { } publication && (installation.RuntimeId != "sing-box"
                 || publication.OperationId == Guid.Empty || !Digest(publication.CandidateHash)
                 || !Digest(publication.PreviousHash) || !Enum.IsDefined(publication.Outcome))
@@ -231,6 +237,13 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                 || state.Installation.Target != previous.Installation.Target
                 || state.Installation.StateRevision != checked(previous.Installation.StateRevision + 1)))
                 throw new RuntimePolicyException("runtime.state_revision_conflict");
+            if (state.ActiveMihomoTun != State?.ActiveMihomoTun
+                && (State?.ActiveMihomoTun is not null
+                    || State?.Configuration is not { Stage: Protocol.Installations.InstallationStage.HealthChecking, SwitchStarted: true } original
+                    || original.Plan.NetworkIntentIdentity is not { } network
+                    || state.ActiveMihomoTun != new RuntimeMihomoTunOwnership(original.OperationId,
+                        original.Plan.ActiveRevisionId, original.Plan.CandidateIdentity, network)))
+                throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
             if (State?.ProxyPublication is { Outcome: ProxyServerPublicationOutcome.InFlight } publication
                 && (state.ProxyPublication != (publication with { Outcome = ProxyServerPublicationOutcome.Committed })
                     || state.ConfigurationIdentity != publication.CandidateHash))

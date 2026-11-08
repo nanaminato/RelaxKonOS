@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -69,12 +70,25 @@ internal sealed partial class LinuxMihomoArchiveHost
         return dispatched;
     }
 
-    internal async Task VerifyTunAsync(Guid operation, CancellationToken ct)
+    internal async Task<MihomoTunEffect> VerifyTunAsync(Guid operation, CancellationToken ct)
     {
         var (registration, _, effect) = await ReadTunOperationAsync(operation, ct);
         RequireActiveTunPhase(effect);
         await VerifyTunEffectAsync(registration, effect, ct);
         if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: true);
+        return effect;
+    }
+
+    internal async Task<RuntimeMihomoTunOwnership> ObserveTunOwnershipAsync(Guid operation, RuntimeInstallation installation,
+        CancellationToken ct)
+    {
+        var effect = await VerifyTunAsync(operation, ct);
+        var intent = effect.Intent;
+        var network = new MihomoTunNetworkIntent(intent.Device, intent.Address, intent.Destination,
+            intent.ManagementAddress, intent.ManagementUserId, intent.ManagementHash, intent.DnsRoutingDomain);
+        var identity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(operation, installation.InstallationId,
+            installation.HostId, intent.RevisionId, intent.ConfigurationHash, network);
+        return new(operation, intent.RevisionId, intent.ConfigurationHash, identity);
     }
 
     internal async Task ReconcileTunDnsAsync(Guid operation, CancellationToken ct)

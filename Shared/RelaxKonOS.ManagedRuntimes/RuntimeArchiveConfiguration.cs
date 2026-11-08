@@ -68,6 +68,7 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
         }
         if (current.Pending is not null || current.Removal is not null || current.Configuration is not null
             || current.ProxyPublicationUnresolved || current.Installation.RecoveryRequired) throw new RuntimePolicyException("runtime.recovery_required");
+        if (current.ActiveMihomoTun is not null) throw new RuntimePolicyException("runtime.network_lifecycle_unverified");
         if (plan.InstallationId != current.Installation.InstallationId || plan.HostId != current.Installation.HostId
             || plan.RuntimeId != current.Installation.RuntimeId) throw new RuntimePolicyException("runtime.installation_mismatch");
         if (current.Active is null || current.Installation.Ownership != RuntimeOwnership.Managed)
@@ -111,7 +112,11 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
             if (!evidence.NativeConfigurationValid || !evidence.Healthy || evidence.MeasuredVersion != current.Active.MeasuredVersion
                 || evidence.ConfigurationIdentity != plan.CandidateIdentity || evidence.Running != snapshot.Running
                 || evidence.BootEnabled != snapshot.BootEnabled) throw new RuntimePolicyException("runtime.health_check_failed");
-            return Complete(session, RuntimeSwitchOutcome.Succeeded, null);
+            var expectedOwnership = plan.NetworkIntentIdentity is { } networkIdentity
+                ? new RuntimeMihomoTunOwnership(operationId, plan.ActiveRevisionId, plan.CandidateIdentity, networkIdentity) : null;
+            if (evidence.MihomoTun != expectedOwnership)
+                throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+            return Complete(session, RuntimeSwitchOutcome.Succeeded, null, evidence.MihomoTun);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
@@ -191,14 +196,15 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
         catch (ObjectDisposedException) { }
     }
 
-    private static RuntimeSwitchResult Complete(RuntimeArchiveStateStore.Session session, RuntimeSwitchOutcome outcome, string? problem)
+    private static RuntimeSwitchResult Complete(RuntimeArchiveStateStore.Session session, RuntimeSwitchOutcome outcome, string? problem,
+        RuntimeMihomoTunOwnership? ownership = null)
     {
         var state = session.State!;
         var pending = state.Configuration!;
         var receipt = new RuntimeSwitchReceipt(pending.OperationId, pending.RequestHash, pending.IdempotencyHash,
             outcome, state.Active!.RevisionId, problem, DateTimeOffset.UtcNow, pending.Snapshot);
         Save(session, state with { Configuration = null, Installation = state.Installation with { RecoveryRequired = false },
-            Receipts = [.. state.Receipts, receipt] });
+            Receipts = [.. state.Receipts, receipt], ActiveMihomoTun = ownership });
         return new(receipt.OperationId, receipt.Outcome, receipt.ProblemCode);
     }
 

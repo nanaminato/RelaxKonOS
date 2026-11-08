@@ -130,6 +130,14 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
 
     public async Task<RuntimeActivationEvidence> VerifyAsync(RuntimePendingConfiguration pending, CancellationToken ct)
     {
+        var evidence = await VerifyCandidateAsync(pending, ct);
+        if (evidence.MihomoTun is not null)
+            throw new RuntimePolicyException("runtime.network_lifecycle_unverified");
+        return evidence;
+    }
+
+    internal async Task<RuntimeActivationEvidence> VerifyCandidateAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+    {
         await AuthorizeProgramAsync(pending, ct);
         // Native checks never touch live, running mutable data.
         var build = await CheckNativeAsync(pending, true, FileIn(pending, "check-data"), ct);
@@ -139,14 +147,14 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         RequireService(observed, Revision(pending));
         var healthy = identity == pending.Plan.CandidateIdentity
             && (!observed.Running || observed.AppliedConfigurationIdentity == identity && await host.ListenersHealthyAsync(material, ct));
+        RuntimeMihomoTunOwnership? ownership = null;
         if (pending.Plan.NetworkIntentIdentity is not null)
         {
             if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_platform_unsupported");
-            await TunHost().VerifyTunAsync(pending.OperationId, ct);
-            // A committed TUN configuration still needs a managed start and durable ownership across later operations.
-            throw new RuntimePolicyException("runtime.network_lifecycle_unverified");
+            var installation = states.Read()!.Installation;
+            ownership = await TunHost().ObserveTunOwnershipAsync(pending.OperationId, installation, ct);
         }
-        return new(build.Version, identity, true, healthy, observed.Running, observed.BootEnabled!.Value);
+        return new(build.Version, identity, true, healthy, observed.Running, observed.BootEnabled!.Value, ownership);
     }
 
     public async Task StopForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)

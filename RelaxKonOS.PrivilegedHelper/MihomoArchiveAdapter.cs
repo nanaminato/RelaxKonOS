@@ -9,7 +9,7 @@ using RelaxKonOS.Protocol.Installations;
 namespace RelaxKonOS.PrivilegedHelper;
 
 internal sealed record MihomoServiceObservation(bool Exists, bool Owned, bool Running, bool? BootEnabled,
-    string? Executable, string? AppliedConfigurationIdentity, string? DataDirectory);
+    string? Executable, string? AppliedConfigurationIdentity, string? DataDirectory, Guid? TunOperation = null);
 
 /// <summary>Fixed, runtime-specific service implementation. Never bound to a client-provided executable or command.</summary>
 internal interface IMihomoArchiveHost

@@ -137,7 +137,7 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         RequireProtected(registration.Data);
         bool? boot = state.GetValueOrDefault("UnitFileState") switch { "enabled" => true, "disabled" => false, _ => null };
         var process = await VerifyProcessAsync(registration, state, ct);
-        return new(true, true, process is not null, boot, registration.Binary, process?.Identity, registration.Data);
+        return new(true, true, process is not null, boot, registration.Binary, process?.Identity, registration.Data, registration.TunOperation);
     }
 
     public async Task<RuntimeServiceObservation> ObserveRegistrationAsync(CancellationToken ct)

@@ -285,9 +285,11 @@ def resolver_snapshot():
     name = 'org.freedesktop.resolve1'
     owner = json.loads(command(bus, *flags, 'call', 'org.freedesktop.DBus', '/org/freedesktop/DBus',
                                'org.freedesktop.DBus', 'GetNameOwner', 's', name))['data'][0]
-    settings = tuple(json.loads(command(bus, *flags, 'get-property', name, '/org/freedesktop/resolve1',
-                                        name + '.Manager', prop))['data']
-                     for prop in ('DNS', 'Domains', 'FallbackDNS'))
+    dns, domains, fallback = (json.loads(command(bus, *flags, 'get-property', name, '/org/freedesktop/resolve1',
+                                                name + '.Manager', prop))['data']
+                              for prop in ('DNS', 'Domains', 'FallbackDNS'))
+    # The manager may enumerate interfaces in a different order after restart.
+    settings = (sorted(dns, key=lambda entry: entry[0]), sorted(domains, key=lambda entry: entry[0]), fallback)
     return owner, settings
 
 
@@ -336,7 +338,8 @@ def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, que
         resolver('domain', device, '~tun.fixture.test')
         resolver('dns', device, target)
         resolver_after = resolver_snapshot()
-        assert resolver_after[0] != resolver_before[0] and resolver_after[1] == resolver_before[1]
+        assert resolver_after[0] != resolver_before[0], 'resolver did not change D-Bus owner'
+        assert resolver_after[1] == resolver_before[1], (resolver_before[1], resolver_after[1])
         expected = 'runtime.network_dns_owner_unknown'
     else:
         resolver('domain', device, '~conflict.fixture.test')
@@ -376,6 +379,58 @@ def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, que
     assert len(Upstream.hits) == 3 and len(set(queries)) == 3
 
 
+def proof_committed(owner, operation, operation_dir):
+    state_path = archive / 'state' / 'archive-state.json'
+    deadline = time.monotonic() + 15
+    while True:
+        terminal = state_path.read_bytes() if state_path.exists() else b'{}'
+        state = json.loads(terminal)
+        if state.get('activeMihomoTun'):
+            break
+        if owner.poll() is not None or time.monotonic() >= deadline:
+            raise RuntimeError('Original Helper did not commit the TUN ownership')
+        time.sleep(.05)
+    record = json.loads(journal.read_bytes())
+    ownership = state['activeMihomoTun']
+    assert state['configuration'] is None and uuid.UUID(ownership['operationId']).hex == operation
+    assert ownership['revisionId'] == record['revision']
+    assert ownership['configurationIdentity'].lower() == record['credential']
+    plan = json.loads((root / 'tun-plan.json').read_bytes())
+    assert ownership['networkIntentIdentity'] == plan['networkIntentIdentity']
+    initial = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
+    assert len(initial) == 6
+
+    def probe(phase):
+        observe_runtime(record)
+        assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
+                       f'http://{target}:18880/mb04-{phase}') == 'upstream-through-inherited-tun'
+        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
+
+    probe('committed-before')
+    owner.kill()
+    assert owner.wait(timeout=5) == -signal.SIGKILL and not owner.stdout.read()
+    scope_policy.unlink()
+    probe('committed-after')
+    receipt = json.loads(checkpoint(record, 'retry'))
+    assert uuid.UUID(receipt['OperationId']).hex == operation and receipt['Outcome'] == 'Succeeded'
+    observed = json.loads(checkpoint(record, 'observe-commit'))
+    assert observed['installation']['ownership'] == 'Managed' and observed['receipt']['outcome'] == 'Succeeded'
+    assert uuid.UUID(observed['commitWitness']['operationId']).hex == operation
+    assert observed['commitWitness']['configurationIdentity'].lower() == record['credential']
+    refused = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root),
+                              operation, 'ordinary-stop'], capture_output=True, text=True, timeout=8)
+    assert refused.returncode == 3 and 'runtime.network_transaction_required' in refused.stderr
+    ip('link', 'set', 'dev', device, 'alias', 'foreign-owner')
+    unknown = json.loads(checkpoint(record, 'observe-commit'))
+    assert unknown['installation']['ownership'] == 'Unknown' and unknown['problemCode'] == 'runtime.network_device_identity_unknown'
+    assert unknown['receipt'] == observed['receipt'] and unknown['commitWitness'] == observed['commitWitness']
+    assert json.loads(checkpoint(record, 'retry')) == receipt
+    assert state_path.read_bytes() == terminal and [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))] == initial
+    assert service_identity() == record['service'] and not (root / 'rule-delete-attempts').exists()
+    print(f'PASS TUN COMMITTED OWNERSHIP: {operation}, PID={record["service"][0]}, ifindex={record["ifindex"]}, '
+          f'credential={record["credential"]}; original success after response loss, live drift reported separately')
+
+
 def proof():
     assert os.geteuid() == 0 and Path('/proc/1/comm').read_text().strip() == 'systemd'
     mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines() if ' - tmpfs ' in line}
@@ -383,7 +438,7 @@ def proof():
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
-    if case != 'full':
+    if case in ('dns-receipt', 'dns-owner'):
         install_dns_ack_boundary()
     service('start', 'systemd-resolved.service')
     seed_foreign_dns()
@@ -436,7 +491,7 @@ rules:
   - MATCH,fixture-upstream
 ''')
     candidate.chmod(0o600)
-    sync_record({'phase': 'prepared', 'operation': operation, 'uid': pwd.getpwnam('nobody').pw_uid,
+    sync_record({'phase': 'prepared', 'case': case, 'operation': operation, 'uid': pwd.getpwnam('nobody').pw_uid,
                  'revision': str(revision),
                  'fixture': sys.argv[3], 'address': address, 'target': target, 'management': '192.0.2.1',
                  'namespace': os.readlink('/proc/self/ns/net'), 'baseline': baseline})
@@ -444,6 +499,9 @@ rules:
     owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
                              stdout=subprocess.PIPE, text=True)
     try:
+        if case == 'committed':
+            proof_committed(owner, operation, operation_dir)
+            return
         if case != 'full':
             proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, queries)
             return

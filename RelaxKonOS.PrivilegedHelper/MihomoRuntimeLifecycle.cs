@@ -48,6 +48,7 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         using var session = states.Acquire();
         var state = session.State!;
         if (HasPending(state)) return new(null, ["runtime.recovery_required"]);
+        if (state.ActiveMihomoTun is not null) return new(null, ["runtime.network_lifecycle_unverified"]);
         var observation = await ObserveInstallationAsync(state, ct);
         // Non-managed ownership can change outside RelaxKonOS. Reconcile only proven service absence or
         // external ownership under the instance lock, never adopt files or a service as managed. Advancing
@@ -71,6 +72,12 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         try
         {
             var service = await host.ObserveAsync(ct);
+            if (service.TunOperation != state.ActiveMihomoTun?.OperationId)
+                throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+            if (state.ActiveMihomoTun is { } tun
+                && (host is not LinuxMihomoArchiveHost linux || !OperatingSystem.IsLinux()
+                    || await linux.ObserveTunOwnershipAsync(tun.OperationId, state.Installation, ct) != tun))
+                throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
             if (state.Active is null)
             {
                 if (service.Exists) return (state.Installation with { Ownership = RuntimeOwnership.External }, "runtime.external_installation");

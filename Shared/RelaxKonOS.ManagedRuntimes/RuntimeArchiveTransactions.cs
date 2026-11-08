@@ -16,7 +16,9 @@ public sealed record RuntimeServiceSnapshot(bool Running, bool BootEnabled, stri
     Guid? OwnedResourcesSnapshotId);
 public sealed record RuntimePreparedSwitch(RuntimeStoredRevision Revision, bool RunAfterSwitch, bool BootEnabledAfterSwitch);
 public sealed record RuntimeActivationEvidence(string MeasuredVersion, string ConfigurationIdentity,
-    bool NativeConfigurationValid, bool Healthy, bool Running, bool BootEnabled);
+    bool NativeConfigurationValid, bool Healthy, bool Running, bool BootEnabled,
+    RuntimeMihomoTunOwnership? MihomoTun = null);
+public sealed record RuntimeMihomoTunOwnership(Guid OperationId, Guid RevisionId, string ConfigurationIdentity, string NetworkIntentIdentity);
 public sealed record RuntimeRestorationEvidence(string? MeasuredVersion, string? ConfigurationIdentity,
     bool Running, bool BootEnabled, bool OwnedResourcesRestored, bool Healthy);
 
@@ -32,6 +34,7 @@ public sealed record RuntimeArchiveState(RuntimeInstallation Installation, Runti
     RuntimeStoredRevision[] Revisions, RuntimePendingSwitch? Pending, RuntimeSwitchReceipt[] Receipts,
     RuntimePendingRemoval? Removal = null, [property: JsonRequired] RuntimePendingConfiguration? Configuration = null)
 {
+    public RuntimeMihomoTunOwnership? ActiveMihomoTun { get; init; }
     public Protocol.ProxyServer.ProxyServerPublicationReceipt? ProxyPublication { get; init; }
     public ProxyPublicationServiceBaseline? ProxyPublicationBaseline { get; init; }
     [JsonIgnore] public bool ProxyPublicationUnresolved =>
