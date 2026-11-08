@@ -330,7 +330,12 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
         var details = await RunAsync("docker", ["buildx", "inspect", options.BuilderName], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
         if (details.ExitCode != 0 || !HasExpectedBuilderEndpoint(details.Lines, options.BuilderContainer))
             throw new GitBuildProblem("git-build.builder-unavailable", 503);
-        var inspect = await RunAsync("docker", ["inspect", "--format", "{{json .HostConfig}}", options.BuilderContainer], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
+        // The command runner bounds each line. Project only the policy fields, reducing collections to presence flags.
+        const string hostPolicy = "{\"Privileged\":{{json .HostConfig.Privileged}},\"Memory\":{{json .HostConfig.Memory}},\"PidsLimit\":{{json .HostConfig.PidsLimit}},"
+            + "\"NanoCpus\":{{json .HostConfig.NanoCpus}},\"CpuQuota\":{{json .HostConfig.CpuQuota}},\"CpuPeriod\":{{json .HostConfig.CpuPeriod}},"
+            + "\"NetworkMode\":{{json .HostConfig.NetworkMode}},\"Binds\":{{if index .HostConfig \"Binds\"}}true{{else}}false{{end}},\"Mounts\":{{if index .HostConfig \"Mounts\"}}true{{else}}false{{end}},"
+            + "\"VolumesFrom\":{{if index .HostConfig \"VolumesFrom\"}}true{{else}}false{{end}},\"CapAdd\":{{if index .HostConfig \"CapAdd\"}}true{{else}}false{{end}},\"PidMode\":{{json (index .HostConfig \"PidMode\")}}}";
+        var inspect = await RunAsync("docker", ["inspect", "--format", hostPolicy, options.BuilderContainer], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
         if (inspect.ExitCode != 0 || inspect.Lines.Count != 1) throw new GitBuildProblem("git-build.builder-unavailable", 503);
         var identity = await RunAsync("docker", ["inspect", "--format", "{{.Config.User}}", options.BuilderContainer], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
         var user = identity.Lines.FirstOrDefault()?.Trim();
@@ -353,8 +358,8 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
             if (host.GetProperty("Privileged").GetBoolean() || memory <= 0 || memory > options.MaximumMemoryBytes
                 || pids <= 0 || pids > options.MaximumPids || cpu <= 0 || cpu > options.MaximumCpuCores
                 || host.GetProperty("NetworkMode").GetString() != options.BuilderNetwork
-                || host.TryGetProperty("Binds", out var binds) && binds.ValueKind == JsonValueKind.Array && binds.GetArrayLength() != 0
-                || host.TryGetProperty("CapAdd", out var caps) && caps.ValueKind == JsonValueKind.Array && caps.GetArrayLength() != 0
+                || host.GetProperty("Binds").GetBoolean() || host.GetProperty("Mounts").GetBoolean()
+                || host.GetProperty("VolumesFrom").GetBoolean() || host.GetProperty("CapAdd").GetBoolean()
                 || host.TryGetProperty("PidMode", out var pidMode) && pidMode.GetString() == "host")
                 throw new GitBuildProblem("git-build.builder-unrestricted", 503);
         }
@@ -453,8 +458,10 @@ public sealed class GitBuildService : IGitBuildService, IDisposable
 
     private void Append(Guid id, IEnumerable<string> lines, string? token)
     {
-        Update(id, operation => operation with { Logs = [.. operation.Logs.Concat(lines.Select(line => SanitizeLine(line, token)))
-            .TakeLast(120)] });
+        // A collection expression targeting IReadOnlyList can emit a type in this collectible assembly.
+        // Receipts and completed requests may be retained by Host callers after the generation releases.
+        Update(id, operation => operation with { Logs = operation.Logs.Concat(lines.Select(line => SanitizeLine(line, token)))
+            .TakeLast(120).ToArray() });
     }
 
     private static string SanitizeLine(string line, string? token)

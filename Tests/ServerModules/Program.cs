@@ -43,6 +43,12 @@ if (args is ["--git-dispatch-recovery-worker", var dispatchRoot, var dispatchId,
     return;
 }
 
+if (args is ["--git-build-native-worker", var nativeMode, var nativeRoot, var nativeBranch, var nativeCommit])
+{
+    await GitBuildNativeChecks.RunAsync(nativeMode, nativeRoot, nativeBranch, nativeCommit);
+    return;
+}
+
 if (args is ["--module-residency-checks"] or ["--module-background-work-checks"])
 {
     void VerifyResidency(bool passed, string message)
@@ -1175,6 +1181,7 @@ sealed class NoCertificateStore : RelaxKonOS.Server.Certificate.ICertificateStor
     public Task UpdateStatusAsync(Guid certificateId, RelaxKonOS.Protocol.Certificates.CertificateStatus status, CancellationToken ct) => throw Missing();
     public Task<System.Security.Cryptography.X509Certificates.X509Certificate2?> LoadCurrentAsync(Guid certificateId, CancellationToken ct) => throw Missing();
     public Task<System.Security.Cryptography.X509Certificates.X509Certificate2?> LoadVersionAsync(Guid certificateId, string version, CancellationToken ct) => throw Missing();
+    public Task<System.Net.Security.SslStreamCertificateContext?> LoadKestrelVersionAsync(Guid certificateId, string version, CancellationToken ct) => throw Missing();
     public Task<(string FullChainPath, string PrivateKeyPath)?> GetNginxPathsAsync(Guid certificateId, CancellationToken ct) => throw Missing();
     public Task DeleteAsync(Guid certificateId, CancellationToken ct) => throw Missing();
 }

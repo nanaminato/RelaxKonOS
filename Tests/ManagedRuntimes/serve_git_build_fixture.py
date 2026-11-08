@@ -4,12 +4,21 @@
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
+from pathlib import Path
 import ssl
 import subprocess
+import time
 from urllib.parse import urlsplit
 
 
 class GitHandler(BaseHTTPRequestHandler):
+    def handle(self):
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError, ssl.SSLEOFError):
+            # A TLS trust rejection or a cancelled build can close the fixture's connection.
+            pass
+
     def do_GET(self):
         self.serve_git()
 
@@ -38,8 +47,9 @@ class GitHandler(BaseHTTPRequestHandler):
                    PATH_INFO=target.path, QUERY_STRING=target.query,
                    CONTENT_TYPE=self.headers.get("Content-Type", ""),
                    CONTENT_LENGTH=str(size), HTTP_GIT_PROTOCOL=self.headers.get("Git-Protocol", ""))
+        request_body = self.rfile.read(size)
         try:
-            result = subprocess.run(["git", "http-backend"], input=self.rfile.read(size),
+            result = subprocess.run(["git", "http-backend"], input=request_body,
                                     stdout=subprocess.PIPE, env=env, timeout=15, check=False)
         except subprocess.TimeoutExpired:
             self.send_error(504)
@@ -48,6 +58,15 @@ class GitHandler(BaseHTTPRequestHandler):
         if result.returncode or not separator:
             self.send_error(502)
             return
+        gate = self.server.gate
+        if b"want " in request_body and gate is not None and (gate / "arm-fetch").is_file():
+            (gate / "fetch-entered").touch()
+            deadline = time.monotonic() + 60
+            while not (gate / "release-fetch").is_file():
+                if time.monotonic() >= deadline:
+                    self.send_error(504)
+                    return
+                time.sleep(0.05)
         fields = [line.decode("ascii").split(":", 1) for line in headers.split(b"\r\n")]
         status = next((int(value.split()[0]) for name, value in fields if name.lower() == "status"), 200)
         self.send_response(status)
@@ -65,11 +84,13 @@ def main():
     parser.add_argument("repository_root")
     parser.add_argument("certificate")
     parser.add_argument("key")
+    parser.add_argument("--gate", type=Path)
     args = parser.parse_args()
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(args.certificate, args.key)
     with ThreadingHTTPServer((args.address, 443), GitHandler) as server:
         server.repository_root = args.repository_root
+        server.gate = args.gate
         server.socket = context.wrap_socket(server.socket, server_side=True)
         server.serve_forever()
 

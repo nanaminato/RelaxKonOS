@@ -112,3 +112,15 @@ Windows 与指定 Linux 测试机均通过跨进程及 100 轮实际 Git ALC 回
 宿主 Git 与镜像内非 root Git 都在缺少专属 CA 时拒绝连接，分别报告证书签发者不受信和找不到签发证书。配置 CA 后，两端均通过真实 TLS 浅克隆同一个 `8f29460479e3cc33108fa645c89c671eb7bdc684` 提交，容器中确认构建上下文标记。独立 Engine 中已核对删除专属容器和网络。执行前后共享 Docker、Nginx 的状态及 PID、宿主 hosts 与 AppArmor 设置指纹一致。执行脚本为 `Tests/ManagedRuntimes/run-git-build-https-linux.sh`，在隔离命名空间内传入宿主网络与挂载命名空间 ID、本地镜像归档与镜像标签。原始日志见 `.artifacts/mb03-https-live.log`，镜像归档 SHA-256 为 `3b931425a738347c19895990381c4aa102a8e94d9caaa9fa2d167f4b30529f78`。
 
 专属仓库、名称解析及 Git 客户端信任已在现有机器验证。BuildKit daemon 未参与本次传输。联合验收仍需要允许专属 RootlessKit 创建用户命名空间的隔离执行环境，以验证实际 builder 的证书接入及在途取消、断连、构建清理、原回执和 ALC。共享 AppArmor 策略维持现有配置。
+
+### MB-03 真实 BuildKit 构建、取消与原回执
+
+现有测试机已加载 `rootlesskit` AppArmor profile。专属 Engine 选用该 profile 后，`vfs` 环境的 `newuidmap` 仍报 `Could not set caps`。换用私有 `overlay2` 后，验证镜像中的 `newuidmap` 保留 `cap_setuid=ep`，Buildx remote 成功引导 rootless BuildKit v0.34.1。专属内部网络、内存 1 GiB、1 CPU、128 PID 上限，实际 OCI worker 保持进程沙箱。宿主 AppArmor 与共享服务保持原状态。
+
+宿主 Git 和 builder 访问同一个私有 HTTPS 443 仓库。没有专属 CA 时实际 TLS 拒绝。BuildKit 的 Git 子命令使用受限环境，配置在 builder 环境的 `GIT_SSL_CAINFO` 不会传递，最终只将专属 CA 追加到该容器内的信任包。构建从冻结提交读取 `scratch` 上下文并向专属 Engine 导出镜像。早期生产准入把实际 1293 字节的 Docker `HostConfig` 整行传给有界命令执行器，导致 JSON 被截断。现改为投影所需字段并使用有界存在标记，仍核对唯一端点、资源和隔离参数，明确拒绝显式挂载及 `VolumesFrom`。模板用 `index` 读取 Docker 可能省略的可选字段。 [BuildKit v0.34.1 Git 子命令环境](https://github.com/moby/buildkit/blob/v0.34.1/util/gitutil/git_cli.go)
+
+Linux Release 通过生产 Git 服务代理、真实命令执行器、持久台账和实际 Git ALC 联验，入口为 `run-git-build-https-linux.sh` 的可选 Release 测试 DLL。成功构建 `f4302200-e08f-46b3-a164-953d9d3f7a8a` 导出原操作标签与镜像 `sha256:ece701e95f4fb29fd82a0d108524583983ee5274b80ab8b9da6f0aadff00fc7e`，Engine 实查并清理。取消 `e82c9f98-ba33-4024-8862-9485839669e7` 在真实 `git-upload-pack` fetch 应答在途时请求取消，原租约持续到镜像清理，确认原 CLI 退出、原标签不存在。终态按原键及新代次可读。原 `896f526b-5203-43f1-8841-6a4dfb9da64e` 在实际 BuildKit 读取源时强制终止宿主进程。两次独立进程打开原台账，返回同一 Interrupted 回执并保持新键和代次释放门禁。共三次实际构建 CLI 派发，恢复零重派或自动清理。专属容器、卷和网络清理，宿主 Docker、Nginx、hosts 和 AppArmor 指纹一致。
+
+初版成功路径释放运行时代次后，旧 ALC 在 8 秒测试 GC 窗口仍可达，取消路径已收集。堆快照显示原 LoaderAllocator 仍被引用。成功回执的非空日志通过 `IReadOnlyList<string>` 集合表达式创建了执行程序集内的具体类型。日志快照改用共享 `string[]`，保留原清理和有界日志规则。最终实测保留成功与取消的原 DTO，同时确认两个实际执行 ALC 收集，并由新代次读回原回执。夹具区分运行时释放、测试 GC 和真实 CLI 退出。隔离负载内存和生产收益均未测。Windows Release 驻留与后台工作回归通过。早期失败、堆分析及最终日志在 `.artifacts/mb03-buildkit-joint/`，最终联合归档 SHA-256 为 `234e21450d50ba92ac0cfcde70eab12ff3327da6390d614ea96ba072fc8093c9`。
+
+验收使用生产 Git 模块入口及完整真实 BuildKit，未启动认证 HTTP Server。中断后外部构建的最终结果无法从原台账确证，原准入门禁保留。人工核实与安全解除流程、整机掉电和生产负载测量分别开放。

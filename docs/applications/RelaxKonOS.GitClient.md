@@ -658,4 +658,4 @@ Windows 与 Linux 完整宿主均实测了认证后的仓库列表、300 秒自�
 
 Git 构建只接受报告单一指定容器端点的专用 remote builder。Linux Release 已验证相似容器名和附加节点在准入前被拒绝。独立 Engine 上的 RootlessKit 仍受宿主用户命名空间限制，实际构建取消与恢复尚待实机联合验收。
 
-已在同一 Linux 测试机建立隔离的 HTTPS 443 源仓库。宿主 Git 与 rootless BuildKit 镜像内的 Git 都验证了专属 CA 信任及浅克隆。实际 BuildKit 取源、取消和恢复仍待专属 RootlessKit 启动后验收。见[HTTPS 源仓库夹具](../architecture/server-module-evidence/Git.md#mb-03-专属-https-源仓库夹具)。
+Linux 私有 Engine 的 rootless BuildKit 已通过受信 HTTPS 源构建、在途取消与清理、原操作中断恢复。构建门禁检查唯一 remote 节点、容器资源、指定网络及挂载限制。已派发结果未知时，同键返回原 Interrupted 回执，新键仍受保护。见[真实 BuildKit 验收](../architecture/server-module-evidence/Git.md#mb-03-真实-buildkit-构建取消与原回执)。

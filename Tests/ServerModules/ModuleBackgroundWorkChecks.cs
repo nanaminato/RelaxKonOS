@@ -68,6 +68,18 @@ internal static class ModuleBackgroundWorkChecks
                         "a different or additional builder endpoint is rejected before work admission");
                 }
             }
+            fixture.Runner.BuilderDetails = ["Driver: remote", "Endpoint: docker-container://test-container"];
+            fixture.Runner.HasExplicitMounts = true;
+            try
+            {
+                await fixture.Proxy.StartAsync(owner, requestBody, "mounted-builder", default);
+                throw new InvalidOperationException("A builder with an explicit mount was accepted.");
+            }
+            catch (GitBuildProblem error) when (error.Code == "git-build.builder-unrestricted")
+            {
+                check(fixture.Runner.Builds == 0 && fixture.Leases == 0,
+                    "an explicit Docker mount is rejected before work admission");
+            }
         }
         await using (var fixture = new Fixture())
         {
@@ -349,6 +361,7 @@ internal static class ModuleBackgroundWorkChecks
         internal readonly TaskCompletionSource PreflightCleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal string[] BuilderDetails = ["Driver: remote", "Endpoint: docker-container://test-container"];
         internal bool HoldBuildPreflight; private int builderChecks;
+        internal bool HasExplicitMounts;
         internal CancellationToken BuildToken; internal int Builds; internal int Cleanups; internal int CleanupExitCode;
         public async Task<(int ExitCode, List<string> Lines)> RunAsync(string file, IReadOnlyList<string> args, IReadOnlyDictionary<string, string> environment,
             TimeSpan timeout, CancellationToken ct, Action<IReadOnlyList<string>>? onOutput = null)
@@ -372,7 +385,7 @@ internal static class ModuleBackgroundWorkChecks
             }
             if (args.Contains("{{.Config.User}}")) return (0, ["1000"]);
             if (args.Contains("{{.State.Running}}")) return (0, ["true"]);
-            return (0, ["{\"Privileged\":false,\"Memory\":1048576,\"PidsLimit\":64,\"NanoCpus\":1000000000,\"NetworkMode\":\"test-network\",\"Binds\":[],\"CapAdd\":[]}"]);
+            return (0, [$$"""{"Privileged":false,"Memory":1048576,"PidsLimit":64,"NanoCpus":1000000000,"NetworkMode":"test-network","Binds":false,"Mounts":{{(HasExplicitMounts ? "true" : "false")}},"VolumesFrom":false,"CapAdd":false}"""]);
         }
     }
 }

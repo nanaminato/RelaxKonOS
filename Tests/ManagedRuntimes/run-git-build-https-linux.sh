@@ -6,6 +6,7 @@ host_net=${1:?host network namespace}
 host_mount=${2:?host mount namespace}
 image_archive=${3:?local rootless BuildKit image archive}
 image=${4:?rootless BuildKit image tag in the archive}
+tests=${5:-}
 [[ $(readlink /proc/self/ns/net) != "$host_net" ]]
 [[ $(readlink /proc/self/ns/mnt) != "$host_mount" ]]
 [[ $(ip -o link show | wc -l) -eq 1 ]]
@@ -16,9 +17,13 @@ ip link set lo up
 root=$(mktemp -d /tmp/relaxkonos-mb03-https.XXXXXXXX)
 daemon_pid=
 https_pid=
+worker_pid=
 cleanup() {
+    if [[ -n $worker_pid ]]; then kill -KILL "$worker_pid" 2>/dev/null || :; wait "$worker_pid" || :; fi
     if [[ -n $https_pid ]]; then kill "$https_pid" 2>/dev/null || :; wait "$https_pid" || :; fi
     if [[ -n $daemon_pid ]]; then
+        docker buildx rm mb03-live >/dev/null 2>&1 || :
+        docker rm -fv mb03-builder >/dev/null 2>&1 || :
         docker rm -fv mb03-git-client >/dev/null 2>&1 || :
         docker network rm mb03-git >/dev/null 2>&1 || :
         kill "$daemon_pid" 2>/dev/null || :
@@ -37,8 +42,10 @@ export DOCKER_HOST="unix://$root/docker.sock" DOCKER_CONFIG="$root/docker-client
 unset DOCKER_CONTEXT
 mkdir "$DOCKER_CONFIG"
 printf '{}\n' > "$root/daemon.json"
+storage_driver=vfs
+if [[ -n $tests ]]; then storage_driver=overlay2; fi
 dockerd --config-file "$root/daemon.json" --host "$DOCKER_HOST" --pidfile "$root/docker.pid" \
-    --data-root "$root/data" --exec-root "$root/exec" --storage-driver vfs --exec-opt native.cgroupdriver=cgroupfs \
+    --data-root "$root/data" --exec-root "$root/exec" --storage-driver "$storage_driver" --exec-opt native.cgroupdriver=cgroupfs \
     --bridge none --iptables=false --ip6tables=false --ip-forward=false --ip-masq=false > "$root/daemon.log" 2>&1 &
 daemon_pid=$!
 for attempt in $(seq 1 100); do
@@ -61,8 +68,20 @@ printf 'FROM scratch\nCOPY marker.txt /marker.txt\n' > "$root/source/Dockerfile"
 printf 'relaxkonos-mb03\n' > "$root/source/marker.txt"
 git -C "$root/source" init -q -b main
 git -C "$root/source" add Dockerfile marker.txt
-git -C "$root/source" -c user.name=MB03 -c user.email=mb03@example.invalid commit -qm 'Dedicated MB-03 build context'
+commit() { git -C "$root/source" -c user.name=MB03 -c user.email=mb03@example.invalid commit -qam "$1"; }
+commit 'Dedicated MB-03 build context'
 expected=$(git -C "$root/source" rev-parse HEAD)
+if [[ -n $tests ]]; then
+    git -C "$root/source" checkout -qb cancel
+    printf 'cancel witness\n' > "$root/source/marker.txt"
+    commit 'Cancellation build context'
+    cancelled_commit=$(git -C "$root/source" rev-parse HEAD)
+    git -C "$root/source" checkout -qb interrupted
+    printf 'interruption witness\n' > "$root/source/marker.txt"
+    commit 'Interruption build context'
+    interrupted_commit=$(git -C "$root/source" rev-parse HEAD)
+    git -C "$root/source" checkout -q main
+fi
 git clone -q --bare "$root/source" "$root/repositories/mb03/source.git"
 
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=RelaxKonOS MB-03 test CA' \
@@ -71,7 +90,7 @@ openssl req -newkey rsa:2048 -nodes -subj "/CN=$host" -keyout "$root/server.key"
 printf 'subjectAltName=DNS:%s\nextendedKeyUsage=serverAuth\n' "$host" > "$root/extensions"
 openssl x509 -req -in "$root/server.csr" -CA "$root/ca.crt" -CAkey "$root/ca.key" \
     -CAcreateserial -days 1 -extfile "$root/extensions" -out "$root/server.crt" 2>/dev/null
-python3 "$(dirname "$0")/serve_git_build_fixture.py" "$address" "$root/repositories" "$root/server.crt" "$root/server.key" &
+python3 "$(dirname "$0")/serve_git_build_fixture.py" "$address" "$root/repositories" "$root/server.crt" "$root/server.key" --gate "$root" &
 https_pid=$!
 for attempt in $(seq 1 50); do
     if output=$(GIT_SSL_CAINFO="$root/ca.crt" git -c http.followRedirects=false ls-remote --exit-code "$url" refs/heads/main 2>"$root/git.log"); then break; fi
@@ -98,6 +117,75 @@ docker exec -e GIT_SSL_CAINFO=/tmp/mb03-ca.crt mb03-git-client \
 printf 'PASS MB-03 CONTAINER HTTPS: trust required and depth-one checkout %s\n' "$expected"
 
 docker rm -fv mb03-git-client >/dev/null
+if [[ -n $tests ]]; then
+    docker run -d --name mb03-builder --network mb03-git --add-host "$host:$address" --memory 1g --cpus 1 --pids-limit 128 \
+        --security-opt seccomp=unconfined --security-opt apparmor=rootlesskit --security-opt systempaths=unconfined \
+        "$image" --oci-worker-snapshotter=native
+    docker cp mb03-builder:/etc/ssl/certs/ca-certificates.crt "$root/builder-ca.crt"
+    cat "$root/ca.crt" >> "$root/builder-ca.crt"
+    docker cp "$root/builder-ca.crt" mb03-builder:/etc/ssl/certs/ca-certificates.crt
+    docker buildx create --name mb03-live --driver remote docker-container://mb03-builder
+    timeout 15 docker buildx inspect --bootstrap mb03-live
+    printf 'Builder full HostConfig bytes: %s\n' "$(docker inspect --format '{{json .HostConfig}}' mb03-builder | wc -c)"
+
+    touch "$root/private-engine"
+    cat /proc/sys/kernel/random/uuid > "$root/owner"
+    export MB03_ROOT="$root" MB03_DOCKER="$(command -v docker)"
+    export GIT_SSL_CAINFO="$root/ca.crt"
+    mkdir "$root/bin"
+    cat > "$root/bin/docker" <<'CLI'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$1 $2" in
+    'buildx build') printf '%s\n' "$$" >> "$MB03_ROOT/dispatches" ;;
+    'image rm')
+        touch "$MB03_ROOT/cleanup-entered"
+        for attempt in $(seq 1 100); do
+            if [[ -e $MB03_ROOT/release-cleanup ]]; then break; fi
+            sleep .05
+        done
+        [[ -e $MB03_ROOT/release-cleanup ]] ;;
+esac
+exec "$MB03_DOCKER" "$@"
+CLI
+    chmod 0700 "$root/bin/docker"
+    export PATH="$root/bin:$PATH"
+    worker=(dotnet "$tests" --git-build-native-worker)
+    "${worker[@]}" success "$root" main "$expected"
+    success_image=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["builds"][0]["operation"]["imageReference"])' "$root/builds/builds.json")
+    [[ $success_image =~ ^relaxkonos-git:build-[0-9a-f]{32}$ ]]
+    "$MB03_DOCKER" image inspect --format '{{.Id}}' "$success_image"
+    "$MB03_DOCKER" image rm "$success_image"
+
+    touch "$root/arm-fetch"
+    "${worker[@]}" cancel "$root" cancel "$cancelled_commit"
+    touch "$root/release-fetch"
+    [[ $(wc -l < "$root/dispatches") -eq 2 && -z $(docker image ls -q --filter 'reference=relaxkonos-git:*') ]]
+    cancelled_pid=$(tail -n 1 "$root/dispatches")
+    [[ ! -e /proc/$cancelled_pid ]]
+    printf 'PASS GIT BUILDKIT CLEANUP: cancelled CLI exited and operation tag absent\n'
+
+    rm -f -- "$root/fetch-entered" "$root/release-fetch" "$root/cleanup-entered"
+    "${worker[@]}" crash "$root" interrupted "$interrupted_commit" &
+    worker_pid=$!
+    for attempt in $(seq 1 400); do
+        if [[ -s $root/crash-id ]]; then break; fi
+        kill -0 "$worker_pid"
+        sleep .05
+    done
+    [[ -s $root/crash-id ]]
+    kill -KILL "$worker_pid"
+    wait "$worker_pid" || [[ $? == 137 ]]
+    worker_pid=
+    "${worker[@]}" recover "$root" interrupted "$interrupted_commit"
+    "${worker[@]}" recover "$root" interrupted "$interrupted_commit"
+    [[ $(wc -l < "$root/dispatches") -eq 3 && ! -e $root/cleanup-entered \
+        && -z $(docker image ls -q --filter 'reference=relaxkonos-git:*') ]]
+    printf 'PASS GIT BUILDKIT NO REPLAY: three real dispatches, no restart cleanup dispatch\n'
+    docker buildx rm mb03-live >/dev/null 2>&1 || :
+    docker rm -fv mb03-builder >/dev/null
+    touch "$root/release-fetch"
+fi
 docker network rm mb03-git >/dev/null
 [[ -z $(docker ps -aq) ]]
 printf 'PASS MB-03 PRIVATE DOCKER CLEANUP: dedicated container and network removed\n'
