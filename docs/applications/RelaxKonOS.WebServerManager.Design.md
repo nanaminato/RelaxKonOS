@@ -1751,7 +1751,7 @@ Linux 系统包重载的原回执保存在 Server。原终态持久化后，Help
 
 首个独立 Nginx 站点可先保存 HTTP 配置，再执行实例的 `EnableAcmeHttp01` 操作。空实例会返回 `webserver.acme_no_managed_sites`。若启用操作在原生重载期间中断，同键查询返回原操作回执。后续签发需先独立核验该域名的 HTTP-01 路由，再发起新的证书请求，签发成功后可将证书绑定到原站点。
 
-Linux 系统包 Nginx 的 WebRoot 启用中断后，后续授权的 TLS 绑定可核验站点备份并继续。Nginx 原生作业仍在执行，或者当前配置与备份无法按站点记录确认时，绑定返回 `webserver.site_save_failed` 并保留备份。原启用回执继续显示中断。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-首站-webroot-备份核验与授权-tls-绑定)。
+Linux 系统包 Nginx 的 WebRoot 启用中断后，Server 用原站点 Helper 回执和配置摘要核对清理。证据不足时保留原操作待核验，站点更新返回 `webserver.site_save_failed`。已派发站点核对完成后，未派发的站点保持原配置，父操作报告中断。见[WebRoot 逐站点回执](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-逐站点回执与清理恢复)。
 
 签发和清理完成后才进入站点配置。管理进程在签发中断时，原发布与证书回执可关联查询，证书台账负责清理原挑战文件和查询原 CA 订单。同键请求返回原发布回执。实机证据见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
@@ -1763,7 +1763,7 @@ Linux 系统包 Nginx 的 WebRoot 启用中断后，后续授权的 TLS 绑定�
 
 获准的直接 Nginx 重载与网站发布共享按需加载的 WebServer 执行代次。命令、原终态和 Helper 回执清理全部完成后，最后一个作用域释放并开始闲时计时。原 ID 的同键查询和启动对账由 Server 台账处理。闲时执行代码卸载期间，Nginx 保持站点转发和 TLS。见[直接重载独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-nginx-重载独立执行程序集)。
 
-显式启用 HTTP-01 按需加载 WebServer 执行代码。Linux 系统包 Nginx 的 Helper reload 应答丢失时，原启用回执返回 `webserver.site_reload_unverified`，保留活动文件和原备份。备份未核验时阻止再次启用。具备权限的站点更新仍按原文件、站点定义和原生作业空闲状态核验备份。同键请求读取原回执。见[直接 WebRoot 启用执行器](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-webroot-启用执行器)。
+显式启用 HTTP-01 按需加载 WebServer 执行代码。Linux 系统包 Nginx 的每个站点以独立 Helper ID 跟踪 reload。应答丢失时，Server 按原 ID 查询并核对备份，原父操作可通过同键继续读取。
 
 Linux Nginx 集成在锚点提交前保存原操作与主配置快照。Server 重启后按原 ID 查询 Helper，并核对当前锚点与快照。同键请求返回原回执。缺少成功证据或配置漂移时保持待核验，拒绝同实例新的后台变更。见[Nginx 集成检查点](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-集成检查点与执行代次)。
 

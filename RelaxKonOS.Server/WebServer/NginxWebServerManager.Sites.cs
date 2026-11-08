@@ -60,6 +60,8 @@ internal sealed partial class NginxWebServerManager
         await IntegrationGate.WaitAsync(cancellationToken);
         try
         {
+            if (await operations.HasPendingWebRootAsync(instance.Id, cancellationToken))
+                throw new WebServerSiteApplyException("webserver.site_save_failed");
             var sites = (await ReadSitesAsync(instance, cancellationToken)).ToList();
             var index = sites.FindIndex(item => item.Id == site.Id);
             WebServerSiteConcurrency.RequireCurrent(index >= 0 ? sites[index] : null, request.ExpectedUpdatedAt);
@@ -144,6 +146,7 @@ internal sealed partial class NginxWebServerManager
         await IntegrationGate.WaitAsync(cancellationToken);
         try
         {
+            if (await operations.HasPendingWebRootAsync(instance.Id, cancellationToken)) return null;
             var sites = (await ReadSitesAsync(instance, cancellationToken)).ToList();
             var existing = sites.SingleOrDefault(site => site.Id == siteId);
             WebServerSiteConcurrency.RequireCurrent(existing, request.ExpectedUpdatedAt);

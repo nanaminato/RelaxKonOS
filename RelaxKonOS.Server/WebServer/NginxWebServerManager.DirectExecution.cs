@@ -96,7 +96,7 @@ internal sealed partial class NginxWebServerManager
             try
             {
                 var lease = WebServerExecutionCode.Shared.Acquire<INginxWebRootExecutor>(
-                    "RelaxKonOS.Server.WebServer.NginxWebRootExecutor", new WebRootPorts(nginx, instance, directory, logger));
+                    "RelaxKonOS.Server.WebServer.NginxWebRootExecutor", new WebRootPorts(nginx, instance, directory, progress, logger));
                 progress.HoldExecution(lease);
                 return new(await RunWebRootAsync(lease.Executor, ct));
             }
@@ -108,6 +108,8 @@ internal sealed partial class NginxWebServerManager
             try { return await executor.EnableAsync(ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
             catch (NginxWebRootCleanupException) { throw new NginxWebRootCleanupException(); }
+            catch (ResidentWorkCompletionException)
+            { throw new ResidentWorkCompletionException(new InvalidOperationException("WebRoot checkpoint could not be saved.")); }
             catch (NginxProcessCleanupException)
             {
                 throw new NginxProcessCleanupException(new InvalidOperationException("WebRoot command did not drain."));
@@ -115,10 +117,12 @@ internal sealed partial class NginxWebServerManager
             catch (Exception) { throw new InvalidOperationException("Nginx WebRoot execution failed."); }
         }
 
-        private sealed class WebRootPorts(NginxWebServerManager nginx, WebServerDto instance, string directory, ILogger logger)
+        private sealed class WebRootPorts(NginxWebServerManager nginx, WebServerDto instance, string directory,
+            WebServerOperationStore.OperationProgress progress, ILogger logger)
             : INginxWebRootPorts
         {
             private readonly string marker = Path.Combine(directory, AcmeEnabledFileName);
+            private readonly bool tracked = nginx.UsesSystemPackageNginx(instance);
 
             public async Task<WebRootSitePlan> PrepareAsync(CancellationToken ct)
             {
@@ -136,6 +140,8 @@ internal sealed partial class NginxWebServerManager
                     if (!IsRelaxKonOSSiteConfig(config) || File.Exists(config + ".rollback"))
                         return new("webserver.site_save_failed", []);
                 }
+                if (tracked && sites.Count != 0)
+                    await progress.PlanWebRootAsync(instance, sites.Select(site => site.Id).ToArray(), ct);
                 return new(null, sites);
             }
 
@@ -143,7 +149,7 @@ internal sealed partial class NginxWebServerManager
                 : File.Exists(marker) || IsSymbolicLink(marker) ? WebRootMarkerState.Conflict : WebRootMarkerState.Missing;
 
             public Task<bool> StageMarkerAsync(CancellationToken ct) =>
-                nginx.WriteNginxFileAsync(marker + ".stage", OwnershipMarker + "\nACME HTTP-01 enabled.\n", ct);
+                nginx.WriteNginxFileAsync(marker + ".stage", AcmeEnabledMarkerContent, ct);
 
             public Task<bool> PublishMarkerAsync(CancellationToken ct) =>
                 nginx.MoveNginxFileAsync(marker + ".stage", marker, overwrite: false, ct);
@@ -157,7 +163,8 @@ internal sealed partial class NginxWebServerManager
 
             public async Task<string?> ApplySiteAsync(WebServerSiteDto site, CancellationToken ct)
             {
-                var problem = await nginx.WriteSiteConfigurationAsync(instance, site, ct, preserveUnverifiedReload: true);
+                var problem = tracked ? await nginx.ApplyTrackedWebRootSiteAsync(instance, site, progress, ct)
+                    : await nginx.WriteSiteConfigurationAsync(instance, site, ct, preserveUnverifiedReload: true);
                 if (problem is not null)
                     logger.LogWarning("Nginx ACME HTTP-01 enablement could not update site. InstanceId={InstanceId} SiteId={SiteId} Problem={Problem}",
                         instance.Id, site.Id, problem);

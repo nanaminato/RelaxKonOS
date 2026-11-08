@@ -2541,7 +2541,7 @@ Windows Release 档案配置激活与回滚、设置边界 31 项、系统代理
 
 显式启用 ACME HTTP-01 的标记事务、站点分派和结果处理复用 WebServer 可回收代次。Host 继续持有实例锁、配置和文件归属检查、原站点台账与实际 Nginx 命令。实际 reload、补偿、文件清理及原操作状态落盘后才释放执行租约。清理无法确认时原工作 owner 保留故障责任。
 
-Linux 系统包 Nginx 的 Helper reload 应答丢失时，显式启用记录原 `operationId` 和 `webserver.site_reload_unverified`，保留活动文件与原备份。新启用请求在站点备份检查处停止，已知拒绝才进入补偿。原作业中断时同键继续读取原 `webserver.operation_interrupted` 回执。后续显式站点更新仍须核对原文件、备份、站点定义和原生作业已排空。现有 WebRoot reload 未写入逐站点的 Helper 成功回执，原未知操作仍待核验。
+Linux 系统包 Nginx 的 Helper reload 应答丢失时，显式启用记录原 `operationId` 和 `webserver.site_reload_unverified`，保留活动文件与原备份。新启用请求在站点备份检查处停止，已知拒绝才进入补偿。原作业中断时同键继续读取原 `webserver.operation_interrupted` 回执。后续显式站点更新仍须核对原文件、备份、站点定义和原生作业已排空。该阶段的 WebRoot reload 未写入逐站点的 Helper 成功回执。逐站点回执与清理恢复见下文。
 
 Windows Release 的 WebServer 和模块边界回归通过。跨进程夹具按原 `2402a136-0d7e-44ff-820d-36fe8a126c69` 返回 Interrupted，受控副作用计数为一。Android Nginx 管理与回执相关 26 项单元测试通过。构建边界的正向检查与禁止依赖检查通过。
 
@@ -2549,7 +2549,7 @@ Windows Release 的 WebServer 和模块边界回归通过。跨进程夹具按�
 
 已知拒绝 `15e8ccea-16e2-42f1-bbf9-cd8f9996a809` 恢复原配置并确认一次补偿，备份清理后原 TLS 持续服务。直接 reload 的取消与 SIGTERM 排空同制品复验通过。首次夹具因 CRLF 在 Bash 解析处退出，修正为 LF 后通过。专属 cgroup 已清理，宿主服务与配置指纹一致。日志见 `.artifacts/mb05-webroot-execution/linux-final.log`，归档 SHA-256 为 `806764bf5a537d32fa6f86207f7b461fa2f611c2688c61cf800d3aad7994f902`。
 
-WebServer 整体保持 resident。非系统包 WebRoot 原生故障矩阵、清理确认丢失跨进程的具名恢复、整机掉电和生产内存继续开放。
+WebServer 整体保持 resident。逐站点回执与清理确认的后续验收见下文。非系统包 WebRoot 原生故障矩阵、整机掉电和生产内存继续开放。
 
 ### MB-05 Nginx 集成检查点与执行代次
 
@@ -2578,3 +2578,17 @@ Linux 私有 systemd 中，Server 在实际补偿 reload 执行时被终止。�
 同制品复验原集成成功证据、暂存清理及直接 reload 取消和 SIGTERM 排空。原 Nginx master 和 TLS 继续服务，专属 cgroup 已清理，宿主服务和配置指纹一致。日志为 `.artifacts/mb05-nginx-integration-compensation/linux.log`，归档 SHA-256 为 `40781d62a63ac1deb2445f84a9b6f42a8559caa39684194982a88ae1f5f9f811`。
 
 缺失原 Helper 终态，或补偿 ID 已落盘但无匹配的成功回执时，原操作继续待核验。WebServer 整体保持 resident，外部 Nginx 和 TLS 由原服务负责。
+
+### MB-05 WebRoot 逐站点回执与清理恢复
+
+Linux 系统包 Nginx 的显式 WebRoot 启用沿用原工作租约、可回收执行代次与 Host 配置门禁。父操作先记录站点顺序，每个站点在暂存前记录独立 Helper reload ID 和原配置、候选配置摘要。已派发的原生命令、文件清理、终态写入及回执退休都由原 owner 排空。已知拒绝的在途执行另记一次补偿 ID，确认恢复原配置后才释放原备份。
+
+重启与应答丢失时，原台账只观察当前已派发子项。匹配的成功回执和配置摘要可确认原备份清理，备份已删除也可凭同一证据继续。暂存或备份内容漂移时保留文件和门禁。父操作尚有未派发站点时以原 ID 收尾为中断，未派发站点保持原配置。父操作终态保留已确认的子 ID，释放在途计划和配置摘要，再退休 Helper 回执并保留防重放标记。待核验期间拦截同实例新的后台变更和站点写入。
+
+Windows Release WebServer 与模块边界回归通过。跨进程夹具按原 `a0848e86-4182-4852-87d1-3b009a7d35af` 返回 Interrupted，受控副作用计数为一。
+
+隔离 Linux 的正常启用 `a73361c9-32a0-44a2-821d-1d95f1f7185c` 确认终态和子回执清理后代次被 GC 收集。实际 reload 期间的进程中断 `95f168c4-e48a-492b-873e-244ef2a6b88d` 在备份漂移时继续等待，恢复匹配后完成原回执。应答丢失 `2ab5cfb7-fe5a-417e-8f79-fdc5c299a21b` 由原子回执确认，已知拒绝 `afd31296-c8a9-40e4-9366-2a129af10d18` 只进行一次受跟踪补偿。可签发场景各使用原 Nginx master 和一个真实 Pebble CA 订单。
+
+双站点父操作 `c2768147-f1f4-4c64-9276-00bd97859e1e` 的首个子 ID `4f649c02-ab73-4369-9ccd-6298e70201c8` 已真实重载，重启仅核对并清理该子项。第二站点字节一致，原父回执为中断。实际备份删除应答暂扣时终止 Server，父 `9fbe3c27-b6f9-4fd0-8d4b-2353d2ef92f2` 和子 `ec072863-b93d-4887-a197-321473c8178c` 重启后确认同一清理及终态。子 ID 留在原父台账，旧 ID 被 Helper 拒绝再次重载。直接 reload 的取消与 SIGTERM 排空也通过。七个隔离场景的专属 cgroup 已清理，宿主服务与配置指纹一致。日志为 `.artifacts/mb05-webroot-receipts/linux-final.log`，归档 SHA-256 为 `682d32e8f392c16825175df2b0a88dacaf6518bb8c3029d6b61ebd98c3df742c`。
+
+WebServer 保持 resident。缺失原生终态、在已知拒绝与补偿派发之间中断、整机掉电及非系统包 Nginx 的同等故障矩阵继续开放。生产内存未测量。

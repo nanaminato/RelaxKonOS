@@ -150,7 +150,8 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
 
             if (_operations.Values.Any(operation => operation.InstanceId == instanceId
                 && (operation.ProblemCode is NativeRecoveryRequired or IntegrationCleanupRequired
-                    || operation is { Integration: not null, Stage: NativeReloadDispatchStage })))
+                    || operation is { Integration: not null, Stage: NativeReloadDispatchStage }
+                    || operation is { WebRoot: not null, State: WebServerOperationState.Running })))
                 return new(Guid.Empty, instanceId, kind, WebServerOperationState.Failed, "validation",
                     NativeRecoveryRequired, null, null, DateTimeOffset.UtcNow);
 
@@ -271,6 +272,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
         try
         {
             var operation = await ReadOperationAsync(operationId, stoppingToken);
+            if (operation.WebRoot is not null) return await ReconcileWebRootAsync(operation, stoppingToken);
             var integration = operation.Integration;
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -357,13 +359,16 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
         {
             var operation = _operations[id];
             if (operation.State == WebServerOperationState.Cancelled && state != WebServerOperationState.Cancelled) return false;
-            var retireReceipt = nativeEvidence || operation.Stage == NativeReloadConfirmedStage;
+            var retireReceipt = nativeEvidence || operation.Stage == NativeReloadConfirmedStage
+                || operation.WebRoot is { Receipts.Length: > 0 };
             _operations[id] = operation with
             {
                 State = state, Stage = state.ToString().ToLowerInvariant(), ProblemCode = problemCode,
                 SnapshotId = snapshotId ?? operation.SnapshotId, CompletedAt = DateTimeOffset.UtcNow,
                 NativeReceiptRetirementPending = retireReceipt,
                 Integration = null,
+                WebRootReceiptIds = operation.WebRoot?.Receipts,
+                WebRoot = null,
             };
             try { await SaveAsync(CancellationToken.None); }
             catch (Exception error) { throw new ResidentWorkCompletionException(error); }
@@ -394,11 +399,12 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
 
     private async Task<bool> TryRetireNativeReceiptAsync(Guid id, CancellationToken stoppingToken)
     {
-        var result = await _nativeOperations.RetireReloadReceiptAsync(id, stoppingToken);
-        if (!result.Success) return false;
         var original = await ReadOperationAsync(id, stoppingToken);
+        var receipts = original.WebRootReceiptIds ?? [id];
+        foreach (var receipt in receipts)
+            if (!(await _nativeOperations!.RetireReloadReceiptAsync(receipt, stoppingToken)).Success) return false;
         if (original.Compensation is { } compensation
-            && !(await _nativeOperations.RetireReloadReceiptAsync(compensation.Id, stoppingToken)).Success)
+            && !(await _nativeOperations!.RetireReloadReceiptAsync(compensation.Id, stoppingToken)).Success)
             return false;
 
         await _gate.WaitAsync();
@@ -472,6 +478,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
         {
             var recovered = item switch
             {
+                { State: WebServerOperationState.Running, WebRoot: not null } => MarkNativeUnconfirmed(item),
                 { State: WebServerOperationState.Running, Stage: NativeReloadDispatchStage or NativeReloadConfirmedStage } => MarkNativeUnconfirmed(item),
                 { State: WebServerOperationState.Running, Stage: IntegrationStaging } =>
                     item with { ProblemCode = IntegrationCleanupRequired },
@@ -515,7 +522,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
     private sealed record PersistedOperation(Guid OperationId, string IdempotencyKey, string InstanceId, string Kind, string? Actor,
         WebServerOperationState State, string Stage, string ProblemCode, string? SnapshotId, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
         bool NativeReceiptRetirementPending = false, NginxIntegrationCheckpoint? Integration = null,
-        IntegrationCompensation? Compensation = null)
+        IntegrationCompensation? Compensation = null, NginxWebRootCheckpoint? WebRoot = null, Guid[]? WebRootReceiptIds = null)
     {
         public WebServerOperationDto ToDto() => new(OperationId, InstanceId, Kind, State, Stage, ProblemCode, SnapshotId, StartedAt, CompletedAt,
             Compensation?.Id);
@@ -523,7 +530,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
 
     private sealed class ExecutionCleanupException(Exception inner) : InvalidOperationException("Web-server execution scope did not drain.", inner);
 
-    internal sealed class OperationProgress(WebServerOperationStore owner, Guid operationId) : IWebServerOperationProgress, IDisposable
+    internal sealed partial class OperationProgress(WebServerOperationStore owner, Guid operationId) : IWebServerOperationProgress, IDisposable
     {
         private IDisposable? execution;
 

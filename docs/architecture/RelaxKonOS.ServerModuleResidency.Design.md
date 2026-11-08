@@ -574,3 +574,5 @@ Linux 直连设置按原 ID 核对宿主策略变更。guard 可完成已证实�
 Linux Nginx 集成复用 WebServer 执行代次。原操作先保存暂存与派发边界，Host 在重启后清理原暂存或核对原 Helper 回执和快照。外部 Nginx 与 TLS 继续运行。见[Nginx 集成检查点](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-集成检查点与执行代次)。
 
 已知失败的 Nginx 集成允许原实例授权下的具名补偿。原台账持有唯一补偿 ID，实际文件、reload 与回执清理排空后释放执行责任。重启只核对补偿证据。见[集成具名补偿](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-已知-nginx-集成失败的具名补偿)。
+
+Linux 系统包 WebRoot 的原工作 owner 持有站点计划、当前 Helper 子回执和清理责任。恢复只核对原子回执与文件摘要，外部 Nginx 和 TLS 保持运行。见[WebRoot 逐站点回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-逐站点回执与清理恢复)。

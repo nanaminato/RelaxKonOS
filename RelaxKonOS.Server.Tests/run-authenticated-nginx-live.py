@@ -30,7 +30,10 @@ def run(root, server, helper_binary, mode):
     integration_test_held = threading.Event()
     acme_website = mode is not None and mode.startswith("--systemd-website-acme")
     first_site_acme = mode is not None and mode.startswith("--systemd-first-site-acme")
-    interrupt_first_site = mode == "--systemd-first-site-acme"
+    multi_webroot = mode == "--systemd-first-site-acme-multi"
+    cleanup_reply_loss = mode == "--systemd-first-site-acme-cleanup-loss"
+    webroot_cleanup_held = threading.Event()
+    interrupt_first_site = mode == "--systemd-first-site-acme" or multi_webroot
     lose_first_site_reply = mode == "--systemd-first-site-acme-response-loss"
     reject_first_site_reload = mode == "--systemd-first-site-acme-rejected"
     drop_webroot_reply = threading.Event()
@@ -169,7 +172,7 @@ def run(root, server, helper_binary, mode):
                    else [helper_binary, "--isolated-certificate-pam-helper"])
     nginx_pid_file = root / "nginx" / "nginx.pid"
     socket_path = Path(env["PrivilegedHelper__SocketPath"])
-    if relay_mode or bootstrap_resume or lose_first_site_reply or integration_stage or lose_compensation_reply:
+    if relay_mode or bootstrap_resume or lose_first_site_reply or integration_stage or lose_compensation_reply or cleanup_reply_loss:
         env["PrivilegedHelper__SocketPath"] = str(root / "relay.sock")
 
     def frame(stream):
@@ -202,7 +205,7 @@ def run(root, server, helper_binary, mode):
 
     @contextmanager
     def helper_connection():
-        if not relay_mode and not bootstrap_resume and not lose_first_site_reply and not integration_stage and not lose_compensation_reply:
+        if not relay_mode and not bootstrap_resume and not lose_first_site_reply and not integration_stage and not lose_compensation_reply and not cleanup_reply_loss:
             yield None, None
             return
         dropped = threading.Event()
@@ -226,6 +229,8 @@ def run(root, server, helper_binary, mode):
                             retirement_retried.set()
                             if not permit_query.wait(20):
                                 return
+                        if lose_first_site_reply and kind == "NginxReloadReceipt" and dropped.is_set():
+                            assert permit_query.wait(15), "The fixture did not release the WebRoot receipt query"
                         upstream.sendall(request_bytes)
                         while True:
                             response_bytes, response = frame(source)
@@ -242,9 +247,16 @@ def run(root, server, helper_binary, mode):
                                 dropped.set()
                                 return
                             if (lose_first_site_reply and drop_webroot_reply.is_set() and not dropped.is_set()
-                                    and terminal and kind == "NginxSystemServiceAction"):
+                                    and terminal and kind == "NginxTrackedReload"):
                                 assert response["Result"]["success"]
+                                assert response["Result"]["nginxReloadReceipt"]["OperationId"] == request["operationId"]
                                 dropped.set()
+                                return
+                            if (cleanup_reply_loss and terminal and kind == "NginxDeleteManagedFile"
+                                    and request.get("path", "").endswith(".conf.rollback")):
+                                assert response["Result"]["success"]
+                                webroot_cleanup_held.set()
+                                assert permit_query.wait(15), "The fixture did not release the cleanup response"
                                 return
                             if bootstrap_resume and terminal and kind == "NginxReloadReceipt" and not permit_query.is_set():
                                 assert response["Result"]["success"]
@@ -1014,7 +1026,7 @@ def run(root, server, helper_binary, mode):
                 return False
 
         with ExitStack() as helpers:
-            dropped, _ = helpers.enter_context(helper_connection())
+            dropped, permit_query = helpers.enter_context(helper_connection())
             helper = helpers.enter_context(process([*helper_args, helper_config], "first-site-helper"))
             wait_for(helper, helper_ready, "first-site-helper")
             for path in ("/etc/nginx/conf.d/relaxkonos.d/fixture-other.enabled",
@@ -1040,6 +1052,14 @@ def run(root, server, helper_binary, mode):
                 site = request(sites, token=token, payload=site_request)
                 assert site["id"] == site_request["id"] and not challenge_is_served()
                 assert witness.read_text().splitlines() == ["reload"]
+                if multi_webroot:
+                    second_request = {**site_request, "id": "mb05-second", "name": "ZZ Second Site",
+                                      "bindings": [{"domain": "second.mb05.test", "port": 80}]}
+                    second = request(sites, token=token, payload=second_request)
+                    second_config = rollback.with_name("mb05-second.conf")
+                    second_before = second_config.read_bytes()
+                    assert second["id"] == "mb05-second"
+                reload_count = 3 if multi_webroot else 2
                 release.unlink()
                 finished.unlink()
                 request(enable, method="POST", key=key, expected=401)
@@ -1059,6 +1079,13 @@ def run(root, server, helper_binary, mode):
                     assert not challenge_is_served() and nginx_pid_file.read_text() == master
                     assert (root / "nginx" / "reload-attempts").read_text().splitlines() == ["attempt"] * 3
                     assert witness.read_text().splitlines() == ["reload", "reload"]
+                    ledger_path = root / "data" / "webserver-operations.json"
+                    durable = next(row for row in json.loads(ledger_path.read_text()) if row["operationId"] == operation)
+                    ids = durable["webRootReceiptIds"]
+                    assert len(set(ids)) == 2 and operation not in ids
+                    receipts_dir = Path("/var/lib/relaxkonos-nginx-reloads")
+                    wait_for(initial, lambda: all((receipts_dir / (id.replace("-", "") + ".json")).stat().st_size == 0 for id in ids),
+                             "rejected reload and compensation receipt retirement")
                     assert_served(b"original")
                     print(f"PASS FIRST SITE ACME REJECTED: {operation}; known rejection and one confirmed compensation")
                     return
@@ -1071,7 +1098,14 @@ def run(root, server, helper_binary, mode):
 
                 wait_for(initial, active_route, "first-site challenge route")
                 assert request(operation_route, token=token)["state"].lower() == "running"
-                assert witness.read_text().splitlines() == ["reload", "reload"] and not finished.exists()
+                assert witness.read_text().splitlines() == ["reload"] * reload_count and not finished.exists()
+                ledger = root / "data" / "webserver-operations.json"
+                durable = next(row for row in json.loads(ledger.read_text()) if row["operationId"] == operation)
+                plan = durable["webRoot"]
+                child = plan["current"]["reloadId"]
+                assert child != operation and plan["current"]["siteId"] == site["id"] and plan["current"]["dispatched"]
+                assert plan["sites"] == ([site["id"], second["id"]] if multi_webroot else [site["id"]])
+                helper_receipt = Path("/var/lib/relaxkonos-nginx-reloads") / (child.replace("-", "") + ".json")
                 assert_served(b"original")
                 if website_hook:
                     loaded = webserver_code_events("first-site-server")
@@ -1083,20 +1117,24 @@ def run(root, server, helper_binary, mode):
                 else:
                     release.touch()
                     wait_for(helper, finished.is_file, "original first-site native reload completion")
-                    if lose_first_site_reply:
-                        assert dropped.wait(12), "The actual successful Helper reply was not dropped"
-                        wait_for(initial, lambda: request(operation_route, token=token)["problemCode"] == "webserver.site_reload_unverified",
-                                 "unknown original WebRoot reload result")
-                        assert rollback.is_file()
-                        repeat = request(enable, token=token, method="POST", key=secrets.token_hex(16), expected=202)
-                        repeat_route = f"{web}/operations/{repeat['operationId']}"
-                        wait_for(initial, lambda: request(repeat_route, token=token)["problemCode"] == "webserver.site_save_failed",
-                                 "unresolved backup blocks new enablement")
-                        assert witness.read_text().splitlines() == ["reload", "reload"] and challenge_is_served()
+                    if cleanup_reply_loss:
+                        assert webroot_cleanup_held.wait(12) and not rollback.exists()
+                        assert request(operation_route, token=token)["state"].lower() == "running"
+                        initial.kill()
+                        assert initial.wait(timeout=10) < 0
+                        permit_query.set()
                     else:
+                        if lose_first_site_reply:
+                            assert dropped.wait(12), "The actual successful Helper reply was not dropped"
+                            wait_for(initial, lambda: request(operation_route, token=token)["problemCode"] == "webserver.native_recovery_required",
+                                     "unknown original WebRoot reload result")
+                            assert rollback.is_file()
+                            request(enable, token=token, method="POST", key=secrets.token_hex(16), expected=409)
+                            assert witness.read_text().splitlines() == ["reload"] * reload_count and challenge_is_served()
+                            permit_query.set()
                         wait_for(initial, lambda: request(operation_route, token=token)["state"].lower() == "succeeded",
                                  "first-site WebRoot enablement completed")
-                        if website_hook:
+                        if website_hook and mode == "--systemd-first-site-acme-success":
                             generation = loaded[0][5:]
                             collected = [*loaded, f"unload {generation}", f"collected {generation}"]
                             wait_for(initial, lambda: webserver_code_events("first-site-server") == collected,
@@ -1105,20 +1143,51 @@ def run(root, server, helper_binary, mode):
                             assert receipt == request(enable, token=token, method="POST", key=key, expected=202)
                             assert webserver_code_events("first-site-server") == collected
                             assert not rollback.exists() and challenge_is_served()
-                            assert nginx_pid_file.read_text() == master and witness.read_text().splitlines() == ["reload", "reload"]
+                            assert nginx_pid_file.read_text() == master and witness.read_text().splitlines() == ["reload"] * reload_count
                             assert_served(b"original")
                             print(f"PASS WEBROOT EXECUTION COLLECTION: {operation}; {generation} collected; same TLS and no reload")
             with process([server], "first-site-restarted-server") as restarted:
                 wait_for(restarted, healthy, "first-site-restarted-server")
                 token = login()
+                if interrupt_first_site:
+                    pending = request(operation_route, token=token)
+                    assert pending["state"].lower() == "running" and pending["problemCode"] == "webserver.native_recovery_required"
+                    assert pending == request(enable, token=token, method="POST", key=key, expected=202)
+                    request(sites, token=token, payload={**site_request, "expectedUpdatedAt": site["updatedAt"]}, expected=400,
+                            expected_problem="webserver.site_save_failed")
+                    previous = rollback.read_bytes()
+                    foreign = previous + b"# external backup drift\n"
+                    rollback.write_bytes(foreign)
+                    release.touch()
+                    wait_for(helper, lambda: helper_receipt.is_file()
+                             and json.loads(helper_receipt.read_text()).get("Completed") is True,
+                             "durable original WebRoot reload receipt")
+                    assert rollback.read_bytes() == foreign
+                    assert request(operation_route, token=token)["state"].lower() == "running"
+                    rollback.write_bytes(previous)
+                expected = ("failed", "webserver.operation_interrupted") if multi_webroot else ("succeeded", "")
+                wait_for(restarted, lambda: request(operation_route, token=token)["state"].lower() == expected[0],
+                         "original WebRoot reconciliation")
+                wait_for(restarted, lambda: helper_receipt.is_file() and helper_receipt.stat().st_size == 0,
+                         "WebRoot child receipt retirement")
                 receipt = request(operation_route, token=token)
                 assert receipt == request(enable, token=token, method="POST", key=key, expected=202)
-                expected = (("failed", "webserver.operation_interrupted") if interrupt_first_site else
-                            ("failed", "webserver.site_reload_unverified") if lose_first_site_reply else ("succeeded", ""))
+                durable = next(row for row in json.loads(ledger.read_text()) if row["operationId"] == operation)
+                assert durable["webRootReceiptIds"] == [child] and durable["webRoot"] is None
                 if website_hook:
                     assert not webserver_code_events("first-site-restarted-server")
                 assert receipt["operationId"] == operation and (receipt["state"].lower(), receipt["problemCode"]) == expected
-                assert witness.read_text().splitlines() == ["reload", "reload"] and challenge_is_served()
+                assert witness.read_text().splitlines() == ["reload"] * reload_count and challenge_is_served()
+                assert not rollback.exists() and nginx_pid_file.read_text() == master
+                assert not direct_helper_request("NginxTrackedReload", child)["success"]
+                if multi_webroot:
+                    assert second_config.read_bytes() == second_before
+                    assert request(sites, token=token) == [site, second]
+                    assert_served(b"original")
+                    print(f"PASS WEBROOT MULTI SITE RECOVERY: {operation}, child={child}; untouched next site")
+                    return
+                if cleanup_reply_loss:
+                    print(f"PASS WEBROOT CLEANUP CONFIRMATION LOSS: {operation}, child={child}; absent backup verified after restart")
                 assert request(sites, token=token) == [site]
                 assert "Added order" not in (root / "ca.log").read_text()
 
@@ -1145,47 +1214,6 @@ def run(root, server, helper_binary, mode):
                     **site_request, "expectedUpdatedAt": site["updatedAt"], "certificateId": cert["certificateId"],
                     "httpsEnabled": True, "redirectHttpToHttps": True,
                 }
-                if interrupt_first_site or lose_first_site_reply:
-                    previous = rollback.read_bytes()
-
-                    def assert_blocked(backup):
-                        try:
-                            request(sites, token=token, payload=tls_request)
-                        except RuntimeError as error:
-                            assert str(error).endswith("(webserver.site_save_failed)")
-                        else:
-                            raise AssertionError("TLS update proceeded despite unverified recovery evidence")
-                        assert rollback.read_bytes() == backup and request(sites, token=token) == [site]
-                        assert witness.read_text().splitlines() == ["reload", "reload"]
-                        assert challenge_is_served()
-
-                    if interrupt_first_site:
-                        try:
-                            assert not finished.exists()
-                            assert_blocked(previous)
-                            assert not finished.exists()
-                            helper.kill()
-                            assert helper.wait(timeout=10) < 0 and not helper_ready()
-                            helper = helpers.enter_context(process([*helper_args, helper_config], "first-site-restarted-helper"))
-                            wait_for(helper, helper_ready, "first-site-restarted-helper")
-                            assert not direct_helper_request("NginxServiceIdle", str(uuid.uuid4()))["success"]
-                            assert_blocked(previous)
-                            assert not finished.exists()
-                        finally:
-                            release.touch()
-                        wait_for(helper, finished.is_file, "original first-site native reload completion")
-                        wait_for(helper, lambda: direct_helper_request("NginxServiceIdle", str(uuid.uuid4()))["success"],
-                                 "Nginx service job idle after interruption")
-                    foreign = previous.replace(b"server_name", b"# changed\n    server_name", 1)
-                    assert foreign != previous
-                    rollback.write_bytes(foreign)
-                    try:
-                        assert_blocked(foreign)
-                    finally:
-                        rollback.write_bytes(previous)
-                else:
-                    assert not rollback.exists()
-
                 secured = request(sites, token=token, payload=tls_request)
                 assert secured["id"] == site["id"] and secured["certificateId"] == cert["certificateId"]
                 client = urllib.request.build_opener(urllib.request.ProxyHandler({}),
@@ -1656,7 +1684,8 @@ if __name__ == "__main__":
                                                             "--systemd-website-acme-bootstrap-resume", "--systemd-website-acme-bootstrap-resume-interrupt",
                                                             "--systemd-website-acme-bootstrap-bind-interrupt", "--systemd-first-site-acme",
                                                             "--systemd-first-site-acme-success", "--systemd-first-site-acme-response-loss",
-                                                            "--systemd-first-site-acme-rejected", "--systemd-integration-live",
+                                                            "--systemd-first-site-acme-rejected", "--systemd-first-site-acme-multi",
+                                                            "--systemd-first-site-acme-cleanup-loss", "--systemd-integration-live",
                                                             "--systemd-integration-receipt", "--systemd-integration-stage",
                                                             "--systemd-integration-rejected", "--systemd-integration-compensation",
                                                             "--systemd-integration-compensation-response-loss") else None
