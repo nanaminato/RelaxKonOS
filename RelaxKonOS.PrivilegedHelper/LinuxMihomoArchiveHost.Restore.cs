@@ -8,14 +8,46 @@ internal sealed partial class LinuxMihomoArchiveHost
 {
     private sealed record RegistrationRestore(Guid OperationId, Registration Previous, Registration Restored);
 
+    private async Task ConfigurePublicationTunAsync(RuntimePendingConfiguration pending, string binary, string data,
+        CancellationToken ct)
+    {
+        var operation = pending.OperationId;
+        var identity = pending.Plan.CandidateIdentity;
+        RequireProtected(binary);
+        RequireProtected(data);
+        var previous = await ReadRegistrationAsync(ct) ?? throw new RuntimePolicyException("runtime.network_registration_conflict");
+        var state = await StateAsync(ct);
+        if (previous.TunOperation is not null || previous.Binary != binary || previous.Data != data
+            || previous.ConfigurationHash != pending.Plan.PreviousIdentity || previous.BinaryHash != await DigestAsync(binary, ct)
+            || state.GetValueOrDefault("MainPID") != "0" || state.GetValueOrDefault("ActiveState") != "inactive"
+            || state.GetValueOrDefault("UnitFileState") != "disabled")
+            Fail("network_registration_conflict");
+        RequireProtected(Root + "/active.yaml");
+        if (!string.Equals(await DigestAsync(Root + "/active.yaml", ct), identity, StringComparison.OrdinalIgnoreCase))
+            Fail("configuration_drift");
+        var candidate = previous with { TunOperation = operation, ConfigurationHash = identity };
+        var path = ActivationRegistrationPath(operation);
+        RuntimeSourceStore.RequireNoLinks(path);
+        if (Path.Exists(path)) Fail("network_registration_conflict");
+        await WriteRestoreFileAsync(operation, path, RegistrationRecord(operation, previous, candidate),
+            UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+        await WriteRestoreFileAsync(operation, RegistrationPath, JsonSerializer.Serialize(candidate),
+            UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+        await WriteRestoreFileAsync(operation, UnitPath, UnitText(candidate),
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead, ct);
+        await CommandAsync("daemon-reload", ct, false);
+        await StateAsync(ct);
+    }
+
     internal async Task<bool> RestoreTunRegistrationAsync(RuntimePendingConfiguration pending, string binary, string data,
-        string version, bool resumeOnly, CancellationToken ct)
+        string version, bool beforeNetwork, bool resumeOnly, CancellationToken ct)
     {
         var operation = pending.OperationId;
         var directory = Path.Combine(Root, "operations", operation.ToString("N"));
         var path = Path.Combine(directory, "registration-restore.json");
         RuntimeSourceStore.RequireNoLinks(path);
-        if (!Path.Exists(path) && resumeOnly) return false;
+        var existing = Path.Exists(path);
+        if (!existing && resumeOnly && !beforeNetwork) return false;
 
         var configuration = Root + "/active.yaml";
         var identity = pending.Plan.PreviousIdentity;
@@ -23,20 +55,24 @@ internal sealed partial class LinuxMihomoArchiveHost
         RequireProtected(binary);
         RequireProtected(data);
         RequireProtected(configuration);
+        var actualIdentity = await DigestAsync(configuration, ct);
+        var previousConfiguration = string.Equals(actualIdentity, identity, StringComparison.OrdinalIgnoreCase);
+        var candidateBeforeRestore = !existing && resumeOnly
+            && string.Equals(actualIdentity, pending.Plan.CandidateIdentity, StringComparison.OrdinalIgnoreCase);
         if (pending.Plan.NetworkIntentIdentity is null || pending.Snapshot is not { BootEnabled: false, Running: true }
-            || !string.Equals(await DigestAsync(configuration, ct), identity, StringComparison.OrdinalIgnoreCase))
+            || !previousConfiguration && !candidateBeforeRestore)
             Fail("configuration_drift");
         var digest = await DigestAsync(binary, ct);
         var previous = new Registration(binary, data, digest, pending.Plan.CandidateIdentity, version, operation);
         var restored = previous with { TunOperation = null, ConfigurationHash = identity };
-        var expected = JsonSerializer.Serialize(new RegistrationRestore(operation, previous, restored));
-        var existing = Path.Exists(path);
+        var expected = RegistrationRecord(operation, previous, restored);
+        var activated = beforeNetwork && await ReadActivationRegistrationAsync(operation, restored, previous, ct);
         if (existing)
         {
             if (await ReadRestoreFileAsync(path, ct) != expected) Fail("network_registration_conflict");
             MihomoRuntimeData.SyncConfigurationDirectory(directory);
         }
-        else if (await ReadRegistrationAsync(ct) != previous)
+        else if (!beforeNetwork && await ReadRegistrationAsync(ct) != previous)
             Fail("network_registration_conflict");
 
         var registration = await ReadRestoreFileAsync(RegistrationPath, ct);
@@ -45,10 +81,13 @@ internal sealed partial class LinuxMihomoArchiveHost
         var restoredRegistration = registration == JsonSerializer.Serialize(restored);
         var previousUnit = unit == UnitText(previous);
         var restoredUnit = unit == UnitText(restored);
-        if (!(previousRegistration && previousUnit || restoredRegistration && (previousUnit || restoredUnit)))
+        var allowed = beforeNetwork
+            ? restoredRegistration && restoredUnit || activated && previousRegistration && (previousUnit || restoredUnit)
+            : previousRegistration && previousUnit || restoredRegistration && (previousUnit || restoredUnit);
+        if (!allowed)
             Fail("network_registration_conflict");
 
-        var state = await StateAsync(ct, allowReload: existing);
+        var state = await StateAsync(ct, allowReload: existing || activated);
         if (state.GetValueOrDefault("UnitFileState") != "disabled") Fail("state_unknown");
         if (state.GetValueOrDefault("MainPID") != "0" || state.GetValueOrDefault("ActiveState") is not ("inactive" or "failed"))
         {
@@ -59,21 +98,47 @@ internal sealed partial class LinuxMihomoArchiveHost
         }
         RuntimeSourceStore.RequireNoLinks(RestoredStartPath(operation));
         if (Path.Exists(RestoredStartPath(operation))) Fail("network_restored_start_unconfirmed");
+        if (!existing && resumeOnly) return false;
 
         if (!existing)
             await WriteRestoreFileAsync(operation, path, expected, UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
-        if (previousRegistration)
-            await WriteRestoreFileAsync(operation, RegistrationPath, JsonSerializer.Serialize(restored),
-                UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
-        else MihomoRuntimeData.SyncConfigurationDirectory(Root);
+        // Reverse the pre-network transition through the same recoverable pair: candidate registration and old unit.
+        if (!beforeNetwork) await RestoreRegistrationAsync();
         if (previousUnit)
             await WriteRestoreFileAsync(operation, UnitPath, UnitText(restored),
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead, ct);
-        else MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(UnitPath)!);
+        else SyncExistingRestoreFile(operation, UnitPath);
+        if (beforeNetwork) await RestoreRegistrationAsync();
         if (previousUnit || state.GetValueOrDefault("NeedDaemonReload") == "yes")
             await CommandAsync("daemon-reload", ct, false);
         if ((await StateAsync(ct)).GetValueOrDefault("ActiveState") == "failed")
             await CommandAsync("reset-failed", ct);
+        return true;
+
+        async Task RestoreRegistrationAsync()
+        {
+            if (previousRegistration)
+                await WriteRestoreFileAsync(operation, RegistrationPath, JsonSerializer.Serialize(restored),
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+            else SyncExistingRestoreFile(operation, RegistrationPath);
+        }
+    }
+
+    private static string RegistrationRecord(Guid operation, Registration previous, Registration restored) =>
+        JsonSerializer.Serialize(new RegistrationRestore(operation, previous, restored));
+
+    private static string ActivationRegistrationPath(Guid operation) =>
+        Path.Combine(Root, "operations", operation.ToString("N"), "registration-activate.json");
+
+    private static async Task<bool> ReadActivationRegistrationAsync(Guid operation, Registration previous,
+        Registration candidate, CancellationToken ct)
+    {
+        var path = ActivationRegistrationPath(operation);
+        RuntimeSourceStore.RequireNoLinks(path);
+        if (!Path.Exists(path)) return false;
+        if (await ReadRestoreFileAsync(path, ct) != RegistrationRecord(operation, previous, candidate))
+            Fail("network_registration_conflict");
+        MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(path)!);
         return true;
     }
 
@@ -99,13 +164,7 @@ internal sealed partial class LinuxMihomoArchiveHost
     private static async Task WriteRestoreFileAsync(Guid operation, string path, string text, UnixFileMode mode, CancellationToken ct)
     {
         RuntimeSourceStore.RequireNoLinks(path);
-        var temporary = path + "." + operation.ToString("N") + ".restore";
-        RuntimeSourceStore.RequireNoLinks(temporary);
-        if (File.Exists(temporary))
-        {
-            RequireProtected(temporary);
-            File.Delete(temporary);
-        }
+        var temporary = ClearRestoreTemporary(operation, path);
         try
         {
             await using (var output = new FileStream(temporary,
@@ -118,5 +177,23 @@ internal sealed partial class LinuxMihomoArchiveHost
             MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(path)!);
         }
         finally { File.Delete(temporary); }
+    }
+
+    private static void SyncExistingRestoreFile(Guid operation, string path)
+    {
+        ClearRestoreTemporary(operation, path);
+        MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(path)!);
+    }
+
+    private static string ClearRestoreTemporary(Guid operation, string path)
+    {
+        var temporary = path + "." + operation.ToString("N") + ".restore";
+        RuntimeSourceStore.RequireNoLinks(temporary);
+        if (File.Exists(temporary))
+        {
+            RequireProtected(temporary);
+            File.Delete(temporary);
+        }
+        return temporary;
     }
 }

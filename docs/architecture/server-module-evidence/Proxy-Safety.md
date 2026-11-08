@@ -682,6 +682,16 @@ Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 
 
 **未实现或待验。** 本场覆盖已核实原生补偿后的注册还原。候选 TUN 注册写入到启动派发之间的其他故障窗口、整机掉电及其他 Linux 架构仍待独立验收。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 保持 resident。
 
+### 候选注册中断与原启动准入
+
+**已实现且已验证。** Linux x64 专属 systemd 原操作 `e4114e3d942b4fab9d8cafcceac4daef` 在候选注册已替换、候选 unit 尚在暂存时被强制中断。此时仅有原 `Intent`，候选进程、设备、地址、专用路由和规则均未出现。旧 unit 保持，systemd 的 MainPID 为零，同键返回原待核验。改变管理选路、改变活动配置摘要、隐藏原候选注册记录分别触发 `runtime.management_route_changed`、`runtime.configuration_drift` 和 `runtime.network_registration_conflict`，三次均保留原待核验、对应文件和停止状态。
+
+复原精确证据后，原 Helper 清除本操作的暂存 unit，恢复旧配置、数据及注册。原管理选路一致，旧服务控制器应答，同键返回原 `Interrupted`，已还原 PID 409 保持。原候选启动及网络派发均未重放，内核规则删除计数为零。首轮夹具要求 `strace` 在强杀时输出完整 syscall 返回行，改为以进程退出、实际暂存文件及原检查点确认断点后复跑。
+
+同版复验原服务注册还原 `88647c192be6438c90d6dabd61c648f6`、认证 HTTP 补偿 `d8120e6c7bf240239f638f78fccab427` 和认证 HTTP 发布 `f6bb40f8d5384dd29bf0212898bc232c`，覆盖真实上游 HTTP、分流 DNS 和原回执。四场专属进程退出、cgroup 清理及宿主共享服务指纹核验通过。日志为 `.artifacts/mb04-tun-registration-before-network/linux-final.log`，归档 SHA-256 为 `1003260351a66a73a74dc7f2e24f8da7ca28fc3c317baf71ccc80b596bb57b18`。Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 项。可信下载探针因主机缺进程级 CA 覆盖跳过。日志为同目录 `windows-release.log`。
+
+**未实现或待验。** 网络已经派发、描述符尚未交付时仍由原待核验门禁保护。整机掉电和其他 Linux 架构未实测。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

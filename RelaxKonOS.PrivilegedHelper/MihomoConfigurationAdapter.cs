@@ -129,7 +129,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
                 LinuxMihomoTunCheckpoint.BootId(), LinuxMihomoTunCheckpoint.NetworkNamespace(),
                 network.Device, network.Address, network.Destination, network.ManagementAddress, network.ManagementUserId,
                 network.ManagementHash, LinuxMihomoTunRoutes.TableFor(pending.OperationId), network.DnsRoutingDomain);
-            await TunHost().ActivateTunAsync(intent, binary, Data(revision), ct);
+            await TunHost().ActivateTunAsync(intent, binary, Data(revision), ct, pending);
             return;
         }
         await host.ConfigureAsync(binary, Data(revision), Configuration,
@@ -203,6 +203,11 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             if (pending.Plan.NetworkIntentIdentity is null || !IsFixedLinuxHost)
                 throw new RuntimePolicyException("runtime.network_transaction_required");
             if (effect.Phase == MihomoTunPhase.Restored) return true;
+            if (effect.Phase == MihomoTunPhase.Intent)
+            {
+                await VerifyRestoredNetworkAsync(pending, effect, ct);
+                return true;
+            }
             if (effect.Phase is MihomoTunPhase.StopDispatched or MihomoTunPhase.RuleRemovalDispatched)
             {
                 await TunHost().CompleteTunStopAsync(pending.OperationId, ct);
@@ -246,10 +251,11 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_transaction_required");
             await VerifyRestoredNetworkAsync(pending, effect, ct);
             await RequireMaterialAsync(pending, false, ct);
-            if (await TunHost().RestoreTunRegistrationAsync(pending, binary, data, revision.MeasuredVersion, resumeOnly: true, ct))
+            if (await TunHost().RestoreTunRegistrationAsync(pending, binary, data, revision.MeasuredVersion,
+                beforeNetwork: effect.Phase == MihomoTunPhase.Intent, resumeOnly: true, ct))
                 return await FinishTunRestoreAsync(pending, effect, revision, ct);
-            var registration = await host.ObserveRegistrationAsync(ct);
-            if (registration.Running) throw new RuntimePolicyException("runtime.network_registration_conflict");
+            if (effect.Phase != MihomoTunPhase.Intent && (await host.ObserveRegistrationAsync(ct)).Running)
+                throw new RuntimePolicyException("runtime.network_registration_conflict");
         }
         var backup = FileIn(pending, "data-backup");
         if (Directory.Exists(backup))
@@ -277,7 +283,8 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         if (effect is not null)
         {
             if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_transaction_required");
-            await TunHost().RestoreTunRegistrationAsync(pending, binary, data, build.Version, resumeOnly: false, ct);
+            await TunHost().RestoreTunRegistrationAsync(pending, binary, data, build.Version,
+                beforeNetwork: effect.Phase == MihomoTunPhase.Intent, resumeOnly: false, ct);
             return await FinishTunRestoreAsync(pending, effect, revision, ct);
         }
         await host.ConfigureAsync(binary, data, Configuration, pending.Plan.PreviousIdentity, pending.Snapshot!.BootEnabled, ct);
@@ -342,7 +349,9 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         var identity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(pending.OperationId, pending.Plan,
             LinuxMihomoArchiveHost.TunNetwork(effect.Intent));
         if (identity != pending.Plan.NetworkIntentIdentity) throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
-        await LinuxMihomoArchiveHost.VerifyRestoredTunNetworkAsync(effect, ct);
+        if (effect.Phase == MihomoTunPhase.Intent)
+            await LinuxMihomoArchiveHost.VerifyUndispatchedTunNetworkAsync(effect, ct);
+        else await LinuxMihomoArchiveHost.VerifyRestoredTunNetworkAsync(effect, ct);
     }
 
     private async Task<RuntimeRestorationEvidence> ObserveRestoredServiceAsync(RuntimePendingConfiguration pending, MihomoTunEffect? effect,

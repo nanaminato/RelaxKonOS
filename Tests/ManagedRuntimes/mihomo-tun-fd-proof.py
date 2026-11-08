@@ -596,6 +596,70 @@ def proof_restore_registration(record, operation_dir, previous, sentinel, archiv
           f'original Interrupted without recopying data or restarting restored PID {restored_service[0]}')
 
 
+def proof_undispatched_registration(owner, record, operation_dir, previous, sentinel, trace):
+    operation = record['operation']
+    assert owner.wait(timeout=15) in (-signal.SIGKILL, 128 + signal.SIGKILL)
+    assert checkpoint(record, 'state') == 'Intent'
+    assert sorted(file.name for file in operation_dir.glob('tun-*.json')) == ['tun-0.json']
+    archive_state = archive / 'state' / 'archive-state.json'
+    registration = archive / 'archive-service.json'
+    unit_path = Path('/etc/systemd/system') / unit
+    temporary_unit = unit_path.with_name(f'{unit_path.name}.{operation}.restore')
+    assert temporary_unit.is_file() and b'--linux-mihomo-tun-launch' in temporary_unit.read_bytes()
+    print(trace.read_text().strip())
+    files = [registration, unit_path, config]
+    split = [file.read_bytes() for file in files]
+    assert uuid.UUID(json.loads(split[0])['TunOperation']).hex == operation
+    assert b'--linux-mihomo-tun-launch' not in split[1]
+    assert config.read_bytes() != previous.read_bytes()
+    assert 'MainPID=0' in service('show', '-p', 'MainPID', unit)
+    assert device not in devices() and network_baseline() == record['baseline']
+    assert not (root / 'rule-delete-attempts').exists()
+    original = archive_state.read_bytes()
+    retry = json.loads(checkpoint(record, 'retry'))
+    assert uuid.UUID(retry['OperationId']).hex == operation and retry['Outcome'] == 'RecoveryRequired'
+    assert archive_state.read_bytes() == original
+
+    def pending(problem, expected_files=split):
+        result = json.loads(checkpoint(record, 'recover'))
+        assert uuid.UUID(result['OperationId']).hex == operation and result['Outcome'] == 'RecoveryRequired'
+        state = json.loads(archive_state.read_text())
+        assert state['configuration']['recoveryProblemCode'] == problem
+        assert not state['receipts'] and [file.read_bytes() for file in files] == expected_files
+        assert 'MainPID=0' in service('show', '-p', 'MainPID', unit)
+
+    table = json.loads((operation_dir / 'tun-0.json').read_text())['Intent']['RoutingTable']
+    with management_route_drift(table):
+        pending('runtime.management_route_changed')
+    drifted = split[2] + b'\n# fixture drift\n'
+    try:
+        config.write_bytes(drifted)
+        pending('runtime.configuration_drift', [*split[:2], drifted])
+    finally:
+        config.write_bytes(split[2])
+    intent = operation_dir / 'registration-activate.json'
+    hidden = intent.with_suffix('.held')
+    intent.rename(hidden)
+    try:
+        pending('runtime.network_registration_conflict')
+    finally:
+        hidden.rename(intent)
+
+    terminal = json.loads(checkpoint(record, 'recover'))
+    assert uuid.UUID(terminal['OperationId']).hex == operation and terminal['Outcome'] == 'Interrupted'
+    restored_service = service_identity()
+    assert json.loads(checkpoint(record, 'retry')) == terminal and service_identity() == restored_service
+    assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
+    assert json.loads(registration.read_text())['TunOperation'] is None and unit_path.read_bytes() == split[1]
+    assert not temporary_unit.exists()
+    assert checkpoint(record, 'state') == 'Intent' and not route(table) and device not in devices()
+    assert network_baseline() == record['baseline'] and not (root / 'rule-delete-attempts').exists()
+    assert 'version' in command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
+                                '-H', 'Authorization: Bearer mb04-private-fixture-controller', 'http://127.0.0.1:18882/version')
+    print(f'PASS TUN REGISTRATION BEFORE NETWORK: original {operation}; split survived interruption; '
+          f'original Interrupted without candidate network or launch, restored PID={restored_service[0]}')
+
+
 def proof_committed(owner, operation, operation_dir, case):
     state_path = archive / 'state' / 'archive-state.json'
     deadline = time.monotonic() + 15
@@ -2396,9 +2460,21 @@ rules:
     invocation = [sys.executable, '-I', script]
     ipc = None
     env = dict(os.environ, RELAXKONOS_TEST_MIHOMO_HELPER=launcher) if case.startswith('ipc-') else None
-    owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
+    worker = ['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root]
+    if case == 'registration-before-network':
+        tracer = shutil.which('strace')
+        assert tracer, 'The registration proof requires strace'
+        trace = root / 'activation-registration-fault.trace'
+        temporary = f'/etc/systemd/system/{unit}.{operation}.restore'
+        renames = 'rename,renameat,renameat2'
+        worker = [tracer, '-f', '-qq', '-yy', '-P', temporary, '-e', f'trace={renames}',
+                  '-e', f'inject={renames}:error=EIO:signal=SIGKILL:when=1', '-o', str(trace), *worker]
+    owner = subprocess.Popen(worker,
                              stdout=subprocess.PIPE, text=True, env=env)
     try:
+        if case == 'registration-before-network':
+            proof_undispatched_registration(owner, json.loads(journal.read_text()), operation_dir, previous, sentinel, trace)
+            return
         if case.startswith('ipc-'):
             assert owner.wait(timeout=15) == 0
             owner.stdout.close()

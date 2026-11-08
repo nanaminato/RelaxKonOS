@@ -4579,6 +4579,8 @@ TUN 补偿在重新启动旧服务前同步还原数据树、数据替换的父�
 
 旧服务注册还原中断时，Helper 按原操作的持久记录核对注册文件与 systemd unit。可证明的中间状态由原操作继续，文件漂移或启动结果未知时保持待核验。见[原服务注册的跨进程还原](../architecture/server-module-evidence/Proxy-Safety.md#原服务注册的跨进程还原)。
 
+候选 TUN 注册中断时，若原检查点仍为 `Intent`，Helper 核对原管理选路、活动配置摘要、候选网络效果缺席及原注册记录后，可还原旧配置和服务。同键查询继续使用原操作回执。见[候选注册中断与原启动准入](../architecture/server-module-evidence/Proxy-Safety.md#候选注册中断与原启动准入)。
+
 Helper 尚未提交且原候选仍在转发时，管理选路漂移也会阻止原补偿停止候选进程。同键保留原待核验回执。精确选路恢复后，原操作重新核验归属并补偿一次。见[原补偿门禁实机证据](../architecture/server-module-evidence/Proxy-Safety.md#管理选路漂移时拒绝原补偿派发)。
 
 Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停用。正常停机等待已受理的具名停用收到 Helper 响应、写入审计并持久化原队列终态后退出。重启仍可按原键取得原回执，再次启用沿用已确认发布。见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。

@@ -13,7 +13,8 @@ namespace RelaxKonOS.PrivilegedHelper;
 internal sealed partial class LinuxMihomoArchiveHost
 {
     // Activation and recovery callers hold the same archive instance lock.
-    internal async Task<MihomoTunEffect> ActivateTunAsync(MihomoTunIntent intent, string binary, string data, CancellationToken ct)
+    internal async Task<MihomoTunEffect> ActivateTunAsync(MihomoTunIntent intent, string binary, string data, CancellationToken ct,
+        RuntimePendingConfiguration? publication = null)
     {
         ValidatePaths(binary, data, Root + "/active.yaml", intent.ConfigurationHash);
         if (intent.BootId != LinuxMihomoTunCheckpoint.BootId()
@@ -26,6 +27,8 @@ internal sealed partial class LinuxMihomoArchiveHost
         ct.ThrowIfCancellationRequested();
         var initial = new MihomoTunEffect(MihomoTunPhase.Intent, intent);
         await checkpoint.AppendAsync(initial);
+        if (publication is not null)
+            await ConfigurePublicationTunAsync(publication, binary, data, ct);
         using var descriptor = LinuxMihomoTunDescriptor.Create(intent.OperationId, intent.Device);
         await checkpoint.AppendAsync(initial with
         {
@@ -40,7 +43,13 @@ internal sealed partial class LinuxMihomoArchiveHost
         listener.Bind(new UnixDomainSocketEndPoint(checkpoint.SocketPath));
         File.SetUnixFileMode(checkpoint.SocketPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         listener.Listen(1);
-        await ConfigureTunAsync(binary, data, intent.ConfigurationHash, intent.OperationId, CancellationToken.None);
+        if (publication is null)
+            await ConfigureTunAsync(binary, data, intent.ConfigurationHash, intent.OperationId, CancellationToken.None);
+        else
+        {
+            RequireProtected(TunLauncher);
+            RequireProtected(checkpoint.SocketPath);
+        }
         await DispatchTunStartAsync(intent.OperationId, CancellationToken.None);
 
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(8));
@@ -70,6 +79,19 @@ internal sealed partial class LinuxMihomoArchiveHost
             await checkpoint.AppendAsync(dispatched);
         }
         return dispatched;
+    }
+
+    internal static async Task VerifyUndispatchedTunNetworkAsync(MihomoTunEffect effect, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var intent = effect.Intent;
+        if (effect.Phase != MihomoTunPhase.Intent || intent.BootId != LinuxMihomoTunCheckpoint.BootId()
+            || intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
+            Fail("network_checkpoint_conflict");
+        var routes = TunRoutes(intent);
+        if (!await routes.IsAbsentAsync(intent.Device, 0)) Fail("network_stop_unconfirmed");
+        await routes.RequireRuleAsync(present: false);
+        await routes.RequireManagementAsync(intent.ManagementHash);
     }
 
     internal async Task<MihomoTunEffect> VerifyTunAsync(Guid operation, CancellationToken ct)

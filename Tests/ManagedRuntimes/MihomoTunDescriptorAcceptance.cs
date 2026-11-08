@@ -256,16 +256,21 @@ internal static class MihomoTunDescriptorAcceptance
             throw new InvalidOperationException("The network check requires its private systemd work directory.");
         using var intent = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(root, "tun-operation.json")));
         var state = intent.RootElement;
+        var prelaunch = state.GetProperty("case").GetString() == "registration-before-network"
+            && state.GetProperty("phase").GetString() == "prepared";
         if (operation == Guid.Empty || state.GetProperty("operation").GetString() != operation.ToString("N")
-            || state.GetProperty("phase").GetString() != "dispatching")
+            || !prelaunch && state.GetProperty("phase").GetString() != "dispatching")
             throw new InvalidOperationException("The network check requires the original dispatched operation.");
-        var ledger = Ledger(operation, state);
+        var ledger = prelaunch
+            ? new LinuxMihomoTunCheckpoint(Archive, operation, state.GetProperty("revision").GetGuid(),
+                RuntimeJson.Read<RuntimeConfigurationPlan>(await File.ReadAllBytesAsync(Path.Combine(root, "tun-plan.json"))).CandidateIdentity)
+            : Ledger(operation, state);
         var current = ledger.Read();
         if (current is null ? action != "recover" : current.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
             || current.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace()
             || current.Intent.ManagementHash != ManagementHash(state) || current.Intent.ManagementUserId != state.GetProperty("uid").GetUInt32()
-            || current.Process != Process(state)
-            || current.InterfaceIndex != state.GetProperty("ifindex").GetUInt32())
+            || (prelaunch ? current.Phase != MihomoTunPhase.Intent
+                : current.Process != Process(state) || current.InterfaceIndex != state.GetProperty("ifindex").GetUInt32()))
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         var host = new LinuxMihomoArchiveHost();
         if (action == "state") Console.WriteLine(current!.Phase);
