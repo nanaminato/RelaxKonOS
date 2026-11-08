@@ -188,6 +188,11 @@ if (args is ["runtime-mihomo-tun-descriptor-worker", var descriptorRoot] && Oper
     await MihomoTunDescriptorAcceptance.RunAsync(descriptorRoot);
     return;
 }
+if (args is ["runtime-mihomo-tun-descriptor-launch", var launcherRoot] && OperatingSystem.IsLinux())
+{
+    await MihomoTunDescriptorAcceptance.LaunchAsync(launcherRoot);
+    return;
+}
 if (args is ["runtime-managed-service-live", var singBoxExecutable])
 {
     Console.WriteLine($"PASS LIVE SING-BOX HELPER PUBLICATION: {await ManagedServiceChecks.RunAsync(singBoxExecutable)} checks");

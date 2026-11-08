@@ -29,7 +29,7 @@ test "$(id -u)" -eq 0
 server_uid=$(id -u nobody)
 server_gid=$(id -g nobody)
 test "$server_uid" -ne 0
-if [[ $tun_fd == 0 ]]; then chmod o+x -- "$(dirname "$fixture")"; fi
+chmod o+x -- "$(dirname "$fixture")"
 work=$(mktemp -d /tmp/relaxkonos-mb04-systemd.XXXXXXXX)
 chmod o+x -- "$work"
 unit=relaxkonos-mb04-systemd-$(cat /proc/sys/kernel/random/uuid).service

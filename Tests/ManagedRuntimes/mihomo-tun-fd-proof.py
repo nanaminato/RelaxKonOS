@@ -1,6 +1,5 @@
 """Prove a restricted systemd service can forward through a pre-opened Linux TUN."""
 
-import array
 import fcntl
 import hashlib
 import http.server
@@ -25,24 +24,6 @@ target = '198.51.100.53'
 script = root / 'mihomo-tun-fd-proof.py'
 journal = root / 'tun-operation.json'
 config = root / 'active.yaml'
-
-
-def launch():
-    with socket.socket(socket.AF_UNIX) as broker:
-        broker.connect(endpoint)
-        message, rights, _, _ = broker.recvmsg(1, socket.CMSG_SPACE(4))
-        assert message == b'T' and len(rights) == 1
-        level, kind, data = rights[0]
-        assert (level, kind) == (socket.SOL_SOCKET, socket.SCM_RIGHTS)
-        fd, = array.array('i', data)
-    if fd != 7:
-        os.dup2(fd, 7, inheritable=True)
-        os.close(fd)
-    else:
-        os.set_inheritable(7, True)
-    credential = Path(os.environ['CREDENTIALS_DIRECTORY']) / 'active.yaml'
-    binary = root / 'mihomo'
-    os.execv(binary, [binary, '-d', root / 'mihomo-data', '-f', credential])
 
 
 def command(*args):
@@ -114,7 +95,7 @@ def observe(record):
     process = Path('/proc', str(record['service'][0]))
     if os.readlink(process / 'exe') != str(root / 'mihomo') or os.readlink(process / 'ns/net') != record['namespace']:
         raise ValueError('executable or network namespace differs')
-    if f'iff:\t{device}' not in (process / 'fdinfo/7').read_text().splitlines():
+    if f'iff:\t{device}' not in (process / 'fdinfo/198').read_text().splitlines():
         raise ValueError('TUN descriptor differs')
     caps = dict(line.split(':', 1) for line in (process / 'status').read_text().splitlines() if line.startswith('Cap'))
     assert all(int(caps[key], 16) == 1 << 10 for key in ('CapEff', 'CapBnd'))
@@ -126,7 +107,7 @@ def observe(record):
         raise ValueError('process changed during observation')
 
 
-def prepare(index):
+def prepare(index, broker):
     record = json.loads(journal.read_text())
     assert record['phase'] == 'prepared' and link()['ifindex'] == index and not route()
     assert record['namespace'] == os.readlink('/proc/self/ns/net') and record['baseline'] == network_baseline()
@@ -135,6 +116,8 @@ def prepare(index):
     ip('address', 'add', '198.18.0.1/30', 'dev', device)
     ip('link', 'set', device, 'up')
     ip('route', 'add', target + '/32', 'dev', device, 'src', '198.18.0.1')
+    record.update(broker=broker, ifindex=index)
+    sync_record(record)
     service('start', unit)
     assert link()['ifindex'] == index
     record.update(phase='dispatching', service=service_identity(), ifindex=index, route=route())
@@ -225,7 +208,7 @@ tun:
   auto-route: false
   auto-redirect: false
   auto-detect-interface: false
-  file-descriptor: 7
+  file-descriptor: 198
   gso: false
 proxies:
   - name: fixture-upstream
@@ -242,7 +225,8 @@ DefaultDependencies=no
 Type=exec
 User=root
 LoadCredential=active.yaml:{config}
-ExecStart=/usr/bin/python3 -I {root / 'mihomo-tun-fd-proof.py'} launch {root}
+ExecStart=/usr/bin/dotnet {sys.argv[3]} runtime-mihomo-tun-descriptor-launch {root}
+Environment=RELAXKONOS_TEST_SYSTEMD_WORK={root}
 NoNewPrivileges=yes
 PrivateDevices=yes
 ProtectSystem=strict
@@ -250,6 +234,7 @@ ReadWritePaths={root / 'mihomo-data'}
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
 ''')
     service('daemon-reload')
     operation = uuid.uuid4().hex
@@ -310,6 +295,11 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
         assert command(*invocation, 'observe', root, operation) == receipt
         print(f'PASS MIHOMO INHERITED TUN CLEANUP: {operation}, interrupted stop reconciled without replay; '
               'original receipt on retry; process, device and route gone')
+    except Exception:
+        diagnostic = root / 'mihomo-data' / 'launcher.log'
+        if diagnostic.exists():
+            print(diagnostic.read_text()[-4096:], file=sys.stderr)
+        raise
     finally:
         if owner.poll() is None:
             owner.kill()
@@ -320,12 +310,10 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 
 
 action = sys.argv[1]
-if action == 'launch':
-    launch()
-elif action == 'proof':
+if action == 'proof':
     proof()
 elif action == 'prepare':
-    prepare(int(sys.argv[3]))
+    prepare(int(sys.argv[3]), int(sys.argv[4]))
 else:
     with (root / 'tun-operation.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

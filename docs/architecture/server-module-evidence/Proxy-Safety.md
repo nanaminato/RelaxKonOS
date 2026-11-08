@@ -311,7 +311,11 @@ Core 在 Linux 直连 TUN 的原保护标记中记录内核为网关和管理端
 
 真实上游跨执行进程强制退出及设备归属冲突收到三次请求。Mihomo 的原 PID、FD、管理路由及配置摘要 `c11e74de76ca6deeb16d876f818098ee2ff77c22f175b22f3127fedddee2bc09` 一致。停止已派发时再次强制退出，下一进程仅核对进程、设备和路由清理，原回执可重复查询。专属 cgroup 移除，共享服务及代理文件指纹一致。实机 x64 日志 `.artifacts/mb04-tun-marker-sync/tun-helper-fd-linux.log`，归档 SHA-256 `e7c6dbb6e1abc35fd5a669c6bea211feb3b475ac960807f4433f7d3119b78992`。
 
-Windows ManagedRuntimes Release 回归通过，配置事务 99 项，可信下载探针因缺进程级测试 CA 覆盖而跳过。Linux arm64 描述符 ABI 分支未实机验证。Helper 原生实现目前由夹具调用，接收启动器、网络策略、持久归属记录及恢复仍由夹具驱动。生产固定单元接入、设备及规则和 DNS 归属、Helper 与 Core 原回执的联合证明均待完成。受管门禁及 Proxy 常驻继续生效。
+第二轮用 Helper 程序集的原生接收替换夹具的 Python 接收。接收端拒绝错误发送进程，核对 Unix 对端 PID、UID 和消息内的原操作 ID，只接受一个带 `CLOEXEC` 的描述符，并通过 `TUNGETIFF` 及接口索引核对设备。私有 systemd 单元以 `PrivateDevices`、`NoNewPrivileges` 及仅含 `CAP_NET_BIND_SERVICE` 的能力集启动测试启动器。启动器将描述符放入空闲的固定槽位 198，并以同一 PID 执行固定 Mihomo 二进制，读取 systemd 加载的配置凭据。
+
+原操作 `fd4feb62257f408c9bb7000c8265a4f4` 的接收进程 PID 68、`rk-fd-proof` ifindex 4、管理选路及 IPv4/IPv6 规则、配置摘要 `05d93814d2db6a9c35b74226a106ad5818d473d7d5d21ecfe7cc37f8906ec89e` 在交付中断和归属冲突检查中保持一致。真实上游收到三次请求。停止中断后只核对进程、设备及路由退出，重查取得原回执。专属 cgroup 清理，共享服务及代理文件指纹一致。首轮因受限启动器无法遍历专属夹具目录而在交付前失败，见 `.artifacts/mb04-tun-marker-sync/tun-helper-launch-linux.log`。赋予该目录遍历权限后，实机 x64 复验通过，日志 `.artifacts/mb04-tun-marker-sync/tun-helper-launch-linux-retry.log`，归档 SHA-256 `89d39d8e60a1e5e652295b370ae4373ba6a56e094eb8cf9078bb4ee38bc0a44a`。
+
+Windows ManagedRuntimes Release 回归通过，配置事务 99 项，可信下载探针因缺进程级测试 CA 覆盖而跳过。Linux arm64 描述符 ABI 分支未实机验证。启动器位于测试程序集，网络策略、持久归属记录及恢复仍由夹具驱动。生产固定单元接入、设备及规则和 DNS 归属、Helper 与 Core 原回执的联合证明均待完成。受管门禁及 Proxy 常驻继续生效。本轮验证夹具进程退出，对象释放、ALC 回收、隔离内存及生产内存收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

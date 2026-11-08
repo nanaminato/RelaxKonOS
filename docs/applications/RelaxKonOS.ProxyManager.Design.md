@@ -4499,7 +4499,7 @@ Linux 上 Core 在替换直连 TUN 恢复标记后同步状态目录及其父目
 
 Linux 直连 TUN 使用 `iproute2` 读取默认网关及管理端点的内核路径。Core 在原标记保存接口、下一跳、源地址、路由表与类型，恢复时重新核对。默认网关仍在但管理端点已改道时，原标记继续待恢复。运行时的激活和关闭都接收同一 Core 操作 ID。缺少内核路由读回工具时，Linux 不宣告 TUN 可用。
 
-Helper 的 Linux 原生 TUN 描述符实现已在私有 systemd 夹具通过独占打开、同操作 ID、对端凭据和单次交付验收。夹具保留原记录并在两处强制中断后核对真实转发和清理。生产受管 TUN 的固定单元及网络归属仍待接入，准入门禁继续生效。见[Helper 描述符实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-原生-tun-描述符交付)。
+Helper 的 Linux 原生 TUN 描述符实现在私有 systemd 夹具通过独占打开、同操作 ID、双向对端凭据及内核设备核对。测试启动器将收到的描述符交给同一 PID 的受限 Mihomo，保留原记录并在两处强制中断后核对管理选路、配置身份、真实转发和退出。生产受管 TUN 的固定单元及网络归属仍待接入，准入门禁继续生效。见[Helper 描述符实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-原生-tun-描述符交付)。
 
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
 
