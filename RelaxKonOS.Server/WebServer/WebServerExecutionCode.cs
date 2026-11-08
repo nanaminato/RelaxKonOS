@@ -2,12 +2,12 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Loader;
 
-namespace RelaxKonOS.Server.WebsitePublishing;
+namespace RelaxKonOS.Server.WebServer;
 
 /// <summary>One bounded collectible generation, shared by request and durable operation scopes.</summary>
-internal sealed class WebsitePublicationCode
+internal sealed class WebServerExecutionCode
 {
-    internal static WebsitePublicationCode Shared { get; } = new(TimeSpan.FromSeconds(30));
+    internal static WebServerExecutionCode Shared { get; } = new(TimeSpan.FromSeconds(30));
     private const int MaximumGenerations = 4;
     private readonly object gate = new();
     private readonly List<WeakReference> generations = [];
@@ -17,7 +17,7 @@ internal sealed class WebsitePublicationCode
     private int active;
     private long lastRelease;
 
-    internal WebsitePublicationCode(TimeSpan idleDelay)
+    internal WebServerExecutionCode(TimeSpan idleDelay)
     {
         this.idleDelay = idleDelay;
         if (ExecutionContext.IsFlowSuppressed()) timer = CreateTimer();
@@ -32,21 +32,22 @@ internal sealed class WebsitePublicationCode
 
     internal WeakReference? CurrentCode { get { lock (gate) return current?.Code; } }
 
-    internal Lease Acquire(IWebsitePublicationPorts ports)
+    internal Lease<T> Acquire<T>(string executorType, object ports) where T : class
     {
         lock (gate)
         {
             current ??= Load();
             try
             {
-                var executor = (IWebsitePublicationExecutor)Activator.CreateInstance(current.Executor, ports)!;
+                var type = current.Assembly.GetType(executorType, throwOnError: true)!;
+                var executor = (T)Activator.CreateInstance(type, ports)!;
                 active++;
-                return new Lease(this, executor);
+                return new Lease<T>(this, executor);
             }
             catch (Exception)
             {
                 if (active == 0) ScheduleRelease();
-                throw new InvalidDataException("Bundled website publication execution could not be activated.");
+                throw new InvalidDataException("Bundled WebServer execution could not be activated.");
             }
         }
     }
@@ -55,25 +56,24 @@ internal sealed class WebsitePublicationCode
     {
         generations.RemoveAll(reference => !reference.IsAlive);
         if (generations.Count >= MaximumGenerations)
-            throw new InvalidDataException("website publication execution code collection is pending.");
+            throw new InvalidDataException("WebServer execution code collection is pending.");
         var directory = Path.Combine(AppContext.BaseDirectory, "Modules", "WebServer");
         var path = Path.Combine(directory, "RelaxKonOS.ServerModule.WebServer.dll");
         if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
             || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException("Bundled website publication execution assembly is missing or linked.");
+            throw new InvalidDataException("Bundled WebServer execution assembly is missing or linked.");
 
         var context = new ExecutionLoadContext();
         var code = new WeakReference(context);
         generations.Add(code);
         try
         {
-            var executor = context.LoadFromAssemblyPath(path).GetType("RelaxKonOS.Server.WebsitePublishing.WebsitePublicationExecutor", throwOnError: true)!;
-            return new Generation(context, executor, code);
+            return new Generation(context, context.LoadFromAssemblyPath(path), code);
         }
         catch (Exception)
         {
             context.Unload();
-            throw new InvalidDataException("Bundled website publication execution could not be loaded.");
+            throw new InvalidDataException("Bundled WebServer execution could not be loaded.");
         }
     }
 
@@ -107,10 +107,10 @@ internal sealed class WebsitePublicationCode
         }
     }
 
-    internal sealed class Lease(WebsitePublicationCode owner, IWebsitePublicationExecutor executor) : IDisposable
+    internal sealed class Lease<T>(WebServerExecutionCode owner, T executor) : IDisposable where T : class
     {
-        private IWebsitePublicationExecutor? executor = executor;
-        internal IWebsitePublicationExecutor Executor => executor ?? throw new ObjectDisposedException(nameof(Lease));
+        private T? executor = executor;
+        internal T Executor => executor ?? throw new ObjectDisposedException(nameof(Lease<T>));
 
         public void Dispose()
         {
@@ -123,15 +123,15 @@ internal sealed class WebsitePublicationCode
         }
     }
 
-    private sealed record Generation(ExecutionLoadContext Context, Type Executor, WeakReference Code);
+    private sealed record Generation(ExecutionLoadContext Context, Assembly Assembly, WeakReference Code);
 
-    private sealed class ExecutionLoadContext() : AssemblyLoadContext($"website-publication:{Guid.NewGuid():N}", isCollectible: true)
+    private sealed class ExecutionLoadContext() : AssemblyLoadContext($"webserver-execution:{Guid.NewGuid():N}", isCollectible: true)
     {
         protected override Assembly? Load(AssemblyName name)
         {
             if (name.Name is "RelaxKonOS.Server" || name.Name?.StartsWith("RelaxKonOS.ServerModule.", StringComparison.Ordinal) == true
                 && name.Name != "RelaxKonOS.ServerModule.WebServer.Contracts")
-                throw new InvalidDataException("website publication execution cannot depend on Host or another implementation.");
+                throw new InvalidDataException("WebServer execution cannot depend on Host or another implementation.");
             return null;
         }
     }

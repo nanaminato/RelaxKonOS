@@ -23,32 +23,50 @@ internal sealed partial class NginxWebServerManager
             return result;
         }
 
-        internal async Task<WebServerOperationResult> ReloadAsync(WebServerDto instance, IWebServerOperationProgress progress, CancellationToken ct)
+        internal async Task<WebServerOperationResult> ReloadAsync(WebServerDto instance, WebServerOperationStore.OperationProgress progress, CancellationToken ct)
         {
             await IntegrationGate.WaitAsync(ct);
-            try { return await ReloadCoreAsync(instance, progress, ct); }
+            try
+            {
+                var lease = WebServerExecutionCode.Shared.Acquire<INginxReloadExecutor>(
+                    "RelaxKonOS.Server.WebServer.NginxReloadExecutor", new ReloadPorts(nginx, instance, progress));
+                progress.HoldExecution(lease);
+                return new(await RunReloadAsync(lease.Executor, ct));
+            }
             finally { IntegrationGate.Release(); }
         }
 
-        private async Task<WebServerOperationResult> ReloadCoreAsync(WebServerDto instance, IWebServerOperationProgress progress, CancellationToken ct)
+        private static async Task<string> RunReloadAsync(INginxReloadExecutor executor, CancellationToken ct)
         {
-            if (nginx.UsesSystemPackageNginx(instance))
+            try { return await executor.ReloadAsync(ct); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
+            catch (NginxProcessCleanupException)
             {
-                await progress.ReportAsync(WebServerOperationStore.NativeReloadDispatchStage, ct);
-                var helper = await nginx.RunTrackedReloadAsync(progress.OperationId, ct);
-                var receipt = helper.NginxReloadReceipt;
-                if (helper.ProblemCode == PrivilegedProblemCode.RecoveryRequired
-                    || helper.Success && receipt is null
-                    || receipt is not null && (receipt.OperationId != progress.OperationId || receipt.Succeeded != helper.Success))
-                    return new(WebServerOperationStore.NativeRecoveryRequired);
-                await progress.ReportAsync(receipt is null ? "running" : WebServerOperationStore.NativeReloadConfirmedStage, CancellationToken.None);
-                return new(helper.Success ? "" : ToWebServerProblem(helper.ProblemCode, "webserver.reload_failed"));
+                throw new NginxProcessCleanupException(new InvalidOperationException("Direct reload did not drain."));
             }
-            var reload = await nginx.RunNginxAsync(instance.ExecutablePath,
+            catch (Exception) { throw new InvalidOperationException("Nginx reload execution failed."); }
+        }
+
+        private sealed class ReloadPorts(NginxWebServerManager nginx, WebServerDto instance, WebServerOperationStore.OperationProgress progress) : INginxReloadPorts
+        {
+            public Guid OperationId => progress.OperationId;
+            public bool UsesSystemPackage => nginx.UsesSystemPackageNginx(instance);
+
+            public Task ReportDispatchAsync(CancellationToken cancellationToken) =>
+                progress.ReportAsync(WebServerOperationStore.NativeReloadDispatchStage, cancellationToken);
+
+            public Task ReportResponseAsync(bool confirmed) => progress.ReportAsync(
+                confirmed ? WebServerOperationStore.NativeReloadConfirmedStage : "running", CancellationToken.None);
+
+            public Task<PrivilegedOperationResult> RunTrackedAsync(Guid operationId, CancellationToken cancellationToken) =>
+                nginx.RunTrackedReloadAsync(operationId, cancellationToken);
+
+            public async Task<bool> RunDirectAsync(CancellationToken cancellationToken) => (await nginx.RunNginxAsync(instance.ExecutablePath,
                 instance.ManagementMode == WebServerManagementMode.Managed
                     ? nginx.ManagedArguments(nginx.GetManagedLayout(), ["-s", "reload"])
-                    : ["-s", "reload"], ct);
-            return new(reload.Success ? "" : "webserver.reload_failed");
+                    : ["-s", "reload"], cancellationToken)).Success;
+
+            public string ToReloadProblem(PrivilegedProblemCode problem) => ToWebServerProblem(problem, "webserver.reload_failed");
         }
 
         internal Task<WebServerOperationResult> EnableAcmeHttp01Async(WebServerDto instance, CancellationToken ct) =>

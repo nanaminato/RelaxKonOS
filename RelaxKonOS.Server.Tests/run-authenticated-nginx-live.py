@@ -110,6 +110,8 @@ def run(root, server, helper_binary, mode):
     @contextmanager
     def process(arguments, name):
         child_env = dict(env, DOTNET_STARTUP_HOOKS=website_hook) if website_hook and arguments[0] == server else env
+        if website_hook and retire_live and arguments[0] == server:
+            child_env["RELAXKONOS_TEST_WEBSERVER_COLLECT"] = "1"
         with (root / f"{name}.stderr").open("w") as errors, (root / f"{name}.stdout").open("w") as output:
             child = subprocess.Popen(["dotnet", *map(str, arguments)], cwd=root, env=child_env,
                                      stdin=subprocess.PIPE, stdout=output, stderr=errors)
@@ -137,8 +139,8 @@ def run(root, server, helper_binary, mode):
             time.sleep(0.1)
         raise TimeoutError(f"{name} readiness check failed")
 
-    def website_code_events(name):
-        prefix = "WEBSITE EXECUTION "
+    def webserver_code_events(name):
+        prefix = "WEBSERVER EXECUTION "
         return [line.removeprefix(prefix) for line in (root / f"{name}.stderr").read_text().splitlines()
                 if line.startswith(prefix)]
 
@@ -207,7 +209,8 @@ def run(root, server, helper_binary, mode):
                         kind = request["operation"]
                         if relay_mode and kind == "NginxReloadReceipt" and not permit_query.wait(12):
                             raise RuntimeError("The fixture did not release the receipt observation")
-                        if retire_retry and kind == "NginxRetireReloadReceipt" and dropped.is_set():
+                        if (retire_retry and kind == "NginxRetireReloadReceipt"
+                                and dropped.is_set() and not permit_query.is_set()):
                             assert request["operationId"] == operation
                             retirement_retried.set()
                             if not permit_query.wait(20):
@@ -289,6 +292,8 @@ def run(root, server, helper_binary, mode):
                            if item["executablePath"] == executable and item["configurationPath"] == str(configuration)]
                 assert len(matches) == 1, "The dedicated Nginx instance was not discovered"
                 route = f"{web}/{matches[0]['id']}/reload"
+                if website_hook:
+                    assert not webserver_code_events("drain-server")
                 pid = int(nginx_pid_file.read_text())
                 for count, (previous, current) in enumerate((("original", "cancelled"), ("cancelled", "stopped")), 1):
                     release.unlink(missing_ok=True)
@@ -302,6 +307,9 @@ def run(root, server, helper_binary, mode):
                              "native reload dispatch")
                     assert_served(current.encode())
                     assert request(receipt_route, token=token)["state"].lower() == "running"
+                    if website_hook:
+                        events = webserver_code_events("drain-server")
+                        assert len(events) == 1 and events[0].startswith("load webserver-execution:")
                     if count == 1:
                         cancelled = request(receipt_route + "/cancel", token=token, method="POST")
                         assert cancelled["state"].lower() == "running"
@@ -330,6 +338,8 @@ def run(root, server, helper_binary, mode):
                          "original native success after graceful shutdown")
                 replay = request(route, token=token, expected=202, method="POST", key=key)
                 assert replay["operationId"] == operation and replay["state"].lower() == "succeeded"
+                if website_hook:
+                    assert not webserver_code_events("drain-restarted-server")
                 assert_served(b"stopped")
                 assert int(nginx_pid_file.read_text()) == pid
                 assert witness.read_text().splitlines() == ["reload", "reload"]
@@ -508,8 +518,8 @@ def run(root, server, helper_binary, mode):
                     issued = request(f"{certificates}/operations/{active['certificateOperationId']}", token=token)
                     assert issued["state"].lower() == "succeeded" and issued["certificateId"] == active["certificateId"]
                     if website_hook:
-                        loaded = website_code_events("website-server")
-                        assert len(loaded) == 1 and loaded[0].startswith("load website-publication:")
+                        loaded = webserver_code_events("website-server")
+                        assert len(loaded) == 1 and loaded[0].startswith("load webserver-execution:")
                         assert request("/api/v1.0/server/modules/relaxkonos.webserver", token=token)["residency"]["activeLeases"] == 1
                     assert witness.read_text().splitlines() == ["reload"] and list(challenge_root.iterdir()) == [sentinel]
                     assert_ca_once()
@@ -528,7 +538,7 @@ def run(root, server, helper_binary, mode):
                         assert receipt["certificateOperationId"] == issued["operationId"]
                         request(resume_route, method="POST", expected=401)
                         if website_hook:
-                            assert not website_code_events("bootstrap-resume-server"), "Startup receipt and denied recovery resolved the executor"
+                            assert not webserver_code_events("bootstrap-resume-server"), "Startup receipt and denied recovery resolved the executor"
                         bootstrap = site_file.read_bytes()
                         site_file.write_bytes(bootstrap + b"# external edit\n")
                         try:
@@ -550,15 +560,15 @@ def run(root, server, helper_binary, mode):
                             assert_ca_once()
                             assert_served(b"original")
                             if website_hook:
-                                loaded = website_code_events("bootstrap-resume-server")
-                                assert len(loaded) == 1 and loaded[0].startswith("load website-publication:")
+                                loaded = webserver_code_events("bootstrap-resume-server")
+                                assert len(loaded) == 1 and loaded[0].startswith("load webserver-execution:")
                                 unloaded = [*loaded, "unload " + loaded[0][5:]]
-                                wait_for(restarted, lambda: website_code_events("bootstrap-resume-server") == unloaded,
+                                wait_for(restarted, lambda: webserver_code_events("bootstrap-resume-server") == unloaded,
                                          "bootstrap-resume-server", attempts=450)
                                 assert published_body() and nginx_pid_file.read_text() == master
                                 assert resumed == request(resume_route, token=token, method="POST")
-                                woke = website_code_events("bootstrap-resume-server")
-                                assert woke[:2] == unloaded and len(woke) == 3 and woke[-1].startswith("load website-publication:") and woke[-1] != loaded[0]
+                                woke = webserver_code_events("bootstrap-resume-server")
+                                assert woke[:2] == unloaded and len(woke) == 3 and woke[-1].startswith("load webserver-execution:") and woke[-1] != loaded[0]
                                 assert witness.read_text().splitlines() == ["reload", "reload"]
                                 assert_ca_once()
                                 print(f"PASS AUTHENTICATED WEBSITE EXECUTION: publication={operation_id}; {loaded[0][5:]} unloaded; {woke[-1]}; same TLS and receipts")
@@ -1141,6 +1151,8 @@ def run(root, server, helper_binary, mode):
             instance = matches[0]["id"]
             reload_route = f"{web}/{instance}/reload"
             request(reload_route, expected=401, method="POST", key=key)
+            if website_hook:
+                assert not webserver_code_events("initial-server")
             assert_served(b"original")
             nginx_pid = int(nginx_pid_file.read_text())
             site = root / "nginx" / "conf.d" / "site.conf"
@@ -1200,11 +1212,19 @@ def run(root, server, helper_binary, mode):
                 assert request(operation_route, token=token)["state"].lower() == "succeeded"
                 assert retirement_pending() and receipt_file.stat().st_size == 0
                 if retire_live:
+                    if website_hook:
+                        loaded = webserver_code_events("initial-server")
+                        assert len(loaded) == 1 and loaded[0].startswith("load webserver-execution:")
                     assert retirement_retried.wait(12), "The running Server did not retry the original retirement"
                     module_route = "/api/v1.0/server/modules/relaxkonos.webserver"
                     assert request(module_route, token=token)["residency"]["activeLeases"] > 0
                     assert retirement_pending() and initial.poll() is None and helper.poll() is None
                     assert_served(b"updated")
+                    if website_hook:
+                        time.sleep(32)
+                        assert webserver_code_events("initial-server") == loaded
+                        assert retirement_pending() and request(module_route, token=token)["residency"]["activeLeases"] > 0
+                        assert_served(b"updated")
                     permit_query.set()
                     wait_for(initial, lambda: not retirement_pending(), "live retry of the original retirement")
                     wait_for(initial, lambda: request(module_route, token=token)["residency"]["activeLeases"] == 0,
@@ -1216,6 +1236,27 @@ def run(root, server, helper_binary, mode):
                     assert int(nginx_pid_file.read_text()) == nginx_pid
                     assert_served(b"updated")
                     print(f"PASS NGINX LIVE RETIREMENT ACK RETRY: operation={operation}; original lease, terminal result and HTTPS; no reload")
+                    if website_hook:
+                        generation = loaded[0][5:]
+                        collected = [*loaded, f"unload {generation}", f"collected {generation}"]
+                        wait_for(initial, lambda: webserver_code_events("initial-server") == collected,
+                                 "collection after receipt retirement", attempts=450)
+                        assert request(reload_route, token=token, expected=202, method="POST", key=key) == replay
+                        assert webserver_code_events("initial-server") == collected
+                        assert_served(b"updated")
+                        fresh = request(reload_route, token=token, expected=202, method="POST", key=secrets.token_hex(16))
+                        assert fresh["operationId"] != operation
+                        fresh_path = f"{web}/operations/{fresh['operationId']}"
+                        wait_for(initial, lambda: request(fresh_path, token=token)["state"].lower() == "succeeded",
+                                 "explicit new reload in fresh execution generation")
+                        wait_for(initial, lambda: request(module_route, token=token)["residency"]["activeLeases"] == 0,
+                                 "fresh reload receipt cleanup")
+                        woke = webserver_code_events("initial-server")
+                        assert len(woke) == 4 and woke[:3] == collected and woke[-1].startswith("load webserver-execution:")
+                        assert woke[-1] != loaded[0] and witness.read_text().splitlines() == ["reload", "reload"]
+                        assert int(nginx_pid_file.read_text()) == nginx_pid
+                        assert_served(b"updated")
+                        print(f"PASS NGINX EXECUTION COLLECTION: operation={operation}; {generation} collected; {woke[-1]}; original TLS master")
                     return
             elif expect_unknown:
                 if mode == "--systemd-unknown":
@@ -1269,6 +1310,8 @@ def run(root, server, helper_binary, mode):
                 assert receipt_file.stat().st_size == 0 and witness.read_text().splitlines() == ["reload"]
                 print(f"PASS NGINX RECEIPT RETIREMENT: operation={operation}; durable API result; old Helper ID rejected")
             replay = request(reload_route, token=token, expected=202, method="POST", key=key)
+            if website_hook:
+                assert not webserver_code_events("restarted-server")
             observed = request(operation_route, token=token)
             if mode == "--systemd-receipt" or retire_retry:
                 expected = ("succeeded", "")

@@ -12,7 +12,7 @@ namespace RelaxKonOS.Server.WebsitePublishing;
 /// <summary>Owns the admitted executor for the entire request or background scope.</summary>
 internal sealed class WebsitePublicationExecution : IDisposable
 {
-    private readonly WebsitePublicationCode.Lease lease;
+    private readonly WebServerExecutionCode.Lease<IWebsitePublicationExecutor> lease;
     private readonly IHostApplicationLifetime lifetime;
 
     public WebsitePublicationExecution(WebsitePublicationStore store, ApplicationDeploymentManager applications,
@@ -20,16 +20,16 @@ internal sealed class WebsitePublicationExecution : IDisposable
         CertificateOperationStore certificateOperations, IHttpClientFactory httpClients, IHostApplicationLifetime lifetime,
         ILogger<WebsitePublicationExecution> logger, NginxWebServerManager? nginx = null)
         : this(store, applications, catalog, webServers, certificates, certificateOperations, httpClients, lifetime,
-            logger, WebsitePublicationCode.Shared, nginx) { }
+            logger, WebServerExecutionCode.Shared, nginx) { }
 
     internal WebsitePublicationExecution(WebsitePublicationStore store, ApplicationDeploymentManager applications,
         ApplicationDeploymentCatalogStore catalog, IWebServerManager webServers, ICertificateManager certificates,
         CertificateOperationStore certificateOperations, IHttpClientFactory httpClients, IHostApplicationLifetime lifetime,
-        ILogger<WebsitePublicationExecution> logger, WebsitePublicationCode code, NginxWebServerManager? nginx = null)
+        ILogger<WebsitePublicationExecution> logger, WebServerExecutionCode code, NginxWebServerManager? nginx = null)
     {
         this.lifetime = lifetime;
-        lease = code.Acquire(new Ports(store, applications, catalog, webServers,
-            certificates, certificateOperations, httpClients, logger, nginx));
+        lease = code.Acquire<IWebsitePublicationExecutor>("RelaxKonOS.Server.WebsitePublishing.WebsitePublicationExecutor",
+            new Ports(store, applications, catalog, webServers, certificates, certificateOperations, httpClients, logger, nginx));
     }
 
     internal async Task RunAsync(Guid operationId, PublishWebsiteRequest request, string actor, CancellationToken workStopping)

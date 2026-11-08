@@ -1,5 +1,6 @@
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.WebServer;
 using RelaxKonOS.Server.WebsitePublishing;
 
 internal static class WebsitePublicationTestScopes
@@ -9,13 +10,13 @@ internal static class WebsitePublicationTestScopes
         IWebServerManager webServers, ICertificateManager certificates, CertificateOperationStore certificateOperations,
         IHttpClientFactory httpClients, IHostApplicationLifetime lifetime, ILogger<WebsitePublicationCoordinator> logger,
         IResidentModuleWorkLeaseSource leases, Action? executionCreated = null, Func<ValueTask>? cleanup = null,
-        WebsitePublicationCode? code = null)
+        WebServerExecutionCode? code = null)
     {
         var scopes = new OperationTestScopeFactory<WebsitePublicationExecution>(() =>
         {
             executionCreated?.Invoke();
             return new WebsitePublicationExecution(store, applications, catalog, webServers, certificates, certificateOperations,
-                httpClients, lifetime, NullLogger<WebsitePublicationExecution>.Instance, code ?? WebsitePublicationCode.Shared);
+                httpClients, lifetime, NullLogger<WebsitePublicationExecution>.Instance, code ?? WebServerExecutionCode.Shared);
         }, cleanup, disposeExecution: true);
         return new WebsitePublicationCoordinator(store, catalog, scopes, lifetime, logger, leases);
     }

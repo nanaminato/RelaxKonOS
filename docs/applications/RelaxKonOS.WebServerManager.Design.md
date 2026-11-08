@@ -1760,3 +1760,5 @@ Linux 系统包 Nginx 的 WebRoot 启用中断后，后续授权的 TLS 绑定�
 专属 WebRoot 挑战文件内容无法与原摘要匹配时，证书操作保留清理责任和原订单。网站发布同键仍返回原中断回执，现有 Nginx 与 TLS 继续服务。见[挑战文件归属验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-webroot-挑战内容变化时保留原清理责任)。
 
 网站发布及具名首站恢复按需加载执行程序集。实际执行和终态提交结束、最后一个作用域释放后进入 30 秒闲时卸载窗口。站点转发、TLS 与原回执继续由 Nginx 和 Server 原服务负责。见[网站发布独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布独立执行程序集)。
+
+获准的直接 Nginx 重载与网站发布共享按需加载的 WebServer 执行代次。命令、原终态和 Helper 回执清理全部完成后，最后一个作用域释放并开始闲时计时。原 ID 的同键查询和启动对账由 Server 台账处理。闲时执行代码卸载期间，Nginx 保持站点转发和 TLS。见[直接重载独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-nginx-重载独立执行程序集)。

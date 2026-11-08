@@ -28,7 +28,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
 {
     internal const string NativeReloadDispatchStage = "native-reload-dispatch";
     internal const string NativeReloadConfirmedStage = "native-reload-confirmed";
-    internal const string NativeRecoveryRequired = "webserver.native_recovery_required";
+    internal const string NativeRecoveryRequired = NginxReloadOutcome.RecoveryRequired;
     private readonly string _path;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<Guid, PersistedOperation> _operations = [];
@@ -107,7 +107,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         => await StartAsync(idempotencyKey, instanceId, kind, actor, (_, cancellationToken) => action(cancellationToken), applicationStopping);
 
     internal Task<WebServerOperationDto> StartScopedAsync<TExecution>(string idempotencyKey, string instanceId, string kind, string? actor,
-        IServiceScopeFactory scopes, Func<TExecution, IWebServerOperationProgress, CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
+        IServiceScopeFactory scopes, Func<TExecution, OperationProgress, CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
         where TExecution : notnull =>
         StartAsync(idempotencyKey, instanceId, kind, actor, async (progress, ct) =>
         {
@@ -120,8 +120,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             }
         }, applicationStopping);
 
-    public async Task<WebServerOperationDto> StartAsync(string idempotencyKey, string instanceId, string kind, string? actor,
-        Func<IWebServerOperationProgress, CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
+    private async Task<WebServerOperationDto> StartAsync(string idempotencyKey, string instanceId, string kind, string? actor,
+        Func<OperationProgress, CancellationToken, Task<WebServerOperationResult>> action, CancellationToken applicationStopping)
     {
         var key = $"{kind}:{instanceId}:{idempotencyKey}";
         using var work = await _workOwner.AdmitAsync(applicationStopping);
@@ -193,9 +193,10 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         finally { _gate.Release(); }
     }
 
-    private async Task RunAsync(Guid operationId, string instanceId, Func<IWebServerOperationProgress, CancellationToken, Task<WebServerOperationResult>> action,
+    private async Task RunAsync(Guid operationId, string instanceId, Func<OperationProgress, CancellationToken, Task<WebServerOperationResult>> action,
         CancellationToken applicationStopping, CancellationToken workStopping, CancellationTokenSource cancellation)
     {
+        using var progress = new OperationProgress(this, operationId);
         try
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(applicationStopping, workStopping, cancellation.Token);
@@ -210,7 +211,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 await instanceGate.WaitAsync(linked.Token);
                 try
                 {
-                    result = await action(new OperationProgress(this, operationId), linked.Token);
+                    result = await action(progress, linked.Token);
                     if (result.ProblemCode == NativeRecoveryRequired)
                     {
                         await PreserveUnknownNativeOperationAsync(operationId);
@@ -445,9 +446,24 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
 
     private sealed class ExecutionCleanupException(Exception inner) : InvalidOperationException("Web-server execution scope did not drain.", inner);
 
-    private sealed class OperationProgress(WebServerOperationStore owner, Guid operationId) : IWebServerOperationProgress
+    internal sealed class OperationProgress(WebServerOperationStore owner, Guid operationId) : IWebServerOperationProgress, IDisposable
     {
+        private IDisposable? execution;
+
         public Guid OperationId => operationId;
+
+        // The durable owner outlives both the executor call and its DI scope.
+        internal void HoldExecution(IDisposable lease)
+        {
+            if (execution is not null)
+            {
+                lease.Dispose();
+                throw new InvalidOperationException("This WebServer operation already holds execution code.");
+            }
+            execution = lease;
+        }
+
+        public void Dispose() => execution?.Dispose();
 
         public Task ReportAsync(string stage, CancellationToken cancellationToken)
         {

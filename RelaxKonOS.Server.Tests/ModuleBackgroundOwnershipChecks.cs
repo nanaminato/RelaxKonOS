@@ -8,6 +8,7 @@ using RelaxKonOS.Protocol.WebsitePublishing;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Residency;
 using RelaxKonOS.Server.Startup;
+using RelaxKonOS.Server.WebServer;
 using RelaxKonOS.Server.WebsitePublishing;
 
 internal static class ModuleBackgroundOwnershipChecks
@@ -360,7 +361,7 @@ internal static class ModuleBackgroundOwnershipChecks
                 TestAssert.Assert(await probe.GetStringAsync("https://localhost/probe").WaitAsync(TimeSpan.FromSeconds(10)) == "ready",
                     "The TLS fixture must authenticate the loopback service before running the cancellation check.");
             var verification = new LoopbackWebsiteVerification(port, fingerprint);
-            var verifyingCode = new WebsitePublicationCode(TimeSpan.FromMilliseconds(30));
+            var verifyingCode = new WebServerExecutionCode(TimeSpan.FromMilliseconds(30));
             using var verifying = WebsitePublicationTestScopes.Create(reopened, applications, catalog, web, cert, f.Certificates, verification,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, f.Source, code: verifyingCode);
             await verifying.StartAsync(default);
