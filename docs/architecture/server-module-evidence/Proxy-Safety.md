@@ -40,6 +40,7 @@
 - [MB-04 冻结 TUN 意图授权](#mb-04-冻结-tun-意图授权)
 - [MB-04 生产归档配置适配器的 TUN 恢复](#mb-04-生产归档配置适配器的-tun-恢复)
 - [MB-04 Server 生成 TUN 意图及管理 UID 复核](#mb-04-server-生成-tun-意图及管理-uid-复核)
+- [MB-04 TUN 策略规则归属及删除中断](#mb-04-tun-策略规则归属及删除中断)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -406,6 +407,18 @@ Linux x64 私有 systemd 让非特权 Server 进程以 nobody UID 生成候选�
 Windows ManagedRuntimes Release 通过，含 104 项配置事务，可信下载探针因缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-plan-win.log`。
 
 本轮只覆盖单个 IPv4 管理端点、一个精确 TUN 目标和 UID 选路。策略规则由夹具注入以验证漂移拒绝。生产受控范围来源及发布入口、规则和 DNS 写入所有权、成功提交后的生命周期、同键 HTTP 和实际工作租约待验收。公开准入与成功提交门禁继续生效，Proxy 保持 resident。已确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
+
+## MB-04 TUN 策略规则归属及删除中断
+
+Helper 在原操作记录中绑定派生路由表，独占添加精确 IPv4 目标及策略规则。归属核对要求优先级、目标、表、协议和其余选择器全部符合原规则。同优先级或同表存在外来规则时拒绝继续。管理基线使用数字化规则输出，只有唯一且完整匹配的自有规则可在基线比对时排除。原停止后确认设备、地址及专用表路由退出，再持久化规则删除派发并删除一次。派发结果不明时只读确认规则缺席。[iproute2 策略规则](https://raw.githubusercontent.com/iproute2/iproute2/main/man/man8/ip-rule.8.in)
+
+Linux x64 私有 systemd 原操作 `f10ec9a945e74c4dadbd277e3bc18689`，专用表 1823052713、规则优先级 11000、协议 186、`rk-fd-proof` ifindex 4、候选 PID 226、配置摘要 `d0e98f9961a9abed8e3b72d710300e03647beba4609359c827cdd1965e9a4c63`。三次真实上游请求覆盖候选派发中断及归属冲突。夹具插入同优先级外来规则时，Helper 返回 `runtime.network_rule_conflict`，保留原记录与进程。也复验了仅影响 Server UID 的管理路由漂移拒绝。
+
+原停止派发后强制中断。再恢复时，由私有挂载内的诊断边界在真实内核删除规则成功后、Helper 写终态前第三次强制中断。重启只读核对规则缺席，实际删除调用计数为一，旧配置、数据、监听和原 `Interrupted` 回执恢复，同键读取未重发。专属进程及 cgroup 清理，宿主共享服务与代理文件指纹一致。首轮数字路由输出的链路范围导致只读校验拒绝，保持待核验，见 `.artifacts/mb04-tun-marker-sync/tun-rule-linux.log`。按内核数字链路范围校验后通过，日志 `.artifacts/mb04-tun-marker-sync/tun-rule-linux-final.log`，归档 SHA-256 `b0b7260a2f71d1d775cbc125ae1da2df8e2615d841dce0bc139e167bb9297529`。
+
+Windows ManagedRuntimes Release 通过，含 104 项配置事务。可信下载探针因缺进程级测试 CA 覆盖跳过，日志 `.artifacts/mb04-tun-marker-sync/tun-rule-win-final.log`。
+
+当前证据覆盖一个精确 IPv4 目标和一条自有策略规则。生产范围来源、DNS 写入归属、提交后生命周期、生产同键 HTTP 和真实工作租约待验收。公开准入及成功提交门禁继续生效，Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

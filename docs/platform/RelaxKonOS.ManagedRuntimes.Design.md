@@ -287,3 +287,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）生产归档配置适配器已在 Linux x64 私有 systemd 验证固定 TUN 宿主调用与两次中断恢复。仍需生成生产意图并验证规则及 DNS 归属、提交后生命周期、同键 HTTP 和工作租约，公开准入与成功提交继续受门禁保护。见[生产适配器恢复证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-生产归档配置适配器的-tun-恢复)。
 
 2026-11-08（MR-03 / MB-04）Linux x64 私有 systemd 已验证非特权 Server 规划器与 root Helper 使用原 Server UID 复核管理选路。仅该 UID 受影响的策略漂移保留原操作，后续从同一回执恢复。生产范围、发布入口、规则及 DNS 写入归属与提交后生命周期仍待联合验收。见[管理 UID 复核证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-server-生成-tun-意图及管理-uid-复核)。
+
+2026-11-08（MR-03 / MB-04）Linux x64 私有 systemd 已验证原操作专用路由表、策略规则冲突拒绝及删除派发中断后的只读清理核对。生产范围和发布入口、DNS 写入归属、提交后生命周期、同键 HTTP 及工作租约仍待联合验收。见[策略规则证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-策略规则归属及删除中断)。

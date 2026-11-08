@@ -109,7 +109,8 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             var (_, network) = await RequireTunMaterialAsync(pending, ct);
             var intent = new MihomoTunIntent(pending.OperationId, revision.RevisionId, pending.Plan.CandidateIdentity,
                 LinuxMihomoTunCheckpoint.BootId(), LinuxMihomoTunCheckpoint.NetworkNamespace(),
-                network.Device, network.Address, network.Destination, network.ManagementAddress, network.ManagementUserId, network.ManagementHash);
+                network.Device, network.Address, network.Destination, network.ManagementAddress, network.ManagementUserId,
+                network.ManagementHash, LinuxMihomoTunRoutes.TableFor(pending.OperationId));
             await TunHost().ActivateTunAsync(intent, binary, Data(revision), ct);
             return;
         }
@@ -173,7 +174,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             if (pending.Plan.NetworkIntentIdentity is null || !IsFixedLinuxHost)
                 throw new RuntimePolicyException("runtime.network_transaction_required");
             if (effect.Phase == MihomoTunPhase.Restored) return true;
-            if (effect.Phase == MihomoTunPhase.StopDispatched)
+            if (effect.Phase is MihomoTunPhase.StopDispatched or MihomoTunPhase.RuleRemovalDispatched)
             {
                 await TunHost().CompleteTunStopAsync(pending.OperationId, ct);
                 return true;

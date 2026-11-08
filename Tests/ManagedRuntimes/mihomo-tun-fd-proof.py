@@ -7,6 +7,7 @@ import os
 import pwd
 from pathlib import Path
 import select
+import shlex
 import shutil
 import signal
 import socket
@@ -41,8 +42,14 @@ def service(*args):
     return command('/usr/bin/systemctl', *args)
 
 
-def rules():
-    return (ip('-4', 'rule', 'show'), ip('-6', 'rule', 'show'))
+def rules(table=None):
+    result = []
+    for family in ('-4', '-6'):
+        entries = json.loads(ip('-j', '-N', family, 'rule', 'show'))
+        if family == '-4' and table is not None:
+            entries = [rule for rule in entries if rule.get('table') != str(table)]
+        result.append(json.dumps(entries, separators=(',', ':')))
+    return result
 
 
 def devices():
@@ -64,12 +71,13 @@ def sync_record(record):
         os.close(directory)
 
 
-def network_baseline():
-    return [ip('-4', 'route', 'get', '192.0.2.1', 'uid', str(pwd.getpwnam('nobody').pw_uid)), *rules()]
+def network_baseline(table=None):
+    return [ip('-4', 'route', 'get', '192.0.2.1', 'uid', str(pwd.getpwnam('nobody').pw_uid)), *rules(table)]
 
 
-def route():
-    return json.loads(ip('-j', '-4', 'route', 'show', 'exact', target + '/32'))
+def route(table):
+    entries = json.loads(ip('-j', '-N', '-4', 'route', 'show', 'table', 'all'))
+    return [entry for entry in entries if entry.get('table') == str(table)]
 
 
 def link():
@@ -93,9 +101,9 @@ def checkpoint(record, action):
 
 def observe(record):
     checkpoint(record, 'observe')
-    if network_baseline() != record['baseline'] or service_identity() != record['service']:
+    if network_baseline(record['routing_table']) != record['baseline'] or service_identity() != record['service']:
         raise ValueError('management route or systemd process identity differs')
-    if route() != record['route']:
+    if route(record['routing_table']) != record['route']:
         raise ValueError('TUN route differs')
     process = Path('/proc', str(record['service'][0]))
     binary = archive / 'versions' / uuid.UUID(record['revision']).hex / 'mihomo'
@@ -115,9 +123,11 @@ def observe(record):
 
 def prepare(index, broker):
     record = json.loads(journal.read_text())
-    assert record['phase'] == 'prepared' and link()['ifindex'] == index and route()
-    assert record['namespace'] == os.readlink('/proc/self/ns/net') and record['baseline'] == network_baseline()
-    record.update(phase='dispatching', service=service_identity(), ifindex=index, broker=broker, route=route(),
+    dispatch = json.loads((archive / 'operations' / record['operation'] / 'tun-3.json').read_text())
+    table = dispatch['Intent']['RoutingTable']
+    assert record['phase'] == 'prepared' and link()['ifindex'] == index and route(table)
+    assert record['namespace'] == os.readlink('/proc/self/ns/net') and record['baseline'] == network_baseline(table)
+    record.update(phase='dispatching', service=service_identity(), ifindex=index, broker=broker, route=route(table), routing_table=table,
                   credential=hashlib.sha256(config.read_bytes()).hexdigest())
     sync_record(record)
 
@@ -133,9 +143,30 @@ def reconcile(action, operation):
         observe(record)
         if action == 'observe':
             return record
-    elif phase != 'StopDispatched' or action == 'observe':
+    elif phase not in ('StopDispatched', 'RuleRemovalDispatched') or action == 'observe':
         raise ValueError('effect is not attributable to the original dispatch')
     return json.loads(checkpoint(record, 'recover'))
+
+
+def install_rule_failure_boundary():
+    original = root / 'ip-real'
+    wrapper = root / 'ip-wrapper'
+    shutil.copy2('/usr/sbin/ip', original)
+    wrapper.write_text(f'''#!/bin/bash
+set -eu
+real={shlex.quote(str(original))}
+if [[ "$*" == "-4 rule del priority 11000 to {target}/32 lookup "* ]]; then
+    printf '%s\n' attempt >> {shlex.quote(str(root / 'rule-delete-attempts'))}
+    "$real" "$@"
+    if [[ -f {shlex.quote(str(root / 'interrupt-rule-delete'))} ]]; then
+        kill -KILL "$PPID"
+    fi
+else
+    exec "$real" "$@"
+fi
+''')
+    wrapper.chmod(0o755)
+    command('/usr/bin/mount', '--bind', str(wrapper), '/usr/sbin/ip')
 
 
 class Upstream(http.server.BaseHTTPRequestHandler):
@@ -178,7 +209,7 @@ def proof():
     mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines() if ' - tmpfs ' in line}
     assert {'/run', '/var/lib', '/etc/systemd/system'} <= mounts
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
-    assert not route()
+    install_rule_failure_boundary()
     refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
     assert refused.returncode == 1 and 'runtime.network_checkpoint_conflict' in refused.stderr
     baseline = network_baseline()
@@ -226,6 +257,7 @@ rules:
         assert native.startswith(f'PASS HELPER NATIVE TUN DESCRIPTOR: {operation};')
         original = journal.read_bytes()
         record = json.loads(original)
+        table = str(record['routing_table'])
         identity = record['credential']
         original_checkpoints = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
         assert len(original_checkpoints) == 4
@@ -278,11 +310,15 @@ rules:
         assert service_identity() == record['service']
         probe('conflict')
         ip('link', 'set', 'dev', device, 'alias', operation)
-        ip('-4', 'route', 'del', target + '/32', 'dev', device)
+        ip('-4', 'route', 'del', 'table', table, target + '/32', 'dev', device)
         refused = subprocess.run([*invocation, 'recover', root, operation], timeout=8)
-        assert refused.returncode == 3 and journal.read_bytes() == original and not route()
+        assert refused.returncode == 3 and journal.read_bytes() == original and not route(table)
         assert service_identity() == record['service']
-        ip('-4', 'route', 'add', target + '/32', 'dev', device, 'src', address, 'scope', 'link')
+        ip('-4', 'route', 'add', 'table', table, target + '/32', 'dev', device, 'src', address, 'scope', 'link')
+        ip('-4', 'rule', 'add', 'priority', '11000', 'to', '198.51.100.54/32', 'lookup', '191', 'protocol', '186')
+        refused = subprocess.run([*invocation, 'recover', root, operation], timeout=8)
+        assert refused.returncode == 3 and journal.read_bytes() == original and service_identity() == record['service']
+        ip('-4', 'rule', 'del', 'priority', '11000', 'to', '198.51.100.54/32', 'lookup', '191', 'protocol', '186')
         management = '192.0.2.1'
         uid_range = f"{record['uid']}-{record['uid']}"
         root_route = ip('-4', 'route', 'get', management, 'uid', '0')
@@ -321,11 +357,16 @@ rules:
             if time.monotonic() >= deadline:
                 raise RuntimeError('The fixed TUN unit did not reject an unsolicited restart')
             time.sleep(.05)
-        assert service('show', '-p', 'MainPID', '--value', unit) == '0' and not route()
+        assert service('show', '-p', 'MainPID', '--value', unit) == '0' and not route(table)
+        (root / 'interrupt-rule-delete').touch()
+        interrupted_rule = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
+                                           str(root), operation, 'recover'], timeout=8)
+        assert interrupted_rule.returncode == -signal.SIGKILL
+        assert checkpoint(record, 'state') == 'RuleRemovalDispatched' and network_baseline() == baseline
         receipt = command(*invocation, 'recover', root, operation)
         result = json.loads(receipt)
         assert uuid.UUID(result['OperationId']).hex == operation and result['Outcome'] == 'Interrupted'
-        assert config.read_bytes() == previous.read_bytes() and not route() and network_baseline() == baseline
+        assert config.read_bytes() == previous.read_bytes() and not route(table) and network_baseline() == baseline
         restored_process = service_identity()
         assert restored_process[0] != record['service'][0] and device not in devices()
         assert sentinel.read_text() == 'previous-data'
@@ -336,10 +377,12 @@ rules:
         assert command(*invocation, 'recover', root, operation) == receipt
         assert command(*invocation, 'observe', root, operation) == receipt
         assert archive_state.read_bytes() == terminal and service_identity() == restored_process
+        assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         all_checkpoints = sorted(operation_dir.glob('tun-*.json'))
-        assert len(all_checkpoints) == 6 and [file.read_bytes() for file in all_checkpoints[:4]] == original_checkpoints
+        assert len(all_checkpoints) == 7 and [file.read_bytes() for file in all_checkpoints[:4]] == original_checkpoints
         assert checkpoint(record, 'state') == 'Restored'
         print('PASS ARCHIVE TUN RECEIPT: same key returned original pending and terminal results without replay')
+        print('PASS TUN POLICY RULE OWNERSHIP: conflict refused, deletion dispatched once across process interruption')
         print('PASS FIXED MIHOMO TUN UNIT: real launcher and credential; restart refused without original dispatch')
         print('PASS HELPER TUN CHECKPOINTS: original intent immutable; incomplete checkpoint and duplicate stop refused')
         print(f'PASS MIHOMO INHERITED TUN CLEANUP: {operation}, interrupted stop reconciled without replay; '

@@ -6,11 +6,11 @@ using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
-internal enum MihomoTunPhase { Intent, NetworkDispatched, LaunchDispatched, DescriptorDispatched, StopDispatched, Restored }
+internal enum MihomoTunPhase { Intent, NetworkDispatched, LaunchDispatched, DescriptorDispatched, StopDispatched, RuleRemovalDispatched, Restored }
 
 internal sealed record MihomoTunIntent(Guid OperationId, Guid RevisionId, string ConfigurationHash,
     Guid BootId, string NetworkNamespace, string Device, string Address, string Destination, string ManagementAddress,
-    uint ManagementUserId, string ManagementHash);
+    uint ManagementUserId, string ManagementHash, uint RoutingTable);
 
 internal sealed record MihomoTunProcess(int Pid, Guid InvocationId, ulong StartTicks);
 
@@ -84,6 +84,7 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
             || intent.ConfigurationHash is not { Length: 64 } || !intent.ConfigurationHash.All(Uri.IsHexDigit)
             || !string.Equals(intent.ConfigurationHash, configurationHash, StringComparison.OrdinalIgnoreCase)
             || intent.ManagementHash is not { Length: 64 } || !intent.ManagementHash.All(Uri.IsHexDigit)
+            || intent.RoutingTable != LinuxMihomoTunRoutes.TableFor(operationId)
             || intent.BootId == Guid.Empty || string.IsNullOrEmpty(intent.NetworkNamespace)
             || string.IsNullOrEmpty(intent.Device) || !LinuxMihomoTunDescriptor.ValidName(intent.Device)
             || !IPAddress.TryParse(intent.Address, out var address) || !IPAddress.TryParse(intent.Destination, out var destination)
@@ -97,7 +98,7 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
                 || previous.BrokerPid != 0 && previous.BrokerPid != current.BrokerPid
                 || previous.Process is not null && previous.Process != current.Process))
             throw Conflict();
-        _ = new LinuxMihomoTunRoutes(address, destination, management, intent.ManagementUserId);
+        _ = new LinuxMihomoTunRoutes(address, destination, management, intent.ManagementUserId, intent.RoutingTable);
     }
 
     private static RuntimePolicyException Conflict() => new("runtime.network_checkpoint_conflict");

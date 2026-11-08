@@ -30,7 +30,7 @@
 
 | 范围 | 剩余门槛 | 条件满足后的第一项 |
 | --- | --- | --- |
-| MB-04 Proxy | Linux x64 私有 systemd 已验证 [Server 生成 TUN 意图及管理 UID 复核](server-module-evidence/Proxy-Safety.md#mb-04-server-生成-tun-意图及管理-uid-复核)。非特权规划和 root Helper 对原 UID 的选路一致，只影响 Server UID 的策略漂移也被拒绝。两次中断后原配置、数据、监听及回执恢复。生产公开发布与成功提交门禁维持 | 将规划接入生产受控网络范围和发布入口，补齐策略规则及 DNS 写入归属和提交后生命周期，再实测生产中断、同键 HTTP 回执和真实工作租约。Proxy 保持 resident，直至整模块安全交接通过 |
+| MB-04 Proxy | Linux x64 私有 systemd 已验证 [TUN 策略规则归属及删除中断](server-module-evidence/Proxy-Safety.md#mb-04-tun-策略规则归属及删除中断)。同优先级外来规则及 Server UID 选路漂移均拒绝。规则删除成功后中断并重启，只核对缺席，原配置、数据、监听和回执恢复。生产公开发布与成功提交门禁维持 | 补齐 DNS 写入归属，接入生产受控网络范围及发布入口并验证提交后生命周期，再联合实测同键 HTTP 回执和真实工作租约。Proxy 保持 resident，直至整模块安全交接通过 |
 | MB-05 Docker | 未知清理缺与原 operationId 绑定的可信进程及输出排空证据入口 | 以原 CLI 清理门禁做只读确证，匹配时再结案原回执 |
 | MB-05 Certificates | 丢失订单创建响应时缺与原请求匹配的订单身份。跨源 CA、补取部署和主机掉电需要独立证据 | 用可信原账户订单标识验证一次只读对账，保持现有部署。见 [原订单标识门槛](server-module-evidence/Certificates.md#缺失原订单标识的核验门槛) |
 | MB-05 WebServer | 外部实例未知结果缺可信原命令证据。其他实例的启停与自动部署需要该实例原生回执和所有权接口，其他平台需要对应隔离主机 | 先在可核验的外部实例上用原 operationId 证明命令、配置身份和工作责任，再验证原门禁解除 |

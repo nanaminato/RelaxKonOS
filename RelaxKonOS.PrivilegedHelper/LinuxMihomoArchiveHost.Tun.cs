@@ -31,7 +31,7 @@ internal sealed partial class LinuxMihomoArchiveHost
             BrokerPid = Environment.ProcessId
         });
         await routes.ApplyAsync(descriptor);
-        await routes.RequireManagementAsync(intent.ManagementHash);
+        await routes.RequireManagementAsync(intent.ManagementHash, ownedRulePresent: true);
 
         using var listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         listener.Bind(new UnixDomainSocketEndPoint(checkpoint.SocketPath));
@@ -85,7 +85,8 @@ internal sealed partial class LinuxMihomoArchiveHost
     {
         var (_, checkpoint, effect) = await ReadTunOperationAsync(operation, ct);
         if (effect.Phase == MihomoTunPhase.Restored) return;
-        if (effect is not { Phase: MihomoTunPhase.StopDispatched, Process: { } process })
+        if (effect.Process is not { } process
+            || effect.Phase is not (MihomoTunPhase.StopDispatched or MihomoTunPhase.RuleRemovalDispatched))
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         var routes = TunRoutes(effect.Intent);
         for (var attempt = 0; attempt < 50; attempt++)
@@ -96,6 +97,14 @@ internal sealed partial class LinuxMihomoArchiveHost
                 && !Directory.Exists($"/proc/{process.Pid}")
                 && await routes.IsAbsentAsync(effect.Intent.Device, effect.InterfaceIndex))
             {
+                if (effect.Phase == MihomoTunPhase.StopDispatched)
+                {
+                    await routes.RequireManagementAsync(effect.Intent.ManagementHash, ownedRulePresent: true);
+                    effect = effect with { Phase = MihomoTunPhase.RuleRemovalDispatched };
+                    await checkpoint.AppendAsync(effect);
+                    await routes.RemoveRuleAsync();
+                }
+                await routes.RequireRuleAsync(present: false);
                 await routes.RequireManagementAsync(effect.Intent.ManagementHash);
                 await checkpoint.AppendAsync(effect with { Phase = MihomoTunPhase.Restored });
                 return;
@@ -130,7 +139,7 @@ internal sealed partial class LinuxMihomoArchiveHost
             Fail("network_device_identity_unknown");
         var routes = TunRoutes(effect.Intent);
         await routes.VerifyAsync(effect.Intent.OperationId, effect.Intent.Device, effect.InterfaceIndex);
-        await routes.RequireManagementAsync(effect.Intent.ManagementHash);
+        await routes.RequireManagementAsync(effect.Intent.ManagementHash, ownedRulePresent: true);
         if (await ReadTunProcessAsync(await StateAsync(ct), ct) != effect.Process) Fail("network_recipient_mismatch");
     }
 
@@ -148,7 +157,7 @@ internal sealed partial class LinuxMihomoArchiveHost
 
     private static LinuxMihomoTunRoutes TunRoutes(MihomoTunIntent intent) =>
         new(IPAddress.Parse(intent.Address), IPAddress.Parse(intent.Destination), IPAddress.Parse(intent.ManagementAddress),
-            intent.ManagementUserId);
+            intent.ManagementUserId, intent.RoutingTable);
 
     private static void RequirePidFdSupport()
     {
