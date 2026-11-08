@@ -11,12 +11,6 @@ public interface IHttp01ChallengeStore
     Task RemoveAsync(string token, CancellationToken cancellationToken);
 }
 
-internal sealed record WebRootChallengeFile(string Token, string ContentHash)
-{
-    internal static WebRootChallengeFile Describe(string token, string authorization) =>
-        new(token, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(authorization))));
-}
-
 /// <summary>WebRoot HTTP-01 token store. Tokens are constrained to ACME's URL-safe form and cannot escape the owned root.</summary>
 public sealed partial class FileHttp01ChallengeStore : IHttp01ChallengeStore
 {

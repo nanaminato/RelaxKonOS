@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Shared/RelaxKonOS.ServerModule.Certificates.Contracts/RelaxKonOS.ServerModule.Certificates.Contracts.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Webprofusion.Certify.ACME.Anvil" PrivateAssets="all" />
+    <PackageReference Include="Newtonsoft.Json" PrivateAssets="all" />
+  </ItemGroup>
+  <Target Name="ValidateAcmeExecutionBoundary" BeforeTargets="PrepareForBuild">
+    <PropertyGroup><AcmeContractProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../Shared/RelaxKonOS.ServerModule.Certificates.Contracts/RelaxKonOS.ServerModule.Certificates.Contracts.csproj'))</AcmeContractProjectPath></PropertyGroup>
+    <ItemGroup>
+      <InvalidAcmeProject Include="@(ProjectReference)" Condition="'%(ProjectReference.FullPath)' != '$(AcmeContractProjectPath)'" />
+      <InvalidAcmePackage Include="@(PackageReference)" Condition="'%(PackageReference.Identity)' != 'Webprofusion.Certify.ACME.Anvil' and '%(PackageReference.Identity)' != 'Newtonsoft.Json'" />
+      <InvalidAcmeFramework Include="@(FrameworkReference)" Condition="'%(FrameworkReference.Identity)' != 'Microsoft.AspNetCore.App' and ('%(FrameworkReference.Identity)' != 'Microsoft.NETCore.App' or '%(FrameworkReference.IsImplicitlyDefined)' != 'true')" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidAcmeProject)' != '' or '@(InvalidAcmePackage)' != '' or '@(InvalidAcmeFramework)' != '' or '@(Reference)' != '' or '@(COMReference)' != ''"
+           Text="ACME execution may reference only its canonical contracts, the shared framework and the approved private SDK packages." />
+  </Target>
+</Project>

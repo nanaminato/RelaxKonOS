@@ -5,10 +5,6 @@ using RelaxKonOS.Protocol.Certificates;
 
 namespace RelaxKonOS.Server.Certificate;
 
-internal sealed record CertificateMaterial(Guid Id, IReadOnlyList<string> Domains, CertificateChallengeType ChallengeType,
-    CertificateKeyAlgorithm KeyAlgorithm, string? ContactEmail, string CertificatePem, string PrivateKeyPem, DateTimeOffset CreatedAt, DateTimeOffset? LastRenewalAt = null, string? LastRenewalProblemCode = null,
-    CertificateKind Kind = CertificateKind.Acme);
-
 internal sealed record StoredCertificate(Guid Id, string Version, string PrimaryDomain, IReadOnlyList<string> Domains,
     CertificateChallengeType ChallengeType, CertificateKeyAlgorithm KeyAlgorithm, string? Issuer, string? SerialNumber, string? Thumbprint, DateTimeOffset NotBefore,
     DateTimeOffset NotAfter, CertificateStatus Status, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string? ContactEmail, DateTimeOffset? RenewalWindowStart,

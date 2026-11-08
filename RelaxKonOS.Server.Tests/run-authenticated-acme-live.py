@@ -40,6 +40,7 @@ def run(root, server, tests, mode):
         "Certificate__StorageRoot": str(root / "material"), "Certificate__ChallengeRoot": str(root / "challenge"),
     })
     scheduled = mode in ("schedule", "schedule-cancel", "schedule-ownership")
+    collectible = mode == "acme-execution"
     if scheduled:
         env["Logging__LogLevel__RelaxKonOS.Server.Certificate.CertificateRenewalWorker"] = "Debug"
     for module in ("Terminal", "Firewall", "SystemPerformance", "Git", "Tailscale", "Docker", "WebServer", "Proxy"):
@@ -82,12 +83,19 @@ def run(root, server, tests, mode):
         def active():
             return request("/api/v1.0/server/modules/relaxkonos.certificates", token)["residency"]["activeLeases"]
 
+        def code_events():
+            prefix = "ACME EXECUTION "
+            return [line.removeprefix(prefix) for line in (root / "restarted-server.stderr").read_text().splitlines()
+                    if line.startswith(prefix)]
+
         held = root / "order-observation-held"
         release = root / "release-order-observation"
         held.unlink(missing_ok=True)
         release.unlink(missing_ok=True)
         fault = root / "response-fault"
         wait_for(child, lambda: active() == 0, "restarted-server")
+        if collectible and not stop_server:
+            assert not code_events(), "Idle Server resolved the ACME SDK without admitted work"
         fault.write_text("hold-observation")
         try:
             with socket.create_connection(("127.0.0.1", int(base.rsplit(":", 1)[1])), timeout=5) as connection:
@@ -96,9 +104,14 @@ def run(root, server, tests, mode):
                                     f"Authorization: Bearer {token}\r\nConnection: close\r\n\r\n").encode("ascii"))
                 wait_for(child, held.is_file, "restarted-server", attempts=80)
                 assert active() == 1, "The real CA task must hold one work lease"
+                if collectible and not stop_server:
+                    loaded = code_events()
+                    assert len(loaded) == 2 and loaded[0].startswith("load acme:") and loaded[1] == "sdk " + loaded[0][5:]
             # The SDK call does not accept the HTTP request cancellation token.
             time.sleep(0.2)
             assert active() == 1, "A disconnected client released the still-held CA call"
+            if collectible and not stop_server:
+                assert code_events() == loaded, "The ACME code unloaded while its actual CA task was held"
             if stop_server:
                 child.terminate()
                 deadline = time.monotonic() + 6
@@ -113,13 +126,23 @@ def run(root, server, tests, mode):
             assert child.wait(timeout=15) == 0, "Server did not complete observation shutdown"
             return
         wait_for(child, lambda: active() == 0, "restarted-server")
+        if collectible:
+            generation = loaded[0][5:]
+            unloaded = [*loaded, f"unload {generation}"]
+            wait_for(child, lambda: code_events() == unloaded, "restarted-server", attempts=450)
         assert request(route, token) == {"operation": original, "remoteStatus": "valid"}
+        if collectible:
+            events = code_events()
+            assert events[:3] == unloaded and len(events) == 5 and events[3].startswith("load acme:") \
+                and events[3][5:] != generation and events[4] == "sdk " + events[3][5:]
+            print(f"PASS AUTHENTICATED ACME EXECUTION: {generation} unloaded; {events[3]}; same original CA order", flush=True)
         print(f"PASS AUTHENTICATED ACME OBSERVATION DRAIN: operation={original['operationId']}; original CA response drained after disconnect", flush=True)
 
     @contextmanager
     def process(arguments, name):
+        child_env = dict(env, DOTNET_STARTUP_HOOKS=str(tests)) if collectible and name != "helper" else env
         with (root / f"{name}.stderr").open("w") as errors, (root / f"{name}.stdout").open("w") as output:
-            child = subprocess.Popen(["dotnet", *map(str, arguments)], cwd=root, env=env,
+            child = subprocess.Popen(["dotnet", *map(str, arguments)], cwd=root, env=child_env,
                                      stdin=subprocess.PIPE, stdout=output, stderr=errors)
         try:
             yield child

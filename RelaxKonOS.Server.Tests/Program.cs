@@ -127,6 +127,11 @@ if (args is ["--docker-process-recovery-only"])
     await DockerProcessRecoveryChecks.RunAsync();
     return;
 }
+if (args.Contains("--acme-code-only"))
+{
+    await AcmeExecutionChecks.RunAsync();
+    return;
+}
 if (args.Contains("--docker-compose-code-only"))
 {
     await DockerComposeExecutionChecks.RunAsync();
@@ -143,6 +148,7 @@ if (args.Contains("--module-boundary-milestones-only"))
         await ProxyObservationLeaseChecks.RunAsync();
         await DockerComposeHttpChecks.RunAsync();
         await DockerComposeExecutionChecks.RunAsync();
+        await AcmeExecutionChecks.RunAsync();
         await ModuleBackgroundOwnershipChecks.RunAsync(milestoneRoot);
         await TerminalStreamFramesChecks.RunAsync();
         if (OperatingSystem.IsLinux()) await TerminalControlInputChecks.RunAsync();

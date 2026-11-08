@@ -28,7 +28,6 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Webprofusion.Certify.ACME.Anvil" />
     </ItemGroup>
 
     <ItemGroup>
@@ -92,5 +91,12 @@
     <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Docker.Contracts/RelaxKonOS.ServerModule.Docker.Contracts.csproj" />
     <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Docker/RelaxKonOS.ServerModule.Docker.csproj" ReferenceOutputAssembly="false" />
     <Content Include="../ServerModules/RelaxKonOS.ServerModule.Docker/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/RelaxKonOS.ServerModule.Docker.dll" Link="Modules/Docker/RelaxKonOS.ServerModule.Docker.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Shared/RelaxKonOS.ServerModule.Certificates.Contracts/RelaxKonOS.ServerModule.Certificates.Contracts.csproj" />
+    <ProjectReference Include="../ServerModules/RelaxKonOS.ServerModule.Certificates/RelaxKonOS.ServerModule.Certificates.csproj" ReferenceOutputAssembly="false" />
+    <AcmeExecutionFile Include="RelaxKonOS.ServerModule.Certificates.dll;Certify.ACME.Anvil.dll;BouncyCastle.Cryptography.dll;Newtonsoft.Json.dll" />
+    <Content Include="@(AcmeExecutionFile->'../ServerModules/RelaxKonOS.ServerModule.Certificates/bin/$(Configuration)/net10.0/$(RuntimeIdentifier)/%(Identity)')"
+             Link="Modules/Certificates/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

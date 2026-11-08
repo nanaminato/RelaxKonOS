@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" /></ItemGroup>
+  <Target Name="ValidateAcmeContractBoundary" BeforeTargets="PrepareForBuild">
+    <PropertyGroup><AcmeProtocolProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj'))</AcmeProtocolProjectPath></PropertyGroup>
+    <ItemGroup>
+      <InvalidAcmeContractProject Include="@(ProjectReference)" Condition="'%(ProjectReference.FullPath)' != '$(AcmeProtocolProjectPath)'" />
+      <InvalidAcmeContractFramework Include="@(FrameworkReference)" Condition="'%(FrameworkReference.Identity)' != 'Microsoft.NETCore.App' or '%(FrameworkReference.IsImplicitlyDefined)' != 'true'" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidAcmeContractProject)' != '' or '@(Reference)' != '' or '@(PackageReference)' != '' or '@(InvalidAcmeContractFramework)' != '' or '@(COMReference)' != ''"
+           Text="Acme contracts may reference only the canonical Protocol project and implicit .NET framework; Host and implementation dependencies are forbidden." />
+  </Target>
+</Project>

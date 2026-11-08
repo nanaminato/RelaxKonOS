@@ -1503,4 +1503,6 @@ Linux 私有 Pebble 实测覆盖自动续期已准入、扫描尚未关联原回
 
 认证原订单观察使用一个工作租约，覆盖 CA 调用、HTTP 响应和异步清理。客户端断线或 Server 停机时，仍在途的 CA 调用排空后才释放责任。Linux 私有 CA 已验证断线与停机后按原 ID 读取同一回执，活动证书保持。见[原订单观察](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-acme-原订单观察的-http-工作责任)。
 
+ACME SDK 在签发、撤销、订单观察或 ARI 工作开始时按需加载。最后一个 SDK 调用及挑战清理结束 30 秒后可卸载，新工作会唤醒执行代码。原账户、证书存储、回执和 TLS 部署仍由 Server 原服务负责。见[ACME SDK 独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-acme-sdk-独立执行程序集)。
+
 网站发布的自动签发采用所选 Nginx 的 WebRoot HTTP-01 集成。旧 Direct HTTP-01 发布路径曾因缺少经能力授权的生产监听入口而返回 `certificate.port80_elevation_required`。当前路径的签发、挑战清理及中断恢复已通过私有 Pebble 实测。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布-webroot-签发与中断恢复)。

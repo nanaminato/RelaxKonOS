@@ -1,4 +1,3 @@
-using Certify.ACME.Anvil.Acme;
 
 internal static class AcmeLiveChecks
 {
@@ -38,11 +37,16 @@ internal static class AcmeLiveChecks
         var certificateId = Guid.NewGuid();
         await using (var direct = new DirectHttp01ChallengeStore(Prefix))
         {
-            var service = CreateAcme(direct);
+            var issuanceExecution = new AcmeExecution(TimeSpan.FromSeconds(1));
+            var service = new AnvilAcmeService(new FileHttp01ChallengeStore(options), direct, options, metadata,
+                NullLogger<AnvilAcmeService>.Instance, issuanceExecution);
+            WeakReference? issuedCode = null;
             var issued = await store.StartAsync("real-issue", certificateId, "issue", "fixture", async ct =>
             {
-                var material = await service.IssueAsync(certificateId, ["issue.mb05.test"], CertificateChallengeType.DirectHttp01,
+                var issuance = service.IssueAsync(certificateId, ["issue.mb05.test"], CertificateChallengeType.DirectHttp01,
                     CertificateKeyAlgorithm.EcdsaP256, "acceptance@example.test", ct);
+                issuedCode = issuanceExecution.CurrentCode;
+                var material = await issuance;
                 await certificates.SaveAsync(material, ct);
                 return "";
             }, default, default);
@@ -67,6 +71,10 @@ internal static class AcmeLiveChecks
                     "Issued deployment chain must validate against the isolated CA root.");
             }
             finally { foreach (var certificate in bundle) certificate.Dispose(); }
+            using (var collection = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+                await AcmeExecutionChecks.WaitForCollectionAsync(issuanceExecution,
+                    issuedCode ?? throw new InvalidOperationException("Real issuance did not load ACME code."), collection.Token);
+            Console.WriteLine($"PASS ACME NATIVE ISSUANCE COLLECTION: original {issued.OperationId}");
             Console.WriteLine($"PASS ACME LIVE ISSUANCE: operation={issued.OperationId}; signed certificate persisted and chain verified");
         }
 
@@ -146,7 +154,7 @@ internal static class AcmeLiveChecks
             http.DefaultRequestHeaders.UserAgent.ParseAdd("RelaxKonOS-AcmeAcceptance/1.0");
             http.DefaultRequestHeaders.Add("X-Fixture-Lose-Response", response);
             var service = new AnvilAcmeService(new FileHttp01ChallengeStore(options), direct, options, metadata,
-                NullLogger<AnvilAcmeService>.Instance, uri => new AcmeHttpClient(uri, http));
+                NullLogger<AnvilAcmeService>.Instance, _ => http);
             using var live = OpenStore(owner);
             await live.StartAsync(default);
             var manager = CreateManager(certificates, service, live, environment, configuration);
@@ -164,17 +172,33 @@ internal static class AcmeLiveChecks
             await live.StopAsync(default).WaitAsync(Budget);
             using var recovered = OpenStore(owner);
             await recovered.StartAsync(default);
-            var observationService = CreateAcme(direct);
+            var execution = new AcmeExecution(TimeSpan.FromMilliseconds(500));
+            var observationService = new AnvilAcmeService(new FileHttp01ChallengeStore(options), direct, options, metadata,
+                NullLogger<AnvilAcmeService>.Instance, execution);
             var recoveryManager = CreateManager(certificates, observationService, recovered, environment, configuration);
             var ledgerPath = Path.Combine(owner.ContentRootPath, "data", "certificate-operations.json");
             var ledgerBefore = await File.ReadAllTextAsync(ledgerPath);
             CertificateOrderObservationDto? observation;
+            Task<CertificateOrderObservationDto?> observedTask;
+            WeakReference? code;
             using (var work = await recovered.AdmitOrderObservationAsync(default))
-                observation = await recovered.ObserveOrderUnderLeaseAsync(original.OperationId, () => observationService, work.Stopping);
+            {
+                observedTask = recovered.ObserveOrderUnderLeaseAsync(original.OperationId, () => observationService, work.Stopping);
+                observation = await observedTask;
+                code = execution.CurrentCode;
+            }
             var expectedStatus = response == "certificate" ? "valid" : "identity-unavailable";
             TestAssert.Assert(observation == new CertificateOrderObservationDto(interrupted, expectedStatus)
                 && await File.ReadAllTextAsync(ledgerPath) == ledgerBefore,
                 $"Read-only recovery must preserve the original receipt and ledger. Expected {expectedStatus}, observed {observation?.RemoteStatus}.");
+            if (response == "certificate")
+            {
+                using var collection = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await AcmeExecutionChecks.WaitForCollectionAsync(execution,
+                    code ?? throw new InvalidOperationException("The real order observation did not load ACME code."), collection.Token);
+                GC.KeepAlive(observedTask);
+                Console.WriteLine($"PASS ACME NATIVE SDK COLLECTION: original {original.OperationId}, retained completed observation");
+            }
             TestAssert.Assert(await recoveryManager.RenewAsync(certificateId, "after-restart-key", actor, default, automatic: true) == interrupted
                 && (await recovered.GetRenewalInfoAsync(certificateId, true, default)).ConsecutiveFailures == 0
                 && (await certificates.GetAsync(certificateId, default))?.FingerprintSha256 == previous!.FingerprintSha256,
@@ -289,7 +313,7 @@ internal static class AcmeLiveChecks
         using var http = new HttpClient(new IssuedResponseBarrier(entered, renewalId.HasValue ? "issue.mb05.test" : "response.mb05.test"));
         http.DefaultRequestHeaders.UserAgent.ParseAdd("RelaxKonOS-AcmeAcceptance/1.0");
         var acme = new AnvilAcmeService(new FileHttp01ChallengeStore(options), direct, options, metadata,
-            NullLogger<AnvilAcmeService>.Instance, loseIssuedResponse ? uri => new AcmeHttpClient(uri, http) : null);
+            NullLogger<AnvilAcmeService>.Instance, loseIssuedResponse ? _ => http : null);
         var id = Guid.NewGuid();
         var key = loseIssuedResponse ? "real-response-loss" : "real-crash";
         var domain = loseIssuedResponse ? "response.mb05.test" : "crash.mb05.test";
