@@ -289,11 +289,14 @@ internal sealed class MihomoArchiveAdapter(string protectedRoot, RuntimeArchiveS
     }
 
     internal async Task<MihomoBuildEvidence> ValidateNativeAsync(string binary, string configuration, RuntimeRelease release, string data, CancellationToken ct)
+        => await ValidateNativeAsync(binary, configuration, release, data, await CurrentAsync(ct), ct);
+
+    internal static async Task<MihomoBuildEvidence> ValidateNativeAsync(string binary, string configuration, RuntimeRelease release,
+        string data, MihomoPublishedRuntime published, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         var build = MihomoNativeValidation.Parse(await MihomoOperations.VersionAsync(binary), release.OriginalVersion,
             release.Target.Os, release.Target.Architecture);
-        var published = await CurrentAsync(ct);
         MihomoConfigurationPolicy.VerifyResources(MihomoConfigurationPolicy.Validate(published), data);
         RequireFeatures(build, published);
         await MihomoOperations.TestConfigurationAsync(binary, data, configuration);

@@ -180,6 +180,12 @@ DefaultDependencies=no
 Type=oneshot
 ExecStart=/bin/bash $work/inside.sh
 EOF
+if [[ $6 == 1 ]]; then
+    # systemd-run --pipe requires the system bus for FD passing. These units and
+    # their socket live in the already private /etc and /run mounts.
+    cp -L -- /usr/lib/systemd/system/dbus.{socket,service} /etc/systemd/system/
+    sed -i '/^DefaultDependencies=no$/a Wants=dbus.socket\nAfter=dbus.socket' /etc/systemd/system/relaxkonos-test.service
+fi
 for target in sysinit basic shutdown network-online multi-user; do
     printf '[Unit]\nDefaultDependencies=no\n' > "/etc/systemd/system/$target.target"
 done
@@ -191,7 +197,7 @@ MANAGER
 systemd-run --unit="$unit" --property=Delegate=yes --property=RuntimeMaxSec="$((run_seconds + 30))s" --property=LimitNOFILE=4096 \
     --property=TimeoutStopSec=5s --property=KillMode=control-group --collect \
     unshare --mount --cgroup --net --pid --fork --kill-child --mount-proc --propagation private \
-    bash "$work/manager.sh" "$work" "$host_pidns" "$host_netns" "$authenticated" "$host_mntns"
+    bash "$work/manager.sh" "$work" "$host_pidns" "$host_netns" "$authenticated" "$host_mntns" "$tun_fd"
 for attempt in $(seq 1 "$run_seconds"); do
     test ! -f "$work/result" || break
     state=$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)

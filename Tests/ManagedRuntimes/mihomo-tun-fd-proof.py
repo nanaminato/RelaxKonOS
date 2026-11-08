@@ -190,7 +190,10 @@ def proof():
     binary = archive / 'versions' / revision.hex / 'mihomo'
     binary.parent.mkdir(parents=True)
     shutil.copy2(root / 'mihomo', binary)
-    (archive / 'data' / revision.hex).mkdir(mode=0o700, parents=True)
+    data = archive / 'data' / revision.hex
+    data.mkdir(mode=0o700, parents=True)
+    sentinel = data / 'fixture-mutable-data'
+    sentinel.write_text('previous-data')
     previous = root / 'previous.yaml'
     listeners = ('mixed-port: 18881\nexternal-controller: 127.0.0.1:18882\n'
                  'secret: mb04-private-fixture-controller\n')
@@ -241,6 +244,7 @@ rules:
                 raise RuntimeError('Mihomo did not consume the descriptor')
             time.sleep(.05)
         observe(record)
+        sentinel.write_text('candidate-data')
 
         def probe(phase):
             address = f'http://{target}:18880/mb04-{phase}'
@@ -258,6 +262,9 @@ rules:
         pending_receipt = json.loads(checkpoint(record, 'retry'))
         assert uuid.UUID(pending_receipt['OperationId']).hex == operation
         assert pending_receipt['Outcome'] == 'RecoveryRequired' and archive_state.read_bytes() == pending
+        ordinary_stop = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
+                                        str(root), operation, 'ordinary-stop'], timeout=8)
+        assert ordinary_stop.returncode == 3 and service_identity() == record['service']
         assert json.loads(command(*invocation, 'observe', root, operation)) == record
         probe('after')
 
@@ -320,10 +327,16 @@ rules:
         result = json.loads(receipt)
         assert uuid.UUID(result['OperationId']).hex == operation and result['Outcome'] == 'Interrupted'
         assert config.read_bytes() == previous.read_bytes() and not route() and network_baseline() == baseline
+        restored_process = service_identity()
+        assert restored_process[0] != record['service'][0] and device not in devices()
+        assert sentinel.read_text() == 'previous-data'
+        assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '2',
+                       '-H', 'Authorization: Bearer mb04-private-fixture-controller',
+                       'http://127.0.0.1:18882/version')
         terminal = archive_state.read_bytes()
         assert command(*invocation, 'recover', root, operation) == receipt
         assert command(*invocation, 'observe', root, operation) == receipt
-        assert archive_state.read_bytes() == terminal
+        assert archive_state.read_bytes() == terminal and service_identity() == restored_process
         all_checkpoints = sorted(operation_dir.glob('tun-*.json'))
         assert len(all_checkpoints) == 6 and [file.read_bytes() for file in all_checkpoints[:4]] == original_checkpoints
         assert checkpoint(record, 'state') == 'Restored'
@@ -333,6 +346,18 @@ rules:
         print(f'PASS MIHOMO INHERITED TUN CLEANUP: {operation}, interrupted stop reconciled without replay; '
               'original receipt on retry; process, device and route gone')
     except Exception:
+        diagnostic = archive / 'diagnostic'
+        diagnostic.mkdir(exist_ok=True)
+        copy = diagnostic / 'candidate.yaml'
+        shutil.copy2(candidate, copy)
+        subprocess.run(['/usr/bin/systemd-run', '--quiet', '--pipe', '--wait', '--collect', '--service-type=exec',
+                        '--property=RuntimeMaxSec=10s', '--property=User=root', '--property=NoNewPrivileges=yes',
+                        '--property=ProtectSystem=strict', '--property=ProtectHome=yes', '--property=PrivateDevices=yes',
+                        '--property=PrivateNetwork=yes', '--property=PrivateTmp=yes', '--property=CapabilityBoundingSet=',
+                        '--property=RestrictAddressFamilies=AF_UNIX', '--property=BindPaths=' + str(diagnostic),
+                        '--property=BindReadOnlyPaths=' + str(binary) + ' ' + str(copy),
+                        '--property=ReadWritePaths=' + str(diagnostic), '--', str(binary), '-t', '-d', str(diagnostic), '-f', str(copy)],
+                       check=False, timeout=15)
         subprocess.run(['/usr/bin/systemctl', '--no-pager', '--full', 'status', unit], check=False)
         subprocess.run(['/usr/bin/journalctl', '--no-pager', '-n', '15', '-u', unit], check=False)
         raise

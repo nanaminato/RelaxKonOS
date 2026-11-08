@@ -192,7 +192,13 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         ValidatePaths(verifiedBinary, protectedDataDirectory, protectedConfiguration, configurationIdentity);
         var previous = await ReadRegistrationAsync(ct);
         if (previous is null) await ObserveAsync(ct);
-        else if ((await StateAsync(ct)).GetValueOrDefault("MainPID") != "0") Fail("state_unknown");
+        else
+        {
+            if (previous.TunOperation is { } original
+                && TunCheckpoint(previous.Binary, original, previous.ConfigurationHash).Read()?.Phase != MihomoTunPhase.Restored)
+                Fail("network_transaction_required");
+            if ((await StateAsync(ct)).GetValueOrDefault("MainPID") != "0") Fail("state_unknown");
+        }
         RequireProtected(verifiedBinary); RequireProtected(protectedConfiguration);
         RequireProtected(protectedDataDirectory);
         if (!string.Equals(await DigestAsync(protectedConfiguration, ct), configurationIdentity, StringComparison.OrdinalIgnoreCase)) Fail("configuration_drift");
@@ -232,8 +238,9 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
 
     public async Task StopAsync(CancellationToken ct)
     {
-        if (await ReadRegistrationAsync(ct) is not null)
+        if (await ReadRegistrationAsync(ct) is { } registration)
         {
+            if (registration.TunOperation is not null) Fail("network_transaction_required");
             await StateAsync(ct); await CommandAsync("stop", ct);
             // systemctl returns while the unit may still be deactivating; the next observation must not
             // mistake that transient state for an unknown one.
@@ -287,7 +294,9 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
     }
     public async Task RemoveOwnedRegistrationAsync(CancellationToken ct)
     {
-        if (await ReadRegistrationAsync(ct) is null) { await ObserveAsync(ct); return; }
+        var registration = await ReadRegistrationAsync(ct);
+        if (registration is null) { await ObserveAsync(ct); return; }
+        if (registration.TunOperation is not null) Fail("network_transaction_required");
         await StateAsync(ct); await CommandAsync("disable", ct); await CommandAsync("stop", ct);
         File.Delete(UnitPath); File.Delete(RegistrationPath); await CommandAsync("daemon-reload", ct, false);
     }

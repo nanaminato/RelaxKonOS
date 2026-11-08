@@ -38,6 +38,7 @@
 - [MB-04 Helper 接管 TUN 交付与具名停止](#mb-04-helper-接管-tun-交付与具名停止)
 - [MB-04 TUN 归档事务同键回执](#mb-04-tun-归档事务同键回执)
 - [MB-04 冻结 TUN 意图授权](#mb-04-冻结-tun-意图授权)
+- [MB-04 生产归档配置适配器的 TUN 恢复](#mb-04-生产归档配置适配器的-tun-恢复)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -384,6 +385,16 @@ Linux x64 私有 systemd 夹具使用生产加密台账、真实授权提供器�
 Windows ManagedRuntimes Release 通过，含 104 项配置事务检查。可信下载探针因缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-auth-win.log`。
 
 夹具仍提供最初网络意图，通过测试适配器调用生产归档事务及 Helper 宿主，并在同进程内建立认证回读通道。生产 Server 生成意图、生产配置适配器调用归档宿主、策略规则及 DNS 归属、生产同键 HTTP 和真实工作租约待验收。Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
+
+## MB-04 生产归档配置适配器的 TUN 恢复
+
+生产配置适配器在原归档实例锁内复核制品、签名目录、冻结网络意图及原候选授权，使用现有配置检查、停止、快照及配置替换流程调用固定 TUN 宿主。试运行要求原普通服务正在运行且禁用开机启动。普通停止、移除及覆盖仍在途 TUN 注册被拒绝。具名恢复只对可证明的原描述符进程派发停止，已派发停止时只读确认退出，再恢复旧配置、数据与运行状态。早期派发身份未知时继续待核验。TUN 生命周期尚未联合验证，适配器的成功提交门禁和 Server 的公开发布准入继续生效。
+
+Linux x64 私有 systemd 最终轮使用真实生产配置适配器、Helper 固定单元、签名夹具目录和 Server 加密授权。原操作 `148c9c7356f448d5b3e53de2261a2c47`，`rk-fd-proof` ifindex 4、候选 PID 197、配置摘要 `e83aaa1ca47944f1e0efe03a19be97f07d8a4d662de4368ee0709b2d3c1e6d51`。候选已真实转发但事务尚未确认时强制终止原执行进程。提交门禁和普通停止拒绝均实测，管理选路及配置身份一致，真实上游收到三次请求，同键返回原 `RecoveryRequired`。第二次中断命中已派发的原停止。后续恢复确认 TUN 设备及路由退出，恢复旧配置、可变数据哨兵与已认证监听，返回原 `Interrupted`。同键复查未改写台账或重启已恢复进程。专属 cgroup 清理，共享服务及代理文件指纹一致。最终日志 `.artifacts/mb04-tun-marker-sync/tun-adapter-linux-final.log`，归档 SHA-256 `5c2363bf63e6bca9358da5bcefa09de3e22fc529f1b172a87056197719c8a975`。
+
+首轮夹具签名密钥标识错误，在目录验签前置检查被拒绝，见 `.artifacts/mb04-tun-marker-sync/tun-adapter-linux.log`。修正后发现隔离环境缺少 `systemd-run --pipe` 所需的系统总线，见 `.artifacts/mb04-tun-marker-sync/tun-adapter-linux-native-diag.log`。夹具在私有 `/etc` 和 `/run` 内加载专属 D-Bus 单元后通过，宿主共享服务继续按原指纹核对。Windows ManagedRuntimes Release 通过，含 104 项配置事务。可信下载探针因缺进程级测试 CA 覆盖跳过，见 `.artifacts/mb04-tun-marker-sync/tun-adapter-win.log`。
+
+夹具仍提供初始意图、测试信任源和两个中断时点。生产 Server 意图生成、策略规则与 DNS 归属、正常成功提交后启停与移除、生产同键 HTTP 和实际工作租约待验收。Proxy 保持 resident。已确认专属进程退出，对象释放、ALC 回收、隔离内存与生产收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

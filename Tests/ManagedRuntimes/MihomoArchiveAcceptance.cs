@@ -240,7 +240,7 @@ internal static class MihomoArchiveAcceptance
         return Convert.ToHexString(await SHA256.HashDataAsync(input)).Equals(expected, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static (RuntimeSourceStore Sources, RuntimeCatalog Catalog) Accept(ECDsa key, IReadOnlyList<RuntimeRelease> releases, string work)
+    internal static (RuntimeSourceStore Sources, RuntimeCatalog Catalog) Accept(ECDsa key, IReadOnlyList<RuntimeRelease> releases, string work)
     {
         var source = new RuntimeSource(SourceId, "mihomo", "MetaCubeX/mihomo", RuntimeSourceKind.HttpsManifest,
             "https://example.com/catalog/", "manifest.json", KeyId, Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()),

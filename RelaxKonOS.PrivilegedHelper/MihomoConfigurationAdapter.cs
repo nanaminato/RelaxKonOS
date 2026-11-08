@@ -39,7 +39,14 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         var pending = current.Configuration ?? throw new RuntimePolicyException("runtime.transaction_state_invalid");
         var revision = Revision(pending);
         await AuthorizeProgramAsync(pending, ct);
-        RequireService(await host.ObserveAsync(ct), revision);
+        var service = await host.ObserveAsync(ct);
+        RequireService(service, revision);
+        if (plan.NetworkIntentIdentity is not null)
+        {
+            if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_platform_unsupported");
+            if (!service.Running || service.BootEnabled != false)
+                throw new RuntimePolicyException("runtime.network_service_baseline_required");
+        }
         RuntimeSourceStore.RequireNoLinks(Data(revision));
         if (!Directory.Exists(Data(revision))) throw new RuntimePolicyException("runtime.data_snapshot_missing");
         await RequireMaterialAsync(pending, false, ct);
@@ -95,7 +102,18 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         await CheckNativeAsync(pending, true, Data(revision), ct);
         await RequireMaterialAsync(pending, true, ct);
         await Tools(pending, true).ReplaceConfigurationAsync(await CandidateBytesAsync(pending, true, ct), ct);
-        await host.ConfigureAsync(Tools(pending, true).Binary(revision), Data(revision), Configuration,
+        var binary = Tools(pending, true).Binary(revision);
+        if (pending.Plan.NetworkIntentIdentity is not null)
+        {
+            if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_platform_unsupported");
+            var (_, network) = await RequireTunMaterialAsync(pending, ct);
+            var intent = new MihomoTunIntent(pending.OperationId, revision.RevisionId, pending.Plan.CandidateIdentity,
+                LinuxMihomoTunCheckpoint.BootId(), LinuxMihomoTunCheckpoint.NetworkNamespace(),
+                network.Device, network.Address, network.Destination, network.ManagementAddress, network.ManagementHash);
+            await TunHost().ActivateTunAsync(intent, binary, Data(revision), ct);
+            return;
+        }
+        await host.ConfigureAsync(binary, Data(revision), Configuration,
             pending.Plan.CandidateIdentity, pending.Snapshot!.BootEnabled, ct);
         if (pending.Snapshot.Running)
         {
@@ -115,11 +133,25 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         RequireService(observed, Revision(pending));
         var healthy = identity == pending.Plan.CandidateIdentity
             && (!observed.Running || observed.AppliedConfigurationIdentity == identity && await host.ListenersHealthyAsync(material, ct));
+        if (pending.Plan.NetworkIntentIdentity is not null)
+        {
+            if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_platform_unsupported");
+            await TunHost().VerifyTunAsync(pending.OperationId, ct);
+            // A committed TUN configuration still needs a managed start and durable ownership across later operations.
+            throw new RuntimePolicyException("runtime.network_lifecycle_unverified");
+        }
         return new(build.Version, identity, true, healthy, observed.Running, observed.BootEnabled!.Value);
     }
 
     public async Task StopForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
     {
+        if (ReadTunEffect(pending) is not null)
+        {
+            if (pending.Plan.NetworkIntentIdentity is null || !IsFixedLinuxHost)
+                throw new RuntimePolicyException("runtime.network_transaction_required");
+            await TunHost().DispatchTunStopAsync(pending.OperationId, ct);
+            return;
+        }
         // Only a process serving one of this operation's two frozen configurations is in scope.
         var revision = Revision(pending);
         var before = await host.ObserveAsync(ct);
@@ -136,10 +168,22 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
 
     public async Task<bool> ObserveStoppedForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
     {
-        // Generic configuration recovery has no authority to stop a network transaction.
-        if (OperatingSystem.IsLinux() && new LinuxMihomoTunCheckpoint(root, pending.OperationId,
-                pending.Plan.ActiveRevisionId, pending.Plan.CandidateIdentity).Read() is not null)
-            throw new RuntimePolicyException("runtime.network_transaction_required");
+        if (ReadTunEffect(pending) is { } effect)
+        {
+            if (pending.Plan.NetworkIntentIdentity is null || !IsFixedLinuxHost)
+                throw new RuntimePolicyException("runtime.network_transaction_required");
+            if (effect.Phase == MihomoTunPhase.Restored) return true;
+            if (effect.Phase == MihomoTunPhase.StopDispatched)
+            {
+                await TunHost().CompleteTunStopAsync(pending.OperationId, ct);
+                return true;
+            }
+            if (effect.Phase != MihomoTunPhase.DescriptorDispatched)
+                throw new RuntimePolicyException("runtime.network_stop_unconfirmed");
+            await RequireMaterialAsync(pending, false, ct);
+            await TunHost().VerifyTunAsync(pending.OperationId, ct);
+            return false;
+        }
         var observed = await host.ObserveRegistrationAsync(ct);
         if (!observed.Exists || observed.BootEnabled is null) throw new RuntimePolicyException("runtime.state_unknown");
         if (observed.Running) return false;
@@ -162,6 +206,21 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
     public async Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct)
     {
         var revision = Revision(pending);
+        if (ReadTunEffect(pending) is { Phase: MihomoTunPhase.Restored })
+        {
+            var registration = await host.ObserveRegistrationAsync(ct);
+            if (registration.Running)
+            {
+                var already = await host.ObserveAsync(ct);
+                RequireService(already, revision);
+                if (already.AppliedConfigurationIdentity != pending.Plan.PreviousIdentity
+                    || Hash(await ReadConfigurationAsync(Configuration, ct)) != pending.Plan.PreviousIdentity)
+                    throw new RuntimePolicyException("runtime.configuration_drift");
+                var previous = await RequireMaterialAsync(pending, false, ct);
+                return new(revision.MeasuredVersion, pending.Plan.PreviousIdentity, true, already.BootEnabled!.Value,
+                    true, await host.ListenersHealthyAsync(previous, ct));
+            }
+        }
         var backup = FileIn(pending, "data-backup");
         if (Directory.Exists(backup))
         {
@@ -225,11 +284,34 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
 
     private async Task<MihomoPublishedRuntime> RequireMaterialAsync(RuntimePendingConfiguration pending, bool candidate, CancellationToken ct)
     {
+        if (candidate && pending.Plan.NetworkIntentIdentity is not null)
+            return (await RequireTunMaterialAsync(pending, ct)).Material;
         var material = await Tools(pending, candidate).CurrentAsync(ct);
         if (Hash(Encoding.UTF8.GetBytes(material.Yaml)) != (candidate ? pending.Plan.CandidateIdentity : pending.Plan.PreviousIdentity))
             throw new RuntimePolicyException("runtime.authorization_changed");
         return material;
     }
+
+    private async Task<(MihomoPublishedRuntime Material, MihomoTunNetworkIntent Network)> RequireTunMaterialAsync(
+        RuntimePendingConfiguration pending, CancellationToken ct)
+    {
+        var grant = await authorization.ReadAsync(ct);
+        var now = DateTimeOffset.UtcNow;
+        if (grant.OperationId != pending.OperationId || grant.ValidUntil <= now || grant.ValidUntil > now.AddMinutes(5)
+            || grant.Candidate is not { } material || grant.TunIntent is not { } network)
+            throw new RuntimePolicyException("runtime.authorization_unavailable");
+        MihomoRuntimeMaterial.RequireConfigurationTunIntent(pending.OperationId, pending.Plan, material, network);
+        return (material, network);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatformGuard("linux")]
+    private bool IsFixedLinuxHost => OperatingSystem.IsLinux() && host is LinuxMihomoArchiveHost && root == LinuxMihomoArchiveHost.Root;
+
+    private LinuxMihomoArchiveHost TunHost() => (LinuxMihomoArchiveHost)host;
+
+    private MihomoTunEffect? ReadTunEffect(RuntimePendingConfiguration pending) => OperatingSystem.IsLinux()
+        ? new LinuxMihomoTunCheckpoint(root, pending.OperationId, pending.Plan.ActiveRevisionId, pending.Plan.CandidateIdentity).Read()
+        : null;
 
     private async Task<byte[]> CandidateBytesAsync(RuntimePendingConfiguration pending, bool candidate, CancellationToken ct)
     {
@@ -241,11 +323,11 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
 
     private async Task<MihomoBuildEvidence> CheckNativeAsync(RuntimePendingConfiguration pending, bool candidate, string data, CancellationToken ct)
     {
-        await RequireMaterialAsync(pending, candidate, ct);
+        var material = await RequireMaterialAsync(pending, candidate, ct);
         await CandidateBytesAsync(pending, candidate, ct);
         var revision = Revision(pending);
-        var build = await Tools(pending, candidate).ValidateNativeAsync(Tools(pending, candidate).Binary(revision),
-            FileIn(pending, candidate ? "candidate.yaml" : "previous.yaml"), revision.Release, data, ct);
+        var build = await MihomoArchiveAdapter.ValidateNativeAsync(Tools(pending, candidate).Binary(revision),
+            FileIn(pending, candidate ? "candidate.yaml" : "previous.yaml"), revision.Release, data, material, ct);
         await CandidateBytesAsync(pending, candidate, ct);
         await RequireMaterialAsync(pending, candidate, ct);
         return build;
