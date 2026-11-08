@@ -158,7 +158,7 @@ IGitRepositoryService (接口)
 
 源码构建在写入队列记录前取得当前代次的独立后台租约。HTTP 返回或断连不取消已受理构建，重复幂等键返回原记录，不创建第二个工作租约。租约持续到终态台账、操作自有镜像清理及命令进程收尾完成；宿主停止通过独立令牌触发中断并等待清理，记录 interrupted，与用户显式取消区分。台账无法读取时 CanUnload 阻止释放；终态持久化或进程收尾无法确认时保留恢复阻止，不能靠重新加载实例伪装干净。
 
-命令执行器在取消或输出处理失败后先终止并等待 CLI 子进程退出，再向调用方返回。当前构建寿命专项使用受控命令执行器，远端 BuildKit 的实际取消、镜像补偿及宿主故障仍须在隔离环境验证。模块停用预览、提交重检及禁用启动只读检查同一台账。queued、running、派发或进程清理结果未知的 interrupted 以及损坏台账均阻止停用。清理租约持续到实际收尾结束。只读检查保持原记录，未收尾记录通过模块目录显示。台账读取和写入上限为 32 MiB，重复字段和未知状态均拒绝。
+命令执行器在取消或输出处理失败后先终止并等待 CLI 子进程退出，再向调用方返回。Linux 私有 BuildKit 已验证真实构建、取消后的操作标签清理及 Server 进程中断后的原回执。模块停用预览、提交重检及禁用启动只读检查同一台账。queued、running、派发或进程清理结果未知的 interrupted 以及损坏台账均阻止停用。清理租约持续到实际收尾结束。只读检查保持原记录，未收尾记录通过模块目录显示。台账读取和写入上限为 32 MiB，重复字段和未知状态均拒绝。见 [BuildKit 联合证据](../architecture/server-module-evidence/Git.md#mb-03-真实-buildkit-构建取消与原回执)。
 
 ### 4.2 `git` 调用与 porcelain 输出
 
@@ -659,3 +659,5 @@ Windows 与 Linux 完整宿主均实测了认证后的仓库列表、300 秒自�
 Git 构建只接受报告单一指定容器端点的专用 remote builder。Linux Release 已验证相似容器名和附加节点在准入前被拒绝。独立 Engine 上的 RootlessKit 仍受宿主用户命名空间限制，实际构建取消与恢复尚待实机联合验收。
 
 Linux 私有 Engine 的 rootless BuildKit 已通过受信 HTTPS 源构建、在途取消与清理、原操作中断恢复。构建门禁检查唯一 remote 节点、容器资源、指定网络及挂载限制。已派发结果未知时，同键返回原 Interrupted 回执，新键仍受保护。见[真实 BuildKit 验收](../architecture/server-module-evidence/Git.md#mb-03-真实-buildkit-构建取消与原回执)。
+
+完整认证 HTTP 已实测客户端丢弃受理响应后按原键查询。真实构建继续运行，终态及日志按原 ID 可读。见 [Git HTTP 实测](../architecture/server-module-evidence/Git.md#mb-03-完整认证-git-http-的-buildkit-原回执)。

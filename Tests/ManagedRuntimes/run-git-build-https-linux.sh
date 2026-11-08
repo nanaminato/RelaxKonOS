@@ -7,6 +7,9 @@ host_mount=${2:?host mount namespace}
 image_archive=${3:?local rootless BuildKit image archive}
 image=${4:?rootless BuildKit image tag in the archive}
 tests=${5:-}
+server=${6:-}
+pam_fixture=${7:-}
+if [[ -n $server ]]; then [[ $$ == 1 && -f $tests && -f $server && -f $pam_fixture ]]; fi
 [[ $(readlink /proc/self/ns/net) != "$host_net" ]]
 [[ $(readlink /proc/self/ns/mnt) != "$host_mount" ]]
 [[ $(ip -o link show | wc -l) -eq 1 ]]
@@ -18,6 +21,7 @@ root=$(mktemp -d /tmp/relaxkonos-mb03-https.XXXXXXXX)
 daemon_pid=
 https_pid=
 worker_pid=
+private_etc=
 cleanup() {
     if [[ -n $worker_pid ]]; then kill -KILL "$worker_pid" 2>/dev/null || :; wait "$worker_pid" || :; fi
     if [[ -n $https_pid ]]; then kill "$https_pid" 2>/dev/null || :; wait "$https_pid" || :; fi
@@ -30,6 +34,7 @@ cleanup() {
         wait "$daemon_pid" || :
     fi
     if mountpoint -q /etc/hosts; then umount /etc/hosts; fi
+    if [[ -n $private_etc ]]; then umount /etc; fi
     if mountpoint -q "$root/data"; then umount --recursive "$root/data"; fi
     rm -rf -- "$root"
 }
@@ -40,6 +45,12 @@ trap 'exit 143' TERM
 
 export DOCKER_HOST="unix://$root/docker.sock" DOCKER_CONFIG="$root/docker-client"
 unset DOCKER_CONTEXT
+if [[ -n $server ]]; then
+    mount -t tmpfs -o mode=0755 tmpfs /var/lib
+    mkdir "$root/etc-upper" "$root/etc-work"
+    mount -t overlay overlay -o "lowerdir=/etc,upperdir=$root/etc-upper,workdir=$root/etc-work" /etc
+    private_etc=1
+fi
 mkdir "$DOCKER_CONFIG"
 printf '{}\n' > "$root/daemon.json"
 storage_driver=vfs
@@ -76,10 +87,16 @@ if [[ -n $tests ]]; then
     printf 'cancel witness\n' > "$root/source/marker.txt"
     commit 'Cancellation build context'
     cancelled_commit=$(git -C "$root/source" rev-parse HEAD)
-    git -C "$root/source" checkout -qb interrupted
+    git -C "$root/source" checkout -qb interrupted "$expected"
     printf 'interruption witness\n' > "$root/source/marker.txt"
     commit 'Interruption build context'
     interrupted_commit=$(git -C "$root/source" rev-parse HEAD)
+    if [[ -n $server ]]; then
+        git -C "$root/source" checkout -qb authenticated "$expected"
+        printf 'authenticated witness\n' > "$root/source/marker.txt"
+        commit 'Authenticated build context'
+        authenticated_commit=$(git -C "$root/source" rev-parse HEAD)
+    fi
     git -C "$root/source" checkout -q main
 fi
 git clone -q --bare "$root/source" "$root/repositories/mb03/source.git"
@@ -165,6 +182,13 @@ CLI
     [[ ! -e /proc/$cancelled_pid ]]
     printf 'PASS GIT BUILDKIT CLEANUP: cancelled CLI exited and operation tag absent\n'
 
+    dispatch_count=3
+    if [[ -n $server ]]; then
+        rm -f -- "$root/fetch-entered" "$root/release-fetch"
+        RELAXKONOS_TEST_PAM_SERVICE=sshd python3 "$(dirname "$0")/run-authenticated-git-build-live.py" \
+            "$root" "$server" "$pam_fixture" "$authenticated_commit"
+        dispatch_count=4
+    fi
     rm -f -- "$root/fetch-entered" "$root/release-fetch" "$root/cleanup-entered"
     "${worker[@]}" crash "$root" interrupted "$interrupted_commit" &
     worker_pid=$!
@@ -179,9 +203,9 @@ CLI
     worker_pid=
     "${worker[@]}" recover "$root" interrupted "$interrupted_commit"
     "${worker[@]}" recover "$root" interrupted "$interrupted_commit"
-    [[ $(wc -l < "$root/dispatches") -eq 3 && ! -e $root/cleanup-entered \
+    [[ $(wc -l < "$root/dispatches") -eq $dispatch_count && ! -e $root/cleanup-entered \
         && -z $(docker image ls -q --filter 'reference=relaxkonos-git:*') ]]
-    printf 'PASS GIT BUILDKIT NO REPLAY: three real dispatches, no restart cleanup dispatch\n'
+    printf 'PASS GIT BUILDKIT NO REPLAY: %s real dispatches, no restart cleanup dispatch\n' "$dispatch_count"
     docker buildx rm mb03-live >/dev/null 2>&1 || :
     docker rm -fv mb03-builder >/dev/null
     touch "$root/release-fetch"

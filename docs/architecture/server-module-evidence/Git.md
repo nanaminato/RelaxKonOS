@@ -123,4 +123,12 @@ Linux Release 通过生产 Git 服务代理、真实命令执行器、持久台�
 
 初版成功路径释放运行时代次后，旧 ALC 在 8 秒测试 GC 窗口仍可达，取消路径已收集。堆快照显示原 LoaderAllocator 仍被引用。成功回执的非空日志通过 `IReadOnlyList<string>` 集合表达式创建了执行程序集内的具体类型。日志快照改用共享 `string[]`，保留原清理和有界日志规则。最终实测保留成功与取消的原 DTO，同时确认两个实际执行 ALC 收集，并由新代次读回原回执。夹具区分运行时释放、测试 GC 和真实 CLI 退出。隔离负载内存和生产收益均未测。Windows Release 驻留与后台工作回归通过。早期失败、堆分析及最终日志在 `.artifacts/mb03-buildkit-joint/`，最终联合归档 SHA-256 为 `234e21450d50ba92ac0cfcde70eab12ff3327da6390d614ea96ba072fc8093c9`。
 
-验收使用生产 Git 模块入口及完整真实 BuildKit，未启动认证 HTTP Server。中断后外部构建的最终结果无法从原台账确证，原准入门禁保留。人工核实与安全解除流程、整机掉电和生产负载测量分别开放。
+上述首次联合验收使用生产 Git 模块入口及真实 BuildKit。完整认证 Server 的续验见下文。中断后外部构建的最终结果无法从原台账确证，原准入门禁保留。人工核实与安全解除流程、整机掉电和生产负载测量分别开放。
+
+### MB-03 完整认证 Git HTTP 的 BuildKit 原回执
+
+Linux 完整 System Mode Server 经私有 Helper 做 PAM 登录，使用生产 JWT、Git HTTP 路由及真实专属 BuildKit。匿名提交返回 401。认证客户端丢弃原受理响应，独立读取到原 `730f26a1-4f12-42c6-acdd-82848141a1be`，真实 Git fetch 被暂扣时为 Running，后台工作租约为一。放行后原操作导出镜像并持久化成功。同键 POST 与按 ID GET 返回同一完整回执和日志，租约随后归零，夹具清理原操作标签。HTTP 响应使用可独立持有的共享 DTO。实机测量的是原 HTTP 回执和后台租约，执行代次的收集由同批生产 Git 模块入口验证。
+
+同批实际成功构建 `8b1eeb5a-4419-429a-962b-44624d0d5e1f` 和取消 `49a63941-7f14-4cc9-bc86-510e7c761bc7` 都验证了保留原回执时的 ALC 收集。强制终止原 `d5866442-299f-44f3-8ab7-c5c207dafe97` 后，两次跨进程核对保留同一 Interrupted 回执和准入门禁。四次实际构建派发，恢复零额外派发。首轮 HTTP 路径通过，但用于下一场景的原提交已被 Git 缓存，无法等待真实取源屏障。复测各故障使用从同一基线分叉的独立提交。专属容器、卷及网络清理，宿主服务、hosts 与 AppArmor 指纹一致。日志在 `.artifacts/mb03-git-http/`，最终归档 SHA-256 为 `aaf4abdf7f666949976e8480ed3a6cf2cecd8a7b7b04603cdaae5b70ab54a3c2`。
+
+Windows Release 模块边界回归通过，Docker 跨进程原 `e9dde558-9c59-401d-895d-3eff75ec639e` 读回 Interrupted，受控副作用计数为一。
