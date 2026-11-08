@@ -1509,11 +1509,6 @@ def proof_full_http_shutdown(ipc, case):
             assert native_ledger.read_bytes() == held and service_identity() == record['service']
         finally:
             os.kill(native_pid, signal.SIGCONT)
-        done = stop_native(publication, pending)
-        assert done.returncode == 0 and helper_result(done)['success']
-        assert not Path(f'/proc/{native_pid}').exists() and network_baseline() == record['baseline']
-        assert queue.read_bytes() == before[0] and mirror.read_bytes() == before[2]
-        pid = start('admission-disabled')
         deadline = time.monotonic() + 8
         while Path(f'/proc/{native_pid}').exists() or device in devices() or route(record['routing_table']):
             assert time.monotonic() < deadline
@@ -1530,6 +1525,11 @@ def proof_full_http_shutdown(ipc, case):
             assert checkpoint(record, 'state') == 'StopDispatched'
             assert not (root / 'rule-delete-attempts').exists()
             assert (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes()) == (before[0], held, before[2])
+        done = stop_native(publication, pending)
+        assert done.returncode == 0 and helper_result(done)['success']
+        assert not Path(f'/proc/{native_pid}').exists() and network_baseline() == record['baseline']
+        assert queue.read_bytes() == before[0] and mirror.read_bytes() == before[2]
+        pid = start('admission-disabled')
         token = login(disabled=True)
         terminate(pid)
         assert 'operation=MihomoRuntimeTunStop ' not in ipc.log.read_text()
