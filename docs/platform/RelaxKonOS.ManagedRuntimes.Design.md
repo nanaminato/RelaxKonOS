@@ -319,3 +319,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）同次 SIGTERM 验证受管 TUN、系统代理 guard 与独立 sing-box 到期的原执行排空。重启保持 Mihomo 配置身份、原停止回执、guard 归属与 sing-box 到期回执。范围见[同次停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-与-proxy-安全责任同次停机)。
 
 2026-11-08（MR-03 / MB-04）管理模块停用计划和禁用启动读取已确认受管 TUN 的 Helper 原见证及当前归属。独立 Helper 不可用、漂移及无 Server 队列的原生待核验均保留准入门禁。保留数据移除的判定要求原移除见证和当前缺席。范围见[模块停用门禁](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-模块停用门禁)。
+
+2026-11-08（MR-03 / MB-04）Linux 认证管理停用经重启生效，受管 Mihomo TUN 保留原执行、配置、检查点和实际流量。Core guard 与 sing-box 到期在管理入口禁用时完成并独立排空。范围见[禁用态安全交接](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-禁用-proxy-管理入口后的安全交接)。

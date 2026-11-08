@@ -1099,6 +1099,7 @@ def proof_http_publication(owner, ipc, previous, case):
 def proof_full_http_shutdown(ipc, case):
     joint = case == 'ipc-http-joint'
     admission = case == 'ipc-http-admission'
+    handoff = case == 'ipc-http-handoff'
     assert any(line.split()[4] == '/etc' and ' - overlay ' in line
                for line in Path('/proc/self/mountinfo').read_text().splitlines())
     base = 'http://192.0.2.2:18970'
@@ -1135,8 +1136,8 @@ def proof_full_http_shutdown(ipc, case):
         body, status = response.stdout.rsplit('\n', 1)
         return int(status), json.loads(body) if body else None
 
-    def until(check, description):
-        deadline = time.monotonic() + 15
+    def until(check, description, seconds=15):
+        deadline = time.monotonic() + seconds
         while worker.poll() is None and time.monotonic() < deadline:
             try:
                 value = check()
@@ -1147,9 +1148,9 @@ def proof_full_http_shutdown(ipc, case):
             time.sleep(.05)
         raise RuntimeError(f'Full Server did not reach {description}')
 
-    def marker(name):
+    def marker(name, seconds=15):
         path = root / name
-        return until(lambda: path.read_text() if path.exists() else None, name)
+        return until(lambda: path.read_text() if path.exists() else None, name, seconds)
 
     def login(disabled=False):
         readiness = '/api/v1.0/server/modules' if disabled else api + '/tun'
@@ -1196,6 +1197,110 @@ def proof_full_http_shutdown(ipc, case):
     def guard_applied():
         return any(line.partition('=')[2].strip('"') == 'http://127.0.0.1:18881'
                    for line in environment.read_text().splitlines() if line.startswith('http_proxy='))
+
+    def guard_evidence():
+        return (environment.read_bytes(), guard_ledger.read_bytes(),
+                environment.stat().st_mtime_ns, guard_ledger.stat().st_mtime_ns)
+
+    def hold_guard_repair():
+        until(guard_applied, 'original guard')
+        drift = environment.read_text().replace('http://127.0.0.1:18881', 'http://127.0.0.1:14444', 1)
+        competing = environment.with_name('environment.guard-fixture-new')
+        competing.write_text(drift)
+        competing.chmod(environment.stat().st_mode & 0o777)
+        competing.replace(environment)
+        guard = marker('full-guard-response-held')
+        assert guard_applied()
+        return guard, guard_evidence()
+
+    def verify_handoff(pid, record, publication):
+        nonlocal worker, first_worker, token
+        modules = '/api/v1.0/server/modules'
+        module = 'relaxkonos.proxy'
+        native_ledger = archive / 'state' / 'archive-state.json'
+        checkpoints = sorted((archive / 'operations' / publication).glob('tun-*.json'))
+
+        def tun_evidence():
+            return (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes(),
+                    tuple(path.read_bytes() for path in checkpoints))
+
+        def terminate(server_pid):
+            os.kill(server_pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0 and not Path(f'/proc/{server_pid}').exists()
+
+        def read_disabled():
+            status, detail = request(f'{modules}/{module}', token)
+            assert status == 200 and not detail['effectiveEnabled'] and not detail['desiredEnabled']
+            assert detail['residency'] is None and request(api + '/tun', token)[0] == 404
+
+        def submit_disable_plan():
+            status, items = request(modules, token)
+            assert status == 200, (status, items)
+            proxy = next(item for item in items if item['id'] == module)
+            assert proxy['configurationWritable'] and proxy['effectiveEnabled'] and proxy['desiredEnabled']
+            status, plan = request('/api/v1.0/server/module-plans', token, data={
+                'serviceId': proxy['serviceId'], 'expectedRevision': proxy['desiredRevision'], 'action': 'Disable',
+                'moduleIds': [module], 'enabledModuleIds': [item['id'] for item in items
+                                                            if item['desiredEnabled'] and item['id'] != module],
+                'idempotencyKey': uuid.uuid4().hex})
+            assert status == 200 and plan['restartRequired'], (status, plan)
+            if plan['blockedBy']:
+                assert all(item['problemCode'] == 'module-recovery-blocked' for item in plan['blockedBy']), plan
+                return None
+            status, applied = request(f'/api/v1.0/server/module-plans/{plan["planId"]}/apply', token, key='handoff-apply')
+            if status == 409 and applied['problemCode'] == 'module-recovery-blocked':
+                return None
+            assert status == 200 and applied['state'] == 'AwaitingRestart', (status, applied)
+            return applied['operationId']
+
+        original_tun = tun_evidence()
+        terminate(pid)
+        worker = launch('admission-managed')
+        pid = int(marker('full-server-pid'))
+        token = login()
+        disable_id = until(submit_disable_plan, 'applied management disable plan')
+        terminate(pid)
+        worker = launch('handoff-disabled')
+        first_worker = worker
+        pid = int(marker('full-server-pid'))
+        token = login(disabled=True)
+        read_disabled()
+        (root / 'full-handoff-ready').touch()
+        assert marker('full-expiry-live') == 'forwarded'
+        guard, guarded = hold_guard_repair()
+        probe(record, 'handoff-before-expiry')
+        expiry = marker('full-expiry-response-held', 40)
+        pending_expiry = expiry_ledger.read_bytes()
+        probe(record, 'handoff-after-native-expiry')
+        os.kill(pid, signal.SIGTERM)
+        assert marker('full-server-stopping') == 'stopping'
+        assert expiry_ledger.read_bytes() == pending_expiry and tun_evidence() == original_tun
+        (root / 'full-expiry-response-release').touch()
+        confirmed = until(lambda: (data := expiry_ledger.read_bytes()) != pending_expiry and data,
+                          'original expiry confirmation')
+        assert Path(f'/proc/{pid}').exists() and guard_evidence() == guarded
+        probe(record, 'handoff-expiry-drained')
+        (root / 'full-guard-response-release').touch()
+        assert marker('full-server-exited') == '0' and not Path(f'/proc/{pid}').exists()
+        worker = launch('handoff-restart')
+        restart_pid = int(marker('full-server-pid'))
+        token = login(disabled=True)
+        read_disabled()
+        status, receipt = request(f'/api/v1.0/server/module-operations/{disable_id}', token)
+        assert status == 200 and receipt['state'] == 'Succeeded', (status, receipt)
+        probe(record, 'handoff-restarted-disabled')
+        assert tun_evidence() == original_tun and guard_evidence() == guarded and expiry_ledger.read_bytes() == confirmed
+        helper_audit = ipc.log.read_text()
+        assert helper_audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
+        assert helper_audit.count(f'operation=LinuxSystemProxyApply id={uuid.UUID(guard)} ') == 1
+        assert helper_audit.count('operation=ProxyServerApply ') == 1
+        assert 'operation=MihomoRuntimeTunStop ' not in helper_audit and 'operation=MihomoRuntimeRecover ' not in helper_audit
+        (root / 'full-joint-finish').touch()
+        assert first_worker.wait(timeout=12) == 0
+        terminate(restart_pid)
+        print(f'PASS TUN DISABLED SAFETY HANDOFF: publication={publication}; disable={disable_id}; guard={guard}; '
+              f'expiry={expiry}; Server PID {pid}->{restart_pid}; original Mihomo PID={record["service"][0]}; '
+              f'configuration={record["credential"]}')
 
     def verify_admission(pid, record, publication):
         nonlocal worker, token
@@ -1299,7 +1404,7 @@ def proof_full_http_shutdown(ipc, case):
         print(f'PASS TUN MODULE DEACTIVATION: publication={publication}; root-only-stop={pending}; '
               f'configuration={record["credential"]}; original PID={native_pid}; outage and drift preserved original ownership')
 
-    worker = launch('admission' if admission else 'drain')
+    worker = launch('admission' if admission or handoff else 'drain')
     first_worker = worker
     try:
         pid = int(marker('full-server-pid'))
@@ -1329,19 +1434,13 @@ with sqlite3.connect(sys.argv[1]) as database:
         if admission:
             verify_admission(pid, record, publication)
             return
+        if handoff:
+            verify_handoff(pid, record, publication)
+            return
         if joint:
             expiry = marker('full-expiry-response-held')
             pending_expiry = expiry_ledger.read_bytes()
-            until(guard_applied, 'original guard')
-            drift = environment.read_text().replace('http://127.0.0.1:18881', 'http://127.0.0.1:14444', 1)
-            competing = environment.with_name('environment.guard-fixture-new')
-            competing.write_text(drift)
-            competing.chmod(environment.stat().st_mode & 0o777)
-            competing.replace(environment)
-            guard = marker('full-guard-response-held')
-            assert guard_applied()
-            guard_witness = (environment.read_bytes(), guard_ledger.read_bytes(),
-                             environment.stat().st_mtime_ns, guard_ledger.stat().st_mtime_ns)
+            guard, guard_witness = hold_guard_repair()
         stopped = submit('disable', 'full-stop')
         if joint:
             until(lambda: read(stopped)['state'] == 'running', 'TUN waiting for the shared publication gate')
@@ -1398,8 +1497,7 @@ with sqlite3.connect(sys.argv[1]) as database:
         probe(current, 'jwt-after-shutdown')
         until(lambda: leases() == 0, 'drained work leases')
         if joint:
-            assert guard_witness == (environment.read_bytes(), guard_ledger.read_bytes(),
-                                     environment.stat().st_mtime_ns, guard_ledger.stat().st_mtime_ns)
+            assert guard_witness == guard_evidence()
             assert ipc.log.read_text().count(f'operation=LinuxSystemProxyApply id={uuid.UUID(guard)} ') == 1
             assert ipc.log.read_text().count('operation=ProxyServerApply ') == 1
             (root / 'full-joint-finish').touch()
@@ -1436,7 +1534,7 @@ def proof():
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
-    http_case = case in ('ipc-http-commit', 'ipc-http-pending', 'ipc-http-action', 'ipc-http-full', 'ipc-http-joint', 'ipc-http-admission')
+    http_case = case.startswith('ipc-http-')
     if http_case:
         ip('netns', 'add', 'rk-http-client')
         ip('link', 'set', 'rk-peer', 'netns', 'rk-http-client')
@@ -1514,7 +1612,7 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-joint', 'ipc-http-admission'):
+            if case in ('ipc-http-full', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff'):
                 proof_full_http_shutdown(ipc, case)
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,

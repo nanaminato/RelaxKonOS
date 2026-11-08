@@ -43,36 +43,38 @@ internal static class MihomoTunFullServerAcceptance
     {
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
-            or "admission-managed" or "admission-disabled"))
+            or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
+        var handoff = phase == "handoff-disabled";
         var disabled = phase == "admission-disabled";
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(joint ? 75 : 45));
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(handoff ? 90 : joint ? 75 : 45));
         var ct = budget.Token;
-        using var expiry = joint && first ? new ProxyJointShutdownExpiry(root, socket) : null;
-        if (expiry is not null) await expiry.PrepareAsync(ct);
-        await using var guard = joint && first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-guard-reply.sock", socket, ct,
+        using var expiry = handoff || joint && first ? new ProxyJointShutdownExpiry(root, socket) : null;
+        if (expiry is not null) await expiry.PrepareAsync(ct, handoff ? TimeSpan.FromSeconds(18) : null);
+        await using var guard = expiry is not null ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-guard-reply.sock", socket, ct,
             (operation, _) => operation == "LinuxSystemProxyApply"
                 && File.ReadLines("/etc/environment").Any(line => line == "http_proxy=http://127.0.0.1:14444"
                     || line == "http_proxy=\"http://127.0.0.1:14444\"")) : null;
-        await using var expiryRelay = joint && first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-expiry-reply.sock",
+        await using var expiryRelay = expiry is not null ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-expiry-reply.sock",
             guard!.Path, ct, (operation, _) => operation == "ProxyServerApply") : null;
         await using var relay = first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-tun-reply.sock", expiryRelay?.Path ?? socket, ct,
             (operation, _) => operation == "MihomoRuntimeTunStop") : null;
-        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? socket, root,
+        var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? expiryRelay?.Path ?? socket, root,
             reuse: !first && phase != "admission", seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
-        if (phase == "admission-managed")
+        if (phase is "admission-managed" or "handoff-disabled" or "handoff-restart")
         {
             foreach (var key in start.Environment.Keys.Where(key => key.StartsWith("Modules__", StringComparison.Ordinal)).ToArray())
                 start.Environment.Remove(key);
             start.Environment["ModuleManagement__Authority"] = "managed";
         }
         start.Environment["Identity__LinuxPamTransport"] = "helper";
-        if (joint) start.Environment["Certificate__StorageRoot"] = Path.Combine(start.WorkingDirectory, "certificate-fixture");
+        if (joint || handoff || phase == "handoff-restart")
+            start.Environment["Certificate__StorageRoot"] = Path.Combine(start.WorkingDirectory, "certificate-fixture");
         start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
         start.Environment["Logging__LogLevel__Microsoft.AspNetCore"] = "Warning";
         start.Environment["Logging__LogLevel__Microsoft.EntityFrameworkCore"] = "Warning";
@@ -95,8 +97,14 @@ internal static class MihomoTunFullServerAcceptance
             if (expiry is not null)
             {
                 var guardDrain = DrainAsync(guard!, "guard");
-                var tunDrain = DrainAsync(relay!, "tun");
+                var tunDrain = relay is null ? Task.CompletedTask : DrainAsync(relay, "tun");
                 var expiryDrain = DrainExpiryAsync(expiryRelay!, expiry);
+                if (handoff)
+                {
+                    await WaitForMarkerAsync("full-handoff-ready");
+                    await expiry.VerifyLiveBeforeExpiryAsync(ct);
+                    await WriteMarkerAsync(root, "full-expiry-live", "forwarded");
+                }
                 await stopping.Task.WaitAsync(ct);
                 await WriteMarkerAsync(root, "full-server-stopping", "stopping");
                 await Task.WhenAll(guardDrain, tunDrain, expiryDrain);

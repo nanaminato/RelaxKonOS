@@ -56,6 +56,7 @@
 - [MB-04 完整 Server 的受管 TUN 停机排空](#mb-04-完整-server-的受管-tun-停机排空)
 - [MB-04 受管 TUN 与 Proxy 安全责任同次停机](#mb-04-受管-tun-与-proxy-安全责任同次停机)
 - [MB-04 受管 TUN 模块停用门禁](#mb-04-受管-tun-模块停用门禁)
+- [MB-04 禁用 Proxy 管理入口后的安全交接](#mb-04-禁用-proxy-管理入口后的安全交接)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -655,7 +656,23 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 **已实现但实机未验证。** 保留数据移除的禁用启动分支要求原移除见证和当前确证缺席。原生保留数据移除单项已覆盖，未和禁用启动联验。其他 Linux 架构未参与。Windows Release 回归通过，含 104 项配置事务，可信下载探针因缺进程级测试 CA 跳过。日志为 `.artifacts/mb04-tun-marker-sync/tun-admission-windows.log`。
 
-**未实现或仍受门禁保护。** 管理入口禁用时，受管 TUN 持续转发、Core guard 纠偏和 sing-box 到期仍待联验。整模块交接前 Proxy 保持 resident。已核对专属 Server 和原 Mihomo 进程退出及 cgroup 清理。对象释放、ALC 回收、隔离负载内存及生产收益未测量。
+管理入口禁用时的联合验收见[禁用态安全交接](#mb-04-禁用-proxy-管理入口后的安全交接)。本批已核对专属 Server 和原 Mihomo 进程退出及 cgroup 清理。对象释放、ALC 回收、隔离负载内存及生产收益未测量。
+
+## MB-04 禁用 Proxy 管理入口后的安全交接
+
+**已实现且已验证。** Linux x64 私有 systemd 中，完整非 root Server 通过生产 PAM/JWT 发布受管 TUN，然后通过认证模块计划及应用接口提交 Disable。原管理操作为 `AwaitingRestart`，重启后为 `Succeeded`。后续 Server 两次启动均以管理台账为准，Proxy 有效状态和期望状态均为禁用，清单无 Proxy 工作代次，管理 TUN 路由返回 404。原 Mihomo PID、配置身份、管理选路、上游 HTTP 与分流 DNS 在整个期间一致。
+
+在禁用态 Server 已监听后，先验证真实 TLS VLESS 到期凭据仍能转发。专属代理环境文件被竞争修改，Core guard 按原归属纠偏，真实 Helper 成功响应暂扣。随后生产定时器在授权到期后派发 sing-box 的原发布，扣留该响应时核对 Helper 已提交回执及 Server 待确认台账。到期授权的旧连接关闭，新连接拒绝，保留授权继续转发。
+
+两笔响应均在途时向禁用态 Server 发送 SIGTERM。先放行到期响应，Server 原台账确认，进程仍等待 guard。其间再次核对原 TUN 路由和流量。释放 guard 后正常退出，再次按相同台账禁用启动，并按原停用 ID 查询成功回执。sing-box 到期回执和 PID、guard 文件及归属台账字节和修改时间、Mihomo 台账、原生检查点、配置镜像及队列字节均保持。Helper 审计各有一次原发布、原 guard 纠偏和原到期，未派发 TUN 停止或补偿。
+
+最终原 TUN 发布 `522ac35ee4d145f195e4b1ec38f07e75`，原模块停用 `7530ef4d-6e1e-426e-8cb9-808dfea0cc18`，guard 关联 ID `ffb8bf0b68d340f9bfa2b7a4907857b1`，原到期 `49f1e994e0e549288760fba8926331cc`。原 Mihomo PID 393，配置身份 `d318627d69eeb32385ddc69895b8b95a55174af706063f0d9ab793b9c399e263`。sing-box PID 1095，配置身份 `2b861e16230399be4aee0844821771e244c5da3dfb6770de3c94f8bf0d523784`。禁用态 Server PID 810→1252。
+
+首轮和最终禁用态用例通过，同批再验收同次停机及停用门禁。归档 SHA-256 为 `5086a82094e52b8afe9987bb8eb29599b9415d47647a0c530c58964fb68bca2a`。日志为 `.artifacts/mb04-tun-marker-sync/tun-handoff-linux-first.log` 和 `.artifacts/mb04-tun-marker-sync/tun-handoff-linux-final.log`。三组专属 cgroup 清理通过，宿主服务、系统代理、resolver 及账户文件指纹一致。Windows Release 回归通过，含 104 项配置事务检查，可信下载探针因缺进程级测试 CA 跳过。日志为 `.artifacts/mb04-tun-marker-sync/tun-handoff-windows.log`。
+
+**已实现但实机未验证。** 该验收覆盖配置及重启下的管理停用。其他 Linux 架构及桌面代理后端未参与。
+
+**未实现或仍受门禁保护。** 保留数据移除的原见证与禁用启动仍需联验。动态驻留仍受整模块安全交接与资源收益验收门槛保护，Proxy 继续 resident。已验证专属 Server 退出和 cgroup 清理。对象释放、ALC 回收、隔离内存与生产收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 
