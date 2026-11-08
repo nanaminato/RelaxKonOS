@@ -56,6 +56,13 @@ public static class CertificateEndpoints
                 return await operations.ObserveOrderUnderLeaseAsync(operationId, services.GetRequiredService<IAcmeService>, ct) is { } observation
                     ? Results.Ok(observation) : Results.NotFound();
             }));
+        group.MapGet(CertificateApiRoutes.VerifyOrderCertificatePattern, (Guid operationId, CertificateOperationStore operations, HttpContext context) =>
+            ResidentScopedResponse.ExecuteAsync(context, operations.AdmitOrderObservationAsync, async (services, ct) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                return await operations.VerifyOrderCertificateUnderLeaseAsync(operationId, services.GetRequiredService<IAcmeService>, ct) is { } proof
+                    ? Results.Ok(proof) : Results.NotFound();
+            }));
         group.MapPost(CertificateApiRoutes.CancelOperationPattern, async (Guid operationId, RelaxKonOS.Server.Certificate.CertificateOperationStore operations, CancellationToken ct) =>
             await operations.CancelAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());
         return app;

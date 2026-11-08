@@ -12,6 +12,9 @@ public sealed record CertificateOrderObservationDto(
     [property: JsonPropertyName("operation")] CertificateOperationDto Operation,
     [property: JsonPropertyName("remoteStatus")] string RemoteStatus);
 
+public sealed record CertificateOrderVerificationDto(CertificateOperationDto Operation, string Status,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? FingerprintSha256 = null);
+
 public sealed record CertificateDto(
     [property: JsonPropertyName("id")] Guid Id,
     [property: JsonPropertyName("primaryDomain")] string PrimaryDomain,

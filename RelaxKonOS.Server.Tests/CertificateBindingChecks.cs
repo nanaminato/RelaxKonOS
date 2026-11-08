@@ -358,6 +358,7 @@ internal static class CertificateBindingChecks
 
     private sealed class OrderObservationScope(OrderObservationFixture fixture) : IAcmeService, IAsyncDisposable
     {
+        public Task<AcmeIssuedCertificate> ReadIssuedCertificateAsync(AcmeOrderIdentity identity, CancellationToken ct) => throw new NotSupportedException();
         public async Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken ct)
         {
             TestAssert.Assert(identity == fixture.Identity, "Observation must use the original CA order identity.");

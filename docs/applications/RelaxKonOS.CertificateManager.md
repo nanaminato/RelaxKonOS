@@ -1501,7 +1501,9 @@ CA 已接单或签发后遇到无法确认结果的传输失败，证书操作�
 
 Server 切换到不同 CA 目录后，查询旧订单返回 `identity-unavailable`，同键仍取得原操作回执，活动证书保持。恢复原目录和账户身份后可再次读取同一原订单。见[双 CA 实机验收](../architecture/server-module-evidence/Certificates.md#mb-05-切换-ca-时保留原订单身份)。
 
-已记录同源订单时，Server 在提交 CSR 前为原操作加密保存证书密钥。证书响应未知时保留检查点供核验，原活动证书继续使用。检查点不随操作回执返回。原订单的补取和部署仍需独立授权与证据。见[原密钥实机证据](../architecture/server-module-evidence/Certificates.md#mb-05-提交-csr-前保存原证书密钥)。
+已记录同源订单时，Server 在提交 CSR 前为原操作加密保存证书密钥。证书响应未知时保留检查点供核验，原活动证书继续使用。检查点不随操作回执返回。部署原订单证书仍需独立授权与证据。见[原密钥实机证据](../architecture/server-module-evidence/Certificates.md#mb-05-提交-csr-前保存原证书密钥)。
+
+对已有原订单和原密钥检查点的中断回执，可用认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order/certificate` 核验。Server 从原 CA 读取已签发证书链，核对原订单的 DNS 名称、叶证书密钥和链路。`verified` 返回原操作及叶证书 SHA-256。其他状态保留原回执。响应只包含核验结果，活动证书与部署保持。见[原证书链实机证据](../architecture/server-module-evidence/Certificates.md#mb-05-按原订单只读补取证书链)。
 
 WebRoot 签发和续期在发布 HTTP-01 文件前，在原证书操作记录挑战文件名及内容摘要。任务等待挑战清理后才提交终态。跨进程恢复在写入原中断回执前清理内容匹配的原文件。路径或内容无法确认时保留文件和恢复责任，并隔离证书工作准入。网站自动签发使用此路径，网站发布与原证书操作的关联同样持久化。CA 返回 `valid` 时仍应通过原发布和证书回执核实本地签发、部署各自的状态。见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-网站发布-webroot-签发与中断恢复)。
 

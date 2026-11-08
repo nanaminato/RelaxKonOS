@@ -41,6 +41,9 @@ internal sealed class AnvilAcmeService : IAcmeService, IAcmeRenewalInfoProvider
     public Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken ct) =>
         InvokeAsync(acme => acme.ObserveOrderAsync(identity, ct), ct);
 
+    public Task<AcmeIssuedCertificate> ReadIssuedCertificateAsync(AcmeOrderIdentity identity, CancellationToken ct) =>
+        InvokeAsync(acme => acme.ReadIssuedCertificateAsync(identity, ct), ct);
+
     public Task RevokeAsync(X509Certificate2 certificate, string contactEmail, CancellationToken ct) =>
         InvokeAsync(async acme => { await acme.RevokeAsync(certificate, contactEmail, ct); return true; }, ct);
 

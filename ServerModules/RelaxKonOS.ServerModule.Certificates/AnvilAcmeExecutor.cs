@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Formats.Asn1;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Text.Json;
 using Certify.ACME.Anvil;
 using Certify.ACME.Anvil.Acme;
 using RelaxKonOS.Protocol.Certificates;
@@ -179,24 +180,33 @@ public sealed class AnvilAcmeExecutor(AcmeExecutionPorts ports, ILogger logger) 
         }
     }
 
-    public async Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken ct)
+    public async Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken ct) =>
+        (await ReadOrderAsync(identity, download: false, ct)).Status;
+
+    public Task<AcmeIssuedCertificate> ReadIssuedCertificateAsync(AcmeOrderIdentity identity, CancellationToken ct) =>
+        ReadOrderAsync(identity, download: true, ct);
+
+    private async Task<AcmeIssuedCertificate> ReadOrderAsync(AcmeOrderIdentity identity, bool download, CancellationToken ct)
     {
         try
         {
             var directory = ValidateDirectoryUrl(ports.DirectoryUrl);
             if (directory != identity.Directory || !IsSameOrigin(directory, identity.Account) || !IsSameOrigin(directory, identity.Order))
-                return "identity-unavailable";
+                return new("identity-unavailable");
             var key = KeyFactory.FromPem(await File.ReadAllTextAsync(AccountKeyPath(directory), ct));
             if (!string.Equals(key.Thumbprint(), identity.AccountThumbprint, StringComparison.Ordinal))
-                return "identity-unavailable";
+                return new("identity-unavailable");
 
             // With the existing account URI Anvil can sign POST-as-GET directly. Restrict
             // this transport to directory/nonce reads and the exact original order request.
-            using var http = new HttpClient(new OrderReadHandler(directory, identity.Order)) { Timeout = TimeSpan.FromSeconds(15) };
+            using var handler = new OrderReadHandler(directory, identity.Order);
+            using var http = new HttpClient(handler, disposeHandler: false)
+                { Timeout = TimeSpan.FromSeconds(15), MaxResponseContentBufferSize = 1024 * 1024 };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("RelaxKonOS/1.0");
             var context = new AcmeContext(directory, key, new AcmeHttpClient(directory, http), accountUri: identity.Account);
-            var order = await AcmeCallLifetime.AwaitAsync(() => context.Order(identity.Order).Resource(), ct);
-            return order.Status switch
+            var original = context.Order(identity.Order);
+            var order = await AcmeCallLifetime.AwaitAsync(() => original.Resource(), ct);
+            var status = order.Status switch
             {
                 Certify.ACME.Anvil.Acme.Resource.OrderStatus.Pending => "pending",
                 Certify.ACME.Anvil.Acme.Resource.OrderStatus.Ready => "ready",
@@ -205,14 +215,22 @@ public sealed class AnvilAcmeExecutor(AcmeExecutionPorts ports, ILogger logger) 
                 Certify.ACME.Anvil.Acme.Resource.OrderStatus.Invalid => "invalid",
                 _ => "unavailable"
             };
+            if (!download || status != "valid") return new(status);
+            if (!IsSameOrigin(directory, order.Certificate) || order.Identifiers is null || !order.Identifiers.Any()
+                || order.Identifiers.Any(item => item.Type != Certify.ACME.Anvil.Acme.Resource.IdentifierType.Dns
+                    || string.IsNullOrWhiteSpace(item.Value)))
+                return new("identity-unavailable");
+            handler.Certificate = order.Certificate;
+            var chain = await AcmeCallLifetime.AwaitAsync(() => original.Download(null), ct);
+            return new(status, chain.ToPem(), order.Identifiers.Select(item => item.Value).ToArray());
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (FileNotFoundException) { return "identity-unavailable"; }
-        catch (DirectoryNotFoundException) { return "identity-unavailable"; }
+        catch (FileNotFoundException) { return new("identity-unavailable"); }
+        catch (DirectoryNotFoundException) { return new("identity-unavailable"); }
         catch (Exception error)
         {
             logger.LogWarning("ACME order observation unavailable. ErrorType={ErrorType}", error.GetType().Name);
-            return "unavailable";
+            return new("unavailable");
         }
     }
 
@@ -222,13 +240,22 @@ public sealed class AnvilAcmeExecutor(AcmeExecutionPorts ports, ILogger logger) 
 
     private sealed class OrderReadHandler(Uri directory, Uri order) : DelegatingHandler(new SocketsHttpHandler { AllowAutoRedirect = false })
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        internal Uri? Certificate { get; set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             if (!IsSameOrigin(directory, request.RequestUri)
                 || !(request.Method == HttpMethod.Head || request.Method == HttpMethod.Get && request.RequestUri == directory
-                    || request.Method == HttpMethod.Post && request.RequestUri == order))
+                    || request.Method == HttpMethod.Post && (request.RequestUri == order || request.RequestUri == Certificate)))
                 throw new HttpRequestException("ACME order observation attempted a request outside its read-only authority.");
-            return base.SendAsync(request, ct);
+            if (request.Method == HttpMethod.Post)
+            {
+                if (request.Content is null) throw new HttpRequestException("ACME POST-as-GET requires a signed envelope.");
+                using var envelope = JsonDocument.Parse(await request.Content.ReadAsStringAsync(ct));
+                if (!envelope.RootElement.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.String
+                    || payload.GetString() != "") throw new HttpRequestException("ACME order observation requires an empty JWS payload.");
+            }
+            return await base.SendAsync(request, ct);
         }
     }
 

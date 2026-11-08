@@ -48,6 +48,11 @@ class Relay(BaseHTTPRequestHandler):
             selected = self.headers.get("X-Fixture-Lose-Response")
             if full_server:
                 selected = (root / "response-fault").read_text(encoding="ascii").strip()
+            if self.path.startswith("/certZ/") and response.status == 200 and body.startswith(b"-----BEGIN CERTIFICATE-----"):
+                if (root / "capture-baseline-issued").is_file():
+                    (root / "baseline-issued-chain.pem").write_bytes(body)
+                if selected == "replace-issued-chain":
+                    body = (root / "baseline-issued-chain.pem").read_bytes()
             ari_resource = renewal_info_path and self.path.startswith(renewal_info_path + "/")
             ari_lookup = self.command == "GET" and ari_resource and self.path != renewal_info_path + "/"
             ari_window = json.loads(body).get("suggestedWindow") if ari_lookup and response.status == 200 \

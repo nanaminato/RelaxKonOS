@@ -31,11 +31,13 @@ public interface IAcmeService
         Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null,
         Func<string, Task>? recordCertificateKey = null);
     Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken cancellationToken);
+    Task<AcmeIssuedCertificate> ReadIssuedCertificateAsync(AcmeOrderIdentity identity, CancellationToken cancellationToken);
     Task RevokeAsync(X509Certificate2 certificate, string contactEmail, CancellationToken cancellationToken);
 }
 
 public sealed record AcmeRenewalWindow(DateTimeOffset Start, DateTimeOffset End);
 public sealed record AcmeOrderIdentity(Uri Directory, Uri Account, string AccountThumbprint, Uri Order);
+public sealed record AcmeIssuedCertificate(string Status, string? ChainPem = null, string[]? DnsNames = null);
 
 public interface IAcmeRenewalInfoProvider
 {

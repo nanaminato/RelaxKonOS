@@ -592,7 +592,11 @@ def run(root, server, tests, mode):
         with process([server], "initial-server") as initial:
             wait_for(initial, healthy, "initial-server")
             token = login()
+            capture_baseline = root / "capture-baseline-issued"
+            if mode == "key-checkpoint":
+                capture_baseline.touch()
             original = terminal(token, request(certificates, token, issue("baseline.mb05.test"), "baseline", 202), "succeeded")
+            capture_baseline.unlink(missing_ok=True)
             certificate = f"{certificates}/{original['certificateId']}"
             fingerprint = request(certificate, token)["fingerprintSha256"]
             assert fingerprint
@@ -653,6 +657,7 @@ def run(root, server, tests, mode):
                     wait_for(switched, healthy, "alternate-ca-server")
                     token = login()
                     assert request(observe, token) == {"operation": signed, "remoteStatus": "identity-unavailable"}
+                    assert request(observe + "/certificate", token) == {"operation": signed, "status": "identity-unavailable"}
                     assert request(renew, token, {}, "signed-loss", 202) == signed
                     assert request(certificate, token)["fingerprintSha256"] == fingerprint
             finally:
@@ -672,6 +677,19 @@ def run(root, server, tests, mode):
                 assert retained_keys == [signed["operationId"]] and "protectedOrderKey" not in signed
                 subprocess.run(["dotnet", str(tests), "--acme-order-key-proof", str(root), signed["operationId"]],
                                env=env, cwd=root, check=True, timeout=15)
+                verify = f"{certificates}/operations/{signed['operationId']}/acme-order/certificate"
+                request(verify, expected=401)
+                request(f"{certificates}/operations/00000000-0000-4000-8000-000000000001/acme-order/certificate", token, expected=404)
+                pem = (root / "original-issued-chain.pem").read_text().split("-----END CERTIFICATE-----", 1)[0] + "-----END CERTIFICATE-----"
+                leaf = hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem)).hexdigest().upper()
+                assert request(verify, token) == {"operation": signed, "status": "verified", "fingerprintSha256": leaf}
+                fault.write_text("replace-issued-chain")
+                try:
+                    assert request(verify, token) == {"operation": signed, "status": "identity-mismatch"}
+                finally:
+                    fault.write_text("")
+                assert ledger.read_bytes() == before and request(certificate, token)["fingerprintSha256"] == fingerprint
+                print(f"PASS ACME ORIGINAL CHAIN: operation={signed['operationId']}; verified={leaf}; wrong key refused", flush=True)
             for receipt, status, route, payload, key in (
                 (signed, "valid", renew, {}, "signed-loss"),
                 (missing, "identity-unavailable", certificates, issue("missing.mb05.test"), "order-loss"),
