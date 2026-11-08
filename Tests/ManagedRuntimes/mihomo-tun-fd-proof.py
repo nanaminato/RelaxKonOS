@@ -406,6 +406,10 @@ def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, que
         print(f'PASS TUN DNS RESOLVER REPLACEMENT: original {operation}, ifindex={record["ifindex"]}, '
               f'PID={record["service"][0]}, credential={record["credential"]}; resolver {resolver_before[0]} -> {resolver_after[0]}, '
               f'equal settings and real traffic, {expected}')
+    elif case == 'dns-registration':
+        resolver('domain', device, '~tun.fixture.test')
+        probe('restored')
+        proof_restore_registration(record, operation_dir, previous, sentinel, archive_state)
     else:
         resolver('domain', device, '~tun.fixture.test')
         probe('restored')
@@ -507,6 +511,89 @@ def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, que
 
     assert (root / 'dns-write-attempts').read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains', 'SetLinkDNS']
     assert len(Upstream.hits) == 3 and len(set(queries)) == 3
+
+
+def proof_restore_registration(record, operation_dir, previous, sentinel, archive_state):
+    operation = record['operation']
+    unit_path = Path('/etc/systemd/system') / unit
+    temporary_unit = unit_path.with_name(f'{unit_path.name}.{operation}.restore')
+    previous_unit = unit_path.read_bytes()
+    registration = archive / 'archive-service.json'
+    intent = operation_dir / 'registration-restore.json'
+    armed = operation_dir / 'registration-start-dispatched'
+    fault_trace = root / 'restore-registration-fault.trace'
+    tracer = shutil.which('strace')
+    assert tracer, 'The registration proof requires strace'
+
+    def pending(problem, response):
+        result = json.loads(response)
+        assert uuid.UUID(result['OperationId']).hex == operation and result['Outcome'] == 'RecoveryRequired'
+        state = json.loads(archive_state.read_text())
+        record = state['configuration']
+        assert uuid.UUID(record['operationId']).hex == operation and not record['previousRestored']
+        assert record['recoveryProblemCode'] == problem
+        assert all(uuid.UUID(receipt['operationId']).hex != operation for receipt in state['receipts'])
+
+    renames = 'rename,renameat,renameat2'
+    result = command(tracer, '-f', '-qq', '-yy', '-P', str(temporary_unit), '-e', f'trace={renames}',
+                     '-e', f'inject={renames}:error=EIO:when=1', '-o', str(fault_trace), 'dotnet', record['fixture'],
+                     'runtime-mihomo-tun-checkpoint', str(root), operation, 'recover')
+    pending('runtime.compensation_failed', result)
+    faults = [line for line in fault_trace.read_text().splitlines() if '(INJECTED)' in line]
+    assert len(faults) == 1 and f'"{unit_path}"' in faults[0] and '= -1 EIO' in faults[0]
+    print(faults[0])
+    original_intent = intent.read_bytes()
+    desired_registration = registration.read_bytes()
+    assert json.loads(desired_registration)['TunOperation'] is None
+    assert unit_path.read_bytes() == previous_unit and not armed.exists()
+    assert 'MainPID=0' in service('show', '-p', 'MainPID', unit)
+    assert config.read_bytes() == previous.read_bytes() and checkpoint(record, 'state') == 'Restored'
+    restored_data = sentinel.parent.stat().st_ino
+    cut = subprocess.run([tracer, '-f', '-qq', '-yy', '-P', str(temporary_unit), '-e', f'trace={renames}',
+                          '-e', f'inject={renames}:error=EIO:signal=SIGKILL:when=1', '-o', str(fault_trace),
+                          'dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root), operation, 'recover'],
+                         timeout=15)
+    assert cut.returncode in (-signal.SIGKILL, 128 + signal.SIGKILL)
+    assert unit_path.read_bytes() == previous_unit and registration.read_bytes() == desired_registration
+    assert intent.read_bytes() == original_intent and sentinel.parent.stat().st_ino == restored_data
+    assert not armed.exists() and 'MainPID=0' in service('show', '-p', 'MainPID', unit)
+    assert temporary_unit.is_file()
+
+    drift = previous_unit + b'\n# fixture drift\n'
+    try:
+        unit_path.write_bytes(drift)
+        pending('runtime.network_registration_conflict', checkpoint(record, 'recover'))
+        assert unit_path.read_bytes() == drift and registration.read_bytes() == desired_registration
+        assert sentinel.parent.stat().st_ino == restored_data and not armed.exists()
+    finally:
+        unit_path.write_bytes(previous_unit)
+
+    interrupted = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
+                                  str(root), operation, 'recover-restored-interrupt'], timeout=15)
+    assert interrupted.returncode == -signal.SIGKILL
+    restored_service = service_identity()
+    assert restored_service != record['service'] and armed.read_text() == operation
+    assert not Path('/proc', str(record['service'][0])).exists()
+    assert unit_path.read_bytes() != previous_unit and registration.read_bytes() == desired_registration
+    assert not temporary_unit.exists()
+    assert intent.read_bytes() == original_intent and sentinel.parent.stat().st_ino == restored_data
+
+    hidden = armed.with_suffix('.held')
+    armed.rename(hidden)
+    try:
+        pending('runtime.network_registration_conflict', checkpoint(record, 'recover'))
+        assert service_identity() == restored_service and not armed.exists()
+    finally:
+        hidden.rename(armed)
+    terminal = json.loads(checkpoint(record, 'recover'))
+    assert uuid.UUID(terminal['OperationId']).hex == operation and terminal['Outcome'] == 'Interrupted'
+    assert json.loads(checkpoint(record, 'retry')) == terminal and service_identity() == restored_service
+    assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
+    assert not route(record['routing_table']) and network_baseline() == record['baseline'] and device not in devices()
+    assert target not in resolver('dns') and '~tun.fixture.test' not in resolver('domain')
+    assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+    print(f'PASS TUN RESTORED REGISTRATION: original {operation}; unit replacement EIO and drift held pending; '
+          f'original Interrupted without recopying data or restarting restored PID {restored_service[0]}')
 
 
 def proof_committed(owner, operation, operation_dir, case):
@@ -2242,7 +2329,7 @@ def proof():
         ip('link', 'set', 'rk-peer', 'netns', 'rk-http-client')
         ip('netns', 'exec', 'rk-http-client', 'ip', 'link', 'set', 'rk-peer', 'up')
         ip('netns', 'exec', 'rk-http-client', 'ip', 'address', 'add', '192.0.2.1/24', 'dev', 'rk-peer')
-    if case in ('dns-receipt', 'dns-owner', 'ipc-server-pending', 'ipc-http-pending'):
+    if case in ('dns-receipt', 'dns-owner', 'dns-registration', 'ipc-server-pending', 'ipc-http-pending'):
         install_dns_ack_boundary()
     service('start', 'systemd-resolved.service')
     seed_foreign_dns()

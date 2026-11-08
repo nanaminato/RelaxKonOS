@@ -328,14 +328,15 @@ internal static class MihomoTunDescriptorAcceptance
                 });
             Console.WriteLine(JsonSerializer.Serialize(result));
         }
-        else if (action is "retry" or "recover" or "recover-interrupt" or "recover-cleanup-interrupt")
+        else if (action is "retry" or "recover" or "recover-interrupt" or "recover-cleanup-interrupt" or "recover-restored-interrupt")
         {
             var plan = RuntimeJson.Read<RuntimeConfigurationPlan>(await File.ReadAllBytesAsync(Path.Combine(root, "tun-plan.json")));
             var store = Store();
             var sources = new RuntimeSourceStore(Path.Combine(root, "trust"), RuntimeSourceProtection.Protect);
             var adapter = new MihomoConfigurationAdapter(Archive, store, sources, host, new Authorization(root, operation), RuntimeSourceProtection.Protect);
             var transaction = new RuntimeArchiveConfiguration(store, new FixtureAdapter(adapter,
-                interruptStop: action == "recover-interrupt", interruptCleanup: action == "recover-cleanup-interrupt"));
+                interruptStop: action == "recover-interrupt", interruptCleanup: action == "recover-cleanup-interrupt",
+                interruptRestored: action == "recover-restored-interrupt"));
             var result = action == "retry"
                 ? await transaction.ExecuteAsync(Guid.NewGuid(), plan, CancellationToken.None)
                 : await transaction.RecoverAsync(operation, CancellationToken.None);
@@ -541,7 +542,7 @@ internal static class MihomoTunDescriptorAcceptance
     }
 
     private sealed class FixtureAdapter(MihomoConfigurationAdapter adapter, bool interruptStop = false,
-        bool commit = false, bool interruptCleanup = false) : IRuntimeArchiveConfigurationAdapter
+        bool commit = false, bool interruptCleanup = false, bool interruptRestored = false) : IRuntimeArchiveConfigurationAdapter
     {
         private static async Task TraceAsync(Func<Task> action)
         {
@@ -569,7 +570,12 @@ internal static class MihomoTunDescriptorAcceptance
             if (interruptStop) System.Diagnostics.Process.GetCurrentProcess().Kill();
         }
         public Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct) => adapter.ValidateRestoreAsync(pending, ct);
-        public Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct) => adapter.RestoreAsync(pending, ct);
+        public async Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+        {
+            var restored = await adapter.RestoreAsync(pending, ct);
+            if (interruptRestored) System.Diagnostics.Process.GetCurrentProcess().Kill();
+            return restored;
+        }
         public Task<RuntimeRestorationEvidence> VerifyRestoredAsync(RuntimePendingConfiguration pending, CancellationToken ct) =>
             adapter.VerifyRestoredAsync(pending, ct);
         public Task CleanupPreparationAsync(RuntimePendingConfiguration pending, CancellationToken ct)

@@ -80,7 +80,7 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         return registration;
     }
 
-    private static async Task<Dictionary<string, string>> StateAsync(CancellationToken ct)
+    private static async Task<Dictionary<string, string>> StateAsync(CancellationToken ct, bool allowReload = false)
     {
         ct.ThrowIfCancellationRequested();
         var output = await RunAsync("/usr/bin/systemctl", ["show", Unit,
@@ -88,7 +88,9 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         var state = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Split('=', 2)).ToDictionary(parts => parts[0], parts => parts.Length == 2 ? parts[1] : "");
         if (state.GetValueOrDefault("LoadState") != "loaded" || state.GetValueOrDefault("FragmentPath") != UnitPath
-            || state.GetValueOrDefault("DropInPaths") != "" || state.GetValueOrDefault("NeedDaemonReload") != "no") Fail("state_unknown");
+            || state.GetValueOrDefault("DropInPaths") != ""
+            || state.GetValueOrDefault("NeedDaemonReload") != "no" && (!allowReload || state.GetValueOrDefault("NeedDaemonReload") != "yes"))
+            Fail("state_unknown");
         return state;
     }
 
@@ -255,7 +257,11 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         }
         else await ObserveAsync(ct);
     }
-    public async Task StartAsync(CancellationToken ct)
+    public Task StartAsync(CancellationToken ct) => StartCoreAsync(null, ct);
+
+    internal Task StartRestoredTunAsync(Guid operation, CancellationToken ct) => StartCoreAsync(operation, ct);
+
+    private async Task StartCoreAsync(Guid? restoredOperation, CancellationToken ct)
     {
         var registration = await ReadRegistrationAsync(ct) ?? throw new RuntimePolicyException("runtime.state_unknown");
         if (registration.TunOperation is not null) Fail("network_transaction_required");
@@ -266,9 +272,14 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         // This is an explicit, verified management start, including compensation. Clear a prior failed
         // owned unit, and retry exactly once only for systemd's measured start-limit-hit result. Inactive
         // disabled units can be garbage-collected, so reset-failed must not be sent unconditionally.
-        if ((await StateAsync(ct)).GetValueOrDefault("ActiveState") == "failed") await CommandAsync("reset-failed", ct);
+        var initial = await StateAsync(ct);
+        if (restoredOperation is not null && (initial.GetValueOrDefault("MainPID") != "0"
+            || initial.GetValueOrDefault("UnitFileState") != "disabled"
+            || initial.GetValueOrDefault("ActiveState") is not ("inactive" or "failed"))) Fail("state_unknown");
+        if (initial.GetValueOrDefault("ActiveState") == "failed") await CommandAsync("reset-failed", ct);
+        if (restoredOperation is { } operation) await ArmRestoredTunStartAsync(operation, ct);
         try { await CommandAsync("start", ct); }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException) when (restoredOperation is null)
         {
             var failed = await StateAsync(ct);
             if (failed.GetValueOrDefault("ActiveState") != "failed" || failed.GetValueOrDefault("Result") != "start-limit-hit") throw;

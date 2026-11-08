@@ -238,13 +238,18 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
     {
         var tun = pending.Plan.NetworkIntentIdentity is not null;
         var revision = Revision(pending);
+        var binary = Tools(pending, false).Binary(revision);
+        var data = Data(revision);
         var effect = ReadTunEffect(pending);
         if (effect is not null)
         {
             if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_transaction_required");
             await VerifyRestoredNetworkAsync(pending, effect, ct);
+            await RequireMaterialAsync(pending, false, ct);
+            if (await TunHost().RestoreTunRegistrationAsync(pending, binary, data, revision.MeasuredVersion, resumeOnly: true, ct))
+                return await FinishTunRestoreAsync(pending, effect, revision, ct);
             var registration = await host.ObserveRegistrationAsync(ct);
-            if (registration.Running) return await ObserveRestoredServiceAsync(pending, effect, ct);
+            if (registration.Running) throw new RuntimePolicyException("runtime.network_registration_conflict");
         }
         var backup = FileIn(pending, "data-backup");
         if (Directory.Exists(backup))
@@ -253,7 +258,6 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             // removing failed live data; a crash between delete/move is recoverable from this same backup.
             var replacement = FileIn(pending, "data-restore");
             var operation = Operation(pending.OperationId);
-            var data = Data(revision);
             if (tun) MihomoRuntimeData.SyncConfigurationDirectory(operation);
             Discard(replacement);
             await MihomoRuntimeData.CopyAsync(backup, replacement, protect, ct, durable: tun);
@@ -269,22 +273,15 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         var bytes = await CandidateBytesAsync(pending, false, ct);
         await Tools(pending, false).ReplaceConfigurationAsync(bytes, ct);
         if (tun) MihomoRuntimeData.SyncConfigurationDirectory(root);
-        var build = await CheckNativeAsync(pending, false, Data(revision), ct);
-        await host.ConfigureAsync(Tools(pending, false).Binary(revision), Data(revision), Configuration,
-            pending.Plan.PreviousIdentity, pending.Snapshot!.BootEnabled, ct);
-        if (pending.Snapshot.Running)
+        var build = await CheckNativeAsync(pending, false, data, ct);
+        if (effect is not null)
         {
-            await RequireMaterialAsync(pending, false, ct);
-            try { await host.StartAsync(ct); }
-            catch (Exception error) when (error is InvalidOperationException or TimeoutException)
-            {
-                // systemd may have started the restored program before its command failed to return.
-                // The full process, credential and listener verification below still decides the result.
-                var started = await host.ObserveAsync(ct);
-                RequireService(started, revision);
-                if (!started.Running || started.AppliedConfigurationIdentity != pending.Plan.PreviousIdentity) throw;
-            }
+            if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_transaction_required");
+            await TunHost().RestoreTunRegistrationAsync(pending, binary, data, build.Version, resumeOnly: false, ct);
+            return await FinishTunRestoreAsync(pending, effect, revision, ct);
         }
+        await host.ConfigureAsync(binary, data, Configuration, pending.Plan.PreviousIdentity, pending.Snapshot!.BootEnabled, ct);
+        if (pending.Snapshot.Running) await StartPreviousServiceAsync(pending, revision, ct);
         var material = await RequireMaterialAsync(pending, false, ct);
         var observed = await host.ObserveAsync(ct);
         RequireService(observed, revision);
@@ -293,8 +290,39 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             || observed.AppliedConfigurationIdentity == identity && await host.ListenersHealthyAsync(material, ct));
         return new(build.Version, identity, observed.Running, observed.BootEnabled!.Value, true, healthy)
         {
-            RestoredNetworkCheckpoint = tun ? effect is not null : null
+            RestoredNetworkCheckpoint = tun ? false : null
         };
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private async Task<RuntimeRestorationEvidence> FinishTunRestoreAsync(RuntimePendingConfiguration pending, MihomoTunEffect effect,
+        RuntimeStoredRevision revision, CancellationToken ct)
+    {
+        if (!(await host.ObserveRegistrationAsync(ct)).Running)
+            await StartPreviousServiceAsync(pending, revision, ct, restoredTun: true);
+        return await ObserveRestoredServiceAsync(pending, effect, ct);
+    }
+
+    private async Task StartPreviousServiceAsync(RuntimePendingConfiguration pending, RuntimeStoredRevision revision, CancellationToken ct,
+        bool restoredTun = false)
+    {
+        await RequireMaterialAsync(pending, false, ct);
+        try
+        {
+            if (restoredTun)
+            {
+                if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_transaction_required");
+                await TunHost().StartRestoredTunAsync(pending.OperationId, ct);
+            }
+            else await host.StartAsync(ct);
+        }
+        catch (Exception error) when (error is InvalidOperationException or TimeoutException)
+        {
+            // systemd may have started the restored program before its command failed to return.
+            var started = await host.ObserveAsync(ct);
+            RequireService(started, revision);
+            if (!started.Running || started.AppliedConfigurationIdentity != pending.Plan.PreviousIdentity) throw;
+        }
     }
 
     public async Task<RuntimeRestorationEvidence> VerifyRestoredAsync(RuntimePendingConfiguration pending, CancellationToken ct)
