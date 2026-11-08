@@ -1,8 +1,32 @@
+using Microsoft.AspNetCore.DataProtection;
+using RelaxKonOS.Server.Secrets;
 
 internal static class AcmeLiveChecks
 {
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(45);
     private const string Prefix = "http://+:5002/.well-known/acme-challenge/";
+
+    internal static void VerifyOrderKey(string root, Guid operationId)
+    {
+        using var ledger = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root, "data", "certificate-operations.json")));
+        var operation = ledger.RootElement.EnumerateArray().Single(item => item.GetProperty("operationId").GetGuid() == operationId);
+        var id = operation.GetProperty("certificateId").GetGuid();
+        var order = operation.GetProperty("order").Deserialize<AcmeOrderIdentity>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var protectedKey = operation.GetProperty("protectedOrderKey").GetString()!;
+        var keyDirectory = new DirectoryInfo(Path.Combine(root, "home", ".aspnet", "DataProtection-Keys"));
+        var protection = DataProtectionProvider.Create(keyDirectory, options => options.SetApplicationName(HostDataProtection.ApplicationName));
+        var original = CertificateOperationStore.OrderKeyProtector(protection, operationId, id, order);
+        using var certificate = X509Certificate2.CreateFromPem(File.ReadAllText(Path.Combine(root, "original-issued-chain.pem")),
+            original.Unprotect(protectedKey));
+        TestAssert.Assert(certificate.HasPrivateKey, "The original key does not pair with the CA-issued leaf.");
+        try
+        {
+            CertificateOperationStore.OrderKeyProtector(protection, Guid.NewGuid(), id, order).Unprotect(protectedKey);
+            throw new InvalidOperationException("The original key was readable under another operation ID.");
+        }
+        catch (System.Security.Cryptography.CryptographicException) { }
+        Console.WriteLine($"PASS ACME ORIGINAL KEY: operation={operationId}; leaf={certificate.GetCertHashString(System.Security.Cryptography.HashAlgorithmName.SHA256)}");
+    }
 
     internal static async Task RunAsync(string root, string mode, Guid? renewalId = null)
     {

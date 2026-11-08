@@ -10,11 +10,13 @@ internal sealed partial class CertificateOperationStore
     private readonly SemaphoreSlim _nginxRenewalsChanged = new(0, 1);
 
     internal Task<CertificateOperationDto> StartRenewalAsync(string key, Guid certificateId, string? actor,
-        Func<Func<AcmeOrderIdentity, Task>, Func<WebRootChallengeFile, Task>, CancellationToken, Task<(string Problem, string? Version)>> action,
+        Func<Func<AcmeOrderIdentity, Task>, Func<WebRootChallengeFile, Task>, Func<string, Task>?, CancellationToken,
+            Task<(string Problem, string? Version)>> action,
         CancellationToken stopping, CancellationToken admission, bool automatic) =>
         StartCoreAsync(key, certificateId, "renew", actor, async (id, ct) =>
         {
-            var result = await action(identity => RecordOrderAsync(id, identity), file => RecordChallengeAsync(id, file), ct);
+            var result = await action(identity => RecordOrderAsync(id, identity), file => RecordChallengeAsync(id, file),
+                _protection is null ? null : key => RecordOrderKeyAsync(id, key), ct);
             if (_deployments?.IsPersistent == true && result is { Problem.Length: 0, Version: { } version })
             {
                 await _gate.WaitAsync(CancellationToken.None);

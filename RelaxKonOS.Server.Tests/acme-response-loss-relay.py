@@ -30,6 +30,11 @@ class Relay(BaseHTTPRequestHandler):
         upstream = http.client.HTTPSConnection("127.0.0.2" if full_server else "localhost",
                                                14000, context=ca_context, timeout=15)
         try:
+            capture_key_proof = (root / "capture-order-key-proof").is_file()
+            if capture_key_proof and self.command == "POST" and self.path.startswith("/finalize-order/"):
+                ledger = json.loads((root / "data" / "certificate-operations.json").read_bytes())
+                pending, = [item for item in ledger if item.get("protectedOrderKey")]
+                (root / "key-before-finalize").write_text(pending["operationId"], encoding="ascii")
             upstream.request(self.command, self.path, self.rfile.read(length) if length else None, headers)
             response = upstream.getresponse()
             body = response.read()
@@ -108,6 +113,8 @@ class Relay(BaseHTTPRequestHandler):
             self.close_connection = True
             if truncate:
                 (root / f"truncated-{selected}").write_text(str(response.status), encoding="ascii")
+                if capture_key_proof and selected == "certificate":
+                    (root / "original-issued-chain.pem").write_bytes(body)
                 body = body[:len(body) // 2]
             if self.command != "HEAD":
                 self.wfile.write(body)

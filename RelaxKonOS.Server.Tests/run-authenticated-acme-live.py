@@ -625,6 +625,8 @@ def run(root, server, tests, mode):
             else:
                 renew = certificate + "/renew"
                 fault = root / "response-fault"
+                if mode == "key-checkpoint":
+                    (root / "capture-order-key-proof").touch()
                 fault.write_text("certificate")
                 signed = terminal(token, request(renew, token, {}, "signed-loss", 202), "failed")
                 fault.write_text("order")
@@ -663,6 +665,13 @@ def run(root, server, tests, mode):
             token = login()
             ledger = root / "data" / "certificate-operations.json"
             before = ledger.read_bytes()
+            if mode == "key-checkpoint":
+                assert (root / "key-before-finalize").read_text() == signed["operationId"]
+                assert b"PRIVATE KEY-----" not in before
+                retained_keys = [item["operationId"] for item in json.loads(before) if item.get("protectedOrderKey")]
+                assert retained_keys == [signed["operationId"]] and "protectedOrderKey" not in signed
+                subprocess.run(["dotnet", str(tests), "--acme-order-key-proof", str(root), signed["operationId"]],
+                               env=env, cwd=root, check=True, timeout=15)
             for receipt, status, route, payload, key in (
                 (signed, "valid", renew, {}, "signed-loss"),
                 (missing, "identity-unavailable", certificates, issue("missing.mb05.test"), "order-loss"),

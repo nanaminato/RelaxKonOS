@@ -67,6 +67,11 @@ if (args is [var acmeMode, var acmeFixtureRoot] && acmeMode is "--acme-live-only
     await AcmeLiveChecks.RunAsync(acmeFixtureRoot, acmeMode);
     return;
 }
+if (args is ["--acme-order-key-proof", var keyFixtureRoot, var keyOperationId])
+{
+    AcmeLiveChecks.VerifyOrderKey(keyFixtureRoot, Guid.Parse(keyOperationId));
+    return;
+}
 if (args is ["--acme-live-renewal-worker", var renewalFixtureRoot, var renewalCertificateId])
 {
     await AcmeLiveChecks.RunAsync(renewalFixtureRoot, "--acme-live-renewal-worker", Guid.Parse(renewalCertificateId));

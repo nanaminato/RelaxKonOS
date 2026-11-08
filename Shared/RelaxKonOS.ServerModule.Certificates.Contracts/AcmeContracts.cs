@@ -28,7 +28,8 @@ public interface IAcmeService
 {
     Task<CertificateMaterial> IssueAsync(Guid certificateId, IReadOnlyList<string> domains, CertificateChallengeType challengeType,
         CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken cancellationToken,
-        Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null);
+        Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null,
+        Func<string, Task>? recordCertificateKey = null);
     Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken cancellationToken);
     Task RevokeAsync(X509Certificate2 certificate, string contactEmail, CancellationToken cancellationToken);
 }

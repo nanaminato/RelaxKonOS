@@ -31,10 +31,12 @@ internal sealed class AnvilAcmeService : IAcmeService, IAcmeRenewalInfoProvider
 
     public Task<CertificateMaterial> IssueAsync(Guid certificateId, IReadOnlyList<string> domains, CertificateChallengeType challengeType,
         CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken cancellationToken,
-        Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null) =>
+        Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null,
+        Func<string, Task>? recordCertificateKey = null) =>
         InvokeAsync(acme => acme.IssueAsync(certificateId, domains, challengeType, keyAlgorithm, contactEmail, cancellationToken,
             recordOrder is null ? null : identity => CheckpointAsync(recordOrder, identity),
-            recordChallenge is null ? null : file => CheckpointAsync(recordChallenge, file)), cancellationToken);
+            recordChallenge is null ? null : file => CheckpointAsync(recordChallenge, file),
+            recordCertificateKey is null ? null : key => CheckpointAsync(recordCertificateKey, key)), cancellationToken);
 
     public Task<string> ObserveOrderAsync(AcmeOrderIdentity identity, CancellationToken ct) =>
         InvokeAsync(acme => acme.ObserveOrderAsync(identity, ct), ct);

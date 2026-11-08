@@ -110,10 +110,11 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
         var certificateId = Guid.NewGuid();
         logger.LogInformation("Certificate issuance accepted. CertificateId={CertificateId} ChallengeType={ChallengeType} KeyAlgorithm={KeyAlgorithm} Domains={Domains}",
             certificateId, request.ChallengeType, request.KeyAlgorithm, string.Join(',', domains));
-        return await operations.StartOrderAsync(idempotencyKey, certificateId, "issue", actor, async (recordOrder, recordChallenge, ct) =>
+        return await operations.StartOrderAsync(idempotencyKey, certificateId, "issue", actor, async (recordOrder, recordChallenge, recordKey, ct) =>
         {
             logger.LogInformation("Certificate issuance ACME step started. CertificateId={CertificateId}", certificateId);
-            var material = await acme.IssueAsync(certificateId, domains, request.ChallengeType, request.KeyAlgorithm, request.ContactEmail, ct, recordOrder, recordChallenge);
+            var material = await acme.IssueAsync(certificateId, domains, request.ChallengeType, request.KeyAlgorithm, request.ContactEmail,
+                ct, recordOrder, recordChallenge, recordKey);
             await certificates.SaveAsync(material, ct);
             logger.LogInformation("Certificate issuance material saved. CertificateId={CertificateId}", certificateId);
             return "";
@@ -183,11 +184,12 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
         if (existing.Kind == CertificateKind.SelfSigned) return Failure("renew", "certificate.self_signed_not_renewable");
         if (existing.Status == CertificateStatus.Revoked) return Failure("renew", "certificate.revoked");
         if (string.IsNullOrWhiteSpace(existing.ContactEmail)) return Failure("renew", "certificate.contact_unavailable");
-        return await operations.StartRenewalAsync(idempotencyKey, certificateId, actor, async (recordOrder, recordChallenge, ct) =>
+        return await operations.StartRenewalAsync(idempotencyKey, certificateId, actor, async (recordOrder, recordChallenge, recordKey, ct) =>
         {
             if ((await certificates.GetAsync(certificateId, ct)) is { Status: CertificateStatus.Revoked }) return ("certificate.revoked", null);
             using var oldMaterial = await certificates.LoadCurrentAsync(certificateId, ct);
-            var material = await acme.IssueAsync(certificateId, existing.Domains, existing.ChallengeType, existing.KeyAlgorithm, existing.ContactEmail, ct, recordOrder, recordChallenge);
+            var material = await acme.IssueAsync(certificateId, existing.Domains, existing.ChallengeType, existing.KeyAlgorithm, existing.ContactEmail,
+                ct, recordOrder, recordChallenge, recordKey);
             await certificates.SaveAsync(material with { LastRenewalAt = DateTimeOffset.UtcNow }, ct);
             if (oldMaterial is not null)
                 await renewalInfo.MarkReplacedAsync(oldMaterial, existing.ContactEmail, ct);

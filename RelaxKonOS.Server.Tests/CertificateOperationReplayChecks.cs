@@ -84,7 +84,7 @@ internal static class CertificateOperationReplayChecks
         var challenge = WebRootChallengeFile.Describe("original-token", "original-authorization");
         var written = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finish = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var issue = await store.StartOrderAsync("website", Guid.NewGuid(), "issue", "alice", async (_, recordChallenge, ct) =>
+        var issue = await store.StartOrderAsync("website", Guid.NewGuid(), "issue", "alice", async (_, recordChallenge, _, ct) =>
         {
             await recordChallenge(challenge);
             await challengeFiles.PutAsync(challenge.Token, "original-authorization", ct);
@@ -107,7 +107,7 @@ internal static class CertificateOperationReplayChecks
             {
                 var blockedReceipt = await blocked.GetWebsiteIssueAsync(websiteId, default);
                 var replayBlocked = await blocked.StartOrderAsync("website", Guid.NewGuid(), "issue", "alice",
-                    (_, _, _) => throw new InvalidOperationException("The original CA operation must not be replayed."),
+                    (_, _, _, _) => throw new InvalidOperationException("The original CA operation must not be replayed."),
                     default, default, websitePublicationId: websiteId);
                 var rejected = await blocked.StartAsync("new-while-blocked", Guid.NewGuid(), "issue", "alice",
                     _ => throw new InvalidOperationException("Unknown challenge ownership admitted a new operation."), default, default);
@@ -141,7 +141,7 @@ internal static class CertificateOperationReplayChecks
         var deliver = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var renewed = Guid.NewGuid();
         var cancellation = await store.StartOrderAsync("cancelled-ca-order", renewed, "renew", CertificateOperationStore.AutomaticRenewalActor,
-            async (recordOrder, _, _) =>
+            async (recordOrder, _, _, _) =>
             {
                 await recordOrder(new(new("https://ca.example.test/directory"), new("https://ca.example.test/account/1"), "test-thumbprint",
                     new("https://ca.example.test/order/1")));

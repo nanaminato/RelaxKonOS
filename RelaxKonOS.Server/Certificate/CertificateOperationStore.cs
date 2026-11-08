@@ -1,13 +1,14 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Server.Residency;
 using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.Certificate;
 
-/// <summary>Durable, secret-free operation ledger for certificate lifecycle tasks.</summary>
+/// <summary>Durable operation ledger for certificate lifecycle tasks. Key checkpoints are protected before serialization.</summary>
 internal sealed partial class CertificateOperationStore : IHostedService, IDisposable
 {
     internal const string AutomaticRenewalActor = "renewal-worker";
@@ -24,6 +25,7 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
     private readonly CertificateRenewalAttemptRepository _renewalAttempts;
     private readonly FileHttp01ChallengeStore? _challengeFiles;
     private readonly ResidentBackgroundWorkOwner _work;
+    private readonly IDataProtectionProvider? _protection;
     private bool _ready;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
 
@@ -32,7 +34,7 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
     public CertificateOperationStore(IHostEnvironment environment, HostOperationJournal journal, ICertificateStore certificates,
         CertificateRenewalAttemptRepository renewalAttempts, ILogger<CertificateOperationStore> logger, IResidentModuleWorkLeaseSource leases,
         FileHttp01ChallengeStore? challengeFiles = null, KestrelCertificateRegistry? kestrel = null,
-        CertificateDeploymentRepository? deployments = null)
+        CertificateDeploymentRepository? deployments = null, IDataProtectionProvider? protection = null)
     {
         _path = Path.Combine(environment.ContentRootPath, "data", "certificate-operations.json");
         _journal = journal;
@@ -41,6 +43,7 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
         _challengeFiles = challengeFiles;
         _kestrel = kestrel;
         _deployments = deployments;
+        _protection = protection;
         _logger = logger;
         _work = new(leases, ServerModules.CertificatesId);
     }
@@ -97,10 +100,12 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
         StartCoreAsync(idempotencyKey, certificateId, kind, actor, (_, ct) => action(ct), applicationStopping, admissionCancellation, automaticRenewal);
 
     internal Task<CertificateOperationDto> StartOrderAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
-        Func<Func<AcmeOrderIdentity, Task>, Func<WebRootChallengeFile, Task>, CancellationToken, Task<string>> action, CancellationToken applicationStopping,
+        Func<Func<AcmeOrderIdentity, Task>, Func<WebRootChallengeFile, Task>, Func<string, Task>?, CancellationToken, Task<string>> action,
+        CancellationToken applicationStopping,
         CancellationToken admissionCancellation, bool automaticRenewal = false, Guid? websitePublicationId = null) =>
         StartCoreAsync(idempotencyKey, certificateId, kind, actor,
-            (id, ct) => action(identity => RecordOrderAsync(id, identity), file => RecordChallengeAsync(id, file), ct),
+            (id, ct) => action(identity => RecordOrderAsync(id, identity), file => RecordChallengeAsync(id, file),
+                _protection is null ? null : key => RecordOrderKeyAsync(id, key), ct),
             applicationStopping, admissionCancellation, automaticRenewal, websitePublicationId);
 
     private async Task<CertificateOperationDto> StartCoreAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
@@ -271,6 +276,34 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
         finally { _gate.Release(); }
     }
 
+    private async Task RecordOrderKeyAsync(Guid id, string privateKey)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            var operation = _operations[id];
+            try
+            {
+                if (operation.State != CertificateOperationState.Running || operation.Order is not { } order
+                    || operation.ProtectedOrderKey is not null || privateKey.Length is 0 or > 16384)
+                    throw new InvalidOperationException("Invalid ACME certificate key checkpoint.");
+                var protector = OrderKeyProtector(_protection!, id, operation.CertificateId, order);
+                _operations[id] = operation with { ProtectedOrderKey = protector.Protect(privateKey) };
+                await SaveLedgerAsync(CancellationToken.None);
+            }
+            catch (Exception error)
+            {
+                _operations[id] = operation;
+                throw new ResidentWorkCompletionException(error);
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal static IDataProtector OrderKeyProtector(IDataProtectionProvider protection, Guid operationId, Guid certificateId,
+        AcmeOrderIdentity order) => protection.CreateProtector("RelaxKonOS.Certificate.AcmeOrderKey.v1", operationId.ToString("D"),
+            certificateId.ToString("D"), order.Directory.AbsoluteUri, order.Account.AbsoluteUri, order.AccountThumbprint, order.Order.AbsoluteUri);
+
     public async Task<CertificateRenewalInfoDto> GetRenewalInfoAsync(Guid certificateId, bool automaticEnabled, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -418,6 +451,7 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
             var completed = operation with { State = state, Stage = interrupted ? "interrupted" : state.ToString().ToLowerInvariant(),
                 ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow,
                 Order = interrupted || state == CertificateOperationState.Cancelled ? operation.Order : null, Challenges = null, Revocation = null,
+                ProtectedOrderKey = interrupted ? operation.ProtectedOrderKey : null,
                 NginxRenewal = state == CertificateOperationState.Succeeded ? operation.NginxRenewal : null };
             _operations[id] = completed;
             try
@@ -497,7 +531,8 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] WebRootChallengeFile[]? Challenges = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? WebsitePublicationId = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RevocationCheckpoint? Revocation = null,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] NginxRenewalCheckpoint? NginxRenewal = null)
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] NginxRenewalCheckpoint? NginxRenewal = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProtectedOrderKey = null)
     {
         public CertificateOperationDto ToDto() => new(OperationId, CertificateId, Kind, State, Stage, ProblemCode, StartedAt, CompletedAt);
     }

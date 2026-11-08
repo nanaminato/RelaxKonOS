@@ -55,7 +55,8 @@ public sealed class AnvilAcmeExecutor(AcmeExecutionPorts ports, ILogger logger) 
     }
     public async Task<CertificateMaterial> IssueAsync(Guid certificateId, IReadOnlyList<string> domains, CertificateChallengeType challengeType,
         CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken cancellationToken,
-        Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null)
+        Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null,
+        Func<string, Task>? recordCertificateKey = null)
     {
         if (challengeType == CertificateChallengeType.Dns01)
             throw new CertificateOperationException("certificate.challenge_mode_not_available");
@@ -66,9 +67,13 @@ public sealed class AnvilAcmeExecutor(AcmeExecutionPorts ports, ILogger logger) 
         var acme = await LoadContextAsync(directoryUri, contactEmail, cancellationToken);
         logger.LogInformation("ACME account context loaded. CertificateId={CertificateId}", certificateId);
         var order = await ObserveOrderAsync(() => acme.NewOrder(domains.ToList()), cancellationToken, checkCompletionCancellation: false);
+        var orderRecorded = false;
         if (recordOrder is not null && directoryUri.Query.Length == 0 && await acme.GetAccountUri() is { } account
             && IsSameOrigin(directoryUri, account) && IsSameOrigin(directoryUri, order.Location))
+        {
             await recordOrder(new(directoryUri, account, acme.AccountKey.Thumbprint(), order.Location));
+            orderRecorded = true;
+        }
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation("ACME order created. CertificateId={CertificateId}", certificateId);
         var challenges = new List<IChallengeContext>();
@@ -122,10 +127,13 @@ public sealed class AnvilAcmeExecutor(AcmeExecutionPorts ports, ILogger logger) 
             var certificateKey = keyAlgorithm == CertificateKeyAlgorithm.Rsa2048
                 ? KeyFactory.NewKey(KeyAlgorithm.RS256, 2048)
                 : KeyFactory.NewKey(KeyAlgorithm.ES256);
+            var privateKey = certificateKey.ToPem();
+            if (orderRecorded && recordCertificateKey is not null) await recordCertificateKey(privateKey);
+            cancellationToken.ThrowIfCancellationRequested();
             logger.LogInformation("ACME certificate key created. CertificateId={CertificateId} KeyAlgorithm={KeyAlgorithm}", certificateId, keyAlgorithm);
             var certificate = await ObserveOrderAsync(() => order.Generate(new CsrInfo { CommonName = domains[0] }, certificateKey), cancellationToken);
             logger.LogInformation("ACME certificate issued. CertificateId={CertificateId}", certificateId);
-            return new CertificateMaterial(certificateId, domains, challengeType, keyAlgorithm, contactEmail, certificate.ToPem(), certificateKey.ToPem(), DateTimeOffset.UtcNow);
+            return new CertificateMaterial(certificateId, domains, challengeType, keyAlgorithm, contactEmail, certificate.ToPem(), privateKey, DateTimeOffset.UtcNow);
         }
         catch (AcmeCheckpointException error) { issuanceFailure = error; throw; }
         catch (CertificateOperationException error) { issuanceFailure = error; throw; }

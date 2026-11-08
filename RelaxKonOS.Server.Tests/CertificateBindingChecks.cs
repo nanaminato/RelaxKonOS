@@ -256,7 +256,7 @@ internal static class CertificateBindingChecks
             TestAssert.Assert(missing.StatusCode == HttpStatusCode.NotFound, "Order observation must reject an unknown operation.");
 
         var order = new AcmeOrderIdentity(new("https://ca.test/dir"), new("https://ca.test/account/1"), "fixture", new("https://ca.test/order/2"));
-        var original = await ledger.StartOrderAsync("observe-original", id, "issue", "alice", async (checkpoint, _, _) =>
+        var original = await ledger.StartOrderAsync("observe-original", id, "issue", "alice", async (checkpoint, _, _, _) =>
         {
             await checkpoint(order);
             return CertificateOperationStore.InterruptedProblem;
@@ -369,7 +369,8 @@ internal static class CertificateBindingChecks
 
         public Task<CertificateMaterial> IssueAsync(Guid certificateId, IReadOnlyList<string> domains, CertificateChallengeType challengeType,
             CertificateKeyAlgorithm keyAlgorithm, string contactEmail, CancellationToken ct,
-            Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null) => throw new NotSupportedException();
+            Func<AcmeOrderIdentity, Task>? recordOrder = null, Func<WebRootChallengeFile, Task>? recordChallenge = null,
+            Func<string, Task>? recordCertificateKey = null) => throw new NotSupportedException();
 
         public Task RevokeAsync(X509Certificate2 certificate, string contactEmail, CancellationToken ct) => throw new NotSupportedException();
 
