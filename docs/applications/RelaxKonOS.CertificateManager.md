@@ -1419,6 +1419,8 @@ Nginx 的稳定 PEM 文件随续期更新。使用 SQLite 并启用 WebServer �
 
 目标已保存而重载未能写入 WebServer 台账时，证书台账保留原续期回执、版本和目标。Linux 实测确认进程重启后接续原回执，CA 无新增订单或签发提交。见[目标检查点恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署的目标检查点恢复)。
 
+自动重载已分配持久回执但在派发前中断时，证书续期保留成功回执，部署记录指向原重载的失败终态。见[派发前的原回执恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动重载在派发前的原回执恢复)。
+
 Nginx 的受管证书站点绑定在配置副作用前校验状态/有效期与每个绑定的 SAN 覆盖，IDN/IP 规范化，通配符仅覆盖一层 DNS 名称；宿主 PEM 路径仍由配置语法/文件校验，不能把该模式当作受管元数据已核实。
 
 ### 35.4 Protocol 与操作模型

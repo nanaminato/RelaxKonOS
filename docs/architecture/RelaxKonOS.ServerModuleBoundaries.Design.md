@@ -2647,7 +2647,15 @@ Linux 三场均退出 0。证据在 `.artifacts/mb05-nginx-before-admission/linu
 
 Linux 四场退出 0。管理停用、双站分组和未知原生回执对照均通过，未知回执 `6741d85b-dfae-4566-8463-b09a3d6ba5b5` 继续持有原恢复责任。每场清理专属 cgroup，宿主 Nginx、Docker 及文件指纹一致。日志在 `.artifacts/mb05-nginx-blocked-admission/linux.log`，归档 SHA-256 为 `3dd4963c7999308a5a162c84b0e2d7650b020fd13b0ff4d396c96a1f0af79934`。
 
-Windows Release 证书续期、WebServer 和模块边界回归通过。Docker 跨进程夹具以原 `44464f7d-4b88-4682-8319-0b193b68e91c` 返回 Interrupted，受控副作用计数为一。重载回执已落盘但执行尚未派发的进程中断路径仍待实测。
+Windows Release 证书续期、WebServer 和模块边界回归通过。Docker 跨进程夹具以原 `44464f7d-4b88-4682-8319-0b193b68e91c` 返回 Interrupted，受控副作用计数为一。重载回执已落盘但执行尚未派发的场景见下节。
+
+### MB-05 Nginx 自动重载在派发前的原回执恢复
+
+在专属 Linux systemd 内让 SQLite 触发器拒绝自动重载投影的实际写入。Pebble 原续期 `a7c6be2f-5c91-425d-972e-28148cf8d860` 已成功，证书目标已持久化。WebServer JSON 台账保留原 `47eec065-1c87-4d2f-8651-eb596e7495d2` 的 Queued 回执，SQLite 尚无对应行。原 owner 显示 `module-recovery-blocked` 并持有工作租约。原生尝试计数和旧 HTTPS 指纹保持。
+
+强制终止 Server 后移除独立触发器，重启时原 WebServer owner 以同一重载 ID 写入 JSON 终态和 SQLite 投影。回执为 Failed、阶段 `interrupted`，错误 `webserver.operation_interrupted`，开始时间为空。证书续期回执继续成功，独立部署记录指向原重载并记录失败。对账后工作租约归还，后续再次重启仍返回同一回执。真实 Nginx 与 Docker 上游继续提供旧 HTTPS，自动重载实际尝试为零。Pebble 仍只有预期的两张订单和两次签发提交。
+
+Linux 五场均退出 0。目标检查点、管理停用、双站分组和原生回执未知对照通过，宿主共享 Nginx、Docker 与文件指纹保持。日志在 `.artifacts/mb05-nginx-blocked-projection/linux.log`，归档 SHA-256 为 `de0709d113d8a2e1743e229d6272fb8219fff9d6a3ae0a95e4099e197b7a31ce`。
 
 ### MB-05 网站发布独立执行程序集
 

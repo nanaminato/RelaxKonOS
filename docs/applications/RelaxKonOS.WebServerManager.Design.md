@@ -1436,6 +1436,8 @@ WebServer 管理模块停用期间，证书仍可续期，Nginx 继续使用其�
 
 管理模块启用时，重载台账的准入写入失败会保留工作租约和恢复阻塞，Nginx 继续提供已加载的证书。原进程终止并恢复写入后，协调器用证书台账中原有目标只准入一次重载。见[目标检查点恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动部署的目标检查点恢复)。
 
+自动重载的排队回执已落盘且实际执行尚未派发时，重启按原 operationId 持久化 `Failed / interrupted`。隔离 Linux 验证 SQLite 投影故障和后续重启，原生重载次数保持，Nginx 继续提供已加载的证书。见[派发前的原回执恢复](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-自动重载在派发前的原回执恢复)。
+
 ---
 
 ### 第四阶段：跨 Web Server 扩展
