@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import select
+import shutil
 import signal
 import socket
 import subprocess
@@ -17,14 +18,15 @@ import uuid
 
 
 root = Path(sys.argv[2])
-endpoint = str(root / 'fd.sock')
-unit = 'relaxkonos-test-tun-fd.service'
+archive = Path('/var/lib/relaxkonos/managed-mihomo')
+launcher = '/usr/local/lib/relaxkonos/privileged-helper/RelaxKonOS.PrivilegedHelper'
+unit = 'relaxkonos-mihomo.service'
 device = 'rk-fd-proof'
 target = '198.51.100.53'
 address = '198.18.0.1'
 script = root / 'mihomo-tun-fd-proof.py'
 journal = root / 'tun-operation.json'
-config = root / 'active.yaml'
+config = archive / 'active.yaml'
 
 
 def command(*args):
@@ -96,7 +98,8 @@ def observe(record):
     if route() != record['route']:
         raise ValueError('TUN route differs')
     process = Path('/proc', str(record['service'][0]))
-    if os.readlink(process / 'exe') != str(root / 'mihomo') or os.readlink(process / 'ns/net') != record['namespace']:
+    binary = archive / 'versions' / uuid.UUID(record['revision']).hex / 'mihomo'
+    if os.readlink(process / 'exe') != str(binary) or os.readlink(process / 'ns/net') != record['namespace']:
         raise ValueError('executable or network namespace differs')
     if f'iff:\t{device}' not in (process / 'fdinfo/198').read_text().splitlines():
         raise ValueError('TUN descriptor differs')
@@ -115,11 +118,7 @@ def prepare(index, broker):
     assert record['phase'] == 'prepared' and link()['ifindex'] == index and route()
     assert record['namespace'] == os.readlink('/proc/self/ns/net') and record['baseline'] == network_baseline()
     assert record['credential'] == hashlib.sha256(config.read_bytes()).hexdigest()
-    record.update(broker=broker, ifindex=index)
-    sync_record(record)
-    service('start', unit)
-    assert link()['ifindex'] == index
-    record.update(phase='dispatching', service=service_identity(), ifindex=index, route=route())
+    record.update(phase='dispatching', service=service_identity(), ifindex=index, broker=broker, route=route())
     sync_record(record)
 
 
@@ -193,9 +192,19 @@ def proof():
     assert {'/run', '/var/lib', '/etc/systemd/system'} <= mounts
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     assert not route()
+    refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
+    assert refused.returncode == 1 and 'runtime.network_checkpoint_conflict' in refused.stderr
     baseline = network_baseline()
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    operation = uuid.uuid4().hex
+    revision = uuid.uuid4()
+    operation_dir = archive / 'operations' / operation
+    operation_dir.mkdir(mode=0o700, parents=True)
+    binary = archive / 'versions' / revision.hex / 'mihomo'
+    binary.parent.mkdir(parents=True)
+    shutil.copy2(root / 'mihomo', binary)
+    (archive / 'data' / revision.hex).mkdir(mode=0o700, parents=True)
     config.write_text(f'''mode: rule
 log-level: info
 ipv6: false
@@ -216,31 +225,10 @@ proxies:
 rules:
   - MATCH,fixture-upstream
 ''')
-    (root / 'mihomo-data').mkdir()
-    Path('/etc/systemd/system', unit).write_text(f'''[Unit]
-DefaultDependencies=no
-[Service]
-Type=exec
-User=root
-LoadCredential=active.yaml:{config}
-ExecStart=/usr/bin/dotnet {sys.argv[3]} runtime-mihomo-tun-descriptor-launch {root}
-Environment=RELAXKONOS_TEST_SYSTEMD_WORK={root}
-NoNewPrivileges=yes
-PrivateDevices=yes
-ProtectSystem=strict
-ReadWritePaths={root / 'mihomo-data'}
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
-StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
-''')
-    service('daemon-reload')
-    operation = uuid.uuid4().hex
-    operation_dir = root / 'operations' / operation
-    operation_dir.mkdir(mode=0o700, parents=True)
+    config.chmod(0o600)
     identity = hashlib.sha256(config.read_bytes()).hexdigest()
     sync_record({'phase': 'prepared', 'operation': operation, 'credential': identity,
-                 'revision': str(uuid.uuid4()),
+                 'revision': str(revision),
                  'fixture': sys.argv[3], 'address': address, 'target': target,
                  'namespace': os.readlink('/proc/self/ns/net'), 'baseline': baseline})
     invocation = [sys.executable, '-I', script]
@@ -254,10 +242,10 @@ StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
         original = journal.read_bytes()
         record = json.loads(original)
         original_checkpoints = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
-        assert len(original_checkpoints) == 3
+        assert len(original_checkpoints) == 4
         executable = Path('/proc', str(record['service'][0]), 'exe')
         deadline = time.monotonic() + 5
-        while os.readlink(executable) != str(root / 'mihomo'):
+        while os.readlink(executable) != str(binary):
             if time.monotonic() >= deadline:
                 raise RuntimeError('Mihomo did not consume the descriptor')
             time.sleep(.05)
@@ -277,7 +265,7 @@ StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
         assert json.loads(command(*invocation, 'observe', root, operation)) == record
         probe('after')
 
-        incomplete = operation_dir / 'tun-3.json'
+        incomplete = operation_dir / 'tun-4.json'
         fd = os.open(incomplete, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as partial:
             partial.write('{')
@@ -319,15 +307,25 @@ StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
         assert command(*invocation, 'recover', root, operation) == receipt
         assert command(*invocation, 'observe', root, operation) == receipt
         all_checkpoints = sorted(operation_dir.glob('tun-*.json'))
-        assert len(all_checkpoints) == 5 and [file.read_bytes() for file in all_checkpoints[:3]] == original_checkpoints
+        assert len(all_checkpoints) == 6 and [file.read_bytes() for file in all_checkpoints[:4]] == original_checkpoints
         assert checkpoint(record, 'state') == 'Restored'
+        refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
+        assert refused.returncode == 1 and 'runtime.service_scope_invalid' in refused.stderr
+        service('start', unit)
+        deadline = time.monotonic() + 5
+        while service('show', '-p', 'ActiveState', '--value', unit) != 'failed':
+            if time.monotonic() >= deadline:
+                raise RuntimeError('The fixed TUN unit did not reject an unsolicited restart')
+            time.sleep(.05)
+        assert service('show', '-p', 'MainPID', '--value', unit) == '0' and not route()
+        assert checkpoint(record, 'state') == 'Restored'
+        print('PASS FIXED MIHOMO TUN UNIT: real launcher and credential; restart refused without original dispatch')
         print('PASS HELPER TUN CHECKPOINTS: original intent immutable; incomplete checkpoint and duplicate stop refused')
         print(f'PASS MIHOMO INHERITED TUN CLEANUP: {operation}, interrupted stop reconciled without replay; '
               'original receipt on retry; process, device and route gone')
     except Exception:
-        diagnostic = root / 'mihomo-data' / 'launcher.log'
-        if diagnostic.exists():
-            print(diagnostic.read_text()[-4096:], file=sys.stderr)
+        subprocess.run(['/usr/bin/systemctl', '--no-pager', '--full', 'status', unit], check=False)
+        subprocess.run(['/usr/bin/journalctl', '--no-pager', '-n', '15', '-u', unit], check=False)
         raise
     finally:
         if owner.poll() is None:
@@ -344,7 +342,7 @@ if action == 'proof':
 elif action == 'prepare':
     prepare(int(sys.argv[3]), int(sys.argv[4]))
 else:
-    with (root / 'state' / 'instance.lock').open('a') as lock:
+    with (archive / 'state' / 'instance.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         assert action in ('observe', 'recover', 'recover-interrupt')
         try:

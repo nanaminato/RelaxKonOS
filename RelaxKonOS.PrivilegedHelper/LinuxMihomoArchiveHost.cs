@@ -1,9 +1,13 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Win32.SafeHandles;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
@@ -19,7 +23,11 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
     private const string UnitPath = "/etc/systemd/system/" + Unit;
     private const string Credential = "/run/credentials/" + Unit + "/active.yaml";
     private const string RegistrationPath = Root + "/archive-service.json";
-    private sealed record Registration(string Binary, string Data, string BinaryHash, string ConfigurationHash, string Version);
+    internal const string TunLauncher = "/usr/local/lib/relaxkonos/privileged-helper/RelaxKonOS.PrivilegedHelper";
+    internal const string TunLaunchArgument = "--linux-mihomo-tun-launch";
+    private const int TunFd = 198;
+    private sealed record Registration(string Binary, string Data, string BinaryHash, string ConfigurationHash, string Version,
+        Guid? TunOperation = null);
     private sealed record Verified(int Pid, DateTime StartedAt, string Identity);
 
     internal static void ValidatePaths(string binary, string data, string configuration, string identity)
@@ -35,8 +43,13 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
         if (binary.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('/' or '.' or '-' or '_'))) Fail("service_scope_invalid");
     }
 
-    private static string UnitText(Registration registration) =>
-        $"# RelaxKonOS managed archive Mihomo\n[Unit]\nDescription=RelaxKonOS Mihomo\nAfter=network-online.target\n[Service]\nType=simple\nUser=root\nLoadCredential=active.yaml:{Root}/active.yaml\nExecStart={registration.Binary} -d {registration.Data} -f %d/active.yaml\nRestart=on-failure\nNoNewPrivileges=yes\nPrivateTmp=yes\nPrivateDevices=yes\nProtectSystem=strict\nProtectHome=yes\nInaccessiblePaths=-/etc/relaxkonos -/opt/relaxkonos\nReadWritePaths={registration.Data}\nAmbientCapabilities=CAP_NET_BIND_SERVICE\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK\n[Install]\nWantedBy=multi-user.target\n";
+    private static string UnitText(Registration registration)
+    {
+        var tun = registration.TunOperation is not null;
+        var command = tun ? $"{TunLauncher} {TunLaunchArgument}" : $"{registration.Binary} -d {registration.Data} -f %d/active.yaml";
+        var restart = tun ? "no" : "on-failure";
+        return $"# RelaxKonOS managed archive Mihomo\n[Unit]\nDescription=RelaxKonOS Mihomo\nAfter=network-online.target\n[Service]\nType=simple\nUser=root\nLoadCredential=active.yaml:{Root}/active.yaml\nExecStart={command}\nRestart={restart}\nNoNewPrivileges=yes\nPrivateTmp=yes\nPrivateDevices=yes\nProtectSystem=strict\nProtectHome=yes\nInaccessiblePaths=-/etc/relaxkonos -/opt/relaxkonos\nReadWritePaths={registration.Data}\nAmbientCapabilities=CAP_NET_BIND_SERVICE\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK\n[Install]\nWantedBy=multi-user.target\n";
+    }
 
     private static void RequireProtected(string path)
     {
@@ -61,6 +74,7 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
         if (registration is null) Fail("state_unknown");
         ValidatePaths(registration.Binary, registration.Data, Root + "/active.yaml", registration.ConfigurationHash);
         if (registration.BinaryHash.Length != 64 || !registration.BinaryHash.All(Uri.IsHexDigit)
+            || registration.TunOperation == Guid.Empty
             || MihomoRuntimeSupport.CapabilityFor(registration.Version) is null
             || await File.ReadAllTextAsync(UnitPath, ct) != UnitText(registration)) Fail("external_installation");
         return registration;
@@ -70,7 +84,7 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
     {
         ct.ThrowIfCancellationRequested();
         var output = await RunAsync("/usr/bin/systemctl", ["show", Unit,
-            "--property=LoadState,ActiveState,SubState,MainPID,UnitFileState,FragmentPath,DropInPaths,NeedDaemonReload,Result"]);
+            "--property=LoadState,ActiveState,SubState,MainPID,UnitFileState,FragmentPath,DropInPaths,NeedDaemonReload,Result,InvocationID"]);
         var state = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Split('=', 2)).ToDictionary(parts => parts[0], parts => parts.Length == 2 ? parts[1] : "");
         if (state.GetValueOrDefault("LoadState") != "loaded" || state.GetValueOrDefault("FragmentPath") != UnitPath
@@ -141,7 +155,39 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
     }
 
     public async Task ConfigureAsync(string verifiedBinary, string protectedDataDirectory, string protectedConfiguration,
-        string configurationIdentity, bool bootEnabled, CancellationToken ct)
+        string configurationIdentity, bool bootEnabled, CancellationToken ct) =>
+        await ConfigureCoreAsync(verifiedBinary, protectedDataDirectory, protectedConfiguration, configurationIdentity,
+            bootEnabled, null, ct);
+
+    internal async Task ConfigureTunAsync(string binary, string data, string configurationIdentity, Guid operation, CancellationToken ct)
+    {
+        ValidatePaths(binary, data, Root + "/active.yaml", configurationIdentity);
+        var checkpoint = TunCheckpoint(binary, operation, configurationIdentity);
+        if (checkpoint.Read() is not { Phase: MihomoTunPhase.NetworkDispatched } armed
+            || armed.BrokerPid != Environment.ProcessId) Fail("network_checkpoint_conflict");
+        RequireProtected(TunLauncher);
+        RequireProtected(checkpoint.SocketPath);
+        await ConfigureCoreAsync(binary, data, Root + "/active.yaml", configurationIdentity, false, operation, ct);
+    }
+
+    internal async Task DispatchTunStartAsync(Guid operation, CancellationToken ct)
+    {
+        var registration = await ReadRegistrationAsync(ct);
+        if (registration is null || registration.TunOperation != operation) Fail("network_checkpoint_conflict");
+        var checkpoint = TunCheckpoint(registration.Binary, operation, registration.ConfigurationHash);
+        if (checkpoint.Read() is not { Phase: MihomoTunPhase.NetworkDispatched } armed
+            || armed.BrokerPid != Environment.ProcessId)
+            throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        var state = await StateAsync(ct);
+        if (state.GetValueOrDefault("ActiveState") != "inactive" || state.GetValueOrDefault("UnitFileState") != "disabled")
+            Fail("state_unknown");
+        ct.ThrowIfCancellationRequested();
+        await checkpoint.AppendAsync(armed with { Phase = MihomoTunPhase.LaunchDispatched });
+        await RunAsync("/usr/bin/systemctl", ["start", "--no-block", Unit]);
+    }
+
+    private async Task ConfigureCoreAsync(string verifiedBinary, string protectedDataDirectory, string protectedConfiguration,
+        string configurationIdentity, bool bootEnabled, Guid? tunOperation, CancellationToken ct)
     {
         ValidatePaths(verifiedBinary, protectedDataDirectory, protectedConfiguration, configurationIdentity);
         var previous = await ReadRegistrationAsync(ct);
@@ -154,7 +200,8 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
         var tag = report.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(2) ?? "";
         var version = MihomoNativeValidation.Parse(report, tag, "linux", MihomoNativeValidation.ArchitectureName).Version;
         if (MihomoRuntimeSupport.CapabilityFor(version) is null) Fail("configuration_unsupported");
-        var registration = new Registration(verifiedBinary, protectedDataDirectory, await DigestAsync(verifiedBinary, ct), configurationIdentity, version);
+        var registration = new Registration(verifiedBinary, protectedDataDirectory, await DigestAsync(verifiedBinary, ct),
+            configurationIdentity, version, tunOperation);
         await WriteAsync(RegistrationPath, JsonSerializer.Serialize(registration), UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
         await WriteAsync(UnitPath, UnitText(registration), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead, ct);
         await CommandAsync("daemon-reload", ct, false);
@@ -166,7 +213,8 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
 
     public async Task SetBootAsync(bool enabled, CancellationToken ct)
     {
-        if (await ReadRegistrationAsync(ct) is null) throw new RuntimePolicyException("runtime.state_unknown");
+        var registration = await ReadRegistrationAsync(ct) ?? throw new RuntimePolicyException("runtime.state_unknown");
+        if (enabled && registration.TunOperation is not null) Fail("network_transaction_required");
         await StateAsync(ct);
         await CommandAsync(enabled ? "enable" : "disable", ct);
         var actual = (await StateAsync(ct)).GetValueOrDefault("UnitFileState") switch
@@ -203,6 +251,7 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
     public async Task StartAsync(CancellationToken ct)
     {
         var registration = await ReadRegistrationAsync(ct) ?? throw new RuntimePolicyException("runtime.state_unknown");
+        if (registration.TunOperation is not null) Fail("network_transaction_required");
         await StateAsync(ct); RequireProtected(registration.Binary); RequireProtected(Root + "/active.yaml");
         RequireProtected(registration.Data);
         if (!string.Equals(await DigestAsync(registration.Binary, ct), registration.BinaryHash, StringComparison.OrdinalIgnoreCase)
@@ -264,6 +313,85 @@ internal sealed class LinuxMihomoArchiveHost : IMihomoArchiveHost
     { ct.ThrowIfCancellationRequested(); await RunAsync("/usr/bin/systemctl", unit ? [verb, Unit] : [verb]); }
     private static Task<string> RunAsync(string binary, IReadOnlyList<string> arguments) =>
         NativeRuntimeProcess.RunAsync(binary, arguments, 65536);
+
+    private static LinuxMihomoTunCheckpoint TunCheckpoint(string binary, Guid operation, string identity) =>
+        new(Root, operation, Guid.ParseExact(Path.GetFileName(Path.GetDirectoryName(binary))!, "N"), identity);
+
+    internal static async Task LaunchTunAsync()
+    {
+        if (!RuntimeSourceProtection.IsAdministrator() || Environment.ProcessPath != TunLauncher)
+            Fail("service_scope_invalid");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var ct = deadline.Token;
+        var registration = await ReadRegistrationAsync(ct);
+        if (registration?.TunOperation is not { } operation)
+            throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        var state = await StateAsync(ct);
+        var invocation = state.GetValueOrDefault("InvocationID");
+        if (state.GetValueOrDefault("MainPID") != Environment.ProcessId.ToString(CultureInfo.InvariantCulture)
+            || state.GetValueOrDefault("UnitFileState") != "disabled"
+            || !Guid.TryParseExact(invocation, "N", out var invocationId) || invocationId == Guid.Empty
+            || Environment.GetEnvironmentVariable("INVOCATION_ID") != invocation)
+            throw new RuntimePolicyException("runtime.service_scope_invalid");
+        var stat = await File.ReadAllTextAsync("/proc/self/stat", ct);
+        var fields = stat[(stat.LastIndexOf(')') + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (fields.Length < 20 || !ulong.TryParse(fields[19], CultureInfo.InvariantCulture, out var startTicks))
+            throw new RuntimePolicyException("runtime.state_unknown");
+
+        RequireProtected(registration.Binary);
+        RequireProtected(registration.Data);
+        if (!string.Equals(await DigestAsync(registration.Binary, ct), registration.BinaryHash, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(await DigestAsync(Credential, ct), registration.ConfigurationHash, StringComparison.OrdinalIgnoreCase))
+            Fail("configuration_drift");
+        var checkpoint = TunCheckpoint(registration.Binary, operation, registration.ConfigurationHash);
+        if (checkpoint.Read() is not { Phase: MihomoTunPhase.LaunchDispatched } armed
+            || armed.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
+            || armed.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
+            throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        RequireProtected(checkpoint.SocketPath);
+        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        await socket.ConnectAsync(new UnixDomainSocketEndPoint(checkpoint.SocketPath), ct);
+        using var descriptor = LinuxMihomoTunDescriptor.ReceiveFrom(socket, operation, armed.BrokerPid, 0,
+            armed.Intent.Device, armed.InterfaceIndex);
+        socket.Dispose();
+        if (checkpoint.Read() != (armed with { Phase = MihomoTunPhase.DescriptorDispatched,
+                Process = new(Environment.ProcessId, invocationId, startTicks) }))
+            Fail("network_checkpoint_conflict");
+        ExecTunMihomo(descriptor, registration);
+    }
+
+    private static void ExecTunMihomo(SafeFileHandle descriptor, Registration registration)
+    {
+        var arguments = new[] { registration.Binary, "-d", registration.Data, "-f", Credential };
+        var pointers = new nint[arguments.Length];
+        var vector = Marshal.AllocHGlobal((pointers.Length + 1) * nint.Size);
+        try
+        {
+            for (var index = 0; index < arguments.Length; index++)
+            {
+                pointers[index] = Marshal.StringToCoTaskMemUTF8(arguments[index]);
+                Marshal.WriteIntPtr(vector, index * nint.Size, pointers[index]);
+            }
+            Marshal.WriteIntPtr(vector, pointers.Length * nint.Size, 0);
+            const int duplicateDescriptor = 0; // F_DUPFD inherits without replacing an open descriptor.
+            var inherited = Fcntl(descriptor, duplicateDescriptor, TunFd);
+            using var inheritedHandle = new SafeFileHandle(inherited, ownsHandle: true);
+            if (inherited != TunFd) Fail("network_descriptor_unavailable");
+            Exec(pointers[0], vector);
+            Fail("network_launcher_failed");
+        }
+        finally
+        {
+            foreach (var pointer in pointers) Marshal.FreeCoTaskMem(pointer);
+            Marshal.FreeHGlobal(vector);
+        }
+    }
+
+    [DllImport("libc", EntryPoint = "fcntl", SetLastError = true)]
+    private static extern int Fcntl(SafeFileHandle descriptor, int command, int argument);
+
+    [DllImport("libc", EntryPoint = "execv", SetLastError = true)]
+    private static extern int Exec(nint path, nint arguments);
 
     private static async Task<bool> ControllerHealthyAsync(int port, string secret, string version, CancellationToken ct)
     {

@@ -11,6 +11,23 @@ using RelaxKonOS.PrivilegedHelper;
 if (args.FirstOrDefault() == "runtime-source")
     return await RuntimeSourceCommand.RunAsync(args[1..]);
 
+if (OperatingSystem.IsLinux() && args is [LinuxMihomoArchiveHost.TunLaunchArgument])
+{
+    try { await LinuxMihomoArchiveHost.LaunchTunAsync(); }
+    catch (RelaxKonOS.ManagedRuntimes.RuntimePolicyException error)
+    {
+        Console.Error.WriteLine(error.ProblemCode);
+        return 1;
+    }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+        or OperationCanceledException or System.Net.Sockets.SocketException or JsonException)
+    {
+        Console.Error.WriteLine("runtime.network_launcher_failed");
+        return 1;
+    }
+    return 1; // A successful exec replaces this process.
+}
+
 // Persistent Linux host: root-owned systemd service listening on a local Unix Domain Socket. It
 // shares the closed dispatcher with the one-shot worker and the Windows hosts.
 if (args.Contains("--linux-service", StringComparer.Ordinal))

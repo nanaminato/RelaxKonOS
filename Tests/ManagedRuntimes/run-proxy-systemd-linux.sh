@@ -4,14 +4,15 @@ tun_fd=0
 fixture= helper= server= authenticated= baseline= tun_script=
 proxy_tests=
 run_seconds=150
-if [[ $# == 2 && $1 == --tun-fd ]]; then
+if [[ $# == 3 && $1 == --tun-fd ]]; then
     tun_fd=1
     fixture=$(realpath -e -- "$2")
+    helper=$(realpath -e -- "$3")
     tun_script=$(realpath -e -- "$(dirname -- "$0")/mihomo-tun-fd-proof.py")
     run_seconds=60
 else
     if [[ $# -lt 3 || $# -gt 6 || ( $# -ge 5 && $5 != --authenticated ) ]]; then
-        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd tests.dll" >&2
+        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd tests.dll Helper-apphost" >&2
         exit 2
     fi
     fixture=$(realpath -e -- "$1")
@@ -93,6 +94,11 @@ export RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE="$baseline"
 export RELAXKONOS_TEST_ACTIVATION_UNKNOWN="$activation_unknown"
 run_checks() {
     if [[ $tun_fd == 1 ]]; then
+        mount -t tmpfs -o mode=0755 tmpfs /usr/local/lib || return
+        local helper_dir=/usr/local/lib/relaxkonos/privileged-helper
+        install -d -m 0755 "\$helper_dir" || return
+        install -m 0755 "$helper" "\$helper_dir/RelaxKonOS.PrivilegedHelper" || return
+        cp -- "$(dirname "$helper")"/*.dll "$(dirname "$helper")"/RelaxKonOS.PrivilegedHelper.{deps,runtimeconfig}.json "\$helper_dir/" || return
         /usr/bin/python3 -I "$work/mihomo-tun-fd-proof.py" proof "$work" "$fixture"
         return \$?
     fi

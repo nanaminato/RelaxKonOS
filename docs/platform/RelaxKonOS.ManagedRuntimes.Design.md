@@ -275,3 +275,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）Linux x64 私有 systemd 已验证 Helper 的 TUN 设备标签、源地址和精确目标路由写入，以及按原操作 ID 只读核对。路由使用独占添加，归属冲突时夹具保留原操作和进程。原归档事务中的持久网络检查点、固定单元与规则及 DNS 归属继续开放，生产准入门禁维持。见[设备和路由归属证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-tun-设备和精确路由归属)。
 
 2026-11-08（MR-03 / MB-04）Linux x64 私有 systemd 已验证原归档实例锁内的 TUN 追加检查点及两次中断，半写记录与重复停止派发均拒绝。生产普通配置补偿遇到该记录时保持待核验。生产网络事务写入入口、固定单元与规则及 DNS 归属仍待接入，准入门禁继续生效。见[原归档操作检查点证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-tun-原归档操作检查点)。
+
+2026-11-08（MR-03 / MB-04）Linux x64 私有 systemd 已验证生产固定单元和 Helper 启动器。原操作启动派发先落盘，固定单元核对凭据、制品、进程和描述符，拒绝重复派发和无原派发的重启。生产归档事务、规则及 DNS 归属、同键回执和工作租约仍待联合验收。见[固定单元证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-mihomo-固定-tun-单元)。

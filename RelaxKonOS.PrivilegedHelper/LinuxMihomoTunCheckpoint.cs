@@ -6,7 +6,7 @@ using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
-internal enum MihomoTunPhase { Intent, NetworkDispatched, DescriptorDispatched, StopDispatched, Restored }
+internal enum MihomoTunPhase { Intent, NetworkDispatched, LaunchDispatched, DescriptorDispatched, StopDispatched, Restored }
 
 internal sealed record MihomoTunIntent(Guid OperationId, Guid RevisionId, string ConfigurationHash,
     Guid BootId, string NetworkNamespace, string Device, string Address, string Destination, string ManagementHash);
@@ -14,7 +14,7 @@ internal sealed record MihomoTunIntent(Guid OperationId, Guid RevisionId, string
 internal sealed record MihomoTunProcess(int Pid, Guid InvocationId, ulong StartTicks);
 
 internal sealed record MihomoTunEffect(MihomoTunPhase Phase, MihomoTunIntent Intent, uint InterfaceIndex = 0,
-    MihomoTunProcess? Process = null);
+    int BrokerPid = 0, MihomoTunProcess? Process = null);
 
 /// <summary>Append-only network evidence under the original archive operation. The writer must hold
 /// the archive instance lock. A partial checkpoint blocks further writes and cannot authorize replay.</summary>
@@ -22,6 +22,7 @@ internal sealed record MihomoTunEffect(MihomoTunPhase Phase, MihomoTunIntent Int
 internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Guid revisionId, string configurationHash)
 {
     private readonly string directory = Path.Combine(root, "operations", operationId.ToString("N"));
+    internal string SocketPath => Path.Combine(directory, "tun.sock");
 
     internal static Guid BootId() => Guid.Parse(File.ReadAllText("/proc/sys/kernel/random/boot_id").Trim());
 
@@ -86,10 +87,12 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
             || string.IsNullOrEmpty(intent.Device) || !LinuxMihomoTunDescriptor.ValidName(intent.Device)
             || !IPAddress.TryParse(intent.Address, out var address) || !IPAddress.TryParse(intent.Destination, out var destination)
             || (current.InterfaceIndex == 0) != (current.Phase == MihomoTunPhase.Intent)
+            || (current.Phase == MihomoTunPhase.Intent ? current.BrokerPid != 0 : current.BrokerPid <= 1)
             || (current.Process is null) != (current.Phase < MihomoTunPhase.DescriptorDispatched)
             || current.Process is { } process && (process.Pid <= 1 || process.InvocationId == Guid.Empty || process.StartTicks == 0)
             || previous is not null && (previous.Intent != intent
                 || previous.InterfaceIndex != 0 && previous.InterfaceIndex != current.InterfaceIndex
+                || previous.BrokerPid != 0 && previous.BrokerPid != current.BrokerPid
                 || previous.Process is not null && previous.Process != current.Process))
             throw Conflict();
         _ = new LinuxMihomoTunRoutes(address, destination);
