@@ -150,16 +150,14 @@ internal sealed partial class CertificateOperationStore
             }
 
             var version = operationId.ToString("N");
-            if (!await material.KestrelRecoveryChainMatchesAsync(operation.CertificateId, operationId, checkpoint.ChainHash, CancellationToken.None))
-                return new(receipt, "recovery-required");
-            var replacement = await material.LoadKestrelVersionAsync(operation.CertificateId, version, CancellationToken.None);
+            var replacement = await material.LoadKestrelVersionAsync(operation.CertificateId, version, CancellationToken.None, checkpoint.ChainHash);
             var activated = false;
             try
             {
                 if (replacement is null || replacement.TargetCertificate.GetCertHashString(HashAlgorithmName.SHA256) != plan.IssuedFingerprint)
                     return new(receipt, "recovery-required");
                 activated = _kestrel.TryApplyRecovery(operation.CertificateId, plan.Baseline, replacement,
-                    () => _deployments.TryCommitKestrelRecovery(operation.CertificateId, plan.Baseline, version));
+                    () => _deployments.TryCommitKestrelRecovery(operation.CertificateId, plan.Baseline, version, checkpoint.ChainHash));
                 if (!activated) return new(receipt, "recovery-required");
             }
             catch (SqliteException error)
@@ -223,6 +221,7 @@ internal sealed partial class CertificateOperationStore
         var deployed = (await _deployments.ListKestrelAsync(ct)).SingleOrDefault(item => item.CertificateId == plan.CertificateId);
         return deployed is not null && deployed.CurrentVersion == version && deployed.LastSuccessfulVersion == version
             && deployed.IsDefault == plan.Baseline.IsDefault
+            && (deployed.ChainSha256 is null || deployed.ChainSha256 == checkpoint.ChainHash)
             && await material.KestrelRecoveryChainMatchesAsync(plan.CertificateId, plan.OperationId, checkpoint.ChainHash, ct);
     }
 

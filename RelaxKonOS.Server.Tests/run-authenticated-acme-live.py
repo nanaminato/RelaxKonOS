@@ -676,8 +676,9 @@ def run(root, server, tests, mode):
             ledger = root / "data" / "certificate-operations.json"
             before = ledger.read_bytes()
             if recovery:
-                def served_fingerprint():
-                    trust = ssl.create_default_context(cafile=str(root / "issuance-root.pem"))
+                def served_fingerprint(trust=None):
+                    if trust is None:
+                        trust = ssl.create_default_context(cafile=str(root / "issuance-root.pem"))
                     with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
                         with trust.wrap_socket(connection, server_hostname="baseline.mb05.test") as session:
                             return hashlib.sha256(session.getpeercert(binary_form=True)).hexdigest().upper()
@@ -816,6 +817,28 @@ def run(root, server, tests, mode):
                             pending_write.rmdir()
 
                     traffic = (root / "relay.log").read_bytes()
+                    version = signed["operationId"].replace("-", "")
+                    chain = index.parent / "versions" / version / "fullchain.pem"
+                    original_chain = chain.read_bytes()
+                    with sqlite3.connect(root / "identity.db") as database:
+                        deployed, = database.execute("SELECT kestrel_chain_sha256 FROM certificate_deployment_records "
+                                                     "WHERE target_type='kestrel' AND current_version=?", (version,)).fetchone()
+                    assert deployed == hashlib.sha256(original_chain).hexdigest().upper() == checkpoint()["chainHash"]
+                    fallback = ssl.PEM_cert_to_DER_cert((root / "https.pem").read_text())
+                    chain.write_bytes(original_chain + b"\n")
+                    try:
+                        with process([server], "kestrel-recovery-startup-drift") as drifted:
+                            wait_for(drifted, healthy, "kestrel-recovery-startup-drift")
+                            token = login()
+                            assert served_fingerprint(management_tls) == hashlib.sha256(fallback).hexdigest().upper()
+                            assert not checkpoint()["completed"] and recovery_leases() == 1
+                            request(apply_route, token, apply_payload, expected=409)
+                            assert request(renew, token, {}, "signed-loss", 202) == signed
+                            request(renew, token, {}, "startup-drift-new-key", 409,
+                                    expected_problem="certificate.kestrel_recovery_pending")
+                            assert (root / "relay.log").read_bytes() == traffic
+                    finally:
+                        chain.write_bytes(original_chain)
                     with process([server], "kestrel-recovery-restarted") as recovered:
                         wait_for(recovered, healthy, "kestrel-recovery-restarted")
                         token = login()
@@ -831,7 +854,7 @@ def run(root, server, tests, mode):
                         assert tuple(path.read_bytes() for path in stable_paths) == stable_bytes
                         assert ledger.read_bytes() == terminal_bytes and (root / "relay.log").read_bytes() == traffic
                         print(f"PASS ACME KESTREL RECOVERY APPLY: operation={signed['operationId']}; "
-                              f"served={proof['issuedFingerprintSha256']}; original terminal recovered without reapplying", flush=True)
+                              f"served={proof['issuedFingerprintSha256']}; drifted startup rejected and terminal recovered without reapplying", flush=True)
                 return
             if mode == "key-checkpoint":
                 assert (root / "key-before-finalize").read_text() == signed["operationId"]

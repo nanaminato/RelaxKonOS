@@ -1181,7 +1181,8 @@ sealed class NoCertificateStore : RelaxKonOS.Server.Certificate.ICertificateStor
     public Task UpdateStatusAsync(Guid certificateId, RelaxKonOS.Protocol.Certificates.CertificateStatus status, CancellationToken ct) => throw Missing();
     public Task<System.Security.Cryptography.X509Certificates.X509Certificate2?> LoadCurrentAsync(Guid certificateId, CancellationToken ct) => throw Missing();
     public Task<System.Security.Cryptography.X509Certificates.X509Certificate2?> LoadVersionAsync(Guid certificateId, string version, CancellationToken ct) => throw Missing();
-    public Task<System.Net.Security.SslStreamCertificateContext?> LoadKestrelVersionAsync(Guid certificateId, string version, CancellationToken ct) => throw Missing();
+    public Task<System.Net.Security.SslStreamCertificateContext?> LoadKestrelVersionAsync(Guid certificateId, string version, CancellationToken ct,
+        string? expectedChainSha256 = null) => throw Missing();
     public Task<(string FullChainPath, string PrivateKeyPath)?> GetNginxPathsAsync(Guid certificateId, CancellationToken ct) => throw Missing();
     public Task DeleteAsync(Guid certificateId, CancellationToken ct) => throw Missing();
 }

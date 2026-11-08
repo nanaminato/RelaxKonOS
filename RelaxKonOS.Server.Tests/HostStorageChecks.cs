@@ -24,7 +24,9 @@ internal static async Task VerifyHostGlobalMigrationAsync(string root)
     await connection.OpenAsync();
     await using var command = connection.CreateCommand();
     command.CommandText = "SELECT MAX(version) FROM relaxkonos_host_schema_migrations;";
-    TestAssert.Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 20, "HostGlobal migrations did not reach the expected version.");
+    TestAssert.Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 22, "HostGlobal migrations did not reach the expected version.");
+    command.CommandText = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('certificate_deployment_records') WHERE name='kestrel_chain_sha256');";
+    TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Kestrel deployment chain digest was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='docker_proxy_settings');";
     TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Docker proxy settings table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='proxy_profile_publication');";

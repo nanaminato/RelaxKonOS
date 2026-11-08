@@ -3,7 +3,7 @@ using RelaxKonOS.Server.Storage;
 
 namespace RelaxKonOS.Server.Certificate;
 
-internal sealed record KestrelDeploymentRecord(Guid CertificateId, string CurrentVersion, string? LastSuccessfulVersion, bool IsDefault);
+internal sealed record KestrelDeploymentRecord(Guid CertificateId, string CurrentVersion, string? LastSuccessfulVersion, bool IsDefault, string? ChainSha256);
 
 /// <summary>Host-global deployment metadata. It deliberately records deployment state separately
 /// from certificate issuance: a valid new certificate is not automatically proof that Kestrel is
@@ -40,6 +40,7 @@ internal sealed class CertificateDeploymentRepository
                 current_version=CASE WHEN $succeeded THEN excluded.current_version ELSE certificate_deployment_records.current_version END,
                 last_successful_version=CASE WHEN $succeeded THEN excluded.current_version ELSE certificate_deployment_records.last_successful_version END,
                 last_health_check_at=CASE WHEN $succeeded THEN excluded.last_health_check_at ELSE certificate_deployment_records.last_health_check_at END,
+                kestrel_chain_sha256=CASE WHEN $succeeded THEN NULL ELSE certificate_deployment_records.kestrel_chain_sha256 END,
                 problem_code=excluded.problem_code, revision=certificate_deployment_records.revision+1, updated_at=excluded.updated_at;
             INSERT INTO certificate_deployment_records(deployment_id,certificate_id,target_type,target_name,current_version,last_successful_version,last_health_check_at,problem_code,revision,created_at,updated_at)
             SELECT 'kestrel-default:relaxkonos',$certificate,$defaultType,$name,$current,$successful,$health,NULL,1,$now,$now
@@ -73,7 +74,8 @@ internal sealed class CertificateDeploymentRepository
         command.CommandText = """
             SELECT binding.certificate_id,binding.current_version,binding.last_successful_version,
                 EXISTS(SELECT 1 FROM certificate_deployment_records selection
-                    WHERE selection.target_type=$defaultType AND selection.target_name=$name AND selection.certificate_id=binding.certificate_id)
+                    WHERE selection.target_type=$defaultType AND selection.target_name=$name AND selection.certificate_id=binding.certificate_id),
+                binding.kestrel_chain_sha256
             FROM certificate_deployment_records binding
             WHERE binding.target_type=$type AND binding.target_name=$name AND binding.current_version IS NOT NULL
             ORDER BY binding.last_health_check_at, binding.deployment_id;
@@ -84,11 +86,12 @@ internal sealed class CertificateDeploymentRepository
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var records = new List<KestrelDeploymentRecord>();
         while (await reader.ReadAsync(cancellationToken))
-            records.Add(new KestrelDeploymentRecord(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetBoolean(3)));
+            records.Add(new KestrelDeploymentRecord(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.GetBoolean(3), reader.IsDBNull(4) ? null : reader.GetString(4)));
         return records;
     }
 
-    internal bool TryCommitKestrelRecovery(Guid certificateId, RenewalRecoveryBaseline expected, string version)
+    internal bool TryCommitKestrelRecovery(Guid certificateId, RenewalRecoveryBaseline expected, string version, string chainSha256)
     {
         if (!_enabled) return false;
         // This compare-and-set is serialized with the in-memory SNI check. Bound SQLite lock wait.
@@ -100,7 +103,7 @@ internal sealed class CertificateDeploymentRepository
         command.CommandText = """
             UPDATE certificate_deployment_records
             SET current_version=$version,last_successful_version=$version,last_health_check_at=$now,
-                problem_code=NULL,revision=revision+1,updated_at=$now
+                kestrel_chain_sha256=$chain,problem_code=NULL,revision=revision+1,updated_at=$now
             WHERE certificate_id=$id AND target_type='kestrel' AND target_name='relaxkonos'
                 AND current_version=$expected AND last_successful_version=$expected
                 AND EXISTS(SELECT 1 FROM certificate_records WHERE certificate_id=$id AND current_version=$expected
@@ -112,6 +115,7 @@ internal sealed class CertificateDeploymentRepository
         command.Parameters.AddWithValue("$expected", expected.Version);
         command.Parameters.AddWithValue("$fingerprint", expected.Fingerprint);
         command.Parameters.AddWithValue("$version", version);
+        command.Parameters.AddWithValue("$chain", chainSha256);
         command.Parameters.AddWithValue("$default", expected.IsDefault);
         command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
         if (command.ExecuteNonQuery() != 1) return false;

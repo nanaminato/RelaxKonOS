@@ -11,7 +11,8 @@ internal sealed class KestrelCertificateStartupService(ICertificateStore certifi
         {
             var metadata = await certificates.GetAsync(deployment.CertificateId, cancellationToken);
             if (metadata is null || metadata.Status == RelaxKonOS.Protocol.Certificates.CertificateStatus.Revoked) continue;
-            var certificate = await certificates.LoadKestrelVersionAsync(deployment.CertificateId, deployment.CurrentVersion, cancellationToken);
+            var certificate = await certificates.LoadKestrelVersionAsync(deployment.CertificateId, deployment.CurrentVersion, cancellationToken,
+                deployment.ChainSha256);
             if (certificate is null || !kestrel.Activate(deployment.CertificateId, certificate, metadata.Domains, makeDefault: deployment.IsDefault))
             {
                 certificate?.TargetCertificate.Dispose();

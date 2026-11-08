@@ -379,6 +379,13 @@ internal static class HostGlobalMigrationRunner
                 INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (21, CURRENT_TIMESTAMP);
                 """, cancellationToken);
         }
+        if (!await IsAppliedAsync(connection, transaction, 22, cancellationToken))
+        {
+            await ExecuteAsync(connection, transaction, """
+                ALTER TABLE certificate_deployment_records ADD COLUMN kestrel_chain_sha256 TEXT NULL;
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (22, CURRENT_TIMESTAMP);
+                """, cancellationToken);
+        }
         transaction.Commit();
     }
 

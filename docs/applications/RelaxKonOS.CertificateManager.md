@@ -1513,6 +1513,8 @@ Server 切换到不同 CA 目录后，查询旧订单返回 `identity-unavailabl
 
 已暂存但部署未提交时，启动保留旧绑定及原恢复租约。暂存证书链缺失或摘要不符时，应用返回 `recovery-required`。精确原材料恢复后，操作者重新授权并确认同一计划即可继续切换，沿用已暂存的原 CA 材料。
 
+显式应用恢复计划时，Kestrel 部署记录随绑定保存原证书链摘要。重启时若部署材料无法通过核验，Kestrel 继续使用可用的配置启动证书，原恢复保持待核验。恢复精确原材料后重启可再次核验原部署并补齐终态。
+
 WebRoot 签发和续期在发布 HTTP-01 文件前，在原证书操作记录挑战文件名及内容摘要。任务等待挑战清理后才提交终态。跨进程恢复在写入原中断回执前清理内容匹配的原文件。路径或内容无法确认时保留文件和恢复责任，并隔离证书工作准入。网站自动签发使用此路径，网站发布与原证书操作的关联同样持久化。CA 返回 `valid` 时仍应通过原发布和证书回执核实本地签发、部署各自的状态。见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
 挑战文件内容已变化时，原回执保持 `Running / challenge-cleanup-required`。重启仍可查询原操作及已知 CA 订单，新证书操作返回 `certificate.challenge_ownership_unconfirmed`。确认文件归属后，原清理在下次启动接续，原操作 ID 保持。见[挑战文件归属验收](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-webroot-挑战内容变化时保留原清理责任)。

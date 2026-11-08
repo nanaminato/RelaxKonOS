@@ -22,7 +22,8 @@ internal interface ICertificateStore
     Task UpdateStatusAsync(Guid certificateId, CertificateStatus status, CancellationToken cancellationToken);
     Task<X509Certificate2?> LoadCurrentAsync(Guid certificateId, CancellationToken cancellationToken);
     Task<X509Certificate2?> LoadVersionAsync(Guid certificateId, string version, CancellationToken cancellationToken);
-    Task<SslStreamCertificateContext?> LoadKestrelVersionAsync(Guid certificateId, string version, CancellationToken cancellationToken);
+    Task<SslStreamCertificateContext?> LoadKestrelVersionAsync(Guid certificateId, string version, CancellationToken cancellationToken,
+        string? expectedChainSha256 = null);
     /// <summary>Returns fixed, server-local PEM paths suitable for a web-server configuration.</summary>
     Task<(string FullChainPath, string PrivateKeyPath)?> GetNginxPathsAsync(Guid certificateId, CancellationToken cancellationToken);
     Task DeleteAsync(Guid certificateId, CancellationToken cancellationToken);
@@ -125,8 +126,13 @@ internal sealed class FileCertificateStore : ICertificateStore
         if (!IsSafeCertificateRoot(certificateId)) return false;
         var directory = Path.Combine(CertificateRoot(certificateId), "versions", operationId.ToString("N"));
         var chain = Path.Combine(directory, "fullchain.pem");
-        return !IsSymbolicLink(directory) && !IsSymbolicLink(chain) && new FileInfo(chain) is { Exists: true, Length: > 0 and <= 1048576 }
-            && PemHash(await File.ReadAllTextAsync(chain, ct)) == hash;
+        if (IsSymbolicLink(directory) || IsSymbolicLink(chain)) return false;
+        try
+        {
+            return new FileInfo(chain) is { Exists: true, Length: > 0 and <= 1048576 }
+                && Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(chain, ct))) == hash;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
     }
 
     internal static string PemHash(string pem) => Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(pem)));
@@ -169,7 +175,8 @@ internal sealed class FileCertificateStore : ICertificateStore
     public Task<X509Certificate2?> LoadVersionAsync(Guid certificateId, string version, CancellationToken cancellationToken)
         => Task.FromResult(LoadVersion<X509Certificate2>(certificateId, version, static (leaf, _) => leaf));
 
-    public Task<SslStreamCertificateContext?> LoadKestrelVersionAsync(Guid certificateId, string version, CancellationToken cancellationToken)
+    public Task<SslStreamCertificateContext?> LoadKestrelVersionAsync(Guid certificateId, string version, CancellationToken cancellationToken,
+        string? expectedChainSha256 = null)
         => Task.FromResult(LoadVersion<SslStreamCertificateContext>(certificateId, version, static (leaf, pem) =>
         {
             var chain = new X509Certificate2Collection();
@@ -182,9 +189,9 @@ internal sealed class FileCertificateStore : ICertificateStore
             {
                 foreach (var certificate in chain) certificate.Dispose();
             }
-        }));
+        }, expectedChainSha256));
 
-    private T? LoadVersion<T>(Guid certificateId, string version, Func<X509Certificate2, string, T> load) where T : class
+    private T? LoadVersion<T>(Guid certificateId, string version, Func<X509Certificate2, string, T> load, string? expectedChainSha256 = null) where T : class
     {
         if (string.IsNullOrWhiteSpace(version) || version.Length != 32 || !version.All(Uri.IsHexDigit))
             return null;
@@ -197,11 +204,21 @@ internal sealed class FileCertificateStore : ICertificateStore
         X509Certificate2? leaf = null;
         try
         {
-            var pem = File.ReadAllText(certificate);
+            string pem;
+            if (expectedChainSha256 is null) pem = File.ReadAllText(certificate);
+            else
+            {
+                if (new FileInfo(certificate).Length is not (> 0 and <= 1048576)) return null;
+                var chain = File.ReadAllBytes(certificate);
+                if (Convert.ToHexString(SHA256.HashData(chain)) != expectedChainSha256) return null;
+                pem = System.Text.Encoding.UTF8.GetString(chain);
+            }
             leaf = X509Certificate2.CreateFromPem(pem, File.ReadAllText(privateKey));
             return load(leaf, pem);
         }
         catch (CryptographicException) { leaf?.Dispose(); return null; }
+        catch (Exception error) when (expectedChainSha256 is not null && error is (IOException or UnauthorizedAccessException))
+        { leaf?.Dispose(); return null; }
     }
 
     public async Task<(string FullChainPath, string PrivateKeyPath)?> GetNginxPathsAsync(Guid certificateId, CancellationToken cancellationToken)
