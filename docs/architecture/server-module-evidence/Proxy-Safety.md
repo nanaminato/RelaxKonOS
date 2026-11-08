@@ -31,6 +31,7 @@
 - [MB-04 受限 Mihomo 的 TUN 描述符交付](#mb-04-受限-mihomo-的-tun-描述符交付)
 - [MB-04 TUN 原生效果的双中断核对](#mb-04-tun-原生效果的双中断核对)
 - [MB-04 Linux 管理端点实际路由与原操作](#mb-04-linux-管理端点实际路由与原操作)
+- [MB-04 Helper 原生 TUN 描述符交付](#mb-04-helper-原生-tun-描述符交付)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -274,7 +275,7 @@ Windows Release ManagedRuntimes、TUN 边界 38 项、Core 安全 40 项、驻�
 
 ## MB-04 受限 Mihomo 的 TUN 描述符交付
 
-已实现且实机通过 `sudo bash Tests/ManagedRuntimes/run-proxy-systemd-linux.sh --tun-fd`。私有 systemd 中，测试进程创建非持久 TUN 并只添加一个专属目标的路由，通过私有 Unix 套接字把已打开的描述符传给 Mihomo v1.19.33 服务。测得有效与边界 capability 只有 `CAP_NET_BIND_SERVICE`，服务看不到 `/dev/net/tun`。进程 PID 45 的 FD 7 指向 `rk-fd-proof`，systemd 启动凭据 SHA-256 为 `53e0a0721db664590feebe1202d6667bd6c652c3ad6d15d8632261b526f780c1`，与冻结文件一致。测试进程关闭自身描述符后，内核把目标流量交给 TUN，上游收到一次 CONNECT 和一次真实 HTTP 请求。`SIGKILL` 后分别等待原进程回收和最后一个描述符关闭导致的设备消失，专属路由也移除。管理网关的内核查询及 IPv4/IPv6 规则在激活前、实际转发时和清理后相同。专属 cgroup 移除，宿主服务及代理文件指纹一致。
+初轮私有 systemd 实机中，测试进程创建非持久 TUN 并只添加一个专属目标的路由，通过私有 Unix 套接字把已打开的描述符传给 Mihomo v1.19.33 服务。测得有效与边界 capability 只有 `CAP_NET_BIND_SERVICE`，服务看不到 `/dev/net/tun`。进程 PID 45 的 FD 7 指向 `rk-fd-proof`，systemd 启动凭据 SHA-256 为 `53e0a0721db664590feebe1202d6667bd6c652c3ad6d15d8632261b526f780c1`，与冻结文件一致。测试进程关闭自身描述符后，内核把目标流量交给 TUN，上游收到一次 CONNECT 和一次真实 HTTP 请求。`SIGKILL` 后分别等待原进程回收和最后一个描述符关闭导致的设备消失，专属路由也移除。管理网关的内核查询及 IPv4/IPv6 规则在激活前、实际转发时和清理后相同。专属 cgroup 移除，宿主服务及代理文件指纹一致。
 
 原型失败路径包括私有夹具中继承的 sysfs 视图与当前网络命名空间不一致、上游未实现 CONNECT，以及设备消失早于 systemd 回收进程。修正为使用内核链路查询、验证完整 CONNECT 转发并分别等待设备和进程后通过。原始日志为 `.artifacts/mb04-tun-marker-sync/tun-fd-linux-repo.log`，SHA-256 为 `eb67aee9e5d94efaccd68056944d2affc6d3815f9ae1f00ded4bba97a465541c`。
 
@@ -303,6 +304,14 @@ Core 在 Linux 直连 TUN 的原保护标记中记录内核为网关和管理端
 另一私有 systemd 单元完成受管回归 185 项。两次受管 TUN 请求均被拒绝，原补偿 `e6b43569-3245-442f-9663-8980ac89ee16`、原生配置、选路及转发保持，新增标记和控制器请求为零。订阅 Helper 中断 `19878e1d-74ba-44d8-ad78-0893b5ef1e5f` 按原回执恢复。两组专属 cgroup 均移除，宿主服务和代理文件指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-route-managed-final.log`，归档 SHA-256 `87ccd164e8714682808e2368e20afad0575408c70d5546a802e6ff8ae347112f`。
 
 该证据覆盖 Core 操作关联和直连内核路由。路由查找验证本次查询上下文的内核选路，实际管理 TCP 会话的标记和端口策略仍需受管事务联合验收。生产 Helper 的 TUN 描述符交付、设备、规则及 DNS 的持久归属仍缺，受管 TUN 门禁继续生效。Proxy 保持 resident。本轮未测量对象释放、ALC、隔离内存或生产收益。
+
+## MB-04 Helper 原生 TUN 描述符交付
+
+`sudo bash Tests/ManagedRuntimes/run-proxy-systemd-linux.sh --tun-fd <Release-tests.dll>` 在私有 systemd 中调用 Helper 程序集的原生描述符实现。原操作 `3c036388e3834fcfb985c09a59988e5f` 独占打开非持久 TUN，内核返回接口 `rk-fd-proof` 与 ifindex 4。原记录已持久保存接口、接收进程 PID 68 和路由后，Helper 代码核对 Unix 对端的 PID、UID 及原操作 ID，再尝试一次 `SCM_RIGHTS` 交付。重复打开、错误操作 ID、错误 PID 和重复交付均被拒绝。[Linux TUN/TAP 接口](https://docs.kernel.org/networking/tuntap.html) · [Unix 描述符传递](https://man7.org/linux/man-pages/man7/unix.7.html)
+
+真实上游跨执行进程强制退出及设备归属冲突收到三次请求。Mihomo 的原 PID、FD、管理路由及配置摘要 `c11e74de76ca6deeb16d876f818098ee2ff77c22f175b22f3127fedddee2bc09` 一致。停止已派发时再次强制退出，下一进程仅核对进程、设备和路由清理，原回执可重复查询。专属 cgroup 移除，共享服务及代理文件指纹一致。实机 x64 日志 `.artifacts/mb04-tun-marker-sync/tun-helper-fd-linux.log`，归档 SHA-256 `e7c6dbb6e1abc35fd5a669c6bea211feb3b475ac960807f4433f7d3119b78992`。
+
+Windows ManagedRuntimes Release 回归通过，配置事务 99 项，可信下载探针因缺进程级测试 CA 覆盖而跳过。Linux arm64 描述符 ABI 分支未实机验证。Helper 原生实现目前由夹具调用，接收启动器、网络策略、持久归属记录及恢复仍由夹具驱动。生产固定单元接入、设备及规则和 DNS 归属、Helper 与 Core 原回执的联合证明均待完成。受管门禁及 Proxy 常驻继续生效。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

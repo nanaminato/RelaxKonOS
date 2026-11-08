@@ -183,6 +183,11 @@ if (args is ["runtime-proxy-systemd-tun-worker", var tunRoot, var tunAddress])
     await ProxySystemdGuardProbe.RunTunWorkerAsync(tunRoot, System.Net.IPAddress.Parse(tunAddress));
     return;
 }
+if (args is ["runtime-mihomo-tun-descriptor-worker", var descriptorRoot] && OperatingSystem.IsLinux())
+{
+    await MihomoTunDescriptorAcceptance.RunAsync(descriptorRoot);
+    return;
+}
 if (args is ["runtime-managed-service-live", var singBoxExecutable])
 {
     Console.WriteLine($"PASS LIVE SING-BOX HELPER PUBLICATION: {await ManagedServiceChecks.RunAsync(singBoxExecutable)} checks");
