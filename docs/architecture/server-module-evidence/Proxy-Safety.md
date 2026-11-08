@@ -508,6 +508,12 @@ Linux x64 私有 systemd 的 `committed` 场景使用真实候选验证器和归
 
 本场跨原发布应答丢失验证真实上游 HTTP 和分流 DNS，具名停止后验证进程、TUN 设备、专属表路由和本链路 DNS 退出。原发布回执及见证保持，专属 cgroup 已清理，宿主指纹一致。Windows Release ManagedRuntimes 通过，可信下载探针缺少进程级 CA 覆盖。日志为 `.artifacts/mb04-tun-route-drift/linux-stop-route-drift.log`，归档 SHA-256 为 `2d20ab0bde631a367ed81dd7846acbd202cca70abf92e3ccc80f603d21be49dd`。本场使用真实 Helper 单次进程入口，未复验完整 PAM/JWT HTTP 链路。对象释放、ALC、隔离内存和生产收益仍待独立测量。
 
+### 内核删除命令前的中断门禁
+
+**已实现且已验证。** 原发布 `fe173a3776a64400a008de6837b4f49b`、具名停止 `0de91e85-0edc-4fff-b859-1183b5489031`。原 PID 253 退出后，Helper 已持久化 `RuleRemovalDispatched`，但在夹具启动真实 `ip rule del` 前被终止。内核仍保留同值规则，Helper 删除命令实际执行次数为零。同 ID 返回 `runtime.network_rule_conflict`，新 ID 返回 `runtime.recovery_required`。管理选路、原生检查点和归档台账保持。夹具从专属网络独立移除精确规则后，Helper 只读确认缺席，按原停止 ID 持久化成功。同键再次返回相同回执，原配置身份 `a59d47fee6cda20c316fae2926ee0faacb280e11a6d45dbce02ccb396bed5256` 和原发布见证保持。
+
+同批对照原停止 `793b404c-411c-4ea9-b026-26633d451dad` 在真实删除后中断，Helper 的删除次数始终为一。两场均核对实际 HTTP、分流 DNS、进程退出、专属 cgroup 清理及宿主指纹。Windows Release ManagedRuntimes 通过，可信下载探针缺少进程级测试 CA 覆盖。日志为 `.artifacts/mb04-tun-rule-dispatch/linux.log`，归档 SHA-256 为 `0768abb8695ef562a1add56d3189c891e9731ef6d2363f395572ea6ddf973a47`。对象释放、ALC、隔离内存和生产收益仍待独立测量。
+
 首轮及诊断轮因夹具把无连字符的日志 ID 当作协议 GUID 字符串而被入口拒绝，修正线上 GUID 格式后重跑。Windows Release 通过，包括 104 项配置事务检查。可信下载探针因缺少进程级测试 CA 覆盖跳过。
 
 同批提交态归属原 `adb2e34709be4b68a1e38f125abdd513`、完整补偿原 `f5e456b6ce324dfd9d2bc9ad1b16e81f`、DNS 应答中断原 `0d557befe81b4d31ae4e03b6b44ed8af`、resolver 换代原 `3e142ca1935f498ba5d826cd8aae56cf` 全部通过。五个专属 cgroup 已清理，宿主服务、代理和 resolver 文件指纹一致。归档 SHA-256 为 `99d00c0ce8d1841fc39b22c8a05f5ffbe9268a7f7504d867921f549ac89bebd2`。最终日志在 `.artifacts/mb04-tun-marker-sync/committed-stop-linux-final.log` 和 `.artifacts/mb04-tun-marker-sync/committed-stop-windows.log`。
@@ -677,6 +683,8 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 **已实现且已验证。** Linux 私有 systemd 使用完整 PAM/JWT Server 验证原发布 `468e064500d9480b93de760b64d24ace` 和独立 Helper 停止 `704e60d5-8409-4b69-b005-3dc5fe9633ed`。真实转发、管理选路及配置身份 `1609a1c977aea199fd82d7d4f0e6967e5ee936f787793994e854517ae553b618` 已核对。PID 396、设备和专属表路由退出后注入管理选路漂移。原停止拒绝继续，规则删除派发为零。完整 Server 的认证停用计划和禁用启动仍报告原停止 ID，原队列、Helper 台账和应用配置镜像逐字节一致。恢复精确选路后由原 Helper 路径完成一次规则删除。禁用启动随后通过，Server 未派发具名停止。
 
 首轮归档缺少完整 Server 依赖清单，第二轮夹具用管理权威启动模式继承了已禁用状态。补齐 Release 制品并在读取停用计划时使用启用态启动方式后，最终验收通过。Windows Release 模块边界回归通过。专属进程退出、cgroup 清理及宿主指纹核验通过。日志在 `.artifacts/mb04-tun-route-drift/`，最终为 `linux-stop-drift-admission-verified.log`，归档 SHA-256 为 `5fc94dd872971abf223358e658ebda2f903dcc1b705ace0323aa0489c5329101`。对象释放、ALC、隔离负载内存与生产收益仍待独立测量。
+
+提交 `6b32a5ae` 的分段暂存错放了漂移屏障。`6208794d` 修正执行顺序，并逐字节核对提交内的停用场景与上述通过的归档。
 
 最终发布 `f526f4997539432988b1027afa23cc44`，仅 Helper 持有的原停止 `4a449026-99c4-48b0-8c7d-e8cecc92c247`，原 Mihomo PID 393，配置身份 `cee974ee2eab04b0a9528aefc51e2eb97a6dd1ddad049f065e4cb3ce0d52ebdd`。首轮已产生门禁记录，模块清单未将其标为待核验，修正后同时核对计划、应用和清单。日志为 `.artifacts/mb04-tun-marker-sync/tun-admission-linux-first.log`、`.artifacts/mb04-tun-marker-sync/tun-admission-linux-second.log` 和 `.artifacts/mb04-tun-marker-sync/tun-admission-linux-final.log`。
 

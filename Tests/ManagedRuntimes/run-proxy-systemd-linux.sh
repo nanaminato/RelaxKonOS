@@ -8,7 +8,7 @@ run_seconds=150
 if [[ ( $# == 3 || $# == 4 ) && $1 == --tun-fd ]]; then
     tun_fd=1
     tun_case=${4:-full}
-    case "$tun_case" in full|dns-receipt|dns-owner|committed|committed-stop|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained|ipc-http-retained-installation|ipc-http-squid) ;; *) exit 2 ;; esac
+    case "$tun_case" in full|dns-receipt|dns-owner|committed|committed-stop|committed-stop-before-delete|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained|ipc-http-retained-installation|ipc-http-squid) ;; *) exit 2 ;; esac
     fixture=$(realpath -e -- "$2")
     helper=$(realpath -e -- "$3")
     tun_script=$(realpath -e -- "$(dirname -- "$0")/mihomo-tun-fd-proof.py")
@@ -24,7 +24,7 @@ if [[ ( $# == 3 || $# == 4 ) && $1 == --tun-fd ]]; then
     fi
 else
     if [[ $# -lt 3 || $# -gt 6 || ( $# -ge 5 && $5 != --authenticated ) ]]; then
-        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd tests.dll Helper-apphost [full|dns-receipt|dns-owner|committed|committed-stop|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained|ipc-http-retained-installation|ipc-http-squid]" >&2
+        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd tests.dll Helper-apphost [full|dns-receipt|dns-owner|committed|committed-stop|committed-stop-before-delete|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained|ipc-http-retained-installation|ipc-http-squid]" >&2
         exit 2
     fi
     fixture=$(realpath -e -- "$1")

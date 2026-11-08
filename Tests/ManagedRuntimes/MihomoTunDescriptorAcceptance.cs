@@ -47,7 +47,7 @@ internal static class MihomoTunDescriptorAcceptance
         var intentRoot = intent.RootElement;
         var serverCase = intentRoot.GetProperty("case").GetString();
         var commit = intentRoot.GetProperty("case").GetString() is
-            "committed" or "committed-stop" or "committed-start" or "committed-remove-keep" or "committed-remove-purge";
+            "committed" or "committed-stop" or "committed-stop-before-delete" or "committed-start" or "committed-remove-keep" or "committed-remove-purge";
         var revisionId = intentRoot.GetProperty("revision").GetGuid();
         var previousPath = Path.Combine(root, "previous.yaml");
         var previousBytes = await File.ReadAllBytesAsync(previousPath);

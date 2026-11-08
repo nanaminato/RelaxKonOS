@@ -183,6 +183,11 @@ def install_rule_failure_boundary():
 set -eu
 real={shlex.quote(str(original))}
 if [[ "$*" == "-4 rule del priority 11000 to {target}/32 lookup "* ]]; then
+    if [[ -f {shlex.quote(str(root / 'interrupt-before-rule-delete'))} ]]; then
+        touch {shlex.quote(str(root / 'rule-delete-before-kernel'))}
+        kill -KILL "$PPID"
+        exit 137
+    fi
     printf '%s\n' attempt >> {shlex.quote(str(root / 'rule-delete-attempts'))}
     "$real" "$@"
     if [[ -f {shlex.quote(str(root / 'interrupt-rule-delete'))} ]]; then
@@ -451,7 +456,7 @@ def proof_committed(owner, operation, operation_dir, case):
     assert service_identity() == record['service'] and not (root / 'rule-delete-attempts').exists()
     if case != 'committed':
         ip('link', 'set', 'dev', device, 'alias', original_alias)
-        proof_committed_stop(record, observed, state_path, terminal, operation_dir, initial)
+        proof_committed_stop(record, observed, state_path, terminal, operation_dir, initial, case == 'committed-stop-before-delete')
     if case == 'committed-start' or case.startswith('committed-remove-'):
         proof_committed_start(record, observed, state_path, case)
     print(f'PASS TUN COMMITTED OWNERSHIP: {operation}, PID={record["service"][0]}, ifindex={record["ifindex"]}, '
@@ -469,7 +474,7 @@ def helper_result(process):
     return json.loads(process.stdout.splitlines()[-1])['Result']
 
 
-def proof_committed_stop(record, observed, state_path, terminal, operation_dir, initial):
+def proof_committed_stop(record, observed, state_path, terminal, operation_dir, initial, before_delete):
     operation = record['operation']
     stop = uuid.uuid4()
     pid = record['service'][0]
@@ -522,16 +527,29 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
         assert time.monotonic() < deadline
         time.sleep(.05)
     require_management_refusal('StopDispatched', [])
-    (root / 'interrupt-rule-delete').touch()
+    rule = ('priority', '11000', 'to', target + '/32', 'lookup', str(record['routing_table']), 'protocol', '186')
+    fault = 'interrupt-before-rule-delete' if before_delete else 'interrupt-rule-delete'
+    (root / fault).touch()
     interrupted_rule = stop_native(operation, stop)
     assert interrupted_rule.returncode == -signal.SIGKILL and checkpoint(record, 'state') == 'RuleRemovalDispatched'
-    assert network_baseline() == record['baseline']
-    require_management_refusal('RuleRemovalDispatched', ['attempt'])
-    rule = ('priority', '11000', 'to', target + '/32', 'lookup', str(record['routing_table']), 'protocol', '186')
-    command(root / 'ip-real', '-4', 'rule', 'add', *rule)
+    trace = root / 'rule-delete-attempts'
+    if before_delete:
+        assert (root / 'rule-delete-before-kernel').is_file() and not trace.exists()
+        (root / fault).unlink()
+    else:
+        assert network_baseline() == record['baseline']
+        require_management_refusal('RuleRemovalDispatched', ['attempt'])
+        command(root / 'ip-real', '-4', 'rule', 'add', *rule)
+    retained_rules = rules()
+    assert retained_rules != record['baseline'][1:] and network_baseline(record['routing_table']) == record['baseline']
+    pending_state = state_path.read_bytes()
+    pending_checkpoints = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
     refused = stop_native(operation, stop)
     assert refused.returncode == 1 and helper_result(refused)['error'] == 'runtime.network_rule_conflict'
+    assert helper_result(stop_native(operation))['error'] == 'runtime.recovery_required'
     assert checkpoint(record, 'state') == 'RuleRemovalDispatched'
+    assert rules() == retained_rules and state_path.read_bytes() == pending_state
+    assert [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))] == pending_checkpoints
     command(root / 'ip-real', '-4', 'rule', 'del', *rule)
     done = stop_native(operation, stop)
     assert done.returncode == 0 and helper_result(done)['success']
@@ -550,14 +568,14 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
     assert uuid.UUID(stop_state['operationId']) == stop and stop_state['confirmed']
     checkpoints = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
     assert len(checkpoints) == 9 and checkpoints[:6] == initial
-    assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+    assert (trace.read_text().splitlines() if trace.exists() else []) == ([] if before_delete else ['attempt'])
     assert not Path(f'/proc/{pid}').exists() and device not in devices() and not route(record['routing_table'])
     assert hashlib.sha256(config.read_bytes()).hexdigest() == record['credential']
     assert network_baseline() == record['baseline']
     assert (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress')) == other_dns
     assert target not in resolver('dns') and '~tun.fixture.test' not in resolver('domain')
     print(f'PASS TUN COMMITTED STOP: publication={operation}; stop={stop}; configuration={record["credential"]}; PID={pid}; '
-          'management drift blocked before and after one rule deletion; original stop confirmed')
+          f'kernel deletion interrupted {"before" if before_delete else "after"} dispatch; original stop confirmed without replay')
 
 
 def proof_committed_start(record, observed, state_path, case):
@@ -2126,7 +2144,7 @@ rules:
         if case in ('server-commit', 'server-pending'):
             proof_server_publication(owner, operation, operation_dir, previous, case)
             return
-        if case in ('committed', 'committed-stop', 'committed-start') or case.startswith('committed-remove-'):
+        if case in ('committed', 'committed-stop', 'committed-stop-before-delete', 'committed-start') or case.startswith('committed-remove-'):
             proof_committed(owner, operation, operation_dir, case)
             return
         if case != 'full':
