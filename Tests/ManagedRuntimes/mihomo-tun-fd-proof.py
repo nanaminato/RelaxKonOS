@@ -869,7 +869,8 @@ def proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, 
 def proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, sentinel, trace, case, baseline_dns):
     sender = operation_dir / 'dns-senders-exited.json'
     applied = case == 'dns-applied-exited'
-    partial = case in ('dns-partial-exited', 'dns-partial-inflight')
+    live = case == 'dns-partial-live'
+    partial = live or case in ('dns-partial-exited', 'dns-partial-inflight')
     inflight = case == 'dns-partial-inflight'
     prefix = operation_dir / 'dns-step-2-exited.json'
     ready = root / 'dns-effect-ready' if inflight else prefix if partial else sender
@@ -929,6 +930,10 @@ def proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, se
     assert uuid.UUID(retry['OperationId']).hex == operation and retry['Outcome'] == 'RecoveryRequired'
     assert archive_state.read_bytes() == before
 
+    if live:
+        proof_stop_after_partial_dns(record, operation_dir, previous, sentinel, baseline_dns, pending)
+        return
+
     kill_exact(record['service'][0])
     deadline = time.monotonic() + 10
     while True:
@@ -980,6 +985,65 @@ def proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, se
     if not partial:
         expected_writes.append('SetLinkDNS')
     assert (root / 'dns-write-attempts').read_text().splitlines() == expected_writes
+
+
+def proof_stop_after_partial_dns(record, operation_dir, previous, sentinel, baseline_dns, pending):
+    operation = record['operation']
+    state_file = archive / 'state' / 'archive-state.json'
+    prefix = operation_dir / 'dns-step-2-exited.json'
+    hidden = prefix.with_suffix('.held')
+    prefix.rename(hidden)
+    try:
+        pending('runtime.network_dns_conflict')
+    finally:
+        hidden.rename(prefix)
+    try:
+        resolver('domain', device, '~changed.fixture.test')
+        pending('runtime.network_dns_conflict')
+    finally:
+        resolver('domain', device, '~tun.fixture.test')
+    candidate = config.read_bytes()
+    try:
+        config.write_bytes(candidate + b'\n# fixture drift\n')
+        pending('runtime.configuration_drift')
+    finally:
+        config.write_bytes(candidate)
+    with management_route_drift(record['routing_table']):
+        pending('runtime.management_route_changed')
+    before = json.loads(state_file.read_text())
+    assert before['configuration']['recoveryStopDispatched'] is False and service_identity() == record['service']
+
+    tracer = shutil.which('strace')
+    assert tracer, 'The original stop proof requires strace'
+    dispatch = [tracer, '-f', '-qq', '-e', 'trace=pidfd_send_signal']
+    worker = ['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root), operation]
+    first_trace = root / 'partial-dns-stop.trace'
+    cut = subprocess.run([*dispatch, '-o', str(first_trace), *worker, 'recover-interrupt'], timeout=15)
+    assert cut.returncode in (-signal.SIGKILL, 128 + signal.SIGKILL)
+    signals = [line for line in first_trace.read_text().splitlines() if 'pidfd_send_signal(' in line]
+    assert len(signals) == 1 and 'SIGTERM' in signals[0] and signals[0].rstrip().endswith('= 0')
+    print(signals[0])
+    assert checkpoint(record, 'state') == 'StopDispatched' and not (operation_dir / 'tun-5.json').exists()
+    state = json.loads(state_file.read_text())
+    assert state['configuration']['recoveryStopDispatched'] and not state['receipts']
+
+    resumed_trace = root / 'partial-dns-resume.trace'
+    resumed = subprocess.run([*dispatch, '-o', str(resumed_trace), *worker, 'recover'],
+                             timeout=15, check=True, capture_output=True, text=True)
+    terminal = json.loads(resumed.stdout)
+    assert uuid.UUID(terminal['OperationId']).hex == operation and terminal['Outcome'] == 'Interrupted'
+    assert 'pidfd_send_signal(' not in resumed_trace.read_text()
+    restored = service_identity()
+    assert restored != record['service'] and not Path('/proc', str(record['service'][0])).exists()
+    assert json.loads(checkpoint(record, 'retry')) == terminal and service_identity() == restored
+    assert checkpoint(record, 'state') == 'Restored' and not (operation_dir / 'tun-5.json').exists()
+    assert not route(record['routing_table']) and device not in devices()
+    assert network_baseline() == record['baseline'] and resolver_snapshot() == baseline_dns
+    assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
+    assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+    assert (root / 'dns-write-attempts').read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains']
+    print(f'PASS TUN DNS PARTIAL LIVE STOP: original {operation}; one signal to PID {record["service"][0]}; '
+          f'original Interrupted without DNS replay, restored PID={restored[0]}')
 
 
 def proof_committed(owner, operation, operation_dir, case):
@@ -2717,14 +2781,14 @@ def proof():
         ip('netns', 'exec', 'rk-http-client', 'ip', 'address', 'add', '192.0.2.1/24', 'dev', 'rk-peer')
     if case in ('dns-receipt', 'dns-owner', 'dns-registration', 'ipc-server-pending', 'ipc-http-pending'):
         install_dns_ack_boundary()
-    if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited'):
+    if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited', 'dns-partial-live'):
         install_dns_ack_boundary(hold_reply=False)
     if case == 'dns-partial-inflight':
         install_dns_ack_boundary(hold_method='SetLinkDomains')
     service('start', 'systemd-resolved.service')
     seed_foreign_dns()
     baseline_dns = resolver_snapshot() if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited',
-                                                   'dns-partial-exited', 'dns-partial-inflight') else None
+                                                   'dns-partial-exited', 'dns-partial-inflight', 'dns-partial-live') else None
     other_dns = (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress'))
     refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
     assert refused.returncode == 1 and 'runtime.network_checkpoint_conflict' in refused.stderr
@@ -2808,7 +2872,7 @@ rules:
         cut = ':signal=SIGKILL' if case == 'network-before-launch' else ':delay_enter=5s'
         worker = [tracer, '-f', '-qq', '-yy', '-P', str(checkpoint_path), '-e', f'trace={opens}',
                   '-e', f'inject={opens}:error=EIO{cut}:when=1', '-o', str(trace), *worker]
-    if case == 'dns-partial-exited':
+    if case in ('dns-partial-exited', 'dns-partial-live'):
         tracer = shutil.which('strace')
         assert tracer, 'The partial DNS proof requires strace'
         trace = root / 'dns-third-dispatch-fault.trace'
@@ -2828,7 +2892,7 @@ rules:
         if case == 'descriptor-outcome-unknown':
             proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, sentinel, trace)
             return
-        if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited', 'dns-partial-inflight'):
+        if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited', 'dns-partial-inflight', 'dns-partial-live'):
             proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, sentinel,
                                            None if case in ('dns-applied-exited', 'dns-partial-inflight') else trace, case, baseline_dns)
             return

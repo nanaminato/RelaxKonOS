@@ -179,7 +179,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         {
             if (pending.Plan.NetworkIntentIdentity is null || !IsFixedLinuxHost)
                 throw new RuntimePolicyException("runtime.network_transaction_required");
-            await TunHost().DispatchTunStopAsync(pending.OperationId, ct);
+            await TunHost().DispatchTunStopAsync(pending.OperationId, ct, allowPartialDns: true);
             return;
         }
         // Only a process serving one of this operation's two frozen configurations is in scope.
@@ -227,7 +227,12 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             if (effect.Phase is not (MihomoTunPhase.DescriptorDispatched or MihomoTunPhase.DnsDispatched or MihomoTunPhase.DnsApplied))
                 throw new RuntimePolicyException("runtime.network_stop_unconfirmed");
             await RequireMaterialAsync(pending, false, ct);
-            if (effect.Phase == MihomoTunPhase.DnsDispatched) await TunHost().ReconcileTunDnsAsync(pending.OperationId, ct);
+            if (effect.Phase == MihomoTunPhase.DnsDispatched)
+            {
+                RequireOriginalNetworkIntent(pending, effect);
+                if (await TunHost().TryVerifyPartialDnsStopAsync(pending.OperationId, ct)) return false;
+                await TunHost().ReconcileTunDnsAsync(pending.OperationId, ct);
+            }
             await TunHost().VerifyTunAsync(pending.OperationId, ct);
             return false;
         }

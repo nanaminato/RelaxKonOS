@@ -27,7 +27,7 @@ internal sealed class LinuxMihomoTunDns(string domain, IPAddress server, uint in
     {
         var (bus, owner) = await IdentityAsync();
         var snapshot = await ReadSettingsAsync(owner);
-        RequireLink(snapshot, present: false);
+        RequireLink(snapshot, completedWrites: 0);
         if (snapshot.Domains.Any(row => Overlaps(row[1].GetString()!)))
             throw new RuntimePolicyException("runtime.network_dns_conflict");
         _ = await LinkPathAsync(owner);
@@ -53,15 +53,18 @@ internal sealed class LinuxMihomoTunDns(string domain, IPAddress server, uint in
         }
     }
 
-    internal async Task VerifyAsync(MihomoTunDnsBaseline baseline, bool present)
+    internal Task VerifyAsync(MihomoTunDnsBaseline baseline, bool present) =>
+        VerifyWritesAsync(baseline, present ? WriteCount : 0);
+
+    internal async Task VerifyWritesAsync(MihomoTunDnsBaseline baseline, int completedWrites)
     {
         if (await IdentityAsync() != (baseline.BusId, baseline.Owner))
             throw new RuntimePolicyException("runtime.network_dns_owner_unknown");
         var snapshot = await ReadSettingsAsync(baseline.Owner);
-        RequireLink(snapshot, present);
+        RequireLink(snapshot, completedWrites);
         if (HashOther(snapshot) != baseline.OtherSettingsHash)
             throw new RuntimePolicyException("runtime.network_dns_conflict");
-        if (present)
+        if (completedWrites > 0)
         {
             var path = await LinkPathAsync(baseline.Owner);
             var defaultRoute = await BusAsync("get-property", baseline.Owner, path, "org.freedesktop.resolve1.Link", "DefaultRoute");
@@ -71,15 +74,18 @@ internal sealed class LinuxMihomoTunDns(string domain, IPAddress server, uint in
             throw new RuntimePolicyException("runtime.network_dns_owner_unknown");
     }
 
-    private void RequireLink((JsonElement[] Dns, JsonElement[] Domains, JsonElement[] Fallback) snapshot, bool present)
+    private void RequireLink((JsonElement[] Dns, JsonElement[] Domains, JsonElement[] Fallback) snapshot, int completedWrites)
     {
         var dns = snapshot.Dns.Where(OnLink).ToArray();
         var domains = snapshot.Domains.Where(OnLink).ToArray();
-        if (!present && dns.Length == 0 && domains.Length == 0) return;
-        if (present && dns.Length == 1 && domains.Length == 1 && dns[0][1].GetInt32() == 2
-            && dns[0][2].EnumerateArray().Select(item => item.GetByte()).SequenceEqual(address)
-            && domains[0][1].GetString() == domain && domains[0][2].GetBoolean()) return;
-        throw new RuntimePolicyException("runtime.network_dns_conflict");
+        var expectedDns = completedWrites == WriteCount;
+        var expectedDomain = completedWrites >= 2;
+        if (dns.Length != (expectedDns ? 1 : 0)
+            || expectedDns && (dns[0][1].GetInt32() != 2
+                || !dns[0][2].EnumerateArray().Select(item => item.GetByte()).SequenceEqual(address))
+            || domains.Length != (expectedDomain ? 1 : 0)
+            || expectedDomain && (domains[0][1].GetString() != domain || !domains[0][2].GetBoolean()))
+            throw new RuntimePolicyException("runtime.network_dns_conflict");
     }
 
     private string HashOther((JsonElement[] Dns, JsonElement[] Domains, JsonElement[] Fallback) snapshot) =>

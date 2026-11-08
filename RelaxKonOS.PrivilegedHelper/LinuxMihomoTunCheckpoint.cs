@@ -88,6 +88,7 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
         {
             null => MihomoTunPhase.Intent,
             MihomoTunPhase.DescriptorDispatched when previous.Intent.DnsRoutingDomain is null => MihomoTunPhase.StopDispatched,
+            MihomoTunPhase.DnsDispatched when current.Phase == MihomoTunPhase.StopDispatched => MihomoTunPhase.StopDispatched,
             _ => (MihomoTunPhase)((int)previous.Phase + 1)
         };
         if (current.Phase != next

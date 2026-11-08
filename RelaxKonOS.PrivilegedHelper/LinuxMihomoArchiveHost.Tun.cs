@@ -260,18 +260,41 @@ internal sealed partial class LinuxMihomoArchiveHost
         await checkpoint.AppendAsync(effect with { Phase = MihomoTunPhase.DnsApplied });
     }
 
-    internal async Task DispatchTunStopAsync(Guid operation, CancellationToken ct)
+    internal async Task<bool> TryVerifyPartialDnsStopAsync(Guid operation, CancellationToken ct)
+    {
+        var (registration, _, effect) = await ReadTunOperationAsync(operation, ct);
+        return await TryVerifyPartialDnsStopAsync(registration, effect, ct);
+    }
+
+    private static async Task<bool> TryVerifyPartialDnsStopAsync(Registration registration, MihomoTunEffect effect, CancellationToken ct)
+    {
+        if (effect is not { Phase: MihomoTunPhase.DnsDispatched, Dns: { } dns }
+            || Directory.Exists($"/proc/{effect.BrokerPid}")
+            || await ReadSettledDnsWriteCountAsync(effect, ct) is not { } completed
+            || completed == LinuxMihomoTunDns.WriteCount)
+            return false;
+        await VerifyTunEffectAsync(registration, effect, ct);
+        if (MihomoArchiveAdapter.Hash(await MihomoArchiveAdapter.ReadConfigurationAsync(Root + "/active.yaml", ct))
+            != effect.Intent.ConfigurationHash) Fail("configuration_drift");
+        await TunDns(effect).VerifyWritesAsync(dns, completed);
+        return true;
+    }
+
+    internal async Task DispatchTunStopAsync(Guid operation, CancellationToken ct, bool allowPartialDns = false)
     {
         var (registration, checkpoint, effect) = await ReadTunOperationAsync(operation, ct);
-        RequireActiveTunPhase(effect);
         if (effect.Process is not { } process)
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
 
         // Pin the kernel process before verifying it, so an intervening exit cannot redirect the signal.
         using var handle = new SafeFileHandle(OpenPidFd(process.Pid, 0), ownsHandle: true);
         if (handle.IsInvalid) Fail("network_stop_unconfirmed");
-        await VerifyTunEffectAsync(registration, effect, ct);
-        if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: true);
+        if (!allowPartialDns || !await TryVerifyPartialDnsStopAsync(registration, effect, ct))
+        {
+            RequireActiveTunPhase(effect);
+            await VerifyTunEffectAsync(registration, effect, ct);
+            if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: true);
+        }
         ct.ThrowIfCancellationRequested();
         await checkpoint.AppendAsync(effect with { Phase = MihomoTunPhase.StopDispatched });
         const int sigterm = 15;

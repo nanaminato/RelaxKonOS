@@ -67,7 +67,8 @@ internal sealed partial class LinuxMihomoArchiveHost
             Fail("network_stop_unconfirmed");
         if (effect.Dns is { } dns)
         {
-            await RequireDnsSendersSettledAsync(effect, ct);
+            if (await ReadSettledDnsWriteCountAsync(effect, ct) is null)
+                Fail("network_dns_sender_unconfirmed");
             await TunDns(effect).VerifyAsync(dns, present: false);
         }
         return routes;
@@ -76,24 +77,27 @@ internal sealed partial class LinuxMihomoArchiveHost
     private static string DnsStepName(int step, bool exited) => exited && step == LinuxMihomoTunDns.WriteCount
         ? "dns-senders-exited" : $"dns-step-{step}-{(exited ? "exited" : "dispatched")}";
 
-    private static async Task RequireDnsSendersSettledAsync(MihomoTunEffect effect, CancellationToken ct)
+    private static async Task<int?> ReadSettledDnsWriteCountAsync(MihomoTunEffect effect, CancellationToken ct)
     {
         var dispatch = effect with { Phase = MihomoTunPhase.DnsDispatched };
         if (await ReadUndeliveredCheckpointAsync(dispatch, DnsStepName(LinuxMihomoTunDns.WriteCount, exited: true), ct))
-            return;
+            return LinuxMihomoTunDns.WriteCount;
         if (effect.Phase != MihomoTunPhase.DnsDispatched
             || !await ReadUndeliveredCheckpointAsync(dispatch, "dns-steps-prepared", ct))
-            Fail("network_dns_sender_unconfirmed");
+            return null;
         // A strict prefix of acknowledged writes proves the remaining writers were never started.
         var gap = false;
+        var completed = 0;
         for (var step = 1; step <= LinuxMihomoTunDns.WriteCount; step++)
         {
             var sent = await ReadUndeliveredCheckpointAsync(dispatch, DnsStepName(step, exited: false), ct);
             var exited = await ReadUndeliveredCheckpointAsync(dispatch, DnsStepName(step, exited: true), ct);
             if (gap && (sent || exited) || exited && !sent) Fail("network_checkpoint_conflict");
-            if (sent && !exited) Fail("network_dns_sender_unconfirmed");
+            if (sent && !exited) return null;
+            if (exited) completed++;
             if (!sent) gap = true;
         }
+        return completed;
     }
 
     private static async Task VerifyAbsentRuleAsync(MihomoTunEffect effect, LinuxMihomoTunRoutes routes)
