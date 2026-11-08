@@ -11,13 +11,14 @@ internal sealed record NginxWebRootCheckpoint(WebServerDto Instance, string[] Si
 
 internal sealed partial class WebServerOperationStore
 {
-    internal async Task<bool> HasPendingWebRootAsync(string instanceId, CancellationToken ct)
+    internal async Task<bool> HasPendingConfigurationBarrierAsync(string instanceId, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
         try
         {
-            return _operations.Values.Any(item => item.InstanceId == instanceId && item.WebRoot is not null
-                && item.State == WebServerOperationState.Running);
+            return _operations.Values.Any(item => item.InstanceId == instanceId && item.State == WebServerOperationState.Running
+                && (item.WebRoot is not null || item.Stage is NativeLifecycleDispatchStage or NativeLifecycleConfirmedStage
+                    || item.ProblemCode == NativeRecoveryRequired && NativeLifecycleAction(item.Kind) is not null));
         }
         finally { _gate.Release(); }
     }

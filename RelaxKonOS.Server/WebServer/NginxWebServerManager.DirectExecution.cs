@@ -178,7 +178,62 @@ internal sealed partial class NginxWebServerManager
 
         internal Task<WebServerOperationResult> ApplyManagedLifecycleAsync(ManagedLayout layout, WebServerLifecycleAction action, CancellationToken ct) =>
             nginx.ApplyManagedLifecycleCoreAsync(layout, action, ct);
+
+        internal async Task<WebServerOperationResult> ApplyTrackedLifecycleAsync(ManagedLayout layout, NginxSystemServiceAction action,
+            string kind, WebServerOperationStore.OperationProgress progress, CancellationToken ct)
+        {
+            await IntegrationGate.WaitAsync(ct);
+            try
+            {
+                var ports = new LifecyclePorts(nginx, layout, action, progress);
+                var lease = WebServerExecutionCode.Shared.Acquire<INginxLifecycleExecutor>(
+                    "RelaxKonOS.Server.WebServer.NginxLifecycleExecutor", ports);
+                progress.HoldExecution(lease);
+                var succeeded = await RunLifecycleAsync(lease.Executor, ports, ct);
+                return succeeded is null ? new(NginxReloadOutcome.RecoveryRequired)
+                    : new(succeeded.Value ? "" : $"webserver.{kind}_failed", NativeCompletionConfirmed: true);
+            }
+            finally { IntegrationGate.Release(); }
+        }
+
+        private static async Task<bool?> RunLifecycleAsync(INginxLifecycleExecutor executor, LifecyclePorts ports, CancellationToken ct)
+        {
+            try { return await executor.RunAsync(ct); }
+            catch (ResidentWorkCompletionException)
+            { throw new ResidentWorkCompletionException(new InvalidOperationException("Nginx lifecycle checkpoint could not be saved.")); }
+            catch (NginxProcessCleanupException)
+            { throw new NginxProcessCleanupException(new InvalidOperationException("Nginx lifecycle command did not drain.")); }
+            catch (Exception) when (ports.DispatchRecorded) { return null; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
+            catch (Exception) { throw new InvalidOperationException("Nginx lifecycle execution failed."); }
+        }
+
+        private sealed class LifecyclePorts(NginxWebServerManager nginx, ManagedLayout layout, NginxSystemServiceAction action,
+            WebServerOperationStore.OperationProgress progress) : INginxLifecyclePorts
+        {
+            public Guid OperationId => progress.OperationId;
+            public bool DispatchRecorded { get; private set; }
+
+            public async Task ReportDispatchAsync(CancellationToken ct)
+            {
+                ct.ThrowIfCancellationRequested();
+                await progress.ReportAsync(WebServerOperationStore.NativeLifecycleDispatchStage, ct);
+                DispatchRecorded = true;
+            }
+
+            public Task ReportConfirmedAsync() =>
+                progress.ReportAsync(WebServerOperationStore.NativeLifecycleConfirmedStage, CancellationToken.None);
+
+            public async Task<PrivilegedOperationResult> RunTrackedAsync()
+            {
+                await nginx.StopLegacyCustomManagedInstanceAsync(layout, CancellationToken.None);
+                return await nginx.RunTrackedLifecycleAsync(OperationId, action);
+            }
+        }
     }
+
+    private Task<PrivilegedOperationResult> RunTrackedLifecycleAsync(Guid id, NginxSystemServiceAction action) =>
+        privilegedNginx.RunTrackedLifecycleAsync(id, action, CancellationToken.None);
 }
 
 internal sealed class NginxWebRootCleanupException()

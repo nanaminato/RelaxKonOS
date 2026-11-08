@@ -10,7 +10,7 @@ using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.WebServer;
 
-internal sealed record WebServerOperationResult(string ProblemCode, string? SnapshotId = null)
+internal sealed record WebServerOperationResult(string ProblemCode, string? SnapshotId = null, bool NativeCompletionConfirmed = false)
 {
     public static readonly WebServerOperationResult Success = new("");
 }
@@ -28,6 +28,8 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
 {
     internal const string NativeReloadDispatchStage = "native-reload-dispatch";
     internal const string NativeReloadConfirmedStage = "native-reload-confirmed";
+    internal const string NativeLifecycleDispatchStage = "native-lifecycle-dispatch";
+    internal const string NativeLifecycleConfirmedStage = "native-lifecycle-confirmed";
     internal const string NativeRecoveryRequired = NginxReloadOutcome.RecoveryRequired;
     private const string IntegrationStaging = "integration-staging";
     private const string IntegrationCleanupRequired = "webserver.integration_cleanup_required";
@@ -151,6 +153,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
             if (_operations.Values.Any(operation => operation.InstanceId == instanceId
                 && (operation.ProblemCode is NativeRecoveryRequired or IntegrationCleanupRequired
                     || operation is { Integration: not null, Stage: NativeReloadDispatchStage }
+                    || operation.Stage is NativeLifecycleDispatchStage or NativeLifecycleConfirmedStage
                     || operation is { WebRoot: not null, State: WebServerOperationState.Running })))
                 return new(Guid.Empty, instanceId, kind, WebServerOperationState.Failed, "validation",
                     NativeRecoveryRequired, null, null, DateTimeOffset.UtcNow);
@@ -246,7 +249,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
                 if (retire) await RetireNativeReceiptsAsync([operationId], workStopping);
                 return;
             }
-            if (linked.IsCancellationRequested)
+            if (linked.IsCancellationRequested && !result.NativeCompletionConfirmed)
             {
                 // Shutdown leaves the original active receipt for startup reconciliation.
                 if (applicationStopping.IsCancellationRequested || workStopping.IsCancellationRequested) return;
@@ -274,12 +277,13 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
             var operation = await ReadOperationAsync(operationId, stoppingToken);
             if (operation.WebRoot is not null) return await ReconcileWebRootAsync(operation, stoppingToken);
             var integration = operation.Integration;
+            var lifecycle = NativeLifecycleAction(operation.Kind);
             while (!stoppingToken.IsCancellationRequested)
             {
                 if (integration is not null && (await ReadOperationAsync(operationId, stoppingToken)).Compensation is not null)
                     return false;
                 var result = _nativeOperations is null
-                    ? null : await _nativeOperations.QueryReloadReceiptAsync(operationId, stoppingToken);
+                    ? null : await _nativeOperations.QueryReloadReceiptAsync(operationId, stoppingToken, lifecycle);
                 if (integration is not null && _nativeOperations is not null
                     && !await NginxWebServerManager.CleanIntegrationStageAsync(_nativeOperations, operationId, stoppingToken))
                 {
@@ -291,7 +295,8 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
                         && await NginxWebServerManager.ConfirmIntegrationAsync(_metadata, integration, operation.InstanceId, stoppingToken)))
                 {
                     var state = receipt.Succeeded ? WebServerOperationState.Succeeded : WebServerOperationState.Failed;
-                    return await CompleteAsync(operationId, state, receipt.Succeeded ? "" : "webserver.reload_failed", null, nativeEvidence: true);
+                    var problem = receipt.Succeeded ? "" : lifecycle is null ? "webserver.reload_failed" : $"webserver.{operation.Kind}_failed";
+                    return await CompleteAsync(operationId, state, problem, null, nativeEvidence: true);
                 }
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
@@ -359,7 +364,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
         {
             var operation = _operations[id];
             if (operation.State == WebServerOperationState.Cancelled && state != WebServerOperationState.Cancelled) return false;
-            var retireReceipt = nativeEvidence || operation.Stage == NativeReloadConfirmedStage
+            var retireReceipt = nativeEvidence || operation.Stage is NativeReloadConfirmedStage or NativeLifecycleConfirmedStage
                 || operation.WebRoot is { Receipts.Length: > 0 };
             _operations[id] = operation with
             {
@@ -480,6 +485,7 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
             {
                 { State: WebServerOperationState.Running, WebRoot: not null } => MarkNativeUnconfirmed(item),
                 { State: WebServerOperationState.Running, Stage: NativeReloadDispatchStage or NativeReloadConfirmedStage } => MarkNativeUnconfirmed(item),
+                { State: WebServerOperationState.Running, Stage: NativeLifecycleDispatchStage or NativeLifecycleConfirmedStage } => MarkNativeUnconfirmed(item),
                 { State: WebServerOperationState.Running, Stage: IntegrationStaging } =>
                     item with { ProblemCode = IntegrationCleanupRequired },
                 { ProblemCode: NativeRecoveryRequired } => item,
@@ -499,6 +505,14 @@ internal sealed partial class WebServerOperationStore : IHostedService, IDisposa
 
     private static PersistedOperation MarkNativeUnconfirmed(PersistedOperation operation) =>
         operation with { Stage = "native-recovery-required", ProblemCode = NativeRecoveryRequired };
+
+    internal static NginxSystemServiceAction? NativeLifecycleAction(string kind) => kind switch
+    {
+        "start" => NginxSystemServiceAction.Start,
+        "stop" => NginxSystemServiceAction.Stop,
+        "restart" => NginxSystemServiceAction.Restart,
+        _ => null,
+    };
 
     private async Task SaveAsync(CancellationToken ct)
     {

@@ -115,25 +115,6 @@ internal sealed partial class NginxWebServerManager
 
     private async Task<WebServerOperationResult> ApplyManagedLifecycleCoreAsync(ManagedLayout layout, WebServerLifecycleAction action, CancellationToken cancellationToken)
     {
-        if (UsesSystemPackageManagedService())
-        {
-            await StopLegacyCustomManagedInstanceAsync(layout, cancellationToken);
-            var command = action switch
-            {
-                WebServerLifecycleAction.Start => "start",
-                WebServerLifecycleAction.Stop => "stop",
-                WebServerLifecycleAction.Restart => "restart",
-                _ => null
-            };
-            if (command is not "stop")
-            {
-                var enable = await RunSystemdNginxOperationAsync("enable", cancellationToken);
-                if (!enable.Success) return new WebServerOperationResult(ToWebServerProblem(enable.ProblemCode, $"webserver.{action.ToString().ToLowerInvariant()}_failed"));
-            }
-            var systemd = command is null ? new PrivilegedOperationResult(false, ProblemCode: PrivilegedProblemCode.InvalidRequest)
-                : await RunSystemdNginxOperationAsync(command, cancellationToken);
-            return new WebServerOperationResult(systemd.Success ? "" : ToWebServerProblem(systemd.ProblemCode, $"webserver.{action.ToString().ToLowerInvariant()}_failed"));
-        }
         var result = action switch
         {
             WebServerLifecycleAction.Start => await StartManagedAsync(layout, cancellationToken),
@@ -298,9 +279,6 @@ internal sealed partial class NginxWebServerManager
     {
         var action = (command, additionalArguments) switch
         {
-            ("start", []) => NginxSystemServiceAction.Start,
-            ("stop", []) => NginxSystemServiceAction.Stop,
-            ("restart", []) => NginxSystemServiceAction.Restart,
             ("reload", []) => NginxSystemServiceAction.Reload,
             ("enable", []) => NginxSystemServiceAction.Enable,
             ("disable", []) => NginxSystemServiceAction.Disable,

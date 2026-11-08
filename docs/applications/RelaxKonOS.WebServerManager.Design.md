@@ -1729,6 +1729,8 @@ Linux 系统包直接重载现在可以在重启后按原 ID 对账。生产 Hel
 
 Linux 系统包重载的原回执对账覆盖明确成功及原生作业明确失败。响应丢失后读取原 ID，原 HTTPS 持续，原作业只尝试一次。Helper 无原作业终态证据时仍显示待核验。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-存活进程响应丢失和失败回执)。
 
+Linux 系统包受管 Nginx 的启动、停止与重启使用原 `operationId` 查询。启动或重启仍会先启用服务。作业派发后取消会等待实际结果，确认成功或失败后保存终态。同键查询返回原操作。Helper 应答丢失时 Server 只读取匹配动作的原持久回执，证据缺失时显示待核验，并拒绝同实例新的后台变更和站点写入。见[启停与重启验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-linux-nginx-启动停止与重启的原回执)。
+
 Linux 系统包重载的原回执保存在 Server。原终态持久化后，Helper 压缩原详情并保留防重放标记。清理确认丢失时，存活 Server 按原 ID 重试清理，工作租约持续到确认落盘。停机仍待确认时，由重启后的同一工作 owner 接续。旧 ID 在 Helper 重启后仍拒绝重载，待核验记录保留详情。见[清理确认验收](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-原回执清理确认与租约)。
 
 完整 Server 的认证网站发布已在既有 Linux 测试机通过生产 Helper、私有 systemd、实际 Nginx 和独立 Docker 上游的联合验收。配置阶段中断恢复原 `website.site_application_unverified` 回执且应用尚未关联。真实 HTTPS 探测期间中断恢复原 `website.recheck_required` 回执并保留应用关联。两条路径都保持现有 TLS 与上游服务，重启和同键查询未再次 reload。测试使用认证证书路由生成的专属自签证书。公共 CA 与发布的联合中断仍待验收。见[模块边界台账](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-完整认证网站发布中断与恢复)。

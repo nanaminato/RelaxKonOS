@@ -281,6 +281,14 @@ internal sealed partial class NginxWebServerManager(
             return Rejected(instanceId, kind, "webserver.managed_required");
 
         var layout = GetManagedLayout();
+        if (UsesSystemPackageManagedService())
+        {
+            if (!UsesSystemPackageNginx(instance) || WebServerOperationStore.NativeLifecycleAction(kind) is not { } nativeAction)
+                return Rejected(instanceId, kind, $"webserver.{kind}_failed");
+            return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, kind, actor, scopes,
+                (execution, progress, ct) => execution.ApplyTrackedLifecycleAsync(layout, nativeAction, kind, progress, ct), lifetime.ApplicationStopping);
+        }
+
         return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, instanceId, kind, actor, scopes,
             (execution, _, ct) => execution.ApplyManagedLifecycleAsync(layout, action, ct), lifetime.ApplicationStopping);
     }

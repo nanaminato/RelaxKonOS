@@ -144,7 +144,7 @@ IPC 请求、响应流、模块回调、批准中的 Broker 操作和持久后�
 | MB-02 | **部分交付**。Git Contracts/独立实现和窄 Host 端口，Proxy 订阅转换契约/私有实现，Firewall-F1 独立契约/执行代码及构建门禁；回收验证见 §10/11/20～22/41 | 全官方包仍非唯一 collectible ABI；其他模块尚有根服务和实现依赖 | 全契约不引用 Server/实现；Host/模块互引构建门禁；发布包与私有依赖按唯一当前 ABI 验证 |
 | MB-03 | **Git 有限切片交付**。真实仓库/CLI/凭据/控制台与构建执行项目，100轮 ALC 和保留完成请求验证（§10/11）；镜像清理责任与真实 Engine 标签检查见 §43；派发检查点和跨进程恢复见[构建派发对账](#mb-03-git-构建派发检查点与重启对账)，专属仓库见[HTTPS 源仓库夹具](#mb-03-专属-https-源仓库夹具) | 真实 Docker/BuildKit 执行中取消、清理、恢复与 ALC 联合矩阵仍受 RootlessKit 启动限制；生产内存/冷启动缺失 | 真实任务/流/持久故障责任结束才回收；两平台循环不累积句柄/代码代次；实际引擎恢复与资源目标达到门槛 |
 | MB-04 | **常驻边界阶段交付**。共享读取、guard/TUN、到期与发布恢复单一 owner，后台工作租约、订阅转换预算及独立代码（§12～22）。完整认证入站发布恢复、[Core 同次停机排空](#mb-04-同次停机的-proxy-安全责任与恢复)、[宿主代理切换](#mb-04-linux-宿主代理切换验收矩阵)和[直连监听显式补偿](#mb-04-linux-直连监听显式补偿)已有 Linux 实机证据。[订阅后台执行图](#mb-04-订阅后台执行图的可回收交接)使用原持久批次计划和原操作 ID，[直连档案与设置执行器](#mb-04-直连档案与设置发布执行器)共用原发布检查点 | Proxy 整体仍 resident。补偿 reload 应答丢失继续待核对，完整网络故障矩阵、管理执行图交接和动态休眠未完成 | 系统代理/TUN/到期责任在重启及休眠后连续可靠；未知结果不重放；正式包/代码释放与生产收益分别验证 |
-| MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空。Docker 在途停止与原回执恢复见 §45，独立 Pebble、Nginx、Engine 实测见 §52～54。完整认证网站 WebRoot 签发、崩溃恢复、取消与 SIGTERM 联验通过。[Docker Compose](#mb-05-docker-compose-独立执行程序集)、[ACME SDK](#mb-05-acme-sdk-独立执行程序集)、[网站发布](#mb-05-网站发布独立执行程序集)、[直接 Nginx 重载](#mb-05-直接-nginx-重载独立执行程序集)、[直接 WebRoot 启用](#mb-05-直接-webroot-启用执行器)和[Nginx 集成](#mb-05-nginx-集成检查点与执行代次)已接入独立执行程序集。[WebRoot 具名补偿](#mb-05-webroot-已知拒绝的具名补偿)已通过真实 reload 中断恢复 | 三域仍 resident。Nginx 启停执行图、完整故障矩阵、缺失身份的 CA 订单核实与整机掉电开放 | 后台 owner、终态与禁用门槛通过。按真实工作与安全责任边界推进独立执行器和动态休眠 |
+| MB-05 | **MB-05A 常驻后台责任阶段交付**（§39）。三域真实工作租约、准入/Stop 同锁、实际任务及清理排空。Docker 在途停止与原回执恢复见 §45，独立 Pebble、Nginx、Engine 实测见 §52～54。完整认证网站 WebRoot 签发、崩溃恢复、取消与 SIGTERM 联验通过。[Docker Compose](#mb-05-docker-compose-独立执行程序集)、[ACME SDK](#mb-05-acme-sdk-独立执行程序集)、[网站发布](#mb-05-网站发布独立执行程序集)、[直接 Nginx 重载](#mb-05-直接-nginx-重载独立执行程序集)、[直接 WebRoot 启用](#mb-05-直接-webroot-启用执行器)和[Nginx 集成](#mb-05-nginx-集成检查点与执行代次)已接入独立执行程序集。[WebRoot 具名补偿](#mb-05-webroot-已知拒绝的具名补偿)已通过真实 reload 中断恢复 | 三域仍 resident。Linux 系统包 Nginx 的[启停与重启](#mb-05-linux-nginx-启动停止与重启的原回执)接入独立执行器。其他 Nginx 形态、完整故障矩阵、缺失身份的 CA 订单核实与整机掉电开放 | 后台 owner、终态与禁用门槛通过。按真实工作与安全责任边界推进独立执行器和动态休眠 |
 | MB-06 | **MB-06A/06B 阶段交付**（§39/40），Windows LocalSystem/S4U 安装夹具及 Core／Helper 崩溃恢复实测通过（§48） | 正式发行服务全链、Linux 固定启动器跨代故障、SDK 合作 drain/后台任务申报仍开放 | 整项仍须合作 drain/后台申报、正式安装多代信任/撤销/崩溃矩阵与旧回调隔离，验收后才启用闲时退出/重启 |
 | MB-07 | **SystemPerformance S1 已交付并冻结范围**（§23～37）；Firewall-F1 代码回收与 Tailscale TS-01 持久责任跨对象代次验收交付（§41）；Terminal-T1/T2 阶段交付（§39/40） | SystemPerformance 与 Terminal 仍 resident，生产收益/完整原生压力未测；Terminal 当前账号 Windows 树与 Linux 本地/永久降权 Helper 树已实测，Windows 安装 Helper/S4U、宿主崩溃/孤儿恢复矩阵仍开放；其余模块代码边界未验证 | Terminal-T1/T2 会话/当前原生树阶段已验收，断线不杀会话；整项还须安装/崩溃/压力矩阵及收益证据，再决定独立程序集，不能将 S1/T2 当作整项关闭 |
 | MB-08 | **未完成**。已有当前诊断 DTO/跨端管理契约及局部打包/ModuleHost 验证 | 安装包非完整目标 ABI；真实业务同构建内存/冷启动门槛、完整平台故障矩阵未有 | 发布包/私有依赖/各端调用一致；Windows/Linux 整个进程树与冷启动 p50/p95、错误率达到预先记录门槛，关联 RES-06/07 |
@@ -2505,7 +2505,7 @@ Linux 完整认证 Server 使用专属 Nginx、生产 Helper 和私有 systemd�
 
 同制品另通过取消 `11d74e23-072b-435d-a4d5-9628c1ee3c0e`、SIGTERM `daef5fa8-b23b-4499-aa15-1eb047ae78b3`、进程中断后匹配原 Helper 证据 `70e4fb54-bcde-45f3-9b85-60917a196dc7`，以及应答丢失后的成功和已知拒绝。Server 与 Helper 同时中断且缺少终态证据时，`52b9a55e-d960-41da-8bfb-4493ccdb3c7f` 仍待核验并拦截同实例新工作，实际重载一次。网站配置中断 `e1639586-961e-43fc-9519-75e314a0d5e1` 继续保留原回执与 HTTPS 上游，实际重载一次。七个隔离场景的专属 cgroup 均已清理，共享服务与宿主文件指纹一致。日志见 `.artifacts/mb05-nginx-execution/linux-final.log`，归档 SHA-256 为 `eefbed73be0be3a1f30805a342bba36bfd0f6ada04630bd41b865de07d7ace3b`。
 
-WebServer 继续 resident。Nginx 启停及安装图由 Host 持有。直接 WebRoot 启用与集成见后续章节。非系统包重载的可回收边界已实现，仍待原生实机复验。整机掉电及生产内存继续开放。
+WebServer 继续 resident。Nginx 安装图由 Host 持有。Linux 启停执行图见后续章节。直接 WebRoot 启用与集成见后续章节。非系统包重载的可回收边界已实现，仍待原生实机复验。整机掉电及生产内存继续开放。
 
 ### MB-04 订阅后台执行图的可回收交接
 
@@ -2605,4 +2605,20 @@ Linux 私有 systemd 中，先在原生 reload 持久拒绝后、Server 收到�
 
 同批通过正常在途失败的自动补偿、首站原 CA 订单恢复、双站点中断及集成具名补偿。专属 cgroup 均已清理，宿主服务与配置指纹一致。首轮夹具在主动终止 Server 后记录了预期的断管，修正夹具后五项复验通过。最终日志为 `.artifacts/mb05-webroot-named/linux-final.log`，归档 SHA-256 为 `76a644178e7f92f569dc04198eaed5d11dc6021079e44a12db8e3c765b3f31a9`。
 
-WebServer 整体保持 resident。Nginx 启停执行图、整机掉电和其他 Nginx 安装形态仍待验收。
+WebServer 整体保持 resident。整机掉电和其他 Nginx 安装形态仍待验收。
+
+### MB-05 Linux Nginx 启动、停止与重启的原回执
+
+Linux 系统包受管实例的启动、停止与重启接入 WebServer 可回收执行代次。原 Server 台账在派发前保存检查点，Helper 以同一个操作 ID 持久记录动作和作业结果。启动与重启沿用先启用服务再派发作业的行为，两步都处于原 Helper 责任边界。Helper 只允许具名受跟踪的启停和重启。原生任务、应答、终态持久化与回执退休继续由原工作租约负责。
+
+派发后的取消等待原生结果，已经确认的效果按实际成功或失败收尾。重启只按原 ID 与动作读取证据。原结果缺失时保留待核验和配置写入门禁，同键返回原回执。终态写入后 Helper 保留防重放标记。Nginx 服务及 TLS 由 systemd 管理，执行代次的释放独立于服务状态。
+
+Windows Release 编译、WebServer 与模块边界专项通过。跨进程夹具按原 `2ede093a-2069-43e2-aa87-b2eca666f302` 返回 Interrupted，受控副作用计数为一。
+
+Linux 私有 systemd 与实际 Nginx 通过四组回归。停止 `68ca6118-fddb-418a-857b-277fee1d8db1` 在真实作业挂起时收到取消，原回执保持运行，HTTPS 继续服务，作业释放后确认原停止成功。启动拒绝 `e2330e0f-5e4c-42e0-a4e5-b68b0ea7ebdb` 记录真实失败，随后启动 `f4955b18-da95-42d9-84c0-3f5667f39dde` 恢复 HTTPS。终态及退休确认后，测试观察到旧执行代次被 GC 收集，Nginx 继续运行。
+
+实际重启 `ca728552-416a-41e1-9c89-016fb2e62223` 期间终止 Server，Helper 完成原作业并持久化回执。后继 Server 核对原 ID 和动作、保存原成功终态并退休回执，未加载执行代次。同键返回原回执，旧 ID 或错误动作无法重复执行。另一次重启 `d9721973-0f96-4f3f-9dc8-895665404404` 在实际作业中终止 Helper，随后重启两进程。私有 Nginx 已恢复 HTTPS，但原 Helper 无终态，Server 保持原待核验回执。新请求返回 409，重复原 ID、换动作和无跟踪的 Helper 调用均未增加 systemd 作业。
+
+同批复验直接重载的取消与 SIGTERM 排空、Nginx 集成具名补偿。前两轮未知场景夹具的 HTTP 409 断言有误，修正后四组通过。专属 cgroup 均已清理，宿主共享服务与配置指纹一致。日志为 `.artifacts/mb05-nginx-lifecycle/linux-verified.log`，归档 SHA-256 为 `8985d9fa6593f158990f399136d9e56bf6b2cc1522e542829305a16411975360`。
+
+WebServer 整体继续 resident。其他 Nginx 形态的原生启停对账、整机掉电、无 Helper 终态时的人工处置和生产内存仍待验收。

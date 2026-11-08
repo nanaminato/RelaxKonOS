@@ -19,7 +19,7 @@ internal sealed partial class NginxWebServerManager
         await IntegrationGate.WaitAsync(ct);
         try
         {
-            if (await operations.HasPendingWebRootAsync(instance.Id, ct)) return "webserver.site_save_failed";
+            if (await operations.HasPendingConfigurationBarrierAsync(instance.Id, ct)) return "webserver.site_save_failed";
             if (!Directory.Exists(directory) || IsSymbolicLink(directory) || (await ReadSitesAsync(instance, ct)).Count != 0)
                 return "website.acme_webroot_required";
             if (!await HasWebsiteBootstrapAnchorAsync(directory, ct)
@@ -70,7 +70,7 @@ internal sealed partial class NginxWebServerManager
         await IntegrationGate.WaitAsync(ct);
         try
         {
-            if (await operations.HasPendingWebRootAsync(instance.Id, ct)) return false;
+            if (await operations.HasPendingConfigurationBarrierAsync(instance.Id, ct)) return false;
             if (!Directory.Exists(directory) || IsSymbolicLink(directory)
                 || !await HasSuccessfulWebsiteReloadAsync(publicationId, ct)) return false;
 
@@ -121,7 +121,7 @@ internal sealed partial class NginxWebServerManager
         await IntegrationGate.WaitAsync(ct);
         try
         {
-            if (await operations.HasPendingWebRootAsync(instance.Id, ct)) return false;
+            if (await operations.HasPendingConfigurationBarrierAsync(instance.Id, ct)) return false;
             if (!Directory.Exists(directory) || IsSymbolicLink(directory) || !await HasWebsiteBootstrapAnchorAsync(directory, ct)
                 || !await HasSuccessfulWebsiteReloadAsync(publicationId, ct) || !await HasSuccessfulWebsiteReloadAsync(bindingId, ct)
                 || !(await privilegedNginx.ConfirmServiceIdleAsync(ct)).Success || !await IsSystemdNginxActiveAsync(ct))

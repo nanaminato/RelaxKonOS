@@ -7,8 +7,9 @@ public interface IPrivilegedNginxOperations
 {
     Task<PrivilegedOperationResult> ApplyWindowsRuntimeAsync(ManagedRuntimeAction action, string? version = null, string? archivePath = null, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> RunTrackedReloadAsync(Guid operationId, CancellationToken cancellationToken);
+    Task<PrivilegedOperationResult> RunTrackedLifecycleAsync(Guid operationId, NginxSystemServiceAction action, CancellationToken cancellationToken);
     Task<PrivilegedOperationResult> RetireReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken);
-    Task<PrivilegedOperationResult> QueryReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken);
+    Task<PrivilegedOperationResult> QueryReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken, NginxSystemServiceAction? action = null);
     Task<PrivilegedOperationResult> ConfirmServiceIdleAsync(CancellationToken cancellationToken);
     Task<PrivilegedOperationResult> CheckFirstWebsiteAsync(CancellationToken cancellationToken);
     Task<PrivilegedOperationResult> ApplySystemServiceActionAsync(NginxSystemServiceAction action, CancellationToken cancellationToken = default);
@@ -38,11 +39,14 @@ public sealed class PrivilegedNginxOperations(RelaxKonOS.Server.Privileged.IPriv
     public Task<PrivilegedOperationResult> RunTrackedReloadAsync(Guid operationId, CancellationToken cancellationToken) =>
         ExecuteAsync(new(PrivilegedOperationKind.NginxTrackedReload, OperationId: operationId), cancellationToken);
 
+    public Task<PrivilegedOperationResult> RunTrackedLifecycleAsync(Guid operationId, NginxSystemServiceAction action, CancellationToken cancellationToken) =>
+        ExecuteAsync(new(PrivilegedOperationKind.NginxTrackedLifecycle, OperationId: operationId, NginxServiceAction: action), cancellationToken);
+
     public Task<PrivilegedOperationResult> RetireReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken) =>
         ExecuteAsync(new(PrivilegedOperationKind.NginxRetireReloadReceipt, OperationId: operationId), cancellationToken);
 
-    public Task<PrivilegedOperationResult> QueryReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken) =>
-        ExecuteAsync(new(PrivilegedOperationKind.NginxReloadReceipt, OperationId: operationId), cancellationToken);
+    public Task<PrivilegedOperationResult> QueryReloadReceiptAsync(Guid operationId, CancellationToken cancellationToken, NginxSystemServiceAction? action = null) =>
+        ExecuteAsync(new(PrivilegedOperationKind.NginxReloadReceipt, OperationId: operationId, NginxServiceAction: action), cancellationToken);
 
     public Task<PrivilegedOperationResult> ConfirmServiceIdleAsync(CancellationToken cancellationToken) =>
         ExecuteAsync(new(PrivilegedOperationKind.NginxServiceIdle), cancellationToken);

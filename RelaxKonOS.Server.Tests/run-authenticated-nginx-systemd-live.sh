@@ -5,6 +5,7 @@ set -euo pipefail
 mode=${3:---systemd}
 case "$mode" in
     --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-retire-live|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-website-acme-challenge-changed|--systemd-website-acme-bootstrap|--systemd-website-acme-bootstrap-success|--systemd-website-acme-bootstrap-failure|--systemd-website-acme-bootstrap-resume|--systemd-website-acme-bootstrap-resume-interrupt|--systemd-website-acme-bootstrap-bind-interrupt|--systemd-first-site-acme|--systemd-first-site-acme-success|--systemd-first-site-acme-response-loss|--systemd-first-site-acme-rejected|--systemd-first-site-acme-multi|--systemd-first-site-acme-cleanup-loss|--systemd-first-site-acme-named-compensation|--systemd-integration-live|--systemd-integration-receipt|--systemd-integration-stage|--systemd-integration-rejected|--systemd-integration-compensation|--systemd-integration-compensation-response-loss) ;;
+    --systemd-lifecycle|--systemd-lifecycle-unknown) ;;
     *) exit 2 ;;
 esac
 pebble= dns= relay=
@@ -247,7 +248,32 @@ Type=exec
 ExecStart=/usr/sbin/nginx -g 'daemon off;'
 ExecReload=/bin/bash $work/reload.sh
 KillSignal=SIGQUIT
+[Install]
+WantedBy=relaxkonos-test.target
 EOF
+if [[ "$mode" == --systemd-lifecycle* ]]; then
+    mkdir -p /var/lib/relaxkonos/webserver/nginx
+    printf 'RelaxKonOS owns this Nginx installation. Do not move this marker.\n' \
+        > /var/lib/relaxkonos/webserver/nginx/.relaxkonos-managed
+    cat > "$work/lifecycle.sh" <<SCRIPT
+#!/bin/bash
+set -euo pipefail
+verb=\$1
+printf '%s\\n' "\$verb" >> "$work/nginx/lifecycle-jobs"
+while [[ -f "$work/nginx/hold-\$verb" ]]; do sleep .1; done
+if [[ "\$verb" == start && -f "$work/nginx/reject-start" ]]; then
+    rm -- "$work/nginx/reject-start"
+    exit 1
+fi
+if [[ "\$verb" == stop ]]; then kill -QUIT "\$2"; fi
+SCRIPT
+    mkdir /etc/systemd/system/nginx.service.d
+    cat > /etc/systemd/system/nginx.service.d/lifecycle.conf <<EOF
+[Service]
+ExecStartPre=/bin/bash $work/lifecycle.sh start
+ExecStop=/bin/bash $work/lifecycle.sh stop \$MAINPID
+EOF
+fi
 cat > /etc/systemd/system/relaxkonos-test.target <<'EOF'
 [Unit]
 DefaultDependencies=no

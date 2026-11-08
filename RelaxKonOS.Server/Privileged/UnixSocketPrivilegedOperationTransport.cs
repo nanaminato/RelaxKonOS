@@ -44,8 +44,8 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
         // sent, the Helper owns the authoritative operation deadline; disconnecting cannot roll back
         // an already-started privileged mutation.
         var drainServiceAction = request.Operation is PrivilegedOperationKind.NginxSystemServiceAction
-            or PrivilegedOperationKind.NginxTrackedReload;
-        var reloadDispatched = false;
+            or PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle;
+        var nginxResultMayBeUnknown = false;
         using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         connectTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
         try
@@ -67,7 +67,7 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
             // A fixed Nginx service job can continue under systemd after the caller cancels.
             // Once dispatched, its terminal frame must drain before the WebServer owner can finish.
             if (drainServiceAction) cancellationToken.ThrowIfCancellationRequested();
-            reloadDispatched = request.Operation == PrivilegedOperationKind.NginxTrackedReload
+            nginxResultMayBeUnknown = request.Operation is PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle
                 || request.Operation == PrivilegedOperationKind.NginxSystemServiceAction
                     && request.NginxServiceAction == NginxSystemServiceAction.Reload;
             await PrivilegedHelperSocketFraming.WriteAsync(stream, JsonSerializer.SerializeToUtf8Bytes(request), CancellationToken.None);
@@ -104,8 +104,8 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
             return Complete(request, MissingResponse(Unavailable("privileged helper service is unavailable")));
         }
 
-        PrivilegedOperationResult MissingResponse(PrivilegedOperationResult fallback) => reloadDispatched
-            ? new(false, fallback.ExitCode, Error: "Nginx reload completion could not be verified",
+        PrivilegedOperationResult MissingResponse(PrivilegedOperationResult fallback) => nginxResultMayBeUnknown
+            ? new(false, fallback.ExitCode, Error: "Nginx service completion could not be verified",
                 ProblemCode: PrivilegedProblemCode.RecoveryRequired)
             : fallback;
     }

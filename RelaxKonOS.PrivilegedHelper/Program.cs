@@ -434,16 +434,14 @@ static async Task<PrivilegedOperationResult> ApplyNginxSystemServiceActionAsync(
     if (!OperatingSystem.IsLinux() || action is null) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx system service operation is unavailable");
     var arguments = action.Value switch
     {
-        NginxSystemServiceAction.Start => new[] { "start", "nginx.service" },
-        NginxSystemServiceAction.Stop => new[] { "stop", "nginx.service" },
-        NginxSystemServiceAction.Restart => new[] { "restart", "nginx.service" },
         NginxSystemServiceAction.Reload => new[] { "reload", "nginx.service" },
         NginxSystemServiceAction.Enable => new[] { "enable", "nginx.service" },
         NginxSystemServiceAction.Disable => new[] { "disable", "nginx.service" },
         NginxSystemServiceAction.EnableAndStart => new[] { "enable", "--now", "nginx.service" },
         NginxSystemServiceAction.DisableAndStop => new[] { "disable", "--now", "nginx.service" },
-        _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        _ => null,
     };
+    if (arguments is null) return Fail(65, PrivilegedProblemCode.InvalidRequest, "This Nginx action requires a tracked lifecycle operation");
     await NginxServiceGate.WaitAsync();
     try { return await RunFixedCommandAsync("/usr/bin/systemctl", arguments, TimeSpan.FromSeconds(30), "nginx service operation failed"); }
     finally { NginxServiceGate.Release(); }

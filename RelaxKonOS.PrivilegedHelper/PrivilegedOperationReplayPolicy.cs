@@ -18,7 +18,8 @@ internal static class PrivilegedOperationReplayPolicy
         // Receipt observations reuse the publication ID before and after the mutation.
         or PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.ProxyServerPublicationReceipt
         or PrivilegedOperationKind.ProxyServerRecoverPublication
-        or PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxReloadReceipt
+        or PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle
+        or PrivilegedOperationKind.NginxReloadReceipt
         or PrivilegedOperationKind.NginxRetireReloadReceipt
         or PrivilegedOperationKind.LinuxSystemProxyApplyTracked or PrivilegedOperationKind.LinuxSystemProxyReceipt;
 }

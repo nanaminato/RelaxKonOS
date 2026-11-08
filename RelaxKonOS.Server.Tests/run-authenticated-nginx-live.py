@@ -53,6 +53,7 @@ def run(root, server, helper_binary, mode):
     acme_changed_challenge = mode == "--systemd-website-acme-challenge-changed"
     retire_live = mode == "--systemd-retire-live"
     retire_retry = retire_live or mode == "--systemd-retire-retry"
+    lifecycle = mode in ("--systemd-lifecycle", "--systemd-lifecycle-unknown")
     relay_mode = retire_retry or mode in ("--systemd-response-loss", "--systemd-rejected")
     rejected = mode == "--systemd-rejected"
     expect_unknown = mode in ("--systemd-unknown", "--systemd-timeout")
@@ -126,7 +127,7 @@ def run(root, server, helper_binary, mode):
     @contextmanager
     def process(arguments, name):
         child_env = dict(env, DOTNET_STARTUP_HOOKS=website_hook) if website_hook and arguments[0] == server else env
-        if website_hook and (retire_live or integration_live or mode == "--systemd-first-site-acme-success") and arguments[0] == server:
+        if website_hook and (retire_live or integration_live or lifecycle or mode == "--systemd-first-site-acme-success") and arguments[0] == server:
             child_env["RELAXKONOS_TEST_WEBSERVER_COLLECT"] = "1"
         with (root / f"{name}.stderr").open("w") as errors, (root / f"{name}.stdout").open("w") as output:
             child = subprocess.Popen(["dotnet", *map(str, arguments)], cwd=root, env=child_env,
@@ -393,6 +394,143 @@ def run(root, server, helper_binary, mode):
                 assert int(nginx_pid_file.read_text()) == pid
                 assert witness.read_text().splitlines() == ["reload", "reload"]
                 print(f"PASS NGINX SYSTEMD SHUTDOWN DRAIN: operation={operation}; original receipt; no extra reload")
+
+    def verify_lifecycle():
+        native = root / "nginx"
+        witnesses = native / "lifecycle-jobs"
+        original_pid = nginx_pid_file.read_text()
+
+        def jobs():
+            return witnesses.read_text().splitlines()
+
+        def grant(token):
+            instance, = (item for item in request(web, token=token) if item["executablePath"] == executable)
+            assert instance["managementMode"].lower() == "managed"
+            for capability in ("NginxLifecycle", "NginxConfigurationWrite"):
+                elevated = request("/api/v1.0/privileged/elevation", token=token, payload={
+                    "capability": capability, "target": instance["id"], "password": credentials["password"]})
+                assert elevated["elevated"]
+            return f"{web}/{instance['id']}/lifecycle"
+
+        def dispatch(route, token, verb, expected=202, request_key=None, expected_problem=None):
+            return request(f"{route}/{verb}", token=token, method="POST", key=request_key or secrets.token_hex(16),
+                           expected=expected, expected_problem=expected_problem)
+
+        def receipt(operation):
+            return Path("/var/lib/relaxkonos-nginx-reloads") / (operation.replace("-", "") + ".json")
+
+        def terminal(child, token, operation, state):
+            route = f"{web}/operations/{operation}"
+            wait_for(child, lambda: request(route, token=token)["state"].lower() == state, f"original {state} receipt")
+            wait_for(child, lambda: receipt(operation).is_file() and receipt(operation).stat().st_size == 0,
+                     "original native receipt retirement")
+            return request(route, token=token)
+
+        assert jobs() == ["start"]
+        assert_served(b"original")
+        with process([*helper_args, helper_config], "lifecycle-helper") as helper:
+            wait_for(helper, helper_ready, "lifecycle-helper")
+            with process([server], "lifecycle-server") as initial:
+                wait_for(initial, healthy, "lifecycle-server")
+                token = login()
+                route = grant(token)
+                if mode == "--systemd-lifecycle-unknown":
+                    hold = native / "hold-start"
+                    hold.touch()
+                    operation = dispatch(route, token, "Restart", request_key=key)["operationId"]
+                    wait_for(initial, lambda: jobs() == ["start", "stop", "start"], "native restart dispatch")
+                    helper.kill()
+                    assert helper.wait(timeout=10) < 0
+                    record = json.loads(receipt(operation).read_text())
+                    assert record["Completed"] is False and record["Action"] == "Restart"
+                    operation_route = f"{web}/operations/{operation}"
+                    wait_for(initial, lambda: request(operation_route, token=token)["problemCode"]
+                             == "webserver.native_recovery_required", "unknown original receipt")
+                    initial.kill()
+                    assert initial.wait(timeout=10) < 0
+                    hold.unlink()
+                    assert_served(b"original")
+                    assert nginx_pid_file.read_text() != original_pid
+                    with process([*helper_args, helper_config], "lifecycle-helper-restarted") as restored_helper:
+                        wait_for(restored_helper, helper_ready, "lifecycle-helper-restarted")
+                        with process([server], "lifecycle-unknown-restarted") as restored:
+                            wait_for(restored, healthy, "lifecycle-unknown-restarted")
+                            token = login()
+                            route = grant(token)
+                            original = request(operation_route, token=token)
+                            assert original["state"].lower() == "running"
+                            assert original["problemCode"] == "webserver.native_recovery_required"
+                            assert dispatch(route, token, "Restart", request_key=key) == original
+                            dispatch(route, token, "Start", expected=409, expected_problem="webserver.native_recovery_required")
+                            assert not direct_helper_request("NginxTrackedLifecycle", operation, nginxServiceAction="Restart")["success"]
+                            assert not direct_helper_request("NginxTrackedLifecycle", operation, nginxServiceAction="Stop")["success"]
+                            assert not direct_helper_request("NginxSystemServiceAction", str(uuid.uuid4()), nginxServiceAction="Restart")["success"]
+                            assert json.loads(receipt(operation).read_text()) == record
+                            assert jobs() == ["start", "stop", "start"]
+                            if website_hook:
+                                assert not webserver_code_events("lifecycle-unknown-restarted")
+                            assert_served(b"original")
+                    print(f"PASS NGINX LIFECYCLE UNKNOWN: {operation}; original pending receipt, no new systemd job")
+                    return
+
+                hold = native / "hold-stop"
+                hold.touch()
+                stopped = dispatch(route, token, "Stop")["operationId"]
+                wait_for(initial, lambda: jobs() == ["start", "stop"], "native stop in progress")
+                stop_route = f"{web}/operations/{stopped}"
+                assert request(stop_route + "/cancel", token=token, method="POST")["state"].lower() == "running"
+                assert request(stop_route, token=token)["stage"] == "native-lifecycle-dispatch"
+                assert json.loads(receipt(stopped).read_text())["Completed"] is False
+                if website_hook:
+                    events = webserver_code_events("lifecycle-server")
+                    assert len(events) == 1 and events[0].startswith("load webserver-execution:")
+                assert nginx_pid_file.read_text() == original_pid
+                assert_served(b"original")
+                hold.unlink()
+                terminal(initial, token, stopped, "succeeded")
+                assert not nginx_pid_file.exists()
+
+                (native / "reject-start").touch()
+                rejected = dispatch(route, token, "Start")["operationId"]
+                assert terminal(initial, token, rejected, "failed")["problemCode"] == "webserver.start_failed"
+                assert not nginx_pid_file.exists()
+                started = dispatch(route, token, "Start")["operationId"]
+                terminal(initial, token, started, "succeeded")
+                assert (Path("/etc/systemd/system/relaxkonos-test.target.wants") / "nginx.service").is_symlink()
+                assert_served(b"original")
+                running_pid = nginx_pid_file.read_text()
+                if website_hook:
+                    wait_for(initial, lambda: any(event.startswith("collected webserver-execution:")
+                                                 for event in webserver_code_events("lifecycle-server")),
+                             "collectible execution after native retirement", attempts=550)
+
+                hold = native / "hold-start"
+                hold.touch()
+                restarted = dispatch(route, token, "Restart", request_key=key)["operationId"]
+                expected = ["start", "stop", "start", "start", "stop", "start"]
+                wait_for(initial, lambda: jobs() == expected, "native restart in progress")
+                assert json.loads(receipt(restarted).read_text())["Completed"] is False
+                initial.kill()
+                assert initial.wait(timeout=10) < 0
+                hold.unlink()
+                wait_for(helper, lambda: json.loads(receipt(restarted).read_text())["Completed"], "original Helper restart receipt")
+                assert not direct_helper_request("NginxReloadReceipt", restarted, nginxServiceAction="Stop")["success"]
+                assert direct_helper_request("NginxReloadReceipt", restarted, nginxServiceAction="Restart")["nginxReloadReceipt"]["Succeeded"]
+                assert_served(b"original")
+                assert nginx_pid_file.read_text() != running_pid
+
+            with process([server], "lifecycle-recovered-server") as restored:
+                wait_for(restored, healthy, "lifecycle-recovered-server")
+                token = login()
+                route = grant(token)
+                original = terminal(restored, token, restarted, "succeeded")
+                assert dispatch(route, token, "Restart", request_key=key) == original
+                assert not direct_helper_request("NginxTrackedLifecycle", restarted, nginxServiceAction="Restart")["success"]
+                assert jobs() == expected
+                if website_hook:
+                    assert not webserver_code_events("lifecycle-recovered-server")
+                assert_served(b"original")
+        print(f"PASS NGINX LIFECYCLE: stop={stopped}; rejected={rejected}; start={started}; restart={restarted}; original receipts")
 
     def verify_website_publication():
         applications = "/api/v1.0/application-deployments/applications"
@@ -1550,6 +1688,10 @@ def run(root, server, helper_binary, mode):
         verify_drain()
         return
 
+    if lifecycle:
+        verify_lifecycle()
+        return
+
     with helper_connection() as (dropped, permit_query), process([*helper_args, helper_config], "initial-helper") as helper:
         wait_for(helper, helper_ready, "initial-helper")
         with process([server], "initial-server") as initial:
@@ -1782,7 +1924,8 @@ if __name__ == "__main__":
                                                             "--systemd-integration-live",
                                                             "--systemd-integration-receipt", "--systemd-integration-stage",
                                                             "--systemd-integration-rejected", "--systemd-integration-compensation",
-                                                            "--systemd-integration-compensation-response-loss") else None
+                                                            "--systemd-integration-compensation-response-loss",
+                                                            "--systemd-lifecycle", "--systemd-lifecycle-unknown") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

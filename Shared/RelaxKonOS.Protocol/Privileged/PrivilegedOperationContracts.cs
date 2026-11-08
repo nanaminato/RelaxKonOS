@@ -86,6 +86,7 @@ public enum PrivilegedOperationKind
     NativeServiceAction,
     NginxSystemServiceAction,
     NginxTrackedReload,
+    NginxTrackedLifecycle,
     NginxReloadReceipt,
     NginxRetireReloadReceipt,
     NginxServiceIdle,

@@ -9,7 +9,7 @@ public static partial class PrivilegedOperationExecutor
 {
     private const string NginxReloadReceiptDirectory = "/var/lib/relaxkonos-nginx-reloads";
     private static readonly SemaphoreSlim NginxServiceGate = new(1, 1);
-    private sealed record NginxReloadRecord(Guid OperationId, bool Completed, bool Failed = false);
+    private sealed record NginxReloadRecord(Guid OperationId, bool Completed, bool Failed = false, NginxSystemServiceAction? Action = null);
 
     private static async Task<PrivilegedOperationResult> ConfirmNginxServiceIdleAsync()
     {
@@ -24,10 +24,15 @@ public static partial class PrivilegedOperationExecutor
         finally { NginxServiceGate.Release(); }
     }
 
-    private static async Task<PrivilegedOperationResult> RunTrackedNginxReloadAsync(Guid? operationId)
+    private static Task<PrivilegedOperationResult> RunTrackedNginxLifecycleAsync(Guid? operationId, NginxSystemServiceAction? action) =>
+        action is NginxSystemServiceAction.Start or NginxSystemServiceAction.Stop or NginxSystemServiceAction.Restart
+            ? RunTrackedNginxServiceAsync(operationId, action)
+            : Task.FromResult(Fail(65, PrivilegedProblemCode.InvalidRequest, "A start, stop or restart action is required"));
+
+    private static async Task<PrivilegedOperationResult> RunTrackedNginxServiceAsync(Guid? operationId, NginxSystemServiceAction? action = null)
     {
         if (!OperatingSystem.IsLinux()) return Fail(69, PrivilegedProblemCode.UnsupportedOperation, "Linux is required");
-        if (operationId is not Guid id || id == Guid.Empty) return Fail(65, PrivilegedProblemCode.InvalidRequest, "A reload operation ID is required");
+        if (operationId is not Guid id || id == Guid.Empty) return Fail(65, PrivilegedProblemCode.InvalidRequest, "A Nginx operation ID is required");
         var path = ReloadReceiptPath(id);
         try
         {
@@ -35,22 +40,29 @@ public static partial class PrivilegedOperationExecutor
             Directory.CreateDirectory(NginxReloadReceiptDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             RequireProtectedReloadPath(NginxReloadReceiptDirectory);
             LinuxDirectorySync.Flush(Path.GetDirectoryName(NginxReloadReceiptDirectory)!);
-            try { WriteReloadRecord(path, new(id, false), overwrite: false); }
+            try { WriteReloadRecord(path, new(id, false, Action: action), overwrite: false); }
             catch (IOException) when (File.Exists(path))
             {
                 // An accepted ID is read-only, even after Helper restart.
-                return AsExecutionResult(QueryNginxReloadReceipt(id));
+                return AsExecutionResult(QueryNginxServiceReceipt(id, action));
             }
 
             await NginxServiceGate.WaitAsync();
-            PrivilegedOperationResult result;
-            try { result = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", ["reload", "nginx.service"], "Nginx reload failed"); }
+            try
+            {
+                if (action is NginxSystemServiceAction.Start or NginxSystemServiceAction.Restart)
+                {
+                    var enabled = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", ["enable", "nginx.service"], "Nginx enable failed");
+                    if (!enabled.Success) return UnknownReload();
+                }
+                var command = action?.ToString().ToLowerInvariant() ?? "reload";
+                var result = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", [command, "nginx.service"], "Nginx service job failed");
+                // Only systemctl's result for the specific job is terminal evidence.
+                if (!result.Success && !IsConfirmedServiceFailure(result)) return UnknownReload();
+                WriteReloadRecord(path, new(id, true, Failed: !result.Success, Action: action), overwrite: true);
+                return AsExecutionResult(new(true, NginxReloadReceipt: new(id, result.Success)));
+            }
             finally { NginxServiceGate.Release(); }
-            // Only systemctl's failure for the specific job it was waiting on is terminal evidence.
-            // A generic nonzero exit, timeout, or disconnected bus leaves the original intent open.
-            if (!result.Success && !IsConfirmedReloadFailure(result)) return UnknownReload();
-            WriteReloadRecord(path, new(id, true, Failed: !result.Success), overwrite: true);
-            return AsExecutionResult(new(true, NginxReloadReceipt: new(id, result.Success)));
         }
         catch (Exception error) when (ReloadRecordError(error))
         {
@@ -58,7 +70,7 @@ public static partial class PrivilegedOperationExecutor
         }
     }
 
-    private static PrivilegedOperationResult QueryNginxReloadReceipt(Guid? operationId)
+    private static PrivilegedOperationResult QueryNginxServiceReceipt(Guid? operationId, NginxSystemServiceAction? action)
     {
         if (!OperatingSystem.IsLinux()) return Fail(69, PrivilegedProblemCode.UnsupportedOperation, "Linux is required");
         if (operationId is not Guid id || id == Guid.Empty) return Fail(65, PrivilegedProblemCode.InvalidRequest, "A reload operation ID is required");
@@ -67,10 +79,8 @@ public static partial class PrivilegedOperationExecutor
             var path = ReloadReceiptPath(id);
             RequireProtectedReloadPath(NginxReloadReceiptDirectory);
             RequireProtectedReloadPath(path);
-            using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-            if (input.Length is <= 0 or > 512) return UnknownReload();
-            var receipt = JsonSerializer.Deserialize<NginxReloadRecord>(input);
-            return receipt is { Completed: true } && receipt.OperationId == id
+            var receipt = ReadReloadRecord(path);
+            return receipt is { Completed: true } && receipt.OperationId == id && receipt.Action == action
                 ? new(true, NginxReloadReceipt: new(id, !receipt.Failed))
                 : UnknownReload();
         }
@@ -93,7 +103,7 @@ public static partial class PrivilegedOperationExecutor
             // never create a window where the same ID can be admitted again.
             if (new FileInfo(path).Length != 0)
             {
-                if (QueryNginxReloadReceipt(id).Success)
+                if (ReadReloadRecord(path) is { Completed: true } receipt && receipt.OperationId == id)
                     WriteReloadRecord(path, null, overwrite: true);
                 else if (new FileInfo(path).Length != 0)
                     return UnknownReload();
@@ -110,10 +120,16 @@ public static partial class PrivilegedOperationExecutor
     private static string ReloadReceiptPath(Guid id) =>
         Path.Combine(NginxReloadReceiptDirectory, id.ToString("N") + ".json");
 
+    private static NginxReloadRecord? ReadReloadRecord(string path)
+    {
+        using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        return input.Length is > 0 and <= 512 ? JsonSerializer.Deserialize<NginxReloadRecord>(input) : null;
+    }
+
     private static bool ReloadRecordError(Exception error) =>
         error is IOException or UnauthorizedAccessException or JsonException or RuntimePolicyException or OperationCanceledException;
 
-    private static bool IsConfirmedReloadFailure(PrivilegedOperationResult result)
+    private static bool IsConfirmedServiceFailure(PrivilegedOperationResult result)
     {
         if (result.ProblemCode != PrivilegedProblemCode.InternalError || result.OutputBase64 is not { } output) return false;
         var text = Encoding.UTF8.GetString(Convert.FromBase64String(output));
@@ -162,5 +178,5 @@ public static partial class PrivilegedOperationExecutor
     }
 
     private static PrivilegedOperationResult UnknownReload() =>
-        Fail(69, PrivilegedProblemCode.RecoveryRequired, "The original Nginx reload result is unverified");
+        Fail(69, PrivilegedProblemCode.RecoveryRequired, "The original Nginx service result is unverified");
 }
