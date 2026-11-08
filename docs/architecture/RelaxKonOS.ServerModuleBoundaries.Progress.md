@@ -30,7 +30,7 @@
 
 | 范围 | 剩余门槛 | 条件满足后的第一项 |
 | --- | --- | --- |
-| MB-04 Proxy | Core 标记已保存 Linux 管理端点实际选路，运行时激活及恢复收到同一操作 ID。[Helper 原生描述符收发](server-module-evidence/Proxy-Safety.md#mb-04-helper-原生-tun-描述符交付)已在 Linux x64 私有 systemd 夹具中通过，验证独占创建、原 ID、双向 Unix 对端与内核设备身份，以及受限 Mihomo 继承同一 FD。实际转发和进程退出跨两处中断按原记录核对。生产 Helper 仍拒绝需要宿主网络变更的配置，生产启动、网络事务及持久归属仍缺 | 将受限启动接入 `LinuxMihomoArchiveHost` 的固定单元，将设备、路由、规则及 DNS 归属绑定到同一 Helper 事务和原回执，再以生产入口实测中断、同键不重放及真实工作租约。Proxy 保持 resident，直至整模块安全交接通过 |
+| MB-04 Proxy | Core 标记已保存 Linux 管理端点实际选路。Linux x64 私有 systemd 夹具验证 [Helper 描述符收发](server-module-evidence/Proxy-Safety.md#mb-04-helper-原生-tun-描述符交付)及 [Helper 设备和精确 IPv4 路由归属](server-module-evidence/Proxy-Safety.md#mb-04-helper-tun-设备和精确路由归属)。实际转发和退出跨两处中断按原记录核对，标签冲突和路由丢失时保留原记录及进程。生产 Helper 仍拒绝需要宿主网络变更的配置 | 在原归档实例锁内持久记录网络意图、派发和只读核对身份，接入 `LinuxMihomoArchiveHost` 的受限启动及规则与 DNS 归属，再用生产入口实测中断、同键不重放及真实工作租约。Proxy 保持 resident，直至整模块安全交接通过 |
 | MB-05 Docker | 未知清理缺与原 operationId 绑定的可信进程及输出排空证据入口 | 以原 CLI 清理门禁做只读确证，匹配时再结案原回执 |
 | MB-05 Certificates | 丢失订单创建响应时缺与原请求匹配的订单身份。跨源 CA、补取部署和主机掉电需要独立证据 | 用可信原账户订单标识验证一次只读对账，保持现有部署。见 [原订单标识门槛](server-module-evidence/Certificates.md#缺失原订单标识的核验门槛) |
 | MB-05 WebServer | 外部实例未知结果缺可信原命令证据。其他实例的启停与自动部署需要该实例原生回执和所有权接口，其他平台需要对应隔离主机 | 先在可核验的外部实例上用原 operationId 证明命令、配置身份和工作责任，再验证原门禁解除 |

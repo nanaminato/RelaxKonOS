@@ -193,6 +193,16 @@ if (args is ["runtime-mihomo-tun-descriptor-launch", var launcherRoot] && Operat
     await MihomoTunDescriptorAcceptance.LaunchAsync(launcherRoot);
     return;
 }
+if (args is ["runtime-mihomo-tun-network-check", var networkRoot, var networkOperation] && OperatingSystem.IsLinux())
+{
+    try { await MihomoTunDescriptorAcceptance.VerifyNetworkAsync(networkRoot, Guid.ParseExact(networkOperation, "N")); }
+    catch (RelaxKonOS.ManagedRuntimes.RuntimePolicyException error)
+    {
+        Console.Error.WriteLine(error.ProblemCode);
+        Environment.ExitCode = 3;
+    }
+    return;
+}
 if (args is ["runtime-managed-service-live", var singBoxExecutable])
 {
     Console.WriteLine($"PASS LIVE SING-BOX HELPER PUBLICATION: {await ManagedServiceChecks.RunAsync(singBoxExecutable)} checks");

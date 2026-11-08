@@ -36,6 +36,11 @@ internal sealed class LinuxMihomoTunDescriptor : IDisposable
 
     internal string Name { get; }
     internal uint InterfaceIndex { get; }
+    internal Guid Owner => operationId;
+
+    internal static bool ValidName(string name) => name.Length is >= 1 and < InterfaceNameSize
+        && char.IsAsciiLetterOrDigit(name[0])
+        && name.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.');
 
     internal static LinuxMihomoTunDescriptor Create(Guid operationId, string name)
     {
@@ -46,8 +51,7 @@ internal sealed class LinuxMihomoTunDescriptor : IDisposable
             Architecture.Arm64 => OpenNoFollowArm64,
             _ => throw new RuntimePolicyException("runtime.network_platform_unsupported")
         };
-        if (name.Length is < 1 or >= InterfaceNameSize || !char.IsAsciiLetterOrDigit(name[0])
-            || name.Any(ch => !char.IsAsciiLetterOrDigit(ch) && ch is not ('-' or '_' or '.')))
+        if (!ValidName(name))
             throw new RuntimePolicyException("runtime.network_device_invalid");
 
         var request = new byte[40]; // Linux x64/arm64 ifreq: IFNAMSIZ followed by its native union.

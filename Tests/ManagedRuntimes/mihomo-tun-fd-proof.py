@@ -21,6 +21,7 @@ endpoint = str(root / 'fd.sock')
 unit = 'relaxkonos-test-tun-fd.service'
 device = 'rk-fd-proof'
 target = '198.51.100.53'
+address = '198.18.0.1'
 script = root / 'mihomo-tun-fd-proof.py'
 journal = root / 'tun-operation.json'
 config = root / 'active.yaml'
@@ -87,9 +88,7 @@ def service_identity():
 def observe(record):
     if network_baseline() != record['baseline'] or service_identity() != record['service']:
         raise ValueError('management route or systemd process identity differs')
-    adapter = link()
-    if adapter.get('ifalias') != record['operation'] or adapter['ifindex'] != record['ifindex']:
-        raise ValueError('TUN owner or interface index differs')
+    command('dotnet', record['fixture'], 'runtime-mihomo-tun-network-check', str(root), record['operation'])
     if route() != record['route']:
         raise ValueError('TUN route differs')
     process = Path('/proc', str(record['service'][0]))
@@ -109,13 +108,9 @@ def observe(record):
 
 def prepare(index, broker):
     record = json.loads(journal.read_text())
-    assert record['phase'] == 'prepared' and link()['ifindex'] == index and not route()
+    assert record['phase'] == 'prepared' and link()['ifindex'] == index and route()
     assert record['namespace'] == os.readlink('/proc/self/ns/net') and record['baseline'] == network_baseline()
     assert record['credential'] == hashlib.sha256(config.read_bytes()).hexdigest()
-    ip('link', 'set', 'dev', device, 'alias', record['operation'])
-    ip('address', 'add', '198.18.0.1/30', 'dev', device)
-    ip('link', 'set', device, 'up')
-    ip('route', 'add', target + '/32', 'dev', device, 'src', '198.18.0.1')
     record.update(broker=broker, ifindex=index)
     sync_record(record)
     service('start', unit)
@@ -240,6 +235,7 @@ StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
     operation = uuid.uuid4().hex
     identity = hashlib.sha256(config.read_bytes()).hexdigest()
     sync_record({'phase': 'prepared', 'operation': operation, 'credential': identity,
+                 'fixture': sys.argv[3], 'address': address, 'target': target,
                  'namespace': os.readlink('/proc/self/ns/net'), 'baseline': baseline})
     invocation = [sys.executable, '-I', script]
     owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
@@ -280,11 +276,17 @@ StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
         assert service_identity() == record['service']
         probe('conflict')
         ip('link', 'set', 'dev', device, 'alias', operation)
+        ip('-4', 'route', 'del', target + '/32', 'dev', device)
+        refused = subprocess.run([*invocation, 'recover', root, operation], timeout=8)
+        assert refused.returncode == 3 and journal.read_bytes() == original and not route()
+        assert service_identity() == record['service']
+        ip('-4', 'route', 'add', target + '/32', 'dev', device, 'src', address, 'scope', 'link')
         assert Upstream.hits == ['/mb04-before', '/mb04-after', '/mb04-conflict']
         assert Upstream.tunnels == [target + ':18880'] * 3
         print(native)
         print(f'PASS MIHOMO INHERITED TUN: {operation}, credential {identity}, '
               'same PID, FD and management route, three upstream requests across dispatch crash and conflict')
+        print('PASS HELPER TUN ROUTE OWNERSHIP: refused duplicate apply, changed alias and missing route; no replay')
 
         interrupted = subprocess.run([*invocation, 'recover-interrupt', root, operation], timeout=8)
         assert interrupted.returncode == -signal.SIGKILL

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -32,6 +33,14 @@ internal static class MihomoTunDescriptorAcceptance
         {
             using var duplicate = LinuxMihomoTunDescriptor.Create(operationId, DeviceName);
         });
+        var routes = Routes(intent.RootElement);
+        await routes.ApplyAsync(descriptor);
+        try
+        {
+            await routes.ApplyAsync(descriptor);
+            throw new InvalidOperationException("The owned TUN route was applied twice.");
+        }
+        catch (RuntimePolicyException error) when (error.ProblemCode == "runtime.network_route_conflict") { }
 
         using var broker = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         var endpoint = Path.Combine(root, "fd.sock");
@@ -60,6 +69,24 @@ internal static class MihomoTunDescriptorAcceptance
         Console.WriteLine($"PASS HELPER NATIVE TUN DESCRIPTOR: {operation}; {descriptor.Name} ifindex={descriptor.InterfaceIndex}, receiver PID={recipient}, exclusive open and single authenticated dispatch");
         await Task.Delay(Timeout.InfiniteTimeSpan);
     }
+
+    [SupportedOSPlatform("linux")]
+    internal static async Task VerifyNetworkAsync(string root, Guid operation)
+    {
+        MihomoIpcStartupAcceptance.RequirePrivateHost();
+        if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK"))
+            throw new InvalidOperationException("The network check requires its private systemd work directory.");
+        using var intent = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(root, "tun-operation.json")));
+        var state = intent.RootElement;
+        if (operation == Guid.Empty || state.GetProperty("operation").GetString() != operation.ToString("N")
+            || state.GetProperty("phase").GetString() != "dispatching")
+            throw new InvalidOperationException("The network check requires the original dispatched operation.");
+        await Routes(state).VerifyAsync(operation, DeviceName, state.GetProperty("ifindex").GetUInt32());
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static LinuxMihomoTunRoutes Routes(JsonElement intent) =>
+        new(IPAddress.Parse(intent.GetProperty("address").GetString()!), IPAddress.Parse(intent.GetProperty("target").GetString()!));
 
     [SupportedOSPlatform("linux")]
     internal static async Task LaunchAsync(string root)

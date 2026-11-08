@@ -32,6 +32,7 @@
 - [MB-04 TUN 原生效果的双中断核对](#mb-04-tun-原生效果的双中断核对)
 - [MB-04 Linux 管理端点实际路由与原操作](#mb-04-linux-管理端点实际路由与原操作)
 - [MB-04 Helper 原生 TUN 描述符交付](#mb-04-helper-原生-tun-描述符交付)
+- [MB-04 Helper TUN 设备和精确路由归属](#mb-04-helper-tun-设备和精确路由归属)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -316,6 +317,16 @@ Core 在 Linux 直连 TUN 的原保护标记中记录内核为网关和管理端
 原操作 `fd4feb62257f408c9bb7000c8265a4f4` 的接收进程 PID 68、`rk-fd-proof` ifindex 4、管理选路及 IPv4/IPv6 规则、配置摘要 `05d93814d2db6a9c35b74226a106ad5818d473d7d5d21ecfe7cc37f8906ec89e` 在交付中断和归属冲突检查中保持一致。真实上游收到三次请求。停止中断后只核对进程、设备及路由退出，重查取得原回执。专属 cgroup 清理，共享服务及代理文件指纹一致。首轮因受限启动器无法遍历专属夹具目录而在交付前失败，见 `.artifacts/mb04-tun-marker-sync/tun-helper-launch-linux.log`。赋予该目录遍历权限后，实机 x64 复验通过，日志 `.artifacts/mb04-tun-marker-sync/tun-helper-launch-linux-retry.log`，归档 SHA-256 `89d39d8e60a1e5e652295b370ae4373ba6a56e094eb8cf9078bb4ee38bc0a44a`。
 
 Windows ManagedRuntimes Release 回归通过，配置事务 99 项，可信下载探针因缺进程级测试 CA 覆盖而跳过。Linux arm64 描述符 ABI 分支未实机验证。启动器位于测试程序集，网络策略、持久归属记录及恢复仍由夹具驱动。生产固定单元接入、设备及规则和 DNS 归属、Helper 与 Core 原回执的联合证明均待完成。受管门禁及 Proxy 常驻继续生效。本轮验证夹具进程退出，对象释放、ALC 回收、隔离内存及生产内存收益未测量。
+
+## MB-04 Helper TUN 设备和精确路由归属
+
+Helper 的 Linux TUN 路由实现读取原意图中的 IPv4 地址和单个目标。它在独占打开的非持久设备上写入原操作 ID 标签、带 `noprefixroute` 的 /32 源地址和精确目标路由，使用固定的 `/usr/sbin/ip` 参数及独占添加，拒绝覆盖已有目标路由或重复应用。只读核对检查设备标签、名称、ifindex、启用状态、地址和精确路由。归属证据不一致时返回待核验，专属夹具保留原记录和进程，不重建路由。 [Linux TUN/TAP](https://docs.kernel.org/networking/tuntap.html) · [ip-route](https://man7.org/linux/man-pages/man8/ip-route.8.html)
+
+Linux x64 私有 systemd 复验的原操作为 `1d64716220184883a948ce12ccd8114a`，设备 `rk-fd-proof` ifindex 4，接收和运行 PID 75，配置摘要 `1554be492de6eb12461ea2ab39d1c5f5c55f57d37443924127bb95188824dfed`。Helper 的描述符发送进程强制退出后，原记录逐字节一致，管理选路及 IPv4/IPv6 规则保持，真实上游共收到三次请求。归属标签漂移及专属精确路由丢失分别返回 `runtime.network_device_identity_unknown` 和 `runtime.network_route_conflict`，两次均保留原记录及 Mihomo 进程。夹具显式还原测试漂移后继续停止验收。停止派发后强制退出，下一进程只读确认原进程、设备和路由退出，并重复取得同一夹具回执。专属 cgroup 已移除，共享服务和代理文件指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-owned-route-linux-final.log`，归档 SHA-256 `1401ae0987e23b95e31531ce8f8e01a7f5d44d4aff69909c7f7dd19fa5eabdb4`。
+
+Windows ManagedRuntimes Release 在宿主权限下通过，含配置事务 99 项。沙箱内运行先后受临时文件替换及原生监听表限制，可信下载探针因宿主缺进程级测试 CA 覆盖而跳过。最终回归日志为 `.artifacts/mb04-tun-marker-sync/tun-owned-route-win-final.log`。
+
+本轮证明单个 IPv4 目标的设备和路由归属。原意图持久化、管理选路和规则的比对、systemd 启动、恢复及回执由夹具驱动。生产固定单元、原归档状态的持久检查点、策略路由和 DNS 归属、真实工作租约与同键生产入口仍待接入。生产受管 TUN 门禁继续生效，Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 
