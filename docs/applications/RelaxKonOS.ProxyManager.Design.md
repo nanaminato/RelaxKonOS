@@ -4537,6 +4537,8 @@ Helper 的具名启动与重启同时接收原发布 ID、新执行 ID 及临时
 
 保留数据移除已经在 Helper 完成而 Server 尚未确认时，禁用 Proxy 的启动按原移除 ID 拒绝。原协调器核对回执并恢复原宿主代理值后，禁用启动仍需核对保留配置和当前缺席。保存的宿主代理设置为禁用时，Core guard 用同一原移除见证完成启动对账。配置漂移、Helper 不可用或见证不匹配时继续待核验。见[保留数据移除实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-保留数据移除与禁用启动)。
 
+完整安装 HTTP 可为已具名停止的受管 TUN 生成保留数据移除计划。实机验证匿名和普通 PAM 账号均无法在缺少管理员授权时提交，拒绝不建安装记录，也不派发移除。成功提权后的原安装回执及其重启恢复待联验。见[安装 HTTP 准入](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-保留数据移除的安装-http-准入)。
+
 Linux Server 内部发布协调器已接入冻结 TUN 意图、原发布回执恢复和 Proxy 工作租约。root 宿主范围文件须显式设置 `allowManagedPublication` 才能受理内部发布及提交，默认关闭。客户端公开入口待联合验收。见[Server 发布与回执证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-server-发布协调)。
 
 Linux 非 root Server 可经固定 AF_UNIX 通道调用独立 Helper，按原发布 ID 恢复受管 TUN。提交后的具名启停和重启复用该通道及原发布授权。客户端公开入口和同键 HTTP 仍待联合验收。见[分进程实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-af_unix-发布与恢复)。

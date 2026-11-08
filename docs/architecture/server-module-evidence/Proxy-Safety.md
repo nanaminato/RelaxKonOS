@@ -58,6 +58,7 @@
 - [MB-04 受管 TUN 模块停用门禁](#mb-04-受管-tun-模块停用门禁)
 - [MB-04 禁用 Proxy 管理入口后的安全交接](#mb-04-禁用-proxy-管理入口后的安全交接)
 - [MB-04 受管 TUN 保留数据移除与禁用启动](#mb-04-受管-tun-保留数据移除与禁用启动)
+- [MB-04 保留数据移除的安装 HTTP 准入](#mb-04-保留数据移除的安装-http-准入)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -688,6 +689,16 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 **已实现但实机未验证。** 本轮通过生产协调器与实际 Helper 核验移除，应答暂扣位于非 root 测试进程的 AF_UNIX 调用方。移除的完整安装 HTTP 和权限提升入口未纳入本轮。其他平台未联验。
 
 **未实现或仍受门禁保护。** Proxy 保持 resident。记录了原 Mihomo 与 Server 退出以及专属 cgroup 清理。对象释放、ALC 回收、隔离负载内存与生产内存收益未测量。
+
+## MB-04 保留数据移除的安装 HTTP 准入
+
+**已实现且已验证。** Linux 私有 systemd 的完整 Server 通过实际 PAM/JWT 发布受管 TUN `cd763481-7f52-4ece-b3b6-482ac3ccf439`，原 Mihomo PID `393` 完成真实转发。认证具名停止 `b12436a2-49f6-4bd2-a703-791a3720f65f` 后，生产运行时 HTTP 返回当前安装和配置身份，并生成 `keepData=true` 的卸载冻结计划。匿名提交返回 401。普通 PAM 账号虽可访问计划，未提权提交返回 403。使用该普通账号的真实密码请求 `MihomoInstall` 提权，Helper 核验宿主授权后拒绝，再次提交仍返回 403。安装台账无活动项，发布台账字节保持，Helper 移除派发为零。
+
+同一私有环境复验生产协调器的原移除 `9228eb35-9aad-45b7-91e8-e75f90bfd7de`、保留身份 `dfe1f8c9d458eb607af2f9169383508486c45808e09d0338cccf7170266ddc7e`、网络清理和禁用启动。移除通过原非 root 协调器夹具发起。原生移除只派发一次。专属 cgroup 已清理，宿主共享服务、账户和代理文件指纹一致。Windows Release ManagedRuntimes 通过，可信下载探针缺少进程级测试 CA 覆盖。最终 Linux 归档 SHA-256 为 `96a293e96b50127374eceaa2cae6e141dbf7a8a368c4458f0aa3ef7dad083ae7`。日志在 `.artifacts/mb04-tun-marker-sync/`，实机为 `tun-install-gate-linux.log`，本机为 `tun-install-gate-windows.log`。
+
+**已实现但实机未验证。** 成功提权后的完整安装 HTTP 受理、安装台账原回执及其跨 Server 重启恢复待验证。自动审批拒绝了给 root 设置测试密码及给临时账号追加 sudoers 规则两种方案。两种方案均未执行。恢复条件是提供专属环境已有的管理员授权方式，供真实 PAM 验证使用。
+
+**未实现或仍受门禁保护。** Proxy 保持 resident。进程退出和专属进程树清理已验证。对象释放、ALC 回收、隔离负载内存和生产收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

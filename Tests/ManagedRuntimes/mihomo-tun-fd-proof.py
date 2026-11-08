@@ -1100,7 +1100,8 @@ def proof_full_http_shutdown(ipc, case):
     joint = case == 'ipc-http-joint'
     admission = case == 'ipc-http-admission'
     handoff = case == 'ipc-http-handoff'
-    retained_removal = case == 'ipc-http-retained'
+    removal_http = case == 'ipc-http-retained-installation'
+    retained_removal = removal_http or case == 'ipc-http-retained'
     squid = case == 'ipc-http-squid'
     assert any(line.split()[4] == '/etc' and ' - overlay ' in line
                for line in Path('/proc/self/mountinfo').read_text().splitlines())
@@ -1415,6 +1416,9 @@ def proof_full_http_shutdown(ipc, case):
         secret = content / 'data' / 'proxy-controller.secret'
         retained = archive / 'retained-data.json'
         operation = uuid.uuid4()
+        runtime_api = '/api/v1.0/managed-runtimes/mihomo'
+        uninstall_api = '/api/v1.0/installations/mihomo/uninstall'
+        install_key = 'retained-uninstall'
 
         def run_removal(phase):
             return subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-retained-removal',
@@ -1451,6 +1455,28 @@ def proof_full_http_shutdown(ipc, case):
         assert not Path(f'/proc/{record["service"][0]}').exists()
         before = (queue.read_bytes(), mirror.read_bytes(), secret.read_bytes())
         original_network = {path: path.read_bytes() for path in (archive / 'operations' / publication).glob('tun-*.json')}
+        if removal_http:
+            status, snapshot = request(runtime_api + '/installation', token)
+            assert status == 200 and snapshot['configurationIdentity'].lower() == record['credential']
+            current = snapshot['installation']
+            status, planned = request(runtime_api + '/plan', token, data={'request': {
+                'installationId': current['installationId'], 'hostId': current['hostId'],
+                'change': 'Uninstall', 'expectedStateRevision': current['stateRevision'],
+                'expectedCatalogRevision': 0, 'expectedTrustRevision': 0, 'releaseId': None,
+                'idempotencyKey': install_key, 'keepData': True}})
+            assert status == 200 and planned['plan'] and not planned['problems'], (status, planned)
+            payload = {'confirmed': True, 'plan': planned['plan']}
+            before_refusal = published_ledger.read_bytes()
+            assert request(uninstall_api, key=install_key, data=payload)[0] == 401
+            assert request(uninstall_api, token, install_key, payload)[0] == 403
+            status, denied = request('/api/v1.0/privileged/elevation', token, data={
+                'capability': 'MihomoInstall', 'target': 'mihomo',
+                'administratorUsername': identity, 'password': password})
+            assert status == 403 and denied['problemCode'] == 'elevation-account-not-administrator', (status, denied)
+            assert request(uninstall_api, token, install_key, payload)[0] == 403
+            assert request('/api/v1.0/installations/active?service=mihomo', token)[0] == 404
+            assert published_ledger.read_bytes() == before_refusal
+            assert 'operation=MihomoRuntimeExecute ' not in ipc.log.read_text()
         terminate(pid)
         worker = run_removal('remove')
         try:
@@ -1506,6 +1532,8 @@ def proof_full_http_shutdown(ipc, case):
         terminate(pid)
         print(f'PASS TUN RETAINED REMOVAL DISABLED STARTUP: publication={publication}; stop={stopped}; removal={operation}; '
               f'configuration={record["credential"]}; original PID={record["service"][0]}; no replay')
+        if removal_http:
+            print(f'PASS TUN RETAINED INSTALLATION HTTP GATE: publication={publication}; real plan; anonymous and standard PAM refused')
 
     def verify_squid_publication(pid):
         nonlocal worker, token
@@ -1900,7 +1928,8 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained', 'ipc-http-squid'):
+            if case in ('ipc-http-full', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
+                        'ipc-http-retained-installation', 'ipc-http-squid'):
                 proof_full_http_shutdown(ipc, case)
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,

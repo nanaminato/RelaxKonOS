@@ -323,3 +323,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）Linux 认证管理停用经重启生效，受管 Mihomo TUN 保留原执行、配置、检查点和实际流量。Core guard 与 sing-box 到期在管理入口禁用时完成并独立排空。范围见[禁用态安全交接](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-禁用-proxy-管理入口后的安全交接)。
 
 2026-11-08（MR-03 / MB-04）保留数据移除的 Server 恢复和 Proxy 禁用启动已在 Linux 私有 systemd 联验。Core guard 在保存的宿主代理设置为禁用时读取原移除见证和当前缺席，凭据、配置、回执或归属无法核实时保留原门禁。见[保留数据移除实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-保留数据移除与禁用启动)。
+
+2026-11-08（MR-03 / MB-04）完整安装 HTTP 已验证保留数据移除的冻结计划、匿名拒绝和普通 PAM 账号提权拒绝。拒绝未建立安装记录或派发 Helper。成功提权后的原安装回执与重启恢复待专属管理员授权条件。见[安装 HTTP 准入实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-保留数据移除的安装-http-准入)。
