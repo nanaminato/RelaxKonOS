@@ -26,6 +26,7 @@
 - [MB-05 Nginx 原回执清理确认与租约](#mb-05-nginx-原回执清理确认与租约)
 - [MB-05 网站发布独立执行程序集](#mb-05-网站发布独立执行程序集)
 - [MB-05 直接 Nginx 重载独立执行程序集](#mb-05-直接-nginx-重载独立执行程序集)
+- [MB-05 Linux 外部 Nginx 重载执行代次](#mb-05-linux-外部-nginx-重载执行代次)
 - [MB-05 Nginx 集成检查点与执行代次](#mb-05-nginx-集成检查点与执行代次)
 - [MB-05 已知 Nginx 集成失败的具名补偿](#mb-05-已知-nginx-集成失败的具名补偿)
 - [MB-05 Linux Nginx 启动、停止与重启的原回执](#mb-05-linux-nginx-启动停止与重启的原回执)
@@ -253,3 +254,11 @@ Linux 私有 systemd 与实际 Nginx 通过四组回归。停止 `68ca6118-fddb-
 同批复验直接重载的取消与 SIGTERM 排空、Nginx 集成具名补偿。前两轮未知场景夹具的 HTTP 409 断言有误，修正后四组通过。专属 cgroup 均已清理，宿主共享服务与配置指纹一致。日志为 `.artifacts/mb05-nginx-lifecycle/linux-verified.log`，归档 SHA-256 为 `8985d9fa6593f158990f399136d9e56bf6b2cc1522e542829305a16411975360`。
 
 WebServer 整体继续 resident。其他 Nginx 形态的原生启停对账、整机掉电、无 Helper 终态时的人工处置和生产内存仍待验收。
+
+## MB-05 Linux 外部 Nginx 重载执行代次
+
+Linux Release 使用私有挂载、PID 和网络命名空间。完整认证 Server 通过 `/usr/local/sbin/nginx` 的专属命令包装器发现外部实例，包装器向真实 Nginx 派发 reload 后暂扣命令完成。原 `768496bb-8cfc-4928-a993-e7ba4d25ad12` 已提供新的受信 HTTPS 响应，原 master PID 保持。跨过 30 秒闲时窗口，原操作仍为 Running，一个工作租约及原执行代次仍在。释放命令后原终态落盘、租约归零，观察旧 ALC 卸载并由测试 GC 确认收集。同键返回原回执，执行次数和加载次数保持。新键才加载下一代并进行第二次实际 reload。
+
+另一轮在真实 HTTPS 已更新、命令仍在途时终止 Server。重启不加载执行代码，按原 ID `2ffccb46-536d-4ad9-b131-d3646bbfa0b7` 及同键返回 `Failed / webserver.operation_interrupted`，真实 reload 一次，原 Nginx 进程及 HTTPS 继续。外部实例只有命令完成证据，此路径的原回执记录了中断。两轮专属进程由夹具及命名空间清理，宿主服务 PID、配置与代理环境文件指纹一致。
+
+日志在 `.artifacts/mb05-external-nginx/`，归档 SHA-256 为 `b384275ecfe7121b860fe09cf3b8b3513e0d1333a2d485a5b082ae15fbac9dfa`。Windows Release WebServer 和模块边界回归通过。此次确认外部 Linux 重载命令收尾及 ALC 收集，执行对象释放、隔离负载内存和生产收益未单独测量。外部实例的原生启停、自动续期部署及整机掉电仍开放。WebServer 保持 resident。

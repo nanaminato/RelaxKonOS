@@ -22,6 +22,7 @@ import uuid
 
 def run(root, server, helper_binary, mode):
     production_helper = mode is not None
+    external_execution = not production_helper and os.environ.get("RELAXKONOS_TEST_NGINX_EXTERNAL_EXECUTION") == "1"
     integration = mode is not None and mode.startswith("--systemd-integration-")
     integration_stage = mode == "--systemd-integration-stage"
     integration_live = mode == "--systemd-integration-live"
@@ -49,6 +50,8 @@ def run(root, server, helper_binary, mode):
     resume_interrupt = mode == "--systemd-website-acme-bootstrap-resume-interrupt"
     bind_interrupt = mode == "--systemd-website-acme-bootstrap-bind-interrupt"
     website_hook = os.environ.get("RELAXKONOS_TEST_WEBSITE_EXECUTION_HOOK")
+    if external_execution and not website_hook:
+        raise RuntimeError("External execution requires the WebServer collection probe")
     acme_renewal = mode is not None and mode.startswith("--systemd-website-acme-renewal")
     unknown_rotation = mode == "--systemd-website-acme-renewal-unknown"
     rejected_rotation = mode == "--systemd-website-acme-renewal-rejected"
@@ -142,7 +145,7 @@ def run(root, server, helper_binary, mode):
             child_env.update(overrides)
         if website_hook and arguments[0] == server:
             child_env["DOTNET_STARTUP_HOOKS"] = website_hook
-        if website_hook and (retire_live or integration_live or lifecycle or mode == "--systemd-first-site-acme-success") and arguments[0] == server:
+        if website_hook and (external_execution or retire_live or integration_live or lifecycle or mode == "--systemd-first-site-acme-success") and arguments[0] == server:
             child_env["RELAXKONOS_TEST_WEBSERVER_COLLECT"] = "1"
         with (root / f"{name}.stderr").open("w") as errors, (root / f"{name}.stdout").open("w") as output:
             child = subprocess.Popen(["dotnet", *map(str, arguments)], cwd=root, env=child_env,
@@ -175,6 +178,9 @@ def run(root, server, helper_binary, mode):
         prefix = "WEBSERVER EXECUTION "
         return [line.removeprefix(prefix) for line in (root / f"{name}.stderr").read_text().splitlines()
                 if line.startswith(prefix)]
+
+    def active_leases(token):
+        return request("/api/v1.0/server/modules/relaxkonos.webserver", token=token)["residency"]["activeLeases"]
 
     def healthy():
         try:
@@ -1791,9 +1797,6 @@ def run(root, server, helper_binary, mode):
                 "capability": capability, "target": instance, "password": credentials["password"]})
             assert elevated["elevated"]
 
-        def active_leases(token):
-            return request("/api/v1.0/server/modules/relaxkonos.webserver", token=token)["residency"]["activeLeases"]
-
         def assert_compensated(process_handle, token):
             wait_for(process_handle, lambda: request(path, token=token)["problemCode"] == "webserver.integration_compensated",
                      "original operation closed by matching compensation")
@@ -2024,6 +2027,35 @@ def run(root, server, helper_binary, mode):
             operation = accepted["operationId"]
             operation_route = f"{web}/operations/{operation}"
             witness = root / "nginx" / "reloads"
+            if external_execution:
+                wait_for(initial, witness.is_file, "external Nginx reload effect")
+                assert_served(b"updated")
+                loaded = webserver_code_events("initial-server")
+                assert len(loaded) == 1 and loaded[0].startswith("load ") and active_leases(token) == 1
+                time.sleep(32)
+                assert request(operation_route, token=token)["state"].lower() == "running"
+                assert webserver_code_events("initial-server") == loaded and active_leases(token) == 1
+                release = root / "nginx" / "release"
+                release.touch()
+                wait_for(initial, lambda: request(operation_route, token=token)["state"].lower() == "succeeded"
+                         and active_leases(token) == 0, "external reload terminal and cleanup")
+                name = loaded[0].removeprefix("load ")
+                expected_events = [*loaded, f"unload {name}", f"collected {name}"]
+                wait_for(initial, lambda: webserver_code_events("initial-server") == expected_events,
+                         "external Nginx code collection", attempts=450)
+                original = request(operation_route, token=token)
+                assert request(reload_route, token=token, method="POST", key=key, expected=202) == original
+                assert witness.read_text().splitlines() == ["reload"] and webserver_code_events("initial-server") == expected_events
+                next_receipt = request(reload_route, token=token, method="POST", key=secrets.token_hex(16), expected=202)
+                assert next_receipt["operationId"] != operation
+                next_route = f"{web}/operations/{next_receipt['operationId']}"
+                wait_for(initial, lambda: request(next_route, token=token)["state"].lower() == "succeeded", "fresh generation reload")
+                events = webserver_code_events("initial-server")
+                assert events[:3] == expected_events and len(events) == 4 and events[-1] != loaded[0] and events[-1].startswith("load ")
+                assert int(nginx_pid_file.read_text()) == nginx_pid and witness.read_text().splitlines() == ["reload", "reload"]
+                assert_served(b"updated")
+                print(f"PASS EXTERNAL NGINX EXECUTION: {operation}; one original reload, lease drain, {name} collected, {events[-1]}")
+                return
             if relay_mode and not retire_retry:
                 if not rejected:
                     wait_for(initial, witness.is_file, "reload witness")

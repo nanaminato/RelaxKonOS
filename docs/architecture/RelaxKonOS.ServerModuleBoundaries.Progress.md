@@ -20,7 +20,7 @@
 ## 下一步与完成条件
 
 1. **MB-04 逐个完成 Proxy 管理执行图。** 依据 [MB-01B 基线](RelaxKonOS.ServerModuleBaseline.20261106.md)及[隔离配对测量](server-module-evidence/Proxy-Observation.md)确定下一项。涉及安全 owner 或旧 worker 时，先验证持久索引、原台账恢复和真实租约，再验证重启、取消、禁用期间的真实网络和原副作用次数。最近完成的[受管 Mihomo 切换后补偿](server-module-evidence/Proxy-Subscriptions.md#mb-04-受管-mihomo-切换后的订阅激活补偿)确认了原失败回执与配置身份，候选停止至旧进程就绪有服务切换窗口。
-2. **MB-05 按领域扩展实机矩阵。** 已覆盖[变更 CLI 在途取消](server-module-evidence/Docker.md#mb-05-docker-变更-cli-在途取消与-engine-观察中断)、[未知 CLI 清理跨重启](server-module-evidence/Docker.md#mb-05-docker-cli-清理未知的持久门禁)、自动部署的[目标检查点](server-module-evidence/WebServer-TLS.md#mb-05-nginx-自动部署的目标检查点恢复)和[派发前原回执](server-module-evidence/WebServer-TLS.md#mb-05-nginx-自动重载在派发前的原回执恢复)。下一项用外部 Nginx 形态复验独立重载执行器。缺失身份的 CA 订单和 Docker 清理门禁须先确定可归因于原 ID 的证据来源。完成判据包括按原 ID 得到原回执、未知效果继续受保护、业务和清理完成前保留工作责任，以及外部服务按原所有权运行。
+2. **MB-05 按领域扩展实机矩阵。** 已覆盖[变更 CLI 在途取消](server-module-evidence/Docker.md#mb-05-docker-变更-cli-在途取消与-engine-观察中断)、[未知 CLI 清理跨重启](server-module-evidence/Docker.md#mb-05-docker-cli-清理未知的持久门禁)、[Linux 外部 Nginx 重载](server-module-evidence/WebServer.md#mb-05-linux-外部-nginx-重载执行代次)及[续期自动部署](server-module-evidence/WebServer-TLS.md#mb-05-nginx-续期自动部署)。外部实例的自动部署和启停需要能证明原生效果归属的实例接口。缺失身份的 CA 订单和 Docker 清理门禁须先确定可归因于原 ID 的证据来源。完成判据包括按原 ID 得到原回执、未知效果继续受保护、业务和清理完成前保留工作责任，以及外部服务按原所有权运行。
 3. **MB-03 保留明确的实机启动条件。** BuildKit 必须在隔离环境里真实执行，Git CLI 与 builder 可达同一可信 HTTPS 源仓库。再覆盖在途取消、中断、清理、原回执恢复和实际执行代次回收。当前启动失败和探测退出详见 [Git 与 BuildKit 证据](server-module-evidence/Git.md#mb-03-独立-engine-的受限-builder-复核)。
 4. **对外发布和生产收益独立验收。** 完成相应安全连续性后，按[基线测量协议](RelaxKonOS.ServerModuleBaseline.Protocol.md)记录相同构建的真实负载、全部相关进程、冷启动延迟和错误率。保持各域独立关闭条件。
 

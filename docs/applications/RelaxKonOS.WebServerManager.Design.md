@@ -1723,6 +1723,8 @@ Linux 系统包受管 Nginx 的启动、停止与重启使用原 `operationId` �
 
 Linux 系统包重载的原回执保存在 Server。原终态持久化后，Helper 压缩原详情并保留防重放标记。清理确认丢失时，存活 Server 按原 ID 重试清理，工作租约持续到确认落盘。停机仍待确认时，由重启后的同一工作 owner 接续。旧 ID 在 Helper 重启后仍拒绝重载，待核验记录保留详情。见[清理确认验收](../architecture/server-module-evidence/WebServer.md#mb-05-nginx-原回执清理确认与租约)。
 
+Linux 外部 Nginx 的直接重载保留工作租约到实际命令结束和终态落盘，之后执行程序集可闲时释放。若 Server 在命令返回前中断，原回执记录中断，同键返回该回执。外部 Nginx 进程继续由原设施管理。见[外部重载实测](../architecture/server-module-evidence/WebServer.md#mb-05-linux-外部-nginx-重载执行代次)。
+
 完整 Server 的认证网站发布已在既有 Linux 测试机通过生产 Helper、私有 systemd、实际 Nginx 和独立 Docker 上游的联合验收。配置阶段中断恢复原 `website.site_application_unverified` 回执且应用尚未关联。真实 HTTPS 探测期间中断恢复原 `website.recheck_required` 回执并保留应用关联。两条路径都保持现有 TLS 与上游服务，重启和同键查询未再次 reload。测试使用认证证书路由生成的专属自签证书。公共 CA 与发布的联合中断仍待验收。见[模块边界台账](../architecture/server-module-evidence/WebServer.md#mb-05-完整认证网站发布中断与恢复)。
 
 未指定证书 ID 时，自动签发使用所选 Nginx 的 WebRoot HTTP-01。发起者须同时具备所选实例的 `NginxConfigurationWrite` 与 `CertificateIssue`（目标 `certificates/issue`），并确认 CA 能通过申请域名的 TCP 80 到达该实例。已启用的集成或已记录 HTTP-01 的同域名站点沿用原挑战路由。
