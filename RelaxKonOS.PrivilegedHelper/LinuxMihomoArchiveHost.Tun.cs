@@ -86,18 +86,19 @@ internal sealed partial class LinuxMihomoArchiveHost
         return TunOwnership(effect, installation);
     }
 
-    internal async Task VerifyCommittedTunAsync(RuntimeMihomoTunOwnership ownership, RuntimeInstallation installation,
+    internal async Task<bool> VerifyCommittedTunAsync(RuntimeMihomoTunOwnership ownership, RuntimeInstallation installation,
         Guid executionId, CancellationToken ct)
     {
         var (registration, _, effect) = await ReadCommittedTunAsync(ownership, installation, executionId, ct);
         if (effect.Phase == MihomoTunPhase.Restored)
         {
             await VerifyStoppedTunAsync(effect, ct);
-            return;
+            return false;
         }
         if (effect.Phase is MihomoTunPhase.StopDispatched or MihomoTunPhase.RuleRemovalDispatched)
             Fail("network_stop_unconfirmed");
         await VerifyActiveTunAsync(registration, effect, ct);
+        return true;
     }
 
     // The caller holds the archive instance lock for the entire stop, including the final observation.

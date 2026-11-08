@@ -29,18 +29,7 @@ public static class ProxyEndpoints
             return QueueValueAsync(context, (key, actor, token) => operations.EnqueueLifecycleAsync(key, parsed, actor, token), ct);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
 
-        app.MapGet(ProxyApiRoutes.Tun, (IProxyTunSafetyService tun, CancellationToken ct) => tun.GetStatusAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.TunEnable, (ProxyTunRequest request, HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
-        {
-            var address = context.Connection.RemoteIpAddress;
-            return QueueValueAsync(context, (key, actor, token) => operations.EnqueueTunAsync(key, ProxyTunOperation.Enable, request.ProfileId, address, actor, token), ct);
-        }).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.TunDisable, (HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
-            QueueValueAsync(context, (key, actor, token) => operations.EnqueueTunAsync(key, ProxyTunOperation.Disable, Guid.Empty, null, actor, token), ct))
-            .RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.TunEmergencyDisable, (HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
-            QueueValueAsync(context, (key, actor, token) => operations.EnqueueTunAsync(key, ProxyTunOperation.EmergencyDisable, Guid.Empty, null, actor, token), ct))
-            .RequireAuthorization("ProxyDangerous").WithTags("Proxy");
+        app.MapTunOperationEndpoints();
         app.MapGet(ProxyApiRoutes.Recovery, (IProxyRecoveryService recovery, CancellationToken ct) => recovery.GetStatusAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
 
         app.MapGet(ProxyApiRoutes.Profiles, (IProxyProfileService service, CancellationToken ct) => service.ListAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
@@ -110,8 +99,26 @@ public static class ProxyEndpoints
             var problem = await engines.Find("mihomo")!.CloseConnectionAsync(connectionId, ct); await audit.RecordAsync(Actor(context.User), "connection.close", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
             return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapGet(Route(ProxyApiRoutes.OperationsPattern), (Guid operationId, ProxyOperationStore operations, CancellationToken ct) => operations.GetAsync(operationId, ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         return app;
+    }
+
+    internal static void MapTunOperationEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapGet(ProxyApiRoutes.Tun, (IProxyTunSafetyService tun, CancellationToken ct) => tun.GetStatusAsync(ct))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapPost(ProxyApiRoutes.TunEnable, (ProxyTunRequest request, HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
+        {
+            var address = context.Connection.RemoteIpAddress;
+            return QueueValueAsync(context, (key, actor, token) => operations.EnqueueTunAsync(key, ProxyTunOperation.Enable, request.ProfileId, address, actor, token), ct);
+        }).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
+        app.MapPost(ProxyApiRoutes.TunDisable, (HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
+            QueueValueAsync(context, (key, actor, token) => operations.EnqueueTunAsync(key, ProxyTunOperation.Disable, Guid.Empty, null, actor, token), ct))
+            .RequireAuthorization("ProxyDangerous").WithTags("Proxy");
+        app.MapPost(ProxyApiRoutes.TunEmergencyDisable, (HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
+            QueueValueAsync(context, (key, actor, token) => operations.EnqueueTunAsync(key, ProxyTunOperation.EmergencyDisable, Guid.Empty, null, actor, token), ct))
+            .RequireAuthorization("ProxyDangerous").WithTags("Proxy");
+        app.MapGet(Route(ProxyApiRoutes.OperationsPattern), (Guid operationId, ProxyOperationStore operations, CancellationToken ct) =>
+            operations.GetAsync(operationId, ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
     }
 
     internal static void MapProxySettingsUpdateEndpoint(this IEndpointRouteBuilder app)
@@ -192,7 +199,11 @@ public static class ProxyEndpoints
             var item = await enqueue(key, actor, ct);
             return new ResidentOperationResult(ServerModules.ProxyId, Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId)));
         }
-        catch (ProxyOperationValidationException error) { return Problem(error.ProblemCode, StatusCodes.Status400BadRequest); }
+        catch (ProxyOperationValidationException error)
+        {
+            return Problem(error.ProblemCode, error.ProblemCode == ProxyProblemCodes.IdempotencyConflict
+                ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest);
+        }
     }
 
     internal static void MapSubscriptionOperationEndpoints(this IEndpointRouteBuilder app)

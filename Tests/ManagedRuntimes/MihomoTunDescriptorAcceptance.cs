@@ -121,7 +121,7 @@ internal static class MihomoTunDescriptorAcceptance
         driftedPlan = driftedPlan with { NetworkIntentIdentity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(operationId, driftedPlan, network) };
         await RefusesAsync("runtime.network_intent_invalid", () => publications.BeginConfigurationAsync(operationId, confirmed.Revision,
             autoRoute, driftedPlan, CancellationToken.None, tunIntent: network));
-        if (serverCase is "ipc-server-commit" or "ipc-server-pending")
+        if (serverCase is "ipc-server-commit" or "ipc-server-pending" or "ipc-http-commit")
         {
             var input = IpcPlanPath(paths);
             await File.WriteAllBytesAsync(input, RuntimeJson.Serialize(new IpcPublicationInput(operationId, serverCase, frozen)));
@@ -187,10 +187,15 @@ internal static class MihomoTunDescriptorAcceptance
     {
         MihomoIpcStartupAcceptance.RequirePrivateHost(rootRequired: false);
         if (Environment.IsPrivilegedProcess || root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK")
-            || phase is not ("publish" or "recover" or "lifecycle"))
+            || phase is not ("publish" or "recover" or "lifecycle" or "http" or "http-recover"))
             throw new InvalidOperationException("The managed publication IPC Server requires the isolated unprivileged worker.");
         var paths = new AuthorizationPaths(root);
         var input = RuntimeJson.Read<IpcPublicationInput>(await File.ReadAllBytesAsync(IpcPlanPath(paths)));
+        if (input.Scenario == "ipc-http-commit" && phase is ("http" or "http-recover"))
+        {
+            await MihomoTunHttpAcceptance.RunAsync(root, Publications(paths), paths, paths, paths, IpcSocketPath, phase == "http");
+            return;
+        }
         if (input.Scenario is not ("ipc-server-commit" or "ipc-server-pending"))
             throw new InvalidOperationException("The IPC publication scenario is unavailable.");
         var revision = (await Publications(paths).ReadAsync(CancellationToken.None)).Revision;

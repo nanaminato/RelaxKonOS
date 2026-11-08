@@ -824,6 +824,140 @@ def proof_server_publication(owner, operation, operation_dir, previous, case, ip
           f'PID={record["service"][0]}; outcome={result["outcome"]}; original receipt, real traffic, resident work lease')
 
 
+def proof_http_publication(owner, ipc, previous):
+    state_dir = root / 'authorization-state'
+    api = 'http://192.0.2.2:18970/api/v1.0/proxy'
+    profile = '8fec824f-778c-4cf5-b81d-94fb4618cae5'
+    key = 'managed-tun-http-enable'
+
+    def wait_file(name, process):
+        deadline = time.monotonic() + 12
+        path = state_dir / name
+        while not path.exists():
+            if process.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError(f'HTTP fixture did not reach {name}')
+            time.sleep(.05)
+        return path
+
+    def http(path, key=None, data=None, role='controller', drop=False):
+        args = ['ip', 'netns', 'exec', 'rk-http-client', '/usr/bin/curl', '--noproxy', '*', '--silent', '--show-error',
+                '--max-time', '1.5' if drop else '5', '--write-out', '\n%{http_code}']
+        if role:
+            args.extend(['-H', f'Authorization: Bearer {role}'])
+        if key:
+            args.extend(['-X', 'POST', '-H', f'Idempotency-Key: {key}'])
+        if data is not None:
+            args.extend(['-H', 'Content-Type: application/json', '--data', json.dumps(data)])
+        if drop:
+            args.extend(['-H', 'X-Fixture-Drop: accepted'])
+        response = subprocess.run([*args, api + path], capture_output=True, text=True, timeout=8)
+        if drop:
+            assert response.returncode == 28, (response.stdout, response.stderr)
+            return
+        assert response.returncode == 0, response.stderr
+        body, status = response.stdout.rsplit('\n', 1)
+        return int(status), json.loads(body) if body else None
+
+    def accepted(path, key, data=None):
+        status, body = http(path, key, data)
+        assert status == 202, (status, body)
+        return uuid.UUID(body['operationId']).hex
+
+    def terminal(operation):
+        deadline = time.monotonic() + 12
+        while time.monotonic() < deadline:
+            status, body = http('/operations/' + str(uuid.UUID(operation)))
+            assert status == 200, (status, body)
+            if body['stage'] == 'completed':
+                assert body['state'] == 2 and not body['problemCode']
+                return
+            if body['stage'] == 'failed':
+                raise RuntimeError(str(body))
+            time.sleep(.1)
+        raise RuntimeError('HTTP operation did not reach its original terminal receipt')
+
+    def probe(record, phase):
+        observe_runtime(record)
+        assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
+                       f'http://{target}:18880/mb04-{phase}') == 'upstream-through-inherited-tun'
+        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
+
+    wait_file('http-ready', owner)
+    assert http('/tun/enable', key, {'profileId': profile}, role=None)[0] == 401
+    assert http('/tun/enable', key, {'profileId': profile}, role='observer')[0] == 403
+    assert not (state_dir / 'proxy-operations.json').exists()
+    policy = scope_policy.read_bytes()
+    scope_policy.write_text(json.dumps(dict(json.loads(policy), allowManagedPublication=False)))
+    denied = accepted('/tun/enable', 'managed-tun-http-closed', {'profileId': profile})
+    deadline = time.monotonic() + 5
+    while True:
+        _, denied_result = http('/operations/' + str(uuid.UUID(denied)))
+        if denied_result['stage'] == 'failed':
+            assert denied_result['problemCode'] == 'proxy.not_supported'
+            break
+        assert time.monotonic() < deadline
+        time.sleep(.1)
+    assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
+    scope_policy.write_bytes(policy)
+    http('/tun/enable', key, {'profileId': profile}, drop=True)
+    operation = uuid.UUID(json.loads(wait_file('http-admitted', owner).read_bytes())['operationId']).hex
+    wait_file('http-disconnected', owner)
+    assert accepted('/tun/enable', key, {'profileId': profile}) == operation
+    assert http('/tun/enable', key, {'profileId': str(uuid.uuid4())})[0] == 409
+    assert wait_file('server-cut-ready', owner).read_text() == operation
+    record = json.loads(journal.read_bytes())
+    record['operation'] = operation
+    sync_record(record)
+    operation_dir = archive / 'operations' / operation
+    effect = json.loads((operation_dir / 'tun-5.json').read_text())
+    prepare(effect['InterfaceIndex'], ipc.helper.pid)
+    record = json.loads(journal.read_bytes())
+    mirror = root / 'authorization' / 'active.yaml'
+    assert mirror.read_bytes() == previous.read_bytes()
+    probe(record, 'http-before-crash')
+    owner.kill()
+    assert owner.wait(timeout=5) == -signal.SIGKILL
+    ipc.stop_helper()
+    assert ipc.log.read_text().count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(operation)} uid={ipc.uid} success=True') == 1
+    ipc.start_helper()
+    scope_policy.unlink()
+    (state_dir / 'http-ready').unlink()
+    restarted = subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity, stdout=subprocess.PIPE, text=True)
+    try:
+        wait_file('http-ready', restarted)
+        assert accepted('/tun/enable', key, {'profileId': profile}) == operation
+        terminal(operation)
+        assert mirror.read_bytes() == config.read_bytes()
+        assert http('/tun')[1]['hasRecoveryMarker'] is False
+        probe(record, 'http-after-crash')
+        stopped = accepted('/tun/disable', 'managed-tun-http-stop')
+        terminal(stopped)
+        assert not Path(f'/proc/{record["service"][0]}').exists() and device not in devices()
+        assert network_baseline() == record['baseline']
+        scope_policy.write_bytes(policy)
+        scope_policy.chmod(0o644)
+        started = accepted('/tun/enable', 'managed-tun-http-start', {'profileId': profile})
+        terminal(started)
+        assert accepted('/tun/enable', 'managed-tun-http-start', {'profileId': profile}) == started
+        active = json.loads((archive / 'operations' / started / 'tun-5.json').read_text())
+        table = active['Intent']['RoutingTable']
+        current = dict(record, service=service_identity(), ifindex=active['InterfaceIndex'],
+                       routing_table=table, route=route(table))
+        probe(current, 'http-started')
+        deadline = time.monotonic() + 5
+        while http('/fixture-work-leases') != (200, 0):
+            assert time.monotonic() < deadline
+            time.sleep(.05)
+        assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
+        print(f'PASS TUN AUTHENTICATED HTTP: publication={operation}; stop={stopped}; start={started}; '
+              f'credential={record["credential"]}; active PID={current["service"][0]}; same key and no configure replay')
+    finally:
+        if restarted.poll() is None:
+            restarted.kill()
+        restarted.wait(timeout=5)
+        restarted.stdout.close()
+
+
 def proof():
     assert os.geteuid() == 0 and Path('/proc/1/comm').read_text().strip() == 'systemd'
     mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines() if ' - tmpfs ' in line}
@@ -831,6 +965,11 @@ def proof():
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
+    if case == 'ipc-http-commit':
+        ip('netns', 'add', 'rk-http-client')
+        ip('link', 'set', 'rk-peer', 'netns', 'rk-http-client')
+        ip('netns', 'exec', 'rk-http-client', 'ip', 'link', 'set', 'rk-peer', 'up')
+        ip('netns', 'exec', 'rk-http-client', 'ip', 'address', 'add', '192.0.2.1/24', 'dev', 'rk-peer')
     if case in ('dns-receipt', 'dns-owner', 'ipc-server-pending'):
         install_dns_ack_boundary()
     service('start', 'systemd-resolved.service')
@@ -884,6 +1023,9 @@ rules:
   - MATCH,fixture-upstream
 ''')
     candidate.chmod(0o600)
+    if case == 'ipc-http-commit':
+        # The authenticated action enables TUN for the confirmed active profile.
+        previous.write_bytes(candidate.read_bytes())
     user = pwd.getpwnam('nobody')
     sync_record({'phase': 'prepared', 'case': case, 'operation': operation, 'uid': user.pw_uid, 'gid': user.pw_gid,
                  'revision': str(revision),
@@ -891,17 +1033,22 @@ rules:
                  'namespace': os.readlink('/proc/self/ns/net'), 'baseline': baseline})
     invocation = [sys.executable, '-I', script]
     ipc = None
-    env = dict(os.environ, RELAXKONOS_TEST_MIHOMO_HELPER=launcher) if case.startswith('ipc-server-') else None
+    env = dict(os.environ, RELAXKONOS_TEST_MIHOMO_HELPER=launcher) if case.startswith('ipc-') else None
     owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
                              stdout=subprocess.PIPE, text=True, env=env)
     try:
-        if case.startswith('ipc-server-'):
+        if case.startswith('ipc-'):
             assert owner.wait(timeout=15) == 0
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            owner = subprocess.Popen([*ipc.server, 'publish'], **ipc.identity, stdout=subprocess.PIPE, text=True)
-            proof_server_publication(owner, operation, operation_dir, previous, case, ipc)
+            http_case = case == 'ipc-http-commit'
+            owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,
+                                     stdout=subprocess.PIPE, text=True)
+            if http_case:
+                proof_http_publication(owner, ipc, previous)
+            else:
+                proof_server_publication(owner, operation, operation_dir, previous, case, ipc)
             return
         if case in ('server-commit', 'server-pending'):
             proof_server_publication(owner, operation, operation_dir, previous, case)

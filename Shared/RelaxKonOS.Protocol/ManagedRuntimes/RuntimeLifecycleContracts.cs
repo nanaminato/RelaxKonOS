@@ -22,7 +22,7 @@ public sealed record RuntimeInstallationSnapshot(RuntimeInstallation Installatio
     Guid? ActiveRevisionId, string? ConfigurationIdentity, Guid? PendingOperationId,
     InstallationStage? PendingStage, string? ProblemCode, RuntimeSwitchResult? Receipt = null,
     IReadOnlyList<RuntimeInstalledRelease>? InstalledReleases = null, RuntimeDependencyReport? Environment = null,
-    RuntimeCommitWitness? CommitWitness = null, Guid? MihomoTunPublicationId = null);
+    RuntimeCommitWitness? CommitWitness = null, Guid? MihomoTunPublicationId = null, bool? MihomoTunRunning = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeSwitchOutcome>))]
 public enum RuntimeSwitchOutcome { Succeeded, Failed, Cancelled, Interrupted, RecoveryRequired }

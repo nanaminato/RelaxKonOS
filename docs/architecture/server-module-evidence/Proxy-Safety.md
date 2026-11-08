@@ -50,6 +50,7 @@
 - [MB-04 受管 TUN 提交后移除](#mb-04-受管-tun-提交后移除)
 - [MB-04 受管 TUN Server 发布协调](#mb-04-受管-tun-server-发布协调)
 - [MB-04 受管 TUN AF_UNIX 发布与恢复](#mb-04-受管-tun-af_unix-发布与恢复)
+- [MB-04 受管 TUN 认证 HTTP](#mb-04-受管-tun-认证-http)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -563,7 +564,23 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 **已实现但实机未验证。** 其他 Linux 架构。Windows 可信下载探针因缺少进程级测试 CA 覆盖跳过。
 
-**未实现或仍受门禁保护。** 客户端公开发布、同键 HTTP 和公开入口工作租约待联合验收。已确认专属进程退出和 cgroup 清理。对象释放、ALC 回收、隔离负载内存与生产内存收益未测量。Proxy 保持 resident。
+该批确认专属进程退出和 cgroup 清理。客户端入口由后续[认证 HTTP 验收](#mb-04-受管-tun-认证-http)覆盖。
+
+## MB-04 受管 TUN 认证 HTTP
+
+**已实现且已验证。** 专属 Linux x64 私有 systemd 中，非 root Kestrel 映射生产 Proxy TUN 路由和原操作查询，使用实际 Proxy 队列、工作租约和独立 root Helper 的 AF_UNIX 通道。匿名请求返回 401，观察者返回 403。关闭宿主 `allowManagedPublication` 后，获准的控制请求终止于 `proxy.not_supported`，Helper 配置派发为零。
+
+独立客户端网络命名空间使用实际 TCP 连接触发管理端选路。测试延迟 HTTP 受理响应使客户端断连，同键重试得到 202 和原 ID，改换档案得到 409。Helper 成功帧到达而 Server 尚未确认时观察到至少两个工作租约，随后终止并重启 Server 和 Helper。按原 ID 查询确认原发布，核对原配置身份、真实上游 HTTP、分流 DNS 和管理连接。原 Helper 配置派发仅一次，新 Helper 未再次派发。随后从同一认证入口具名停止及重新启动，验证真实进程、设备、路由及流量变化。
+
+13 组实机通过，专属 cgroup 均已清理，宿主共享服务、代理及 resolver 文件指纹一致。该批原发布 `20df6fcf82cc4a5cab7be65154c33740`，停止队列 ID `8b9efb5144904e17bb6fad84f5d9b5ad`，重新启动 `034fe9e73ac348e8906849735157f548`，凭据摘要 `ebb03015cd9c31449360312acc01375efd69e538c00b51d31e1ab730bb5869a1`，重新启动 PID 689。归档 SHA-256 为 `020852500b4a584b8571dcb2984cc24046eafef833f17f748b6de18acc547717`，日志为 `.artifacts/mb04-tun-marker-sync/tun-http-linux-final.log`。Windows Release 通过，包括 104 项配置事务检查，日志为 `.artifacts/mb04-tun-marker-sync/tun-http-windows.log`。
+
+首轮实机认证和提交通过，但上游探针失败。探针规则只写入了草稿，而入口加载的是已确认档案。夹具改为以同一套规则种下已确认档案，再次核对实际转发，结果通过。原失败及复测分别记录于 `.artifacts/mb04-tun-marker-sync/tun-http-linux-first.log` 和 `.artifacts/mb04-tun-marker-sync/tun-http-linux-second.log`。
+
+最终 HTTP 单项复跑通过。实际队列终态和清理后，租约观察值归零。原发布 `d30d3451a5b24af99a323872b68c4f2a`，停止队列 ID `efd2ff92570946de87152f9dcd4a4e20`，重新启动 `fa8ffea281864bdcb2a75cac684e8a06`，重新启动 PID 686。归档 SHA-256 为 `3cd588d832a7d07674023c0446ed4796ca2b0e7b731a5be249b72d7382f16509`，日志为 `.artifacts/mb04-tun-marker-sync/tun-http-linux-lease.log`。
+
+**已实现但实机未验证。** 其他 Linux 架构。HTTP 实机使用等效角色策略和夹具 bearer，完整安装态 JWT 登录和 Android 客户端未参与。Windows 可信下载探针因缺少进程级测试 CA 覆盖跳过。
+
+**未实现或仍受门禁保护。** Helper 尚无终态及具名启停响应丢失时，HTTP 原执行的终态对账仍待联合验收。未知请求继续待核验。Proxy 保持 resident。此批证据确认专属进程退出及清理，未测量对象释放、ALC 回收、隔离负载内存或生产收益。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

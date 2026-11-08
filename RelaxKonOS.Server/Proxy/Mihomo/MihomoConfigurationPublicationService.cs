@@ -31,11 +31,14 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
         await store.Gate.WaitAsync(ct);
         try
         {
-            return await PublishCoreAsync(operationId, expectedPublicationRevision, frozen.Plan, frozen.Candidate, ct,
-                settings: null, profile: null, frozen.Intent);
+            return await PublishManagedTunUnderGateAsync(operationId, expectedPublicationRevision, frozen, ct);
         }
         finally { store.Gate.Release(); }
     }
+
+    internal Task<MihomoPublicationResult> PublishManagedTunUnderGateAsync(Guid operationId, long expectedPublicationRevision,
+        MihomoManagedTunPlan frozen, CancellationToken ct) =>
+        PublishCoreAsync(operationId, expectedPublicationRevision, frozen.Plan, frozen.Candidate, ct, null, null, frozen.Intent);
 
     // Application profile writers already hold the publication gate while selecting current material.
     internal Task<MihomoPublicationResult> PublishUnderGateAsync(Guid operationId, long expectedPublicationRevision,

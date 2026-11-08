@@ -71,7 +71,8 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         EnqueueIdentifiedAsync(idempotencyKey, kind, (_, stage, _, token) => operation(stage, token), cancellationToken);
 
     internal async Task<ProxyOperationDto> EnqueueIdentifiedAsync(string idempotencyKey, string kind,
-        Func<Guid, ProxyOperationStageReporter, Action<IDisposable>, CancellationToken, Task<string?>> operation, CancellationToken cancellationToken)
+        Func<Guid, ProxyOperationStageReporter, Action<IDisposable>, CancellationToken, Task<string?>> operation, CancellationToken cancellationToken,
+        string? requestIdentity = null)
     {
         if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Length > 200)
             throw new ProxyOperationValidationException(ProxyProblemCodes.IdempotencyKeyRequired);
@@ -84,12 +85,17 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             if (entries.Any(NeedsReconciliation))
                 await ReconcileRefreshesAsync(entries, null, cancellationToken);
             var prior = entries.FirstOrDefault(entry => entry.IdempotencyKey == idempotencyKey);
-            if (prior is not null) return Visible(prior.Operation);
+            if (prior is not null)
+            {
+                if (prior.RequestIdentity != requestIdentity)
+                    throw new ProxyOperationValidationException(ProxyProblemCodes.IdempotencyConflict);
+                return Visible(prior.Operation);
+            }
             if (Volatile.Read(ref _stopping) || _recoveryBlocked || entries.Any(entry => IsUnresolved(entry) && !_running.ContainsKey(entry.Operation.OperationId)))
                 throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
             work = await workLeases.AcquireAsync(cancellationToken);
             item = new ProxyOperationDto(Guid.NewGuid(), kind, ProxyOperationState.Queued, "queued", "", null, null);
-            await SaveAsync([.. entries, new Entry(idempotencyKey, item, kind == RefreshBatchKind ? [] : null)], cancellationToken);
+            await SaveAsync([.. entries, new Entry(idempotencyKey, item, kind == RefreshBatchKind ? [] : null, requestIdentity)], cancellationToken);
             _running.Add(item.OperationId, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         }
         catch { work?.Dispose(); throw; }
@@ -192,6 +198,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                 && operation.ProblemCode == ProxyProblemCodes.OperationInterrupted);
 
     private bool NeedsReconciliation(Entry entry) => IsInterruptedSubscriptionPublication(entry.Operation)
+        || entry.Operation.Stage == MihomoManagedTunOperations.QueueStage && !_running.ContainsKey(entry.Operation.OperationId)
         || entry.Batch is not null && !_running.ContainsKey(entry.Operation.OperationId)
             && (entry.Operation.State is ProxyOperationState.Queued or ProxyOperationState.Running || entry.Operation.Stage == BatchPending);
 
@@ -211,6 +218,21 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             var operation = entry.Operation;
             if (!NeedsReconciliation(entry) || requested is not null && requested != operation.OperationId)
                 continue;
+
+            if (operation.Stage == MihomoManagedTunOperations.QueueStage)
+            {
+                if (state?.LastConfiguration is not { } complete || complete.OperationId != operation.OperationId)
+                    continue;
+                entries[index] = entry with { Operation = operation with
+                {
+                    State = complete.Confirmed ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
+                    Stage = complete.Confirmed ? "completed" : "failed",
+                    ProblemCode = complete.Confirmed ? "" : ProxyProblemCodes.ConfigApplyFailed,
+                    CompletedAt = DateTimeOffset.UtcNow
+                } };
+                changed = true;
+                continue;
+            }
 
             if (entry.Batch is not null)
             {
@@ -291,15 +313,18 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         var id = original.OperationId;
         try
         {
+            var lastStage = "";
             await UpdateAsync(id, item => item with { State = ProxyOperationState.Running, Stage = "running",
                 StartedAt = item.StartedAt ?? DateTimeOffset.UtcNow, CompletedAt = null });
             var problem = await operation(async stage =>
             {
                 logger.LogDebug("Proxy operation {OperationId} entered stage {Stage}.", id, stage);
                 await UpdateAsync(id, item => item with { Stage = stage });
+                lastStage = stage;
             }, CancellationToken.None);
             var publicationPending = false;
             var batchPending = original.Kind == RefreshBatchKind && problem == ProxyProblemCodes.RecoveryRequired;
+            var managedTunPending = lastStage == MihomoManagedTunOperations.QueueStage && problem == ProxyProblemCodes.RecoveryRequired;
             if (IsSubscriptionPublication(original.Kind) && problem == ProxyProblemCodes.RecoveryRequired && publication is not null)
             {
                 try
@@ -319,11 +344,12 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                 logger.LogInformation("Proxy operation {OperationId} completed.", id);
             await UpdateAsync(id, item => item with
             {
-                State = publicationPending || batchPending ? ProxyOperationState.Interrupted
+                State = publicationPending || batchPending || managedTunPending ? ProxyOperationState.Interrupted
                     : string.IsNullOrEmpty(problem) ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
-                Stage = batchPending ? BatchPending : publicationPending ? "publication_pending" : string.IsNullOrEmpty(problem) ? "completed" : "failed",
+                Stage = managedTunPending ? MihomoManagedTunOperations.QueueStage
+                    : batchPending ? BatchPending : publicationPending ? "publication_pending" : string.IsNullOrEmpty(problem) ? "completed" : "failed",
                 ProblemCode = batchPending ? ProxyProblemCodes.OperationInterrupted : problem ?? "",
-                CompletedAt = publicationPending || batchPending ? null : DateTimeOffset.UtcNow,
+                CompletedAt = publicationPending || batchPending || managedTunPending ? null : DateTimeOffset.UtcNow,
             });
         }
         catch (Exception exception)
@@ -339,12 +365,13 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             {
                 var pendingStep = exception is not ProxyOperationCleanupException
                     && entry.Batch?.Any(step => step.State == RefreshStepState.Running) == true;
+                var tunPending = entry.Operation.Stage == MihomoManagedTunOperations.QueueStage;
                 return entry with { Operation = entry.Operation with
                 {
-                    State = pendingStep ? ProxyOperationState.Interrupted : ProxyOperationState.Failed,
-                    Stage = pendingStep ? BatchPending : "failed",
+                    State = pendingStep || tunPending ? ProxyOperationState.Interrupted : ProxyOperationState.Failed,
+                    Stage = tunPending ? MihomoManagedTunOperations.QueueStage : pendingStep ? BatchPending : "failed",
                     ProblemCode = ProxyProblemCodes.OperationInterrupted,
-                    CompletedAt = pendingStep ? null : DateTimeOffset.UtcNow
+                    CompletedAt = pendingStep || tunPending ? null : DateTimeOffset.UtcNow
                 } };
             });
             if (exception is ProxyOperationCleanupException) throw;
@@ -398,7 +425,8 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             if (entry is null || string.IsNullOrWhiteSpace(entry.IdempotencyKey) || entry.IdempotencyKey.Length > 200
                 || !keys.Add(entry.IdempotencyKey) || entry.Operation is not { } item || item.OperationId == Guid.Empty
                 || !ids.Add(item.OperationId) || !Enum.IsDefined(item.State) || string.IsNullOrEmpty(item.Kind)
-                || item.Stage is null || item.ProblemCode is null || !IsValidBatch(entry))
+                || item.Stage is null || item.ProblemCode is null || !IsValidBatch(entry)
+                || entry.RequestIdentity is { } identity && (identity.Length != 64 || !identity.All(Uri.IsHexDigit)))
                 throw new InvalidDataException("Invalid Proxy operation ledger entry.");
             if (entry.Batch is { } steps && steps.Any(step => !ids.Add(step.OperationId)))
                 throw new InvalidDataException("Duplicate Proxy refresh operation ID.");
@@ -436,7 +464,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
 
     private sealed record Entry(string IdempotencyKey, ProxyOperationDto Operation,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-        RefreshStep[]? Batch = null);
+        RefreshStep[]? Batch = null, string? RequestIdentity = null);
 
     private static void SetPrivateDirectory(string path)
     {

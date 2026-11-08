@@ -41,6 +41,7 @@ public static class ProxyProblemCodes
     public const string RecoveryFailed = "proxy.recovery_failed";
     public const string OperationInterrupted = "proxy.operation_interrupted";
     public const string IdempotencyKeyRequired = "proxy.idempotency_key_required";
+    public const string IdempotencyConflict = "proxy.idempotency_conflict";
     public const string PermissionDenied = "proxy.permission_denied";
     public const string NotSupported = "proxy.not_supported";
     public const string SystemProxyConflict = "proxy.system_proxy_conflict";

@@ -28,7 +28,7 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         var state = await EnsureStateAsync(ct);
         var receipt = state.Receipts.FirstOrDefault(r => r.OperationId == receiptOperationId);
         var launch = state.MihomoTunStarts.FirstOrDefault(item => item.OperationId == receiptOperationId);
-        var observation = HasPending(state) ? (state.Installation, (string?)null)
+        var observation = HasPending(state) ? (state.Installation, (string?)null, (bool?)null)
             : await ObserveInstallationAsync(state, ct);
         var verified = observation.Item1.Ownership == RuntimeOwnership.Managed;
         return new(observation.Item1, verified ? state.Active?.MeasuredVersion : null, verified ? state.Active?.RevisionId : null, state.ConfigurationIdentity,
@@ -45,7 +45,7 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray(),
             // Read-only environment facts, so a refusal can be explained before anyone presses install.
             RuntimeDependencyProbe.Environment(environment, root), states.ReadCommittedWitness(state, receipt),
-            verified && !HasPending(state) ? state.ActiveMihomoTun?.OperationId : null);
+            verified && !HasPending(state) ? state.ActiveMihomoTun?.OperationId : null, observation.Item3);
     }
 
     internal async Task<RuntimePlanResult> PlanAsync(string sourceId, RuntimePlanRequest request, CancellationToken ct)
@@ -81,40 +81,41 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
     private static bool HasPending(RuntimeArchiveState state) => state.Pending is not null || state.Removal is not null
         || state.Configuration is not null || state.Installation.RecoveryRequired;
 
-    private async Task<(RuntimeInstallation Installation, string? Problem)> ObserveInstallationAsync(RuntimeArchiveState state, CancellationToken ct)
+    private async Task<(RuntimeInstallation Installation, string? Problem, bool? TunRunning)> ObserveInstallationAsync(RuntimeArchiveState state, CancellationToken ct)
     {
         try
         {
             if (state.PendingMihomoTunStart is not null)
                 throw new RuntimePolicyException("runtime.network_start_unconfirmed");
             var service = await host.ObserveAsync(ct);
+            bool? tunRunning = null;
             if (service.TunOperation != state.CurrentMihomoTunExecution)
                 throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
             if (state.ActiveMihomoTun is { } tun)
             {
                 if (!OperatingSystem.IsLinux() || host is not LinuxMihomoArchiveHost linux)
                     throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
-                await linux.VerifyCommittedTunAsync(tun, state.Installation, state.CurrentMihomoTunExecution!.Value, ct);
+                tunRunning = await linux.VerifyCommittedTunAsync(tun, state.Installation, state.CurrentMihomoTunExecution!.Value, ct);
             }
             if (state.Active is null)
             {
-                if (service.Exists) return (state.Installation with { Ownership = RuntimeOwnership.External }, "runtime.external_installation");
+                if (service.Exists) return (state.Installation with { Ownership = RuntimeOwnership.External }, "runtime.external_installation", null);
                 if (state.ConfigurationIdentity is { } retained && Convert.ToHexString(SHA256.HashData(
                     await MihomoArchiveAdapter.ReadConfigurationAsync(Path.Combine(root, "active.yaml"), ct))) != retained)
                     throw new RuntimePolicyException("runtime.configuration_drift");
                 // Retained published configuration is owned data, not an unknown flat installation.
                 if (state.ConfigurationIdentity is null && (File.Exists(Path.Combine(root, "active.yaml"))
                     || File.Exists(Path.Combine(root, "mihomo")) || File.Exists(Path.Combine(root, "installed.json"))))
-                    return (state.Installation with { Ownership = RuntimeOwnership.Unknown }, "runtime.state_unknown");
-                return (state.Installation with { Ownership = RuntimeOwnership.Absent }, null);
+                    return (state.Installation with { Ownership = RuntimeOwnership.Unknown }, "runtime.state_unknown", null);
+                return (state.Installation with { Ownership = RuntimeOwnership.Absent }, null, null);
             }
             var active = state.Active;
             var binary = Path.Combine(root, "versions", active.RevisionId.ToString("N"), active.Release.Artifact.EntryPoint);
             var data = Path.Combine(root, "data", active.RevisionId.ToString("N"));
-            if (!service.Owned) return (state.Installation with { Ownership = RuntimeOwnership.External }, "runtime.external_installation");
+            if (!service.Owned) return (state.Installation with { Ownership = RuntimeOwnership.External }, "runtime.external_installation", null);
             if (!service.Exists || service.BootEnabled is null || !MihomoArchiveAdapter.SamePath(service.Executable, binary)
                 || !MihomoArchiveAdapter.SamePath(service.DataDirectory, data))
-                return (state.Installation with { Ownership = RuntimeOwnership.Unknown }, "runtime.state_unknown");
+                return (state.Installation with { Ownership = RuntimeOwnership.Unknown }, "runtime.state_unknown", null);
             RuntimeSourceStore.RequireNoLinks(data);
             if (!Directory.Exists(data)) throw new RuntimePolicyException("runtime.data_snapshot_missing");
             foreach (var file in active.Release.Artifact.Layout.Files)
@@ -131,14 +132,14 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             var identity = MihomoArchiveAdapter.Hash(await MihomoArchiveAdapter.ReadConfigurationAsync(Path.Combine(root, "active.yaml"), ct));
             if (identity != state.ConfigurationIdentity || service.Running && service.AppliedConfigurationIdentity != identity)
                 throw new RuntimePolicyException("runtime.configuration_drift");
-            return (state.Installation, null);
+            return (state.Installation, null, tunRunning);
         }
         catch (RuntimePolicyException ex)
         {
-            return (state.Installation with { Ownership = ex.ProblemCode == "runtime.external_installation" ? RuntimeOwnership.External : RuntimeOwnership.Unknown }, ex.ProblemCode);
+            return (state.Installation with { Ownership = ex.ProblemCode == "runtime.external_installation" ? RuntimeOwnership.External : RuntimeOwnership.Unknown }, ex.ProblemCode, null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
-        { return (state.Installation with { Ownership = RuntimeOwnership.Unknown }, "runtime.state_unknown"); }
+        { return (state.Installation with { Ownership = RuntimeOwnership.Unknown }, "runtime.state_unknown", null); }
     }
 
     private RuntimePlanResult Plan(string sourceId, RuntimePlanRequest request, RuntimeArchiveState state)

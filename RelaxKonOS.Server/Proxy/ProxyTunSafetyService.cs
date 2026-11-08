@@ -1,4 +1,7 @@
 using System.Text.Json;
+using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.Server.ManagedRuntimes;
+using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Proxy.Platform;
@@ -10,7 +13,9 @@ public sealed class ProxyTunSafetyService(
     IProxyPlatformPaths paths,
     IProxyNetworkSafetyPlatform platform,
     IProxyTunRuntimeController? runtime = null,
-    ILogger<ProxyTunSafetyService>? logger = null) : IProxyTunSafetyService
+    ILogger<ProxyTunSafetyService>? logger = null,
+    MihomoPublicationStore? publication = null,
+    MihomoRuntimeService? managedRuntime = null) : IProxyTunSafetyService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Guid? currentSession;
@@ -94,11 +99,24 @@ public sealed class ProxyTunSafetyService(
     public async Task<ProxyRecoveryStatusDto> GetStatusAsync(CancellationToken cancellationToken)
     {
         var marker = await ReadMarkerAsync(paths, cancellationToken);
-        return marker is null
-            ? new(false, false, null)
-            : marker.ActivationCompleted
+        if (marker is not null)
+            return marker.ActivationCompleted
                 ? new(false, true, marker.CreatedAt)
                 : new(true, true, marker.CreatedAt, ProxyProblemCodes.RecoveryRequired);
+        if (publication is null || managedRuntime is null) return new(false, false, null);
+        try
+        {
+            var state = await publication.ReadAsync(cancellationToken);
+            if (state.Pending?.TunIntent is not null) return new(true, false, null, ProxyProblemCodes.RecoveryRequired);
+            if (state.Published?.NetworkTransitionRequired != true) return new(false, false, null);
+            var observed = await managedRuntime.QueryHelperAsync(cancellationToken);
+            if (observed.PendingOperationId is not null || observed.Installation.RecoveryRequired
+                || observed.MihomoTunPublicationId is null || observed.MihomoTunRunning is null || observed.ProblemCode is not null)
+                return new(true, false, null, ProxyProblemCodes.RecoveryRequired);
+            return new(false, false, null);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or RuntimePolicyException or RuntimeLifecycleException)
+        { return new(true, false, null, ProxyProblemCodes.RecoveryRequired); }
     }
     /// <summary>
     /// A completed marker asserts that a TUN session is live.  When the engine itself reports TUN
