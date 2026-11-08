@@ -136,6 +136,10 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
 
     public async Task<bool> ObserveStoppedForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
     {
+        // Generic configuration recovery has no authority to stop a network transaction.
+        if (OperatingSystem.IsLinux() && new LinuxMihomoTunCheckpoint(root, pending.OperationId,
+                pending.Plan.ActiveRevisionId, pending.Plan.CandidateIdentity).Read() is not null)
+            throw new RuntimePolicyException("runtime.network_transaction_required");
         var observed = await host.ObserveRegistrationAsync(ct);
         if (!observed.Exists || observed.BootEnabled is null) throw new RuntimePolicyException("runtime.state_unknown");
         if (observed.Running) return false;

@@ -4501,7 +4501,9 @@ Linux 直连 TUN 使用 `iproute2` 读取默认网关及管理端点的内核路
 
 Helper 的 Linux 原生 TUN 描述符实现在私有 systemd 夹具通过独占打开、同操作 ID、双向对端凭据及内核设备核对。测试启动器将收到的描述符交给同一 PID 的受限 Mihomo，保留原记录并在两处强制中断后核对管理选路、配置身份、真实转发和退出。生产受管 TUN 的固定单元及网络归属仍待接入，准入门禁继续生效。见[Helper 描述符实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-原生-tun-描述符交付)。
 
-Helper 在专属夹具内已验证原操作 ID 标签、TUN 地址及单一精确 IPv4 路由的写入和只读归属核对。设备标签冲突或路由丢失时，恢复保留原记录和 Mihomo 进程。生产固定单元、归档事务持久检查点和规则及 DNS 的归属待接入。见[设备和路由归属证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-tun-设备和精确路由归属)。
+Helper 在专属夹具内已验证原操作 ID 标签、TUN 地址及单一精确 IPv4 路由的写入和只读归属核对。设备标签冲突或路由丢失时，恢复保留原记录和 Mihomo 进程。见[设备和路由归属证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-tun-设备和精确路由归属)。
+
+原归档操作的 TUN 检查点已在专属夹具内验证。写入在原实例锁内绑定制品修订、配置摘要、管理选路基线、设备和进程身份。半写记录及重复停止派发保留待核验，生产普通配置补偿遇到该记录时进入网络事务门禁。生产固定单元、网络事务执行入口和规则及 DNS 归属待接入。见[归档检查点证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-tun-原归档操作检查点)。
 
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
 

@@ -193,9 +193,9 @@ if (args is ["runtime-mihomo-tun-descriptor-launch", var launcherRoot] && Operat
     await MihomoTunDescriptorAcceptance.LaunchAsync(launcherRoot);
     return;
 }
-if (args is ["runtime-mihomo-tun-network-check", var networkRoot, var networkOperation] && OperatingSystem.IsLinux())
+if (args is ["runtime-mihomo-tun-checkpoint", var networkRoot, var networkOperation, var networkAction] && OperatingSystem.IsLinux())
 {
-    try { await MihomoTunDescriptorAcceptance.VerifyNetworkAsync(networkRoot, Guid.ParseExact(networkOperation, "N")); }
+    try { await MihomoTunDescriptorAcceptance.CheckpointAsync(networkRoot, Guid.ParseExact(networkOperation, "N"), networkAction); }
     catch (RelaxKonOS.ManagedRuntimes.RuntimePolicyException error)
     {
         Console.Error.WriteLine(error.ProblemCode);

@@ -85,10 +85,14 @@ def service_identity():
     return [pid, state['InvocationID'], stat[19]]
 
 
+def checkpoint(record, action):
+    return command('dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root), record['operation'], action)
+
+
 def observe(record):
     if network_baseline() != record['baseline'] or service_identity() != record['service']:
         raise ValueError('management route or systemd process identity differs')
-    command('dotnet', record['fixture'], 'runtime-mihomo-tun-network-check', str(root), record['operation'])
+    checkpoint(record, 'observe')
     if route() != record['route']:
         raise ValueError('TUN route differs')
     process = Path('/proc', str(record['service'][0]))
@@ -123,18 +127,18 @@ def reconcile(action, operation):
     record = json.loads(journal.read_text())
     if record['operation'] != operation or record['namespace'] != os.readlink('/proc/self/ns/net'):
         raise ValueError('operation or network namespace differs')
-    if record['phase'] == 'restored':
-        return record
-    if record['phase'] == 'dispatching':
+    phase = checkpoint(record, 'state')
+    if phase == 'Restored':
+        return {**record, 'phase': 'restored'}
+    if phase == 'DescriptorDispatched':
         observe(record)
         if action == 'observe':
             return record
-        record['phase'] = 'stopping'
-        sync_record(record)
+        checkpoint(record, 'stop')
         service('kill', '--signal=KILL', unit)
         if action == 'recover-interrupt':
             os.kill(os.getpid(), signal.SIGKILL)
-    elif record['phase'] != 'stopping' or action == 'observe':
+    elif phase != 'StopDispatched' or action == 'observe':
         raise ValueError('effect is not attributable to the original dispatch')
     pid = record['service'][0]
     deadline = time.monotonic() + 5
@@ -144,9 +148,8 @@ def reconcile(action, operation):
         time.sleep(.05)
     if route() or network_baseline() != record['baseline'] or service('show', '-p', 'MainPID', '--value', unit) != '0':
         raise ValueError('network was not restored')
-    record['phase'] = 'restored'
-    sync_record(record)
-    return record
+    checkpoint(record, 'restored')
+    return {**record, 'phase': 'restored'}
 
 
 class Upstream(http.server.BaseHTTPRequestHandler):
@@ -233,8 +236,11 @@ StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
 ''')
     service('daemon-reload')
     operation = uuid.uuid4().hex
+    operation_dir = root / 'operations' / operation
+    operation_dir.mkdir(mode=0o700, parents=True)
     identity = hashlib.sha256(config.read_bytes()).hexdigest()
     sync_record({'phase': 'prepared', 'operation': operation, 'credential': identity,
+                 'revision': str(uuid.uuid4()),
                  'fixture': sys.argv[3], 'address': address, 'target': target,
                  'namespace': os.readlink('/proc/self/ns/net'), 'baseline': baseline})
     invocation = [sys.executable, '-I', script]
@@ -247,6 +253,8 @@ StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
         assert native.startswith(f'PASS HELPER NATIVE TUN DESCRIPTOR: {operation};')
         original = journal.read_bytes()
         record = json.loads(original)
+        original_checkpoints = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
+        assert len(original_checkpoints) == 3
         executable = Path('/proc', str(record['service'][0]), 'exe')
         deadline = time.monotonic() + 5
         while os.readlink(executable) != str(root / 'mihomo'):
@@ -269,6 +277,17 @@ StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
         assert json.loads(command(*invocation, 'observe', root, operation)) == record
         probe('after')
 
+        incomplete = operation_dir / 'tun-3.json'
+        fd = os.open(incomplete, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'w') as partial:
+            partial.write('{')
+            partial.flush()
+            os.fsync(partial.fileno())
+        refused = subprocess.run([*invocation, 'recover', root, operation], timeout=8)
+        assert refused.returncode == 3 and service_identity() == record['service']
+        assert incomplete.read_text() == '{' and journal.read_bytes() == original
+        incomplete.unlink()
+
         # A conflicting kernel identity must preserve both the live effect and original intent.
         ip('link', 'set', 'dev', device, 'alias', 'conflicting-owner')
         refused = subprocess.run([*invocation, 'recover', root, operation], timeout=8)
@@ -290,11 +309,19 @@ StandardError=append:{root / 'mihomo-data' / 'launcher.log'}
 
         interrupted = subprocess.run([*invocation, 'recover-interrupt', root, operation], timeout=8)
         assert interrupted.returncode == -signal.SIGKILL
-        assert json.loads(journal.read_text()) == {**record, 'phase': 'stopping'}
+        assert checkpoint(record, 'state') == 'StopDispatched'
+        assert journal.read_bytes() == original
+        duplicate = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
+                                    str(root), operation, 'stop'], timeout=8)
+        assert duplicate.returncode == 3
         receipt = command(*invocation, 'recover', root, operation)
         assert json.loads(receipt) == {**record, 'phase': 'restored'}
         assert command(*invocation, 'recover', root, operation) == receipt
         assert command(*invocation, 'observe', root, operation) == receipt
+        all_checkpoints = sorted(operation_dir.glob('tun-*.json'))
+        assert len(all_checkpoints) == 5 and [file.read_bytes() for file in all_checkpoints[:3]] == original_checkpoints
+        assert checkpoint(record, 'state') == 'Restored'
+        print('PASS HELPER TUN CHECKPOINTS: original intent immutable; incomplete checkpoint and duplicate stop refused')
         print(f'PASS MIHOMO INHERITED TUN CLEANUP: {operation}, interrupted stop reconciled without replay; '
               'original receipt on retry; process, device and route gone')
     except Exception:
@@ -317,7 +344,7 @@ if action == 'proof':
 elif action == 'prepare':
     prepare(int(sys.argv[3]), int(sys.argv[4]))
 else:
-    with (root / 'tun-operation.lock').open('a') as lock:
+    with (root / 'state' / 'instance.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         assert action in ('observe', 'recover', 'recover-interrupt')
         try:

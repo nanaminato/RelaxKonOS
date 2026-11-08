@@ -273,3 +273,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）Helper 程序集的 Linux 原生描述符收发已在 x64 私有 systemd 夹具验证。非持久设备由原操作独占创建，收发核对原操作 ID、对端进程和设备身份，未知结果禁止重发。测试启动器以同一 PID 将描述符交给受限 Mihomo。生产固定受管单元、持久设备及网络归属事务待接入，受管 TUN 准入门禁继续生效。见[描述符实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-原生-tun-描述符交付)。
 
 2026-11-08（MR-03 / MB-04）Linux x64 私有 systemd 已验证 Helper 的 TUN 设备标签、源地址和精确目标路由写入，以及按原操作 ID 只读核对。路由使用独占添加，归属冲突时夹具保留原操作和进程。原归档事务中的持久网络检查点、固定单元与规则及 DNS 归属继续开放，生产准入门禁维持。见[设备和路由归属证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-tun-设备和精确路由归属)。
+
+2026-11-08（MR-03 / MB-04）Linux x64 私有 systemd 已验证原归档实例锁内的 TUN 追加检查点及两次中断，半写记录与重复停止派发均拒绝。生产普通配置补偿遇到该记录时保持待核验。生产网络事务写入入口、固定单元与规则及 DNS 归属仍待接入，准入门禁继续生效。见[原归档操作检查点证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-helper-tun-原归档操作检查点)。

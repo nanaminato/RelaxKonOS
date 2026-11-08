@@ -33,6 +33,7 @@
 - [MB-04 Linux 管理端点实际路由与原操作](#mb-04-linux-管理端点实际路由与原操作)
 - [MB-04 Helper 原生 TUN 描述符交付](#mb-04-helper-原生-tun-描述符交付)
 - [MB-04 Helper TUN 设备和精确路由归属](#mb-04-helper-tun-设备和精确路由归属)
+- [MB-04 Helper TUN 原归档操作检查点](#mb-04-helper-tun-原归档操作检查点)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -327,6 +328,16 @@ Linux x64 私有 systemd 复验的原操作为 `1d64716220184883a948ce12ccd8114a
 Windows ManagedRuntimes Release 在宿主权限下通过，含配置事务 99 项。沙箱内运行先后受临时文件替换及原生监听表限制，可信下载探针因宿主缺进程级测试 CA 覆盖而跳过。最终回归日志为 `.artifacts/mb04-tun-marker-sync/tun-owned-route-win-final.log`。
 
 本轮证明单个 IPv4 目标的设备和路由归属。原意图持久化、管理选路和规则的比对、systemd 启动、恢复及回执由夹具驱动。生产固定单元、原归档状态的持久检查点、策略路由和 DNS 归属、真实工作租约与同键生产入口仍待接入。生产受管 TUN 门禁继续生效，Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
+
+## MB-04 Helper TUN 原归档操作检查点
+
+Helper 在 `operations/<operationId>/tun-0.json` 至 `tun-4.json` 追加意图、网络写入派发、描述符派发、停止派发及已核对恢复五个检查点。持有归档实例锁的执行者以独占创建写入 root 专用文件，依次同步文件、操作目录及其父目录。记录绑定原操作、活动制品修订、配置摘要、启动 ID、网络命名空间、管理选路和规则基线摘要、设备名称与 ifindex，以及服务 PID、systemd InvocationID 和进程启动时刻。读取会核对阶段顺序与不可变身份。半写或缺阶段记录保留待核验。生产普通配置补偿在发现该记录时保留原状态，进入网络事务门禁。
+
+Linux x64 私有 systemd 实测原操作 `311e16d584e04c10aa822f4e7ba1380c`，`rk-fd-proof` ifindex 4，接收与运行 PID 76，配置摘要 `923fc3d8dc0f8d93ccdd7cab4b904309eea521dee9de07f5f9cda43927277bcb`。写入侧使用实际归档 `instance.lock`，夹具的跨进程恢复也使用同一锁。发送进程强制退出后，三条已派发检查点及原启动记录逐字节一致，管理选路、IPv4/IPv6 规则和真实上游三次请求均已核对。半写的下一阶段、设备标签漂移、路由丢失和重复停止派发均被拒绝。停止派发后强制退出，恢复先只读核对服务、设备及路由退出，再追加原操作终态。同一原操作反复读到相同夹具回执。专属 cgroup 清理，宿主共享服务及代理文件指纹一致。实机日志 `.artifacts/mb04-tun-marker-sync/tun-checkpoint-linux.log`，归档 SHA-256 `de8105e549761556960b2dd81647a07e39d183cdb604196a0270a080ca3dcfe6`。
+
+Windows ManagedRuntimes Release 通过，含配置事务 99 项。可信下载探针因宿主缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-checkpoint-win.log`。
+
+检查点由 Helper 程序集写入，固定单元启动和停止、运行配置与管理选路的实时比对、清理观察及终态投影仍由夹具编排。生产写入入口、规则和 DNS 归属、同键 HTTP 回执和实际工作租约待联合验收。生产受管 TUN 门禁继续生效，Proxy 保持 resident。本轮核验专属进程退出，对象释放、ALC 回收、隔离负载内存及生产内存收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

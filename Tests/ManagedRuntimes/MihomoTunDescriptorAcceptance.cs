@@ -20,7 +20,7 @@ internal static class MihomoTunDescriptorAcceptance
         if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK"))
             throw new InvalidOperationException("The descriptor test requires its private systemd work directory.");
 
-        using var gate = new FileStream(Path.Combine(root, "tun-operation.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        using var gate = new RuntimeArchiveStateStore(Path.Combine(root, "state"), RuntimeSourceProtection.Protect).Acquire();
         var journal = Path.Combine(root, "tun-operation.json");
         using var intent = JsonDocument.Parse(await File.ReadAllBytesAsync(journal));
         var operation = intent.RootElement.GetProperty("operation").GetString();
@@ -28,12 +28,22 @@ internal static class MihomoTunDescriptorAcceptance
             || intent.RootElement.GetProperty("phase").GetString() != "prepared")
             throw new InvalidOperationException("The original descriptor operation is not prepared.");
 
+        var intentRoot = intent.RootElement;
+        var ledger = Ledger(root, operationId, intentRoot);
+        var frozen = new MihomoTunIntent(operationId, intentRoot.GetProperty("revision").GetGuid(),
+            intentRoot.GetProperty("credential").GetString()!, LinuxMihomoTunCheckpoint.BootId(),
+            LinuxMihomoTunCheckpoint.NetworkNamespace(), DeviceName, intentRoot.GetProperty("address").GetString()!,
+            intentRoot.GetProperty("target").GetString()!, ManagementHash(intentRoot));
+        var initial = new MihomoTunEffect(MihomoTunPhase.Intent, frozen);
+        await ledger.AppendAsync(initial);
         using var descriptor = LinuxMihomoTunDescriptor.Create(operationId, DeviceName);
         Refuses("runtime.network_device_unavailable", () =>
         {
             using var duplicate = LinuxMihomoTunDescriptor.Create(operationId, DeviceName);
         });
-        var routes = Routes(intent.RootElement);
+        var network = initial with { Phase = MihomoTunPhase.NetworkDispatched, InterfaceIndex = descriptor.InterfaceIndex };
+        await ledger.AppendAsync(network);
+        var routes = Routes(frozen);
         await routes.ApplyAsync(descriptor);
         try
         {
@@ -61,6 +71,7 @@ internal static class MihomoTunDescriptorAcceptance
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         using var connection = await broker.AcceptAsync(deadline.Token);
         var recipient = checkpoint.GetProperty("service")[0].GetInt32();
+        await ledger.AppendAsync(network with { Phase = MihomoTunPhase.DescriptorDispatched, Process = Process(checkpoint) });
         Refuses("runtime.recovery_target_conflict", () => descriptor.SendTo(connection, Guid.NewGuid(), recipient, 0));
         Refuses("runtime.network_recipient_mismatch", () => descriptor.SendTo(connection, operationId, Environment.ProcessId, 0));
         descriptor.SendTo(connection, operationId, recipient, 0);
@@ -71,7 +82,7 @@ internal static class MihomoTunDescriptorAcceptance
     }
 
     [SupportedOSPlatform("linux")]
-    internal static async Task VerifyNetworkAsync(string root, Guid operation)
+    internal static async Task CheckpointAsync(string root, Guid operation, string action)
     {
         MihomoIpcStartupAcceptance.RequirePrivateHost();
         if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK"))
@@ -81,12 +92,43 @@ internal static class MihomoTunDescriptorAcceptance
         if (operation == Guid.Empty || state.GetProperty("operation").GetString() != operation.ToString("N")
             || state.GetProperty("phase").GetString() != "dispatching")
             throw new InvalidOperationException("The network check requires the original dispatched operation.");
-        await Routes(state).VerifyAsync(operation, DeviceName, state.GetProperty("ifindex").GetUInt32());
+        var ledger = Ledger(root, operation, state);
+        var current = ledger.Read() ?? throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        if (current.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
+            || current.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace()
+            || current.Intent.ManagementHash != ManagementHash(state) || current.Process != Process(state)
+            || current.InterfaceIndex != state.GetProperty("ifindex").GetUInt32())
+            throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        if (action == "state") Console.WriteLine(current.Phase);
+        else if (action == "observe" && current.Phase == MihomoTunPhase.DescriptorDispatched)
+            await Routes(current.Intent).VerifyAsync(operation, current.Intent.Device, current.InterfaceIndex);
+        else if (action == "stop" && current.Phase == MihomoTunPhase.DescriptorDispatched)
+        {
+            await Routes(current.Intent).VerifyAsync(operation, current.Intent.Device, current.InterfaceIndex);
+            await ledger.AppendAsync(current with { Phase = MihomoTunPhase.StopDispatched });
+        }
+        else if (action == "restored" && current.Phase == MihomoTunPhase.StopDispatched)
+            await ledger.AppendAsync(current with { Phase = MihomoTunPhase.Restored });
+        else throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
     }
 
     [SupportedOSPlatform("linux")]
-    private static LinuxMihomoTunRoutes Routes(JsonElement intent) =>
-        new(IPAddress.Parse(intent.GetProperty("address").GetString()!), IPAddress.Parse(intent.GetProperty("target").GetString()!));
+    private static LinuxMihomoTunCheckpoint Ledger(string root, Guid operation, JsonElement intent) =>
+        new(root, operation, intent.GetProperty("revision").GetGuid(), intent.GetProperty("credential").GetString()!);
+
+    private static string ManagementHash(JsonElement intent) =>
+        MihomoArchiveAdapter.Hash(JsonSerializer.SerializeToUtf8Bytes(intent.GetProperty("baseline")));
+
+    private static MihomoTunProcess Process(JsonElement checkpoint)
+    {
+        var service = checkpoint.GetProperty("service");
+        return new(service[0].GetInt32(), Guid.ParseExact(service[1].GetString()!, "N"),
+            ulong.Parse(service[2].GetString()!, CultureInfo.InvariantCulture));
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static LinuxMihomoTunRoutes Routes(MihomoTunIntent intent) =>
+        new(IPAddress.Parse(intent.Address), IPAddress.Parse(intent.Destination));
 
     [SupportedOSPlatform("linux")]
     internal static async Task LaunchAsync(string root)
