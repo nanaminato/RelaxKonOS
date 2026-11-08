@@ -502,6 +502,12 @@ Linux x64 私有 systemd 的 `committed` 场景使用真实候选验证器和归
 
 夹具恢复原进程后，原 SIGTERM 使其退出。Helper 先落盘 `RuleRemovalDispatched`，真实规则删除后再次强制中断。同 ID 重试遇到夹具重建的同值规则时返回 `runtime.network_rule_conflict`，未重删。撤掉夹具规则后，同 ID 只读确认原规则缺席并完成停止，重复请求返回相同结果。真实规则删除派发一次。原 PID、设备、路由和本链路 DNS 均缺席，管理选路及外来链路 DNS 保持，原配置字节、历史发布成功回执和提交见证保持。
 
+### 具名停止的管理选路门禁
+
+**已实现且已验证。** 私有 systemd 原发布 `a5dcb539601345d0bc5e771109222c87`、具名停止 `128bd86b-0e51-4f15-98fb-12be5fc56a41`。PID 251 在停止 worker 中断前收到真实 SIGTERM，退出后分别在 `StopDispatched` 和 `RuleRemovalDispatched` 注入管理选路首选源地址漂移。每次同 ID 均由真实 Helper 返回 `runtime.management_route_changed`，新 ID 返回 `runtime.recovery_required`。原操作继续待核验，配置身份 `bc34990be3428cb09116f37d2ecc20ba57c8eee6fc22d246a1782a5f2c7a6390`、原生检查点集合及归档台账逐字节一致。首次阻断时规则删除派发为零，第二次阻断时保持一次。恢复精确选路后，外来同值规则仍需先移除，Helper 才能只读确认缺席并持久化原成功回执。同 ID 重试返回相同结果。
+
+本场跨原发布应答丢失验证真实上游 HTTP 和分流 DNS，具名停止后验证进程、TUN 设备、专属表路由和本链路 DNS 退出。原发布回执及见证保持，专属 cgroup 已清理，宿主指纹一致。Windows Release ManagedRuntimes 通过，可信下载探针缺少进程级 CA 覆盖。日志为 `.artifacts/mb04-tun-route-drift/linux-stop-route-drift.log`，归档 SHA-256 为 `2d20ab0bde631a367ed81dd7846acbd202cca70abf92e3ccc80f603d21be49dd`。本场使用真实 Helper 单次进程入口，未复验完整 PAM/JWT HTTP 链路。对象释放、ALC、隔离内存和生产收益仍待独立测量。
+
 首轮及诊断轮因夹具把无连字符的日志 ID 当作协议 GUID 字符串而被入口拒绝，修正线上 GUID 格式后重跑。Windows Release 通过，包括 104 项配置事务检查。可信下载探针因缺少进程级测试 CA 覆盖跳过。
 
 同批提交态归属原 `adb2e34709be4b68a1e38f125abdd513`、完整补偿原 `f5e456b6ce324dfd9d2bc9ad1b16e81f`、DNS 应答中断原 `0d557befe81b4d31ae4e03b6b44ed8af`、resolver 换代原 `3e142ca1935f498ba5d826cd8aae56cf` 全部通过。五个专属 cgroup 已清理，宿主服务、代理和 resolver 文件指纹一致。归档 SHA-256 为 `99d00c0ce8d1841fc39b22c8a05f5ffbe9268a7f7504d867921f549ac89bebd2`。最终日志在 `.artifacts/mb04-tun-marker-sync/committed-stop-linux-final.log` 和 `.artifacts/mb04-tun-marker-sync/committed-stop-windows.log`。

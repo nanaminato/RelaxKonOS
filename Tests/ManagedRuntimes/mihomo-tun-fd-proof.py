@@ -474,6 +474,23 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
     stop = uuid.uuid4()
     pid = record['service'][0]
 
+    def require_management_refusal(phase, deletions):
+        before = state_path.read_bytes()
+        checkpoints = {file.name: file.read_bytes() for file in operation_dir.glob('tun-*.json')}
+        trace = root / 'rule-delete-attempts'
+        with management_route_drift(record['routing_table']):
+            refused = stop_native(operation, stop)
+            assert refused.returncode == 1 and helper_result(refused)['error'] == 'runtime.management_route_changed'
+            assert helper_result(stop_native(operation))['error'] == 'runtime.recovery_required'
+            original = json.loads(checkpoint(record, f'observe-action:{stop}'))
+            assert uuid.UUID(original['pendingOperationId']) == stop
+            assert original['mihomoTunAction']['outcome'] == 'RecoveryRequired'
+            assert original['configurationIdentity'].lower() == record['credential']
+            assert checkpoint(record, 'state') == phase and state_path.read_bytes() == before
+            assert {file.name: file.read_bytes() for file in operation_dir.glob('tun-*.json')} == checkpoints
+            assert (trace.read_text().splitlines() if trace.exists() else []) == deletions
+            assert not Path(f'/proc/{pid}').exists() and device not in devices() and not route(record['routing_table'])
+
     wrong = stop_native(str(uuid.uuid4()))
     assert wrong.returncode == 1 and helper_result(wrong)['error'] == 'runtime.recovery_target_conflict', (
         wrong.returncode, wrong.stdout, wrong.stderr)
@@ -500,10 +517,16 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
     finally:
         os.kill(pid, signal.SIGCONT)
 
+    deadline = time.monotonic() + 8
+    while Path(f'/proc/{pid}').exists() or device in devices() or route(record['routing_table']):
+        assert time.monotonic() < deadline
+        time.sleep(.05)
+    require_management_refusal('StopDispatched', [])
     (root / 'interrupt-rule-delete').touch()
     interrupted_rule = stop_native(operation, stop)
     assert interrupted_rule.returncode == -signal.SIGKILL and checkpoint(record, 'state') == 'RuleRemovalDispatched'
     assert network_baseline() == record['baseline']
+    require_management_refusal('RuleRemovalDispatched', ['attempt'])
     rule = ('priority', '11000', 'to', target + '/32', 'lookup', str(record['routing_table']), 'protocol', '186')
     command(root / 'ip-real', '-4', 'rule', 'add', *rule)
     refused = stop_native(operation, stop)
@@ -533,8 +556,8 @@ def proof_committed_stop(record, observed, state_path, terminal, operation_dir, 
     assert network_baseline() == record['baseline']
     assert (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress')) == other_dns
     assert target not in resolver('dns') and '~tun.fixture.test' not in resolver('domain')
-    print(f'PASS TUN COMMITTED STOP: {operation}; signal and rule deletion crossed worker interruption, '
-          'same receipt, process and network effect gone')
+    print(f'PASS TUN COMMITTED STOP: publication={operation}; stop={stop}; configuration={record["credential"]}; PID={pid}; '
+          'management drift blocked before and after one rule deletion; original stop confirmed')
 
 
 def proof_committed_start(record, observed, state_path, case):
