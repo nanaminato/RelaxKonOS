@@ -263,3 +263,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04 配置恢复）guard 已接管的 Linux 直连设置可经具名授权执行独立补偿。原操作保留中断及补偿 ID。应答丢失后，仅端口与日志级别的可观察变更可凭原配置和真实监听证据续接，其他未知结果保持待处理。见[Linux 直连监听显式补偿](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-linux-直连监听显式补偿)。
 
 2026-11-08（MR-03 / MB-04）Linux 私有 systemd 复核受管 Mihomo TUN 门禁，直接读取进程启动凭据摘要和内核管理路由。两次拒绝均保留原配置补偿回执和真实转发。受管网络事务仍须证明原生设备与网络效果归属。见[门禁证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-linux-tun-标记持久化及受管门禁复核)。
+
+2026-11-08（MR-03 / MB-04）隔离夹具已验证 Mihomo v1.19.33 通过已打开的 Linux TUN 描述符转发和退出。生产 Helper 还须将设备及网络效果归属持久绑定到原运行时操作，受管配置准入维持现有门禁。见[描述符交付证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受限-mihomo-的-tun-描述符交付)。

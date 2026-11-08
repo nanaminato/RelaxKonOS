@@ -28,6 +28,7 @@
 - [MB-04 TUN 发布准入与恢复标记](#mb-04-tun-发布准入与恢复标记)
 - [MB-04 已确认受管发布的真实 TUN 门禁](#mb-04-已确认受管发布的真实-tun-门禁)
 - [MB-04 Linux TUN 标记持久化及受管门禁复核](#mb-04-linux-tun-标记持久化及受管门禁复核)
+- [MB-04 受限 Mihomo 的 TUN 描述符交付](#mb-04-受限-mihomo-的-tun-描述符交付)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -269,7 +270,15 @@ Windows Release ManagedRuntimes、TUN 边界 38 项、Core 安全 40 项、驻�
 
 已实现但实机未验证的部分为整机掉电后的标记目录持久性。受管 TUN 设备交付、规则与 DNS 效果归属、原生网络回执及其与 Core 标记的绑定均未实现。未核实的效果维持准入门禁，Proxy 保持 resident。本轮分别观察 Core 工作作用域释放和恢复夹具进程退出。未测量 ALC 回收、隔离负载内存或生产内存收益。
 
-下一项原生夹具可验证已有 TUN 描述符的交付。Mihomo v1.19.33 接收 `file-descriptor`，其 sing-tun v0.4.28 的 Linux 初始化在该分支使用已有描述符并跳过设备创建和配置。须用实际系统服务证明描述符关联的设备身份、无网络管理能力时的真实 TUN 转发，以及描述符和网络效果如何随原操作收尾。[Mihomo 配置源码](https://github.com/MetaCubeX/mihomo/blob/v1.19.33/listener/config/tun.go) · [sing-tun Linux 源码](https://github.com/MetaCubeX/sing-tun/blob/v0.4.28/tun_linux.go)
+## MB-04 受限 Mihomo 的 TUN 描述符交付
+
+已实现且实机通过 `sudo bash Tests/ManagedRuntimes/run-proxy-systemd-linux.sh --tun-fd`。私有 systemd 中，测试进程创建非持久 TUN 并只添加一个专属目标的路由，通过私有 Unix 套接字把已打开的描述符传给 Mihomo v1.19.33 服务。测得有效与边界 capability 只有 `CAP_NET_BIND_SERVICE`，服务看不到 `/dev/net/tun`。进程 PID 45 的 FD 7 指向 `rk-fd-proof`，systemd 启动凭据 SHA-256 为 `53e0a0721db664590feebe1202d6667bd6c652c3ad6d15d8632261b526f780c1`，与冻结文件一致。测试进程关闭自身描述符后，内核把目标流量交给 TUN，上游收到一次 CONNECT 和一次真实 HTTP 请求。`SIGKILL` 后分别等待原进程回收和最后一个描述符关闭导致的设备消失，专属路由也移除。管理网关的内核查询及 IPv4/IPv6 规则在激活前、实际转发时和清理后相同。专属 cgroup 移除，宿主服务及代理文件指纹一致。
+
+原型失败路径包括私有夹具中继承的 sysfs 视图与当前网络命名空间不一致、上游未实现 CONNECT，以及设备消失早于 systemd 回收进程。修正为使用内核链路查询、验证完整 CONNECT 转发并分别等待设备和进程后通过。原始日志为 `.artifacts/mb04-tun-marker-sync/tun-fd-linux-repo.log`，SHA-256 为 `eb67aee9e5d94efaccd68056944d2affc6d3815f9ae1f00ded4bba97a465541c`。
+
+Windows ManagedRuntimes Release 回归通过，可信下载探针因缺少进程级测试 CA 覆盖而跳过。日志为 `.artifacts/mb04-tun-marker-sync/tun-fd-managed-win.log`。
+
+此夹具覆盖已打开描述符的真实交付、转发和退出。生产 Helper 的持久网络事务、规则和 DNS 的归属、原回执绑定及中断恢复仍未实现。下一项先在 Helper 权威中把专属网络资源和原操作绑定，验证效果已生效但回执未确认的强制中断，仅按原 ID 核对与恢复。当前受管门禁及 Proxy resident 状态继续生效。本轮没有对象释放、ALC、隔离内存或生产收益测量。描述符语义见[Mihomo v1.19.33 配置源码](https://github.com/MetaCubeX/mihomo/blob/v1.19.33/listener/config/tun.go)和[sing-tun v0.4.28 Linux 源码](https://github.com/MetaCubeX/sing-tun/blob/v0.4.28/tun_linux.go)。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

@@ -1,27 +1,34 @@
 #!/bin/bash
 set -euo pipefail
-if [[ $# -lt 3 || $# -gt 6 || ( $# -ge 5 && $5 != --authenticated ) ]]; then
-    echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]]" >&2
-    exit 2
-fi
-fixture=$(realpath -e -- "$1")
-helper=$(realpath -e -- "$2")
-server=$(realpath -e -- "$3")
+tun_fd=0
+fixture= helper= server= authenticated= baseline=
 proxy_tests=
-if [ "$#" -ge 4 ]; then proxy_tests=$(realpath -e -- "$4"); fi
-authenticated=${5:-}
 run_seconds=150
-if [[ $authenticated == --authenticated ]]; then run_seconds=250; fi
-baseline=
+if [[ $# == 1 && $1 == --tun-fd ]]; then
+    tun_fd=1
+    fixture=$(realpath -e -- "$(dirname -- "$0")/mihomo-tun-fd-proof.py")
+    run_seconds=60
+else
+    if [[ $# -lt 3 || $# -gt 6 || ( $# -ge 5 && $5 != --authenticated ) ]]; then
+        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd" >&2
+        exit 2
+    fi
+    fixture=$(realpath -e -- "$1")
+    helper=$(realpath -e -- "$2")
+    server=$(realpath -e -- "$3")
+    if [ "$#" -ge 4 ]; then proxy_tests=$(realpath -e -- "$4"); fi
+    authenticated=${5:-}
+    if [[ $authenticated == --authenticated ]]; then run_seconds=250; fi
+    if [[ $# -eq 6 ]]; then baseline=$(realpath -e -- "$6"); fi
+fi
 activation_unknown=${RELAXKONOS_TEST_ACTIVATION_UNKNOWN:-0}
 case "$activation_unknown" in 0|1) ;; *) exit 2 ;; esac
-if [[ $# -eq 6 ]]; then baseline=$(realpath -e -- "$6"); fi
 case "$fixture$helper$server$proxy_tests$baseline" in *[!a-zA-Z0-9_./-]*) echo "Test paths must contain only unit-safe characters" >&2; exit 2;; esac
 test "$(id -u)" -eq 0
 server_uid=$(id -u nobody)
 server_gid=$(id -g nobody)
 test "$server_uid" -ne 0
-chmod o+x -- "$(dirname "$fixture")"
+if [[ $tun_fd == 0 ]]; then chmod o+x -- "$(dirname "$fixture")"; fi
 work=$(mktemp -d /tmp/relaxkonos-mb04-systemd.XXXXXXXX)
 chmod o+x -- "$work"
 unit=relaxkonos-mb04-systemd-$(cat /proc/sys/kernel/random/uuid).service
@@ -74,6 +81,7 @@ if [[ $authenticated == --authenticated ]]; then
 fi
 cp -- /var/lib/relaxkonos/proxy/engines/mihomo/versions/v1.19.33-linux-x64/mihomo "$work/mihomo"
 chmod 0755 "$work/mihomo"
+if [[ $tun_fd == 1 ]]; then cp -- "$fixture" "$work/mihomo-tun-fd-proof.py"; fi
 cat > "$work/inside.sh" <<EOF
 #!/bin/bash
 set -uo pipefail
@@ -83,6 +91,10 @@ export RELAXKONOS_TEST_SYSTEMD_WORK=$work
 export RELAXKONOS_TEST_PROXY_BENCHMARK_BASELINE="$baseline"
 export RELAXKONOS_TEST_ACTIVATION_UNKNOWN="$activation_unknown"
 run_checks() {
+    if [[ $tun_fd == 1 ]]; then
+        /usr/bin/python3 -I "$work/mihomo-tun-fd-proof.py" proof "$work"
+        return \$?
+    fi
     if [[ -n "$proxy_tests" ]]; then
         dotnet "$proxy_tests" --queue-recovery-only || return \$?
     fi
