@@ -1497,6 +1497,45 @@ def proof_full_http_shutdown(ipc, case):
         worker = launch('admission-disabled')
         refused(publication)
         ip('link', 'set', 'dev', device, 'alias', alias)
+
+        checkpoint_path = archive / 'operations' / publication / 'tun-5.json'
+        witness = checkpoint_path.read_bytes()
+
+        def query_publication():
+            query = {'version': '1.1', 'operation': 'MihomoRuntimeQuery', 'operationId': str(uuid.UUID(publication)),
+                     'correlation': {'correlationId': str(uuid.uuid4())}}
+            process = subprocess.run([launcher], input=json.dumps(query), capture_output=True, text=True, timeout=12, check=True)
+            return json.loads(base64.b64decode(helper_result(process)['outputBase64']))
+
+        committed = query_publication()
+        foreign = json.loads(witness)
+        foreign['Process']['StartTicks'] += 1
+        for name, damaged in [('torn', witness[:len(witness) // 2]), ('foreign-process', json.dumps(foreign).encode())]:
+            checkpoint_path.write_bytes(damaged)
+            try:
+                observed = query_publication()
+                assert observed['Installation']['Ownership'] == 'Unknown'
+                assert observed['ProblemCode'] == 'runtime.network_checkpoint_conflict'
+                assert observed['Receipt'] == committed['Receipt'] and observed['CommitWitness'] == committed['CommitWitness']
+                pid = start('restart')
+                token = login()
+                plan(publication, managed=False)
+                probe(record, f'admission-{name}-checkpoint')
+                terminate(pid)
+                worker = launch('admission-disabled')
+                refused(publication)
+                assert checkpoint_path.read_bytes() == damaged
+                assert (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes()) == before
+                assert not (root / 'rule-delete-attempts').exists()
+                log = ipc.log.read_text()
+                assert all(f'operation={mutation} ' not in log for mutation in
+                           ('MihomoRuntimeConfigure', 'MihomoRuntimeRecover', 'MihomoRuntimeTunStop'))
+            finally:
+                checkpoint_path.write_bytes(witness)
+        restored = query_publication()
+        assert restored['MihomoTunPublicationId'] == committed['MihomoTunPublicationId']
+        assert restored['Receipt'] == committed['Receipt'] and restored['CommitWitness'] == committed['CommitWitness']
+
         ipc.stop_helper()
         worker = launch('admission-disabled')
         refused(publication)
@@ -1554,7 +1593,7 @@ def proof_full_http_shutdown(ipc, case):
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         print(f'PASS TUN MODULE DEACTIVATION: publication={publication}; root-only-stop={pending}; '
               f'configuration={record["credential"]}; original PID={native_pid}; '
-              'management drift after process exit blocked disable plan and startup')
+              'damaged checkpoint and management drift after process exit blocked disable plan and startup')
 
     def verify_retained_removal(pid, record, publication):
         nonlocal worker, token

@@ -686,6 +686,12 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 提交 `6b32a5ae` 的分段暂存错放了漂移屏障。`6208794d` 修正执行顺序，并逐字节核对提交内的停用场景与上述通过的归档。
 
+### 原生检查点损坏时的停用门禁
+
+**已实现且已验证。** Linux 私有 systemd 的完整 PAM/JWT Server 使用原发布 `63e7d48213e84cc781cc49a602624891`，原 PID 394，配置身份 `28cd2cd1cbe3b101dee438ef62fdfdd508cdd5450a2117ecc55002e1013053bb`。在独立 Helper 重启后，夹具依次截断原 DNS 完成检查点、替换为带错误进程启动时刻的有效 JSON。真实 Helper 查询均返回 `runtime.network_checkpoint_conflict` 和未知当前归属，同时保留原发布回执和提交见证。认证停用计划及禁用启动继续按原发布 ID 阻断。实际 HTTP、分流 DNS、管理选路、原进程和配置身份均可独立验证。查询未重写损坏记录、队列、归档或镜像，未派发配置、补偿或停止。
+
+恢复精确检查点后，Helper 重新核验同一原发布，禁用启动通过。首轮夹具的低层读取入口在损坏记录处提前失败，第二轮按错误的字段大小写读取 Helper 回执。改用真实查询入口和当前回执字段后，最终实测通过，并复验独立停止 `1418cd4b-d653-4b6c-8237-c58fe7b291c1` 的管理选路门禁。Windows Release 模块边界回归通过。专属进程退出、cgroup 清理及宿主指纹核验通过。日志为 `.artifacts/mb04-tun-checkpoint-admission/linux-final.log`，归档 SHA-256 为 `1c2a9d9dcf74fd8c64d91959f2dd218fb13d2a4d798a2aa8538ce0d85f5a89c0`。对象释放、ALC、隔离内存和生产收益仍待独立测量。
+
 最终发布 `f526f4997539432988b1027afa23cc44`，仅 Helper 持有的原停止 `4a449026-99c4-48b0-8c7d-e8cecc92c247`，原 Mihomo PID 393，配置身份 `cee974ee2eab04b0a9528aefc51e2eb97a6dd1ddad049f065e4cb3ce0d52ebdd`。首轮已产生门禁记录，模块清单未将其标为待核验，修正后同时核对计划、应用和清单。日志为 `.artifacts/mb04-tun-marker-sync/tun-admission-linux-first.log`、`.artifacts/mb04-tun-marker-sync/tun-admission-linux-second.log` 和 `.artifacts/mb04-tun-marker-sync/tun-admission-linux-final.log`。
 
 最终四组 Linux 通过，覆盖停用门禁、同次停机、独立停机及原生保留数据移除。归档 SHA-256 为 `40d54216383cfe23175ea47aff7d316ecb4cdae195cce339799bacf4a9859fd4`。四组专属 cgroup 清理通过，宿主运行时、代理和 resolver 指纹一致，完整 Server 场景的账户文件指纹一致。
