@@ -27,6 +27,42 @@ internal static class ConfigurationTransactionChecks
             throw new Exception("The synchronized archive transaction must activate and confirm the original TUN operation.");
     }
 
+    internal static async Task CheckNetworkRecoverySyncAsync(bool syncFailed)
+    {
+        using var fixture = new Fixture();
+        var plan = fixture.Plan with { NetworkIntentIdentity = new string('e', 64) };
+        var original = fixture.OperationId;
+        using (var session = fixture.Store.Acquire())
+        {
+            var state = session.State!;
+            var snapshot = new RuntimeServiceSnapshot(true, false, plan.PreviousIdentity, original, original);
+            session.Save(state with
+            {
+                ConfigurationIdentity = plan.CandidateIdentity,
+                Installation = state.Installation with { StateRevision = state.Installation.StateRevision + 1 },
+                Configuration = new RuntimePendingConfiguration(original, new string('a', 64), new string('b', 64), plan,
+                    InstallationStage.Activating, snapshot, true, false, null, null) { RecoveryStopDispatched = false }
+            });
+        }
+        var stateFile = Path.Combine(fixture.Root, "state", "archive-state.json");
+        var before = File.ReadAllBytes(stateFile);
+        var result = await fixture.Engine.RecoverAsync(original, default);
+        if (syncFailed)
+        {
+            if (result != new RuntimeSwitchResult(original, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required")
+                || !File.ReadAllBytes(stateFile).AsSpan().SequenceEqual(before) || fixture.Adapter.Calls.Count != 0
+                || fixture.Adapter.RecoveryObservations != 0)
+                throw new Exception("A failed directory sync must retain the original recovery record without calling the adapter.");
+            return;
+        }
+        var restored = fixture.Store.Read()!;
+        if (result != new RuntimeSwitchResult(original, RuntimeSwitchOutcome.Interrupted, "runtime.operation_interrupted")
+            || restored.ConfigurationIdentity != plan.PreviousIdentity || restored.Configuration is not null
+            || restored.Receipts.Single().OperationId != original || fixture.Adapter.RecoveryObservations != 2
+            || !fixture.Adapter.Calls.SequenceEqual(new[] { "stop", "authorize-restore", "restore", "cleanup" }))
+            throw new Exception("The original TUN transaction must compensate once after its recovery directory sync.");
+    }
+
     internal static async Task<int> RunAsync()
     {
         var count = 0;
@@ -39,7 +75,8 @@ internal static class ConfigurationTransactionChecks
         }
 
         await CheckNetworkActivationSyncAsync(syncFailed: false);
-        count++;
+        await CheckNetworkRecoverySyncAsync(syncFailed: false);
+        count += 2;
 
         using (var f = new Fixture())
         {
@@ -286,6 +323,7 @@ internal static class ConfigurationTransactionChecks
         internal Action? OnActivate { get; set; }
         internal bool ActivationTokenWasUncancelled { get; private set; }
         internal bool Stopped { get; set; }
+        internal int RecoveryObservations { get; private set; }
         private Task Call(string name)
         {
             Calls.Add(name);
@@ -307,7 +345,8 @@ internal static class ConfigurationTransactionChecks
                 ? new RuntimeMihomoTunOwnership(pending.OperationId, plan.ActiveRevisionId, plan.CandidateIdentity, network) : null;
             return new("1.19.30", plan.CandidateIdentity, true, true, true, false, ownership);
         }
-        public Task<bool> ObserveStoppedForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct) => Task.FromResult(Stopped);
+        public Task<bool> ObserveStoppedForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+        { RecoveryObservations++; return Task.FromResult(Stopped); }
         public async Task StopForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
         { await Call("stop"); Stopped = true; }
         public Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct) => Call("authorize-restore");

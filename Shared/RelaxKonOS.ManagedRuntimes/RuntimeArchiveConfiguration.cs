@@ -106,16 +106,8 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
                 ConfigurationIdentity = plan.CandidateIdentity,
                 Configuration = session.State.Configuration! with { SwitchStarted = true, Stage = InstallationStage.Activating }
             });
-            if (plan.NetworkIntentIdentity is not null)
-            {
-                // The original archive transaction must survive before activation can stop the service.
-                try { session.SyncDirectory(); }
-                catch (IOException)
-                {
-                    // The replacement is visible, but durability is unknown. Leave it to the original owner.
-                    return new(operationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
-                }
-            }
+            if (!TrySyncNetworkTransaction(session))
+                return new(operationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
             await NotifyAsync(InstallationStage.Activating, false);
             await adapter.ActivateAsync(session.State!.Configuration!, CancellationToken.None);
             Update(session, p => p with { Stage = InstallationStage.HealthChecking });
@@ -151,6 +143,10 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
 
     private async Task<RuntimeSwitchResult> CompensateAsync(RuntimeArchiveStateStore.Session session, string problem, RuntimeSwitchOutcome outcome)
     {
+        // Recovery can run after activation's directory sync failed. Preserve the original journal
+        // before an adapter observes, stops, or cleans up its native effects.
+        if (!TrySyncNetworkTransaction(session))
+            return new(session.State!.Configuration!.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
         try
         {
             Update(session, p => p with { Stage = InstallationStage.RollingBack, ProblemCode = problem });
@@ -198,6 +194,13 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException or RuntimePolicyException) { }
             return new(session.State!.Configuration!.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
         }
+    }
+
+    private static bool TrySyncNetworkTransaction(RuntimeArchiveStateStore.Session session)
+    {
+        if (session.State!.Configuration!.Plan.NetworkIntentIdentity is null) return true;
+        try { session.SyncDirectory(); return true; }
+        catch (IOException) { return false; }
     }
 
     private async Task NotifyAsync(InstallationStage stage, bool cancellable)

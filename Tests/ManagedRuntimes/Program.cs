@@ -60,6 +60,13 @@ if (args is ["runtime-configuration-network-sync", "success" or "failure"])
     return;
 }
 
+if (args is ["runtime-configuration-network-recovery-sync", "success" or "failure"])
+{
+    await ConfigurationTransactionChecks.CheckNetworkRecoverySyncAsync(syncFailed: args[1] == "failure");
+    Console.WriteLine($"PASS TUN ARCHIVE RECOVERY SYNC: {args[1]}");
+    return;
+}
+
 if (args is ["mihomo-removal-publication-only"])
 {
     Console.WriteLine($"Mihomo removal publication checks passed: {await MihomoRemovalPublicationChecks.RunAsync()}");

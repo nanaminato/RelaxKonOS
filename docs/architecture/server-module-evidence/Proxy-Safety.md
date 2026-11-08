@@ -626,6 +626,12 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 Windows Release ManagedRuntimes 回归通过，包含 105 项配置事务检查。可信下载探针因缺少进程级测试 CA 覆盖跳过。
 
+### 补偿前的原事务目录同步门禁
+
+**已实现且已验证。** 受管 TUN 的原补偿先同步主台账目录，再记录回滚阶段并进入适配器。Linux Release 在专属临时目录跟踪同一原记录的 `rename` 和目录 `fsync`。向该 `fsync` 注入 `EIO` 后，原 `Activating` 台账逐字节一致，恢复返回同一 ID 的 `RecoveryRequired`，观察、停止、还原及清理调用均为零。成功对照完成原 `Interrupted` 回执和一次补偿。Linux 和 Windows Release 的配置事务回归均为 106 项。
+
+同一 Linux 制品在私有 systemd 复跑原补偿 `0b58399613eb40b5902494be194e3374` 及原发布 `932cde8fb8554155b0960de4d0697244`。管理选路、原配置身份、实际 HTTP、分流 DNS、原回执和无重派均通过。两场专属进程退出、cgroup 清理和宿主指纹核验通过。日志为 `.artifacts/mb04-tun-recovery-sync/linux.log`，归档 SHA-256 为 `4e4fda52defd8f737b3de6c539183379fba35ed41e11a14034d11f478297c109`。目录 `EIO` 注入限配置适配器夹具。整机掉电、主台账成功终态替换后的目录耐久性、对象释放、ALC、隔离内存和生产收益仍待独立验收。
+
 **已实现但实机未验证。** 其他 Linux 架构。HTTP 实机使用等效角色策略和夹具 bearer，完整安装态 JWT 登录和 Android 客户端未参与。Windows 可信下载探针因缺少进程级测试 CA 覆盖跳过。
 
 具名启停响应丢失的原执行对账仍受门禁保护。Helper 无终态由后续[认证 HTTP 补偿](#mb-04-受管-tun-认证-http-补偿)覆盖。此批证据确认专属进程退出及清理，未测量对象释放、ALC 回收、隔离负载内存或生产收益。
