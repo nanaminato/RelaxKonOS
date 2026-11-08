@@ -51,6 +51,7 @@
 - [MB-04 受管 TUN Server 发布协调](#mb-04-受管-tun-server-发布协调)
 - [MB-04 受管 TUN AF_UNIX 发布与恢复](#mb-04-受管-tun-af_unix-发布与恢复)
 - [MB-04 受管 TUN 认证 HTTP](#mb-04-受管-tun-认证-http)
+- [MB-04 受管 TUN 认证 HTTP 补偿](#mb-04-受管-tun-认证-http-补偿)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -580,7 +581,19 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 **已实现但实机未验证。** 其他 Linux 架构。HTTP 实机使用等效角色策略和夹具 bearer，完整安装态 JWT 登录和 Android 客户端未参与。Windows 可信下载探针因缺少进程级测试 CA 覆盖跳过。
 
-**未实现或仍受门禁保护。** Helper 尚无终态及具名启停响应丢失时，HTTP 原执行的终态对账仍待联合验收。未知请求继续待核验。Proxy 保持 resident。此批证据确认专属进程退出及清理，未测量对象释放、ALC 回收、隔离负载内存或生产收益。
+具名启停响应丢失的原执行对账仍受门禁保护。Helper 无终态由后续[认证 HTTP 补偿](#mb-04-受管-tun-认证-http-补偿)覆盖。此批证据确认专属进程退出及清理，未测量对象释放、ALC 回收、隔离负载内存或生产收益。
+
+## MB-04 受管 TUN 认证 HTTP 补偿
+
+**已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。
+
+重启 Server 的原发布协调器调用 Helper 按原发布 ID 补偿。夹具扣留真实 AF_UNIX 恢复响应时，候选进程已退出，设备和路由回到基线，Helper 配置及 Server 镜像均为旧配置。HTTP 同键仍返回原 ID，原状态为 `Interrupted`、阶段为 `managed_tun`、完成时间为空，原恢复仍持有工作租约。新键以 `proxy.operation_interrupted` 拒绝。响应交付后，原 Helper 回执为 `Interrupted`，原队列终态为 `proxy.config_apply_failed`，同键和查询均返回原记录，控制器就绪且租约归零。DNS 三项原写入各一次、原路由规则删除一次、原生已存在检查点字节保持。重启 Helper 收到一次原恢复和零次配置派发。
+
+原发布 `572d253dbbc643e78493bc0a3906e039`，候选 PID 317，配置身份 `cb12ff5806f05aa589c560fff201c69129965a0ef6e89e3805a0769c88543079`，恢复后为 `465677193942d700b887e28887778aadc31bb406f9a82dceb23694c86b13572b`。恢复 IPC 关联 ID 为 `a910fa82-6594-42ca-8a48-d5780ab78eb0`。已提交对照路径同时复跑通过，两组专属 cgroup 均清理，宿主共享服务、代理和 resolver 文件指纹一致。归档 SHA-256 为 `62d443705a6cc4e11ab1b8ec5713e2e375bde4e910fae20b8ca64b227dd5de8f`，日志为 `.artifacts/mb04-tun-marker-sync/tun-http-pending-linux-second.log`。首轮夹具把 IPC 关联 ID 当成原恢复目标，导致断言失败，见 `.artifacts/mb04-tun-marker-sync/tun-http-pending-linux.log`。复跑分开核对原目标、传输审计与原终态回执。
+
+**已实现但实机未验证。** Windows Release 回归通过，包含 112 项 Server 发布与 104 项配置事务检查。可信下载探针因缺少进程级测试 CA 跳过。其他 Linux 架构、完整安装态 JWT 和 Android 未参与。回归日志为 `.artifacts/mb04-tun-marker-sync/tun-http-pending-windows.log`。
+
+**未实现或仍受门禁保护。** 具名启停丢失响应仍待绑定原 HTTP 队列 ID 和 Helper 原生回执。证据不足时保留待核验，Proxy 保持 resident。本批确认候选进程退出及专属环境清理。对象释放、ALC 回收、隔离负载内存和生产收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

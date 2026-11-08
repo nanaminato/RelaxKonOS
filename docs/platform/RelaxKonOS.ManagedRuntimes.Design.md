@@ -309,3 +309,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）Linux 非 root Server 到独立 root Helper 的 AF_UNIX 路径覆盖发布、恢复及提交后具名启停和重启。客户端公开入口和同键 HTTP 继续开放。见[分进程实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-af_unix-发布与恢复)。
 
 2026-11-08（MR-03 / MB-04）现有认证 TUN HTTP 路由接入受管发布及具名启停。首次发布绑定原队列 ID，宿主显式准入继续生效。同键查询依据原确认回执，副作用未知时保留原责任。见[认证 HTTP 实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http)。
+
+2026-11-08（MR-03 / MB-04）认证 HTTP 已验证 Helper 无终态时按原发布 ID 补偿。原队列在恢复响应交付前保留待核验阶段和准入门禁，恢复旧配置及原回执后结案。具名启停响应丢失的回执对账仍待验证。见[认证 HTTP 补偿实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-认证-http-补偿)。

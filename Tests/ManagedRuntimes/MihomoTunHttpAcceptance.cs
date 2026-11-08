@@ -26,7 +26,7 @@ internal static class MihomoTunHttpAcceptance
     private static readonly Guid ProfileId = Guid.Parse("8fec824f-778c-4cf5-b81d-94fb4618cae5");
 
     internal static async Task RunAsync(string root, MihomoPublicationStore store, IProxyPlatformPaths paths,
-        IProxyControllerSecretStore secrets, IServerModeResolver mode, string socket, bool cut)
+        IProxyControllerSecretStore secrets, IServerModeResolver mode, string socket, bool firstRun, bool pending)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root, EnvironmentName = "Testing" });
         builder.Logging.ClearProviders();
@@ -48,7 +48,7 @@ internal static class MihomoTunHttpAcceptance
         builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(new MihomoRuntimeAuthorizationProvider(store, paths, secrets));
         builder.Services.AddSingleton(services => new MihomoRuntimeService(
-            new PublicationTransport(socket, paths.GetStateDirectory(), services.GetRequiredService<ModuleResidencyCoordinator>(), cut),
+            new PublicationTransport(socket, paths.GetStateDirectory(), services.GetRequiredService<ModuleResidencyCoordinator>(), firstRun, pending),
             store, services.GetRequiredService<MihomoRuntimeAuthorizationProvider>(), mode, new DirectDownloads()));
         builder.Services.AddSingleton<IProxyProfileRepository>(MihomoPublicationTransactionChecks.Stub<IProxyProfileRepository>(member =>
             member.Name == nameof(IProxyProfileRepository.GetActiveAsync)
@@ -70,7 +70,7 @@ internal static class MihomoTunHttpAcceptance
         app.UseAuthorization();
         app.Use(async (context, next) =>
         {
-            if (!cut || context.Request.Headers["X-Fixture-Drop"] != "accepted")
+            if (!firstRun || context.Request.Headers["X-Fixture-Drop"] != "accepted")
             {
                 await next(context);
                 return;
@@ -107,7 +107,7 @@ internal static class MihomoTunHttpAcceptance
                 Tun: new("gvisor", "rk-fd-proof", false, false, false, "", 1500)));
     }
 
-    private sealed class PublicationTransport(string socket, string state, ModuleResidencyCoordinator coordinator, bool cut)
+    private sealed class PublicationTransport(string socket, string state, ModuleResidencyCoordinator coordinator, bool firstRun, bool pending)
         : IPrivilegedOperationTransport
     {
         private readonly UnixSocketPrivilegedOperationTransport inner = new(new() { SocketPath = socket },
@@ -116,11 +116,26 @@ internal static class MihomoTunHttpAcceptance
         public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
         {
             var result = await inner.ExecuteAsync(request, ct);
-            if (!cut || request.Operation != PrivilegedOperationKind.MihomoRuntimeConfigure || !result.Success) return result;
-            if (coordinator.Describe(ServerModules.ProxyId) is not { ActiveLeases: >= 2 })
-                throw new InvalidOperationException("The queued HTTP operation lost its publication work leases.");
-            await File.WriteAllTextAsync(Path.Combine(state, "server-cut-ready"), request.OperationId!.Value.ToString("N"));
-            await Task.Delay(Timeout.InfiniteTimeSpan);
+            if (!result.Success) return result;
+            if (firstRun && !pending && request.Operation == PrivilegedOperationKind.MihomoRuntimeConfigure)
+            {
+                if (coordinator.Describe(ServerModules.ProxyId) is not { ActiveLeases: >= 2 })
+                    throw new InvalidOperationException("The queued HTTP operation lost its publication work leases.");
+                await File.WriteAllTextAsync(Path.Combine(state, "server-cut-ready"), request.OperationId!.Value.ToString("N"));
+                await Task.Delay(Timeout.InfiniteTimeSpan);
+            }
+            if (!firstRun && pending && request.Operation == PrivilegedOperationKind.MihomoRuntimeRecover)
+            {
+                if (coordinator.Describe(ServerModules.ProxyId) is not { ActiveLeases: >= 1 })
+                    throw new InvalidOperationException("The original recovery lost its work lease before the Helper response.");
+                var ready = Path.Combine(state, "http-recovery-reply");
+                await File.WriteAllTextAsync(ready + ".new",
+                    $"{request.RuntimeLifecycle!.RecoveryOperationId!.Value:N} {request.OperationId!.Value:D}");
+                File.Move(ready + ".new", ready);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                while (!File.Exists(Path.Combine(state, "http-recovery-release")))
+                    await Task.Delay(25, timeout.Token);
+            }
             return result;
         }
     }

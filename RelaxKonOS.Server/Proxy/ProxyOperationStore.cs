@@ -303,10 +303,20 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         (operation.Kind == "subscription.activate" ? state.SubscriptionActivationCompletions : state.SubscriptionRefreshCompletions)
         ?.GetValueOrDefault(operation.OperationId);
 
-    private ProxyOperationDto Visible(ProxyOperationDto operation) =>
-        operation.State is ProxyOperationState.Queued or ProxyOperationState.Running && !_running.ContainsKey(operation.OperationId)
-            ? operation with { State = ProxyOperationState.Interrupted, Stage = "interrupted", ProblemCode = ProxyProblemCodes.OperationInterrupted, CompletedAt = DateTimeOffset.UtcNow }
-            : operation;
+    private ProxyOperationDto Visible(ProxyOperationDto operation)
+    {
+        if (operation.State is not (ProxyOperationState.Queued or ProxyOperationState.Running)
+            || _running.ContainsKey(operation.OperationId))
+            return operation;
+        var managedTunPending = operation.Stage == MihomoManagedTunOperations.QueueStage;
+        return operation with
+        {
+            State = ProxyOperationState.Interrupted,
+            Stage = managedTunPending ? operation.Stage : "interrupted",
+            ProblemCode = ProxyProblemCodes.OperationInterrupted,
+            CompletedAt = managedTunPending ? null : DateTimeOffset.UtcNow
+        };
+    }
 
     private async Task ExecuteAsync(ProxyOperationDto original, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation)
     {
