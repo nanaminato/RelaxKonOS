@@ -88,76 +88,60 @@ public sealed class MihomoSettingsService(
             var localCommit = sameHostPolicy || trackedHostPolicy
                 ? await settingsFiles.CaptureAsync(previous, settings, cancellationToken) : null;
             var temporary = Path.Combine(directory, ".settings-" + Guid.NewGuid().ToString("N"));
+            MihomoDirectPublicationCode? execution = null;
             try
             {
                 await File.WriteAllTextAsync(temporary, updated, cancellationToken);
                 if (!OperatingSystem.IsWindows() && originalMode is { } mode) File.SetUnixFileMode(temporary, mode);
                 cancellationToken.ThrowIfCancellationRequested();
+                try { execution = MihomoDirectPublicationCode.Acquire(); }
+                catch (InvalidDataException) { return ProxyProblemCodes.ConfigApplyFailed; }
                 checkpoint = await publication.BeginDirectReloadAsync(original, updated, cancellationToken);
                 File.Move(temporary, active, overwrite: true);
-                // The active file is already visible. Finish the update or compensation even if the client leaves.
+                // The published file must be resolved under this gate even when the caller leaves.
                 var completionToken = CancellationToken.None;
-                var controllerAvailable = (await controller.IsReachableAsync(completionToken)).Succeeded;
-                var reload = controllerAvailable ? await controller.ReloadAsync(completionToken) : null;
-                if (controllerAvailable && !string.IsNullOrEmpty(reload))
-                {
-                    await RestoreConfigurationAsync();
-                    if (reload == ProxyProblemCodes.RecoveryRequired) return reload;
-                    if (!string.IsNullOrEmpty(await controller.ReloadAsync(completionToken))) return ProxyProblemCodes.RecoveryRequired;
-                    await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
-                    return ProxyProblemCodes.ConfigApplyFailed;
-                }
-                if (trackedHostPolicy)
-                {
-                    if (!controllerAvailable)
+                var persistedDirectly = false;
+                var problem = await execution.PublishSettingsAsync(new(
+                    trackedHostPolicy,
+                    localCommit is not null,
+                    !settings.SystemProxyEnabled && !previous.SystemProxyEnabled,
+                    async () => (await controller.IsReachableAsync(completionToken)).Succeeded,
+                    () => controller.ReloadAsync(completionToken),
+                    RestoreConfigurationAsync,
+                    () => ConfirmHostPolicyAsync(tracked: true),
+                    () => ConfirmHostPolicyAsync(tracked: false),
+                    rollback => rollback
+                        ? systemProxyService.ApplyAsync(previous, settings, enforce: true, completionToken)
+                        : systemProxyService.ApplyAsync(settings, previous, enforce: false, completionToken),
+                    async () =>
                     {
-                        await RestoreConfigurationAsync();
-                        await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
-                        return ProxyProblemCodes.ControllerUnavailable;
-                    }
-                    var confirmed = await publication.ConfirmDirectSettingsAsync(checkpoint.OperationId, localCommit!, trackedHostPolicy: true);
-                    if (!await settingsFiles.ApplyTrackedAsync(checkpoint.OperationId, localCommit!, completionToken))
-                        return ProxyProblemCodes.RecoveryRequired;
+                        try { await WriteAsync(settings, completionToken); }
+                        catch (Exception error) when (error is IOException or UnauthorizedAccessException or OperationCanceledException)
+                        { return false; }
+                        persistedDirectly = true;
+                        return true;
+                    },
+                    () => publication.CompleteDirectReloadAsync(checkpoint.OperationId),
+                    problem => logger?.LogWarning("Proxy settings update could not apply the host system proxy. ProblemCode={ProblemCode}", problem)));
+                if (persistedDirectly)
+                    logger?.LogInformation("Proxy settings updated. SystemProxyEnabled={SystemProxyEnabled} AllowLan={AllowLan} DnsEnabled={DnsEnabled} MixedPort={MixedPort} TunEnabled={TunEnabled}",
+                        settings.SystemProxyEnabled, settings.AllowLan, settings.DnsEnabled, settings.MixedPort, tunActivation.Enabled);
+                return problem;
+
+                async Task<bool> ConfirmHostPolicyAsync(bool tracked)
+                {
+                    var confirmed = await publication.ConfirmDirectSettingsAsync(checkpoint.OperationId, localCommit!, trackedHostPolicy: tracked);
+                    if (tracked && !await settingsFiles.ApplyTrackedAsync(checkpoint.OperationId, localCommit!, completionToken))
+                        return false;
                     var result = await publication.RecoverDirectReloadUnderGateAsync(confirmed, null, completionToken, settingsFiles);
-                    return result.Outcome == RuntimeSwitchOutcome.Succeeded ? null : ProxyProblemCodes.RecoveryRequired;
+                    return result.Outcome == RuntimeSwitchOutcome.Succeeded;
                 }
-                var proxyProblem = await systemProxyService.ApplyAsync(settings, previous, enforce: false, completionToken);
-                if (controllerAvailable && proxyProblem is null && localCommit is not null)
-                {
-                    var confirmed = await publication.ConfirmDirectSettingsAsync(checkpoint.OperationId, localCommit);
-                    var result = await publication.RecoverDirectReloadUnderGateAsync(confirmed, null, completionToken, settingsFiles);
-                    return result.Outcome == RuntimeSwitchOutcome.Succeeded ? null : ProxyProblemCodes.RecoveryRequired;
-                }
-                // An absent Helper must not block unrelated Mihomo settings while the proxy is off.
-                // Startup reconciliation still retries, so an interrupted root-side write can recover.
-                if (!settings.SystemProxyEnabled && !previous.SystemProxyEnabled
-                    && proxyProblem == ProxyProblemCodes.PrivilegedOperationUnavailable) proxyProblem = null;
-                if (proxyProblem is not null)
-                {
-                    logger?.LogWarning("Proxy settings update could not apply the host system proxy. ProblemCode={ProblemCode}", proxyProblem);
-                    await RestoreConfigurationAsync();
-                    if (controllerAvailable && !string.IsNullOrEmpty(await controller.ReloadAsync(completionToken)))
-                        return ProxyProblemCodes.RecoveryRequired;
-                    if (proxyProblem != ProxyProblemCodes.SystemProxyConflict) return ProxyProblemCodes.RecoveryRequired;
-                    await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
-                    return proxyProblem;
-                }
-                try { await WriteAsync(settings, completionToken); }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException or OperationCanceledException)
-                {
-                    var rollback = await systemProxyService.ApplyAsync(previous, settings, enforce: true, CancellationToken.None);
-                    await RestoreConfigurationAsync();
-                    if (controllerAvailable && !string.IsNullOrEmpty(await controller.ReloadAsync(CancellationToken.None)))
-                        return ProxyProblemCodes.RecoveryRequired;
-                    if (rollback is null) await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
-                    return rollback is null ? ProxyProblemCodes.ConfigApplyFailed : ProxyProblemCodes.RecoveryRequired;
-                }
-                await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
-                logger?.LogInformation("Proxy settings updated. SystemProxyEnabled={SystemProxyEnabled} AllowLan={AllowLan} DnsEnabled={DnsEnabled} MixedPort={MixedPort} TunEnabled={TunEnabled}",
-                    settings.SystemProxyEnabled, settings.AllowLan, settings.DnsEnabled, settings.MixedPort, tunActivation.Enabled);
-                return null;
             }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            finally
+            {
+                try { if (File.Exists(temporary)) File.Delete(temporary); }
+                finally { execution?.Dispose(); }
+            }
 
             async Task RestoreConfigurationAsync()
             {

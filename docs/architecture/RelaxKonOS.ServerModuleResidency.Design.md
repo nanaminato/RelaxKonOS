@@ -566,3 +566,5 @@ Linux 直连设置按原 ID 核对宿主策略变更。guard 可完成已证实�
 排队订阅激活在同一工作租约内持有原发布 ID，重启由原发布权威接续档案事务，原队列可补齐已确认终态。见[排队订阅激活的原发布回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-排队订阅激活的原发布回执)。
 
 订阅激活的明确失败按原 ID 保留终态，应答未知继续占用原发布责任。见[订阅激活未知与失败的实机回执](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅激活未知与失败的实机回执)。
+
+直连 Mihomo 档案与设置发布在原发布锁内按需加载执行代次。实际 reload、结果核验、持久确认及临时文件清理结束后释放，HTTP 工作责任继续保护响应。Core 继续负责原检查点、系统代理和 TUN。见[直连档案与设置发布执行器](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连档案与设置发布执行器)。

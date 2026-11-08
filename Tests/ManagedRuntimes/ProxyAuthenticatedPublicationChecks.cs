@@ -151,6 +151,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         var relayWrites = 0;
         var nativeWrites = 0;
         var committed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource? releaseHeldReply = null;
         relay.Run(async context =>
         {
             var reload = HttpMethods.IsPut(context.Request.Method) && context.Request.Path == "/configs";
@@ -174,6 +175,12 @@ internal static class ProxyAuthenticatedPublicationChecks
                 if (Volatile.Read(ref dropAppliedReloadReply)) { context.Abort(); return; }
                 if (Volatile.Read(ref holdResponse))
                 {
+                    if (Volatile.Read(ref releaseHeldReply) is { } release)
+                    {
+                        await release.Task.WaitAsync(context.RequestAborted);
+                        context.Abort();
+                        return;
+                    }
                     await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted);
                     return;
                 }
@@ -260,6 +267,69 @@ internal static class ProxyAuthenticatedPublicationChecks
             if (await native.ReloadAsync(ct) is not null || await ReadLevelAsync(ct) != oldLevel)
                 throw new InvalidOperationException("Explicit fixture cleanup did not reload the original protected configuration.");
             Console.WriteLine($"PASS MIHOMO DIRECT RELOAD LOSS: original {operation}; pre-dispatch loss and real post-apply process crash, disk recovery without replay");
+        });
+
+        await guard.VerifyTrafficAsync(async (_, ct) =>
+        {
+            var fixturePaths = await CreatePathsAsync("direct-code", ct);
+            var ledger = new MihomoPublicationStore(fixturePaths, protection);
+            var loaded = new TaskCompletionSource<(WeakReference Code, Task Unloaded)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var priorNative = Volatile.Read(ref nativeWrites);
+            var priorRelay = Volatile.Read(ref relayWrites);
+            var oldLevel = await ReadLevelAsync(ct);
+            committed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Volatile.Write(ref releaseHeldReply, release);
+            AppDomain.CurrentDomain.AssemblyLoad += Observe;
+            try
+            {
+                var task = ExecuteDirectReloadFixtureAsync(root, fixturePaths.GetStateDirectory(), address, ct);
+                var generation = await loaded.Task.WaitAsync(ct);
+                await committed.Task.WaitAsync(ct);
+                var pending = (await ledger.ReadAsync(ct)).DirectReload
+                    ?? throw new InvalidOperationException("Missing the original direct publication checkpoint.");
+                if (task.IsCompleted || generation.Unloaded.IsCompleted || !generation.Code.IsAlive
+                    || Volatile.Read(ref nativeWrites) != priorNative + 1 || await ReadLevelAsync(ct) != "warning")
+                    throw new InvalidOperationException("The direct execution generation did not retain the real native response.");
+                release.TrySetResult();
+                if (await task != ProxyProblemCodes.RecoveryRequired
+                    || (await ledger.ReadAsync(ct)).DirectReload?.OperationId != pending.OperationId)
+                    throw new InvalidOperationException("The direct response loss did not preserve the original checkpoint.");
+                await generation.Unloaded.WaitAsync(ct);
+                using var collection = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                collection.CancelAfter(TimeSpan.FromSeconds(10));
+                while (generation.Code.IsAlive)
+                {
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    await Task.Delay(50, collection.Token);
+                }
+                GC.KeepAlive(task);
+                if (await ExecuteDirectReloadFixtureAsync(root, fixturePaths.GetStateDirectory(), address, ct) != ProxyProblemCodes.RecoveryRequired
+                    || Volatile.Read(ref relayWrites) != priorRelay + 1
+                    || !(await File.ReadAllBytesAsync(active, ct)).SequenceEqual(original)
+                    || guard.RuntimePid != pid)
+                    throw new InvalidOperationException("Retry replayed the original direct reload or changed native ownership.");
+                if (await native.ReloadAsync(ct) is not null || await ReadLevelAsync(ct) != oldLevel)
+                    throw new InvalidOperationException("Explicit fixture cleanup did not restore the initial log level.");
+                Console.WriteLine($"PASS MIHOMO DIRECT EXECUTION COLLECTION: {pending.OperationId}; real reply held, original unknown receipt, collected code and no replay");
+            }
+            finally
+            {
+                release.TrySetResult();
+                Volatile.Write(ref releaseHeldReply, null);
+                AppDomain.CurrentDomain.AssemblyLoad -= Observe;
+            }
+
+            void Observe(object? sender, AssemblyLoadEventArgs args)
+            {
+                if (args.LoadedAssembly.GetName().Name != "RelaxKonOS.ServerModule.Proxy"
+                    || System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(args.LoadedAssembly) is not { Name: { } name } context
+                    || !name.StartsWith("proxy-direct-publication:", StringComparison.Ordinal)) return;
+                var unloading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                context.Unloading += _ => unloading.TrySetResult();
+                loaded.TrySetResult((new WeakReference(context), unloading.Task));
+            }
         });
 
         Volatile.Write(ref holdResponse, false);

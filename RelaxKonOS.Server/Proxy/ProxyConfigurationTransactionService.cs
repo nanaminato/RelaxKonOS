@@ -181,6 +181,7 @@ public sealed class ProxyConfigurationTransactionService(
             var temporary = Path.Combine(directory, ".apply-" + Guid.NewGuid().ToString("N"));
             var backup = Path.Combine(directory, "backup-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture) + ".yaml");
             MihomoDirectReload? checkpoint = null;
+            MihomoDirectPublicationCode? execution = null;
             try
             {
                 await File.WriteAllTextAsync(temporary, managedYaml, cancellationToken); SetPrivateFile(temporary);
@@ -193,55 +194,44 @@ public sealed class ProxyConfigurationTransactionService(
                 var selection = await CaptureSelectionAsync(profileId, refresh?.Metadata, cancellationToken, activation?.SubscriptionId);
                 await profiles.ValidatePublicationAsync(selection, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
+                try { execution = MihomoDirectPublicationCode.Acquire(); }
+                catch (InvalidDataException) { return ProxyProblemCodes.ConfigApplyFailed; }
                 var previous = File.Exists(active) ? await File.ReadAllTextAsync(active, cancellationToken) : null;
                 if (previous is not null) File.Copy(active, backup, overwrite: false);
                 checkpoint = await publication.BeginDirectReloadAsync(previous, managedYaml, cancellationToken, selection,
                     refresh?.OperationId ?? activation?.OperationId);
                 File.Move(temporary, active, overwrite: true); SetPrivateFile(active);
-                // Once the active file is visible, finish activation or compensation under the same gate.
-                var completionToken = CancellationToken.None;
-                var reload = await engine.ReloadAsync(completionToken);
-                if (reload == ProxyProblemCodes.RecoveryRequired)
-                {
-                    // Keep the last acknowledged file for a future runtime start. The live result is unknown.
-                    if (File.Exists(backup))
+                // The published file must be resolved under this gate even when the caller leaves.
+                return await execution.PublishProfileAsync(new(
+                    () => engine.ReloadAsync(CancellationToken.None),
+                    async () => (await engine.GetHealthAsync(CancellationToken.None)).State == ProxyHealthState.Healthy,
+                    () => File.Exists(backup),
+                    () =>
                     {
-                        File.Copy(backup, temporary, overwrite: false);
-                        SetPrivateFile(temporary);
-                        File.Move(temporary, active, overwrite: true);
-                    }
-                    else File.Delete(active);
-                    return reload;
-                }
-                var health = string.IsNullOrEmpty(reload) ? await engine.GetHealthAsync(completionToken) : null;
-                if (string.IsNullOrEmpty(reload) && health?.State == ProxyHealthState.Healthy)
-                {
-                    await publication.ConfirmDirectProfileReloadAsync(checkpoint.OperationId);
-                    var confirmed = await publication.ReadAsync(completionToken);
-                    if ((await publication.RecoverDirectReloadUnderGateAsync(confirmed, profiles, completionToken)).Outcome
-                        != RuntimeSwitchOutcome.Succeeded)
-                        return ProxyProblemCodes.RecoveryRequired;
-                    logger?.LogInformation("Proxy configuration activated. ProfileId={ProfileId} EngineId={EngineId} BackupCreated={BackupCreated}", profileId, engine.EngineId, File.Exists(backup));
-                    return null;
-                }
-                if (File.Exists(backup))
-                {
-                    File.Copy(backup, active, overwrite: true); SetPrivateFile(active);
-                    var rollback = await engine.ReloadAsync(completionToken);
-                    var rollbackHealth = string.IsNullOrEmpty(rollback) ? await engine.GetHealthAsync(completionToken) : null;
-                    var outcome = rollbackHealth?.State == ProxyHealthState.Healthy ? ProxyProblemCodes.ConfigApplyFailed : ProxyProblemCodes.RecoveryRequired;
-                    if (outcome == ProxyProblemCodes.ConfigApplyFailed) await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
-                    logger?.LogWarning("Proxy configuration activation failed and rollback was attempted. ProfileId={ProfileId} EngineId={EngineId} Outcome={Outcome}", profileId, engine.EngineId, outcome);
-                    return outcome;
-                }
-                // A definite rejection on first activation leaves no acknowledged configuration to reload.
-                if (!string.IsNullOrEmpty(reload))
-                {
-                    File.Delete(active);
-                    await publication.CompleteDirectReloadAsync(checkpoint.OperationId);
-                    return ProxyProblemCodes.ConfigApplyFailed;
-                }
-                return ProxyProblemCodes.RecoveryRequired;
+                        if (File.Exists(backup))
+                        {
+                            File.Copy(backup, temporary, overwrite: false);
+                            SetPrivateFile(temporary);
+                            File.Move(temporary, active, overwrite: true);
+                        }
+                        else File.Delete(active);
+                    },
+                    () => File.Delete(active),
+                    () => { File.Copy(backup, active, overwrite: true); SetPrivateFile(active); },
+                    async () =>
+                    {
+                        await publication.ConfirmDirectProfileReloadAsync(checkpoint.OperationId);
+                        var confirmed = await publication.ReadAsync(CancellationToken.None);
+                        if ((await publication.RecoverDirectReloadUnderGateAsync(confirmed, profiles, CancellationToken.None)).Outcome
+                            != RuntimeSwitchOutcome.Succeeded)
+                            return false;
+                        logger?.LogInformation("Proxy configuration activated. ProfileId={ProfileId} EngineId={EngineId} BackupCreated={BackupCreated}",
+                            profileId, engine.EngineId, File.Exists(backup));
+                        return true;
+                    },
+                    () => publication.CompleteDirectReloadAsync(checkpoint.OperationId),
+                    outcome => logger?.LogWarning("Proxy configuration activation failed and rollback was attempted. ProfileId={ProfileId} EngineId={EngineId} Outcome={Outcome}",
+                        profileId, engine.EngineId, outcome)));
             }
             catch (Exception error) when (checkpoint is not null && error is (IOException or UnauthorizedAccessException or ArgumentException))
             { return ProxyProblemCodes.RecoveryRequired; }
@@ -249,7 +239,11 @@ public sealed class ProxyConfigurationTransactionService(
             catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
             catch (ProxyControllerSecretException) { return ProxyProblemCodes.ConfigApplyFailed; }
             catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            finally
+            {
+                try { if (File.Exists(temporary)) File.Delete(temporary); }
+                finally { execution?.Dispose(); }
+            }
         }
         catch (ArgumentException) { return ProxyProblemCodes.ConfigInvalid; }
         catch (RuntimePolicyException) { return ProxyProblemCodes.RecoveryRequired; }

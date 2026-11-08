@@ -4572,3 +4572,5 @@ Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链�
 直连档案与设置在切换前持久保存原操作和磁盘检查点。Server 重启会还原仍匹配的磁盘候选并保留待恢复状态，后续配置写入被拦截。系统代理 guard 与 TUN 紧急禁用仍可接续。见[直连 reload 持久检查点](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-直连-reload-持久检查点)。
 
 排队订阅刷新、激活和批量刷新在原后台工作租约内按需加载执行代码。一个批次内的响应体转换和分项调度共用该次执行，实际任务及异步清理结束、原终态或待核验责任落盘后才释放。启动恢复和同键请求继续按原队列、分项 ID 与发布或草稿证据核对。见[订阅后台执行图](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-订阅后台执行图的可回收交接)。
+
+直连 Mihomo 档案激活与设置写入共用按需加载的执行代码。原发布检查点、系统代理归属和应用回执由 Server 保持。控制器应答丢失时，同一原操作继续等待核验，后续恢复按原 ID 读取证据。见[直连档案与设置发布执行器](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连档案与设置发布执行器)。

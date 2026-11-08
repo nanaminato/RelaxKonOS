@@ -85,7 +85,7 @@ internal static class ProxyResidencyChecks
 
     private static async Task CheckCollectionBudgetAsync(Action<bool, string> check)
     {
-        var gate = new ProxySubscriptionExecutionGate();
+        var gate = new ProxyExecutionCodeGate("subscription");
         var pending = FillCollectionBudget(gate, check);
         for (var i = 0; pending.Any(code => code.IsAlive) && i < 30; i++)
         {
@@ -117,7 +117,7 @@ internal static class ProxyResidencyChecks
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static (WeakReference Code, InvalidDataException Error) CaptureConversionFailure(ProxySubscriptionExecutionGate gate)
+    private static (WeakReference Code, InvalidDataException Error) CaptureConversionFailure(ProxyExecutionCodeGate gate)
     {
         WeakReference code = null!;
         try { Read(gate, null, out code); }
@@ -126,11 +126,11 @@ internal static class ProxyResidencyChecks
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static WeakReference[] FillCollectionBudget(ProxySubscriptionExecutionGate gate, Action<bool, string> check)
+    private static WeakReference[] FillCollectionBudget(ProxyExecutionCodeGate gate, Action<bool, string> check)
     {
         var retained = new List<object>();
         var pending = new List<WeakReference>();
-        for (var i = 0; i < ProxySubscriptionExecutionGate.MaxOutstandingContexts; i++)
+        for (var i = 0; i < ProxyExecutionCodeGate.MaxOutstandingContexts; i++)
         {
             Read(gate, "vless://test-id@example.com:443#retained", out var code);
             retained.Add(code.Target ?? throw new Exception("Context collected before test retention"));
@@ -148,7 +148,7 @@ internal static class ProxyResidencyChecks
         return pending.ToArray();
     }
 
-    private static string Read(ProxySubscriptionExecutionGate gate, string? input, out WeakReference code)
+    private static string Read(ProxyExecutionCodeGate gate, string? input, out WeakReference code)
     {
         WeakReference? observed = null;
         try
@@ -164,7 +164,7 @@ internal static class ProxyResidencyChecks
         var hostReferences = typeof(ProxyOperationStore).Assembly.GetReferencedAssemblies();
         check(!hostReferences.Any(name => name.Name == "RelaxKonOS.ServerModule.Proxy"), "Server has no static reference to the private Proxy implementation assembly");
         var input = "vless://test-id@example.com:443?security=tls#example";
-        var gate = new ProxySubscriptionExecutionGate();
+        var gate = new ProxyExecutionCodeGate("subscription");
         var stream = new SubscriptionCleanupStream();
         WeakReference? draining = null;
         var read = gate.ReadAsync(stream, default, code => draining = code);
