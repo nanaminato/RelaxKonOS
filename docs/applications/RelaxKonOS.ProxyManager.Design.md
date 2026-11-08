@@ -4587,6 +4587,8 @@ TUN 补偿在重新启动旧服务前同步还原数据树、数据替换的父�
 
 描述符派发后若原接收进程已退出，Helper 在原启动、进程、网络及配置证据相符且尚未派发 DNS 时，可按同一操作恢复旧服务。仍运行的候选继续受原恢复门禁保护。见[描述符派发未确认且原进程已退出](../architecture/server-module-evidence/Proxy-Safety.md#描述符派发未确认且原进程已退出)。
 
+DNS 派发后若候选退出，Helper 先核对原 DNS 发送端退出见证及原解析器设置，再清理原规则并还原旧服务。解析器换主、设置漂移或发送端结果未知时保留原待核验。见[DNS 派发后候选已退出的原解析器核验](../architecture/server-module-evidence/Proxy-Safety.md#dns-派发后候选已退出的原解析器核验)。
+
 Helper 尚未提交且原候选仍在转发时，管理选路漂移也会阻止原补偿停止候选进程。同键保留原待核验回执。精确选路恢复后，原操作重新核验归属并补偿一次。见[原补偿门禁实机证据](../architecture/server-module-evidence/Proxy-Safety.md#管理选路漂移时拒绝原补偿派发)。
 
 Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停用。正常停机等待已受理的具名停用收到 Helper 响应、写入审计并持久化原队列终态后退出。重启仍可按原键取得原回执，再次启用沿用已确认发布。见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。

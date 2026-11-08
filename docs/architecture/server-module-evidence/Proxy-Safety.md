@@ -722,6 +722,18 @@ Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 
 
 **未实现或待验。** 原检查点已进入 DNS 派发而候选随后退出时，仍需原解析器归属证据。整机掉电和其他 Linux 架构未实测。对象释放、ALC 回收、隔离内存和生产收益未测量。Proxy 保持 resident。
 
+### DNS 派发后候选已退出的原解析器核验
+
+**已实现且已验证。** Linux x64 私有 systemd 原操作 `be64c84be2324553a9a28135e8c66090` 的三个分流 DNS 发送进程成功退出并排空后持久化见证，在 `DnsApplied` 落盘前中断 broker。原候选在中断前后用同一配置及描述符完成真实上游 HTTP 和分流 DNS。候选退出后，原链路设置随设备消失，其余设置恢复到同一 resolver 的原快照。隐藏发送端见证或改变独立链路 DNS，分别得到 `runtime.network_dns_sender_unconfirmed` 和 `runtime.network_dns_conflict`，原操作仍待核验且规则未删除。恢复原证据后原规则删除一次，同键取得原 `Interrupted`，旧配置、数据和管理选路一致，已还原 PID 520 保持。三个原 DNS 变更调用各一次。
+
+原操作 `9c250c518c7143a482adb099a4ebb58b` 在候选退出后重启私有 resolver 并恢复完全相同的其余设置。D-Bus owner 从 `:1.1` 变为 `:1.56`，Helper 返回 `runtime.network_dns_owner_unknown`，原规则和待核验保留，DNS 变更未重放。
+
+`DnsApplied` 已落盘的原操作 `e6cc69d69b0e452986420df15c36a706` 也通过候选退出复验。原 resolver `:1.0` 保持，原规则删除一次，同键取得原 `Interrupted`，已还原 PID 562 保持。补充日志为同目录 `linux-applied.log`，归档 SHA-256 为 `ebfbbb2879613db498f5593939658a729555d5858b5bb34ad61c58ebb4d34349`。
+
+同版复验描述符派发未确认 `8415c3ee3ab84c5a9b1bd451b0c170ee`、认证 HTTP 补偿 `a5e1d1793f984efdb9f93adad5c10798` 和成功发布 `bbf323f135a54f5caddf13b0c4348c4e`。五场私有 cgroup 清理和宿主共享服务指纹核验通过。日志为 `.artifacts/mb04-tun-dns-after-exit/linux.log`，归档 SHA-256 为 `514a04413524b98943b4d80c2de8c90c14a3c37e6745a8fafc52bd46729282bc`。Windows Release 全套回归通过，含配置事务 106 项和发布事务 113 项。可信下载探针因本机缺少进程级 CA 覆盖跳过。
+
+**未实现或待验。** DNS 发送端中途退出且无完整原见证的部分效果仍保持待核验。整机掉电和其他 Linux 架构未实测。对象释放、ALC 回收、隔离内存和生产收益未测量。Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

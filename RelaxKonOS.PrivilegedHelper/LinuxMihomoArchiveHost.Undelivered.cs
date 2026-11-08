@@ -28,7 +28,7 @@ internal sealed partial class LinuxMihomoArchiveHost
         var dispatched = await ReadUndeliveredCheckpointAsync(effect, "network-before-launch-removal-dispatched", ct);
         if (!dispatched && await routes.HasScopedRuleAsync())
         {
-            if (!await ReadUndeliveredCheckpointAsync(effect with { Phase = MihomoTunPhase.NetworkDispatched, Process = null },
+            if (!await ReadUndeliveredCheckpointAsync(effect with { Phase = MihomoTunPhase.NetworkDispatched, Process = null, Dns = null },
                 "network-rule-verified", ct))
                 Fail("network_rule_ownership_unknown");
             await routes.RequireRuleAsync(present: true);
@@ -57,7 +57,7 @@ internal sealed partial class LinuxMihomoArchiveHost
             || intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
             Fail("network_checkpoint_conflict");
         if (effect.Phase != MihomoTunPhase.NetworkDispatched
-            && !await ReadUndeliveredCheckpointAsync(effect with { Phase = MihomoTunPhase.LaunchDispatched, Process = null },
+            && !await ReadUndeliveredCheckpointAsync(effect with { Phase = MihomoTunPhase.LaunchDispatched, Process = null, Dns = null },
                 "launch-sender-exited", ct))
             Fail("network_launch_sender_unconfirmed");
         var routes = TunRoutes(intent);
@@ -65,6 +65,12 @@ internal sealed partial class LinuxMihomoArchiveHost
             || effect.Process is { } process && Directory.Exists($"/proc/{process.Pid}")
             || !await routes.IsAbsentAsync(intent.Device, effect.InterfaceIndex))
             Fail("network_stop_unconfirmed");
+        if (effect.Dns is { } dns)
+        {
+            if (!await ReadUndeliveredCheckpointAsync(effect with { Phase = MihomoTunPhase.DnsDispatched }, "dns-senders-exited", ct))
+                Fail("network_dns_sender_unconfirmed");
+            await TunDns(effect).VerifyAsync(dns, present: false);
+        }
         return routes;
     }
 
@@ -98,5 +104,6 @@ internal sealed partial class LinuxMihomoArchiveHost
     }
 
     internal static bool SupportsUndeliveredRecovery(MihomoTunPhase phase) =>
-        phase is MihomoTunPhase.NetworkDispatched or MihomoTunPhase.LaunchDispatched or MihomoTunPhase.DescriptorDispatched;
+        phase is MihomoTunPhase.NetworkDispatched or MihomoTunPhase.LaunchDispatched or MihomoTunPhase.DescriptorDispatched
+            or MihomoTunPhase.DnsDispatched or MihomoTunPhase.DnsApplied;
 }

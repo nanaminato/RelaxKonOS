@@ -42,7 +42,6 @@ internal sealed class LinuxMihomoTunDns(string domain, IPAddress server, uint in
         await CallAsync(owner, ManagerPath, Manager, "SetLinkDomains", "ia(sb)", linkIndex, "1", domain, "true");
         await CallAsync([owner, ManagerPath, Manager, "SetLinkDNS", "ia(iay)", linkIndex, "1", "2", "4",
             .. address.Select(value => value.ToString(CultureInfo.InvariantCulture))]);
-        await VerifyAsync(baseline, present: true);
     }
 
     internal async Task VerifyAsync(MihomoTunDnsBaseline baseline, bool present)
@@ -59,6 +58,8 @@ internal sealed class LinuxMihomoTunDns(string domain, IPAddress server, uint in
             var defaultRoute = await BusAsync("get-property", baseline.Owner, path, "org.freedesktop.resolve1.Link", "DefaultRoute");
             if (defaultRoute.ValueKind != JsonValueKind.False) throw new RuntimePolicyException("runtime.network_dns_conflict");
         }
+        if (await IdentityAsync() != (baseline.BusId, baseline.Owner))
+            throw new RuntimePolicyException("runtime.network_dns_owner_unknown");
     }
 
     private void RequireLink((JsonElement[] Dns, JsonElement[] Domains, JsonElement[] Fallback) snapshot, bool present)

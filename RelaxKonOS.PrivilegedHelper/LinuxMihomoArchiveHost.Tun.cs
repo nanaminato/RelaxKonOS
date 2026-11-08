@@ -80,6 +80,9 @@ internal sealed partial class LinuxMihomoArchiveHost
             dispatched = dispatched with { Phase = MihomoTunPhase.DnsDispatched, Dns = baseline };
             await checkpoint.AppendAsync(dispatched);
             await dns.ApplyAsync(baseline);
+            if (publication is not null)
+                await WriteUndeliveredCheckpointAsync(dispatched, "dns-senders-exited", CancellationToken.None);
+            await dns.VerifyAsync(baseline, present: true);
             dispatched = dispatched with { Phase = MihomoTunPhase.DnsApplied };
             await checkpoint.AppendAsync(dispatched);
         }

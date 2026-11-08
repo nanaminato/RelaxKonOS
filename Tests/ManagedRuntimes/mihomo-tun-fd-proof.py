@@ -220,7 +220,7 @@ fi
     command('/usr/bin/mount', '--bind', str(wrapper), '/usr/sbin/ip')
 
 
-def install_dns_ack_boundary():
+def install_dns_ack_boundary(hold_reply=True):
     original = root / 'busctl-real'
     wrapper = root / 'busctl-wrapper'
     shutil.copy2('/usr/bin/busctl', original)
@@ -231,7 +231,7 @@ case "${{8:-}}" in
     SetLinkDefaultRoute|SetLinkDomains|SetLinkDNS)
         printf '%s\n' "$8" >> {shlex.quote(str(root / 'dns-write-attempts'))}
         "$real" "$@"
-        if [[ "$8" == SetLinkDNS ]]; then
+        if [[ "$8" == SetLinkDNS && {'yes' if hold_reply else 'no'} == yes ]]; then
             touch {shlex.quote(str(root / 'dns-effect-ready'))}
             parent=$PPID
             while kill -0 "$parent" 2>/dev/null; do sleep .05; done
@@ -864,6 +864,104 @@ def proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, 
     print(f'PASS TUN DESCRIPTOR OUTCOME UNKNOWN: original {operation}; candidate PID={record["service"][0]}, '
           f'configuration={record["credential"]}; real traffic survived broker exit; one rule deletion, '
           f'original Interrupted and restored PID={restored[0]}')
+
+
+def proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, sentinel, trace, case, baseline_dns):
+    sender = operation_dir / 'dns-senders-exited.json'
+    applied = case == 'dns-applied-exited'
+    deadline = time.monotonic() + 12
+    while not sender.is_file() or applied and json.loads(journal.read_text())['phase'] != 'dispatching':
+        assert owner.poll() is None and time.monotonic() < deadline
+        time.sleep(.05)
+    effect = json.loads(sender.read_text())
+    dns_dispatch = operation_dir / 'tun-4.json'
+    frozen = dns_dispatch.read_bytes()
+    assert effect == json.loads(frozen)
+    if not applied:
+        prepare(effect['InterfaceIndex'], effect['BrokerPid'])
+    record = json.loads(journal.read_text())
+    resolver_with_candidate = resolver_snapshot()
+    assert resolver_with_candidate[0] == baseline_dns[0] == effect['Dns']['Owner']
+    assert resolver_with_candidate != baseline_dns
+    table = record['routing_table']
+    archive_state = archive / 'state' / 'archive-state.json'
+
+    def probe(phase):
+        observe_runtime(record)
+        assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
+                       f'http://{target}:18880/mb04-dns-exit-{phase}') == 'upstream-through-inherited-tun'
+        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
+
+    def kill_exact(pid):
+        fd = os.pidfd_open(pid)
+        try:
+            signal.pidfd_send_signal(fd, signal.SIGKILL)
+        finally:
+            os.close(fd)
+
+    def pending(problem):
+        result = json.loads(checkpoint(record, 'recover'))
+        assert uuid.UUID(result['OperationId']).hex == operation and result['Outcome'] == 'RecoveryRequired'
+        state = json.loads(archive_state.read_text())
+        assert state['configuration']['recoveryProblemCode'] == problem and not state['receipts']
+        assert not (root / 'rule-delete-attempts').exists() and dns_dispatch.read_bytes() == frozen
+
+    probe('before')
+    kill_exact(effect['BrokerPid'])
+    assert owner.wait(timeout=15) in (-signal.SIGKILL, 128 + signal.SIGKILL)
+    if trace is not None:
+        print(trace.read_text().strip())
+    assert checkpoint(record, 'state') == ('DnsApplied' if applied else 'DnsDispatched')
+    assert (operation_dir / 'tun-5.json').exists() == applied
+    probe('after')
+    assert resolver_snapshot() == resolver_with_candidate and len(Upstream.hits) == 2
+    before = archive_state.read_bytes()
+    retry = json.loads(checkpoint(record, 'retry'))
+    assert uuid.UUID(retry['OperationId']).hex == operation and retry['Outcome'] == 'RecoveryRequired'
+    assert archive_state.read_bytes() == before
+
+    kill_exact(record['service'][0])
+    deadline = time.monotonic() + 10
+    while True:
+        state = dict(line.split('=', 1) for line in service('show', '-p', 'MainPID', '-p', 'Job', unit).splitlines())
+        if (not Path('/proc', str(record['service'][0])).exists() and state.get('MainPID') == '0'
+                and state.get('Job') in ('', '0') and resolver_snapshot() == baseline_dns):
+            break
+        assert time.monotonic() < deadline
+        time.sleep(.05)
+    assert device not in devices() and not route(table) and network_baseline(table) == record['baseline']
+    assert network_baseline() != record['baseline']
+    if case == 'dns-exited-owner':
+        service('restart', 'systemd-resolved.service')
+        seed_foreign_dns()
+        current = resolver_snapshot()
+        assert current[0] != baseline_dns[0] and current[1] == baseline_dns[1]
+        pending('runtime.network_dns_owner_unknown')
+        assert resolver_snapshot() == current and network_baseline() != record['baseline']
+        print(f'PASS TUN DNS EXITED OWNER GATE: original {operation}; resolver {baseline_dns[0]} -> {current[0]}; held pending')
+    else:
+        hidden = sender.with_suffix('.held')
+        sender.rename(hidden)
+        try:
+            pending('runtime.network_dns_sender_unconfirmed')
+        finally:
+            hidden.rename(sender)
+        try:
+            resolver('domain', 'rk-egress', '~changed.fixture.test')
+            pending('runtime.network_dns_conflict')
+        finally:
+            seed_foreign_dns()
+        terminal = json.loads(checkpoint(record, 'recover'))
+        assert uuid.UUID(terminal['OperationId']).hex == operation and terminal['Outcome'] == 'Interrupted'
+        restored = service_identity()
+        assert json.loads(checkpoint(record, 'retry')) == terminal and service_identity() == restored
+        assert resolver_snapshot() == baseline_dns and network_baseline() == record['baseline']
+        assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
+        assert dns_dispatch.read_bytes() == frozen and (operation_dir / 'tun-5.json').exists() == applied
+        assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+        print(f'PASS TUN DNS AFTER CANDIDATE EXIT: original {operation}; {case}; resolver {baseline_dns[0]}; '
+              f'original Interrupted, one rule deletion and restored PID={restored[0]}')
+    assert (root / 'dns-write-attempts').read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains', 'SetLinkDNS']
 
 
 def proof_committed(owner, operation, operation_dir, case):
@@ -2601,8 +2699,11 @@ def proof():
         ip('netns', 'exec', 'rk-http-client', 'ip', 'address', 'add', '192.0.2.1/24', 'dev', 'rk-peer')
     if case in ('dns-receipt', 'dns-owner', 'dns-registration', 'ipc-server-pending', 'ipc-http-pending'):
         install_dns_ack_boundary()
+    if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited'):
+        install_dns_ack_boundary(hold_reply=False)
     service('start', 'systemd-resolved.service')
     seed_foreign_dns()
+    baseline_dns = resolver_snapshot() if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited') else None
     other_dns = (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress'))
     refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
     assert refused.returncode == 1 and 'runtime.network_checkpoint_conflict' in refused.stderr
@@ -2675,13 +2776,13 @@ rules:
         renames = 'rename,renameat,renameat2'
         worker = [tracer, '-f', '-qq', '-yy', '-P', temporary, '-e', f'trace={renames}',
                   '-e', f'inject={renames}:error=EIO:signal=SIGKILL:when=1', '-o', str(trace), *worker]
-    if case in ('network-before-launch', 'launch-before-descriptor', 'descriptor-outcome-unknown'):
+    if case in ('network-before-launch', 'launch-before-descriptor', 'descriptor-outcome-unknown', 'dns-exited', 'dns-exited-owner'):
         tracer = shutil.which('strace')
         assert tracer, 'The dispatch proof requires strace'
         trace = root / 'network-before-launch-fault.trace'
         opens = 'open,openat,openat2'
         phase_file = {'network-before-launch': 'tun-2.json', 'launch-before-descriptor': 'tun-3.json',
-                      'descriptor-outcome-unknown': 'tun-4.json'}[case]
+                      'descriptor-outcome-unknown': 'tun-4.json', 'dns-exited': 'tun-5.json', 'dns-exited-owner': 'tun-5.json'}[case]
         checkpoint_path = operation_dir / phase_file
         cut = ':signal=SIGKILL' if case == 'network-before-launch' else ':delay_enter=5s'
         worker = [tracer, '-f', '-qq', '-yy', '-P', str(checkpoint_path), '-e', f'trace={opens}',
@@ -2697,6 +2798,10 @@ rules:
             return
         if case == 'descriptor-outcome-unknown':
             proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, sentinel, trace)
+            return
+        if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited'):
+            proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, sentinel,
+                                           None if case == 'dns-applied-exited' else trace, case, baseline_dns)
             return
         if case.startswith('ipc-'):
             assert owner.wait(timeout=15) == 0
