@@ -4533,6 +4533,8 @@ Helper 的具名启动与重启同时接收原发布 ID、新执行 ID 及临时
 
 Linux Server 内部发布协调器已接入冻结 TUN 意图、原发布回执恢复和 Proxy 工作租约。root 宿主范围文件须显式设置 `allowManagedPublication` 才能受理内部发布及提交，默认关闭。客户端公开入口待联合验收。见[Server 发布与回执证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-server-发布协调)。
 
+Linux 非 root Server 可经固定 AF_UNIX 通道调用独立 Helper，按原发布 ID 恢复受管 TUN。提交后的具名启停和重启复用该通道及原发布授权。客户端公开入口和同键 HTTP 仍待联合验收。见[分进程实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-af_unix-发布与恢复)。
+
 DNS 写入已生效但应答未确认时，重启可按原操作和原 resolver 身份只读确认效果。resolver 换代后相同设置及真实流量仍保留待核验，Helper 未重发写入或派发停止。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。
 
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。

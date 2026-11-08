@@ -305,3 +305,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）提交态 TUN 复用归档移除事务，先核对当前执行的停止及网络清理。撤销注册和清理的已派发效果按原移除 ID 对账，终态保留发布及执行归属。生产成功提交和公开发布仍受门禁保护。见[提交后移除证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后移除)。
 
 2026-11-08（MR-03 / MB-04）Server 内部 TUN 发布与 Helper 原生成功提交受 root 宿主显式许可保护。Server 只依据原提交见证及当前网络归属确认成功，原应答未知时按原 ID 恢复。客户端公开入口、独立进程 IPC 和同键 HTTP 仍待联合验收。见[Server 发布协调证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-server-发布协调)。
+
+2026-11-08（MR-03 / MB-04）Linux 非 root Server 到独立 root Helper 的 AF_UNIX 路径覆盖发布、恢复及提交后具名启停和重启。客户端公开入口和同键 HTTP 继续开放。见[分进程实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-af_unix-发布与恢复)。

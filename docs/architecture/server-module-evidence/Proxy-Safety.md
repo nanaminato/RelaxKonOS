@@ -49,6 +49,7 @@
 - [MB-04 受管 TUN 提交后具名启动与重启](#mb-04-受管-tun-提交后具名启动与重启)
 - [MB-04 受管 TUN 提交后移除](#mb-04-受管-tun-提交后移除)
 - [MB-04 受管 TUN Server 发布协调](#mb-04-受管-tun-server-发布协调)
+- [MB-04 受管 TUN AF_UNIX 发布与恢复](#mb-04-受管-tun-af_unix-发布与恢复)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -545,6 +546,24 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 **已实现但实机未验证。** 其他 Linux 架构。夹具在一个 worker 内执行生产 Server 协调器和 Helper 处理器，授权回调、归档、systemd 和网络效果均为真实。Server 与 Helper 分进程的持久 AF_UNIX 路径仍待验收。Windows Release 通过，包括 104 项配置事务检查。可信下载探针因缺少进程级测试 CA 覆盖跳过。
 
 **未实现或仍受门禁保护。** 客户端公开发布、同键 HTTP、公开入口工作租约和提交后生命周期联合验收待完成。已确认专属进程退出和 cgroup 清理。对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。Proxy 保持 resident。
+
+## MB-04 受管 TUN AF_UNIX 发布与恢复
+
+**已实现且已验证。** 专属 Linux x64 systemd 夹具分别启动非 root Server worker 和 root Helper。Server 通过生产 AF_UNIX 传输及真实短效授权回调调用 Helper；Socket 权限和 Helper 同行 UID 审计均核对实际非 root 调用。Server 发布协调、恢复及提交后具名启停和重启使用实际 Proxy 工作租约，确认及清理结束后租约归零。
+
+已提交路径在 Server 收到真实 Helper 帧、交还发布协调器前中断。两个进程分别退出并重启。撤回宿主范围后，设备归属漂移阻止确认，原见证和 Server 旧配置保持。恢复标签后，按原回执确认发布，Helper 只读核对，同键不重派配置。随后使用同一通道对当前发布具名停止，持新执行 ID 启动和重启。原发布及启动回执保持，旧进程退出，新进程继续实际转发。
+
+未提交路径在真实 DNS 写入后、Helper 记录原生确认前中断，分别替换 Server 和 Helper。真实 HTTP、分流 DNS、管理选路和配置身份跨中断核对。原操作以原 resolver 身份只读确认 DNS，继而按原 ID 补偿并恢复旧配置。三项 DNS 写入各一次，规则删除一次，新 Helper 的日志没有再次派发配置。
+
+最终两组 Server UID 均为 65534。已提交原操作 `d966f49bbfc64fd39595a5209a2baabd` 的 Server PID 150，Helper PID 137→391，候选 PID 276，配置摘要 `92bfb3f59f09c6177abefa596d1cf94b021959940691ab1d99937afda169c0ed`。具名启动 `dbf37b36504a4600b87f82cebc7227bf`，重启 `b096224c4aeb440b96c423ed16f1e625`，新 PID 830 实际完成 HTTP 与分流 DNS。新 Helper 记录具名停止一次、启动调用两次（其中一次仅返回历史回执）和重启一次。
+
+未提交原操作 `77888f131a28464f8fab96509f43b376` 的 Server PID 152，Helper PID 139→356，候选 PID 277，配置摘要 `3527b0deb13b1886d07906d7a73c55be438f45a6c6bcacee620c94405e4e939f`。新 Helper 记录一次原恢复和零次配置派发。
+
+同批进程内发布与恢复、保留及清除数据移除、具名启动重启、具名停止、提交态归属、完整补偿、DNS 应答中断和 resolver 换代均通过。十二组专属 cgroup 已清理，宿主共享服务、代理和 resolver 文件指纹一致。Windows Release 回归通过，包括 104 项配置事务检查。最终归档 SHA-256 为 `47751547ae2476267b90adec4ea4a53338d7584061e0554322eb6038effba4e7`，日志为 `.artifacts/mb04-tun-marker-sync/ipc-server-linux-final.log` 和 `.artifacts/mb04-tun-marker-sync/ipc-server-windows-final.log`。
+
+**已实现但实机未验证。** 其他 Linux 架构。Windows 可信下载探针因缺少进程级测试 CA 覆盖跳过。
+
+**未实现或仍受门禁保护。** 客户端公开发布、同键 HTTP 和公开入口工作租约待联合验收。已确认专属进程退出和 cgroup 清理。对象释放、ALC 回收、隔离负载内存与生产内存收益未测量。Proxy 保持 resident。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

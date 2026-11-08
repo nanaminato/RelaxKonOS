@@ -120,6 +120,28 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         return result;
     }
 
+    // The caller holds the publication gate for the lifetime of the callback and the privileged action.
+    internal async Task<RuntimeSwitchResult> StartManagedTunUnderGateAsync(Guid executionId, Guid publicationId,
+        bool restart, CancellationToken ct)
+    {
+        if (executionId == Guid.Empty || publicationId == Guid.Empty || executionId == publicationId)
+            throw new RuntimePolicyException("runtime.operation_id_invalid");
+        await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(executionId, authorization.ReadAsync);
+        var result = await CallAsync<RuntimeSwitchResult>(new(
+            restart ? PrivilegedOperationKind.MihomoRuntimeTunRestart : PrivilegedOperationKind.MihomoRuntimeTunStart,
+            OperationId: executionId, RuntimeLifecycle: new(Authorization: callback.Channel, MihomoTunPublicationId: publicationId)), ct);
+        if (result.OperationId != executionId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
+        return result;
+    }
+
+    internal async Task<RuntimeSwitchResult> StopManagedTunUnderGateAsync(Guid publicationId, CancellationToken ct)
+    {
+        if (publicationId == Guid.Empty) throw new RuntimePolicyException("runtime.operation_id_invalid");
+        var result = await CallAsync<RuntimeSwitchResult>(new(PrivilegedOperationKind.MihomoRuntimeTunStop, OperationId: publicationId), ct);
+        if (result.OperationId != publicationId) throw new RuntimeLifecycleException("runtime.operation_id_conflict");
+        return result;
+    }
+
     internal async Task<RuntimeSwitchResult> InstallUnderGateAsync(Guid operationId, RuntimeChangePlan plan, CancellationToken ct)
     {
         _ = MihomoRuntimeMaterial.InstallationPlanIdentity(plan);

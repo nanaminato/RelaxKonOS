@@ -662,27 +662,81 @@ def proof_committed_removal(record, observed, state_path, executions, removal, k
           f'removal={removal}; keepData={keep}; original network and publication evidence retained')
 
 
-def proof_server_publication(owner, operation, operation_dir, previous, case):
-    ready = root / 'server-cut-ready'
+class IpcPublicationWorkers:
+    socket_path = Path('/run/relaxkonos-tun-ipc/helper.sock')
+
+    def __init__(self, fixture, user):
+        self.server = ['/usr/bin/dotnet', fixture, 'runtime-mihomo-tun-ipc-server', str(root)]
+        self.identity = dict(user=user.pw_uid, group=user.pw_gid, extra_groups=[])
+        self.uid = user.pw_uid
+        self.config = root / 'ipc-helper.json'
+        self.config.write_text(json.dumps({'socketPath': str(self.socket_path), 'socketGroupId': user.pw_gid,
+                                           'allowedUids': [0, user.pw_uid]}))
+        self.config.chmod(0o600)
+        self.helper = None
+        self.generation = 0
+
+    def start_helper(self):
+        assert self.helper is None
+        self.generation += 1
+        self.log = root / f'ipc-helper-{self.generation}.log'
+        with self.log.open('x') as log:
+            self.helper = subprocess.Popen([launcher, '--linux-service', '--config', self.config],
+                                           stdout=log, stderr=subprocess.STDOUT)
+        deadline = time.monotonic() + 8
+        while self.helper.poll() is None and time.monotonic() < deadline:
+            try:
+                with socket.socket(socket.AF_UNIX) as probe:
+                    probe.connect(str(self.socket_path))
+                return
+            except OSError:
+                time.sleep(.05)
+        raise RuntimeError('The isolated Helper socket did not start: ' + self.log.read_text()[-4000:])
+
+    def stop_helper(self):
+        if self.helper is None:
+            return
+        if self.helper.poll() is None:
+            self.helper.kill()
+        self.helper.wait(timeout=5)
+        self.helper = None
+
+    def call(self, phase):
+        return subprocess.run([*self.server, phase], **self.identity, capture_output=True, text=True, timeout=20)
+
+
+def proof_server_publication(owner, operation, operation_dir, previous, case, ipc=None):
+    committed = case.endswith('commit')
+    ready = (root / 'authorization-state' / 'server-cut-ready' if committed else root / 'dns-effect-ready') \
+        if ipc else root / 'server-cut-ready'
     deadline = time.monotonic() + 18
     while not ready.exists():
         if owner.poll() is not None or time.monotonic() >= deadline:
             raise RuntimeError('Server did not retain its managed TUN publication at the expected boundary')
         time.sleep(.05)
-    assert ready.read_text() == operation
+    if ipc:
+        server_pid = int((root / 'authorization-state' / 'ipc-server.pid').read_text())
+        assert server_pid == owner.pid and Path(f'/proc/{server_pid}').stat().st_uid == ipc.uid
+        original_helper_pid = ipc.helper.pid
+        assert original_helper_pid != server_pid and Path(f'/proc/{original_helper_pid}').stat().st_uid == 0
+        if committed:
+            assert ready.read_text() == operation
+        effect = json.loads((operation_dir / ('tun-5.json' if committed else 'tun-4.json')).read_text())
+        prepare(effect['InterfaceIndex'], ipc.helper.pid)
+    else:
+        assert ready.read_text() == operation
     record = json.loads(journal.read_text())
     archive_state = archive / 'state' / 'archive-state.json'
     snapshot = archive_state.read_bytes()
-    committed = case == 'server-commit'
     state = json.loads(snapshot)
     assert bool(state['activeMihomoTun']) == committed and bool(state['configuration']) != committed
     mirror = root / 'authorization' / 'active.yaml'
     assert mirror.read_bytes() == previous.read_bytes()
     native = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
-    assert len(native) == 6
+    assert len(native) == (5 if ipc and not committed else 6)
 
-    def probe(phase):
-        observe_runtime(record)
+    def probe(phase, observed=record):
+        observe_runtime(observed)
         assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
                        f'http://{target}:18880/mb04-{phase}') == 'upstream-through-inherited-tun'
         assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
@@ -690,18 +744,31 @@ def proof_server_publication(owner, operation, operation_dir, previous, case):
     probe('server-before')
     owner.kill()
     assert owner.wait(timeout=5) == -signal.SIGKILL
+    if ipc:
+        ipc.stop_helper()
+        if committed:
+            log = ipc.log.read_text()
+            assert log.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(operation)} uid={ipc.uid} success=True') == 1
+        ipc.start_helper()
+        restarted_helper_pid = ipc.helper.pid
+        assert restarted_helper_pid != original_helper_pid
     assert archive_state.read_bytes() == snapshot
     scope_policy.unlink()
     probe('server-after')
     if committed:
         alias = link()['ifalias']
         ip('link', 'set', 'dev', device, 'alias', 'foreign-server-recovery')
-        refused = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root),
-                                  operation, 'server-recover'], capture_output=True, text=True, timeout=8)
+        refused = ipc.call('recover') if ipc else subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
+            str(root), operation, 'server-recover'], capture_output=True, text=True, timeout=8)
         assert refused.returncode == 3 and 'runtime.installation_mismatch' in refused.stderr
         assert archive_state.read_bytes() == snapshot and mirror.read_bytes() == previous.read_bytes()
         ip('link', 'set', 'dev', device, 'alias', alias)
-    result = json.loads(checkpoint(record, 'server-recover'))
+    if ipc:
+        recovered = ipc.call('recover')
+        assert recovered.returncode == 0, (recovered.stdout, recovered.stderr)
+        result = json.loads(recovered.stdout)
+    else:
+        result = json.loads(checkpoint(record, 'server-recover'))
     assert uuid.UUID(result['operationId']).hex == operation
     assert uuid.UUID(result['receipt']['operationId']).hex == operation and result['configureCalls'] == 0
     if committed:
@@ -717,8 +784,42 @@ def proof_server_publication(owner, operation, operation_dir, previous, case):
         assert not Path(f'/proc/{record["service"][0]}').exists()
         assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '2',
                        '-H', 'Authorization: Bearer mb04-private-fixture-controller', 'http://127.0.0.1:18882/version')
-        assert [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))[:6]] == native
+        assert [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))[:len(native)]] == native
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+        if ipc:
+            assert (root / 'dns-write-attempts').read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains', 'SetLinkDNS']
+    if ipc:
+        if committed:
+            scope_policy.write_text(json.dumps({'device': device, 'address': address, 'destination': target,
+                                                'serverUserId': ipc.uid, 'dnsRoutingDomain': 'tun.fixture.test'}))
+            scope_policy.chmod(0o644)
+            cycled = ipc.call('lifecycle')
+            assert cycled.returncode == 0, (cycled.stdout, cycled.stderr)
+            lifecycle = json.loads(cycled.stdout)
+            first = uuid.UUID(lifecycle['start']).hex
+            restart = uuid.UUID(lifecycle['restart']).hex
+            assert lifecycle['configurationIdentity'].lower() == record['credential']
+            assert (operation_dir / 'tun-8.json').exists()
+            assert (archive / 'operations' / first / 'tun-8.json').exists()
+            effect = json.loads((archive / 'operations' / restart / 'tun-5.json').read_text())
+            table = effect['Intent']['RoutingTable']
+            current = dict(record, service=service_identity(), ifindex=effect['InterfaceIndex'],
+                           routing_table=table, route=route(table))
+            assert not Path(f'/proc/{record["service"][0]}').exists()
+            probe('ipc-restarted', current)
+            print(f'PASS TUN AF_UNIX LIFECYCLE: publication={operation}; start={first}; restart={restart}; '
+                  f'restarted PID={current["service"][0]}')
+        ipc.stop_helper()
+        log = ipc.log.read_text()
+        assert 'operation=MihomoRuntimeConfigure ' not in log
+        assert log.count('operation=MihomoRuntimeRecover ') == (0 if committed else 1)
+        assert f'uid={ipc.uid} success=True' in log
+        if committed:
+            assert log.count('operation=MihomoRuntimeTunStop ') == 1
+            assert log.count('operation=MihomoRuntimeTunStart ') == 2
+            assert log.count('operation=MihomoRuntimeTunRestart ') == 1
+        print(f'PASS TUN AF_UNIX PUBLICATION: {case} {operation}; Server UID={ipc.uid} PID={server_pid}; '
+              f'Helper PID {original_helper_pid}->{restarted_helper_pid}; configure was not resent')
     print(f'PASS TUN SERVER PUBLICATION: {case} {operation}; credential={record["credential"]}; '
           f'PID={record["service"][0]}; outcome={result["outcome"]}; original receipt, real traffic, resident work lease')
 
@@ -730,7 +831,7 @@ def proof():
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
-    if case in ('dns-receipt', 'dns-owner'):
+    if case in ('dns-receipt', 'dns-owner', 'ipc-server-pending'):
         install_dns_ack_boundary()
     service('start', 'systemd-resolved.service')
     seed_foreign_dns()
@@ -783,14 +884,25 @@ rules:
   - MATCH,fixture-upstream
 ''')
     candidate.chmod(0o600)
-    sync_record({'phase': 'prepared', 'case': case, 'operation': operation, 'uid': pwd.getpwnam('nobody').pw_uid,
+    user = pwd.getpwnam('nobody')
+    sync_record({'phase': 'prepared', 'case': case, 'operation': operation, 'uid': user.pw_uid, 'gid': user.pw_gid,
                  'revision': str(revision),
                  'fixture': sys.argv[3], 'address': address, 'target': target, 'management': '192.0.2.1',
                  'namespace': os.readlink('/proc/self/ns/net'), 'baseline': baseline})
     invocation = [sys.executable, '-I', script]
+    ipc = None
+    env = dict(os.environ, RELAXKONOS_TEST_MIHOMO_HELPER=launcher) if case.startswith('ipc-server-') else None
     owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
-                             stdout=subprocess.PIPE, text=True)
+                             stdout=subprocess.PIPE, text=True, env=env)
     try:
+        if case.startswith('ipc-server-'):
+            assert owner.wait(timeout=15) == 0
+            owner.stdout.close()
+            ipc = IpcPublicationWorkers(sys.argv[3], user)
+            ipc.start_helper()
+            owner = subprocess.Popen([*ipc.server, 'publish'], **ipc.identity, stdout=subprocess.PIPE, text=True)
+            proof_server_publication(owner, operation, operation_dir, previous, case, ipc)
+            return
         if case in ('server-commit', 'server-pending'):
             proof_server_publication(owner, operation, operation_dir, previous, case)
             return
@@ -968,6 +1080,8 @@ rules:
         subprocess.run(['/usr/bin/journalctl', '--no-pager', '-n', '15', '-u', unit], check=False)
         raise
     finally:
+        if ipc:
+            ipc.stop_helper()
         if owner.poll() is None:
             owner.kill()
             owner.wait(timeout=5)
