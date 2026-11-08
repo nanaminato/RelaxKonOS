@@ -5,6 +5,28 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 
 internal static class ConfigurationTransactionChecks
 {
+    internal static async Task CheckNetworkActivationSyncAsync(bool syncFailed)
+    {
+        using var fixture = new Fixture();
+        var plan = fixture.Plan with { NetworkIntentIdentity = new string('e', 64) };
+        var result = await fixture.Engine.ExecuteAsync(fixture.OperationId, plan, default);
+        var state = fixture.Store.Read()!;
+        if (syncFailed)
+        {
+            if (result != new RuntimeSwitchResult(fixture.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required")
+                || state.Configuration is not { Stage: InstallationStage.Activating, SwitchStarted: true } pending
+                || pending.OperationId != fixture.OperationId || state.Receipts.Length != 0
+                || !fixture.Adapter.Calls.SequenceEqual(new[] { "preflight", "capture", "prepare", "validate" }))
+                throw new Exception("A failed archive directory sync must retain the original operation before native dispatch.");
+            var calls = fixture.Adapter.Calls.Count;
+            if (await fixture.Engine.ExecuteAsync(Guid.NewGuid(), plan, default) != result || fixture.Adapter.Calls.Count != calls)
+                throw new Exception("A repeated request after a failed archive sync must return the original recovery result.");
+        }
+        else if (result.Outcome != RuntimeSwitchOutcome.Succeeded || state.ActiveMihomoTun?.OperationId != fixture.OperationId
+            || !fixture.Adapter.Calls.Contains("activate"))
+            throw new Exception("The synchronized archive transaction must activate and confirm the original TUN operation.");
+    }
+
     internal static async Task<int> RunAsync()
     {
         var count = 0;
@@ -15,6 +37,9 @@ internal static class ConfigurationTransactionChecks
             catch (RuntimePolicyException ex) when (ex.ProblemCode == "runtime." + code) { count++; return; }
             throw new Exception("Expected configuration refusal: " + code);
         }
+
+        await CheckNetworkActivationSyncAsync(syncFailed: false);
+        count++;
 
         using (var f = new Fixture())
         {
@@ -275,7 +300,13 @@ internal static class ConfigurationTransactionChecks
         public async Task ActivateAsync(RuntimePendingConfiguration pending, CancellationToken ct)
         { ActivationTokenWasUncancelled = !ct.CanBeCanceled; await Call("activate"); OnActivate?.Invoke(); }
         public async Task<RuntimeActivationEvidence> VerifyAsync(RuntimePendingConfiguration pending, CancellationToken ct)
-        { await Call("verify"); return new("1.19.30", pending.Plan.CandidateIdentity, true, true, true, false); }
+        {
+            await Call("verify");
+            var plan = pending.Plan;
+            var ownership = plan.NetworkIntentIdentity is { } network
+                ? new RuntimeMihomoTunOwnership(pending.OperationId, plan.ActiveRevisionId, plan.CandidateIdentity, network) : null;
+            return new("1.19.30", plan.CandidateIdentity, true, true, true, false, ownership);
+        }
         public Task<bool> ObserveStoppedForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct) => Task.FromResult(Stopped);
         public async Task StopForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct)
         { await Call("stop"); Stopped = true; }

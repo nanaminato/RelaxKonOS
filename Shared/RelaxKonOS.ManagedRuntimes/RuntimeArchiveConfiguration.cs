@@ -106,6 +106,16 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
                 ConfigurationIdentity = plan.CandidateIdentity,
                 Configuration = session.State.Configuration! with { SwitchStarted = true, Stage = InstallationStage.Activating }
             });
+            if (plan.NetworkIntentIdentity is not null)
+            {
+                // The original archive transaction must survive before activation can stop the service.
+                try { session.SyncDirectory(); }
+                catch (IOException)
+                {
+                    // The replacement is visible, but durability is unknown. Leave it to the original owner.
+                    return new(operationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
+                }
+            }
             await NotifyAsync(InstallationStage.Activating, false);
             await adapter.ActivateAsync(session.State!.Configuration!, CancellationToken.None);
             Update(session, p => p with { Stage = InstallationStage.HealthChecking });

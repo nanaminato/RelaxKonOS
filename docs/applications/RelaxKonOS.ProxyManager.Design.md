@@ -4567,6 +4567,8 @@ Server 重启后，尚待 Helper 核验的受管 TUN 操作保留原 ID 和空�
 
 Linux Helper 先同步原见证及父目录，再替换原发布成功回执所在的主台账。主台账尚无同一原成功回执时，孤立见证继续保留供原操作核验。见[见证落盘顺序](../architecture/server-module-evidence/Proxy-Safety.md#原成功见证的目录持久化顺序)。
 
+受管 TUN 激活前，Helper 先同步记录原操作和候选配置身份的台账目录。同步失败时保留原待核验回执，同键请求仍由原操作裁决。见[激活前目录同步门禁](../architecture/server-module-evidence/Proxy-Safety.md#激活前的原事务目录同步门禁)。
+
 Helper 尚未提交且原候选仍在转发时，管理选路漂移也会阻止原补偿停止候选进程。同键保留原待核验回执。精确选路恢复后，原操作重新核验归属并补偿一次。见[原补偿门禁实机证据](../architecture/server-module-evidence/Proxy-Safety.md#管理选路漂移时拒绝原补偿派发)。
 
 Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停用。正常停机等待已受理的具名停用收到 Helper 响应、写入审计并持久化原队列终态后退出。重启仍可按原键取得原回执，再次启用沿用已确认发布。见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。
