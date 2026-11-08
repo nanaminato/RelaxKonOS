@@ -1,22 +1,26 @@
-using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Residency;
 using RelaxKonOS.Server.Startup;
 
-namespace RelaxKonOS.Server.Proxy.Mihomo;
+namespace RelaxKonOS.Server.Proxy;
 
-/// <summary>Shares one in-flight controller sample across authenticated traffic requests.</summary>
-internal sealed class MihomoTrafficSampler(IServiceScopeFactory scopes, IResidentModuleWorkLeaseSource leases)
+/// <summary>Shares only an in-flight read. The sample owns execution and cleanup independently of each HTTP response.</summary>
+internal sealed class ProxyReadSampler<T>(IServiceScopeFactory scopes, IResidentModuleWorkLeaseSource leases,
+    Func<IServiceProvider, CancellationToken, Task<T>> readSample)
 {
     private readonly object gate = new();
     private Sample? current;
 
-    public async Task<ProxyTrafficDto> ReadAsync(CancellationToken ct)
+    internal static void Register(IServiceCollection services, Func<IServiceProvider, CancellationToken, Task<T>> readSample) =>
+        services.AddSingleton(provider => new ProxyReadSampler<T>(provider.GetRequiredService<IServiceScopeFactory>(),
+            provider.GetRequiredService<IResidentModuleWorkLeaseSource>(), readSample));
+
+    public async Task<T> ReadAsync(CancellationToken ct)
     {
         while (true)
         {
             ct.ThrowIfCancellationRequested();
             Sample sample;
-            Task<ProxyTrafficDto>? read = null;
+            Task<T>? read = null;
             lock (gate)
             {
                 if (current is null)
@@ -53,7 +57,7 @@ internal sealed class MihomoTrafficSampler(IServiceScopeFactory scopes, IResiden
         }
     }
 
-    private async Task<ProxyTrafficDto> RunAsync(Sample sample)
+    private async Task<T> RunAsync(Sample sample)
     {
         // Defer controller resolution out of the admission lock.
         await Task.Yield();
@@ -68,7 +72,7 @@ internal sealed class MihomoTrafficSampler(IServiceScopeFactory scopes, IResiden
             var scope = scopes.CreateAsyncScope();
             try
             {
-                return await scope.ServiceProvider.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(stopping.Token);
+                return await readSample(scope.ServiceProvider, stopping.Token);
             }
             finally
             {
@@ -104,7 +108,7 @@ internal sealed class MihomoTrafficSampler(IServiceScopeFactory scopes, IResiden
     {
         internal readonly CancellationTokenSource Cancellation = new();
         internal readonly TaskCompletionSource Drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal Task<ProxyTrafficDto> Read = null!;
+        internal Task<T> Read = null!;
         internal Task Cancelling = Task.CompletedTask;
         internal int Waiters;
         internal bool Closing;

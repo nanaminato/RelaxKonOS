@@ -14,9 +14,11 @@ internal sealed class MihomoObservationCancellationRelay : IAsyncDisposable
     private int configurationRequests;
     private int trafficRequests;
     private int connectionRequests;
+    private int versionRequests;
     internal int ConfigurationRequests => Volatile.Read(ref configurationRequests);
     internal int TrafficRequests => Volatile.Read(ref trafficRequests);
     internal int ConnectionRequests => Volatile.Read(ref connectionRequests);
+    internal int VersionRequests => Volatile.Read(ref versionRequests);
     internal string Address => app.Urls.Single() + "/";
 
     private MihomoObservationCancellationRelay(WebApplication app, Uri controller)
@@ -49,6 +51,7 @@ internal sealed class MihomoObservationCancellationRelay : IAsyncDisposable
         if (context.Request.Path == "/configs") Interlocked.Increment(ref configurationRequests);
         if (context.Request.Path == "/traffic") Interlocked.Increment(ref trafficRequests);
         if (context.Request.Path == "/connections") Interlocked.Increment(ref connectionRequests);
+        if (context.Request.Path == "/version") Interlocked.Increment(ref versionRequests);
         var hold = Volatile.Read(ref next);
         if (hold is not null && (context.Request.Path != hold.Path || Interlocked.CompareExchange(ref next, null, hold) != hold))
             hold = null;

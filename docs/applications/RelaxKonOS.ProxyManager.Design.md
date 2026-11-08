@@ -4519,7 +4519,7 @@ Linux 隔离环境以真实受管 Mihomo 验证探测次数及控制器 401。�
 
 概览与详情的两版配对测量共用同一受管 Mihomo 和 512 条真实代理连接。六轮均核验运行时完整性，全部原连接完成转发，原发布与恢复回执保持一致。Proxy 管理模块保持常驻。隔离负载的内存及延迟数据见[配对测量](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-受管-mihomo-概览的配对驻留测量)。
 
-概览和连接详情的认证 HTTP 请求持有原 Proxy 工作租约，直至控制器读取、响应和读取作用域清理结束。客户端断开会取消读取，未确认清理时保留工作责任。验收边界见[HTTP 工作责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览和连接详情的-http-工作责任)。
+概览和连接详情的认证 HTTP 请求持有原 Proxy 工作租约，直至控制器读取、响应和读取作用域清理结束。重叠概览共用一次在途采样，各自持有响应租约。最后一个概览读者断开才取消该次采样，随后请求等待清理完成后取得新样本。见[重叠概览采样](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-重叠概览采样)。验收边界见[HTTP 工作责任](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-概览和连接详情的-http-工作责任)。
 
 概览计数与连接详情投影共用同一可回收读取代次。概览只取得计数，详情保持原协议。投影代次释放后，已返回的连接详情仍可使用。见[连接计数与详情投影](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-mihomo-连接计数与详情投影随代次释放)。
 

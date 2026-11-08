@@ -42,7 +42,7 @@ internal static class ProxyConnectionBenchmark
     internal static async Task RunAsync(string baseline, string candidate, string baselineMode, string candidateMode,
         LoginRequest login, Uri runtimeProxy, Func<string, Task<ProcessStartInfo>> prepare, Func<Task> verify,
         bool requireManaged, int? pollingRuntimePid = null, bool controlReads = false, bool compareSplitConfiguration = false,
-        MihomoObservationCancellationRelay? sharedTrafficRelay = null)
+        MihomoObservationCancellationRelay? sharedTrafficRelay = null, MihomoObservationCancellationRelay? overviewBurstRelay = null)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(requireManaged ? 420 : 85));
         var ct = budget.Token;
@@ -71,6 +71,7 @@ internal static class ProxyConnectionBenchmark
                 }));
             string[]? original = null;
             JsonElement[]? originalControl = null;
+            JsonElement? originalOverview = null;
             for (var pair = 1; pair <= 3; pair++)
             {
                 foreach (var input in pair == 2 ? inputs.Reverse() : inputs)
@@ -92,7 +93,8 @@ internal static class ProxyConnectionBenchmark
                         var timings = new List<double>();
                         var readers = sharedTrafficRelay is null ? 1 : 4;
                         var trafficBefore = sharedTrafficRelay?.TrafficRequests;
-                        var connectionsBefore = sharedTrafficRelay?.ConnectionRequests;
+                        var connectionsBefore = (sharedTrafficRelay ?? overviewBurstRelay)?.ConnectionRequests;
+                        var versionsBefore = overviewBurstRelay?.VersionRequests;
                         var serverCpuStart = ReadCpu(process);
                         var runtimeCpuStart = runtime is null ? TimeSpan.Zero : ReadCpu(runtime);
                         var load = runtime is null ? ObserveRepeatedlyAsync() : MeasureTrafficPollingAsync();
@@ -103,10 +105,15 @@ internal static class ProxyConnectionBenchmark
                         }
                         await load;
                         var trafficRequests = sharedTrafficRelay?.TrafficRequests - trafficBefore;
-                        var connectionRequests = sharedTrafficRelay?.ConnectionRequests - connectionsBefore;
+                        var connectionRequests = (sharedTrafficRelay ?? overviewBurstRelay)?.ConnectionRequests - connectionsBefore;
+                        var versionRequests = overviewBurstRelay?.VersionRequests - versionsBefore;
                         var expectedSamples = input.Mode == baselineMode ? readers * TrafficPolls : TrafficPolls;
                         if (sharedTrafficRelay is not null && (trafficRequests != expectedSamples || connectionRequests != expectedSamples))
                             throw new InvalidOperationException($"Expected {expectedSamples} native traffic and connection samples, got {trafficRequests} and {connectionRequests}.");
+                        if (overviewBurstRelay is not null && (versionRequests != connectionRequests
+                            || (input.Mode == baselineMode ? versionRequests != 4 * RequestsPerRoute
+                                : versionRequests is null || versionRequests < RequestsPerRoute || versionRequests >= 4 * RequestsPerRoute)))
+                            throw new InvalidOperationException($"The overview burst counted {versionRequests} version and {connectionRequests} connection reads.");
                         var serverCpuMs = (ReadCpu(process) - serverCpuStart).TotalMilliseconds;
                         var runtimeCpuMs = runtime is null ? 0 : (ReadCpu(runtime) - runtimeCpuStart).TotalMilliseconds;
                         var cooldown = new List<MemoryPoint>();
@@ -128,6 +135,7 @@ internal static class ProxyConnectionBenchmark
                             Idle = idle, Samples = samples, Cooldown = cooldown,
                             PairRequestMs = runtime is null ? timings : null, TrafficPollMs = runtime is null ? null : timings,
                             TrafficReaders = runtime is null ? 0 : readers, TrafficRequests = trafficRequests, ConnectionRequests = connectionRequests,
+                            OverviewReaders = overviewBurstRelay is null ? 0 : 4, VersionRequests = versionRequests,
                             ServerCpuMs = serverCpuMs, RuntimeCpuMs = runtimeCpuMs
                         }));
 
@@ -159,11 +167,24 @@ internal static class ProxyConnectionBenchmark
                             for (var i = 0; i < RequestsPerRoute; i++)
                             {
                                 var watch = Stopwatch.StartNew();
-                                if (controlReads) await ObserveControlAsync();
+                                if (overviewBurstRelay is not null) await ObserveOverviewBurstAsync();
+                                else if (controlReads) await ObserveControlAsync();
                                 else if (!(await ObserveAsync(client, destination, requireManaged, ct)).SequenceEqual(original))
                                     throw new InvalidOperationException("A measured request saw a different active connection set.");
                                 timings.Add(watch.Elapsed.TotalMilliseconds);
                             }
+                        }
+
+                        async Task ObserveOverviewBurstAsync()
+                        {
+                            var values = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
+                                client.GetFromJsonAsync<JsonElement>(ProxyApiRoutes.Overview, RelaxKonOSJsonOptions.Default, ct)));
+                            originalOverview ??= values[0];
+                            if (values[0].Deserialize<ProxyOverviewDto>(RelaxKonOSJsonOptions.Default)
+                                    is not { ActiveConnections: ConnectionCount, Health.ControllerReachable: true,
+                                        Runtime: { Mode: ProxyRuntimeMode.Managed, State: ProxyRuntimeState.Running, IntegrityVerified: true } }
+                                || values.Any(value => !JsonElement.DeepEquals(value, originalOverview.Value)))
+                                throw new InvalidOperationException("The overview burst did not preserve the full native observation.");
                         }
 
                         async Task ObserveControlAsync()
