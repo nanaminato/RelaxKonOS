@@ -42,6 +42,7 @@
 - [MB-04 Server 生成 TUN 意图及管理 UID 复核](#mb-04-server-生成-tun-意图及管理-uid-复核)
 - [MB-04 TUN 策略规则归属及删除中断](#mb-04-tun-策略规则归属及删除中断)
 - [MB-04 TUN 分流 DNS 归属](#mb-04-tun-分流-dns-归属)
+- [MB-04 TUN DNS 应答中断与 resolver 换代](#mb-04-tun-dns-应答中断与-resolver-换代)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -432,6 +433,18 @@ Linux x64 私有 systemd 和独立 resolver 上，原操作 `bd4d8609c84848c7885
 Windows ManagedRuntimes Release 通过，含 104 项配置事务。可信下载探针因缺进程级测试 CA 覆盖跳过，日志 `.artifacts/mb04-tun-marker-sync/tun-dns-win-final.log`。
 
 实机覆盖 DNS 归属确认后的原归档中断、外部漂移和清理。DNS 写入派发后、写入归属尚未确认的只读恢复路径已实现，专用断点及 resolver 换代未实机验证。生产网络范围、发布入口、成功提交后生命周期、同键 HTTP 和真实工作租约待验收。公开准入及成功提交门禁继续生效，Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
+
+## MB-04 TUN DNS 应答中断与 resolver 换代
+
+`run-proxy-systemd-linux.sh --tun-fd <Release-tests.dll> <Linux-Helper-apphost> [full|dns-receipt|dns-owner]` 在三个独立私有 systemd 环境运行。专属挂载中的故障边界仅在真实 `SetLinkDNS` 成功后暂扣子进程退出，随后强制终止原 Helper。断点命中 `DnsDispatched`，原 `DnsApplied` 尚未落盘。每轮记录 `SetLinkDefaultRoute`、`SetLinkDomains` 和 `SetLinkDNS` 各一次。原记录和配置摘要跨中断核对，真实 HTTP 和 DNS 上游各三次。
+
+`dns-receipt` 原操作 `9d8819c1874c4b84aabc2cc4475a0b9e`，ifindex 4，PID 240，配置摘要 `c5aaa2b24b16f2858b9e2f118070a546b7a725436832d6aa2f231e5ca0ac5ecc`。同键读取原 `RecoveryRequired` 时归档状态未变。修改分流域后具名恢复保留原 `DnsDispatched`，记录 `runtime.network_dns_conflict`，停止未派发。恢复原外部设置后，生产适配器只读确认原 DNS，接续具名停止与规则删除，恢复旧配置和可变数据，同键取得原 `Interrupted`。本接口 DNS、设备和路由缺席，规则删除一次。
+
+`dns-owner` 原操作 `de2eef3fed2f4ce4935c903d655cdc22`，ifindex 4，PID 243，配置摘要 `2e826250f2a6a55b186e4cd2ba9b602a506e876ea7593aaef9c3da0e57f9bfe6`。专属 resolver 由 `:1.0` 换代为 `:1.33`，夹具重建与原观察相等的 DNS、域及回退设置，真实查询仍通过。Helper 返回原 `RecoveryRequired`，归档记录 `runtime.network_dns_owner_unknown`。原生检查点、原进程及管理选路保持，未派发停止或规则删除，未向新 resolver 重发。原事务继续待核验，夹具通过退出私有命名空间清理专属资源。
+
+`full` 原操作 `6bdcae6f539240418968af3b76813574` 同批通过。三轮均核对专属 cgroup 清理及宿主共享服务、代理和 resolver 文件指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-dns-ack-linux.log`，归档 SHA-256 `071c02f28dce63e6260643f98f0659ff680642884625cce0fec9333f96fdfdd7`。Windows ManagedRuntimes Release 通过，含 104 项配置事务检查，可信下载探针因缺进程级测试 CA 覆盖跳过。日志 `.artifacts/mb04-tun-marker-sync/tun-dns-ack-win.log`。
+
+生产范围、发布入口、成功提交后生命周期、同键 HTTP 与实际工作租约仍待联合验收。公开准入和成功提交门禁继续生效，Proxy 保持 resident。已确认专属进程退出，对象释放、ALC 回收、隔离负载内存与生产内存收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

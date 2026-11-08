@@ -101,8 +101,7 @@ def checkpoint(record, action):
     return command('dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root), record['operation'], action)
 
 
-def observe(record):
-    checkpoint(record, 'observe')
+def observe_runtime(record):
     if network_baseline(record['routing_table']) != record['baseline'] or service_identity() != record['service']:
         raise ValueError('management route or systemd process identity differs')
     if route(record['routing_table']) != record['route']:
@@ -121,6 +120,10 @@ def observe(record):
         raise ValueError('running configuration differs')
     if service_identity() != record['service']:
         raise ValueError('process changed during observation')
+
+def observe(record):
+    checkpoint(record, 'observe')
+    observe_runtime(record)
 
 
 def prepare(index, broker):
@@ -169,6 +172,30 @@ fi
 ''')
     wrapper.chmod(0o755)
     command('/usr/bin/mount', '--bind', str(wrapper), '/usr/sbin/ip')
+
+
+def install_dns_ack_boundary():
+    original = root / 'busctl-real'
+    wrapper = root / 'busctl-wrapper'
+    shutil.copy2('/usr/bin/busctl', original)
+    wrapper.write_text(f'''#!/bin/bash
+set -eu
+real={shlex.quote(str(original))}
+case "${{8:-}}" in
+    SetLinkDefaultRoute|SetLinkDomains|SetLinkDNS)
+        printf '%s\n' "$8" >> {shlex.quote(str(root / 'dns-write-attempts'))}
+        "$real" "$@"
+        if [[ "$8" == SetLinkDNS ]]; then
+            touch {shlex.quote(str(root / 'dns-effect-ready'))}
+            parent=$PPID
+            while kill -0 "$parent" 2>/dev/null; do sleep .05; done
+        fi
+        ;;
+    *) exec "$real" "$@" ;;
+esac
+''')
+    wrapper.chmod(0o755)
+    command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/busctl')
 
 
 class Upstream(http.server.BaseHTTPRequestHandler):
@@ -245,16 +272,119 @@ def resolver(*args):
     return command('/usr/bin/resolvectl', *args)
 
 
+def seed_foreign_dns():
+    resolver('default-route', 'rk-egress', 'no')
+    resolver('dns', 'rk-egress', '192.0.2.254')
+    resolver('domain', 'rk-egress', '~outside.fixture.test')
+
+
+def resolver_snapshot():
+    bus = '/usr/bin/busctl'
+    flags = ('--system', '--json=short')
+    name = 'org.freedesktop.resolve1'
+    owner = json.loads(command(bus, *flags, 'call', 'org.freedesktop.DBus', '/org/freedesktop/DBus',
+                               'org.freedesktop.DBus', 'GetNameOwner', 's', name))['data'][0]
+    settings = tuple(json.loads(command(bus, *flags, 'get-property', name, '/org/freedesktop/resolve1',
+                                        name + '.Manager', prop))['data']
+                     for prop in ('DNS', 'Domains', 'FallbackDNS'))
+    return owner, settings
+
+
+def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, queries):
+    deadline = time.monotonic() + 15
+    while not (root / 'dns-effect-ready').exists():
+        if owner.poll() is not None or time.monotonic() >= deadline:
+            raise RuntimeError('The original Helper did not reach the DNS reply boundary')
+        time.sleep(.05)
+    original_dns = json.loads((operation_dir / 'tun-4.json').read_text())
+    prepare(original_dns['InterfaceIndex'], owner.pid)
+    original = journal.read_bytes()
+    record = json.loads(original)
+    table = record['routing_table']
+    initial_files = sorted(operation_dir.glob('tun-*.json'))
+    checkpoints = [file.read_bytes() for file in initial_files]
+    assert len(checkpoints) == 5 and checkpoint(record, 'state') == 'DnsDispatched'
+    resolver_before = resolver_snapshot()
+    assert resolver_before[0] == original_dns['Dns']['Owner']
+    observe_runtime(record)
+    sentinel.write_text('candidate-data')
+
+    def probe(phase):
+        body = command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
+                       f'http://{target}:18880/mb04-{phase}')
+        assert body == 'upstream-through-inherited-tun'
+        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
+
+    probe('before')
+    owner.kill()
+    assert owner.wait(timeout=5) == -signal.SIGKILL
+    assert journal.read_bytes() == original and checkpoint(record, 'state') == 'DnsDispatched'
+    assert checkpoints == [file.read_bytes() for file in initial_files]
+    archive_state = archive / 'state' / 'archive-state.json'
+    pending = archive_state.read_bytes()
+    retry = json.loads(checkpoint(record, 'retry'))
+    assert uuid.UUID(retry['OperationId']).hex == operation
+    assert retry['Outcome'] == 'RecoveryRequired' and archive_state.read_bytes() == pending
+    probe('after')
+
+    if case == 'dns-owner':
+        service('restart', 'systemd-resolved.service')
+        seed_foreign_dns()
+        resolver('default-route', device, 'no')
+        resolver('domain', device, '~tun.fixture.test')
+        resolver('dns', device, target)
+        resolver_after = resolver_snapshot()
+        assert resolver_after[0] != resolver_before[0] and resolver_after[1] == resolver_before[1]
+        expected = 'runtime.network_dns_owner_unknown'
+    else:
+        resolver('domain', device, '~conflict.fixture.test')
+        expected = 'runtime.network_dns_conflict'
+
+    refused = json.loads(checkpoint(record, 'recover'))
+    assert uuid.UUID(refused['OperationId']).hex == operation and refused['Outcome'] == 'RecoveryRequired'
+    recovery = json.loads(archive_state.read_text())['configuration']
+    assert uuid.UUID(recovery['operationId']).hex == operation and recovery['recoveryProblemCode'] == expected
+    assert recovery['recoveryStopDispatched'] is False
+    assert checkpoint(record, 'state') == 'DnsDispatched' and journal.read_bytes() == original
+    assert len(list(operation_dir.glob('tun-*.json'))) == 5 and checkpoints == [file.read_bytes() for file in initial_files]
+    observe_runtime(record)
+
+    if case == 'dns-owner':
+        probe('replacement')
+        assert json.loads(checkpoint(record, 'retry')) == refused
+        assert not (root / 'rule-delete-attempts').exists()
+        print(f'PASS TUN DNS RESOLVER REPLACEMENT: original {operation}, ifindex={record["ifindex"]}, '
+              f'PID={record["service"][0]}, credential={record["credential"]}; resolver {resolver_before[0]} -> {resolver_after[0]}, '
+              f'equal settings and real traffic, {expected}')
+    else:
+        resolver('domain', device, '~tun.fixture.test')
+        probe('restored')
+        terminal = json.loads(checkpoint(record, 'recover'))
+        assert uuid.UUID(terminal['OperationId']).hex == operation and terminal['Outcome'] == 'Interrupted'
+        assert json.loads(checkpoint(record, 'retry')) == terminal
+        assert checkpoint(record, 'state') == 'Restored'
+        assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
+        assert not route(table) and network_baseline() == record['baseline'] and device not in devices()
+        assert target not in resolver('dns') and '~tun.fixture.test' not in resolver('domain')
+        assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+        print(f'PASS TUN DNS LOST RECEIPT: original {operation}, ifindex={record["ifindex"]}, PID={record["service"][0]}, '
+              f'credential={record["credential"]}; {expected} held original, then read-only DNS recognition and Interrupted')
+
+    assert (root / 'dns-write-attempts').read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains', 'SetLinkDNS']
+    assert len(Upstream.hits) == 3 and len(set(queries)) == 3
+
+
 def proof():
     assert os.geteuid() == 0 and Path('/proc/1/comm').read_text().strip() == 'systemd'
     mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines() if ' - tmpfs ' in line}
     assert {'/run', '/var/lib', '/etc/systemd/system'} <= mounts
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
+    case = sys.argv[4]
+    if case != 'full':
+        install_dns_ack_boundary()
     service('start', 'systemd-resolved.service')
-    resolver('default-route', 'rk-egress', 'no')
-    resolver('dns', 'rk-egress', '192.0.2.254')
-    resolver('domain', 'rk-egress', '~outside.fixture.test')
+    seed_foreign_dns()
     other_dns = (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress'))
     refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
     assert refused.returncode == 1 and 'runtime.network_checkpoint_conflict' in refused.stderr
@@ -312,6 +442,9 @@ rules:
     owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
                              stdout=subprocess.PIPE, text=True)
     try:
+        if case != 'full':
+            proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, queries)
+            return
         assert select.select([owner.stdout], [], [], 10)[0]
         assert owner.stdout.readline().strip() == operation
         native = owner.stdout.readline().strip()

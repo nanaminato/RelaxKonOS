@@ -30,7 +30,7 @@
 
 | 范围 | 剩余门槛 | 条件满足后的第一项 |
 | --- | --- | --- |
-| MB-04 Proxy | Linux x64 私有 systemd 已验证 [TUN 分流 DNS 归属](server-module-evidence/Proxy-Safety.md#mb-04-tun-分流-dns-归属)，真实 DNS 与 HTTP 转发、外来 DNS 保持、原记录恢复和退出核对均通过。DNS 归属确认前的中断及 resolver 换代未实测。生产公开发布与成功提交门禁维持 | 复验 DNS 写入待确认时的中断，接入生产受控网络范围和发布入口并验证提交后生命周期，再联合实测同键 HTTP 回执及真实工作租约。Proxy 保持 resident，直至整模块安全交接通过 |
+| MB-04 Proxy | Linux x64 私有 systemd 已验证 [DNS 应答中断与 resolver 换代](server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。同一 resolver 下只读确认原写入后恢复，换代后即使设置和真实流量一致也保留原待核验，未重发。生产公开发布与成功提交门禁维持 | 接入生产受控网络范围及发布入口，验证提交后生命周期，再联合实测同键 HTTP 回执及真实工作租约。resolver 换代导致的生产未知结果继续由原操作持有，缺少独立归属证据时保留门禁。Proxy 保持 resident，直至整模块安全交接通过 |
 | MB-05 Docker | 未知清理缺与原 operationId 绑定的可信进程及输出排空证据入口 | 以原 CLI 清理门禁做只读确证，匹配时再结案原回执 |
 | MB-05 Certificates | 丢失订单创建响应时缺与原请求匹配的订单身份。跨源 CA、补取部署和主机掉电需要独立证据 | 用可信原账户订单标识验证一次只读对账，保持现有部署。见 [原订单标识门槛](server-module-evidence/Certificates.md#缺失原订单标识的核验门槛) |
 | MB-05 WebServer | 外部实例未知结果缺可信原命令证据。其他实例的启停与自动部署需要该实例原生回执和所有权接口，其他平台需要对应隔离主机 | 先在可核验的外部实例上用原 operationId 证明命令、配置身份和工作责任，再验证原门禁解除 |
