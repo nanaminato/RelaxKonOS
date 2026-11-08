@@ -260,15 +260,15 @@ internal static class MihomoTunDescriptorAcceptance
             || state.GetProperty("phase").GetString() != "dispatching")
             throw new InvalidOperationException("The network check requires the original dispatched operation.");
         var ledger = Ledger(operation, state);
-        var current = ledger.Read() ?? throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
-        if (current.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
+        var current = ledger.Read();
+        if (current is null ? action != "recover" : current.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
             || current.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace()
             || current.Intent.ManagementHash != ManagementHash(state) || current.Intent.ManagementUserId != state.GetProperty("uid").GetUInt32()
             || current.Process != Process(state)
             || current.InterfaceIndex != state.GetProperty("ifindex").GetUInt32())
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         var host = new LinuxMihomoArchiveHost();
-        if (action == "state") Console.WriteLine(current.Phase);
+        if (action == "state") Console.WriteLine(current!.Phase);
         else if (action == "observe") await host.VerifyTunAsync(operation, CancellationToken.None);
         else if (action == "ordinary-stop") await host.StopAsync(CancellationToken.None);
         else if (action.StartsWith("committed-stop-interrupt:", StringComparison.Ordinal))
@@ -328,13 +328,14 @@ internal static class MihomoTunDescriptorAcceptance
                 });
             Console.WriteLine(JsonSerializer.Serialize(result));
         }
-        else if (action is "retry" or "recover" or "recover-interrupt")
+        else if (action is "retry" or "recover" or "recover-interrupt" or "recover-cleanup-interrupt")
         {
             var plan = RuntimeJson.Read<RuntimeConfigurationPlan>(await File.ReadAllBytesAsync(Path.Combine(root, "tun-plan.json")));
             var store = Store();
             var sources = new RuntimeSourceStore(Path.Combine(root, "trust"), RuntimeSourceProtection.Protect);
             var adapter = new MihomoConfigurationAdapter(Archive, store, sources, host, new Authorization(root, operation), RuntimeSourceProtection.Protect);
-            var transaction = new RuntimeArchiveConfiguration(store, new FixtureAdapter(adapter, action == "recover-interrupt"));
+            var transaction = new RuntimeArchiveConfiguration(store, new FixtureAdapter(adapter,
+                interruptStop: action == "recover-interrupt", interruptCleanup: action == "recover-cleanup-interrupt"));
             var result = action == "retry"
                 ? await transaction.ExecuteAsync(Guid.NewGuid(), plan, CancellationToken.None)
                 : await transaction.RecoverAsync(operation, CancellationToken.None);
@@ -539,7 +540,8 @@ internal static class MihomoTunDescriptorAcceptance
         throw new InvalidOperationException($"Expected native TUN refusal {code}.");
     }
 
-    private sealed class FixtureAdapter(MihomoConfigurationAdapter adapter, bool interruptStop = false, bool commit = false) : IRuntimeArchiveConfigurationAdapter
+    private sealed class FixtureAdapter(MihomoConfigurationAdapter adapter, bool interruptStop = false,
+        bool commit = false, bool interruptCleanup = false) : IRuntimeArchiveConfigurationAdapter
     {
         private static async Task TraceAsync(Func<Task> action)
         {
@@ -568,7 +570,13 @@ internal static class MihomoTunDescriptorAcceptance
         }
         public Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct) => adapter.ValidateRestoreAsync(pending, ct);
         public Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct) => adapter.RestoreAsync(pending, ct);
-        public Task CleanupPreparationAsync(RuntimePendingConfiguration pending, CancellationToken ct) => adapter.CleanupPreparationAsync(pending, ct);
+        public Task<RuntimeRestorationEvidence> VerifyRestoredAsync(RuntimePendingConfiguration pending, CancellationToken ct) =>
+            adapter.VerifyRestoredAsync(pending, ct);
+        public Task CleanupPreparationAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+        {
+            if (interruptCleanup && pending.PreviousRestored) System.Diagnostics.Process.GetCurrentProcess().Kill();
+            return adapter.CleanupPreparationAsync(pending, ct);
+        }
     }
 
     private sealed class Authorization(string root, Guid operation) : IMihomoConfigurationAuthorization

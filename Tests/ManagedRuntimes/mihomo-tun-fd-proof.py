@@ -409,14 +409,54 @@ def proof_dns_ack(case, owner, operation, operation_dir, previous, sentinel, que
     else:
         resolver('domain', device, '~tun.fixture.test')
         probe('restored')
+        interrupted = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint',
+                                      str(root), operation, 'recover-cleanup-interrupt'], timeout=12)
+        assert interrupted.returncode == -signal.SIGKILL
+        restored_service = service_identity()
+        assert restored_service != record['service'] and not Path('/proc', str(record['service'][0])).exists()
+        previous_bytes = previous.read_bytes()
+        assert config.read_bytes() == previous_bytes and checkpoint(record, 'state') == 'Restored'
+        assert (operation_dir / 'check-data').is_dir()
+
+        def check_pending_recovery(problem, native_checkpoint=True):
+            retry = json.loads(checkpoint(record, 'recover'))
+            assert uuid.UUID(retry['OperationId']).hex == operation and retry['Outcome'] == 'RecoveryRequired'
+            state = json.loads(archive_state.read_text())
+            pending = state['configuration']
+            assert pending['previousRestored'] and pending['restoredNetworkCheckpoint'] and pending['recoveryProblemCode'] == problem
+            assert all(uuid.UUID(receipt['operationId']).hex != operation for receipt in state['receipts'])
+            assert (operation_dir / 'check-data').is_dir() and service_identity() == restored_service
+            if native_checkpoint:
+                assert checkpoint(record, 'state') == 'Restored'
+            assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+
+        with management_route_drift(table):
+            check_pending_recovery('runtime.management_route_changed')
+        try:
+            config.write_bytes(previous_bytes + b'\n# fixture drift\n')
+            check_pending_recovery('runtime.configuration_drift')
+        finally:
+            config.write_bytes(previous_bytes)
+        hidden = [(file, file.with_suffix('.held')) for file in operation_dir.glob('tun-*.json')]
+        for file, held in hidden:
+            file.rename(held)
+        try:
+            check_pending_recovery('runtime.network_checkpoint_conflict', native_checkpoint=False)
+        finally:
+            for file, held in hidden:
+                held.rename(file)
+
         terminal = json.loads(checkpoint(record, 'recover'))
         assert uuid.UUID(terminal['OperationId']).hex == operation and terminal['Outcome'] == 'Interrupted'
         assert json.loads(checkpoint(record, 'retry')) == terminal
         assert checkpoint(record, 'state') == 'Restored'
         assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
+        assert service_identity() == restored_service and not (operation_dir / 'check-data').exists()
         assert not route(table) and network_baseline() == record['baseline'] and device not in devices()
         assert target not in resolver('dns') and '~tun.fixture.test' not in resolver('domain')
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+        print(f'PASS TUN RESTORED CHECKPOINT: original {operation}; route, configuration and missing native proof held pending; '
+              f'original Interrupted without restarting restored PID {restored_service[0]}')
         print(f'PASS TUN DNS LOST RECEIPT: original {operation}, ifindex={record["ifindex"]}, PID={record["service"][0]}, '
               f'credential={record["credential"]}; {expected} held original, then read-only DNS recognition and Interrupted')
 

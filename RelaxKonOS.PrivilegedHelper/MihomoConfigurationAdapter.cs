@@ -224,20 +224,13 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
     public async Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct)
     {
         var revision = Revision(pending);
-        if (ReadTunEffect(pending) is { Phase: MihomoTunPhase.Restored })
+        var effect = ReadTunEffect(pending);
+        if (effect is not null)
         {
+            if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_transaction_required");
+            await VerifyRestoredNetworkAsync(pending, effect, ct);
             var registration = await host.ObserveRegistrationAsync(ct);
-            if (registration.Running)
-            {
-                var already = await host.ObserveAsync(ct);
-                RequireService(already, revision);
-                if (already.AppliedConfigurationIdentity != pending.Plan.PreviousIdentity
-                    || Hash(await ReadConfigurationAsync(Configuration, ct)) != pending.Plan.PreviousIdentity)
-                    throw new RuntimePolicyException("runtime.configuration_drift");
-                var previous = await RequireMaterialAsync(pending, false, ct);
-                return new(revision.MeasuredVersion, pending.Plan.PreviousIdentity, true, already.BootEnabled!.Value,
-                    true, await host.ListenersHealthyAsync(previous, ct));
-            }
+            if (registration.Running) return await ObserveRestoredServiceAsync(pending, effect, ct);
         }
         var backup = FileIn(pending, "data-backup");
         if (Directory.Exists(backup))
@@ -275,7 +268,49 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         var identity = Hash(await ReadConfigurationAsync(Configuration, ct));
         var healthy = identity == pending.Plan.PreviousIdentity && (!observed.Running
             || observed.AppliedConfigurationIdentity == identity && await host.ListenersHealthyAsync(material, ct));
-        return new(build.Version, identity, observed.Running, observed.BootEnabled!.Value, true, healthy);
+        return new(build.Version, identity, observed.Running, observed.BootEnabled!.Value, true, healthy)
+        {
+            RestoredNetworkCheckpoint = pending.Plan.NetworkIntentIdentity is not null ? effect is not null : null
+        };
+    }
+
+    public async Task<RuntimeRestorationEvidence> VerifyRestoredAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+    {
+        if (!IsFixedLinuxHost || pending.Plan.NetworkIntentIdentity is null)
+            throw new RuntimePolicyException("runtime.network_transaction_required");
+        var effect = ReadTunEffect(pending);
+        if (pending.RestoredNetworkCheckpoint != (effect is not null))
+            throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        if (effect is not null) await VerifyRestoredNetworkAsync(pending, effect, ct);
+        return await ObserveRestoredServiceAsync(pending, effect, ct);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static async Task VerifyRestoredNetworkAsync(RuntimePendingConfiguration pending, MihomoTunEffect effect, CancellationToken ct)
+    {
+        var identity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(pending.OperationId, pending.Plan,
+            LinuxMihomoArchiveHost.TunNetwork(effect.Intent));
+        if (identity != pending.Plan.NetworkIntentIdentity) throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        await LinuxMihomoArchiveHost.VerifyRestoredTunNetworkAsync(effect, ct);
+    }
+
+    private async Task<RuntimeRestorationEvidence> ObserveRestoredServiceAsync(RuntimePendingConfiguration pending, MihomoTunEffect? effect,
+        CancellationToken ct)
+    {
+        await AuthorizeProgramAsync(pending, ct);
+        var revision = Revision(pending);
+        var identity = Hash(await ReadConfigurationAsync(Configuration, ct));
+        if (identity != pending.Plan.PreviousIdentity) throw new RuntimePolicyException("runtime.configuration_drift");
+        var observed = await host.ObserveAsync(ct);
+        RequireService(observed, revision);
+        if (observed.TunOperation is not null || observed.Running && observed.AppliedConfigurationIdentity != identity)
+            throw new RuntimePolicyException("runtime.configuration_drift");
+        var previous = await RequireMaterialAsync(pending, false, ct);
+        return new(revision.MeasuredVersion, identity, observed.Running, observed.BootEnabled!.Value,
+            true, !observed.Running || await host.ListenersHealthyAsync(previous, ct))
+        {
+            RestoredNetworkCheckpoint = effect is not null
+        };
     }
 
     public Task CleanupPreparationAsync(RuntimePendingConfiguration pending, CancellationToken ct)

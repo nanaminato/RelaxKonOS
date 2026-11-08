@@ -39,7 +39,7 @@ Linux 在替换主台账前同步 `commits` 目录及其父目录。重用原操
 
 原操作补偿同样先同步主台账目录，再写入回滚阶段和调用原生适配器。同步失败时保留原检查点，原观察、停止、还原和清理留待同一操作继续核验。见[补偿前目录同步门禁](../architecture/server-module-evidence/Proxy-Safety.md#补偿前的原事务目录同步门禁)。
 
-验证旧配置还原后，Helper 同步 `PreviousRestored` 主台账目录才开始清理。同步失败保持原待核验，续接已确认还原的操作只完成剩余清理。见[清理前目录同步门禁](../architecture/server-module-evidence/Proxy-Safety.md#清理前的已还原检查点同步门禁)。
+验证旧配置还原后，Helper 同步 `PreviousRestored` 主台账目录才开始清理。TUN 还原检查点记录当时是否存在原生检查点。续接时，原 Helper 按同一操作只读复核旧配置、服务和原生还原证据。预期的原生证据缺失、历史记录缺少该判据或实测漂移时，保留原待核验及清理材料。通过后完成剩余清理和原回执。见[清理前目录同步门禁](../architecture/server-module-evidence/Proxy-Safety.md#清理前的已还原检查点同步门禁)和[跨进程还原复核](../architecture/server-module-evidence/Proxy-Safety.md#清理前的跨进程还原复核)。
 
 当前安装/任务证据 HTTP 与 Helper IPC 快照必须显式包含 `commitWitness`（IPC 使用 DTO 属性名）；允许 null，但拒绝省略、重复或身份错配。保存的历史观察不回填证明。查询 sing-box 成功原操作时，在安装锁内重新核对程序文件摘要、原生版本、自有服务、配置摘要和当前状态；其他操作造成修订变化或实际文件漂移不能借用旧证明报告恢复成功。Mihomo 沿用其程序/服务核验并核对保留配置摘要。
 

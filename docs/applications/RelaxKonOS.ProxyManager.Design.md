@@ -4571,7 +4571,7 @@ Linux Helper 先同步原见证及父目录，再替换原发布成功回执所�
 
 恢复调用也先同步原事务台账。同步失败时，Helper 返回同一操作的待核验结果，保留原记录及待执行的补偿。见[补偿前目录同步门禁](../architecture/server-module-evidence/Proxy-Safety.md#补偿前的原事务目录同步门禁)。
 
-原配置通过还原核验后，Helper 先同步已还原检查点，再清理临时材料。同步失败时原操作继续待核验。续接同一操作只完成清理和原回执。见[清理前目录同步门禁](../architecture/server-module-evidence/Proxy-Safety.md#清理前的已还原检查点同步门禁)。
+原配置通过还原核验后，Helper 先同步已还原检查点，再清理临时材料。中断后按原操作 ID 续接时，Helper 只读复核旧配置身份、原服务状态及已记录的 TUN 网络还原证据。漂移或证据不足时保留原待核验和临时材料。复核通过后完成剩余清理并返回原回执。见[跨进程还原复核](../architecture/server-module-evidence/Proxy-Safety.md#清理前的跨进程还原复核)。
 
 Helper 尚未提交且原候选仍在转发时，管理选路漂移也会阻止原补偿停止候选进程。同键保留原待核验回执。精确选路恢复后，原操作重新核验归属并补偿一次。见[原补偿门禁实机证据](../architecture/server-module-evidence/Proxy-Safety.md#管理选路漂移时拒绝原补偿派发)。
 

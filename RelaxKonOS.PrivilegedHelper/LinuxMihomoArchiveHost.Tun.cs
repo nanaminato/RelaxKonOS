@@ -159,11 +159,17 @@ internal sealed partial class LinuxMihomoArchiveHost
         if (Path.Exists(UnitPath) || Path.Exists(RegistrationPath) || (await ObserveAsync(ct)).Exists)
             Fail("network_removal_unconfirmed");
         var checkpoint = new LinuxMihomoTunCheckpoint(Root, executionId, owner.RevisionId, owner.ConfigurationIdentity);
-        if (checkpoint.Read() is not { Phase: MihomoTunPhase.Restored } effect
-            || effect.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
-            || effect.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace()
-            || TunOwnership(effect, installation, owner.OperationId) != owner)
+        if (checkpoint.Read() is not { } effect || TunOwnership(effect, installation, owner.OperationId) != owner)
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        await VerifyRestoredTunNetworkAsync(effect, ct);
+    }
+
+    internal static async Task VerifyRestoredTunNetworkAsync(MihomoTunEffect effect, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (effect.Phase != MihomoTunPhase.Restored || effect.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
+            || effect.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
+            Fail("network_checkpoint_conflict");
         var routes = TunRoutes(effect.Intent);
         if (effect.Process is not { } process || Directory.Exists($"/proc/{process.Pid}")
             || !await routes.IsAbsentAsync(effect.Intent.Device, effect.InterfaceIndex)) Fail("network_stop_unconfirmed");

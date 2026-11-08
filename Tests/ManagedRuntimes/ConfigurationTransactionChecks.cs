@@ -68,11 +68,14 @@ internal static class ConfigurationTransactionChecks
                 throw new Exception("A failed restoration checkpoint sync must retain the original record before cleanup.");
             result = await fixture.Engine.RecoverAsync(original, default);
         }
+        var expectedCalls = fault == NetworkRecoverySyncFault.BeforeCleanup
+            ? new[] { "stop", "authorize-restore", "restore", "verify-restored", "cleanup" }
+            : new[] { "stop", "authorize-restore", "restore", "cleanup" };
         var restored = fixture.Store.Read()!;
         if (result != new RuntimeSwitchResult(original, RuntimeSwitchOutcome.Interrupted, "runtime.operation_interrupted")
             || restored.ConfigurationIdentity != plan.PreviousIdentity || restored.Configuration is not null
             || restored.Receipts.Single().OperationId != original || fixture.Adapter.RecoveryObservations != 2
-            || !fixture.Adapter.Calls.SequenceEqual(new[] { "stop", "authorize-restore", "restore", "cleanup" }))
+            || !fixture.Adapter.Calls.SequenceEqual(expectedCalls))
             throw new Exception("The original TUN transaction must compensate once after its recovery directory sync.");
     }
 
@@ -364,7 +367,13 @@ internal static class ConfigurationTransactionChecks
         { await Call("stop"); Stopped = true; }
         public Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct) => Call("authorize-restore");
         public async Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct)
-        { await Call("restore"); return new("1.19.30", pending.Plan.PreviousIdentity, true, false, true, RecoveryFailure != "restore-evidence"); }
+        {
+            await Call("restore");
+            return new("1.19.30", pending.Plan.PreviousIdentity, true, false, true, RecoveryFailure != "restore-evidence")
+            { RestoredNetworkCheckpoint = pending.Plan.NetworkIntentIdentity is null ? null : true };
+        }
+        public async Task<RuntimeRestorationEvidence> VerifyRestoredAsync(RuntimePendingConfiguration pending, CancellationToken ct)
+        { await Call("verify-restored"); return new("1.19.30", pending.Plan.PreviousIdentity, true, false, true, true); }
         public Task CleanupPreparationAsync(RuntimePendingConfiguration pending, CancellationToken ct) => Call("cleanup");
     }
 }

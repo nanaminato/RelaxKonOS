@@ -206,6 +206,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
                     or Protocol.Installations.InstallationStage.RollingBack or Protocol.Installations.InstallationStage.Interrupted)
                 || configuration.SwitchStarted && configuration.Snapshot is null
                 || configuration.PreviousRestored && !configuration.SwitchStarted
+                || configuration.RestoredNetworkCheckpoint.HasValue && (!configuration.PreviousRestored || plan.NetworkIntentIdentity is null)
                 || configuration.RecoveryStopDispatched is true && !configuration.SwitchStarted
                 || state.ConfigurationIdentity != (configuration.SwitchStarted && !configuration.PreviousRestored
                     ? plan.CandidateIdentity : plan.PreviousIdentity)

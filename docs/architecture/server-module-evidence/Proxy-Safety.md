@@ -642,6 +642,16 @@ Windows Release ManagedRuntimes 回归通过，包含 105 项配置事务检查�
 
 具名启停响应丢失的原执行对账仍受门禁保护。Helper 无终态由后续[认证 HTTP 补偿](#mb-04-受管-tun-认证-http-补偿)覆盖。此批证据确认专属进程退出及清理，未测量对象释放、ALC 回收、隔离负载内存或生产收益。
 
+### 清理前的跨进程还原复核
+
+**已实现且已验证。** Linux x64 私有 systemd 中，原操作 `55e94290516e4ba4b7b43834568b8562` 的候选 Mihomo（PID 251）在原 DNS 响应丢失前后仍承载真实上游 HTTP 和分流 DNS。原恢复完成原生补偿、同步主台账的 `PreviousRestored` 后，于清理前对恢复进程注入 `SIGKILL`。随后以原操作重新进入恢复，分别注入管理选路漂移、活动旧配置字节漂移和隐藏全部原生检查点，分别记录 `runtime.management_route_changed`、`runtime.configuration_drift` 和 `runtime.network_checkpoint_conflict`。三次均保留原待核验、临时目录和旧服务身份，无原终态，内核规则删除累计一次。
+
+复原证据后，原操作清理完成并返回 `Interrupted`。同键返回同一回执，已还原服务 PID 572、systemd 调用 ID 和启动时刻保持相同。候选进程退出，旧配置与快照逐字节一致，管理选路恢复，候选 TUN 设备、专用表和分流 DNS 消失。解析器换主对照继续待核验。认证 HTTP 的原发布补偿 `d217bc21eb39463e8f7d2338b8c8f6a7` 和原成功见证 `c3f55b964df94096be2f6a0e87166778` 通过。各私有 cgroup 已清理，宿主服务及解析器文件指纹一致。
+
+日志为 `.artifacts/mb04-tun-restored-recheck/linux-verified.log`，归档 SHA-256 为 `6780f62f11cf28b9546f555e25316b643496c448fe148211bcd74fe0745bab07`。首次运行的检查点缺失场景被夹具入口拦截，修正夹具使原事务接管该路径后重跑四个场景。Windows Release 首次整套运行的 Core 后台恢复调度断言失败，发布事务 112 项定向复跑及随后串行整套回归均通过，含配置事务 106 项。该主机缺进程级 CA 覆盖，可信下载探针跳过。Windows 日志为同目录 `windows-retry.log`。
+
+**已实现但实机未验证。** 缺少新判据的历史 `PreviousRestored` 记录保持原待核验。此批注入为进程中断，整机掉电及其他 Linux 架构仍待独立验收。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 继续 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

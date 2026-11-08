@@ -23,7 +23,10 @@ public enum RuntimeMihomoTunStartStage { Stopping, Launching, Succeeded }
 public sealed record RuntimeMihomoTunStart(Guid OperationId, Guid PublicationId, bool Restart, RuntimeMihomoTunStartStage Stage);
 public sealed record RuntimeMihomoTunStop(Guid OperationId, Guid PublicationId, Guid TargetExecutionId, bool Confirmed);
 public sealed record RuntimeRestorationEvidence(string? MeasuredVersion, string? ConfigurationIdentity,
-    bool Running, bool BootEnabled, bool OwnedResourcesRestored, bool Healthy);
+    bool Running, bool BootEnabled, bool OwnedResourcesRestored, bool Healthy)
+{
+    public bool? RestoredNetworkCheckpoint { get; init; }
+}
 
 /// <summary>Helper receipt for an existing installation operation, not a second user-facing operation ledger.</summary>
 public sealed record RuntimeSwitchReceipt(Guid OperationId, string RequestHash, string IdempotencyHash,

@@ -11,6 +11,8 @@ public sealed record RuntimePendingConfiguration(Guid OperationId, string Reques
 {
     // A record without a stop checkpoint cannot prove the command was never sent.
     public bool? RecoveryStopDispatched { get; init; }
+    // Distinguishes a pre-dispatch restoration from a missing checkpoint after a native effect.
+    public bool? RestoredNetworkCheckpoint { get; init; }
 }
 
 /// <summary>
@@ -31,6 +33,8 @@ public interface IRuntimeArchiveConfigurationAdapter
     Task StopForRecoveryAsync(RuntimePendingConfiguration pending, CancellationToken ct);
     Task ValidateRestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct);
     Task<RuntimeRestorationEvidence> RestoreAsync(RuntimePendingConfiguration pending, CancellationToken ct);
+    /// <summary>Reobserves a completed restoration without changing service or network state.</summary>
+    Task<RuntimeRestorationEvidence> VerifyRestoredAsync(RuntimePendingConfiguration pending, CancellationToken ct);
     /// <summary>Idempotently removes transient preparation only. Durable old configuration/data snapshots
     /// remain available for recovery and are retained by the terminal receipt; cleanup must not delete them.</summary>
     Task CleanupPreparationAsync(RuntimePendingConfiguration pending, CancellationToken ct);
@@ -169,16 +173,15 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
                 // Keep the candidate identity until restoration has been verified and recorded.
                 // Once recorded, recovery can resume cleanup without restarting the restored service.
                 var restored = await adapter.RestoreAsync(pending, CancellationToken.None);
-                var before = pending.Snapshot!;
-                if (!restored.Healthy || !restored.OwnedResourcesRestored || restored.MeasuredVersion != session.State.Active!.MeasuredVersion
-                    || restored.ConfigurationIdentity != pending.Plan.PreviousIdentity || restored.Running != before.Running
-                    || restored.BootEnabled != before.BootEnabled) throw new RuntimePolicyException("runtime.compensation_health_failed");
+                RequireRestored(session, pending, restored);
                 Save(session, session.State with { ConfigurationIdentity = pending.Plan.PreviousIdentity,
-                    Configuration = pending with { PreviousRestored = true } });
+                    Configuration = pending with { PreviousRestored = true, RestoredNetworkCheckpoint = restored.RestoredNetworkCheckpoint } });
                 // Cleanup may discard temporary restoration material. Persist the verified checkpoint first.
                 if (!TrySyncNetworkTransaction(session))
                     return new(pending.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
             }
+            else if (pending.PreviousRestored && pending.Plan.NetworkIntentIdentity is not null)
+                RequireRestored(session, pending, await adapter.VerifyRestoredAsync(pending, CancellationToken.None));
             await adapter.CleanupPreparationAsync(session.State!.Configuration!, CancellationToken.None);
             return Complete(session, outcome, problem);
         }
@@ -197,6 +200,14 @@ public sealed class RuntimeArchiveConfiguration(RuntimeArchiveStateStore store,
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException or RuntimePolicyException) { }
             return new(session.State!.Configuration!.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_required");
         }
+    }
+
+    private static void RequireRestored(RuntimeArchiveStateStore.Session session, RuntimePendingConfiguration pending, RuntimeRestorationEvidence restored)
+    {
+        var before = pending.Snapshot!;
+        if (!restored.Healthy || !restored.OwnedResourcesRestored || restored.MeasuredVersion != session.State!.Active!.MeasuredVersion
+            || restored.ConfigurationIdentity != pending.Plan.PreviousIdentity || restored.Running != before.Running
+            || restored.BootEnabled != before.BootEnabled) throw new RuntimePolicyException("runtime.compensation_health_failed");
     }
 
     private static bool TrySyncNetworkTransaction(RuntimeArchiveStateStore.Session session)
