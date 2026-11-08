@@ -1514,12 +1514,29 @@ def proof_full_http_shutdown(ipc, case):
         assert not Path(f'/proc/{native_pid}').exists() and network_baseline() == record['baseline']
         assert queue.read_bytes() == before[0] and mirror.read_bytes() == before[2]
         pid = start('admission-disabled')
+        deadline = time.monotonic() + 8
+        while Path(f'/proc/{native_pid}').exists() or device in devices() or route(record['routing_table']):
+            assert time.monotonic() < deadline
+            time.sleep(.05)
+        with management_route_drift(record['routing_table']):
+            refusal = stop_native(publication, pending)
+            assert refusal.returncode == 1 and helper_result(refusal)['error'] == 'runtime.management_route_changed'
+            pid = start('restart')
+            token = login()
+            plan(pending.hex, managed=False)
+            terminate(pid)
+            worker = launch('admission-disabled')
+            refused(pending.hex)
+            assert checkpoint(record, 'state') == 'StopDispatched'
+            assert not (root / 'rule-delete-attempts').exists()
+            assert (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes()) == (before[0], held, before[2])
         token = login(disabled=True)
         terminate(pid)
         assert 'operation=MihomoRuntimeTunStop ' not in ipc.log.read_text()
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         print(f'PASS TUN MODULE DEACTIVATION: publication={publication}; root-only-stop={pending}; '
-              f'configuration={record["credential"]}; original PID={native_pid}; outage and drift preserved original ownership')
+              f'configuration={record["credential"]}; original PID={native_pid}; '
+              'management drift after process exit blocked disable plan and startup')
 
     def verify_retained_removal(pid, record, publication):
         nonlocal worker, token

@@ -4535,6 +4535,8 @@ Linux Helper 的 `MihomoRuntimeTunStop` 接收具名停止 operationId 与原发
 
 原进程已经退出时，管理选路漂移仍会阻断具名停止的清理或结案。如果原规则尚未删除，保留规则及原检查点。如果原删除已经派发，选路恢复后只读核对规则缺席，再完成同一停止回执。见[具名停止路由门禁](../architecture/server-module-evidence/Proxy-Safety.md#具名停止的管理选路门禁)。
 
+停用计划和禁用启动也核对原 Helper 停止状态。进程已经退出但路由清理仍待核验时，两处继续报告原停止 ID。精确选路恢复且原 Helper 完成清理后，禁用启动才可通过。见[完整 Server 停用门禁](../architecture/server-module-evidence/Proxy-Safety.md#进程退出后的模块停用门禁)。
+
 Helper 的具名启动与重启同时接收原发布 ID、新执行 ID 及临时授权回调。新派发核对已发布配置、宿主网络范围和受信制品，原成功回执继续可查。应答丢失时，同执行 ID 读取原阶段并核对实际效果，待核验期间拒绝新的执行和普通停止。公开入口继续受门禁保护。见[具名启动与重启证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后具名启动与重启)。
 
 提交态 TUN 移除沿用受管归档移除入口。Helper 只接受已完成原生清理的停止态。保留数据时保存原配置及数据来源，显式清除数据时删除配置和可变数据。两种模式都保留原发布回执、执行历史及不含配置正文的原生检查点。部分撤销或部分清理时继续按原移除 ID 待核验。见[提交后移除证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后移除)。
