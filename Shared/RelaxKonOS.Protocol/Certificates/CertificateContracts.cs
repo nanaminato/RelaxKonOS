@@ -15,6 +15,10 @@ public sealed record CertificateOrderObservationDto(
 public sealed record CertificateOrderVerificationDto(CertificateOperationDto Operation, string Status,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? FingerprintSha256 = null);
 
+public sealed record CertificateOrderRecoveryPlanDto(CertificateOperationDto Operation, string Status, string? Target = null,
+    string? ExpectedActiveVersion = null, string? ExpectedActiveFingerprintSha256 = null,
+    string? IssuedFingerprintSha256 = null, string? PlanToken = null);
+
 public sealed record CertificateDto(
     [property: JsonPropertyName("id")] Guid Id,
     [property: JsonPropertyName("primaryDomain")] string PrimaryDomain,

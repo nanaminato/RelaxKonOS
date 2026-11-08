@@ -96,7 +96,7 @@ NGINX
 fi
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
     -addext 'subjectAltName=DNS:localhost,IP:127.0.0.2' -keyout "$fixture/https.key" -out "$fixture/https.pem" 2>/dev/null
-if [ "$revocation" -eq 1 ]; then
+if [ "$revocation" -eq 1 ] || [ "$schedule" = recovery-plan ]; then
     openssl pkcs12 -export -in "$fixture/https.pem" -inkey "$fixture/https.key" \
         -out "$fixture/kestrel.pfx" -passout pass:
 fi

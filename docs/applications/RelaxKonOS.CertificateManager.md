@@ -1505,6 +1505,8 @@ Server 切换到不同 CA 目录后，查询旧订单返回 `identity-unavailabl
 
 对已有原订单和原密钥检查点的中断回执，可用认证的 `GET /api/v1.0/certificates/operations/{operationId}/acme-order/certificate` 核验。Server 从原 CA 读取已签发证书链，核对原订单的 DNS 名称、叶证书密钥和链路。`verified` 返回原操作及叶证书 SHA-256。其他状态保留原回执。响应只包含核验结果，活动证书与部署保持。见[原证书链实机证据](../architecture/server-module-evidence/Certificates.md#mb-05-按原订单只读补取证书链)。
 
+已有 Kestrel 绑定的续期中断时，具备该证书 HTTPS 部署授权的操作者可在上述地址后追加 `/kestrel-plan` 获取恢复计划。`ready` 返回绑定该操作者、原操作、活动版本和签发指纹的保护令牌。活动版本、材料索引或部署记录发生漂移时返回 `active-version-changed`。缺少原恢复基线时返回 `baseline-unavailable`。此入口只生成计划。见[Kestrel 恢复计划实机证据](../architecture/server-module-evidence/Certificates.md#mb-05-kestrel-原证书恢复计划)。
+
 WebRoot 签发和续期在发布 HTTP-01 文件前，在原证书操作记录挑战文件名及内容摘要。任务等待挑战清理后才提交终态。跨进程恢复在写入原中断回执前清理内容匹配的原文件。路径或内容无法确认时保留文件和恢复责任，并隔离证书工作准入。网站自动签发使用此路径，网站发布与原证书操作的关联同样持久化。CA 返回 `valid` 时仍应通过原发布和证书回执核实本地签发、部署各自的状态。见[模块边界台账](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-网站发布-webroot-签发与中断恢复)。
 
 挑战文件内容已变化时，原回执保持 `Running / challenge-cleanup-required`。重启仍可查询原操作及已知 CA 订单，新证书操作返回 `certificate.challenge_ownership_unconfirmed`。确认文件归属后，原清理在下次启动接续，原操作 ID 保持。见[挑战文件归属验收](../architecture/server-module-evidence/WebServer-TLS.md#mb-05-webroot-挑战内容变化时保留原清理责任)。

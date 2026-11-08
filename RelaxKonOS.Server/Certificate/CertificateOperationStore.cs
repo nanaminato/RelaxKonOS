@@ -276,7 +276,7 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
         finally { _gate.Release(); }
     }
 
-    private async Task RecordOrderKeyAsync(Guid id, string privateKey)
+    private async Task RecordOrderKeyAsync(Guid id, string privateKey, RenewalRecoveryBaseline? baseline = null)
     {
         await _gate.WaitAsync();
         try
@@ -288,7 +288,9 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
                     || operation.ProtectedOrderKey is not null || privateKey.Length is 0 or > 16384)
                     throw new InvalidOperationException("Invalid ACME certificate key checkpoint.");
                 var protector = OrderKeyProtector(_protection!, id, operation.CertificateId, order);
-                _operations[id] = operation with { ProtectedOrderKey = protector.Protect(privateKey) };
+                _operations[id] = operation with { ProtectedOrderKey = protector.Protect(privateKey),
+                    ProtectedRenewalBaseline = baseline is null ? null
+                        : protector.CreateProtector("renewal-baseline").Protect(JsonSerializer.Serialize(baseline, Json)) };
                 await SaveLedgerAsync(CancellationToken.None);
             }
             catch (Exception error)
@@ -452,6 +454,7 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
                 ProblemCode = problemCode, CompletedAt = DateTimeOffset.UtcNow,
                 Order = interrupted || state == CertificateOperationState.Cancelled ? operation.Order : null, Challenges = null, Revocation = null,
                 ProtectedOrderKey = interrupted ? operation.ProtectedOrderKey : null,
+                ProtectedRenewalBaseline = interrupted ? operation.ProtectedRenewalBaseline : null,
                 NginxRenewal = state == CertificateOperationState.Succeeded ? operation.NginxRenewal : null };
             _operations[id] = completed;
             try
@@ -532,7 +535,8 @@ internal sealed partial class CertificateOperationStore : IHostedService, IDispo
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? WebsitePublicationId = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RevocationCheckpoint? Revocation = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] NginxRenewalCheckpoint? NginxRenewal = null,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProtectedOrderKey = null)
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProtectedOrderKey = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProtectedRenewalBaseline = null)
     {
         public CertificateOperationDto ToDto() => new(OperationId, CertificateId, Kind, State, Stage, ProblemCode, StartedAt, CompletedAt);
     }

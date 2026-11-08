@@ -186,10 +186,14 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
         if (string.IsNullOrWhiteSpace(existing.ContactEmail)) return Failure("renew", "certificate.contact_unavailable");
         return await operations.StartRenewalAsync(idempotencyKey, certificateId, actor, async (recordOrder, recordChallenge, recordKey, ct) =>
         {
-            if ((await certificates.GetAsync(certificateId, ct)) is { Status: CertificateStatus.Revoked }) return ("certificate.revoked", null);
+            var current = await certificates.GetAsync(certificateId, ct);
+            if (current is null) return ("certificate.not_found", null);
+            if (current.Status == CertificateStatus.Revoked) return ("certificate.revoked", null);
+            if (current.Version != existing.Version) return ("certificate.renewal_version_changed", null);
+            var baseline = recordKey is null ? null : await operations.ReadRenewalBaselineAsync(current, ct);
             using var oldMaterial = await certificates.LoadCurrentAsync(certificateId, ct);
             var material = await acme.IssueAsync(certificateId, existing.Domains, existing.ChallengeType, existing.KeyAlgorithm, existing.ContactEmail,
-                ct, recordOrder, recordChallenge, recordKey);
+                ct, recordOrder, recordChallenge, recordKey is null ? null : key => recordKey(key, baseline));
             await certificates.SaveAsync(material with { LastRenewalAt = DateTimeOffset.UtcNow }, ct);
             if (oldMaterial is not null)
                 await renewalInfo.MarkReplacedAsync(oldMaterial, existing.ContactEmail, ct);

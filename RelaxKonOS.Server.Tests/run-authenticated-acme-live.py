@@ -25,7 +25,7 @@ def run(root, server, tests, mode):
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
-    https = mode in ("revocation", "revocation-configured")
+    https = mode in ("revocation", "revocation-configured", "recovery-plan")
     base = f"{'https' if https else 'http'}://127.0.0.1:{port}"
     env = {key: value for key, value in os.environ.items() if "__" not in key}
     private_home = root / "home"
@@ -97,8 +97,8 @@ def run(root, server, tests, mode):
                 return None
             raise RuntimeError(f"Unexpected HTTP {error.code} at {path} ({problem})") from None
 
-    def login():
-        return request("/api/v1.0/auth/login", payload={**credentials, "clientPlatform": 1,
+    def login(account=credentials):
+        return request("/api/v1.0/auth/login", payload={**account, "clientPlatform": 1,
             "deviceName": "Isolated ACME acceptance", "clientVersion": "0.2.2"})["tokens"]["accessToken"]
 
     def verify_observation_disconnect(child, token, route, original, stop_server=False):
@@ -586,7 +586,7 @@ def run(root, server, tests, mode):
         "socketGroupId": os.getegid(), "allowedUids": [os.geteuid()]}))
     with process([tests, "--isolated-certificate-pam-helper", helper_config], "helper") as helper:
         wait_for(helper, Path(env["PrivilegedHelper__SocketPath"]).is_socket, "helper")
-        if https:
+        if mode in ("revocation", "revocation-configured"):
             verify_revocation()
             return
         with process([server], "initial-server") as initial:
@@ -600,6 +600,9 @@ def run(root, server, tests, mode):
             certificate = f"{certificates}/{original['certificateId']}"
             fingerprint = request(certificate, token)["fingerprintSha256"]
             assert fingerprint
+            if mode == "recovery-plan":
+                terminal(token, request(certificate + "/deployments/kestrel", token, {}, "original-deploy", 202), "succeeded")
+                assert request(certificate + "/deployments/kestrel", token)["registered"]
             if mode == "ari-fallback":
                 verify_ari_fallback(initial, token, certificate, fingerprint)
                 return
@@ -670,6 +673,64 @@ def run(root, server, tests, mode):
             token = login()
             ledger = root / "data" / "certificate-operations.json"
             before = ledger.read_bytes()
+            if mode == "recovery-plan":
+                def served_fingerprint():
+                    trust = ssl.create_default_context(cafile=str(root / "issuance-root.pem"))
+                    with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+                        with trust.wrap_socket(connection, server_hostname="baseline.mb05.test") as session:
+                            return hashlib.sha256(session.getpeercert(binary_form=True)).hexdigest().upper()
+
+                plan_route = f"{certificates}/operations/{signed['operationId']}/acme-order/certificate/kestrel-plan"
+                active_fingerprint = served_fingerprint()
+                request(plan_route, expected=401)
+                # The established harness has a private /etc overlay. Use only a standard account for the refusal.
+                assert any(line.split()[4] == "/etc" and " - overlay " in line
+                           for line in Path("/proc/self/mountinfo").read_text().splitlines())
+                standard = {"identifier": "rk-cert-" + secrets.token_hex(5), "password": secrets.token_urlsafe(32)}
+                subprocess.run(["/usr/sbin/useradd", "-M", "-s", "/bin/bash", standard["identifier"]], check=True, timeout=8)
+                subprocess.run(["/usr/sbin/chpasswd"], input=f"{standard['identifier']}:{standard['password']}\n",
+                               text=True, check=True, timeout=8)
+                request(plan_route, login(standard), expected=403, expected_problem="elevation-required")
+                proof = request(plan_route, token)
+                assert proof["status"] == "ready" and proof["target"] == "kestrel" and proof["operation"] == signed, proof
+                assert proof["planToken"] and proof["issuedFingerprintSha256"] != proof["expectedActiveFingerprintSha256"]
+                assert proof["expectedActiveFingerprintSha256"] == active_fingerprint == fingerprint.replace(":", "").upper()
+
+                def require_drift_refusal():
+                    traffic = (root / "relay.log").read_bytes()
+                    refused = request(plan_route, token)
+                    assert refused["operation"] == signed and refused["status"] == "active-version-changed" and not refused.get("planToken"), refused
+                    assert (root / "relay.log").read_bytes() == traffic
+
+                with sqlite3.connect(root / "identity.db") as database:
+                    for table in ("certificate_records", "certificate_deployment_records"):
+                        predicate = "certificate_id=?" if table == "certificate_records" else "certificate_id=? AND target_type='kestrel'"
+                        version, = database.execute(f"SELECT current_version FROM {table} WHERE {predicate}", (signed["certificateId"],)).fetchone()
+                        assert version == proof["expectedActiveVersion"]
+                        database.execute(f"UPDATE {table} SET current_version=? WHERE {predicate}", ("f" * 32, signed["certificateId"]))
+                        database.commit()
+                        try:
+                            require_drift_refusal()
+                        finally:
+                            database.execute(f"UPDATE {table} SET current_version=? WHERE {predicate}", (version, signed["certificateId"]))
+                            database.commit()
+                index = root / "material" / signed["certificateId"] / "current.json"
+                original_index = index.read_bytes()
+                changed_index = json.loads(original_index)
+                assert changed_index["version"] == proof["expectedActiveVersion"]
+                changed_index["version"] = "f" * 32
+                index.write_text(json.dumps(changed_index))
+                try:
+                    require_drift_refusal()
+                finally:
+                    index.write_bytes(original_index)
+                assert request(plan_route, token)["status"] == "ready"
+                assert request(renew, token, {}, "signed-loss", 202) == signed
+                assert ledger.read_bytes() == before and request(certificate, token)["fingerprintSha256"] == fingerprint
+                assert served_fingerprint() == active_fingerprint
+                print(f"PASS ACME KESTREL RECOVERY PLAN: operation={signed['operationId']}; active={proof['expectedActiveVersion']}; "
+                      f"issued={proof['issuedFingerprintSha256']}; authority and drift gates preserved", flush=True)
+                return
             if mode == "key-checkpoint":
                 assert (root / "key-before-finalize").read_text() == signed["operationId"]
                 assert b"PRIVATE KEY-----" not in before

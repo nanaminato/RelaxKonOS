@@ -63,6 +63,22 @@ public static class CertificateEndpoints
                 return await operations.VerifyOrderCertificateUnderLeaseAsync(operationId, services.GetRequiredService<IAcmeService>, ct) is { } proof
                     ? Results.Ok(proof) : Results.NotFound();
             }));
+        group.MapGet(CertificateApiRoutes.PlanKestrelRecoveryPattern, (Guid operationId, CertificateOperationStore operations,
+            HttpContext context, IHostElevationSessionStore elevations) =>
+            ResidentScopedResponse.ExecuteAsync(context, operations.AdmitOrderObservationAsync, async (services, ct) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                if (await operations.GetAsync(operationId, ct) is not { } receipt) return Results.NotFound();
+                if (!elevations.IsGranted(context.User, HostElevationCapability.CertificateReplaceServerHttps,
+                    $"certificates/{receipt.CertificateId:D}/server-https"))
+                    return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                        extensions: new Dictionary<string, object?> { ["problemCode"] = "elevation-required" });
+                var subject = context.User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value
+                    ?? context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(subject)) return Results.Forbid();
+                return await operations.PlanKestrelRecoveryUnderLeaseAsync(operationId, subject,
+                    services.GetRequiredService<IAcmeService>, ct) is { } plan ? Results.Ok(plan) : Results.NotFound();
+            }));
         group.MapPost(CertificateApiRoutes.CancelOperationPattern, async (Guid operationId, RelaxKonOS.Server.Certificate.CertificateOperationStore operations, CancellationToken ct) =>
             await operations.CancelAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());
         return app;

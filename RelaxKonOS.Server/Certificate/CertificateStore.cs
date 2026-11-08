@@ -85,6 +85,15 @@ internal sealed class FileCertificateStore : ICertificateStore
     public async Task<StoredCertificate?> GetAsync(Guid certificateId, CancellationToken cancellationToken)
     {
         if (await _metadata.GetAsync(certificateId, cancellationToken) is { } persisted) return persisted;
+        return await ReadMaterialIndexAsync(certificateId, cancellationToken);
+    }
+
+    internal async Task<bool> MatchesMaterialIndexAsync(StoredCertificate current, CancellationToken ct) =>
+        await ReadMaterialIndexAsync(current.Id, ct) is { } index && index.Id == current.Id && index.Version == current.Version
+        && string.Equals(index.FingerprintSha256, current.FingerprintSha256, StringComparison.OrdinalIgnoreCase);
+
+    private async Task<StoredCertificate?> ReadMaterialIndexAsync(Guid certificateId, CancellationToken cancellationToken)
+    {
         if (!IsSafeCertificateRoot(certificateId)) return null;
         var path = Path.Combine(CertificateRoot(certificateId), "current.json");
         if (!File.Exists(path)) return null;
