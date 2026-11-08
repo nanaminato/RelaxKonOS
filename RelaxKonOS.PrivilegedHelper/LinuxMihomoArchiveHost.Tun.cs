@@ -67,6 +67,12 @@ internal sealed partial class LinuxMihomoArchiveHost
         if (checkpoint.Read() is not { Phase: MihomoTunPhase.LaunchDispatched } launched)
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         var dispatched = launched with { Phase = MihomoTunPhase.DescriptorDispatched, Process = process };
+        MihomoTunDnsBaseline? preparedDns = null;
+        if (publication is not null && intent.DnsRoutingDomain is not null)
+        {
+            preparedDns = await TunDns(dispatched).CaptureAsync();
+            await WriteUndeliveredCheckpointAsync(dispatched with { Dns = preparedDns }, "dns-before-descriptor", deadline.Token);
+        }
         await checkpoint.AppendAsync(dispatched);
         descriptor.SendTo(connection, intent.OperationId, process.Pid, 0);
         await WaitAsync(state => state.GetValueOrDefault("ActiveState") is "inactive" or "failed"
@@ -76,7 +82,7 @@ internal sealed partial class LinuxMihomoArchiveHost
         if (intent.DnsRoutingDomain is not null)
         {
             var dns = TunDns(dispatched);
-            var baseline = await dns.CaptureAsync();
+            var baseline = preparedDns ?? await dns.CaptureAsync();
             dispatched = dispatched with { Phase = MihomoTunPhase.DnsDispatched, Dns = baseline };
             await checkpoint.AppendAsync(dispatched);
             if (publication is not null)
@@ -260,27 +266,33 @@ internal sealed partial class LinuxMihomoArchiveHost
         await checkpoint.AppendAsync(effect with { Phase = MihomoTunPhase.DnsApplied });
     }
 
-    internal async Task<bool> TryVerifyPartialDnsStopAsync(Guid operation, CancellationToken ct)
+    internal async Task<bool> TryVerifyUnfinishedDnsStopAsync(Guid operation, CancellationToken ct)
     {
         var (registration, _, effect) = await ReadTunOperationAsync(operation, ct);
-        return await TryVerifyPartialDnsStopAsync(registration, effect, ct);
+        return await ReadVerifiedDnsForStopAsync(registration, effect, ct) is not null;
     }
 
-    private static async Task<bool> TryVerifyPartialDnsStopAsync(Registration registration, MihomoTunEffect effect, CancellationToken ct)
+    private static async Task<MihomoTunDnsBaseline?> ReadVerifiedDnsForStopAsync(Registration registration, MihomoTunEffect effect,
+        CancellationToken ct)
     {
-        if (effect is not { Phase: MihomoTunPhase.DnsDispatched, Dns: { } dns }
-            || Directory.Exists($"/proc/{effect.BrokerPid}")
-            || await ReadSettledDnsWriteCountAsync(effect, ct) is not { } completed
-            || completed == LinuxMihomoTunDns.WriteCount)
-            return false;
+        if (Directory.Exists($"/proc/{effect.BrokerPid}")) return null;
+        var dns = effect.Dns;
+        var completed = 0;
+        if (effect is { Phase: MihomoTunPhase.DescriptorDispatched, Intent.DnsRoutingDomain: not null })
+            dns = await ReadDescriptorDnsBaselineAsync(effect, ct);
+        else if (effect.Phase == MihomoTunPhase.DnsDispatched
+            && await ReadSettledDnsWriteCountAsync(effect, ct) is { } count && count < LinuxMihomoTunDns.WriteCount)
+            completed = count;
+        else return null;
+        if (dns is null) return null;
         await VerifyTunEffectAsync(registration, effect, ct);
         if (MihomoArchiveAdapter.Hash(await MihomoArchiveAdapter.ReadConfigurationAsync(Root + "/active.yaml", ct))
             != effect.Intent.ConfigurationHash) Fail("configuration_drift");
         await TunDns(effect).VerifyWritesAsync(dns, completed);
-        return true;
+        return dns;
     }
 
-    internal async Task DispatchTunStopAsync(Guid operation, CancellationToken ct, bool allowPartialDns = false)
+    internal async Task DispatchTunStopAsync(Guid operation, CancellationToken ct, bool allowUnfinishedDns = false)
     {
         var (registration, checkpoint, effect) = await ReadTunOperationAsync(operation, ct);
         if (effect.Process is not { } process)
@@ -289,14 +301,15 @@ internal sealed partial class LinuxMihomoArchiveHost
         // Pin the kernel process before verifying it, so an intervening exit cannot redirect the signal.
         using var handle = new SafeFileHandle(OpenPidFd(process.Pid, 0), ownsHandle: true);
         if (handle.IsInvalid) Fail("network_stop_unconfirmed");
-        if (!allowPartialDns || !await TryVerifyPartialDnsStopAsync(registration, effect, ct))
+        var verifiedDns = allowUnfinishedDns ? await ReadVerifiedDnsForStopAsync(registration, effect, ct) : null;
+        if (verifiedDns is null)
         {
             RequireActiveTunPhase(effect);
             await VerifyTunEffectAsync(registration, effect, ct);
             if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: true);
         }
         ct.ThrowIfCancellationRequested();
-        await checkpoint.AppendAsync(effect with { Phase = MihomoTunPhase.StopDispatched });
+        await checkpoint.AppendAsync(effect with { Phase = MihomoTunPhase.StopDispatched, Dns = verifiedDns ?? effect.Dns });
         const int sigterm = 15;
         if (SignalPidFd(handle, sigterm, 0, 0) != 0) Fail("network_stop_unconfirmed");
     }

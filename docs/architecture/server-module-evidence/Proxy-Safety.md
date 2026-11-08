@@ -754,6 +754,16 @@ Windows Release 全套回归通过，含发布事务 113 项和配置事务 106 
 
 **未实现或待验。** 描述符已交付但原 DNS 基线尚未落盘的活候选继续受原阶段门禁保护。整机掉电和其他 Linux 架构未验收。对象释放、ALC 回收、隔离负载内存和生产收益未测量。Proxy 保持 resident。
 
+### DNS 派发前停止已接收描述符的候选
+
+**已实现且已验证。** Linux x64 私有 systemd 原操作 `9c8929d913714668a2c7afbd650c0f33` 在描述符已交付、DNS 派发检查点尚未写入时中断 broker。原候选 PID 244 在中断前后以同一配置和描述符转发真实上游 HTTP。隐藏交付前保存的解析器基线，或改变候选分流域、磁盘配置和管理选路，均保留原待核验与活进程，停止未派发。
+
+恢复原证据后，Helper 把原 DNS 基线随停止派发写入主检查点，并通过 pidfd 发送一次 `SIGTERM`。再次中断后只核对原停止，`strace` 中无第二次信号。旧配置、数据、管理选路及原 resolver 设置核对通过，同键返回原 `Interrupted`，已还原 PID 601 保持。原规则删除一次，DNS 派发检查点缺席，DNS 写入计数为零。
+
+同版复验描述符派发后候选退出 `74ab0ca3b6b34f9183a90016487a6fd5`、部分 DNS 原候选停止 `5a6d8262ac87488a8cadb56226f3ff5e`、认证 HTTP 补偿 `47342785f4794787acf6009eb38224b9` 和成功发布 `b46e6cb598b342f197c7e59199efbf59`。认证场景覆盖真实上游 HTTP、分流 DNS 和原回执。五场专属 cgroup 清理及宿主服务指纹核对通过。日志为 `.artifacts/mb04-tun-before-dns-live-stop/linux.log`，归档 SHA-256 为 `02aafdaabb979ab646e068c7ad6b3ac9f1ea220b9903ef9119b90ec12abf82e7`。Windows Release 全套回归通过，含配置事务 106 项和发布事务 113 项。可信下载探针因本机缺少进程级 CA 覆盖跳过。
+
+**未实现或待验。** 缺少描述符交付前原基线的同类操作继续待核验。完整认证 Server 队列中零 DNS 补偿与在途租约的联合中断路径、整机掉电及其他 Linux 架构待验。对象释放、ALC 回收、隔离内存和生产收益未测量。Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

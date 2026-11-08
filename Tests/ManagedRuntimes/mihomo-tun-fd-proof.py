@@ -781,6 +781,7 @@ def proof_network_before_launch(owner, record, operation_dir, previous, sentinel
 
 
 def proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, sentinel, trace):
+    live = json.loads(journal.read_text())['case'] == 'descriptor-live-stop'
     dispatched = operation_dir / 'tun-3.json'
     deadline = time.monotonic() + 12
     binary = archive / 'versions' / uuid.UUID(json.loads(journal.read_text())['revision']).hex / 'mihomo'
@@ -829,12 +830,29 @@ def proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, 
     retry = json.loads(checkpoint(record, 'retry'))
     assert uuid.UUID(retry['OperationId']).hex == operation and retry['Outcome'] == 'RecoveryRequired'
     assert archive_state.read_bytes() == state
-    refused = json.loads(checkpoint(record, 'recover'))
-    assert uuid.UUID(refused['OperationId']).hex == operation and refused['Outcome'] == 'RecoveryRequired'
-    pending = json.loads(archive_state.read_text())['configuration']
-    assert pending['recoveryProblemCode'] == 'runtime.network_checkpoint_conflict', pending['recoveryProblemCode']
-    assert pending['recoveryStopDispatched'] is False and service_identity() == record['service']
+    baseline = operation_dir / 'dns-before-descriptor.json'
+    assert json.loads(baseline.read_text())['Dns']['Owner'] == resolver_before[0]
+    hidden = baseline.with_suffix('.held')
+    baseline.rename(hidden)
+    try:
+        refused = json.loads(checkpoint(record, 'recover'))
+        assert uuid.UUID(refused['OperationId']).hex == operation and refused['Outcome'] == 'RecoveryRequired'
+        pending = json.loads(archive_state.read_text())['configuration']
+        assert pending['recoveryProblemCode'] == 'runtime.network_checkpoint_conflict', pending['recoveryProblemCode']
+        assert pending['recoveryStopDispatched'] is False and service_identity() == record['service']
+    finally:
+        hidden.rename(baseline)
     assert not (root / 'rule-delete-attempts').exists()
+
+    if live:
+        def refuse(problem):
+            result = json.loads(checkpoint(record, 'recover'))
+            assert uuid.UUID(result['OperationId']).hex == operation and result['Outcome'] == 'RecoveryRequired'
+            state = json.loads(archive_state.read_text())
+            assert state['configuration']['recoveryProblemCode'] == problem and not state['receipts']
+            assert not (root / 'rule-delete-attempts').exists() and dispatched.read_bytes() == native
+        proof_stop_after_partial_dns(record, operation_dir, previous, sentinel, resolver_before, refuse, before_dns=True)
+        return
 
     # End the fixture's verified candidate without asking the recovery Helper to send another signal.
     kill_exact(record['service'][0])
@@ -987,21 +1005,25 @@ def proof_dns_after_candidate_exit(owner, operation, operation_dir, previous, se
     assert (root / 'dns-write-attempts').read_text().splitlines() == expected_writes
 
 
-def proof_stop_after_partial_dns(record, operation_dir, previous, sentinel, baseline_dns, pending):
+def proof_stop_after_partial_dns(record, operation_dir, previous, sentinel, baseline_dns, pending, before_dns=False):
     operation = record['operation']
     state_file = archive / 'state' / 'archive-state.json'
-    prefix = operation_dir / 'dns-step-2-exited.json'
-    hidden = prefix.with_suffix('.held')
-    prefix.rename(hidden)
-    try:
-        pending('runtime.network_dns_conflict')
-    finally:
-        hidden.rename(prefix)
+    if not before_dns:
+        prefix = operation_dir / 'dns-step-2-exited.json'
+        hidden = prefix.with_suffix('.held')
+        prefix.rename(hidden)
+        try:
+            pending('runtime.network_dns_conflict')
+        finally:
+            hidden.rename(prefix)
     try:
         resolver('domain', device, '~changed.fixture.test')
         pending('runtime.network_dns_conflict')
     finally:
-        resolver('domain', device, '~tun.fixture.test')
+        if before_dns:
+            resolver('revert', device)
+        else:
+            resolver('domain', device, '~tun.fixture.test')
     candidate = config.read_bytes()
     try:
         config.write_bytes(candidate + b'\n# fixture drift\n')
@@ -1041,8 +1063,14 @@ def proof_stop_after_partial_dns(record, operation_dir, previous, sentinel, base
     assert network_baseline() == record['baseline'] and resolver_snapshot() == baseline_dns
     assert config.read_bytes() == previous.read_bytes() and sentinel.read_text() == 'previous-data'
     assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
-    assert (root / 'dns-write-attempts').read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains']
-    print(f'PASS TUN DNS PARTIAL LIVE STOP: original {operation}; one signal to PID {record["service"][0]}; '
+    writes = root / 'dns-write-attempts'
+    if before_dns:
+        assert not writes.exists() and not (operation_dir / 'tun-4.json').exists()
+        assert (operation_dir / 'dns-before-descriptor.json').is_file()
+    else:
+        assert writes.read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains']
+    marker = 'DESCRIPTOR LIVE STOP' if before_dns else 'DNS PARTIAL LIVE STOP'
+    print(f'PASS TUN {marker}: original {operation}; one signal to PID {record["service"][0]}; '
           f'original Interrupted without DNS replay, restored PID={restored[0]}')
 
 
@@ -2781,7 +2809,7 @@ def proof():
         ip('netns', 'exec', 'rk-http-client', 'ip', 'address', 'add', '192.0.2.1/24', 'dev', 'rk-peer')
     if case in ('dns-receipt', 'dns-owner', 'dns-registration', 'ipc-server-pending', 'ipc-http-pending'):
         install_dns_ack_boundary()
-    if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited', 'dns-partial-live'):
+    if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited', 'dns-partial-live', 'descriptor-live-stop'):
         install_dns_ack_boundary(hold_reply=False)
     if case == 'dns-partial-inflight':
         install_dns_ack_boundary(hold_method='SetLinkDomains')
@@ -2861,13 +2889,14 @@ rules:
         renames = 'rename,renameat,renameat2'
         worker = [tracer, '-f', '-qq', '-yy', '-P', temporary, '-e', f'trace={renames}',
                   '-e', f'inject={renames}:error=EIO:signal=SIGKILL:when=1', '-o', str(trace), *worker]
-    if case in ('network-before-launch', 'launch-before-descriptor', 'descriptor-outcome-unknown', 'dns-exited', 'dns-exited-owner'):
+    if case in ('network-before-launch', 'launch-before-descriptor', 'descriptor-outcome-unknown', 'descriptor-live-stop', 'dns-exited', 'dns-exited-owner'):
         tracer = shutil.which('strace')
         assert tracer, 'The dispatch proof requires strace'
         trace = root / 'network-before-launch-fault.trace'
         opens = 'open,openat,openat2'
         phase_file = {'network-before-launch': 'tun-2.json', 'launch-before-descriptor': 'tun-3.json',
-                      'descriptor-outcome-unknown': 'tun-4.json', 'dns-exited': 'tun-5.json', 'dns-exited-owner': 'tun-5.json'}[case]
+                      'descriptor-outcome-unknown': 'tun-4.json', 'descriptor-live-stop': 'tun-4.json',
+                      'dns-exited': 'tun-5.json', 'dns-exited-owner': 'tun-5.json'}[case]
         checkpoint_path = operation_dir / phase_file
         cut = ':signal=SIGKILL' if case == 'network-before-launch' else ':delay_enter=5s'
         worker = [tracer, '-f', '-qq', '-yy', '-P', str(checkpoint_path), '-e', f'trace={opens}',
@@ -2889,7 +2918,7 @@ rules:
         if case in ('network-before-launch', 'launch-before-descriptor'):
             proof_network_before_launch(owner, json.loads(journal.read_text()), operation_dir, previous, sentinel, trace)
             return
-        if case == 'descriptor-outcome-unknown':
+        if case in ('descriptor-outcome-unknown', 'descriptor-live-stop'):
             proof_descriptor_outcome_unknown(owner, operation, operation_dir, previous, sentinel, trace)
             return
         if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited', 'dns-partial-inflight', 'dns-partial-live'):

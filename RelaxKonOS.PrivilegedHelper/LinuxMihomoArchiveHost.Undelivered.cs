@@ -109,6 +109,22 @@ internal sealed partial class LinuxMihomoArchiveHost
     private static string UndeliveredPath(MihomoTunEffect effect, string name) =>
         Path.Combine(Root, "operations", effect.Intent.OperationId.ToString("N"), name + ".json");
 
+    private static async Task<MihomoTunDnsBaseline?> ReadDescriptorDnsBaselineAsync(MihomoTunEffect effect, CancellationToken ct)
+    {
+        var path = UndeliveredPath(effect, "dns-before-descriptor");
+        RuntimeSourceStore.RequireNoLinks(path);
+        if (!Path.Exists(path)) return null;
+        var raw = await ReadRestoreFileAsync(path, ct);
+        MihomoTunEffect? witness;
+        try { witness = JsonSerializer.Deserialize<MihomoTunEffect>(raw); }
+        catch (JsonException) { throw new RuntimePolicyException("runtime.network_checkpoint_conflict"); }
+        if (witness?.Dns is not { } dns || !LinuxMihomoTunDns.ValidBaseline(dns)
+            || witness != (effect with { Dns = dns }) || raw != JsonSerializer.Serialize(witness))
+            throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(path)!);
+        return dns;
+    }
+
     private static async Task<bool> ReadUndeliveredCheckpointAsync(MihomoTunEffect effect, string name, CancellationToken ct)
     {
         var path = UndeliveredPath(effect, name);
