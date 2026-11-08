@@ -1,3 +1,5 @@
+using System.Net.Security;
+
 internal static class CertificateChecks
 {
 internal static async Task VerifyCertificateStoreAndSniAsync(string root)
@@ -34,13 +36,13 @@ internal static async Task VerifyCertificateStoreAndSniAsync(string root)
     var registry = new KestrelCertificateRegistry();
     using var firstSni = CreateX509("one.example.test");
     using var secondSni = CreateX509("two.example.test");
-    TestAssert.Assert(registry.Activate(Guid.NewGuid(), firstSni, ["one.example.test"]), "First SNI activation failed.");
+    TestAssert.Assert(registry.Activate(Guid.NewGuid(), SslStreamCertificateContext.Create(firstSni, null, offline: true), ["one.example.test"]), "First SNI activation failed.");
     var secondId = Guid.NewGuid();
-    TestAssert.Assert(registry.Activate(secondId, secondSni, ["two.example.test"]), "Second SNI activation failed.");
-    TestAssert.Assert(registry.Select("one.example.test") == firstSni, "First SNI binding was lost.");
-    TestAssert.Assert(registry.Select("two.example.test") == secondSni, "Second SNI binding was not selected.");
+    TestAssert.Assert(registry.Activate(secondId, SslStreamCertificateContext.Create(secondSni, null, offline: true), ["two.example.test"]), "Second SNI activation failed.");
+    TestAssert.Assert(registry.Select("one.example.test")?.TargetCertificate == firstSni, "First SNI binding was lost.");
+    TestAssert.Assert(registry.Select("two.example.test")?.TargetCertificate == secondSni, "Second SNI binding was not selected.");
     TestAssert.Assert(registry.Deactivate(secondId), "Second SNI binding did not deactivate.");
-    TestAssert.Assert(registry.Select("one.example.test") == firstSni, "Unrelated SNI binding changed during deactivation.");
+    TestAssert.Assert(registry.Select("one.example.test")?.TargetCertificate == firstSni, "Unrelated SNI binding changed during deactivation.");
 }
 
 internal static void VerifyCertificateApiRoutes()

@@ -30,7 +30,12 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = [], EnvironmentName = Environments.Production });
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
-        builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 8192);
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            // Public host endpoints must never override the private broker's loopback URL.
+            options.Configure(new ConfigurationBuilder().Build());
+            options.Limits.MaxRequestBodySize = 8192;
+        });
         _application = builder.Build();
         _application.MapPost("/background", async (ModulePrivilegeBackgroundRequest request, HttpContext http) => await Respond(async () =>
         {

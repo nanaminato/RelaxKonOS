@@ -7,6 +7,10 @@ pebble=$3
 dns=$4
 server=${5:-}
 schedule=${7:-}
+case "$schedule" in
+    revocation|revocation-configured) revocation=1 ;;
+    *) revocation=0 ;;
+esac
 [ "$(readlink /proc/self/ns/net)" != "$host_network" ]
 [ "$(ip -o link show | wc -l)" -eq 1 ]
 ip link set lo up
@@ -90,7 +94,7 @@ NGINX
 fi
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
     -addext 'subjectAltName=DNS:localhost,IP:127.0.0.2' -keyout "$fixture/https.key" -out "$fixture/https.pem" 2>/dev/null
-if [ "$schedule" = revocation ]; then
+if [ "$revocation" -eq 1 ]; then
     openssl pkcs12 -export -in "$fixture/https.pem" -inkey "$fixture/https.key" \
         -out "$fixture/kestrel.pfx" -passout pass:
 fi
@@ -111,9 +115,6 @@ for attempt in $(seq 1 100); do
 done
 curl --noproxy '*' --resolve "localhost:14000:$backend" --cacert "$fixture/https.pem" -fsS https://localhost:14000/dir >/dev/null
 curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:15000/roots/0 > "$fixture/issuance-root.pem"
-if [ "$schedule" = revocation ]; then
-    curl --noproxy '*' --cacert "$fixture/https.pem" -fsS https://localhost:15000/intermediates/0 > "$fixture/issuance-intermediate.pem"
-fi
 python3 "$(dirname "$0")/acme-response-loss-relay.py" "$fixture" $relay_mode > "$fixture/relay.log" 2>&1 &
 relay_pid=$!
 for attempt in $(seq 1 100); do
@@ -128,7 +129,7 @@ if [ -n "$server" ]; then
     if [ "$relay_mode" = schedule ]; then
         [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 2 ]
         [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 1 ]
-    elif [ "$schedule" = revocation ]; then
+    elif [ "$revocation" -eq 1 ]; then
         [ "$(grep -c 'Added order' "$fixture/ca.log")" -eq 3 ]
         [ "$(grep -c 'POST /finalize-order/' "$fixture/ca.log")" -eq 3 ]
         [ "$(grep -c '^200$' "$fixture/revocation-results")" -eq 2 ]

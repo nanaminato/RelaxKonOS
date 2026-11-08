@@ -5,14 +5,17 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Authentication;
 using System.Security.Claims;
+using System.Net.Security;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.Startup;
 
 internal static class CertificateBindingChecks
 {
     internal static async Task RunAsync(string root)
     {
+        VerifyKestrelSniProjection();
         TestAssert.Assert(CertificateUsagePolicy.Covers(["*.example.test"], "ONE.EXAMPLE.TEST."), "Wildcard DNS coverage failed.");
         TestAssert.Assert(!CertificateUsagePolicy.Covers(["*.example.test"], "deep.one.example.test") && !CertificateUsagePolicy.Covers(["*.example.test"], "example.test"), "Wildcard covered multiple levels or the apex.");
         TestAssert.Assert(CertificateUsagePolicy.Covers(["xn--bcher-kva.example"], "bücher.example"), "IDN coverage failed.");
@@ -33,9 +36,10 @@ internal static class CertificateBindingChecks
         using var wildcard = CertificateChecks.CreateX509("*.example.test");
         using var exact = CertificateChecks.CreateX509("one.example.test");
         var wildcardId = Guid.NewGuid();
-        TestAssert.Assert(registry.Activate(wildcardId, wildcard, ["*.example.test"]), "Wildcard registration failed.");
-        TestAssert.Assert(registry.Activate(id, exact, ["one.example.test"]), "Exact registration failed.");
-        TestAssert.Assert(registry.Select("ONE.EXAMPLE.TEST.") == exact && registry.Select("two.example.test") == wildcard, "SNI exact/wildcard priority failed.");
+        TestAssert.Assert(registry.Activate(wildcardId, SslStreamCertificateContext.Create(wildcard, null, offline: true), ["*.example.test"]), "Wildcard registration failed.");
+        TestAssert.Assert(registry.Activate(id, SslStreamCertificateContext.Create(exact, null, offline: true), ["one.example.test"]), "Exact registration failed.");
+        TestAssert.Assert(registry.Select("ONE.EXAMPLE.TEST.")?.TargetCertificate == exact
+            && registry.Select("two.example.test")?.TargetCertificate == wildcard, "SNI exact/wildcard priority failed.");
         TestAssert.Assert(registry.Snapshot(wildcardId).IsDefault && !registry.Snapshot(id).IsDefault, "Deployment unexpectedly changed the default.");
         TestAssert.Assert(registry.Snapshot(id).FingerprintSha256 == exact.GetCertHashString(HashAlgorithmName.SHA256), "Snapshot did not report actual runtime material.");
         var server = new BindingServer();
@@ -107,7 +111,26 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(!facts.CertificateExists && !facts.Registered && facts.FingerprintSha256 is null, "Deletion retained a live selector certificate.");
         var replay = await manager.DeployKestrelAsync(id, "request", "alice", CancellationToken.None);
         TestAssert.Assert(replay.OperationId == deployed.OperationId, "Lost deployment response could not recover original operation after facts changed.");
-        TestAssert.Assert(registry.Select("one.example.test") == wildcard, "Deleted exact binding did not fall back to the surviving default.");
+        TestAssert.Assert(registry.Select("one.example.test")?.TargetCertificate == wildcard, "Deleted exact binding did not fall back to the surviving default.");
+    }
+
+    private static void VerifyKestrelSniProjection()
+    {
+        const string endpoint = "Endpoints:Managed";
+        var host = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [$"Kestrel:{endpoint}:Url"] = "https://127.0.0.1:9443",
+            [$"Kestrel:{endpoint}:ClientCertificateMode"] = "RequireCertificate",
+            ["Kestrel:Endpoints:Local:Url"] = "http://127.0.0.1:9080",
+        }).Build();
+        using var effective = (ConfigurationRoot)new ConfigurationBuilder().Add(new KestrelSniConfiguration(host, [], false)).Build();
+        TestAssert.Assert(effective[$"{endpoint}:Sni:*"] == "" && effective[$"{endpoint}:ClientCertificateMode"] == "RequireCertificate"
+            && !effective.GetSection("Endpoints:Local:Sni").GetChildren().Any(), "Kestrel SNI projection changed TLS policy or attached TLS to HTTP.");
+        host[$"Kestrel:{endpoint}:Sni:allowed.example.test:ClientCertificateMode"] = "RequireCertificate";
+        host.Reload();
+        TestAssert.Assert(effective[$"{endpoint}:Sni:*"] is null
+            && effective[$"{endpoint}:Sni:allowed.example.test:ClientCertificateMode"] == "RequireCertificate",
+            "Kestrel SNI reload broadened the explicit hostname policy.");
     }
     private static async Task VerifyReplacementEndpointAsync(ICertificateManager manager, CertificateOperationStore ledger, Guid id, Guid selfSignedId,
         IHostEnvironment environment, TestResidentBackgroundLeases ledgerLeases)

@@ -1,3 +1,4 @@
+using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -21,6 +22,7 @@ internal interface ICertificateStore
     Task UpdateStatusAsync(Guid certificateId, CertificateStatus status, CancellationToken cancellationToken);
     Task<X509Certificate2?> LoadCurrentAsync(Guid certificateId, CancellationToken cancellationToken);
     Task<X509Certificate2?> LoadVersionAsync(Guid certificateId, string version, CancellationToken cancellationToken);
+    Task<SslStreamCertificateContext?> LoadKestrelVersionAsync(Guid certificateId, string version, CancellationToken cancellationToken);
     /// <summary>Returns fixed, server-local PEM paths suitable for a web-server configuration.</summary>
     Task<(string FullChainPath, string PrivateKeyPath)?> GetNginxPathsAsync(Guid certificateId, CancellationToken cancellationToken);
     Task DeleteAsync(Guid certificateId, CancellationToken cancellationToken);
@@ -117,16 +119,40 @@ internal sealed class FileCertificateStore : ICertificateStore
     }
 
     public Task<X509Certificate2?> LoadVersionAsync(Guid certificateId, string version, CancellationToken cancellationToken)
+        => Task.FromResult(LoadVersion<X509Certificate2>(certificateId, version, static (leaf, _) => leaf));
+
+    public Task<SslStreamCertificateContext?> LoadKestrelVersionAsync(Guid certificateId, string version, CancellationToken cancellationToken)
+        => Task.FromResult(LoadVersion<SslStreamCertificateContext>(certificateId, version, static (leaf, pem) =>
+        {
+            var chain = new X509Certificate2Collection();
+            try
+            {
+                chain.ImportFromPem(pem);
+                return SslStreamCertificateContext.Create(leaf, chain, offline: true);
+            }
+            finally
+            {
+                foreach (var certificate in chain) certificate.Dispose();
+            }
+        }));
+
+    private T? LoadVersion<T>(Guid certificateId, string version, Func<X509Certificate2, string, T> load) where T : class
     {
         if (string.IsNullOrWhiteSpace(version) || version.Length != 32 || !version.All(Uri.IsHexDigit))
-            return Task.FromResult<X509Certificate2?>(null);
-        if (!IsSafeCertificateRoot(certificateId)) return Task.FromResult<X509Certificate2?>(null);
+            return null;
+        if (!IsSafeCertificateRoot(certificateId)) return null;
         var versionRoot = Path.Combine(CertificateRoot(certificateId), "versions", version);
         var certificate = Path.Combine(versionRoot, "fullchain.pem");
         var privateKey = Path.Combine(versionRoot, "private.key");
-        if (!File.Exists(certificate) || !File.Exists(privateKey)) return Task.FromResult<X509Certificate2?>(null);
-        try { return Task.FromResult<X509Certificate2?>(X509Certificate2.CreateFromPemFile(certificate, privateKey)); }
-        catch (CryptographicException) { return Task.FromResult<X509Certificate2?>(null); }
+        if (!File.Exists(certificate) || !File.Exists(privateKey)) return null;
+        X509Certificate2? leaf = null;
+        try
+        {
+            var pem = File.ReadAllText(certificate);
+            leaf = X509Certificate2.CreateFromPem(pem, File.ReadAllText(privateKey));
+            return load(leaf, pem);
+        }
+        catch (CryptographicException) { leaf?.Dispose(); return null; }
     }
 
     public async Task<(string FullChainPath, string PrivateKeyPath)?> GetNginxPathsAsync(Guid certificateId, CancellationToken cancellationToken)

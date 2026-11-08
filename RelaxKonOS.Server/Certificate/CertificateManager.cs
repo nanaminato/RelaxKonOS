@@ -157,7 +157,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             // Re-read under the per-certificate operation gate; the metadata may have changed since submission.
             var current = await certificates.GetAsync(certificateId, ct);
             if (CertificateUsagePolicy.Problem(current, DateTimeOffset.UtcNow) is { } currentProblem) return currentProblem;
-            var certificate = await certificates.LoadCurrentAsync(certificateId, ct);
+            var certificate = await certificates.LoadKestrelVersionAsync(certificateId, current!.Version, ct);
             if (certificate is null)
             {
                 await deployments.RecordKestrelAsync(current!, false, "certificate.material_unavailable", ct);
@@ -165,7 +165,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             }
             if (!kestrel.Activate(certificateId, certificate, current!.Domains, makeDefault: true))
             {
-                certificate.Dispose();
+                certificate.TargetCertificate.Dispose();
                 await deployments.RecordKestrelAsync(current!, false, "certificate.kestrel_activation_failed", ct);
                 return "certificate.kestrel_activation_failed";
             }
@@ -195,10 +195,10 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             {
                 var replacementRecord = await certificates.GetAsync(certificateId, ct);
                 if (replacementRecord is null) return "certificate.material_unavailable";
-                var replacement = await certificates.LoadCurrentAsync(certificateId, ct);
+                var replacement = await certificates.LoadKestrelVersionAsync(certificateId, replacementRecord.Version, ct);
                 if (replacement is null || !kestrel.Activate(certificateId, replacement, replacementRecord.Domains))
                 {
-                    replacement?.Dispose();
+                    replacement?.TargetCertificate.Dispose();
                     await deployments.RecordKestrelAsync(replacementRecord, false, "certificate.kestrel_activation_failed", ct);
                     return "certificate.kestrel_activation_failed";
                 }

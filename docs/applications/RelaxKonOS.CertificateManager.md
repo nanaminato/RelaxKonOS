@@ -1411,7 +1411,7 @@ Kestrel 部署必须先实现，不能只在签发成功后尝试替换文件。
 
 部署要求 Issued/Active 且当前有效，选择器校验实际材料私钥与有效期。精确名称优先，再匹配单层 DNS 通配符，最后使用默认证书。服务器 HTTPS 换证显式切换并持久化默认选择；其他证书续期保持原默认，删除默认后选择剩余证书。新连接使用新选择，已建立连接可保留旧材料。启动恢复跳过已撤销记录，失败不替换现有有效选择。实际选择器事实不证明公网前端或客户端信任；部署不改变监听地址/端口，也不改客户端 URL 或证书信任。
 
-Linux 实测验证续期期间的原 TLS 连接、替代证书的新握手，以及确认撤销后对新握手的影响。验证探针使用私有 CA 根及中间证书。仅信任该根的探针报告无法建立签发链，动态选择的完整链发送仍待修复。见[Kestrel TLS 轮换与撤销连续性](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-kestrel-tls-轮换与撤销连续性)。
+Kestrel 随选中的活动叶证书发送对应中间链。Linux URL 与命名 HTTPS 端点通过仅信任私有 CA 根的握手验收，覆盖续期期间的旧连接、替代证书的新握手，以及确认撤销后对新握手的影响。Windows 托管 TLS 和 HTTP/3 仍待实机验证。见[Kestrel 动态证书链](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-kestrel-动态证书链)。
 
 Nginx 的受管证书站点绑定在配置副作用前校验状态/有效期与每个绑定的 SAN 覆盖，IDN/IP 规范化，通配符仅覆盖一层 DNS 名称；宿主 PEM 路径仍由配置语法/文件校验，不能把该模式当作受管元数据已核实。
 

@@ -533,7 +533,7 @@ MB-05 的 ACME SDK 与执行代码支持闲时卸载和按需唤醒。原证书 
 
 ARI 查询由原续期扫描持有工作租约。进程中断后，原扫描可以重读 ARI，已经关联的续期继续由原操作台账负责。真实断流后的到期时间兜底见[ARI 断流与原扫描恢复](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-ari-断流与原扫描恢复)。
 
-实际 HTTPS 验收覆盖续期时的旧连接、替代证书的新握手、确认撤销后的选择移除和另一 SNI 的持续服务。TLS 选择仍属于 Core。仅信任 CA 根的客户端存在中间证书发送缺口，见[Kestrel TLS 轮换与撤销连续性](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-kestrel-tls-轮换与撤销连续性)。
+实际 HTTPS 验收覆盖续期时的旧连接、替代证书的新握手、确认撤销后的选择移除和另一 SNI 的持续服务。TLS 选择仍属于 Core，注册表只持有活动证书的完整链上下文，已选择的连接继续持有其所需上下文。Linux URL 和命名 HTTPS 端点通过仅根信任验证。见[Kestrel 动态证书链](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-kestrel-动态证书链)。
 
 MB-05 的网站发布和具名首站恢复使用独立可回收执行代码。原 Nginx、TLS、发布台账及应用关联权威由 Host 保持，WebServer 管理模块继续 resident。见[网站发布独立执行程序集](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-网站发布独立执行程序集)。
 

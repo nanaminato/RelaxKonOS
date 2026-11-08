@@ -25,7 +25,7 @@ def run(root, server, tests, mode):
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
-    https = mode == "revocation"
+    https = mode in ("revocation", "revocation-configured")
     base = f"{'https' if https else 'http'}://127.0.0.1:{port}"
     env = {key: value for key, value in os.environ.items() if "__" not in key}
     private_home = root / "home"
@@ -57,10 +57,12 @@ def run(root, server, tests, mode):
     if https:
         env["Kestrel__Certificates__Default__Path"] = str(root / "kestrel.pfx")
         env["Kestrel__Certificates__Default__Password"] = ""
+        if mode == "revocation-configured":
+            env["ASPNETCORE_URLS"] = "http://127.0.0.1:0"
+            env["Kestrel__Endpoints__Managed__Url"] = base
+            env["Kestrel__Endpoints__Managed__SslProtocols__0"] = "Tls12"
         management_tls = ssl.create_default_context(cafile=str(root / "https.pem"))
         management_tls.load_verify_locations(root / "issuance-root.pem")
-        management_tls.load_verify_locations(root / "issuance-intermediate.pem")
-        management_tls.verify_flags &= ~ssl.VERIFY_X509_PARTIAL_CHAIN
         # The management path uses a loopback IP. Dedicated probes below verify each DNS SNI.
         management_tls.check_hostname = False
         handlers.append(urllib.request.HTTPSHandler(context=management_tls))
@@ -217,10 +219,7 @@ def run(root, server, tests, mode):
         ledger = root / "data" / "certificate-operations.json"
         database = root / "identity.db"
         first_host, second_host = "baseline.mb05.test", "missing.mb05.test"
-        root_only = ssl.create_default_context(cafile=str(root / "issuance-root.pem"))
         client_tls = ssl.create_default_context(cafile=str(root / "issuance-root.pem"))
-        client_tls.load_verify_locations(root / "issuance-intermediate.pem")
-        client_tls.verify_flags &= ~ssl.VERIFY_X509_PARTIAL_CHAIN
 
         def stop(child):
             child.kill()
@@ -237,9 +236,11 @@ def run(root, server, tests, mode):
                                     f"deploy-{certificate_id}", 202), "succeeded")
 
         @contextmanager
-        def tls_connection(host, context=client_tls):
+        def tls_connection(host):
             with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
-                with context.wrap_socket(connection, server_hostname=host) as tls:
+                with client_tls.wrap_socket(connection, server_hostname=host) as tls:
+                    if mode == "revocation-configured":
+                        assert tls.version() == "TLSv1.2", "Configured endpoint TLS policy was lost"
                     yield tls
 
         def fingerprint(tls):
@@ -284,12 +285,8 @@ def run(root, server, tests, mode):
             fingerprints = [request(path, token)["fingerprintSha256"] for path in (known, unknown)]
             deploy(token, known_id)
             deploy(token, unknown_id)
-            try:
-                with tls_connection(first_host, root_only):
-                    print("PASS KESTREL ROOT-ONLY CHAIN: listener presented a complete chain", flush=True)
-            except ssl.SSLCertVerificationError as error:
-                assert error.verify_code in (20, 21), error.verify_message
-                print(f"OBSERVED KESTREL ROOT-ONLY CHAIN FAILURE: verification code {error.verify_code}", flush=True)
+            assert_leaf(first_host, fingerprints[0])
+            print("PASS KESTREL ROOT-ONLY CHAIN: listener presented a complete chain", flush=True)
             assert_leaf(second_host, fingerprints[1])
             with tls_connection(first_host) as original_tls:
                 assert fingerprint(original_tls) == fingerprints[0].replace(":", "")
@@ -589,7 +586,7 @@ def run(root, server, tests, mode):
         "socketGroupId": os.getegid(), "allowedUids": [os.geteuid()]}))
     with process([tests, "--isolated-certificate-pam-helper", helper_config], "helper") as helper:
         wait_for(helper, Path(env["PrivilegedHelper__SocketPath"]).is_socket, "helper")
-        if mode == "revocation":
+        if https:
             verify_revocation()
             return
         with process([server], "initial-server") as initial:

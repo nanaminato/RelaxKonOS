@@ -11,10 +11,10 @@ internal sealed class KestrelCertificateStartupService(ICertificateStore certifi
         {
             var metadata = await certificates.GetAsync(deployment.CertificateId, cancellationToken);
             if (metadata is null || metadata.Status == RelaxKonOS.Protocol.Certificates.CertificateStatus.Revoked) continue;
-            var certificate = await certificates.LoadVersionAsync(deployment.CertificateId, deployment.CurrentVersion, cancellationToken);
+            var certificate = await certificates.LoadKestrelVersionAsync(deployment.CertificateId, deployment.CurrentVersion, cancellationToken);
             if (certificate is null || !kestrel.Activate(deployment.CertificateId, certificate, metadata.Domains, makeDefault: deployment.IsDefault))
             {
-                certificate?.Dispose();
+                certificate?.TargetCertificate.Dispose();
                 logger.LogError("Unable to restore Kestrel certificate deployment. CertificateId={CertificateId}", deployment.CertificateId);
                 continue;
             }

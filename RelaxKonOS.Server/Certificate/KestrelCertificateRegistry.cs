@@ -1,4 +1,4 @@
-using System.Security.Cryptography.X509Certificates;
+using System.Net.Security;
 using System.Security.Cryptography;
 
 namespace RelaxKonOS.Server.Certificate;
@@ -11,13 +11,12 @@ internal sealed record KestrelCertificateSelectorSnapshot(bool Registered, bool 
 
 internal sealed class KestrelCertificateRegistry
 {
-    private readonly Dictionary<Guid, X509Certificate2> _certificates = [];
+    private readonly Dictionary<Guid, SslStreamCertificateContext> _certificates = [];
     private readonly Dictionary<string, Guid> _hostBindings = new(StringComparer.OrdinalIgnoreCase);
     private Guid? _defaultCertificateId;
-    private readonly List<X509Certificate2> _retired = [];
     private readonly object _gate = new();
 
-    public X509Certificate2? Select(string? hostName)
+    public SslStreamCertificateContext? Select(string? hostName)
     {
         lock (_gate)
         {
@@ -35,7 +34,8 @@ internal sealed class KestrelCertificateRegistry
     {
         lock (_gate)
         {
-            if (!_certificates.TryGetValue(certificateId, out var certificate)) return new(false, false, [], null, null, null);
+            if (!_certificates.TryGetValue(certificateId, out var context)) return new(false, false, [], null, null, null);
+            var certificate = context.TargetCertificate;
             return new(true, _defaultCertificateId == certificateId,
                 _hostBindings.Where(item => item.Value == certificateId).Select(item => item.Key).Order(StringComparer.Ordinal).ToArray(),
                 certificate.GetCertHashString(HashAlgorithmName.SHA256), new DateTimeOffset(certificate.NotBefore.ToUniversalTime()),
@@ -48,17 +48,18 @@ internal sealed class KestrelCertificateRegistry
         lock (_gate) return _certificates.ContainsKey(certificateId);
     }
 
-    public bool Activate(Guid certificateId, X509Certificate2 certificate, IReadOnlyList<string> hostNames, bool makeDefault = false)
+    public bool Activate(Guid certificateId, SslStreamCertificateContext context, IReadOnlyList<string> hostNames, bool makeDefault = false)
     {
+        var certificate = context.TargetCertificate;
         var names = hostNames.Select(CertificateUsagePolicy.NormalizeName).ToArray();
         if (!certificate.HasPrivateKey || certificate.NotBefore.ToUniversalTime() > DateTime.UtcNow
             || certificate.NotAfter.ToUniversalTime() <= DateTime.UtcNow || names.Length == 0 || names.Any(name => name is null)) return false;
         lock (_gate)
         {
-            if (_certificates.Remove(certificateId, out var previous)) _retired.Add(previous);
             foreach (var host in _hostBindings.Where(item => item.Value == certificateId).Select(item => item.Key).ToArray()) _hostBindings.Remove(host);
             foreach (var host in names) _hostBindings[host!] = certificateId;
-            _certificates[certificateId] = certificate;
+            // Handshakes already using a context hold their own reference. The registry owns only active versions.
+            _certificates[certificateId] = context;
             if (makeDefault || _defaultCertificateId is null) _defaultCertificateId = certificateId;
             return true;
         }
@@ -69,9 +70,8 @@ internal sealed class KestrelCertificateRegistry
         lock (_gate)
         {
             if (expectedSha256 is not null && (!_certificates.TryGetValue(certificateId, out var current)
-                || current.GetCertHashString(HashAlgorithmName.SHA256) != expectedSha256)) return false;
-            if (!_certificates.Remove(certificateId, out var previous)) return false;
-            if (previous is not null) _retired.Add(previous);
+                || current.TargetCertificate.GetCertHashString(HashAlgorithmName.SHA256) != expectedSha256)) return false;
+            if (!_certificates.Remove(certificateId)) return false;
             foreach (var host in _hostBindings.Where(item => item.Value == certificateId).Select(item => item.Key).ToArray()) _hostBindings.Remove(host);
             if (_defaultCertificateId == certificateId) _defaultCertificateId = _certificates.Count == 0 ? null : _certificates.Keys.First();
             return true;
