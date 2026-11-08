@@ -20,6 +20,11 @@ import uuid
 
 def run(root, server, helper_binary, mode):
     production_helper = mode is not None
+    integration = mode is not None and mode.startswith("--systemd-integration-")
+    integration_stage = mode == "--systemd-integration-stage"
+    integration_live = mode == "--systemd-integration-live"
+    integration_rejected = mode == "--systemd-integration-rejected"
+    integration_test_held = threading.Event()
     acme_website = mode is not None and mode.startswith("--systemd-website-acme")
     first_site_acme = mode is not None and mode.startswith("--systemd-first-site-acme")
     interrupt_first_site = mode == "--systemd-first-site-acme"
@@ -113,7 +118,7 @@ def run(root, server, helper_binary, mode):
     @contextmanager
     def process(arguments, name):
         child_env = dict(env, DOTNET_STARTUP_HOOKS=website_hook) if website_hook and arguments[0] == server else env
-        if website_hook and (retire_live or mode == "--systemd-first-site-acme-success") and arguments[0] == server:
+        if website_hook and (retire_live or integration_live or mode == "--systemd-first-site-acme-success") and arguments[0] == server:
             child_env["RELAXKONOS_TEST_WEBSERVER_COLLECT"] = "1"
         with (root / f"{name}.stderr").open("w") as errors, (root / f"{name}.stdout").open("w") as output:
             child = subprocess.Popen(["dotnet", *map(str, arguments)], cwd=root, env=child_env,
@@ -161,7 +166,7 @@ def run(root, server, helper_binary, mode):
                    else [helper_binary, "--isolated-certificate-pam-helper"])
     nginx_pid_file = root / "nginx" / "nginx.pid"
     socket_path = Path(env["PrivilegedHelper__SocketPath"])
-    if relay_mode or bootstrap_resume or lose_first_site_reply:
+    if relay_mode or bootstrap_resume or lose_first_site_reply or integration_stage:
         env["PrivilegedHelper__SocketPath"] = str(root / "relay.sock")
 
     def frame(stream):
@@ -194,7 +199,7 @@ def run(root, server, helper_binary, mode):
 
     @contextmanager
     def helper_connection():
-        if not relay_mode and not bootstrap_resume and not lose_first_site_reply:
+        if not relay_mode and not bootstrap_resume and not lose_first_site_reply and not integration_stage:
             yield None, None
             return
         dropped = threading.Event()
@@ -222,6 +227,11 @@ def run(root, server, helper_binary, mode):
                         while True:
                             response_bytes, response = frame(source)
                             terminal = response["Type"] == "result"
+                            if (integration_stage and kind == "NginxConfigurationTest" and terminal
+                                    and not integration_test_held.is_set()):
+                                assert response["Result"]["success"]
+                                integration_test_held.set()
+                                assert permit_query.wait(15), "The fixture did not release the original configuration test"
                             if (lose_first_site_reply and drop_webroot_reply.is_set() and not dropped.is_set()
                                     and terminal and kind == "NginxSystemServiceAction"):
                                 assert response["Result"]["success"]
@@ -243,7 +253,7 @@ def run(root, server, helper_binary, mode):
                             try:
                                 self.connection.sendall(response_bytes)
                             except BrokenPipeError:
-                                if not bootstrap_resume and not retire_retry:
+                                if not bootstrap_resume and not retire_retry and not integration_stage:
                                     raise
                                 return
                             if terminal:
@@ -1189,6 +1199,145 @@ def run(root, server, helper_binary, mode):
                            "FIRST SITE ACME RESPONSE LOSS" if lose_first_site_reply else "AUTHENTICATED FIRST SITE ACME")
                 print(f"PASS {outcome}: enable={operation}; certificate={cert['operationId']}; original receipt, one CA order, TLS on original master")
 
+    def verify_integration():
+        anchor = Path("/etc/nginx/conf.d/relaxkonos.conf")
+        expected_anchor = anchor.read_bytes()
+        anchor.unlink()
+        master = nginx_pid_file.read_text()
+        witness = root / "nginx" / "reloads"
+        attempts = root / "nginx" / "reload-attempts"
+        release = root / "nginx" / "release"
+
+        def grant(token, instance, capability="NginxConfigurationWrite"):
+            elevated = request("/api/v1.0/privileged/elevation", token=token, payload={
+                "capability": capability, "target": instance, "password": credentials["password"]})
+            assert elevated["elevated"]
+
+        def active_leases(token):
+            return request("/api/v1.0/server/modules/relaxkonos.webserver", token=token)["residency"]["activeLeases"]
+
+        with helper_connection() as (_, permit_test), process([*helper_args, helper_config], "integration-helper") as helper:
+            wait_for(helper, helper_ready, "integration-helper")
+            with process([server], "integration-server") as initial:
+                wait_for(initial, healthy, "integration-server")
+                token = login()
+                candidates = web + "/integration-candidates"
+                target, = (item for item in request(candidates, token=token)
+                           if item["executablePath"] == executable and item["configurationPath"] == str(configuration))
+                instance = target["id"]
+                route = f"{candidates}/{instance}/integrate"
+                payload = {"confirmed": True}
+                request(route, payload=payload, key=key, expected=401)
+                assert_served(b"original")
+                if website_hook:
+                    assert not webserver_code_events("integration-server")
+                grant(token, instance)
+                if integration_rejected:
+                    (root / "nginx" / "reject-next").touch()
+                    release.touch()
+                operation = request(route, token=token, payload=payload, key=key, expected=202)["operationId"]
+                path = f"{web}/operations/{operation}"
+                staged = anchor.with_name(f"relaxkonos.{operation.replace('-', '')}.conf")
+                native_receipt = Path("/var/lib/relaxkonos-nginx-reloads") / (operation.replace("-", "") + ".json")
+
+                if integration_stage:
+                    assert integration_test_held.wait(12)
+                    original = request(path, token=token)
+                    assert original["stage"] == "integration-staging" and original["snapshotId"]
+                    assert staged.read_bytes() == expected_anchor and not anchor.exists() and not attempts.exists()
+                elif integration_rejected:
+                    wait_for(initial, lambda: request(path, token=token)["problemCode"] == "webserver.native_recovery_required",
+                             "failed native integration receipt retained")
+                    rejected_receipt = json.loads(native_receipt.read_text())
+                    assert rejected_receipt["OperationId"] == operation and rejected_receipt["Completed"] and rejected_receipt["Failed"]
+                    assert attempts.read_text().splitlines() == ["attempt"] and not witness.exists()
+                else:
+                    wait_for(initial, witness.is_file, "real integration reload dispatch")
+                    original = request(path, token=token)
+                    assert original["stage"] == "native-reload-dispatch" and original["snapshotId"]
+                    assert anchor.read_bytes() == expected_anchor and not staged.exists()
+                assert active_leases(token) > 0 and nginx_pid_file.read_text() == master
+                assert_served(b"original")
+                if website_hook:
+                    loaded = webserver_code_events("integration-server")
+                    assert len(loaded) == 1 and loaded[0].startswith("load webserver-execution:")
+
+                if integration_live:
+                    release.touch()
+                    wait_for(initial, lambda: request(path, token=token)["state"].lower() == "succeeded",
+                             "matched original integration receipt")
+                    assert request(path, token=token)["snapshotId"] == original["snapshotId"]
+                    if website_hook:
+                        generation = loaded[0][5:]
+                        collected = [*loaded, f"unload {generation}", f"collected {generation}"]
+                        wait_for(initial, lambda: webserver_code_events("integration-server") == collected,
+                                 "integration execution collection after original receipt retirement", attempts=450)
+                        assert request(route, token=token, payload=payload, key=key, expected=202) == request(path, token=token)
+                        assert webserver_code_events("integration-server") == collected
+                    assert witness.read_text().splitlines() == ["reload"] and native_receipt.stat().st_size == 0
+                    assert nginx_pid_file.read_text() == master
+                    assert_served(b"original")
+                    print(f"PASS NGINX INTEGRATION COLLECTION: {operation}; one reload, original receipt retired, TLS continuous")
+                    return
+
+                initial.kill()
+                assert initial.wait(timeout=10) < 0
+                if integration_stage:
+                    permit_test.set()
+                    staged.write_bytes(expected_anchor + b"# External staging drift\n")
+                elif not integration_rejected:
+                    release.touch()
+                    wait_for(helper, lambda: native_receipt.is_file()
+                             and json.loads(native_receipt.read_text()).get("Completed") is True,
+                             "durable integration Helper receipt")
+                    anchor.write_bytes(expected_anchor + b"# External drift\n")
+
+            with process([server], "integration-restarted") as restarted:
+                wait_for(restarted, healthy, "integration-restarted")
+                token = login()
+                grant(token, instance)
+                if integration_stage:
+                    pending = request(path, token=token)
+                    assert pending["state"].lower() == "running"
+                    assert pending["problemCode"] == "webserver.integration_cleanup_required"
+                    request(route, token=token, payload=payload, key=secrets.token_hex(16), expected=409)
+                    assert staged.read_bytes() == expected_anchor + b"# External staging drift\n"
+                    staged.write_bytes(expected_anchor)
+                    wait_for(restarted, lambda: request(path, token=token)["problemCode"] == "webserver.operation_interrupted",
+                             "original pre-dispatch stage cleanup")
+                    assert not staged.exists() and not anchor.exists() and not attempts.exists()
+                    result = "STAGE RECOVERY"
+                else:
+                    pending = request(path, token=token)
+                    assert pending["state"].lower() == "running" and pending["problemCode"] == "webserver.native_recovery_required"
+                    assert request(route, token=token, payload=payload, key=key, expected=202) == pending
+                    if integration_rejected:
+                        grant(token, instance, "NginxLifecycle")
+                        request(f"{web}/{instance}/reload", token=token, method="POST", key=secrets.token_hex(16), expected=409)
+                        assert anchor.read_bytes() == expected_anchor and native_receipt.stat().st_size > 0
+                        assert attempts.read_text().splitlines() == ["attempt"] and not witness.exists()
+                        result = "REJECTION RETAINED"
+                    else:
+                        assert anchor.read_bytes() == expected_anchor + b"# External drift\n"
+                        request(route, token=token, payload=payload, key=secrets.token_hex(16), expected=409)
+                        anchor.write_bytes(expected_anchor)
+                        wait_for(restarted, lambda: request(path, token=token)["state"].lower() == "succeeded",
+                                 "original receipt and exact anchor reconciliation", attempts=200)
+                        wait_for(restarted, lambda: native_receipt.stat().st_size == 0, "integration receipt retirement")
+                        assert witness.read_text().splitlines() == ["reload"]
+                        assert request(path, token=token)["snapshotId"] == original["snapshotId"]
+                        result = "RECEIPT RECOVERY"
+                if website_hook:
+                    assert not webserver_code_events("integration-restarted")
+                assert request(route, token=token, payload=payload, key=key, expected=202) == request(path, token=token)
+                assert nginx_pid_file.read_text() == master
+                assert_served(b"original")
+                print(f"PASS NGINX INTEGRATION {result}: {operation}; original receipt, no replay, TLS continuous")
+
+    if integration:
+        verify_integration()
+        return
+
     if first_site_acme:
         verify_first_site_acme()
         return
@@ -1428,7 +1577,9 @@ if __name__ == "__main__":
                                                             "--systemd-website-acme-bootstrap-resume", "--systemd-website-acme-bootstrap-resume-interrupt",
                                                             "--systemd-website-acme-bootstrap-bind-interrupt", "--systemd-first-site-acme",
                                                             "--systemd-first-site-acme-success", "--systemd-first-site-acme-response-loss",
-                                                            "--systemd-first-site-acme-rejected") else None
+                                                            "--systemd-first-site-acme-rejected", "--systemd-integration-live",
+                                                            "--systemd-integration-receipt", "--systemd-integration-stage",
+                                                            "--systemd-integration-rejected") else None
     if len(arguments) != 3:
         raise SystemExit("Usage: run-authenticated-nginx-live.py ROOT SERVER HELPER [SYSTEMD_MODE]")
     run(*(Path(arg).resolve(strict=True) for arg in arguments), mode=mode)

@@ -570,3 +570,5 @@ Linux 直连设置按原 ID 核对宿主策略变更。guard 可完成已证实�
 直连 Mihomo 档案与设置发布在原发布锁内按需加载执行代次。实际 reload、结果核验、持久确认及临时文件清理结束后释放，HTTP 工作责任继续保护响应。Core 继续负责原检查点、系统代理和 TUN。见[直连档案与设置发布执行器](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-04-直连档案与设置发布执行器)。
 
 显式 WebRoot 启用复用 WebServer 可回收执行代次。原 Nginx、站点配置、TLS 和未知回执继续由 Host 与原 Helper 边界负责。见[直接 WebRoot 启用执行器](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-webroot-启用执行器)。
+
+Linux Nginx 集成复用 WebServer 执行代次。原操作先保存暂存与派发边界，Host 在重启后清理原暂存或核对原 Helper 回执和快照。外部 Nginx 与 TLS 继续运行。见[Nginx 集成检查点](RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-集成检查点与执行代次)。

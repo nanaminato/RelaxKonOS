@@ -1,5 +1,6 @@
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebServers;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.WebServer;
 
@@ -10,19 +11,35 @@ internal sealed partial class NginxWebServerManager
     /// <summary>Executes an admitted direct operation through the original Core Nginx provider.</summary>
     internal sealed class DirectExecution(NginxWebServerManager nginx, WebServerMetadataRepository metadata, ILogger<DirectExecution> logger)
     {
-        internal async Task<WebServerOperationResult> IntegrateAsync(WebServerDto instance, CancellationToken ct)
+        internal async Task<WebServerOperationResult> IntegrateAsync(WebServerDto instance,
+            WebServerOperationStore.OperationProgress progress, CancellationToken ct)
         {
-            var result = await nginx.IntegrateCoreAsync(instance, ct);
-            if (string.IsNullOrEmpty(result.ProblemCode))
+            await IntegrationGate.WaitAsync(ct);
+            try
             {
-                await metadata.UpsertInstanceAsync(instance, ct);
-                logger.LogInformation("Nginx integration completed. InstanceId={InstanceId}, Executable={Executable}, Configuration={Configuration}",
-                    instance.Id, instance.ExecutablePath, instance.ConfigurationPath);
+                var ports = new IntegrationPorts(nginx, instance, progress);
+                var lease = WebServerExecutionCode.Shared.Acquire<INginxIntegrationExecutor>(
+                    "RelaxKonOS.Server.WebServer.NginxIntegrationExecutor", ports);
+                progress.HoldExecution(lease);
+                var result = await RunIntegrationAsync(lease.Executor, ports, ct);
+                if (result.Problem.Length == 0) await metadata.UpsertInstanceAsync(instance, ct, onlyIfChanged: true);
+                return new(result.Problem, result.SnapshotId);
             }
-            else
-                logger.LogWarning("Nginx integration failed. InstanceId={InstanceId}, Problem={Problem}, SnapshotId={SnapshotId}",
-                    instance.Id, result.ProblemCode, result.SnapshotId);
-            return result;
+            finally { IntegrationGate.Release(); }
+        }
+
+        private static async Task<NginxIntegrationResult> RunIntegrationAsync(INginxIntegrationExecutor executor,
+            IntegrationPorts ports, CancellationToken ct)
+        {
+            try { return await executor.IntegrateAsync(ct); }
+            catch (NginxIntegrationCleanupException) { throw new NginxIntegrationCleanupException(); }
+            catch (ResidentWorkCompletionException)
+            { throw new ResidentWorkCompletionException(new InvalidOperationException("Nginx integration checkpoint could not be saved.")); }
+            catch (Exception) when (ports.CommitBoundaryRecorded) { return new(NginxReloadOutcome.RecoveryRequired, null); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
+            catch (IOException) { return new("webserver.configuration_changed", null); }
+            catch (UnauthorizedAccessException) { return new("webserver.config_elevation_required", null); }
+            catch (Exception) { throw new InvalidOperationException("Nginx integration execution failed."); }
         }
 
         internal async Task<WebServerOperationResult> ReloadAsync(WebServerDto instance, WebServerOperationStore.OperationProgress progress, CancellationToken ct)

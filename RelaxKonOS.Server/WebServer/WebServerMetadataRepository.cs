@@ -50,7 +50,7 @@ internal sealed class WebServerMetadataRepository
         await command.ExecuteNonQueryAsync(ct);
     }
 
-    public async Task UpsertInstanceAsync(WebServerDto instance, CancellationToken cancellationToken)
+    public async Task UpsertInstanceAsync(WebServerDto instance, CancellationToken cancellationToken, bool onlyIfChanged = false)
     {
         if (!_enabled) return;
         await using var connection = new SqliteConnection(_connectionString);
@@ -61,7 +61,11 @@ internal sealed class WebServerMetadataRepository
             VALUES($id,$provider,$mode,$executable,$configuration,$detected,1)
             ON CONFLICT(instance_id) DO UPDATE SET provider_id=excluded.provider_id,management_mode=excluded.management_mode,
                 executable_path=excluded.executable_path,configuration_path=excluded.configuration_path,detected_at=excluded.detected_at,
-                revision=webserver_instances.revision+1;
+                revision=webserver_instances.revision+1
+            WHERE NOT $onlyIfChanged OR webserver_instances.provider_id IS NOT excluded.provider_id
+                OR webserver_instances.management_mode IS NOT excluded.management_mode
+                OR webserver_instances.executable_path IS NOT excluded.executable_path
+                OR webserver_instances.configuration_path IS NOT excluded.configuration_path;
             """;
         command.Parameters.AddWithValue("$id", instance.Id);
         command.Parameters.AddWithValue("$provider", instance.ProviderId);
@@ -69,6 +73,7 @@ internal sealed class WebServerMetadataRepository
         command.Parameters.AddWithValue("$executable", instance.ExecutablePath);
         command.Parameters.AddWithValue("$configuration", (object?)instance.ConfigurationPath ?? DBNull.Value);
         command.Parameters.AddWithValue("$detected", instance.DetectedAt.ToString("O"));
+        command.Parameters.AddWithValue("$onlyIfChanged", onlyIfChanged);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 

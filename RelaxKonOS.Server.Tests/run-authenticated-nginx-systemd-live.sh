@@ -4,7 +4,7 @@ set -euo pipefail
 [[ ( $# == 2 || $# == 3 || $# == 5 ) && $EUID == 0 ]]
 mode=${3:---systemd}
 case "$mode" in
-    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-retire-live|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-website-acme-challenge-changed|--systemd-website-acme-bootstrap|--systemd-website-acme-bootstrap-success|--systemd-website-acme-bootstrap-failure|--systemd-website-acme-bootstrap-resume|--systemd-website-acme-bootstrap-resume-interrupt|--systemd-website-acme-bootstrap-bind-interrupt|--systemd-first-site-acme|--systemd-first-site-acme-success|--systemd-first-site-acme-response-loss|--systemd-first-site-acme-rejected) ;;
+    --systemd|--systemd-drain|--systemd-unknown|--systemd-timeout|--systemd-receipt|--systemd-response-loss|--systemd-rejected|--systemd-retire-retry|--systemd-retire-live|--systemd-website|--systemd-website-verifying|--systemd-website-acme|--systemd-website-acme-success|--systemd-website-acme-cancel|--systemd-website-acme-drain|--systemd-website-acme-challenge-changed|--systemd-website-acme-bootstrap|--systemd-website-acme-bootstrap-success|--systemd-website-acme-bootstrap-failure|--systemd-website-acme-bootstrap-resume|--systemd-website-acme-bootstrap-resume-interrupt|--systemd-website-acme-bootstrap-bind-interrupt|--systemd-first-site-acme|--systemd-first-site-acme-success|--systemd-first-site-acme-response-loss|--systemd-first-site-acme-rejected|--systemd-integration-live|--systemd-integration-receipt|--systemd-integration-stage|--systemd-integration-rejected) ;;
     *) exit 2 ;;
 esac
 pebble= dns= relay=
@@ -161,6 +161,7 @@ mount -o remount,bind,ro /proc/sys
 ip link set lo up
 
 conf="$work/nginx/conf.d"
+if [[ "$mode" == --systemd-integration-* ]]; then conf=/etc/nginx/conf.d; fi
 if [[ -f "$work/alpine.tar" || "$mode" == --systemd-first-site-acme* ]]; then
     conf=/etc/nginx/conf.d
     printf '\n127.0.0.1 website-mb05.test\n' >> /etc/hosts
@@ -219,7 +220,7 @@ cat > "$work/reload.sh" <<EOF
 set -euo pipefail
 echo attempt >> "$work/nginx/reload-attempts"
 /usr/sbin/nginx -t
-if [[ "$mode" == --systemd-first-site-acme-rejected && -f "$work/nginx/reject-next" ]]; then
+if [[ -f "$work/nginx/reject-next" ]]; then
     rm -- "$work/nginx/reject-next"
     exit 1
 fi

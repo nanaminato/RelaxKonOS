@@ -65,158 +65,129 @@ internal sealed partial class NginxWebServerManager
         candidate.ExecutablePath, candidate.ConfigurationPath, candidate.Version, candidate.DetectedAt,
         new WebServerCapabilities(true, true, true));
 
-    private async Task<WebServerOperationResult> IntegrateCoreAsync(WebServerDto instance, CancellationToken cancellationToken)
+    // The recovery owner calls this without loading execution code or dispatching any mutation.
+    internal static async Task<bool> ConfirmIntegrationAsync(WebServerMetadataRepository metadata,
+        NginxIntegrationCheckpoint checkpoint, string instanceId, CancellationToken ct)
     {
-        if (instance.ConfigurationPath is null)
-        {
-            logger.LogWarning("Nginx integration cannot continue because no configuration path was detected. InstanceId={InstanceId}, Executable={Executable}", instance.Id, instance.ExecutablePath);
-            return new WebServerOperationResult("webserver.configuration_not_found");
-        }
-        logger.LogInformation("Starting Nginx integration. InstanceId={InstanceId}, Executable={Executable}, Configuration={Configuration}", instance.Id, instance.ExecutablePath, instance.ConfigurationPath);
-        var snapshot = await metadata.CreateSnapshotAsync(instance, cancellationToken);
-        if (snapshot is null)
-        {
-            logger.LogWarning("Nginx integration cannot snapshot the configuration. InstanceId={InstanceId}, Configuration={Configuration}", instance.Id, instance.ConfigurationPath);
-            return new WebServerOperationResult("webserver.configuration_not_found");
-        }
-        var includeDirectory = FindOwnedIncludeDirectory(instance.ConfigurationPath);
-        if (includeDirectory is null)
-        {
-            logger.LogWarning("Nginx integration cannot find a supported include directory. InstanceId={InstanceId}, Configuration={Configuration}, SnapshotId={SnapshotId}", instance.Id, instance.ConfigurationPath, snapshot.Id);
-            return new WebServerOperationResult("webserver.include_context_not_supported", snapshot.Id);
-        }
-        if (Path.GetFileName(includeDirectory) is not "conf.d")
-        {
-            logger.LogWarning("Nginx integration only supports a conf.d include directory. InstanceId={InstanceId}, IncludeDirectory={IncludeDirectory}, SnapshotId={SnapshotId}", instance.Id, includeDirectory, snapshot.Id);
-            return new WebServerOperationResult("webserver.include_context_not_supported", snapshot.Id);
-        }
-        if (OperatingSystem.IsLinux() && !string.Equals(includeDirectory, LinuxSystemIncludeDirectory, StringComparison.Ordinal))
-        {
-            logger.LogWarning("Nginx integration only supports the Linux system include directory handled by the privileged helper. InstanceId={InstanceId}, IncludeDirectory={IncludeDirectory}, ExpectedIncludeDirectory={ExpectedIncludeDirectory}, SnapshotId={SnapshotId}", instance.Id, includeDirectory, LinuxSystemIncludeDirectory, snapshot.Id);
-            return new WebServerOperationResult("webserver.include_context_not_supported", snapshot.Id);
-        }
-        if (IsSymbolicLink(includeDirectory))
-        {
-            logger.LogWarning("Nginx integration rejected a symbolic-link include directory. InstanceId={InstanceId}, IncludeDirectory={IncludeDirectory}, SnapshotId={SnapshotId}", instance.Id, includeDirectory, snapshot.Id);
-            return new WebServerOperationResult("webserver.unsafe_path", snapshot.Id);
-        }
-
-        var destination = Path.Combine(includeDirectory, OwnedFileName);
-        if (Path.GetFullPath(destination) != destination || IsSymbolicLink(destination))
-        {
-            logger.LogWarning("Nginx integration rejected an unsafe destination. InstanceId={InstanceId}, Destination={Destination}, SnapshotId={SnapshotId}", instance.Id, destination, snapshot.Id);
-            return new WebServerOperationResult("webserver.unsafe_path", snapshot.Id);
-        }
-        if (File.Exists(destination))
-        {
-            var problem = IsOwnedFile(destination) ? "" : "webserver.ownership_conflict";
-            logger.LogInformation("Nginx integration found an existing anchor. InstanceId={InstanceId}, Destination={Destination}, IsRelaxKonOSOwned={IsRelaxKonOSOwned}, SnapshotId={SnapshotId}", instance.Id, destination, string.IsNullOrEmpty(problem), snapshot.Id);
-            return new WebServerOperationResult(problem, snapshot.Id);
-        }
-
-        await IntegrationGate.WaitAsync(cancellationToken);
+        if (!OperatingSystem.IsLinux() || checkpoint.Instance is not { ConfigurationPath: { } configurationPath } instance
+            || instance.Id != instanceId || instance.Id != InstanceId(instance.ExecutablePath)
+            || instance.ManagementMode != WebServerManagementMode.Integrated || instance.ProviderId != ProviderKey)
+            return false;
+        await IntegrationGate.WaitAsync(ct);
         try
         {
-            // Re-check under the per-provider transaction lock so an external change cannot be overwritten.
-            if (!await metadata.IsSnapshotCurrentAsync(instance.ConfigurationPath, snapshot, cancellationToken))
-            {
-                logger.LogWarning("Nginx integration stopped because the configuration changed before staging. InstanceId={InstanceId}, Configuration={Configuration}, SnapshotId={SnapshotId}", instance.Id, instance.ConfigurationPath, snapshot.Id);
-                return new WebServerOperationResult("webserver.configuration_changed", snapshot.Id);
-            }
-            if (File.Exists(destination))
-            {
-                var problem = IsOwnedFile(destination) ? "" : "webserver.ownership_conflict";
-                logger.LogWarning("Nginx integration stopped because its anchor appeared during staging. InstanceId={InstanceId}, Destination={Destination}, IsRelaxKonOSOwned={IsRelaxKonOSOwned}, SnapshotId={SnapshotId}", instance.Id, destination, string.IsNullOrEmpty(problem), snapshot.Id);
-                return new WebServerOperationResult(problem, snapshot.Id);
-            }
-            // Keep the staged file in the include graph (and on the same filesystem), so
-            // nginx -t validates the exact file that will be atomically renamed into place.
-            var stage = Path.Combine(includeDirectory, $"relaxkonos.{Guid.NewGuid():N}.conf");
-            var committed = false;
-            var stageWritten = false;
-            try
-            {
-                var staged = await privilegedNginx.WriteManagedFileAsync(stage, Encoding.UTF8.GetBytes(AnchorContent(Path.Combine(includeDirectory, "relaxkonos.d"))), cancellationToken);
-                if (!staged.Success)
-                {
-                    logger.LogWarning("Nginx integration could not stage its anchor through the privileged helper. InstanceId={InstanceId}, Stage={Stage}, ProblemCode={ProblemCode}, ExitCode={ExitCode}, Error={Error}, SnapshotId={SnapshotId}", instance.Id, stage, staged.ProblemCode, staged.ExitCode, staged.Error, snapshot.Id);
-                    return new WebServerOperationResult(ToNginxConfigurationProblem(staged), snapshot.Id);
-                }
-                stageWritten = true;
-                logger.LogInformation("Nginx integration anchor staged. InstanceId={InstanceId}, Stage={Stage}, Destination={Destination}, SnapshotId={SnapshotId}", instance.Id, stage, destination, snapshot.Id);
-                if (!await metadata.IsSnapshotCurrentAsync(instance.ConfigurationPath, snapshot, cancellationToken))
-                {
-                    logger.LogWarning("Nginx integration stopped because the configuration changed after staging. InstanceId={InstanceId}, Configuration={Configuration}, SnapshotId={SnapshotId}", instance.Id, instance.ConfigurationPath, snapshot.Id);
-                    return new WebServerOperationResult("webserver.configuration_changed", snapshot.Id);
-                }
-                var test = await RunSystemPackageConfigurationTestAsync(cancellationToken);
-                if (!test.Success)
-                {
-                    logger.LogWarning("Nginx integration configuration validation failed. InstanceId={InstanceId}, Executable={Executable}, Stage={Stage}, Output={Output}, SnapshotId={SnapshotId}", instance.Id, instance.ExecutablePath, stage, CommandOutputForLog(test.Output), snapshot.Id);
-                    return new WebServerOperationResult("webserver.config_test_failed", snapshot.Id);
-                }
-                if (!await metadata.IsSnapshotCurrentAsync(instance.ConfigurationPath, snapshot, cancellationToken))
-                {
-                    logger.LogWarning("Nginx integration stopped because the configuration changed after validation. InstanceId={InstanceId}, Configuration={Configuration}, SnapshotId={SnapshotId}", instance.Id, instance.ConfigurationPath, snapshot.Id);
-                    return new WebServerOperationResult("webserver.configuration_changed", snapshot.Id);
-                }
-                var moved = await privilegedNginx.MoveManagedFileAsync(stage, destination, overwrite: false, cancellationToken: cancellationToken);
-                if (!moved.Success)
-                {
-                    logger.LogWarning("Nginx integration could not commit its anchor through the privileged helper. InstanceId={InstanceId}, Stage={Stage}, Destination={Destination}, ProblemCode={ProblemCode}, ExitCode={ExitCode}, Error={Error}, SnapshotId={SnapshotId}", instance.Id, stage, destination, moved.ProblemCode, moved.ExitCode, moved.Error, snapshot.Id);
-                    return new WebServerOperationResult(ToNginxConfigurationProblem(moved), snapshot.Id);
-                }
-                stageWritten = false;
-                committed = true;
-                logger.LogInformation("Nginx integration anchor committed. InstanceId={InstanceId}, Destination={Destination}, SnapshotId={SnapshotId}", instance.Id, destination, snapshot.Id);
-                var reload = await RunSystemdNginxOperationAsync("reload", cancellationToken);
-                if (reload.Success) return new WebServerOperationResult("", snapshot.Id);
-
-                // The old workers normally keep the prior configuration. Restore disk state and attempt a rollback reload.
-                logger.LogWarning("Nginx integration reload failed; restoring the prior configuration. InstanceId={InstanceId}, Executable={Executable}, Destination={Destination}, ProblemCode={ProblemCode}, ExitCode={ExitCode}, Error={Error}, SnapshotId={SnapshotId}", instance.Id, instance.ExecutablePath, destination, reload.ProblemCode, reload.ExitCode, reload.Error, snapshot.Id);
-                var deleted = await privilegedNginx.DeleteManagedFileAsync(destination, cancellationToken);
-                if (!deleted.Success)
-                {
-                    logger.LogError("Nginx integration could not remove its anchor during rollback through the privileged helper. InstanceId={InstanceId}, Destination={Destination}, ProblemCode={ProblemCode}, ExitCode={ExitCode}, Error={Error}, SnapshotId={SnapshotId}", instance.Id, destination, deleted.ProblemCode, deleted.ExitCode, deleted.Error, snapshot.Id);
-                    return new WebServerOperationResult(ToNginxConfigurationProblem(deleted), snapshot.Id);
-                }
-                committed = false;
-                _ = await RunSystemPackageConfigurationTestAsync(cancellationToken);
-                _ = await RunSystemdNginxOperationAsync("reload", cancellationToken);
-                return new WebServerOperationResult("webserver.reload_failed", snapshot.Id);
-            }
-            catch (Exception exception) when (exception is not UnauthorizedAccessException and not IOException and not OperationCanceledException)
-            {
-                // Cancellation and unexpected process errors must not leave an unverified disk config behind.
-                logger.LogError(exception, "Nginx integration encountered an unexpected error. InstanceId={InstanceId}, Executable={Executable}, Configuration={Configuration}, Stage={Stage}, Destination={Destination}, Committed={Committed}, SnapshotId={SnapshotId}", instance.Id, instance.ExecutablePath, instance.ConfigurationPath, stage, destination, committed, snapshot.Id);
-                if (committed)
-                {
-                    var rollback = await privilegedNginx.DeleteManagedFileAsync(destination, CancellationToken.None);
-                    if (!rollback.Success)
-                        logger.LogError("Nginx integration could not remove its anchor after an unexpected error. InstanceId={InstanceId}, Destination={Destination}, ProblemCode={ProblemCode}, ExitCode={ExitCode}, Error={Error}, SnapshotId={SnapshotId}", instance.Id, destination, rollback.ProblemCode, rollback.ExitCode, rollback.Error, snapshot.Id);
-                }
-                throw;
-            }
-            finally
-            {
-                if (stageWritten)
-                {
-                    var cleanup = await privilegedNginx.DeleteManagedFileAsync(stage, CancellationToken.None);
-                    if (!cleanup.Success && cleanup.ProblemCode != PrivilegedProblemCode.NotFound)
-                        logger.LogWarning("Nginx integration could not remove its staged anchor through the privileged helper. InstanceId={InstanceId}, Stage={Stage}, ProblemCode={ProblemCode}, ExitCode={ExitCode}, Error={Error}, SnapshotId={SnapshotId}", instance.Id, stage, cleanup.ProblemCode, cleanup.ExitCode, cleanup.Error, snapshot.Id);
-                }
-            }
+            var directory = FindOwnedIncludeDirectory(configurationPath);
+            if (directory != LinuxSystemIncludeDirectory || IsSymbolicLink(directory)) return false;
+            var anchor = Path.Combine(directory, OwnedFileName);
+            if (!File.Exists(anchor) || IsSymbolicLink(anchor)
+                || !await MatchesSiteConfigAsync(anchor, AnchorContent(Path.Combine(directory, "relaxkonos.d")), ct)
+                || !await metadata.IsSnapshotCurrentAsync(configurationPath, checkpoint.Snapshot, ct))
+                return false;
+            await metadata.UpsertInstanceAsync(instance, ct, onlyIfChanged: true);
+            return true;
         }
-        catch (UnauthorizedAccessException exception)
-        {
-            logger.LogError(exception, "Nginx integration was denied access to host configuration. InstanceId={InstanceId}, Configuration={Configuration}, Destination={Destination}, SnapshotId={SnapshotId}", instance.Id, instance.ConfigurationPath, destination, snapshot.Id);
-            return new WebServerOperationResult("webserver.config_elevation_required", snapshot.Id);
-        }
-        catch (IOException exception)
-        {
-            logger.LogError(exception, "Nginx integration encountered an I/O conflict. InstanceId={InstanceId}, Configuration={Configuration}, Destination={Destination}, SnapshotId={SnapshotId}", instance.Id, instance.ConfigurationPath, destination, snapshot.Id);
-            return new WebServerOperationResult("webserver.configuration_changed", snapshot.Id);
-        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or Microsoft.Data.Sqlite.SqliteException)
+        { return false; }
         finally { IntegrationGate.Release(); }
     }
+
+    internal static async Task<bool> CleanIntegrationStageAsync(IPrivilegedNginxOperations native, Guid operationId, CancellationToken ct)
+    {
+        if (!OperatingSystem.IsLinux()) return false;
+        await IntegrationGate.WaitAsync(ct);
+        try { return await CleanIntegrationStageUnderGateAsync(native, operationId, ct); }
+        finally { IntegrationGate.Release(); }
+    }
+
+    private static async Task<bool> CleanIntegrationStageUnderGateAsync(IPrivilegedNginxOperations native, Guid operationId, CancellationToken ct)
+    {
+        try
+        {
+            if (IsSymbolicLink(LinuxSystemIncludeDirectory)) return false;
+            var stage = Path.Combine(LinuxSystemIncludeDirectory, $"relaxkonos.{operationId:N}.conf");
+            var attributes = File.GetAttributes(stage);
+            if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0
+                || !await MatchesSiteConfigAsync(stage, AnchorContent(Path.Combine(LinuxSystemIncludeDirectory, "relaxkonos.d")), ct))
+                return false;
+            var result = await native.DeleteManagedFileAsync(stage, ct);
+            return result.Success || result.ProblemCode == PrivilegedProblemCode.NotFound;
+        }
+        catch (FileNotFoundException) { return true; }
+        catch (DirectoryNotFoundException) { return true; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    private WebServerMetadataRepository IntegrationMetadata => metadata;
+    private IPrivilegedNginxOperations IntegrationFiles => privilegedNginx;
+
+    private sealed class IntegrationPorts(NginxWebServerManager nginx, WebServerDto instance,
+        WebServerOperationStore.OperationProgress progress) : INginxIntegrationPorts
+    {
+        private NginxConfigurationSnapshot? snapshot;
+        private string? stage;
+        private string? destination;
+        private string? content;
+        private bool stageAttempted;
+        public bool CommitBoundaryRecorded { get; private set; }
+
+        public async Task<NginxIntegrationPlan> PrepareAsync(CancellationToken ct)
+        {
+            if (instance.ConfigurationPath is null) return new("webserver.configuration_not_found", null);
+            snapshot = await nginx.IntegrationMetadata.CreateSnapshotAsync(instance, ct);
+            if (snapshot is null) return new("webserver.configuration_not_found", null);
+            var include = FindOwnedIncludeDirectory(instance.ConfigurationPath);
+            if (!OperatingSystem.IsLinux() || include != LinuxSystemIncludeDirectory)
+                return new("webserver.include_context_not_supported", snapshot.Id);
+            destination = Path.Combine(include, OwnedFileName);
+            if (IsSymbolicLink(include) || Path.GetFullPath(destination) != destination || IsSymbolicLink(destination))
+                return new("webserver.unsafe_path", snapshot.Id);
+            if (File.Exists(destination))
+                return IsOwnedFile(destination) ? new(null, snapshot.Id, AlreadyIntegrated: true)
+                    : new("webserver.ownership_conflict", snapshot.Id);
+
+            stage = Path.Combine(include, $"relaxkonos.{progress.OperationId:N}.conf");
+            content = AnchorContent(Path.Combine(include, "relaxkonos.d"));
+            if (File.Exists(stage) || IsSymbolicLink(stage))
+                return new("webserver.ownership_conflict", snapshot.Id);
+            return new(null, snapshot.Id);
+        }
+
+        public Task<bool> IsSnapshotCurrentAsync(CancellationToken ct) =>
+            nginx.IntegrationMetadata.IsSnapshotCurrentAsync(instance.ConfigurationPath!, snapshot!, ct);
+
+        public async Task<string?> StageAsync(CancellationToken ct)
+        {
+            if (File.Exists(stage!) || IsSymbolicLink(stage!)) return "webserver.ownership_conflict";
+            stageAttempted = true;
+            var result = await nginx.IntegrationFiles.WriteManagedFileAsync(stage!, Encoding.UTF8.GetBytes(content!), ct);
+            return result.Success ? null : ToNginxConfigurationProblem(result);
+        }
+
+        public async Task<bool> TestAsync(CancellationToken ct) => (await nginx.RunSystemPackageConfigurationTestAsync(ct)).Success;
+
+        public Task CheckpointAsync(CancellationToken ct) =>
+            progress.CheckpointIntegrationAsync(new(instance, snapshot!), ct);
+
+        public async Task RecordCommitBoundaryAsync(CancellationToken ct)
+        {
+            await progress.ReportAsync(WebServerOperationStore.NativeReloadDispatchStage, ct);
+            CommitBoundaryRecorded = true;
+        }
+
+        public async Task<bool> CommitAsync() =>
+            (await nginx.IntegrationFiles.MoveManagedFileAsync(stage!, destination!, overwrite: false, cancellationToken: CancellationToken.None)).Success;
+
+        public async Task DispatchReloadAsync() => _ = await nginx.RunTrackedReloadAsync(progress.OperationId, CancellationToken.None);
+
+        public async Task CleanStageAsync()
+        {
+            if (stageAttempted && !await CleanIntegrationStageUnderGateAsync(nginx.IntegrationFiles, progress.OperationId, CancellationToken.None))
+                throw new NginxIntegrationCleanupException();
+        }
+    }
 }
+
+internal sealed record NginxIntegrationCheckpoint(WebServerDto Instance, NginxConfigurationSnapshot Snapshot);
+
+internal sealed class NginxIntegrationCleanupException()
+    : InvalidOperationException("Nginx integration anchor cleanup could not be confirmed.");

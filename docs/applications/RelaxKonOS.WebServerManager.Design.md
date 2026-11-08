@@ -1764,3 +1764,5 @@ Linux 系统包 Nginx 的 WebRoot 启用中断后，后续授权的 TLS 绑定�
 获准的直接 Nginx 重载与网站发布共享按需加载的 WebServer 执行代次。命令、原终态和 Helper 回执清理全部完成后，最后一个作用域释放并开始闲时计时。原 ID 的同键查询和启动对账由 Server 台账处理。闲时执行代码卸载期间，Nginx 保持站点转发和 TLS。见[直接重载独立执行程序集](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-nginx-重载独立执行程序集)。
 
 显式启用 HTTP-01 按需加载 WebServer 执行代码。Linux 系统包 Nginx 的 Helper reload 应答丢失时，原启用回执返回 `webserver.site_reload_unverified`，保留活动文件和原备份。备份未核验时阻止再次启用。具备权限的站点更新仍按原文件、站点定义和原生作业空闲状态核验备份。同键请求读取原回执。见[直接 WebRoot 启用执行器](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-直接-webroot-启用执行器)。
+
+Linux Nginx 集成在锚点提交前保存原操作与主配置快照。Server 重启后按原 ID 查询 Helper，并核对当前锚点与快照。同键请求返回原回执。缺少成功证据或配置漂移时保持待核验，拒绝同实例新的后台变更。见[Nginx 集成检查点](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md#mb-05-nginx-集成检查点与执行代次)。

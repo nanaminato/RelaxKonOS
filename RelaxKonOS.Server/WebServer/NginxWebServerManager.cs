@@ -196,7 +196,7 @@ internal sealed partial class NginxWebServerManager(
         logger.LogInformation("Nginx integration was requested. CandidateId={CandidateId}, Executable={Executable}, Configuration={Configuration}, Actor={Actor}",
             candidateId, candidate.ExecutablePath, candidate.ConfigurationPath, actor ?? "<anonymous>");
         return await operations.StartScopedAsync<DirectExecution>(idempotencyKey, candidateId, "integrate", actor, scopes,
-            (execution, _, ct) => execution.IntegrateAsync(instance, ct), lifetime.ApplicationStopping);
+            (execution, progress, ct) => execution.IntegrateAsync(instance, progress, ct), lifetime.ApplicationStopping);
     }
 
     public async Task<WebServerOperationDto?> ReloadAsync(string instanceId, string idempotencyKey, string? actor, CancellationToken cancellationToken)

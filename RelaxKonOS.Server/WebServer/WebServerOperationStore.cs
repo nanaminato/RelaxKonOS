@@ -29,6 +29,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
     internal const string NativeReloadDispatchStage = "native-reload-dispatch";
     internal const string NativeReloadConfirmedStage = "native-reload-confirmed";
     internal const string NativeRecoveryRequired = NginxReloadOutcome.RecoveryRequired;
+    private const string IntegrationStaging = "integration-staging";
+    private const string IntegrationCleanupRequired = "webserver.integration_cleanup_required";
     private readonly string _path;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<Guid, PersistedOperation> _operations = [];
@@ -38,19 +40,21 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
     private readonly HostOperationJournal _journal;
     private readonly ResidentBackgroundWorkOwner _workOwner;
     private readonly IPrivilegedNginxOperations? _nativeOperations;
+    private readonly WebServerMetadataRepository? _metadata;
     private bool _ready;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
 
     private readonly ILogger<WebServerOperationStore> _logger;
 
     public WebServerOperationStore(IHostEnvironment environment, HostOperationJournal journal, ILogger<WebServerOperationStore> logger, IResidentModuleWorkLeaseSource leases,
-        IPrivilegedNginxOperations? nativeOperations = null)
+        IPrivilegedNginxOperations? nativeOperations = null, WebServerMetadataRepository? metadata = null)
     {
         _path = LedgerPath(environment);
         _journal = journal;
         _logger = logger;
         _workOwner = new(leases, ServerModules.WebServerId);
         _nativeOperations = nativeOperations;
+        _metadata = metadata;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -64,6 +68,11 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             try
             {
                 await LoadAndRecoverAsync(stopping.Token);
+                foreach (var operation in _operations.Values.Where(item => item.ProblemCode == IntegrationCleanupRequired))
+                {
+                    using var continuation = await _workOwner.AdmitAsync(stopping.Token);
+                    continuation.Run(token => ReconcileIntegrationStagingAsync(operation.OperationId, token));
+                }
                 foreach (var operation in _operations.Values.Where(item => item.ProblemCode == NativeRecoveryRequired))
                 {
                     using var continuation = await _workOwner.AdmitAsync(stopping.Token);
@@ -138,7 +147,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             }
 
             if (_operations.Values.Any(operation => operation.InstanceId == instanceId
-                && operation.ProblemCode == NativeRecoveryRequired))
+                && (operation.ProblemCode is NativeRecoveryRequired or IntegrationCleanupRequired
+                    || operation is { Integration: not null, Stage: NativeReloadDispatchStage })))
                 return new(Guid.Empty, instanceId, kind, WebServerOperationState.Failed, "validation",
                     NativeRecoveryRequired, null, null, DateTimeOffset.UtcNow);
 
@@ -223,7 +233,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 state = string.IsNullOrEmpty(result.ProblemCode) ? WebServerOperationState.Succeeded : WebServerOperationState.Failed;
             }
             catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
-            catch (Exception exception) when (exception is not (NginxProcessCleanupException or NginxWebRootCleanupException
+            catch (Exception exception) when (exception is not (NginxProcessCleanupException or NginxWebRootCleanupException or NginxIntegrationCleanupException
                 or ExecutionCleanupException or ResidentWorkCompletionException))
             {
                 _logger.LogError(exception, "Web-server operation failed unexpectedly. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
@@ -258,11 +268,21 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
     {
         try
         {
+            var operation = await ReadOperationAsync(operationId, stoppingToken);
+            var integration = operation.Integration;
             while (!stoppingToken.IsCancellationRequested)
             {
                 var result = _nativeOperations is null
                     ? null : await _nativeOperations.QueryReloadReceiptAsync(operationId, stoppingToken);
-                if (result is { Success: true, NginxReloadReceipt: { } receipt } && receipt.OperationId == operationId)
+                if (integration is not null && _nativeOperations is not null
+                    && !await NginxWebServerManager.CleanIntegrationStageAsync(_nativeOperations, operationId, stoppingToken))
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                    continue;
+                }
+                if (result is { Success: true, NginxReloadReceipt: { } receipt } && receipt.OperationId == operationId
+                    && (integration is null || receipt.Succeeded && _metadata is not null
+                        && await NginxWebServerManager.ConfirmIntegrationAsync(_metadata, integration, operation.InstanceId, stoppingToken)))
                 {
                     var state = receipt.Succeeded ? WebServerOperationState.Succeeded : WebServerOperationState.Failed;
                     return await CompleteAsync(operationId, state, receipt.Succeeded ? "" : "webserver.reload_failed", null, nativeEvidence: true);
@@ -272,6 +292,30 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
         return false;
+    }
+
+    private async Task ReconcileIntegrationStagingAsync(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                if (_nativeOperations is not null && await NginxWebServerManager.CleanIntegrationStageAsync(_nativeOperations, id, ct))
+                {
+                    await CompleteAsync(id, WebServerOperationState.Failed, "webserver.operation_interrupted", null);
+                    return;
+                }
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+    }
+
+    private async Task<PersistedOperation> ReadOperationAsync(Guid id, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try { return _operations[id]; }
+        finally { _gate.Release(); }
     }
 
     private async Task PreserveUnknownNativeOperationAsync(Guid id)
@@ -315,6 +359,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 State = state, Stage = state.ToString().ToLowerInvariant(), ProblemCode = problemCode,
                 SnapshotId = snapshotId ?? operation.SnapshotId, CompletedAt = DateTimeOffset.UtcNow,
                 NativeReceiptRetirementPending = retireReceipt,
+                Integration = null,
             };
             try { await SaveAsync(CancellationToken.None); }
             catch (Exception error) { throw new ResidentWorkCompletionException(error); }
@@ -368,7 +413,23 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
                 || operation.State is WebServerOperationState.Succeeded or WebServerOperationState.Failed or WebServerOperationState.Cancelled)
                 return;
             _operations[id] = operation with { Stage = stage };
-            await SaveAsync(ct);
+            try { await SaveAsync(CancellationToken.None); }
+            catch (Exception error) { throw new ResidentWorkCompletionException(error); }
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task CheckpointIntegrationAsync(Guid id, NginxIntegrationCheckpoint checkpoint, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            _operations[id] = _operations[id] with
+            {
+                Stage = IntegrationStaging, SnapshotId = checkpoint.Snapshot.Id, Integration = checkpoint,
+            };
+            try { await SaveAsync(CancellationToken.None); }
+            catch (Exception error) { throw new ResidentWorkCompletionException(error); }
         }
         finally { _gate.Release(); }
     }
@@ -404,6 +465,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             var recovered = item switch
             {
                 { State: WebServerOperationState.Running, Stage: NativeReloadDispatchStage or NativeReloadConfirmedStage } => MarkNativeUnconfirmed(item),
+                { State: WebServerOperationState.Running, Stage: IntegrationStaging } =>
+                    item with { ProblemCode = IntegrationCleanupRequired },
                 { ProblemCode: NativeRecoveryRequired } => item,
                 { State: WebServerOperationState.Queued or WebServerOperationState.Running } =>
                     item with
@@ -443,7 +506,7 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
 
     private sealed record PersistedOperation(Guid OperationId, string IdempotencyKey, string InstanceId, string Kind, string? Actor,
         WebServerOperationState State, string Stage, string ProblemCode, string? SnapshotId, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
-        bool NativeReceiptRetirementPending = false)
+        bool NativeReceiptRetirementPending = false, NginxIntegrationCheckpoint? Integration = null)
     {
         public WebServerOperationDto ToDto() => new(OperationId, InstanceId, Kind, State, Stage, ProblemCode, SnapshotId, StartedAt, CompletedAt);
     }
@@ -474,5 +537,8 @@ internal sealed class WebServerOperationStore : IHostedService, IDisposable
             ArgumentException.ThrowIfNullOrWhiteSpace(stage);
             return owner.ReportStageAsync(operationId, stage, cancellationToken);
         }
+
+        internal Task CheckpointIntegrationAsync(NginxIntegrationCheckpoint checkpoint, CancellationToken ct) =>
+            owner.CheckpointIntegrationAsync(operationId, checkpoint, ct);
     }
 }
