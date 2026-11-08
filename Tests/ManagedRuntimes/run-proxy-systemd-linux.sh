@@ -39,10 +39,11 @@ host_netns=$(readlink /proc/self/ns/net)
 host_mntns=$(readlink /proc/self/ns/mnt)
 runtime_fingerprint() {
     systemctl show relaxkonos-sing-box.service relaxkonos-mihomo.service --property=LoadState,ActiveState,MainPID
+    if [[ $tun_fd == 1 ]]; then systemctl show systemd-resolved.service --property=LoadState,ActiveState,MainPID; fi
 }
 before=$(runtime_fingerprint)
 proxy_fingerprint() {
-    for file in /etc/environment /var/lib/relaxkonos-system-proxy/recovery.json; do
+    for file in /etc/environment /var/lib/relaxkonos-system-proxy/recovery.json /etc/resolv.conf; do
         if test -f "$file"; then
             stat -c '%n %s %y %z' "$file"
             sha256sum "$file"
@@ -71,7 +72,7 @@ cleanup() {
     test "$before" = "$(runtime_fingerprint)"
     test "$proxy_before" = "$(proxy_fingerprint)"
     rm -rf -- "$work"
-    echo "PASS HOST SYSTEMD CLEANUP: dedicated cgroup removed, host runtime services and proxy files unchanged"
+    echo "PASS HOST SYSTEMD CLEANUP: dedicated cgroup removed, host runtime services, proxy and resolver files unchanged"
 }
 trap cleanup EXIT
 if [[ $authenticated == --authenticated ]]; then
@@ -184,6 +185,8 @@ if [[ $6 == 1 ]]; then
     # systemd-run --pipe requires the system bus for FD passing. These units and
     # their socket live in the already private /etc and /run mounts.
     cp -L -- /usr/lib/systemd/system/dbus.{socket,service} /etc/systemd/system/
+    cp -L -- /usr/lib/systemd/system/systemd-resolved.service /etc/systemd/system/
+    printf '[Resolve]\nDNS=\nFallbackDNS=\nDomains=\nDNSStubListener=no\nDNSSEC=no\nDNSOverTLS=no\nLLMNR=no\nMulticastDNS=no\n' > /etc/systemd/resolved.conf
     sed -i '/^DefaultDependencies=no$/a Wants=dbus.socket\nAfter=dbus.socket' /etc/systemd/system/relaxkonos-test.service
 fi
 for target in sysinit basic shutdown network-online multi-user; do

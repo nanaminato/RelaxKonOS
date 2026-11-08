@@ -16,6 +16,7 @@ public static class MihomoRuntimeMaterial
             || intent.Device is not { Length: > 0 and < 16 } device || !char.IsAsciiLetterOrDigit(device[0])
             || device.Any(ch => !char.IsAsciiLetterOrDigit(ch) && ch is not ('-' or '_' or '.'))
             || !CanonicalIPv4(intent.Address) || !CanonicalIPv4(intent.Destination) || !CanonicalIPv4(intent.ManagementAddress)
+            || intent.DnsRoutingDomain is { } domain && !ValidDnsRoutingDomain(domain)
             || intent.Address == intent.Destination || intent.Address == intent.ManagementAddress || intent.Destination == intent.ManagementAddress)
             throw new RuntimePolicyException("runtime.network_intent_invalid");
         return Convert.ToHexString(SHA256.HashData(RuntimeJson.Serialize(new
@@ -36,6 +37,15 @@ public static class MihomoRuntimeMaterial
     }
 
     private static bool IsDigest(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
+
+    public static bool ValidDnsRoutingDomain(string domain)
+    {
+        if (domain.Length > 253) return false;
+        var labels = domain.Split('.');
+        return labels.Length >= 2 && labels[^1] != "local"
+            && labels.All(label => label.Length is >= 1 and <= 63 && label[0] != '-' && label[^1] != '-'
+                && label.All(ch => ch is >= 'a' and <= 'z' or >= '0' and <= '9' or '-'));
+    }
 
     private static bool CanonicalIPv4(string value) => IPAddress.TryParse(value, out var address)
         && address.AddressFamily == AddressFamily.InterNetwork && address.ToString() == value

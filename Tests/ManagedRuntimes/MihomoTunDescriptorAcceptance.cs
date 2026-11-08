@@ -132,7 +132,8 @@ internal static class MihomoTunDescriptorAcceptance
             input.Operation, input.Plan, draft, ProxyTunSettingsDto.Default, snapshot, source, destination, CancellationToken.None));
         await RefusesAsync("runtime.management_route_unknown", () => MihomoManagedTunPlan.FreezeAsync(
             input.Operation, input.Plan, draft, settings, snapshot, source, IPAddress.Parse(snapshot.DefaultGateway), CancellationToken.None));
-        var frozen = await MihomoManagedTunPlan.FreezeAsync(input.Operation, input.Plan, draft, settings, snapshot, source, destination, CancellationToken.None);
+        var frozen = await MihomoManagedTunPlan.FreezeAsync(input.Operation, input.Plan, draft, settings, snapshot, source, destination,
+            CancellationToken.None, dnsRoutingDomain: "tun.fixture.test");
         Console.WriteLine(System.Text.Encoding.UTF8.GetString(RuntimeJson.Serialize(frozen)));
     }
 

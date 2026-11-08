@@ -6,16 +6,16 @@ using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
-internal enum MihomoTunPhase { Intent, NetworkDispatched, LaunchDispatched, DescriptorDispatched, StopDispatched, RuleRemovalDispatched, Restored }
+internal enum MihomoTunPhase { Intent, NetworkDispatched, LaunchDispatched, DescriptorDispatched, DnsDispatched, DnsApplied, StopDispatched, RuleRemovalDispatched, Restored }
 
 internal sealed record MihomoTunIntent(Guid OperationId, Guid RevisionId, string ConfigurationHash,
     Guid BootId, string NetworkNamespace, string Device, string Address, string Destination, string ManagementAddress,
-    uint ManagementUserId, string ManagementHash, uint RoutingTable);
+    uint ManagementUserId, string ManagementHash, uint RoutingTable, string? DnsRoutingDomain);
 
 internal sealed record MihomoTunProcess(int Pid, Guid InvocationId, ulong StartTicks);
 
 internal sealed record MihomoTunEffect(MihomoTunPhase Phase, MihomoTunIntent Intent, uint InterfaceIndex = 0,
-    int BrokerPid = 0, MihomoTunProcess? Process = null);
+    int BrokerPid = 0, MihomoTunProcess? Process = null, MihomoTunDnsBaseline? Dns = null);
 
 /// <summary>Append-only network evidence under the original archive operation. The writer must hold
 /// the archive instance lock. A partial checkpoint blocks further writes and cannot authorize replay.</summary>
@@ -78,13 +78,22 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
     private void Validate(MihomoTunEffect? previous, MihomoTunEffect current)
     {
         var intent = current.Intent;
-        if ((int)current.Phase != (previous is null ? 0 : (int)previous.Phase + 1)
+        var next = previous?.Phase switch
+        {
+            null => MihomoTunPhase.Intent,
+            MihomoTunPhase.DescriptorDispatched when previous.Intent.DnsRoutingDomain is null => MihomoTunPhase.StopDispatched,
+            _ => (MihomoTunPhase)((int)previous.Phase + 1)
+        };
+        if (current.Phase != next
             || intent is null || intent.OperationId == Guid.Empty || intent.OperationId != operationId
             || intent.RevisionId == Guid.Empty || intent.RevisionId != revisionId
             || intent.ConfigurationHash is not { Length: 64 } || !intent.ConfigurationHash.All(Uri.IsHexDigit)
             || !string.Equals(intent.ConfigurationHash, configurationHash, StringComparison.OrdinalIgnoreCase)
             || intent.ManagementHash is not { Length: 64 } || !intent.ManagementHash.All(Uri.IsHexDigit)
             || intent.RoutingTable != LinuxMihomoTunRoutes.TableFor(operationId)
+            || intent.DnsRoutingDomain is { } domain && !MihomoRuntimeMaterial.ValidDnsRoutingDomain(domain)
+            || (current.Dns is not null) != (intent.DnsRoutingDomain is not null && current.Phase >= MihomoTunPhase.DnsDispatched)
+            || current.Dns is { } dns && !LinuxMihomoTunDns.ValidBaseline(dns)
             || intent.BootId == Guid.Empty || string.IsNullOrEmpty(intent.NetworkNamespace)
             || string.IsNullOrEmpty(intent.Device) || !LinuxMihomoTunDescriptor.ValidName(intent.Device)
             || !IPAddress.TryParse(intent.Address, out var address) || !IPAddress.TryParse(intent.Destination, out var destination)
@@ -96,7 +105,8 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
             || previous is not null && (previous.Intent != intent
                 || previous.InterfaceIndex != 0 && previous.InterfaceIndex != current.InterfaceIndex
                 || previous.BrokerPid != 0 && previous.BrokerPid != current.BrokerPid
-                || previous.Process is not null && previous.Process != current.Process))
+                || previous.Process is not null && previous.Process != current.Process
+                || previous.Dns is not null && previous.Dns != current.Dns))
             throw Conflict();
         _ = new LinuxMihomoTunRoutes(address, destination, management, intent.ManagementUserId, intent.RoutingTable);
     }

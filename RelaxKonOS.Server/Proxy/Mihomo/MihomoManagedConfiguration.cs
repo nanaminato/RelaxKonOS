@@ -97,7 +97,8 @@ internal static class MihomoManagedConfiguration
         var content = RemoveTopLevelKeys(yaml, TunSettingsKeys).TrimEnd('\r', '\n');
         return content + "\ntun:\n  enable: true\n  stack: gvisor\n  device: \""
             + EscapeYamlDoubleQuotedScalar(device)
-            + "\"\n  file-descriptor: 198\n  auto-route: false\n  auto-redirect: false\n  auto-detect-interface: false\n  gso: false\n";
+            + "\"\n  file-descriptor: 198\n  auto-route: false\n  auto-redirect: false\n  auto-detect-interface: false\n"
+            + "  dns-mode: disabled\n  dns-hijack: []\n  gso: false\n";
     }
 
     /// <summary>

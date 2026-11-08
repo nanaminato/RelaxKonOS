@@ -11,6 +11,8 @@ import shlex
 import shutil
 import signal
 import socket
+import socketserver
+import struct
 import subprocess
 import sys
 import threading
@@ -139,7 +141,7 @@ def reconcile(action, operation):
     phase = checkpoint(record, 'state')
     if phase == 'Restored':
         return json.loads(checkpoint(record, 'retry'))
-    if phase == 'DescriptorDispatched':
+    if phase == 'DnsApplied':
         observe(record)
         if action == 'observe':
             return record
@@ -204,17 +206,70 @@ class Upstream(http.server.BaseHTTPRequestHandler):
         pass
 
 
+class DnsRelay(socketserver.StreamRequestHandler):
+    def handle(self):
+        self.server.associations += 1
+        version, count = self.rfile.read(2)
+        assert version == 5 and 0 in self.rfile.read(count)
+        self.wfile.write(b'\x05\x00')
+        request = self.rfile.read(4)
+        assert request[:3] == b'\x05\x03\x00'
+        self.rfile.read(6 if request[3] == 1 else 18)
+        self.wfile.write(b'\x05\x00\x00\x01\x7f\x00\x00\x01' + struct.pack('!H', self.server.udp_port))
+        self.rfile.read()
+
+
+def serve_dns(udp, queries):
+    while True:
+        try:
+            packet, peer = udp.recvfrom(4096)
+        except OSError:
+            return
+        if packet[:10] != b'\x00\x00\x00\x01' + socket.inet_aton(target) + b'\x00\x35':
+            print(f'Unexpected DNS relay header: {packet[:10].hex()}', file=sys.stderr)
+            continue
+        request = packet[10:]
+        labels, offset = [], 12
+        while request[offset]:
+            size = request[offset]
+            labels.append(request[offset + 1:offset + size + 1].decode('ascii').lower())
+            offset += size + 1
+        queries.append('.'.join(labels))
+        question = request[12:offset + 5]
+        header = request[:2] + struct.pack('!HHHHH', 0x8180, 1, 1, 0, 0)
+        answer = b'\xc0\x0c' + struct.pack('!HHIH', 1, 1, 10, 4) + socket.inet_aton('203.0.113.77')
+        udp.sendto(packet[:10] + header + question + answer, peer)
+
+
+def resolver(*args):
+    return command('/usr/bin/resolvectl', *args)
+
+
 def proof():
     assert os.geteuid() == 0 and Path('/proc/1/comm').read_text().strip() == 'systemd'
     mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines() if ' - tmpfs ' in line}
     assert {'/run', '/var/lib', '/etc/systemd/system'} <= mounts
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
+    service('start', 'systemd-resolved.service')
+    resolver('default-route', 'rk-egress', 'no')
+    resolver('dns', 'rk-egress', '192.0.2.254')
+    resolver('domain', 'rk-egress', '~outside.fixture.test')
+    other_dns = (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress'))
     refused = subprocess.run([launcher, '--linux-mihomo-tun-launch'], capture_output=True, text=True, timeout=8)
     assert refused.returncode == 1 and 'runtime.network_checkpoint_conflict' in refused.stderr
     baseline = network_baseline()
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    dns_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    dns_udp.bind(('127.0.0.1', 0))
+    dns_relay = socketserver.ThreadingTCPServer(('127.0.0.1', 0), DnsRelay)
+    dns_relay.daemon_threads = True
+    dns_relay.udp_port = dns_udp.getsockname()[1]
+    dns_relay.associations = 0
+    queries = []
+    threading.Thread(target=dns_relay.serve_forever, daemon=True).start()
+    threading.Thread(target=serve_dns, args=(dns_udp, queries), daemon=True).start()
     operation = uuid.uuid4().hex
     revision = uuid.uuid4()
     operation_dir = archive / 'operations' / operation
@@ -239,7 +294,13 @@ proxies:
     type: http
     server: 127.0.0.1
     port: {server.server_port}
+  - name: fixture-dns
+    type: socks5
+    server: 127.0.0.1
+    port: {dns_relay.server_address[1]}
+    udp: true
 rules:
+  - DST-PORT,53,fixture-dns
   - MATCH,fixture-upstream
 ''')
     candidate.chmod(0o600)
@@ -260,7 +321,7 @@ rules:
         table = str(record['routing_table'])
         identity = record['credential']
         original_checkpoints = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
-        assert len(original_checkpoints) == 4
+        assert len(original_checkpoints) == 6
         executable = Path('/proc', str(record['service'][0]), 'exe')
         deadline = time.monotonic() + 5
         while os.readlink(executable) != str(binary):
@@ -278,6 +339,7 @@ rules:
             assert body == 'upstream-through-inherited-tun'
 
         probe('before')
+        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', 'before.tun.fixture.test')
         owner.kill()
         assert owner.wait(timeout=5) == -signal.SIGKILL
         assert journal.read_bytes() == original
@@ -291,8 +353,14 @@ rules:
         assert ordinary_stop.returncode == 3 and service_identity() == record['service']
         assert json.loads(command(*invocation, 'observe', root, operation)) == record
         probe('after')
+        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', 'after.tun.fixture.test')
+        resolver('domain', device, '~conflict.fixture.test')
+        refused = subprocess.run([*invocation, 'recover', root, operation], timeout=8)
+        assert refused.returncode == 3 and journal.read_bytes() == original and service_identity() == record['service']
+        resolver('domain', device, '~tun.fixture.test')
+        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', 'restored.tun.fixture.test')
 
-        incomplete = operation_dir / 'tun-4.json'
+        incomplete = operation_dir / 'tun-6.json'
         fd = os.open(incomplete, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as partial:
             partial.write('{')
@@ -379,8 +447,12 @@ rules:
         assert archive_state.read_bytes() == terminal and service_identity() == restored_process
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         all_checkpoints = sorted(operation_dir.glob('tun-*.json'))
-        assert len(all_checkpoints) == 7 and [file.read_bytes() for file in all_checkpoints[:4]] == original_checkpoints
+        assert len(all_checkpoints) == 9 and [file.read_bytes() for file in all_checkpoints[:6]] == original_checkpoints
         assert checkpoint(record, 'state') == 'Restored'
+        assert target not in resolver('dns') and '~tun.fixture.test' not in resolver('domain')
+        assert other_dns == (resolver('dns', 'rk-egress'), resolver('domain', 'rk-egress'), resolver('default-route', 'rk-egress'))
+        assert {'before.tun.fixture.test', 'after.tun.fixture.test', 'restored.tun.fixture.test'} <= set(queries)
+        print('PASS TUN SPLIT DNS: three real resolved queries, drift refused, original link settings removed, foreign DNS unchanged')
         print('PASS ARCHIVE TUN RECEIPT: same key returned original pending and terminal results without replay')
         print('PASS TUN POLICY RULE OWNERSHIP: conflict refused, deletion dispatched once across process interruption')
         print('PASS FIXED MIHOMO TUN UNIT: real launcher and credential; restart refused without original dispatch')
@@ -388,6 +460,9 @@ rules:
         print(f'PASS MIHOMO INHERITED TUN CLEANUP: {operation}, interrupted stop reconciled without replay; '
               'original receipt on retry; process, device and route gone')
     except Exception:
+        subprocess.run(['/usr/bin/resolvectl', 'status', device], check=False)
+        subprocess.run(['/usr/bin/dig', '@' + target, 'diagnostic.tun.fixture.test', '+time=2', '+tries=1'], check=False)
+        print(f'DNS relay associations={dns_relay.associations}, queries={queries}', file=sys.stderr)
         diagnostic = archive / 'diagnostic'
         diagnostic.mkdir(exist_ok=True)
         copy = diagnostic / 'candidate.yaml'
@@ -410,6 +485,9 @@ rules:
         owner.stdout.close()
         service('stop', unit)
         server.server_close()
+        dns_relay.server_close()
+        dns_udp.close()
+        service('stop', 'systemd-resolved.service')
 
 
 action = sys.argv[1]

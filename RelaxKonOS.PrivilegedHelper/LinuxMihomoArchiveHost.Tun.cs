@@ -54,27 +54,51 @@ internal sealed partial class LinuxMihomoArchiveHost
         descriptor.SendTo(connection, intent.OperationId, process.Pid, 0);
         await WaitAsync(state => state.GetValueOrDefault("ActiveState") is "inactive" or "failed"
             || new FileInfo($"/proc/{process.Pid}/exe").LinkTarget == binary, deadline.Token);
-        await VerifyTunAsync(intent.OperationId, deadline.Token);
+        var (registration, _, _) = await ReadTunOperationAsync(intent.OperationId, deadline.Token);
+        await VerifyTunEffectAsync(registration, dispatched, deadline.Token);
+        if (intent.DnsRoutingDomain is not null)
+        {
+            var dns = TunDns(dispatched);
+            var baseline = await dns.CaptureAsync();
+            dispatched = dispatched with { Phase = MihomoTunPhase.DnsDispatched, Dns = baseline };
+            await checkpoint.AppendAsync(dispatched);
+            await dns.ApplyAsync(baseline);
+            dispatched = dispatched with { Phase = MihomoTunPhase.DnsApplied };
+            await checkpoint.AppendAsync(dispatched);
+        }
         return dispatched;
     }
 
     internal async Task VerifyTunAsync(Guid operation, CancellationToken ct)
     {
         var (registration, _, effect) = await ReadTunOperationAsync(operation, ct);
-        if (effect.Phase != MihomoTunPhase.DescriptorDispatched) Fail("network_checkpoint_conflict");
+        RequireActiveTunPhase(effect);
         await VerifyTunEffectAsync(registration, effect, ct);
+        if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: true);
+    }
+
+    internal async Task ReconcileTunDnsAsync(Guid operation, CancellationToken ct)
+    {
+        var (registration, checkpoint, effect) = await ReadTunOperationAsync(operation, ct);
+        if (effect is not { Phase: MihomoTunPhase.DnsDispatched, Dns: { } dns })
+            throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        await VerifyTunEffectAsync(registration, effect, ct);
+        await TunDns(effect).VerifyAsync(dns, present: true);
+        await checkpoint.AppendAsync(effect with { Phase = MihomoTunPhase.DnsApplied });
     }
 
     internal async Task DispatchTunStopAsync(Guid operation, CancellationToken ct)
     {
         var (registration, checkpoint, effect) = await ReadTunOperationAsync(operation, ct);
-        if (effect is not { Phase: MihomoTunPhase.DescriptorDispatched, Process: { } process })
+        RequireActiveTunPhase(effect);
+        if (effect.Process is not { } process)
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
 
         // Pin the kernel process before verifying it, so an intervening exit cannot redirect the signal.
         using var handle = new SafeFileHandle(OpenPidFd(process.Pid, 0), ownsHandle: true);
         if (handle.IsInvalid) Fail("network_stop_unconfirmed");
         await VerifyTunEffectAsync(registration, effect, ct);
+        if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: true);
         ct.ThrowIfCancellationRequested();
         await checkpoint.AppendAsync(effect with { Phase = MihomoTunPhase.StopDispatched });
         const int sigterm = 15;
@@ -97,6 +121,7 @@ internal sealed partial class LinuxMihomoArchiveHost
                 && !Directory.Exists($"/proc/{process.Pid}")
                 && await routes.IsAbsentAsync(effect.Intent.Device, effect.InterfaceIndex))
             {
+                if (effect.Dns is { } dns) await TunDns(effect).VerifyAsync(dns, present: false);
                 if (effect.Phase == MihomoTunPhase.StopDispatched)
                 {
                     await routes.RequireManagementAsync(effect.Intent.ManagementHash, ownedRulePresent: true);
@@ -158,6 +183,15 @@ internal sealed partial class LinuxMihomoArchiveHost
     private static LinuxMihomoTunRoutes TunRoutes(MihomoTunIntent intent) =>
         new(IPAddress.Parse(intent.Address), IPAddress.Parse(intent.Destination), IPAddress.Parse(intent.ManagementAddress),
             intent.ManagementUserId, intent.RoutingTable);
+
+    private static LinuxMihomoTunDns TunDns(MihomoTunEffect effect) =>
+        new(effect.Intent.DnsRoutingDomain!, IPAddress.Parse(effect.Intent.Destination), effect.InterfaceIndex);
+
+    private static void RequireActiveTunPhase(MihomoTunEffect effect)
+    {
+        var expected = effect.Intent.DnsRoutingDomain is null ? MihomoTunPhase.DescriptorDispatched : MihomoTunPhase.DnsApplied;
+        if (effect.Phase != expected) Fail("network_checkpoint_conflict");
+    }
 
     private static void RequirePidFdSupport()
     {

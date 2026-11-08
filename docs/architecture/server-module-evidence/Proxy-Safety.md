@@ -41,6 +41,7 @@
 - [MB-04 生产归档配置适配器的 TUN 恢复](#mb-04-生产归档配置适配器的-tun-恢复)
 - [MB-04 Server 生成 TUN 意图及管理 UID 复核](#mb-04-server-生成-tun-意图及管理-uid-复核)
 - [MB-04 TUN 策略规则归属及删除中断](#mb-04-tun-策略规则归属及删除中断)
+- [MB-04 TUN 分流 DNS 归属](#mb-04-tun-分流-dns-归属)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -419,6 +420,18 @@ Linux x64 私有 systemd 原操作 `f10ec9a945e74c4dadbd277e3bc18689`，专用�
 Windows ManagedRuntimes Release 通过，含 104 项配置事务。可信下载探针因缺进程级测试 CA 覆盖跳过，日志 `.artifacts/mb04-tun-marker-sync/tun-rule-win-final.log`。
 
 当前证据覆盖一个精确 IPv4 目标和一条自有策略规则。生产范围来源、DNS 写入归属、提交后生命周期、生产同键 HTTP 和真实工作租约待验收。公开准入及成功提交门禁继续生效，Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
+
+## MB-04 TUN 分流 DNS 归属
+
+可选分流域进入原冻结意图及授权摘要。Helper 检查 systemd-resolved 可用后，仅向原 TUN ifindex 写入 DNS 服务器、分流域及禁用默认 DNS 路由。DNS 服务器使用同一受控 IPv4 目标。写入前持久记录总线 ID、resolver 唯一 owner、其他接口和全局 DNS 设置摘要。重复或重叠域、配置漂移、resolver 身份变化及未知结果保留待核验。具名恢复确认接口退出并核对本接口 DNS 缺席和原外部摘要，无全局重置动作。描述符配置显式关闭 Mihomo 原生 DNS 设置与默认劫持。 [systemd-resolved 接口](https://raw.githubusercontent.com/systemd/systemd/main/man/org.freedesktop.resolve1.xml) · [Mihomo v1.19.33 默认配置](https://raw.githubusercontent.com/MetaCubeX/mihomo/v1.19.33/config/config.go)
+
+Linux x64 私有 systemd 和独立 resolver 上，原操作 `bd4d8609c84848c788532547f6600240`，`rk-fd-proof` ifindex 4，候选 PID 239，配置摘要 `79f0baa39bac37dea487e8fbe2de576b62705147043d081a6e3a00b1d02e46c6`。确认前中断及冲突检查期间，真实 HTTP 和分流 DNS 上游分别收到三次请求，原管理选路及配置一致。变更原接口分流域时，Helper 返回 `runtime.network_dns_conflict` 并保留原进程与记录。撤销夹具漂移后，停止派发和规则删除阶段分别再次中断。恢复确认本接口 DNS 缺席、外来链路 DNS 及域和默认路由保持原样，原 `Interrupted` 同键回执可重复读取。专属进程和 cgroup 已清理，宿主共享服务及代理、resolver 文件指纹一致。最终日志 `.artifacts/mb04-tun-marker-sync/tun-dns-linux-final.log`，归档 SHA-256 `ed06390ef5a5898724d98ef8f59424b594f79da4707dac8d865cdeff07649d28`。
+
+首轮 resolver 分流已生效，但 Mihomo 省略 `dns-hijack` 时启用默认 53 端口拦截，实际查询返回 `SERVFAIL` 且上游零请求。诊断日志 `.artifacts/mb04-tun-marker-sync/tun-dns-linux-diag.log`。显式设置 `dns-mode: disabled` 与 `dns-hijack: []` 后实机通过。
+
+Windows ManagedRuntimes Release 通过，含 104 项配置事务。可信下载探针因缺进程级测试 CA 覆盖跳过，日志 `.artifacts/mb04-tun-marker-sync/tun-dns-win-final.log`。
+
+实机覆盖 DNS 归属确认后的原归档中断、外部漂移和清理。DNS 写入派发后、写入归属尚未确认的只读恢复路径已实现，专用断点及 resolver 换代未实机验证。生产网络范围、发布入口、成功提交后生命周期、同键 HTTP 和真实工作租约待验收。公开准入及成功提交门禁继续生效，Proxy 保持 resident。本轮确认专属进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

@@ -50,7 +50,12 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         RuntimeSourceStore.RequireNoLinks(Data(revision));
         if (!Directory.Exists(Data(revision))) throw new RuntimePolicyException("runtime.data_snapshot_missing");
         await RequireMaterialAsync(pending, false, ct);
-        await RequireMaterialAsync(pending, true, ct);
+        if (plan.NetworkIntentIdentity is not null)
+        {
+            var (_, network) = await RequireTunMaterialAsync(pending, ct);
+            if (network.DnsRoutingDomain is not null) await LinuxMihomoTunDns.RequireAvailableAsync();
+        }
+        else await RequireMaterialAsync(pending, true, ct);
         if (Hash(await ReadConfigurationAsync(Configuration, ct)) != plan.PreviousIdentity)
             throw new RuntimePolicyException("runtime.configuration_drift");
         var requirements = MihomoArchiveAdapter.Requirements(revision.Release)
@@ -110,7 +115,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             var intent = new MihomoTunIntent(pending.OperationId, revision.RevisionId, pending.Plan.CandidateIdentity,
                 LinuxMihomoTunCheckpoint.BootId(), LinuxMihomoTunCheckpoint.NetworkNamespace(),
                 network.Device, network.Address, network.Destination, network.ManagementAddress, network.ManagementUserId,
-                network.ManagementHash, LinuxMihomoTunRoutes.TableFor(pending.OperationId));
+                network.ManagementHash, LinuxMihomoTunRoutes.TableFor(pending.OperationId), network.DnsRoutingDomain);
             await TunHost().ActivateTunAsync(intent, binary, Data(revision), ct);
             return;
         }
@@ -179,9 +184,10 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
                 await TunHost().CompleteTunStopAsync(pending.OperationId, ct);
                 return true;
             }
-            if (effect.Phase != MihomoTunPhase.DescriptorDispatched)
+            if (effect.Phase is not (MihomoTunPhase.DescriptorDispatched or MihomoTunPhase.DnsDispatched or MihomoTunPhase.DnsApplied))
                 throw new RuntimePolicyException("runtime.network_stop_unconfirmed");
             await RequireMaterialAsync(pending, false, ct);
+            if (effect.Phase == MihomoTunPhase.DnsDispatched) await TunHost().ReconcileTunDnsAsync(pending.OperationId, ct);
             await TunHost().VerifyTunAsync(pending.OperationId, ct);
             return false;
         }

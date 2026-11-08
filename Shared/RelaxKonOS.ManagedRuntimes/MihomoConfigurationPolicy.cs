@@ -35,11 +35,13 @@ public static class MihomoConfigurationPolicy
         var tunFields = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["enable"] = "true", ["device"] = device, ["file-descriptor"] = "198", ["stack"] = "gvisor",
-            ["auto-route"] = "false", ["auto-redirect"] = "false", ["auto-detect-interface"] = "false", ["gso"] = "false"
+            ["auto-route"] = "false", ["auto-redirect"] = "false", ["auto-detect-interface"] = "false", ["gso"] = "false",
+            ["dns-mode"] = "disabled"
         };
         if (!description.Material.NetworkTransitionRequired || Port(root, "redir-port") != 0 || Port(root, "tproxy-port") != 0
             || MihomoYaml.Get(root, "tun") is not YamlMappingNode tun
-            || tun.Children.Count != tunFields.Count || tunFields.Any(field => Text(tun, field.Key) != field.Value))
+            || tun.Children.Count != tunFields.Count + 1 || tunFields.Any(field => Text(tun, field.Key) != field.Value)
+            || MihomoYaml.Get(tun, "dns-hijack") is not YamlSequenceNode { Children.Count: 0 })
             Fail("network_intent_invalid");
     }
 

@@ -4519,6 +4519,8 @@ Server 规划器已在非特权进程中生成固定描述符配置和意图。H
 
 Helper 已验证单个精确 IPv4 目标的专用路由表和策略规则归属。同优先级外来规则阻止恢复写入。原规则删除中断后只读确认缺席，原回执继续可读。DNS 写入归属及生产准入仍待验收。见[策略规则证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-策略规则归属及删除中断)。
 
+受管 TUN 的可选分流 DNS 已在私有 resolver 验证。Helper 仅为原接口设置分流域和目标 DNS，Mihomo 显式关闭默认 DNS 劫持。原接口退出后只读确认其 DNS 缺席，其他链路设置保持原样。生产准入和成功提交门禁继续生效。见[分流 DNS 证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-分流-dns-归属)。
+
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。
 
 Core TUN worker 停止接收新扫描后，等待已发出的禁用请求、实际路由核验和原标记清理。停机等待方的期限不会打断已开始的恢复。如果控制器或管理路由仍无法核实，保留原标记供后续核验。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-core-tun-恢复的停机排空)。

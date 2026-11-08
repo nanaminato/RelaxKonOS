@@ -15,7 +15,7 @@ internal sealed record MihomoManagedTunPlan(RuntimeConfigurationPlan Plan, Mihom
 {
     internal static async Task<MihomoManagedTunPlan> FreezeAsync(Guid operation, RuntimeConfigurationPlan plan,
         MihomoPublishedRuntime draft, ProxyTunSettingsDto settings, ProxyManagementRouteSnapshot snapshot,
-        IPAddress source, IPAddress destination, CancellationToken ct)
+        IPAddress source, IPAddress destination, CancellationToken ct, string? dnsRoutingDomain = null)
     {
         if (!OperatingSystem.IsLinux()
             || !uint.TryParse(ServerProcessIdentity.CurrentStableIdentity(), CultureInfo.InvariantCulture, out var uid))
@@ -39,7 +39,7 @@ internal sealed record MihomoManagedTunPlan(RuntimeConfigurationPlan Plan, Mihom
         if (current is null || !baseline.SequenceEqual(current))
             throw new RuntimePolicyException("runtime.management_route_changed");
         var intent = new MihomoTunNetworkIntent(settings.DeviceName, source.ToString(), destination.ToString(),
-            management.ToString(), uid, managementHash);
+            management.ToString(), uid, managementHash, dnsRoutingDomain);
         var candidate = MihomoConfigurationPolicy.Describe(MihomoManagedConfiguration.WithDescriptorTun(draft.Yaml, intent.Device)).Material;
         var frozen = plan with { CandidateIdentity = MihomoPublicationStore.Identity(candidate.Yaml) };
         frozen = frozen with { NetworkIntentIdentity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(operation, frozen, intent) };
