@@ -48,6 +48,7 @@
 - [MB-04 受管 TUN 提交后具名停止](#mb-04-受管-tun-提交后具名停止)
 - [MB-04 受管 TUN 提交后具名启动与重启](#mb-04-受管-tun-提交后具名启动与重启)
 - [MB-04 受管 TUN 提交后移除](#mb-04-受管-tun-提交后移除)
+- [MB-04 受管 TUN Server 发布协调](#mb-04-受管-tun-server-发布协调)
 - [MB-04 Core 接续运行期 TUN 恢复](#mb-04-core-接续运行期-tun-恢复)
 - [MB-04 实际 TUN 激活期间取消与同进程补偿](#mb-04-实际-tun-激活期间取消与同进程补偿)
 - [MB-04 入站授权到期的停机排空](#mb-04-入站授权到期的停机排空)
@@ -531,6 +532,19 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 **已实现但实机未验证。** 持久 AF_UNIX 通道及其他 Linux 架构。初始配置成功写入限夹具，实机移除通过生产归档处理器。
 
 **未实现或仍受门禁保护。** 生产成功提交、公开发布、同键 HTTP 和该入口实际工作租约待联合验收。已确认实际进程退出及专属 cgroup 清理。对象释放、ALC 回收、隔离负载内存及生产内存收益未测量。Proxy 保持 resident。
+
+## MB-04 受管 TUN Server 发布协调
+
+**已实现且已验证。** 内部 Server 发布只接受冻结的 TUN 意图，独立核对 root 宿主策略的 `allowManagedPublication`，默认关闭。Helper 通过真实授权回调读取加密台账，并在原生成功提交前重核宿主许可。旧通用发布入口即使宿主显式许可也拒绝 TUN。Server 确认成功需要原提交见证和当前 TUN 归属均匹配。两组私有 systemd 均以真实 Proxy 常驻工作租约核对发布调用、原回执恢复及作用域结束后的租约释放。
+
+- Helper 已提交、Server 未收应答的原操作 `68367d19d39949c6bc881936e2983637`，PID 245，配置摘要 `05301bed48eed0037e3c0e14bfea4e70e83bbcc3f50d538ddf0124062dfe477f`。真实 HTTP 和分流 DNS 跨进程中断保持，管理选路和原生检查点保持。重启前撤回宿主范围，改写设备标签时恢复拒绝确认，Helper 台账及 Server 旧配置未变。恢复标签后，Server 按原见证确认并同步候选配置。同键返回原成功，配置派发和补偿均为零。
+- 候选已转发、Helper 未提交的原操作 `1489692594ae4810898ddd7287b7f3c1`，PID 248，配置摘要 `e22b2c832179755f2688ca537e73d5c35d337a18ae2136c5616a3a1484de71ef`。真实 HTTP 和分流 DNS 在重启前后仍经过原进程。撤回宿主范围后，Server 按原操作派发一次恢复，Helper 具名补偿并恢复旧配置和控制器。恢复的原管理选路保持，候选进程及设备退出，规则删除一次。同键返回原 `Interrupted`，配置派发为零。
+
+同批保留及清除数据移除、具名启动与重启、具名停止、提交态归属、完整补偿、DNS 应答中断及 resolver 换代均通过。十组专属 cgroup 已清理，宿主共享服务、代理和 resolver 文件指纹一致。归档 SHA-256 为 `38d1f765a989f628a0c9fc3ccea100bf5b99b81f5e8944fdb10b1c26347618ba`。日志为 `.artifacts/mb04-tun-marker-sync/server-publication-linux.log` 和 `.artifacts/mb04-tun-marker-sync/server-publication-windows.log`。
+
+**已实现但实机未验证。** 其他 Linux 架构。夹具在一个 worker 内执行生产 Server 协调器和 Helper 处理器，授权回调、归档、systemd 和网络效果均为真实。Server 与 Helper 分进程的持久 AF_UNIX 路径仍待验收。Windows Release 通过，包括 104 项配置事务检查。可信下载探针因缺少进程级测试 CA 覆盖跳过。
+
+**未实现或仍受门禁保护。** 客户端公开发布、同键 HTTP、公开入口工作租约和提交后生命周期联合验收待完成。已确认专属进程退出和 cgroup 清理。对象释放、ALC 回收、隔离负载内存和生产内存收益未测量。Proxy 保持 resident。
 
 ## MB-04 实际 TUN 激活期间取消与同进程补偿
 

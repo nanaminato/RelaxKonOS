@@ -44,7 +44,8 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
                     : new(launch.OperationId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.network_start_unconfirmed"),
             state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray(),
             // Read-only environment facts, so a refusal can be explained before anyone presses install.
-            RuntimeDependencyProbe.Environment(environment, root), states.ReadCommittedWitness(state, receipt));
+            RuntimeDependencyProbe.Environment(environment, root), states.ReadCommittedWitness(state, receipt),
+            verified && !HasPending(state) ? state.ActiveMihomoTun?.OperationId : null);
     }
 
     internal async Task<RuntimePlanResult> PlanAsync(string sourceId, RuntimePlanRequest request, CancellationToken ct)

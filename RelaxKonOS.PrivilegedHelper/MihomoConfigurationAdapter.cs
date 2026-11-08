@@ -132,7 +132,10 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
     {
         var evidence = await VerifyCandidateAsync(pending, ct);
         if (evidence.MihomoTun is not null)
-            throw new RuntimePolicyException("runtime.network_lifecycle_unverified");
+        {
+            var (_, intent) = await RequireTunMaterialAsync(pending, ct);
+            LinuxMihomoTunScope.RequirePublication(intent);
+        }
         return evidence;
     }
 

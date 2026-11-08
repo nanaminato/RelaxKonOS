@@ -3,16 +3,25 @@ using System.Net;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.ManagedRuntimes;
+using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Proxy.Platform;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 internal static class MihomoTunDescriptorAcceptance
 {
@@ -36,6 +45,7 @@ internal static class MihomoTunDescriptorAcceptance
             throw new InvalidOperationException("The original descriptor operation is not prepared.");
 
         var intentRoot = intent.RootElement;
+        var serverCase = intentRoot.GetProperty("case").GetString();
         var commit = intentRoot.GetProperty("case").GetString() is
             "committed" or "committed-stop" or "committed-start" or "committed-remove-keep" or "committed-remove-purge";
         var revisionId = intentRoot.GetProperty("revision").GetGuid();
@@ -111,6 +121,12 @@ internal static class MihomoTunDescriptorAcceptance
         driftedPlan = driftedPlan with { NetworkIntentIdentity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(operationId, driftedPlan, network) };
         await RefusesAsync("runtime.network_intent_invalid", () => publications.BeginConfigurationAsync(operationId, confirmed.Revision,
             autoRoute, driftedPlan, CancellationToken.None, tunIntent: network));
+        if (serverCase is "server-commit" or "server-pending")
+        {
+            await File.WriteAllBytesAsync(Path.Combine(root, "tun-server-plan.json"), RuntimeJson.Serialize(frozen));
+            await RunServerPublicationAsync(root, operationId, frozen, confirmed.Revision, scope, serverCase);
+            return;
+        }
         await publications.BeginConfigurationAsync(operationId, confirmed.Revision, candidate, plan, CancellationToken.None, tunIntent: network);
         await File.WriteAllBytesAsync(Path.Combine(root, "tun-plan.json"), RuntimeJson.Serialize(plan));
         var adapter = new MihomoConfigurationAdapter(Archive, store, sources, host, new Authorization(root, operationId), RuntimeSourceProtection.Protect);
@@ -227,6 +243,11 @@ internal static class MihomoTunDescriptorAcceptance
             var observed = await lifecycle.QueryAsync(CancellationToken.None, operation);
             Console.WriteLine(System.Text.Encoding.UTF8.GetString(RuntimeJson.Serialize(observed)));
         }
+        else if (action == "server-recover")
+        {
+            var frozen = RuntimeJson.Read<MihomoManagedTunPlan>(await File.ReadAllBytesAsync(Path.Combine(root, "tun-server-plan.json")));
+            await RunServerPublicationAsync(root, operation, frozen, 0, null, null);
+        }
         else if (action.Split(':') is [var verb, var id] && Guid.TryParseExact(id, "N", out var execution))
         {
             if (verb.StartsWith("remove-", StringComparison.Ordinal))
@@ -269,6 +290,95 @@ internal static class MihomoTunDescriptorAcceptance
             Console.WriteLine(JsonSerializer.Serialize(result));
         }
         else throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static async Task RunServerPublicationAsync(string root, Guid operation, MihomoManagedTunPlan frozen,
+        long expectedRevision, LinuxMihomoTunScope? scope, string? cut)
+    {
+        var paths = new AuthorizationPaths(root);
+        var store = Publications(paths);
+        var authorization = new MihomoRuntimeAuthorizationProvider(store, paths, paths);
+        var host = new LinuxMihomoArchiveHost();
+        var lifecycle = new MihomoRuntimeLifecycle(Archive, Store(), new RuntimeSourceStore(Path.Combine(root, "trust"),
+            RuntimeSourceProtection.Protect), host, RuntimeSourceProtection.Protect);
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+        await using var services = builder.Services.BuildServiceProvider();
+        var ids = new HashSet<string> { ServerModules.ProxyId };
+        await using var coordinator = new ModuleResidencyCoordinator([new ProxyWorkRuntimeFactory()],
+            ModuleResidencyOptions.Parse(builder.Configuration, ids, ids), services,
+            ServerModuleContext.Create(builder.Configuration, builder.Environment, "private-systemd"),
+            NullLogger<ModuleResidencyCoordinator>.Instance, residentWorkModuleIds: ids);
+        void RequireLease()
+        {
+            if (coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 1)
+                throw new InvalidOperationException("The Server did not retain its resident Proxy work lease.");
+        }
+        async Task PauseAsync()
+        {
+            RequireLease();
+            await File.WriteAllTextAsync(Path.Combine(root, "server-cut-ready"), operation.ToString("N"));
+            await Task.Delay(Timeout.InfiniteTimeSpan);
+        }
+        var transport = new ServerPublicationTransport(lifecycle, RequireLease, async (request, frame) =>
+        {
+            if (cut is null || request != PrivilegedOperationKind.MihomoRuntimeConfigure || frame.Stage != InstallationStage.HealthChecking)
+                return;
+            var effect = new LinuxMihomoTunCheckpoint(Archive, operation, frozen.Plan.ActiveRevisionId, frozen.Plan.CandidateIdentity).Read()!;
+            await NativeRuntimeProcess.RunAsync("/usr/bin/python3", ["-I", Path.Combine(root, "mihomo-tun-fd-proof.py"),
+                "prepare", root, effect.InterfaceIndex.ToString(CultureInfo.InvariantCulture),
+                Environment.ProcessId.ToString(CultureInfo.InvariantCulture)], 1024);
+            if (cut == "server-pending") await PauseAsync();
+        }, cut == "server-commit" ? PauseAsync : null);
+        var runtime = new MihomoRuntimeService(transport, store, authorization, paths, new DirectDownloads());
+        var service = new MihomoConfigurationPublicationService(store, authorization, runtime, paths,
+            workLeases: new ProxyWorkLeaseSource(coordinator));
+        if (cut is not null)
+        {
+            await RefusesAsync("runtime.network_transaction_required", () =>
+                service.PublishAsync(operation, expectedRevision, frozen.Plan, frozen.Candidate, CancellationToken.None));
+            await RefusesAsync("runtime.network_lifecycle_unverified", () =>
+                service.PublishManagedTunAsync(operation, expectedRevision, frozen, CancellationToken.None));
+            if ((await store.ReadAsync(CancellationToken.None)).Pending is not null || transport.ConfigureCalls != 0)
+                throw new InvalidOperationException("A closed publication gate changed state.");
+            await WriteScopeAsync(scope! with { AllowManagedPublication = true });
+            await RefusesAsync("runtime.network_transaction_required", () =>
+                service.PublishAsync(operation, expectedRevision, frozen.Plan, frozen.Candidate, CancellationToken.None));
+            var unexpected = await service.PublishManagedTunAsync(operation, expectedRevision, frozen, CancellationToken.None);
+            throw new InvalidOperationException($"The Server missed its expected cut: {unexpected.Outcome} {unexpected.Receipt?.ProblemCode}.");
+        }
+        var resolved = await service.RecoverAsync(operation, CancellationToken.None);
+        var replay = await service.PublishManagedTunAsync(operation, expectedRevision, frozen, CancellationToken.None);
+        var state = await store.ReadAsync(CancellationToken.None);
+        if (resolved != replay || transport.ConfigureCalls != 0 || state.Pending is not null
+            || coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 0
+            || await new MihomoPublicationFiles(paths).IdentityAsync(CancellationToken.None) != state.Identity)
+            throw new InvalidOperationException("Managed TUN publication did not resolve its original receipt and release its work lease.");
+        Console.WriteLine(System.Text.Encoding.UTF8.GetString(RuntimeJson.Serialize(new
+        {
+            resolved.OperationId, Outcome = resolved.Outcome.ToString(), resolved.Receipt, state.Identity,
+            transport.ConfigureCalls, transport.RecoverCalls
+        })));
+    }
+
+    private sealed class ServerPublicationTransport(MihomoRuntimeLifecycle lifecycle, Action requireLease,
+        Func<PrivilegedOperationKind, PrivilegedOperationFrame, Task> progress, Func<Task>? hold)
+        : IPrivilegedOperationTransport
+    {
+        internal int ConfigureCalls;
+        internal int RecoverCalls;
+
+        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        {
+            requireLease();
+            if (request.Operation == PrivilegedOperationKind.MihomoRuntimeConfigure) ConfigureCalls++;
+            if (request.Operation == PrivilegedOperationKind.MihomoRuntimeRecover) RecoverCalls++;
+            var result = await MihomoRuntimeOperations.ExecuteAsync(request, () => lifecycle, frame => progress(request.Operation, frame));
+            requireLease();
+            if (request.Operation == PrivilegedOperationKind.MihomoRuntimeConfigure && result.Success && hold is not null)
+                await hold();
+            return result;
+        }
     }
 
     [SupportedOSPlatform("linux")]
@@ -390,7 +500,7 @@ internal static class MihomoTunDescriptorAcceptance
         return grant;
     }
 
-    private sealed record AuthorizationPaths(string Root) : IProxyPlatformPaths, IProxyControllerSecretStore
+    private sealed record AuthorizationPaths(string Root) : IProxyPlatformPaths, IProxyControllerSecretStore, IServerModeResolver
     {
         public string GetProtectedConfigurationDirectory() => Path.Combine(Root, "authorization");
         public string GetStateDirectory() => Path.Combine(Root, "authorization-state");
@@ -399,5 +509,8 @@ internal static class MihomoTunDescriptorAcceptance
         public string GetSanitizedLogDirectory() => throw new NotSupportedException();
         public Task<string> GetOrCreateAsync(CancellationToken cancellationToken) => Task.FromResult(FixtureSecret);
         public Task<string?> ReadExistingAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(FixtureSecret);
+        public ServerMode Mode => ServerMode.System;
+        public bool Supports(ServerHostFeature feature) => true;
+        public ServerCapabilitiesDto Describe() => throw new NotSupportedException();
     }
 }

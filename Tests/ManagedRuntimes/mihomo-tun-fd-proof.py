@@ -662,6 +662,67 @@ def proof_committed_removal(record, observed, state_path, executions, removal, k
           f'removal={removal}; keepData={keep}; original network and publication evidence retained')
 
 
+def proof_server_publication(owner, operation, operation_dir, previous, case):
+    ready = root / 'server-cut-ready'
+    deadline = time.monotonic() + 18
+    while not ready.exists():
+        if owner.poll() is not None or time.monotonic() >= deadline:
+            raise RuntimeError('Server did not retain its managed TUN publication at the expected boundary')
+        time.sleep(.05)
+    assert ready.read_text() == operation
+    record = json.loads(journal.read_text())
+    archive_state = archive / 'state' / 'archive-state.json'
+    snapshot = archive_state.read_bytes()
+    committed = case == 'server-commit'
+    state = json.loads(snapshot)
+    assert bool(state['activeMihomoTun']) == committed and bool(state['configuration']) != committed
+    mirror = root / 'authorization' / 'active.yaml'
+    assert mirror.read_bytes() == previous.read_bytes()
+    native = [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))]
+    assert len(native) == 6
+
+    def probe(phase):
+        observe_runtime(record)
+        assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
+                       f'http://{target}:18880/mb04-{phase}') == 'upstream-through-inherited-tun'
+        assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
+
+    probe('server-before')
+    owner.kill()
+    assert owner.wait(timeout=5) == -signal.SIGKILL
+    assert archive_state.read_bytes() == snapshot
+    scope_policy.unlink()
+    probe('server-after')
+    if committed:
+        alias = link()['ifalias']
+        ip('link', 'set', 'dev', device, 'alias', 'foreign-server-recovery')
+        refused = subprocess.run(['dotnet', record['fixture'], 'runtime-mihomo-tun-checkpoint', str(root),
+                                  operation, 'server-recover'], capture_output=True, text=True, timeout=8)
+        assert refused.returncode == 3 and 'runtime.installation_mismatch' in refused.stderr
+        assert archive_state.read_bytes() == snapshot and mirror.read_bytes() == previous.read_bytes()
+        ip('link', 'set', 'dev', device, 'alias', alias)
+    result = json.loads(checkpoint(record, 'server-recover'))
+    assert uuid.UUID(result['operationId']).hex == operation
+    assert uuid.UUID(result['receipt']['operationId']).hex == operation and result['configureCalls'] == 0
+    if committed:
+        assert result['outcome'] == 'Confirmed' and result['receipt']['outcome'] == 'Succeeded' and result['recoverCalls'] == 0
+        assert archive_state.read_bytes() == snapshot and mirror.read_bytes() == config.read_bytes()
+        assert result['identity'].lower() == record['credential']
+        probe('server-confirmed')
+        assert [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))] == native
+    else:
+        assert result['outcome'] == 'Compensated' and result['receipt']['outcome'] == 'Interrupted' and result['recoverCalls'] == 1
+        assert config.read_bytes() == previous.read_bytes() == mirror.read_bytes()
+        assert network_baseline() == record['baseline'] and device not in devices()
+        assert not Path(f'/proc/{record["service"][0]}').exists()
+        assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '2',
+                       '-H', 'Authorization: Bearer mb04-private-fixture-controller', 'http://127.0.0.1:18882/version')
+        assert [file.read_bytes() for file in sorted(operation_dir.glob('tun-*.json'))[:6]] == native
+        assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+    print(f'PASS TUN SERVER PUBLICATION: {case} {operation}; credential={record["credential"]}; '
+          f'PID={record["service"][0]}; outcome={result["outcome"]}; original receipt, real traffic, resident work lease')
+
+
 def proof():
     assert os.geteuid() == 0 and Path('/proc/1/comm').read_text().strip() == 'systemd'
     mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines() if ' - tmpfs ' in line}
@@ -730,6 +791,9 @@ rules:
     owner = subprocess.Popen(['dotnet', sys.argv[3], 'runtime-mihomo-tun-descriptor-worker', root],
                              stdout=subprocess.PIPE, text=True)
     try:
+        if case in ('server-commit', 'server-pending'):
+            proof_server_publication(owner, operation, operation_dir, previous, case)
+            return
         if case in ('committed', 'committed-stop', 'committed-start') or case.startswith('committed-remove-'):
             proof_committed(owner, operation, operation_dir, case)
             return

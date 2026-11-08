@@ -303,3 +303,5 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 2026-11-08（MR-03 / MB-04）具名启动和重启在原归档锁下持久记录新执行 ID，并保留原发布归属。重启先接续原执行的停止检查点。新启动派发后只核对原执行和原生效果，证据不足时保留待核验。移除、公开发布和生产成功提交仍受门禁保护。见[具名启动与重启证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后具名启动与重启)。
 
 2026-11-08（MR-03 / MB-04）提交态 TUN 复用归档移除事务，先核对当前执行的停止及网络清理。撤销注册和清理的已派发效果按原移除 ID 对账，终态保留发布及执行归属。生产成功提交和公开发布仍受门禁保护。见[提交后移除证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-提交后移除)。
+
+2026-11-08（MR-03 / MB-04）Server 内部 TUN 发布与 Helper 原生成功提交受 root 宿主显式许可保护。Server 只依据原提交见证及当前网络归属确认成功，原应答未知时按原 ID 恢复。客户端公开入口、独立进程 IPC 和同键 HTTP 仍待联合验收。见[Server 发布协调证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-server-发布协调)。

@@ -15,7 +15,7 @@ public sealed record MihomoPublicationResult(Guid OperationId, MihomoPublication
 /// </summary>
 public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore store,
     MihomoRuntimeAuthorizationProvider authorization, MihomoRuntimeService runtime, IProxyPlatformPaths paths,
-    MihomoSettingsPublicationFiles? settingsFiles = null, IProxyProfileRepository? profiles = null)
+    MihomoSettingsPublicationFiles? settingsFiles = null, IProxyProfileRepository? profiles = null, IProxyWorkLeaseSource? workLeases = null)
 {
     public async Task<MihomoPublicationResult> PublishAsync(Guid operationId, long expectedPublicationRevision,
         RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate, CancellationToken ct)
@@ -25,27 +25,47 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
         finally { store.Gate.Release(); }
     }
 
+    internal async Task<MihomoPublicationResult> PublishManagedTunAsync(Guid operationId, long expectedPublicationRevision,
+        MihomoManagedTunPlan frozen, CancellationToken ct)
+    {
+        await store.Gate.WaitAsync(ct);
+        try
+        {
+            return await PublishCoreAsync(operationId, expectedPublicationRevision, frozen.Plan, frozen.Candidate, ct,
+                settings: null, profile: null, frozen.Intent);
+        }
+        finally { store.Gate.Release(); }
+    }
+
     // Application profile writers already hold the publication gate while selecting current material.
-    internal async Task<MihomoPublicationResult> PublishUnderGateAsync(Guid operationId, long expectedPublicationRevision,
-        RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate, CancellationToken ct, MihomoSettingsPublication? settings = null, MihomoProfilePublication? profile = null)
+    internal Task<MihomoPublicationResult> PublishUnderGateAsync(Guid operationId, long expectedPublicationRevision,
+        RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate, CancellationToken ct, MihomoSettingsPublication? settings = null, MihomoProfilePublication? profile = null) =>
+        PublishCoreAsync(operationId, expectedPublicationRevision, plan, candidate, ct, settings, profile, null);
+
+    private async Task<MihomoPublicationResult> PublishCoreAsync(Guid operationId, long expectedPublicationRevision,
+        RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate, CancellationToken ct, MihomoSettingsPublication? settings,
+        MihomoProfilePublication? profile, MihomoTunNetworkIntent? tunIntent)
     {
         if (operationId == Guid.Empty || plan is null || plan.RuntimeId != "mihomo")
             throw new RuntimePolicyException("runtime.request_invalid");
         MihomoRuntimeMaterial.Validate(candidate);
         var description = MihomoConfigurationPolicy.Validate(candidate);
-        if (description.Material.NetworkTransitionRequired || candidate.NetworkTransitionRequired || plan.NetworkIntentIdentity is not null)
+        if (tunIntent is null && (description.Material.NetworkTransitionRequired || candidate.NetworkTransitionRequired || plan.NetworkIntentIdentity is not null))
             throw new RuntimePolicyException("runtime.network_transaction_required");
+        MihomoRuntimeMaterial.RequireConfigurationTunIntent(operationId, plan, candidate, tunIntent);
         if (MihomoPublicationStore.Identity(candidate.Yaml) != plan.CandidateIdentity)
             throw new RuntimePolicyException("runtime.configuration_drift");
         var state = await store.ReadAsync(ct);
         if (state.Pending is not null)
         {
             if (state.Pending.OperationId != operationId
-                || !Same(state.Pending.ConfigurationPlan, plan) || !Same(state.Pending.Candidate, candidate) || !Same(state.Pending.Settings, settings) || !Same(state.Pending.Profile, profile))
+                || !Same(state.Pending.ConfigurationPlan, plan) || !Same(state.Pending.Candidate, candidate) || !Same(state.Pending.Settings, settings)
+                || !Same(state.Pending.Profile, profile) || state.Pending.TunIntent != tunIntent)
                 throw new RuntimePolicyException("runtime.publication_unconfirmed");
             // Replayed requests reconcile; they never re-send a potentially accepted configuration.
             return await RecoverUnderGateAsync(state, CancellationToken.None);
         }
+        using var work = tunIntent is null ? null : await RequireWorkLeases().AcquireAsync(ct);
         if (state.LastConfiguration is { } completed && completed.OperationId == operationId)
         {
             if (completed.RequestHash != MihomoPublicationStore.ConfigurationRequestHash(plan, candidate, settings, profile))
@@ -65,8 +85,10 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
                 || observed.Receipt is null || completed.Confirmed != (observed.Receipt.Outcome == RuntimeSwitchOutcome.Succeeded)
                 || observed.Receipt.Outcome == RuntimeSwitchOutcome.RecoveryRequired)
                 throw new RuntimePolicyException("runtime.publication_unconfirmed");
+            if (tunIntent is not null && completed.Confirmed) RequireTunCommit(plan, operationId, observed);
             return new(operationId, completed.Confirmed ? MihomoPublicationOutcome.Confirmed : MihomoPublicationOutcome.Compensated, observed.Receipt);
         }
+        if (tunIntent is not null) LinuxMihomoTunScope.RequirePublication(tunIntent);
         if (state.Revision != expectedPublicationRevision || state.Identity != plan.PreviousIdentity || state.Published is null)
             throw new RuntimePolicyException("runtime.state_revision_conflict");
         await authorization.ReadAsync(ct); // Refuse drift/revoked old credentials before accepting work.
@@ -87,7 +109,7 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
             if (profiles is null) throw new RuntimePolicyException("runtime.profile_publication_required");
             await profiles.ValidatePublicationAsync(profile, ct);
         }
-        state = await store.BeginConfigurationAsync(operationId, expectedPublicationRevision, candidate, plan, ct, settings, profile);
+        state = await store.BeginConfigurationAsync(operationId, expectedPublicationRevision, candidate, plan, ct, settings, profile, tunIntent);
         if (plan.PreviousIdentity == plan.CandidateIdentity)
             return await ResolveApplicationOnlyAsync(state, CancellationToken.None);
         // The accepted durable transaction survives client cancellation. Transport errors leave Pending
@@ -113,6 +135,7 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
 
     internal async Task<MihomoPublicationResult> RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct)
     {
+        using var work = state.Pending!.TunIntent is null ? null : await RequireWorkLeases().AcquireAsync(ct);
         var operationId = state.Pending!.OperationId;
         if ((state.Pending.Settings is not null || state.Pending.Profile is not null) && state.Pending.ConfigurationPlan!.PreviousIdentity == state.Pending.Identity)
             return await ResolveApplicationOnlyAsync(state, ct);
@@ -150,6 +173,7 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
         if (receipt is { Outcome: RuntimeSwitchOutcome.Succeeded } && observed.ConfigurationIdentity == pending.Identity
             && observed.Installation.StateRevision > plan.ExpectedStateRevision)
         {
+            if (pending.TunIntent is not null) RequireTunCommit(plan, pending.OperationId, observed);
             await files.ReplaceAsync(state, pending.Candidate.Yaml, ct);
             if (pending.Settings is not null || pending.Profile is not null)
             {
@@ -179,6 +203,19 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
             return new(pending.OperationId, MihomoPublicationOutcome.NotStarted, null);
         }
         throw new RuntimePolicyException("runtime.publication_unconfirmed");
+    }
+
+    private IProxyWorkLeaseSource RequireWorkLeases() =>
+        workLeases ?? throw new RuntimePolicyException("runtime.publication_work_unavailable");
+
+    private static void RequireTunCommit(RuntimeConfigurationPlan plan, Guid operationId, RuntimeInstallationSnapshot observed)
+    {
+        if (observed.MihomoTunPublicationId != operationId || observed.CommitWitness is not { } proof
+            || proof.OperationId != operationId || proof.ActiveRevisionId != plan.ActiveRevisionId
+            || proof.ConfigurationIdentity != plan.CandidateIdentity
+            || proof.Installation.InstallationId != plan.InstallationId || proof.Installation.HostId != plan.HostId
+            || proof.Installation.StateRevision <= plan.ExpectedStateRevision)
+            throw new RuntimePolicyException("runtime.publication_unconfirmed");
     }
 
     private async Task CommitApplicationAsync(MihomoPendingPublication pending, CancellationToken ct)

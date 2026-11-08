@@ -7,7 +7,7 @@ namespace RelaxKonOS.ManagedRuntimes;
 
 /// <summary>The host administrator's scope for new managed TUN trials.</summary>
 public sealed record LinuxMihomoTunScope(string Device, string Address, string Destination, uint ServerUserId,
-    string? DnsRoutingDomain = null)
+    string? DnsRoutingDomain = null, bool AllowManagedPublication = false)
 {
     public const string Path = "/etc/relaxkonos/mihomo-tun-network.json";
     private const string Unavailable = "runtime.network_scope_unavailable";
@@ -46,6 +46,14 @@ public sealed record LinuxMihomoTunScope(string Device, string Address, string D
     public bool Matches(MihomoTunNetworkIntent intent) =>
         Device == intent.Device && Address == intent.Address && Destination == intent.Destination
         && ServerUserId == intent.ManagementUserId && DnsRoutingDomain == intent.DnsRoutingDomain;
+
+    public static void RequirePublication(MihomoTunNetworkIntent intent)
+    {
+        if (!OperatingSystem.IsLinux()) throw new RuntimePolicyException("runtime.network_platform_unsupported");
+        var scope = Read();
+        if (!scope.AllowManagedPublication) throw new RuntimePolicyException("runtime.network_lifecycle_unverified");
+        if (!scope.Matches(intent)) throw new RuntimePolicyException("runtime.network_scope_changed");
+    }
 
     private static SafeFileHandle Open(int parent, string name, int access, int type)
     {
