@@ -3623,7 +3623,70 @@ exec {shlex.quote(str(systemctl))} "$@"
         assert fence.read_bytes() == original and pids.read_bytes() == original_processes
         probe(record, 'external-version-unknown-after-restart')
         print(f'PASS EXTERNAL VERSION UNKNOWN: original={original_id}; disabled startup refused and enabled restart did not redispatch', flush=True)
+        if fixture.with_name('external-version-manager-witness.fixture').is_file():
+            verify_external_version_manager_witness(fixture)
+            assert fence.read_bytes() == original and pids.read_bytes() == original_processes
+            probe(record, 'external-version-after-manager-witness')
         return server_pid
+
+    def verify_external_version_manager_witness(fixture):
+        witness_id = uuid.uuid4().hex
+        witness_unit = f'rk-mihomo-version-witness-{witness_id}.service'
+        work = root / 'full-server' / witness_id
+        work.mkdir(mode=0o700)
+        os.chown(work, ipc.uid, ipc.identity['group'])
+        (work / 'private-mihomo-version-fixture').touch()
+        witness_pids = work / 'private-mihomo-version-pids'
+        assembly = fixture.with_name('RelaxKonOS.Server.dll')
+        boot = uuid.UUID(Path('/proc/sys/kernel/random/boot_id').read_text().strip()).hex
+        before = time.clock_gettime_ns(time.CLOCK_MONOTONIC) // 1000
+
+        # The unit and the executable are fixture-owned. Its dispatch is independent of the retained probe.
+        with subprocess.Popen(['/usr/bin/systemd-run', '--quiet', '--pipe', '--wait', '--collect', '--service-type=exec',
+                               f'--unit={witness_unit}', '--property=RuntimeMaxSec=18s', '--property=User=' + str(ipc.uid),
+                               '--property=NoNewPrivileges=yes', '--property=KillMode=control-group',
+                               '--property=WorkingDirectory=' + str(work),
+                               '/usr/bin/dotnet', str(assembly), 'mihomo-version-worker'],
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as runner:
+            try:
+                runner.stdin.write(json.dumps(str(fixture)) + '\n')
+                runner.stdin.flush()
+                until(witness_pids.exists, 'independent witness version process')
+                parent, descendant = map(int, witness_pids.read_text().split())
+                properties = dict(line.split('=', 1) for line in service('show', '--property=MainPID,InvocationID,ExecMainStartTimestampMonotonic',
+                                                                      witness_unit).splitlines())
+                invocation = uuid.UUID(properties['InvocationID']).hex
+                main_pid = int(properties['MainPID'])
+                started = int(properties['ExecMainStartTimestampMonotonic'])
+                assert started >= before and int(Path(f'/proc/{parent}/stat').read_text().rsplit(')', 1)[1].split()[1]) == main_pid
+                runner.stdin.close()
+                runner.stdin = None
+                output, errors = runner.communicate(timeout=10)
+                assert runner.returncode == 0 and not output and not errors, (runner.returncode, output, errors)
+                assert all(not Path(f'/proc/{pid}').exists() for pid in (main_pid, parent, descendant))
+            finally:
+                if runner.poll() is None:
+                    runner.kill()
+                    service('stop', witness_unit)
+
+        def journal(invocation_id, identity=None):
+            args = ['/usr/bin/journalctl', '--quiet', '--no-pager', '--output=json',
+                    '--output-fields=MESSAGE_ID,UNIT,INVOCATION_ID,RESULT,JOB_TYPE,JOB_RESULT,_PID,_UID',
+                    '--lines=12', '_PID=1', '_UID=0', f'_BOOT_ID={boot}', f'UNIT={witness_unit}', f'INVOCATION_ID={invocation_id}']
+            result = subprocess.run(args, **(identity or {}), capture_output=True, text=True, timeout=5)
+            if identity and result.returncode != 0 and 'permission' in result.stderr.lower():
+                return []
+            result.check_returncode()
+            return [json.loads(line) for line in result.stdout.splitlines()]
+
+        events = until(lambda: journal(invocation), 'PID 1 journal for exact witness invocation')
+        assert not journal(uuid.uuid4().hex)
+        terminal = [event for event in events if event.get('MESSAGE_ID') == '7ad2d189f7e94e70a38c781354912448']
+        assert len(terminal) == 1, events
+        assert int(terminal[0]['__MONOTONIC_TIMESTAMP']) >= started
+        accessible = bool(journal(invocation, ipc.identity))
+        print(f'PASS EXTERNAL VERSION MANAGER WITNESS: fixture={witness_id}; invocation={invocation}; '
+              f'owner={main_pid}; PID 1 terminal observed; unprivileged journal visible={accessible}', flush=True)
 
     def verify_handoff(pid, record, publication):
         nonlocal worker, first_worker, token

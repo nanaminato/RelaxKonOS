@@ -571,3 +571,14 @@ Windows Release 模块边界和控制器回归通过。Linux 专属 systemd 通�
 复验沿用 `ipc-http-inbound-tun` 和同构建 Linux 测试 apphost，并在测试程序集旁放置空文件 `external-version-server-cut.fixture` 以选择仅 Server 中断的分支。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-server-cut.log` SHA256 `9c8c5b018a6580826c400eb5a2fd89233dcb1c1956c6495fa1e805531a666bfc`，归档 SHA256 `0d9542df9f8518e36063f35a76a2c3e945d11b0c3baf10c0c6e8c728f0e390cc`。
 
 **未实现或仍受门禁保护。** 隔离夹具的父进程证据只用于实测。生产仍需由独立可信来源保存绑定原操作、原执行者、进程树及输出排空的见证，之后才能按原 ID 只读对账。Windows 原生 Job 故障窗口待验。此轮确认实际进程退出，整模块对象释放、ALC 回收、隔离负载内存及生产收益分别待验。Proxy 保持 resident。
+
+
+### 外部 Mihomo 版本探测的 PID 1 退出见证试验
+
+**已验证的宿主能力。** Linux 专属 systemd 另起一个固定试验单元，运行同一 Release 的原版本探测执行者和专属二进制夹具。单元 `rk-mihomo-version-witness-6f0fe7d0eb5f49f8ad41d957dcee7024.service` 以非特权身份启动执行者 `2440`。在关闭控制管道前，通过管理器记录原 MainPID、启动时刻及 invocation `71b21f2d1a334042b16ddc7a4b6de585`。执行者完成进程树和两路输出排空。PID 1 的日志中只有一条该 boot、单元与 invocation 的成功终态，时间晚于原进程启动。另一 invocation 查询为空。使用 Server 夹具账号及相同组权限查询时不可见。共享日志权限保持原状态。
+
+试验单元使用独立操作。生产 HTTP 原探测 `2e724c7f-a608-49ec-9d44-529d7991c891` 的门禁与派发见证字节一致，重启返回 503。活跃 TUN `ae72c9de7ec14fbd80fcbaac398bf071` 的管理路由、配置、原台账、HTTP 和分流 DNS 均通过，原入站回执一致。另一个私有单元复验了原 TUN 补偿作业。[受管 TUN 原作业续验](Proxy-Safety.md#原补偿作业与独立宿主见证联合复验)
+
+复验沿用 `ipc-http-inbound-tun`、同构建 Linux 测试 apphost 和空文件 `external-version-server-cut.fixture`，另在测试程序集旁放置空文件 `external-version-manager-witness.fixture`。Windows Release 模块边界回归通过。Linux 联合日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-manager-witness.log` SHA256 `7afd7f96ad1dc6abfc965eee455f17176f4b7c4c3139aa3f8d48609e73627d8d`，归档 SHA256 `f8338b5e5f8a27dae1886c9f38cc078aaa3c107c8a0fc1b467af3b0bc6ed2247`。
+
+**未实现或仍受门禁保护。** 下一项将固定低权限执行者登记到独立宿主权威，并仅开放查询已登记的原记录。要验证匹配的原操作、执行者、boot、启动时刻、invocation 和排空终态后再解除门禁。日志缺失、权限不足或身份不匹配时继续拒绝新派发。当前结果确认试验进程退出与专属 cgroup 清理。整模块对象释放、ALC 回收、隔离负载内存和生产收益独立待验。Proxy 保持 resident。

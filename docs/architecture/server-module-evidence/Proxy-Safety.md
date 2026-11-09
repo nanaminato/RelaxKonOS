@@ -1401,3 +1401,8 @@ Windows Release 的注册 25 项、发布事务 113 项、运行时 HTTP 57 项�
 Windows Release 运行时 HTTP 57 项、发布 113 项、Core 安全和模块里程碑通过。Linux 两组专属进程与 cgroup 已清理，宿主运行时服务、代理及 resolver 文件指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-explicit-tun-retry-final.log` 的 SHA-256 为 `502b205de4da577d3f7947b435ee12f75957b847c9c17607c6fe89db7c6b64e0`，归档为 `708acfd68c144b57d3fcbcaf57c1edf6033ba38f4d8450dc510e00d740151ec5`。
 
 **仍待验收。** 本场景确认真实进程退出。PAM 提权与显式重试的联合实机、对象释放、ALC、隔离内存与生产收益分别开放。Proxy 保持 resident。
+
+
+### 原补偿作业与独立宿主见证联合复验
+
+同一 Release 归档在独立私有 systemd 单元执行 `ipc-http-restored-job-cut`。原发布 `d08b3645e1314686be292e0a1eb39616` 的补偿作业为 `39`，原 invocation `22b10d5355e84bc99577d13b93ebffc9` 和已恢复进程 `514` 保持。暂扣原作业 ID 后，重启保留待核验并拒绝新键。放回原作业记录后，按原 ID 验证原 PID、启动时刻和配置摘要，同键返回原失败终态，恢复租约排空。全程一次 StartUnit，配置重派零次。管理选路、原解析器快照、运行配置和真实上游 HTTP 在原作业待核验、记录暂缺和终态三个阶段均一致。两个专属 cgroup 清理完成，共享服务及网络文件指纹一致。[联合日志与制品摘要](Proxy-Observation.md#外部-mihomo-版本探测的-pid-1-退出见证试验)

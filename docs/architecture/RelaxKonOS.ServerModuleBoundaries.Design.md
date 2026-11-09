@@ -120,7 +120,7 @@ Squid 配置、状态、账户读取、预览与原生校验由当前 Proxy 代�
 
 概览执行器由该代次创建。采样只借用活动档案读取、Core 恢复状态读取、平台能力和只读 Mihomo 概览接口。控制器客户端仍由采样作用域释放。执行器复用同一代次的运行时观测，持久发布和 TUN 恢复由原 Core 权威负责。[概览执行器边界](server-module-evidence/Proxy-Observation.md#概览执行器的代次边界)
 
-概览的读取编排与连接解析共用独立可回收执行程序集。跨边界只传只读回调和共享结果。Host 持有活动档案、持久恢复状态和返回的 DTO。概览采样持有代码租约直至读取作用域清理，HTTP 响应保留独立的 Proxy 工作租约。当前代次也持有七条 Mihomo 观察路由的外层作用域。外部版本探测在派发前持久保存原操作 ID 和专用执行者身份。代次持有执行、响应及清理，原进程树或管道缺少退出确证时保留探测门禁和停用责任。响应结束后的清理失败由原代次保留作用域和工作租约。[Mihomo 观察 HTTP 作用域](server-module-evidence/Proxy-Observation.md#mihomo-观察-http-作用域与故障隔离)[概览代码回收实测](server-module-evidence/Proxy-Observation.md#概览与连接读取共享可回收代码)
+概览的读取编排与连接解析共用独立可回收执行程序集。跨边界只传只读回调和共享结果。Host 持有活动档案、持久恢复状态和返回的 DTO。概览采样持有代码租约直至读取作用域清理，HTTP 响应保留独立的 Proxy 工作租约。当前代次也持有七条 Mihomo 观察路由的外层作用域。外部版本探测在派发前持久保存原操作 ID 和专用执行者身份。代次持有执行、响应及清理，原进程树或管道缺少退出确证时保留探测门禁和停用责任。Linux 的跨 Server 中断确证须绑定已登记的原操作、固定执行者、启动身份、启动时刻和 systemd invocation。读取权限限定于该原记录。退出状态只有在固定执行者确已排空原进程树及两路输出时才可用于对账。响应结束后的清理失败由原代次保留作用域和工作租约。[Mihomo 观察 HTTP 作用域](server-module-evidence/Proxy-Observation.md#mihomo-观察-http-作用域与故障隔离)[概览代码回收实测](server-module-evidence/Proxy-Observation.md#概览与连接读取共享可回收代码)
 
 概览读取异常在 Host 转为独立错误。正常清理后代码可随闲置释放。异步清理失败由原采样保留作用域和工作租约，协调器隔离同一 Proxy 代次，新的管理读取继续受准入门禁保护。[读取故障验收](server-module-evidence/Proxy-Observation.md#概览读取失败与清理隔离)
 
