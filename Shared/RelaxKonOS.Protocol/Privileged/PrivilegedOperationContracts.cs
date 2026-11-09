@@ -228,6 +228,8 @@ public enum PrivilegedOperationKind
     SquidAccountReceipt,
     MihomoProbeWitnessRegister,
     MihomoProbeWitnessRead,
+    MihomoProbeHostStart,
+    MihomoProbeHostComplete,
 }
 
 /// <summary>
@@ -464,6 +466,7 @@ public sealed record PrivilegedOperationRequest(
 /// <summary>Original fixed Mihomo probe worker exit, sealed before the native unit was released.</summary>
 public sealed record MihomoProbeExitWitness(Guid OperationId, Guid BootId, Guid InvocationId, int Pid,
     ulong StartTicks, ulong StartedAt, ulong ExitedAt);
+public sealed record MihomoProbeHostIdentity(Guid OperationId, Guid BootId, Guid InvocationId, int Pid, ulong StartTicks);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>
 public sealed record PrivilegedOperationResult(
@@ -516,7 +519,8 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version,
     [property: JsonPropertyName("linuxSystemProxyReceipt")] LinuxSystemProxyReceipt? LinuxSystemProxyReceipt = null,
     [property: JsonPropertyName("squidPublicationReceipt")] SquidPublicationReceipt? SquidPublicationReceipt = null,
-    [property: JsonPropertyName("mihomoProbeExit")] MihomoProbeExitWitness? MihomoProbeExit = null);
+    [property: JsonPropertyName("mihomoProbeExit")] MihomoProbeExitWitness? MihomoProbeExit = null,
+    [property: JsonPropertyName("mihomoProbeHost")] MihomoProbeHostIdentity? MihomoProbeHost = null);
 
 /// <summary>Root-owned terminal evidence for a fixed Nginx reload.</summary>
 public sealed record NginxNativeReloadReceipt(Guid OperationId, [property: JsonRequired] bool Succeeded);

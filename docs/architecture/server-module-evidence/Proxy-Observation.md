@@ -635,4 +635,20 @@ Linux 私有 systemd 登记原探测 `692e361b-e8c3-4462-a0da-bbc4f9c10a16`，�
 
 初次实机因夹具在 Server 启动窗口过早检查 UID 而退出。改为等待预期非 root UID 后，复验通过了范围仍有进程时的拒绝断言，但在观察窗口内未等到管理器更新为 `exited`。最终实现复核内核范围身份与排空，最终两个用例通过。Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-cgroup-drain.log` SHA256 `6b20a6d2b99410f164273edf5fb6fe3bc91ef5a329966133d8d6485130b73edc`，归档 SHA256 `f332a49920a551b962348f251319484865a95ad03b3db4711c484346b68befbd`。
 
-**仍待验收。** 生产 HTTP 派发、宿主自动封存和原门禁对账仍待接入。此轮分别确认原进程与范围退出。Proxy 保持 resident，整模块对象释放、ALC 回收、隔离负载内存及生产收益分别待验。
+此轮分别确认原进程与范围退出。生产 HTTP 派发与原门禁对账见下一节。Proxy 保持 resident，整模块对象释放、ALC 回收、隔离负载内存及生产收益分别待验。
+
+### Linux 系统模式的固定宿主派发与原门禁对账
+
+**已实现且已验证。** 完整 Server 通过认证 Helper 为原探测 ID 派发固定非特权 systemd 单元。Helper 在启动前持久写入原派发登记。Server 在交付外部程序路径前持久保存原宿主身份，并核对专属 Unix 对端的 PID、UID 和启动时刻。原单元使用非委派 cgroup、只读系统路径和无 capability 的执行者。常规成功、合法 ELF 的失败结果和取消均通过认证 HTTP 验证。取消保持原代次租约，等待原树与两路输出排空后才归还。
+
+在私有 Linux systemd 仅强退 Server 时，原探测 `4e028ad0-a0ff-43bd-af6c-db6c19d5028b` 的固定宿主执行者通过连接关闭结束原工作。夹具按 pidfd 核对原执行者、根进程及脱离会话的子进程均已回收。禁用启动因同一原记录被拒绝。启用重启后，首次有效探测以 503 返回，只查询原 ID。Helper 先封存原退出终态再释放单元，Server 核对原身份后删除门禁并归还请求租约。跨代 Helper 日志只记录一次该 ID 的启动，恢复请求未启动任何新探测。
+
+反向实测强退原探测 `a02f0432-0af0-495c-91e6-45c2b83294c3` 的固定执行者。存活的 Server 保留原工作租约并隔离原 Proxy 代次。禁用启动拒绝越过原门禁。启用重启后，恢复查询仍未取得终态，原记录逐字节保持，同一原 ID 只派发一次。专属资源已清理且宿主指纹一致。反向日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-host-dispatch-unknown-final.log` 的 SHA-256 为 `090a39debb7e2d995dcbf08bd14e92f13a291d71c91d12b622f09464a7c0f925`，归档为 `72f4c1a537c611cc2ac2ef321a039bba06ceefae2d70f4dcd6df392947764a0a`。
+
+活跃 TUN `fee7b9e7ec4d4a6c97e5ff96bde3d391`、原入站 `1d8b990b-4ef7-40d8-b5d6-c29e44b3cd1b` 与配置摘要 `2595bc4aac326f2eeed7575bc6cffeaf6fbf8e76f822c53804442474f1e63cd5` 保持。真实 HTTP、分流 DNS 和管理选路连续。独立补偿 `56b68905ec4640b3844831c1aca5633a` 按原作业 `39`、PID `510` 和 invocation `0d987250a7894df89737730dd3119081` 归还租约，只有一次 `StartUnit`。专属 cgroup 已清理，宿主共享服务、代理和 DNS 文件指纹一致。实测日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-host-dispatch-pidfd.log` 的 SHA-256 为 `e904c5aefe1786fa15c9707d863deb9567954bd34031473661ba79af1cd776a3`，归档为 `4bb567a7e40e7d458a6277d6c3cd14eca890867eae680e3a1ae40d6b1fa7b8b9`。
+
+Windows Release 模块边界、Proxy 常驻、TUN、Helper socket、Squid 和组件专项及 Linux x64 Release 构建通过。额外全量回归在既有文件提权测试的 `RequestServices` 为空时中止。实机首轮夹具把进程退出与回收混为一项，复验改为观察原 pidfd 的回收事件。[Linux pidfd 手册](https://www.man7.org/linux/man-pages/man2/pidfd_open.2.html)
+
+**已实现但实机未验证。** 固定宿主生产路径在同一 boot 的 Linux x64 私有 systemd 已验收。跨整机断电和 Windows 原生 Job 故障窗口需要各自独立实测。此轮确认原进程退出与回收。对象释放、ALC 回收、隔离负载内存及生产内存收益分别待验。
+
+**未实现或仍受门禁保护。** 本轮按启用重启后的首个有效探测请求对账。宿主派发回执未到达 Server、执行路径尚未交付时，Server 缺少已绑定的原宿主身份并保留原门禁。只有可信原终态能区分未派发与清理结果未知。宿主证据目录有容量上限，已结案记录的安全保留与回收策略待完善。Proxy 保持 resident，整模块动态驻留另行验收。

@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Server.Proxy.Mihomo;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -36,6 +37,7 @@ internal static class LinuxMihomoProbeWitness
         && Prctl(4, 0, 0, 0, 0) == 0; // PR_SET_DUMPABLE
 
     private sealed record Terminal(Dispatch Dispatch, ulong ExitedAt);
+    private sealed record Launch(Guid OperationId, uint OwnerUid);
 
     internal static async Task<int> RunCommandAsync(string action, string operation, string uid)
     {
@@ -57,10 +59,17 @@ internal static class LinuxMihomoProbeWitness
             return Task.FromResult(new PrivilegedOperationResult(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest));
         if (!peer.Allowed || peer.UserId == 0)
             return Task.FromResult(new PrivilegedOperationResult(false, 77, ProblemCode: PrivilegedProblemCode.AccessDenied));
-        return ExecuteAsync(request.Operation == PrivilegedOperationKind.MihomoProbeWitnessRegister ? "register" : "read", id, peer.UserId);
+        var action = request.Operation switch
+        {
+            PrivilegedOperationKind.MihomoProbeWitnessRegister => "register",
+            PrivilegedOperationKind.MihomoProbeHostStart => "start",
+            PrivilegedOperationKind.MihomoProbeHostComplete => "complete",
+            _ => "read"
+        };
+        return ExecuteAsync(action, id, peer.UserId, peer.GroupId);
     }
 
-    private static async Task<PrivilegedOperationResult> ExecuteAsync(string action, Guid id, uint owner)
+    private static async Task<PrivilegedOperationResult> ExecuteAsync(string action, Guid id, uint owner, uint group = 0)
     {
         var fileSystem = new LinuxUnixSocketFileSystem();
         try
@@ -69,15 +78,29 @@ internal static class LinuxMihomoProbeWitness
             var parent = Path.GetDirectoryName(Root)!;
             RequireProtected(fileSystem, parent, directory: true);
             var path = Path.Combine(Root, id.ToString("N") + ".json");
-            if (action == "register")
+            var launchPath = Path.Combine(Root, id.ToString("N") + ".launch.json");
+            if (action is "register" or "start")
             {
                 Directory.CreateDirectory(Root, PrivateDirectory);
                 RequireProtected(fileSystem, Root, directory: true, mode: PrivateDirectory);
-                if (Path.Exists(path)) return Unknown();
-                var dispatch = await CaptureAsync(fileSystem, id, owner);
+                if (Path.Exists(path) || Path.Exists(launchPath) || Directory.EnumerateFileSystemEntries(Root).Take(8192).Count() >= 8192)
+                    return Unknown();
+                var hosted = action == "start";
+                if (hosted)
+                {
+                    if (group == 0) return Unknown();
+                    VerifyWorkerInstallation(fileSystem);
+                    WriteNew(launchPath, new Launch(id, owner));
+                    LinuxDirectorySync.Flush(parent);
+                    await StartUnitAsync(id, owner, group);
+                }
+                var dispatch = hosted
+                    ? await CaptureStartedWorkerAsync(fileSystem, id, owner)
+                    : await CaptureAsync(fileSystem, id, owner);
                 WriteNew(path, dispatch);
                 LinuxDirectorySync.Flush(parent);
-                return new(true);
+                return hosted ? new(true, MihomoProbeHost: new(id, dispatch.BootId, dispatch.InvocationId,
+                    dispatch.Pid, dispatch.StartTicks)) : new(true);
             }
 
             RequireProtected(fileSystem, Root, directory: true, mode: PrivateDirectory);
@@ -90,9 +113,10 @@ internal static class LinuxMihomoProbeWitness
                 return Unknown();
 
             var terminalPath = Path.Combine(Root, id.ToString("N") + ".exit.json");
-            if (action == "seal" && !Path.Exists(terminalPath))
+            if (action == "complete" && Read<Launch>(fileSystem, launchPath) != new Launch(id, owner)) return Unknown();
+            if (action is ("seal" or "complete") && !Path.Exists(terminalPath))
             {
-                if (ReadStartTicks(registered.Pid) == registered.StartTicks || await ReadExitTimeAsync(fileSystem, registered) is not { } ended)
+                if (MihomoVersionWorker.ReadStartTicks(registered.Pid) == registered.StartTicks || await ReadExitTimeAsync(fileSystem, registered) is not { } ended)
                     return Unknown();
                 WriteNew(terminalPath, new Terminal(registered, ended));
             }
@@ -102,6 +126,15 @@ internal static class LinuxMihomoProbeWitness
                 return Unknown();
             // A read racing the original publication still requires the directory entry to be durable.
             LinuxDirectorySync.Flush(Root);
+            if (action == "complete")
+            {
+                var state = await ReadStateAsync(id);
+                if (state.GetValueOrDefault("InvocationID") == registered.InvocationId.ToString("N"))
+                    await NativeRuntimeProcess.RunAsync("/usr/bin/systemctl", ["stop", "--", Unit(id)], 4096);
+                else if (state.GetValueOrDefault("LoadState") != "not-found"
+                    && (!Guid.TryParseExact(state.GetValueOrDefault("InvocationID"), "N", out var replacement) || replacement == Guid.Empty))
+                    return Unknown();
+            }
             return new(true, MihomoProbeExit: new(id, registered.BootId, registered.InvocationId, registered.Pid,
                 registered.StartTicks, registered.StartedAt, terminal.ExitedAt));
         }
@@ -142,14 +175,40 @@ internal static class LinuxMihomoProbeWitness
     private static PrivilegedOperationResult Unknown() =>
         new(false, 75, ProblemCode: PrivilegedProblemCode.RecoveryRequired);
 
-    private static async Task<Dispatch> CaptureAsync(LinuxUnixSocketFileSystem fileSystem, Guid id, uint owner)
+    private static Task<string> StartUnitAsync(Guid id, uint owner, uint group) =>
+        NativeRuntimeProcess.RunAsync("/usr/bin/systemd-run",
+            ["--quiet", "--no-block", "--collect", "--service-type=exec", "--unit=" + Unit(id),
+                "--property=User=" + owner.ToString(CultureInfo.InvariantCulture),
+                "--property=Group=" + group.ToString(CultureInfo.InvariantCulture),
+                "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=", "--property=RestrictAddressFamilies=AF_UNIX",
+                "--property=ProtectSystem=strict", "--property=InaccessiblePaths=-/run/relaxkonos",
+                "--property=KillMode=control-group", "--property=ExitType=cgroup", "--property=Delegate=no",
+                "--property=ProtectControlGroups=yes", "--property=RemainAfterExit=yes", "--property=RuntimeMaxSec=18s",
+                "--", Worker, WorkerArgument, id.ToString("D"), "socket"], 4096);
+
+    private static async Task<Dispatch> CaptureStartedWorkerAsync(LinuxUnixSocketFileSystem fileSystem, Guid id, uint owner)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try { return await CaptureAsync(fileSystem, id, owner, hosted: true); }
+            catch (IOException) when (attempt < 29) { await Task.Delay(50); }
+        }
+    }
+
+    private static void VerifyWorkerInstallation(LinuxUnixSocketFileSystem fileSystem)
     {
         RuntimeSourceStore.RequireNoLinks(Worker);
         RequireProtected(fileSystem, Worker, directory: false);
         for (var directory = Path.GetDirectoryName(Worker); directory is not null; directory = Path.GetDirectoryName(directory))
             RequireProtected(fileSystem, directory, directory: true);
+    }
+
+    private static async Task<Dispatch> CaptureAsync(LinuxUnixSocketFileSystem fileSystem, Guid id, uint owner, bool hosted = false)
+    {
+        VerifyWorkerInstallation(fileSystem);
         var state = await ReadStateAsync(id);
-        if (!HasFixedScopePolicy(state) || state.GetValueOrDefault("ControlGroup") != ControlGroup(id)
+        if (!HasFixedScopePolicy(state) || (hosted && state.GetValueOrDefault("ProtectSystem") != "strict")
+            || state.GetValueOrDefault("ControlGroup") != ControlGroup(id)
             || state.GetValueOrDefault("MainPID") != state.GetValueOrDefault("ExecMainPID")
             || !int.TryParse(state.GetValueOrDefault("MainPID"), NumberStyles.None, CultureInfo.InvariantCulture, out var pid)
             || pid <= 1 || !Guid.TryParseExact(state.GetValueOrDefault("InvocationID"), "N", out var invocation)
@@ -163,12 +222,13 @@ internal static class LinuxMihomoProbeWitness
         if (fileSystem.Stat(scope) is not { IsDirectory: true, OwnerId: 0, Inode: > 0, MountId: > 0 } scopeStatus
             || (scopeStatus.Mode & OtherWrite) != 0 || fileSystem.Stat(CgroupRoot)?.MountId != scopeStatus.MountId)
             throw new IOException("The original probe cgroup identity is unavailable.");
-        var ticks = ReadStartTicks(pid);
+        var ticks = MihomoVersionWorker.ReadStartTicks(pid);
         var proc = $"/proc/{pid.ToString(CultureInfo.InvariantCulture)}";
         var status = File.ReadAllLines(proc + "/status");
         var uid = owner.ToString(CultureInfo.InvariantCulture);
+        var commandLine = $"{Worker}\0{WorkerArgument}\0{id:D}\0" + (hosted ? "socket\0" : "");
         if (ticks is null || new FileInfo(proc + "/exe").LinkTarget != Worker
-            || await File.ReadAllTextAsync(proc + "/cmdline") != $"{Worker}\0{WorkerArgument}\0{id:D}\0"
+            || await File.ReadAllTextAsync(proc + "/cmdline") != commandLine
             || !File.ReadLines(proc + "/cgroup").SequenceEqual([$"0::{group}"], StringComparer.Ordinal)
             || !status.Contains($"Uid:\t{uid}\t{uid}\t{uid}\t{uid}", StringComparer.Ordinal)
             || !status.Contains("NoNewPrivs:\t1", StringComparer.Ordinal)
@@ -178,7 +238,7 @@ internal static class LinuxMihomoProbeWitness
 
         var observed = await ReadStateAsync(id);
         if (state.Count != observed.Count || state.Any(field => observed.GetValueOrDefault(field.Key) != field.Value)
-            || ReadStartTicks(pid) != ticks || fileSystem.Stat(scope) != scopeStatus)
+            || MihomoVersionWorker.ReadStartTicks(pid) != ticks || fileSystem.Stat(scope) != scopeStatus)
             throw new IOException("The original version worker changed during registration.");
         return new(id, owner, LinuxMihomoTunCheckpoint.BootId(), invocation, pid, ticks.Value, started, group, scopeStatus.Inode, scopeStatus.MountId);
     }
@@ -186,9 +246,9 @@ internal static class LinuxMihomoProbeWitness
     private static async Task<Dictionary<string, string>> ReadStateAsync(Guid id)
     {
         var state = await NativeRuntimeProcess.RunAsync("/usr/bin/systemctl",
-            ["show", "--property=ActiveState,SubState,RemainAfterExit,MainPID,ExecMainPID,InvocationID,"
-                + "Type,ExitType,ControlGroup,Delegate,ProtectControlGroups,KillMode,Restart,"
-                + "ExecMainStartTimestampMonotonic,ExecMainExitTimestampMonotonic,ExecMainCode,ExecMainStatus", "--", Unit(id)], 4096);
+            ["show", "--property=LoadState,ActiveState,SubState,RemainAfterExit,MainPID,ExecMainPID,InvocationID,"
+                + "Type,ExitType,ControlGroup,Delegate,ProtectControlGroups,ProtectSystem,KillMode,Restart,"
+                + "ExecMainStartTimestampMonotonic,ExecMainExitTimestampMonotonic,ExecMainCode,ExecMainStatus", "--", Unit(id)], 4096, allowedExitCode: 1);
         return state.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Split('=', 2)).ToDictionary(fields => fields[0], fields => fields.Length == 2 ? fields[1] : "");
     }
@@ -237,21 +297,6 @@ internal static class LinuxMihomoProbeWitness
         && state.GetValueOrDefault("RemainAfterExit") == "yes" && state.GetValueOrDefault("Delegate") == "no"
         && state.GetValueOrDefault("ProtectControlGroups") == "yes"
         && state.GetValueOrDefault("KillMode") == "control-group" && state.GetValueOrDefault("Restart") == "no";
-
-    private static ulong? ReadStartTicks(int pid)
-    {
-        try
-        {
-            var stat = File.ReadAllText($"/proc/{pid.ToString(CultureInfo.InvariantCulture)}/stat");
-            var end = stat.LastIndexOf(')');
-            if (end < 0) throw new IOException("The version worker process identity is invalid.");
-            var fields = stat[(end + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            return fields.Length >= 20 && ulong.TryParse(fields[19], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks) && ticks != 0
-                ? ticks : throw new IOException("The version worker process start is unavailable.");
-        }
-        catch (FileNotFoundException) { return null; }
-        catch (DirectoryNotFoundException) { return null; }
-    }
 
     private static void RequireProtected(LinuxUnixSocketFileSystem fileSystem, string path, bool directory, UnixFileMode? mode = null)
     {

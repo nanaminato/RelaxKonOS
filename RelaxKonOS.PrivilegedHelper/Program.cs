@@ -19,6 +19,13 @@ if (OperatingSystem.IsLinux() && args is [LinuxMihomoProbeWitness.WorkerArgument
         ? await RelaxKonOS.Server.Proxy.Mihomo.MihomoVersionWorker.RunAsync(id) : 64;
 }
 
+if (OperatingSystem.IsLinux() && args is [LinuxMihomoProbeWitness.WorkerArgument, var hostedProbe, "socket"])
+{
+    if (!LinuxMihomoProbeWitness.HardenWorker()) return 77;
+    return Guid.TryParseExact(hostedProbe, "D", out var id) && id != Guid.Empty
+        ? await RelaxKonOS.Server.Proxy.Mihomo.MihomoVersionWorker.RunHostedAsync(id, new LinuxUnixSocketFileSystem().EffectiveUserId) : 64;
+}
+
 if (OperatingSystem.IsLinux() && args is ["--mihomo-version-witness", var witnessAction, var witnessOperation, var witnessUid])
     return await LinuxMihomoProbeWitness.RunCommandAsync(witnessAction, witnessOperation, witnessUid);
 

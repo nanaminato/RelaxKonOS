@@ -3562,8 +3562,8 @@ exec {shlex.quote(str(systemctl))} "$@"
         route = api + '/runtime/detect-external'
         module_path = '/api/v1.0/server/modules/relaxkonos.proxy'
         fence = queue.with_name('mihomo-version-probe.pending')
-        enabled = root / 'full-server/private-mihomo-version-fixture'
-        pids = root / 'full-server/private-mihomo-version-pids'
+        enabled = queue.with_name('private-mihomo-version-fixture')
+        pids = queue.with_name('private-mihomo-version-pids')
         server_cut = fixture.with_name('external-version-server-cut.fixture').is_file()
         request_body = {'engineId': 'mihomo', 'externalPath': str(fixture)}
         enabled.touch()
@@ -3592,6 +3592,26 @@ exec {shlex.quote(str(systemctl))} "$@"
         def start_probe():
             replies = []
 
+            def observe_processes():
+                try:
+                    dispatch = json.loads(fence.read_bytes())
+                    host = dispatch.get('Host')
+                    if host is None:
+                        return None
+                    owner = host['Pid']
+                    unit = 'rk-mihomo-probe-' + uuid.UUID(dispatch['OperationId']).hex + '.service'
+                    scope = Path('/sys/fs/cgroup/system.slice') / unit
+                    members = [int(pid) for pid in (scope / 'cgroup.procs').read_text().split()]
+                    parents = {pid: int(Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[1]) for pid in members}
+                    children = [pid for pid, parent in parents.items() if parent == owner]
+                    if len(children) == 1:
+                        detached = [pid for pid, parent in parents.items() if parent == children[0]]
+                        if len(detached) == 1:
+                            return dispatch, owner, children[0], detached[0]
+                except FileNotFoundError:
+                    pass
+                return None
+
             def read():
                 try:
                     replies.append(request(route, token, data=request_body))
@@ -3600,16 +3620,14 @@ exec {shlex.quote(str(systemctl))} "$@"
 
             thread = threading.Thread(target=read, daemon=True)
             thread.start()
-            until(pids.exists, 'original external process and detached descendant')
-            parent, descendant = map(int, pids.read_text().split())
-            stat = Path(f'/proc/{parent}/stat').read_text().rsplit(')', 1)[1].split()
-            owner = int(stat[1])
+            dispatch, owner, parent, descendant = until(observe_processes, 'original external process and detached descendant')
+            pids.write_text(f'{parent} {descendant}')
             assert 'mihomo-version-worker' in Path(f'/proc/{owner}/cmdline').read_text()
             until(lambda: Path(f'/proc/{descendant}/stat').read_text().rsplit(')', 1)[1].split()[3] == str(descendant),
                   'detached descendant session')
-            dispatch = json.loads(fence.read_bytes())
             assert leases() == 1 and uuid.UUID(dispatch['OperationId'])
-            assert dispatch['WorkerPid'] == owner and dispatch['WorkerStartedAt']
+            assert dispatch['WorkerPid'] == owner and dispatch['Host']['Pid'] == owner
+            assert dispatch['Host']['OperationId'] == dispatch['OperationId'] and dispatch['Host']['InvocationId']
             return thread, replies, owner, parent, descendant
 
         thread, replies, owner, parent, descendant = start_probe()
@@ -3635,37 +3653,30 @@ exec {shlex.quote(str(systemctl))} "$@"
         original_id = json.loads(original)['OperationId']
         original_processes = pids.read_bytes()
         if server_cut:
-            assert int(Path(f'/proc/{owner}/stat').read_text().rsplit(')', 1)[1].split()[1]) == server_pid
-            # Collect the original fixture worker's exit code after it is reparented.
-            prctl = ctypes.CDLL(None, use_errno=True).prctl
-            subreaper = ctypes.c_int()
-            assert prctl(37, ctypes.byref(subreaper), 0, 0, 0) == 0
-            assert prctl(36, 1, 0, 0, 0) == 0
-            try:
-                with contextmanager_pidfds(server_pid, owner, parent, descendant) as descriptors:
-                    signal.pidfd_send_signal(descriptors[0], signal.SIGKILL)
-                    assert worker.wait(timeout=12) == 0
-                    for descriptor in descriptors[1:]:
-                        ready = select.poll()
-                        ready.register(descriptor, select.POLLIN)
-                        assert ready.poll(8000), 'original probe process did not exit after Server cut'
-                    outcome = os.waitid(os.P_PIDFD, descriptors[1], os.WEXITED)
-                    assert outcome.si_pid == owner and outcome.si_code == os.CLD_EXITED and outcome.si_status == 0, outcome
-            finally:
-                assert prctl(36, subreaper.value, 0, 0, 0) == 0
+            assert int(Path(f'/proc/{owner}/stat').read_text().rsplit(')', 1)[1].split()[1]) == 1
+            with contextmanager_pidfds(server_pid, owner, parent, descendant) as descriptors:
+                signal.pidfd_send_signal(descriptors[0], signal.SIGKILL)
+                assert worker.wait(timeout=12) == 0
+                for descriptor in descriptors[1:]:
+                    ready = select.poll()
+                    ready.register(descriptor, 0)
+                    # A pidfd hangs up when the original task has been reaped.
+                    assert ready.poll(8000) == [(descriptor, select.POLLHUP)], 'original hosted probe process was not reaped'
             thread.join(timeout=7)
             assert replies == ['disconnected'] and fence.read_bytes() == original
-            assert all(not Path(f'/proc/{pid}').exists() for pid in (owner, parent, descendant))
             probe(record, 'external-version-server-cut-before-restart')
-            print(f'PASS EXTERNAL VERSION SERVER CUT: original={original_id}; owner={owner} exited 0; root={parent} detached={descendant} reaped', flush=True)
+            print(f'PASS EXTERNAL VERSION SERVER CUT: original={original_id}; fixed unit worker and descendants exited', flush=True)
         else:
             with contextmanager_pidfds(owner, parent, descendant) as descriptors:
                 signal.pidfd_send_signal(descriptors[0], signal.SIGKILL)
-                thread.join(timeout=7)
+                thread.join(timeout=12)
                 until(lambda: request(module_path, token)[1]['residency']['state'] == 'faulted', 'unknown external version cleanup quarantine')
                 assert leases() == 1 and fence.read_bytes() == original
                 for descriptor in descriptors[1:]:
-                    signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+                    try:
+                        signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
             os.kill(server_pid, signal.SIGKILL)
             assert worker.wait(timeout=12) == 0
         forced.unlink()
@@ -3676,12 +3687,26 @@ exec {shlex.quote(str(systemctl))} "$@"
         server_pid = int(marker('full-server-pid'))
         token = login()
         assert request(route, token, data=request_body)[0] == 503
-        assert fence.read_bytes() == original and pids.read_bytes() == original_processes
-        probe(record, 'external-version-unknown-after-restart')
-        print(f'PASS EXTERNAL VERSION UNKNOWN: original={original_id}; disabled startup refused and enabled restart did not redispatch', flush=True)
+        until(lambda: leases() == 0, 'original version recovery request scope drain')
+        assert pids.read_bytes() == original_processes
+        audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+        assert audit.count('operation=MihomoProbeHostStart ') == 4
+        assert audit.count(f'operation=MihomoProbeHostStart id={original_id} ') == 1
+        assert f'operation=MihomoProbeHostComplete id={original_id} ' in audit
+        if server_cut:
+            assert not fence.exists()
+            stored = Path('/var/lib/relaxkonos/mihomo-probe-witnesses') / (uuid.UUID(original_id).hex + '.exit.json')
+            terminal = json.loads(stored.read_bytes())
+            assert terminal['Dispatch']['OperationId'] == original_id and terminal['Dispatch']['Pid'] == owner
+            print(f'PASS EXTERNAL VERSION HOST RECONCILED: original={original_id}; sealed and released once, no redispatch', flush=True)
+        else:
+            assert fence.read_bytes() == original
+            print(f'PASS EXTERNAL VERSION UNKNOWN: original={original_id}; disabled startup refused and enabled restart did not redispatch', flush=True)
+        probe(record, 'external-version-after-restart')
         if fixture.with_name('external-version-manager-witness.fixture').is_file():
             verify_external_version_manager_witness(fixture)
-            assert fence.read_bytes() == original and pids.read_bytes() == original_processes
+            assert not fence.exists() if server_cut else fence.read_bytes() == original
+            assert pids.read_bytes() == original_processes
             probe(record, 'external-version-after-manager-witness')
         return server_pid
 

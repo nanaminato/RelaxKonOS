@@ -1,9 +1,11 @@
 using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
-if (args is ["-v"] && OperatingSystem.IsLinux()
-    && File.Exists(Path.Combine(Environment.CurrentDirectory, "private-mihomo-version-fixture")))
+if (args is ["-v"] && OperatingSystem.IsLinux())
 {
+    var fixtureDirectory = new[] { Environment.CurrentDirectory, "/var/lib/relaxkonos/proxy/state" }
+        .FirstOrDefault(directory => File.Exists(Path.Combine(directory, "private-mihomo-version-fixture")));
+    if (fixtureDirectory is null) throw new InvalidOperationException("The private version fixture is unavailable.");
     using var descendant = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/usr/bin/setsid")
     {
         UseShellExecute = false,
@@ -11,9 +13,12 @@ if (args is ["-v"] && OperatingSystem.IsLinux()
     }) ?? throw new InvalidOperationException("Unable to start the private version fixture descendant.");
     Console.WriteLine("Mihomo version fixture");
     Console.Error.WriteLine("Mihomo version fixture stderr");
-    var marker = Path.Combine(Environment.CurrentDirectory, "private-mihomo-version-pids");
-    await File.WriteAllTextAsync(marker + ".new", $"{Environment.ProcessId} {descendant.Id}");
-    File.Move(marker + ".new", marker);
+    if (fixtureDirectory == Environment.CurrentDirectory)
+    {
+        var marker = Path.Combine(fixtureDirectory, "private-mihomo-version-pids");
+        await File.WriteAllTextAsync(marker + ".new", $"{Environment.ProcessId} {descendant.Id}");
+        File.Move(marker + ".new", marker);
+    }
     await descendant.WaitForExitAsync();
     return;
 }

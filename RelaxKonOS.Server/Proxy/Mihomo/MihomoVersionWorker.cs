@@ -1,5 +1,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -20,9 +23,37 @@ internal static class MihomoVersionWorker
         RespectRequiredConstructorParameters = true
     };
 
-    internal static async Task<int> RunAsync(Guid? expectedOperationId = null)
+    internal static Task<int> RunAsync(Guid? expectedOperationId = null) =>
+        RunAsync(Console.In, Console.Out, expectedOperationId);
+
+    internal static UnixDomainSocketEndPoint HostEndpoint(Guid operation) => new("\0rk-mihomo-probe-" + operation.ToString("N"));
+
+    internal static (int Pid, uint Uid) HostPeer(Socket socket)
     {
-        var line = await Console.In.ReadLineAsync();
+        var credentials = new byte[12];
+        var size = credentials.Length;
+        if (GetSocketOption(socket.Handle, 1, 17, credentials, ref size) != 0 || size != credentials.Length)
+            throw new IOException("The external probe socket peer could not be verified.");
+        return (BitConverter.ToInt32(credentials), BitConverter.ToUInt32(credentials, 4));
+    }
+
+    internal static async Task<int> RunHostedAsync(Guid operation, uint uid)
+    {
+        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        await socket.ConnectAsync(HostEndpoint(operation));
+        if (HostPeer(socket).Uid != uid) return 77;
+        using var stream = new NetworkStream(socket);
+        using var input = new StreamReader(stream, leaveOpen: true);
+        await using var response = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
+        var result = await RunAsync(input, response, operation);
+        try { socket.Shutdown(SocketShutdown.Both); }
+        catch (SocketException) { /* The peer can disappear after the original probe drains. */ }
+        return result;
+    }
+
+    private static async Task<int> RunAsync(TextReader input, TextWriter response, Guid? expectedOperationId)
+    {
+        var line = await input.ReadLineAsync();
         if (line is null) return NoDispatch;
         var request = JsonSerializer.Deserialize<Request>(line, WireJson);
         if (request is null || request.OperationId == Guid.Empty
@@ -52,7 +83,7 @@ internal static class MihomoVersionWorker
         var output = ReadVersionAsync(process.StandardOutput);
         var errors = process.StandardError.BaseStream.CopyToAsync(Stream.Null);
         var exit = process.WaitForExitAsync();
-        var stop = Task.Run(Console.In.Read);
+        var stop = Task.Run(input.Read);
         var completed = await Task.WhenAny(exit, stop) == exit;
         if (tree is not null && !completed && !process.HasExited)
         {
@@ -73,11 +104,29 @@ internal static class MihomoVersionWorker
         await Task.WhenAll(exit, output, errors);
         if (completed)
         {
-            try { await Console.Out.WriteAsync(JsonSerializer.Serialize(new Result(request.OperationId, succeeded ? await output : null))); }
+            try { await response.WriteAsync(JsonSerializer.Serialize(new Result(request.OperationId, succeeded ? await output : null))); }
             catch (IOException) { /* The original Server can exit after the probe has drained. */ }
         }
         return 0;
     }
+
+    internal static ulong? ReadStartTicks(int pid)
+    {
+        try
+        {
+            var stat = File.ReadAllText($"/proc/{pid.ToString(CultureInfo.InvariantCulture)}/stat");
+            var end = stat.LastIndexOf(')');
+            if (end < 0) throw new IOException("The version worker process identity is invalid.");
+            var fields = stat[(end + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return fields.Length >= 20 && ulong.TryParse(fields[19], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks) && ticks != 0
+                ? ticks : throw new IOException("The version worker process start is unavailable.");
+        }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
+    }
+
+    [DllImport("libc", EntryPoint = "getsockopt")]
+    private static extern int GetSocketOption(IntPtr socket, int level, int name, byte[] value, ref int size);
 
     private static async Task<string> ReadVersionAsync(StreamReader reader)
     {
