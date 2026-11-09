@@ -675,7 +675,7 @@ Windows Release 模块边界、Helper socket、Proxy 常驻及 TUN 专项通过�
 
 重启窗口回归的原 ID 为 `6854e36e-bb70-4fe8-8b8f-7aa18a7bfe4e`，再次确认原未派发终态与单次启动。回归日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-start-reply-cut-regression.log` 的 SHA-256 为 `7bc758ddc7f9ae0c1559fd83e824e553d54167f3db52651f203caacbd7df3b42`，归档为 `d92da4860285d4b04fe9f5c44e499cf0cadb0fcef694897f6108368cc29b86f6`。回归复用了上一轮本地打包路径并覆盖该文件，上一轮原日志和归档摘要仍保留。回归包已另存。
 
-**已实现但实机未验证。** 同代有界查询无法取得可信未派发终态时，保留原门禁及清理责任。该窗口仍待单独实测。已确认实际进程退出与回收，对象释放、ALC 回收、隔离负载内存和生产收益分别待验。
+**已实现但实机未验证。** 同代有界查询无法取得可信未派发终态时，保留原门禁及清理责任。该窗口的独立实测见[原固定执行者异常退出时的同代门禁](#原固定执行者异常退出时的同代门禁)。已确认实际进程退出与回收，对象释放、ALC 回收、隔离负载内存和生产收益分别待验。
 
 **未实现或仍受门禁保护。** 原完成查询终帧丢失后的同一请求接续见下一节。整模块动态驻留与整机掉电仍待独立证据。Proxy 保持 resident。
 
@@ -687,6 +687,18 @@ Windows Release 模块边界、Helper socket、Proxy 常驻及 TUN 专项通过�
 
 Windows Release 模块边界、Helper socket、Proxy 常驻专项复跑通过，Linux x64 Release 构建及完整认证实机通过。首轮 Windows 模块边界曾在 Proxy 写入审计持久化断言处失败，复跑通过。首轮日志 SHA-256 为 `b146a020aff0eb1c00bfa9476e3c791bd1a61da47cf6504f7a9b067968a3abd8`。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-complete-reply-drop.log` 的 SHA-256 为 `f7a441184994aaf89930eb233fc2026d7caae3e7ee803a493042183a62d354bf`，归档为 `39fd26cf49c649211cdc6791702ee79175909085431ae687db7b95f461d1f9d8`。
 
-**已实现但实机未验证。** 本轮确认进程退出及清理。对象释放、ALC 回收、隔离负载内存和生产内存收益分别待验。已实现的同代未知终态门禁仍需独立故障窗口验收。
+**已实现但实机未验证。** 本轮确认进程退出及清理。对象释放、ALC 回收、隔离负载内存和生产内存收益分别待验。同代未知终态门禁的独立验收见下一节。
 
 **未实现或仍受门禁保护。** 缺少原登记、原退出及范围排空证据时维持原门禁。整模块动态驻留和整机掉电仍待独立证据，Proxy 保持 resident。
+
+### 原固定执行者异常退出时的同代门禁
+
+**已实现且已验证。** 在既有 Linux 私有 systemd 截留原 `MihomoProbeHostStart` 的成功终帧后，只向原固定执行者的 pidfd 发送 SIGKILL，确认原进程已回收，再丢弃原 IPC 终帧。原操作 `8aa3c107-b9ca-4bb9-bca7-e9f9dce69e6f`、invocation `d2bfd9b8-ec99-4fc0-8f75-7ec182497b51`、执行者 `3109` 已持久登记，原 cgroup 在中断前只有固定执行者。
+
+存活的 Server 只按原 ID 查询，始终无法确认未派发终态。原代次进入 faulted 并保留一个工作租约，原待核验记录逐字节保持，新探测返回 503。禁用启动拒绝越过该原记录。启用重启后，触发对账的请求仍返回 503。原记录保持，Helper 未封存终态，全程仅一次宿主启动。活动 TUN `1dccc19365ae4637af62a77e1a83cbcb` 及原入站 `63859810-d4fb-4a68-bd83-a478518a63dc` 的配置、真实流量和分流 DNS 连续。专属 cgroup 已清理，宿主共享服务、代理及 DNS 文件指纹一致。
+
+Windows Release 模块边界、Helper socket 和 Proxy 常驻专项通过。Linux x64 Release 完整认证实测日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-start-reply-unknown.log` 的 SHA-256 为 `28337dfe57d6b13f5a68d92b225fc989caf4d5e845635d6ef59b867119d1f2d5`，归档为 `6906c02d8d825a6fb2b0c610361590dd1ce2dfea25d9a428477357efd302e7e2`。
+
+**已实现但实机未验证。** 整机掉电与其他平台故障窗口需独立环境。此轮验证实际进程退出和回收。对象释放、ALC 回收、隔离负载内存和生产收益分别待验。
+
+**未实现或仍受门禁保护。** 信号退出或缺少可信原登记时保留待核验。整模块安全交接及已结案见证的长期回收策略继续开放。Proxy 保持 resident。

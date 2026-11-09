@@ -3708,7 +3708,7 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert not fence.exists() if server_cut else fence.read_bytes() == original
             assert pids.read_bytes() == original_processes
             probe(record, 'external-version-after-manager-witness')
-        for phase in ('start-reply-cut', 'start-reply-drop', 'complete-reply-drop'):
+        for phase in ('start-reply-cut', 'start-reply-drop', 'complete-reply-drop', 'start-reply-unknown'):
             if fixture.with_name(f'external-version-{phase}.fixture').is_file():
                 assert server_cut and not fence.exists()
                 server_pid = verify_external_probe_reply(server_pid, record, route, request_body, fence, forced, original_id, phase)
@@ -3719,6 +3719,7 @@ exec {shlex.quote(str(systemctl))} "$@"
         nonlocal worker, token
         live_drop = phase != 'start-reply-cut'
         complete_drop = phase == 'complete-reply-drop'
+        unknown = phase == 'start-reply-unknown'
         registry = Path('/var/lib/relaxkonos/mihomo-probe-witnesses')
         directory = root / 'probe-relay'
         directory.mkdir(mode=0o700)
@@ -3749,7 +3750,8 @@ exec {shlex.quote(str(systemctl))} "$@"
                 thread = threading.Thread(target=request_probe, daemon=True)
                 thread.start()
                 original = uuid.UUID(marker('probe-relay/held'))
-                pending = json.loads(fence.read_bytes())
+                pending_bytes = fence.read_bytes()
+                pending = json.loads(pending_bytes)
                 assert pending['OperationId'] == str(original)
                 assert leases() == 1 and (registry / (original.hex + '.launch.json')).is_file()
                 registered = json.loads((registry / (original.hex + '.json')).read_bytes())
@@ -3768,7 +3770,9 @@ exec {shlex.quote(str(systemctl))} "$@"
                     assert (scope / 'cgroup.procs').read_text().split() == [str(registered['Pid'])]
                     descriptor = os.pidfd_open(registered['Pid'])
                     try:
-                        if live_drop:
+                        if unknown:
+                            signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+                        elif live_drop:
                             (directory / 'drop').touch()
                         else:
                             os.kill(server_pid, signal.SIGKILL)
@@ -3778,8 +3782,20 @@ exec {shlex.quote(str(systemctl))} "$@"
                         assert event.poll(8000) == [(descriptor, select.POLLHUP)]
                     finally:
                         os.close(descriptor)
+                    if unknown:
+                        (directory / 'drop').touch()
                 thread.join(timeout=5)
-                if live_drop:
+                if unknown:
+                    module_path = '/api/v1.0/server/modules/relaxkonos.proxy'
+                    fault = until(lambda: state if (state := request(module_path, token)[1]['residency'])['state'] == 'faulted' else None,
+                                  'original generation retains unknown launch cleanup')
+                    assert fault['activeLeases'] == 1 and int(marker('full-server-pid')) == server_pid
+                    assert fence.read_bytes() == pending_bytes and not receipt.exists()
+                    assert request(route, token, data=request_body)[0] == 503
+                    probe(record, 'external-version-live-start-reply-unknown')
+                    os.kill(server_pid, signal.SIGKILL)
+                    assert worker.wait(timeout=12) == 0
+                elif live_drop:
                     assert len(replies) == 1 and isinstance(replies[0], tuple) and replies[0][0] == (200 if complete_drop else 503), replies
                     if complete_drop:
                         assert 'Mihomo' in replies[0][1]['version'] and receipt.read_bytes() == original_terminal
@@ -3797,15 +3813,25 @@ exec {shlex.quote(str(systemctl))} "$@"
                 if relay.poll() is None:
                     relay.terminate()
         forced.unlink()
-        if not live_drop:
+        if not live_drop or unknown:
             worker = launch('admission-disabled')
             assert worker.wait(timeout=15) == 0 and str(original) in (root / 'full-startup-refused').read_text()
         worker = launch('inbound-restart')
         server_pid = int(marker('full-server-pid'))
         token = login()
-        if not live_drop:
+        if not live_drop or unknown:
             assert request(route, token, data=request_body)[0] == 503
         until(lambda: leases() == 0, 'undispatched probe recovery scope drain')
+        audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+        assert audit.count('operation=MihomoProbeHostStart ') == 5
+        assert audit.count(f'operation=MihomoProbeHostStart id={original} ') == 1
+        if unknown:
+            assert fence.read_bytes() == pending_bytes and not receipt.exists()
+            assert audit.count(f'operation=MihomoProbeHostConfirmUndispatched id={original} ') >= 2
+            probe(record, 'external-version-original-' + phase)
+            print(f'PASS EXTERNAL VERSION START REPLY UNKNOWN: original={original}; invocation={registered["InvocationId"]}; '
+                  f'worker={registered["Pid"]}; same-generation lease and original gate retained; one host launch', flush=True)
+            return server_pid
         assert not fence.exists()
         terminal = receipt.read_bytes()
         if live_drop:
@@ -3818,9 +3844,6 @@ exec {shlex.quote(str(systemctl))} "$@"
                                   capture_output=True, text=True, check=True, timeout=10)
             assert json.loads(read.stdout)['success'] is expected
         assert receipt.read_bytes() == terminal
-        audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
-        assert audit.count('operation=MihomoProbeHostStart ') == 5
-        assert audit.count(f'operation=MihomoProbeHostStart id={original} ') == 1
         if complete_drop:
             assert audit.count(f'operation=MihomoProbeHostComplete id={original} ') >= 2
         else:
