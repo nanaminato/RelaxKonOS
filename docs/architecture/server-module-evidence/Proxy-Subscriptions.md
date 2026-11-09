@@ -241,3 +241,13 @@ Windows Release 订阅后台边界 40 项、独立程序集与驻留 31 项、�
 **已实现但实机未验证。** 对象释放由 Windows Release 弱引用验证，Linux 验证执行与进程退出。ALC 回收、隔离负载内存差值、生产内存收益各自待测。
 
 **未实现或仍受门禁保护。** 整模块安全交接仍开放。Proxy 保持 resident。
+
+### 订阅持锁与前台写入独立排空
+
+**已验证。** Linux Release 专属 systemd 的后台订阅激活 `beafc02d-8376-4c96-a60a-793ac41c8565` 已产生原生配置效果，Helper 应答被截留，原队列为 Running。前台设置写入竞争同一发布锁。客户端断开后，夹具暂扣前台作用域的异步清理，观察两项租约同时存在，原操作、原配置及真实转发保持。
+
+释放前台清理后，工作租约由两项降为一项，设置文件逐字节保持，原配置仅一次派发。随后强制退出 Server，重启按原 ID 只读恢复订阅终态，同键返回同一成功回执。未增加订阅下载，Helper 回执和安装修订保持，真实 HTTP 转发持续。受管 Mihomo 矩阵共 180 项通过，专属进程和 cgroup 已清理，宿主共享服务及代理文件指纹一致。
+
+Windows Release 订阅边界 44 项与模块里程碑通过。原始日志 `.artifacts/mb04-tun-full-zero-dns/linux-shared-gate-managed.log` 的 SHA-256 为 `8603e8c6c92f6f6d15de91c3f5347acc04f95fedd69f3916e14a451af616d887`，归档为 `4d639741da2325364ca621c6c54532dfb01619eabaa7c9034eac38b928afb63e`。Windows 模块日志 `.artifacts/mb04-tun-full-zero-dns/windows-shared-gate-module-boundary-milestones.log` 的 SHA-256 为 `3a7aaadcbc7e5bd803463bb0d3edb8dcad8e0c57106dd626f50efa87f3b75d25`。
+
+**剩余验收。** 前台先持发布锁时后台订阅的等待和排空需独立实测。本轮确认专属进程退出，对象释放、ALC 回收、隔离内存差值与生产收益分别待测。受管 TUN 管理选路和 HTTP/DNS 连续性沿用[前台配置写入实测](Proxy-Publication.md#前台配置写入的原代次)。整模块安全交接仍开放，Proxy 保持 resident。

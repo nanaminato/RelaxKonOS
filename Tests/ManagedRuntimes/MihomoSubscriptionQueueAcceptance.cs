@@ -173,10 +173,17 @@ internal static class MihomoSubscriptionQueueAcceptance
                 var activationKey = Guid.NewGuid().ToString("N");
                 Guid activationId;
                 RuntimeInstallationSnapshot activationReceipt;
+                var configureCalls = 0;
                 await using (var activationRelay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-subscription-activation.sock",
-                    socket, ct, static (kind, _) => kind == "MihomoRuntimeConfigure"))
+                    socket, ct, (kind, _) =>
+                    {
+                        if (kind != "MihomoRuntimeConfigure") return false;
+                        Interlocked.Increment(ref configureCalls);
+                        return true;
+                    }))
                 {
                     start.Environment["PrivilegedHelper__SocketPath"] = activationRelay.Path;
+                    start.Environment["RELAXKONOS_TEST_SETTINGS_CLEANUP"] = start.WorkingDirectory;
                     using var activation = ProxyAuthenticatedPublicationChecks.Start(start, OnError);
                     try
                     {
@@ -191,11 +198,16 @@ internal static class MihomoSubscriptionQueueAcceptance
                             || (await ReadOperationAsync(client, activationId)).State != ProxyOperationState.Running
                             || await ReadLeasesAsync(client) != 1 || Volatile.Read(ref requests) != 2 || !await probe(port))
                             throw new InvalidOperationException("Managed activation did not retain its original queue and native IDs while awaiting the reply.");
+                        await CancelCompetingSettingsAsync(client, activationId);
                         activation.Kill();
                         await activation.WaitForExitAsync(ct);
                         if (activation.ExitCode == 0) throw new InvalidOperationException("The managed activation Server did not crash.");
                     }
-                    finally { await ProxyAuthenticatedPublicationChecks.StopAsync(activation); }
+                    finally
+                    {
+                        start.Environment.Remove("RELAXKONOS_TEST_SETTINGS_CLEANUP");
+                        await ProxyAuthenticatedPublicationChecks.StopAsync(activation);
+                    }
                 }
                 start.Environment["PrivilegedHelper__SocketPath"] = socket;
                 using (var activationRecovery = ProxyAuthenticatedPublicationChecks.Start(start, OnError))
@@ -213,7 +225,7 @@ internal static class MihomoSubscriptionQueueAcceptance
                             || observed.Receipt != activationReceipt.Receipt
                             || observed.Installation.StateRevision != activationReceipt.Installation.StateRevision
                             || !selected.IsActive || selected.LastUpdatedAt != updated.RetrievedAt
-                            || Volatile.Read(ref requests) != 2 || !await probe(port))
+                            || Volatile.Read(ref requests) != 2 || Volatile.Read(ref configureCalls) != 1 || !await probe(port))
                             throw new InvalidOperationException("Managed activation recovery did not confirm the original receipt or replayed work.");
                         Console.WriteLine($"PASS MANAGED MIHOMO SUBSCRIPTION ACTIVATION CRASH: original {activationId}; native commit once and original receipt recovered");
                     }
@@ -290,6 +302,39 @@ internal static class MihomoSubscriptionQueueAcceptance
                 }
                 finally { await ProxyAuthenticatedPublicationChecks.StopAsync(recovery); }
 
+                async Task CancelCompetingSettingsAsync(HttpClient client, Guid id)
+                {
+                    var prefix = Path.Combine(start.WorkingDirectory, "full-settings-cleanup");
+                    var settingsBefore = await File.ReadAllBytesAsync(settingsFile, ct);
+                    var saved = await new ProxySettingsReader(paths).GetAsync(ct);
+                    var payload = new UpdateProxySettingsRequest(saved.SystemProxyEnabled, saved.AllowLan, saved.DnsEnabled,
+                        saved.Ipv6Enabled, saved.UnifiedDelay, saved.LogLevel == "error" ? "warning" : "error", saved.MixedPort,
+                        saved.AllowInsecureSubscriptionSources, saved.SystemProxyHost, saved.Tun, saved.SystemProxy);
+                    await File.WriteAllTextAsync(prefix + "-arm", "armed", ct);
+                    using var caller = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    var pendingWrite = client.PutAsJsonAsync(ProxyApiRoutes.Settings, payload, RelaxKonOSJsonOptions.Default, caller.Token);
+                    try
+                    {
+                        while (await ReadLeasesAsync(client) != 2)
+                        {
+                            if (pendingWrite.IsCompleted) throw new InvalidOperationException("The settings request did not wait for the original gate.");
+                            await Task.Delay(25, ct);
+                        }
+                        await caller.CancelAsync();
+                        try { using var unexpected = await pendingWrite; throw new InvalidOperationException("Expected the competing caller to disconnect."); }
+                        catch (OperationCanceledException) when (caller.IsCancellationRequested) { }
+                        while (!File.Exists(prefix + "-held")) await Task.Delay(25, ct);
+                        if (await ReadLeasesAsync(client) != 2 || (await publication.ReadAsync(ct)).Pending?.OperationId != id
+                            || (await ReadOperationAsync(client, id)).State != ProxyOperationState.Running || !await probe(port))
+                            throw new InvalidOperationException("The competing scope did not independently retain cleanup while activation owned the gate.");
+                    }
+                    finally { await File.WriteAllTextAsync(prefix + "-release", "release", CancellationToken.None); }
+                    while (!File.Exists(prefix + "-complete") || await ReadLeasesAsync(client) != 1) await Task.Delay(25, ct);
+                    if ((await publication.ReadAsync(ct)).Pending?.OperationId != id || Volatile.Read(ref configureCalls) != 1
+                        || !(await File.ReadAllBytesAsync(settingsFile, ct)).AsSpan().SequenceEqual(settingsBefore))
+                        throw new InvalidOperationException("Cancelling the competing writer changed the original publication or settings.");
+                    Console.WriteLine($"PASS MANAGED MIHOMO SHARED GATE DRAIN: activation {id}; settings cancelled, cleanup drained independently, one native dispatch");
+                }
             }
 
             async Task VerifyActiveRefreshResponseLossAsync()

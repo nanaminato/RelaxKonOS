@@ -13,6 +13,8 @@ internal static class StartupHook
             MihomoTunCleanupBarrier.Register(cleanupRoot);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_OVERVIEW_CLEANUP") is { } overviewRoot)
             MihomoTunCleanupBarrier.RegisterOverview(overviewRoot);
+        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SETTINGS_CLEANUP") is { } settingsRoot)
+            MihomoTunCleanupBarrier.RegisterSettings(settingsRoot);
 
         AppDomain.CurrentDomain.AssemblyLoad += static (_, args) =>
         {

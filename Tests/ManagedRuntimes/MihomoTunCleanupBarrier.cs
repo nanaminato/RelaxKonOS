@@ -4,12 +4,14 @@ using Microsoft.Extensions.Hosting;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Proxy;
 
-/// <summary>Adds an async disposable to the real TUN execution scope in the private Server fixture.</summary>
+/// <summary>Adds an async disposable to a real Proxy execution scope in the private Server fixture.</summary>
 internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsyncDisposable
 {
     internal static void Register(string root) => Register(root, typeof(MihomoManagedTunOperations), "full-tun-cleanup");
 
     internal static void RegisterOverview(string root) => Register(root, typeof(IProxyPlatformService), "full-overview-cleanup");
+
+    internal static void RegisterSettings(string root) => Register(root, typeof(IProxySettingsWriter), "full-settings-cleanup");
 
     private static void Register(string root, Type serviceType, string prefix)
     {
