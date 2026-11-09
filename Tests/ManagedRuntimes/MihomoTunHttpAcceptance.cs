@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Endpoints;
@@ -26,7 +27,7 @@ internal static class MihomoTunHttpAcceptance
     private static readonly Guid ProfileId = Guid.Parse("8fec824f-778c-4cf5-b81d-94fb4618cae5");
 
     internal static async Task RunAsync(string root, MihomoPublicationStore store, IProxyPlatformPaths paths,
-        IProxyControllerSecretStore secrets, IServerModeResolver mode, string socket, bool firstRun, bool pending)
+        IProxyControllerSecretStore secrets, IServerModeResolver mode, string socket, bool firstRun, bool pending, bool manual)
     {
         var quarantine = !firstRun && pending && File.Exists(Path.Combine(paths.GetStateDirectory(), "http-quarantine"));
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root, EnvironmentName = "Testing" });
@@ -37,6 +38,8 @@ internal static class MihomoTunHttpAcceptance
         {
             options.AddPolicy("ProxyDangerous", policy => policy.RequireAuthenticatedUser().RequireClaim("role", "controller"));
             options.AddPolicy("ProxyRead", policy => policy.RequireAuthenticatedUser().RequireClaim("role", "controller", "observer"));
+            options.AddPolicy(RuntimeCatalogEndpoints.ReadPolicy, policy => policy.RequireAuthenticatedUser());
+            options.AddPolicy(RuntimeCatalogEndpoints.ManagePolicy, policy => policy.RequireClaim("permission", "manage"));
         });
         var ids = new HashSet<string> { ServerModules.ProxyId };
         builder.Services.AddSingleton(services => new ModuleResidencyCoordinator([new ResidentModuleWorkRuntimeFactory(ServerModules.ProxyId)],
@@ -50,7 +53,7 @@ internal static class MihomoTunHttpAcceptance
         builder.Services.AddSingleton(new MihomoRuntimeAuthorizationProvider(store, paths, secrets));
         builder.Services.AddSingleton(services => new MihomoRuntimeService(
             new PublicationTransport(socket, paths.GetStateDirectory(), store, services.GetRequiredService<ModuleResidencyCoordinator>(),
-                firstRun, pending, quarantine),
+                firstRun, pending, quarantine || manual),
             store, services.GetRequiredService<MihomoRuntimeAuthorizationProvider>(), mode, new DirectDownloads()));
         builder.Services.AddSingleton<IProxyProfileRepository>(MihomoPublicationTransactionChecks.Stub<IProxyProfileRepository>(member =>
             member.Name == nameof(IProxyProfileRepository.GetActiveAsync)
@@ -68,7 +71,18 @@ internal static class MihomoTunHttpAcceptance
         builder.Services.AddTransient<IMihomoConfigurationPublicationRecovery>(services =>
             services.GetRequiredService<MihomoConfigurationPublicationService>());
         builder.Services.AddTransient<MihomoPublicationRecoveryService>();
-        builder.Services.AddHostedService<MihomoPublicationRecoveryScheduler>();
+        if (manual)
+        {
+            builder.Services.AddSingleton(mode);
+            builder.Services.AddSingleton(new RuntimeCatalogService(
+                new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+                    NullLogger<UnixSocketPrivilegedOperationTransport>.Instance), new DirectDownloads()));
+            builder.Services.AddSingleton<IHostElevationSessionStore, MihomoRuntimeHttpChecks.Elevations>();
+            builder.Services.AddTransient(services => new MihomoRuntimeRecoveryService(store,
+                services.GetRequiredService<MihomoRuntimeService>(), services.GetRequiredService<IMihomoConfigurationPublicationRecovery>(),
+                null!, null!, workLeases: services.GetRequiredService<IProxyWorkLeaseSource>()));
+        }
+        else builder.Services.AddHostedService<MihomoPublicationRecoveryScheduler>();
         await using var app = builder.Build();
         if (quarantine)
         {
@@ -111,6 +125,7 @@ internal static class MihomoTunHttpAcceptance
             finally { context.Response.Body = original; }
         });
         app.MapTunOperationEndpoints();
+        if (manual) app.MapRuntimeCatalogEndpoints();
         app.MapGet("/api/v1.0/proxy/fixture-work-leases", (ModuleResidencyCoordinator coordinator) =>
             coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases ?? 0).RequireAuthorization("ProxyDangerous");
         await app.StartAsync();
@@ -126,7 +141,7 @@ internal static class MihomoTunHttpAcceptance
     }
 
     private sealed class PublicationTransport(string socket, string state, MihomoPublicationStore store,
-        ModuleResidencyCoordinator coordinator, bool firstRun, bool pending, bool quarantine)
+        ModuleResidencyCoordinator coordinator, bool firstRun, bool pending, bool managementLeasePresent)
         : IPrivilegedOperationTransport
     {
         private readonly UnixSocketPrivilegedOperationTransport inner = new(new() { SocketPath = socket },
@@ -157,9 +172,9 @@ internal static class MihomoTunHttpAcceptance
             }
             if (!firstRun && pending && request.Operation == PrivilegedOperationKind.MihomoRuntimeRecover)
             {
-                var expectedLeases = quarantine ? 1 : 0;
+                var expectedLeases = managementLeasePresent ? 1 : 0;
                 if (store.Gate.CurrentCount != 0 || coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != expectedLeases)
-                    throw new InvalidOperationException("The original Core recovery did not independently hold the publication gate through the Helper response.");
+                    throw new InvalidOperationException("The original recovery did not hold its publication gate and expected management leases through the Helper response.");
                 var ready = Path.Combine(state, "http-recovery-reply");
                 await File.WriteAllTextAsync(ready + ".new",
                     $"{request.RuntimeLifecycle!.RecoveryOperationId!.Value:N} {request.OperationId!.Value:D}");
@@ -187,14 +202,23 @@ internal static class MihomoTunHttpAcceptance
     {
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
-            var role = Request.Headers.Authorization.ToString() switch
+            var identity = Request.Headers.Authorization.ToString();
+            var role = identity switch
             {
                 "Bearer controller" => "controller",
+                "Bearer installer" => "controller",
+                "Bearer elevated-installer" => "controller",
                 "Bearer observer" => "observer",
                 _ => null
             };
             if (role is null) return Task.FromResult(AuthenticateResult.NoResult());
-            Claim[] claims = [new(ClaimTypes.NameIdentifier, "private-http-" + role), new("role", role)];
+            var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, "private-http-" + role), new("role", role) };
+            if (identity is "Bearer installer" or "Bearer elevated-installer")
+            {
+                claims.Add(new("permission", "manage"));
+                claims.Add(new("installation:install", "mihomo"));
+                if (identity == "Bearer elevated-installer") claims.Add(new("test-elevated", "true"));
+            }
             return Task.FromResult(AuthenticateResult.Success(new(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name)), Scheme.Name)));
         }
     }

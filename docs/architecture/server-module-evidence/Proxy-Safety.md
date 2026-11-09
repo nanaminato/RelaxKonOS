@@ -1388,6 +1388,16 @@ Linux Release 原发布 `30e1c5cb-a041-4d26-8ff2-754f3bf3075f` 的完整认证�
 
 Windows Release 的注册 25 项、发布事务 113 项、运行时 HTTP 57 项、Core 安全和模块里程碑通过。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-managed-tun-scope.log` 的 SHA-256 为 `775f165d19792d011863e912e96640c6100047db328e1435577c1122ca59e348`，归档为 `74824cff3a2630c587a34800dbeb57b2aa474ed9dafddf7c3292ae0031313c8a`。
 
-**已实现但实机未验证。** 显式人工重试的受管网络发布租约已移至调用方，通用运行时 HTTP 回归通过，实际待核验网络发布的显式重试需单独验收。此轮核对了真实进程退出。对象释放、ALC、隔离负载内存及生产收益分别待测。
+**已实现但实机未验证。** 显式人工重试见下一节。此轮核对了真实进程退出。对象释放、ALC、隔离负载内存及生产收益分别待测。
 
 **未实现或仍受门禁保护。** Proxy 继续 resident，整模块动态交接仍开放。
+
+### 受管 TUN 显式原 ID 重试
+
+**已验证。** Linux 专属 systemd 使用生产 `MihomoRecoveryRetry` 路由、夹具身份和提权见证以及真实 Helper。拥有安装权限但缺提权的请求返回 403，提权后错误 ID 返回 409，两个请求均未派发。原 `5f6559ee-3446-4585-95c1-15076acc273f` 的补偿恢复配置与网络基线后暂扣终帧。原发布锁仍在，管理请求持一项工作租约，原队列逐字节保持。
+
+放行原终帧后按原 ID 返回 `Interrupted`，归还租约。原管理队列按原回执确认终态。Server 再次启动后同键及按 ID 返回同一终态，Helper 原回执未变。全过程一次 `MihomoRuntimeRecover`、一次规则清理，恢复代次零配置派发。正常启动时由 Core 自动恢复的独立用例同批通过。首轮夹具按数值比较 HTTP 的字符串终态，修正断言后通过。
+
+Windows Release 运行时 HTTP 57 项、发布 113 项、Core 安全和模块里程碑通过。Linux 两组专属进程与 cgroup 已清理，宿主运行时服务、代理及 resolver 文件指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-explicit-tun-retry-final.log` 的 SHA-256 为 `502b205de4da577d3f7947b435ee12f75957b847c9c17607c6fe89db7c6b64e0`，归档为 `708acfd68c144b57d3fcbcaf57c1edf6033ba38f4d8450dc510e00d740151ec5`。
+
+**仍待验收。** 本场景确认真实进程退出。PAM 提权与显式重试的联合实机、对象释放、ALC、隔离内存与生产收益分别开放。Proxy 保持 resident。

@@ -129,7 +129,7 @@ internal static class MihomoTunDescriptorAcceptance
         driftedPlan = driftedPlan with { NetworkIntentIdentity = MihomoRuntimeMaterial.ConfigurationTunIntentIdentity(operationId, driftedPlan, network) };
         await RefusesAsync("runtime.network_intent_invalid", () => publications.BeginConfigurationAsync(operationId, confirmed.Revision,
             autoRoute, driftedPlan, CancellationToken.None, tunIntent: network));
-        if (serverCase is "ipc-server-commit" or "ipc-server-pending" or "ipc-http-commit" or "ipc-http-pending" or "ipc-http-action")
+        if (serverCase is "ipc-server-commit" or "ipc-server-pending" or "ipc-http-commit" or "ipc-http-pending" or "ipc-http-action" or "ipc-http-manual-retry")
         {
             var input = IpcPlanPath(paths);
             await File.WriteAllBytesAsync(input, RuntimeJson.Serialize(new IpcPublicationInput(operationId, serverCase, frozen)));
@@ -199,10 +199,12 @@ internal static class MihomoTunDescriptorAcceptance
             throw new InvalidOperationException("The managed publication IPC Server requires the isolated unprivileged worker.");
         var paths = new AuthorizationPaths(root);
         var input = RuntimeJson.Read<IpcPublicationInput>(await File.ReadAllBytesAsync(IpcPlanPath(paths)));
-        if (input.Scenario is ("ipc-http-commit" or "ipc-http-pending" or "ipc-http-action") && phase is ("http" or "http-recover"))
+        if (input.Scenario is ("ipc-http-commit" or "ipc-http-pending" or "ipc-http-action" or "ipc-http-manual-retry")
+            && phase is ("http" or "http-recover"))
         {
+            var manual = input.Scenario == "ipc-http-manual-retry";
             await MihomoTunHttpAcceptance.RunAsync(root, Publications(paths), paths, paths, paths, IpcSocketPath,
-                phase == "http", input.Scenario == "ipc-http-pending");
+                phase == "http", manual || input.Scenario == "ipc-http-pending", manual && phase == "http-recover");
             return;
         }
         if (input.Scenario is not ("ipc-server-commit" or "ipc-server-pending"))

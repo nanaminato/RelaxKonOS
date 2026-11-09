@@ -332,7 +332,7 @@ internal static class MihomoRuntimeHttpChecks
             return Task.FromResult(AuthenticateResult.Success(new(new ClaimsPrincipal(new ClaimsIdentity(claims, "fixture")), "fixture")));
         }
     }
-    private sealed class Elevations : IHostElevationSessionStore
+    internal sealed class Elevations : IHostElevationSessionStore
     {
         public bool IsGranted(ClaimsPrincipal principal, HostElevationCapability capability, string target) =>
             principal.HasClaim("permission", "manage") && principal.HasClaim("test-elevated", "true")

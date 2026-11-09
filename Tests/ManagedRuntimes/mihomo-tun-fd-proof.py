@@ -1711,7 +1711,8 @@ def proof_server_publication(owner, operation, operation_dir, previous, case, ip
 
 
 def proof_http_publication(owner, ipc, previous, case):
-    pending = case == 'ipc-http-pending'
+    manual = case == 'ipc-http-manual-retry'
+    pending = manual or case == 'ipc-http-pending'
     action_cuts = case == 'ipc-http-action'
     state_dir = root / 'authorization-state'
     api = 'http://192.0.2.2:18970/api/v1.0/proxy'
@@ -1728,8 +1729,9 @@ def proof_http_publication(owner, ipc, previous, case):
         return path
 
     def http(path, key=None, data=None, role='controller', drop=False):
+        absolute = path.startswith('/api/v1.0/')
         args = ['ip', 'netns', 'exec', 'rk-http-client', '/usr/bin/curl', '--noproxy', '*', '--silent', '--show-error',
-                '--max-time', '1.5' if drop else '5', '--write-out', '\n%{http_code}']
+                '--max-time', '1.5' if drop else '12' if absolute else '5', '--write-out', '\n%{http_code}']
         if role:
             args.extend(['-H', f'Authorization: Bearer {role}'])
         if key:
@@ -1738,7 +1740,8 @@ def proof_http_publication(owner, ipc, previous, case):
             args.extend(['-H', 'Content-Type: application/json', '--data', json.dumps(data)])
         if drop:
             args.extend(['-H', 'X-Fixture-Drop: accepted'])
-        response = subprocess.run([*args, api + path], capture_output=True, text=True, timeout=8)
+        endpoint = api.removesuffix('/api/v1.0/proxy') + path if absolute else api + path
+        response = subprocess.run([*args, endpoint], capture_output=True, text=True, timeout=15 if absolute else 8)
         if drop:
             assert response.returncode == 28, (response.stdout, response.stderr)
             return
@@ -1855,6 +1858,56 @@ def proof_http_publication(owner, ipc, previous, case):
     scope_policy.unlink()
     probe(record, 'http-restarted-helper')
     (state_dir / 'http-ready').unlink()
+    if manual:
+        queue = state_dir / 'proxy-operations.json'
+        original_queue = queue.read_bytes()
+        retry = '/api/v1.0/managed-runtimes/mihomo/recovery/retry'
+        operation_id = str(uuid.UUID(operation))
+        body = {'operationId': operation_id}
+        with subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity) as retry_owner:
+            replies = []
+            response = threading.Thread(target=lambda: replies.append(http(retry, data=body, role='elevated-installer')), daemon=True)
+            try:
+                wait_file('http-ready', retry_owner)
+                status, forbidden = http(retry, data=body, role='installer')
+                assert status == 403 and forbidden['code'] == 'elevation-required'
+                status, mismatch = http(retry, data={'operationId': str(uuid.uuid4())}, role='elevated-installer')
+                assert status == 409 and mismatch['code'] == 'runtime.recovery_target_conflict'
+                assert 'operation=MihomoRuntimeRecover ' not in ipc.log.read_text() and queue.read_bytes() == original_queue
+                response.start()
+                original, correlation = wait_file('http-recovery-reply', retry_owner).read_text().split()
+                assert original == operation and response.is_alive() and http('/fixture-work-leases') == (200, 1)
+                assert queue.read_bytes() == original_queue and config.read_bytes() == mirror.read_bytes() == previous.read_bytes()
+                assert network_baseline() == record['baseline'] and device not in devices()
+                (state_dir / 'http-recovery-release').touch()
+                response.join(timeout=8)
+                assert len(replies) == 1 and replies[0][0] == 200
+                assert replies[0][1]['operationId'] == operation_id and replies[0][1]['outcome'] == 'Interrupted', replies
+                drained()
+                finished = terminal(operation, 'proxy.config_apply_failed')
+                assert accepted('/tun/enable', key, {'profileId': profile}) == operation
+                assert http('/operations/' + operation_id) == (200, finished)
+                observed = json.loads(checkpoint(record, 'observe-commit'))
+                assert observed['receipt']['outcome'] == 'Interrupted' and uuid.UUID(observed['receipt']['operationId']).hex == operation
+                assert observed['configurationIdentity'].lower() == hashlib.sha256(previous.read_bytes()).hexdigest()
+                log = ipc.log.read_text()
+                assert log.count('operation=MihomoRuntimeRecover ') == 1 and 'operation=MihomoRuntimeConfigure ' not in log
+                assert f'operation=MihomoRuntimeRecover id={correlation} uid={ipc.uid} success=True' in log
+                assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
+            finally:
+                retry_owner.kill()
+        (state_dir / 'http-ready').unlink()
+        with subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity) as reopened:
+            try:
+                wait_file('http-ready', reopened)
+                assert accepted('/tun/enable', key, {'profileId': profile}) == operation
+                assert http('/operations/' + operation_id) == (200, finished)
+                assert json.loads(checkpoint(record, 'observe-commit'))['receipt'] == observed['receipt']
+                assert ipc.log.read_text().count('operation=MihomoRuntimeRecover ') == 1
+            finally:
+                reopened.kill()
+        print(f'PASS TUN EXPLICIT RETRY LEASE: original={operation}; recovery IPC={correlation}; one lease, one compensation and original queue terminal after restart')
+        return
     if pending:
         queue = state_dir / 'proxy-operations.json'
         with management_route_drift(record['routing_table']) as drift:
@@ -4918,7 +4971,7 @@ def proof():
         ip('link', 'set', 'rk-peer', 'netns', 'rk-http-client')
         ip('netns', 'exec', 'rk-http-client', 'ip', 'link', 'set', 'rk-peer', 'up')
         ip('netns', 'exec', 'rk-http-client', 'ip', 'address', 'add', '192.0.2.1/24', 'dev', 'rk-peer')
-    if case in ('dns-receipt', 'dns-owner', 'dns-registration', 'ipc-server-pending', 'ipc-http-pending'):
+    if case in ('dns-receipt', 'dns-owner', 'dns-registration', 'ipc-server-pending', 'ipc-http-pending', 'ipc-http-manual-retry'):
         install_dns_ack_boundary()
     if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited', 'dns-partial-exited', 'dns-partial-live',
                 'descriptor-live-stop', 'ipc-http-zero-dns'):
