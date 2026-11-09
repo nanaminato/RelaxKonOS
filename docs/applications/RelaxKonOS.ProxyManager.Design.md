@@ -1140,7 +1140,7 @@ previous version
 
 # 22. External Runtime
 
-外部版本探测在启动前记录原操作和执行者身份。当前 Proxy 代次持有请求及清理责任，取消或超时后仍等待原进程树退出、标准输出和标准错误排空。清理缺少确证时保留原记录，后续探测返回 503。Linux 专属环境已验证仅 Server 中断时原执行者可自行排空。重启后的 Server 缺少原退出见证时仍维持门禁。专属 Linux 已确认 PID 1 能保存固定执行者的原 invocation 终态，生产受限读取与原 ID 对账仍待接入。受管安装、发布和 TUN 恢复继续由各自原台账负责。[探测实测](../architecture/server-module-evidence/Proxy-Observation.md#外部-mihomo-版本探测的独占执行与重启门禁)
+外部版本探测在启动前记录原操作和执行者身份。当前 Proxy 代次持有请求及清理责任，取消或超时后仍等待原进程树退出、标准输出和标准错误排空。清理缺少确证时保留原记录，后续探测返回 503。Linux 专属环境已验证仅 Server 中断时原执行者可自行排空。重启后的 Server 缺少原退出见证时仍维持门禁。专属 Linux 已确认 PID 1 能保存固定执行者的原 invocation 终态，正常版本响应会核对原操作 ID。固定执行者区分派发前退出与派发后排空，生产受限读取与原 ID 对账仍待接入。受管安装、发布和 TUN 恢复继续由各自原台账负责。[探测实测](../architecture/server-module-evidence/Proxy-Observation.md#外部-mihomo-版本探测的独占执行与重启门禁)
 
 允许管理员指定：
 

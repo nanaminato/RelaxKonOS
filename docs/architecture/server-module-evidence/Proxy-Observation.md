@@ -582,3 +582,16 @@ Windows Release 模块边界和控制器回归通过。Linux 专属 systemd 通�
 复验沿用 `ipc-http-inbound-tun`、同构建 Linux 测试 apphost 和空文件 `external-version-server-cut.fixture`，另在测试程序集旁放置空文件 `external-version-manager-witness.fixture`。Windows Release 模块边界回归通过。Linux 联合日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-manager-witness.log` SHA256 `7afd7f96ad1dc6abfc965eee455f17176f4b7c4c3139aa3f8d48609e73627d8d`，归档 SHA256 `f8338b5e5f8a27dae1886c9f38cc078aaa3c107c8a0fc1b467af3b0bc6ed2247`。
 
 **未实现或仍受门禁保护。** 下一项将固定低权限执行者登记到独立宿主权威，并仅开放查询已登记的原记录。要验证匹配的原操作、执行者、boot、启动时刻、invocation 和排空终态后再解除门禁。日志缺失、权限不足或身份不匹配时继续拒绝新派发。当前结果确认试验进程退出与专属 cgroup 清理。整模块对象释放、ALC 回收、隔离负载内存和生产收益独立待验。Proxy 保持 resident。
+
+
+### 外部探测的派发退出语义与原响应
+
+**已实现且已验证。** 固定执行者的私有请求包含原操作 ID。正常版本响应带回该 ID，Server 拒绝缺失、歧义或不匹配的响应。执行者在收到有效请求前退出或无法启动原探测时返回 65。退出码 0 表示已派发，原进程和两路输出均已排空。Linux Server 存活时仍须等待原执行者及外层管道结束。中断造成原 Server 无法取得外层响应时，原持久门禁继续生效。
+
+Linux 私有 systemd 实测真实版本与原生探测失败的 HTTP 结果，客户端取消后原进程树和两路输出均已排空。只中断 Server 的原探测 `18d458e8-fb96-4f74-875f-c2bc3a97d71e` 的原执行者以 0 退出，重启仍保留原门禁并拒绝重派。两个独立见证单元分别验证已派发 invocation `5517ae3db7b54bbb941795c5999b75e5` 的 PID 1 成功终态，以及输入管道提前关闭的 invocation `0ec284837d364651bcebf6deae608e62` 的退出码 65、无探测子进程和无成功终态。首轮直连夹具发送紧凑 GUID，未启动见证探测子进程。将夹具改为与生产相同的标准格式后复验通过。
+
+原入站 `d18a9751-75ae-4889-973c-272c7c4390e1` 与活跃 TUN `ddcc3a983c7848a0858d43af355432b4` 的原台账、配置身份、管理选路、HTTP 和分流 DNS 均通过核对。独立补偿作业用例 `1a80a68c95a84a6586b1fa7d194c0ddf` 按原 job `39`、PID `510` 和 invocation `04c9fd5bd0874f9bab48ce596e04c646` 完成对账，同键原终态和租约排空一致，只派发一次 StartUnit。两个专属 cgroup 清理完毕，共享服务及网络文件指纹一致。
+
+Windows Release 模块边界及控制器回归通过。Linux 联合日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-dispatch-witness-final.log` SHA256 `d8bc99f128f02bda82ed62e8c77e2784abbdb109d9a92ce5b0c5e177a166998d`，归档 SHA256 `a0cb03e5aa3d8d142a4865cc42c04817a8773b0de0b7aa0fed33eb5baa6db1f5`。
+
+**仍待验收。** 生产需持久登记固定低权限执行者的派发身份，宿主只读入口仅查询已登记的原记录。Helper 的闭合协议禁止把通用可执行路径、任意命令参数、工作目录或进程环境用作执行输入。独立见证缺失时保留原门禁。Windows 原生 Job 的故障窗口、整模块对象释放、ALC 回收、隔离负载内存及生产收益分别开放。Proxy 保持 resident。

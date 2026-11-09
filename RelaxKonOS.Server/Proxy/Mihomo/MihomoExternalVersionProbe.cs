@@ -73,7 +73,8 @@ internal sealed class MihomoExternalVersionProbe(IProxyPlatformPaths paths) : IA
         {
             if (OperatingSystem.IsWindows()) WindowsProcessTreeJob.Attach(job!, process);
             PersistDispatch(process);
-            await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(executable).AsMemory(), budget.Token);
+            var request = new MihomoVersionWorker.Request(operationId, executable);
+            await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request).AsMemory(), budget.Token);
             await process.StandardInput.FlushAsync(budget.Token);
             await drain.WaitAsync(budget.Token);
         }
@@ -83,11 +84,22 @@ internal sealed class MihomoExternalVersionProbe(IProxyPlatformPaths paths) : IA
         if (OperatingSystem.IsWindows())
             await WindowsProcessTreeJob.ConfirmExitAsync(job!, CancellationToken.None);
         await drain.WaitAsync(TimeSpan.FromSeconds(12));
-        if (!OperatingSystem.IsWindows() && process.ExitCode != 0)
+        if (!OperatingSystem.IsWindows() && process.ExitCode is not (0 or MihomoVersionWorker.NoDispatch))
             throw new IOException("The external Mihomo worker did not confirm process tree cleanup.");
-        var version = cancelled || process.ExitCode != 0 ? null : await output;
+        var version = cancelled || process.ExitCode != 0 ? null : ReadWorkerVersion(await output);
         ClearMarker();
         return version;
+    }
+
+    private string? ReadWorkerVersion(string output)
+    {
+        try
+        {
+            var result = JsonSerializer.Deserialize<MihomoVersionWorker.Result>(output, MihomoVersionWorker.WireJson);
+            if (result?.OperationId == operationId) return result.Version;
+        }
+        catch (JsonException error) { throw new IOException("The external Mihomo worker reply is invalid.", error); }
+        throw new IOException("The external Mihomo worker reply does not match the original operation.");
     }
 
     private bool TryReserve()

@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Terminal;
 
@@ -9,16 +10,28 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 
 internal static class MihomoVersionWorker
 {
+    internal const int NoDispatch = 65;
+    internal sealed record Request(Guid OperationId, string Executable);
+    internal sealed record Result(Guid OperationId, string? Version);
+    internal static readonly JsonSerializerOptions WireJson = new()
+    {
+        AllowDuplicateProperties = false,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        RespectRequiredConstructorParameters = true
+    };
+
     internal static async Task<int> RunAsync()
     {
-        var request = await Console.In.ReadLineAsync();
-        if (request is null) return 0;
-        var path = JsonSerializer.Deserialize<string>(request);
-        if (path is null || !MihomoRuntimeManager.TryResolveExternalExecutable(path, out var executable)) return 0;
+        var line = await Console.In.ReadLineAsync();
+        if (line is null) return NoDispatch;
+        var request = JsonSerializer.Deserialize<Request>(line, WireJson);
+        if (request is null || request.OperationId == Guid.Empty
+            || !MihomoRuntimeManager.TryResolveExternalExecutable(request.Executable, out var executable))
+            return NoDispatch;
 
         // The Windows parent assigns this worker to its Job before sending the request.
         var tree = OperatingSystem.IsLinux() ? new LinuxTerminalProcessTree() : null;
-        if (tree is null && !OperatingSystem.IsWindows()) return 0;
+        if (tree is null && !OperatingSystem.IsWindows()) return NoDispatch;
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo(executable)
@@ -32,8 +45,8 @@ internal static class MihomoVersionWorker
         };
         TrustedProcessEnvironment.Apply(process.StartInfo);
         process.StartInfo.ArgumentList.Add("-v");
-        try { if (!process.Start()) return 0; }
-        catch (Win32Exception) { return 0; }
+        try { if (!process.Start()) return NoDispatch; }
+        catch (Win32Exception) { return NoDispatch; }
         process.StandardInput.Close();
         var output = ReadVersionAsync(process.StandardOutput);
         var errors = process.StandardError.BaseStream.CopyToAsync(Stream.Null);
@@ -57,7 +70,11 @@ internal static class MihomoVersionWorker
         }
         // On Windows the owning parent can terminate the Job if any member keeps the pipes open.
         await Task.WhenAll(exit, output, errors);
-        if (succeeded) await Console.Out.WriteAsync(await output);
+        if (completed)
+        {
+            try { await Console.Out.WriteAsync(JsonSerializer.Serialize(new Result(request.OperationId, succeeded ? await output : null))); }
+            catch (IOException) { /* The original Server can exit after the probe has drained. */ }
+        }
         return 0;
     }
 
