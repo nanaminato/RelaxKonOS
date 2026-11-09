@@ -60,7 +60,7 @@ internal static class MihomoTunHttpAcceptance
         builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddSingleton<ProxyOperationStore>();
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
-        builder.Services.AddSingleton<ProxyLifecycleOperations>();
+        builder.Services.AddScoped<ProxyLifecycleOperations>();
         builder.Services.AddTransient<MihomoManagedTunOperations>();
         builder.Services.AddTransient<MihomoConfigurationPublicationService>();
         builder.Services.AddTransient<MihomoPublicationRecoveryService>();

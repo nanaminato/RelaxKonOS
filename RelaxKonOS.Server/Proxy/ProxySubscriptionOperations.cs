@@ -15,14 +15,16 @@ public sealed class ProxySubscriptionOperations(ProxyOperationStore operations, 
             ProxySubscriptionOperation.Activate => "subscription.activate",
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
-        return operations.EnqueueIdentifiedAsync(key, kind, (operationId, _, holdExecution, token) =>
-            ProxyOperationScope.RunAsync(scopes, actor, kind, async (services, stopping) =>
+        var scopeFactory = scopes;
+        var ledger = operations;
+        return ledger.EnqueueIdentifiedAsync(key, kind, (operationId, _, holdExecution, token) =>
+            ProxyOperationScope.RunAsync(scopeFactory, actor, kind, async (services, stopping) =>
             {
                 var actions = services.GetRequiredService<IProxySubscriptionActions>();
                 var code = ProxySubscriptionContentNormalizer.Acquire();
                 holdExecution(code);
                 var executor = code.Create<IProxyQueuedSubscriptionExecutor>(
-                    "RelaxKonOS.Server.Proxy.ProxyQueuedSubscriptionExecutor", actions, new Batch(operations, actions));
+                    "RelaxKonOS.Server.Proxy.ProxyQueuedSubscriptionExecutor", actions, new Batch(ledger, actions));
                 return await RunAsync(executor, operation, subscriptionId, operationId, stopping);
             }, token), ct);
     }

@@ -73,10 +73,11 @@ internal static class MihomoRegistrationChecks
         Check(builder.Services.Count(item => item.ServiceType == typeof(IHostedService)
                 && item.ImplementationType == typeof(SystemProxyGuardHostedService)) == 1,
             "Proxy registration keeps exactly one Core system proxy guard");
-        Check(services.GetRequiredService<ProxySubscriptionOperations>() is not null
+        Check(builder.Services.Single(item => item.ServiceType == typeof(ProxySubscriptionOperations)).Lifetime == ServiceLifetime.Scoped
+            && builder.Services.Single(item => item.ServiceType == typeof(ProxyLifecycleOperations)).Lifetime == ServiceLifetime.Scoped
             && proxyHostedFactories.Count(item => ReferenceEquals(item.ImplementationFactory!(services),
                 services.GetRequiredService<ProxyOperationStore>())) == 1,
-            "The subscription queue uses the same singleton operation ledger registered once for shutdown drain");
+            "Scoped acceptance uses the same singleton operation ledger registered once for shutdown drain");
         Check(builder.Services.Single(item => item.ServiceType == typeof(RelaxKonOS.Server.ProxyServer.ProxyServerService)).Lifetime
                 == ServiceLifetime.Transient
             && builder.Services.Single(item => item.ServiceType == typeof(RelaxKonOS.Server.ProxyServer.IProxyServerExpiryExecutor)).Lifetime

@@ -3762,12 +3762,18 @@ exec {shlex.quote(str(systemctl))} "$@"
                     assert status == 201 and item['name'] == name, (status, item)
                     imported.append(item['id'])
                 assert len(set(imported)) == 2 and hits == ['/feed', '/feed']
+                refresh = f'{api}/subscriptions/{imported[0]}/refresh'
+                status, accepted = request(refresh, token, 'scoped-draft-refresh')
+                assert status == 202, (status, accepted)
+                until(lambda: terminal(accepted['operationId']), 'queued draft refresh after HTTP acceptance')
+                status, replay = request(refresh, token, 'scoped-draft-refresh')
+                assert status == 202 and replay == accepted and hits == ['/feed', '/feed', '/feed']
                 assert management_overview() == capabilities
                 probe(tun_record, 'after-scoped-downloads')
             finally:
                 origin.shutdown()
                 thread.join(timeout=5)
-        print('PASS PROXY SCOPED MANAGEMENT: stable overview and two real draft downloads while TUN forwards', flush=True)
+        print('PASS PROXY SCOPED MANAGEMENT: stable overview, two real draft downloads and one queued refresh while TUN forwards', flush=True)
 
     def verify_squid_publication(pid, tun_record=None):
         nonlocal worker, token

@@ -62,8 +62,8 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         builder.Services.AddSingleton<IProxyWorkLeaseSource, ProxyWorkLeaseSource>();
         builder.Services.AddSingleton<ProxyOperationStore>();
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
-        builder.Services.AddSingleton<ProxySubscriptionOperations>();
-        builder.Services.AddSingleton<ProxyLifecycleOperations>();
+        builder.Services.AddScoped<ProxySubscriptionOperations>();
+        builder.Services.AddScoped<ProxyLifecycleOperations>();
         builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddScoped<IProxyLifecycleService, ProxyLifecycleService>();
         builder.Services.AddScoped<ProxyOverviewService>();

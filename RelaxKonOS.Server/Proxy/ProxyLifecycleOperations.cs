@@ -14,7 +14,8 @@ public sealed class ProxyLifecycleOperations(ProxyOperationStore operations, ISe
     {
         if (!Enum.IsDefined(action)) throw new ProxyOperationValidationException(ProxyProblemCodes.NotSupported);
         var kind = "lifecycle." + action.ToString().ToLowerInvariant();
-        return operations.EnqueueAsync(key, kind, (_, token) => ProxyOperationScope.RunAsync(scopes, actor, kind,
+        var scopeFactory = scopes;
+        return operations.EnqueueAsync(key, kind, (_, token) => ProxyOperationScope.RunAsync(scopeFactory, actor, kind,
             (services, execution) => services.GetRequiredService<IProxyLifecycleService>().ExecuteLifecycleAsync(action, execution), token), ct);
     }
 
@@ -26,7 +27,8 @@ public sealed class ProxyLifecycleOperations(ProxyOperationStore operations, ISe
         // The value comes from HttpContext.Connection, not from the request payload.
         var capturedAddress = managementAddress is null ? null : IPAddress.Parse(managementAddress.ToString());
         var requestIdentity = Convert.ToHexString(SHA256.HashData(RuntimeJson.Serialize(new { kind, profileId, actor })));
-        return operations.EnqueueIdentifiedAsync(key, kind, (id, stage, _, token) => ProxyOperationScope.RunAsync(scopes, actor, kind,
+        var scopeFactory = scopes;
+        return operations.EnqueueIdentifiedAsync(key, kind, (id, stage, _, token) => ProxyOperationScope.RunAsync(scopeFactory, actor, kind,
             async (services, execution) =>
             {
                 if (services.GetService<MihomoManagedTunOperations>() is { } managed)

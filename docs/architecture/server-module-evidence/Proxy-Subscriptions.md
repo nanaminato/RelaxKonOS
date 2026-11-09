@@ -229,3 +229,15 @@ Windows Release 订阅后台边界 40 项、独立程序集与驻留 31 项、�
 同制品的完整认证联合验收覆盖系统代理 guard、真实 TUN、授权到期、发布补偿和 SIGTERM 排空。批次 `cf4155e4-4450-4207-a7db-7b3125ba45b1` 按原子项回执确认草稿与活动提交，未开始的尾项跳过。未知批次 `12c1c652-eba9-42b8-ad5d-e319a4ea88c4` 保持原待核验回执，无新增下载或 reload。补偿 reload 丢失应答的原 `6fb4c8a5-4526-41d0-853a-9fde55a9bdc6` 保持 RecoveryRequired。两个私有 cgroup 已清理，宿主运行时与代理文件指纹一致。日志见 `.artifacts/mb04-subscription-execution/linux.log`，归档 SHA-256 为 `236f2033079a5a05842ef470b7b1a08e5ee9ecc252a68e8e16eb79ecd5f79da5`。
 
 本切片完成订阅后台执行图交接。Proxy 整体保持 resident，系统代理、TUN、到期与发布补偿继续由原 Core owner 持有。整模块休眠及生产内存继续开放。
+
+### 后台受理对象与执行闭包分离
+
+**已实现且已验证。** 订阅和运行时受理移入请求作用域。后台订阅闭包携带原队列台账、作用域工厂及参数，运行时与具名 TUN 闭包携带作用域工厂及参数。Windows Release 的 Proxy 核心、订阅边界与模块里程碑通过。弱引用断言在原工作暂停且仍持有工作租约时确认请求受理对象已回收，随后核对原任务的清理、回执和终态。
+
+完整 Linux Release Server 在私有 systemd 下保持真实 Mihomo TUN 转发。私有源收到两次草稿下载和一次队列刷新下载。原刷新 ID 为 `ab71980b-9927-4aa6-8fce-63c8d8aeb421`，同键返回同一 ID，下载计数无增加。原 TUN 发布 `d5d2f19cc11f44d8b42699f281dcb409` 和原 Squid 发布 `378b0ecd-d6e3-4a84-b8e9-3838e8394d63` 还通过同次恢复写回故障回归，Squid 只重载一次，Core guard 修复原配置。
+
+独立用例丢弃具名启动 `bdc7ec6898eb43c0bcb960319ed809e8` 的原 IPC 终帧。实测原发布和配置摘要相符，原查询在途可见两项租约，新键受原门禁保护。恢复及 Server 重启后，原运行时 PID `951`、HTTP 上游和分流 DNS 连续通过。两次用例均核对进程退出及专属 cgroup 清理，宿主共享运行时服务、代理及 resolver 指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-scoped-acceptance.log` 的 SHA-256 为 `12eaef36356bb12d237fe542d599854a61d0f8bc65ecfdba079e6296b45ae223`，归档为 `4cd35a9935c1ee556d94362d18cd578a439e53472a9acf8bc60e14f3374ff7f0`。
+
+**已实现但实机未验证。** 对象释放由 Windows Release 弱引用验证，Linux 验证执行与进程退出。ALC 回收、隔离负载内存差值、生产内存收益各自待测。
+
+**未实现或仍受门禁保护。** 整模块安全交接仍开放。Proxy 保持 resident。

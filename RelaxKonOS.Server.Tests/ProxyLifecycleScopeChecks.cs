@@ -9,27 +9,24 @@ internal static class ProxyLifecycleScopeChecks
             var root = Path.Combine(Path.GetTempPath(), "proxy-lifecycle-scope-" + Guid.NewGuid().ToString("N"));
             var paths = new TestProxyPaths(root); var state = new State();
             var services = new ServiceCollection(); services.AddLogging(); services.AddSingleton<IProxyPlatformPaths>(paths);
-            services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); services.AddSingleton<ProxyOperationStore>(); services.AddSingleton<ProxyAuditStore>(); services.AddSingleton<ProxyLifecycleOperations>();
+            services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); services.AddSingleton<ProxyOperationStore>(); services.AddSingleton<ProxyAuditStore>(); services.AddScoped<ProxyLifecycleOperations>();
             services.AddScoped<IProxyLifecycleService>(_ => Create<IProxyLifecycleService>(state));
             services.AddScoped<IProxyTunSafetyService>(_ => Create<IProxyTunSafetyService>(state));
             await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
             var operations = provider.GetRequiredService<ProxyOperationStore>();
             try
             {
-                var queue = provider.GetRequiredService<ProxyLifecycleOperations>(); var id = Guid.NewGuid();
+                var id = Guid.NewGuid();
                 var address = IPAddress.Parse("192.0.2.17");
                 using var request = new CancellationTokenSource();
-                ProxyOperationDto accepted;
-                await using (var requestScope = provider.CreateAsyncScope())
-                {
-                    Check(state.Created == 0, "Root queues do not construct lifecycle or TUN execution graphs");
-                    accepted = index < 3
-                        ? await queue.EnqueueLifecycleAsync("once", (ProxyLifecycleAction)index, "actor", request.Token)
-                        : await queue.EnqueueTunAsync("once", (ProxyTunOperation)(index - 3), id, address, "actor", request.Token);
-                }
+                Check(state.Created == 0, "Root queues do not construct lifecycle or TUN execution graphs");
+                var (accepted, acceptance) = await EnqueueAsync(provider, index, id, address, request.Token);
                 request.Cancel(); await state.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
                 Check(state.Created == 1 && !state.Token.CanBeCanceled && state.Disposed == 0,
                     "Accepted lifecycle/TUN work outlives its HTTP scope and cancellation");
+                for (var retry = 0; retry < 10 && acceptance.IsAlive; retry++)
+                { await Task.Delay(20); GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); }
+                Check(!acceptance.IsAlive, "In-flight lifecycle/TUN work does not retain the request acceptance object");
                 if (index == 3) Check(state.Profile == id && state.Address!.Equals(address) && !ReferenceEquals(state.Address, address),
                     "TUN activation owns a value copy of the Server-observed management address");
                 state.Release.TrySetResult(); await state.Disposing.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -50,6 +47,17 @@ internal static class ProxyLifecycleScopeChecks
             }
         }
         Console.WriteLine($"Proxy lifecycle/TUN scope checks passed: {count}");
+    }
+    private static async Task<(ProxyOperationDto Operation, WeakReference Acceptance)> EnqueueAsync(
+        IServiceProvider provider, int index, Guid id, IPAddress address, CancellationToken ct)
+    {
+        await using var scope = provider.CreateAsyncScope();
+        var queue = scope.ServiceProvider.GetRequiredService<ProxyLifecycleOperations>();
+        var acceptance = new WeakReference(queue);
+        var operation = index < 3
+            ? await queue.EnqueueLifecycleAsync("once", (ProxyLifecycleAction)index, "actor", ct)
+            : await queue.EnqueueTunAsync("once", (ProxyTunOperation)(index - 3), id, address, "actor", ct);
+        return (operation, acceptance);
     }
     private static T Create<T>(State state) where T : class
     {

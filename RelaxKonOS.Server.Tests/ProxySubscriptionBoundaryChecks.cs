@@ -12,19 +12,17 @@ internal static class ProxySubscriptionBoundaryChecks
             await using var f = new Fixture();
             var id = Guid.NewGuid();
             using var request = new CancellationTokenSource();
-            await using (var requestScope = f.Provider.CreateAsyncScope())
-            {
-                var queue = requestScope.ServiceProvider.GetRequiredService<ProxySubscriptionOperations>();
-                Check(f.State.Created == 0, "Resolving the queue does not construct request-scoped subscription services");
-                var accepted = await queue.EnqueueAsync("once", kind, id, "actor", request.Token);
-                f.Operation = accepted.OperationId;
-            }
+            Check(f.State.Created == 0, "The root provider does not construct the subscription execution graph");
+            f.Operation = (await f.EnqueueAsync("once", kind, id, "actor", request.Token)).OperationId;
             request.Cancel();
             await f.State.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Check(f.State.Created == 1 && f.State.Disposed == 0 && !f.State.Token.CanBeCanceled
                 && f.State.Kind == kind && (kind == ProxySubscriptionOperation.RefreshAll || f.State.Id == id),
                 "Accepted work owns its service and survives request disposal/cancellation: " + kind);
-            var replay = await f.Queue.EnqueueAsync("once", kind, id, "actor", default);
+            for (var i = 0; i < 10 && f.Acceptance!.IsAlive; i++)
+            { await Task.Delay(20); GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); }
+            Check(!f.Acceptance!.IsAlive, "In-flight subscription work does not retain the request acceptance object");
+            var replay = await f.EnqueueAsync("once", kind, id, "actor", default);
             Check(replay.OperationId == f.Operation && f.State.Created == 1, "Idempotent replay neither constructs nor executes another scope");
             f.State.Release.TrySetResult();
             await f.State.Disposing.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -32,7 +30,7 @@ internal static class ProxySubscriptionBoundaryChecks
             Check(!stop.IsCompleted && (await f.Store.GetAsync(f.Operation, default))!.State == ProxyOperationState.Running
                 && File.ReadAllText(f.Audit).Contains("succeeded", StringComparison.Ordinal),
                 "Audit completes but terminal success and shutdown wait for asynchronous service disposal");
-            try { await f.Queue.EnqueueAsync("late", kind, id, "actor", default); throw new Exception("Stopping store admitted work"); }
+            try { await f.EnqueueAsync("late", kind, id, "actor", default); throw new Exception("Stopping store admitted work"); }
             catch (ProxyOperationValidationException) { }
             f.State.ReleaseDisposal.TrySetResult();
             await stop.WaitAsync(TimeSpan.FromSeconds(5));
@@ -46,7 +44,7 @@ internal static class ProxySubscriptionBoundaryChecks
         {
             await using var f = new Fixture(); f.State.Failure = failure;
             if (failure == "audit") Directory.CreateDirectory(f.Audit);
-            var accepted = await f.Queue.EnqueueAsync("fail", ProxySubscriptionOperation.Refresh, Guid.NewGuid(), "actor", default);
+            var accepted = await f.EnqueueAsync("fail", ProxySubscriptionOperation.Refresh, Guid.NewGuid(), "actor", default);
             f.State.Release.TrySetResult(); f.State.ReleaseDisposal.TrySetResult();
             try { await f.Store.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5)); }
             catch (ProxyOperationCleanupException) when (failure == "dispose") { }
@@ -55,7 +53,7 @@ internal static class ProxySubscriptionBoundaryChecks
                 "Failure is terminal only after scope cleanup and never silently succeeds: " + failure);
             if (failure == "dispose")
             {
-                try { await f.Queue.EnqueueAsync("after-cleanup-failure", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default); throw new Exception("Failed cleanup owner accepted more work"); }
+                try { await f.EnqueueAsync("after-cleanup-failure", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default); throw new Exception("Failed cleanup owner accepted more work"); }
                 catch (ProxyOperationValidationException) { Check((await f.Store.InspectResponsibilitiesAsync(default)).Count != 0, "Failed cleanup retains the scope and blocks new execution rather than retrying partial disposal"); }
             }
             if (failure is "domain" or "exception")
@@ -65,12 +63,12 @@ internal static class ProxySubscriptionBoundaryChecks
         {
             using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
             try { await f.Store.StopAsync(cancelled.Token); } catch (OperationCanceledException) { }
-            try { await f.Queue.EnqueueAsync("after-expired-stop", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default); throw new Exception("Expired shutdown budget left admission open"); }
+            try { await f.EnqueueAsync("after-expired-stop", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default); throw new Exception("Expired shutdown budget left admission open"); }
             catch (ProxyOperationValidationException) { Check(f.State.Created == 0, "Even an already-cancelled shutdown wait closes new admission without constructing work"); }
         }
         await using (var f = new Fixture())
         {
-            var accepted = await f.Queue.EnqueueAsync("timeout", ProxySubscriptionOperation.Activate, Guid.NewGuid(), "actor", default);
+            var accepted = await f.EnqueueAsync("timeout", ProxySubscriptionOperation.Activate, Guid.NewGuid(), "actor", default);
             await f.State.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             using var timeout = new CancellationTokenSource();
             var stop = f.Store.StopAsync(timeout.Token); timeout.Cancel();
@@ -91,7 +89,7 @@ internal static class ProxySubscriptionBoundaryChecks
         await using (var f = new Fixture())
         {
             f.State.Failure = "dispose";
-            var accepted = await f.Queue.EnqueueAsync("persist", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default);
+            var accepted = await f.EnqueueAsync("persist", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default);
             await f.State.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Directory.CreateDirectory(Path.Combine(f.Paths.GetStateDirectory(), "proxy-operations.json.new"));
             f.State.Release.TrySetResult(); f.State.ReleaseDisposal.TrySetResult();
@@ -100,7 +98,7 @@ internal static class ProxySubscriptionBoundaryChecks
             GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
             Check(f.State.Disposed == 1 && f.State.Reference!.IsAlive,
                 "Combined disposal and terminal persistence failures retain the unresolved business scope");
-            try { await f.Queue.EnqueueAsync("after-loss", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default); throw new Exception("Unconfirmed owner accepted more work"); }
+            try { await f.EnqueueAsync("after-loss", ProxySubscriptionOperation.RefreshAll, Guid.Empty, "actor", default); throw new Exception("Unconfirmed owner accepted more work"); }
             catch (ProxyOperationValidationException) { count++; }
             var reopened = new ProxyOperationStore(f.Paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases());
             var ledger = Path.Combine(f.Paths.GetStateDirectory(), "proxy-operations.json");
@@ -134,7 +132,7 @@ internal static class ProxySubscriptionBoundaryChecks
         builder.Services.AddSingleton<IProxyPlatformPaths>(new TestProxyPaths(root));
         builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); builder.Services.AddSingleton<ProxyOperationStore>(); builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource, TestResidentBackgroundLeases>();
-        builder.Services.AddSingleton<ProxySubscriptionOperations>();
+        builder.Services.AddScoped<ProxySubscriptionOperations>();
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
         builder.Services.AddScoped<IProxySubscriptionService>(_ => throw new NotSupportedException());
         builder.Services.AddScoped<IProxySubscriptionActions>(_ => new Subscription(state));
@@ -197,7 +195,7 @@ internal static class ProxySubscriptionBoundaryChecks
         public TestProxyPaths Paths { get; }
         public ServiceProvider Provider { get; }
         public State State { get; } = new();
-        public ProxySubscriptionOperations Queue => Provider.GetRequiredService<ProxySubscriptionOperations>();
+        public WeakReference? Acceptance { get; private set; }
         public ProxyOperationStore Store => Provider.GetRequiredService<ProxyOperationStore>();
         public Guid Operation;
         public string Audit => Path.Combine(Paths.GetStateDirectory(), "proxy-audit.jsonl");
@@ -205,9 +203,16 @@ internal static class ProxySubscriptionBoundaryChecks
         {
             Paths = new(root); Directory.CreateDirectory(Paths.GetStateDirectory());
             var services = new ServiceCollection(); services.AddLogging(); services.AddSingleton<IProxyPlatformPaths>(Paths);
-            services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); services.AddSingleton<ProxyOperationStore>(); services.AddSingleton<ProxyAuditStore>(); services.AddSingleton<ProxySubscriptionOperations>();
+            services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); services.AddSingleton<ProxyOperationStore>(); services.AddSingleton<ProxyAuditStore>(); services.AddScoped<ProxySubscriptionOperations>();
             services.AddScoped<IProxySubscriptionActions>(_ => new Subscription(State));
             Provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        }
+        public async Task<ProxyOperationDto> EnqueueAsync(string key, ProxySubscriptionOperation kind, Guid id, string actor, CancellationToken ct)
+        {
+            await using var scope = Provider.CreateAsyncScope();
+            var queue = scope.ServiceProvider.GetRequiredService<ProxySubscriptionOperations>();
+            Acceptance = new(queue);
+            return await queue.EnqueueAsync(key, kind, id, actor, ct);
         }
         public async ValueTask DisposeAsync()
         {
