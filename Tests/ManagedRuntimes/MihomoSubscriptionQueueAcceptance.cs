@@ -55,6 +55,8 @@ internal static class MihomoSubscriptionQueueAcceptance
             await using var origin = builder.Build();
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var bodyStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var importStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseImport = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var requests = 0;
             origin.MapGet("/feed", async (HttpContext context) =>
             {
@@ -65,6 +67,12 @@ internal static class MihomoSubscriptionQueueAcceptance
                     return;
                 }
                 await context.Response.WriteAsync("vless://550e8400-e29b-41d4-a716-446655440000@", context.RequestAborted);
+                if (request == 1)
+                {
+                    await context.Response.Body.FlushAsync(context.RequestAborted);
+                    importStarted.TrySetResult();
+                    await releaseImport.Task.WaitAsync(context.RequestAborted);
+                }
                 if (request == 2)
                 {
                     await context.Response.Body.FlushAsync(context.RequestAborted);
@@ -98,8 +106,17 @@ internal static class MihomoSubscriptionQueueAcceptance
                 try
                 {
                     using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, ct);
-                    using var imported = await client.PostAsJsonAsync(ProxyApiRoutes.Subscriptions,
+                    using var importer = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, ct);
+                    var importing = importer.PostAsJsonAsync(ProxyApiRoutes.Subscriptions,
                         new ImportProxySubscriptionRequest(endpoint + "/feed", "private-subscription-fixture"), RelaxKonOSJsonOptions.Default, ct);
+                    try
+                    {
+                        await importStarted.Task.WaitAsync(ct);
+                        if (importing.IsCompleted || await ReadLeasesAsync(client) != 1)
+                            throw new InvalidOperationException("Foreground subscription import lost its management lease while the origin body was pending.");
+                    }
+                    finally { releaseImport.TrySetResult(); }
+                    using var imported = await importing;
                     if (imported.StatusCode != HttpStatusCode.Created)
                         throw new InvalidOperationException($"Managed subscription import returned HTTP {(int)imported.StatusCode}.");
                     var subscription = await imported.Content.ReadFromJsonAsync<ProxySubscriptionDto>(RelaxKonOSJsonOptions.Default, ct);
@@ -114,6 +131,12 @@ internal static class MihomoSubscriptionQueueAcceptance
                     var initial = await client.GetFromJsonAsync<ProxySubscriptionContentDto>(contentRoute, RelaxKonOSJsonOptions.Default, ct);
                     if (initial?.Content.Contains("origin-1.example.test", StringComparison.Ordinal) != true)
                         throw new InvalidOperationException("The original converted draft was not stored.");
+                    var listed = await client.GetFromJsonAsync<ProxySubscriptionDto[]>(ProxyApiRoutes.Subscriptions, RelaxKonOSJsonOptions.Default, ct);
+                    using var options = await client.GetAsync(ProxyApiRoutes.SubscriptionDownloadOptions, ct);
+                    if (listed?.Any(item => item.Id == subscriptionId) != true || !options.IsSuccessStatusCode || Volatile.Read(ref requests) != 1)
+                        throw new InvalidOperationException("Subscription reads did not return the original draft and download options without a second download.");
+                    while (await ReadLeasesAsync(client) != 0) await Task.Delay(25, ct);
+                    Console.WriteLine($"PASS MANAGED MIHOMO FOREGROUND SUBSCRIPTION: draft {subscriptionId}; import, original content, list and download options drained");
 
                     operation = await SubmitAsync(client, refreshRoute, key);
                     var second = await events.Reader.ReadAsync(ct);

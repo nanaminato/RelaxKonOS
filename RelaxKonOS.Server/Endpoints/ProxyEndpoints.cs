@@ -33,36 +33,51 @@ public static class ProxyEndpoints
         app.MapGet(ProxyApiRoutes.Recovery, (IProxyRecoveryService recovery, CancellationToken ct) => recovery.GetStatusAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
 
         app.MapGet(ProxyApiRoutes.Profiles, (IProxyProfileService service, CancellationToken ct) => service.ListAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.Subscriptions, (IProxySubscriptionService service, CancellationToken ct) => service.ListAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.SubscriptionDownloadOptions, (IProxySubscriptionService service, CancellationToken ct) => service.GetDownloadOptionsAsync(ct)).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.Subscriptions, async (ImportProxySubscriptionRequest request, IProxySubscriptionService service, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            try
+        app.MapGet(ProxyApiRoutes.Subscriptions, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, static async (services, ct) =>
+                Results.Ok(await services.GetRequiredService<IProxySubscriptionService>().ListAsync(ct))))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapGet(ProxyApiRoutes.SubscriptionDownloadOptions, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, static async (services, ct) =>
+                Results.Ok(await services.GetRequiredService<IProxySubscriptionService>().GetDownloadOptionsAsync(ct))))
+            .RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapPost(ProxyApiRoutes.Subscriptions, (ImportProxySubscriptionRequest request, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
             {
-                var subscription = await service.ImportAsync(request, ct);
-                await audit.RecordAsync(Actor(context.User), "subscription.import", "succeeded", null, ct);
-                return Results.Created(ProxyApiRoutes.Subscriptions + "/" + subscription.Id, subscription);
-            }
-            catch (ProxySubscriptionException error)
+                var service = services.GetRequiredService<IProxySubscriptionService>();
+                var audit = services.GetRequiredService<ProxyAuditStore>();
+                var actor = Actor(context.User);
+                try
+                {
+                    var subscription = await service.ImportAsync(request, ct);
+                    await audit.RecordAsync(actor, "subscription.import", "succeeded", null, ct);
+                    return Results.Created(ProxyApiRoutes.Subscriptions + "/" + subscription.Id, subscription);
+                }
+                catch (ProxySubscriptionException error)
+                {
+                    await audit.RecordAsync(actor, "subscription.import", "failed", error.ProblemCode, ct);
+                    return Problem(error.ProblemCode, StatusCodes.Status400BadRequest);
+                }
+            })).RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapGet(Route(ProxyApiRoutes.SubscriptionContentPattern), (Guid subscriptionId, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
             {
-                await audit.RecordAsync(Actor(context.User), "subscription.import", "failed", error.ProblemCode, ct);
-                return Problem(error.ProblemCode, StatusCodes.Status400BadRequest);
-            }
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapGet(Route(ProxyApiRoutes.SubscriptionContentPattern), async (Guid subscriptionId, IProxySubscriptionService service, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            try
-            {
-                var content = await service.GetContentAsync(subscriptionId, ct);
-                await audit.RecordAsync(Actor(context.User), "subscription.content.read", content is null ? "failed" : "succeeded", content is null ? ProxyProblemCodes.SubscriptionInvalid : null, ct);
-                return content is null ? Problem(ProxyProblemCodes.SubscriptionInvalid, StatusCodes.Status404NotFound) : Results.Ok(content);
-            }
-            catch (ProxySubscriptionException error)
-            {
-                await audit.RecordAsync(Actor(context.User), "subscription.content.read", "failed", error.ProblemCode, ct);
-                return Problem(error.ProblemCode, StatusCodes.Status400BadRequest);
-            }
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
+                var service = services.GetRequiredService<IProxySubscriptionService>();
+                var audit = services.GetRequiredService<ProxyAuditStore>();
+                var actor = Actor(context.User);
+                try
+                {
+                    var content = await service.GetContentAsync(subscriptionId, ct);
+                    await audit.RecordAsync(actor, "subscription.content.read", content is null ? "failed" : "succeeded",
+                        content is null ? ProxyProblemCodes.SubscriptionInvalid : null, ct);
+                    return content is null ? Problem(ProxyProblemCodes.SubscriptionInvalid, StatusCodes.Status404NotFound) : Results.Ok(content);
+                }
+                catch (ProxySubscriptionException error)
+                {
+                    await audit.RecordAsync(actor, "subscription.content.read", "failed", error.ProblemCode, ct);
+                    return Problem(error.ProblemCode, StatusCodes.Status400BadRequest);
+                }
+            })).RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapSubscriptionOperationEndpoints();
         app.MapGet(Route(ProxyApiRoutes.ProfilePattern), async (Guid profileId, IProxyProfileService service, CancellationToken ct) =>
             await service.GetAsync(profileId, ct) is { } profile ? Results.Ok(profile) : Results.NotFound()).RequireAuthorization("ProxyRead").WithTags("Proxy");

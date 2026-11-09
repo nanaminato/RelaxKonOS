@@ -110,6 +110,8 @@ Squid 配置、状态、账户读取、预览与原生校验由当前 Proxy 代�
 
 订阅和运行时的后台受理对象也随请求解析。订阅队列只保留原台账、作用域工厂和操作参数，运行时与具名 TUN 队列只保留作用域工厂和操作参数。原队列持有任务、响应、清理和终态写入责任。[后台受理与执行闭包实测](server-module-evidence/Proxy-Subscriptions.md#后台受理对象与执行闭包分离)
 
+订阅导入、列表、下载选项和原内容读取使用当前管理代次的前台作用域。持久草稿仍由原仓储和发布锁保护。[前台订阅实测](server-module-evidence/Proxy-Subscriptions.md#订阅前台导入与读取的管理作用域)
+
 原 `ProxyOperationStore` 继续独占队列准入、执行清理和终态写入。`ProxyAuditStore` 持有同一审计文件的追加锁，`SquidConfigurationStore` 持有配置投影写入锁。四个只读合并器由当前 Proxy 代次持有，根容器只保留创建描述，读取所用的执行对象在采样作用域解析。[只读合并器的代次归属](server-module-evidence/Proxy-Observation.md#只读合并器的代次归属)
 
 概览执行器由该代次创建。采样只借用活动档案读取、Core 恢复状态读取、平台能力和只读 Mihomo 概览接口。控制器客户端仍由采样作用域释放。执行器复用同一代次的运行时观测，持久发布和 TUN 恢复由原 Core 权威负责。[概览执行器边界](server-module-evidence/Proxy-Observation.md#概览执行器的代次边界)
