@@ -44,6 +44,8 @@ Squid 已补齐[原包回执查询在途时再次中断](server-module-evidence/
 
 ## 专项证据入口
 
+MB-04 Squid 软件包的[现机准入与原日志](server-module-evidence/Proxy-Squid.md#当前测试机的准入复核)已复核。已有原回执矩阵覆盖进程中断和重启。下一项软件包持久性验收仍需专属断电环境。
+
 | 范围 | 原始记录 |
 | --- | --- |
 | MB-01 / RES | [MB-01A](RelaxKonOS.ServerModuleBaseline.20261105.md)、[MB-01B](RelaxKonOS.ServerModuleBaseline.20261106.md)、[资源与恢复权威清单](RelaxKonOS.ServerModuleResources.Inventory.md)、[驻留历史](server-module-evidence/Residency-History.md) |

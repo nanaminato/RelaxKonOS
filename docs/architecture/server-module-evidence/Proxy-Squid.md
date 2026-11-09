@@ -122,6 +122,12 @@ Linux 专属 systemd 分别验证五类真实服务动作。每次在 Helper 终
 
 Squid 配置夹具的 `/usr` 与宿主共享，真实 APT 生命周期使用独立的软件包夹具。该夹具须通过专属可写覆盖根、独立 APT 与 dpkg 台账以及固定可信制品预检，才能按同一原队列 ID 核对包终态和派发次数。未知原终态的人工确证、整机掉电及整模块安全交接继续开放。Proxy 保持 resident。
 
+#### 当前测试机的准入复核
+
+在既有测试机重新核对了专属挂载、网络和 PID 命名空间。`/usr` 的写入探针仅落入 overlay 上层，APT 和 dpkg 探针写入独立快照。APT 模拟只选中固定 Squid 升级，Ubuntu 归档密钥、`resolute-updates` 签名索引及缓存制品的 SHA-256 校验通过。复核日志 `.artifacts/mb04-squid-package/isolation-recheck-goal.log` 的 SHA-256 为 `4111d9e9c83330b7ef2806695d8005422e80d151430efdfe078f60cde484c634`。
+
+重新计算了[升级](#server-存活时丢失软件包终帧)、[首次安装和保留数据卸载](#首次安装与保留数据卸载的终帧丢失矩阵)三份原日志的摘要，均与台账相符。原日志逐项记录原安装 ID、同键跨重启终态、一次 Helper 派发、一次真实 dpkg 变更、专属资源清理及宿主指纹一致。本轮只运行隔离预检与 APT 模拟。整机掉电证据仍需要可独立断电并检查持久状态的专属主机。
+
 ### 固定 Squid 包升级的原回执
 
 2026-11-09 在既有 Ubuntu 26.04 amd64 测试机验证专属 overlay 根。宿主根以只读 bind 作为下层，`/usr` 的探针写入只落在上层。APT、dpkg、缓存、日志、设备、服务单元和运行目录使用专属状态，进程、网络及挂载命名空间独立。预检模拟只升级 `squid`，`squid-common` 已满足固定依赖。用 Ubuntu 归档密钥验证 `resolute-updates` 的 InRelease，从签名 SHA-256 核对解压的 Packages 索引，再核对离线制品 `squid_7.7-0ubuntu0.26.04.2_amd64.deb`，SHA-256 为 `1f962274ff78f23bef1c908319c157c02fb7426a11dac2c4f91e847237e15bcb`。预检日志 `.artifacts/mb04-squid-package/isolation.log` 的 SHA-256 为 `ea22fa65368e3b9e9cce0107f038c7309e0651d332de250b02e4fd9275385a67`。
