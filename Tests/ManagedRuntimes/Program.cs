@@ -294,6 +294,12 @@ if (args is ["runtime-mihomo-probe-relay", var relayRoot, var relaySocket, var r
     return;
 }
 
+if (args is ["runtime-mihomo-restored-sender-gate", var senderRoot, var senderSocket, var senderId] && OperatingSystem.IsLinux())
+{
+    await MihomoTunFullServerAcceptance.VerifyRestoredSenderGateAsync(senderRoot, senderSocket, Guid.Parse(senderId));
+    return;
+}
+
 if (args is ["runtime-mihomo-probe-witness", var witnessRoot, var witnessSocket, var witnessId, var witnessMode]
     && OperatingSystem.IsLinux())
 {

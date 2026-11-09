@@ -16,6 +16,21 @@ using RelaxKonOS.Server.Privileged;
 [SupportedOSPlatform("linux")]
 internal static class MihomoTunFullServerAcceptance
 {
+    internal static async Task VerifyRestoredSenderGateAsync(string root, string socket, Guid operation)
+    {
+        RequirePrivateFixture(root);
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+        foreach (var kind in new[] { PrivilegedOperationKind.MihomoRuntimeRecoveryStop, PrivilegedOperationKind.MihomoRuntimeRecoveryClose })
+        {
+            var result = await transport.ExecuteAsync(new(kind, RuntimeLifecycle: new(RecoveryOperationId: operation,
+                Confirmed: kind == PrivilegedOperationKind.MihomoRuntimeRecoveryClose)), budget.Token);
+            if (result.Success || result.Error != "runtime.instance_busy")
+                throw new InvalidOperationException($"The original restored-start sender did not fence {kind}: {result.Error}");
+        }
+    }
+
     internal static async Task HoldProbeReplyAsync(string root, string socket, string mode)
     {
         MihomoIpcStartupAcceptance.RequirePrivateHost(rootRequired: false);

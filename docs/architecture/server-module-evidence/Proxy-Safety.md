@@ -990,6 +990,20 @@ Windows Release 38 项 TUN 边界检查及 Linux x64 Release 构建通过。正�
 
 **未实现或仍受门禁保护。** 原应答在 Helper 取得并写入前丢失时，当前原记录不足以确认作业 ID。恢复保持待核验，禁止重派或按现有服务推导作业。Proxy 保持 resident。
 
+### 原补偿启动发送端保存首次应答
+
+**已实现且已验证。** 固定宿主发送端持有专属发送锁，写入原操作的单次发送标记，再等待持原归档锁的 Helper 放行。原 `busctl` 继承发送锁。只有该发送端可提交固定 `StartUnit` 调用，并将首次应答核验后同步为原操作的私有暂存。Helper 只等待发送端退出并读取原暂存。替换 Helper 查询作业记录、紧急停止或关账时同样核对发送锁，发送仍在途则保持原门禁。没有原暂存的退出继续待核验。
+
+Linux 私有 systemd 实测原发布 `1a835627-ef45-48c4-89fd-2dceda4b06a3`。实际作业 `39` 已完成，夹具扣住原生应答并终止原 Helper。原发送端和原生子进程仍在，替换 Helper 的紧急停止及关账均返回 `runtime.instance_busy`。放行同一原应答后，原发送端退出，作业暂存已同步。重启拒绝错配暂存，恢复原字节后按原作业核对调用 ID `69de1db284ad41bc87b94510b7f4bd69`、PID `524`、配置和原网络身份。原 ID 与同键返回同一队列终态，真实上游、管理选路、resolver 和原网络台账保持一致。全程一次 `StartUnit`，零配置重派。
+
+反向原发布 `a0f92e28-d0a3-42ab-973e-b08fd2ead465` 同时切断 Helper 与发送端，原生子进程仍持有继承的锁，替换 Helper 的紧急停止及关账仍被拒绝。原生子进程退出后，原作业 `39` 和旧配置进程 PID `527` 可见，原暂存仍缺失。重启保持待核验，无作业日志查询，`StartUnit` 仍只有一次。两个场景均核对原配置、管理选路、原恢复记录和真实上游。专属 cgroup 已清理，宿主共享服务及代理、resolver 文件指纹一致。
+
+Windows Release 38 项 TUN 边界检查与 Linux x64 Release 构建通过。正向日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-sender-platform-cut.log` 的 SHA-256 为 `1265c5b26c9dc1d1e53c380d8e9fbcd91131c55cd29a832afe4292d97af5ad5a`，归档为 `7989a1cc8f3f94b884370746efd6203ca95b4a6d423adf10bcc3cab77e89d030`。反向日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-sender-platform-death.log` 的 SHA-256 为 `c7798150a927d658094e7805cc27c034a0338cbc1dbb2d584686f66b59951a52`，归档为 `88078c41e24a0d924832135fcd6adab03c6c8fe287d7e6cd0c5c0d5ad9276cfa`。暂存发布回归的原发布为 `301845c1-28a8-4710-91ac-df9e6caae763`。首轮故障注入过早命中发送标记写入，改为在原生应答扣留后挂接。首轮日志 SHA-256 为 `f8f3ca328adb47fbe060a0a662f1c4a3f97d92b38f7d3b28e8a8cacfe5319e1d`。最终回归日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-sender-platform-stage.log` 的 SHA-256 为 `f36bc882d3be813fb1279b52eb5cc9d808e1c22500735a9987bb420a66b60c77`，归档为 `3a32264ed9ee2369cd9513decf67ce8a21dbee8d39f751d0c631d8a5275d184c`。
+
+**已实现但实机未验证。** 本轮覆盖 Helper 单进程退出、发送端退出以及原生子进程回收。整组 Helper cgroup 停止及整机掉电需独立证据。对象释放、ALC、隔离负载内存和生产收益分别待验。
+
+**未实现或仍受门禁保护。** 原应答未取得且缺可信原暂存时维持门禁，禁止重派或按现有进程推导原作业。整模块交接仍待验收，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

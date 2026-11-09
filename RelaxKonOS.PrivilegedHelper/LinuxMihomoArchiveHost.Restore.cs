@@ -2,7 +2,9 @@ using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -12,6 +14,7 @@ internal sealed partial class LinuxMihomoArchiveHost
     private sealed record RestoredProcess(Guid OperationId, string ConfigurationIdentity, MihomoTunProcess Process);
     private sealed record RestoredStartDispatch(Guid OperationId, Guid BootId, uint JobId, ulong DispatchedAt);
     private sealed record RestoredStartJob(Guid OperationId, Guid BootId, uint JobId, Guid InvocationId);
+    internal const string RestoredStartSenderArgument = "--linux-mihomo-restored-start";
 
     private async Task ConfigurePublicationTunAsync(RuntimePendingConfiguration pending, string binary, string data,
         CancellationToken ct)
@@ -184,13 +187,66 @@ internal sealed partial class LinuxMihomoArchiveHost
 
     private static async Task<RestoredStartJob> StartRestoredJobAsync(Guid operation, CancellationToken ct)
     {
+        await RunRestoredStartSenderAsync(operation);
+        var dispatch = await ReadRestoredJobDispatchAsync(operation, ct);
+        var receipt = await ReadRestoredJobResultAsync(dispatch, ct);
+        await WriteRestoreFileAsync(operation, RestoredJobPath(operation), JsonSerializer.Serialize(receipt),
+            UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+        return receipt;
+    }
+
+    private static async Task RunRestoredStartSenderAsync(Guid operation)
+    {
+        RequireProtected(TunLauncher);
+        var start = new ProcessStartInfo(TunLauncher)
+        {
+            UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true,
+        };
+        TrustedProcessEnvironment.Apply(start);
+        start.ArgumentList.Add(RestoredStartSenderArgument);
+        start.ArgumentList.Add(operation.ToString("N"));
+        using var sender = Process.Start(start) ?? throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+        using var input = sender.StandardInput;
+        using var output = sender.StandardOutput;
+        using var readiness = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        try
+        {
+            if (await output.ReadLineAsync(readiness.Token) != "ready") Fail("network_restored_start_unconfirmed");
+            await input.WriteLineAsync(operation.ToString("N"));
+            await input.FlushAsync();
+            await sender.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(50));
+            if (sender.ExitCode != 0) Fail("network_restored_start_unconfirmed");
+        }
+        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException or IOException)
+        { throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed"); }
+    }
+
+    internal static async Task SendRestoredStartAsync(Guid operation)
+    {
+        if (!RuntimeSourceProtection.IsAdministrator() || Environment.ProcessPath != TunLauncher)
+            Fail("service_scope_invalid");
+        // The busctl process must keep the gate if the sender exits before it does.
+        using var gate = AcquireRestoredStartSenderGate(inheritable: true);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var ct = deadline.Token;
         var path = RestoredJobPath(operation);
         var dispatchPath = RestoredJobDispatchPath(operation);
         var staged = RestoredJobDispatchStagePath(operation);
-        RuntimeSourceStore.RequireNoLinks(path);
-        RuntimeSourceStore.RequireNoLinks(dispatchPath);
-        RuntimeSourceStore.RequireNoLinks(staged);
-        if (Path.Exists(path) || Path.Exists(dispatchPath) || Path.Exists(staged)) Fail("network_restored_start_unconfirmed");
+        var claim = Path.Combine(Path.GetDirectoryName(path)!, "registration-start-sender");
+        foreach (var target in new[] { path, dispatchPath, staged, claim })
+        {
+            RuntimeSourceStore.RequireNoLinks(target);
+            if (Path.Exists(target)) Fail("network_restored_start_unconfirmed");
+        }
+        if (await ReadRestoreFileAsync(RestoredStartPath(operation), ct) != operation.ToString("N"))
+            Fail("network_restored_start_unconfirmed");
+        await WriteRestoreFileAsync(operation, claim, operation.ToString("N"), UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+        using var confirmation = new StreamReader(Console.OpenStandardInput());
+        Console.WriteLine("ready");
+        // EOF before acknowledgement cannot authorize a dispatch after the Helper exits.
+        if (await confirmation.ReadLineAsync(ct) != operation.ToString("N"))
+            Fail("network_restored_start_unconfirmed");
+
         var boot = LinuxMihomoTunCheckpoint.BootId();
         var started = MonotonicMicroseconds();
         var reply = await RunAsync("/usr/bin/busctl", ["--system", "--timeout=5s", "--json=short", "call",
@@ -203,15 +259,43 @@ internal sealed partial class LinuxMihomoArchiveHost
             Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
         }))
         {
-            await output.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(dispatch), ct);
+            await output.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(dispatch));
             output.Flush(true);
         }
-        PublishRestoredJobDispatch(staged, dispatchPath);
-        var receipt = await ReadRestoredJobResultAsync(dispatch, ct);
-        await WriteRestoreFileAsync(operation, path, JsonSerializer.Serialize(receipt),
-            UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
-        return receipt;
+        MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(staged)!);
     }
+
+    internal static FileStream AcquireRestoredStartSenderGate(bool inheritable = false)
+    {
+        const int exclusive = 2, nonBlocking = 4;
+        var directory = Path.Combine(Root, "state");
+        RequireProtected(directory);
+        var path = Path.Combine(directory, "restored-start-sender.lock");
+        RuntimeSourceStore.RequireNoLinks(path);
+        FileStream? gate = null;
+        try
+        {
+            gate = new(path, new FileStreamOptions
+            {
+                Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite,
+                Share = inheritable ? FileShare.Inheritable : FileShare.None,
+                UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+            });
+            RequireProtected(path);
+            if (LockFile(gate.SafeFileHandle.DangerousGetHandle().ToInt32(), exclusive | nonBlocking) != 0)
+                Fail("instance_busy");
+            return gate;
+        }
+        catch (Exception ex)
+        {
+            gate?.Dispose();
+            if (ex is IOException) Fail("instance_busy");
+            throw;
+        }
+    }
+
+    [DllImport("libc", EntryPoint = "flock")]
+    private static extern int LockFile(int descriptor, int operation);
 
     private static uint ParseRestoredStartJobId(string reply)
     {
@@ -285,6 +369,7 @@ internal sealed partial class LinuxMihomoArchiveHost
 
     private static async Task<RestoredStartDispatch> ReadRestoredJobDispatchAsync(Guid operation, CancellationToken ct)
     {
+        using var sender = AcquireRestoredStartSenderGate();
         var path = RestoredJobDispatchPath(operation);
         RuntimeSourceStore.RequireNoLinks(path);
         var staged = RestoredJobDispatchStagePath(operation);

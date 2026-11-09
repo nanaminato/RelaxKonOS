@@ -446,6 +446,8 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
         await EnsureStateAsync(ct);
         using var session = states.Acquire();
         var snapshot = RuntimeArchiveRecovery.Require(RuntimeArchiveRecovery.Describe(session.State!), operationId);
+        using var sender = OperatingSystem.IsLinux() && host is LinuxMihomoArchiveHost
+            ? LinuxMihomoArchiveHost.AcquireRestoredStartSenderGate() : null;
         // A unit this installation does not own must not be stopped by its emergency entry.
         var observed = await host.ObserveRegistrationAsync(ct);
         if (observed.Exists)
@@ -463,8 +465,10 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
     internal async Task<RuntimeSwitchResult> CloseAsync(Guid operationId, CancellationToken ct)
     {
         await EnsureStateAsync(ct);
-        var observed = await host.ObserveRegistrationAsync(ct);
         using var session = states.Acquire();
+        using var sender = OperatingSystem.IsLinux() && host is LinuxMihomoArchiveHost
+            ? LinuxMihomoArchiveHost.AcquireRestoredStartSenderGate() : null;
+        var observed = await host.ObserveRegistrationAsync(ct);
         return RuntimeArchiveRecovery.Close(session, operationId, confirmed: true,
             new(observed.Exists, observed.Running, observed.BootEnabled));
     }

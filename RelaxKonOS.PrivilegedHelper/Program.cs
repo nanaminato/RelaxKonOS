@@ -29,6 +29,16 @@ if (OperatingSystem.IsLinux() && args is [LinuxMihomoProbeWitness.WorkerArgument
 if (OperatingSystem.IsLinux() && args is ["--mihomo-version-witness", var witnessAction, var witnessOperation, var witnessUid])
     return await LinuxMihomoProbeWitness.RunCommandAsync(witnessAction, witnessOperation, witnessUid);
 
+if (OperatingSystem.IsLinux() && args is [LinuxMihomoArchiveHost.RestoredStartSenderArgument, var restoredStart])
+{
+    if (!Guid.TryParseExact(restoredStart, "N", out var operation) || operation == Guid.Empty) return 64;
+    try { await LinuxMihomoArchiveHost.SendRestoredStartAsync(operation); return 0; }
+    catch (Exception error) when (error is RelaxKonOS.ManagedRuntimes.RuntimePolicyException or IOException
+        or UnauthorizedAccessException or InvalidOperationException or OperationCanceledException or TimeoutException
+        or System.ComponentModel.Win32Exception)
+    { return 1; }
+}
+
 if (OperatingSystem.IsLinux() && args is [LinuxMihomoArchiveHost.TunLaunchArgument])
 {
     try { await LinuxMihomoArchiveHost.LaunchTunAsync(); }

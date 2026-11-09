@@ -5,6 +5,7 @@ from contextlib import contextmanager
 import ctypes
 from datetime import datetime, timezone
 import errno
+import fcntl
 import hashlib
 import http.server
 import json
@@ -293,11 +294,16 @@ if [[ "$*" == *"StartUnit ss {unit} fail" ]]; then
     printf '%s\\n' "$*" >> "$work/restored-start-dispatches"
     if [[ {int(hold_dispatch_reply)} == 1 ]]; then
         result=$("$real" "$@")
+        printf '%s %s\\n' "$PPID" "$BASHPID" > "$work/restored-start-sender-pids"
         printf '%s\\n' "$result" > "$work/restored-start-reply.new"
         mv "$work/restored-start-reply.new" "$work/restored-start-reply"
         while [[ ! -f "$work/discard-restored-start-reply" ]]; do sleep .05; done
         if [[ -f "$work/restored-start-reply-override" ]]; then
             cat "$work/restored-start-reply-override"
+            exit 0
+        fi
+        if [[ -f "$work/deliver-restored-start-reply" ]]; then
+            printf '%s\\n' "$result"
             exit 0
         fi
         exit 1
@@ -2561,6 +2567,10 @@ def proof_full_http_shutdown(ipc, case):
         dispatch = operation_dir / 'registration-start-job-dispatched.json'
         staged = dispatch.with_suffix(f'.json.{publication}.restore')
         stage_cut = not dispatch_unknown and Path(sys.argv[3]).with_name('restored-start-stage-cut.fixture').is_file()
+        sender_cut = dispatch_unknown and Path(sys.argv[3]).with_name('restored-start-sender-cut.fixture').is_file()
+        sender_death = sender_cut and Path(sys.argv[3]).with_name('restored-start-sender-death.fixture').is_file()
+        sender_replied = sender_cut and not sender_death
+        recover_staged = stage_cut or sender_replied
         job = operation_dir / 'registration-start-job.json'
         witness = operation_dir / 'registration-start-process.json'
         starts = root / 'restored-start-dispatches'
@@ -2568,6 +2578,11 @@ def proof_full_http_shutdown(ipc, case):
         owner = operation_dir / 'network-owner.json'
         initial_stop = operation_dir / 'initial-service-stop.json'
         owned = (owner.read_bytes(), initial_stop.read_bytes())
+
+        def await_reaped(descriptor):
+            reaped = select.poll()
+            reaped.register(descriptor, 0)
+            assert reaped.poll(8000) == [(descriptor, select.POLLHUP)]
 
         def pending():
             state = json.loads(state_file.read_bytes())['configuration']
@@ -2588,7 +2603,11 @@ def proof_full_http_shutdown(ipc, case):
                            '--max-time', '3', f'http://{target}:18880/mb04-restored-job-cut-{phase}') == 'upstream-through-inherited-tun'
 
         ipc.start_helper()
+        worker = launch('restart')
+        pid = int(marker('full-server-pid'))
+        token = login()
         if stage_cut:
+            marker('restored-start-reply', seconds=25)
             moves = 'rename,renameat,renameat2,link,linkat'
             trace = subprocess.Popen(['strace', '-f', '-qq', '-P', str(staged), '-e', f'trace={moves}',
                                       '-e', f'inject={moves}:error=EIO:delay_enter=20s:when=1',
@@ -2597,9 +2616,8 @@ def proof_full_http_shutdown(ipc, case):
             while f'TracerPid:\t{trace.pid}\n' not in Path(f'/proc/{ipc.helper.pid}/status').read_text():
                 assert trace.poll() is None and time.monotonic() < deadline
                 time.sleep(.025)
-        worker = launch('restart')
-        pid = int(marker('full-server-pid'))
-        token = login()
+            (root / 'deliver-restored-start-reply').touch()
+            (root / 'discard-restored-start-reply').touch()
         if dispatch_unknown or stage_cut:
             if stage_cut:
                 until(lambda: staged.is_file() and staged.stat().st_size > 0, 'first StartUnit reply staging', seconds=25)
@@ -2634,6 +2652,10 @@ def proof_full_http_shutdown(ipc, case):
         assert leases() == 0
         probe_restored('in-flight')
         reply_fixture = Path(sys.argv[3]).with_name('restored-start-reply-shape.fixture')
+        sender_descriptor = None
+        if dispatch_unknown and not reply_fixture.is_file():
+            sender_pid, native_pid = map(int, (root / 'restored-start-sender-pids').read_text().split())
+            sender_descriptor = os.pidfd_open(sender_pid)
         if dispatch_unknown and reply_fixture.is_file():
             phase = reply_fixture.read_text().strip()
             variants = {
@@ -2656,16 +2678,52 @@ def proof_full_http_shutdown(ipc, case):
             trace.kill()
             trace.wait(timeout=8)
         ipc.stop_helper()
+        native_descriptor = None
+        if sender_cut:
+            lock = archive / 'state/restored-start-sender.lock'
+            assert any(fd.is_symlink() and fd.readlink() == lock for fd in Path(f'/proc/{native_pid}/fd').iterdir())
+            if sender_death:
+                native_descriptor = os.pidfd_open(native_pid)
+                signal.pidfd_send_signal(sender_descriptor, signal.SIGKILL)
+                await_reaped(sender_descriptor)
+            with lock.open('r+b') as gate:
+                try:
+                    fcntl.flock(gate, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    pass
+                else:
+                    raise AssertionError('The original sender lost its host lock when the Helper exited')
+            ipc.start_helper()
+            command('/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-restored-sender-gate', str(root), str(ipc.socket_path), str(uuid.UUID(publication)))
+            ipc.stop_helper()
+            assert not dispatch.exists() and not staged.exists()
+            if sender_replied:
+                (root / 'deliver-restored-start-reply').touch()
         (root / ('discard-restored-start-reply' if dispatch_unknown else 'release-restored-job')).touch()
+        if sender_descriptor is not None:
+            try:
+                await_reaped(sender_descriptor)
+                if native_descriptor is not None:
+                    await_reaped(native_descriptor)
+            finally:
+                os.close(sender_descriptor)
+                if native_descriptor is not None:
+                    os.close(native_descriptor)
+        if sender_replied:
+            evidence = staged.read_bytes()
+            recorded = json.loads(evidence)
+            assert recorded['JobId'] == job_id and uuid.UUID(recorded['OperationId']).hex == publication
+            assert not dispatch.exists()
+            (root / 'release-restored-job').touch()
         assert worker.wait(timeout=12) == 0
 
         # An active service and a journal entry alone do not identify the dispatched job.
         assert not job.exists() and not witness.exists()
-        if dispatch_unknown:
+        if dispatch_unknown and not sender_replied:
             assert not dispatch.exists()
             sender = operation_dir / 'registration-start-dispatched'
             assert sender.read_text() == publication
-        elif stage_cut:
+        elif recover_staged:
             assert not dispatch.exists() and staged.read_bytes() == evidence
             hidden = staged.with_suffix('.held')
             staged.rename(hidden)
@@ -2689,15 +2747,18 @@ def proof_full_http_shutdown(ipc, case):
         os.kill(pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
         ipc.stop_helper()
-        if dispatch_unknown:
+        if dispatch_unknown and not sender_replied:
             assert not dispatch.exists() and not job.exists() and not witness.exists()
             assert sender.read_text() == publication
             assert not (root / 'restored-job-queries').exists()
             print(f'PASS TUN RESTORED DISPATCH UNKNOWN: original={publication}; native job={job_id}; '
                   f'PID={original[0]}; invocation={original[1]}; one StartUnit; original gate retained', flush=True)
+            if sender_death:
+                print(f'PASS TUN RESTORED START SENDER DEATH: original={publication}; '
+                      f'job={job_id}; native sender kept the lock after worker exit', flush=True)
             return
         assert not dispatch.exists() and hidden.read_bytes() == evidence
-        if stage_cut:
+        if recover_staged:
             assert staged.read_bytes() == rejected_stage and not (root / 'restored-job-queries').exists()
             staged.unlink()
             hidden.rename(staged)
@@ -2741,7 +2802,7 @@ def proof_full_http_shutdown(ipc, case):
         until(lambda: leases() == 0, 'original job recovery lease release')
         probe_restored('terminal')
         assert dispatch.read_bytes() == evidence
-        if stage_cut:
+        if recover_staged:
             assert not staged.exists()
         result = json.loads(job.read_bytes())
         assert result['JobId'] == recorded['JobId'] and result['OperationId'] == recorded['OperationId']
@@ -2757,6 +2818,9 @@ def proof_full_http_shutdown(ipc, case):
         if stage_cut:
             print(f'PASS TUN RESTORED START STAGE CUT: original={publication}; job={result["JobId"]}; '
                   f'PID={original[0]}; invocation={original[1]}; same staged receipt and one StartUnit', flush=True)
+        if sender_replied:
+            print(f'PASS TUN RESTORED START SENDER CUT: original={publication}; job={result["JobId"]}; '
+                  f'PID={original[0]}; invocation={original[1]}; original sender survived Helper and sealed one reply', flush=True)
         print(f'PASS TUN RESTORED JOB CUT: original={publication}; job={result["JobId"]}; '
               f'PID={original[0]}; original invocation={original[1]}; one StartUnit; original lease drained', flush=True)
 
@@ -5877,7 +5941,8 @@ def proof():
     install_rule_failure_boundary()
     case = sys.argv[4]
     if case in ('ipc-http-restored-job-replaced', 'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown'):
-        install_restored_job_boundary(hold_dispatch_reply=case == 'ipc-http-restored-dispatch-unknown')
+        stage_cut = case == 'ipc-http-restored-job-cut' and Path(sys.argv[3]).with_name('restored-start-stage-cut.fixture').is_file()
+        install_restored_job_boundary(hold_dispatch_reply=case == 'ipc-http-restored-dispatch-unknown' or stage_cut)
     if case == 'ipc-http-restored-process-replaced':
         install_restored_process_boundary()
     http_case = case.startswith('ipc-http-')
