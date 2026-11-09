@@ -538,3 +538,12 @@ Linux 专属 systemd 的真实 Mihomo 控制器配置读取已返回 200，异�
 日志 `.artifacts/mb04-tun-full-zero-dns/linux-controller-observation-final.log` SHA256 `6168e4eeeeb1947d2897754a579908669ccdcfd588519be24c132f576d9e83cd`，归档 SHA256 `a34bb2a330ecb60b9652e3f13fdbd871111fdb18ae86e5a5cca4aee5869172f4`。
 
 **仍待验收。** 本轮确认进程退出。整模块对象释放、ALC 回收、隔离负载内存及生产收益分别开放。Proxy 保持 resident。
+
+
+### 外部 Mihomo 版本探测的取消边界
+
+**已验证的失败路径。** 本地 Release 诊断复用当前 Server 的 `MihomoRuntimeProbe.GetVersionAsync`。既有 Linux 测试机的专属、非 root systemd 单元中，固定夹具收到 `-v`，写入自身 PID 后以同一 PID 进入 `sleep`。取消调用后探测返回空值，原 PID `3962858` 的命令行保持，进程仍存活。专属单元退出才清理该进程，实测原 PID 和 cgroup 消失，共享 Mihomo、Squid、sing-box 与 resolver 单元状态一致。本轮直接调用生产探测实现，覆盖进程取消失败。HTTP 鉴权、真实 Mihomo 版本输出和已退出父进程的子孙场景需单独验证。
+
+日志 `.artifacts/mb04-tun-full-zero-dns/external-probe-repro/linux.log` SHA256 `2eb3031a8600f5a547a031898af43fe3dd7ba4c4cc5e3f968dd57dcd3f184eda`，探测使用 Server 制品 SHA256 `c2990c5c17b4b4a9021641619b0ccdae2634bdb6e30e2635d806b167f697b1ad`。
+
+**未实现或仍受门禁保护。** 外部探测需要独占原进程树、stdout 和 stderr，所有权须先于执行建立。取消或超时必须等原生退出与两路输出完成。缺少确证时保留原工作及准入门禁。先验收独占执行者和原始清理证据，再迁移前台管理租约。现有受管安装台账仍负责原受管运行时操作。Proxy 保持 resident。
