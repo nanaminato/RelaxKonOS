@@ -2080,7 +2080,8 @@ def proof_full_http_shutdown(ipc, case):
     named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
     named_admission = case == 'ipc-http-named-start-admission'
     named_baseline = case == 'ipc-http-named-start-baseline'
-    named_dns_settled = named_recovery_cut or named_admission or named_baseline or case == 'ipc-http-named-start-dns-settled'
+    helper_profile = case == 'ipc-http-named-start-helper-profile'
+    named_dns_settled = named_recovery_cut or named_admission or named_baseline or helper_profile or case == 'ipc-http-named-start-dns-settled'
     named_dns = named_dns_settled or case == 'ipc-http-named-start-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
@@ -2898,6 +2899,60 @@ def proof_full_http_shutdown(ipc, case):
         print(f'PASS TUN NAMED START BASELINE: publication={publication}; start={started}; Mihomo PID={engine}; '
               'one warmup pair and three measured pairs', flush=True)
 
+    def measure_helper_profile(pid, current, publication, started):
+        os.kill(pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0 and not Path(f'/proc/{pid}').exists()
+        sampler = runpy.run_path(str(root / 'sample_process_tree.py'))
+        roots = [ipc.helper.pid, current['service'][0]]
+        known = {}
+        native = archive / 'state' / 'archive-state.json'
+        proof = archive / 'operations' / started / 'tun-5.json'
+        files = [queue, native, proof, mirror, config]
+        frozen = [path.read_bytes() for path in files]
+        order = ('idle', 'pam', 'query', 'pam', 'query', 'idle', 'query', 'idle', 'pam')
+        print('TUN HELPER PROFILE MANIFEST ' + json.dumps({
+            'publication': publication, 'execution': started, 'roots': dict(zip(('helper', 'mihomo'), roots)),
+            'order': order, 'requests_per_active_window': 6, 'window_seconds': 22, 'points': [0, 1, 2, 19, 20, 21],
+            'kernel': os.uname().release, 'architecture': os.uname().machine,
+            'cpus_available': len(os.sched_getaffinity(0)),
+            'runtime': command('/usr/bin/dotnet', '--list-runtimes').splitlines(),
+            'sampler_sha256': hashlib.sha256((root / 'sample_process_tree.py').read_bytes()).hexdigest(),
+            'frozen_state_sha256': [hashlib.sha256(data).hexdigest() for data in frozen],
+        }), flush=True)
+        for index, mode in enumerate(order):
+            offset = ipc.log.stat().st_size
+            probe(current, f'helper-profile-{index}-before')
+            started_at = time.monotonic()
+            for second in (0, 1, 2, 3, 15, 19, 20, 21, 22):
+                time.sleep(max(0, started_at + second - time.monotonic()))
+                if second == 3:
+                    if mode != 'idle':
+                        subprocess.run(['/usr/bin/dotnet', current['fixture'], 'runtime-mihomo-tun-helper-profile',
+                                        root, ipc.socket_path, mode, publication, started, identity],
+                                       input=password + '\n' if mode == 'pam' else '', text=True,
+                                       check=True, timeout=21, **ipc.identity)
+                    continue
+                if second in (15, 22):
+                    probe(current, f'helper-profile-{index}-{second}')
+                    continue
+                point = sampler['sample'](roots, known)
+                assert all(any(row['pid'] == pid and row.get('metrics', {}).get('pss_bytes') is not None
+                               for row in point['processes']) for pid in roots)
+                for row in point['processes']:
+                    row.pop('raw', None)
+                print('TUN HELPER PROFILE SAMPLE ' + json.dumps({
+                    'run': index, 'mode': mode, 'target_seconds': second, 'elapsed': point['monotonic_seconds'] - started_at,
+                    **point,
+                }), flush=True)
+            audit = ipc.log.read_bytes()[offset:].decode()
+            verb = {'pam': 'AuthenticateSystemUser', 'query': 'MihomoRuntimeQuery'}.get(mode)
+            assert audit.count('event=request-completed ') == (0 if verb is None else 6)
+            if verb is not None:
+                assert audit.count(f'operation={verb} ') == 6
+            assert [path.read_bytes() for path in files] == frozen
+        print(f'PASS TUN HELPER PROFILE: publication={publication}; start={started}; Helper PID={roots[0]}; '
+              f'Mihomo PID={roots[1]}; three windows per mode, no ledger or native changes', flush=True)
+
     def verify_named_start_dns(pid, record, publication, stopped):
         nonlocal worker, token
         install_dns_ack_boundary(allow_release=named_dns_settled, hold_after_exit=named_dns_settled)
@@ -3036,6 +3091,9 @@ def proof_full_http_shutdown(ipc, case):
             until(lambda: leases() == 0, 'confirmed reconciliation work leases')
             if named_baseline:
                 measure_named_start(restart_pid, current, publication, started)
+                return
+            if helper_profile:
+                measure_helper_profile(restart_pid, current, publication, started)
                 return
             if named_admission:
                 proxy, ready = preview_proxy_disable()
@@ -4456,7 +4514,7 @@ rules:
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
                         'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',
                         'ipc-http-named-start-dns', 'ipc-http-named-start-dns-settled', 'ipc-http-named-start-recovery-cut',
-                        'ipc-http-named-start-admission', 'ipc-http-named-start-baseline',
+                        'ipc-http-named-start-admission', 'ipc-http-named-start-baseline', 'ipc-http-named-start-helper-profile',
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',

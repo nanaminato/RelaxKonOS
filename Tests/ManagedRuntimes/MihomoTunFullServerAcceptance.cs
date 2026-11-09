@@ -16,6 +16,32 @@ using RelaxKonOS.Server.Privileged;
 [SupportedOSPlatform("linux")]
 internal static class MihomoTunFullServerAcceptance
 {
+    internal static async Task ProbeHelperProfileAsync(string root, string socket, string mode,
+        Guid publicationId, Guid executionId, string identity)
+    {
+        MihomoIpcStartupAcceptance.RequirePrivateHost(rootRequired: false);
+        if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK") || mode is not ("pam" or "query"))
+            throw new InvalidOperationException("The Helper profile requires its private systemd fixture.");
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+        var password = mode == "pam" ? await Console.In.ReadLineAsync(budget.Token) : null;
+        for (var index = 0; index < 6; index++)
+        {
+            var request = mode == "pam"
+                ? new PrivilegedOperationRequest(PrivilegedOperationKind.AuthenticateSystemUser,
+                    SystemAuthenticationUsername: identity, SystemAuthenticationPassword: password)
+                : new(PrivilegedOperationKind.MihomoRuntimeQuery, OperationId: executionId);
+            var result = await transport.ExecuteAsync(request, budget.Token);
+            if (!result.Success) throw new InvalidOperationException("The fixture Helper read failed.");
+            if (mode == "query" && (result.OutputBase64 is not { } output
+                || JsonSerializer.Deserialize<RuntimeInstallationSnapshot>(Convert.FromBase64String(output)) is not
+                    { PendingOperationId: null, MihomoTunRunning: true, MihomoTunAction: { Outcome: RuntimeSwitchOutcome.Succeeded } receipt }
+                || receipt.OperationId != executionId || receipt.PublicationId != publicationId))
+                throw new InvalidOperationException("The read did not match the active named execution.");
+        }
+    }
+
     internal static async Task ProbeNamedStartRecoveryAsync(string root, string socket, Guid publicationId, Guid executionId)
     {
         RequirePrivateFixture(root);

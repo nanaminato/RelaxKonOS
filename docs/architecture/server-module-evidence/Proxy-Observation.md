@@ -396,4 +396,22 @@ RSS 的整树中位差为 +6.586 MiB，私有驻留为 +6.758 MiB。同一 Helpe
 
 Windows Release TUN 激活与 38 项边界回归通过。Linux Release 构建、八轮 Server 进程退出及整个专属 cgroup 清理通过。宿主共享服务、代理及 resolver 文件指纹一致，采样期间无原配置或具名启停重派。运行记录位于 `.artifacts/mb04-tun-full-zero-dns/`。原始日志 `linux-named-start-baseline.log` SHA-256 为 `f3e2929c87757adc00fc19796ca292bc910bf667a80e3a67c163541a29aac9e7`，摘要 `named-start-baseline-summary.json` 为 `c51f3c28b92930b17e6143f3a405efde6df6ba1002910e21d8f09525e12043cb`，预先冻结的源码及制品清单 `named-start-baseline-manifest.json` 为 `963dfb57f2e8823a8f4f6f9e75e69a9971885ba49deeda5ef287498e0d6360d0`，运行归档为 `ce5425420f3c353be0cff62e067a5122a6f341805e78d1387703274069df1143`。
 
-**尚待独立验证。** Helper 的增长来源需要同一原 TUN 下的时间对照及只读查询分解。对象释放、ALC 回收、动态休眠和生产内存收益仍分别验收。Proxy 保持 resident。
+**尚待独立验证。** Helper 的时间对照及只读查询分解见下一节。对象释放、ALC 回收、动态休眠和生产内存收益仍分别验收。Proxy 保持 resident。
+
+### 活跃 TUN 的 Helper 只读成本分解
+
+Linux x64 私有 systemd 先确认原发布 `0c9fc9100729475b807a5983b11e6faa` 的具名再启动 `943d22ed4efa4341b8bd37c9c02351fb`，再正常关闭 Server。固定 Helper PID `1040` 和 Mihomo PID `951`，交错执行三轮空闲、PAM 与原 ID 的 `MihomoRuntimeQuery`。每个窗口 22 秒，主动窗口由同一非 root 身份经真实 Helper socket 连续执行六次，凭据仅走专属进程 stdin。三个空闲窗口的 Helper 完成事件为零。主动窗口分别通过 PAM 或匹配原发布与原执行的只读回执，审计各六次，无其他命令。54 个采样点均保留两进程身份和内存指标，窗口前、中、后核对同一真实 HTTP、分流 DNS 与管理选路，原配置、镜像、队列和 Helper 台账逐字节一致。
+
+下表为各窗口末三点中位数减首三点中位数，单位 MiB。
+
+| Helper PSS | 第一次 | 第二次 | 第三次 | 中位差 |
+| --- | ---: | ---: | ---: | ---: |
+| 空闲 | −0.183 | −0.251 | −0.233 | −0.233 |
+| PAM | +2.095 | +0.926 | +6.559 | +2.095 |
+| 原具名运行时查询 | +7.281 | +7.744 | +0.886 | +7.281 |
+
+Helper PSS 从 98.617 MiB 到 123.438 MiB。私有驻留的变化与 PSS 方向一致。三个查询窗口消耗 1.17–1.46 秒 Helper CPU，PAM 为 0.07–0.10 秒。首个查询窗口结束时文件描述符从 168 增至 432，在随后 PAM 窗口保持，后两次查询后分别降到 302 和 164。Mihomo 的每窗 PSS 差值为 0–0.203 MiB。固定窗口内，仅空闲未复现增长，两种调用都增加驻留。当前证据可以定位到调用组，仍需区分本机子进程输出管道、托管对象和其它本地资源的持有时间。
+
+Windows Release TUN 激活与 38 项边界检查、Linux Release 构建通过。Server、Helper、Mihomo 及专属 cgroup 退出清理完成，宿主共享服务、代理和 resolver 文件指纹一致。记录位于 `.artifacts/mb04-tun-full-zero-dns/`。原始日志 `linux-named-start-helper-profile.log` SHA-256 为 `fa1c47f2aa6f7e23b7e0e734c75fd7289b11d7ccfdc895979fce3cfcde497d4a`，摘要 `named-start-helper-profile-summary.json` 为 `d1b2f447474aa8e538e10df4fe5c5c2722ceb615b7b35ba071e2e976babd44a2`，冻结清单 `named-start-helper-profile-manifest.json` 为 `62a25b0d9f2dfcc93ba12ce877d4111785089e8f31b544f0ed38795961842f5d`，运行归档为 `17ab58ad40ffe6ae75be98db5ad76954601dd8bae77908b1c2a71d5a1d1a04fd`。
+
+下一项追踪原具名查询所调用的本机子进程 stdout、stderr 和退出边界，核对每次完成后描述符是否及时关闭，并用同一流量条件做修正前后对照。整模块交接、对象释放、ALC 回收和生产收益分别验收。Proxy 保持 resident。

@@ -246,6 +246,13 @@ if (args is ["runtime-squid-publication-replay", var squidRoot, var squidSocket,
     await MihomoTunFullServerAcceptance.ProbeSquidReceiptReplayAsync(squidRoot, squidSocket, Guid.Parse(squidOperation), int.Parse(squidPort));
     return;
 }
+if (args is ["runtime-mihomo-tun-helper-profile", var tunProfileRoot, var tunProfileSocket, var tunProfileMode,
+        var tunProfilePublication, var tunProfileExecution, var tunProfileIdentity] && OperatingSystem.IsLinux())
+{
+    await MihomoTunFullServerAcceptance.ProbeHelperProfileAsync(tunProfileRoot, tunProfileSocket, tunProfileMode,
+        Guid.Parse(tunProfilePublication), Guid.Parse(tunProfileExecution), tunProfileIdentity);
+    return;
+}
 if (args is ["runtime-mihomo-tun-named-retry", var tunRetryRoot, var tunRetrySocket, var tunRetryPublication, var tunRetryExecution]
     && OperatingSystem.IsLinux())
 {
