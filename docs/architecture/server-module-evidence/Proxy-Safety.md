@@ -1026,6 +1026,16 @@ Windows Release 38 项 TUN 边界及 25 项注册检查通过。Linux 专属 sys
 
 **未实现或仍受门禁保护。** 整模块安全交接仍开放，Proxy 保持 resident。
 
+### 独立发送端已领取但尚未收到 Helper 放行
+
+**已实现且已验证。** 在 Linux 私有 systemd 中，原操作 `b7bfd90b93dc4227a0cb4a3aeb7d34d5` 的独立发送端持久写入领取记录，且已输出 `ready`。夹具保留原放行管道并暂扣 `ready`，随后清空整个 Helper cgroup。原发送端退出，两个 cgroup 均排空。原配置、管理选路、resolver、原网络归属及首次停止记录保持，固定单元维持 `inactive`。实测 `StartUnit` 派发次数为零。
+
+正常停止原 Server 后启用重启，认证请求按同一原 ID 和同键返回待核验，新键被拒绝。原领取记录逐字节保持，首次应答暂存、作业记录及进程见证均缺失。实测使用同次 Release 构建的程序集。首轮夹具的重定向提前关闭了 Helper 的输出管道，第二轮漏掉正常停止 Server，均修正后复验。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-before-ack-final.log` SHA-256 为 `ad185da158e549fd9126d76dd67273ac94274d2079643ec651238d85f53f3571`，归档为 `9339b187d7733dceec00f25f0989bf643ec71b062ffe212f35b6f6b7cc7742a0`。共享服务、代理和 resolver 指纹一致，专属资源已清理。
+
+**已实现但实机未验证。** 该场景确认实际进程退出。整机掉电、对象释放、ALC、隔离负载和生产内存收益分别待验。
+
+**未实现或仍受门禁保护。** 缺可信派发结论时，生产恢复保留原操作与准入门禁。Proxy 保持 resident。
+
 **未实现或仍受门禁保护。** 原应答未取得且缺可信原暂存时维持门禁，禁止重派或按现有进程推导原作业。整模块交接仍待验收，Proxy 保持 resident。
 
 ## MB-04 受管 TUN 认证 HTTP 补偿

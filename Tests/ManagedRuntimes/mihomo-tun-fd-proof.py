@@ -341,6 +341,23 @@ exec "$real" "$@"
     command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/journalctl')
 
 
+def hold_restored_sender_ready():
+    original = root / 'systemd-run-original'
+    wrapper = root / 'systemd-run-withhold-ready'
+    shutil.copy2('/usr/bin/systemd-run', original)
+    wrapper.write_text(f'''#!/bin/bash
+set -eu
+real={shlex.quote(str(original))}
+if [[ "$*" == *"--unit=rk-mihomo-restored-start-"* ]]; then
+    "$real" "$@" > {shlex.quote(str(root / 'restored-sender-ready'))}
+    exit 0
+fi
+exec "$real" "$@"
+''')
+    wrapper.chmod(0o755)
+    command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/systemd-run')
+
+
 def install_restored_process_boundary():
     original = root / 'systemctl-original'
     wrapper = root / 'systemctl-wrapper'
@@ -2580,6 +2597,7 @@ def proof_full_http_shutdown(ipc, case):
         cgroup_cut = sender_cut and Path(sys.argv[3]).with_name('restored-start-helper-cgroup-cut.fixture').is_file()
         sender_group_cut = cgroup_cut and Path(sys.argv[3]).with_name('restored-start-sender-cgroup-cut.fixture').is_file()
         sender_death = sender_cut and Path(sys.argv[3]).with_name('restored-start-sender-death.fixture').is_file()
+        ready_cut = dispatch_unknown and Path(sys.argv[3]).with_name('restored-start-before-ack.fixture').is_file()
         sender_replied = sender_cut and not sender_death and not sender_group_cut
         recover_staged = stage_cut or sender_replied
         job = operation_dir / 'registration-start-job.json'
@@ -2619,8 +2637,50 @@ def proof_full_http_shutdown(ipc, case):
             assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
                            '--max-time', '3', f'http://{target}:18880/mb04-restored-job-cut-{phase}') == 'upstream-through-inherited-tun'
 
-        ipc.start_helper(isolated_cgroup=cgroup_cut)
+        if ready_cut:
+            hold_restored_sender_ready()
+        ipc.start_helper(isolated_cgroup=cgroup_cut or ready_cut)
         worker = launch('restart')
+        if ready_cut:
+            ready = root / 'restored-sender-ready'
+            until(lambda: ready.is_file() and ready.read_text() == 'ready\n', 'sender waiting for the original Helper acknowledgement')
+            claim = operation_dir / 'registration-start-sender'
+            original_claim = claim.read_bytes()
+            assert original_claim == publication.encode() and not starts.exists()
+            helper_group = service('show', '-p', 'ControlGroup', '--value', ipc.helper_unit)
+            sender_unit = f'rk-mihomo-restored-start-{publication}.service'
+            sender_group = service('show', '-p', 'ControlGroup', '--value', sender_unit)
+            sender_pid = int(service('show', '-p', 'MainPID', '--value', sender_unit))
+            assert sender_pid > 1 and str(sender_pid) in cgroup_members(sender_group)
+            assert len(cgroup_members(helper_group)) >= 2 and not sender_group.startswith(helper_group + '/')
+            descriptor = os.pidfd_open(sender_pid)
+            try:
+                ipc.stop_helper()
+                assert not cgroup_members(helper_group)
+                await_reaped(descriptor)
+            finally:
+                os.close(descriptor)
+            assert not cgroup_members(sender_group)
+            os.kill(int(marker('full-server-pid')), signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            ipc.start_helper()
+            worker = launch('restart')
+            pid = int(marker('full-server-pid'))
+            token = login()
+            until(lambda: 'operation=MihomoRuntimeRecover ' in ipc.log.read_text(), 'original no-ack recovery gate')
+            assert pending()['recoveryProblemCode'] == 'runtime.network_restored_start_unconfirmed'
+            status, blocked = request(api + '/tun/enable', token, 'full-restored-before-ack-new', {'profileId': profile})
+            assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+            assert claim.read_bytes() == original_claim and not staged.exists() and not dispatch.exists()
+            assert (owner.read_bytes(), initial_stop.read_bytes()) == owned and not starts.exists()
+            assert service('show', '-p', 'ActiveState', '--value', unit) == 'inactive'
+            assert config.read_bytes() == mirror.read_bytes() == original_config
+            assert network_baseline() == baseline and resolver_snapshot() == original_resolver
+            os.kill(pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            print(f'PASS TUN RESTORED START BEFORE ACK CUT: original={publication}; original claim retained, '
+                  'no native dispatch, both cgroups drained, original gate retained', flush=True)
+            return
         pid = int(marker('full-server-pid'))
         token = login()
         if stage_cut:
