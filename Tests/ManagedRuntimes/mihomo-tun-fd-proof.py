@@ -358,6 +358,42 @@ exec "$real" "$@"
     command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/systemd-run')
 
 
+def isolate_restored_sender_network():
+    original = root / 'systemd-run-original'
+    wrapper = root / 'systemd-run-foreign-sender'
+    probe = root / 'foreign-sender-probe.py'
+    shutil.copy2('/usr/bin/systemd-run', original)
+    probe.write_text(f'''import json, os, socket, sys, uuid
+from pathlib import Path
+program, verb, operation, boot, cookie = sys.argv[1:]
+assert program == {launcher!r} and verb == '--linux-mihomo-restored-start'
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+    actual_cookie = int.from_bytes(sock.getsockopt(socket.SOL_SOCKET, 71, 8), sys.byteorder)
+record = dict(operation=operation, boot=boot, cookie=int(cookie), actualCookie=actual_cookie,
+              actualBoot=uuid.UUID(Path('/proc/sys/kernel/random/boot_id').read_text().strip()).hex,
+              namespace=os.readlink('/proc/self/ns/net'))
+with Path({str(root / 'foreign-sender-identity')!r}).open('x') as output:
+    json.dump(record, output)
+os.execv(program, sys.argv[1:])
+''')
+    wrapper.write_text(f'''#!/bin/bash
+set -eu
+real={shlex.quote(str(original))}
+if [[ "$*" == *"--unit=rk-mihomo-restored-start-"* ]]; then
+    options=()
+    while [[ "$1" != -- ]]; do options+=("$1"); shift; done
+    shift
+    status=0
+    "$real" --property=PrivateNetwork=yes "${{options[@]}}" -- /usr/bin/python3 -I {shlex.quote(str(probe))} "$@" || status=$?
+    printf '%s\\n' "$status" > {shlex.quote(str(root / 'foreign-sender-exit'))}
+    exit "$status"
+fi
+exec "$real" "$@"
+''')
+    wrapper.chmod(0o755)
+    command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/systemd-run')
+
+
 def install_restored_process_boundary():
     original = root / 'systemctl-original'
     wrapper = root / 'systemctl-wrapper'
@@ -2598,6 +2634,7 @@ def proof_full_http_shutdown(ipc, case):
         sender_group_cut = cgroup_cut and Path(sys.argv[3]).with_name('restored-start-sender-cgroup-cut.fixture').is_file()
         sender_death = sender_cut and Path(sys.argv[3]).with_name('restored-start-sender-death.fixture').is_file()
         ready_cut = dispatch_unknown and Path(sys.argv[3]).with_name('restored-start-before-ack.fixture').is_file()
+        foreign_sender = dispatch_unknown and Path(sys.argv[3]).with_name('restored-start-foreign-sender.fixture').is_file()
         sender_replied = sender_cut and not sender_death and not sender_group_cut
         recover_staged = stage_cut or sender_replied
         job = operation_dir / 'registration-start-job.json'
@@ -2639,8 +2676,46 @@ def proof_full_http_shutdown(ipc, case):
 
         if ready_cut:
             hold_restored_sender_ready()
+        if foreign_sender:
+            isolate_restored_sender_network()
         ipc.start_helper(isolated_cgroup=cgroup_cut or ready_cut)
         worker = launch('restart')
+        if foreign_sender:
+            assert int(marker('foreign-sender-exit')) == 1
+            identity_file = root / 'foreign-sender-identity'
+            identity = json.loads(identity_file.read_bytes())
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                original_cookie = int.from_bytes(sock.getsockopt(socket.SOL_SOCKET, 71, 8), sys.byteorder)
+            assert identity['operation'] == publication and identity['boot'] == identity['actualBoot']
+            assert identity['cookie'] == original_cookie and 0 < identity['actualCookie'] != original_cookie
+            assert identity['namespace'] != os.readlink('/proc/self/ns/net')
+            claim = operation_dir / 'registration-start-sender'
+            armed = operation_dir / 'registration-start-dispatched'
+            assert armed.read_text() == publication and not claim.exists() and not starts.exists()
+            original_identity = identity_file.read_bytes()
+            os.kill(int(marker('full-server-pid')), signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            ipc.stop_helper()
+            ipc.start_helper()
+            worker = launch('restart')
+            pid = int(marker('full-server-pid'))
+            token = login()
+            until(lambda: 'operation=MihomoRuntimeRecover ' in ipc.log.read_text(), 'foreign sender recovery gate')
+            assert pending()['recoveryProblemCode'] == 'runtime.network_restored_start_unconfirmed'
+            status, blocked = request(api + '/tun/enable', token, 'full-restored-foreign-sender-new', {'profileId': profile})
+            assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+            assert identity_file.read_bytes() == original_identity and armed.read_text() == publication
+            assert not claim.exists() and not staged.exists() and not dispatch.exists() and not starts.exists()
+            assert (owner.read_bytes(), initial_stop.read_bytes()) == owned
+            assert service('show', '-p', 'ActiveState', '--value', unit) == 'inactive'
+            assert config.read_bytes() == mirror.read_bytes() == original_config
+            assert network_baseline() == baseline and resolver_snapshot() == original_resolver
+            os.kill(pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            print(f'PASS TUN RESTORED START FOREIGN SENDER: original={publication}; '
+                  f'original cookie={original_cookie}; sender cookie={identity["actualCookie"]}; '
+                  'no claim or native dispatch, original gate retained', flush=True)
+            return
         if ready_cut:
             ready = root / 'restored-sender-ready'
             until(lambda: ready.is_file() and ready.read_text() == 'ready\n', 'sender waiting for the original Helper acknowledgement')

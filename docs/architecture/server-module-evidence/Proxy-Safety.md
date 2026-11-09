@@ -1038,6 +1038,18 @@ Windows Release 38 项 TUN 边界及 25 项注册检查通过。Linux 专属 sys
 
 **未实现或仍受门禁保护。** 原应答未取得且缺可信原暂存时维持门禁，禁止重派或按现有进程推导原作业。整模块交接仍待验收，Proxy 保持 resident。
 
+### 补偿发送端处于异网络命名空间
+
+**已实现且已验证。** Linux 私有 systemd 在原配置服务停止后，启动原操作 `6133417debc04d59b1bc0415dd7d3f5e` 的固定补偿发送端。仅发送端使用独立网络命名空间。原 Helper 的内核 cookie 为 `282993`，发送端实测为 `283058`，启动 ID 相同。发送端在领取原操作前退出，原派发意图保持，领取记录、原应答暂存、作业记录和进程见证均未产生。`StartUnit` 派发为零。
+
+重启 Helper 和完整认证 Server 后，同键仍按原 ID 返回待核验，新键被拒绝。管理选路、resolver、旧配置和镜像逐项保持，原网络归属和首次停止记录逐字节一致。固定服务保持 `inactive`。此反向场景验证拒绝启动，真实上游的正向连续性见[整组 Helper 停止后的原发送端接续](#整组-helper-停止后的原发送端接续)。
+
+Release 25 项注册及 38 项 TUN 边界回归通过。Linux 专属 cgroup 和实际进程清理通过，宿主共享运行时、代理和 resolver 指纹一致。原日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-foreign-sender.log` SHA-256 为 `aef9598abbac48fd2e54b6239aab540d456647712d497fa49c8e65251bec6918`，归档为 `b32720b8218a1d6fa290c7e269885b74adfc042de5e00b34ae00b864ca45620e`。
+
+**已实现但实机未验证。** 整机掉电、对象释放、ALC 回收、隔离负载内存和生产收益分别待验。本场景确认实际进程退出。
+
+**未实现或仍受门禁保护。** 原发送端无法取得同一网络归属时保留原操作及准入门禁。Proxy 保持 resident，整模块安全交接仍开放。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。
