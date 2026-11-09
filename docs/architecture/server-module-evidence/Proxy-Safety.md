@@ -1016,6 +1016,16 @@ Linux Release 构建和 Windows Release 38 项 TUN 边界检查通过。正向�
 
 **未实现或仍受门禁保护。** 两组进程均退出且缺少可信原应答时继续待核验。整模块安全交接仍开放，Proxy 保持 resident。
 
+### 固定单元有排队作业时的关账门禁
+
+**已实现且已验证。** 私有 systemd 中，原配置操作 `dc9a2e84-13d7-4235-89f1-b4a6228aaaa7` 的补偿因授权不可用而待恢复，紧急停止已完成。夹具用独立排序单元暂扣真实启动作业 `707`。固定单元同时报告 `inactive`、`MainPID=0` 和非零 `Job`。Helper 按原 ID 拒绝确认关账并返回 `runtime.recovery_stop_required`。原归档台账逐字节保持，同一作业仍排队。夹具取消该作业并排空后，原操作使用新鲜授权恢复原配置及真实 HTTP 转发，完成时沿用原操作 ID。
+
+Windows Release 38 项 TUN 边界及 25 项注册检查通过。Linux 专属 systemd 共 183 项通过，进程退出与 cgroup 清理通过，宿主共享 Mihomo、sing-box 及代理文件指纹一致。首轮夹具混用了旧 Proxy 执行程序集，修正为同次构建后通过。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-queued-close-native-retest.log` SHA-256 为 `646440f3b83a86e12636006e02d6b8484afe5145222ec702d0dd7079c6ce089c`，归档为 `055745aea06c857cf25d4c53d53ecf59efe9a1ccc6873cb68ee1b420c3d731c5`。
+
+**已实现但实机未验证。** 此场景确认关账门禁、原台账和夹具进程退出。掉电、该路径的对象释放、ALC 回收、隔离负载和生产内存收益分别待验。
+
+**未实现或仍受门禁保护。** 整模块安全交接仍开放，Proxy 保持 resident。
+
 **未实现或仍受门禁保护。** 原应答未取得且缺可信原暂存时维持门禁，禁止重派或按现有进程推导原作业。整模块交接仍待验收，Proxy 保持 resident。
 
 ## MB-04 受管 TUN 认证 HTTP 补偿

@@ -209,6 +209,44 @@ internal static class MihomoSystemdAcceptance
                     && states.Read()!.Configuration is not null, "Real emergency stop remains available with untrusted program permissions and no credential channel");
             }
             finally { File.SetUnixFileMode(observedBinary, recoveryMode); }
+            if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_QUEUED_CLOSE") == "1")
+            {
+                MihomoIpcStartupAcceptance.RequirePrivateHost();
+                const string blocker = "relaxkonos-fixture-close-blocker.service";
+                var blockerPath = "/etc/systemd/system/" + blocker;
+                var unit = LinuxMihomoArchiveHost.Unit;
+                Task<string> SystemctlAsync(params string[] arguments) => NativeRuntimeProcess.RunAsync("/usr/bin/systemctl", arguments, 4096);
+                string? job = null;
+                await File.WriteAllTextAsync(blockerPath, $"[Unit]\nBefore={unit}\n[Service]\nType=oneshot\nExecStart=/usr/bin/sleep 40\n");
+                try
+                {
+                    await SystemctlAsync("daemon-reload");
+                    await SystemctlAsync("start", "--no-block", blocker, unit);
+                    var unitState = await SystemctlAsync("show", unit, "--property=Job,ActiveState,MainPID");
+                    job = unitState.Split('\n').Single(line => line.StartsWith("Job=", StringComparison.Ordinal))[4..];
+                    Check(uint.TryParse(job, out var jobId) && jobId > 0 && unitState.Split('\n').Contains("ActiveState=inactive")
+                        && unitState.Split('\n').Contains("MainPID=0"), "A real systemd start is queued for the inactive unit without a PID");
+                    var statePath = Path.Combine(root, "state", "archive-state.json");
+                    var original = await File.ReadAllBytesAsync(statePath);
+                    var close = await MihomoRuntimeOperations.ExecuteAsync(new(PrivilegedOperationKind.MihomoRuntimeRecoveryClose,
+                        OperationId: Guid.NewGuid(), RuntimeLifecycle: new(RecoveryOperationId: interrupted.OperationId, Confirmed: true)),
+                        () => lifecycle, _ => Task.CompletedTask);
+                    Check(!close.Success && close.Error == "runtime.recovery_stop_required",
+                        "Emergency close refuses the real queued job: " + close.Error);
+                    var after = await File.ReadAllBytesAsync(statePath);
+                    var queued = (await SystemctlAsync("show", unit, "--property=Job", "--value")).Trim();
+                    Check(original.SequenceEqual(after) && queued == job,
+                        "Refused close preserves the original ledger and leaves the same job queued");
+                    Console.WriteLine($"PASS MIHOMO QUEUED CLOSE: original {interrupted.OperationId}, job {job}, zero PID and original ledger preserved");
+                }
+                finally
+                {
+                    if (uint.TryParse(job, out var jobId) && jobId > 0) await SystemctlAsync("cancel", job!);
+                    await SystemctlAsync("stop", unit, blocker);
+                    File.Delete(blockerPath);
+                    await SystemctlAsync("daemon-reload");
+                }
+            }
             var configurationRecovery = await HelperAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery, OperationId: Guid.NewGuid()));
             Check(configurationRecovery.Change == RuntimeChange.Configure && configurationRecovery.OperationId == interrupted.OperationId
                 && configurationRecovery.NeedsOperatorDecision, "Helper recovery query identifies the real pending publication");

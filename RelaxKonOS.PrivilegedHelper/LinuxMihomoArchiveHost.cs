@@ -153,8 +153,10 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         }
         var state = await StateAsync(ct);
         bool? boot = state.GetValueOrDefault("UnitFileState") switch { "enabled" => true, "disabled" => false, _ => null };
-        // Anything except a settled zero-PID unit is not proven stopped. No process/image proof is claimed.
-        var running = state.GetValueOrDefault("MainPID") != "0" || state.GetValueOrDefault("ActiveState") is not ("inactive" or "failed");
+        // An enqueued job may start a process even while the unit is inactive with no PID.
+        var running = state.GetValueOrDefault("MainPID") != "0"
+            || state.GetValueOrDefault("ActiveState") is not ("inactive" or "failed")
+            || state.GetValueOrDefault("Job") is not ("" or "0");
         return new(true, running, boot);
     }
 
