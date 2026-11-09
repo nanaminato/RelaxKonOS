@@ -4730,3 +4730,5 @@ Linux 直连监听补偿丢失应答时，再次确认原补偿可只读核对�
 直连 Mihomo 档案激活与设置写入共用按需加载的执行代码。原发布检查点、系统代理归属和应用回执由 Server 保持。控制器应答丢失时，同一原操作继续等待核验，后续恢复按原 ID 读取证据。见[直连档案与设置发布执行器](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-直连档案与设置发布执行器)。
 
 运行时、概览、连接及流量在当前 Proxy 代次内合并同时在途的读取。每次采样与各 HTTP 响应分别持有租约，概览复用同代次的运行时采样。最后一个读者取消后，下一次读取等待原控制器任务及其清理完成。[只读合并器的代次归属](../architecture/server-module-evidence/Proxy-Observation.md#只读合并器的代次归属)
+
+概览执行器在该代次中组合活动档案、恢复状态、平台能力和只读控制器观测。运行时采样已核对可达性时，概览复用该结果。控制器可达时，概览读取当前连接计数。[概览执行器边界](../architecture/server-module-evidence/Proxy-Observation.md#概览执行器的代次边界)

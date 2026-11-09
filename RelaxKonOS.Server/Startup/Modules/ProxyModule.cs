@@ -66,13 +66,10 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         builder.Services.AddScoped<ProxyLifecycleOperations>();
         builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddScoped<IProxyLifecycleService, ProxyLifecycleService>();
-        builder.Services.AddScoped<ProxyOverviewService>();
         ProxyReadSampler<MihomoRuntimeObservation>.Register(builder.Services, static (services, _, ct) =>
             services.GetRequiredService<MihomoRuntimeManager>().GetObservedAsync(
                 token => services.GetRequiredService<IMihomoControllerClient>().IsReachableAsync(token), ct));
-        ProxyReadSampler<ProxyOverviewDto>.Register(builder.Services,
-            static (services, runtime, ct) => services.GetRequiredService<ProxyOverviewService>().GetAsync(
-                ProxyReadSampler<MihomoRuntimeObservation>.Resolve(runtime).ReadAsync, ct));
+        ProxyOverviewService.Register(builder.Services);
         ProxyReadSampler<ProxyTrafficDto>.Register(builder.Services,
             static (services, _, ct) => services.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(ct));
         ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>.Register(builder.Services,

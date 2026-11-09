@@ -23,7 +23,7 @@ public sealed class MihomoEngine(
         return await ProjectHealthAsync(controller, reachable, recovery, cancellationToken);
     }
 
-    internal static async Task<ProxyHealthDto> ProjectHealthAsync(IMihomoControllerClient controller,
+    internal static async Task<ProxyHealthDto> ProjectHealthAsync(IMihomoOverviewReader controller,
         ControllerResult<bool> reachable, ProxyRecoveryStatusDto recovery, CancellationToken cancellationToken)
     {
         var tunState = await ObserveTunStateAsync(controller, reachable.Succeeded, recovery, cancellationToken);
@@ -42,7 +42,7 @@ public sealed class MihomoEngine(
     /// through the TUN transaction).  The one exception is an unfinished transaction: that is a
     /// state the operator must resolve, and there the marker is the authority rather than a report.
     /// </summary>
-    private static async Task<ProxyTunState> ObserveTunStateAsync(IMihomoControllerClient controller, bool controllerReachable, ProxyRecoveryStatusDto recovery,
+    private static async Task<ProxyTunState> ObserveTunStateAsync(IMihomoOverviewReader controller, bool controllerReachable, ProxyRecoveryStatusDto recovery,
         CancellationToken cancellationToken)
     {
         if (recovery.RecoveryRequired) return ProxyTunState.Recovering;

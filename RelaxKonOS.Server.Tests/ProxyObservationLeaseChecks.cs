@@ -45,13 +45,9 @@ internal static class ProxyObservationLeaseChecks
                 "1.19.10", null, true, false, reachable.ProblemCode);
             return new(runtime, reachable);
         });
-        ProxyReadSampler<ProxyOverviewDto>.Register(builder.Services, static async (_, runtime, ct) =>
-        {
-            var sample = await ProxyReadSampler<MihomoRuntimeObservation>.Resolve(runtime).ReadAsync(ct);
-            return new(MihomoEngine.Id, MihomoEngine.Capabilities, new(false, false, false, false, false, false, new(false, false, false, false)),
-                sample.Runtime, new(ProxyRuntimeState.Running, ProxyTunState.Disabled, ProxyHealthState.Healthy, sample.Controller!.Succeeded, true, true),
-                ProxyOperatingMode.ListenerOnly, null, 1, new(false, false, null));
-        });
+        ProxyOverviewService.Register(builder.Services);
+        builder.Services.AddScoped<IProxyPlatformService, FixturePlatform>();
+        builder.Services.AddSingleton<IProxyRecoveryService, FixtureRecovery>();
         var scenario = new Scenario(holdController: false);
         builder.Services.AddScoped<IProxyEngineRegistry>(_ => throw new InvalidOperationException("Observation reads must not create the management engine graph."));
         builder.Services.AddSingleton<IProxyDiagnosticLogStore, FixtureDiagnostics>();
@@ -66,11 +62,12 @@ internal static class ProxyObservationLeaseChecks
         builder.Services.AddScoped(_ => new ControllerScope(scenario));
         builder.Services.AddScoped<IMihomoControllerClient>(services => services.GetRequiredService<ControllerScope>().CreateClient());
         await using var app = builder.Build();
-        TestAssert.Assert(app.Services.GetService<ProxyReadSampler<MihomoRuntimeObservation>>() is null
+        TestAssert.Assert(app.Services.GetService<ProxyOverviewService>() is null
+            && app.Services.GetService<ProxyReadSampler<MihomoRuntimeObservation>>() is null
             && app.Services.GetService<ProxyReadSampler<ProxyOverviewDto>>() is null
             && app.Services.GetService<ProxyReadSampler<ProxyTrafficDto>>() is null
             && app.Services.GetService<ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>>() is null,
-            "Live read samplers must belong to the Proxy generation instead of the root container.");
+            "Live read samplers and the overview executor must belong to the Proxy generation.");
         var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var ct = budget.Token;
@@ -209,7 +206,8 @@ internal static class ProxyObservationLeaseChecks
                 scenario.ReleaseController.TrySetResult();
                 scenario.ReleaseCleanup.TrySetResult();
             }
-            TestAssert.Assert(await remaining is { ActiveConnections: 1 }, "The other overview reader must receive the original sample.");
+            TestAssert.Assert(await remaining is { ActiveConnections: 1, Health.ControllerReachable: true, ActiveProfile.Id: var activeId }
+                && activeId == profile.Id, "The other overview reader must receive the original sample and active profile.");
             while (HasLease()) await Task.Delay(10, ct);
         }
         scenario = new Scenario(holdController: true);
@@ -419,12 +417,23 @@ internal static class ProxyObservationLeaseChecks
     {
         public Task<ProxyProfileDto?> GetAsync(Guid id, CancellationToken ct) => Task.FromResult(id == profile.Id ? profile : null);
         public Task<IReadOnlyList<ProxyProfileDto>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
-        public Task<ProxyProfileDto?> GetActiveAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProxyProfileDto?> GetActiveAsync(CancellationToken ct) => Task.FromResult<ProxyProfileDto?>(profile);
         public Task<ProxyProfileDto> UpsertAsync(Guid? id, string name, string engineId, long? expectedRevision, CancellationToken ct) => throw new NotSupportedException();
         public Task<ProxyProfileDto?> SetActiveAsync(Guid id, CancellationToken ct, MihomoSubscriptionRefresh? refresh = null) => throw new NotSupportedException();
         public Task<bool> DeleteAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task ValidatePublicationAsync(MihomoProfilePublication selection, CancellationToken ct) => throw new NotSupportedException();
         public Task CommitPublicationAsync(Guid operationId, MihomoProfilePublication selection, string identity, CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    private sealed class FixturePlatform : IProxyPlatformService
+    {
+        public Task<ProxyPlatformCapabilities> GetCapabilitiesAsync(CancellationToken ct) =>
+            Task.FromResult(new ProxyPlatformCapabilities(false, false, false, false, false, false, new(false, false, false, false)));
+    }
+
+    private sealed class FixtureRecovery : IProxyRecoveryService
+    {
+        public Task<ProxyRecoveryStatusDto> GetStatusAsync(CancellationToken ct) => Task.FromResult(new ProxyRecoveryStatusDto(false, false, null));
     }
 
     private sealed class Scenario(bool holdController)
@@ -477,7 +486,7 @@ internal static class ProxyObservationLeaseChecks
                 "/version" => "{\"version\":\"v1.19.10\"}",
                 "/proxies" => "{\"proxies\":{}}",
                 "/configs" => "{\"mode\":\"" + scenario.RoutingMode + "\",\"dns\":{\"enable\":true,\"enhanced-mode\":\"fake-ip\"}}",
-                _ => "{\"uploadTotal\":3,\"downloadTotal\":4,\"connections\":[],\"memory\":5}"
+                _ => "{\"uploadTotal\":3,\"downloadTotal\":4,\"connections\":[{\"id\":\"fixture\"}],\"memory\":5}"
             };
             return new HttpResponseMessage(scenario.Status) { Content = new StringContent(body) };
         }

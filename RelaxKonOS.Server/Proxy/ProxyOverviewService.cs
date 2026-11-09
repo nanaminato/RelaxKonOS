@@ -4,15 +4,21 @@ using RelaxKonOS.Server.Proxy.Mihomo;
 
 namespace RelaxKonOS.Server.Proxy;
 
-internal sealed class ProxyOverviewService(
-    IMihomoControllerClient controller,
-    IProxyPlatformService platform,
-    IProxyProfileRepository profiles,
-    IProxyRecoveryService recovery)
+internal sealed class ProxyOverviewService(Func<CancellationToken, Task<MihomoRuntimeObservation>> observeRuntime)
 {
-    internal async Task<ProxyOverviewDto> GetAsync(Func<CancellationToken, Task<MihomoRuntimeObservation>> observeRuntime, CancellationToken ct)
+    internal static void Register(IServiceCollection services) =>
+        services.AddSingleton(new ProxyReadSamplerRegistration(typeof(ProxyReadSampler<ProxyOverviewDto>), static (scopes, leases, runtime) =>
+        {
+            var overview = new ProxyOverviewService(ct => ProxyReadSampler<MihomoRuntimeObservation>.Resolve(runtime).ReadAsync(ct));
+            return new ProxyReadSampler<ProxyOverviewDto>(scopes, leases, (scope, ct) => overview.GetAsync(
+                scope.GetRequiredService<IMihomoControllerClient>(), scope.GetRequiredService<IProxyPlatformService>(),
+                scope.GetRequiredService<IProxyProfileRepository>().GetActiveAsync, scope.GetRequiredService<IProxyRecoveryService>(), ct));
+        }));
+
+    internal async Task<ProxyOverviewDto> GetAsync(IMihomoOverviewReader controller, IProxyPlatformService platform,
+        Func<CancellationToken, Task<ProxyProfileDto?>> getActiveProfile, IProxyRecoveryService recovery, CancellationToken ct)
     {
-        var active = await profiles.GetActiveAsync(ct);
+        var active = await getActiveProfile(ct);
         var recoveryState = await recovery.GetStatusAsync(ct);
         var sample = await observeRuntime(ct);
         // An absent or unverified runtime may skip the version probe. Only overview still needs health.

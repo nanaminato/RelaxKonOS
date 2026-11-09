@@ -10,20 +10,24 @@ using RelaxKonOS.Protocol.Proxy;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
-public interface IMihomoControllerClient
+public interface IMihomoOverviewReader
 {
     Task<ControllerResult<bool>> IsReachableAsync(CancellationToken cancellationToken);
+    Task<ControllerResult<int>> GetConnectionCountAsync(CancellationToken cancellationToken);
+    Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken);
+}
+
+public interface IMihomoControllerClient : IMihomoOverviewReader
+{
     Task<ControllerResult<IReadOnlyList<ProxyGroupDto>>> GetGroupsAsync(CancellationToken cancellationToken);
     Task<string?> SelectGroupAsync(string groupName, string proxyName, CancellationToken cancellationToken);
     Task<ProxyControllerConfigurationDto> GetControllerConfigurationAsync(CancellationToken cancellationToken);
     Task<string?> SetRoutingModeAsync(ProxyRoutingMode mode, CancellationToken cancellationToken);
     Task<ProxyDelayDto> TestProxyDelayAsync(string proxyName, string url, int timeoutMilliseconds, CancellationToken cancellationToken);
     Task<ControllerResult<IReadOnlyList<ProxyConnectionDto>>> GetConnectionsAsync(CancellationToken cancellationToken);
-    Task<ControllerResult<int>> GetConnectionCountAsync(CancellationToken cancellationToken);
     Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken);
     Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken);
     Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken);
-    Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken);
     Task<ControllerResult<MihomoListenerState>> GetListenerStateAsync(CancellationToken cancellationToken);
     Task<string?> ReloadAsync(CancellationToken cancellationToken);
 }
