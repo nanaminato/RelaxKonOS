@@ -166,6 +166,8 @@ Linux 桌面 Web 服务器管理器隐藏实例选择、发现、集成、安装
 
 CC-01：Nginx（Windows/Linux）、Docker Engine、SMB/Samba、Squid、frpc/frps、Git 的安装入口现统一到组件中心；Mihomo 的重复运行时安装/更新页也已从代理管理器移除，保留定位 Mihomo 的跳转。sing-box 沿用既有集中入口。业务应用保留依赖事实、服务/业务配置及“在组件中心管理依赖”导航，不再提供组件安装命令、版本输入、下载或上传安装表单。RelaxKonOS 自身部署向导、应用包安装器不属于第三方宿主依赖，继续由原应用负责。
 
+Linux 系统包适配器派发后若丢失 Helper 终帧，原安装执行器会按原 ID 只读核对提交回执和当前包身份。证据匹配时保存同一操作的成功终态。证据缺失时返回待核验，由 Helper 的原生事务状态保护后续变更。实机范围见 [MR-06](RelaxKonOS.ManagedRuntimes.Design.md#7-当前盘点与补齐任务)。
+
 Nginx 当前实例选择扩展到 Windows 与 Linux，宿主全局选择直接驱动服务器管理器；服务器管理器仅呈现运行状态与站点操作，Nginx 卸载入口也归组件中心。外部实例仍须明确确认集成，失效选择不切换到别的实例。组件中心按所选 Nginx/Git 页面请求对应产品权限，导航绑定原登录和宿主，不执行安装。
 
 Nginx、Docker、Samba、Squid 使用已有组件状态/冻结计划与安装台账，frpc/frps 已补齐 `FrozenArchive` 提交分支并复用同一 FRP 安装器；这些组件既有平台、信任来源、版本及恢复限制不变。Git 使用既有 Linux 软件包安装器与确认/提权台账，Windows 仅观察已有引擎，不声明冻结版本、多版本更新或回退。Mihomo/sing-box 的签名目录与运行时事务不变。FRP 与 Squid 的原领域维护动作保持原能力范围，此次未扩展生命周期或实机验收结论。Android 的安装界面未在本次桌面迁移中变更。

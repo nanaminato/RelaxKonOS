@@ -8,15 +8,16 @@ internal static class SquidPackageReceiptAcceptance
         MihomoIpcStartupAcceptance.RequirePrivateHost();
         if (root != "/mnt/rk-squid-package/work" || !File.Exists("/etc/relaxkonos-squid-package-fixture"))
             throw new InvalidOperationException("The Squid package test requires the dedicated writable root.");
-        if (phase is not ("cut" or "install-cut" or "recover" or "recovery-cut" or "native-cut" or "native-recover"))
+        if (phase is not ("cut" or "drop" or "install-cut" or "recover" or "recovery-cut" or "native-cut" or "native-recover"))
             throw new ArgumentException("Unknown Squid package test phase.", nameof(phase));
         var recovering = phase is "recover" or "recovery-cut" or "native-recover";
         var recoveryCut = phase == "recovery-cut";
+        var fixturePhase = File.ReadAllText(Path.Combine(root, "phase")).Trim();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         var ct = budget.Token;
         var heldOperation = phase switch
         {
-            "cut" => "ComponentPackageChange",
+            "cut" or "drop" => "ComponentPackageChange",
             "install-cut" => "ComponentPackageInstall",
             "recovery-cut" => "ComponentPackageQuery",
             _ => null
@@ -36,7 +37,7 @@ internal static class SquidPackageReceiptAcceptance
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? socket, root,
             reuse: recovering, seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://127.0.0.1:18972";
-        if (phase.StartsWith("native-", StringComparison.Ordinal) || File.ReadAllText(Path.Combine(root, "phase")).Trim() == "recovery-cut")
+        if (phase.StartsWith("native-", StringComparison.Ordinal) || fixturePhase is "recovery-cut" or "reply-drop")
             start.Environment["Modules__Proxy__Enabled"] = "true";
         start.Environment["Identity__LinuxPamTransport"] = "helper";
         start.Environment["Logging__LogLevel__Microsoft.AspNetCore"] = "Warning";
@@ -50,9 +51,16 @@ internal static class SquidPackageReceiptAcceptance
                 throw new InvalidOperationException("Server stopped before the original Squid package reply was held.");
             await MarkerAsync(recoveryCut ? "package-query-held" : "package-reply-held",
                 (await relay.Committed.Task.WaitAsync(ct)).ToString("D"));
+            if (phase == "drop")
+            {
+                while (!File.Exists(Path.Combine(root, "drop-package-reply")))
+                    await Task.Delay(50, ct);
+                relay.DropHeldResponse();
+            }
         }
         await exited;
-        if (server.ExitCode != (recovering && !recoveryCut ? 0 : 137))
+        var graceful = phase == "drop" || recovering && !recoveryCut || fixturePhase == "reply-drop-unknown";
+        if (server.ExitCode != (graceful ? 0 : 137))
             throw new InvalidOperationException($"Unexpected Server exit code {server.ExitCode}.");
 
         async Task MarkerAsync(string name, string value)

@@ -14,9 +14,12 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
     public string ComponentId => definition.ComponentId;
     public IReadOnlyList<ComponentModeSupport> Modes => [new(ComponentSourceMode.SystemPackage, "linux", OperatingSystem.IsLinux(),
         OperatingSystem.IsLinux() ? null : ComponentProblemCodes.PlatformUnsupported, "apt")];
-    public async Task<ComponentPackageResolution> ResolveAsync(CancellationToken ct)
+    public Task<ComponentPackageResolution> ResolveAsync(CancellationToken ct) => ResolveAsync(null, ct);
+
+    private async Task<ComponentPackageResolution> ResolveAsync(Guid? operationId, CancellationToken ct)
     {
-        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.ComponentPackageQuery, ComponentId: ComponentId), ct);
+        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.ComponentPackageQuery, ComponentId: ComponentId,
+            OperationId: operationId), ct);
         if (!result.Success && result.ProblemCode == PrivilegedProblemCode.UnsupportedOperation)
             throw new ComponentLifecycleException(ComponentProblemCodes.PlatformUnsupported);
         if (!result.Success || result.ComponentPackage is not { } resolution || resolution.PackageName != definition.PackageName)
@@ -92,12 +95,27 @@ public sealed class HostPackageComponentAdapter(string componentId, IPrivilegedO
             ? new(PrivilegedOperationKind.ComponentPackageInstall, ComponentId: ComponentId, PackageExpectation: request.Expected.Package, OperationId: progress.OperationId)
             : new(PrivilegedOperationKind.ComponentPackageChange, ComponentId: ComponentId, PackageExpectation: request.Expected.Package,
                 PackageChange: new(request.Request.Change, request.Expected.InstalledPackage!), OperationId: progress.OperationId), CancellationToken.None);
-        if (!installed.Success) return new(ComponentId, ComponentExecutionOutcome.Failed, [ComponentProblemCodes.InstallFailed],
+        var replyUnconfirmed = !installed.Success && installed.ProblemCode == PrivilegedProblemCode.RecoveryRequired;
+        if (!installed.Success && !replyUnconfirmed) return new(ComponentId, ComponentExecutionOutcome.Failed, [ComponentProblemCodes.InstallFailed],
             [ComponentProblemCodes.RollbackUnsupported], null, null, ComponentProblemCodes.InstallFailed);
-        var after = await ResolveAsync(CancellationToken.None);
+        ComponentPackageResolution after;
+        try
+        {
+            after = await ResolveAsync(progress.OperationId, CancellationToken.None);
+        }
+        catch (ComponentLifecycleException) when (replyUnconfirmed)
+        {
+            throw new InstallationInterruptedException(ComponentProblemCodes.RecoveryRequired);
+        }
         if (after.RecoveryRequired || after.CommittedOperationId != progress.OperationId || (request.Request.Change == RuntimeChange.Uninstall
-            ? after.InstalledVersion is not null : after.Managed != prior.Managed && request.Request.Change != RuntimeChange.Install || after.InstalledVersion != request.Expected.Package!.Version))
+            ? after.InstalledVersion is not null : after.InstalledVersion != request.Expected.Package!.Version
+                || after.InstalledPackage?.Version != after.InstalledVersion
+                || after.Managed != prior.Managed && request.Request.Change != RuntimeChange.Install))
+        {
+            if (replyUnconfirmed)
+                throw new InstallationInterruptedException(ComponentProblemCodes.RecoveryRequired);
             return Refused(ComponentProblemCodes.InstalledVersionMismatch);
+        }
         return new(ComponentId, ComponentExecutionOutcome.Succeeded, [], [ComponentProblemCodes.RollbackUnsupported], Map(after), after.InstalledVersion);
     }
     private ComponentExecutionResult Refused(string code) => new(ComponentId, ComponentExecutionOutcome.Refused, [code], [], null, null);

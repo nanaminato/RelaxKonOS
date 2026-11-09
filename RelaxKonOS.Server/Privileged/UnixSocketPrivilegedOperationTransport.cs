@@ -46,6 +46,7 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
         var drainServiceAction = request.Operation is PrivilegedOperationKind.NginxSystemServiceAction
             or PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle;
         var nginxResultMayBeUnknown = false;
+        var packageResultMayBeUnknown = false;
         using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         connectTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
         try
@@ -70,6 +71,8 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
             nginxResultMayBeUnknown = request.Operation is PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle
                 || request.Operation == PrivilegedOperationKind.NginxSystemServiceAction
                     && request.NginxServiceAction == NginxSystemServiceAction.Reload;
+            packageResultMayBeUnknown = request.Operation is PrivilegedOperationKind.ComponentPackageInstall
+                or PrivilegedOperationKind.ComponentPackageChange;
             await PrivilegedHelperSocketFraming.WriteAsync(stream, JsonSerializer.SerializeToUtf8Bytes(request), CancellationToken.None);
             using var responseTimeout = drainServiceAction
                 ? new CancellationTokenSource()
@@ -104,8 +107,9 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
             return Complete(request, MissingResponse(Unavailable("privileged helper service is unavailable")));
         }
 
-        PrivilegedOperationResult MissingResponse(PrivilegedOperationResult fallback) => nginxResultMayBeUnknown
-            ? new(false, fallback.ExitCode, Error: "Nginx service completion could not be verified",
+        PrivilegedOperationResult MissingResponse(PrivilegedOperationResult fallback) => nginxResultMayBeUnknown || packageResultMayBeUnknown
+            ? new(false, fallback.ExitCode, Error: packageResultMayBeUnknown
+                    ? "Package transaction completion could not be verified" : "Nginx service completion could not be verified",
                 ProblemCode: PrivilegedProblemCode.RecoveryRequired)
             : fallback;
     }

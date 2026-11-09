@@ -116,9 +116,12 @@ def start_signed_mirror(package):
 def run():
     assert os.geteuid() == 0 and Path("/etc/relaxkonos-squid-package-fixture").read_text().strip() == digest
     phase = (root / "phase").read_text().strip()
-    assert phase in ("receipt", "recovery-cut", "native-unknown", "uninstall", "install")
+    assert phase in ("receipt", "recovery-cut", "reply-drop", "reply-drop-unknown", "native-unknown", "uninstall", "install")
     recovery_cut = phase == "recovery-cut"
-    native_unknown = phase == "native-unknown"
+    reply_drop = phase == "reply-drop"
+    reply_drop_unknown = phase == "reply-drop-unknown"
+    native_unknown = phase == "native-unknown" or reply_drop_unknown
+    live_loss = reply_drop or reply_drop_unknown
     uninstall = phase == "uninstall"
     install = phase == "install"
     receipt = receipts / ("operation.json" if install else "change.json")
@@ -206,7 +209,7 @@ def run():
         mirror, downloads = start_signed_mirror(package)
     subprocess.run(["systemctl", "daemon-reload"], check=True, timeout=15)
     helper = start_helper(1)
-    worker, pid = server("native-cut" if native_unknown else "install-cut" if install else "cut")
+    worker, pid = server("native-cut" if native_unknown else "install-cut" if install else "drop" if reply_drop else "cut")
     token = login()
     component = api + "/components/squid"
     state = value(component + "/state", token)
@@ -278,31 +281,54 @@ def run():
             assert executable_digest.lower() == hashlib.file_digest(binary, "sha256").hexdigest()
     dpkg_log = Path("/var/log/dpkg.log")
     apt_history = Path("/var/log/apt/history.log")
+
+    def apt_ledger():
+        return apt_history.read_bytes() if apt_history.exists() else None
+
     dpkg_before = dpkg_log.read_bytes()
+    apt_before = apt_ledger()
     dpkg_verb = {"install": "install", "uninstall": "remove", "upgrade": "upgrade"}[action]
     dpkg_action = f" {dpkg_verb} squid:".encode()
     assert sum(dpkg_action in line for line in dpkg_before.splitlines()) == 1
     if uninstall:
         assert b" purge squid:" not in dpkg_before
 
-    os.kill(pid, signal.SIGKILL)
+    live_terminal = None
+    if live_loss:
+        if reply_drop_unknown:
+            helper.kill()
+            helper.wait(timeout=10)
+        else:
+            assert value(api + "/gateway-proxy/squid/status", token)["recoveryRequired"] is False
+            (root / "drop-package-reply").touch()
+
+        def completed_live():
+            current = value(path, token)
+            return current if current.get("completedAt") else None
+
+        live_terminal = until(completed_live, "original operation terminal after dropping the IPC reply")
+        if reply_drop_unknown:
+            assert live_terminal["state"] == "interrupted" and live_terminal["problemCode"] == "component.recovery_required", live_terminal
+        else:
+            assert live_terminal["state"] == "succeeded", live_terminal
+            assert value(submit, token, data=payload, key=key, status=202) == live_terminal
+        assert receipt.read_bytes() == native and (dpkg_log.read_bytes(), apt_ledger()) == (dpkg_before, apt_before)
+    os.kill(pid, signal.SIGTERM if live_loss else signal.SIGKILL)
     assert worker.wait(timeout=10) == 0
-    helper.kill()
-    helper.wait(timeout=10)
+    if not reply_drop_unknown:
+        helper.kill()
+        helper.wait(timeout=10)
     if native_unknown:
         assert Path(f"/proc/{apt_pid}/comm").read_text().strip() == "apt-get"
         apt_release.touch()
         until(lambda: not Path(f"/proc/{apt_pid}").exists(), "original APT process exit")
     assert dpkg_log.read_bytes() == dpkg_before
-    def apt_ledger():
-        return apt_history.read_bytes() if apt_history.exists() else None
-
     ledger = (dpkg_before, apt_ledger())
+    server_ledger = root / "full-server/data/installation-operations.json"
+    original_ledger = server_ledger.read_bytes()
     helper = start_helper(2)
     last_generation = 2
     if recovery_cut:
-        server_ledger = root / "full-server/data/installation-operations.json"
-        original_ledger = server_ledger.read_bytes()
         worker, pid = server("recovery-cut")
         held_query = root / "package-query-held"
         assert until(lambda: held_query.read_text() if held_query.exists() else None,
@@ -326,6 +352,10 @@ def run():
     complete = value(path, token)
     expected_state = "interrupted" if native_unknown else "succeeded"
     assert complete["operationId"] == operation and complete["state"] == expected_state and complete["completedAt"], complete
+    if live_loss:
+        assert complete == live_terminal and server_ledger.read_bytes() == original_ledger
+    if reply_drop:
+        assert value(api + "/gateway-proxy/squid/status", token)["recoveryRequired"] is False
     elevate(token)
     assert value(submit, token, data=payload, key=key, status=202) == complete
     assert value(path, token) == complete and request(api + "/installations/active?service=squid", token)[0] == 404
@@ -335,10 +365,20 @@ def run():
     audits = [(root / f"helper-{generation}.log").read_text() for generation in range(1, last_generation + 1)]
     dispatch = "ComponentPackageInstall" if install else "ComponentPackageChange"
     for audit in audits[1:]:
-        assert f"operation=ComponentPackageQuery id={operation} " in audit
+        assert (f"operation=ComponentPackageQuery id={operation} " in audit) == (not live_loss)
         assert f"operation={dispatch} " not in audit
-    assert audits[0].count(f"operation={dispatch} ") == 1
-    assert f"operation={dispatch} id={operation} " in audits[0]
+    if reply_drop_unknown:
+        # The killed Helper cannot log completion. Server transport, the pending
+        # record and the one real dpkg action together identify the dispatch.
+        server_audit = (root / "test.log").read_text()
+        assert server_audit.count(f"Operation={dispatch} ") == 1
+        assert f"OperationId={operation} Operation={dispatch} " in server_audit
+        assert server_audit.count(f"OperationId={operation} Operation=ComponentPackageQuery ") == 1
+    else:
+        assert audits[0].count(f"operation={dispatch} ") == 1
+        assert f"operation={dispatch} id={operation} " in audits[0]
+    if reply_drop:
+        assert audits[0].count(f"operation=ComponentPackageQuery id={operation} ") == 1
     if native_unknown:
         pending = value(component + "/state", token)
         assert pending["pendingOperationId"] == operation and pending["state"]["recoveryRequired"], pending
@@ -350,8 +390,12 @@ def run():
         proxy = value(api + "/gateway-proxy/squid/status", token)
         assert proxy["recoveryRequired"]
         assert receipt.read_bytes() == native and (dpkg_log.read_bytes(), apt_ledger()) == ledger
-        print(f"PASS SQUID PACKAGE NATIVE UNKNOWN: original={operation}; version={version}; "
+        outcome = "REPLY DROP UNKNOWN" if reply_drop_unknown else "NATIVE UNKNOWN"
+        print(f"PASS SQUID PACKAGE {outcome}: original={operation}; version={version}; "
               f"APT PID={apt_pid} drained; no terminal proof, one dpkg upgrade, original gate retained", flush=True)
+        if reply_drop_unknown:
+            print(f"Pending Helper record SHA256 {hashlib.sha256(native).hexdigest()}; "
+                  f"dpkg ledger SHA256 {hashlib.sha256(dpkg_before).hexdigest()}", flush=True)
     elif uninstall:
         print(f"PASS SQUID PACKAGE UNINSTALL RECEIPT: original={operation}; previous={initial_version}; "
               "state=succeeded; one dispatch and one dpkg removal; config and data retained", flush=True)
@@ -370,6 +414,15 @@ def run():
               "two original queries, one terminal write, one package dispatch and dpkg upgrade")
         print(f"Original receipt SHA256 {hashlib.sha256(native).hexdigest()}; "
               f"unchanged pending Server ledger SHA256 {hashlib.sha256(original_ledger).hexdigest()}; "
+              f"dpkg ledger SHA256 {hashlib.sha256(dpkg_before).hexdigest()}", flush=True)
+    elif reply_drop:
+        entries = json.loads(original_ledger)
+        terminal = [item for item in entries["audit"]
+                    if item["operationId"] == operation and item["event"] in ("completed", "recovered")]
+        assert len(terminal) == 1 and terminal[0]["event"] == "completed", terminal
+        print(f"PASS SQUID PACKAGE REPLY DROP: original={operation}; version={version}; "
+              "one original query, one dispatch and one dpkg upgrade; same terminal after restart with Proxy enabled")
+        print(f"Original receipt SHA256 {hashlib.sha256(native).hexdigest()}; "
               f"dpkg ledger SHA256 {hashlib.sha256(dpkg_before).hexdigest()}", flush=True)
     else:
         print(f"PASS SQUID PACKAGE ORIGINAL RECEIPT: original={operation}; version={version}; "

@@ -183,3 +183,21 @@ Windows Release Squid 与组件回归、Linux Release 构建及专属 systemd �
 **已实现但实机未验证。** 其余平台和整机掉电需独立环境。该执行图验证 Core 安装台账的所有权及启动准入，未计量 Proxy 对象释放、ALC 回收、隔离负载内存差值或生产收益。
 
 **未实现或仍受门禁保护。** 原生终态缺失时，沿用原包待核验和准入门禁。人工确证需要可信原生终态与原 ID 绑定。整模块交接仍待验收，Proxy 保持 resident。
+
+### Server 存活时丢失软件包终帧
+
+2026-11-09 在既有 Ubuntu 26.04 amd64 测试机复核专属可写 overlay、独立 APT/dpkg 台账和 Ubuntu 签名索引中的固定 `7.7-0ubuntu0.26.04.2` 制品。APT 预检只变更 Squid。复核日志 `.artifacts/mb04-squid-package/isolation-recheck.log` 的 SHA-256 为 `b0b15b17be4adcc2031a829259b2c4a5bc18489630c2f792be2caca0aa02d498`。
+
+原版对照以完整 PAM/JWT Server 和专属 systemd 实际升级 Squid。原安装 `aaa2ea32-dec9-4f0d-9db7-8c40bdbed72d` 的原生终态已保存，程序摘要与包回执匹配。中继丢弃原 IPC 终帧后，同一 Server 把操作保存为 `failed / component.install_failed`。共享服务、程序、台账及配置指纹一致，专属资源已清理。对照日志 `.artifacts/mb04-squid-package/linux-reply-drop-baseline.log` 的 SHA-256 为 `833b8afe387e8af7170e29b4a2483a62aa2b1917632f60d32c60e28624601a54`。
+
+**已实现且已验证。** 修正版原安装 `1126f0af-0ba4-4464-a923-539f286fcc7d` 从 `7.2-2ubuntu2.2` 升到固定目标。终帧暂扣时，按原 ID 和同键都返回 Running。中继丢弃终帧后，Server 原安装执行器按原 ID 只读核对 Helper 原提交与包身份，保存一条完成事件。正常终止并重启 Server 和 Helper，按原 ID 和同键返回相同 `succeeded` 终态，Core 台账字节保持。两代 Helper 合计一次原 ID 查询、一次包变更派发，dpkg 仅一次升级。APT、dpkg 和 Helper 原回执的字节一致，Proxy 管理入口在两代均可读取。
+
+实机日志 `.artifacts/mb04-squid-package/linux-reply-drop.log` 的 SHA-256 为 `37a98927e6ab114f3da495043709adcd316a30713d7bb2457646bb2d93d2b09d`，归档为 `646e592a5cd73bb4272bcbd61d451a43ad848298b1f053c0c9ffcc5c6145deb1`。原 Helper 回执与 dpkg 日志的 SHA-256 分别为 `847347828586759d9b619d170f4b0d06703749c9a70377310d5d7a334dbcb828` 和 `31cd71122a1faba3bf2298b794429864aaf8d1d300a2c53b451141ae2a9491ca`。
+
+反向实测的原安装为 `d3892a1c-dd9c-403c-9c4e-19f6c792a289`。dpkg 完成升级后，APT 停在专属 Post-Invoke 钩子，Helper 检查点仍为 `Committed=false`。终止 Helper，存活的 Server 尝试按原 ID 读取，连接失败并记录 `interrupted / component.recovery_required`。放行并确认原 APT 退出后，重启两进程。原 HTTP 查询和同键均返回相同回执，原 Core 台账与 Helper 检查点字节保持，Squid 仍待核验，新卸载计划受阻。Server 记录一次派发和一次原 ID 查询，dpkg 记录一次升级。首次试跑误要求被杀死的 Helper 写出完成日志。复验改为联合核对 Server 派发记录、原 Helper 检查点和 dpkg 台账。
+
+反向实测日志 `.artifacts/mb04-squid-package/linux-reply-drop-unknown.log` 的 SHA-256 为 `7159e9bbd98ad414e646c9b9e9e02c25dc1ab1a00ebae4fd9fdffb8cc96a9ce8`，归档为 `2a5c88fa45af0985f361bbc42da5fcc20c6035b3f861e463e8c9f60cc29fba43`。待核验检查点与 dpkg 日志的 SHA-256 分别为 `d01163d1f789d2e42b952d8dbf51c1d8dbd6caa2dd503b950a9ade7f84f7067a` 和 `b2b60e193120091ddcf38d527fdacc7645b5966f44067c261089f22909ff2dce`。Linux Release 构建及 Windows Release 的 Squid、组件、模块边界回归通过。本轮确认 Server、Helper、APT 与专属夹具退出，专属 cgroup 和根已清理，宿主共享服务、程序、包台账、配置和账户指纹一致。
+
+**已实现但实机未验证。** 本节覆盖固定 Squid 升级。存活 Server 在首次安装或保留数据卸载终帧丢失时的路径、其他软件包与整机掉电仍需独立证据。对象释放、ALC 回收、隔离负载内存差值与生产内存收益均未测量。
+
+**未实现或仍受门禁保护。** 缺失可信原终态的人工确证及整模块安全交接继续开放。Proxy 保持 resident。
