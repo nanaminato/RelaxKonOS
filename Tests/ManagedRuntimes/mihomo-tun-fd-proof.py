@@ -2720,12 +2720,62 @@ def proof_full_http_shutdown(ipc, case):
             assert audit.count(f'operation=SquidAccountMutate id={operation} ') == 1
             assert f'operation=SquidAccountReceipt id={operation} ' in audit
             assert int(service('show', '-p', 'MainPID', '--value', 'squid.service')) == original_pid
-            os.kill(pid, signal.SIGTERM)
-            assert worker.wait(timeout=12) == 0
-            upstream.shutdown()
-            upstream.server_close()
             print(f'PASS SQUID ACCOUNT RECOVERY: original={operation}; Squid PID={original_pid}; '
                   'actual authentication continued, original receipt recovered, no repeated mutation', flush=True)
+
+            last_account = {'action': 'SetEnabled', 'username': username, 'enabled': False}
+            status, denied = request(accounts, token, 'squid-last-enabled', last_account)
+            assert status == 202, (status, denied)
+            refusal = until(lambda: reply if (reply := read(denied['operationId'])).get('completedAt') else None,
+                            'last enabled account refusal')
+            assert refusal['state'] == 'failed' and refusal['problemCode'] == 'squid.accounts.last_enabled_required'
+            assert reloads.read_bytes() == counters and authenticate(new_password)
+
+            pid = restart('squid-restart', pid)
+            interrupted_password = secrets.token_urlsafe(24)
+            update = dict(mutation, password=interrupted_password)
+            unknown_key = 'squid-account-native-unknown'
+            hold.touch()
+            status, accepted = request(accounts, token, unknown_key, update)
+            assert status == 202, (status, accepted)
+            unknown = accepted['operationId']
+            outer = native.parent / 'relaxkonos-account.pending'
+            inner = native.parent / 'relaxkonos.pending'
+            record_path = receipt.parent / (uuid.UUID(unknown).hex + '.json')
+            try:
+                until(applied.exists, 'account reload dispatched')
+                until(lambda: authenticate(interrupted_password), 'unconfirmed account credential')
+                assert read(unknown)['state'] == 'running' and leases() == 1
+                assert outer.read_text() == unknown and inner.exists()
+                original = tuple(path.read_bytes() for path in (outer, inner, record_path))
+                assert json.loads(original[2])['Receipt'] is None
+                assert 'squid.service' in service('list-jobs', '--no-legend', '--no-pager', 'squid.service')
+                ipc.stop_helper()
+                assert 'squid.service' in service('list-jobs', '--no-legend', '--no-pager', 'squid.service')
+            finally:
+                hold.unlink(missing_ok=True)
+            until(lambda: not service('list-jobs', '--no-legend', '--no-pager', 'squid.service'), 'account systemd job drained')
+            ipc.start_helper()
+            until(lambda: read(unknown)['state'] == 'interrupted' and leases() == 0, 'account execution drained')
+            pid = restart('squid-restart', pid)
+            waiting = read(unknown)
+            assert waiting['state'] == 'interrupted' and waiting['stage'] == 'squid_account' and not waiting.get('completedAt'), waiting
+            assert request(accounts, token, unknown_key, update) == (202, accepted)
+            assert request(accounts, token, 'squid-next-native-account', mutation)[1]['problemCode'] == 'proxy.operation_interrupted'
+            assert tuple(path.read_bytes() for path in (outer, inner, record_path)) == original
+            assert authenticate(interrupted_password) and reloads.read_bytes() == counters + b'reload\n'
+            assert int(service('show', '-p', 'MainPID', '--value', 'squid.service')) == original_pid
+            assert f'operation=SquidAccountReceipt id={unknown} ' in ipc.log.read_text()
+            assert 'operation=SquidAccountMutate ' not in ipc.log.read_text()
+            os.kill(pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            worker = launch('admission-disabled')
+            assert worker.wait(timeout=15) == 0
+            assert unknown in (root / 'full-startup-refused').read_text()
+            upstream.shutdown()
+            upstream.server_close()
+            print(f'PASS SQUID ACCOUNT NATIVE UNKNOWN: original={unknown}; Squid PID={original_pid}; '
+                  'one reload; actual authentication and original pending gate retained', flush=True)
             return
 
         if case == 'ipc-http-squid-lifecycle-unknown':
