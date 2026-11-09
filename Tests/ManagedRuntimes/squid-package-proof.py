@@ -59,8 +59,9 @@ def value(path, token=None, *, data=None, key=None, status=200):
 def run():
     assert os.geteuid() == 0 and Path("/etc/relaxkonos-squid-package-fixture").read_text().strip() == digest
     phase = (root / "phase").read_text().strip()
-    assert phase in ("receipt", "native-unknown")
+    assert phase in ("receipt", "native-unknown", "uninstall")
     native_unknown = phase == "native-unknown"
+    uninstall = phase == "uninstall"
     mounts = {line.split()[4]: line.split(" - ", 1)[1].split()[0] for line in Path("/proc/self/mountinfo").read_text().splitlines()}
     assert mounts["/"] == "overlay" and all(mounts[path] == "tmpfs" for path in ("/var/lib", "/run", "/var/cache/apt"))
     credentials = json.loads((root / "pam").read_bytes())
@@ -115,7 +116,22 @@ def run():
     def package_version():
         return subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", "squid"], text=True)
 
-    assert package_version() == "7.2-2ubuntu2.2"
+    initial_version = package_version()
+    assert initial_version == "7.2-2ubuntu2.2"
+    config = Path("/etc/squid/squid.conf")
+    retained_data = Path("/var/spool/squid/fixture-retained-data")
+    if uninstall:
+        retained_data.write_bytes(b"Squid package fixture retained data\n")
+        retained_files = {path: path.read_bytes() for path in (config, retained_data)}
+
+    def check_native_effect():
+        if uninstall:
+            status = subprocess.check_output(["dpkg-query", "-W", "-f=${db:Status-Status}", "squid"], text=True)
+            assert status == "config-files" and not Path("/usr/sbin/squid").exists()
+            assert {path: path.read_bytes() for path in retained_files} == retained_files
+        else:
+            assert package_version() == version
+
     package = Path("/var/cache/apt/archives/squid_" + version + "_amd64.deb")
     assert hashlib.file_digest(package.open("rb"), "sha256").hexdigest() == digest
     subprocess.run(["systemctl", "daemon-reload"], check=True, timeout=15)
@@ -125,16 +141,20 @@ def run():
     component = api + "/components/squid"
     state = value(component + "/state", token)
     assert state["installedPackage"]["version"] == package_version(), state
-    key = "private-squid-fixed-upgrade"
-    plan_request = {"componentId": "squid", "hostId": state["state"]["hostId"], "change": "Update",
+    action = "uninstall" if uninstall else "upgrade"
+    key = "private-squid-fixed-" + action
+    plan_request = {"componentId": "squid", "hostId": state["state"]["hostId"], "change": "Uninstall" if uninstall else "Update",
                     "expectedRevision": state["state"]["revision"], "mode": "SystemPackage", "expectedSourceRevision": 0,
-                    "expectedTrustRevision": 0, "requestedVersion": version, "keepData": True, "idempotencyKey": key}
+                    "expectedTrustRevision": 0, "requestedVersion": None if uninstall else version, "keepData": True, "idempotencyKey": key}
     plan = value(component + "/plan", token, data=plan_request)
-    assert not plan["problems"] and plan["target"]["package"]["version"] == version, plan
-    assert plan["target"]["package"]["sha256"].lower() == digest
+    assert not plan["problems"], plan
+    if uninstall:
+        assert plan["target"].get("package") is None and plan["target"]["installedPackage"] == state["installedPackage"], plan
+    else:
+        assert plan["target"]["package"]["version"] == version and plan["target"]["package"]["sha256"].lower() == digest, plan
     payload = {"confirmed": True, "frozenPackage": {"componentId": "squid", "request": plan_request, "expected": plan["target"]}}
-    upgrade = api + "/installations/squid/upgrade"
-    assert request(upgrade, data=payload, key=key)[0] == 401
+    submit = api + "/installations/squid/" + action
+    assert request(submit, data=payload, key=key)[0] == 401
     elevate(token)
     apt_held = root / "apt-held"
     apt_release = root / "apt-release"
@@ -150,7 +170,7 @@ def run():
             f'while test ! -e {apt_release}; do sleep .05; done\n')
         Path("/etc/apt/apt.conf.d/99relaxkonos-test-hold").write_text(
             f'DPkg::Post-Invoke {{ "exec /bin/bash {hook}"; }};\n')
-    accepted = value(upgrade, token, data=payload, key=key, status=202)
+    accepted = value(submit, token, data=payload, key=key, status=202)
     operation = accepted["operationId"]
     path = api + "/installations/" + operation
     held = root / "package-reply-held"
@@ -167,20 +187,28 @@ def run():
         assert until(held_reply, "original Helper reply", seconds=95) == operation
     running = value(path, token)
     assert running["state"] == "running" and not running.get("completedAt")
-    assert value(upgrade, token, data=payload, key=key, status=202) == running
+    assert value(submit, token, data=payload, key=key, status=202) == running
     native = receipt.read_bytes()
     committed = json.loads(native)
     assert committed["OperationId"] == operation and committed["Committed"] is not native_unknown
-    assert committed["Target"]["Sha256"].lower() == digest and package_version() == version
-    if native_unknown:
+    check_native_effect()
+    if uninstall:
+        assert committed["Target"] is None and committed["ResultIdentity"] is None
+        assert committed["Change"]["InstalledPackage"]["Version"] == initial_version
+    elif native_unknown:
+        assert committed["Target"]["Sha256"].lower() == digest
         assert committed["ResultIdentity"] is None
     else:
+        assert committed["Target"]["Sha256"].lower() == digest
         with open("/usr/sbin/squid", "rb") as binary:
             assert committed["ResultIdentity"]["ExecutableSha256"].lower() == hashlib.file_digest(binary, "sha256").hexdigest()
     dpkg_log = Path("/var/log/dpkg.log")
     apt_history = Path("/var/log/apt/history.log")
     dpkg_before = dpkg_log.read_bytes()
-    assert sum(b" upgrade squid:" in line for line in dpkg_before.splitlines()) == 1
+    dpkg_action = b" remove squid:" if uninstall else b" upgrade squid:"
+    assert sum(dpkg_action in line for line in dpkg_before.splitlines()) == 1
+    if uninstall:
+        assert b" purge squid:" not in dpkg_before
 
     os.kill(pid, signal.SIGKILL)
     assert worker.wait(timeout=10) == 0
@@ -191,7 +219,10 @@ def run():
         apt_release.touch()
         until(lambda: not Path(f"/proc/{apt_pid}").exists(), "original APT process exit")
     assert dpkg_log.read_bytes() == dpkg_before
-    ledger = (dpkg_before, apt_history.read_bytes())
+    def apt_ledger():
+        return apt_history.read_bytes() if apt_history.exists() else None
+
+    ledger = (dpkg_before, apt_ledger())
     helper = start_helper(2)
     worker, pid = server("native-recover" if native_unknown else "recover")
     token = login()
@@ -199,14 +230,16 @@ def run():
     expected_state = "interrupted" if native_unknown else "succeeded"
     assert complete["operationId"] == operation and complete["state"] == expected_state and complete["completedAt"], complete
     elevate(token)
-    assert value(upgrade, token, data=payload, key=key, status=202) == complete
+    assert value(submit, token, data=payload, key=key, status=202) == complete
     assert value(path, token) == complete and request(api + "/installations/active?service=squid", token)[0] == 404
-    assert receipt.read_bytes() == native and package_version() == version
-    assert (dpkg_log.read_bytes(), apt_history.read_bytes()) == ledger
+    assert receipt.read_bytes() == native
+    check_native_effect()
+    assert (dpkg_log.read_bytes(), apt_ledger()) == ledger
     helper_audit = (root / "helper-1.log").read_text() + (root / "helper-2.log").read_text()
     restarted_audit = (root / "helper-2.log").read_text()
     assert f"operation=ComponentPackageQuery id={operation} " in restarted_audit
     assert "operation=ComponentPackageChange " not in restarted_audit
+    assert helper_audit.count(f"operation=ComponentPackageChange id={operation} ") == 1
     if native_unknown:
         pending = value(component + "/state", token)
         assert pending["pendingOperationId"] == operation and pending["state"]["recoveryRequired"], pending
@@ -217,11 +250,13 @@ def run():
         assert "component.recovery_required" in blocked["problems"], blocked
         proxy = value(api + "/gateway-proxy/squid/status", token)
         assert proxy["recoveryRequired"]
-        assert receipt.read_bytes() == native and (dpkg_log.read_bytes(), apt_history.read_bytes()) == ledger
+        assert receipt.read_bytes() == native and (dpkg_log.read_bytes(), apt_ledger()) == ledger
         print(f"PASS SQUID PACKAGE NATIVE UNKNOWN: original={operation}; version={version}; "
               f"APT PID={apt_pid} drained; no terminal proof, one dpkg upgrade, original gate retained", flush=True)
+    elif uninstall:
+        print(f"PASS SQUID PACKAGE UNINSTALL RECEIPT: original={operation}; previous={initial_version}; "
+              "state=succeeded; one dispatch and one dpkg removal; config and data retained", flush=True)
     else:
-        assert helper_audit.count(f"operation=ComponentPackageChange id={operation} ") == 1
         print(f"PASS SQUID PACKAGE ORIGINAL RECEIPT: original={operation}; version={version}; "
               f"artifact={digest}; state=succeeded; one dispatch and one dpkg upgrade", flush=True)
     os.kill(pid, signal.SIGTERM)

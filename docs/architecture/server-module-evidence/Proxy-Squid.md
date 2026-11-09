@@ -144,6 +144,18 @@ Linux 专属 systemd 分别验证五类真实服务动作。每次在 Helper 终
 
 Windows Release Squid 和组件回归通过。原始日志 `.artifacts/mb04-squid-package/linux-native-unknown.log` 的 SHA-256 为 `f4082927c25b0d23c317978e45399b17e0872f1930a28b78306b62d5516d2ebb`，归档 SHA-256 为 `f93f251a64613579e01976cd57bb39fcbc41a3c0d12b86ad85072ebedfbfca45`。原 APT 及夹具进程退出已核对。对象释放、ALC 回收、隔离内存差值及生产内存收益均未测量。
 
-**已实现但实机未验证。** 首次安装和保留数据卸载需独立验收。整机掉电需可独立断电的环境。
+**已实现但实机未验证。** 首次安装需独立验收。保留数据卸载见下一节。整机掉电需可独立断电的环境。
 
 **未实现或仍受门禁保护。** 缺失可信原回执时，包变更继续受准入门禁保护。整模块交接开放，Proxy 保持 resident。
+
+### 保留数据卸载的原回执
+
+**已实现且已验证。** 2026-11-09 在同一 Ubuntu 26.04 amd64 专属 overlay 根，用既有管理员经 PAM/JWT 提交冻结的 Squid 保留数据卸载计划。原操作 `db53d34b-0f69-4e2e-a1dd-caea9c26a93b` 绑定已验证的 `7.2-2ubuntu2.2` 包身份。Helper 真正执行 dpkg 移除，包进入 `config-files` 状态，Squid 可执行文件消失，配置和专属数据标记逐字节保留。dpkg 记录一次 remove，未记录 purge。AF_UNIX 中继截留已持久化的原应答，查询和同键仍返回原 Running。
+
+终止原 Server 和 Helper 后，重启从 Helper 只读查询原 ID，安装 HTTP 返回 `succeeded` 及终止时间，同键返回相同终态。两代 Helper 合计只派发一次包变更，原包回执、APT 和 dpkg 台账在恢复前后逐字节一致，配置和数据标记仍保留。宿主 Squid 程序、包台账、配置、账户文件及共享服务指纹一致，专属进程、cgroup 和根已清理。
+
+Windows Release Squid 与组件回归通过，测试临时目录放在工作区内。原始实机日志 `.artifacts/mb04-squid-package/linux-uninstall.log` 的 SHA-256 为 `a3777ba04737c52fc8c1f10d886cd3afea70493a52650291c215394189738256`，归档 SHA-256 为 `ac82f7117e911348af5448e137888187b573c8450e5286788dbe5b9a9bee67bd`。本轮验证了进程退出，对象释放、ALC 回收、隔离内存差值和生产内存收益未测量。
+
+**已实现但实机未验证。** 首次安装和整机掉电仍待验收。
+
+**未实现或仍受门禁保护。** 未知终态的人工确证及整模块安全交接仍开放。Proxy 保持 resident。
