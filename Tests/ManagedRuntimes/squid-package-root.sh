@@ -2,6 +2,7 @@
 set -euo pipefail
 work=$1
 bundle=$2
+phase=$4
 test "$(readlink /proc/1/ns/pid)" != "$3"
 mount --make-rprivate /
 hostname rk-squid-package-fixture
@@ -40,6 +41,7 @@ rm -- "$work/input/pam"
 mount --bind "$bundle" "$root/mnt/rk-squid-package/bundle"
 mount -o remount,bind,ro "$root/mnt/rk-squid-package/bundle"
 echo "$digest" > "$root/etc/relaxkonos-squid-package-fixture"
+echo "$phase" > "$root/mnt/rk-squid-package/work/phase"
 printf 'auth include common-auth\naccount include common-account\n' > "$root/etc/pam.d/relaxkonos"
 printf 'http_port 127.0.0.1:18893\nhttp_access allow localhost\nhttp_access deny all\n' > "$root/etc/squid/squid.conf"
 ip link set lo up

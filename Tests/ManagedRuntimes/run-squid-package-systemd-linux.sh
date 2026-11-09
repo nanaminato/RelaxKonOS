@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 bundle=$(realpath -e -- "$1")
+phase=${2:-receipt}
+case "$phase" in receipt|native-unknown) ;; *) exit 2 ;; esac
 test "$(id -u)" = 0
 work=$(mktemp -d /var/tmp/relaxkonos-squid-apt.XXXXXXXX)
 unit="relaxkonos-squid-apt-$(cat /proc/sys/kernel/random/uuid).service"
@@ -29,4 +31,4 @@ IFS= read -r credentials
 unset credentials
 systemd-run --unit="$unit" --wait --pipe --collect --property=Delegate=yes --property=RuntimeMaxSec=220s \
     unshare --mount --net --pid --cgroup --uts --fork --kill-child --mount-proc \
-    bash "$bundle/squid-package-root.sh" "$work" "$bundle" "$(readlink /proc/1/ns/pid)"
+    bash "$bundle/squid-package-root.sh" "$work" "$bundle" "$(readlink /proc/1/ns/pid)" "$phase"

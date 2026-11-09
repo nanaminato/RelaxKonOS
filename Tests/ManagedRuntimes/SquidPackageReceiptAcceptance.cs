@@ -3,14 +3,17 @@ using System.Runtime.Versioning;
 [SupportedOSPlatform("linux")]
 internal static class SquidPackageReceiptAcceptance
 {
-    public static async Task RunAsync(string root, string socket, bool recovering)
+    public static async Task RunAsync(string root, string socket, string phase)
     {
         MihomoIpcStartupAcceptance.RequirePrivateHost();
         if (root != "/mnt/rk-squid-package/work" || !File.Exists("/etc/relaxkonos-squid-package-fixture"))
             throw new InvalidOperationException("The Squid package test requires the dedicated writable root.");
+        if (phase is not ("cut" or "recover" or "native-cut" or "native-recover"))
+            throw new ArgumentException("Unknown Squid package test phase.", nameof(phase));
+        var recovering = phase is "recover" or "native-recover";
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         var ct = budget.Token;
-        await using var relay = recovering ? null : new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+        await using var relay = phase != "cut" ? null : new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-squid-package-reply.sock", socket, ct, (operation, _) => operation == "ComponentPackageChange",
             observeTerminal: result =>
             {
@@ -21,6 +24,8 @@ internal static class SquidPackageReceiptAcceptance
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? socket, root,
             reuse: recovering, seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://127.0.0.1:18972";
+        if (phase.StartsWith("native-", StringComparison.Ordinal))
+            start.Environment["Modules__Proxy__Enabled"] = "true";
         start.Environment["Identity__LinuxPamTransport"] = "helper";
         start.Environment["Logging__LogLevel__Microsoft.AspNetCore"] = "Warning";
         start.Environment["Logging__LogLevel__Microsoft.EntityFrameworkCore"] = "Warning";

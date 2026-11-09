@@ -238,7 +238,7 @@ if (args is ["runtime-mihomo-tun-retained-removal", var tunRemovalRoot, var tunR
 }
 if (args is ["runtime-squid-package-receipt", var squidPackageRoot, var squidPackageSocket, var squidPackagePhase] && OperatingSystem.IsLinux())
 {
-    await SquidPackageReceiptAcceptance.RunAsync(squidPackageRoot, squidPackageSocket, squidPackagePhase == "recover");
+    await SquidPackageReceiptAcceptance.RunAsync(squidPackageRoot, squidPackageSocket, squidPackagePhase);
     return;
 }
 if (args is ["runtime-squid-publication-replay", var squidRoot, var squidSocket, var squidOperation, var squidPort] && OperatingSystem.IsLinux())
