@@ -153,7 +153,9 @@ internal sealed class DockerStackOperationCoordinator(
             if (cancellation.IsCancellationRequested)
                 operations.Update(id, current => current.Stage == DockerStackOperationStage.Applying
                     ? current with { Stage = DockerStackOperationStage.Observing }
-                    : current, "cleanup-drained", cleanupPending: false);
+                    : current, "cleanup-drained", cleanupPending: false, executionPending: false);
+            else if (outcome is { AwaitingObservation: true })
+                operations.Update(id, current => current, "execution-drained", executionPending: false);
             if (outcome is { AwaitingObservation: true })
             {
                 using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(workStopping, lifetime.ApplicationStopping);
@@ -161,7 +163,7 @@ internal sealed class DockerStackOperationCoordinator(
                 do
                 {
                     await Task.Delay(ObservationRetryDelay, shutdown.Token);
-                    observed = await TryObserveProjectAsync(project, shutdown.Token);
+                    observed = await TryObserveProjectAsync(id, project, shutdown.Token);
                 } while (observed is null);
                 shutdown.Token.ThrowIfCancellationRequested();
                 outcome = outcome with { Observed = observed, Recovery = RecoveryCode(kind, observed) };
@@ -200,12 +202,16 @@ internal sealed class DockerStackOperationCoordinator(
         try
         {
             cancellation.Token.ThrowIfCancellationRequested();
-            operations.Update(id, current => current with
+            try
             {
-                State = DockerStackOperationState.Running,
-                Stage = DockerStackOperationStage.Preflight,
-                StartedAt = DateTimeOffset.UtcNow,
-            }, "started");
+                operations.Update(id, current => current with
+                {
+                    State = DockerStackOperationState.Running,
+                    Stage = DockerStackOperationStage.Preflight,
+                    StartedAt = DateTimeOffset.UtcNow,
+                }, "started", executionPending: true);
+            }
+            catch (Exception error) { throw new ResidentWorkCompletionException(error); }
 
             IReadOnlyList<string> desired = [];
             if (kind == DockerStackOperationKind.Deploy)
@@ -384,8 +390,8 @@ internal sealed class DockerStackOperationCoordinator(
     }
 
     /// <summary>
-    /// Startup never replays active operations. Applying remains protected until the original command and its
-    /// output are known to have drained. Operations ready for observation are reconciled against the Engine.
+    /// Startup never replays active operations. Unconfirmed command and observation scopes stay protected.
+    /// Operations whose prior scope drained can be reconciled against the Engine.
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -417,7 +423,7 @@ internal sealed class DockerStackOperationCoordinator(
 
     private static bool RequiresCleanupEvidence(StackOperationEntry entry) =>
         entry.Operation.State == DockerStackOperationState.Running
-        && (entry.CleanupPending || entry.Operation.Stage == DockerStackOperationStage.Applying);
+        && (entry.ExecutionPending is not false || entry.CleanupPending || entry.Operation.Stage == DockerStackOperationStage.Applying);
 
     private async Task RetryRecoveryAsync(List<StackOperationEntry> awaitingEngine, bool awaitingCleanup, CancellationToken ct)
     {
@@ -449,7 +455,7 @@ internal sealed class DockerStackOperationCoordinator(
             if (operation.State == DockerStackOperationState.Running)
             {
                 IReadOnlyList<DockerStackServiceDto>? snapshot;
-                try { snapshot = await TryObserveProjectAsync(operation.ProjectName, ct); }
+                try { snapshot = await TryObserveProjectAsync(operation.OperationId, operation.ProjectName, ct); }
                 catch (DockerComposeCleanupException)
                 {
                     RecordUnverifiedCleanup(operation.OperationId);
@@ -472,10 +478,19 @@ internal sealed class DockerStackOperationCoordinator(
         return awaitingEngine;
     }
 
-    private async Task<IReadOnlyList<DockerStackServiceDto>?> TryObserveProjectAsync(string project, CancellationToken ct)
+    private async Task<IReadOnlyList<DockerStackServiceDto>?> TryObserveProjectAsync(Guid id, string project, CancellationToken ct)
     {
-        await using var scope = scopes.CreateAsyncScope();
-        return await TryObserveAsync(scope.ServiceProvider.GetRequiredService<IDockerComposeService>(), project, ct);
+        ct.ThrowIfCancellationRequested();
+        operations.Update(id, current => current, "observation-started", executionPending: true);
+        IReadOnlyList<DockerStackServiceDto>? observed = null;
+        await using (var scope = scopes.CreateAsyncScope())
+        {
+            try { observed = await TryObserveAsync(scope.ServiceProvider.GetRequiredService<IDockerComposeService>(), project, ct); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        }
+        operations.Update(id, current => current, "observation-drained", executionPending: false);
+        ct.ThrowIfCancellationRequested();
+        return observed;
     }
 
     private static async Task<IReadOnlyList<DockerStackServiceDto>?> TryObserveAsync(IDockerComposeService compose, string project, CancellationToken ct)

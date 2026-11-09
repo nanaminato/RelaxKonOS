@@ -15,7 +15,8 @@ internal sealed record StackOperationEntry(
     string ProjectReference,
     string[]? Diagnostics = null,
     bool DiagnosticsTruncated = false,
-    bool CleanupPending = false);
+    bool CleanupPending = false,
+    bool? ExecutionPending = null);
 
 internal sealed record StackAudit(
     Guid OperationId,
@@ -160,7 +161,7 @@ internal sealed class DockerStackOperationStore
                     null, null, DockerStackValidation.Reference(actor), DateTimeOffset.UtcNow, null, null, true, []),
                 DockerStackValidation.Reference(actor),
                 DockerStackValidation.Reference(DockerStackValidation.Reference(actor) + "\n" + key),
-                requestReference, projectReference);
+                requestReference, projectReference, ExecutionPending: false);
             Commit(new([.. ledger.Entries, entry], [.. ledger.Audit, Audit(entry, "created")]));
             created = true;
             return entry;
@@ -168,14 +169,20 @@ internal sealed class DockerStackOperationStore
     }
 
     public DockerStackOperationDto Update(Guid operationId, Func<DockerStackOperationDto, DockerStackOperationDto> update,
-        string eventName, IReadOnlyList<string>? diagnostics = null, bool diagnosticsTruncated = false, bool? cleanupPending = null)
+        string eventName, IReadOnlyList<string>? diagnostics = null, bool diagnosticsTruncated = false,
+        bool? cleanupPending = null, bool? executionPending = null)
     {
         lock (gate)
         {
             EnsureAvailable();
             var before = ledger.Entries.Single(x => x.Operation.OperationId == operationId);
             var operation = update(before.Operation);
-            var after = before with { Operation = operation, CleanupPending = Active(operation) && (cleanupPending ?? before.CleanupPending) };
+            var after = before with
+            {
+                Operation = operation,
+                CleanupPending = Active(operation) && (cleanupPending ?? before.CleanupPending),
+                ExecutionPending = Active(operation) ? executionPending ?? before.ExecutionPending : false,
+            };
             if (diagnostics is { Count: > 0 })
             {
                 var bounded = BoundDiagnostics(diagnostics, diagnosticsTruncated);
@@ -186,6 +193,7 @@ internal sealed class DockerStackOperationStore
             var audit = after.Operation.State != before.Operation.State
                 || after.Operation.Stage != before.Operation.Stage
                 || after.CleanupPending != before.CleanupPending
+                || after.ExecutionPending != before.ExecutionPending
                 || eventName is "cancel-requested" or "recovered" or "completed" or "failed";
             Commit(new(
                 [.. ledger.Entries.Select(x => x.Operation.OperationId == operationId ? after : x)],
@@ -278,6 +286,7 @@ internal sealed class DockerStackOperationStore
         && operation.CreatedAt != default
         && operation.Services is not null
         && (!entry.CleanupPending || Active(operation) && !operation.Cancellable)
+        && (entry.ExecutionPending != true || operation.State == DockerStackOperationState.Running)
         && operation.Services.Count <= 64
         && operation.Services.All(service => service.Service?.Length <= 63 && service.Container?.Length <= 128
             && service.Image?.Length <= 255 && service.State?.Length <= 32 && service.Status?.Length <= 256)

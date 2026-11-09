@@ -161,3 +161,15 @@ Windows Release 的 Docker 控制、跨进程、Compose 执行代码和模块边
 **已实现但实机未验证。** 整机掉电需专属环境。此场景分别记录了实际进程退出与独立闲时代次的 ALC 收集。故障代次的对象释放、ALC 收集、隔离负载内存和生产收益待验。
 
 **未实现或仍受门禁保护。** 原 CLI 与输出排空缺可信的原操作证明时继续保护原回执和项目准入。Docker 保持 resident。
+
+### 原观察输出未排空时的 Server 中断
+
+**已实现且已验证。** 对照版在专属 Engine 执行一次真实停止。变更 CLI 退出后，原 `docker ps` 已执行，子进程仍持原输出。强制终止 Server 后，重启过早把 `ab22edb7-a754-4e1a-848a-e5a2043cec05` 写成 `Interrupted`。对照日志 `.artifacts/mb05-cli-cleanup/linux-observation-crash-baseline.log` SHA-256 为 `0d2d00f76c45d692e5c92eca8dcdc6d75bb0d01f4d4e020294645b3d755585dd`。
+
+修正版在原执行及只读观察派发前保存作用域责任，原作用域清理完成后保存排空或原终态。缺少该记录的旧 `Running` 回执继续待核验。真实操作 `9663a12a-9eb9-4971-ba13-13e44c8b2d51` 的变更和观察 CLI 均已退出，原观察子进程仍持输出。Server 强制退出并重启后，原 ID 与同键仍返回同一 `Running / Observing` 回执，保留一项恢复租约，新键返回 409。夹具确认输出子进程退出后，门禁仍保持。真实停止、容器停止信号和观察派发各一次。
+
+Windows Release 的 Docker 控制、跨进程、Compose 执行代码与模块边界回归通过。Linux 完整 PAM Server 和专属 Engine 验收通过，独立 ALC 回归另证实五个闲时代次收集。专属进程退出，容器和卷已清理，共享服务、容器清单与代理文件指纹一致。最终日志 `.artifacts/mb05-cli-cleanup/linux-observation-crash-current.log` SHA-256 为 `f58e7d3192fdd2232d93955a9fddcbf2c0663692cbca73dbd83fab435d0ca933`，含本次 Release 程序摘要。Linux 基础归档 SHA-256 为 `559749b0833df463b71f68917d1af9506b425290865952a372cff68df399dcfe`。
+
+**已实现但实机未验证。** 恢复协调器发出的后续观察再次中断仍待独立实测。故障对象释放、故障代次 ALC 收集、整机掉电、隔离负载内存与生产收益分别待验。
+
+**未实现或仍受门禁保护。** 缺与原 ID 绑定的可信排空见证时保持原回执、恢复租约和项目写入门禁。Docker 保持 resident。

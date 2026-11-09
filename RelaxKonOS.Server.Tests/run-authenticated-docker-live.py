@@ -24,6 +24,7 @@ def run(server, project, helper):
     observation_outage = observation_mode in ("1", "cancel", "cancel-mutation")
     cleanup_unknown = observation_mode == "cleanup-unknown"
     cleanup_crash = observation_mode == "cleanup-crash"
+    observation_crash = observation_mode == "observation-crash"
 
     with tempfile.TemporaryDirectory(prefix="relaxkonos-auth-docker-") as directory:
         root = Path(directory)
@@ -55,7 +56,7 @@ def run(server, project, helper):
         if cancel_observation:
             read_barrier.mkdir()
             env["DockerCompose__DataDirectory"] = str(root / "compose-data")
-        if observation_outage or cleanup_unknown or cleanup_crash:
+        if observation_outage or cleanup_unknown or cleanup_crash or observation_crash:
             if outage_gate is None:
                 raise RuntimeError("Observation outage requires a dedicated Engine gate")
             docker = shutil.which("docker")
@@ -75,19 +76,25 @@ cancel_observation = {cancel_observation!r}
 cancel_mutation = {cancel_mutation!r}
 cleanup_unknown = {cleanup_unknown!r}
 cleanup_crash = {cleanup_crash!r}
+observation_crash = {observation_crash!r}
 read_barrier = Path({str(read_barrier)!r})
 args = sys.argv[1:]
-if (cancel_mutation or cleanup_unknown or cleanup_crash) and args[:1] == ['stop']:
+if (cancel_mutation or cleanup_unknown or cleanup_crash or observation_crash) and args[:1] == ['stop']:
     with (gate / 'mutation-pid').open('a') as marker:
         marker.write(str(os.getpid()) + '\\n')
-    if (cleanup_unknown or cleanup_crash) and os.fork() == 0:
+observe = observation_crash and (gate / 'mutation-pid').exists() and args[:4] == ['ps', '--all', '--filter', {'label=com.docker.compose.project=' + project!r}]
+if observe:
+    with (gate / 'observation-pid').open('a') as marker:
+        marker.write(str(os.getpid()) + '\\n')
+if ((cleanup_unknown or cleanup_crash) and args[:1] == ['stop'] or observe and not (gate / 'output-holder').exists()):
+    if os.fork() == 0:
         # In the private PID namespace, inherit the CLI's output pipes past its exit.
         (gate / 'output-holder').write_text(str(os.getpid()))
         deadline = time.monotonic() + 75
         while not (gate / 'release-output').exists() and time.monotonic() < deadline:
             time.sleep(0.05)
         os._exit(0)
-if cleanup_crash:
+if cleanup_crash or observation_crash:
     os.execv(docker, [docker, *args])
 if args[:4] == ['ps', '--all', '--filter', {'label=com.docker.compose.project=' + project!r}]:
     if cancel_observation and not (read_barrier / 'complete').exists():
@@ -286,8 +293,15 @@ os.execv(docker, [docker, *args])
             while command.exists() and time.monotonic() < deadline:
                 time.sleep(0.05)
             if command.exists() or not holder.exists() or active_leases(token) != 1:
-                raise RuntimeError("The real mutation did not leave an output pipe held after CLI exit")
-            if not cleanup_crash:
+                raise RuntimeError("The real mutation CLI did not exit while an original output holder retained its lease")
+            if observation_crash:
+                observation = Path("/proc", (outage_gate / "observation-pid").read_text().strip())
+                deadline = time.monotonic() + 5
+                while observation.exists() and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                if observation.exists() or not holder.exists():
+                    raise RuntimeError("The original observation CLI did not leave its output pipe held after exit")
+            if not (cleanup_crash or observation_crash):
                 ack = request(operation_route + "/cancel", {}, token)
                 if ack["operationId"] != operation or ack["cancellable"]:
                     raise RuntimeError("The original mutation did not accept cancellation")
@@ -297,6 +311,8 @@ os.execv(docker, [docker, *args])
                         raise TimeoutError("The original cleanup fault was not persisted")
                     time.sleep(0.1)
             original = request(operation_route, token=token)
+            if observation_crash and str(original["stage"]).lower() != "observing":
+                raise RuntimeError("The original mutation did not reach the in-flight observation stage")
             if str(original["state"]).lower() != "running" or original.get("completedAt") is not None \
                     or request(route, {"confirmed": True}, token, expected=202) != original or active_leases(token) != 1:
                 raise RuntimeError("The cleanup fault lost the original active receipt or lease")
@@ -318,9 +334,10 @@ os.execv(docker, [docker, *args])
                 stops = subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping")
                 if holder.exists() or stops != initial_stops + 1 \
                         or len((outage_gate / "mutation-pid").read_text().splitlines()) != 1 \
+                        or observation_crash and len((outage_gate / "observation-pid").read_text().splitlines()) != 1 \
                         or request(operation_route, token=token) != original:
                     raise RuntimeError("Cleanup changed the receipt or repeated the mutation")
-                mode = "server-crash" if cleanup_crash else "cancel"
+                mode = "observation-crash" if observation_crash else "server-crash" if cleanup_crash else "cancel"
                 print(f"PASS AUTHENTICATED DOCKER UNKNOWN CLI CLEANUP: operation={operation}; mode={mode}; detached output holder exited; original receipt and gate retained across Server restart")
             finally:
                 stop(recovery)
@@ -431,7 +448,7 @@ os.execv(docker, [docker, *args])
                 running = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
                 if str(running["state"]).lower() != "running":
                     raise RuntimeError("Original receipt was not running at interruption")
-                if cleanup_unknown or cleanup_crash:
+                if cleanup_unknown or cleanup_crash or observation_crash:
                     try:
                         verify_unknown_cleanup(process, token, operation, container, initial_stops)
                     finally:
