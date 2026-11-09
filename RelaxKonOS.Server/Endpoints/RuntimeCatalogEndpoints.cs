@@ -3,6 +3,7 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Protocol.Installations;
 using Microsoft.AspNetCore.Mvc;
 
@@ -55,11 +56,13 @@ public static class RuntimeCatalogEndpoints
             await RespondAsync(async () => Results.Ok(await service.RecoveryAsync(ct))))
             .RequireAuthorization(ReadPolicy);
         group.MapPost(RuntimeRoutes.MihomoRecoveryRetry, async (RuntimeRecoveryActionRequest request, HttpContext http,
-            [FromServices] MihomoRuntimeRecoveryService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
+            [FromServices] IHostElevationSessionStore elevations) =>
         {
-            if (!MihomoHostTarget(http, elevations)) return ElevationRequired();
-            if (request.OperationId == Guid.Empty) return Results.BadRequest();
-            return await RespondAsync(async () => Results.Ok(await service.RetryAsync(request.OperationId, ct)));
+            if (!MihomoHostTarget(http, elevations)) { await ElevationRequired().ExecuteAsync(http); return; }
+            if (request.OperationId == Guid.Empty) { await Results.BadRequest().ExecuteAsync(http); return; }
+            await ResidentScopedResponse.ExecuteDeferredAsync(http, (services, acceptLease, ct) => RespondAsync(async () =>
+                Results.Ok(await services.GetRequiredService<MihomoRuntimeRecoveryService>().RetryAsync(request.OperationId, ct, acceptLease))),
+                ProxyRequestScopeOwner.RetainFailedScope);
         }).RequireAuthorization(ManagePolicy);
         group.MapPost(RuntimeRoutes.MihomoRecoveryCompensate, async (RuntimeRecoveryActionRequest request, HttpContext http,
             [FromServices] RelaxKonOS.Server.Proxy.Mihomo.MihomoDirectSettingsCompensationService service,

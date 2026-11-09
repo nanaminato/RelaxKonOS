@@ -2154,6 +2154,8 @@ def proof_full_http_shutdown(ipc, case):
     squid_tun = case == 'ipc-http-squid-tun-recovery-fault'
     zero_dns = case == 'ipc-http-zero-dns'
     pam_retry = zero_dns and Path(sys.argv[3]).with_name('tun-pam-retry.fixture').is_file()
+    pam_response = pam_retry and Path(sys.argv[3]).with_name('tun-pam-retry-response.fixture').is_file()
+    pam_cleanup_fault = pam_response and Path(sys.argv[3]).with_name('tun-pam-retry-cleanup-fault.fixture').is_file()
     early_owner = case == 'ipc-http-early-owner'
     replaced_stop = case == 'ipc-http-initial-stop-replaced'
     restored_replaced = case == 'ipc-http-restored-process-replaced'
@@ -2832,6 +2834,10 @@ def proof_full_http_shutdown(ipc, case):
 
         for phase, problem in gates:
             manual_owner = pam_retry and phase == 'foreign-cookie'
+            if manual_owner and pam_response:
+                (root / 'full-pam-retry-cleanup-proof').touch()
+                if pam_cleanup_fault:
+                    (root / 'full-pam-retry-cleanup-fault').touch()
             original_checkpoints = {}
             if phase in ('missing-cookie', 'foreign-cookie'):
                 for path in operation_dir.glob('*.json'):
@@ -2936,6 +2942,9 @@ def proof_full_http_shutdown(ipc, case):
             assert ipc.log.read_text().count('operation=MihomoRuntimeRecover ') == recover_calls and leases() == 0
             original_queue = queue.read_bytes()
             (root / 'full-pam-retry-armed').touch()
+            if pam_response:
+                (root / 'full-server/full-pam-retry-response-arm').touch()
+                (root / 'full-server/full-pam-retry-cleanup-arm').touch()
 
             def retry_original():
                 try:
@@ -2979,9 +2988,36 @@ def proof_full_http_shutdown(ipc, case):
             assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
                            '--max-time', '3', f'http://{target}:18880/mb04-pam-retry-before-cut') == 'upstream-through-inherited-tun'
 
-        os.kill(recovery_pid, signal.SIGKILL)
+        if pam_response:
+            (root / 'full-pam-retry-helper-release').touch()
+            assert marker('full-server/full-pam-retry-response-held') == 'sending'
+            assert retry_thread.is_alive() and leases() == 1
+            assert state_file.read_bytes() == terminal_state and service_identity() == restored
+            (root / 'full-server/full-pam-retry-response-release').touch()
+            assert marker('full-server/full-pam-retry-cleanup-held') == 'disposing'
+            retry_thread.join(timeout=6)
+            assert len(retry_results) == 1 and retry_results[0][0] == 200, retry_results
+            assert retry_results[0][1]['operationId'] == str(uuid.UUID(publication))
+            assert retry_results[0][1]['outcome'] == 'interrupted', retry_results[0][1]
+            assert leases() == 1
+            if pam_cleanup_fault:
+                (root / 'full-server/full-pam-retry-cleanup-fail').touch()
+            (root / 'full-server/full-pam-retry-cleanup-release').touch()
+            if pam_cleanup_fault:
+                module_path = '/api/v1.0/server/modules/relaxkonos.proxy'
+                fault = until(lambda: state if (state := request(module_path, token)[1]['residency'])['state'] == 'faulted' else None,
+                              'original retry cleanup quarantine')
+                assert fault['activeLeases'] == 1 and not (root / 'full-server/full-pam-retry-cleanup-complete').exists()
+                status, denied = request(api + '/tun/enable', token, 'after-pam-retry-cleanup-fault', {'profileId': profile})
+                assert status == 400 and denied['problemCode'] == 'proxy.operation_interrupted', (status, denied)
+                assert request(api + '/runtime/detect-external', token, data={'engineId': 'mihomo', 'externalPath': str(root / 'mihomo')})[0] == 503
+            else:
+                assert marker('full-server/full-pam-retry-cleanup-complete') == 'disposed'
+                until(lambda: leases() == 0, 'original retry response lease drain')
+            assert state_file.read_bytes() == terminal_state and service_identity() == restored
+        os.kill(recovery_pid, signal.SIGTERM if pam_response and not pam_cleanup_fault else signal.SIGKILL)
         assert worker.wait(timeout=8) == 0
-        if pam_retry:
+        if pam_retry and not pam_response:
             retry_thread.join(timeout=6)
             assert retry_results == ['disconnected']
         ipc.stop_helper()
@@ -3004,7 +3040,13 @@ def proof_full_http_shutdown(ipc, case):
                        '--max-time', '3', f'http://{target}:18880/mb04-zero-dns-restored') == 'upstream-through-inherited-tun'
         os.kill(restart_pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
-        if pam_retry:
+        if pam_cleanup_fault:
+            print(f'PASS TUN PAM RETRY CLEANUP FAULT: original={publication}; recovery IPC={correlation}; '
+                  f'restored PID={restored[0]}; original lease and faulted generation retained, one mutation', flush=True)
+        elif pam_response:
+            print(f'PASS TUN PAM RETRY RESPONSE: original={publication}; recovery IPC={correlation}; '
+                  f'restored PID={restored[0]}; original lease through response and scope cleanup, one mutation', flush=True)
+        elif pam_retry:
             print(f'PASS TUN PAM EXPLICIT RETRY: original={publication}; recovery IPC={correlation}; '
                   f'restored PID={restored[0]}; one mutation, original queue settled after reply loss', flush=True)
         label = 'PARTIAL DNS' if partial_dns else 'ZERO DNS'

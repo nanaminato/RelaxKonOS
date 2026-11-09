@@ -31,6 +31,13 @@ internal sealed class ProxyRequestScopeOwner(IServiceScopeFactory scopes, IModul
         return ValueTask.FromResult(leases.Acquire());
     }
 
+    internal static void RetainFailedScope(IModuleWorkLease work, AsyncServiceScope scope)
+    {
+        if (work is ModuleWorkLeaseSource.WorkLease lease
+            && lease.Runtime.Resolve(typeof(ProxyRequestScopeOwner)) is ProxyRequestScopeOwner owner)
+            owner.RetainFailedScope(scope);
+    }
+
     private void RetainFailedScope(AsyncServiceScope scope)
     {
         lock (failedScopes) failedScopes.Add(scope);

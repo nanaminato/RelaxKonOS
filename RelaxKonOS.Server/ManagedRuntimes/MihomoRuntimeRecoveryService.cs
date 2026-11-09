@@ -3,6 +3,7 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.ManagedRuntimes;
 
@@ -12,10 +13,11 @@ public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, M
     MihomoRemovalPublicationService removal, IProxyProfileRepository? profiles = null,
     MihomoSettingsPublicationFiles? settingsFiles = null, IProxyWorkLeaseSource? workLeases = null)
 {
-    public async Task<RuntimeSwitchResult> RetryAsync(Guid operationId, CancellationToken ct)
+    public async Task<RuntimeSwitchResult> RetryAsync(Guid operationId, CancellationToken ct, Action<IModuleWorkLease>? acceptLease = null)
     {
         if (operationId == Guid.Empty) throw new RuntimeLifecycleException("runtime.request_invalid");
         await store.Gate.WaitAsync(ct);
+        IModuleWorkLease? work = null;
         try
         {
             var state = await store.ReadAsync(ct);
@@ -37,9 +39,14 @@ public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, M
                 return await runtime.RecoverUnderGateAsync(Guid.NewGuid(), operationId, CancellationToken.None)
                     ?? throw new RuntimeLifecycleException("runtime.recovery_absent");
             if (pending.OperationId != operationId) throw new RuntimeLifecycleException("runtime.recovery_target_conflict");
-            using var work = pending.ConfigurationPlan is not null && pending.TunIntent is not null
+            work = pending.ConfigurationPlan is not null && pending.TunIntent is not null
                 ? await (workLeases ?? throw new RuntimePolicyException("runtime.publication_work_unavailable")).AcquireAsync(CancellationToken.None)
                 : null;
+            if (work is not null && acceptLease is not null)
+            {
+                acceptLease(work);
+                work = null;
+            }
             var result = pending.RemovalPlan is not null ? await removal.RecoverUnderGateAsync(state, CancellationToken.None)
                 : pending.InstallationPlan is not null ? await installation.RecoverUnderGateAsync(state, CancellationToken.None)
                 : pending.ConfigurationPlan is not null ? await configuration.RecoverUnderGateAsync(state, CancellationToken.None)
@@ -54,6 +61,10 @@ public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, M
             return result.Receipt ?? new(operationId, RuntimeSwitchOutcome.Failed, "runtime.operation_not_started");
         }
         catch (RuntimePolicyException ex) { throw new RuntimeLifecycleException(ex.ProblemCode); }
-        finally { store.Gate.Release(); }
+        finally
+        {
+            store.Gate.Release();
+            work?.Dispose();
+        }
     }
 }

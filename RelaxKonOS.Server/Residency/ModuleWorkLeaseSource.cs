@@ -8,8 +8,9 @@ internal sealed class ModuleWorkLeaseSource(ModuleResidencyCoordinator coordinat
         var lease = coordinator.AcquireForRuntime(runtime);
         return new WorkLease(lease, lease.Stopping);
     }
-    private sealed class WorkLease(ModuleLease lease, CancellationToken stopping) : IModuleWorkLease
+    internal sealed class WorkLease(ModuleLease lease, CancellationToken stopping) : IModuleWorkLease
     {
+        internal IServerModuleRuntime Runtime => lease.Runtime;
         public CancellationToken Stopping => stopping;
         public void RequireRecovery() => lease.Quarantine(this, "module-background-work-failed");
         public void Dispose() => lease.Dispose();

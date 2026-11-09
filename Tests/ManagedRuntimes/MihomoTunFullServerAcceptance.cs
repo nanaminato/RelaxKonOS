@@ -173,6 +173,7 @@ internal static class MihomoTunFullServerAcceptance
             && File.Exists(Path.Combine(root, "full-overview-cleanup-proof"));
         var squidCleanup = phase == "squid-restart" && File.Exists(Path.Combine(root, "full-squid-cleanup-proof"));
         var controllerCleanup = phase == "inbound-restart" && File.Exists(Path.Combine(root, "full-controller-cleanup-proof"));
+        var retryCleanup = phase == "zero-dns-pam-retry" && File.Exists(Path.Combine(root, "full-pam-retry-cleanup-proof"));
         var versionWorkerFault = phase == "inbound-restart" && File.Exists(Path.Combine(root, "full-version-worker-fault-proof"));
         var dropStopReply = phase == "stop-reply-drop";
         var dropStartReply = phase == "start-reply-drop";
@@ -248,6 +249,11 @@ internal static class MihomoTunFullServerAcceptance
             start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
             start.Environment["RELAXKONOS_TEST_CONTROLLER_CLEANUP"] = start.WorkingDirectory;
         }
+        if (retryCleanup)
+        {
+            start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
+            start.Environment["RELAXKONOS_TEST_PAM_RETRY_CLEANUP"] = start.WorkingDirectory;
+        }
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
         if (recoveryWriteFault || phase is "admission-managed" or "handoff-disabled" or "handoff-restart" or "cleanup-fault")
         {
@@ -303,6 +309,15 @@ internal static class MihomoTunFullServerAcceptance
                     : removalRelay is not null ? "full-removal-response-held"
                     : phase == "squid-receipt-cut" ? "full-squid-receipt-held" : "full-squid-response-held";
                 await WriteMarkerAsync(root, marker, original.ToString("N"));
+                if (retryCleanup)
+                {
+                    await WaitForMarkerAsync("full-pam-retry-helper-release");
+                    committedReply.ReleaseHeldResponse();
+                    await exited;
+                    var expectedExit = File.Exists(Path.Combine(root, "full-pam-retry-cleanup-fault")) ? 137 : 0;
+                    if (server.ExitCode == expectedExit) return;
+                    throw new InvalidOperationException($"Expected the retry response owner to exit with {expectedExit}, got {server.ExitCode}.");
+                }
                 if (phase == "squid-receipt-cut" && File.Exists(Path.Combine(root, "full-squid-write-fault")))
                 {
                     await WaitForMarkerAsync("full-squid-receipt-release");

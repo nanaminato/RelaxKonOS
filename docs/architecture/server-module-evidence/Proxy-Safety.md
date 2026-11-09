@@ -1412,7 +1412,21 @@ Windows Release 运行时 HTTP 57 项、发布 113 项及 TUN 边界 38 项通�
 
 **已实现但实机未验证。** 整机掉电及其他平台须有独立环境。本轮确认实际进程退出。对象释放、ALC、隔离内存及生产收益分别待验。
 
-**未实现或仍受门禁保护。** 显式重试服务当前在返回结果时归还原请求工作租约。HTTP 发送和请求作用域异步释放的租约接续仍待验证与接入。证据缺失时维持原门禁。Proxy 保持 resident。
+显式重试 HTTP 发送和执行作用域异步清理的租约接续见下一节。证据缺失时维持原门禁。Proxy 保持 resident。
+
+### 显式 TUN 重试的响应与异步清理
+
+**已实现且已验证。** 显式重试在原发布锁内核对待恢复的受管 TUN 并取得一个 Proxy 工作租约。HTTP 执行作用域接管原租约。完成原终态持久化后归还发布锁，租约继续保护实际响应和异步清理。清理失败时，同一代次保留失败作用域和工作租约，拒绝新管理执行。
+
+完整 PAM/JWT Server 在私有 systemd 处理原发布 `9981aaec-36ef-4aaf-a9fb-6e3d35d7cabd`。原 IPC `b77f4b03-4c9c-4e5a-a257-3c1fdd59371e` 的 Helper 终帧、HTTP 开始发送及执行作用域清理分三段截留，每段都观察到一份工作租约。客户端收到 HTTP 200 及原 `interrupted` 终态，随后释放异步清理，租约归零。正常重启后，恢复进程 PID `1027`、原台账、管理选路、配置、resolver 基线和真实上游再次逐项核对。原 ID 和同键继续返回同一队列终态。全程一次规则删除，重启没有再派发恢复或配置。
+
+反向实测在客户端收到原 HTTP 200 后注入异步清理失败。原发布 `6fca1c13-a9f1-4c78-8968-515823accb62`、原 IPC `49b90a87-1ec7-4e27-9923-4a6099992170`。原代次保持 faulted 和一份工作租约，TUN 新键返回 `proxy.operation_interrupted`，外部探测返回 503。强退并启用重启后，按原 ID 读回同一终态，原进程 PID `1021`、原 Helper 台账、网络基线、配置和真实上游均核对一致。全程只有一次原生补偿。首次反向夹具把 TUN 队列拒绝和代次准入的 HTTP 状态混用，复验分别核对。反向最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-pam-retry-cleanup-fault-final.log` 的 SHA-256 为 `66efbc0c130797e527274f96d0d131424d55dd78a9e4f2f782c116e01061c080`，归档为 `66cb3ca2abf1da3cac6254a4411fe34757bda0bf7bc72c15e91a498b2cfbd883`。首轮日志 SHA-256 为 `4986f0d25f6c355c3f55dc43fc276a55cb5cf4ae2b64aeccb6298d372e2171b8`。两组实测均清理专属 cgroup，宿主共享服务与代理、resolver 文件指纹一致。
+
+Windows Release 运行时 HTTP 57 项、发布 113 项及模块边界里程碑通过，Linux x64 Release 构建与完整认证实测通过。首轮夹具使用 Helper 枚举大小写断言 HTTP 结果，改用 HTTP 契约并独立检查租约后通过。首轮日志 SHA-256 为 `533103be1b7232b3cea8eb4f2fd91fb82ba5e15d32d2285e64618c9085e87b30`。正向日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-pam-retry-response-final.log` 的 SHA-256 为 `d03486a36c685d478b33e9038acb7a84e3692b8b4b1880bcf45028c2b248d584`，归档为 `2f5f92b6830df9184be3f471c2ef27730a6baba4bae10538d084c81b30a23f36`。
+
+**已实现但实机未验证。** 整机掉电及其他平台仍需独立环境。进程退出和专属 cgroup 清理已核对。执行对象释放、ALC 回收、隔离负载内存和生产收益分别待验。
+
+**未实现或仍受门禁保护。** 证据不足的原生事务仍由原门禁保护。整模块安全交接继续开放，Proxy 保持 resident。
 
 
 ### 原补偿作业与独立宿主见证联合复验
