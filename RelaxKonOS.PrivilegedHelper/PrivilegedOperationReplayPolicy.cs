@@ -19,6 +19,7 @@ internal static class PrivilegedOperationReplayPolicy
         or PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.ProxyServerPublicationReceipt
         or PrivilegedOperationKind.MihomoProbeWitnessRegister or PrivilegedOperationKind.MihomoProbeWitnessRead
         or PrivilegedOperationKind.MihomoProbeHostStart or PrivilegedOperationKind.MihomoProbeHostComplete
+        or PrivilegedOperationKind.MihomoProbeHostConfirmUndispatched
         or PrivilegedOperationKind.MihomoRuntimeTunStop
         or PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart
         or PrivilegedOperationKind.ProxyServerRecoverPublication

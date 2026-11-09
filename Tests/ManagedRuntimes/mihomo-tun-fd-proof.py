@@ -3349,7 +3349,7 @@ exec {shlex.quote(str(systemctl))} "$@"
               f'PID={current["service"][0]}; route table={intent["RoutingTable"]}; '
               'one native start, three DNS writes, original gate retained', flush=True)
 
-    def launch(phase):
+    def launch(phase, helper_socket=ipc.socket_path):
         (root / 'full-server-pid').unlink(missing_ok=True)
         (root / 'full-startup-refused').unlink(missing_ok=True)
         if phase == 'start-reply-drop':
@@ -3357,7 +3357,7 @@ exec {shlex.quote(str(systemctl))} "$@"
         (root / 'full-squid-response-held').unlink(missing_ok=True)
         (root / 'full-squid-receipt-held').unlink(missing_ok=True)
         return subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-full-server',
-                                 str(root), str(ipc.socket_path), ('joint-' if joint else '') + phase])
+                                 str(root), str(helper_socket), ('joint-' if joint else '') + phase])
 
     def guard_applied():
         return any(line.partition('=')[2].strip('"') == 'http://127.0.0.1:18881'
@@ -3708,6 +3708,88 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert not fence.exists() if server_cut else fence.read_bytes() == original
             assert pids.read_bytes() == original_processes
             probe(record, 'external-version-after-manager-witness')
+        if fixture.with_name('external-version-start-reply-cut.fixture').is_file():
+            assert server_cut and not fence.exists()
+            server_pid = verify_external_probe_start_reply_cut(server_pid, record, route, request_body, fence, forced, original_id)
+        return server_pid
+
+    def verify_external_probe_start_reply_cut(server_pid, record, route, request_body, fence, forced, completed_id):
+        nonlocal worker, token
+        registry = Path('/var/lib/relaxkonos/mihomo-probe-witnesses')
+        directory = root / 'probe-relay'
+        directory.mkdir(mode=0o700)
+        os.chown(directory, ipc.uid, ipc.identity['group'])
+        relay_socket = directory / 'helper.sock'
+        os.kill(server_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        with subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-probe-start-relay', str(root),
+                               str(ipc.socket_path)], **ipc.identity) as relay:
+            try:
+                deadline = time.monotonic() + 8
+                while not relay_socket.is_socket():
+                    assert relay.poll() is None and time.monotonic() < deadline, 'original probe relay did not start'
+                    time.sleep(.025)
+                forced.touch()
+                worker = launch('inbound-restart', relay_socket)
+                server_pid = int(marker('full-server-pid'))
+                token = login()
+                replies = []
+
+                def request_probe():
+                    try:
+                        replies.append(request(route, token, data=request_body))
+                    except ConnectionError:
+                        replies.append('disconnected')
+
+                thread = threading.Thread(target=request_probe, daemon=True)
+                thread.start()
+                original = uuid.UUID(marker('probe-relay/held'))
+                pending = json.loads(fence.read_bytes())
+                assert pending['OperationId'] == str(original) and pending['WorkerPid'] is None and pending['Host'] is None
+                assert leases() == 1 and (registry / (original.hex + '.launch.json')).is_file()
+                registered = json.loads((registry / (original.hex + '.json')).read_bytes())
+                assert registered['OperationId'] == str(original) and registered['OwnerUid'] == ipc.uid
+                scope = Path('/sys/fs/cgroup') / registered['ControlGroup'].lstrip('/')
+                assert (scope / 'cgroup.procs').read_text().split() == [str(registered['Pid'])]
+                descriptor = os.pidfd_open(registered['Pid'])
+                try:
+                    os.kill(server_pid, signal.SIGKILL)
+                    assert worker.wait(timeout=12) == 0
+                    event = select.poll()
+                    event.register(descriptor, 0)
+                    assert event.poll(8000) == [(descriptor, select.POLLHUP)]
+                finally:
+                    os.close(descriptor)
+                thread.join(timeout=5)
+                assert replies == ['disconnected'] and json.loads(fence.read_bytes()) == pending
+            finally:
+                if relay.poll() is None:
+                    relay.terminate()
+        forced.unlink()
+        worker = launch('admission-disabled')
+        assert worker.wait(timeout=15) == 0 and str(original) in (root / 'full-startup-refused').read_text()
+        worker = launch('inbound-restart')
+        server_pid = int(marker('full-server-pid'))
+        token = login()
+        assert request(route, token, data=request_body)[0] == 503
+        until(lambda: leases() == 0, 'undispatched probe recovery scope drain')
+        assert not fence.exists()
+        receipt = registry / (original.hex + '.exit.json')
+        terminal = receipt.read_bytes()
+        assert json.loads(terminal)['NativeExitStatus'] == 65 and json.loads(terminal)['Dispatch'] == registered
+        for operation, expected in ((original, True), (completed_id, False)):
+            read = subprocess.run(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-probe-witness', str(root),
+                                   str(ipc.socket_path), str(operation), 'undispatched'], **ipc.identity,
+                                  capture_output=True, text=True, check=True, timeout=10)
+            assert json.loads(read.stdout)['success'] is expected
+        assert receipt.read_bytes() == terminal
+        audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+        assert audit.count('operation=MihomoProbeHostStart ') == 5
+        assert audit.count(f'operation=MihomoProbeHostStart id={original} ') == 1
+        assert f'operation=MihomoProbeHostConfirmUndispatched id={original} ' in audit
+        probe(record, 'external-version-original-start-reply-cut')
+        print(f'PASS EXTERNAL VERSION START REPLY CUT: original={original}; invocation={registered["InvocationId"]}; '
+              f'worker={registered["Pid"]}; no executable dispatched, same receipt, one host launch', flush=True)
         return server_pid
 
     def verify_external_version_manager_witness(fixture):

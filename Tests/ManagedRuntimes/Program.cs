@@ -288,6 +288,12 @@ if (args is ["runtime-mihomo-tun-full-server", var tunFullRoot, var tunFullSocke
     return;
 }
 
+if (args is ["runtime-mihomo-probe-start-relay", var relayRoot, var relaySocket] && OperatingSystem.IsLinux())
+{
+    await MihomoTunFullServerAcceptance.HoldProbeStartReplyAsync(relayRoot, relaySocket);
+    return;
+}
+
 if (args is ["runtime-mihomo-probe-witness", var witnessRoot, var witnessSocket, var witnessId, var witnessMode]
     && OperatingSystem.IsLinux())
 {

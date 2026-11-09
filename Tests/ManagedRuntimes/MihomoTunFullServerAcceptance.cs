@@ -16,16 +16,35 @@ using RelaxKonOS.Server.Privileged;
 [SupportedOSPlatform("linux")]
 internal static class MihomoTunFullServerAcceptance
 {
+    internal static async Task HoldProbeStartReplyAsync(string root, string socket)
+    {
+        MihomoIpcStartupAcceptance.RequirePrivateHost(rootRequired: false);
+        if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK"))
+            throw new InvalidOperationException("The probe relay requires its private systemd fixture.");
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+        var directory = Path.Combine(root, "probe-relay");
+        await using var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay(Path.Combine(directory, "helper.sock"),
+            socket, budget.Token, (operation, _) => operation == "MihomoProbeHostStart");
+        var original = await relay.Committed.Task.WaitAsync(budget.Token);
+        await WriteMarkerAsync(directory, "held", original.ToString("D"));
+        await Task.Delay(Timeout.InfiniteTimeSpan, budget.Token);
+    }
+
     internal static async Task ProbeWitnessTransportAsync(string root, string socket, Guid operation, string mode)
     {
         MihomoIpcStartupAcceptance.RequirePrivateHost(rootRequired: false);
-        if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK") || mode is not ("register" or "read" or "bad"))
+        if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK") || mode is not ("register" or "read" or "bad" or "undispatched"))
             throw new InvalidOperationException("The probe witness requires its private systemd fixture.");
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
             NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
-        var request = new PrivilegedOperationRequest(mode == "register" ? PrivilegedOperationKind.MihomoProbeWitnessRegister
-            : PrivilegedOperationKind.MihomoProbeWitnessRead, Path: mode == "bad" ? "/usr/bin/false" : null, OperationId: operation);
+        var operationKind = mode switch
+        {
+            "register" => PrivilegedOperationKind.MihomoProbeWitnessRegister,
+            "undispatched" => PrivilegedOperationKind.MihomoProbeHostConfirmUndispatched,
+            _ => PrivilegedOperationKind.MihomoProbeWitnessRead
+        };
+        var request = new PrivilegedOperationRequest(operationKind, Path: mode == "bad" ? "/usr/bin/false" : null, OperationId: operation);
         Console.WriteLine(JsonSerializer.Serialize(await transport.ExecuteAsync(request, budget.Token)));
     }
 

@@ -24,7 +24,8 @@ public static partial class PrivilegedOperationExecutor
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
         if (request.Operation is PrivilegedOperationKind.MihomoProbeWitnessRegister or PrivilegedOperationKind.MihomoProbeWitnessRead
-            or PrivilegedOperationKind.MihomoProbeHostStart or PrivilegedOperationKind.MihomoProbeHostComplete)
+            or PrivilegedOperationKind.MihomoProbeHostStart or PrivilegedOperationKind.MihomoProbeHostComplete
+            or PrivilegedOperationKind.MihomoProbeHostConfirmUndispatched)
             return Fail(77, PrivilegedProblemCode.AccessDenied, "authenticated Linux peer credentials are required");
         if (request.RuntimeLifecycle?.MihomoTunPublicationId is not null
             && request.Operation is not (PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart

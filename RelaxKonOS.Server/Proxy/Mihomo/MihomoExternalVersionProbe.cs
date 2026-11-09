@@ -105,8 +105,21 @@ internal sealed class MihomoExternalVersionProbe(IProxyPlatformPaths paths, ISer
         {
             using var input = File.OpenRead(marker);
             var dispatch = input.Length <= 1024 ? JsonSerializer.Deserialize<Dispatch>(input) : null;
-            if (dispatch?.Host is not { } original || original.OperationId != dispatch.OperationId) return;
-            if (await TryCompleteHostedAsync(original, ct)) ClearMarker();
+            if (dispatch is null || dispatch.OperationId == Guid.Empty) return;
+            if (dispatch.Host is { } original)
+            {
+                if (original.OperationId == dispatch.OperationId && await TryCompleteHostedAsync(original, ct)) ClearMarker();
+                return;
+            }
+            if (dispatch.WorkerPid is not null || dispatch.WorkerStartedAt is not null) return;
+            var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.MihomoProbeHostConfirmUndispatched,
+                OperationId: dispatch.OperationId), ct);
+            if (result.Success && result.MihomoProbeExit is { } exit && exit.OperationId == dispatch.OperationId
+                && exit.BootId != Guid.Empty && exit.InvocationId != Guid.Empty && exit.Pid > 1 && exit.StartTicks > 0)
+            {
+                File.Delete(marker + ".dispatch");
+                ClearMarker();
+            }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
     }

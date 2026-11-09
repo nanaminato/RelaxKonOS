@@ -230,6 +230,7 @@ public enum PrivilegedOperationKind
     MihomoProbeWitnessRead,
     MihomoProbeHostStart,
     MihomoProbeHostComplete,
+    MihomoProbeHostConfirmUndispatched,
 }
 
 /// <summary>

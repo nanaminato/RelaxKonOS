@@ -40,7 +40,8 @@ internal static class MihomoVersionWorker
     internal static async Task<int> RunHostedAsync(Guid operation, uint uid)
     {
         using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        await socket.ConnectAsync(HostEndpoint(operation));
+        try { await socket.ConnectAsync(HostEndpoint(operation)); }
+        catch (SocketException) { return NoDispatch; }
         if (HostPeer(socket).Uid != uid) return 77;
         using var stream = new NetworkStream(socket);
         using var input = new StreamReader(stream, leaveOpen: true);
@@ -53,7 +54,9 @@ internal static class MihomoVersionWorker
 
     private static async Task<int> RunAsync(TextReader input, TextWriter response, Guid? expectedOperationId)
     {
-        var line = await input.ReadLineAsync();
+        string? line;
+        try { line = await input.ReadLineAsync(); }
+        catch (IOException) { return NoDispatch; }
         if (line is null) return NoDispatch;
         var request = JsonSerializer.Deserialize<Request>(line, WireJson);
         if (request is null || request.OperationId == Guid.Empty

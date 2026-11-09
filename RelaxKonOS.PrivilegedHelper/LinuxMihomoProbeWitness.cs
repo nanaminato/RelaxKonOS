@@ -36,7 +36,7 @@ internal static class LinuxMihomoProbeWitness
         && File.ReadLines("/proc/self/status").Contains("NoNewPrivs:\t1", StringComparer.Ordinal)
         && Prctl(4, 0, 0, 0, 0) == 0; // PR_SET_DUMPABLE
 
-    private sealed record Terminal(Dispatch Dispatch, ulong ExitedAt);
+    private sealed record Terminal(Dispatch Dispatch, ulong ExitedAt, int NativeExitStatus = 0);
     private sealed record Launch(Guid OperationId, uint OwnerUid);
 
     internal static async Task<int> RunCommandAsync(string action, string operation, string uid)
@@ -64,6 +64,7 @@ internal static class LinuxMihomoProbeWitness
             PrivilegedOperationKind.MihomoProbeWitnessRegister => "register",
             PrivilegedOperationKind.MihomoProbeHostStart => "start",
             PrivilegedOperationKind.MihomoProbeHostComplete => "complete",
+            PrivilegedOperationKind.MihomoProbeHostConfirmUndispatched => "undispatched",
             _ => "read"
         };
         return ExecuteAsync(action, id, peer.UserId, peer.GroupId);
@@ -113,20 +114,24 @@ internal static class LinuxMihomoProbeWitness
                 return Unknown();
 
             var terminalPath = Path.Combine(Root, id.ToString("N") + ".exit.json");
-            if (action == "complete" && Read<Launch>(fileSystem, launchPath) != new Launch(id, owner)) return Unknown();
-            if (action is ("seal" or "complete") && !Path.Exists(terminalPath))
+            var hostedCompletion = action is "complete" or "undispatched";
+            var expectedStatus = action == "undispatched" ? MihomoVersionWorker.NoDispatch : 0;
+            if (hostedCompletion && Read<Launch>(fileSystem, launchPath) != new Launch(id, owner)) return Unknown();
+            if ((hostedCompletion || action == "seal") && !Path.Exists(terminalPath))
             {
-                if (MihomoVersionWorker.ReadStartTicks(registered.Pid) == registered.StartTicks || await ReadExitTimeAsync(fileSystem, registered) is not { } ended)
+                if (MihomoVersionWorker.ReadStartTicks(registered.Pid) == registered.StartTicks
+                    || await ReadExitTimeAsync(fileSystem, registered, expectedStatus) is not { } ended)
                     return Unknown();
-                WriteNew(terminalPath, new Terminal(registered, ended));
+                WriteNew(terminalPath, new Terminal(registered, ended, expectedStatus));
             }
             var terminal = Read<Terminal>(fileSystem, terminalPath);
-            if (terminal is null || terminal.Dispatch != registered || terminal.ExitedAt < registered.StartedAt
+            if (terminal is null || terminal.Dispatch != registered || terminal.NativeExitStatus != expectedStatus
+                || terminal.ExitedAt < registered.StartedAt
                 || terminal.ExitedAt > MonotonicMicroseconds())
                 return Unknown();
             // A read racing the original publication still requires the directory entry to be durable.
             LinuxDirectorySync.Flush(Root);
-            if (action == "complete")
+            if (hostedCompletion)
             {
                 var state = await ReadStateAsync(id);
                 if (state.GetValueOrDefault("InvocationID") == registered.InvocationId.ToString("N"))
@@ -184,6 +189,7 @@ internal static class LinuxMihomoProbeWitness
                 "--property=ProtectSystem=strict", "--property=InaccessiblePaths=-/run/relaxkonos",
                 "--property=KillMode=control-group", "--property=ExitType=cgroup", "--property=Delegate=no",
                 "--property=ProtectControlGroups=yes", "--property=RemainAfterExit=yes", "--property=RuntimeMaxSec=18s",
+                "--property=SuccessExitStatus=" + MihomoVersionWorker.NoDispatch.ToString(CultureInfo.InvariantCulture),
                 "--", Worker, WorkerArgument, id.ToString("D"), "socket"], 4096);
 
     private static async Task<Dispatch> CaptureStartedWorkerAsync(LinuxUnixSocketFileSystem fileSystem, Guid id, uint owner)
@@ -253,17 +259,17 @@ internal static class LinuxMihomoProbeWitness
             .Select(line => line.Split('=', 2)).ToDictionary(fields => fields[0], fields => fields.Length == 2 ? fields[1] : "");
     }
 
-    private static async Task<ulong?> ReadExitTimeAsync(LinuxUnixSocketFileSystem fileSystem, Dispatch dispatch)
+    private static async Task<ulong?> ReadExitTimeAsync(LinuxUnixSocketFileSystem fileSystem, Dispatch dispatch, int expectedStatus)
     {
         var state = await ReadStateAsync(dispatch.OperationId);
         var phase = state.GetValueOrDefault("SubState");
         var group = state.GetValueOrDefault("ControlGroup");
-        // A service can be classified as successful after some signals. Require CLD_EXITED and exit code zero.
+        // Unit success alone is insufficient. Bind the exact trusted worker exit category and status.
         return HasFixedScopePolicy(state)
             && state.GetValueOrDefault("ActiveState") == "active" && phase is ("running" or "exited")
             && (group == dispatch.ControlGroup || (phase == "exited" && (group is null or "")))
             && state.GetValueOrDefault("MainPID") == "0" && state.GetValueOrDefault("ExecMainCode") == "1"
-            && state.GetValueOrDefault("ExecMainStatus") == "0"
+            && state.GetValueOrDefault("ExecMainStatus") == expectedStatus.ToString(CultureInfo.InvariantCulture)
             && state.GetValueOrDefault("ExecMainPID") == dispatch.Pid.ToString(CultureInfo.InvariantCulture)
             && state.GetValueOrDefault("InvocationID") == dispatch.InvocationId.ToString("N")
             && state.GetValueOrDefault("ExecMainStartTimestampMonotonic") == dispatch.StartedAt.ToString(CultureInfo.InvariantCulture)
