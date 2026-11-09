@@ -527,3 +527,11 @@ Linux 受管 Mihomo Release 通过 180 项。真实设置写入 `5fb6368b-45cc-4
 **已实现但实机未验证。** 前台写入异步清理故障和档案激活的响应排空由本地夹具验证。Linux 本轮验证设置、档案应用中断和专属进程退出。写入对象释放、整体 ALC 回收、隔离内存差值和生产收益分别待测。
 
 **未实现或仍受门禁保护。** 管理执行图的整模块安全交接仍开放。Proxy 保持 resident。
+
+### 档案管理的前台作用域
+
+**已实现且已验证。** 当前 Proxy 代次持有档案列表、读取、创建、修订和删除的请求作用域。Linux 专属 systemd 的完整认证 Server 在故障代次对五条路由返回 503。重启后创建非活动草稿 `08d8ac98-3ecf-4503-9a62-f6c90f5c667b`，按原修订更新名称，拒绝同一旧修订，读取原草稿并完成删除。租约归零，原活动档案、Helper 原发布记录、Mihomo 配置摘要及真实 HTTP/DNS 流量保持。原 Squid 回执和单次重载同批核对。
+
+Windows Release 档案发布 23 项、Core 安全和模块里程碑通过。Linux 专属进程与 cgroup 已清理，宿主运行时服务、代理及 resolver 指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-profile-foreground.log` 的 SHA-256 为 `b09b9b0af6371737717986e2a2e1ba1eafd079ea413daec27dd52173ea9faeb4`，归档为 `663f6c27620baf92e3584989d451da8dcd26da7d95760bb43dafa8d2ef5f9fe5`。
+
+**仍待验收。** 本次确认真实进程退出，档案前台对象释放、ALC、隔离内存及生产收益分别待测。整模块交接仍开放，Proxy 保持 resident。

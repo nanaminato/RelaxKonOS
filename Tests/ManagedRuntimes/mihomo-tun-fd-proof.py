@@ -2183,7 +2183,7 @@ def proof_full_http_shutdown(ipc, case):
     subprocess.run(['/usr/sbin/chpasswd'], input=f'{identity}:{password}\n', text=True, check=True, timeout=8)
     profile = str(uuid.uuid4())
 
-    def request(path, token=None, key=None, data=None):
+    def request(path, token=None, key=None, data=None, method=None):
         args = ['ip', 'netns', 'exec', 'rk-http-client', '/usr/bin/curl', '--noproxy', '*', '--silent',
                 '--show-error', '--max-time', '4', '--write-out', '\n%{http_code}']
         contents = None
@@ -2196,6 +2196,8 @@ def proof_full_http_shutdown(ipc, case):
             else:
                 args += ['-H', 'Content-Type: application/json', '--data-binary', '@-']
                 contents = json.dumps(data)
+        if method:
+            args += ['-X', method]
         if key:
             args += ['-X', 'POST', '-H', f'Idempotency-Key: {key}']
         response = subprocess.run([*args, base + path], input=contents, text=True, capture_output=True, timeout=6)
@@ -4394,6 +4396,13 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert before == after and queue.read_bytes() == queue_before_cleanup
             assert receipt.read_bytes() == original_receipt and forward(18884, 'cleanup-fault')
             probe(tun_record, 'squid-cleanup-quarantined')
+            profiles = api + '/profiles'
+            draft = {'name': 'Scoped profile fixture', 'engineId': 'mihomo'}
+            original_profile = profiles + '/' + profile
+            for path, data, method in ((profiles, None, None), (original_profile, None, None), (profiles, draft, None),
+                                       (original_profile, draft, 'PUT'), (original_profile, None, 'DELETE')):
+                reply = request(path, token, data=data, method=method)
+                assert reply[0] == 503, (path, reply)
             cut(pid)
             squid_cleanup.unlink()
             (root / 'full-squid-generation').unlink()
@@ -4405,6 +4414,24 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
             probe(tun_record, 'squid-cleanup-restarted')
             print(f'PASS SQUID RESPONSE CLEANUP OWNER: generation={generation}; HTTP completed, one lease retained after cleanup failure, original receipt after restart', flush=True)
+
+            status, created = request(profiles, token, data=draft)
+            assert status == 201 and not created['isActive']
+            created_path = profiles + '/' + created['id']
+            assert request(created_path, token) == (200, created)
+            status, listed = request(profiles, token)
+            assert status == 200 and created in listed
+            renamed = dict(draft, name='Renamed scoped fixture', expectedRevision=created['revision'])
+            status, updated = request(created_path, token, data=renamed, method='PUT')
+            assert status == 200 and updated['id'] == created['id'] and updated['revision'] > created['revision']
+            assert updated['name'] == renamed['name'] and request(created_path, token) == (200, updated)
+            assert request(created_path, token, data=renamed, method='PUT')[0] == 400
+            assert request(created_path, token, method='DELETE')[0] == 204 and request(created_path, token)[0] == 404
+            until(lambda: leases() == 0, 'profile management leases drained')
+            assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
+            assert request(original_profile, token)[1]['isActive']
+            probe(tun_record, 'profile-management-drained')
+            print(f'PASS PROXY FOREGROUND PROFILE MANAGEMENT: draft={created["id"]}; five routes gated, revision checked, original active TUN continuous', flush=True)
             audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
             assert audit.count(f'operation=SquidApplyConfiguration id={operation} ') == 1
             assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(tun_record["operation"])} ') == 1

@@ -32,7 +32,10 @@ public static class ProxyEndpoints
         app.MapTunOperationEndpoints();
         app.MapGet(ProxyApiRoutes.Recovery, (IProxyRecoveryService recovery, CancellationToken ct) => recovery.GetStatusAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
 
-        app.MapGet(ProxyApiRoutes.Profiles, (IProxyProfileService service, CancellationToken ct) => service.ListAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapGet(ProxyApiRoutes.Profiles, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, static async (services, ct) =>
+                Results.Ok(await services.GetRequiredService<IProxyProfileService>().ListAsync(ct))))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Subscriptions, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
             ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, static async (services, ct) =>
                 Results.Ok(await services.GetRequiredService<IProxySubscriptionService>().ListAsync(ct))))
@@ -79,17 +82,29 @@ public static class ProxyEndpoints
                 }
             })).RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapSubscriptionOperationEndpoints();
-        app.MapGet(Route(ProxyApiRoutes.ProfilePattern), async (Guid profileId, IProxyProfileService service, CancellationToken ct) =>
-            await service.GetAsync(profileId, ct) is { } profile ? Results.Ok(profile) : Results.NotFound()).RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.Profiles, async (UpsertProxyProfileRequest request, IProxyProfileRepository profiles, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-            await ProfileAsync(() => profiles.UpsertAsync(null, request.Name, request.EngineId, null, ct), audit, context, "profile.create", ct, true)).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapPut(Route(ProxyApiRoutes.ProfilePattern), async (Guid profileId, UpsertProxyProfileRequest request, IProxyProfileRepository profiles, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-            await ProfileAsync(() => profiles.UpsertAsync(profileId, request.Name, request.EngineId, request.ExpectedRevision, ct), audit, context, "profile.update", ct)).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapDelete(Route(ProxyApiRoutes.ProfilePattern), async (Guid profileId, IProxyProfileRepository profiles, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            var deleted = await profiles.DeleteAsync(profileId, ct); await audit.RecordAsync(Actor(context.User), "profile.delete", deleted ? "succeeded" : "failed", deleted ? null : ProxyProblemCodes.ConfigApplyFailed, ct);
-            return deleted ? Results.NoContent() : Results.Conflict();
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapGet(Route(ProxyApiRoutes.ProfilePattern), (Guid profileId, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
+                await services.GetRequiredService<IProxyProfileService>().GetAsync(profileId, ct) is { } profile
+                    ? Results.Ok(profile) : Results.NotFound()))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapPost(ProxyApiRoutes.Profiles, (UpsertProxyProfileRequest request, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, (services, ct) =>
+                ProfileAsync(() => services.GetRequiredService<IProxyProfileRepository>().UpsertAsync(null, request.Name, request.EngineId, null, ct),
+                    services.GetRequiredService<ProxyAuditStore>(), context, "profile.create", ct, true)))
+            .RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapPut(Route(ProxyApiRoutes.ProfilePattern), (Guid profileId, UpsertProxyProfileRequest request, HttpContext context,
+            ModuleResidencyCoordinator coordinator) => ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, (services, ct) =>
+                ProfileAsync(() => services.GetRequiredService<IProxyProfileRepository>().UpsertAsync(profileId, request.Name, request.EngineId,
+                    request.ExpectedRevision, ct), services.GetRequiredService<ProxyAuditStore>(), context, "profile.update", ct)))
+            .RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapDelete(Route(ProxyApiRoutes.ProfilePattern), (Guid profileId, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
+            {
+                var deleted = await services.GetRequiredService<IProxyProfileRepository>().DeleteAsync(profileId, ct);
+                await services.GetRequiredService<ProxyAuditStore>().RecordAsync(Actor(context.User), "profile.delete",
+                    deleted ? "succeeded" : "failed", deleted ? null : ProxyProblemCodes.ConfigApplyFailed, ct);
+                return deleted ? Results.NoContent() : Results.Conflict();
+            })).RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapProxyProfilePublicationEndpoints();
 
         app.MapPut(Route(ProxyApiRoutes.GroupSelectionPattern), async (string groupName, SelectProxyGroupRequest request, IProxyEngineRegistry engines, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>

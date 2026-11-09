@@ -4758,3 +4758,5 @@ Core 调度器按原 ID 恢复已受理的受管 TUN 发布。管理队列仍按
 前台设置写入先占用发布锁时，后台订阅保留原队列 ID 和工作租约，取得锁后才派发。前台异步清理期间，后台可保存自己的终态并归还租约。[前台持锁实机证据](../architecture/server-module-evidence/Proxy-Subscriptions.md#前台持锁与订阅独立排空)
 
 订阅导入、列表、下载选项和原内容读取由当前 Proxy 代次持有前台作用域。源站下载、持久草稿、响应和清理在各自请求范围完成。[前台订阅实测](../architecture/server-module-evidence/Proxy-Subscriptions.md#订阅前台导入与读取的管理作用域)
+
+档案列表、读取、创建、修订和删除使用当前管理代次的前台作用域。修订仍按原档案的期望修订核对。[档案实测](../architecture/server-module-evidence/Proxy-Publication.md#档案管理的前台作用域)
