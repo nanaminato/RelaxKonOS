@@ -40,6 +40,11 @@ internal static class ProxyCoreSafetyChecks
             Check(builder.Services.Any(item => item.ServiceType == typeof(IProxyPlatformService)) == enabled
                 && builder.Services.Any(item => item.ServiceType == typeof(IProxySubscriptionDownloader)) == enabled,
                 "Core safety does not register the management capability and download facades");
+            Check(builder.Services.Any(item => item.ServiceType == typeof(IProxySettingsWriter)) == enabled
+                && builder.Services.Any(item => item.ServiceType == typeof(IMihomoApplicationConfigurationPublisher)) == enabled
+                && builder.Services.Count(item => item.ServiceType == typeof(IMihomoConfigurationPublicationRecovery)) == 1
+                && builder.Services.Count(item => item.ServiceType == typeof(IMihomoRuntimeReceiptReader)) == 1,
+                "Settings and application publication ports belong to Proxy while Core keeps its original recovery and receipt ports");
             Check(builder.Services.Any(item => item.ServiceType == typeof(ProxyServerOperationQueue)) == enabled,
                 "Core publication does not register the inbound HTTP acceptance facade");
             if (enabled) Check(builder.Services.Single(item => item.ServiceType == typeof(IProxyEngineRegistry)).Lifetime == ServiceLifetime.Scoped

@@ -7,7 +7,7 @@ internal sealed class PublicationRecoveryServices : IDisposable
     private readonly ServiceProvider provider;
     internal IServiceScopeFactory Scopes => provider.GetRequiredService<IServiceScopeFactory>();
     internal PublicationRecoveryServices(MihomoPublicationStore store,
-        Func<MihomoConfigurationPublicationService> configuration,
+        Func<IMihomoConfigurationPublicationRecovery> configuration,
         Func<MihomoInstallationPublicationService> installation,
         Func<MihomoRemovalPublicationService> removal)
     {

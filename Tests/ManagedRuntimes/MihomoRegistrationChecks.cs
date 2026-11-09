@@ -65,11 +65,13 @@ internal static class MihomoRegistrationChecks
         Check(services.GetRequiredService<IProxySystemProxyReconciler>() is MihomoSystemProxyReconciler
             && services.GetRequiredService<IProxyTunRuntimeController>() is ScopedProxyTunRuntimeController
             && builder.Services.Single(item => item.ServiceType == typeof(MihomoTunRuntimeController)).Lifetime == ServiceLifetime.Scoped
-            && !ReferenceEquals(services.GetRequiredService<IProxySettingsWriter>(), services.GetRequiredService<IProxySettingsWriter>()),
-            "Guard and TUN have narrow executors while settings writers are created per invocation");
-        Check(builder.Services.Single(x => x.ServiceType == typeof(MihomoSettingsService)).Lifetime == ServiceLifetime.Transient
-            && builder.Services.Single(x => x.ServiceType == typeof(IProxySettingsWriter)).Lifetime == ServiceLifetime.Transient,
-            "The root container does not retain a singleton settings writer");
+            && ReferenceEquals(services.GetRequiredService<IMihomoRuntimeReceiptReader>(), services.GetRequiredService<MihomoRuntimeService>()),
+            "Guard and TUN have narrow executors and the receipt port uses the original runtime owner");
+        Check(builder.Services.Single(x => x.ServiceType == typeof(IProxySettingsWriter)).Lifetime == ServiceLifetime.Scoped
+            && scope.ServiceProvider.GetRequiredService<IProxySettingsWriter>() is MihomoSettingsService
+            && scope.ServiceProvider.GetRequiredService<IMihomoApplicationConfigurationPublisher>() is MihomoConfigurationPublicationService
+            && services.GetRequiredService<IMihomoConfigurationPublicationRecovery>() is MihomoConfigurationPublicationService,
+            "Management resolves scoped write ports and Core resolves its configuration recovery port");
         Check(builder.Services.Count(item => item.ServiceType == typeof(IHostedService)
                 && item.ImplementationType == typeof(SystemProxyGuardHostedService)) == 1,
             "Proxy registration keeps exactly one Core system proxy guard");

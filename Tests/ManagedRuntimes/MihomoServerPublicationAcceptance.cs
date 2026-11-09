@@ -60,7 +60,7 @@ internal static class MihomoServerPublicationAcceptance
             builder.Services.AddSingleton(store);
             builder.Services.AddSingleton<IProxyPlatformPaths>(paths);
             builder.Services.AddSingleton<IDataProtectionProvider>(protection);
-            builder.Services.AddTransient(_ => Service(store));
+            builder.Services.AddTransient<IMihomoConfigurationPublicationRecovery>(_ => Service(store));
             var context = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
             await using var app = builder.Build();
             Check((await new ProxyModule().InspectDisabledStartupAsync(app.Services, context, default)).Count == 0,
@@ -336,7 +336,8 @@ internal static class MihomoServerPublicationAcceptance
         services.AddSingleton(store);
         services.AddScoped(_ => cleanup);
         services.AddTransient<MihomoPublicationRecoveryService>();
-        services.AddTransient(scope => { _ = scope.GetRequiredService<ScopeBarrier>(); return service(); });
+        services.AddTransient<IMihomoConfigurationPublicationRecovery>(scope =>
+        { _ = scope.GetRequiredService<ScopeBarrier>(); return service(); });
         await using var provider = services.BuildServiceProvider();
         using var scheduler = new MihomoPublicationRecoveryScheduler(provider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<MihomoPublicationRecoveryScheduler>.Instance);

@@ -50,6 +50,8 @@ internal static class ProxyRuntimeRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeAuthorizationProvider>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsPublicationFiles>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoConfigurationPublicationService>();
+        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.IMihomoConfigurationPublicationRecovery>(services =>
+            services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoConfigurationPublicationService>());
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoManagedTunOperations>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationPublicationService>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationBootstrapService>();
@@ -64,8 +66,6 @@ internal static class ProxyRuntimeRegistration
         // Mutation, TUN and reconciliation still serialize through the same publication store gate.
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IHostSystemProxyService, RelaxKonOS.Server.Proxy.Platform.HostSystemProxyService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsReader, RelaxKonOS.Server.Proxy.ProxySettingsReader>();
-        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>();
-        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.IProxySettingsWriter>(services => services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>());
         builder.Services.AddTransient<Func<RelaxKonOS.Server.Proxy.Mihomo.IMihomoControllerClient>>(services =>
             () => services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.IMihomoControllerClient>());
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.IProxySystemProxyReconciler, RelaxKonOS.Server.Proxy.Mihomo.MihomoSystemProxyReconciler>();
@@ -83,6 +83,8 @@ internal static class ProxyRuntimeRegistration
         // Managed runtime lifecycle: the component center and the installation domain install and
         // switch mihomo/sing-box releases through these services.
         builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.IMihomoRuntimeReceiptReader>(services =>
+            services.GetRequiredService<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>());
         builder.Services.AddTransient<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoDirectSettingsCompensationService>();
 

@@ -16,6 +16,7 @@ public sealed record MihomoPublicationResult(Guid OperationId, MihomoPublication
 public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore store,
     MihomoRuntimeAuthorizationProvider authorization, MihomoRuntimeService runtime, IProxyPlatformPaths paths,
     MihomoSettingsPublicationFiles? settingsFiles = null, IProxyProfileRepository? profiles = null, IProxyWorkLeaseSource? workLeases = null)
+    : IMihomoApplicationConfigurationPublisher, IMihomoConfigurationPublicationRecovery
 {
     public async Task<MihomoPublicationResult> PublishAsync(Guid operationId, long expectedPublicationRevision,
         RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate, CancellationToken ct)
@@ -44,6 +45,13 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
     internal Task<MihomoPublicationResult> PublishUnderGateAsync(Guid operationId, long expectedPublicationRevision,
         RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate, CancellationToken ct, MihomoSettingsPublication? settings = null, MihomoProfilePublication? profile = null) =>
         PublishCoreAsync(operationId, expectedPublicationRevision, plan, candidate, ct, settings, profile, null);
+
+    Task<MihomoPublicationResult> IMihomoApplicationConfigurationPublisher.PublishUnderGateAsync(Guid operationId, long expectedPublicationRevision,
+        RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate, CancellationToken ct, MihomoSettingsPublication? settings, MihomoProfilePublication? profile) =>
+        PublishUnderGateAsync(operationId, expectedPublicationRevision, plan, candidate, ct, settings, profile);
+
+    Task<MihomoPublicationResult> IMihomoConfigurationPublicationRecovery.RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct) =>
+        RecoverUnderGateAsync(state, ct);
 
     private async Task<MihomoPublicationResult> PublishCoreAsync(Guid operationId, long expectedPublicationRevision,
         RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate, CancellationToken ct, MihomoSettingsPublication? settings,

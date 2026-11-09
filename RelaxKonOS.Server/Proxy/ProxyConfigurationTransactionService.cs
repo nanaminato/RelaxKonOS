@@ -32,8 +32,8 @@ public sealed class ProxyConfigurationTransactionService(
     MihomoPublicationStore publication,
     IProxySettingsReader? settingsService = null,
     ILogger<ProxyConfigurationTransactionService>? logger = null,
-    MihomoConfigurationPublicationService? managedPublication = null,
-    MihomoRuntimeService? managedRuntime = null,
+    IMihomoApplicationConfigurationPublisher? managedPublication = null,
+    IMihomoRuntimeReceiptReader? managedRuntime = null,
     IProxySubscriptionRepository? subscriptions = null) : IProxyConfigurationTransactionService
 {
     private SemaphoreSlim _gate => publication.Gate;

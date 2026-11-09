@@ -12,7 +12,7 @@ public sealed class MihomoSystemProxyReconciler(
     IProxyControllerSecretStore controllerSecrets,
     Platform.IHostSystemProxyService systemProxyService,
     MihomoPublicationStore publication,
-    MihomoRuntimeService? managedRuntime = null,
+    IMihomoRuntimeReceiptReader? managedRuntime = null,
     MihomoSettingsPublicationFiles? settingsFiles = null,
     Func<IMihomoControllerClient>? observeController = null) : IProxySystemProxyReconciler
 {

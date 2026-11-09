@@ -21,6 +21,8 @@
 
 2026-11-09（MB-04 / MR-03 TUN 恢复）：Helper 的原生检查点拒绝重复或未定义字段。当前归属无法核验时保留原历史回执和发布、停用门禁。见[检查点字段实机验收](../architecture/server-module-evidence/Proxy-Safety.md#拒绝歧义检查点字段)。
 
+2026-11-10（MB-04 / MR-03 配置端口）。应用配置和设置写入由 Proxy 管理作用域进入。Core 通过独立恢复端口处理原配置操作，并用只读端口检查 Helper 的原生回执。原发布锁、授权和终态仍由原发布事务裁决。[发布与恢复端口验收](../architecture/server-module-evidence/Proxy-Publication.md#应用配置写入与-core-恢复端口)
+
 ## Windows 日常安装入口调整（2026-10-27，MR-03/04/05）
 
 按产品要求，Windows Nginx、Mihomo、frpc/frps 的日常安装采用官方版本列表和文件安装，不再要求管理员先部署签名目录、录入摘要或确认发布源。Nginx 解析 nginx.org 下载页，Mihomo/FRP 解析固定官方 GitHub 仓库的 Releases API（最多三页、每页 5 条，取得首批匹配当前宿主架构的稳定版即返回；启用 HTTP 压缩，排除 draft/prerelease），选择具体版本后走既有安装台账。sing-box 的组件及来源平台配置仅声明 Linux，不支持 Windows；组件中心按通用平台配置过滤，不为 sing-box 编写隐藏特例。此配置描述 RelaxKonOS 的组件支持范围，不表示上游没有 Windows 二进制。

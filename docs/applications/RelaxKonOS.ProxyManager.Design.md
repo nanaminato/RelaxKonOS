@@ -4736,3 +4736,5 @@ Linux 直连监听补偿丢失应答时，再次确认原补偿可只读核对�
 概览的读取编排与连接解析共用可回收代码代次。两类读取都排空后，代码才进入闲置释放，后续读取按需加载。已经返回的概览结果可独立保留。[代码回收实测](../architecture/server-module-evidence/Proxy-Observation.md#概览与连接读取共享可回收代码)
 
 概览读取失败且作用域完成清理时，后续读取可正常进入。异步清理失败时，原采样保留资源，Proxy 管理请求受恢复门禁保护，Core 继续负责原 TUN 与系统代理的安全责任。[读取故障验收](../architecture/server-module-evidence/Proxy-Observation.md#概览读取失败与清理隔离)
+
+设置写入与应用配置发布由 Proxy 管理作用域解析。Core 在管理入口关闭时仍通过原发布锁和原回执执行具名恢复，并保留原生 TUN 与系统代理的安全责任。[发布与恢复端口验收](../architecture/server-module-evidence/Proxy-Publication.md#应用配置写入与-core-恢复端口)

@@ -8,7 +8,7 @@ namespace RelaxKonOS.Server.ManagedRuntimes;
 
 /// <summary>One named recovery across native transactions and the Server publication commit.</summary>
 public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, MihomoRuntimeService runtime,
-    MihomoConfigurationPublicationService configuration, MihomoInstallationPublicationService installation,
+    IMihomoConfigurationPublicationRecovery configuration, MihomoInstallationPublicationService installation,
     MihomoRemovalPublicationService removal, IProxyProfileRepository? profiles = null,
     MihomoSettingsPublicationFiles? settingsFiles = null)
 {

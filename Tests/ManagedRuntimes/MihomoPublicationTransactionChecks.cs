@@ -82,7 +82,7 @@ internal static class MihomoPublicationTransactionChecks
             builder.Services.AddSingleton(f.Store);
             builder.Services.AddSingleton<IProxyPlatformPaths>(f);
             builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
-            builder.Services.AddTransient(_ => recovery);
+            builder.Services.AddTransient<IMihomoConfigurationPublicationRecovery>(_ => recovery);
             await using var app = builder.Build();
             var guard = new ProxyModule();
             Check((await guard.InspectOrphanedWorkAsync(app.Services, context, default)).Count == 1 && f.RecoverCalls == 0,
@@ -255,7 +255,8 @@ internal static class MihomoPublicationTransactionChecks
             var settingsFiles = new MihomoSettingsPublicationFiles(f, f.HostProxy);
             var service = new MihomoSettingsService(f, controller, f,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:19090/") }, f.HostProxy, f.Store,
-                managedPublication: f.Service, managedRuntime: new(f, f.Store, f.Provider, f, new DirectDownloads()), settingsFiles: settingsFiles);
+                managedPublication: f.Service, managedRuntime: new MihomoRuntimeService(f, f.Store, f.Provider, f, new DirectDownloads()),
+                settingsFiles: settingsFiles);
             var metadataOnly = mode.StartsWith("metadata-", StringComparison.Ordinal);
             var request = new UpdateProxySettingsRequest(false, false, true, true, false, "warning", metadataOnly ? 18888 : 18889,
                 AllowInsecureSubscriptionSources: metadataOnly);
@@ -268,7 +269,7 @@ internal static class MihomoPublicationTransactionChecks
                 Check(f.ConfigureCalls == (metadataOnly ? 0 : 1) && f.HostProxy.Calls == 1,
                     "Unchanged YAML settings avoid native restarts and fabricated receipts: " + mode);
                 Check(await new MihomoSystemProxyReconciler(f, new ProxySettingsReader(f), f, f.HostProxy, f.Store,
-                    new(f, f.Store, f.Provider, f, new DirectDownloads()), settingsFiles).ReconcileSystemProxyAsync(true, default) is null && f.HostProxy.Calls == 2,
+                    new MihomoRuntimeService(f, f.Store, f.Provider, f, new DirectDownloads()), settingsFiles).ReconcileSystemProxyAsync(true, default) is null && f.HostProxy.Calls == 2,
                     "Confirmed managed settings can reconcile the system proxy at startup: " + mode);
             }
             else if (mode is "revoked" or "corrupt-settings")
@@ -343,7 +344,7 @@ internal static class MihomoPublicationTransactionChecks
         {
             using var f = await Fixture.CreateAsync();
             var reconciler = new MihomoSystemProxyReconciler(f, new ProxySettingsReader(f), f, f.HostProxy, f.Store,
-                new(f, f.Store, f.Provider, f, new DirectDownloads()), new(f, f.HostProxy));
+                new MihomoRuntimeService(f, f.Store, f.Provider, f, new DirectDownloads()), new(f, f.HostProxy));
             if (failure == "revoked") f.Secret = null;
             if (failure == "yaml-drift") await File.WriteAllTextAsync(f.Active, "# unrelated YAML");
             if (failure == "settings-corrupt") await File.WriteAllTextAsync(f.SettingsPath, "corrupt");
@@ -437,7 +438,7 @@ internal static class MihomoPublicationTransactionChecks
                 if (Interlocked.Increment(ref cleaned) == 1)
                 { disposing.TrySetResult(); await release.Task; disposed.TrySetResult(); }
             }));
-            services.AddTransient<MihomoConfigurationPublicationService>(scope =>
+            services.AddTransient<IMihomoConfigurationPublicationRecovery>(scope =>
             {
                 scope.GetRequiredService<RecoveryScopeProbe>(); Interlocked.Increment(ref created);
                 var executor = new MihomoConfigurationPublicationService(f.Store, f.Provider,
@@ -474,7 +475,7 @@ internal static class MihomoPublicationTransactionChecks
             var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var services = new ServiceCollection(); services.AddSingleton(f.Store);
             services.AddScoped(_ => new RecoveryScopeProbe(() => { disposed.TrySetResult(); return Task.CompletedTask; }));
-            services.AddTransient<MihomoConfigurationPublicationService>(scope =>
+            services.AddTransient<IMihomoConfigurationPublicationRecovery>(scope =>
             { scope.GetRequiredService<RecoveryScopeProbe>(); resolved.TrySetResult(); return f.Service; });
             await using var provider = services.BuildServiceProvider();
             var worker = new MihomoPublicationRecoveryService(provider.GetRequiredService<IServiceScopeFactory>(),
@@ -498,7 +499,7 @@ internal static class MihomoPublicationTransactionChecks
         using var f = await Fixture.CreateAsync();
         var services = new ServiceCollection(); services.AddLogging(); services.AddSingleton(f.Store);
         services.AddTransient<MihomoPublicationRecoveryService>();
-        services.AddTransient<MihomoConfigurationPublicationService>(_ => f.Service);
+        services.AddTransient<IMihomoConfigurationPublicationRecovery>(_ => f.Service);
         services.AddTransient<MihomoInstallationPublicationService>(_ => throw new Exception("Scheduler selected wrong installation recovery"));
         services.AddTransient<MihomoRemovalPublicationService>(_ => throw new Exception("Scheduler selected wrong removal recovery"));
         await using var provider = services.BuildServiceProvider();
@@ -576,7 +577,7 @@ internal static class MihomoPublicationTransactionChecks
             }
             finally { raced.Store.Gate.Release(); }
         }));
-        raceServices.AddTransient<MihomoConfigurationPublicationService>(scope =>
+        raceServices.AddTransient<IMihomoConfigurationPublicationRecovery>(scope =>
         { scope.GetRequiredService<RecoveryScopeProbe>(); return raced.Service; });
         await using var raceProvider = raceServices.BuildServiceProvider();
         var runner = new MihomoPublicationRecoveryService(raceProvider.GetRequiredService<IServiceScopeFactory>(),

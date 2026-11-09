@@ -9,7 +9,7 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 internal static class MihomoManagedPublicationVerification
 {
     internal static async Task<RuntimeInstallationSnapshot> VerifyAsync(IProxyPlatformPaths paths,
-        IProxyControllerSecretStore controllerSecrets, MihomoRuntimeService? managedRuntime,
+        IProxyControllerSecretStore controllerSecrets, IMihomoRuntimeReceiptReader? managedRuntime,
         MihomoPublicationState state, CancellationToken ct, bool allowRetainedRemoval = false)
     {
         if (managedRuntime is null || state.Published is null || state.Pending is not null)

@@ -63,6 +63,8 @@ internal static class MihomoTunHttpAcceptance
         builder.Services.AddScoped<ProxyLifecycleOperations>();
         builder.Services.AddTransient<MihomoManagedTunOperations>();
         builder.Services.AddTransient<MihomoConfigurationPublicationService>();
+        builder.Services.AddTransient<IMihomoConfigurationPublicationRecovery>(services =>
+            services.GetRequiredService<MihomoConfigurationPublicationService>());
         builder.Services.AddTransient<MihomoPublicationRecoveryService>();
         builder.Services.AddHostedService<MihomoPublicationRecoveryScheduler>();
         await using var app = builder.Build();

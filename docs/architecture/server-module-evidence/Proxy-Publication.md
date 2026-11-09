@@ -499,3 +499,17 @@ Windows ManagedRuntimes Release 回归通过，配置事务 99 项包括停止�
 首轮 `statx` 回归揭示 systemd simple 单元报告运行时，进程可尚未执行已登记的 Mihomo 程序。启动等待改为同时核对原生执行文件，随后再做完整的命令行、凭据和健康验证。失败记录 `.artifacts/mb04-tun-marker-sync/tun-stop-statx-linux.log`。
 
 最终完整 Linux Release 私有 systemd 回归通过 185 项。原订阅 Helper 中断 `4bc608bc-cbfb-4d4e-8db2-8ffb9031f17a` 按原回执补偿，停止未知的两条原操作 `00d8792b-7933-45fc-81b4-c122ade32aa3` 和 `ee1187b6-a36e-4ee9-bf2a-1ccc43e7b7e3` 通过。后一条同时注入实际启动后应答失败，仍凭原生证据完成原回执。专属 cgroup 移除，宿主指纹一致。日志 `.artifacts/mb04-tun-marker-sync/tun-stop-final2-linux.log`，归档 SHA-256 `cda2cdaa4d43f37f11ded690c1e5c828c49c2a710f163698353ff439af043041`。最终 Windows 首轮在 Core 持续恢复调度断言处失败，同一制品串行复测通过，日志 `tun-stop-final2-win.log` 与 `tun-stop-final2-win-retry.log`。Windows 模块边界回归也通过，日志 `tun-stop-server-win.log`。
+
+### 应用配置写入与 Core 恢复端口
+
+**已实现且已验证。** 设置写入与应用配置发布入口由启用的 Proxy 注册为管理作用域服务。应用设置及档案写入通过配置发布端口进入原协调器。Core 启动及具名恢复通过原配置恢复端口继续处理原操作，系统代理守护通过只读端口取回 Helper 原生事实。回执读取端口解析到原 Mihomo 运行时权威，发布与恢复共用原发布台账和锁。
+
+Windows Release 注册 24 项、档案发布 23 项、配置事务 113 项和运行时 HTTP 57 项通过。配置事务覆盖禁用启动、恢复作用域清理、原回执及单次配置派发。早期回归暴露测试夹具仍注册旧具体类型，已迁到配置恢复端口并复验。配置事务日志 `.artifacts/mb04-tun-full-zero-dns/windows-publication-ports-verified-mihomo-publication-only.log` 的 SHA-256 为 `c6fce6ae1518bb58a34885da62ebbc358e54acc7524cef9ea8bf45b95eb4ed4c`。
+
+Linux Release 私有 systemd 实测关闭 Proxy 管理入口后，原 TUN 发布 `0892e53d808b4d018fdbf16477bc5720`、Mihomo PID `415`、管理选路和配置身份保持。Core 接续系统代理守护 `6a6d817c06b14e2c97fd16824b6cfd06` 和授权到期 `8c0db4a7815b43168ae5d1853ee79543`。独立具名启动 `aae00cfe12854fd4a3473719c161a0ea` 丢失原终帧和首次查询应答时，保留两项工作租约和新键门禁。按原 ID 恢复，同键返回相同终态，启动仅派发一次。管理选路、原生记录及真实上游 HTTP 和分流 DNS 跨重启保持。两项均确认专属进程和 cgroup 退出，宿主服务、代理及 resolver 指纹一致。原日志 `.artifacts/mb04-tun-full-zero-dns/linux-publication-ports-tun.log` 的 SHA-256 为 `4961a703a3c5a35957563e3e3bbd498bcd4b8252fffa3d4a8120d84e8836ac9c`，归档为 `79ac021406e1527d10cf551fb3f7669fac40ba75cd41a035de7ffff4d2c50357`。
+
+Linux 受管 Mihomo Release 全量通过 180 项。实际设置写入 `01bb2683-d43c-4cbc-a05a-d8509c945b9e` 在客户端断开后保留租约，按原回执结案，配置仅派发一次，原转发持续。原发布恢复 `8cf25f9f-d8d5-461c-84a6-756b63fc63f7` 排空原回执和作用域。Helper 不可用时启动按原 ID 拒绝，恢复后原 Failed 回执 `95c3214d-b345-4cef-8173-cf7a2d0a44c0` 与中断补偿回执 `0806f3a0-4b18-449e-b2cd-16b183075703` 均通过，原配置各只派发一次。日志 `.artifacts/mb04-tun-full-zero-dns/linux-publication-ports-managed.log` 的 SHA-256 为 `7e6a5dea7dac80e7584a6bb4f4ee0fec421e1b44acfd98fdbea3f30bff54bcba`，归档为 `b2cf4cc6b794311a26d172fc51384e97c53a67bffb035d34a4f25c893f40b0e2`。
+
+**已实现但实机未验证。** 此处验证管理作用域与 Core 权威的端口分工及专属进程退出。管理写入对象回收、写入执行图 ALC 回收、隔离内存差值和生产收益分别待测。
+
+**未实现或仍受门禁保护。** 写入执行器的代次交接和整模块动态驻留仍开放。Proxy 保持 resident。

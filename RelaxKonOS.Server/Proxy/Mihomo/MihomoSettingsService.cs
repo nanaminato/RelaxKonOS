@@ -20,8 +20,8 @@ public sealed class MihomoSettingsService(
     MihomoPublicationStore publication,
     MihomoSettingsPublicationFiles settingsFiles,
     ILogger<MihomoSettingsService>? logger = null,
-    MihomoConfigurationPublicationService? managedPublication = null,
-    MihomoRuntimeService? managedRuntime = null) : IProxySettingsWriter
+    IMihomoApplicationConfigurationPublisher? managedPublication = null,
+    IMihomoRuntimeReceiptReader? managedRuntime = null) : IProxySettingsWriter
 {
     private static readonly HashSet<string> LogLevels = new(StringComparer.OrdinalIgnoreCase) { "silent", "error", "warning", "info", "debug" };
     private SemaphoreSlim _gate => publication.Gate;

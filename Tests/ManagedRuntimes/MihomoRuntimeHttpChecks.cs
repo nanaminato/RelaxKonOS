@@ -49,7 +49,8 @@ internal static class MihomoRuntimeHttpChecks
         builder.Services.AddSingleton(new MihomoDirectSettingsCompensationService(fixture, store, MihomoRemovalHostFixture.Files(fixture),
             MihomoPublicationTransactionChecks.Stub<IMihomoControllerClient>(_ => throw new InvalidOperationException("Compensation touched the controller.")), fixture));
         builder.Services.AddSingleton(new MihomoRuntimeRecoveryService(store, runtimeService,
-            new(store, authorization, runtimeService, fixture), new(store, authorization, runtimeService, fixture),
+            new MihomoConfigurationPublicationService(store, authorization, runtimeService, fixture),
+            new(store, authorization, runtimeService, fixture),
             new(store, runtimeService, fixture, MihomoRemovalHostFixture.Files(fixture))));
         builder.Services.AddSingleton<IHostElevationSessionStore, Elevations>();
         await using var app = builder.Build();

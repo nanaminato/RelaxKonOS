@@ -56,6 +56,9 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         builder.Services.AddScoped<IProxyEngine, MihomoEngine>();
         builder.Services.AddScoped<IProxyEngineRegistry, ProxyEngineRegistry>();
         builder.Services.AddScoped<IProxyPlatformService, ProxyPlatformService>();
+        builder.Services.AddScoped<IProxySettingsWriter, MihomoSettingsService>();
+        builder.Services.AddScoped<IMihomoApplicationConfigurationPublisher>(services =>
+            services.GetRequiredService<MihomoConfigurationPublicationService>());
 
         // Operation and audit ledgers are the durable record of what the operator asked for; they
         // outlive the HTTP request that started it.
@@ -203,7 +206,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
                 try
                 {
                     await using var scope = services.CreateAsyncScope();
-                    await scope.ServiceProvider.GetRequiredService<MihomoConfigurationPublicationService>()
+                    await scope.ServiceProvider.GetRequiredService<IMihomoConfigurationPublicationRecovery>()
                         .RecoverAsync(accepted.OperationId, cancellationToken);
                 }
                 catch (Exception error) when (error is RelaxKonOS.ManagedRuntimes.RuntimePolicyException

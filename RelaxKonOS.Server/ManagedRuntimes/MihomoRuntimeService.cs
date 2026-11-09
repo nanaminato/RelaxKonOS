@@ -9,10 +9,16 @@ using RelaxKonOS.Server.Proxy.Mihomo;
 
 namespace RelaxKonOS.Server.ManagedRuntimes;
 
+/// <summary>Reads native installation or original receipt facts without executing a runtime change.</summary>
+public interface IMihomoRuntimeReceiptReader
+{
+    Task<RuntimeInstallationSnapshot> QueryHelperAsync(CancellationToken ct, Guid? receiptOperationId = null);
+}
 
 /// <summary>Server composition: published-state gate, per-operation authenticated callback, and installed Helper.</summary>
 public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, MihomoPublicationStore store,
     MihomoRuntimeAuthorizationProvider authorization, IServerModeResolver mode, IRuntimeDownloadProxyProvider downloadProxy)
+    : IMihomoRuntimeReceiptReader
 {
     /// <summary>Public observation includes unresolved Server publication work, even after root commits.
     /// It never upgrades ownership from an encrypted file or reads controller credentials.</summary>
@@ -46,6 +52,9 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
     /// <summary>Coordinators already own the Server authority; only actual Helper facts can confirm it.</summary>
     internal Task<RuntimeInstallationSnapshot> QueryHelperAsync(CancellationToken ct, Guid? receiptOperationId = null) =>
         CallAsync<RuntimeInstallationSnapshot>(new(PrivilegedOperationKind.MihomoRuntimeQuery, OperationId: receiptOperationId), ct);
+
+    Task<RuntimeInstallationSnapshot> IMihomoRuntimeReceiptReader.QueryHelperAsync(CancellationToken ct, Guid? receiptOperationId) =>
+        QueryHelperAsync(ct, receiptOperationId);
 
     public async Task<RuntimePlanResult> PlanAsync(string? sourceId, RuntimePlanRequest request, CancellationToken ct)
     {

@@ -63,7 +63,7 @@ public sealed class MihomoPublicationRecoveryService(IServiceScopeFactory scopes
             var result = pending.RemovalPlan is not null ? await scope.ServiceProvider.GetRequiredService<MihomoRemovalPublicationService>().RecoverAsync(pending.OperationId, stoppingToken)
                 : pending.InstallationPlan is not null
                 ? await scope.ServiceProvider.GetRequiredService<MihomoInstallationPublicationService>().RecoverAsync(pending.OperationId, stoppingToken)
-                : await scope.ServiceProvider.GetRequiredService<MihomoConfigurationPublicationService>().RecoverAsync(pending.OperationId, stoppingToken);
+                : await scope.ServiceProvider.GetRequiredService<IMihomoConfigurationPublicationRecovery>().RecoverAsync(pending.OperationId, stoppingToken);
             if (result.Outcome == MihomoPublicationOutcome.RecoveryRequired)
                 logger.LogWarning("Mihomo publication needs operator recovery. OperationId={OperationId} ProblemCode={ProblemCode}",
                     operation, result.Receipt?.ProblemCode ?? "runtime.recovery_required");
