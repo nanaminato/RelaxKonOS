@@ -554,4 +554,13 @@ Linux 专属 systemd 在活跃 Mihomo TUN 中按原 ID 恢复 sing-box 发布 `7
 
 Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-inbound-export.log` 的 SHA-256 为 `995b9a87adfa2967b6a519c8768d85fed8adf63c5fa18a7fa57064c15618d87d`，归档为 `55aff8c69e325cb705999ddebcee328800594d9ecc0a81e8dac20ef0fe9821d1`。
 
-**仍待验收。** 公开订阅已验证正常令牌边界。管理代次故障隔离期间的匿名读取和跨重启原签发回执仍待核对。对象释放、ALC、隔离内存及生产收益独立开放，Proxy 保持 resident。
+**仍待验收。** 公开订阅已验证正常令牌边界。管理代次故障隔离实测见下一节。对象释放、ALC、隔离内存及生产收益独立开放，Proxy 保持 resident。
+
+
+### 管理代次故障隔离时的公开订阅
+
+**已实现且已验证。** Windows Release ProxyServer 与模块里程碑通过。Linux 专属 systemd 中，已有真实 sing-box 入站和活跃 Mihomo TUN。概览作用域与签发工作同时持有两份管理租约。概览清理故障后，同代保留一份租约，认证导出及原键签发均返回 503。匿名请求继续用原令牌读取同一已应用配置，HTTP 和 DNS 探针通过。Server 被强制退出并启用重启后，同键签发读取订阅 `238edaeb-8cfc-43b0-8b3c-4f669093c682` 的原元数据，原令牌继续下载，未产生第二次签发。原入站 `dd7819a5-4e22-46e6-827f-6b2573d201d9` 的回执和队列内容一致，原生应用派发一次。令牌仅留在验证程序内存。专属 cgroup 已清理，共享服务和网络文件指纹一致。
+
+实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-public-subscription-fault.log` SHA256 `98109b2517ebdfd28842952bf47b4d77c794d28b574cc41c56f6f05ad224ce2c`。制品 SHA256 `25a726a44e2ef82a4d6ba827132b32cbb08f49ed0b8dbab599f7acb0c54e17ee`。
+
+**仍待验收。** 此场景确认 Server 进程退出。对象释放、ALC 回收、隔离负载内存和生产收益分别开放。Proxy 保持 resident。

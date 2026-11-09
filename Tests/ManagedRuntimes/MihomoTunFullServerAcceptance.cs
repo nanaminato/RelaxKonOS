@@ -133,7 +133,8 @@ internal static class MihomoTunFullServerAcceptance
         var first = phase.EndsWith("drain", StringComparison.Ordinal) || phase == "cleanup-cut";
         var cleanupDrain = phase == "cleanup-drain";
         var cleanupScope = cleanupDrain || phase is "cleanup-cut" or "cleanup-fault";
-        var overviewCleanup = phase == "squid-restart" && File.Exists(Path.Combine(root, "full-overview-cleanup-proof"));
+        var overviewCleanup = phase is ("squid-restart" or "inbound-restart")
+            && File.Exists(Path.Combine(root, "full-overview-cleanup-proof"));
         var squidCleanup = phase == "squid-restart" && File.Exists(Path.Combine(root, "full-squid-cleanup-proof"));
         var dropStopReply = phase == "stop-reply-drop";
         var dropStartReply = phase == "start-reply-drop";

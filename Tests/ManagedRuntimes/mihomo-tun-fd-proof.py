@@ -3352,6 +3352,8 @@ exec {shlex.quote(str(systemctl))} "$@"
         os.kill(pid, signal.SIGKILL)
         until(lambda: not Path(f'/proc/{pid}').exists(), 'original Server exit')
         assert queue.read_bytes() == pending
+        overview_cleanup = root / 'full-overview-cleanup-proof'
+        overview_cleanup.touch()
         worker = launch('inbound-restart')
         pid = int(marker('full-server-pid'))
         token = login()
@@ -3410,11 +3412,49 @@ exec {shlex.quote(str(systemctl))} "$@"
         status, subscriptions = request(inbound + '/subscriptions', token)
         assert status == 200 and sum(item['id'] == subscription_id for item in subscriptions) == 1
         public_subscription = '/api/v1.0/proxy-subscriptions/'
-        status, downloaded = request(public_subscription + issued['token'] + '/sing-box')
-        assert status == 200 and downloaded == exported_configuration
+        download_path = public_subscription + issued['token'] + '/sing-box'
+        assert request(download_path) == (200, exported_configuration)
         assert request(public_subscription + '0' * 43 + '/sing-box')[0] == 404
         until(lambda: leases() == 0, 'credential export and issuance leases drained')
         print(f'PASS SCOPED INBOUND EXPORT: original subscription={subscription_id}; one token, same-key metadata, anonymous token read', flush=True)
+
+        settled_queue = queue.read_bytes()
+        prefix = root / 'full-server/full-overview-cleanup'
+        Path(f'{prefix}-arm').touch()
+        Path(f'{prefix}-fail').touch()
+        overview_responses = []
+        overview = threading.Thread(target=lambda: overview_responses.append(request(api, token)), daemon=True)
+        overview.start()
+        try:
+            until(lambda: Path(f'{prefix}-held').exists(), 'management overview cleanup')
+            assert overview.is_alive() and leases() == 2
+            assert request(download_path) == (200, exported_configuration)
+        finally:
+            Path(f'{prefix}-release').touch()
+            overview.join(timeout=8)
+        assert len(overview_responses) == 1 and overview_responses[0][0] == 500
+        status, module = request('/api/v1.0/server/modules/relaxkonos.proxy', token)
+        assert status == 200 and module['residency']['state'] == 'faulted' and module['residency']['activeLeases'] == 1
+        assert request(export_path, token, data=export_request)[0] == 503
+        assert request(inbound + '/subscriptions', token, issue_key, issue_request)[0] == 503
+        assert request(download_path) == (200, exported_configuration)
+        assert queue.read_bytes() == settled_queue and leases() == 1
+        probe(record, 'public-subscription-during-management-fault')
+        os.kill(pid, signal.SIGKILL)
+        assert worker.wait(timeout=12) == 0 and not Path(f'/proc/{pid}').exists()
+        overview_cleanup.unlink()
+        for marker_name in ('arm', 'fail', 'held', 'release'):
+            Path(f'{prefix}-{marker_name}').unlink()
+        worker = launch('inbound-restart')
+        pid = int(marker('full-server-pid'))
+        token = login()
+        assert request(inbound + '/subscriptions', token, issue_key, issue_request) == (201, replayed)
+        assert request(download_path) == (200, exported_configuration)
+        assert inbound_receipt(operation) == terminal and queue.read_bytes() == settled_queue
+        until(lambda: leases() == 0, 'inbound management leases after restart')
+        assert (native.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == witness
+        probe(record, 'public-subscription-after-management-restart')
+        print(f'PASS PUBLIC SUBSCRIPTION WITH QUARANTINED PROXY: original subscription={subscription_id}; management blocked, anonymous token and original receipt survived restart', flush=True)
         audit = ipc.log.read_text()
         assert audit.count(f'operation=ProxyServerApply id={operation} ') == 1
         assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1

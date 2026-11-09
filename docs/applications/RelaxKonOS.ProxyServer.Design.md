@@ -397,4 +397,4 @@ Windows Release 的生命周期回归使用符合平台的 `sing-box.exe` 测试
 
 入站管理读取、原操作查询和原生校验使用当前 Proxy 代次的前台作用域。该代次负责响应与异步清理，原操作台账仍拥有终态。[入站读取与校验实测](../architecture/server-module-evidence/Proxy-Publication.md#入站管理读取与校验的前台作用域)
 
-导出格式查询、凭据导出及订阅签发使用同一管理代次的前台作用域。签发令牌仅在首次响应交付，同键读回原订阅元数据。匿名下载仍按令牌校验授权和已应用配置。[导出和签发实测](../architecture/server-module-evidence/Proxy-Publication.md#入站凭据导出与订阅签发的前台作用域)
+导出格式查询、凭据导出及订阅签发使用同一管理代次的前台作用域。签发令牌仅在首次响应交付，同键读回原订阅元数据。匿名下载仍按令牌校验授权和已应用配置。管理代次因清理失败隔离时，已签发的令牌可以继续下载。Server 重启后同键读取原签发元数据，原令牌仍可使用。[导出和签发实测](../architecture/server-module-evidence/Proxy-Publication.md#入站凭据导出与订阅签发的前台作用域)
