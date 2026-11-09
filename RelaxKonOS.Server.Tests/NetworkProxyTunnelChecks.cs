@@ -261,6 +261,34 @@ internal static async Task VerifyMihomoLiveStreamsAsync()
     TestAssert.Assert(awake == 1 && gate.CurrentCode is { } next && !ReferenceEquals(next, code),
         "A subsequent connection snapshot must wake fresh parser code.");
     await VerifyConnectionParserBudgetAsync();
+    await VerifyOverviewFailureCollectionAsync();
+}
+
+private static async Task VerifyOverviewFailureCollectionAsync()
+{
+    var gate = new ProxyConnectionExecutionGate(TimeSpan.FromMilliseconds(50));
+    var (code, failure) = await FailAsync();
+    for (var i = 0; code.IsAlive && i < 50; i++)
+    {
+        GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+        await Task.Delay(20);
+    }
+    TestAssert.Assert(!code.IsAlive && failure.InnerException is null
+        && !failure.ToString().Contains("fixture-private-error", StringComparison.Ordinal),
+        "A retained overview failure must carry a neutral Host exception and permit collection of the old code.");
+    Console.WriteLine("PASS PROXY OVERVIEW FAILURE COLLECTION: retained Host error does not keep the old read code alive");
+
+    async Task<(WeakReference Code, Exception Failure)> FailAsync()
+    {
+        using var lease = gate.AcquireOverview();
+        var code = gate.CurrentCode ?? throw new InvalidOperationException("Expected the shared read code.");
+        var reads = new ProxyOverviewReads(_ => Task.FromException(new IOException("fixture-private-error")),
+            _ => throw new NotSupportedException(), _ => throw new NotSupportedException(),
+            _ => throw new NotSupportedException(), _ => throw new NotSupportedException(), _ => throw new NotSupportedException());
+        try { await lease.ReadAsync(reads, default); }
+        catch (InvalidOperationException failure) when (failure.Message == "Proxy overview observation failed.") { return (code, failure); }
+        throw new InvalidOperationException("The overview execution unexpectedly succeeded.");
+    }
 }
 
 private static async Task VerifyConnectionParserBudgetAsync()

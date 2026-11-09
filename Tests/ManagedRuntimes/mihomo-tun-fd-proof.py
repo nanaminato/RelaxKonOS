@@ -4227,6 +4227,7 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert worker.wait(timeout=15) == 0
             assert operation in (root / 'full-startup-refused').read_text()
             assert queue.read_bytes() == persisted[2]
+            (root / 'full-overview-cleanup-proof').touch()
             worker = launch('squid-restart')
             pid = int(marker('full-server-pid'))
             token = login()
@@ -4239,6 +4240,33 @@ exec {shlex.quote(str(systemctl))} "$@"
             probe(tun_record, 'squid-fault-restarted')
             management_overview()
             assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
+            cleanup = root / 'full-server/full-overview-cleanup'
+            Path(f'{cleanup}-arm').touch()
+            Path(f'{cleanup}-fail').touch()
+            replies = []
+            reader = threading.Thread(target=lambda: replies.append(request(api, token)), daemon=True)
+            reader.start()
+            try:
+                until(lambda: Path(f'{cleanup}-held').exists(), 'original overview scope cleanup')
+                assert reader.is_alive() and leases() == 2
+                probe(tun_record, 'overview-cleanup-held')
+            finally:
+                Path(f'{cleanup}-release').touch()
+                reader.join(timeout=8)
+            assert len(replies) == 1 and replies[0][0] == 500, replies
+            status, proxy = request('/api/v1.0/server/modules/relaxkonos.proxy', token)
+            assert status == 200 and proxy['residency']['state'] == 'faulted'
+            assert proxy['residency']['activeLeases'] == 1 and proxy['residency']['blockedBy'] == 'module-recovery-blocked'
+            assert request(api, token)[0] == 503
+            probe(tun_record, 'overview-cleanup-quarantined')
+            cut(pid)
+            (root / 'full-overview-cleanup-proof').unlink()
+            pid = relaunch()
+            management_overview()
+            assert read(operation) == confirmed and receipt.read_bytes() == original_receipt
+            assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
+            probe(tun_record, 'overview-cleanup-restarted')
+            print('PASS OVERVIEW CLEANUP TUN CONTINUITY: original sample quarantined, new reads blocked, same TUN and receipt after restart', flush=True)
             audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
             assert audit.count(f'operation=SquidApplyConfiguration id={operation} ') == 1
             assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(tun_record["operation"])} ') == 1

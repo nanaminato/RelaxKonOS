@@ -46,9 +46,16 @@ internal static class ProxyObservationLeaseChecks
             return new(runtime, reachable);
         });
         ProxyOverviewService.Register(builder.Services);
-        builder.Services.AddScoped<IProxyPlatformService, FixturePlatform>();
-        builder.Services.AddSingleton<IProxyRecoveryService, FixtureRecovery>();
+        var overviewCode = new ProxyConnectionExecutionGate(TimeSpan.FromMilliseconds(50));
+        builder.Services.AddScoped(_ => overviewCode.AcquireOverview());
         var scenario = new Scenario(holdController: false);
+        builder.Services.AddScoped<IProxyPlatformService>(_ =>
+        {
+            var platform = new FixturePlatform(scenario);
+            scenario.PlatformResource = new WeakReference(platform);
+            return platform;
+        });
+        builder.Services.AddSingleton<IProxyRecoveryService, FixtureRecovery>();
         builder.Services.AddScoped<IProxyEngineRegistry>(_ => throw new InvalidOperationException("Observation reads must not create the management engine graph."));
         builder.Services.AddSingleton<IProxyDiagnosticLogStore, FixtureDiagnostics>();
         var root = Path.Combine(Path.GetTempPath(), "relaxkonos-proxy-http-" + Guid.NewGuid().ToString("N"));
@@ -84,6 +91,7 @@ internal static class ProxyObservationLeaseChecks
             try { await next(context); }
             finally { current.RequestExited.TrySetResult(); }
         });
+        app.UseServerProblemMapping();
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapProxyObservationEndpoints();
@@ -298,15 +306,24 @@ internal static class ProxyObservationLeaseChecks
         scenario = new Scenario(holdController: false) { FailCleanup = true };
         scenario.ReleaseResponse.TrySetResult();
         scenario.ReleaseCleanup.TrySetResult();
-        var failed = http.GetAsync(ProxyApiRoutes.Connections, ct);
+        var failed = http.GetAsync(ProxyApiRoutes.Overview, ct);
         try
         {
             await scenario.RequestExited.Task.WaitAsync(ct);
             using var reply = await failed;
+            var code = overviewCode.CurrentCode;
+            await Task.Delay(150, ct);
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
             TestAssert.Assert(reply.StatusCode == HttpStatusCode.InternalServerError
                 && coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases == 1
-                && coordinator.Describe(ServerModules.ProxyId)?.BlockedBy == "module-recovery-blocked",
-                "Cleanup failure must retain the work lease and block the original module owner.");
+                && coordinator.Describe(ServerModules.ProxyId)?.BlockedBy == "module-recovery-blocked"
+                && scenario.PlatformResource is { IsAlive: true }
+                && code is { IsAlive: true } && ReferenceEquals(code, overviewCode.CurrentCode),
+                "Overview cleanup failure must retain the scope resource, work lease and original code beyond the idle window.");
+            using var refused = await http.GetAsync(ProxyApiRoutes.Overview, ct);
+            TestAssert.Assert(refused.StatusCode == HttpStatusCode.ServiceUnavailable,
+                "A quarantined overview must refuse another read in the same owner.");
+            Console.WriteLine("PASS PROXY OVERVIEW CLEANUP QUARANTINE: original code and work retained past the idle window");
         }
         finally
         {
@@ -425,10 +442,13 @@ internal static class ProxyObservationLeaseChecks
         public Task CommitPublicationAsync(Guid operationId, MihomoProfilePublication selection, string identity, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private sealed class FixturePlatform : IProxyPlatformService
+    private sealed class FixturePlatform(Scenario scenario) : IProxyPlatformService, IAsyncDisposable
     {
         public Task<ProxyPlatformCapabilities> GetCapabilitiesAsync(CancellationToken ct) =>
             Task.FromResult(new ProxyPlatformCapabilities(false, false, false, false, false, false, new(false, false, false, false)));
+
+        public ValueTask DisposeAsync() => scenario.FailCleanup
+            ? ValueTask.FromException(new IOException("Unconfirmed fixture overview cleanup.")) : ValueTask.CompletedTask;
     }
 
     private sealed class FixtureRecovery : IProxyRecoveryService
@@ -444,6 +464,7 @@ internal static class ProxyObservationLeaseChecks
         internal HttpStatusCode Status { get; init; } = HttpStatusCode.OK;
         internal string RoutingMode { get; init; } = "direct";
         internal int ControllerCalls;
+        internal WeakReference? PlatformResource;
         internal readonly TaskCompletionSource ControllerEntered = Signal();
         internal readonly TaskCompletionSource ControllerCancelled = Signal();
         internal readonly TaskCompletionSource ResponseEntered = Signal();
@@ -466,7 +487,6 @@ internal static class ProxyObservationLeaseChecks
         {
             scenario.CleanupEntered.TrySetResult();
             await scenario.ReleaseCleanup.Task;
-            if (scenario.FailCleanup) throw new IOException("Unconfirmed fixture cleanup.");
         }
     }
 

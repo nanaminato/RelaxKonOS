@@ -4734,3 +4734,5 @@ Linux 直连监听补偿丢失应答时，再次确认原补偿可只读核对�
 概览执行器在该代次中组合活动档案、恢复状态、平台能力和只读控制器观测。运行时采样已核对可达性时，概览复用该结果。控制器可达时，概览读取当前连接计数。[概览执行器边界](../architecture/server-module-evidence/Proxy-Observation.md#概览执行器的代次边界)
 
 概览的读取编排与连接解析共用可回收代码代次。两类读取都排空后，代码才进入闲置释放，后续读取按需加载。已经返回的概览结果可独立保留。[代码回收实测](../architecture/server-module-evidence/Proxy-Observation.md#概览与连接读取共享可回收代码)
+
+概览读取失败且作用域完成清理时，后续读取可正常进入。异步清理失败时，原采样保留资源，Proxy 管理请求受恢复门禁保护，Core 继续负责原 TUN 与系统代理的安全责任。[读取故障验收](../architecture/server-module-evidence/Proxy-Observation.md#概览读取失败与清理隔离)

@@ -2,11 +2,16 @@ using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RelaxKonOS.Server.Proxy.Mihomo;
+using RelaxKonOS.Server.Proxy;
 
 /// <summary>Adds an async disposable to the real TUN execution scope in the private Server fixture.</summary>
-internal sealed class MihomoTunCleanupBarrier(string root) : IAsyncDisposable
+internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsyncDisposable
 {
-    internal static void Register(string root)
+    internal static void Register(string root) => Register(root, typeof(MihomoManagedTunOperations), "full-tun-cleanup");
+
+    internal static void RegisterOverview(string root) => Register(root, typeof(IProxyPlatformService), "full-overview-cleanup");
+
+    private static void Register(string root, Type serviceType, string prefix)
     {
         DiagnosticListener.AllListeners.Subscribe(new Observer<DiagnosticListener>(listener =>
         {
@@ -14,18 +19,18 @@ internal sealed class MihomoTunCleanupBarrier(string root) : IAsyncDisposable
                 listener.Subscribe(new Observer<KeyValuePair<string, object?>>(entry =>
                 {
                     if (entry is { Key: "HostBuilding", Value: IHostBuilder host })
-                        host.ConfigureServices(services => AddBarrier(services, root));
+                        host.ConfigureServices(services => AddBarrier(services, root, serviceType, prefix));
                 }));
         }));
     }
 
-    private static void AddBarrier(IServiceCollection services, string root)
+    private static void AddBarrier(IServiceCollection services, string root, Type serviceType, string prefix)
     {
         // The private Server also builds the privilege broker as a separate host.
-        var execution = services.SingleOrDefault(service => service.ServiceType == typeof(MihomoManagedTunOperations));
+        var execution = services.SingleOrDefault(service => service.ServiceType == serviceType);
         if (execution is null) return;
         services.Remove(execution);
-        services.AddScoped(_ => new MihomoTunCleanupBarrier(root));
+        services.AddScoped(_ => new MihomoTunCleanupBarrier(root, prefix));
         services.Add(ServiceDescriptor.Describe(execution.ServiceType, provider =>
         {
             provider.GetRequiredService<MihomoTunCleanupBarrier>();
@@ -35,14 +40,14 @@ internal sealed class MihomoTunCleanupBarrier(string root) : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (!File.Exists(Path.Combine(root, "full-tun-cleanup-arm"))) return;
-        await File.WriteAllTextAsync(Path.Combine(root, "full-tun-cleanup-held"), "disposing");
+        if (!File.Exists(Path.Combine(root, prefix + "-arm"))) return;
+        await File.WriteAllTextAsync(Path.Combine(root, prefix + "-held"), "disposing");
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        while (!File.Exists(Path.Combine(root, "full-tun-cleanup-release")))
+        while (!File.Exists(Path.Combine(root, prefix + "-release")))
             await Task.Delay(25, budget.Token);
-        if (File.Exists(Path.Combine(root, "full-tun-cleanup-fail")))
-            throw new IOException("Private TUN scope cleanup failed at the fixture boundary.");
-        await File.WriteAllTextAsync(Path.Combine(root, "full-tun-cleanup-complete"), "disposed");
+        if (File.Exists(Path.Combine(root, prefix + "-fail")))
+            throw new IOException("Private Proxy scope cleanup failed at the fixture boundary.");
+        await File.WriteAllTextAsync(Path.Combine(root, prefix + "-complete"), "disposed");
     }
 
     private sealed class Observer<T>(Action<T> receive) : IObserver<T>

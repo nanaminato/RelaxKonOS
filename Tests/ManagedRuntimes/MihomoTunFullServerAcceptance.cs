@@ -133,6 +133,7 @@ internal static class MihomoTunFullServerAcceptance
         var first = phase.EndsWith("drain", StringComparison.Ordinal) || phase == "cleanup-cut";
         var cleanupDrain = phase == "cleanup-drain";
         var cleanupScope = cleanupDrain || phase is "cleanup-cut" or "cleanup-fault";
+        var overviewCleanup = phase == "squid-restart" && File.Exists(Path.Combine(root, "full-overview-cleanup-proof"));
         var dropStopReply = phase == "stop-reply-drop";
         var dropStartReply = phase == "start-reply-drop";
         var recoveryWriteFault = dropStartReply && File.Exists(Path.Combine(root, "full-tun-query-write-fault"));
@@ -188,6 +189,11 @@ internal static class MihomoTunFullServerAcceptance
         {
             start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
             start.Environment["RELAXKONOS_TEST_TUN_CLEANUP"] = start.WorkingDirectory;
+        }
+        if (overviewCleanup)
+        {
+            start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
+            start.Environment["RELAXKONOS_TEST_OVERVIEW_CLEANUP"] = start.WorkingDirectory;
         }
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
         if (recoveryWriteFault || phase is "admission-managed" or "handoff-disabled" or "handoff-restart" or "cleanup-fault")
@@ -313,7 +319,7 @@ internal static class MihomoTunFullServerAcceptance
                 await WriteMarkerAsync(root, "full-server-stopping", "cleanup");
             }
             await exited;
-            if ((recoveryWriteFault || phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut" or "cleanup-fault"))
+            if ((recoveryWriteFault || overviewCleanup || phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut" or "cleanup-fault"))
                 && server.ExitCode == 137) return;
             if (disabled && server.ExitCode != 0 && startupRefusal.Task.IsCompletedSuccessfully)
             {

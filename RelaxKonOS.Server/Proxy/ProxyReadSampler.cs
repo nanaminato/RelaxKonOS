@@ -9,6 +9,7 @@ internal sealed class ProxyReadSampler<T>(IServiceScopeFactory scopes, IModuleWo
 {
     private readonly object gate = new();
     private Sample? current;
+    private AsyncServiceScope? failedScope;
 
     internal static void Register(IServiceCollection services,
         Func<IServiceProvider, IServerModuleRuntime, CancellationToken, Task<T>> readSample) =>
@@ -36,6 +37,8 @@ internal sealed class ProxyReadSampler<T>(IServiceScopeFactory scopes, IModuleWo
             Task<T>? read = null;
             lock (gate)
             {
+                if (failedScope.HasValue)
+                    throw new ModuleUnavailableException("module-recovery-blocked", 30, "Proxy read scope cleanup requires recovery.");
                 if (current is null)
                 {
                     current = new Sample();
@@ -94,6 +97,8 @@ internal sealed class ProxyReadSampler<T>(IServiceScopeFactory scopes, IModuleWo
                 catch
                 {
                     cleanupFailed = true;
+                    // Disposal can stop partway through the scope. Keep the original owner and resources.
+                    lock (gate) failedScope = scope;
                     lease.RequireRecovery();
                     throw;
                 }

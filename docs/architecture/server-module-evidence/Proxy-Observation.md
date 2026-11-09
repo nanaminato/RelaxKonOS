@@ -501,3 +501,19 @@ Linux 受管 Mihomo Release 全量通过 180 项。Server 保留原概览和连�
 **已实现但实机未验证。** 共享读取 ALC 回收及专属进程退出分别通过。驻留 Proxy 对象的回收、读取异常和清理故障下共享代码的释放证据、隔离负载内存差值及生产收益分别待核对。
 
 **未实现或仍受门禁保护。** 整模块安全交接仍开放。Proxy 保持 resident。
+
+### 概览读取失败与清理隔离
+
+**已实现且已验证。** 概览私有执行栈的异常转换为独立 Host 错误。调用取消保留原取消令牌。清理成功后释放代码租约。清理结果不明时采样器保留原作用域和工作租约，原 Proxy 代次进入隔离，后续读请求受准入门禁保护。
+
+Windows Release 控制器、Proxy 核心及模块里程碑通过。保留 Host 错误时，旧可回收 ALC 的弱引用消失。实际 Kestrel 注入概览异步清理失败，工作租约及原代码超过闲置窗口仍保留，GC 后原作用域资源仍可达。后续读返回 503。最终模块日志 `.artifacts/mb04-tun-full-zero-dns/windows-overview-fault-module-boundary-final.log` 的 SHA-256 为 `b231066af65b72a6bd5d44b858193798a88fe64bd16831af882f4131b06995cc`。
+
+Linux 私有 systemd 在原 Squid 发布 `14b3f594-e16b-4b64-ac55-3560ec8714a4` 完成恢复后，阻塞并令概览作用域清理失败。阻塞时保留响应和采样两项租约，失败后保留一项采样租约，新读取返回 503。强制退出并重启 Server 后按原 ID 读取同一 Squid 回执，真实重载仍只有一次。原 TUN 发布 `dc989fb80ff74762b1b6159db5ef9c11`、Mihomo PID `416`、管理选路、配置和原生记录保持，实际 HTTP 和 DNS 均通过。初次试跑达到隔离断言后被夹具误判预期 SIGKILL，原日志 `.artifacts/mb04-tun-full-zero-dns/linux-overview-fault-tun.log` SHA-256 为 `d4836cdc983ac10162927f416fecb3f5154df3730d004dbf524ab30b942a9b5c`。
+
+独立 Linux 用例的具名启动 `3d283b44f3514fa5b22364780cc23631` 丢失原终帧和首次查询应答，原 ID 及同键终态保持，待核验期间拦截新键，原启动只派发一次。两项均确认专属进程与 cgroup 退出，宿主服务、代理和 resolver 指纹一致。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-overview-fault-tun-final.log` 的 SHA-256 为 `91b72b5a11d292bc7442833510912af8bb6d9ce73e38222267431a08f233219d`，归档为 `aa79ddda4c7bb4f37010207aca59fcacb6b821902e62773f4f4a88a61f9f6470`。
+
+Linux 受管 Mihomo Release 矩阵通过 180 项。保留中性 Host 异常和概览 DTO 后，旧共享 ALC 经测试 GC 确认回收，原生转发保持。恢复用例 `4ed7ca87-09d5-4811-8abd-1e83cd8dc230` 继续通过真实共享读取与独立取消。日志 `.artifacts/mb04-tun-full-zero-dns/linux-overview-fault-managed.log` 的 SHA-256 为 `22a4c78a9e4215631e48231b3c98d79c4ac2855f500239d6f6d0e83328f7e884`，归档为 `d68e156fc38a21af91dcd72be2feafa1eb14589d1162d5e628c9c3004311d0e0`。
+
+**已实现但实机未验证。** 本轮分别验证读取 ALC 回收、清理故障时的资源保留和专属进程退出。Proxy 整体对象与 ALC 回收、隔离负载内存差值及生产收益分别待验。
+
+**未实现或仍受门禁保护。** 整模块安全交接仍开放。Proxy 保持 resident。

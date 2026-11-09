@@ -162,8 +162,13 @@ internal sealed class ProxyConnectionExecutionGate
     {
         private IProxyOverviewExecutor? execution = executor;
 
-        internal Task<ProxyOverviewReadout> ReadAsync(ProxyOverviewReads reads, CancellationToken ct) =>
-            (execution ?? throw new ObjectDisposedException(nameof(OverviewCode))).ReadAsync(reads, ct);
+        internal async Task<ProxyOverviewReadout> ReadAsync(ProxyOverviewReads reads, CancellationToken ct)
+        {
+            var reader = execution ?? throw new ObjectDisposedException(nameof(OverviewCode));
+            try { return await reader.ReadAsync(reads, ct); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw new OperationCanceledException(ct); }
+            catch (Exception) { throw new InvalidOperationException("Proxy overview observation failed."); }
+        }
 
         public void Dispose()
         {

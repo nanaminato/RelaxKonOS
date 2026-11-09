@@ -200,6 +200,17 @@ internal static class MihomoServerPublicationAcceptance
                     using var code = ProxyConnectionExecutionGate.Shared.AcquireOverview();
                     return await overview.GetAsync(code, controller, platform, publicationProfiles.GetActiveAsync, recovery, ct);
                 }
+                Exception? retainedFailure = null;
+                using (var code = ProxyConnectionExecutionGate.Shared.AcquireOverview())
+                {
+                    try
+                    {
+                        await overview.GetAsync(code, controller, platform,
+                            _ => Task.FromException<ProxyProfileDto?>(new IOException("private-overview-fixture-error")), recovery, default);
+                    }
+                    catch (InvalidOperationException error) when (error.Message == "Proxy overview observation failed.")
+                    { retainedFailure = error; }
+                }
                 IReadOnlyList<ProxyConnectionDto>? retainedConnections = null;
                 ProxyOverviewDto? retainedOverview = null;
                 Check(await probeWithConnection(originalPort + 2, async () =>
@@ -230,11 +241,14 @@ internal static class MihomoServerPublicationAcceptance
                     await Task.Delay(20, parserBudget.Token);
                 }
                 Check(!originalParser.IsAlive && retainedOverview is { ActiveConnections: > 0 }
+                    && retainedFailure is { InnerException: null }
+                    && !retainedFailure.ToString().Contains("private-overview-fixture-error", StringComparison.Ordinal)
                     && retainedOverview.ActiveProfile?.Id == nextProfile.Id && retainedConnections is { Count: > 0 }
                     && !string.IsNullOrEmpty(retainedConnections[0].Id) && await probe(originalPort + 2),
                     "Idle parser and projection code must collect while the Server retains projected values and native forwarding continues.");
                 Console.WriteLine("PASS MIHOMO RETAINED CONNECTION PROJECTION: Server kept real connection DTOs while the old generation collected");
                 Console.WriteLine("PASS MIHOMO RETAINED OVERVIEW PROJECTION: Server kept the overview DTO while shared read code collected");
+                Console.WriteLine("PASS MIHOMO RETAINED OVERVIEW FAILURE: neutral Host failure kept while shared read code collected");
                 Check(await probeWithConnection(originalPort + 2, async () =>
                 {
                     var observation = await ReadOverviewAsync(parserBudget.Token);
