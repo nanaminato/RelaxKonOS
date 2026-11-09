@@ -2076,7 +2076,8 @@ def proof_full_http_shutdown(ipc, case):
     initial_stop = replaced_stop or restored_replaced or job_replaced or job_cut or case == 'ipc-http-initial-stop'
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
-    named_dns_settled = case == 'ipc-http-named-start-dns-settled'
+    named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
+    named_dns_settled = named_recovery_cut or case == 'ipc-http-named-start-dns-settled'
     named_dns = named_dns_settled or case == 'ipc-http-named-start-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
@@ -2867,11 +2868,44 @@ def proof_full_http_shutdown(ipc, case):
         (root / 'hold-dns-after-exit').unlink(missing_ok=True)
 
         ipc.start_helper()
-        worker = launch('restart')
+        worker = launch('zero-dns-recover' if named_recovery_cut else 'restart')
         restart_pid = int(marker('full-server-pid'))
         token = login()
         until(lambda: not sender.exists(), 'original DNS sender exit')
         if named_dns_settled:
+            saved_native = None
+            if named_recovery_cut:
+                pending_queue = queue.read_bytes()
+                abandoned = []
+
+                def await_original():
+                    try:
+                        abandoned.append(read(started))
+                    except ConnectionError:
+                        abandoned.append(None)
+
+                reader = threading.Thread(target=await_original)
+                reader.start()
+                try:
+                    correlation = uuid.UUID(marker('full-zero-dns-recovery-held'))
+                    assert reader.is_alive() and leases() >= 2
+                    assert queue.read_bytes() == pending_queue
+                    saved_native = native.read_bytes()
+                    assert saved_native != ledger and (directory / 'tun-5.json').is_file()
+                    assert ipc.log.read_text().count(f'operation=MihomoRuntimeRecover id={correlation} ') == 1
+                    os.kill(restart_pid, signal.SIGKILL)
+                    assert worker.wait(timeout=8) == 0
+                finally:
+                    reader.join(timeout=5)
+                assert not reader.is_alive() and abandoned == [None], abandoned
+                assert queue.read_bytes() == pending_queue and native.read_bytes() == saved_native
+                verify_native('recovery-reply-lost', confirmed=True)
+                ipc.stop_helper()
+                ipc.start_helper()
+                worker = launch('restart')
+                restart_pid = int(marker('full-server-pid'))
+                token = login()
+
             finished = until(lambda: (reply if (reply := read(started))['state'] == 'succeeded' else None),
                              'original named start terminal receipt')
             assert finished['completedAt'] and submit('enable', key, body) == started and read(started) == finished
@@ -2881,7 +2915,10 @@ def proof_full_http_shutdown(ipc, case):
             assert uuid.UUID(action['operationId']).hex == started
             assert uuid.UUID(action['publicationId']).hex == uuid.UUID(action['targetExecutionId']).hex == publication
             assert action['action'] == 0 and action['outcome'] == 'Succeeded', action
-            assert ipc.log.read_text().count('operation=MihomoRuntimeRecover ') == 1
+            assert ipc.log.read_text().count('operation=MihomoRuntimeRecover ') == (0 if named_recovery_cut else 1)
+            if named_recovery_cut:
+                assert f'operation=MihomoRuntimeQuery id={uuid.UUID(started)} ' in ipc.log.read_text()
+                assert native.read_bytes() == saved_native and queue.read_bytes() != pending_queue
             assert all(f'operation={verb} ' not in ipc.log.read_text()
                        for verb in ('MihomoRuntimeConfigure', 'MihomoRuntimeTunStart', 'MihomoRuntimeTunStop'))
             assert read(publication)['state'] == read(stopped)['state'] == 'succeeded'
@@ -2889,7 +2926,8 @@ def proof_full_http_shutdown(ipc, case):
             until(lambda: leases() == 0, 'confirmed reconciliation work leases')
             os.kill(restart_pid, signal.SIGTERM)
             assert worker.wait(timeout=12) == 0
-            print(f'PASS TUN NAMED START DNS SETTLED: publication={publication}; stop={stopped}; start={started}; '
+            label = 'RECOVERY CUT' if named_recovery_cut else 'DNS SETTLED'
+            print(f'PASS TUN NAMED START {label}: publication={publication}; stop={stopped}; start={started}; '
                   f'PID={current["service"][0]}; route table={intent["RoutingTable"]}; one reconciliation, no redispatch', flush=True)
             return
         waiting = read(started)
@@ -4276,7 +4314,7 @@ rules:
             if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
                         'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',
-                        'ipc-http-named-start-dns', 'ipc-http-named-start-dns-settled',
+                        'ipc-http-named-start-dns', 'ipc-http-named-start-dns-settled', 'ipc-http-named-start-recovery-cut',
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',

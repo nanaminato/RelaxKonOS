@@ -364,4 +364,4 @@ MR-03 / MB-04 在 Linux 私有 systemd 验证补偿启动作业 ID 落盘后的�
 
 MR-03 / MB-04 具名再启动沿原执行 ID 保存分流 DNS 逐条派发与成功退出。末条应答未知时，Helper 按原执行确认发送端证据不足，完整 Server 保留原同键回执及新键门禁。见[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#具名再启动的分流-dns-应答未知)。
 
-MR-03 / MB-04 具名启动在 DNS 发送端已全部确认时，可在原归档锁内按原发布和执行核对配置、制品和原生网络，写回原启动终态。完整 Server 只按同一原回执结案。见[原执行恢复实测](../architecture/server-module-evidence/Proxy-Safety.md#具名再启动的-dns-发送端已确认)。
+MR-03 / MB-04 具名启动在 DNS 发送端已全部确认时，可在原归档锁内按原发布和执行核对配置、制品和原生网络，写回原启动终态。完整 Server 只按同一原回执结案。Helper 终态已保存后的恢复应答再次中断也已验证原队列与两项工作租约。见[恢复应答中断实测](../architecture/server-module-evidence/Proxy-Safety.md#具名启动恢复应答再次中断)。见[原执行恢复实测](../architecture/server-module-evidence/Proxy-Safety.md#具名再启动的-dns-发送端已确认)。

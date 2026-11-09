@@ -564,9 +564,21 @@ Linux x64 私有 systemd 中原发布 `cfa3bfa5322a4fad82e3a573d9aeee0b`、具�
 
 Windows Release TUN 激活、38 项边界与模块边界聚合检查通过。Linux Release 构建和三场实机验收通过。进程退出及 cgroup 清理通过，宿主共享服务、代理和 resolver 文件指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-named-start-dns-settled.log` SHA-256 为 `9910a9b9e5d0dc907e16482132f811ad09ec3ab14f6eecea8acccb76e3773739`，归档 SHA-256 为 `4912fa3acdae4d43f46d03b04585acd168b9d26ee035b9f55f8faab88b4567ad`。
 
-**已实现但实机未验证。** Helper 终态已保存、恢复应答再次中断时的工作租约和原队列接续待独立实测。整机掉电需独立环境。对象释放、ALC 回收、隔离内存差值和生产收益未测量。
+**已实现但实机未验证。** 整机掉电需独立环境。对象释放、ALC 回收、隔离内存差值和生产收益未测量。Helper 终态已保存后的再次中断见下一节。
 
 **未实现或仍受门禁保护。** 证据不足继续保留原门禁。整模块交接前 Proxy 保持 resident。
+
+### 具名启动恢复应答再次中断
+
+**已实现且已验证。** Linux x64 私有 systemd 使用完整认证 Server、独立 Helper 和真实 resolver。原发布 `b729ad145c3748c6bdcfe318d79f336f` 经具名停止 `cfd6f89c0ce74da1bd3694748e72e12b` 后，以 `40a36bc710a344f3bab462dd59be1b1f` 再启动。三项 DNS 发送端全部确认后中断，重启后按原 ID 的 HTTP 查询触发一次限定范围的恢复。Helper 保存原启动终态及 `DnsApplied`，中继截留真实 AF_UNIX 成功应答。
+
+应答在途时原 HTTP 读者仍在等待，响应与对账合计至少持有两项工作租约，Server 队列逐字节保持待核验记录。再次强制结束 Server 和 Helper，原 HTTP 读者断开。随后启动的 Server 只查询 Helper 原终态，无第二次恢复派发。按原 ID 和同键返回同一成功终态，租约归零。Mihomo PID `951`、路由表 `1010709959`、管理选路、原配置及镜像、resolver 设置、原发布见证和 DNS 派发证据均一致，实际 HTTP 及分流 DNS 保持可用。只有三条原 DNS 写入，无配置或启停重派。
+
+同批已确认和末条应答未知对照分别为 `bee4df2e5862468f801236db2479f767` 和 `130381b022024ea39a76e69eae887c7f`。Windows Release TUN 激活和 38 项边界检查通过，Linux Release 构建及三场隔离实机通过。进程退出及专属 cgroup 清理通过，宿主共享服务、代理和 resolver 文件指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-named-start-recovery-cut.log` SHA-256 为 `b422e87374caed535f02b2cc71031f7c59a763ecf5f67207971d3f865f5ebf7e`，运行归档 SHA-256 为 `e93a82ef740e96968dfdc949857d1684709bb88c1a5f805c63dcbc13e0aca3ab`。
+
+**已实现但实机未验证。** 整机掉电和其他架构需独立环境。对象释放、ALC 回收、隔离内存差值及生产内存收益未测量。
+
+**未实现或仍受门禁保护。** 待核验具名启动的管理停用及恢复后的禁用启动需独立联验。整模块安全交接通过前 Proxy 保持 resident。
 
 ## MB-04 受管 TUN 提交后移除
 
