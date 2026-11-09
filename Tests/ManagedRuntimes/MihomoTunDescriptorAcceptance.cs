@@ -370,9 +370,16 @@ internal static class MihomoTunDescriptorAcceptance
             ModuleResidencyOptions.Parse(builder.Configuration, ids, ids), services,
             ServerModuleContext.Create(builder.Configuration, builder.Environment, "private-systemd"),
             NullLogger<ModuleResidencyCoordinator>.Instance, residentWorkModuleIds: ids);
+        var coreRecovery = false;
         void RequireLease()
         {
-            if (coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 1)
+            var leases = coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases;
+            if (coreRecovery)
+            {
+                if (leases != 0 || store.Gate.CurrentCount != 0)
+                    throw new InvalidOperationException("Core recovery must retain the original publication gate without a Proxy management lease.");
+            }
+            else if (leases != 1)
                 throw new InvalidOperationException("The Server did not retain its resident Proxy work lease.");
         }
         async Task PauseAsync()
@@ -422,7 +429,9 @@ internal static class MihomoTunDescriptorAcceptance
             var unexpected = await service.PublishManagedTunAsync(operation, expectedRevision, frozen, CancellationToken.None);
             throw new InvalidOperationException($"The Server missed its expected cut: {unexpected.Outcome} {unexpected.Receipt?.ProblemCode}.");
         }
+        coreRecovery = true;
         var resolved = await service.RecoverAsync(operation, CancellationToken.None);
+        coreRecovery = false;
         var replay = await service.PublishManagedTunAsync(operation, expectedRevision, frozen, CancellationToken.None);
         var state = await store.ReadAsync(CancellationToken.None);
         if (resolved != replay || transport.ConfigureCalls != 0 || state.Pending is not null

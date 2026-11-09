@@ -13,6 +13,7 @@ public interface IMihomoApplicationConfigurationPublisher
 /// <summary>Recovery of a previously accepted configuration publication under its original identity.</summary>
 public interface IMihomoConfigurationPublicationRecovery
 {
+    // The Core hosted scan owns this call and drains it with its recovery scope.
     Task<MihomoPublicationResult> RecoverAsync(Guid operationId, CancellationToken ct);
     Task<MihomoPublicationResult> RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct);
 }

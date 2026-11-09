@@ -201,7 +201,8 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
             if (!recoverConfiguration && state.DirectReload is { } direct)
                 // Core must still start its disk reconciliation, guard and TUN safety workers.
                 return [new(Id, $"Mihomo direct reload {direct.OperationId} requires verification before deactivation.")];
-            if (recoverConfiguration && state.Pending is { ConfigurationPlan: not null } accepted)
+            // A disabled-startup admission check cannot start a pending managed network transaction.
+            if (recoverConfiguration && state.Pending is { ConfigurationPlan: not null, TunIntent: null } accepted)
             {
                 try
                 {

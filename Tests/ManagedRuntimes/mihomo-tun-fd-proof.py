@@ -1862,7 +1862,7 @@ def proof_http_publication(owner, ipc, previous, case):
                 try:
                     wait_file('http-ready', drifted)
                     original, refused_correlation = wait_file('http-recovery-reply', drifted).read_text().split()
-                    assert original == operation and http('/fixture-work-leases')[1] >= 1
+                    assert original == operation and http('/fixture-work-leases') == (200, 0)
                     observed = json.loads(checkpoint(record, 'observe-commit'))
                     assert uuid.UUID(observed['pendingOperationId']).hex == operation
                     assert observed['problemCode'] == 'runtime.management_route_changed' and not observed['receipt']
@@ -1942,16 +1942,17 @@ def proof_http_publication(owner, ipc, previous, case):
     restarted = subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity, stdout=subprocess.PIPE, text=True)
     try:
         wait_file('http-ready', restarted)
-        assert accepted('/tun/enable', key, {'profileId': profile}) == operation
         if pending:
             original, correlation = wait_file('http-recovery-reply', restarted).read_text().split()
             assert original == operation
+        assert accepted('/tun/enable', key, {'profileId': profile}) == operation
+        if pending:
             path = '/operations/' + str(uuid.UUID(operation))
             status, waiting = http(path)
             assert status == 200 and waiting['stage'] == 'managed_tun' and waiting['state'] == 5 and not waiting['completedAt']
             blocked, detail = http('/tun/enable', 'managed-tun-second-executor', {'profileId': profile})
             assert blocked == 400 and detail['problemCode'] == 'proxy.operation_interrupted'
-            assert http('/fixture-work-leases')[1] >= 1
+            assert http('/fixture-work-leases') == (200, 0)
             assert config.read_bytes() == previous.read_bytes() == mirror.read_bytes()
             assert network_baseline() == record['baseline'] and device not in devices()
             assert not Path(f'/proc/{record["service"][0]}').exists()
@@ -2327,7 +2328,7 @@ def proof_full_http_shutdown(ipc, case):
         correlation = marker('full-zero-dns-recovery-held')
         token = login()
         waiting = read(publication)
-        assert waiting['state'] == 'interrupted' and not waiting.get('completedAt') and leases() >= 1
+        assert waiting['state'] == 'interrupted' and not waiting.get('completedAt') and leases() == 0
         restored = service_identity()
         assert restored != original_service
         assert ipc.log.read_text().count(f'operation=MihomoRuntimeRecover id={uuid.UUID(correlation)} ') == 1
@@ -2525,7 +2526,7 @@ def proof_full_http_shutdown(ipc, case):
         original = service_identity()
         assert logged['INVOCATION_ID'] == original[1]
         pending()
-        assert leases() >= 1
+        assert leases() == 0
         probe_restored('in-flight')
         os.kill(pid, signal.SIGTERM)
         ipc.stop_helper()
@@ -2679,6 +2680,16 @@ def proof_full_http_shutdown(ipc, case):
             ('foreign-cookie', 'runtime.network_checkpoint_conflict')
         ]
         if zero_dns:
+            pending_authority = (state_file.read_bytes(), queue.read_bytes(), mirror.read_bytes())
+            ipc.start_helper()
+            worker = launch('admission-disabled')
+            assert worker.wait(timeout=15) == 0
+            assert str(uuid.UUID(publication)) in (root / 'full-startup-refused').read_text()
+            assert (state_file.read_bytes(), queue.read_bytes(), mirror.read_bytes()) == pending_authority
+            assert all(f'operation={kind} ' not in ipc.log.read_text()
+                       for kind in ('MihomoRuntimeConfigure', 'MihomoRuntimeRecover'))
+            ipc.stop_helper()
+            print(f'PASS TUN PENDING PUBLICATION DISABLED GATE: original={publication}; no recovery or configure dispatched', flush=True)
             foreign_cookie = int(command('/usr/bin/unshare', '--net', sys.executable, '-I', '-c',
                                          'import socket, sys; '
                                          's = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); '
@@ -2715,7 +2726,7 @@ def proof_full_http_shutdown(ipc, case):
                 rejected_correlation = marker('full-zero-dns-recovery-held')
             token = login()
             if unknown_dns:
-                assert leases() >= 1
+                assert leases() == 0
             until(lambda: 'operation=MihomoRuntimeRecover ' in ipc.log.read_text(), phase + ' recovery attempt')
             assert insufficient_evidence_rejected(problem)
             pending_reply = read(publication)
@@ -2781,7 +2792,7 @@ def proof_full_http_shutdown(ipc, case):
         token = login()
         waiting = read(publication)
         assert waiting['state'] == 'interrupted' and waiting['stage'] == 'managed_tun' and not waiting.get('completedAt'), waiting
-        assert leases() >= 1 and submit('enable', key, {'profileId': profile}) == publication
+        assert leases() == 0 and submit('enable', key, {'profileId': profile}) == publication
         status, blocked = request(api + '/tun/enable', token, 'full-while-recovering', {'profileId': profile})
         assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
         observed = json.loads(checkpoint(record, 'observe-commit'))

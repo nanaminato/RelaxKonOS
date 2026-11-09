@@ -48,7 +48,7 @@ internal static class MihomoTunHttpAcceptance
         builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(new MihomoRuntimeAuthorizationProvider(store, paths, secrets));
         builder.Services.AddSingleton(services => new MihomoRuntimeService(
-            new PublicationTransport(socket, paths.GetStateDirectory(), services.GetRequiredService<ModuleResidencyCoordinator>(), firstRun, pending),
+            new PublicationTransport(socket, paths.GetStateDirectory(), store, services.GetRequiredService<ModuleResidencyCoordinator>(), firstRun, pending),
             store, services.GetRequiredService<MihomoRuntimeAuthorizationProvider>(), mode, new DirectDownloads()));
         builder.Services.AddSingleton<IProxyProfileRepository>(MihomoPublicationTransactionChecks.Stub<IProxyProfileRepository>(member =>
             member.Name == nameof(IProxyProfileRepository.GetActiveAsync)
@@ -109,7 +109,8 @@ internal static class MihomoTunHttpAcceptance
                 Tun: new("gvisor", "rk-fd-proof", false, false, false, "", 1500)));
     }
 
-    private sealed class PublicationTransport(string socket, string state, ModuleResidencyCoordinator coordinator, bool firstRun, bool pending)
+    private sealed class PublicationTransport(string socket, string state, MihomoPublicationStore store,
+        ModuleResidencyCoordinator coordinator, bool firstRun, bool pending)
         : IPrivilegedOperationTransport
     {
         private readonly UnixSocketPrivilegedOperationTransport inner = new(new() { SocketPath = socket },
@@ -140,8 +141,8 @@ internal static class MihomoTunHttpAcceptance
             }
             if (!firstRun && pending && request.Operation == PrivilegedOperationKind.MihomoRuntimeRecover)
             {
-                if (coordinator.Describe(ServerModules.ProxyId) is not { ActiveLeases: >= 1 })
-                    throw new InvalidOperationException("The original recovery lost its work lease before the Helper response.");
+                if (store.Gate.CurrentCount != 0 || coordinator.Describe(ServerModules.ProxyId) is not { ActiveLeases: 0 })
+                    throw new InvalidOperationException("The original Core recovery did not independently hold the publication gate through the Helper response.");
                 var ready = Path.Combine(state, "http-recovery-reply");
                 await File.WriteAllTextAsync(ready + ".new",
                     $"{request.RuntimeLifecycle!.RecoveryOperationId!.Value:N} {request.OperationId!.Value:D}");

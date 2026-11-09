@@ -1357,3 +1357,15 @@ Linux 私有 Mihomo 与生产 Helper 验证真实监听与宿主环境。原 `3a
 专属 cgroup 已清理，宿主共享服务和代理文件指纹一致。日志为 `.artifacts/mb04-guard-listener/linux.log`，归档 SHA-256 为 `8995c884fa4204dcaa01015f8ea12722c83a114f689d44b9f649d2aa02ebc881`。
 
 Proxy 保持 resident。无法认证任何监听时，安全策略可能仍指向暂不可用的旧端口。跨休眠交接与生产内存继续开放。
+
+## Core 受管 TUN 发布恢复与管理代次
+
+**已实现且已验证。** Core 调度器持有原发布锁，按原 ID 处理 Helper 回执和持久发布，宿主停机仍等待该恢复作用域结束。管理请求和显式重试保留各自原有的租约。隔离 Linux 的 AF_UNIX 与认证 HTTP 用例确认恢复应答在途时原发布锁仍在，管理代次租约为零。认证原操作 `be7f0791-d320-4843-a4aa-aa0d06c49374` 在管理选路漂移时维持门禁，原选路恢复后执行一次原补偿，同键与按 ID 查询读回相同终态。零 DNS 用例恢复原配置、真实 HTTP 上游及原网络规则，配置无重复派发。未知 DNS 原 `27fbcf53-dd3c-4cf5-a033-bed02be32bec` 在两次重启后仍待核验，无补偿重放。
+
+单独复验原发布 `6277753c-2879-486e-81a2-98cf6bbede82`。关闭 Proxy 启动在原发布待核验时被拒绝，原生状态、原队列和配置镜像逐字节保持。该进程未派发配置或恢复。启用后仍按原 ID 确认原补偿终态，真实流量通过。缺失或不匹配的原见证及具名待核验动作的禁用门禁同批通过。
+
+Windows Release 的发布事务 113 项、注册 24 项、TUN 边界 38 项、Core 安全所有权 48 项、驻留与独立程序集 31 项、生命周期作用域 37 项及模块里程碑通过。Linux Release 专属进程及 cgroup 清理通过，宿主运行时服务、代理及 resolver 文件指纹一致。矩阵日志 `.artifacts/mb04-tun-full-zero-dns/linux-core-recovery.log` 的 SHA-256 为 `edec191b80baccc9344dd4c49b5e2f826736ed84ef75abe72f2ff2cbb0315f7a`，归档为 `e43e622f2c4d0e5ef602e0ec3f70d6777649e12e9ff113de7c09e94cf0aebdb2`。禁用门禁日志 `.artifacts/mb04-tun-full-zero-dns/linux-core-recovery-disabled.log` 的 SHA-256 为 `efb87abf7b9198f34daa6e7d9dda51c4bc074e23dda753d910d83fb27ac85a8e`，归档为 `d2743bd50173ef4550fb95495f3c2a1668be98368c808b72d5c1290521eddca6`。
+
+**已实现但实机未验证。** 下一步验证管理代次已故障隔离时，Core 仍能接手原待核验发布。此轮确认真实进程退出，对象释放、ALC 回收、隔离内存差值及生产收益分别待测。
+
+**未实现或仍受门禁保护。** 缺失可信原回执的恢复继续保持原门禁，整模块动态交接仍待验收。Proxy 保持 resident。

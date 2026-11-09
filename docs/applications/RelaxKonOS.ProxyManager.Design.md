@@ -4739,6 +4739,8 @@ Linux 直连监听补偿丢失应答时，再次确认原补偿可只读核对�
 
 设置写入与应用配置发布由 Proxy 管理作用域解析。Core 在管理入口关闭时仍通过原发布锁和原回执执行具名恢复，并保留原生 TUN 与系统代理的安全责任。[发布与恢复端口验收](../architecture/server-module-evidence/Proxy-Publication.md#应用配置写入与-core-恢复端口)
 
+Core 调度器按原 ID 恢复已受理的受管 TUN 发布。管理队列仍按自己的原 ID 读回终态，未结案的受管网络发布继续阻止禁用启动。[Core 恢复实测](../architecture/server-module-evidence/Proxy-Safety.md#core-受管-tun-发布恢复与管理代次)
+
 设置更新、档案配置应用和档案激活由当前 Proxy 代次持有前台作用域。请求断开后，已经受理的原事务仍按原回执收尾。作用域清理失败时，该代次保留工作租约并拒绝新管理调用。[前台配置写入实测](../architecture/server-module-evidence/Proxy-Publication.md#前台配置写入的原代次)
 
 后台订阅激活占用发布锁时，等待中的前台设置写入可独立取消和排空。原订阅操作仍持有自己的工作租约和回执责任，重启按原 ID 核对结果。[订阅与前台写入实机证据](../architecture/server-module-evidence/Proxy-Subscriptions.md#订阅持锁与前台写入独立排空)

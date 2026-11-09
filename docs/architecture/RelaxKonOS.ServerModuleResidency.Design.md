@@ -45,6 +45,8 @@ Proxy 运行时、概览、连接和流量的合并器归当前 Proxy 代次。�
 
 具名 TUN 变更的队列租约覆盖执行作用域的异步释放和原终态持久化。正常停机由原队列排空，进程强制退出后由持久原操作记录继续保护准入。[实机证据](server-module-evidence/Proxy-Safety.md#完整-server-的具名停止作用域清理与恢复)
 
+Core 调度的受管 TUN 发布恢复在原发布锁内核验并保存原结果。宿主等待恢复作用域异步释放，Proxy 管理代次只为管理任务和响应持有各自的租约。[Core 发布恢复与管理代次](server-module-evidence/Proxy-Safety.md#core-受管-tun-发布恢复与管理代次)
+
 异步清理失败时，原队列保留失败作用域与待核验记录，驻留协调器隔离同一代次。持久门禁在进程退出后继续阻止禁用启动，直至启用的原队列完成对账。[故障代次实测](server-module-evidence/Proxy-Safety.md#具名停止清理失败的同代隔离)
 
 原变更任务终态写入失败也会隔离原代次。无法更新的原 Running 记录继续保护重启后的准入。[终态写入故障实测](server-module-evidence/Proxy-Safety.md#具名停止终态写入失败的同代隔离)

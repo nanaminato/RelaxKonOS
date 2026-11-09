@@ -139,7 +139,7 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
             var state = await store.ReadAsync(ct);
             if (state.Pending?.OperationId != operationId || state.Pending.ConfigurationPlan is null)
                 throw new RuntimePolicyException("runtime.publication_unconfirmed");
-            return await RecoverUnderGateAsync(state, CancellationToken.None);
+            return await ResolvePendingAsync(state, CancellationToken.None);
         }
         finally { store.Gate.Release(); }
     }
@@ -147,6 +147,11 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
     internal async Task<MihomoPublicationResult> RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct)
     {
         using var work = state.Pending!.TunIntent is null ? null : await RequireWorkLeases().AcquireAsync(ct);
+        return await ResolvePendingAsync(state, ct);
+    }
+
+    private async Task<MihomoPublicationResult> ResolvePendingAsync(MihomoPublicationState state, CancellationToken ct)
+    {
         var operationId = state.Pending!.OperationId;
         if ((state.Pending.Settings is not null || state.Pending.Profile is not null) && state.Pending.ConfigurationPlan!.PreviousIdentity == state.Pending.Identity)
             return await ResolveApplicationOnlyAsync(state, ct);
