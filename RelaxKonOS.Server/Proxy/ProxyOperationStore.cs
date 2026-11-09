@@ -214,7 +214,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
     // The queue gate comes first. Draft writers release the publication gate before recording queue progress.
     private async Task ReconcileRefreshesAsync(Entry[] entries, Guid? requested, CancellationToken ct)
     {
-        if (Volatile.Read(ref _stopping)) return;
+        if (Volatile.Read(ref _stopping) || _recoveryBlocked) return;
         MihomoPublicationState? state = null;
         var mihomoReadable = true;
         try { state = publication is null ? null : await publication.ReadAsync(ct); }
@@ -357,7 +357,15 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             changed = true;
         }
         if (!changed) return;
-        await SaveAsync(entries, CancellationToken.None);
+        try { await SaveAsync(entries, CancellationToken.None); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            _recoveryBlocked = true;
+            work.RequireRecovery();
+            logger.LogError(error, "Proxy reconciliation could not persist the original operation ledger.");
+            throw new RelaxKonOS.Server.Residency.ModuleUnavailableException("module-recovery-blocked", 30,
+                "Proxy recovery could not persist the original operation ledger.", error);
+        }
     }
 
     private async Task<bool> HasConfirmedTunActionAsync(ProxyOperationDto operation, CancellationToken ct)

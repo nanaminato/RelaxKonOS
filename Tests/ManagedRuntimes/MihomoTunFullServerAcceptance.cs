@@ -133,6 +133,7 @@ internal static class MihomoTunFullServerAcceptance
         var cleanupScope = cleanupDrain || phase is "cleanup-cut" or "cleanup-fault";
         var dropStopReply = phase == "stop-reply-drop";
         var dropStartReply = phase == "start-reply-drop";
+        var recoveryWriteFault = dropStartReply && File.Exists(Path.Combine(root, "full-tun-query-write-fault"));
         var handoff = phase == "handoff-disabled";
         var disabled = phase is "admission-disabled" or "baseline-off";
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
@@ -181,7 +182,7 @@ internal static class MihomoTunFullServerAcceptance
             start.Environment["RELAXKONOS_TEST_TUN_CLEANUP"] = start.WorkingDirectory;
         }
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
-        if (phase is "admission-managed" or "handoff-disabled" or "handoff-restart" or "cleanup-fault")
+        if (recoveryWriteFault || phase is "admission-managed" or "handoff-disabled" or "handoff-restart" or "cleanup-fault")
         {
             foreach (var key in start.Environment.Keys.Where(key => key.StartsWith("Modules__", StringComparison.Ordinal)).ToArray())
                 start.Environment.Remove(key);
@@ -259,8 +260,16 @@ internal static class MihomoTunFullServerAcceptance
                     {
                         var query = await queryRelay.Committed.Task.WaitAsync(ct);
                         await WriteMarkerAsync(root, "full-tun-query-response-held", query.ToString("N"));
-                        await WaitForMarkerAsync("full-tun-query-response-drop");
-                        queryRelay.DropHeldResponse();
+                        if (recoveryWriteFault)
+                        {
+                            await WaitForMarkerAsync("full-tun-query-response-release");
+                            queryRelay.ReleaseHeldResponse();
+                        }
+                        else
+                        {
+                            await WaitForMarkerAsync("full-tun-query-response-drop");
+                            queryRelay.DropHeldResponse();
+                        }
                     }
                 }
                 else
@@ -277,7 +286,8 @@ internal static class MihomoTunFullServerAcceptance
                 await WriteMarkerAsync(root, "full-server-stopping", "cleanup");
             }
             await exited;
-            if (phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut" or "cleanup-fault") && server.ExitCode == 137) return;
+            if ((recoveryWriteFault || phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut" or "cleanup-fault"))
+                && server.ExitCode == 137) return;
             if (disabled && server.ExitCode != 0 && startupRefusal.Task.IsCompletedSuccessfully)
             {
                 await WriteMarkerAsync(root, "full-startup-refused", await startupRefusal.Task);

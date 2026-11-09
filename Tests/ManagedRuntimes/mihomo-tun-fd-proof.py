@@ -2078,7 +2078,8 @@ def proof_full_http_shutdown(ipc, case):
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
     drop_stop_reply = case == 'ipc-http-stop-reply-drop'
-    drop_start_reply = case == 'ipc-http-start-reply-drop'
+    recovery_write_fault = case == 'ipc-http-tun-recovery-write-fault'
+    drop_start_reply = recovery_write_fault or case == 'ipc-http-start-reply-drop'
     cleanup_drain = case == 'ipc-http-tun-cleanup-drain'
     cleanup_cut = case == 'ipc-http-tun-cleanup-cut'
     terminal_fault = case == 'ipc-http-tun-terminal-fault'
@@ -4469,9 +4470,12 @@ with sqlite3.connect(sys.argv[1]) as database:
             refusal = (root / 'full-startup-refused').read_text()
             assert 'relaxkonos.proxy' in refusal and str(uuid.UUID(stopped)) in refusal, refusal
             assert queue.read_bytes() == persisted and cleanup_native.read_bytes() == cleanup_native_before
+        if recovery_write_fault:
+            (root / 'full-tun-query-write-fault').touch()
         worker = launch('named-start-cut' if named_dns else 'start-reply-drop' if drop_start_reply else 'restart')
         restart_pid = int(marker('full-server-pid'))
-        assert restart_pid != pid and Path(f'/proc/{restart_pid}').stat().st_uid == ipc.uid
+        assert restart_pid != pid
+        until(lambda: Path(f'/proc/{restart_pid}').stat().st_uid == ipc.uid, 'non-root restarted Server')
         token = login()
         if cleanup_recover:
             assert queue.read_bytes() == persisted
@@ -4490,6 +4494,9 @@ with sqlite3.connect(sys.argv[1]) as database:
         if named_dns:
             verify_named_start_dns(restart_pid, record, publication, stopped)
             return
+        if recovery_write_fault:
+            healthy, ready_plan = preview_proxy_disable()
+            assert healthy['configurationWritable'] and not ready_plan['blockedBy']
         started = submit('enable', 'full-start', {'profileId': profile})
         if drop_start_reply:
             assert marker('full-tun-response-held') == started
@@ -4522,7 +4529,7 @@ with sqlite3.connect(sys.argv[1]) as database:
             replies = []
 
             def read_original():
-                replies.append(read(started))
+                replies.append(request(f'{api}/operations/{uuid.UUID(started)}', token))
 
             reader = threading.Thread(target=read_original)
             reader.start()
@@ -4530,20 +4537,51 @@ with sqlite3.connect(sys.argv[1]) as database:
                 assert marker('full-tun-query-response-held') == started
                 assert reader.is_alive() and leases() >= 2
                 assert queue.read_bytes() == pending and native_state.read_bytes() == committed_state
+                if recovery_write_fault:
+                    obstruction = queue.with_name(queue.name + '.new')
+                    obstruction.mkdir()
             finally:
-                (root / 'full-tun-query-response-drop').touch()
+                reply_marker = 'full-tun-query-response-release' if recovery_write_fault else 'full-tun-query-response-drop'
+                (root / reply_marker).touch()
                 reader.join(timeout=7)
             assert not reader.is_alive() and len(replies) == 1, replies
-            waiting = replies[0]
-            assert waiting['state'] == 'interrupted' and not waiting.get('completedAt'), waiting
             body = {'profileId': profile}
-            assert submit('enable', 'full-start', body) == started
+            status, waiting = replies[0]
+            if recovery_write_fault:
+                assert status == 503 and waiting['problemCode'] == 'module-recovery-blocked', replies
+                obstruction.rmdir()
+                proxy, blocked = preview_proxy_disable()
+                assert proxy['processGeneration'] == healthy['processGeneration']
+                assert proxy['residency']['state'] == 'faulted' and proxy['residency']['activeLeases'] == 0
+                assert proxy['residency']['blockedBy'] == 'module-recovery-blocked'
+                assert any(entry['problemCode'] == 'module-recovery-blocked' for entry in blocked['blockedBy'])
+                status, rejection = request(f'/api/v1.0/server/module-plans/{ready_plan["planId"]}/apply',
+                                            token, key='recovery-write-apply')
+                assert status == 409 and rejection['problemCode'] == 'module-recovery-blocked', rejection
+                assert request(api + '/tun/enable', token, 'full-start', body)[0] == 503
+                assert request(f'{api}/operations/{uuid.UUID(started)}', token)[0] == 503
+            else:
+                assert status == 200 and submit('enable', 'full-start', body) == started
+                assert waiting['state'] == 'interrupted' and not waiting.get('completedAt'), waiting
             status, blocked = request(api + '/tun/enable', token, 'live-start-new-key', body)
             assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted', blocked
             assert queue.read_bytes() == pending and native_state.read_bytes() == committed_state
             until(lambda: leases() == 0, 'drained unavailable receipt queries')
             probe(current, 'start-query-reply-dropped')
-            (root / 'full-tun-query-resume').touch()
+            if recovery_write_fault:
+                os.kill(restart_pid, signal.SIGKILL)
+                assert worker.wait(timeout=12) == 0
+                worker = launch('admission-disabled')
+                assert worker.wait(timeout=15) == 0
+                refusal = (root / 'full-startup-refused').read_text()
+                assert 'relaxkonos.proxy' in refusal and str(uuid.UUID(started)) in refusal, refusal
+                assert queue.read_bytes() == pending and native_state.read_bytes() == committed_state
+                probe(current, 'recovery-write-disabled-refused')
+                worker = launch('restart')
+                restart_pid = int(marker('full-server-pid'))
+                token = login()
+            else:
+                (root / 'full-tun-query-resume').touch()
             finished = until(lambda: terminal(started), 'original start confirmed after query resumes')
             assert finished['completedAt'], finished
             assert submit('enable', 'full-start', {'profileId': profile}) == started and read(started) == finished
@@ -4560,7 +4598,7 @@ with sqlite3.connect(sys.argv[1]) as database:
             assert json.loads(checkpoint(record, f'observe-action:{started}'))['mihomoTunAction'] == action
             probe(current, 'start-reply-after-restart')
             helper_log = ipc.log.read_text()
-            assert helper_log.count(f'operation=MihomoRuntimeQuery id={uuid.UUID(started)} ') == 5
+            assert helper_log.count(f'operation=MihomoRuntimeQuery id={uuid.UUID(started)} ') == (3 if recovery_write_fault else 5)
             assert 'operation=MihomoRuntimeRecover ' not in helper_log
         until(lambda: leases() == 0, 'drained work leases')
         if joint:
@@ -4583,7 +4621,8 @@ with sqlite3.connect(sys.argv[1]) as database:
             print(f'PASS TUN LIVE STOP REPLY DROP: publication={publication}; stop={stopped}; start={started}; '
                   f'configuration={record["credential"]}; Server PID {pid}->{restart_pid}; restored upstream HTTP and DNS')
         if drop_start_reply:
-            print(f'PASS TUN LIVE START REPLY DROP: publication={publication}; stop={stopped}; start={started}; '
+            scenario = 'RECOVERY WRITE FAULT' if recovery_write_fault else 'LIVE START REPLY DROP'
+            print(f'PASS TUN {scenario}: publication={publication}; stop={stopped}; start={started}; '
                   f'configuration={record["credential"]}; live PID={current["service"][0]}; '
                   'two leases, new key blocked before receipt, same upstream and DNS')
         if cleanup_scope:
@@ -4757,7 +4796,7 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-stop-reply-drop', 'ipc-http-start-reply-drop',
+            if case in ('ipc-http-full', 'ipc-http-stop-reply-drop', 'ipc-http-start-reply-drop', 'ipc-http-tun-recovery-write-fault',
                         'ipc-http-tun-cleanup-drain', 'ipc-http-tun-cleanup-cut', 'ipc-http-tun-cleanup-fault',
                         'ipc-http-tun-terminal-fault',
                         'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',

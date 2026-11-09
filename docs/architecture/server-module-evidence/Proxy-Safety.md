@@ -1087,9 +1087,23 @@ Linux Release 构建、Windows Release 的 31 项 Proxy 驻留、38 项 TUN 边�
 
 实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-terminal-fault.log` SHA-256 为 `cd3ca850081a6773b1c5cc051875ff4a02ed24eaa779a7d95a43f3081711b251`，运行归档为 `55566d0a2bdcca06a88c1d0ee0137aa0425aad4b2cd9a3b114ea487f3afa50eb`。
 
-**已实现但实机未验证。** 本次验证原变更任务的终态写入故障，恢复查询写入终态时的失败窗口仍待核对。对象释放、ALC 回收、隔离负载内存和生产收益分别待测。
+**已实现但实机未验证。** 本次验证原变更任务的终态写入故障，恢复查询写回见下一节。对象释放、ALC 回收、隔离负载内存和生产收益分别待测。
 
 **未实现或仍受门禁保护。** 缺失可信回执继续保留原准入。整模块安全交接独立验收，Proxy 保持 resident。
+
+### 恢复查询终态写入失败的同代隔离
+
+**已实现且已验证。** 2026-11-10 在 Linux x64 私有 systemd 中，用原版 Server 复现恢复查询拿到 Helper 回执后写回失败。夹具占住 `proxy-operations.json.new`，生产写入返回访问拒绝，HTTP 返回 500。原版对照日志 `.artifacts/mb04-tun-full-zero-dns/linux-recovery-write-baseline.log` SHA-256 为 `4e23e8dfe813374964b7f5ee9d7058f080004e59814cc6db1158283b2ffd4c63`。首轮夹具过早检查进程 UID，改为等待降权完成后通过对照。
+
+修正版的原具名启动为 `6f71f772912c4ea0a392eab0e249b5ec`，绑定发布及目标执行 `8551ca68c6844abd9e3e3cdf69b7cbf8`。Helper 已成功提交，启动终帧丢失后原队列先保存待核验。暂扣原 ID 查询回执时，生产诊断显示响应和恢复至少两项租约。占住临时写入路径并交付查询回执后，原恢复队列在释放租约前隔离同一代次，返回 503 / `module-recovery-blocked`，磁盘原待核验记录及 Helper 台账逐字节保持。
+
+解除阻断后，原进程仍为 Faulted。同键和原 ID 响应暂不可用，新键、故障前的停用计划应用及禁用启动均被拒绝。启用 Proxy 重启后，队列按原 ID 只读核对并保存终态。同键和原 ID 返回同一终态，原生记录和执行检查点保持。原启动只派发一次，恢复阶段只查询，Mihomo PID `983`、配置摘要 `f04fb29b9e4c05df2732baae3a68bd729eb964d14ac8b38d35c04b3cb61b0837`、管理选路、真实上游 HTTP 和分流 DNS 在故障与重启前后均通过。
+
+Linux 和 Windows Release 构建及 31 项 Proxy 驻留、38 项 TUN 边界和模块边界回归通过。两组专属进程退出及 cgroup 清理完成，宿主服务、代理、resolver 和账号指纹一致。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-recovery-write-fault.log` SHA-256 为 `e09636807363149bd51a0230c2fa5c6ed75ca0eb63709f2fdec09acb954b230f`，运行归档为 `59947f727c1fa1187d35b7eeab1caf008f6b73e852875f205fcc1e3ef6d6fd75`。
+
+**已实现但实机未验证。** 本轮核对具名 TUN 恢复写回和进程退出。其他恢复执行图、对象释放、ALC 回收、隔离负载内存和生产收益分别验收。
+
+**未实现或仍受门禁保护。** 回执证据不足继续保留原持久准入门禁。Proxy 保持 resident，整模块安全交接独立验收。
 
 ## MB-04 受管 TUN 与 Proxy 安全责任同次停机
 

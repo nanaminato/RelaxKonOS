@@ -360,6 +360,8 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 
 2026-11-10（MR-03 / MB-04）具名停止终态写入失败已实测原 Running 记录、故障代次隔离、停用门禁和启用重启后的原回执接续。[终态写入故障证据](../architecture/server-module-evidence/Proxy-Safety.md#具名停止终态写入失败的同代隔离)
 
+2026-11-10（MR-03 / MB-04）具名启动恢复查询拿到原回执后写回失败，原队列在释放恢复租约前隔离原代次。启用 Proxy 重启后按原 ID 只读完成对账，持续核对原 Mihomo 进程、配置身份和流量。[恢复写回故障证据](../architecture/server-module-evidence/Proxy-Safety.md#恢复查询终态写入失败的同代隔离)
+
 2026-11-08（MR-03 / MB-04）同次 SIGTERM 验证受管 TUN、系统代理 guard 与独立 sing-box 到期的原执行排空。重启保持 Mihomo 配置身份、原停止回执、guard 归属与 sing-box 到期回执。范围见[同次停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-与-proxy-安全责任同次停机)。
 
 2026-11-08（MR-03 / MB-04）管理模块停用计划和禁用启动读取已确认受管 TUN 的 Helper 原见证及当前归属。独立 Helper 不可用、漂移及无 Server 队列的原生待核验均保留准入门禁。保留数据移除的判定要求原移除见证和当前缺席。范围见[模块停用门禁](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-模块停用门禁)。
