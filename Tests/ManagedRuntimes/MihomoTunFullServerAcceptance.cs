@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
+using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.ManagedRuntimes;
@@ -15,6 +16,26 @@ using RelaxKonOS.Server.Privileged;
 [SupportedOSPlatform("linux")]
 internal static class MihomoTunFullServerAcceptance
 {
+    internal static async Task ProbeNamedStartRecoveryAsync(string root, string socket, Guid publicationId, Guid executionId)
+    {
+        RequirePrivateFixture(root);
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var store = new MihomoPublicationStore(new ProxyPlatformPaths(), ManagedServiceChecks.OpenProtection(root));
+        var published = (await store.ReadAsync(budget.Token)).Published;
+        if (published is null) throw new InvalidOperationException("The fixture requires its published configuration.");
+        await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(executionId, _ =>
+            Task.FromResult(new MihomoCurrentAuthorization(DateTimeOffset.UtcNow.AddMinutes(1), published)));
+        var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+        var result = await transport.ExecuteAsync(new(PrivilegedOperationKind.MihomoRuntimeTunStart, OperationId: executionId,
+            RuntimeLifecycle: new(Authorization: callback.Channel, MihomoTunPublicationId: publicationId)), budget.Token);
+        if (result is not { Success: true, OutputBase64: { } output }
+            || JsonSerializer.Deserialize<RuntimeSwitchResult>(Convert.FromBase64String(output)) is not
+                { Outcome: RuntimeSwitchOutcome.RecoveryRequired, ProblemCode: "runtime.network_dns_sender_unconfirmed" } receipt
+            || receipt.OperationId != executionId)
+            throw new InvalidOperationException($"The named TUN retry did not retain the sender gate: {result.Error}.");
+    }
+
     internal static async Task ProbeSquidReceiptReplayAsync(string root, string socket, Guid operationId, int port)
     {
         RequirePrivateFixture(root);
@@ -77,7 +98,8 @@ internal static class MihomoTunFullServerAcceptance
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
-            or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"))
+            or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"
+            or "named-start-cut"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
@@ -191,7 +213,7 @@ internal static class MihomoTunFullServerAcceptance
                 relay.ReleaseHeldResponse();
             }
             await exited;
-            if (phase == "zero-dns-publish" && server.ExitCode == 137) return;
+            if (phase is ("zero-dns-publish" or "named-start-cut") && server.ExitCode == 137) return;
             if (disabled && server.ExitCode != 0 && startupRefusal.Task.IsCompletedSuccessfully)
             {
                 await WriteMarkerAsync(root, "full-startup-refused", await startupRefusal.Task);

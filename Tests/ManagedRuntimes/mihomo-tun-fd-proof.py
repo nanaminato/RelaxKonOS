@@ -2067,6 +2067,7 @@ def proof_full_http_shutdown(ipc, case):
     initial_stop = replaced_stop or restored_replaced or job_replaced or job_cut or case == 'ipc-http-initial-stop'
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
+    named_dns = case == 'ipc-http-named-start-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
     assert mounts['/etc'] == 'overlay'
@@ -2801,6 +2802,82 @@ def proof_full_http_shutdown(ipc, case):
             print(f'PASS TUN NAMESPACE COOKIE: original={publication}; namespace={record["namespace"]}; '
                   f'original cookie={original_cookie}; foreign cookie={foreign_cookie}; '
                   'matching boot and namespace link did not authorize foreign ownership')
+
+    def verify_named_start_dns(pid, record, publication, stopped):
+        nonlocal worker, token
+        install_dns_ack_boundary()
+        key = 'full-start'
+        body = {'profileId': profile}
+        started = submit('enable', key, body)
+        assert started not in (publication, stopped)
+        until((root / 'dns-effect-ready').is_file, 'real DNS acknowledgement boundary')
+        directory = archive / 'operations' / started
+        effect = json.loads((directory / 'tun-4.json').read_bytes())
+        intent = effect['Intent']
+        assert uuid.UUID(intent['OperationId']).hex == started
+        assert intent['RoutingTable'] != record['routing_table']
+        current = dict(record, service=service_identity(), ifindex=effect['InterfaceIndex'],
+                       routing_table=intent['RoutingTable'], route=route(intent['RoutingTable']))
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            assert intent['NetworkNamespaceCookie'] == int.from_bytes(sock.getsockopt(socket.SOL_SOCKET, 71, 8), sys.byteorder) != 0
+        dns = resolver_snapshot()
+        native = archive / 'state' / 'archive-state.json'
+        ledger = native.read_bytes()
+        proof_files = ['tun-4.json', 'dns-steps-prepared.json', 'dns-step-1-exited.json',
+                       'dns-step-2-exited.json', 'dns-step-3-dispatched.json']
+        evidence = [(directory / name).read_bytes() for name in proof_files]
+        original = (archive / 'operations' / publication / 'tun-5.json').read_bytes()
+        sender = Path('/proc', (root / 'dns-effect-sender').read_text().strip())
+
+        def verify_native(phase):
+            assert native.read_bytes() == ledger
+            assert (archive / 'operations' / publication / 'tun-5.json').read_bytes() == original
+            assert [(directory / name).read_bytes() for name in proof_files] == evidence
+            assert not (directory / 'dns-senders-exited.json').exists() and not (directory / 'tun-5.json').exists()
+            assert (root / 'dns-write-attempts').read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains', 'SetLinkDNS']
+            assert config.read_bytes() == mirror.read_bytes() and resolver_snapshot() == dns
+            probe(current, 'named-start-' + phase)
+
+        assert sender.is_dir() and read(started)['state'] == 'running'
+        assert submit('enable', key, body) == started and leases() >= 1
+        verify_native('before')
+        launches = json.loads(ledger)['mihomoTunStarts']
+        assert len(launches) == 1 and uuid.UUID(launches[0]['operationId']).hex == started
+        assert uuid.UUID(launches[0]['publicationId']).hex == publication and not launches[0]['restart']
+        os.kill(pid, signal.SIGKILL)
+        assert worker.wait(timeout=8) == 0
+        ipc.stop_helper()
+
+        ipc.start_helper()
+        worker = launch('restart')
+        restart_pid = int(marker('full-server-pid'))
+        token = login()
+        until(lambda: not sender.exists(), 'original DNS sender exit')
+        waiting = read(started)
+        assert waiting['state'] == 'interrupted' and not waiting.get('completedAt')
+        assert waiting['stage'] == 'managed_tun_action'
+        assert submit('enable', key, body) == started and read(started) == waiting
+        status, blocked = request(api + '/tun/enable', token, 'named-start-new', body)
+        assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+        observed = json.loads(checkpoint(record, f'observe-action:{started}'))
+        action = observed['mihomoTunAction']
+        assert uuid.UUID(observed['pendingOperationId']).hex == started
+        assert uuid.UUID(action['operationId']).hex == started
+        assert uuid.UUID(action['publicationId']).hex == uuid.UUID(action['targetExecutionId']).hex == publication
+        assert action['action'] == 0 and action['outcome'] == 'RecoveryRequired', action
+        assert f'operation=MihomoRuntimeQuery id={uuid.UUID(started)} ' in ipc.log.read_text()
+        assert all(f'operation={verb} ' not in ipc.log.read_text()
+                   for verb in ('MihomoRuntimeConfigure', 'MihomoRuntimeRecover', 'MihomoRuntimeTunStart', 'MihomoRuntimeTunStop'))
+        command('/usr/bin/dotnet', record['fixture'], 'runtime-mihomo-tun-named-retry',
+                root, ipc.socket_path, publication, started)
+        assert read(publication)['state'] == read(stopped)['state'] == 'succeeded'
+        verify_native('after')
+        until(lambda: leases() == 0, 'read-only reconciliation work leases')
+        os.kill(restart_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        print(f'PASS TUN NAMED START DNS UNKNOWN: publication={publication}; stop={stopped}; start={started}; '
+              f'PID={current["service"][0]}; route table={intent["RoutingTable"]}; '
+              'one native start, three DNS writes, original gate retained', flush=True)
 
     def launch(phase):
         (root / 'full-server-pid').unlink(missing_ok=True)
@@ -3959,7 +4036,7 @@ with sqlite3.connect(sys.argv[1]) as database:
         audit = [json.loads(line) for line in queue.with_name('proxy-audit.jsonl').read_text().splitlines()]
         assert len([entry for entry in audit if entry['action'] == 'tun.disable' and entry['result'] == 'succeeded']) == 1
 
-        worker = launch('restart')
+        worker = launch('named-start-cut' if named_dns else 'restart')
         restart_pid = int(marker('full-server-pid'))
         assert restart_pid != pid and Path(f'/proc/{restart_pid}').stat().st_uid == ipc.uid
         token = login()
@@ -3968,6 +4045,9 @@ with sqlite3.connect(sys.argv[1]) as database:
         assert queue.read_bytes() == persisted and leases() == 0
         assert json.loads(checkpoint(record, f'observe-action:{stopped}'))['mihomoTunAction'] == stopped_receipt
         assert network_baseline() == record['baseline']
+        if named_dns:
+            verify_named_start_dns(restart_pid, record, publication, stopped)
+            return
         started = submit('enable', 'full-start', {'profileId': profile})
         until(lambda: terminal(started), 'named restart of the published configuration')
         effect = json.loads((operations / started / 'tun-5.json').read_text())
@@ -4155,7 +4235,7 @@ rules:
             ipc.start_helper()
             if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
-                        'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',
+                        'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown', 'ipc-http-named-start-dns',
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',

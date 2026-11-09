@@ -84,10 +84,9 @@ internal sealed partial class LinuxMihomoArchiveHost
             var baseline = preparedDns ?? await dns.CaptureAsync();
             dispatched = dispatched with { Phase = MihomoTunPhase.DnsDispatched, Dns = baseline };
             await checkpoint.AppendAsync(dispatched);
-            if (publication is not null)
-                await WriteUndeliveredCheckpointAsync(dispatched, "dns-steps-prepared", CancellationToken.None);
+            await WriteUndeliveredCheckpointAsync(dispatched, "dns-steps-prepared", CancellationToken.None);
             var dnsEffect = dispatched;
-            await dns.ApplyAsync(baseline, publication is null ? null : (step, exited) =>
+            await dns.ApplyAsync(baseline, (step, exited) =>
                 WriteUndeliveredCheckpointAsync(dnsEffect, DnsStepName(step, exited), CancellationToken.None));
             await dns.VerifyAsync(baseline, present: true);
             dispatched = dispatched with { Phase = MihomoTunPhase.DnsApplied };
@@ -217,6 +216,8 @@ internal sealed partial class LinuxMihomoArchiveHost
         var (registration, _, effect) = await ReadCommittedTunAsync(ownership, installation, executionId, ct);
         if (effect.Phase == MihomoTunPhase.DnsDispatched)
         {
+            if (await ReadSettledDnsWriteCountAsync(effect, ct) != LinuxMihomoTunDns.WriteCount)
+                Fail("network_dns_sender_unconfirmed");
             await ReconcileTunDnsAsync(executionId, ct);
             (_, _, effect) = await ReadCommittedTunAsync(ownership, installation, executionId, ct);
         }

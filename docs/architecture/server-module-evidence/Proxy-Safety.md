@@ -534,9 +534,25 @@ Helper 本地协议 `MihomoRuntimeTunStart` 与 `MihomoRuntimeTunRestart` 接收
 
 同批具名停止 `fbf10b2df6fc4c33a6ac120f03d5e19e`、提交态归属 `ee096044948e4de29209d34426e182d3`、完整补偿 `4be344a572a64c1aa458f3863027402c`、DNS 应答中断 `24bbd47a1977463db462e7b2c28615cc`、resolver 换代 `d90f74933bff4febac777d66465ac7e5` 均通过。六个专属 cgroup 已清理，宿主服务、代理和 resolver 文件指纹一致。最终归档 SHA-256 为 `a3c729b6e4b49b6a5629126dd39eef9d187818335a473e3f2d3772da6e3b0657`。日志为 `.artifacts/mb04-tun-marker-sync/committed-start-linux-final.log` 和 `.artifacts/mb04-tun-marker-sync/committed-start-windows-final.log`。
 
-**已实现但实机未验证。** 其他 Linux 架构、持久 AF_UNIX 通道，以及新执行单独发生 DNS 写入应答丢失时的联合启动对账。原配置事务的 DNS 应答中断路径单独回归。
+**已实现但实机未验证。** 其他 Linux 架构待验收。分进程 AF_UNIX 见后文，新执行 DNS 应答中断见下一节。
 
 **未实现或仍受门禁保护。** 提交后移除、公开发布、生产成功提交及公开入口工作租约待验收。已确认原进程退出和专属 cgroup 清理。对象释放、ALC 回收、隔离负载内存与生产内存收益未测量。Proxy 保持 resident。
+
+### 具名再启动的分流 DNS 应答未知
+
+**已实现且已验证。** 具名启动和重启复用原生 DNS 派发和发送端成功退出记录。恢复核验遇到 `DnsDispatched` 时，要求原执行的全部发送端已成功退出，再核对原 resolver 和原网络。证据不足返回 `runtime.network_dns_sender_unconfirmed`，不写入成功终态。
+
+Linux x64 私有 systemd 使用完整 PAM/JWT Server 和独立 Helper。原发布 `9b33ddaa048747c1b0069917fd4d286c` 经具名停止 `69348e8f8741479eb5fd578384857c93` 后，以 `cd673c66a48943af9ef2b296195b9395` 再启动。第三条真实 resolver 写入 `SetLinkDNS` 生效后，夹具截留原命令完成。原执行保留前两条退出和末条派发记录，无全部发送端退出见证或 `DnsApplied`。原 HTTP 操作仍运行且持有工作租约。中断 Server 与 Helper，原 DNS 发送端退出，Mihomo PID `944` 和专属路由表 `1224869478` 保持。
+
+重启后的完整 Server 通过原 ID 查询 Helper，同键保留 `interrupted / managed_tun_action` 与空完成时间，新键以 `proxy.operation_interrupted` 拒绝。用原发布材料经真实 Helper socket 重试同一执行，仍返回 `RecoveryRequired` 及原发送端诊断。原归档台账、发布见证及具名 DNS 检查点逐字节一致，只有一次具名启动和三条 DNS 写入。管理选路、配置与进程身份、resolver 设置、真实 HTTP 与分流 DNS 在中断前后均通过核对。重启只读核验的活动租约排空，未完成责任由持久门禁保护。
+
+Windows Release 激活及 38 项边界检查、Linux Release 构建通过。复验正常具名启动 `fb79ac1294cc4b17b8d36ee19f776fc1` 及原执行启动/重启矩阵。三场专属进程退出，cgroup 清理，宿主共享服务与代理和 resolver 文件指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-named-start-dns.log` 的 SHA-256 为 `cdff9af9cb198c6bc02bc8b293aa89b74a9bb9146602192de5e258f561fbfd55`，归档 SHA-256 为 `fb9fb1c1d9bec4625f94649abd1da7f85f39ca540c6b762033b471cdd1bb37ac`。
+
+首轮实机发现具名再启动缺少末条 DNS 派发记录，日志 `linux-named-start-dns-first.log`。补齐生产检查点后，第二轮在原动作回执的枚举编码断言失败，日志 `linux-named-start-dns-second.log`。按实际编码核验，并改用原生产发布材料经 Helper socket 验证重试后通过。两轮试跑的宿主指纹均一致。
+
+**已实现但实机未验证。** 整机掉电及其他架构需独立环境。对象释放、ALC 回收、隔离内存差值和生产内存收益未测量。
+
+**未实现或仍受门禁保护。** 待验证原发送端已全部确认退出而具名启动终态未保存时，完整 Server 能否接续并确认原回执。缺失发送端退出证据时继续保留门禁。整模块安全交接前 Proxy 保持 resident。
 
 ## MB-04 受管 TUN 提交后移除
 
