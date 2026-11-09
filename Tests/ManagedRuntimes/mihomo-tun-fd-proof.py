@@ -3697,17 +3697,18 @@ exec {shlex.quote(str(systemctl))} "$@"
         def unit_name(operation):
             return f'rk-mihomo-probe-{operation.hex}.service'
 
-        def start(operation):
+        def start(operation, exit_type='cgroup'):
             return subprocess.Popen(['/usr/bin/systemd-run', '--quiet', '--pipe', '--wait', '--collect', '--service-type=exec',
                                      '--unit=' + unit_name(operation), '--property=RuntimeMaxSec=25s',
                                      '--property=User=' + str(ipc.uid), '--property=NoNewPrivileges=yes',
                                      '--property=CapabilityBoundingSet=', '--property=KillMode=control-group',
+                                     '--property=ExitType=' + exit_type, '--property=Delegate=no', '--property=ProtectControlGroups=yes',
                                      '--property=RemainAfterExit=yes', '--property=WorkingDirectory=' + str(work),
                                      launcher, '--mihomo-version-worker', str(operation)],
                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
         def properties(operation):
-            return dict(line.split('=', 1) for line in service('show', '--property=MainPID,InvocationID,SubState',
+            return dict(line.split('=', 1) for line in service('show', '--property=MainPID,InvocationID,SubState,ExecMainCode,ExecMainStatus',
                                                                unit_name(operation)).splitlines())
 
         def witness(action, operation, uid=ipc.uid, identity=None):
@@ -3759,12 +3760,41 @@ exec {shlex.quote(str(systemctl))} "$@"
                 parent, descendant = map(int, witness_pids.read_text().split())
                 main_pid = int(owner['MainPID'])
                 assert int(Path(f'/proc/{parent}/stat').read_text().rsplit(')', 1)[1].split()[1]) == main_pid
-                runner.stdin.close()
-                runner.stdin = None
-                until(lambda: properties(witness_id).get('SubState') == 'exited', 'original fixed worker terminal')
+                # A separate child of the test driver is in the original unit but outside the worker's subreaper tree.
+                group = '/system.slice/' + unit_name(witness_id)
+                scope = Path('/sys/fs/cgroup' + group)
+                with subprocess.Popen(['/usr/bin/sleep', '20']) as remaining:
+                    descriptor = os.pidfd_open(remaining.pid)
+                    try:
+                        (scope / 'cgroup.procs').write_text(str(remaining.pid))
+                        assert Path(f'/proc/{remaining.pid}/cgroup').read_text().splitlines() == ['0::' + group]
+                        runner.stdin.close()
+                        runner.stdin = None
+                        until(lambda: all(not Path(f'/proc/{pid}').exists() for pid in (main_pid, parent, descendant)),
+                              'original worker exit with populated cgroup')
+                        until(lambda: properties(witness_id).get('ExecMainCode') == '1', 'PID 1 observes original worker exit')
+                        assert properties(witness_id).get('ExecMainStatus') == '0'
+                        assert remaining.poll() is None and 'populated 1' in (scope / 'cgroup.events').read_text().splitlines()
+                        assert properties(witness_id).get('SubState') != 'exited'
+                        assert witness('seal', witness_id).returncode == 75
+                        assert socket_witness('read', witness_id)['problemCode'] == 'RecoveryRequired'
+                        assert not (registry / (witness_id.hex + '.exit.json')).exists()
+                        print(f'PASS EXTERNAL VERSION CGROUP GATE: operation={witness_id}; worker exited; live original unit member blocked seal', flush=True)
+                    finally:
+                        if remaining.poll() is None:
+                            signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+                        os.close(descriptor)
+                        remaining.wait(timeout=5)
+                def scope_empty():
+                    try:
+                        return 'populated 0' in (scope / 'cgroup.events').read_text().splitlines()
+                    except FileNotFoundError:
+                        return properties(witness_id).get('SubState') == 'exited'
+                until(scope_empty, 'original cgroup drained')
+                manager_phase = properties(witness_id)['SubState']
                 assert socket_witness('read', witness_id)['problemCode'] == 'RecoveryRequired'
                 sealed = witness('seal', witness_id)
-                assert sealed.returncode == 0, sealed
+                assert sealed.returncode == 0, (sealed, properties(witness_id))
                 receipt = json.loads(sealed.stdout)
                 assert receipt['OperationId'] == str(witness_id) and receipt['Pid'] == main_pid
                 reply = socket_witness('read', witness_id)
@@ -3775,7 +3805,7 @@ exec {shlex.quote(str(systemctl))} "$@"
                 assert all(not Path(f'/proc/{pid}').exists() for pid in (main_pid, parent, descendant))
                 invocation = uuid.UUID(owner['InvocationID']).hex
                 print(f'PASS EXTERNAL VERSION REGISTERED WITNESS: operation={witness_id}; invocation={invocation}; '
-                      f'owner={main_pid}; exact native exit confirmed by original ID', flush=True)
+                      f'owner={main_pid}; managerSubState={manager_phase}; exact native exit confirmed by original ID', flush=True)
             finally:
                 service('stop', unit_name(witness_id))
                 runner.communicate(timeout=10)
@@ -3791,6 +3821,17 @@ exec {shlex.quote(str(systemctl))} "$@"
         print(f'PASS EXTERNAL VERSION SEALED WITNESS: operation={witness_id}; same receipt after native unit release and Helper restart', flush=True)
 
         witness_pids.unlink()
+        wrong_policy = uuid.uuid4()
+        with start(wrong_policy, exit_type='main') as runner:
+            try:
+                await_owner(wrong_policy, runner)
+                assert socket_witness('register', wrong_policy)['problemCode'] == 'RecoveryRequired'
+                assert not (registry / (wrong_policy.hex + '.json')).exists()
+            finally:
+                service('stop', unit_name(wrong_policy))
+                runner.communicate(timeout=10)
+        print(f'PASS EXTERNAL VERSION MAIN EXIT REFUSAL: operation={wrong_policy}; no cgroup ownership registration', flush=True)
+
         for terminate in (False, True):
             operation = uuid.uuid4()
             with start(operation) as runner:
@@ -5140,7 +5181,7 @@ exec {shlex.quote(str(systemctl))} "$@"
     first_worker = worker
     try:
         pid = int(marker('full-server-pid'))
-        assert Path(f'/proc/{pid}').stat().st_uid == ipc.uid
+        until(lambda: Path(f'/proc/{pid}').stat().st_uid == ipc.uid, 'non-root Server process identity')
         token = login()
         if quarantine:
             os.kill(pid, signal.SIGTERM)

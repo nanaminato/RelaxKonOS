@@ -16,6 +16,7 @@ internal static class LinuxMihomoProbeWitness
     internal const string WorkerArgument = "--mihomo-version-worker";
     private const string Worker = "/usr/local/lib/relaxkonos/privileged-helper/RelaxKonOS.PrivilegedHelper";
     private const string Root = "/var/lib/relaxkonos/mihomo-probe-witnesses";
+    private const string CgroupRoot = "/sys/fs/cgroup";
     private const UnixFileMode PrivateDirectory = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
     private const UnixFileMode PrivateFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
     private const UnixFileMode OtherWrite = UnixFileMode.GroupWrite | UnixFileMode.OtherWrite;
@@ -27,7 +28,7 @@ internal static class LinuxMihomoProbeWitness
     };
 
     private sealed record Dispatch(Guid OperationId, uint OwnerUid, Guid BootId, Guid InvocationId, int Pid,
-        ulong StartTicks, ulong StartedAt);
+        ulong StartTicks, ulong StartedAt, string ControlGroup, ulong ControlGroupInode, ulong ControlGroupMountId);
 
     internal static bool HardenWorker() =>
         new LinuxUnixSocketFileSystem().EffectiveUserId != 0
@@ -83,6 +84,7 @@ internal static class LinuxMihomoProbeWitness
             var registered = Read<Dispatch>(fileSystem, path);
             if (registered is null || registered.OperationId != id || registered.OwnerUid != owner
                 || registered.BootId != LinuxMihomoTunCheckpoint.BootId() || registered.InvocationId == Guid.Empty
+                || registered.ControlGroup != ControlGroup(id) || registered.ControlGroupInode == 0 || registered.ControlGroupMountId == 0
                 || registered.Pid <= 1 || registered.StartTicks == 0 || registered.StartedAt == 0
                 || registered.StartedAt > MonotonicMicroseconds())
                 return Unknown();
@@ -90,7 +92,7 @@ internal static class LinuxMihomoProbeWitness
             var terminalPath = Path.Combine(Root, id.ToString("N") + ".exit.json");
             if (action == "seal" && !Path.Exists(terminalPath))
             {
-                if (ReadStartTicks(registered.Pid) == registered.StartTicks || await ReadExitTimeAsync(registered) is not { } ended)
+                if (ReadStartTicks(registered.Pid) == registered.StartTicks || await ReadExitTimeAsync(fileSystem, registered) is not { } ended)
                     return Unknown();
                 WriteNew(terminalPath, new Terminal(registered, ended));
             }
@@ -147,7 +149,7 @@ internal static class LinuxMihomoProbeWitness
         for (var directory = Path.GetDirectoryName(Worker); directory is not null; directory = Path.GetDirectoryName(directory))
             RequireProtected(fileSystem, directory, directory: true);
         var state = await ReadStateAsync(id);
-        if (state.GetValueOrDefault("RemainAfterExit") != "yes"
+        if (!HasFixedScopePolicy(state) || state.GetValueOrDefault("ControlGroup") != ControlGroup(id)
             || state.GetValueOrDefault("MainPID") != state.GetValueOrDefault("ExecMainPID")
             || !int.TryParse(state.GetValueOrDefault("MainPID"), NumberStyles.None, CultureInfo.InvariantCulture, out var pid)
             || pid <= 1 || !Guid.TryParseExact(state.GetValueOrDefault("InvocationID"), "N", out var invocation)
@@ -156,12 +158,18 @@ internal static class LinuxMihomoProbeWitness
                 CultureInfo.InvariantCulture, out var started) || started == 0 || started > MonotonicMicroseconds())
             throw new IOException("The original version worker is unavailable.");
 
+        var group = ControlGroup(id);
+        var scope = ControlGroupDirectory(group);
+        if (fileSystem.Stat(scope) is not { IsDirectory: true, OwnerId: 0, Inode: > 0, MountId: > 0 } scopeStatus
+            || (scopeStatus.Mode & OtherWrite) != 0 || fileSystem.Stat(CgroupRoot)?.MountId != scopeStatus.MountId)
+            throw new IOException("The original probe cgroup identity is unavailable.");
         var ticks = ReadStartTicks(pid);
         var proc = $"/proc/{pid.ToString(CultureInfo.InvariantCulture)}";
         var status = File.ReadAllLines(proc + "/status");
         var uid = owner.ToString(CultureInfo.InvariantCulture);
         if (ticks is null || new FileInfo(proc + "/exe").LinkTarget != Worker
             || await File.ReadAllTextAsync(proc + "/cmdline") != $"{Worker}\0{WorkerArgument}\0{id:D}\0"
+            || !File.ReadLines(proc + "/cgroup").SequenceEqual([$"0::{group}"], StringComparer.Ordinal)
             || !status.Contains($"Uid:\t{uid}\t{uid}\t{uid}\t{uid}", StringComparer.Ordinal)
             || !status.Contains("NoNewPrivs:\t1", StringComparer.Ordinal)
             || !status.Contains("CapPrm:\t0000000000000000", StringComparer.Ordinal)
@@ -170,34 +178,65 @@ internal static class LinuxMihomoProbeWitness
 
         var observed = await ReadStateAsync(id);
         if (state.Count != observed.Count || state.Any(field => observed.GetValueOrDefault(field.Key) != field.Value)
-            || ReadStartTicks(pid) != ticks)
+            || ReadStartTicks(pid) != ticks || fileSystem.Stat(scope) != scopeStatus)
             throw new IOException("The original version worker changed during registration.");
-        return new(id, owner, LinuxMihomoTunCheckpoint.BootId(), invocation, pid, ticks.Value, started);
+        return new(id, owner, LinuxMihomoTunCheckpoint.BootId(), invocation, pid, ticks.Value, started, group, scopeStatus.Inode, scopeStatus.MountId);
     }
 
     private static async Task<Dictionary<string, string>> ReadStateAsync(Guid id)
     {
         var state = await NativeRuntimeProcess.RunAsync("/usr/bin/systemctl",
             ["show", "--property=ActiveState,SubState,RemainAfterExit,MainPID,ExecMainPID,InvocationID,"
+                + "Type,ExitType,ControlGroup,Delegate,ProtectControlGroups,KillMode,Restart,"
                 + "ExecMainStartTimestampMonotonic,ExecMainExitTimestampMonotonic,ExecMainCode,ExecMainStatus", "--", Unit(id)], 4096);
         return state.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Split('=', 2)).ToDictionary(fields => fields[0], fields => fields.Length == 2 ? fields[1] : "");
     }
 
-    private static async Task<ulong?> ReadExitTimeAsync(Dispatch dispatch)
+    private static async Task<ulong?> ReadExitTimeAsync(LinuxUnixSocketFileSystem fileSystem, Dispatch dispatch)
     {
         var state = await ReadStateAsync(dispatch.OperationId);
+        var phase = state.GetValueOrDefault("SubState");
+        var group = state.GetValueOrDefault("ControlGroup");
         // A service can be classified as successful after some signals. Require CLD_EXITED and exit code zero.
-        return state.GetValueOrDefault("RemainAfterExit") == "yes"
-            && state.GetValueOrDefault("ActiveState") == "active" && state.GetValueOrDefault("SubState") == "exited"
+        return HasFixedScopePolicy(state)
+            && state.GetValueOrDefault("ActiveState") == "active" && phase is ("running" or "exited")
+            && (group == dispatch.ControlGroup || (phase == "exited" && (group is null or "")))
             && state.GetValueOrDefault("MainPID") == "0" && state.GetValueOrDefault("ExecMainCode") == "1"
             && state.GetValueOrDefault("ExecMainStatus") == "0"
             && state.GetValueOrDefault("ExecMainPID") == dispatch.Pid.ToString(CultureInfo.InvariantCulture)
             && state.GetValueOrDefault("InvocationID") == dispatch.InvocationId.ToString("N")
             && state.GetValueOrDefault("ExecMainStartTimestampMonotonic") == dispatch.StartedAt.ToString(CultureInfo.InvariantCulture)
             && ulong.TryParse(state.GetValueOrDefault("ExecMainExitTimestampMonotonic"), NumberStyles.None,
-                CultureInfo.InvariantCulture, out var ended) && ended >= dispatch.StartedAt && ended <= MonotonicMicroseconds() ? ended : null;
+                CultureInfo.InvariantCulture, out var ended) && ended >= dispatch.StartedAt && ended <= MonotonicMicroseconds()
+            && IsOriginalScopeEmpty(fileSystem, dispatch, phase == "exited") ? ended : null;
     }
+
+    private static bool IsOriginalScopeEmpty(LinuxUnixSocketFileSystem fileSystem, Dispatch dispatch, bool managerExited)
+    {
+        if (fileSystem.Stat(CgroupRoot)?.MountId != dispatch.ControlGroupMountId) return false;
+        var scope = ControlGroupDirectory(dispatch.ControlGroup);
+        var observed = fileSystem.Stat(scope);
+        if (observed is null)
+        {
+            if (!managerExited) return false;
+            try { _ = File.GetAttributes(scope); return false; }
+            catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return true; }
+        }
+        if (observed is not { IsDirectory: true, OwnerId: 0 } status || status.Inode != dispatch.ControlGroupInode
+            || status.MountId != dispatch.ControlGroupMountId
+            || (status.Mode & OtherWrite) != 0)
+            return false;
+        var population = File.ReadLines(Path.Combine(scope, "cgroup.events"))
+            .Where(line => line.StartsWith("populated ", StringComparison.Ordinal));
+        return population.SequenceEqual(["populated 0"], StringComparer.Ordinal) && fileSystem.Stat(scope) == observed;
+    }
+
+    private static bool HasFixedScopePolicy(Dictionary<string, string> state) =>
+        state.GetValueOrDefault("Type") == "exec" && state.GetValueOrDefault("ExitType") == "cgroup"
+        && state.GetValueOrDefault("RemainAfterExit") == "yes" && state.GetValueOrDefault("Delegate") == "no"
+        && state.GetValueOrDefault("ProtectControlGroups") == "yes"
+        && state.GetValueOrDefault("KillMode") == "control-group" && state.GetValueOrDefault("Restart") == "no";
 
     private static ulong? ReadStartTicks(int pid)
     {
@@ -223,6 +262,8 @@ internal static class LinuxMihomoProbeWitness
     }
 
     private static string Unit(Guid id) => $"rk-mihomo-probe-{id:N}.service";
+    private static string ControlGroup(Guid id) => "/system.slice/" + Unit(id);
+    private static string ControlGroupDirectory(string group) => CgroupRoot + group;
     private static ulong MonotonicMicroseconds() => (ulong)((Int128)Stopwatch.GetTimestamp() * 1_000_000 / Stopwatch.Frequency);
 
     [DllImport("libc", EntryPoint = "prctl")]

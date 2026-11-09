@@ -51,7 +51,7 @@ public sealed record LinuxPrivilegedHelperConfiguration(
 
 /// <summary>Small stat view used to defend socket and configuration paths.</summary>
 internal readonly record struct UnixFileStatus(bool IsSocket, bool IsDirectory, bool IsSymbolicLink,
-    uint OwnerId, uint GroupId, UnixFileMode Mode);
+    uint OwnerId, uint GroupId, UnixFileMode Mode, ulong Inode = 0, ulong MountId = 0);
 
 /// <summary>
 /// Filesystem operations that must be testable without root. The Linux implementation uses statx so
@@ -75,6 +75,8 @@ internal sealed class LinuxUnixSocketFileSystem : IUnixSocketFileSystem
     private const uint StatxType = 0x1;
     private const uint StatxUid = 0x8;
     private const uint StatxGid = 0x10;
+    private const uint StatxIno = 0x100;
+    private const uint StatxMntId = 0x1000;
     private const ushort FileTypeMask = 0xF000;
     private const ushort SocketType = 0xC000;
     private const ushort DirectoryType = 0x4000;
@@ -86,11 +88,14 @@ internal sealed class LinuxUnixSocketFileSystem : IUnixSocketFileSystem
     public UnixFileStatus? Stat(string path)
     {
         var buffer = new byte[StatxBufferSize];
-        if (statx(AtFdcwd, path, AtSymlinkNoFollow, StatxType | StatxUid | StatxGid, buffer) != 0) return null;
+        if (statx(AtFdcwd, path, AtSymlinkNoFollow, StatxType | StatxUid | StatxGid | StatxIno | StatxMntId, buffer) != 0) return null;
         var mode = BitConverter.ToUInt16(buffer, 28);
         var type = (ushort)(mode & FileTypeMask);
+        var mask = BitConverter.ToUInt32(buffer, 0);
         return new UnixFileStatus(type == SocketType, type == DirectoryType, type == SymbolicLinkType,
-            BitConverter.ToUInt32(buffer, 20), BitConverter.ToUInt32(buffer, 24), (UnixFileMode)(mode & 0x0FFF));
+            BitConverter.ToUInt32(buffer, 20), BitConverter.ToUInt32(buffer, 24), (UnixFileMode)(mode & 0x0FFF),
+            (mask & StatxIno) != 0 ? BitConverter.ToUInt64(buffer, 32) : 0,
+            (mask & StatxMntId) != 0 ? BitConverter.ToUInt64(buffer, 144) : 0);
     }
 
     public void CreateDirectory(string path, UnixFileMode mode)

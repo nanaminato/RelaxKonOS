@@ -622,4 +622,17 @@ Linux 私有 systemd 经实际 AF_UNIX 以 Server 夹具账号登记操作 `188c
 
 首轮读回封存终态后，夹具只检查新 Helper 日志，导致原派发计数断言失败。改为跨代日志核对后，两条私有 systemd 用例通过。Windows Release 模块边界与 Unix socket 契约回归通过。Linux 最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-sealed-witness-final.log` SHA256 `2292bdb417f36589930c148a92c9a975726d54795b11cf609bd558801d8b7645`，归档 SHA256 `313e7f016aef1f00abcfeffc11cce6b46b08cb99487460df96085fca85578d12`。
 
-**仍待验收。** 生产 HTTP 派发、宿主自动封存、原单元进程范围的联合证明与原门禁对账仍待接入。当前只验证同一 boot 下原单元释放和 Helper 重启后的封存读取。Proxy 保持 resident，整模块对象释放、ALC 回收、隔离负载内存与生产收益独立待验。
+**仍待验收。** 生产 HTTP 派发、宿主自动封存与原门禁对账仍待接入。原单元进程范围的联合证明见下一节。当前只验证同一 boot 下原单元释放和 Helper 重启后的封存读取。Proxy 保持 resident，整模块对象释放、ALC 回收、隔离负载内存与生产收益独立待验。
+
+
+### 封存前的原探测 cgroup 排空门禁
+
+**已实现且已验证。** Helper 仅登记固定的非委派 cgroup v2 单元。原登记持久保存范围路径、inode 和挂载 ID。封存继续要求原 invocation、原 PID、启动时刻以及主进程正常退出和状态码 0。原范围仍存在时，复核同一挂载、inode 和内核 `cgroup.events` 的 `populated 0`。原范围已释放时，须能核对原挂载和原 invocation，且固定 cgroup 退出策略已报告单元退出。原记录缺范围身份、范围仍有进程或读取证据不明时保留门禁。[systemd 退出策略](https://github.com/systemd/systemd/blob/main/man/systemd.service.xml#L2656-L2676) [Linux cgroup v2 排空通知](https://docs.kernel.org/admin-guide/cgroup-v2.html#un-populated-notification)
+
+Linux 私有 systemd 登记原探测 `692e361b-e8c3-4462-a0da-bbc4f9c10a16`，原执行者 `2554`，原 invocation `8ab1ebb28fb442e8bd66718d6813d1ba`。夹具将一个不属于原执行者子树的独立进程放进同一原 cgroup。PID 1 确认原执行者正常退出，原子树已回收。独立进程仍存活且内核报告 `populated 1`，Helper 拒绝封存与读取，未写终态。夹具以 pidfd 清理该独立进程，原范围清空且管理器报告 `exited` 后按同一原 ID 封存。释放单元并重启 Helper 后读回同一记录。仅采用主进程退出策略的单元拒绝登记，未派发与信号退出仍无法封存。
+
+活跃 TUN `ebd32bbd143440f782b7fa217fd5aacb` 的原入站回执、配置身份、管理选路、真实 HTTP 与分流 DNS 保持。独立 TUN 补偿 `3c4604bfc93c4aa3a997993c4b737950` 按原作业 `39`、PID `510` 和 invocation `7e888ed5759443d791baa54f59fbefbe` 对账，租约排空且仅一次 StartUnit。两个专属 cgroup 均已清理，共享服务和网络文件指纹一致。Windows Release 模块边界与 Unix socket 契约回归通过。
+
+初次实机因夹具在 Server 启动窗口过早检查 UID 而退出。改为等待预期非 root UID 后，复验通过了范围仍有进程时的拒绝断言，但在观察窗口内未等到管理器更新为 `exited`。最终实现复核内核范围身份与排空，最终两个用例通过。Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-cgroup-drain.log` SHA256 `6b20a6d2b99410f164273edf5fb6fe3bc91ef5a329966133d8d6485130b73edc`，归档 SHA256 `f332a49920a551b962348f251319484865a95ad03b3db4711c484346b68befbd`。
+
+**仍待验收。** 生产 HTTP 派发、宿主自动封存和原门禁对账仍待接入。此轮分别确认原进程与范围退出。Proxy 保持 resident，整模块对象释放、ALC 回收、隔离负载内存及生产收益分别待验。
