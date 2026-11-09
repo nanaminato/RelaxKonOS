@@ -25,31 +25,19 @@ public sealed class MihomoEngine(
 
     internal static async Task<ProxyHealthDto> ProjectHealthAsync(IMihomoOverviewReader controller,
         ControllerResult<bool> reachable, ProxyRecoveryStatusDto recovery, CancellationToken cancellationToken)
+        => ProjectHealth(reachable, recovery, reachable.Succeeded && !recovery.RecoveryRequired
+            && await controller.GetTunEnabledAsync(cancellationToken) is { Succeeded: true, Value: true });
+
+    // Only an unfinished recovery marker takes precedence over live TUN observation.
+    internal static ProxyHealthDto ProjectHealth(ControllerResult<bool> reachable, ProxyRecoveryStatusDto recovery, bool tunEnabled)
     {
-        var tunState = await ObserveTunStateAsync(controller, reachable.Succeeded, recovery, cancellationToken);
+        var tunState = recovery.RecoveryRequired ? ProxyTunState.Recovering : tunEnabled ? ProxyTunState.Enabled : ProxyTunState.Disabled;
         if (recovery.RecoveryRequired)
             return new(reachable.Succeeded ? ProxyRuntimeState.Running : ProxyRuntimeState.Degraded, tunState,
                 ProxyHealthState.RecoveryRequired, reachable.Succeeded, reachable.Succeeded, false, ProxyProblemCodes.RecoveryRequired);
         return reachable.Succeeded
             ? new(ProxyRuntimeState.Running, tunState, ProxyHealthState.Healthy, true, true, true)
             : new(ProxyRuntimeState.Degraded, tunState, ProxyHealthState.Degraded, false, false, false, reachable.ProblemCode);
-    }
-
-    /// <summary>
-    /// TUN state is observed, never inferred.  The recovery marker only records that a session
-    /// was once verified, so deriving the state from it reported an active tunnel after the
-    /// runtime had been reconfigured (a settings write rewrites the configuration without going
-    /// through the TUN transaction).  The one exception is an unfinished transaction: that is a
-    /// state the operator must resolve, and there the marker is the authority rather than a report.
-    /// </summary>
-    private static async Task<ProxyTunState> ObserveTunStateAsync(IMihomoOverviewReader controller, bool controllerReachable, ProxyRecoveryStatusDto recovery,
-        CancellationToken cancellationToken)
-    {
-        if (recovery.RecoveryRequired) return ProxyTunState.Recovering;
-        // An unreachable engine cannot be carrying a tunnel, and its configuration cannot be read.
-        if (!controllerReachable) return ProxyTunState.Disabled;
-        var observation = await controller.GetTunEnabledAsync(cancellationToken);
-        return observation.Succeeded && observation.Value! ? ProxyTunState.Enabled : ProxyTunState.Disabled;
     }
 
     public Task<string?> ValidateConfigurationAsync(string configurationPath, CancellationToken cancellationToken) => validator.ValidateAsync(configurationPath, cancellationToken);

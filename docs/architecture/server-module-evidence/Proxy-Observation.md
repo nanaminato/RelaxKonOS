@@ -487,3 +487,17 @@ Linux 受管 Mihomo Release 全量通过 180 项。实际概览读取原活动�
 **已实现但实机未验证。** 本轮确认概览的根引用边界和专属进程退出。概览对象 GC、整模块 ALC 回收、隔离负载内存差值及生产收益仍分别待测。
 
 **未实现或仍受门禁保护。** 概览执行器仍位于 Server 程序集，采样借用 Host 作用域。跨程序集的可回收边界和整模块安全交接仍开放。Proxy 保持 resident。
+
+### 概览与连接读取共享可回收代码
+
+**已实现且已验证。** 概览采样把档案、恢复状态、运行时及控制器只读观测编排迁入独立 Proxy 执行程序集。程序集仅依赖共享契约与框架，跨边界传回调和读取结果。Host 继续持有活动档案、恢复台账、控制器作用域和协议 DTO。概览和连接解析共用代码代次、30 秒闲置窗口及未回收代次上限。概览先取得作用域内的代码租约，待读取依赖完成清理后释放。HTTP 响应租约独立覆盖实际响应。
+
+Windows Release 控制器、Proxy 核心安全和模块里程碑均通过，包含真实 Kestrel 并发采样、取消和作用域排空。模块日志 `.artifacts/mb04-tun-full-zero-dns/windows-overview-code-module-boundary-milestones.log` 的 SHA-256 为 `5f2e7a33ec7119e5bb3952566cb3ab688baa33d9cbe318c5a6e44acca37d71d8`。
+
+Linux 私有 systemd 在活跃 TUN 下通过概览与真实下载。Squid 原发布 `153cf90e-3118-4fe1-970d-bcb80d98f957` 写回故障时保留原队列门禁，Core guard 与受管 TUN 实际流量继续。独立用例的具名启动 `f9730a663ff7425aa5890365a6f172e5` 丢失原终帧及首次查询应答，两项租约及新键门禁通过。原发布、停止和启动各派发一次。按原 ID 恢复后，同键终态、管理选路、原生检查点、配置身份和 Mihomo PID `942` 跨 Server 重启保持，真实上游 HTTP 和分流 DNS 通过。专属进程及 cgroup 退出，宿主服务、代理及 resolver 指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-overview-code-tun.log` 的 SHA-256 为 `e5c4a58d9e2e67724e22ecae5bd0dc647d40ea14458ac6ba8df748e72f033ace`，归档为 `50148d907f1d3790f7f6aa824aa1858bda321a34c6a934735849e516b803e3d2`。
+
+Linux 受管 Mihomo Release 全量通过 180 项。Server 保留原概览和连接 DTO 后，旧共享代码代次经闲置释放及测试 GC 的弱引用检查确认回收。下一次真实连接读取唤醒新代码代次。原生恢复用例 `6d8205ea-bb7f-4495-9535-f9bac2a34c3e` 通过四类共享读取及独立取消，原连接 `31f16515-2b9d-4e98-aca6-5e7d47626f59` 及实际转发持续。原发布恢复 `885ffadf-c0f9-4359-a337-9b5e0491644f` 排空原 Helper 回执和作用域。日志 `.artifacts/mb04-tun-full-zero-dns/linux-overview-code-managed.log` 的 SHA-256 为 `aad5f13acc5291b3fdfaaff43ef47c75c1d5f769dcd9a07052c4a46c598af387`，归档为 `daad08960f3ba2140ae1a186d3fbe8b09dd65bb791b39e8f34835c665276cb1b`。
+
+**已实现但实机未验证。** 共享读取 ALC 回收及专属进程退出分别通过。驻留 Proxy 对象的回收、读取异常和清理故障下共享代码的释放证据、隔离负载内存差值及生产收益分别待核对。
+
+**未实现或仍受门禁保护。** 整模块安全交接仍开放。Proxy 保持 resident。

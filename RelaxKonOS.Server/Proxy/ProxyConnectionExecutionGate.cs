@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace RelaxKonOS.Server.Proxy;
 
-/// <summary>One reusable parser generation, kept alive through the actual response read and pipe cleanup.</summary>
+/// <summary>One reusable read generation for the connection parser and the overview executor.</summary>
 internal sealed class ProxyConnectionExecutionGate
 {
     internal static ProxyConnectionExecutionGate Shared { get; } = new(TimeSpan.FromSeconds(30));
@@ -36,6 +36,8 @@ internal sealed class ProxyConnectionExecutionGate
     {
         get { lock (gate) return current?.Code; }
     }
+
+    internal OverviewCode AcquireOverview() => new(this, Acquire().Overview);
 
     internal async Task<int> ReadAsync(Stream stream, Action<ProxyConnectionSnapshotEntry>? project, CancellationToken ct) =>
         (await ReadSnapshotAsync(stream, project, statisticsOnly: false, ct)).Count;
@@ -101,9 +103,11 @@ internal sealed class ProxyConnectionExecutionGate
                 generations.Add(code);
                 try
                 {
-                    var reader = context.LoadFromAssemblyPath(ProxyExecutionLoadContext.BundledAssemblyPath())
-                        .GetType("RelaxKonOS.Server.Proxy.Mihomo.MihomoConnectionSnapshotReader", throwOnError: true)!;
-                    current = new Generation(context, reader, code);
+                    var assembly = context.LoadFromAssemblyPath(ProxyExecutionLoadContext.BundledAssemblyPath());
+                    var reader = assembly.GetType("RelaxKonOS.Server.Proxy.Mihomo.MihomoConnectionSnapshotReader", throwOnError: true)!;
+                    var overview = (IProxyOverviewExecutor)Activator.CreateInstance(
+                        assembly.GetType("RelaxKonOS.Server.Proxy.ProxyOverviewExecutor", throwOnError: true)!)!;
+                    current = new Generation(context, reader, overview, code);
                 }
                 catch (Exception)
                 {
@@ -154,5 +158,18 @@ internal sealed class ProxyConnectionExecutionGate
         catch (Exception) { throw new JsonException("Invalid Proxy connection snapshot."); }
     }
 
-    private sealed record Generation(ProxyExecutionLoadContext Context, Type Reader, WeakReference Code);
+    internal sealed class OverviewCode(ProxyConnectionExecutionGate gate, IProxyOverviewExecutor executor) : IDisposable
+    {
+        private IProxyOverviewExecutor? execution = executor;
+
+        internal Task<ProxyOverviewReadout> ReadAsync(ProxyOverviewReads reads, CancellationToken ct) =>
+            (execution ?? throw new ObjectDisposedException(nameof(OverviewCode))).ReadAsync(reads, ct);
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref execution, null) is not null) gate.Release();
+        }
+    }
+
+    private sealed record Generation(ProxyExecutionLoadContext Context, Type Reader, IProxyOverviewExecutor Overview, WeakReference Code);
 }

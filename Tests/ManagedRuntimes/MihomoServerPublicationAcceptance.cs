@@ -195,9 +195,13 @@ internal static class MihomoServerPublicationAcceptance
                 Task<MihomoRuntimeObservation> ObserveRuntimeAsync(CancellationToken ct) => manager.GetObservedAsync(controller.IsReachableAsync, ct);
                 var overview = new ProxyOverviewService(ObserveRuntimeAsync);
                 var platform = new ProxyPlatformService(systemProxy);
-                Task<ProxyOverviewDto> ReadOverviewAsync(CancellationToken ct) =>
-                    overview.GetAsync(controller, platform, publicationProfiles.GetActiveAsync, recovery, ct);
+                async Task<ProxyOverviewDto> ReadOverviewAsync(CancellationToken ct)
+                {
+                    using var code = ProxyConnectionExecutionGate.Shared.AcquireOverview();
+                    return await overview.GetAsync(code, controller, platform, publicationProfiles.GetActiveAsync, recovery, ct);
+                }
                 IReadOnlyList<ProxyConnectionDto>? retainedConnections = null;
+                ProxyOverviewDto? retainedOverview = null;
                 Check(await probeWithConnection(originalPort + 2, async () =>
                 {
                     var observation = await ReadOverviewAsync(default);
@@ -208,6 +212,7 @@ internal static class MihomoServerPublicationAcceptance
                         || observation.Health.State != ProxyHealthState.Healthy)
                         throw new InvalidOperationException("Overview must read the original active profile and count the real held proxy connection.");
                     retainedConnections = detail.Value;
+                    retainedOverview = observation;
                 }) && transport.ConfigureCalls == beforeProfileRecovery,
                     "Overview observes real forwarding without invoking publication.");
                 Console.WriteLine("PASS MIHOMO SCOPED OVERVIEW: real held connection counted and original profile observed");
@@ -224,10 +229,12 @@ internal static class MihomoServerPublicationAcceptance
                     GC.Collect();
                     await Task.Delay(20, parserBudget.Token);
                 }
-                Check(!originalParser.IsAlive && retainedConnections is { Count: > 0 }
+                Check(!originalParser.IsAlive && retainedOverview is { ActiveConnections: > 0 }
+                    && retainedOverview.ActiveProfile?.Id == nextProfile.Id && retainedConnections is { Count: > 0 }
                     && !string.IsNullOrEmpty(retainedConnections[0].Id) && await probe(originalPort + 2),
                     "Idle parser and projection code must collect while the Server retains projected values and native forwarding continues.");
                 Console.WriteLine("PASS MIHOMO RETAINED CONNECTION PROJECTION: Server kept real connection DTOs while the old generation collected");
+                Console.WriteLine("PASS MIHOMO RETAINED OVERVIEW PROJECTION: Server kept the overview DTO while shared read code collected");
                 Check(await probeWithConnection(originalPort + 2, async () =>
                 {
                     var observation = await ReadOverviewAsync(parserBudget.Token);
