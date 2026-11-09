@@ -1073,9 +1073,23 @@ Linux Release 构建、Windows Release 的 38 项 TUN 边界和模块边界回�
 
 Linux Release 构建、Windows Release 的 31 项 Proxy 驻留、38 项 TUN 边界与模块边界回归通过。首轮把新键的 400 错判为同键的 503，按两个实际契约分别断言后复验通过。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-cleanup-fault.log` SHA-256 为 `54f1e86b1ae8e025cbeba026b9169313ddac27813fd59d10b66485d42fb97f39`，归档为 `0750e0e86b731d0d49e29d6930f00e686c5afe277bc319852081b92796b4346a`。两次专属 cgroup 已清理，宿主服务、代理、resolver 和账号指纹一致。
 
-**已实现但实机未验证。** 本轮确认故障进程退出及原回执接续。终态写入失败后的同代隔离另行实测。对象释放、ALC 回收、隔离负载内存及生产收益分别待测。
+**已实现但实机未验证。** 本轮确认故障进程退出及原回执接续。终态写入失败后的同代隔离见下一节。对象释放、ALC 回收、隔离负载内存及生产收益分别待测。
 
 **未实现或仍受门禁保护。** 缺失可信原回执继续保护原操作。整模块动态驻留尚未验收，Proxy 保持 resident。
+
+### 具名停止终态写入失败的同代隔离
+
+**已实现且已验证。** 2026-11-10 在 Linux x64 私有 systemd 中，完整 Server 受理具名停止 `ee59d917912e4ce39ded5538b48b7b34`，Helper 持久化绑定原发布及目标执行 `e3edea2e519e405f99189162d28aa520` 的成功回执。实测原进程退出、设备移除和管理选路恢复基线。夹具在放行异步释放前占住队列原子替换的 `proxy-operations.json.new` 路径。释放完成后，生产持久化及其错误处理写入均返回访问拒绝，原队列仍以相同字节保留 Running 记录。日志中的业务执行完成发生在终态落盘之前。
+
+解除写入阻断后，原 Server 的 Proxy 仍为 `Faulted / module-recovery-blocked`，进程代次和释放时间保持。同键返回 503，新键返回 `proxy.operation_interrupted`，停用预览和故障前生成的计划应用均保留门禁。终止该进程后，禁用 Proxy 的启动仍被拒绝，诊断指向原停止 ID。启用重启后原队列按原 ID 只读查询一次，持久化成功终态。同键和原 ID 返回同一回执，Helper 原生台账保持，租约归零。
+
+全过程一次停止派发、一次原规则删除。重新启用 `f58cd574e2f344e2831c600d3a818109` 后，原配置摘要 `d4ec8ac448ccb72fc583818419ab863d1cdc76abc6f5146f78a95f92cf4ce79f`、管理选路、真实上游 HTTP 与分流 DNS 再次通过。Linux Release 构建和 Windows Release 的 31 项 Proxy 驻留、38 项 TUN 边界及模块边界回归通过。专属进程和 cgroup 已清理，宿主服务、代理、resolver 和账号指纹一致。
+
+实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-terminal-fault.log` SHA-256 为 `cd3ca850081a6773b1c5cc051875ff4a02ed24eaa779a7d95a43f3081711b251`，运行归档为 `55566d0a2bdcca06a88c1d0ee0137aa0425aad4b2cd9a3b114ea487f3afa50eb`。
+
+**已实现但实机未验证。** 本次验证原变更任务的终态写入故障，恢复查询写入终态时的失败窗口仍待核对。对象释放、ALC 回收、隔离负载内存和生产收益分别待测。
+
+**未实现或仍受门禁保护。** 缺失可信回执继续保留原准入。整模块安全交接独立验收，Proxy 保持 resident。
 
 ## MB-04 受管 TUN 与 Proxy 安全责任同次停机
 
