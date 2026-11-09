@@ -38,7 +38,7 @@ internal static class SquidPackageReceiptAcceptance
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly, relay?.Path ?? socket, root,
             reuse: recovering, seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://127.0.0.1:18972";
-        if (phase.StartsWith("native-", StringComparison.Ordinal) || fixturePhase == "recovery-cut"
+        if (phase.StartsWith("native-", StringComparison.Ordinal) || fixturePhase.StartsWith("recovery-cut", StringComparison.Ordinal)
             || fixturePhase.StartsWith("reply-drop", StringComparison.Ordinal))
             start.Environment["Modules__Proxy__Enabled"] = "true";
         start.Environment["Identity__LinuxPamTransport"] = "helper";

@@ -120,7 +120,7 @@ Linux 专属 systemd 分别验证五类真实服务动作。每次在 Helper 终
 
 ### 软件包实机准入
 
-现有 Squid 夹具隔离 systemd、网络、`/var/lib`、`/run` 和配置目录，`/usr` 的系统包目标仍共享。真实 APT 生命周期需要专属可写根文件系统、独立 APT 与 dpkg 台账和固定可验证制品。在同一原队列 ID 与可信原生终态绑定完成后，先在该环境验证派发、应答中断和原回执。软件包变更、未知原终态的人工确证、整机掉电及整模块安全交接继续开放，Proxy 保持 resident。
+Squid 配置夹具的 `/usr` 与宿主共享，真实 APT 生命周期使用独立的软件包夹具。该夹具须通过专属可写覆盖根、独立 APT 与 dpkg 台账以及固定可信制品预检，才能按同一原队列 ID 核对包终态和派发次数。未知原终态的人工确证、整机掉电及整模块安全交接继续开放。Proxy 保持 resident。
 
 ### 固定 Squid 包升级的原回执
 
@@ -183,6 +183,25 @@ Windows Release Squid 与组件回归、Linux Release 构建及专属 systemd �
 **已实现但实机未验证。** 其余平台和整机掉电需独立环境。该执行图验证 Core 安装台账的所有权及启动准入，未计量 Proxy 对象释放、ALC 回收、隔离负载内存差值或生产收益。
 
 **未实现或仍受门禁保护。** 原生终态缺失时，沿用原包待核验和准入门禁。人工确证需要可信原生终态与原 ID 绑定。整模块交接仍待验收，Proxy 保持 resident。
+
+#### 首次安装与保留数据卸载的恢复查询再次中断
+
+**已实现且已验证。** 2026-11-10 在既有 Ubuntu 26.04 amd64 测试机重新验证专属可写 overlay、独立 APT/dpkg 台账和固定 Ubuntu 签名制品。专属 `/usr` 写入没有进入宿主，APT 模拟只变更 Squid。预检日志 `.artifacts/mb04-squid-package/isolation-recheck-current.log` 的 SHA-256 为 `4b77772e311d0403518bfff80a89e4a5b87bfa6624452822a7adbccf1e440312`。
+
+完整 PAM/JWT Server 和 Proxy 在三代均启用。Helper 完成真实包变更并持久化原回执后，中继扣住首次应答，原 ID 和同键仍返回 Running。第二代只查询原 ID，中继再次截留已提交回执，Core 原台账字节保持且 HTTP 未开放。第三代再次按原 ID 只读核验包身份，写入唯一一条 `recovered` 事件，随后 HTTP 按原 ID 和同键返回相同 `succeeded`。两条路径各一次包派发、两次原 ID 查询和一次实际 dpkg 变更，Helper 回执与 APT/dpkg 台账均逐字节保持。
+
+| 动作 | 原安装台账 ID | 原生效果 |
+| --- | --- | --- |
+| 保留数据卸载 | `887963f8-9ae8-403f-b2b3-0b7b810ddbd9` | 原 `7.2-2ubuntu2.2` 包进入 `config-files`，二进制消失，配置和数据探针字节保持，只有一次 remove |
+| 首次安装 | `e6d33d97-15b3-41df-8913-2ef4d69750b4` | 固定 `7.7-0ubuntu0.26.04.2` 只下载一次，原回执的程序摘要与包身份相符，Squid 活跃并监听 |
+
+卸载日志 `.artifacts/mb04-squid-package/linux-query-cut-uninstall-final.log` 的 SHA-256 为 `645e5bacd8fc6430c960ca51dbc16a24c05b089fe9b972cb97c4a79265bb33a1`，归档为 `7e2165410feca20eb2b6be9386f4c24b5bcc594e018af3e24de20172326f6b65`。首次安装日志 `.artifacts/mb04-squid-package/linux-query-cut-install-final.log` 的 SHA-256 为 `f46c90be07091475aa017fbd123cdd89632a636b4f6d4687f334e8eb14b0d43c`，归档为 `175b2eed3357e25c9648cafbf6fa4063e689e899a8d687fb9a8b3ef718a071f1`。日志保留各原 Helper 回执、原 Core 台账及 dpkg 台账摘要。
+
+Linux Release 夹具构建及 Windows Release 的 Squid、组件和模块边界回归通过。初次卸载夹具漏开 Proxy，修正后复跑并核对首末两代管理入口。Windows 受限回归的回环连接被拒绝，开放本地测试回环后通过。专属进程、根和 cgroup 清理通过，宿主 Squid 程序、APT/dpkg 台账、配置、账户文件及共享服务指纹一致。
+
+**已实现但实机未验证。** 整机掉电及其他平台需要独立环境。本节验证进程退出。对象释放、ALC 回收、隔离负载内存差值和生产收益均未测量。
+
+**未实现或仍受门禁保护。** 缺失可信原终态的人工确证和整模块动态驻留仍开放。Proxy 保持 resident。
 
 ### Server 存活时丢失软件包终帧
 
