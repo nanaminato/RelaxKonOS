@@ -160,7 +160,7 @@ Linux x64 Release 以私有网络、挂载及 PID 命名空间启动完整 Syste
 
 等待期间 HostedService 不解析续期扫描执行图。到期先取得原模块工作租约，再创建执行作用域。扫描取消或失败时保留原扫描，作用域清理完成后才持久化完成和下次到期时间。Core TLS 选择器、证书材料与 Nginx WebRoot 职责仍由原服务持有。
 
-Linux x64 Release 私有 Pebble 中，原续期进程在 CA 已签发、原操作已准入但尚未关联扫描时被终止。生产续期执行作用域接续扫描 `4ca2be2e-39ad-4840-8043-4f6e4fc865d3`，从原台账补回 `ef1056c8-1579-495f-b342-0b1a70cbe815` 并持久化下次到期时间。测试作用域在清理时验证扫描仍开放、工作租约仍有效。原 CA 订单只读返回 valid，原本地中断回执保持。整组七张订单、四次签发提交，恢复零新增。日志为 .artifacts/mb05-cert-schedule-live.log，归档 SHA-256 为 370623bf9106342f41dfa7d2d70a2d88ed73c974b424b1bf0f02dd1aab287d0b。Windows Release 模块边界通过，覆盖跨日原扫描、原准入键、重复关联与拒绝去重、重启后的下次到期。完整 Server 自然计时触发和宿主停机联合实测仍开放。证书模块继续 resident，独立执行程序集及生产内存测量仍开放。
+Linux x64 Release 私有 Pebble 中，原续期进程在 CA 已签发、原操作已准入但尚未关联扫描时被终止。生产续期执行作用域接续扫描 `4ca2be2e-39ad-4840-8043-4f6e4fc865d3`，从原台账补回 `ef1056c8-1579-495f-b342-0b1a70cbe815` 并持久化下次到期时间。测试作用域在清理时验证扫描仍开放、工作租约仍有效。原 CA 订单只读返回 valid，原本地中断回执保持。整组七张订单、四次签发提交，恢复零新增。日志为 .artifacts/mb05-cert-schedule-live.log，归档 SHA-256 为 370623bf9106342f41dfa7d2d70a2d88ed73c974b424b1bf0f02dd1aab287d0b。Windows Release 模块边界通过，覆盖跨日原扫描、原准入键、重复关联与拒绝去重、重启后的下次到期。后续完整 Server 的自然计时、SIGTERM 排空与认证取消已通过，分别见[停机原回执](Milestones.md#mb-05-完整-server-自然续期与停机排空)及[取消原回执](Milestones.md#mb-05-完整-server-自然续期的认证取消)。证书模块继续 resident，独立执行程序集及生产内存测量仍开放。
 
 ## MB-05 ACME 原订单观察的 HTTP 工作责任
 

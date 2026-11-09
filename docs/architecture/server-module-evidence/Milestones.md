@@ -185,6 +185,6 @@ TLS 中继收到实际 CA 挑战响应 200 后保留响应。Server 接收 SIGTE
 
 沿用短期证书、生产自动扫描和独立 Nginx/Pebble 的 Linux Release 夹具。真实 CA 挑战响应 200 被中继暂缓时，匿名取消返回 401，认证取消返回原 `Running / cancel-requested`，重新读取原回执与磁盘均确认操作仍在途，挑战文件仍保留。释放响应后写入原 Cancelled，挑战清理，重复取消返回相同终态。重启重新登录后，读取及重复取消仍返回相同回执，原 CA 订单只读返回 `ready`，生产 Worker 延用原下次到期时间，扫描台账字节和活动证书指纹一致。未跨越下一次实际日扫描。
 
-取消扫描 `126f084a-6176-40ef-9233-168d17f519a0` 的原续期为 `6db6e593-48c5-4ea6-9dfe-6d139b157f9e`。SIGTERM 对照扫描 `da76552f-4183-43f0-9eee-74add6eb5a2e` 的原续期为 `e5256887-2dd9-483f-94b8-098c4c493323`。两轮各两张预期订单、一次签发提交，取消、查询与重启零新增。宿主 Nginx、Docker PID 及代理环境和 Nginx 配置指纹一致。
+取消扫描 `126f084a-6176-40ef-9233-168d17f519a0` 的原续期为 `6db6e593-48c5-4ea6-9dfe-6d139b157f9e`。SIGTERM 对照扫描 `da76552f-4183-43e8-9eee-74add6eb5a2e` 的原续期为 `e5256887-2dd9-483f-94b8-098c4c493323`。两轮各两张预期订单、一次签发提交，取消、查询与重启零新增。宿主 Nginx、Docker PID 及代理环境和 Nginx 配置指纹一致。
 
 日志为 `.artifacts/mb05-natural-renewal-cancel-final-schedule-cancel.log` 和 `.artifacts/mb05-natural-renewal-cancel-final-schedule.log`。归档 SHA-256 分别为 `e9f821a67256fde1807d26807b509f4ba6ee4649ad915cd1a5a7cbea5733c3c1` 和 `58af974738dcc21117bdec6b127811d88eeaef83e6f245c1d2659c132f8314d7`。首轮旧 Server 制品未通过取消后查询原 CA 订单，最终使用含 `9b8764db` 的制品通过。证书保持 resident。
