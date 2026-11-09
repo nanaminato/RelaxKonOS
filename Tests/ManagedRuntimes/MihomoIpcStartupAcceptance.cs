@@ -420,11 +420,16 @@ internal static class MihomoIpcStartupAcceptance
                     originalReceipt = receipt;
                     nativeRevision = applied.Installation.StateRevision;
                     nativePid = await ReadRuntimePidAsync();
+                    var originalOwner = (await client.GetFromJsonAsync<ServerModuleDto>(ServerApiRoutes.Modules + "/relaxkonos.proxy",
+                        RelaxKonOSJsonOptions.Default, ct))?.Residency;
+                    if (originalOwner is not { ActiveLeases: 1 })
+                        throw new InvalidOperationException("The original write did not hold exactly one generation-bound work lease.");
                     caller.Cancel();
                     try { using var unexpected = await write; throw new InvalidOperationException("Expected the original caller to disconnect."); }
                     catch (OperationCanceledException) when (caller.IsCancellationRequested) { }
                     var module = await client.GetFromJsonAsync<ServerModuleDto>(ServerApiRoutes.Modules + "/relaxkonos.proxy", RelaxKonOSJsonOptions.Default, ct);
-                    if (module?.Residency?.ActiveLeases != 1 || (await startupStore.ReadAsync(ct)).Pending?.OperationId != operation
+                    if (module?.Residency is not { ActiveLeases: 1 } owner || owner.State != originalOwner.State
+                        || (await startupStore.ReadAsync(ct)).Pending?.OperationId != operation
                         || await new ProxySettingsReader(tunPaths).GetAsync(ct) != previous
                         || (profileRoute is not null && await ReadProfileAsync(client) != profile))
                         throw new InvalidOperationException("HTTP disconnect released the write lease or changed the pending application state.");

@@ -125,8 +125,8 @@ public static class ProxyEndpoints
 
     internal static void MapProxySettingsUpdateEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut(ProxyApiRoutes.Settings, (UpdateProxySettingsRequest request, HttpContext context, IResidentModuleWorkLeaseSource leases) =>
-            ExecuteScopedAsync(context, leases, async (services, ct) =>
+        app.MapPut(ProxyApiRoutes.Settings, (UpdateProxySettingsRequest request, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyWriteScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
             {
                 var problem = await services.GetRequiredService<IProxySettingsWriter>().UpdateAsync(request, ct);
                 await services.GetRequiredService<ProxyAuditStore>().RecordAsync(Actor(context.User), "settings.update",
@@ -137,8 +137,8 @@ public static class ProxyEndpoints
 
     internal static void MapProxyProfilePublicationEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost(Route(ProxyApiRoutes.ProfileActivatePattern), (Guid profileId, HttpContext context, IResidentModuleWorkLeaseSource leases) =>
-            ExecuteScopedAsync(context, leases, async (services, ct) =>
+        app.MapPost(Route(ProxyApiRoutes.ProfileActivatePattern), (Guid profileId, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyWriteScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
             {
                 var problem = await services.GetRequiredService<IProxyConfigurationTransactionService>().ActivateStoredAsync(profileId, ct);
                 await services.GetRequiredService<ProxyAuditStore>().RecordAsync(Actor(context.User), "profile.activate",
@@ -147,7 +147,7 @@ public static class ProxyEndpoints
                     : Problem(problem, StatusCodes.Status400BadRequest);
             })).RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapPost(Route(ProxyApiRoutes.ProfileConfigurationApplyPattern), (Guid profileId, ApplyProxyConfigurationRequest request,
-            HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteScopedAsync(context, leases, async (services, ct) =>
+            HttpContext context, ModuleResidencyCoordinator coordinator) => ProxyWriteScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
             {
                 var problem = await services.GetRequiredService<IProxyConfigurationTransactionService>().ApplyAsync(profileId, request.Yaml, ct);
                 await services.GetRequiredService<ProxyAuditStore>().RecordAsync(Actor(context.User), "profile.configuration.apply",

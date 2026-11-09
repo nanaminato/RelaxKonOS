@@ -332,6 +332,7 @@ internal static class ProxyObservationLeaseChecks
                 coordinator.Release(ServerModules.ProxyId, backgroundWork: true);
         }
         Console.WriteLine("PASS PROXY OBSERVATION HTTP DRAIN: runtime, groups, controller configuration, connections, traffic and logs preserve authorization, cancellation, response and cleanup");
+        await VerifyWriteCleanupAsync();
 
         bool HasLease() => coordinator.HasBackgroundWork(ServerModules.ProxyId);
 
@@ -366,7 +367,8 @@ internal static class ProxyObservationLeaseChecks
                         scenario.ReleaseController.TrySetResult();
                         scenario.ReleaseResponse.TrySetResult();
                         await scenario.CleanupEntered.Task.WaitAsync(ct);
-                        TestAssert.Assert(HasLease() && (await File.ReadAllLinesAsync(audit, ct)).Length == (holdWriter ? 1 : 2),
+                        TestAssert.Assert(coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases == 1
+                            && (await File.ReadAllLinesAsync(audit, ct)).Length == (holdWriter ? 1 : 2),
                             "The original audit must persist before returning the scope and work lease.");
                     }
                     finally
@@ -406,6 +408,70 @@ internal static class ProxyObservationLeaseChecks
         }
     }
 
+    private static async Task VerifyWriteCleanupAsync()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        var ids = new HashSet<string> { ServerModules.ProxyId };
+        var module = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+        builder.Services.AddSingleton(services => new ModuleResidencyCoordinator([new ProxyWorkRuntimeFactory()],
+            ModuleResidencyOptions.Parse(builder.Configuration, ids, ids), services, module,
+            services.GetRequiredService<ILogger<ModuleResidencyCoordinator>>(), residentWorkModuleIds: ids));
+        var scenario = new Scenario(holdController: false) { FailCleanup = true };
+        builder.Services.AddScoped(_ =>
+        {
+            var writer = new FixtureWrite(scenario);
+            scenario.PlatformResource = new WeakReference(writer);
+            return writer;
+        });
+        await using var app = builder.Build();
+        var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
+        var request = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = app.Services };
+        var count = 0;
+        long? originalGeneration = null;
+        try
+        {
+            var pending = ProxyWriteScopeOwner.ExecuteAsync(request, coordinator, (scope, _) =>
+            {
+                scope.GetRequiredService<FixtureWrite>();
+                count++;
+                return Task.FromResult(Microsoft.AspNetCore.Http.Results.NoContent());
+            });
+            try
+            {
+                await scenario.CleanupEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                var owner = coordinator.Describe(ServerModules.ProxyId);
+                originalGeneration = owner?.Generation;
+                TestAssert.Assert(!pending.IsCompleted && owner?.ActiveLeases == 1 && originalGeneration > 0,
+                    "The completed write response must keep the original lease through scope cleanup.");
+            }
+            finally { scenario.ReleaseCleanup.TrySetResult(); }
+            try { await pending; throw new InvalidOperationException("Expected the write cleanup failure."); }
+            catch (IOException) { }
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            TestAssert.Assert(coordinator.Describe(ServerModules.ProxyId) is { BlockedBy: "module-recovery-blocked", ActiveLeases: 1 } blocked
+                && blocked.Generation == originalGeneration
+                && scenario.PlatformResource is { IsAlive: true }, "The faulted generation must retain the original write scope and lease.");
+            try
+            {
+                await ProxyWriteScopeOwner.ExecuteAsync(request, coordinator, (_, _) =>
+                {
+                    count++;
+                    throw new InvalidOperationException("A new write bypassed the original cleanup gate.");
+                });
+                throw new InvalidOperationException("Expected the write admission gate.");
+            }
+            catch (ModuleUnavailableException error) when (error.Code == "module-load-failed") { }
+            TestAssert.Assert(count == 1, "The original write executor must be the only executor invoked.");
+            Console.WriteLine("PASS PROXY WRITE CLEANUP QUARANTINE: original scope, completed response and single execution retained");
+        }
+        finally
+        {
+            if (coordinator.Describe(ServerModules.ProxyId)?.BlockedBy == "module-recovery-blocked")
+                coordinator.Release(ServerModules.ProxyId, backgroundWork: true);
+        }
+    }
+
     private sealed class FixtureWrite(Scenario scenario) : IProxySettingsWriter, IProxyConfigurationTransactionService, IAsyncDisposable
     {
         public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken ct) => RunAsync(ct);
@@ -427,6 +493,7 @@ internal static class ProxyObservationLeaseChecks
         {
             scenario.CleanupEntered.TrySetResult();
             await scenario.ReleaseCleanup.Task;
+            if (scenario.FailCleanup) throw new IOException("Unconfirmed fixture write cleanup.");
         }
     }
 

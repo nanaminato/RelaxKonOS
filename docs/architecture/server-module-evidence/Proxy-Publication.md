@@ -513,3 +513,17 @@ Linux 受管 Mihomo Release 全量通过 180 项。实际设置写入 `01bb2683-
 **已实现但实机未验证。** 此处验证管理作用域与 Core 权威的端口分工及专属进程退出。管理写入对象回收、写入执行图 ALC 回收、隔离内存差值和生产收益分别待测。
 
 **未实现或仍受门禁保护。** 写入执行器的代次交接和整模块动态驻留仍开放。Proxy 保持 resident。
+
+### 前台配置写入的原代次
+
+**已实现且已验证。** 设置更新、档案应用和档案激活从当前 Proxy 代次取得工作租约和作用域。原代次持有执行、审计、实际响应及清理责任。清理失败时，原代次保留失败作用域和工作租约，协调器拒绝新写入。Core 仍按原发布锁、授权及原回执裁决。
+
+Windows Release 的 Proxy 安全、订阅边界和模块里程碑通过。三个前台路由分别验证客户端断开、原审计和响应、异步清理期间的单一租约。清理失败后，本地夹具确认原代次编号相同，原作用域资源在 GC 后可达，新写入未执行。夹具初次误将协调器的准入响应码当成驻留阻塞原因，改为分别断言后通过。最终日志 `.artifacts/mb04-tun-full-zero-dns/windows-write-owner-module-boundary-final.log` 的 SHA-256 为 `bcaee0b616250b1fb709c563074e868d7521ad1905e27b715902d56682a096d0`。
+
+Linux 私有 systemd 实测关闭 Proxy 管理入口后，原发布 `39c0f6f3f0744484bac8e7f55d44c80a`、Mihomo PID `418` 和配置身份保持，Core 接续原系统代理守护及授权到期。原具名启动 `4c9d590ec4d04acf916ad6b27d17ebb6` 的两次应答中断仍保留原租约与新键门禁。按原 ID 恢复后，同键返回原终态，仅一次启动派发。管理选路、原生记录、配置身份及上游 HTTP 和分流 DNS 跨重启一致。两项均确认专属进程和 cgroup 退出，宿主服务、代理及 resolver 指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-write-owner-tun.log` 的 SHA-256 为 `d5e36ca033d4256e2c161869b0cf61a2e1d7e8e8915d5c765ca7f5bd9fcca56a`，归档为 `07922be8db536e23dbfcec881f0f365b8fcd19b050be7485b243009614003420`。
+
+Linux 受管 Mihomo Release 通过 180 项。真实设置写入 `5fb6368b-45cc-4865-acaf-2619d0b881a3` 与档案配置应用 `8856b2c5-1055-4764-b1c7-daca0bdcd562` 均在原生效果生效、Helper 应答未交付时断开 HTTP。原工作租约和待核验记录保持，强制退出后重启只查询原回执。每项仅一次原生配置派发，配置身份和实际转发保持。档案选择提交一次。原发布恢复 `af7f07f4-fca2-4908-b473-3880ee4c3383` 排空原回执及作用域。日志 `.artifacts/mb04-tun-full-zero-dns/linux-write-owner-managed.log` 的 SHA-256 为 `66018dc6f3d9eac2c21101e421c3720a5b7f4b622400e3be8cccf05bef90dbf9`，归档为 `6628e2e23b3913c0c53e3ef95eacc5706ddcb44995dff5b2f4e125b2e39bb524`。
+
+**已实现但实机未验证。** 前台写入异步清理故障和档案激活的响应排空由本地夹具验证。Linux 本轮验证设置、档案应用中断和专属进程退出。写入对象释放、整体 ALC 回收、隔离内存差值和生产收益分别待测。
+
+**未实现或仍受门禁保护。** 管理执行图的整模块安全交接仍开放。Proxy 保持 resident。

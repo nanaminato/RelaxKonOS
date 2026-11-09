@@ -34,17 +34,20 @@ internal sealed class ProxyWorkRuntimeFactory : IServerModuleRuntimeFactory
     private sealed class Runtime : IServerModuleRuntime
     {
         private readonly Dictionary<Type, object> samplers;
+        private readonly ProxyWriteScopeOwner writes;
 
         internal Runtime(IServiceProvider services)
         {
             var scopes = services.GetRequiredService<IServiceScopeFactory>();
             var leases = new ModuleWorkLeaseSource(services.GetRequiredService<ModuleResidencyCoordinator>(), this);
+            writes = new ProxyWriteScopeOwner(scopes, leases);
             samplers = services.GetServices<ProxyReadSamplerRegistration>()
                 .ToDictionary(registration => registration.ServiceType, registration => registration.Create(scopes, leases, this));
         }
 
         public string ModuleId => ServerModules.ProxyId;
-        public object Resolve(Type serviceType) => samplers.TryGetValue(serviceType, out var sampler)
+        public object Resolve(Type serviceType) => serviceType == typeof(ProxyWriteScopeOwner) ? writes
+            : samplers.TryGetValue(serviceType, out var sampler)
             ? sampler : throw new InvalidOperationException($"Proxy runtime does not own {serviceType}.");
         public ValueTask<ModuleUnloadBlocker?> CanUnloadAsync(CancellationToken ct) => ValueTask.FromResult<ModuleUnloadBlocker?>(new("module-resident-work-owner"));
         public ValueTask DisposeAsync()

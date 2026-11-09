@@ -4738,3 +4738,5 @@ Linux 直连监听补偿丢失应答时，再次确认原补偿可只读核对�
 概览读取失败且作用域完成清理时，后续读取可正常进入。异步清理失败时，原采样保留资源，Proxy 管理请求受恢复门禁保护，Core 继续负责原 TUN 与系统代理的安全责任。[读取故障验收](../architecture/server-module-evidence/Proxy-Observation.md#概览读取失败与清理隔离)
 
 设置写入与应用配置发布由 Proxy 管理作用域解析。Core 在管理入口关闭时仍通过原发布锁和原回执执行具名恢复，并保留原生 TUN 与系统代理的安全责任。[发布与恢复端口验收](../architecture/server-module-evidence/Proxy-Publication.md#应用配置写入与-core-恢复端口)
+
+设置更新、档案配置应用和档案激活由当前 Proxy 代次持有前台作用域。请求断开后，已经受理的原事务仍按原回执收尾。作用域清理失败时，该代次保留工作租约并拒绝新管理调用。[前台配置写入实测](../architecture/server-module-evidence/Proxy-Publication.md#前台配置写入的原代次)
