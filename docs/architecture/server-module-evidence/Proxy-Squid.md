@@ -89,3 +89,17 @@ Linux x64 私有 systemd 运行完整 PAM/JWT、生产 Helper 和真实 Squid �
 替换 Helper 和 Server 后，原队列仍为 `Interrupted / squid_account`，完成时间为空。同键返回原 ID，异键和禁用启动被拒绝。原两份标记及回执记录字节保持，后继 Helper 只按原 ID 读回执。原 PID `264` 仍以新口令提供认证转发，重载只增加一次。另验证关闭最后一个启用账户返回原失败，未触发重载。
 
 同批复验原口令变更成功恢复。Linux 专属 cgroup 清理和共享服务、代理、解析器及账号文件指纹核对通过。Windows Release 专项见上节，生产实现未改动。原始日志 `.artifacts/mb04-squid-account/linux-native-unknown.log` SHA-256 为 `d9ac265683b0a3ec06b16dd6e62d8edb2e77d591b09ab7bf00341978dd25d123`，归档 SHA-256 为 `3a5dbffdf31255c11d649b6b76e36b8f216808ef99c6a642e57cc47a7984cdf9`。记录了原进程退出及工作租约释放，未测对象释放、ALC、隔离内存或生产收益。Proxy 继续 resident。
+
+### 服务动作终态跨重启矩阵
+
+Linux 专属 systemd 分别验证五类真实服务动作。每次在 Helper 终态落盘、原响应交付前截留，核对原队列 Running 与一个工作租约，再强制终止 Server 并重启 Helper。按原 ID 查询恢复原终态。同键返回原 ID，重读终态相等，租约归零，原生回执字节不变，每个原 ID 只有一次派发。
+
+| 动作 | 原 ID | 实际效果 |
+| --- | --- | --- |
+| Enable | `b20ccb97-43d7-4a36-b132-64bb58a3747a` | 专属 unit 已启用，PID 261 保持 |
+| Disable | `4b3e042c-fec8-405c-ab28-ab0f6e8492f2` | 专属 unit 已禁用，PID 261 保持 |
+| Restart | `11541b02-3b7e-40da-9c68-af5866bec4f3` | PID 261 变为 771，新进程真实转发 |
+| Stop | `819514cc-4379-4ded-90e7-de00ca7905fa` | PID 771 退出，原监听关闭 |
+| Start | `30b31974-051a-44bc-8675-e0248ce96797` | 从停止态启动 PID 1161，真实转发恢复 |
+
+同批复验 Reload 原 `6cb7dd55-1d6a-4bad-a12c-f6bf63d6d924` 的终态缺失门禁，原作业仅执行一次。专属 cgroup 清理与共享服务、代理和解析器指纹核对通过。Windows Release Squid 生产回归见上文，本轮仅增加实机夹具。原始日志 `.artifacts/mb04-squid-account/linux-lifecycle-matrix.log` SHA-256 为 `db26ddf807185d7e2030b51aab02390313cfbbc3b7056cc8bb6e9a8f047ce321`，归档 SHA-256 为 `af64ee5ece738ad872defdcaf5bf65062b32586f4f03682fd5e370c7e0a2b43b`。以上验证了真实进程退出，未测对象释放、ALC、隔离内存和生产收益。未产生原回执的窗口仅以 Reload 代表验证，整机掉电和软件包生命周期仍开放。

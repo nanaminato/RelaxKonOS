@@ -2588,10 +2588,14 @@ def proof_full_http_shutdown(ipc, case):
                                  f'if test -f {hold}; then\n  touch {applied}\n'
                                  f'  while test -f {hold}; do sleep .05; done\nfi\n')
         reload_script.chmod(0o755)
+        service_options = ''
+        if case == 'ipc-http-squid-lifecycle-unknown':
+            service_options = 'KillSignal=SIGINT\nTimeoutStopSec=10s\n[Install]\nWantedBy=multi-user.target\n'
         Path('/etc/systemd/system/squid.service').write_text(
             '[Unit]\nDefaultDependencies=no\n[Service]\nType=exec\n'
             'ExecStart=/usr/sbin/squid -N -f /etc/squid/squid.conf\n'
-            f'ExecReload={reload_script}\nStandardOutput=append:{root / "squid-process.log"}\nStandardError=inherit\n')
+            f'ExecReload={reload_script}\nStandardOutput=append:{root / "squid-process.log"}\nStandardError=inherit\n'
+            + service_options)
         service('daemon-reload')
         # The production destination ACL only permits ports 80 and 443.
         upstream = http.server.ThreadingHTTPServer(('192.0.2.2', 80), Upstream)
@@ -2780,6 +2784,47 @@ def proof_full_http_shutdown(ipc, case):
 
         if case == 'ipc-http-squid-lifecycle-unknown':
             lifecycle = api_root + '/lifecycle'
+
+            def current_squid_pid():
+                return int(service('show', '-p', 'MainPID', '--value', 'squid.service'))
+
+            def verify_effect(action, previous):
+                current = current_squid_pid()
+                if action in ('Enable', 'Disable'):
+                    expected = 'enabled' if action == 'Enable' else 'disabled'
+                    return current == previous and service('show', '-p', 'UnitFileState', '--value', 'squid.service') == expected
+                if action == 'Stop':
+                    return current == 0 and listener_closed()
+                return current > 1 and current != previous and forward(18883, action.lower())
+
+            for name in ('Enable', 'Disable', 'Restart', 'Stop', 'Start'):
+                pid = restart('squid-lifecycle-cut', pid)
+                previous = current_squid_pid()
+                key = 'squid-matrix-' + name.lower()
+                action = {'action': name}
+                status, accepted = request(lifecycle, token, key, action)
+                assert status == 202, (status, accepted)
+                operation = accepted['operationId']
+                assert uuid.UUID(marker('full-squid-response-held')) == uuid.UUID(operation)
+                assert read(operation)['state'] == 'running' and leases() == 1
+                until(lambda: verify_effect(name, previous), 'native ' + name)
+                observed = current_squid_pid()
+                record_path = native.parent / 'relaxkonos-lifecycle' / (uuid.UUID(operation).hex + '.json')
+                original = record_path.read_bytes()
+                assert json.loads(original) == {'OperationId': operation, 'Action': name, 'Completed': True}
+                cut(pid)
+                pid = relaunch()
+                completed = terminal(operation)
+                assert completed['completedAt'] and request(lifecycle, token, key, action) == (202, accepted)
+                assert read(operation) == completed and leases() == 0
+                assert current_squid_pid() == observed and verify_effect(name, previous) and record_path.read_bytes() == original
+                audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+                assert audit.count(f'operation=SquidTrackedLifecycle id={operation} ') == 1
+                assert f'operation=SquidLifecycleReceipt id={operation} ' in audit
+                print(f'PASS SQUID LIFECYCLE ACTION: action={name}; original={operation}; PID {previous}->{observed}; '
+                      'one dispatch and original receipt after restart', flush=True)
+            original_pid = current_squid_pid()
+
             action = {'action': 'Reload'}
             key = 'squid-native-lifecycle'
             baseline = (native.read_bytes(), desired.read_bytes())
