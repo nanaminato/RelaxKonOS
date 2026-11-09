@@ -4611,7 +4611,7 @@ Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停
 
 系统代理 guard 与受管停用共用发布锁。若 guard 已派发，停用保留原队列及租约，等 guard 响应后继续。sing-box 到期由独立责任方排空。已在同一次 SIGTERM 验证三者的响应顺序、原生状态和重启回执。见[同次停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-与-proxy-安全责任同次停机)。
 
-停用 Proxy 管理模块的计划、应用及禁用启动都会核验已确认受管 TUN 的原发布和当前 Helper 归属。Helper 不可用、设备归属漂移或存在原生待核验执行时，计划保留 `module-recovery-blocked`，启动拒绝并给出原发布或执行 ID。已确认的运行或停止不改变原运行时所有权。见[模块停用门禁](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-模块停用门禁)。
+停用 Proxy 管理模块的计划、应用及禁用启动都会核验已确认受管 TUN 的原发布和当前 Helper 归属。Helper 不可用、设备归属漂移或存在原生待核验执行时，计划保留 `module-recovery-blocked`，启动拒绝并给出原发布或执行 ID。已确认的运行或停止不改变原运行时所有权。具名启动待核验时，停用计划、应用和禁用启动均保留原执行的门禁。结案后应用停用计划，禁用启动继续核对并保留同一具名执行和真实流量。见[具名启动停用实测](../architecture/server-module-evidence/Proxy-Safety.md#具名启动的模块停用门禁与禁用接续)。见[模块停用门禁](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-模块停用门禁)。
 
 已在 Linux 完整 Server 验证认证停用计划经重启生效后，原 Mihomo 继续转发，Core guard 仍纠偏，sing-box 仍按到期时间撤回授权。禁用态停机等待两个 Core 响应，重启后原回执与持久状态保持。见[禁用态安全交接](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-禁用-proxy-管理入口后的安全交接)。
 

@@ -2077,7 +2077,8 @@ def proof_full_http_shutdown(ipc, case):
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
     named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
-    named_dns_settled = named_recovery_cut or case == 'ipc-http-named-start-dns-settled'
+    named_admission = case == 'ipc-http-named-start-admission'
+    named_dns_settled = named_recovery_cut or named_admission or case == 'ipc-http-named-start-dns-settled'
     named_dns = named_dns_settled or case == 'ipc-http-named-start-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
@@ -2814,6 +2815,20 @@ def proof_full_http_shutdown(ipc, case):
                   f'original cookie={original_cookie}; foreign cookie={foreign_cookie}; '
                   'matching boot and namespace link did not authorize foreign ownership')
 
+    def preview_proxy_disable():
+        modules = '/api/v1.0/server/modules'
+        status, items = request(modules, token)
+        assert status == 200, (status, items)
+        proxy = next(item for item in items if item['id'] == 'relaxkonos.proxy')
+        assert proxy['effectiveEnabled']
+        status, preview = request('/api/v1.0/server/module-plans', token, data={
+            'serviceId': proxy['serviceId'], 'expectedRevision': proxy['desiredRevision'], 'action': 'Disable',
+            'moduleIds': [proxy['id']], 'enabledModuleIds': [item['id'] for item in items
+                                                            if item['desiredEnabled'] and item['id'] != proxy['id']],
+            'idempotencyKey': uuid.uuid4().hex})
+        assert status == 200 and preview['restartRequired'], (status, preview)
+        return proxy, preview
+
     def verify_named_start_dns(pid, record, publication, stopped):
         nonlocal worker, token
         install_dns_ack_boundary(allow_release=named_dns_settled, hold_after_exit=named_dns_settled)
@@ -2868,12 +2883,38 @@ def proof_full_http_shutdown(ipc, case):
         (root / 'hold-dns-after-exit').unlink(missing_ok=True)
 
         ipc.start_helper()
-        worker = launch('zero-dns-recover' if named_recovery_cut else 'restart')
+        if named_admission:
+            pending_queue = queue.read_bytes()
+            worker = launch('admission-disabled')
+            assert worker.wait(timeout=15) == 0
+            refusal = (root / 'full-startup-refused').read_text()
+            assert 'relaxkonos.proxy' in refusal and str(uuid.UUID(started)) in refusal, refusal
+            assert queue.read_bytes() == pending_queue
+            verify_native('disabled-refused')
+            # The deployment-authority refusal boot saves its disabled module selection.
+            # Restore the fixture's enabled selection before switching to managed authority.
+            worker = launch('restart')
+            enabled_pid = int(marker('full-server-pid'))
+            token = login()
+            os.kill(enabled_pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+        worker = launch('zero-dns-recover' if named_recovery_cut else 'admission-managed' if named_admission else 'restart')
         restart_pid = int(marker('full-server-pid'))
         token = login()
         until(lambda: not sender.exists(), 'original DNS sender exit')
         if named_dns_settled:
             saved_native = None
+            if named_admission:
+                pending_queue = queue.read_bytes()
+                proxy, blocked = preview_proxy_disable()
+                assert proxy['configurationWritable'] and proxy['recoveryState'] == 'required'
+                assert any(str(uuid.UUID(started)) in item for item in proxy['orphanedWork']), proxy['orphanedWork']
+                assert any(item['problemCode'] == 'module-recovery-blocked' for item in blocked['blockedBy']), blocked
+                status, rejection = request(f'/api/v1.0/server/module-plans/{blocked["planId"]}/apply',
+                                            token, key='named-admission-blocked')
+                assert status == 409 and rejection['problemCode'] == 'module-recovery-blocked', (status, rejection)
+                assert queue.read_bytes() == pending_queue
+                verify_native('disable-blocked')
             if named_recovery_cut:
                 pending_queue = queue.read_bytes()
                 abandoned = []
@@ -2924,6 +2965,42 @@ def proof_full_http_shutdown(ipc, case):
             assert read(publication)['state'] == read(stopped)['state'] == 'succeeded'
             verify_native('recovered', confirmed=True)
             until(lambda: leases() == 0, 'confirmed reconciliation work leases')
+            if named_admission:
+                proxy, ready = preview_proxy_disable()
+                assert not proxy['orphanedWork'] and not ready['blockedBy'], (proxy, ready)
+
+                def apply_ready_plan():
+                    status, applied = request(f'/api/v1.0/server/module-plans/{ready["planId"]}/apply',
+                                              token, key='named-admission-approved')
+                    if status == 409 and applied['problemCode'] == 'module-recovery-blocked':
+                        return None
+                    assert status == 200 and applied['state'] == 'AwaitingRestart', (status, applied)
+                    return applied
+
+                applied = until(apply_ready_plan, 'disable plan live recheck')
+                saved = queue.read_bytes(), native.read_bytes(), (directory / 'tun-5.json').read_bytes()
+                os.kill(restart_pid, signal.SIGTERM)
+                assert worker.wait(timeout=12) == 0
+                ipc.stop_helper()
+                ipc.start_helper()
+                worker = launch('admission-managed')
+                restart_pid = int(marker('full-server-pid'))
+                token = login(disabled=True)
+                status, disabled = request('/api/v1.0/server/modules/relaxkonos.proxy', token)
+                assert status == 200 and not disabled['effectiveEnabled'] and not disabled['desiredEnabled']
+                assert disabled['residency'] is None and request(api + '/tun', token)[0] == 404
+                status, receipt = request(f'/api/v1.0/server/module-operations/{applied["operationId"]}', token)
+                assert status == 200 and receipt['state'] == 'Succeeded', (status, receipt)
+                assert (queue.read_bytes(), native.read_bytes(), (directory / 'tun-5.json').read_bytes()) == saved
+                assert all(f'operation={verb} ' not in ipc.log.read_text() for verb in
+                           ('MihomoRuntimeConfigure', 'MihomoRuntimeRecover', 'MihomoRuntimeTunStart', 'MihomoRuntimeTunStop'))
+                verify_native('disabled-confirmed', confirmed=True)
+                os.kill(restart_pid, signal.SIGTERM)
+                assert worker.wait(timeout=12) == 0
+                print(f'PASS TUN NAMED START ADMISSION: publication={publication}; start={started}; '
+                      f'disable={applied["operationId"]}; PID={current["service"][0]}; route table={intent["RoutingTable"]}',
+                      flush=True)
+                return
             os.kill(restart_pid, signal.SIGTERM)
             assert worker.wait(timeout=12) == 0
             label = 'RECOVERY CUT' if named_recovery_cut else 'DNS SETTLED'
@@ -3082,16 +3159,8 @@ def proof_full_http_shutdown(ipc, case):
         alias = link()['ifalias']
 
         def plan(blocked_by=None, managed=True):
-            status, items = request(modules, token)
-            assert status == 200, (status, items)
-            proxy = next(item for item in items if item['id'] == module_id)
-            assert proxy['effectiveEnabled'] and proxy['configurationWritable'] == managed
-            status, preview = request('/api/v1.0/server/module-plans', token, data={
-                'serviceId': proxy['serviceId'], 'expectedRevision': proxy['desiredRevision'], 'action': 'Disable',
-                'moduleIds': [module_id], 'enabledModuleIds': [item['id'] for item in items
-                                                              if item['desiredEnabled'] and item['id'] != module_id],
-                'idempotencyKey': uuid.uuid4().hex})
-            assert status == 200 and preview['restartRequired'], (status, preview)
+            proxy, preview = preview_proxy_disable()
+            assert proxy['configurationWritable'] == managed
             blockers = {item['problemCode'] for item in preview['blockedBy']}
             if blocked_by:
                 assert 'module-recovery-blocked' in blockers and proxy['recoveryState'] == 'required', (blockers, proxy['recoveryState'])
@@ -4315,6 +4384,7 @@ rules:
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
                         'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',
                         'ipc-http-named-start-dns', 'ipc-http-named-start-dns-settled', 'ipc-http-named-start-recovery-cut',
+                        'ipc-http-named-start-admission',
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
