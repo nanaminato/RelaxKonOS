@@ -663,4 +663,18 @@ Windows Release 模块边界、Proxy 常驻、TUN、Helper socket、Squid 和组
 
 **已实现但实机未验证。** 跨整机断电和其他平台故障窗口仍需独立环境。本轮确认原进程退出与回收。对象释放、ALC 回收、隔离内存差值与生产收益分别待验。
 
-**未实现或仍受门禁保护。** Server 存活时丢失派发终帧的原代次收口仍待验收。宿主登记缺失、原进程异常退出或原范围缺可信排空证据时维持原门禁。Proxy 保持 resident。
+**未实现或仍受门禁保护。** Server 存活时丢失派发终帧的原代次收口见下一节。宿主登记缺失、原进程异常退出或原范围缺可信排空证据时维持原门禁。Proxy 保持 resident。
+
+### Server 存活时丢失固定宿主派发终帧
+
+**已实现且已验证。** Server 在宿主派发终帧丢失时关闭原执行连接，在独立清理时限和同代请求租约内只核验原 ID 的未派发终态。Helper 未确证时保留原记录。确认原固定执行者已回收及原 cgroup 排空后，Helper 按原 ID 封存并释放单元。Server 清理原门禁，请求返回 503，响应及作用域清理结束后租约归零。
+
+既有 Linux 测试机的私有 systemd 中，非特权 AF_UNIX 中继丢弃原 `MihomoProbeHostStart` 终帧。原操作 `a73526b9-7816-41e8-b54a-d0f2100bbbb3`、invocation `74b9d120-34e8-4931-b0df-1b271ea2ecfb`、执行者 `3113` 已登记，原请求持有一份工作租约。存活的原 Server 对同一 ID 的首查仍待核验，随后读回原未派发终态。全程只启动一次固定单元，未派发外部程序。原代次仍 resident，原请求返回 503，租约归零。正常重启后重复读回同一原终态，记录字节保持。受管 TUN `611ada341d474f8a8a70180bd0771397` 与原入站 `3be348be-1ff5-4ace-849b-022bc37784b0` 保持原配置、真实上游流量及分流 DNS。专属资源已清理，宿主共享服务、代理和 DNS 文件指纹一致。
+
+Windows Release 模块边界、Helper socket、Proxy 常驻及 TUN 专项通过，Linux x64 Release 构建通过。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-start-reply-drop-final.log` 的 SHA-256 为 `c655ec330bf39794cfdaf9b2f8db800f51ef6cf59dd3ed6ee9599286e9b57bea`，归档为 `c4fff543e13833ed186007a35b902ee633d70488ac6ab2987ce9a2449d063ea0`。首轮夹具读到尚在写入的门禁文件并退出，日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-start-reply-drop.log` 的 SHA-256 为 `44720fa821d1c891f00facb5b3962aa0a725abb0eafb9b31271e7995638f618f`。复验等待完整原记录。
+
+重启窗口回归的原 ID 为 `6854e36e-bb70-4fe8-8b8f-7aa18a7bfe4e`，再次确认原未派发终态与单次启动。回归日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-start-reply-cut-regression.log` 的 SHA-256 为 `7bc758ddc7f9ae0c1559fd83e824e553d54167f3db52651f203caacbd7df3b42`，归档为 `d92da4860285d4b04fe9f5c44e499cf0cadb0fcef694897f6108368cc29b86f6`。回归复用了上一轮本地打包路径并覆盖该文件，上一轮原日志和归档摘要仍保留。回归包已另存。
+
+**已实现但实机未验证。** 同代有界查询无法取得可信未派发终态时，保留原门禁及清理责任。该窗口仍待单独实测。已确认实际进程退出与回收，对象释放、ALC 回收、隔离负载内存和生产收益分别待验。
+
+**未实现或仍受门禁保护。** 原完成查询终帧丢失后的同一请求接续待验。整模块动态驻留与整机掉电仍待独立证据。Proxy 保持 resident。

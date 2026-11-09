@@ -3608,7 +3608,7 @@ exec {shlex.quote(str(systemctl))} "$@"
                         detached = [pid for pid, parent in parents.items() if parent == children[0]]
                         if len(detached) == 1:
                             return dispatch, owner, children[0], detached[0]
-                except FileNotFoundError:
+                except (FileNotFoundError, json.JSONDecodeError):
                     pass
                 return None
 
@@ -3708,12 +3708,13 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert not fence.exists() if server_cut else fence.read_bytes() == original
             assert pids.read_bytes() == original_processes
             probe(record, 'external-version-after-manager-witness')
-        if fixture.with_name('external-version-start-reply-cut.fixture').is_file():
+        live_drop = fixture.with_name('external-version-start-reply-drop.fixture').is_file()
+        if live_drop or fixture.with_name('external-version-start-reply-cut.fixture').is_file():
             assert server_cut and not fence.exists()
-            server_pid = verify_external_probe_start_reply_cut(server_pid, record, route, request_body, fence, forced, original_id)
+            server_pid = verify_external_probe_start_reply(server_pid, record, route, request_body, fence, forced, original_id, live_drop)
         return server_pid
 
-    def verify_external_probe_start_reply_cut(server_pid, record, route, request_body, fence, forced, completed_id):
+    def verify_external_probe_start_reply(server_pid, record, route, request_body, fence, forced, completed_id, live_drop):
         nonlocal worker, token
         registry = Path('/var/lib/relaxkonos/mihomo-probe-witnesses')
         directory = root / 'probe-relay'
@@ -3751,31 +3752,49 @@ exec {shlex.quote(str(systemctl))} "$@"
                 assert registered['OperationId'] == str(original) and registered['OwnerUid'] == ipc.uid
                 scope = Path('/sys/fs/cgroup') / registered['ControlGroup'].lstrip('/')
                 assert (scope / 'cgroup.procs').read_text().split() == [str(registered['Pid'])]
+                receipt = registry / (original.hex + '.exit.json')
                 descriptor = os.pidfd_open(registered['Pid'])
                 try:
-                    os.kill(server_pid, signal.SIGKILL)
-                    assert worker.wait(timeout=12) == 0
+                    if live_drop:
+                        (directory / 'drop').touch()
+                    else:
+                        os.kill(server_pid, signal.SIGKILL)
+                        assert worker.wait(timeout=12) == 0
                     event = select.poll()
                     event.register(descriptor, 0)
                     assert event.poll(8000) == [(descriptor, select.POLLHUP)]
                 finally:
                     os.close(descriptor)
                 thread.join(timeout=5)
-                assert replies == ['disconnected'] and json.loads(fence.read_bytes()) == pending
+                if live_drop:
+                    assert len(replies) == 1 and isinstance(replies[0], tuple) and replies[0][0] == 503, replies
+                    until(lambda: leases() == 0, 'live undispatched probe response and scope drain')
+                    assert not fence.exists() and int(marker('full-server-pid')) == server_pid
+                    status, module = request('/api/v1.0/server/modules/relaxkonos.proxy', token)
+                    assert status == 200 and module['residency']['state'] == 'resident'
+                    live_terminal = receipt.read_bytes()
+                    probe(record, 'external-version-live-start-reply-drop')
+                    os.kill(server_pid, signal.SIGTERM)
+                    assert worker.wait(timeout=12) == 0
+                else:
+                    assert replies == ['disconnected'] and json.loads(fence.read_bytes()) == pending
             finally:
                 if relay.poll() is None:
                     relay.terminate()
         forced.unlink()
-        worker = launch('admission-disabled')
-        assert worker.wait(timeout=15) == 0 and str(original) in (root / 'full-startup-refused').read_text()
+        if not live_drop:
+            worker = launch('admission-disabled')
+            assert worker.wait(timeout=15) == 0 and str(original) in (root / 'full-startup-refused').read_text()
         worker = launch('inbound-restart')
         server_pid = int(marker('full-server-pid'))
         token = login()
-        assert request(route, token, data=request_body)[0] == 503
+        if not live_drop:
+            assert request(route, token, data=request_body)[0] == 503
         until(lambda: leases() == 0, 'undispatched probe recovery scope drain')
         assert not fence.exists()
-        receipt = registry / (original.hex + '.exit.json')
         terminal = receipt.read_bytes()
+        if live_drop:
+            assert terminal == live_terminal
         assert json.loads(terminal)['NativeExitStatus'] == 65 and json.loads(terminal)['Dispatch'] == registered
         for operation, expected in ((original, True), (completed_id, False)):
             read = subprocess.run(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-probe-witness', str(root),
@@ -3787,8 +3806,9 @@ exec {shlex.quote(str(systemctl))} "$@"
         assert audit.count('operation=MihomoProbeHostStart ') == 5
         assert audit.count(f'operation=MihomoProbeHostStart id={original} ') == 1
         assert f'operation=MihomoProbeHostConfirmUndispatched id={original} ' in audit
-        probe(record, 'external-version-original-start-reply-cut')
-        print(f'PASS EXTERNAL VERSION START REPLY CUT: original={original}; invocation={registered["InvocationId"]}; '
+        phase = 'drop' if live_drop else 'cut'
+        probe(record, 'external-version-original-start-reply-' + phase)
+        print(f'PASS EXTERNAL VERSION START REPLY {phase.upper()}: original={original}; invocation={registered["InvocationId"]}; '
               f'worker={registered["Pid"]}; no executable dispatched, same receipt, one host launch', flush=True)
         return server_pid
 

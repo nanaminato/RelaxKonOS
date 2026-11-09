@@ -42,15 +42,16 @@ internal sealed class MihomoExternalVersionProbe(IProxyPlatformPaths paths, ISer
                 if (UsesHost) await ReconcileAsync(ct);
                 return Invalid(ProxyProblemCodes.RecoveryRequired);
             }
-            var version = UsesHost ? await ProbeHostedAsync(path, ct) : await ProbeAsync(path, ct);
+            var (version, startReplyLost) = UsesHost ? await ProbeHostedAsync(path, ct) : (await ProbeAsync(path, ct), false);
             ct.ThrowIfCancellationRequested();
+            if (startReplyLost) return Invalid(ProxyProblemCodes.RecoveryRequired);
             return string.IsNullOrEmpty(version) ? Invalid()
                 : new(MihomoEngine.Id, ProxyRuntimeMode.External, ProxyRuntimeState.Stopped, version, null, false, true);
         }
         finally { Admission.Release(); }
     }
 
-    private async Task<string?> ProbeHostedAsync(string executable, CancellationToken ct)
+    private async Task<(string? Version, bool StartReplyLost)> ProbeHostedAsync(string executable, CancellationToken ct)
     {
         using var listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         listener.Bind(MihomoVersionWorker.HostEndpoint(operationId));
@@ -60,7 +61,12 @@ internal sealed class MihomoExternalVersionProbe(IProxyPlatformPaths paths, ISer
         var started = await helper.ExecuteAsync(new(PrivilegedOperationKind.MihomoProbeHostStart, OperationId: operationId), budget.Token);
         if (!started.Success || started.MihomoProbeHost is not { } original || original.OperationId != operationId
             || original.Pid <= 1 || original.BootId == Guid.Empty || original.InvocationId == Guid.Empty || original.StartTicks == 0)
-            throw new IOException("The fixed external probe dispatch was not confirmed.");
+        {
+            // Closing the listener allows the original worker to exit without receiving an executable.
+            listener.Dispose();
+            await FinishHostedAsync(original: null);
+            return (null, true);
+        }
         PersistDispatch(new(operationId, original.Pid, Host: original));
 
         using var socket = await listener.AcceptAsync(budget.Token);
@@ -86,14 +92,16 @@ internal sealed class MihomoExternalVersionProbe(IProxyPlatformPaths paths, ISer
         }
         await response.WaitAsync(TimeSpan.FromSeconds(12));
         var version = cancelled ? null : ReadWorkerVersion(await response);
+        await FinishHostedAsync(original);
+        return (version, false);
+    }
+
+    private async Task FinishHostedAsync(MihomoProbeHostIdentity? original)
+    {
         using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         for (var attempt = 0; attempt < 30; attempt++)
         {
-            if (await TryCompleteHostedAsync(original, cleanup.Token))
-            {
-                ClearMarker();
-                return version;
-            }
+            if (await TryCloseHostedAsync(operationId, original, cleanup.Token)) return;
             await Task.Delay(75, cleanup.Token);
         }
         throw new IOException("The fixed external probe exit and unit cleanup remain unverified.");
@@ -108,28 +116,26 @@ internal sealed class MihomoExternalVersionProbe(IProxyPlatformPaths paths, ISer
             if (dispatch is null || dispatch.OperationId == Guid.Empty) return;
             if (dispatch.Host is { } original)
             {
-                if (original.OperationId == dispatch.OperationId && await TryCompleteHostedAsync(original, ct)) ClearMarker();
+                if (original.OperationId == dispatch.OperationId) await TryCloseHostedAsync(dispatch.OperationId, original, ct);
                 return;
             }
             if (dispatch.WorkerPid is not null || dispatch.WorkerStartedAt is not null) return;
-            var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.MihomoProbeHostConfirmUndispatched,
-                OperationId: dispatch.OperationId), ct);
-            if (result.Success && result.MihomoProbeExit is { } exit && exit.OperationId == dispatch.OperationId
-                && exit.BootId != Guid.Empty && exit.InvocationId != Guid.Empty && exit.Pid > 1 && exit.StartTicks > 0)
-            {
-                File.Delete(marker + ".dispatch");
-                ClearMarker();
-            }
+            await TryCloseHostedAsync(dispatch.OperationId, original: null, ct);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
     }
 
-    private async Task<bool> TryCompleteHostedAsync(MihomoProbeHostIdentity original, CancellationToken ct)
+    private async Task<bool> TryCloseHostedAsync(Guid id, MihomoProbeHostIdentity? original, CancellationToken ct)
     {
-        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.MihomoProbeHostComplete, OperationId: original.OperationId), ct);
-        return result.Success && result.MihomoProbeExit is { } exit && exit.OperationId == original.OperationId
-            && exit.BootId == original.BootId && exit.InvocationId == original.InvocationId
-            && exit.Pid == original.Pid && exit.StartTicks == original.StartTicks;
+        var kind = original is null ? PrivilegedOperationKind.MihomoProbeHostConfirmUndispatched : PrivilegedOperationKind.MihomoProbeHostComplete;
+        var result = await helper.ExecuteAsync(new(kind, OperationId: id), ct);
+        if (!result.Success || result.MihomoProbeExit is not { } exit || exit.OperationId != id
+            || exit.BootId == Guid.Empty || exit.InvocationId == Guid.Empty || exit.Pid <= 1 || exit.StartTicks == 0
+            || (original is not null && (exit.BootId != original.BootId || exit.InvocationId != original.InvocationId
+                || exit.Pid != original.Pid || exit.StartTicks != original.StartTicks))) return false;
+        if (original is null) File.Delete(marker + ".dispatch");
+        ClearMarker();
+        return true;
     }
 
     private async Task<string?> ProbeAsync(string executable, CancellationToken ct)

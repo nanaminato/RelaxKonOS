@@ -27,6 +27,8 @@ internal static class MihomoTunFullServerAcceptance
             socket, budget.Token, (operation, _) => operation == "MihomoProbeHostStart");
         var original = await relay.Committed.Task.WaitAsync(budget.Token);
         await WriteMarkerAsync(directory, "held", original.ToString("D"));
+        while (!File.Exists(Path.Combine(directory, "drop"))) await Task.Delay(25, budget.Token);
+        relay.DropHeldResponse();
         await Task.Delay(Timeout.InfiniteTimeSpan, budget.Token);
     }
 
