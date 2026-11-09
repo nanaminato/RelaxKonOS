@@ -388,3 +388,5 @@ Compose CLI 执行、文件处理和输出解析使用按需加载的程序集�
 Linux 私有 Engine 已实测在 `docker stop` 仍运行时取消。CLI 退出后，Engine 若暂时无法观察，原操作继续占用项目写入门禁和工作租约。恢复后原 ID 只读结案，同键仍返回原回执。见[变更 CLI 在途取消](../architecture/server-module-evidence/Docker.md#mb-05-docker-变更-cli-在途取消与-engine-观察中断)。
 
 Compose 命令退出但进程或输出清理仍无法确认时，原操作保留活动回执和项目写入门禁。Server 重启后仍可按原键及原 ID 查看回执。即使此前未请求取消，原变更或原观察清理缺证据时也会继续保留门禁。Engine 的容器快照不足以证明原 CLI 和输出已排空。见[原观察输出中断实测](../architecture/server-module-evidence/Docker.md#原观察输出未排空时的-server-中断)。
+
+恢复观察再次中断时，同一原回执与恢复租约跨第三代 Server 保持。同项目新写入继续被拒绝，直至可按原 ID 核对排空证明。见[恢复观察再次中断实测](../architecture/server-module-evidence/Docker.md#恢复观察输出在途时再次中断)。

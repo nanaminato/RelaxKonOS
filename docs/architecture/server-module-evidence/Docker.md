@@ -170,6 +170,18 @@ Windows Release 的 Docker 控制、跨进程、Compose 执行代码和模块边
 
 Windows Release 的 Docker 控制、跨进程、Compose 执行代码与模块边界回归通过。Linux 完整 PAM Server 和专属 Engine 验收通过，独立 ALC 回归另证实五个闲时代次收集。专属进程退出，容器和卷已清理，共享服务、容器清单与代理文件指纹一致。最终日志 `.artifacts/mb05-cli-cleanup/linux-observation-crash-current.log` SHA-256 为 `f58e7d3192fdd2232d93955a9fddcbf2c0663692cbca73dbd83fab435d0ca933`，含本次 Release 程序摘要。Linux 基础归档 SHA-256 为 `559749b0833df463b71f68917d1af9506b425290865952a372cff68df399dcfe`。
 
-**已实现但实机未验证。** 恢复协调器发出的后续观察再次中断仍待独立实测。故障对象释放、故障代次 ALC 收集、整机掉电、隔离负载内存与生产收益分别待验。
+**已实现但实机未验证。** 恢复协调器发出的后续观察见下一节。故障对象释放、故障代次 ALC 收集、整机掉电、隔离负载内存与生产收益分别待验。
 
 **未实现或仍受门禁保护。** 缺与原 ID 绑定的可信排空见证时保持原回执、恢复租约和项目写入门禁。Docker 保持 resident。
+
+### 恢复观察输出在途时再次中断
+
+**已实现且已验证。** 专属 Engine 的认证 Server 按原 ID `d055cac1-61b5-4f98-92cb-62382728193e` 执行一次真实停止。首次只读观察访问专属不可达 socket，原 CLI 和作用域排空后记录 `executionPending=false`，原回执为 `Running / Observing`。第一代正常退出。第二代启动恢复发出一次真实观察，在对外提供 HTTP 前持久记录 `executionPending=true`。观察 CLI 已退出但子进程仍持原输出，此时强制终止第二代。原输出持有者存活，原作用域标记保持。
+
+第三代按原 ID 和同键返回同一回执，保留一项恢复租约，同项目新键返回 409。释放并确认原输出持有者退出后，门禁仍保持。全程一次停止派发、一次停止信号、两次观察派发，分别为原请求的失败观察和第二代真实恢复观察。第三代未派发额外观察。专属 Engine、进程、容器与卷清理通过，共享服务、容器清单和代理文件指纹一致。
+
+Windows Release Docker 控制、跨进程及模块边界回归通过。Linux 实测日志 `.artifacts/mb05-cli-cleanup/linux-recovery-observation-crash.log` SHA-256 为 `7e523d812f4c5ee5dfbbbdcc07e1010131f6923fdcdf83c2def55e2ad70d1fec`，包含 Release 程序摘要。基础归档为 `559749b0833df463b71f68917d1af9506b425290865952a372cff68df399dcfe`。
+
+**已实现但实机未验证。** 本场景确认实际进程退出。故障对象释放、故障代次 ALC、隔离负载内存、生产收益与整机掉电分别待验。
+
+**未实现或仍受门禁保护。** 缺少原操作可信排空见证时，继续保持原回执及准入门禁。Docker 保持 resident。
