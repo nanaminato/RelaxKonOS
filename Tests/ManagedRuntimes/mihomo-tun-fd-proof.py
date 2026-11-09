@@ -2081,7 +2081,9 @@ def proof_full_http_shutdown(ipc, case):
     drop_start_reply = case == 'ipc-http-start-reply-drop'
     cleanup_drain = case == 'ipc-http-tun-cleanup-drain'
     cleanup_cut = case == 'ipc-http-tun-cleanup-cut'
-    cleanup_scope = cleanup_drain or cleanup_cut
+    cleanup_fault = case == 'ipc-http-tun-cleanup-fault'
+    cleanup_recover = cleanup_cut or cleanup_fault
+    cleanup_scope = cleanup_drain or cleanup_recover
     named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
     named_admission = case == 'ipc-http-named-start-admission'
     named_baseline = case == 'ipc-http-named-start-baseline'
@@ -4260,7 +4262,7 @@ exec {shlex.quote(str(systemctl))} "$@"
               'real upstream after Helper exit; both ledgers unchanged and no replay')
 
     worker = launch('zero-dns-publish' if zero_dns or partial_dns or early_owner or initial_stop else 'squid-new' if squid else 'removal-cut' if removal_admin
-                    else 'admission' if admission or handoff or retained_removal
+                    else 'admission' if admission or handoff or retained_removal or cleanup_fault
                     else 'stop-reply-drop' if drop_stop_reply else 'cleanup-drain' if cleanup_drain
                     else 'cleanup-cut' if cleanup_cut else 'drain')
     first_worker = worker
@@ -4268,6 +4270,12 @@ exec {shlex.quote(str(systemctl))} "$@"
         pid = int(marker('full-server-pid'))
         assert Path(f'/proc/{pid}').stat().st_uid == ipc.uid
         token = login()
+        if cleanup_fault:
+            os.kill(pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            worker = launch('cleanup-fault')
+            pid = int(marker('full-server-pid'))
+            token = login()
         if squid:
             verify_squid_publication(pid)
             return
@@ -4322,6 +4330,9 @@ with sqlite3.connect(sys.argv[1]) as database:
             guard, guard_witness = hold_guard_repair()
         if cleanup_scope:
             (root / 'full-server/full-tun-cleanup-arm').touch()
+        if cleanup_fault:
+            healthy_proxy, ready_plan = preview_proxy_disable()
+            assert not ready_plan['blockedBy']
         stopped = submit('disable', 'full-stop')
         if joint:
             until(lambda: read(stopped)['state'] == 'running', 'TUN waiting for the shared publication gate')
@@ -4387,12 +4398,41 @@ with sqlite3.connect(sys.argv[1]) as database:
             assert network_baseline() == record['baseline']
             assert json.loads(checkpoint(record, f'observe-action:{stopped}'))['mihomoTunAction'] == stopped_receipt
             os.kill(pid, signal.SIGTERM)
+        elif cleanup_fault:
+            (root / 'full-server/full-tun-cleanup-fail').touch()
+            (root / 'full-server/full-tun-cleanup-release').touch()
+
+            def faulted():
+                status, proxy = request('/api/v1.0/server/modules/relaxkonos.proxy', token)
+                assert status == 200, (status, proxy)
+                return proxy if proxy['residency']['state'] == 'faulted' else None
+
+            proxy = until(faulted, 'quarantined original Proxy generation')
+            assert proxy['residency']['blockedBy'] == 'module-recovery-blocked' and not proxy['residency']['releasable']
+            assert proxy['processGeneration'] == healthy_proxy['processGeneration']
+            assert proxy['residency'].get('lastReleasedAt') == healthy_proxy['residency'].get('lastReleasedAt')
+            pending = queue.read_bytes()
+            item = next(entry['Operation'] for entry in json.loads(pending)
+                        if uuid.UUID(entry['Operation']['OperationId']).hex == stopped)
+            assert item['State'] == 5 and item['Stage'] == 'managed_tun_action' and item['CompletedAt'] is None
+            proxy, blocked = preview_proxy_disable()
+            assert proxy['configurationWritable'] and proxy['recoveryState'] == 'required'
+            assert any(entry['problemCode'] == 'module-recovery-blocked' for entry in blocked['blockedBy'])
+            status, rejection = request(f'/api/v1.0/server/module-plans/{ready_plan["planId"]}/apply',
+                                        token, key='cleanup-fault-apply')
+            assert status == 409 and rejection['problemCode'] == 'module-recovery-blocked', (status, rejection)
+            status, rejection = request(api + '/tun/disable', token, 'full-stop')
+            assert status == 503, (status, rejection)
+            status, rejection = request(api + '/tun/disable', token, 'cleanup-fault-new')
+            assert status == 400 and rejection['problemCode'] == 'proxy.operation_interrupted', (status, rejection)
+            assert faulted() and queue.read_bytes() == pending and cleanup_native.read_bytes() == cleanup_native_before
+            os.kill(pid, signal.SIGKILL)
         elif cleanup_cut:
             os.kill(pid, signal.SIGKILL)
         elif not joint:
             os.kill(pid, signal.SIGTERM)
             assert marker('full-server-stopping') == ('cleanup' if cleanup_drain else stopped)
-        if not drop_stop_reply and not cleanup_cut:
+        if not drop_stop_reply and not cleanup_recover:
             time.sleep(.2)
             assert worker.poll() is None and Path(f'/proc/{pid}').exists() and queue.read_bytes() == durable_running
             release = 'full-server/full-tun-cleanup-release' if cleanup_drain else 'full-tun-response-release'
@@ -4403,7 +4443,7 @@ with sqlite3.connect(sys.argv[1]) as database:
             assert worker.wait(timeout=12) == 0
         if cleanup_drain:
             assert cleanup_completed.read_text() == 'disposed'
-        if cleanup_cut:
+        if cleanup_recover:
             assert not cleanup_completed.exists()
         assert not Path(f'/proc/{pid}').exists()
         persisted = queue.read_bytes()
@@ -4412,21 +4452,27 @@ with sqlite3.connect(sys.argv[1]) as database:
         if not drop_stop_reply:
             assert len([entry for entry in audit if entry['action'] == 'tun.disable' and entry['result'] == 'succeeded']) == 1
 
+        if cleanup_fault:
+            worker = launch('admission-disabled')
+            assert worker.wait(timeout=15) == 0
+            refusal = (root / 'full-startup-refused').read_text()
+            assert 'relaxkonos.proxy' in refusal and str(uuid.UUID(stopped)) in refusal, refusal
+            assert queue.read_bytes() == persisted and cleanup_native.read_bytes() == cleanup_native_before
         worker = launch('named-start-cut' if named_dns else 'start-reply-drop' if drop_start_reply else 'restart')
         restart_pid = int(marker('full-server-pid'))
         assert restart_pid != pid and Path(f'/proc/{restart_pid}').stat().st_uid == ipc.uid
         token = login()
-        if cleanup_cut:
+        if cleanup_recover:
             assert queue.read_bytes() == persisted and not cleanup_completed.exists()
         original = until(lambda: terminal(stopped), 'persisted stop receipt')
         assert original['completedAt'] and submit('disable', 'full-stop') == stopped and read(stopped) == original
         if drop_stop_reply:
             assert original == live_stop
             assert native_state.read_bytes() == stopped_state
-        assert (queue.read_bytes() != persisted) == cleanup_cut and leases() == 0
+        assert (queue.read_bytes() != persisted) == cleanup_recover and leases() == 0
         if cleanup_scope:
             assert cleanup_native.read_bytes() == cleanup_native_before
-            assert ipc.log.read_text().count(f'operation=MihomoRuntimeQuery id={uuid.UUID(stopped)} ') == (2 if cleanup_cut else 1)
+            assert ipc.log.read_text().count(f'operation=MihomoRuntimeQuery id={uuid.UUID(stopped)} ') == (2 if cleanup_recover else 1)
         assert json.loads(checkpoint(record, f'observe-action:{stopped}'))['mihomoTunAction'] == stopped_receipt
         assert network_baseline() == record['baseline']
         if named_dns:
@@ -4529,9 +4575,12 @@ with sqlite3.connect(sys.argv[1]) as database:
                   f'configuration={record["credential"]}; live PID={current["service"][0]}; '
                   'two leases, new key blocked before receipt, same upstream and DNS')
         if cleanup_scope:
-            outcome = 'read-only recovery after forced exit' if cleanup_cut else 'async disposal drained before terminal persistence'
+            outcome = 'read-only recovery after forced exit' if cleanup_recover else 'async disposal drained before terminal persistence'
             print(f'PASS TUN EXECUTION SCOPE DRAIN: publication={publication}; stop={stopped}; start={started}; '
                   f'configuration={record["credential"]}; {outcome}')
+        if cleanup_fault:
+            print(f'PASS TUN CLEANUP FAULT QUARANTINE: publication={publication}; stop={stopped}; start={started}; '
+                  f'configuration={record["credential"]}; disable apply and disabled startup refused, one native stop')
         print(f'PASS TUN FULL SERVER JWT SHUTDOWN: publication={publication}; stop={stopped}; start={started}; '
               f'Server PID {pid}->{restart_pid}; live PID={current["service"][0]}; configuration={record["credential"]}')
     finally:
@@ -4696,7 +4745,7 @@ rules:
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
             if case in ('ipc-http-full', 'ipc-http-stop-reply-drop', 'ipc-http-start-reply-drop',
-                        'ipc-http-tun-cleanup-drain', 'ipc-http-tun-cleanup-cut',
+                        'ipc-http-tun-cleanup-drain', 'ipc-http-tun-cleanup-cut', 'ipc-http-tun-cleanup-fault',
                         'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
                         'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',

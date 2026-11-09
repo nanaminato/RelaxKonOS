@@ -40,6 +40,8 @@ internal sealed class MihomoTunCleanupBarrier(string root) : IAsyncDisposable
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         while (!File.Exists(Path.Combine(root, "full-tun-cleanup-release")))
             await Task.Delay(25, budget.Token);
+        if (File.Exists(Path.Combine(root, "full-tun-cleanup-fail")))
+            throw new IOException("Private TUN scope cleanup failed at the fixture boundary.");
         await File.WriteAllTextAsync(Path.Combine(root, "full-tun-cleanup-complete"), "disposed");
     }
 

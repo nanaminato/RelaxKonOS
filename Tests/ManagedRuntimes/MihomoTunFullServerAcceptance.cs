@@ -122,7 +122,7 @@ internal static class MihomoTunFullServerAcceptance
     internal static async Task RunAsync(string root, string socket, string phase)
     {
         RequirePrivateFixture(root);
-        if (phase is not ("drain" or "cleanup-drain" or "cleanup-cut" or "restart" or "joint-drain" or "joint-restart" or "admission"
+        if (phase is not ("drain" or "cleanup-drain" or "cleanup-cut" or "cleanup-fault" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
             or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"
             or "named-start-cut" or "stop-reply-drop" or "start-reply-drop" or "baseline-on" or "baseline-off"))
@@ -130,7 +130,7 @@ internal static class MihomoTunFullServerAcceptance
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal) || phase == "cleanup-cut";
         var cleanupDrain = phase == "cleanup-drain";
-        var cleanupScope = cleanupDrain || phase == "cleanup-cut";
+        var cleanupScope = cleanupDrain || phase is "cleanup-cut" or "cleanup-fault";
         var dropStopReply = phase == "stop-reply-drop";
         var dropStartReply = phase == "start-reply-drop";
         var handoff = phase == "handoff-disabled";
@@ -181,7 +181,7 @@ internal static class MihomoTunFullServerAcceptance
             start.Environment["RELAXKONOS_TEST_TUN_CLEANUP"] = start.WorkingDirectory;
         }
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
-        if (phase is "admission-managed" or "handoff-disabled" or "handoff-restart")
+        if (phase is "admission-managed" or "handoff-disabled" or "handoff-restart" or "cleanup-fault")
         {
             foreach (var key in start.Environment.Keys.Where(key => key.StartsWith("Modules__", StringComparison.Ordinal)).ToArray())
                 start.Environment.Remove(key);
@@ -277,7 +277,7 @@ internal static class MihomoTunFullServerAcceptance
                 await WriteMarkerAsync(root, "full-server-stopping", "cleanup");
             }
             await exited;
-            if (phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut") && server.ExitCode == 137) return;
+            if (phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut" or "cleanup-fault") && server.ExitCode == 137) return;
             if (disabled && server.ExitCode != 0 && startupRefusal.Task.IsCompletedSuccessfully)
             {
                 await WriteMarkerAsync(root, "full-startup-refused", await startupRefusal.Task);

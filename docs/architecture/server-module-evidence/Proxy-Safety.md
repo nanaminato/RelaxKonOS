@@ -1061,9 +1061,21 @@ Linux Release 构建、Windows Release 的 38 项 TUN 执行边界和模块边�
 
 Linux Release 构建、Windows Release 的 38 项 TUN 边界和模块边界回归通过。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-cleanup-matrix.log` SHA-256 为 `6a2db84df68f634184ec9c7b4d6ac27cba944a169f39e1d69a24301fdbf5ff6a`，运行归档为 `067c7dca1c9920091f19c9f7560f3353dacdfb02e0b5b0bf37ea38f26b41b951`。
 
-**已实现但实机未验证。** 此矩阵确认作用域释放顺序和进程退出。清理回调抛错后的同代隔离仍需实机核对。对象释放、ALC 回收、隔离负载内存及生产收益分别待测。
+**已实现但实机未验证。** 此矩阵确认作用域释放顺序和进程退出。清理回调抛错后的同代隔离见下一节。对象释放、ALC 回收、隔离负载内存及生产收益分别待测。
 
 **未实现或仍受门禁保护。** 缺失可信原回执时沿用原准入门禁。整模块动态驻留尚未验收，Proxy 保持 resident。
+
+### 具名停止清理失败的同代隔离
+
+**已实现且已验证。** 2026-11-10 在 Linux x64 私有 systemd 的完整 Server 中，真实 Helper 完成具名停止 `1c5c68f8f62249039fbfb2b8989951a8`，原回执绑定发布及目标执行 `45a8a5003b84429c91134f59974d37a9`。测试在同一原作用域的异步释放阶段注入异常。清理失败后，同一 Server 进程中的 Proxy 进入 `Faulted / module-recovery-blocked`，原队列保存 `Interrupted / managed_tun_action` 和空完成时间。管理端报告相同进程代次和释放时间。原生记录及管理选路通过核对。
+
+停用预览保留门禁，应用故障前生成的计划返回 409。同键响应暂不可用并返回 503，新键以 `proxy.operation_interrupted` 拒绝。重试期间原队列和原生台账字节保持。终止故障 Server 后，禁用 Proxy 的启动被持久门禁拒绝，诊断指向原停止 ID。启用 Proxy 重启后，原队列只读查询原 Helper 回执一次。同键和原 ID 均返回同一终态，原生台账保持，租约归零。两代 Server 合计一次原停止派发、一次原规则删除。重新启用 `944ce9a4e1b146269bf5ce6050b0ce5e` 后，原配置身份、管理选路、真实上游 HTTP 和分流 DNS 再次通过。
+
+Linux Release 构建、Windows Release 的 31 项 Proxy 驻留、38 项 TUN 边界与模块边界回归通过。首轮把新键的 400 错判为同键的 503，按两个实际契约分别断言后复验通过。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-cleanup-fault.log` SHA-256 为 `54f1e86b1ae8e025cbeba026b9169313ddac27813fd59d10b66485d42fb97f39`，归档为 `0750e0e86b731d0d49e29d6930f00e686c5afe277bc319852081b92796b4346a`。两次专属 cgroup 已清理，宿主服务、代理、resolver 和账号指纹一致。
+
+**已实现但实机未验证。** 本轮确认故障进程退出及原回执接续。终态写入失败后的同代隔离另行实测。对象释放、ALC 回收、隔离负载内存及生产收益分别待测。
+
+**未实现或仍受门禁保护。** 缺失可信原回执继续保护原操作。整模块动态驻留尚未验收，Proxy 保持 resident。
 
 ## MB-04 受管 TUN 与 Proxy 安全责任同次停机
 
