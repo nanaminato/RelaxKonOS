@@ -2,7 +2,9 @@
 
 import base64
 from contextlib import contextmanager
+import ctypes
 from datetime import datetime, timezone
+import errno
 import hashlib
 import http.server
 import json
@@ -1429,13 +1431,15 @@ class IpcPublicationWorkers:
         self.helper = None
         self.generation = 0
 
-    def start_helper(self):
+    def start_helper(self, *, block_namespace_cookie=False):
         assert self.helper is None
         self.generation += 1
         self.log = root / f'ipc-helper-{self.generation}.log'
+        args = [launcher, '--linux-service', '--config', self.config]
+        if block_namespace_cookie:
+            args = [sys.executable, '-I', script, 'cookie-unavailable-helper', root, *args]
         with self.log.open('x') as log:
-            self.helper = subprocess.Popen([launcher, '--linux-service', '--config', self.config],
-                                           stdout=log, stderr=subprocess.STDOUT)
+            self.helper = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 8
         while self.helper.poll() is None and time.monotonic() < deadline:
             try:
@@ -1456,6 +1460,43 @@ class IpcPublicationWorkers:
 
     def call(self, phase):
         return subprocess.run([*self.server, phase], **self.identity, capture_output=True, text=True, timeout=20)
+
+
+def run_helper_without_namespace_cookie(args):
+    class ArgumentComparison(ctypes.Structure):
+        _fields_ = [('index', ctypes.c_uint), ('comparison', ctypes.c_int),
+                    ('value', ctypes.c_uint64), ('unused', ctypes.c_uint64)]
+
+    seccomp = ctypes.CDLL('libseccomp.so.2')
+    seccomp.seccomp_init.argtypes = [ctypes.c_uint32]
+    seccomp.seccomp_init.restype = ctypes.c_void_p
+    seccomp.seccomp_syscall_resolve_name.argtypes = [ctypes.c_char_p]
+    seccomp.seccomp_rule_add_array.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int,
+                                              ctypes.c_uint, ctypes.POINTER(ArgumentComparison)]
+    seccomp.seccomp_load.argtypes = [ctypes.c_void_p]
+    seccomp.seccomp_release.argtypes = [ctypes.c_void_p]
+    seccomp.seccomp_release.restype = None
+    allow, return_errno, equal = 0x7FFF0000, 0x00050000, 4
+    context = seccomp.seccomp_init(allow)
+    assert context
+    try:
+        getsockopt = seccomp.seccomp_syscall_resolve_name(b'getsockopt')
+        assert getsockopt >= 0
+        comparisons = (ArgumentComparison * 2)(ArgumentComparison(1, equal, socket.SOL_SOCKET),
+                                                ArgumentComparison(2, equal, 71))
+        assert seccomp.seccomp_rule_add_array(context, return_errno | errno.ENOPROTOOPT,
+                                             getsockopt, len(comparisons), comparisons) == 0
+        assert seccomp.seccomp_load(context) == 0
+    finally:
+        seccomp.seccomp_release(context)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        try:
+            probe.getsockopt(socket.SOL_SOCKET, 71, 8)
+        except OSError as error:
+            assert error.errno == errno.ENOPROTOOPT
+        else:
+            raise AssertionError('SO_NETNS_COOKIE unexpectedly available under the fixture filter')
+    os.execv(args[0], args)
 
 
 def proof_server_publication(owner, operation, operation_dir, previous, case, ipc=None):
@@ -2110,64 +2151,76 @@ def proof_full_http_shutdown(ipc, case):
         held_witness = witness.with_suffix('.held')
         if partial_dns and not unknown_dns:
             witness.rename(held_witness)
-        original_checkpoints = {}
+        resolver_pending = resolver_snapshot()
+        if unknown_dns:
+            assert resolver_pending == resolver_at_cut
+        gates = [('dns-evidence', 'runtime.network_dns_conflict')] if partial_dns else [
+            ('missing-cookie', 'runtime.network_checkpoint_conflict'),
+            ('unavailable-cookie', 'runtime.network_namespace_unknown'),
+            ('foreign-cookie', 'runtime.network_checkpoint_conflict')
+        ]
         if zero_dns:
-            # Simulate a reused namespace link with the cookie of a different kernel namespace.
             foreign_cookie = int(command('/usr/bin/unshare', '--net', sys.executable, '-I', '-c',
                                          'import socket, sys; '
                                          's = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); '
                                          'print(int.from_bytes(s.getsockopt(socket.SOL_SOCKET, 71, 8), sys.byteorder))'))
             assert foreign_cookie != 0 and foreign_cookie != original_cookie
-            for path in operation_dir.glob('*.json'):
-                raw = path.read_bytes()
-                entry = json.loads(raw)
-                intent = entry.get('Intent')
-                if intent is not None and 'NetworkNamespaceCookie' in intent:
-                    assert intent['NetworkNamespaceCookie'] == original_cookie
-                    original_checkpoints[path] = raw
-                    intent['NetworkNamespaceCookie'] = foreign_cookie
-                    path.write_text(json.dumps(entry))
-            assert (operation_dir / 'tun-3.json') in original_checkpoints
-        checkpoints = {file.name: file.read_bytes() for file in operation_dir.glob('*.json')}
-        resolver_pending = resolver_snapshot()
-        if unknown_dns:
-            assert resolver_pending == resolver_at_cut
-        ipc.start_helper()
-        assert os.readlink(f'/proc/{ipc.helper.pid}/ns/net') == record['namespace']
-        assert state_file.read_bytes() == pending_state
-        worker = launch('zero-dns-recover' if unknown_dns else 'restart')
-        blocked_pid = int(marker('full-server-pid'))
-        if unknown_dns:
-            rejected_correlation = marker('full-zero-dns-recovery-held')
-        token = login()
-        if unknown_dns:
-            assert leases() >= 1
 
-        def insufficient_evidence_rejected():
+        def insufficient_evidence_rejected(problem):
             pending = json.loads(state_file.read_bytes())['configuration']
             assert uuid.UUID(pending['operationId']).hex == publication
             assert pending['recoveryStopDispatched'] is False
-            problem = 'runtime.network_dns_conflict' if partial_dns else 'runtime.network_checkpoint_conflict'
             return pending.get('recoveryProblemCode') == problem
 
-        until(insufficient_evidence_rejected, 'original evidence gate')
-        pending_reply = read(publication)
-        assert pending_reply['state'] == 'interrupted' and pending_reply['stage'] == 'managed_tun'
-        assert not pending_reply.get('completedAt') and submit('enable', key, {'profileId': profile}) == publication
-        status, blocked = request(api + '/tun/enable', token, 'full-missing-native-evidence', {'profileId': profile})
-        assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
-        forward('pending-evidence')
-        assert checkpoints == {file.name: file.read_bytes() for file in operation_dir.glob('*.json')}
-        assert resolver_snapshot() == resolver_pending and mirror.read_bytes() == original_mirror
-        assert not (root / 'rule-delete-attempts').exists()
-        check_dns_writes()
-        blocked_log = ipc.log.read_text()
-        assert 'operation=MihomoRuntimeRecover ' in blocked_log and 'operation=MihomoRuntimeConfigure ' not in blocked_log
-        if unknown_dns:
-            assert blocked_log.count(f'operation=MihomoRuntimeRecover id={uuid.UUID(rejected_correlation)} ') == 1
-        os.kill(blocked_pid, signal.SIGKILL if unknown_dns else signal.SIGTERM)
-        assert worker.wait(timeout=12) == 0
-        ipc.stop_helper()
+        for phase, problem in gates:
+            original_checkpoints = {}
+            if phase in ('missing-cookie', 'foreign-cookie'):
+                for path in operation_dir.glob('*.json'):
+                    raw = path.read_bytes()
+                    entry = json.loads(raw)
+                    intent = entry.get('Intent')
+                    if intent is not None and 'NetworkNamespaceCookie' in intent:
+                        assert intent.pop('NetworkNamespaceCookie') == original_cookie
+                        original_checkpoints[path] = raw
+                        if phase == 'foreign-cookie':
+                            intent['NetworkNamespaceCookie'] = foreign_cookie
+                        path.write_text(json.dumps(entry))
+                assert (operation_dir / 'tun-3.json') in original_checkpoints
+            checkpoints = {file.name: file.read_bytes() for file in operation_dir.glob('*.json')}
+            ipc.start_helper(block_namespace_cookie=phase == 'unavailable-cookie')
+            assert os.readlink(f'/proc/{ipc.helper.pid}/ns/net') == record['namespace']
+            assert state_file.read_bytes() == pending_state
+            worker = launch('zero-dns-recover' if unknown_dns else 'restart')
+            blocked_pid = int(marker('full-server-pid'))
+            if unknown_dns:
+                rejected_correlation = marker('full-zero-dns-recovery-held')
+            token = login()
+            if unknown_dns:
+                assert leases() >= 1
+            until(lambda: 'operation=MihomoRuntimeRecover ' in ipc.log.read_text(), phase + ' recovery attempt')
+            assert insufficient_evidence_rejected(problem)
+            pending_reply = read(publication)
+            assert pending_reply['state'] == 'interrupted' and pending_reply['stage'] == 'managed_tun'
+            assert not pending_reply.get('completedAt') and submit('enable', key, {'profileId': profile}) == publication
+            status, blocked = request(api + '/tun/enable', token, 'full-' + phase, {'profileId': profile})
+            assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+            forward(phase)
+            assert checkpoints == {file.name: file.read_bytes() for file in operation_dir.glob('*.json')}
+            assert resolver_snapshot() == resolver_pending and mirror.read_bytes() == original_mirror
+            assert not (root / 'rule-delete-attempts').exists()
+            check_dns_writes()
+            blocked_log = ipc.log.read_text()
+            assert 'operation=MihomoRuntimeConfigure ' not in blocked_log
+            if unknown_dns:
+                assert blocked_log.count(f'operation=MihomoRuntimeRecover id={uuid.UUID(rejected_correlation)} ') == 1
+            os.kill(blocked_pid, signal.SIGKILL if unknown_dns else signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            ipc.stop_helper()
+            for path, raw in original_checkpoints.items():
+                path.write_bytes(raw)
+            pending_state = state_file.read_bytes()
+            if zero_dns:
+                print(f'PASS TUN COOKIE GATE: original={publication}; case={phase}; problem={problem}', flush=True)
         if unknown_dns:
             pending_state = json.loads(state_file.read_bytes())
             pending_revision = pending_state['installation'].pop('stateRevision')
@@ -2176,7 +2229,7 @@ def proof_full_http_shutdown(ipc, case):
             restarted_pid = int(marker('full-server-pid'))
             token = login()
             until(lambda: 'operation=MihomoRuntimeRecover ' in ipc.log.read_text(), 'second original recovery attempt')
-            assert insufficient_evidence_rejected()
+            assert insufficient_evidence_rejected('runtime.network_dns_conflict')
             restarted_state = json.loads(state_file.read_bytes())
             assert restarted_state['installation'].pop('stateRevision') > pending_revision
             assert restarted_state == pending_state
@@ -2197,8 +2250,6 @@ def proof_full_http_shutdown(ipc, case):
             return
         if partial_dns:
             held_witness.rename(witness)
-        for path, raw in original_checkpoints.items():
-            path.write_bytes(raw)
         pending_state = state_file.read_bytes()
         ipc.start_helper()
         assert ipc.helper.pid != original_helper_pid and state_file.read_bytes() == pending_state
@@ -3803,6 +3854,12 @@ if action == 'proof':
     proof()
 elif action == 'prepare':
     prepare(int(sys.argv[3]), int(sys.argv[4]))
+elif action == 'cookie-unavailable-helper':
+    assert os.geteuid() == 0 and Path('/proc/1/comm').read_text().strip() == 'systemd'
+    assert sys.argv[3] == launcher and sys.argv[4:] == ['--linux-service', '--config', str(root / 'ipc-helper.json')]
+    assert {'/run', '/var/lib', '/etc/systemd/system'} <= {
+        line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines() if ' - tmpfs ' in line}
+    run_helper_without_namespace_cookie(sys.argv[3:])
 else:
     assert action in ('observe', 'recover')
     try:

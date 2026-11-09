@@ -826,9 +826,23 @@ Linux x64 私有 systemd 原发布 `b43a6d31d3f84e568eb9700e4e0e7f19` 已交付�
 
 Windows Release 构建及 38 项 TUN 边界检查通过。Linux 实机原始日志 `.artifacts/mb04-tun-full-zero-dns/linux-cookie.log` 的 SHA-256 为 `156649d0ebd8dc7de80e039e3031094050730ac958171cabb61c943e2db3eca1`，归档 SHA-256 为 `f5ca293ca585c7b7c3d80f76f8ceba022ce18bbeae4f3f4be1fa9d57910682b2`。
 
-**已实现但实机未验证。** 实机模拟链接相同的错配，未强制内核重新分配同一 inode。缺 cookie 的历史记录及不支持该选项的内核由代码门禁保护，未做独立实机测试。整机掉电需要专属断电环境。进程退出本轮已验证，对象释放、ALC 回收、隔离内存差值及生产收益未测量。
+**已实现但实机未验证。** 实机模拟链接相同的错配，未强制内核重新分配同一 inode。缺 cookie 的历史记录及内核返回不支持的模拟实测见下一节。整机掉电需要专属断电环境。进程退出本轮已验证，对象释放、ALC 回收、隔离内存差值及生产收益未测量。
 
 **未实现或仍受门禁保护。** 不回填历史归属，不通过错配证据结案。整模块安全交接仍待验收，Proxy 保持 resident。
+
+### 缺少或无法读取内核 cookie 时的原回执
+
+**已实现且已验证。** Linux x64 私有 systemd 复用完整 PAM/JWT Server、独立 Helper 及真实 Mihomo。原发布 `e56a34e3c44d452589f8a881efaf43a9` 在描述符已交付且 DNS 尚未派发时中断。先让全部原生意图使用缺 cookie 的旧记录形态，恢复返回 `runtime.network_checkpoint_conflict`，Helper 未回填记录。再归还原检查点，仅对专属 Helper 进程使用 seccomp，使 `getsockopt(SOL_SOCKET, SO_NETNS_COOKIE)` 返回 `ENOPROTOOPT`。夹具先用真实系统调用确认该错误，再启动 Helper。恢复返回 `runtime.network_namespace_unknown`，原检查点保持。另一个真实命名空间的 cookie 错配同批复验通过。 [libseccomp 参数过滤接口](https://github.com/seccomp/libseccomp/blob/main/include/seccomp.h.in)
+
+三轮均由原认证队列按原 ID 发起核验，HTTP 同键返回原 `interrupted / managed_tun`，无完成时间，异键被拒绝。原管理选路、原候选进程和配置、TUN 描述符、真实上游流量及 resolver 设置保持。无配置重派、停止派发、DNS 写入或规则删除。
+
+归还原生检查点并重启正常 Helper 后，原补偿 IPC `086d7fee2ae14e6fb2686817e407f53a` 只派发一次。应答扣留时原工作租约仍在，再次重启只读确认终态。原规则仅删除一次，恢复的 Mihomo PID `978` 可实际转发，租约归零。同批复验原 DNS 发送端结果未知 `65fd796d6da946578332c3da0b908155`，两次重启保留原待核验。两场专属 cgroup 清理、宿主共享服务与代理及 resolver 文件指纹核对通过。
+
+Windows Release 38 项 TUN 边界检查通过。Linux 原始日志 `.artifacts/mb04-tun-full-zero-dns/linux-cookie-gates.log` SHA-256 为 `be3b906934948b57aab40b1a293102b36fe2ff0e57ee16580c63ba2a91d3a4f7`，归档 SHA-256 为 `114998fc979d9204091d215007b432d08a1432dbb0316c22e2a647850f524858`。
+
+**已实现但实机未验证。** 本轮在支持该选项的内核上向专属进程注入真实系统调用错误。旧内核及整机掉电仍待独立验收。已核实进程退出，对象释放、ALC 回收、隔离内存差值和生产收益未测量。
+
+**未实现或仍受门禁保护。** 下一项是将原命名空间归属持久化到首个激活动作之前。目前归档可先写入 `SwitchStarted`，随后停止旧服务，而首个原生意图还未落盘。这个窗口仍需补齐归属证明并实测错误命名空间拒绝。整模块交接仍待验收，Proxy 保持 resident。
 
 ## MB-04 受管 TUN 认证 HTTP 补偿
 

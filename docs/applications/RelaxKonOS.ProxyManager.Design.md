@@ -4603,7 +4603,7 @@ DNS 派发后若候选退出，Helper 先核对原 DNS 发送端退出见证及�
 
 Helper 尚未提交且原候选仍在转发时，管理选路漂移也会阻止原补偿停止候选进程。同键保留原待核验回执。精确选路恢复后，原操作重新核验归属并补偿一次。见[原补偿门禁实机证据](../architecture/server-module-evidence/Proxy-Safety.md#管理选路漂移时拒绝原补偿派发)。
 
-受管 TUN 的网络归属包含原启动 ID、网络命名空间链接与内核 cookie。链接相同而 cookie 不符时保留原门禁，缺 cookie 的历史检查点也保持待核验。见[内核 cookie 实测](../architecture/server-module-evidence/Proxy-Safety.md#内核网络命名空间-cookie-绑定原所有权)。接续的 Helper 若在不同命名空间，即使原候选仍可转发，也保留原操作待核验和新变更门禁。回到原命名空间后按原 ID 核对原候选、管理选路及配置，再继续原补偿。见[异网络命名空间恢复实测](../architecture/server-module-evidence/Proxy-Safety.md#helper-网络命名空间换代时的原所有权门禁)。
+受管 TUN 的网络归属包含原启动 ID、网络命名空间链接与内核 cookie。链接相同而 cookie 不符时保留原门禁，缺 cookie 的历史检查点或 Helper 无法读取内核 cookie 时也保持待核验，同键仍指向原操作。见[缺失或不可读 cookie 实测](../architecture/server-module-evidence/Proxy-Safety.md#缺少或无法读取内核-cookie-时的原回执)。见[内核 cookie 实测](../architecture/server-module-evidence/Proxy-Safety.md#内核网络命名空间-cookie-绑定原所有权)。接续的 Helper 若在不同命名空间，即使原候选仍可转发，也保留原操作待核验和新变更门禁。回到原命名空间后按原 ID 核对原候选、管理选路及配置，再继续原补偿。见[异网络命名空间恢复实测](../architecture/server-module-evidence/Proxy-Safety.md#helper-网络命名空间换代时的原所有权门禁)。
 
 Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停用。正常停机等待已受理的具名停用收到 Helper 响应、写入审计并持久化原队列终态后退出。重启仍可按原键取得原回执，再次启用沿用已确认发布。见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。
 
