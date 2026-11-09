@@ -3,6 +3,7 @@ using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Privileged;
@@ -11,6 +12,12 @@ namespace RelaxKonOS.PrivilegedHelper;
 
 internal static partial class SquidOperations
 {
+    private const string AccountPendingPath = DirectoryPath + "/relaxkonos-account.pending";
+    private const string AccountReceiptDirectory = DirectoryPath + "/relaxkonos-account-operations";
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    private sealed record AccountRecord([property: JsonRequired] Guid OperationId,
+        [property: JsonRequired] string RequestIdentity, [property: JsonRequired] SquidAccountReceipt? Receipt);
+
     private const string AccountsPath = DirectoryPath + "/relaxkonos-users.json";
     private const string PasswordPath = DirectoryPath + "/relaxkonos.passwd";
     private const string AuthenticationHelper = "/usr/lib/squid/basic_ncsa_auth";
@@ -44,6 +51,55 @@ internal static partial class SquidOperations
         var accounts = await ReadAccountsAsync();
         return accounts.Any(x => x.Enabled) && File.Exists(PasswordPath) ? null : "squid.authentication.no_enabled_accounts";
     }
+
+    [SupportedOSPlatform("linux")]
+    private static async Task<PrivilegedOperationResult> RunAccountAsync(Guid id, string identity, SquidAccountMutation? request)
+    {
+        if (!SquidAccountValidation.Valid(request)) return Failure("squid.accounts.invalid", PrivilegedProblemCode.InvalidRequest);
+        var path = AccountReceiptPath(id);
+        EnsurePlainProtectedPath(path);
+        if (File.Exists(path)) return ObserveAccount(id, identity);
+        if (File.Exists(AccountPendingPath) || File.Exists(LifecyclePendingPath) || File.Exists(PendingPath)) return UnknownPublication();
+        System.IO.Directory.CreateDirectory(AccountReceiptDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        LinuxDirectorySync.Flush(DirectoryPath);
+        var original = new AccountRecord(id, identity, null);
+        WritePublication(path, original, overwrite: false);
+        await WriteNewAsync(AccountPendingPath, id.ToString("D"));
+        LinuxDirectorySync.Flush(DirectoryPath);
+
+        var result = await MutateAccountAsync(request);
+        if (File.Exists(PendingPath) || !result.Success && !KnownAccountProblem(result.Error)) return UnknownPublication();
+        LinuxDirectorySync.Flush(DirectoryPath);
+        var receipt = new SquidAccountReceipt(id, identity, result.Success ? null : result.Error);
+        WritePublication(path, original with { Receipt = receipt }, overwrite: true);
+        File.Delete(AccountPendingPath);
+        LinuxDirectorySync.Flush(DirectoryPath);
+        return Json(receipt);
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static PrivilegedOperationResult ObserveAccount(Guid id, string identity)
+    {
+        var path = AccountReceiptPath(id);
+        EnsurePlainProtectedPath(path);
+        if (!File.Exists(path)) return UnknownPublication();
+        using var stream = File.OpenRead(path);
+        if (stream.Length is 0 or > 4096) throw new IOException("Invalid Squid account operation size.");
+        var original = JsonSerializer.Deserialize<AccountRecord>(stream);
+        if (original is null || original.OperationId != id || !ValidHash(original.RequestIdentity)
+            || original.Receipt is { } value && (value.OperationId != id || value.RequestIdentity != original.RequestIdentity
+                || value.Problem is not null && !KnownAccountProblem(value.Problem)))
+            throw new IOException("Invalid Squid account operation record.");
+        if (identity != original.RequestIdentity) return Failure("squid.idempotency_conflict", PrivilegedProblemCode.Conflict);
+        if (original.Receipt is not { } receipt || File.Exists(AccountPendingPath)) return UnknownPublication();
+        LinuxDirectorySync.Flush(DirectoryPath);
+        return Json(receipt);
+    }
+
+    private static string AccountReceiptPath(Guid id) => Path.Combine(AccountReceiptDirectory, id.ToString("N") + ".json");
+
+    private static bool KnownAccountProblem(string? problem) => problem is "squid.accounts.exists" or "squid.accounts.limit"
+        or "squid.accounts.not_found" or "squid.accounts.last_enabled_required" or "squid.accounts.failed_rolled_back";
 
     [SupportedOSPlatform("linux")]
     private static async Task<PrivilegedOperationResult> MutateAccountAsync(SquidAccountMutation? request)

@@ -21,7 +21,7 @@ internal static partial class SquidOperations
         var path = LifecyclePath(id);
         EnsurePlainProtectedPath(path);
         if (File.Exists(path)) return ObserveLifecycle(id, action);
-        if (File.Exists(LifecyclePendingPath)) return UnknownPublication();
+        if (File.Exists(LifecyclePendingPath) || File.Exists(AccountPendingPath)) return UnknownPublication();
         if (action is not (SquidServiceAction.Stop or SquidServiceAction.Disable))
         {
             if (File.Exists(PendingPath)) return UnknownPublication();

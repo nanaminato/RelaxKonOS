@@ -1,7 +1,10 @@
 using RelaxKonOS.Server.Startup;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
+using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.GatewayProxy;
@@ -34,13 +37,13 @@ public static class GatewayProxyEndpoints
         {
             var preview = SquidConfigurationRenderer.Preview(request.Configuration);
             return preview.Valid ? QueueAsync(context, operations, "configuration.apply",
-                (execution, id, stage, token) => execution.ApplyAsync(id, request, stage, token), ct, request)
+                (execution, id, stage, _, token) => execution.ApplyAsync(id, request, stage, token), ct, request)
                 : Task.FromResult<IResult>(Results.BadRequest(preview));
         }).RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
         app.MapPost(GatewayProxyRoutes.Lifecycle, (SquidLifecycleRequest request, HttpContext context,
             ProxyOperationStore operations, CancellationToken ct) =>
             Enum.IsDefined(request.Action)
-                ? QueueAsync(context, operations, "lifecycle." + request.Action.ToString().ToLowerInvariant(), (execution, id, stage, token) => execution.ExecuteAsync(id, request.Action, stage, token), ct,
+                ? QueueAsync(context, operations, "lifecycle." + request.Action.ToString().ToLowerInvariant(), (execution, id, stage, _, token) => execution.ExecuteAsync(id, request.Action, stage, token), ct,
                     SquidGatewayService.IsTrackedLifecycle(request.Action) ? request : null)
                 : Task.FromResult<IResult>(Results.BadRequest(new { problemCode = "squid.action.invalid" })))
             .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
@@ -50,14 +53,14 @@ public static class GatewayProxyEndpoints
         app.MapPost(GatewayProxyRoutes.Accounts, (SquidAccountMutation request, HttpContext context,
             ProxyOperationStore operations, CancellationToken ct) =>
             SquidAccountValidation.Valid(request)
-                ? QueueAsync(context, operations, "accounts." + request.Action.ToString().ToLowerInvariant(), (execution, _, _, token) => execution.MutateAccountAsync(request, token), ct)
+                ? QueueAsync(context, operations, "accounts." + request.Action.ToString().ToLowerInvariant(), (execution, id, stage, identity, token) => execution.MutateAccountAsync(id, identity!, request, stage, token), ct, request)
                 : Task.FromResult<IResult>(Results.BadRequest(new { problemCode = "squid.accounts.invalid" })))
             .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
         return app;
     }
 
     private static async Task<IResult> QueueAsync(HttpContext context, ProxyOperationStore store,
-        string kind, Func<SquidGatewayService, Guid, ProxyOperationStageReporter, CancellationToken, Task<string?>> action,
+        string kind, Func<SquidGatewayService, Guid, ProxyOperationStageReporter, string?, CancellationToken, Task<string?>> action,
         CancellationToken ct, object? identifiedRequest = null)
     {
         var key = context.Request.Headers["Idempotency-Key"].ToString();
@@ -65,16 +68,34 @@ public static class GatewayProxyEndpoints
             return Results.BadRequest(new { problemCode = "squid.idempotency_key.required_or_too_long" });
         var actor = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User.FindFirstValue("sub") ?? "unknown";
         var scopes = context.RequestServices.GetRequiredService<IServiceScopeFactory>();
-        var requestIdentity = identifiedRequest is null ? null
-            : Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { actor, publication = identifiedRequest })));
+        var requestIdentity = identifiedRequest switch
+        {
+            null => null,
+            SquidAccountMutation account => AccountIdentity(context, actor, account),
+            _ => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { actor, publication = identifiedRequest })))
+        };
         try
         {
             var item = await store.EnqueueIdentifiedAsync("squid:" + key, "squid." + kind, (id, stage, _, token) =>
                 ProxyOperationScope.RunAsync(scopes, actor, "squid." + kind,
-                    (services, execution) => action(services.GetRequiredService<SquidGatewayService>(), id, stage, execution), token),
+                    (services, execution) => action(services.GetRequiredService<SquidGatewayService>(), id, stage, requestIdentity, execution), token),
                 ct, requestIdentity);
             return new ResidentOperationResult(ServerModules.ProxyId, Results.Accepted(ProxyApiRoutes.Proxy + "/operations/" + item.OperationId, new ProxyOperationAcceptedDto(item.OperationId)));
         }
         catch (ProxyOperationValidationException error) { return Results.BadRequest(new { problemCode = error.ProblemCode }); }
+    }
+
+    private static string AccountIdentity(HttpContext context, string actor, SquidAccountMutation account)
+    {
+        var secret = Encoding.UTF8.GetBytes(context.RequestServices.GetRequiredService<IOptions<JwtOptions>>().Value.Secret);
+        var key = HMACSHA256.HashData(secret, "RelaxKonOS.Squid.AccountRequest"u8);
+        var data = JsonSerializer.SerializeToUtf8Bytes(new { actor, account });
+        try { return Convert.ToHexString(HMACSHA256.HashData(key, data)); }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(secret);
+            CryptographicOperations.ZeroMemory(key);
+            CryptographicOperations.ZeroMemory(data);
+        }
     }
 }

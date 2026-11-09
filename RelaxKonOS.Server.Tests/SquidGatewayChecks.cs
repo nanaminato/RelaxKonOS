@@ -231,6 +231,7 @@ internal static class SquidGatewayChecks
     private static async Task VerifyEndpointMetadataAsync()
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
+        builder.Services.Configure<RelaxKonOS.Server.Identity.JwtOptions>(options => options.Secret = new string('q', 48));
         var helper = new RecordingHelper();
         builder.Services.AddSingleton<IPrivilegedOperationTransport>(helper);
         builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
@@ -310,6 +311,10 @@ internal static class SquidGatewayChecks
             "Account mutations require an idempotency key.");
         var created = await InvokeAsync(GatewayProxyRoutes.Accounts, accountRequest, "account-create");
         var replayAccount = await InvokeAsync(GatewayProxyRoutes.Accounts, accountRequest, "account-create");
+        var changedPassword = await InvokeAsync(GatewayProxyRoutes.Accounts,
+            accountRequest with { Password = "another-test-password" }, "account-create");
+        Check(changedPassword.Status == 400 && changedPassword.Body.Contains("proxy.idempotency_conflict"),
+            "A different password under the original key must conflict without a second mutation.");
         Check(created.Status == 202 && created.Body == replayAccount.Body && !created.Body.Contains(accountRequest.Password!),
             "Account retries return one operation without echoing the secret.");
         var accountId = JsonSerializer.Deserialize<ProxyOperationAcceptedDto>(created.Body, RelaxKonOSJsonOptions.Default)!.OperationId;
@@ -406,6 +411,10 @@ internal static class SquidGatewayChecks
         public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
         {
             Requests.Add(request);
+            if (Result.Success && request is { Operation: PrivilegedOperationKind.SquidAccountMutate,
+                OperationId: { } accountId, SquidAccountRequestIdentity: { } identity })
+                return Task.FromResult(new PrivilegedOperationResult(true, OutputBase64: Convert.ToBase64String(
+                    JsonSerializer.SerializeToUtf8Bytes(new SquidAccountReceipt(accountId, identity, null)))));
             if (Result.Success && request is { Operation: PrivilegedOperationKind.SquidApplyConfiguration,
                     OperationId: { } id, SquidConfiguration.Configuration: { } configuration })
             {

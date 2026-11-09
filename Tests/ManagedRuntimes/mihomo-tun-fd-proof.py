@@ -1929,7 +1929,7 @@ def proof_full_http_shutdown(ipc, case):
     removal_admin = case == 'ipc-http-retained-administrator'
     removal_http = removal_admin or case == 'ipc-http-retained-installation'
     retained_removal = removal_http or case == 'ipc-http-retained'
-    squid = case in ('ipc-http-squid', 'ipc-http-squid-lifecycle-unknown')
+    squid = case in ('ipc-http-squid', 'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account')
     zero_dns = case == 'ipc-http-zero-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
@@ -2658,6 +2658,76 @@ def proof_full_http_shutdown(ipc, case):
             raise
         original_pid = int(service('show', '-p', 'MainPID', '--value', 'squid.service'))
         assert original_pid > 1
+        if case == 'ipc-http-squid-account':
+            accounts = api_root + '/accounts'
+            username = 'isolated-proxy-user'
+            old_password = secrets.token_urlsafe(24)
+            new_password = secrets.token_urlsafe(24)
+
+            def authenticate(password):
+                result = subprocess.run(['/usr/bin/curl', '--config', '-', '--noproxy', '', '--silent', '--fail',
+                                         '--max-time', '3', '--proxy', 'http://127.0.0.1:18883',
+                                         f'http://192.0.2.2:{upstream.server_port}/squid-authenticated'],
+                                        input=f'proxy-user = "{username}:{password}"\n', text=True,
+                                        capture_output=True, timeout=5)
+                return result.returncode == 0 and result.stdout == 'upstream-through-inherited-tun'
+
+            status, created = request(accounts, token, 'squid-account-create',
+                                      {'action': 'Create', 'username': username, 'password': old_password})
+            assert status == 202, (status, created)
+            until(lambda: terminal(created['operationId']), 'initial Squid account')
+            status, configured = request(api_root + '/configuration/apply', token, 'squid-account-auth',
+                                         {'configuration': {'accessMode': 'password', 'port': 18883}})
+            assert status == 202, (status, configured)
+            until(lambda: terminal(configured['operationId']), 'authenticated Squid configuration')
+            until(lambda: authenticate(old_password), 'original Squid authentication')
+            assert not forward(18883, 'anonymous-account')
+            pid = restart('squid-account-cut', pid)
+            key = 'squid-account-rotation'
+            mutation = {'action': 'SetPassword', 'username': username, 'password': new_password}
+            status, accepted = request(accounts, token, key, mutation)
+            assert status == 202, (status, accepted)
+            operation = accepted['operationId']
+            assert uuid.UUID(marker('full-squid-response-held')) == uuid.UUID(operation)
+            assert read(operation)['state'] == 'running' and leases() == 1
+            assert request(accounts, token, key, mutation) == (202, accepted)
+            changed = dict(mutation, password=old_password)
+            assert request(accounts, token, key, changed)[1]['problemCode'] == 'proxy.idempotency_conflict'
+            until(lambda: authenticate(new_password), 'rotated Squid authentication')
+            receipt = native.parent / 'relaxkonos-account-operations' / (uuid.UUID(operation).hex + '.json')
+            original = receipt.read_bytes()
+            evidence = json.loads(original)
+            assert evidence['Receipt']['OperationId'] == operation and evidence['Receipt']['Problem'] is None
+            assert len(evidence['Receipt']['RequestIdentity']) == 64
+            assert all(password.encode() not in original and password.encode() not in queue.read_bytes()
+                       for password in (old_password, new_password))
+            counters = reloads.read_bytes()
+            cut(pid)
+            withheld = receipt.with_suffix('.held')
+            receipt.rename(withheld)
+            pid = relaunch()
+            pending = read(operation)
+            assert pending['state'] == 'interrupted' and pending['stage'] == 'squid_account' and not pending.get('completedAt'), pending
+            assert request(accounts, token, key, mutation) == (202, accepted)
+            assert request(accounts, token, 'squid-account-fresh', changed)[1]['problemCode'] == 'proxy.operation_interrupted'
+            assert authenticate(new_password)
+            withheld.rename(receipt)
+            done = terminal(operation)
+            assert done['completedAt'] and request(accounts, token, key, mutation) == (202, accepted)
+            assert read(operation) == done and leases() == 0 and receipt.read_bytes() == original
+            assert authenticate(new_password) and reloads.read_bytes() == counters
+            audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+            assert audit.count(f'operation=SquidAccountMutate id={operation} ') == 1
+            assert f'operation=SquidAccountReceipt id={operation} ' in audit
+            assert int(service('show', '-p', 'MainPID', '--value', 'squid.service')) == original_pid
+            os.kill(pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            upstream.shutdown()
+            upstream.server_close()
+            print(f'PASS SQUID ACCOUNT RECOVERY: original={operation}; Squid PID={original_pid}; '
+                  'actual authentication continued, original receipt recovered, no repeated mutation', flush=True)
+            return
+
         if case == 'ipc-http-squid-lifecycle-unknown':
             lifecycle = api_root + '/lifecycle'
             action = {'action': 'Reload'}
@@ -3199,7 +3269,7 @@ rules:
             ipc.start_helper()
             if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
-                        'ipc-http-squid-lifecycle-unknown'):
+                        'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account'):
                 proof_full_http_shutdown(ipc, case)
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,

@@ -51,6 +51,9 @@ public enum SquidAccessMode { IpWhitelist, Password, PasswordAndIpWhitelist }
 public sealed class SquidAccessModeJsonConverter() : JsonStringEnumConverter<SquidAccessMode>(JsonNamingPolicy.CamelCase, allowIntegerValues: false);
 
 public sealed record SquidAccount(string Username, bool Enabled);
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record SquidAccountReceipt([property: JsonRequired] Guid OperationId,
+    [property: JsonRequired] string RequestIdentity, [property: JsonRequired] string? Problem);
 [JsonConverter(typeof(JsonStringEnumConverter<SquidAccountAction>))]
 public enum SquidAccountAction { Create, SetPassword, SetEnabled, Delete }
 

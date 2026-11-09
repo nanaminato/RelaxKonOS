@@ -77,7 +77,7 @@ internal static class MihomoTunFullServerAcceptance
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
-            or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"))
+            or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
@@ -101,6 +101,7 @@ internal static class MihomoTunFullServerAcceptance
             "squid-cut" => "SquidApplyConfiguration",
             "squid-receipt-cut" => "SquidConfigurationReceipt",
             "squid-lifecycle-cut" => "SquidTrackedLifecycle",
+            "squid-account-cut" => "SquidAccountMutate",
             _ => null
         };
         await using var squidRelay = squidOperation is not null ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(

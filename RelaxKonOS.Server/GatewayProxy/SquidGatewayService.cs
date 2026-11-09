@@ -13,6 +13,16 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
     internal const string PublicationPending = "squid_publication";
     internal const string PublicationKind = "squid.configuration.apply";
     internal const string LifecyclePending = "squid_lifecycle";
+    internal const string AccountPending = "squid_account";
+
+    internal static bool IsAccountAction(string kind) => kind is
+        "squid.accounts.create" or "squid.accounts.setpassword" or "squid.accounts.setenabled" or "squid.accounts.delete";
+
+    internal static bool IsAccountUnconfirmed(string? problem) => problem is not null && !KnownAccountProblem(problem);
+
+    private static bool KnownAccountProblem(string problem) => problem is "squid.accounts.exists" or "squid.accounts.limit"
+        or "squid.accounts.not_found" or "squid.accounts.last_enabled_required" or "squid.accounts.failed_rolled_back"
+        or "squid.platform.unsupported" or "squid.configuration_directory.missing" or "squid.runtime.unavailable";
 
     internal static bool IsTrackedLifecycle(SquidServiceAction action) =>
         Enum.IsDefined(action) && action is not (SquidServiceAction.Install or SquidServiceAction.Uninstall);
@@ -174,12 +184,43 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         catch (Exception ex) when (ex is JsonException or FormatException) { return null; }
     }
 
-    public async Task<string?> MutateAccountAsync(SquidAccountMutation request, CancellationToken ct)
+    public async Task<string?> MutateAccountAsync(Guid id, string identity, SquidAccountMutation request,
+        ProxyOperationStageReporter stage, CancellationToken ct)
     {
         if (!SquidAccountValidation.Valid(request)) return "squid.accounts.invalid";
+        await stage(AccountPending);
         await configurations.Gate.WaitAsync(ct);
-        try { return Problem(await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidAccountMutate, SquidAccount: request), ct)); }
+        try
+        {
+            var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidAccountMutate, OperationId: id,
+                SquidAccount: request, SquidAccountRequestIdentity: identity), ct);
+            var receipt = ReadAccountReceipt(result, id, identity);
+            if (receipt is not null) return receipt.Problem;
+            if (result.Error == "squid.configuration_directory.missing"
+                || result.ProblemCode == PrivilegedProblemCode.UnsupportedOperation
+                    && result.Error is "squid.platform.unsupported" or "squid.runtime.unavailable") return result.Error;
+            return "squid.recovery.required";
+        }
         finally { configurations.Gate.Release(); }
+    }
+
+    internal async Task<SquidAccountReceipt?> RecoverAccountAsync(Guid id, string identity)
+    {
+        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidAccountReceipt,
+            OperationId: id, SquidAccountRequestIdentity: identity), CancellationToken.None);
+        return ReadAccountReceipt(result, id, identity);
+    }
+
+    private static SquidAccountReceipt? ReadAccountReceipt(PrivilegedOperationResult result, Guid id, string identity)
+    {
+        if (!result.Success || result.OutputBase64 is not { } output) return null;
+        try
+        {
+            var receipt = JsonSerializer.Deserialize<SquidAccountReceipt>(Convert.FromBase64String(output));
+            return receipt is not null && receipt.OperationId == id && receipt.RequestIdentity == identity
+                && (receipt.Problem is null || KnownAccountProblem(receipt.Problem)) ? receipt : null;
+        }
+        catch (Exception error) when (error is JsonException or FormatException) { return null; }
     }
 
     /// <summary>The Helper's attached unit output, or nothing when it is absent or not base64.</summary>
