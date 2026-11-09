@@ -16,18 +16,20 @@ using RelaxKonOS.Server.Privileged;
 [SupportedOSPlatform("linux")]
 internal static class MihomoTunFullServerAcceptance
 {
-    internal static async Task HoldProbeStartReplyAsync(string root, string socket)
+    internal static async Task HoldProbeReplyAsync(string root, string socket, string mode)
     {
         MihomoIpcStartupAcceptance.RequirePrivateHost(rootRequired: false);
-        if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK"))
+        if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK") || mode is not ("start" or "complete"))
             throw new InvalidOperationException("The probe relay requires its private systemd fixture.");
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(40));
         var directory = Path.Combine(root, "probe-relay");
+        var drop = Path.Combine(directory, "drop");
+        var target = mode == "complete" ? "MihomoProbeHostComplete" : "MihomoProbeHostStart";
         await using var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay(Path.Combine(directory, "helper.sock"),
-            socket, budget.Token, (operation, _) => operation == "MihomoProbeHostStart");
+            socket, budget.Token, (operation, _) => operation == target && !File.Exists(drop));
         var original = await relay.Committed.Task.WaitAsync(budget.Token);
         await WriteMarkerAsync(directory, "held", original.ToString("D"));
-        while (!File.Exists(Path.Combine(directory, "drop"))) await Task.Delay(25, budget.Token);
+        while (!File.Exists(drop)) await Task.Delay(25, budget.Token);
         relay.DropHeldResponse();
         await Task.Delay(Timeout.InfiniteTimeSpan, budget.Token);
     }

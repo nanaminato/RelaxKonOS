@@ -3708,14 +3708,17 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert not fence.exists() if server_cut else fence.read_bytes() == original
             assert pids.read_bytes() == original_processes
             probe(record, 'external-version-after-manager-witness')
-        live_drop = fixture.with_name('external-version-start-reply-drop.fixture').is_file()
-        if live_drop or fixture.with_name('external-version-start-reply-cut.fixture').is_file():
-            assert server_cut and not fence.exists()
-            server_pid = verify_external_probe_start_reply(server_pid, record, route, request_body, fence, forced, original_id, live_drop)
+        for phase in ('start-reply-cut', 'start-reply-drop', 'complete-reply-drop'):
+            if fixture.with_name(f'external-version-{phase}.fixture').is_file():
+                assert server_cut and not fence.exists()
+                server_pid = verify_external_probe_reply(server_pid, record, route, request_body, fence, forced, original_id, phase)
+                break
         return server_pid
 
-    def verify_external_probe_start_reply(server_pid, record, route, request_body, fence, forced, completed_id, live_drop):
+    def verify_external_probe_reply(server_pid, record, route, request_body, fence, forced, completed_id, phase):
         nonlocal worker, token
+        live_drop = phase != 'start-reply-cut'
+        complete_drop = phase == 'complete-reply-drop'
         registry = Path('/var/lib/relaxkonos/mihomo-probe-witnesses')
         directory = root / 'probe-relay'
         directory.mkdir(mode=0o700)
@@ -3723,8 +3726,8 @@ exec {shlex.quote(str(systemctl))} "$@"
         relay_socket = directory / 'helper.sock'
         os.kill(server_pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
-        with subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-probe-start-relay', str(root),
-                               str(ipc.socket_path)], **ipc.identity) as relay:
+        with subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-probe-relay', str(root), str(ipc.socket_path),
+                               'complete' if complete_drop else 'start'], **ipc.identity) as relay:
             try:
                 deadline = time.monotonic() + 8
                 while not relay_socket.is_socket():
@@ -3735,10 +3738,11 @@ exec {shlex.quote(str(systemctl))} "$@"
                 server_pid = int(marker('full-server-pid'))
                 token = login()
                 replies = []
+                body = {**request_body, 'externalPath': str(root / 'mihomo')} if complete_drop else request_body
 
                 def request_probe():
                     try:
-                        replies.append(request(route, token, data=request_body))
+                        replies.append(request(route, token, data=body))
                     except ConnectionError:
                         replies.append('disconnected')
 
@@ -3746,34 +3750,45 @@ exec {shlex.quote(str(systemctl))} "$@"
                 thread.start()
                 original = uuid.UUID(marker('probe-relay/held'))
                 pending = json.loads(fence.read_bytes())
-                assert pending['OperationId'] == str(original) and pending['WorkerPid'] is None and pending['Host'] is None
+                assert pending['OperationId'] == str(original)
                 assert leases() == 1 and (registry / (original.hex + '.launch.json')).is_file()
                 registered = json.loads((registry / (original.hex + '.json')).read_bytes())
                 assert registered['OperationId'] == str(original) and registered['OwnerUid'] == ipc.uid
-                scope = Path('/sys/fs/cgroup') / registered['ControlGroup'].lstrip('/')
-                assert (scope / 'cgroup.procs').read_text().split() == [str(registered['Pid'])]
                 receipt = registry / (original.hex + '.exit.json')
-                descriptor = os.pidfd_open(registered['Pid'])
-                try:
-                    if live_drop:
-                        (directory / 'drop').touch()
-                    else:
-                        os.kill(server_pid, signal.SIGKILL)
-                        assert worker.wait(timeout=12) == 0
-                    event = select.poll()
-                    event.register(descriptor, 0)
-                    assert event.poll(8000) == [(descriptor, select.POLLHUP)]
-                finally:
-                    os.close(descriptor)
+                if complete_drop:
+                    assert pending['WorkerPid'] == registered['Pid'] and pending['Host']['InvocationId'] == registered['InvocationId']
+                    original_terminal = receipt.read_bytes()
+                    sealed = json.loads(original_terminal)
+                    assert sealed['Dispatch'] == registered and sealed['NativeExitStatus'] == 0
+                    assert not Path(f'/proc/{registered["Pid"]}').exists()
+                    (directory / 'drop').touch()
+                else:
+                    assert pending['WorkerPid'] is None and pending['Host'] is None
+                    scope = Path('/sys/fs/cgroup') / registered['ControlGroup'].lstrip('/')
+                    assert (scope / 'cgroup.procs').read_text().split() == [str(registered['Pid'])]
+                    descriptor = os.pidfd_open(registered['Pid'])
+                    try:
+                        if live_drop:
+                            (directory / 'drop').touch()
+                        else:
+                            os.kill(server_pid, signal.SIGKILL)
+                            assert worker.wait(timeout=12) == 0
+                        event = select.poll()
+                        event.register(descriptor, 0)
+                        assert event.poll(8000) == [(descriptor, select.POLLHUP)]
+                    finally:
+                        os.close(descriptor)
                 thread.join(timeout=5)
                 if live_drop:
-                    assert len(replies) == 1 and isinstance(replies[0], tuple) and replies[0][0] == 503, replies
-                    until(lambda: leases() == 0, 'live undispatched probe response and scope drain')
+                    assert len(replies) == 1 and isinstance(replies[0], tuple) and replies[0][0] == (200 if complete_drop else 503), replies
+                    if complete_drop:
+                        assert 'Mihomo' in replies[0][1]['version'] and receipt.read_bytes() == original_terminal
+                    until(lambda: leases() == 0, 'live original probe response and scope drain')
                     assert not fence.exists() and int(marker('full-server-pid')) == server_pid
                     status, module = request('/api/v1.0/server/modules/relaxkonos.proxy', token)
                     assert status == 200 and module['residency']['state'] == 'resident'
                     live_terminal = receipt.read_bytes()
-                    probe(record, 'external-version-live-start-reply-drop')
+                    probe(record, 'external-version-live-' + phase)
                     os.kill(server_pid, signal.SIGTERM)
                     assert worker.wait(timeout=12) == 0
                 else:
@@ -3795,21 +3810,24 @@ exec {shlex.quote(str(systemctl))} "$@"
         terminal = receipt.read_bytes()
         if live_drop:
             assert terminal == live_terminal
-        assert json.loads(terminal)['NativeExitStatus'] == 65 and json.loads(terminal)['Dispatch'] == registered
-        for operation, expected in ((original, True), (completed_id, False)):
+        settled = json.loads(terminal)
+        assert settled['NativeExitStatus'] == (0 if complete_drop else 65) and settled['Dispatch'] == registered
+        for operation, query, expected in ((original, 'read' if complete_drop else 'undispatched', True), (completed_id, 'undispatched', False)):
             read = subprocess.run(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-probe-witness', str(root),
-                                   str(ipc.socket_path), str(operation), 'undispatched'], **ipc.identity,
+                                   str(ipc.socket_path), str(operation), query], **ipc.identity,
                                   capture_output=True, text=True, check=True, timeout=10)
             assert json.loads(read.stdout)['success'] is expected
         assert receipt.read_bytes() == terminal
         audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
         assert audit.count('operation=MihomoProbeHostStart ') == 5
         assert audit.count(f'operation=MihomoProbeHostStart id={original} ') == 1
-        assert f'operation=MihomoProbeHostConfirmUndispatched id={original} ' in audit
-        phase = 'drop' if live_drop else 'cut'
-        probe(record, 'external-version-original-start-reply-' + phase)
-        print(f'PASS EXTERNAL VERSION START REPLY {phase.upper()}: original={original}; invocation={registered["InvocationId"]}; '
-              f'worker={registered["Pid"]}; no executable dispatched, same receipt, one host launch', flush=True)
+        if complete_drop:
+            assert audit.count(f'operation=MihomoProbeHostComplete id={original} ') >= 2
+        else:
+            assert f'operation=MihomoProbeHostConfirmUndispatched id={original} ' in audit
+        probe(record, 'external-version-original-' + phase)
+        print(f'PASS EXTERNAL VERSION {phase.upper().replace("-", " ")}: original={original}; invocation={registered["InvocationId"]}; '
+              f'worker={registered["Pid"]}; same receipt, one host launch', flush=True)
         return server_pid
 
     def verify_external_version_manager_witness(fixture):
