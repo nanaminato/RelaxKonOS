@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import socket
 import sqlite3
 import ssl
@@ -163,10 +164,10 @@ def run(root, server, tests, mode):
         print(f"PASS AUTHENTICATED ACME OBSERVATION DRAIN: operation={original['operationId']}; original CA response drained after disconnect", flush=True)
 
     @contextmanager
-    def process(arguments, name):
+    def process(arguments, name, *, prefix=()):
         child_env = dict(env, DOTNET_STARTUP_HOOKS=str(tests)) if collectible and name != "helper" else env
         with (root / f"{name}.stderr").open("w") as errors, (root / f"{name}.stdout").open("w") as output:
-            child = subprocess.Popen(["dotnet", *map(str, arguments)], cwd=root, env=child_env,
+            child = subprocess.Popen([*prefix, "dotnet", *map(str, arguments)], cwd=root, env=child_env,
                                      stdin=subprocess.PIPE, stdout=output, stderr=errors)
         try:
             yield child
@@ -827,9 +828,9 @@ def run(root, server, tests, mode):
                     fallback = ssl.PEM_cert_to_DER_cert((root / "https.pem").read_text())
                     pending_ledger = ledger.read_bytes()
 
-                    def verify_unavailable_recovery(fault):
+                    def verify_unavailable_recovery(fault, *, prefix=(), executable=server):
                         name = "kestrel-recovery-startup-" + fault
-                        with process([server], name) as drifted:
+                        with process([executable], name, prefix=prefix) as drifted:
                             wait_for(drifted, healthy, name)
                             token = login()
                             assert served_fingerprint(management_tls) == hashlib.sha256(fallback).hexdigest().upper()
@@ -852,6 +853,22 @@ def run(root, server, tests, mode):
                         verify_unavailable_recovery("changed-chain")
                     finally:
                         saved_chain.replace(chain)
+
+                    # Keep the valid chain at the exact path and drop only the Server's
+                    # ability to bypass its file permissions for this restart.
+                    no_dac = ("/usr/bin/setpriv", "--bounding-set=-dac_override,-dac_read_search", "--")
+                    # The upload staging parent is private to the SSH user.
+                    # Use a fixture-owned copy so the reduced Server can load its binaries.
+                    restricted_server = shutil.copytree(server.parent, root / "restricted-server") / server.name
+                    mode = chain.stat().st_mode & 0o777
+                    try:
+                        chain.chmod(0)
+                        denied = subprocess.run([*no_dac, "/bin/cat", str(chain)], capture_output=True, env=dict(env, LC_ALL="C"))
+                        assert denied.returncode != 0 and b"Permission denied" in denied.stderr and not denied.stdout
+                        verify_unavailable_recovery("unreadable-chain", prefix=no_dac, executable=restricted_server)
+                    finally:
+                        chain.chmod(mode)
+                    assert chain.read_bytes() == original_chain
 
                     key = chain.with_name("private.key")
                     original_key = key.read_bytes()
@@ -876,7 +893,7 @@ def run(root, server, tests, mode):
                         assert tuple(path.read_bytes() for path in stable_paths) == stable_bytes
                         assert ledger.read_bytes() == terminal_bytes and (root / "relay.log").read_bytes() == traffic
                         print(f"PASS ACME KESTREL RECOVERY APPLY: operation={signed['operationId']}; "
-                              f"served={proof['issuedFingerprintSha256']}; missing, linked and changed chain and wrong key refused before original recovery", flush=True)
+                              f"served={proof['issuedFingerprintSha256']}; missing, linked, changed and unreadable chain and wrong key refused before original recovery", flush=True)
                 return
             if mode == "key-checkpoint":
                 assert (root / "key-before-finalize").read_text() == signed["operationId"]
