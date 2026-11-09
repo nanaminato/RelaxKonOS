@@ -2063,6 +2063,7 @@ def proof_full_http_shutdown(ipc, case):
     joint = case == 'ipc-http-joint'
     admission = case == 'ipc-http-admission'
     handoff = case == 'ipc-http-handoff'
+    inbound_tun = case == 'ipc-http-inbound-tun'
     removal_admin = case == 'ipc-http-retained-administrator'
     removal_http = removal_admin or case == 'ipc-http-retained-installation'
     retained_removal = removal_http or case == 'ipc-http-retained'
@@ -3239,6 +3240,65 @@ exec {shlex.quote(str(systemctl))} "$@"
         assert guard_applied()
         return guard, guard_evidence()
 
+    def verify_inbound_tun(pid, record, publication):
+        nonlocal worker, token
+        inbound = '/api/v1.0/proxy-server'
+        native = archive / 'state' / 'archive-state.json'
+        execution = archive / 'operations' / publication / 'tun-5.json'
+        witness = (native.read_bytes(), mirror.read_bytes(), execution.read_bytes())
+
+        def accept(path, key):
+            status, reply = request(inbound + path, token, key)
+            assert status == 202, (status, reply)
+            return reply['operationId']
+
+        def inbound_receipt(operation):
+            status, reply = request(f'{inbound}/operations/{operation}', token)
+            assert status == 200, (status, reply)
+            return reply
+
+        operation = accept('/configuration/apply', 'inbound-tun-original')
+        assert marker('full-inbound-held') == operation
+        assert inbound_receipt(operation)['state'] == 'running' and leases() >= 1
+        probe(record, 'inbound-apply-held')
+        pending = queue.read_bytes()
+        os.kill(pid, signal.SIGKILL)
+        until(lambda: not Path(f'/proc/{pid}').exists(), 'original Server exit')
+        assert queue.read_bytes() == pending
+        worker = launch('inbound-restart')
+        pid = int(marker('full-server-pid'))
+        token = login()
+        assert request(inbound + '/recovery', key='inbound-tun-anonymous')[0] == 401
+        assert accept('/configuration/apply', 'inbound-tun-original') == operation
+        interrupted = inbound_receipt(operation)
+        assert interrupted['state'] == 'interrupted' and queue.read_bytes() == pending
+        probe(record, 'inbound-recovery-before')
+        assert accept('/recovery', 'inbound-tun-recover') == operation
+
+        def confirmed():
+            reply = inbound_receipt(operation)
+            assert reply['state'] != 'failed', reply
+            return reply if reply['state'] == 'succeeded' else None
+
+        terminal = until(confirmed, 'original inbound terminal receipt')
+        assert terminal['completedAt']
+        assert accept('/configuration/apply', 'inbound-tun-original') == operation
+        assert accept('/recovery', 'inbound-tun-recover') == operation
+        assert inbound_receipt(operation) == terminal
+        (root / 'full-inbound-confirmed').touch()
+        inbound_pid = marker('full-inbound-verified')
+        assert first_worker.wait(timeout=12) == 0
+        probe(record, 'inbound-recovery-after')
+        assert (native.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == witness and leases() == 0
+        audit = ipc.log.read_text()
+        assert audit.count(f'operation=ProxyServerApply id={operation} ') == 1
+        assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
+        assert all(f'operation={kind} ' not in audit for kind in ('MihomoRuntimeTunStop', 'MihomoRuntimeTunStart', 'MihomoRuntimeRecover'))
+        os.kill(pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        print(f'PASS SCOPED INBOUND TUN RECOVERY: original={operation}; TUN={publication}; '
+              f'Mihomo PID={record["service"][0]}; sing-box PID={inbound_pid}; configuration={record["credential"]}', flush=True)
+
     def verify_handoff(pid, record, publication):
         nonlocal worker, first_worker, token
         modules = '/api/v1.0/server/modules'
@@ -4383,6 +4443,7 @@ exec {shlex.quote(str(systemctl))} "$@"
               'real upstream after Helper exit; both ledgers unchanged and no replay')
 
     worker = launch('zero-dns-publish' if zero_dns or partial_dns or early_owner or initial_stop else 'squid-new' if squid else 'removal-cut' if removal_admin
+                    else 'inbound-cut' if inbound_tun
                     else 'admission' if admission or handoff or retained_removal or quarantine or squid_tun
                     else 'stop-reply-drop' if drop_stop_reply else 'cleanup-drain' if cleanup_drain
                     else 'cleanup-cut' if cleanup_cut else 'drain')
@@ -4436,6 +4497,9 @@ with sqlite3.connect(sys.argv[1]) as database:
         prepare(published_effect['InterfaceIndex'], ipc.helper.pid)
         record = json.loads(journal.read_bytes())
         probe(record, 'jwt-before-shutdown')
+        if inbound_tun:
+            verify_inbound_tun(pid, record, publication)
+            return
         if squid_tun:
             verify_scoped_management(record)
             verify_squid_publication(pid, record)
@@ -4928,7 +4992,7 @@ rules:
                         'ipc-http-named-start-dns', 'ipc-http-named-start-dns-settled', 'ipc-http-named-start-recovery-cut',
                         'ipc-http-named-start-admission', 'ipc-http-named-start-baseline', 'ipc-http-named-start-helper-profile',
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
-                        'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
+                        'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-inbound-tun', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
                         'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account', 'ipc-http-squid-tun-recovery-fault'):
                 proof_full_http_shutdown(ipc, case)

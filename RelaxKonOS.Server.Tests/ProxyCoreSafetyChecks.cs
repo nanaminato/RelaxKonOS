@@ -40,6 +40,8 @@ internal static class ProxyCoreSafetyChecks
             Check(builder.Services.Any(item => item.ServiceType == typeof(IProxyPlatformService)) == enabled
                 && builder.Services.Any(item => item.ServiceType == typeof(IProxySubscriptionDownloader)) == enabled,
                 "Core safety does not register the management capability and download facades");
+            Check(builder.Services.Any(item => item.ServiceType == typeof(ProxyServerOperationQueue)) == enabled,
+                "Core publication does not register the inbound HTTP acceptance facade");
             if (enabled) Check(builder.Services.Single(item => item.ServiceType == typeof(IProxyEngineRegistry)).Lifetime == ServiceLifetime.Scoped
                 && builder.Services.Single(item => item.ServiceType == typeof(IProxyLifecycleService)).Lifetime == ServiceLifetime.Scoped,
                 "Engine registry and lifecycle facades belong to execution scopes");
@@ -83,6 +85,12 @@ internal static class ProxyCoreSafetyChecks
                         && !ReferenceEquals(platform, next.ServiceProvider.GetRequiredService<IProxyPlatformService>())
                         && !ReferenceEquals(downloader, next.ServiceProvider.GetRequiredService<IProxySubscriptionDownloader>()),
                         "Capability and download facades are reused only within their execution scope");
+                    var inboundQueue = first.ServiceProvider.GetRequiredService<ProxyServerOperationQueue>();
+                    Check(ReferenceEquals(inboundQueue, first.ServiceProvider.GetRequiredService<ProxyServerOperationQueue>())
+                        && !ReferenceEquals(inboundQueue, next.ServiceProvider.GetRequiredService<ProxyServerOperationQueue>())
+                        && ReferenceEquals(first.ServiceProvider.GetRequiredService<ProxyServerStore>(),
+                            next.ServiceProvider.GetRequiredService<ProxyServerStore>()),
+                        "Inbound request scopes share one Core publication authority and have independent acceptance facades");
                 }
                 foreach (var type in new[] { typeof(ProxyRecoveryHostedService), typeof(SystemProxyGuardHostedService), typeof(ProxyServerExpiryService) })
                     Check(builder.Services.Count(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == type) == 1,

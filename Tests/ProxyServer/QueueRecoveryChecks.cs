@@ -117,7 +117,7 @@ internal static class QueueRecoveryChecks
         builder.Services.AddSingleton<IDataProtectionProvider>(DataProtectionProvider.Create(Directory.CreateDirectory(Path.Combine(root, "keys"))));
         builder.Services.AddSingleton<IPrivilegedOperationTransport>(new FixtureHelper(root, stage));
         builder.Services.AddSingleton<IServerModeResolver, TestMode>();
-        builder.Services.AddSingleton<ProxyServerStore>(); builder.Services.AddSingleton<ProxyServerOperationQueue>();
+        builder.Services.AddSingleton<ProxyServerStore>(); builder.Services.AddScoped<ProxyServerOperationQueue>();
         builder.Services.AddSingleton<ProxyOperationStore>(); builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>();
         builder.Services.AddSingleton<IResidentModuleWorkLeaseSource, TestProxyWorkLeases>();

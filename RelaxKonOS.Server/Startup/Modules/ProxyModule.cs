@@ -142,7 +142,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         // Operations retain their own instance until completion; the expiry timer resolves a
         // fresh executor per pass. The singleton store remains the sole serialization gate.
         builder.Services.AddTransient<ProxyServerService>();
-        builder.Services.AddSingleton<ProxyServerOperationQueue>();
+        builder.Services.AddScoped<ProxyServerOperationQueue>();
 
         // Squid gateway: configuration plus lifecycle through the privileged Helper.
         builder.Services.AddSingleton<SquidConfigurationStore>();

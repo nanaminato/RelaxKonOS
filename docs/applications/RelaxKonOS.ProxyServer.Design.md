@@ -375,6 +375,8 @@ Linux 私有 systemd 的联合验收同时启用系统代理。独立 Helper 中
 
 到期发布的候选落盘后，原任务继续接收 Helper 响应并提交终态。Core 停机等待原任务及异步作用域清理。原受保护台账和到期索引继续承载恢复与调度责任。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-入站授权到期的停机排空)。
 
+入站管理受理对象随请求解析，原发布台账与准入锁由 Core 持有。活跃 Mihomo TUN 下，已实测 sing-box 发布应答丢失后按原 ID 恢复，原发布键与恢复键返回同一终态，两份授权均继续转发。[入站受理与原回执实测](../architecture/server-module-evidence/Proxy-Publication.md#入站受理作用域与活跃-tun-的原回执恢复)
+
 完整非 root Server 已在隔离 Linux 验证 SIGTERM。真实 Helper 撤销到期授权后，Server 停止监听并等待原回执，持久化后正常退出。重启保留原回执及原生修订，过期授权仍被拒绝，保留授权继续转发。见[完整 Server 排空](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的入站授权到期停机排空)。
 
 受管 sing-box 的入站发布按原 Helper 操作 ID 和候选、旧配置摘要恢复。已提交候选按原回执确认。已补偿或明确拒绝还需核实旧配置。单凭旧配置仍存在，恢复会保留原候选并显示待核验。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-入站发布按原-helper-回执恢复)。

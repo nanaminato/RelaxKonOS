@@ -125,7 +125,7 @@ internal static class MihomoTunFullServerAcceptance
     {
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "cleanup-drain" or "cleanup-cut" or "cleanup-fault" or "restart" or "joint-drain" or "joint-restart" or "admission"
-            or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
+            or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart" or "inbound-cut" or "inbound-restart"
             or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"
             or "named-start-cut" or "stop-reply-drop" or "start-reply-drop" or "baseline-on" or "baseline-off"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
@@ -137,13 +137,18 @@ internal static class MihomoTunFullServerAcceptance
         var dropStartReply = phase == "start-reply-drop";
         var recoveryWriteFault = dropStartReply && File.Exists(Path.Combine(root, "full-tun-query-write-fault"));
         var handoff = phase == "handoff-disabled";
+        var inboundCut = phase == "inbound-cut";
         var disabled = phase is "admission-disabled" or "baseline-off";
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(handoff ? 90 : joint ? 75
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(handoff || inboundCut ? 90 : joint ? 75
             : phase is "baseline-on" or "baseline-off" ? 65 : 45));
         var ct = budget.Token;
         using var expiry = handoff || joint && first ? new ProxyJointShutdownExpiry(root, socket) : null;
         if (expiry is not null) await expiry.PrepareAsync(ct, handoff ? TimeSpan.FromSeconds(18) : null);
+        using var inbound = inboundCut ? new ProxyJointShutdownExpiry(root, socket) : null;
+        if (inbound is not null) await inbound.PreparePublicationAsync(ct);
+        await using var inboundRelay = inboundCut ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+            "/run/rk-inbound-reply.sock", socket, ct, (operation, _) => operation == "ProxyServerApply") : null;
         await using var guard = expiry is not null ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-guard-reply.sock", socket, ct,
             (operation, _) => operation == "LinuxSystemProxyApply"
                 && File.ReadLines("/etc/environment").Any(line => line == "http_proxy=http://127.0.0.1:14444"
@@ -175,8 +180,9 @@ internal static class MihomoTunFullServerAcceptance
         await using var recoveryRelay = phase == "zero-dns-recover" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-zero-dns-reply.sock", socket, ct, (operation, _) => operation == "MihomoRuntimeRecover") : null;
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly,
-            relay?.Path ?? expiryRelay?.Path ?? squidRelay?.Path ?? removalRelay?.Path ?? recoveryRelay?.Path ?? socket, root,
-            reuse: !first && !dropStopReply && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"), seedProxyServer: false);
+            relay?.Path ?? expiryRelay?.Path ?? inboundRelay?.Path ?? squidRelay?.Path ?? removalRelay?.Path ?? recoveryRelay?.Path ?? socket, root,
+            reuse: !first && !dropStopReply && !inboundCut && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"),
+            seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
         if (cleanupScope)
         {
@@ -191,7 +197,7 @@ internal static class MihomoTunFullServerAcceptance
             start.Environment["ModuleManagement__Authority"] = "managed";
         }
         start.Environment["Identity__LinuxPamTransport"] = "helper";
-        if (joint || handoff || phase == "handoff-restart")
+        if (joint || handoff || inboundCut || phase is "handoff-restart" or "inbound-restart")
             start.Environment["Certificate__StorageRoot"] = Path.Combine(start.WorkingDirectory, "certificate-fixture");
         start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
         start.Environment["Logging__LogLevel__Microsoft.AspNetCore"] = "Warning";
@@ -212,6 +218,20 @@ internal static class MihomoTunFullServerAcceptance
         {
             await WriteMarkerAsync(root, "full-server-pid", server.Id.ToString());
             var exited = server.WaitForExitAsync(ct);
+            if (inboundRelay is not null)
+            {
+                if (await Task.WhenAny(inboundRelay.Committed.Task, exited) == exited)
+                    throw new InvalidOperationException("Server stopped before the inbound apply reply was held.");
+                var id = await inboundRelay.Committed.Task.WaitAsync(ct);
+                var (receipt, pid) = await inbound!.ObservePublicationAsync(id, ct);
+                await WriteMarkerAsync(root, "full-inbound-held", id.ToString("D"));
+                await exited;
+                if (server.ExitCode != 137) throw new InvalidOperationException("Expected the original inbound Server to exit with SIGKILL.");
+                await WaitForMarkerAsync("full-inbound-confirmed");
+                await inbound.VerifyPublicationAsync(receipt, pid, ct);
+                await WriteMarkerAsync(root, "full-inbound-verified", pid);
+                return;
+            }
             var committedReply = squidRelay ?? removalRelay ?? recoveryRelay;
             if (committedReply is not null)
             {

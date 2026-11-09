@@ -288,6 +288,20 @@ Server 重启后重新通过 PAM 登录。匿名恢复返回 401，原发布键�
 
 最终 Linux x64 Release 的原操作为 `467fad21-7888-4888-8234-7583f4175db7`。中继使用私有 `/run`，实测 Server 重启前后的原 sing-box PID 相同。Linux 证据为 `.artifacts/mb04-full-auth-proxy-final-live.log`，归档 SHA-256 为 `a76e44b9c9d066c84c7588fd691e3c2a06586ade32742d7aede61e704d62c63b`。同批 TUN、系统代理、后续授权到期和原生补偿回归通过，宿主服务与代理文件指纹一致，专属 cgroup 已清理。Windows Release 受管服务 16 项、独立 HTTP 队列和模块边界回归通过。
 
+### 入站受理作用域与活跃 TUN 的原回执恢复
+
+**已实现且已验证。** 入站 HTTP 受理对象随请求解析。跨请求共用 Core 的 `ProxyServerStore` 及其准入锁，队列租约仍由原 `ProxyOperationStore` 持有。Release 注册检查验证同一请求作用域复用、跨作用域分离和唯一 Core 权威。Windows HTTP 队列的受理、同键、异步排空及跨进程恢复通过。
+
+2026-11-10 在既有 Linux x64 私有 systemd 中，完整 PAM/JWT Server 在原 Mihomo TUN 活跃时受理入站发布 `82253ca7-c148-402b-835f-39fc3fe2cfd9`。Helper 提交时，测试核对原 Server 发布候选、原 Helper 回执及 sing-box 配置修订。已保留和新授权都完成真实 VLESS 转发。原 Server 在 IPC 应答暂扣、原队列仍持有租约时被强制终止。
+
+重启后匿名恢复返回 401，原发布键读回同一待核验 ID。认证恢复按原 ID 结案，发布键和恢复键返回同一终态。Helper 原回执、sing-box PID `836` 和配置修订保持，实际发布只派发一次，两份授权再次转发。原 TUN 发布 `366d3bb04d9a4ae9aff00aebd708bbac`、Mihomo PID `503`、管理选路、配置摘要 `3775d067a92814b6db79ef55469e4aebc4ae747433b818650f94ec4b4ac41421`、执行检查点、上游 HTTP 及分流 DNS 在整个窗口均通过。
+
+Linux Release 构建及专属 systemd 验收通过。专属进程和 cgroup 已清理，宿主共享服务、代理、resolver 和账号指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-inbound-tun.log` SHA-256 为 `cdb4117427a749ea809a9a7c0aad772a249ca3ec334daa2cae3a59938690f8fd`，归档为 `36580a292138addc0dcabf347cee3e6b1afd22656b0ded7994774a1d2a9f59da`。
+
+**已实现但实机未验证。** 此批验证请求作用域、原生进程连续性及专属进程退出。对象 GC、ALC 回收、隔离负载内存和生产收益分别待测。
+
+**未实现或仍受门禁保护。** 整模块安全交接仍待验收。Proxy 保持 resident。
+
 ## MB-04 完整认证 Server 的在途入站发布补偿
 
 完整非 root Server 通过 PAM/JWT 受理入站发布，经 Unix socket 直达生产 Helper。私有挂载命名空间中的 `systemctl` 夹具只在本次实际候选已经写入并注册后，暂扣专属 sing-box 的启动调用。旧进程已经实际停止，Helper 归档与 Server 队列记录同一在途 ID。核对原候选证据后强制终止 Server 和 Helper，等待拦下的启动调用退出。重启两进程后，原发布键返回原 Interrupted，显式恢复按原 ID 补偿一次，原回执结案为 Failed / `proxy_server.config_apply_failed`。两个原键均返回相同持久终态。

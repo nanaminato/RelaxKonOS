@@ -34,7 +34,7 @@ internal static class QueueBoundaryChecks
         var responseLeases = new TestProxyWorkLeases();
         builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>(responseLeases);
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
-        builder.Services.AddSingleton<ProxyServerOperationQueue>(); builder.Services.AddTransient<ProxyServerService>();
+        builder.Services.AddScoped<ProxyServerOperationQueue>(); builder.Services.AddTransient<ProxyServerService>();
         builder.Services.AddScoped<IProxyEngineRegistry>(_ => new Engines(state));
         var writing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var aborted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

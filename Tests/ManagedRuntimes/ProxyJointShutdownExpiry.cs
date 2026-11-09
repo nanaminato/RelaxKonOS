@@ -22,6 +22,7 @@ internal sealed class ProxyJointShutdownExpiry(string root, string socket) : IDi
     private readonly LinuxSingBoxArchiveHost host = new();
     private ProxyServerSecret expiring = null!;
     private ProxyServerSecret retained = null!;
+    private ProxyServerSecret added = null!;
     private Stream? oldConnection;
     private RuntimeArchiveState before = null!;
     private DateTimeOffset expiresAt;
@@ -62,6 +63,51 @@ internal sealed class ProxyJointShutdownExpiry(string root, string socket) : IDi
         using var live = await traffic.ForwardAsync(expiring.Value, ct);
         if (DateTimeOffset.UtcNow >= expiresAt)
             throw new InvalidOperationException("The expiring credential was not observed before its deadline.");
+    }
+
+    internal async Task PreparePublicationAsync(CancellationToken ct)
+    {
+        await PrepareAsync(ct, TimeSpan.FromMinutes(10));
+        var state = await store.ReadAsync(ct);
+        added = retained with { Id = Guid.NewGuid(), Value = Guid.NewGuid().ToString("D") };
+        await store.WriteAsync(state with
+        {
+            Configuration = state.Configuration with { Revision = state.Configuration.Revision + 1 },
+            Credentials = [.. state.Credentials, new StoredCredential(added.Id, Guid.NewGuid(), "joint-publish",
+                added.InboundIds.ToArray(), added.Value, true, null)]
+        }, ct);
+    }
+
+    internal async Task<(ProxyServerPublicationReceipt Receipt, string Pid)> ObservePublicationAsync(Guid id, CancellationToken ct)
+    {
+        var pending = await store.ReadAsync(ct);
+        var receipt = await ReadReceiptAsync(id, ct);
+        var current = states.Read()!;
+        if (pending.PendingPublicationOperationId != id || !pending.PendingQueuedPublication
+            || receipt.Outcome != ProxyServerPublicationOutcome.Committed || receipt.OperationId != id
+            || receipt.PreviousHash != before.ConfigurationIdentity || receipt.CandidateHash != current.ConfigurationIdentity
+            || current.Installation.StateRevision != before.Installation.StateRevision + 1)
+            throw new InvalidOperationException("The original inbound apply did not bind its pending and native records.");
+        await VerifyPublicationTrafficAsync(ct);
+        return (receipt, await PidAsync());
+    }
+
+    internal async Task VerifyPublicationAsync(ProxyServerPublicationReceipt receipt, string pid, CancellationToken ct)
+    {
+        var final = await store.ReadAsync(ct);
+        var current = states.Read()!;
+        if (final.PendingPublicationOperationId is not null || final.PendingPublication is not null
+            || final.QueuedPublicationCompletions.GetValueOrDefault(receipt.OperationId) != ProxyServerPublicationOutcome.Committed
+            || current.ConfigurationIdentity != receipt.CandidateHash || current.Installation.StateRevision != before.Installation.StateRevision + 1
+            || await PidAsync() != pid || await ReadReceiptAsync(receipt.OperationId, ct) != receipt)
+            throw new InvalidOperationException("Inbound recovery did not preserve the original committed execution.");
+        await VerifyPublicationTrafficAsync(ct);
+    }
+
+    private async Task VerifyPublicationTrafficAsync(CancellationToken ct)
+    {
+        using var previous = await traffic.ForwardAsync(retained.Value, ct);
+        using var current = await traffic.ForwardAsync(added.Value, ct);
     }
 
     internal async Task<(ProxyServerPublicationReceipt Receipt, string Pid)> ObserveAsync(Guid id, CancellationToken ct)
