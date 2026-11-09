@@ -33,21 +33,21 @@ internal static class ProxyObservationLeaseChecks
         builder.Services.AddSingleton(services => new ModuleResidencyCoordinator([new ProxyWorkRuntimeFactory()],
             ModuleResidencyOptions.Parse(builder.Configuration, ids, ids), services, module,
             services.GetRequiredService<ILogger<ModuleResidencyCoordinator>>(), residentWorkModuleIds: ids));
-        builder.Services.AddSingleton<IResidentModuleWorkLeaseSource, CapturingLeaseSource>();
+        builder.Services.AddSingleton<IResidentModuleWorkLeaseSource, ResidentModuleWorkLeaseSource>();
         ProxyReadSampler<ProxyTrafficDto>.Register(builder.Services,
-            static (services, ct) => services.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(ct));
+            static (services, _, ct) => services.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(ct));
         ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>.Register(builder.Services,
-            static (services, ct) => services.GetRequiredService<IMihomoControllerClient>().GetConnectionsAsync(ct));
-        ProxyReadSampler<MihomoRuntimeObservation>.Register(builder.Services, static async (services, ct) =>
+            static (services, _, ct) => services.GetRequiredService<IMihomoControllerClient>().GetConnectionsAsync(ct));
+        ProxyReadSampler<MihomoRuntimeObservation>.Register(builder.Services, static async (services, _, ct) =>
         {
             var reachable = await services.GetRequiredService<IMihomoControllerClient>().IsReachableAsync(ct);
             var runtime = new ProxyRuntimeDto(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Running,
                 "1.19.10", null, true, false, reachable.ProblemCode);
             return new(runtime, reachable);
         });
-        ProxyReadSampler<ProxyOverviewDto>.Register(builder.Services, static async (services, ct) =>
+        ProxyReadSampler<ProxyOverviewDto>.Register(builder.Services, static async (_, runtime, ct) =>
         {
-            var sample = await services.GetRequiredService<ProxyReadSampler<MihomoRuntimeObservation>>().ReadAsync(ct);
+            var sample = await ProxyReadSampler<MihomoRuntimeObservation>.Resolve(runtime).ReadAsync(ct);
             return new(MihomoEngine.Id, MihomoEngine.Capabilities, new(false, false, false, false, false, false, new(false, false, false, false)),
                 sample.Runtime, new(ProxyRuntimeState.Running, ProxyTunState.Disabled, ProxyHealthState.Healthy, sample.Controller!.Succeeded, true, true),
                 ProxyOperatingMode.ListenerOnly, null, 1, new(false, false, null));
@@ -66,6 +66,11 @@ internal static class ProxyObservationLeaseChecks
         builder.Services.AddScoped(_ => new ControllerScope(scenario));
         builder.Services.AddScoped<IMihomoControllerClient>(services => services.GetRequiredService<ControllerScope>().CreateClient());
         await using var app = builder.Build();
+        TestAssert.Assert(app.Services.GetService<ProxyReadSampler<MihomoRuntimeObservation>>() is null
+            && app.Services.GetService<ProxyReadSampler<ProxyOverviewDto>>() is null
+            && app.Services.GetService<ProxyReadSampler<ProxyTrafficDto>>() is null
+            && app.Services.GetService<ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>>() is null,
+            "Live read samplers must belong to the Proxy generation instead of the root container.");
         var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var ct = budget.Token;
@@ -296,7 +301,6 @@ internal static class ProxyObservationLeaseChecks
         scenario.ReleaseResponse.TrySetResult();
         scenario.ReleaseCleanup.TrySetResult();
         var failed = http.GetAsync(ProxyApiRoutes.Connections, ct);
-        var source = (CapturingLeaseSource)app.Services.GetRequiredService<IResidentModuleWorkLeaseSource>();
         try
         {
             await scenario.RequestExited.Task.WaitAsync(ct);
@@ -306,7 +310,12 @@ internal static class ProxyObservationLeaseChecks
                 && coordinator.Describe(ServerModules.ProxyId)?.BlockedBy == "module-recovery-blocked",
                 "Cleanup failure must retain the work lease and block the original module owner.");
         }
-        finally { source.Last?.Dispose(); }
+        finally
+        {
+            // The simulated cleanup fault intentionally leaves its lease counted. Unblock fixture shutdown.
+            if (coordinator.Describe(ServerModules.ProxyId)?.BlockedBy == "module-recovery-blocked")
+                coordinator.Release(ServerModules.ProxyId, backgroundWork: true);
+        }
         Console.WriteLine("PASS PROXY OBSERVATION HTTP DRAIN: runtime, groups, controller configuration, connections, traffic and logs preserve authorization, cancellation, response and cleanup");
 
         bool HasLease() => coordinator.HasBackgroundWork(ServerModules.ProxyId);
@@ -450,15 +459,6 @@ internal static class ProxyObservationLeaseChecks
             await scenario.ReleaseCleanup.Task;
             if (scenario.FailCleanup) throw new IOException("Unconfirmed fixture cleanup.");
         }
-    }
-
-    private sealed class CapturingLeaseSource(ModuleResidencyCoordinator coordinator) : IResidentModuleWorkLeaseSource
-    {
-        private readonly ResidentModuleWorkLeaseSource _source = new(coordinator);
-        internal IModuleWorkLease? Last { get; private set; }
-
-        public async ValueTask<IModuleWorkLease> AcquireAsync(string moduleId, CancellationToken ct = default) =>
-            Last = await _source.AcquireAsync(moduleId, ct);
     }
 
     private sealed class ControllerTransport(Scenario scenario) : HttpMessageHandler

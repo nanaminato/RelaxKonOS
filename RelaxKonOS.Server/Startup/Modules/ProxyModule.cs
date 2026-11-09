@@ -67,16 +67,16 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddScoped<IProxyLifecycleService, ProxyLifecycleService>();
         builder.Services.AddScoped<ProxyOverviewService>();
-        ProxyReadSampler<MihomoRuntimeObservation>.Register(builder.Services, static (services, ct) =>
+        ProxyReadSampler<MihomoRuntimeObservation>.Register(builder.Services, static (services, _, ct) =>
             services.GetRequiredService<MihomoRuntimeManager>().GetObservedAsync(
                 token => services.GetRequiredService<IMihomoControllerClient>().IsReachableAsync(token), ct));
         ProxyReadSampler<ProxyOverviewDto>.Register(builder.Services,
-            static (services, ct) => services.GetRequiredService<ProxyOverviewService>().GetAsync(
-                services.GetRequiredService<ProxyReadSampler<MihomoRuntimeObservation>>().ReadAsync, ct));
+            static (services, runtime, ct) => services.GetRequiredService<ProxyOverviewService>().GetAsync(
+                ProxyReadSampler<MihomoRuntimeObservation>.Resolve(runtime).ReadAsync, ct));
         ProxyReadSampler<ProxyTrafficDto>.Register(builder.Services,
-            static (services, ct) => services.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(ct));
+            static (services, _, ct) => services.GetRequiredService<IMihomoControllerClient>().GetTrafficAsync(ct));
         ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>.Register(builder.Services,
-            static (services, ct) => services.GetRequiredService<IMihomoControllerClient>().GetConnectionsAsync(ct));
+            static (services, _, ct) => services.GetRequiredService<IMihomoControllerClient>().GetConnectionsAsync(ct));
 
         // Core provides the one shared TUN safety owner to both routes and engine recovery hooks.
 

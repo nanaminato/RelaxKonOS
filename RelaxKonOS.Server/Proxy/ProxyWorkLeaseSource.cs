@@ -21,17 +21,36 @@ internal sealed class ProxyWorkLeaseSource(ModuleResidencyCoordinator coordinato
     }
 }
 
-/// <summary>A resident work owner, not a second management container or a releasable Proxy module.</summary>
+/// <summary>The resident Proxy work owner also owns the in-flight read samplers.</summary>
 internal sealed class ProxyWorkRuntimeFactory : IServerModuleRuntimeFactory
 {
     public string ModuleId => ServerModules.ProxyId;
     public ValueTask<IServerModuleRuntime> CreateAsync(IServiceProvider services, ServerModuleContext context, CancellationToken ct)
-    { ct.ThrowIfCancellationRequested(); return ValueTask.FromResult<IServerModuleRuntime>(new Runtime()); }
+    {
+        ct.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<IServerModuleRuntime>(new Runtime(services));
+    }
+
     private sealed class Runtime : IServerModuleRuntime
     {
+        private readonly Dictionary<Type, object> samplers;
+
+        internal Runtime(IServiceProvider services)
+        {
+            var scopes = services.GetRequiredService<IServiceScopeFactory>();
+            var leases = new ModuleWorkLeaseSource(services.GetRequiredService<ModuleResidencyCoordinator>(), this);
+            samplers = services.GetServices<ProxyReadSamplerRegistration>()
+                .ToDictionary(registration => registration.ServiceType, registration => registration.Create(scopes, leases, this));
+        }
+
         public string ModuleId => ServerModules.ProxyId;
-        public object Resolve(Type serviceType) => throw new InvalidOperationException("Resident Proxy work ownership has no management service resolver.");
+        public object Resolve(Type serviceType) => samplers.TryGetValue(serviceType, out var sampler)
+            ? sampler : throw new InvalidOperationException($"Proxy runtime does not own {serviceType}.");
         public ValueTask<ModuleUnloadBlocker?> CanUnloadAsync(CancellationToken ct) => ValueTask.FromResult<ModuleUnloadBlocker?>(new("module-resident-work-owner"));
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            samplers.Clear();
+            return ValueTask.CompletedTask;
+        }
     }
 }

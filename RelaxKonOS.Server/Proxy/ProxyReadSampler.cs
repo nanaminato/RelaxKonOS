@@ -4,15 +4,28 @@ using RelaxKonOS.Server.Startup;
 namespace RelaxKonOS.Server.Proxy;
 
 /// <summary>Shares only an in-flight read. The sample owns execution and cleanup independently of each HTTP response.</summary>
-internal sealed class ProxyReadSampler<T>(IServiceScopeFactory scopes, IResidentModuleWorkLeaseSource leases,
+internal sealed class ProxyReadSampler<T>(IServiceScopeFactory scopes, IModuleWorkLeaseSource leases,
     Func<IServiceProvider, CancellationToken, Task<T>> readSample)
 {
     private readonly object gate = new();
     private Sample? current;
 
-    internal static void Register(IServiceCollection services, Func<IServiceProvider, CancellationToken, Task<T>> readSample) =>
-        services.AddSingleton(provider => new ProxyReadSampler<T>(provider.GetRequiredService<IServiceScopeFactory>(),
-            provider.GetRequiredService<IResidentModuleWorkLeaseSource>(), readSample));
+    internal static void Register(IServiceCollection services,
+        Func<IServiceProvider, IServerModuleRuntime, CancellationToken, Task<T>> readSample) =>
+        services.AddSingleton(new ProxyReadSamplerRegistration(typeof(ProxyReadSampler<T>), (scopes, leases, runtime) =>
+            new ProxyReadSampler<T>(scopes, leases, (services, ct) => readSample(services, runtime, ct))));
+
+    internal static async Task<T> ReadAsync(IServiceProvider services, CancellationToken ct)
+    {
+        Task<T> read;
+        var coordinator = services.GetRequiredService<ModuleResidencyCoordinator>();
+        using (var admission = await coordinator.AcquireAsync(ServerModules.ProxyId, ct))
+            read = Resolve(admission.Runtime).ReadAsync(ct);
+        return await read;
+    }
+
+    internal static ProxyReadSampler<T> Resolve(IServerModuleRuntime runtime) =>
+        (ProxyReadSampler<T>)runtime.Resolve(typeof(ProxyReadSampler<T>));
 
     public async Task<T> ReadAsync(CancellationToken ct)
     {
@@ -66,7 +79,8 @@ internal sealed class ProxyReadSampler<T>(IServiceScopeFactory scopes, IResident
         var cleanupFailed = false;
         try
         {
-            lease = await leases.AcquireAsync(ServerModules.ProxyId, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            lease = leases.Acquire();
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token, lease.Stopping);
             stopping.Token.ThrowIfCancellationRequested();
             var scope = scopes.CreateAsyncScope();
@@ -113,4 +127,8 @@ internal sealed class ProxyReadSampler<T>(IServiceScopeFactory scopes, IResident
         internal int Waiters;
         internal bool Closing;
     }
+
 }
+
+internal sealed record ProxyReadSamplerRegistration(Type ServiceType,
+    Func<IServiceScopeFactory, IModuleWorkLeaseSource, IServerModuleRuntime, object> Create);

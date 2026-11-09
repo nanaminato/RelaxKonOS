@@ -455,3 +455,21 @@ Windows 订阅回归更新了上一阶段恢复写回故障的断言。故障代
 **已实现但实机未验证。** 本轮验证适配器不由根单例持有，以及真实请求和进程退出。对象 GC、ALC 回收、隔离负载内存与生产收益分别待测。
 
 **未实现或仍受门禁保护。** 整模块动态驻留尚未验收，Proxy 保持 resident。
+
+### 只读合并器的代次归属
+
+**已实现且已验证。** 根引用审计确认 `ProxyOperationStore` 是唯一的托管队列，负责准入、原操作、在途任务、清理故障和原终态。其发布台账、订阅仓储和运行时管理依赖属于原持久权威。根中的 `ProxyAuditStore` 串行追加审计文件，`SquidConfigurationStore` 串行保存发布投影，两者仅持有宿主路径和各自的写入锁。禁用启动从原持久状态检查责任。
+
+运行时、概览、连接及流量合并器移入当前 Proxy 代次。根服务注册保留工厂描述，HTTP 响应单独持有租约。采样租约绑定同一实例，覆盖控制器任务及异步作用域释放。概览调用同代次的运行时合并器。最后一个读者取消时，新采样等待原采样排空。作用域清理失败在原代次保留工作租约及隔离。
+
+Windows Release 控制器、Proxy 核心安全及模块里程碑均通过。实际 Kestrel 验证根容器无法解析四个合并器，概览与运行时共用在途观测，各响应独立保留工作。还核对并发取消、采样排空、审计和异步清理失败隔离。模块回归日志 `.artifacts/mb04-tun-full-zero-dns/windows-read-owner-module-boundary-milestones.log` 的 SHA-256 为 `973c7247b8eee0406e5445893769f27e45d22756756630d160b4cca43461812c`。
+
+Linux Release 私有 systemd 的原具名启动 `1514233f8eba4f28a6ec0b72a22c8826` 丢失原应答及首次查询终帧，恢复期间观察两项工作租约和新键门禁。原发布 `e071c41cc9594bff8d8b6fe9b2aff127` 的配置摘要、管理选路、原生检查点与 Mihomo PID `946` 跨 Server 重启保持，HTTP 上游及分流 DNS 通过。原发布、停止、启动各一次派发，原回执及同键保持。另一用例在 Squid 原回执 `5887a15c-b425-4d9d-84fd-aec077327ae1` 写回故障时保留原队列门禁，Core guard 完成修复，受管 TUN 及真实流量持续，Squid 只重载一次。两个用例均确认专属进程和 cgroup 清理，宿主服务、代理及 resolver 指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-read-owner-tun.log` 的 SHA-256 为 `030e5b8f138b6e2ede055d94c3d835dcb9bf6581a6ad7c428b23bf370af31465`，归档为 `d769243ea0cf3d6ff94a0ff6874dd5d2794c2448d762814046177fad57f92fae`。
+
+Linux Release 受管 Mihomo 专项通过 180 项。原发布恢复 `0706705f-f3cf-4d4f-b8f6-f51ea86a5ded` 排空原回执及作用域。恢复用例 `82e538ff-0b9a-48ba-b64f-5c2dbc418496` 实测流量、概览、连接和运行时的并发共享及独立取消，保持原生连接 `a7031d32-4061-4275-b5fd-5e761e0c6ac6` 和实际转发。连接解析器也观察到原有的闲置卸载和新代次唤醒。日志 `.artifacts/mb04-tun-full-zero-dns/linux-read-owner-managed-mihomo.log` 的 SHA-256 为 `3f18d3e12e251346b806b1e7529a7d551d1e8b824bf96dbea1792ea8c1ce0e6f`，归档为 `e6bec83d02c4961614863f29e41a70caa17ef4f8723d7968c6a2155576e6a073`。
+
+完整 PAM/JWT 复验核对跨重启原连接和发布修订、真实控制器连接取消的两份租约，以及同次停机的原 TUN `0be5c634-7eb3-471a-8b2c-270dec1e887c`、系统代理 guard 和授权到期。首次试跑使用旧测试程序集和依赖清单，分别在协议绑定及无关模块的停用检查处退出。换用同一源码的 Release 输出后，旧夹具的单租约断言暴露，更新为同时核对采样和响应两份租约。修正后完整用例退出成功，宿主指纹一致。复验日志 `.artifacts/mb04-tun-full-zero-dns/linux-read-owner-auth-recheck.log` 的 SHA-256 为 `a4416433360a31beeb6e5b77ce32432b18d0e496e557b2888b8f648c73db3902`，归档为 `eec292641deafa5578a5e070e73223f60ced4f9dfd9b33b4df666443c5bc9e02`。试跑原始记录同目录下的 `linux-read-owner-auth.log`、`linux-read-owner-auth-final.log` 和 `linux-read-owner-auth-current.log`。
+
+**已实现但实机未验证。** 本轮核对根引用和实际进程退出。合并器代次对象 GC、整模块 ALC 回收、隔离负载内存差值及生产收益分别待测。
+
+**未实现或仍受门禁保护。** 实际读取作用域仍使用 Host 服务工厂。整模块交接需要验证窄契约和剩余管理执行图，Proxy 保持 resident。

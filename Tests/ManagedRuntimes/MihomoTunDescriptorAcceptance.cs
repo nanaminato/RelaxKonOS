@@ -366,7 +366,7 @@ internal static class MihomoTunDescriptorAcceptance
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
         await using var services = builder.Services.BuildServiceProvider();
         var ids = new HashSet<string> { ServerModules.ProxyId };
-        await using var coordinator = new ModuleResidencyCoordinator([new ProxyWorkRuntimeFactory()],
+        await using var coordinator = new ModuleResidencyCoordinator([new ResidentModuleWorkRuntimeFactory(ServerModules.ProxyId)],
             ModuleResidencyOptions.Parse(builder.Configuration, ids, ids), services,
             ServerModuleContext.Create(builder.Configuration, builder.Environment, "private-systemd"),
             NullLogger<ModuleResidencyCoordinator>.Instance, residentWorkModuleIds: ids);

@@ -108,6 +108,8 @@ Squid 发布投影可先于队列终态保存。队列故障隔离仍由原 Prox
 
 订阅和运行时的后台受理对象也随请求解析。订阅队列只保留原台账、作用域工厂和操作参数，运行时与具名 TUN 队列只保留作用域工厂和操作参数。原队列持有任务、响应、清理和终态写入责任。[后台受理与执行闭包实测](server-module-evidence/Proxy-Subscriptions.md#后台受理对象与执行闭包分离)
 
+原 `ProxyOperationStore` 继续独占队列准入、执行清理和终态写入。`ProxyAuditStore` 持有同一审计文件的追加锁，`SquidConfigurationStore` 持有配置投影写入锁。四个只读合并器由当前 Proxy 代次持有，根容器只保留创建描述，读取所用的执行对象在采样作用域解析。[只读合并器的代次归属](server-module-evidence/Proxy-Observation.md#只读合并器的代次归属)
+
 Docker 与运行时下载只依赖结构化的出站路由结果和必要的运行能力租约，不依赖订阅服务或整个 Proxy 模块。读取已保存的地址、旁路和认证引用不应唤醒管理模块；真正需要其控制客户端或持续安全承诺时才持有相应租约。不得把“代理流量正在经过外部 Mihomo”直接当作整个管理模块永久常驻的理由，也不得在未知所有权时撤下保护。
 
 `ProxyRuntimeRegistration` 已在 Core 注册的运行时安装/发布骨干继续遵循原领域权威；后续分离时先提供契约端口，保留冻结计划、台账、锁、Helper 复核及原操作成功证明，不在驻留协调器重写安装器。遵循[受管运行时设计](../platform/RelaxKonOS.ManagedRuntimes.Design.md)，本设计不关闭 MR/CC 的宿主生命周期验收。

@@ -159,7 +159,7 @@ public static class ProxyEndpoints
     internal static void MapProxyObservationEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet(ProxyApiRoutes.Runtime, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteScopedAsync(context, leases,
-            static async (services, ct) => Results.Ok((await services.GetRequiredService<ProxyReadSampler<MihomoRuntimeObservation>>().ReadAsync(ct)).Runtime)))
+            static async (services, ct) => Results.Ok((await ProxyReadSampler<MihomoRuntimeObservation>.ReadAsync(services, ct)).Runtime)))
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyRuntimeDto>();
         app.MapGet(ProxyApiRoutes.Groups, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteScopedAsync(context, leases,
             static async (services, ct) => Results.Ok(await MihomoProxyGroupOrder.ReadGroupsAsync(
@@ -169,16 +169,16 @@ public static class ProxyEndpoints
             static async (services, ct) => Results.Ok(await services.GetRequiredService<IMihomoControllerClient>().GetControllerConfigurationAsync(ct))))
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyControllerConfigurationDto>();
         app.MapGet(ProxyApiRoutes.Overview, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteScopedAsync(context, leases,
-            static async (services, ct) => Results.Ok(await services.GetRequiredService<ProxyReadSampler<ProxyOverviewDto>>().ReadAsync(ct))))
+            static async (services, ct) => Results.Ok(await ProxyReadSampler<ProxyOverviewDto>.ReadAsync(services, ct))))
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyOverviewDto>();
         app.MapGet(ProxyApiRoutes.Connections, (HttpContext context, IResidentModuleWorkLeaseSource leases) => ExecuteScopedAsync(context, leases, static async (services, ct) =>
         {
-            var result = await services.GetRequiredService<ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>>().ReadAsync(ct);
+            var result = await ProxyReadSampler<ControllerResult<IReadOnlyList<ProxyConnectionDto>>>.ReadAsync(services, ct);
             return result.Succeeded ? Results.Ok(result.Value) : Problem(result.ProblemCode, StatusCodes.Status503ServiceUnavailable);
         })).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Traffic, (HttpContext context, IResidentModuleWorkLeaseSource leases) =>
             ExecuteScopedAsync(context, leases, static async (services, ct) =>
-                Results.Ok(await services.GetRequiredService<ProxyReadSampler<ProxyTrafficDto>>().ReadAsync(ct))))
+                Results.Ok(await ProxyReadSampler<ProxyTrafficDto>.ReadAsync(services, ct))))
             .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyTrafficDto>();
         app.MapGet(ProxyApiRoutes.Logs, (int? limit, HttpContext context, IResidentModuleWorkLeaseSource leases) =>
             ExecuteScopedAsync(context, leases, async (services, ct) =>

@@ -1435,8 +1435,8 @@ internal static class ProxyAuthenticatedPublicationChecks
                 using var native = JsonDocument.Parse(snapshot);
                 var original = native.RootElement.GetProperty("connections").EnumerateArray().Single(connection =>
                     connection.GetProperty("metadata").GetProperty("destinationPort").ToString() == port.ToString()).GetProperty("id").GetString();
-                if (await ReadLeasesAsync() != 1)
-                    throw new InvalidOperationException("The real controller response was held without a Proxy work lease.");
+                if (await ReadLeasesAsync() != 2)
+                    throw new InvalidOperationException("The held connection read must own both the sampling and HTTP response leases.");
                 caller.Cancel();
                 try { using var unexpected = await pending; throw new InvalidOperationException("Expected client cancellation."); }
                 catch (OperationCanceledException) when (caller.IsCancellationRequested) { }

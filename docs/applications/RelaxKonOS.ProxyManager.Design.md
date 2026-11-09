@@ -4728,3 +4728,5 @@ Linux 端口切换待核验时，guard 只有在原 Helper 应用回执与真实
 Linux 直连监听补偿丢失应答时，再次确认原补偿可只读核对原配置摘要、认证控制器和新旧监听。证据吻合后用同一补偿 ID 完成宿主策略恢复。存在其他配置变化或候选监听仍活动时，原操作保持待核验。见[补偿效果对账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-直连监听补偿应答丢失的效果对账)。
 
 直连 Mihomo 档案激活与设置写入共用按需加载的执行代码。原发布检查点、系统代理归属和应用回执由 Server 保持。控制器应答丢失时，同一原操作继续等待核验，后续恢复按原 ID 读取证据。见[直连档案与设置发布执行器](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-直连档案与设置发布执行器)。
+
+运行时、概览、连接及流量在当前 Proxy 代次内合并同时在途的读取。每次采样与各 HTTP 响应分别持有租约，概览复用同代次的运行时采样。最后一个读者取消后，下一次读取等待原控制器任务及其清理完成。[只读合并器的代次归属](../architecture/server-module-evidence/Proxy-Observation.md#只读合并器的代次归属)
