@@ -43,10 +43,17 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
     TestAssert.Assert(publicBindingRejected, "Public controller binding was accepted.");
 
     string? authorization = null;
+    HttpMethod? routingMethod = null;
+    string? routingPayload = null;
     var tunPayload = "{}";
     var handler = new DelegateHandler(async request =>
     {
         authorization = request.Headers.Authorization?.ToString();
+        if (request.RequestUri!.AbsolutePath == "/configs" && request.Content is { } content)
+        {
+            routingMethod = request.Method;
+            routingPayload = await content.ReadAsStringAsync();
+        }
         var payload = request.RequestUri!.PathAndQuery switch
         {
             "/proxies" => "{\"proxies\":{\"AUTO\":{\"type\":\"Selector\",\"now\":\"node-a\",\"all\":[\"node-a\",\"node-b\"]}}}",
@@ -56,10 +63,12 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
             _ when request.RequestUri.PathAndQuery.StartsWith("/logs", StringComparison.Ordinal) => "{\"type\":\"info\",\"payload\":\"Authorization: Bearer controller-secret token=private-value\"}\n",
             _ => "{}",
         };
-        await Task.CompletedTask;
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(payload, Encoding.UTF8, "application/json") };
     });
     var client = new MihomoControllerClient(new HttpClient(handler), new StaticProxySecretStore(), new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/") });
+    TestAssert.Assert(string.IsNullOrEmpty(await client.SetRoutingModeAsync(ProxyRoutingMode.Direct, default))
+        && routingMethod == HttpMethod.Patch && routingPayload == "{\"mode\":\"direct\"}",
+        "Routing mode must send only a native config patch and avoid a full Mihomo reload.");
     TestAssert.Assert(await client.GetTunEnabledAsync(default) is { Succeeded: true, Value: false },
         "An omitted TUN block represents an unconfigured adapter.");
     foreach (var malformed in new[] { "[]", "{\"tun\":false}", "{\"tun\":{\"enable\":\"false\"}}" })

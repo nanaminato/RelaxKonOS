@@ -374,6 +374,11 @@ class Upstream(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.hits.append(self.path)
+        if self.path.endswith('/controller-delay'):
+            time.sleep(.05)
+            self.send_response(204)
+            self.end_headers()
+            return
         body = b'upstream-through-inherited-tun'
         self.send_response(200)
         self.send_header('Content-Length', str(len(body)))
@@ -4403,6 +4408,15 @@ exec {shlex.quote(str(systemctl))} "$@"
                                        (original_profile, draft, 'PUT'), (original_profile, None, 'DELETE')):
                 reply = request(path, token, data=data, method=method)
                 assert reply[0] == 503, (path, reply)
+            selection = api + '/groups/fixture-choice/selection'
+            delay_path = api + '/groups/fixture-choice/proxies/fixture-upstream/delay'
+            delay_request = {'url': f'http://{target}:18880/controller-delay', 'timeoutMilliseconds': 3000}
+            routing = api + '/routing'
+            connection_path = api + '/connections/'
+            for path, data, method in ((selection, {'proxy': 'DIRECT'}, 'PUT'), (routing, {'mode': 'rule'}, 'PUT'),
+                                       (delay_path, delay_request, None), (connection_path + str(uuid.uuid4()), None, 'DELETE')):
+                reply = request(path, token, data=data, method=method)
+                assert reply[0] == 503, (path, reply)
             cut(pid)
             squid_cleanup.unlink()
             (root / 'full-squid-generation').unlink()
@@ -4432,6 +4446,53 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert request(original_profile, token)[1]['isActive']
             probe(tun_record, 'profile-management-drained')
             print(f'PASS PROXY FOREGROUND PROFILE MANAGEMENT: draft={created["id"]}; five routes gated, revision checked, original active TUN continuous', flush=True)
+
+            def controller_group():
+                status, groups = request(api + '/groups', token)
+                assert status == 200
+                selected_group = next((item for item in groups if item['name'] == 'fixture-choice'), None)
+                assert selected_group is not None, groups
+                return selected_group
+
+            original_group = controller_group()
+            selection_name = next(name for name in original_group['proxies'] if name != original_group['selected'])
+            try:
+                assert request(selection, token, data={'proxy': selection_name}, method='PUT')[0] == 204
+                assert controller_group()['selected'] == selection_name
+            finally:
+                assert request(selection, token, data={'proxy': original_group['selected']}, method='PUT')[0] == 204
+            controller = api + '/controller-config'
+            original_mode = request(controller, token)[1]['routing']['mode']
+            next_mode = 'direct' if original_mode == 'rule' else 'rule'
+            try:
+                assert request(routing, token, data={'mode': next_mode}, method='PUT')[0] == 204
+                assert request(controller, token)[1]['routing']['mode'] == next_mode
+            finally:
+                assert request(routing, token, data={'mode': original_mode}, method='PUT')[0] == 204
+            status, delay = request(delay_path, token, data=delay_request)
+            assert status == 200 and delay['proxyName'] == 'fixture-upstream' and delay['delayMilliseconds'] > 0, (status, delay)
+
+            def held_connection(source_port):
+                status, connections = request(api + '/connections', token)
+                assert status == 200
+                return next((item['id'] for item in connections if item['source'].endswith(f':{source_port}')), None)
+
+            with socket.create_connection(('127.0.0.1', 18881), timeout=3) as held:
+                source_port = held.getsockname()[1]
+                held.sendall(f'CONNECT {target}:18880 HTTP/1.1\r\nHost: {target}:18880\r\n\r\n'.encode())
+                response = b''
+                while b'\r\n\r\n' not in response:
+                    chunk = held.recv(4096)
+                    assert chunk
+                    response += chunk
+                assert b' 200 ' in response.splitlines()[0]
+                connection = until(lambda: held_connection(source_port), 'real controller connection', 2)
+                assert request(connection_path + connection, token, method='DELETE')[0] == 204
+                until(lambda: held_connection(source_port) is None, 'closed controller connection', 2)
+            until(lambda: leases() == 0, 'foreground controller leases drained')
+            assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
+            probe(tun_record, 'controller-management-drained')
+            print(f'PASS PROXY FOREGROUND CONTROLLER: closed={connection}; four routes gated, original publication and traffic continuous', flush=True)
             audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
             assert audit.count(f'operation=SquidApplyConfiguration id={operation} ') == 1
             assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(tun_record["operation"])} ') == 1
@@ -5120,6 +5181,9 @@ rules:
   - DST-PORT,53,fixture-dns
   - MATCH,fixture-upstream
 ''')
+    if case == 'ipc-http-squid-tun-recovery-fault':
+        with candidate.open('a') as fixture:
+            fixture.write('proxy-groups:\n  - name: fixture-choice\n    type: select\n    proxies: [fixture-upstream, DIRECT]\n')
     candidate.chmod(0o600)
     if http_case:
         # The authenticated action enables TUN for the confirmed active profile.

@@ -186,6 +186,8 @@ internal static class MihomoTunFullServerAcceptance
             reuse: !first && !dropStopReply && !inboundCut && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"),
             seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
+        if (phase == "squid-restart")
+            start.Environment["Proxy__Mihomo__Controller__Endpoint"] = "http://127.0.0.1:18882/";
         if (cleanupScope)
         {
             start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;

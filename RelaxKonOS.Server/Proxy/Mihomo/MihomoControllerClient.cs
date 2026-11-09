@@ -294,7 +294,7 @@ public sealed class MihomoControllerClient : IMihomoControllerClient, IDisposabl
     }
 
     private async Task<string?> SetRoutingModeCoreAsync(string body, CancellationToken cancellationToken) =>
-        (await SendAsync(HttpMethod.Put, "configs", new StringContent(body, Encoding.UTF8, "application/json"), cancellationToken)).ProblemCode;
+        (await SendAsync(HttpMethod.Patch, "configs", new StringContent(body, Encoding.UTF8, "application/json"), cancellationToken)).ProblemCode;
 
     private async Task<ControllerResult<JsonDocument>> GetStreamSampleAsync(string path, CancellationToken cancellationToken)
     {

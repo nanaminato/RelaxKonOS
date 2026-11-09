@@ -107,30 +107,37 @@ public static class ProxyEndpoints
             })).RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapProxyProfilePublicationEndpoints();
 
-        app.MapPut(Route(ProxyApiRoutes.GroupSelectionPattern), async (string groupName, SelectProxyGroupRequest request, IProxyEngineRegistry engines, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            var problem = await engines.Find("mihomo")!.SelectGroupAsync(groupName, request.Proxy, ct); await audit.RecordAsync(Actor(context.User), "group.select", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
-            return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapPut(ProxyApiRoutes.Routing, async (ProxyRoutingModeDto request, IProxyEngineRegistry engines, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            var problem = await engines.Find("mihomo")!.SetRoutingModeAsync(request.Mode, ct);
-            await audit.RecordAsync(Actor(context.User), "routing.mode.set", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
-            return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapPost(Route(ProxyApiRoutes.GroupProxyDelayPattern), async (string groupName, string proxyName, TestProxyDelayRequest request, IProxyEngineRegistry engines, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            var delay = await engines.Find("mihomo")!.TestProxyDelayAsync(proxyName, request.Url, request.TimeoutMilliseconds, ct);
-            await audit.RecordAsync(Actor(context.User), "group.proxy.delay", string.IsNullOrEmpty(delay.ProblemCode) ? "succeeded" : "failed", delay.ProblemCode, ct);
-            return string.IsNullOrEmpty(delay.ProblemCode) ? Results.Ok(delay) : Problem(delay.ProblemCode, StatusCodes.Status400BadRequest);
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapDelete(Route(ProxyApiRoutes.ConnectionPattern), async (string connectionId, IProxyEngineRegistry engines, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
-        {
-            var problem = await engines.Find("mihomo")!.CloseConnectionAsync(connectionId, ct); await audit.RecordAsync(Actor(context.User), "connection.close", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
-            return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
-        }).RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapPut(Route(ProxyApiRoutes.GroupSelectionPattern), (string groupName, SelectProxyGroupRequest request, HttpContext context,
+            ModuleResidencyCoordinator coordinator) => ExecuteControllerMutationAsync(context, coordinator, "group.select",
+                (engine, ct) => engine.SelectGroupAsync(groupName, request.Proxy, ct)))
+            .RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapPut(ProxyApiRoutes.Routing, (ProxyRoutingModeDto request, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteControllerMutationAsync(context, coordinator, "routing.mode.set", (engine, ct) => engine.SetRoutingModeAsync(request.Mode, ct)))
+            .RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapPost(Route(ProxyApiRoutes.GroupProxyDelayPattern), (string proxyName, TestProxyDelayRequest request, HttpContext context,
+            ModuleResidencyCoordinator coordinator) => ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
+            {
+                var engine = services.GetRequiredService<IProxyEngineRegistry>().Find("mihomo")!;
+                var delay = await engine.TestProxyDelayAsync(proxyName, request.Url, request.TimeoutMilliseconds, ct);
+                await services.GetRequiredService<ProxyAuditStore>().RecordAsync(Actor(context.User), "group.proxy.delay",
+                    string.IsNullOrEmpty(delay.ProblemCode) ? "succeeded" : "failed", delay.ProblemCode, ct);
+                return string.IsNullOrEmpty(delay.ProblemCode) ? Results.Ok(delay) : Problem(delay.ProblemCode, StatusCodes.Status400BadRequest);
+            })).RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapDelete(Route(ProxyApiRoutes.ConnectionPattern), (string connectionId, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteControllerMutationAsync(context, coordinator, "connection.close", (engine, ct) => engine.CloseConnectionAsync(connectionId, ct)))
+            .RequireAuthorization("ProxyManage").WithTags("Proxy");
         return app;
     }
+
+    private static Task ExecuteControllerMutationAsync(HttpContext context, ModuleResidencyCoordinator coordinator, string action,
+        Func<IProxyEngine, CancellationToken, Task<string?>> mutate) =>
+        ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
+        {
+            var problem = await mutate(services.GetRequiredService<IProxyEngineRegistry>().Find("mihomo")!, ct);
+            await services.GetRequiredService<ProxyAuditStore>().RecordAsync(Actor(context.User), action,
+                string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
+            return string.IsNullOrEmpty(problem) ? Results.NoContent() : Problem(problem, StatusCodes.Status400BadRequest);
+        });
 
     internal static void MapTunOperationEndpoints(this IEndpointRouteBuilder app)
     {

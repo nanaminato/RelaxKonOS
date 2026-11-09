@@ -130,6 +130,8 @@ Squid 配置、状态、账户读取、预览与原生校验由当前 Proxy 代�
 
 档案列表、读取和元数据变更也由当前管理代次持有请求作用域，仓储及档案修订权威由 Core 保存。[档案管理实测](server-module-evidence/Proxy-Publication.md#档案管理的前台作用域)
 
+控制器分组选择、路由切换、延迟探测和连接关闭是当前管理代次的前台调用。同步调用保护至响应及清理，原生模式更新使用专用 PATCH。[控制器实测](server-module-evidence/Proxy-Observation.md#mihomo-控制器前台管理作用域)
+
 Docker 与运行时下载只依赖结构化的出站路由结果和必要的运行能力租约，不依赖订阅服务或整个 Proxy 模块。读取已保存的地址、旁路和认证引用不应唤醒管理模块；真正需要其控制客户端或持续安全承诺时才持有相应租约。不得把“代理流量正在经过外部 Mihomo”直接当作整个管理模块永久常驻的理由，也不得在未知所有权时撤下保护。
 
 `ProxyRuntimeRegistration` 已在 Core 注册的运行时安装/发布骨干继续遵循原领域权威；后续分离时先提供契约端口，保留冻结计划、台账、锁、Helper 复核及原操作成功证明，不在驻留协调器重写安装器。遵循[受管运行时设计](../platform/RelaxKonOS.ManagedRuntimes.Design.md)，本设计不关闭 MR/CC 的宿主生命周期验收。

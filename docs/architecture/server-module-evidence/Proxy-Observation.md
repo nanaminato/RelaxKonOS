@@ -502,6 +502,16 @@ Linux 受管 Mihomo Release 全量通过 180 项。Server 保留原概览和连�
 
 **未实现或仍受门禁保护。** 整模块安全交接仍开放。Proxy 保持 resident。
 
+### Mihomo 控制器前台管理作用域
+
+**已实现且已验证。** 分组选择、路由切换、延迟探测和连接关闭使用当前 Proxy 代次的前台作用域。Windows Release 核对内部路由切换只发送含 `mode` 的原生 `PATCH /configs`。旧调用会触发原生完整重载并返回 204，实际模式仍保持旧值。故障通过 Linux 读回发现，已按 Mihomo 的模式更新端口修正。[Mihomo 配置路由源码](https://github.com/MetaCubeX/mihomo/blob/v1.19.27/hub/route/configs.go)
+
+Linux 专属 systemd 在故障代次拒绝四条管理路由，启用重启后通过真实回环控制端口验证选择组切换及恢复、路由模式切换及读回、到专属源站的正延迟和关闭已观测连接 `8ef93fe7-ec99-4552-b38f-1e452f66d2d1`。四条路由排空后，原 TUN 发布 `cb3132bb2f6f450f94c68d037b0b385f`、原生台账和配置摘要保持，实际 HTTP 与分流 DNS 通过。夹具试跑先补齐具名选择组和专属控制端口，再验证实际原生效果。
+
+Windows Release 控制器、Core 安全和模块里程碑通过。Linux 专属进程和 cgroup 已清理，宿主服务、代理及 resolver 指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-controller-foreground-confirmed.log` 的 SHA-256 为 `4146ad12f924c7dda36ff188dc45e0d40e1f7bb147cb642bc6c97a9c0f1ad14f`，归档为 `0201f782bc45613f169159d1d421beb22342c4130c6aefe8eb083bd1354dbd18`。
+
+**仍待验收。** 此轮确认实际进程退出。控制器同步调用丢失应答后的原请求确证、对象释放、整体 ALC、隔离内存及生产收益仍独立开放。Proxy 保持 resident。
+
 ### 概览读取失败与清理隔离
 
 **已实现且已验证。** 概览私有执行栈的异常转换为独立 Host 错误。调用取消保留原取消令牌。清理成功后释放代码租约。清理结果不明时采样器保留原作用域和工作租约，原 Proxy 代次进入隔离，后续读请求受准入门禁保护。
