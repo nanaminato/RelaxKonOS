@@ -1034,9 +1034,21 @@ AF_UNIX 中继丢弃原成功终帧，Server 保持运行。原队列持久化�
 
 Linux Release 构建及 Windows Release 的 TUN 执行边界 38 项和模块边界聚合回归通过。首轮夹具在进入完整 Server 前因场景名漏注册而超时，补齐分流后复验通过。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-stop-reply-drop-final.log` SHA-256 为 `fcc8e8b210e1e40469c9188b2ac33b8260f841999eb193ee72cf5504b383c937`，运行归档为 `0e8384e56d300ce240b5c168d995004ed8bd905edbc38257b922bc89065d6ebf`。首轮及最终专属 cgroup 已清理，宿主服务、代理、resolver 和账号指纹一致。
 
-**已实现但实机未验证。** 本次覆盖存活 Server 的停止终帧丢失。具名启动的同类窗口仍需独立核对。本轮确认专属进程退出。对象释放、ALC 回收、隔离负载内存与生产收益分别待测。
+**已实现但实机未验证。** 本节覆盖存活 Server 的停止终帧丢失。具名启动见下一节。本轮确认专属进程退出。对象释放、ALC 回收、隔离负载内存与生产收益分别待测。
 
 **未实现或仍受门禁保护。** 原生回执不足时继续沿用原持久准入门禁。Proxy 保持 resident，整模块交接独立验收。
+
+### Server 存活时丢失具名启动和查询终帧
+
+**已实现且已验证。** 2026-11-10 在既有 Linux x64 测试机私有 systemd 中，完整非 root Server 经 PAM/JWT 受理具名启动 `ff8ee5c3ff7a4713aef1b6e4de1a05f3`。Helper 已保存成功回执，绑定原发布及目标执行 `b3def07b5bca45d98a4d425f6db46bc5`。实际管理选路、同一配置凭据、上游 HTTP 和分流 DNS 均通过。丢弃 IPC 启动终帧时，原队列仍持有工作租约，随后保存 `Interrupted / managed_tun_action` 及空完成时间。
+
+存活 Server 按原 ID 查询。暂扣第一次查询终帧时，生产诊断显示响应和恢复至少两项租约，原生和原待核验台账字节一致。丢弃查询终帧后，原 ID 仍为待核验，同键返回原 ID，新键返回 `proxy.operation_interrupted`。恢复终帧交付后，原队列以同一 Helper 回执结案，租约归零。重启 Server 后，同键和原 ID 读回相同终态，原生台账与网络执行检查点字节一致。Mihomo PID `943` 在恢复及 Server 重启前后均未更换，配置摘要 `34535ff4b6d84c48cc3e57da272fb76bbdbae1e84852aa144880914f10586c7f`、管理选路、上游 HTTP 和分流 DNS 持续通过。Helper 只派发一次原启动，恢复阶段只读查询。
+
+Linux Release 构建、Windows Release 的 38 项 TUN 执行边界和模块边界聚合回归通过。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-start-reply-drop-final.log` SHA-256 为 `14a32ab0ef46de54277d990cdaf3eeba38454df1802ddc3c984641dda8b96127`，运行归档为 `3b648f2a3bdf21f786ccb1240c8c9f92b13fc67b9c9149f600675a3c651e8865`。已核对专属进程退出和 cgroup 清理，宿主服务、代理、resolver 和账号指纹一致。
+
+**已实现但实机未验证。** 整机掉电及其他平台需独立环境。本轮未测对象释放、ALC 回收、隔离负载内存和生产收益。
+
+**未实现或仍受门禁保护。** 证据不足时持久准入继续生效。Proxy 保持 resident，整模块交接独立验收。
 
 ## MB-04 受管 TUN 与 Proxy 安全责任同次停机
 

@@ -125,11 +125,12 @@ internal static class MihomoTunFullServerAcceptance
         if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
             or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"
-            or "named-start-cut" or "stop-reply-drop" or "baseline-on" or "baseline-off"))
+            or "named-start-cut" or "stop-reply-drop" or "start-reply-drop" or "baseline-on" or "baseline-off"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
         var dropStopReply = phase == "stop-reply-drop";
+        var dropStartReply = phase == "start-reply-drop";
         var handoff = phase == "handoff-disabled";
         var disabled = phase is "admission-disabled" or "baseline-off";
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
@@ -144,8 +145,15 @@ internal static class MihomoTunFullServerAcceptance
                     || line == "http_proxy=\"http://127.0.0.1:14444\"")) : null;
         await using var expiryRelay = expiry is not null ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-expiry-reply.sock",
             guard!.Path, ct, (operation, _) => operation == "ProxyServerApply") : null;
-        await using var relay = first || dropStopReply ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-tun-reply.sock", expiryRelay?.Path ?? socket, ct,
-            (operation, _) => operation == "MihomoRuntimeTunStop") : null;
+        var originalStart = new TaskCompletionSource<Guid>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var queryRelay = dropStartReply ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+            "/run/rk-tun-query.sock", socket, ct, (operation, id) => operation == "MihomoRuntimeQuery"
+                && originalStart.Task.IsCompletedSuccessfully && id == originalStart.Task.Result
+                && !File.Exists(Path.Combine(root, "full-tun-query-resume"))) : null;
+        var tunOperation = dropStartReply ? "MihomoRuntimeTunStart" : "MihomoRuntimeTunStop";
+        await using var relay = first || dropStopReply || dropStartReply ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+            "/run/rk-tun-reply.sock", queryRelay?.Path ?? expiryRelay?.Path ?? socket, ct,
+            (operation, _) => operation == tunOperation) : null;
         var squidOperation = phase switch
         {
             "squid-cut" => "SquidApplyConfiguration",
@@ -235,10 +243,18 @@ internal static class MihomoTunFullServerAcceptance
                     throw new InvalidOperationException("Full Server stopped before the named TUN response reached the relay.");
                 var original = await relay.Committed.Task.WaitAsync(ct);
                 await WriteMarkerAsync(root, "full-tun-response-held", original.ToString("N"));
-                if (dropStopReply)
+                if (dropStopReply || dropStartReply)
                 {
                     await WaitForMarkerAsync("full-tun-response-drop");
+                    if (queryRelay is not null) originalStart.SetResult(original);
                     relay.DropHeldResponse();
+                    if (queryRelay is not null)
+                    {
+                        var query = await queryRelay.Committed.Task.WaitAsync(ct);
+                        await WriteMarkerAsync(root, "full-tun-query-response-held", query.ToString("N"));
+                        await WaitForMarkerAsync("full-tun-query-response-drop");
+                        queryRelay.DropHeldResponse();
+                    }
                 }
                 else
                 {

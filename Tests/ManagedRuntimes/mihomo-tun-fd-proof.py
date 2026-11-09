@@ -2078,6 +2078,7 @@ def proof_full_http_shutdown(ipc, case):
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
     drop_stop_reply = case == 'ipc-http-stop-reply-drop'
+    drop_start_reply = case == 'ipc-http-start-reply-drop'
     named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
     named_admission = case == 'ipc-http-named-start-admission'
     named_baseline = case == 'ipc-http-named-start-baseline'
@@ -3204,6 +3205,8 @@ exec {shlex.quote(str(systemctl))} "$@"
     def launch(phase):
         (root / 'full-server-pid').unlink(missing_ok=True)
         (root / 'full-startup-refused').unlink(missing_ok=True)
+        if phase == 'start-reply-drop':
+            (root / 'full-tun-response-held').unlink()
         (root / 'full-squid-response-held').unlink(missing_ok=True)
         (root / 'full-squid-receipt-held').unlink(missing_ok=True)
         return subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-full-server',
@@ -4384,7 +4387,7 @@ with sqlite3.connect(sys.argv[1]) as database:
         if not drop_stop_reply:
             assert len([entry for entry in audit if entry['action'] == 'tun.disable' and entry['result'] == 'succeeded']) == 1
 
-        worker = launch('named-start-cut' if named_dns else 'restart')
+        worker = launch('named-start-cut' if named_dns else 'start-reply-drop' if drop_start_reply else 'restart')
         restart_pid = int(marker('full-server-pid'))
         assert restart_pid != pid and Path(f'/proc/{restart_pid}').stat().st_uid == ipc.uid
         token = login()
@@ -4400,12 +4403,77 @@ with sqlite3.connect(sys.argv[1]) as database:
             verify_named_start_dns(restart_pid, record, publication, stopped)
             return
         started = submit('enable', 'full-start', {'profileId': profile})
-        until(lambda: terminal(started), 'named restart of the published configuration')
+        if drop_start_reply:
+            assert marker('full-tun-response-held') == started
+            assert read(started)['state'] == 'running' and leases() >= 1
+        else:
+            until(lambda: terminal(started), 'named restart of the published configuration')
         effect = json.loads((operations / started / 'tun-5.json').read_text())
         table = effect['Intent']['RoutingTable']
         current = dict(record, service=service_identity(), ifindex=effect['InterfaceIndex'],
                        routing_table=table, route=route(table))
         probe(current, 'jwt-after-shutdown')
+        if drop_start_reply:
+            native_state = archive / 'state' / 'archive-state.json'
+            committed_state = native_state.read_bytes()
+            execution_path = operations / started / 'tun-5.json'
+            committed_execution = execution_path.read_bytes()
+            action = json.loads(checkpoint(record, f'observe-action:{started}'))['mihomoTunAction']
+            assert uuid.UUID(action['operationId']).hex == started
+            assert uuid.UUID(action['publicationId']).hex == uuid.UUID(action['targetExecutionId']).hex == publication
+            assert action['action'] == 0 and action['outcome'] == 'Succeeded', action
+            running = queue.read_bytes()
+            (root / 'full-tun-response-drop').touch()
+            until(lambda: queue.read_bytes() != running and leases() == 0, 'original start waiting for reconciliation')
+            pending = queue.read_bytes()
+            pending_entry = next(entry['Operation'] for entry in json.loads(pending)
+                                 if uuid.UUID(entry['Operation']['OperationId']).hex == started)
+            assert pending_entry['State'] == 5 and pending_entry['Stage'] == 'managed_tun_action'  # Interrupted
+            assert pending_entry['CompletedAt'] is None and pending_entry['ProblemCode'] == 'proxy.recovery_required'
+            probe(current, 'start-reply-dropped')
+            replies = []
+
+            def read_original():
+                replies.append(read(started))
+
+            reader = threading.Thread(target=read_original)
+            reader.start()
+            try:
+                assert marker('full-tun-query-response-held') == started
+                assert reader.is_alive() and leases() >= 2
+                assert queue.read_bytes() == pending and native_state.read_bytes() == committed_state
+            finally:
+                (root / 'full-tun-query-response-drop').touch()
+                reader.join(timeout=7)
+            assert not reader.is_alive() and len(replies) == 1, replies
+            waiting = replies[0]
+            assert waiting['state'] == 'interrupted' and not waiting.get('completedAt'), waiting
+            body = {'profileId': profile}
+            assert submit('enable', 'full-start', body) == started
+            status, blocked = request(api + '/tun/enable', token, 'live-start-new-key', body)
+            assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted', blocked
+            assert queue.read_bytes() == pending and native_state.read_bytes() == committed_state
+            until(lambda: leases() == 0, 'drained unavailable receipt queries')
+            probe(current, 'start-query-reply-dropped')
+            (root / 'full-tun-query-resume').touch()
+            finished = until(lambda: terminal(started), 'original start confirmed after query resumes')
+            assert finished['completedAt'], finished
+            assert submit('enable', 'full-start', {'profileId': profile}) == started and read(started) == finished
+            until(lambda: leases() == 0, 'drained original start reconciliation')
+            terminal_queue = queue.read_bytes()
+            os.kill(restart_pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            worker = launch('restart')
+            restart_pid = int(marker('full-server-pid'))
+            token = login()
+            assert read(started) == finished and submit('enable', 'full-start', {'profileId': profile}) == started
+            assert queue.read_bytes() == terminal_queue and native_state.read_bytes() == committed_state
+            assert execution_path.read_bytes() == committed_execution
+            assert json.loads(checkpoint(record, f'observe-action:{started}'))['mihomoTunAction'] == action
+            probe(current, 'start-reply-after-restart')
+            helper_log = ipc.log.read_text()
+            assert helper_log.count(f'operation=MihomoRuntimeQuery id={uuid.UUID(started)} ') == 5
+            assert 'operation=MihomoRuntimeRecover ' not in helper_log
         until(lambda: leases() == 0, 'drained work leases')
         if joint:
             assert guard_witness == guard_evidence()
@@ -4414,7 +4482,7 @@ with sqlite3.connect(sys.argv[1]) as database:
             (root / 'full-joint-finish').touch()
             assert first_worker.wait(timeout=12) == 0
         assert ipc.log.read_text().count(f'operation=MihomoRuntimeTunStop id={uuid.UUID(stopped)} ') == 1
-        if drop_stop_reply:
+        if drop_stop_reply or drop_start_reply:
             assert ipc.log.read_text().count(f'operation=MihomoRuntimeTunStart id={uuid.UUID(started)} ') == 1
         assert ipc.log.read_text().count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
@@ -4426,6 +4494,10 @@ with sqlite3.connect(sys.argv[1]) as database:
         if drop_stop_reply:
             print(f'PASS TUN LIVE STOP REPLY DROP: publication={publication}; stop={stopped}; start={started}; '
                   f'configuration={record["credential"]}; Server PID {pid}->{restart_pid}; restored upstream HTTP and DNS')
+        if drop_start_reply:
+            print(f'PASS TUN LIVE START REPLY DROP: publication={publication}; stop={stopped}; start={started}; '
+                  f'configuration={record["credential"]}; live PID={current["service"][0]}; '
+                  'two leases, new key blocked before receipt, same upstream and DNS')
         print(f'PASS TUN FULL SERVER JWT SHUTDOWN: publication={publication}; stop={stopped}; start={started}; '
               f'Server PID {pid}->{restart_pid}; live PID={current["service"][0]}; configuration={record["credential"]}')
     finally:
@@ -4589,7 +4661,8 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-stop-reply-drop', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
+            if case in ('ipc-http-full', 'ipc-http-stop-reply-drop', 'ipc-http-start-reply-drop',
+                        'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
                         'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',
                         'ipc-http-named-start-dns', 'ipc-http-named-start-dns-settled', 'ipc-http-named-start-recovery-cut',
