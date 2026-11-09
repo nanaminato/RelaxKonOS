@@ -171,3 +171,15 @@ Windows Release Squid 和组件回归通过。Linux Release 夹具和专属资�
 **已实现但实机未验证。** 整机掉电和其他平台尚无独立证据。
 
 **未实现或仍受门禁保护。** 未知终态的人工确证和整模块安全交接仍开放，Proxy 保持 resident。
+
+### 软件包原回执查询在途时再次中断
+
+**已实现且已验证。** 在既有 Ubuntu 26.04 amd64 测试机重新核对了专属可写 overlay、独立 APT/dpkg 台账及 Ubuntu 签名的固定制品。以启用 Proxy 的完整 Server 经管理员 PAM/JWT 受理 Squid 升级，原安装 ID 为 `30b7ea72-2fb1-4f68-b11e-d237573a4985`。独立 Helper 将包从 `7.2-2ubuntu2.2` 升到 `7.7-0ubuntu0.26.04.2`，核对程序摘要并保存终态。中继截留首次应答时，按 ID 和同键仍返回原 Running。
+
+终止原 Server 和 Helper。第二代 Helper 已按原 ID 返回已提交回执，安装包身份逐字段等于原回执，查询应答在交给 Server 前被截留。此时 HTTP 尚未监听，Core 安装台账保持原 Running。再次终止 Server 和 Helper，核对安装台账逐字节一致。第三代启动时继续由同一 Core 安装台账负责，通过原 ID 只读核验，保存一条 `recovered` 终态事件。HTTP 按原 ID 返回 `succeeded` 及完成时间，同键返回相同终态。跨三代 Helper 仅有一次 `ComponentPackageChange` 和两次原 ID 的 `ComponentPackageQuery`。APT/dpkg 台账和 Helper 回执在两次恢复前后逐字节一致，dpkg 只记录一次升级。
+
+Windows Release Squid 与组件回归、Linux Release 构建及专属 systemd 验收通过。夹具进程退出，专属 cgroup 和根已清理。宿主共享服务、Squid 程序、dpkg 台账、配置和账户指纹一致。原实机日志 `.artifacts/mb04-squid-package/linux-query-cut.log` 的 SHA-256 为 `e88f8f347384ec5e28f0bee3f7dab017d6811f44af34d15ce4fecf6756004926`，运行归档 SHA-256 为 `ce95f18e35d48a52bd9040d92bfc463d2453bfc26e73bfa9ec547539b3070d7f`。原 Helper 回执、第二次中断时的 Core 安装台账及 dpkg 日志的 SHA-256 分别为 `70ab932f525592b7c50cb00c338ec0f465c0a2156da54e9c055d348399979177`、`016c8ff4f42a6038fccb12f0a90254ef36dd0e274b5f6f7e4409cb4c335d126b` 和 `8fe5b98c318732c77b7000231faa1803f3950bb2ae609b070d0d3574b9bc9047`。
+
+**已实现但实机未验证。** 其余平台和整机掉电需独立环境。该执行图验证 Core 安装台账的所有权及启动准入，未计量 Proxy 对象释放、ALC 回收、隔离负载内存差值或生产收益。
+
+**未实现或仍受门禁保护。** 原生终态缺失时，沿用原包待核验和准入门禁。人工确证需要可信原生终态与原 ID 绑定。整模块交接仍待验收，Proxy 保持 resident。

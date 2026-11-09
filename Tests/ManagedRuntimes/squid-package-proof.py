@@ -116,7 +116,8 @@ def start_signed_mirror(package):
 def run():
     assert os.geteuid() == 0 and Path("/etc/relaxkonos-squid-package-fixture").read_text().strip() == digest
     phase = (root / "phase").read_text().strip()
-    assert phase in ("receipt", "native-unknown", "uninstall", "install")
+    assert phase in ("receipt", "recovery-cut", "native-unknown", "uninstall", "install")
+    recovery_cut = phase == "recovery-cut"
     native_unknown = phase == "native-unknown"
     uninstall = phase == "uninstall"
     install = phase == "install"
@@ -298,6 +299,28 @@ def run():
 
     ledger = (dpkg_before, apt_ledger())
     helper = start_helper(2)
+    last_generation = 2
+    if recovery_cut:
+        server_ledger = root / "full-server/data/installation-operations.json"
+        original_ledger = server_ledger.read_bytes()
+        worker, pid = server("recovery-cut")
+        held_query = root / "package-query-held"
+        assert until(lambda: held_query.read_text() if held_query.exists() else None,
+                     "original startup recovery query reply") == operation
+        recovered_reply = json.loads((root / "package-query-result").read_bytes())["componentPackage"]
+        assert recovered_reply["CommittedOperationId"] == operation and not recovered_reply["RecoveryRequired"], recovered_reply
+        assert recovered_reply["InstalledPackage"] == committed["ResultIdentity"], recovered_reply
+        assert server_ledger.read_bytes() == original_ledger
+        assert receipt.read_bytes() == native and (dpkg_log.read_bytes(), apt_ledger()) == ledger
+        with socket.socket() as probe:
+            assert probe.connect_ex(("127.0.0.1", 18972)) != 0, "Server admitted HTTP before startup recovery completed"
+        os.kill(pid, signal.SIGKILL)
+        assert worker.wait(timeout=10) == 0
+        helper.kill()
+        helper.wait(timeout=10)
+        assert server_ledger.read_bytes() == original_ledger
+        last_generation = 3
+        helper = start_helper(last_generation)
     worker, pid = server("native-recover" if native_unknown else "recover")
     token = login()
     complete = value(path, token)
@@ -309,12 +332,13 @@ def run():
     assert receipt.read_bytes() == native
     check_native_effect()
     assert (dpkg_log.read_bytes(), apt_ledger()) == ledger
-    helper_audit = (root / "helper-1.log").read_text() + (root / "helper-2.log").read_text()
-    restarted_audit = (root / "helper-2.log").read_text()
-    assert f"operation=ComponentPackageQuery id={operation} " in restarted_audit
+    audits = [(root / f"helper-{generation}.log").read_text() for generation in range(1, last_generation + 1)]
     dispatch = "ComponentPackageInstall" if install else "ComponentPackageChange"
-    assert f"operation={dispatch} " not in restarted_audit
-    assert helper_audit.count(f"operation={dispatch} id={operation} ") == 1
+    for audit in audits[1:]:
+        assert f"operation=ComponentPackageQuery id={operation} " in audit
+        assert f"operation={dispatch} " not in audit
+    assert audits[0].count(f"operation={dispatch} ") == 1
+    assert f"operation={dispatch} id={operation} " in audits[0]
     if native_unknown:
         pending = value(component + "/state", token)
         assert pending["pendingOperationId"] == operation and pending["state"]["recoveryRequired"], pending
@@ -337,6 +361,16 @@ def run():
         assert len(downloads) == 1
         print(f"PASS SQUID PACKAGE INSTALL RECEIPT: original={operation}; version={version}; "
               f"artifact={digest}; one download, dispatch and dpkg install; Squid active", flush=True)
+    elif recovery_cut:
+        entries = json.loads(server_ledger.read_bytes())
+        recovered = [item for item in entries["audit"] if item["operationId"] == operation and item["event"] == "recovered"]
+        assert len(recovered) == 1
+        assert all(audit.count(f"operation=ComponentPackageQuery id={operation} ") == 1 for audit in audits[1:])
+        print(f"PASS SQUID PACKAGE RECOVERY QUERY CUT: original={operation}; version={version}; "
+              "two original queries, one terminal write, one package dispatch and dpkg upgrade")
+        print(f"Original receipt SHA256 {hashlib.sha256(native).hexdigest()}; "
+              f"unchanged pending Server ledger SHA256 {hashlib.sha256(original_ledger).hexdigest()}; "
+              f"dpkg ledger SHA256 {hashlib.sha256(dpkg_before).hexdigest()}", flush=True)
     else:
         print(f"PASS SQUID PACKAGE ORIGINAL RECEIPT: original={operation}; version={version}; "
               f"artifact={digest}; state=succeeded; one dispatch and one dpkg upgrade", flush=True)
