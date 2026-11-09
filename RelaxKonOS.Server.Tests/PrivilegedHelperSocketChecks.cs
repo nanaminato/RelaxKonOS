@@ -120,7 +120,7 @@ internal static class PrivilegedHelperSocketChecks
         var fileSystem = new FakeFileSystem(Path.GetDirectoryName(path)!);
         var config = new LinuxPrivilegedHelperConfiguration(path, 1000, [1000], 2);
         var frames = new List<PrivilegedOperationFrame>();
-        await using var server = new LinuxUnixSocketPrivilegedServer(config, async (request, progress) =>
+        await using var server = new LinuxUnixSocketPrivilegedServer(config, async (request, _, progress) =>
         {
             if (progress is not null)
                 await progress(PrivilegedOperationFrame.Report(InstallationStage.Installing, 50));
@@ -178,7 +178,7 @@ internal static class PrivilegedHelperSocketChecks
         var fileSystem = new FakeFileSystem(Path.GetDirectoryName(path)!);
         var config = new LinuxPrivilegedHelperConfiguration(path, 1000, [1000]);
         await using var server = new LinuxUnixSocketPrivilegedServer(config,
-            (request, progress) => Task.FromResult(new PrivilegedOperationResult(true)),
+            (request, _, progress) => Task.FromResult(new PrivilegedOperationResult(true)),
             fileSystem, new TestPeerAuthorizer(allowed: false), _ => { });
         server.Start();
         try
@@ -204,7 +204,7 @@ internal static class PrivilegedHelperSocketChecks
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var server = new LinuxUnixSocketPrivilegedServer(
-            new LinuxPrivilegedHelperConfiguration(path, 1000, [1000], 1), async (request, progress) =>
+            new LinuxPrivilegedHelperConfiguration(path, 1000, [1000], 1), async (request, _, progress) =>
             {
                 entered.TrySetResult();
                 await release.Task;
@@ -248,7 +248,7 @@ internal static class PrivilegedHelperSocketChecks
         regularFileSystem.SeedNonSocket(regularPath);
         await using (var refused = new LinuxUnixSocketPrivilegedServer(
             new LinuxPrivilegedHelperConfiguration(regularPath, 1000, [1000]),
-            (request, progress) => Task.FromResult(new PrivilegedOperationResult(true)),
+            (request, _, progress) => Task.FromResult(new PrivilegedOperationResult(true)),
             regularFileSystem, new TestPeerAuthorizer(allowed: true), _ => { }))
         {
             var rejected = false;
@@ -266,7 +266,7 @@ internal static class PrivilegedHelperSocketChecks
             liveFileSystem.SeedSocket(livePath);
             await using var server = new LinuxUnixSocketPrivilegedServer(
                 new LinuxPrivilegedHelperConfiguration(livePath, 1000, [1000]),
-                (request, progress) => Task.FromResult(new PrivilegedOperationResult(true)),
+                (request, _, progress) => Task.FromResult(new PrivilegedOperationResult(true)),
                 liveFileSystem, new TestPeerAuthorizer(allowed: true), _ => { });
             var rejected = false;
             try { server.Start(); }
@@ -280,7 +280,7 @@ internal static class PrivilegedHelperSocketChecks
         staleFileSystem.SeedSocket(stalePath);
         await using (var server = new LinuxUnixSocketPrivilegedServer(
             new LinuxPrivilegedHelperConfiguration(stalePath, 1000, [1000]),
-            (request, progress) => Task.FromResult(new PrivilegedOperationResult(true)),
+            (request, _, progress) => Task.FromResult(new PrivilegedOperationResult(true)),
             staleFileSystem, new TestPeerAuthorizer(allowed: true), _ => { }))
         {
             server.Start();
@@ -297,7 +297,7 @@ internal static class PrivilegedHelperSocketChecks
         var fileSystem = new FakeFileSystem(Path.GetDirectoryName(path)!);
         await using var server = new LinuxUnixSocketPrivilegedServer(
             new LinuxPrivilegedHelperConfiguration(path, 1000, [1000]),
-            (request, progress) => Task.FromResult(new PrivilegedOperationResult(false, 64,
+            (request, _, progress) => Task.FromResult(new PrivilegedOperationResult(false, 64,
                 Error: "test rejection", ProblemCode: PrivilegedProblemCode.InvalidRequest)),
             fileSystem, new TestPeerAuthorizer(allowed: true), _ => { });
         server.Start();

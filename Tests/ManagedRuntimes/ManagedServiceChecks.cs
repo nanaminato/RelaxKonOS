@@ -627,7 +627,7 @@ internal static class ManagedServiceChecks
         var serverGid = serverGidText is null ? 0u : uint.Parse(serverGidText);
         var configuration = new LinuxPrivilegedHelperConfiguration(Path.Combine(root, "ipc", "helper.sock"),
             serverGid, serverUid == 0 ? [0] : [0, serverUid]);
-        var socket = new LinuxUnixSocketPrivilegedServer(configuration, async (request, _) =>
+        var socket = new LinuxUnixSocketPrivilegedServer(configuration, async (request, _, _) =>
         {
             if (request.Operation is not (PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerValidate
                 or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerAction

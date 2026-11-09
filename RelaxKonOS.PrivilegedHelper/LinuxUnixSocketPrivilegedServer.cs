@@ -18,7 +18,7 @@ internal sealed class LinuxUnixSocketPrivilegedServer : IAsyncDisposable
     private static readonly TimeSpan RecentOperationLifetime = TimeSpan.FromMinutes(10);
 
     private readonly LinuxPrivilegedHelperConfiguration _configuration;
-    private readonly Func<PrivilegedOperationRequest, Func<PrivilegedOperationFrame, Task>?, Task<PrivilegedOperationResult>> _dispatch;
+    private readonly Func<PrivilegedOperationRequest, HelperPeerIdentity, Func<PrivilegedOperationFrame, Task>?, Task<PrivilegedOperationResult>> _dispatch;
     private readonly IUnixSocketFileSystem _fileSystem;
     private readonly IHelperPeerAuthorizer _peerAuthorizer;
     private readonly Action<string> _log;
@@ -31,7 +31,7 @@ internal sealed class LinuxUnixSocketPrivilegedServer : IAsyncDisposable
     private int _stopped;
 
     public LinuxUnixSocketPrivilegedServer(LinuxPrivilegedHelperConfiguration configuration,
-        Func<PrivilegedOperationRequest, Func<PrivilegedOperationFrame, Task>?, Task<PrivilegedOperationResult>> dispatch,
+        Func<PrivilegedOperationRequest, HelperPeerIdentity, Func<PrivilegedOperationFrame, Task>?, Task<PrivilegedOperationResult>> dispatch,
         IUnixSocketFileSystem fileSystem, IHelperPeerAuthorizer peerAuthorizer, Action<string> log)
     {
         configuration.Validate();
@@ -279,7 +279,7 @@ internal sealed class LinuxUnixSocketPrivilegedServer : IAsyncDisposable
             }
 
             var started = System.Diagnostics.Stopwatch.GetTimestamp();
-            var result = await _dispatch(request,
+            var result = await _dispatch(request, peer,
                 frame => WriteFrameAsync(stream, JsonSerializer.SerializeToUtf8Bytes(frame), CancellationToken.None));
             await WriteResultAsync(stream, result, cancellationToken);
             _log($"event=request-completed operation={request.Operation} id={request.OperationId} uid={peer.UserId} "

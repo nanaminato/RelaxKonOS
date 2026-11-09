@@ -34,13 +34,34 @@ internal static class LinuxMihomoProbeWitness
         && File.ReadLines("/proc/self/status").Contains("NoNewPrivs:\t1", StringComparer.Ordinal)
         && Prctl(4, 0, 0, 0, 0) == 0; // PR_SET_DUMPABLE
 
+    private sealed record Terminal(Dispatch Dispatch, ulong ExitedAt);
+
     internal static async Task<int> RunCommandAsync(string action, string operation, string uid)
     {
         var fileSystem = new LinuxUnixSocketFileSystem();
         if (fileSystem.EffectiveUserId != 0) return 77;
-        if (action is not ("register" or "read") || !Guid.TryParseExact(operation, "D", out var id) || id == Guid.Empty
+        if (action is not ("register" or "seal" or "read") || !Guid.TryParseExact(operation, "D", out var id) || id == Guid.Empty
             || !uint.TryParse(uid, NumberStyles.None, CultureInfo.InvariantCulture, out var owner) || owner == 0)
             return 64;
+        var result = await ExecuteAsync(action, id, owner);
+        if (result.MihomoProbeExit is { } exit) Console.WriteLine(JsonSerializer.Serialize(exit));
+        return result.ExitCode;
+    }
+
+    internal static Task<PrivilegedOperationResult> HandleAuthenticatedAsync(PrivilegedOperationRequest request, HelperPeerIdentity peer)
+    {
+        var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+            Correlation: request.Correlation, Version: request.Version);
+        if (request != clean || request.OperationId is not { } id || id == Guid.Empty)
+            return Task.FromResult(new PrivilegedOperationResult(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest));
+        if (!peer.Allowed || peer.UserId == 0)
+            return Task.FromResult(new PrivilegedOperationResult(false, 77, ProblemCode: PrivilegedProblemCode.AccessDenied));
+        return ExecuteAsync(request.Operation == PrivilegedOperationKind.MihomoProbeWitnessRegister ? "register" : "read", id, peer.UserId);
+    }
+
+    private static async Task<PrivilegedOperationResult> ExecuteAsync(string action, Guid id, uint owner)
+    {
+        var fileSystem = new LinuxUnixSocketFileSystem();
         try
         {
             RuntimeSourceStore.RequireNoLinks(Root);
@@ -51,39 +72,73 @@ internal static class LinuxMihomoProbeWitness
             {
                 Directory.CreateDirectory(Root, PrivateDirectory);
                 RequireProtected(fileSystem, Root, directory: true, mode: PrivateDirectory);
-                if (Path.Exists(path)) return 75;
+                if (Path.Exists(path)) return Unknown();
                 var dispatch = await CaptureAsync(fileSystem, id, owner);
-                using var output = new FileStream(path, new FileStreamOptions
-                {
-                    Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = PrivateFile
-                });
-                JsonSerializer.Serialize(output, dispatch);
-                output.Flush(flushToDisk: true);
-                LinuxDirectorySync.Flush(Root);
+                WriteNew(path, dispatch);
                 LinuxDirectorySync.Flush(parent);
-                return 0;
+                return new(true);
             }
 
             RequireProtected(fileSystem, Root, directory: true, mode: PrivateDirectory);
-            RequireProtected(fileSystem, path, directory: false, mode: PrivateFile);
-            using var input = File.OpenRead(path);
-            var registered = input.Length <= 1024 ? JsonSerializer.Deserialize<Dispatch>(input, StrictJson) : null;
+            var registered = Read<Dispatch>(fileSystem, path);
             if (registered is null || registered.OperationId != id || registered.OwnerUid != owner
                 || registered.BootId != LinuxMihomoTunCheckpoint.BootId() || registered.InvocationId == Guid.Empty
                 || registered.Pid <= 1 || registered.StartTicks == 0 || registered.StartedAt == 0
-                || registered.StartedAt > MonotonicMicroseconds() || ReadStartTicks(registered.Pid) == registered.StartTicks
-                || !await HasSuccessfulExitAsync(registered))
-                return 75;
-            Console.WriteLine(JsonSerializer.Serialize(registered));
-            return 0;
+                || registered.StartedAt > MonotonicMicroseconds())
+                return Unknown();
+
+            var terminalPath = Path.Combine(Root, id.ToString("N") + ".exit.json");
+            if (action == "seal" && !Path.Exists(terminalPath))
+            {
+                if (ReadStartTicks(registered.Pid) == registered.StartTicks || await ReadExitTimeAsync(registered) is not { } ended)
+                    return Unknown();
+                WriteNew(terminalPath, new Terminal(registered, ended));
+            }
+            var terminal = Read<Terminal>(fileSystem, terminalPath);
+            if (terminal is null || terminal.Dispatch != registered || terminal.ExitedAt < registered.StartedAt
+                || terminal.ExitedAt > MonotonicMicroseconds())
+                return Unknown();
+            // A read racing the original publication still requires the directory entry to be durable.
+            LinuxDirectorySync.Flush(Root);
+            return new(true, MihomoProbeExit: new(id, registered.BootId, registered.InvocationId, registered.Pid,
+                registered.StartTicks, registered.StartedAt, terminal.ExitedAt));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException
             or FormatException or ArgumentException or InvalidOperationException or RuntimePolicyException or TimeoutException
             or System.ComponentModel.Win32Exception)
         {
-            return 75;
+            return Unknown();
         }
     }
+
+    private static T? Read<T>(LinuxUnixSocketFileSystem fileSystem, string path) where T : class
+    {
+        RequireProtected(fileSystem, path, directory: false, mode: PrivateFile);
+        using var input = File.OpenRead(path);
+        return input.Length <= 1024 ? JsonSerializer.Deserialize<T>(input, StrictJson) : null;
+    }
+
+    private static void WriteNew<T>(string path, T record)
+    {
+        var staging = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            using (var output = new FileStream(staging, new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = PrivateFile
+            }))
+            {
+                JsonSerializer.Serialize(output, record);
+                output.Flush(flushToDisk: true);
+            }
+            File.Move(staging, path, overwrite: false);
+            LinuxDirectorySync.Flush(Root);
+        }
+        finally { File.Delete(staging); }
+    }
+
+    private static PrivilegedOperationResult Unknown() =>
+        new(false, 75, ProblemCode: PrivilegedProblemCode.RecoveryRequired);
 
     private static async Task<Dispatch> CaptureAsync(LinuxUnixSocketFileSystem fileSystem, Guid id, uint owner)
     {
@@ -129,7 +184,7 @@ internal static class LinuxMihomoProbeWitness
             .Select(line => line.Split('=', 2)).ToDictionary(fields => fields[0], fields => fields.Length == 2 ? fields[1] : "");
     }
 
-    private static async Task<bool> HasSuccessfulExitAsync(Dispatch dispatch)
+    private static async Task<ulong?> ReadExitTimeAsync(Dispatch dispatch)
     {
         var state = await ReadStateAsync(dispatch.OperationId);
         // A service can be classified as successful after some signals. Require CLD_EXITED and exit code zero.
@@ -141,7 +196,7 @@ internal static class LinuxMihomoProbeWitness
             && state.GetValueOrDefault("InvocationID") == dispatch.InvocationId.ToString("N")
             && state.GetValueOrDefault("ExecMainStartTimestampMonotonic") == dispatch.StartedAt.ToString(CultureInfo.InvariantCulture)
             && ulong.TryParse(state.GetValueOrDefault("ExecMainExitTimestampMonotonic"), NumberStyles.None,
-                CultureInfo.InvariantCulture, out var ended) && ended >= dispatch.StartedAt && ended <= MonotonicMicroseconds();
+                CultureInfo.InvariantCulture, out var ended) && ended >= dispatch.StartedAt && ended <= MonotonicMicroseconds() ? ended : null;
     }
 
     private static ulong? ReadStartTicks(int pid)

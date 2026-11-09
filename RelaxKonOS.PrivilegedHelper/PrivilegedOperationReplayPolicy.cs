@@ -17,6 +17,7 @@ internal static class PrivilegedOperationReplayPolicy
         or PrivilegedOperationKind.TailscaleLoginRecoveryReceipt
         // Receipt observations reuse the publication ID before and after the mutation.
         or PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.ProxyServerPublicationReceipt
+        or PrivilegedOperationKind.MihomoProbeWitnessRegister or PrivilegedOperationKind.MihomoProbeWitnessRead
         or PrivilegedOperationKind.MihomoRuntimeTunStop
         or PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart
         or PrivilegedOperationKind.ProxyServerRecoverPublication

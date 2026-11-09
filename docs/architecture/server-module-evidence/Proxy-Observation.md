@@ -610,3 +610,16 @@ Windows Release 模块边界及控制器回归通过。Linux 联合日志 `.arti
 实测入口为 `ipc-http-inbound-tun` 和 `ipc-http-restored-job-cut`。前者在测试程序集旁放置同构建 Linux 测试 apphost、`external-version-server-cut.fixture` 与 `external-version-manager-witness.fixture`。Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-registered-witness.log` SHA256 `08c042a72b888c0addd8a16370211609e000078a6abc35e089f0b7e884c5bc86`，归档 SHA256 `59172f9a61b998288e705078daa3d3155578ae817cf78725c68222a48ab4ae3f`。
 
 **仍待验收。** 生产 HTTP 尚未使用该固定宿主执行者。下一项接入认证 Helper 传输，按可信同伴身份登记并只读核验原操作。需要在释放原单元前保存独立终态，并为自动登记定义有界保留。缺少证据时保留原门禁。Windows 原生 Job 故障窗口、整模块对象释放、ALC 回收、隔离负载内存与生产收益分别开放。Proxy 保持 resident。
+
+
+### 探测原终态封存与认证读取
+
+**已实现且已验证。** Linux Helper 的认证 Unix 传输只接收原操作 ID，从内核对端凭据取得 UID，登记固定执行者或读取同 UID 已封存终态。调用方无法提交执行路径、单元名或目标 UID。宿主 root 在原单元释放前复核原 boot、PID、启动时刻、invocation 及正常退出状态，先同步临时文件，再以不可覆盖方式发布终态并同步目录。读取既有回执时不执行 systemd 命令，也不生成回执。
+
+Linux 私有 systemd 经实际 AF_UNIX 以 Server 夹具账号登记操作 `188c2098-fe1e-480e-919d-3958775222b8`，原执行者 PID `2548`，invocation `1148a67ace5e49d0ba6e5904da6ad140`。运行中和封存前拒绝读取。封存后释放原单元并重启 Helper，两次同 ID 查询返回同一终态，记录字节一致。额外路径字段、root socket 调用、错误 UID、其他操作 ID、重复登记、未派发和信号退出均被拒绝，后两者未生成终态文件。原 HTTP 探测 `dafaaf37-9296-4d3a-a596-0b225cd34973` 继续保留待核验，未重派。
+
+活跃 TUN `9122749742cd49eeb868eb5c482ba873` 与原入站 `b662e9c7-f422-4016-aa4a-c8d7010aef5c` 在 Helper 重启前后保持原配置、管理选路、回执、真实 HTTP 与分流 DNS。跨代日志确认原生应用及原配置各派发一次。独立受管 TUN 补偿 `5a4461ad7b824f9692c143a5373b91f6` 按原 job `39`、PID `513` 和 invocation `1051c8c3aa6e432697248881be2fe4c9` 核对原终态并排空租约，仅一次 StartUnit。两组专属 cgroup 均已清理，共享服务与网络文件指纹一致。
+
+首轮读回封存终态后，夹具只检查新 Helper 日志，导致原派发计数断言失败。改为跨代日志核对后，两条私有 systemd 用例通过。Windows Release 模块边界与 Unix socket 契约回归通过。Linux 最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-sealed-witness-final.log` SHA256 `2292bdb417f36589930c148a92c9a975726d54795b11cf609bd558801d8b7645`，归档 SHA256 `313e7f016aef1f00abcfeffc11cce6b46b08cb99487460df96085fca85578d12`。
+
+**仍待验收。** 生产 HTTP 派发、宿主自动封存、原单元进程范围的联合证明与原门禁对账仍待接入。当前只验证同一 boot 下原单元释放和 Helper 重启后的封存读取。Proxy 保持 resident，整模块对象释放、ALC 回收、隔离负载内存与生产收益独立待验。

@@ -16,6 +16,19 @@ using RelaxKonOS.Server.Privileged;
 [SupportedOSPlatform("linux")]
 internal static class MihomoTunFullServerAcceptance
 {
+    internal static async Task ProbeWitnessTransportAsync(string root, string socket, Guid operation, string mode)
+    {
+        MihomoIpcStartupAcceptance.RequirePrivateHost(rootRequired: false);
+        if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK") || mode is not ("register" or "read" or "bad"))
+            throw new InvalidOperationException("The probe witness requires its private systemd fixture.");
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+        var request = new PrivilegedOperationRequest(mode == "register" ? PrivilegedOperationKind.MihomoProbeWitnessRegister
+            : PrivilegedOperationKind.MihomoProbeWitnessRead, Path: mode == "bad" ? "/usr/bin/false" : null, OperationId: operation);
+        Console.WriteLine(JsonSerializer.Serialize(await transport.ExecuteAsync(request, budget.Token)));
+    }
+
     internal static async Task ProbeHelperProfileAsync(string root, string socket, string mode,
         Guid publicationId, Guid executionId, string identity)
     {

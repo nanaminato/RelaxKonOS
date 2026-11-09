@@ -282,6 +282,13 @@ if (args is ["runtime-mihomo-tun-full-server", var tunFullRoot, var tunFullSocke
     await MihomoTunFullServerAcceptance.RunAsync(tunFullRoot, tunFullSocket, tunFullPhase);
     return;
 }
+
+if (args is ["runtime-mihomo-probe-witness", var witnessRoot, var witnessSocket, var witnessId, var witnessMode]
+    && OperatingSystem.IsLinux())
+{
+    await MihomoTunFullServerAcceptance.ProbeWitnessTransportAsync(witnessRoot, witnessSocket, Guid.Parse(witnessId), witnessMode);
+    return;
+}
 if (args is ["runtime-mihomo-tun-ipc-server", var ipcTunRoot, var ipcTunPhase] && OperatingSystem.IsLinux())
 {
     try { await MihomoTunDescriptorAcceptance.RunIpcServerAsync(ipcTunRoot, ipcTunPhase); }

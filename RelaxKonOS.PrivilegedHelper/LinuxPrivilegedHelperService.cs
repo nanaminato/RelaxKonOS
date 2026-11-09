@@ -52,7 +52,10 @@ internal static class LinuxPrivilegedHelperService
                 stopping.Cancel();
             });
             await using var server = new LinuxUnixSocketPrivilegedServer(configuration,
-                (request, progress) => PrivilegedOperationExecutor.ExecuteAsync(request, policy, progress),
+                (request, peer, progress) => request.Operation is PrivilegedOperationKind.MihomoProbeWitnessRegister
+                    or PrivilegedOperationKind.MihomoProbeWitnessRead
+                    ? LinuxMihomoProbeWitness.HandleAuthenticatedAsync(request, peer)
+                    : PrivilegedOperationExecutor.ExecuteAsync(request, policy, progress),
                 fileSystem, new LinuxPeerAuthorizer(configuration.AllowedUserIds), Log);
             server.Start();
             try { await Task.Delay(Timeout.Infinite, stopping.Token); }

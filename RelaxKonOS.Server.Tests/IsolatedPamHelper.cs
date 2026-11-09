@@ -9,7 +9,7 @@ internal static class IsolatedPamHelper
     {
         var configuration = LinuxPrivilegedHelperConfiguration.Load(path);
         var files = new LinuxUnixSocketFileSystem();
-        await using var server = new LinuxUnixSocketPrivilegedServer(configuration, (request, _) => request.Operation switch
+        await using var server = new LinuxUnixSocketPrivilegedServer(configuration, (request, _, _) => request.Operation switch
             {
                 PrivilegedOperationKind.AuthenticateSystemUser => Task.FromResult(LinuxPamAuthentication.Execute(request)),
                 PrivilegedOperationKind.CheckHostAdministrator when allowAdministratorCheck =>

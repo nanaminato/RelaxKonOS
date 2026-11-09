@@ -3548,7 +3548,7 @@ exec {shlex.quote(str(systemctl))} "$@"
             pid = verify_external_version(pid, record, version_fixture)
             assert inbound_receipt(operation) == terminal and queue.read_bytes() == settled_queue
             assert (native.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == witness
-        audit = ipc.log.read_text()
+        audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
         assert audit.count(f'operation=ProxyServerApply id={operation} ') == 1
         assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
         assert all(f'operation={kind} ' not in audit for kind in ('MihomoRuntimeTunStop', 'MihomoRuntimeTunStart', 'MihomoRuntimeRecover'))
@@ -3714,6 +3714,12 @@ exec {shlex.quote(str(systemctl))} "$@"
             return subprocess.run([launcher, '--mihomo-version-witness', action, str(operation), str(uid)],
                                   **(identity or {}), capture_output=True, text=True, timeout=7)
 
+        def socket_witness(action, operation, identity=ipc.identity):
+            reply = subprocess.run(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-probe-witness',
+                                    str(root), str(ipc.socket_path), str(operation), action],
+                                   **identity, capture_output=True, text=True, check=True, timeout=10)
+            return json.loads(reply.stdout)
+
         def await_owner(operation, runner):
             def observe():
                 try:
@@ -3725,8 +3731,8 @@ exec {shlex.quote(str(systemctl))} "$@"
             return until(observe, 'fixed Helper worker invocation')
 
         def register(operation):
-            result = witness('register', operation)
-            assert result.returncode == 0, (result.returncode, result.stderr)
+            result = socket_witness('register', operation)
+            assert result['success'] and result['mihomoProbeExit'] is None, result
             path = registry / (operation.hex + '.json')
             assert path.stat().st_uid == 0 and path.stat().st_mode & 0o777 == 0o600
             assert registry.stat().st_uid == 0 and registry.stat().st_mode & 0o777 == 0o700
@@ -3735,14 +3741,17 @@ exec {shlex.quote(str(systemctl))} "$@"
         assert subprocess.run([launcher, '--mihomo-version-worker', str(witness_id)], input='', text=True, timeout=5).returncode == 77
         assert witness('read', witness_id, identity=ipc.identity).returncode == 77
         assert witness('read', witness_id).returncode == 75
+        assert socket_witness('read', witness_id, {})['problemCode'] == 'AccessDenied'
+        assert socket_witness('bad', witness_id)['problemCode'] == 'InvalidRequest'
 
         # The root-owned registration is committed before the fixed worker receives any probe request.
         with start(witness_id) as runner:
             try:
                 owner = await_owner(witness_id, runner)
                 original = register(witness_id)
-                assert witness('register', witness_id).returncode == 75
-                assert witness('read', witness_id).returncode == 75
+                assert socket_witness('register', witness_id)['problemCode'] == 'RecoveryRequired'
+                assert socket_witness('read', witness_id)['problemCode'] == 'RecoveryRequired'
+                assert witness('seal', witness_id).returncode == 75
                 assert not witness_pids.exists()
                 runner.stdin.write(json.dumps({'OperationId': str(witness_id), 'Executable': str(fixture)}) + '\n')
                 runner.stdin.flush()
@@ -3753,10 +3762,15 @@ exec {shlex.quote(str(systemctl))} "$@"
                 runner.stdin.close()
                 runner.stdin = None
                 until(lambda: properties(witness_id).get('SubState') == 'exited', 'original fixed worker terminal')
-                reply = witness('read', witness_id)
-                assert reply.returncode == 0 and json.loads(reply.stdout) == json.loads(original), reply
+                assert socket_witness('read', witness_id)['problemCode'] == 'RecoveryRequired'
+                sealed = witness('seal', witness_id)
+                assert sealed.returncode == 0, sealed
+                receipt = json.loads(sealed.stdout)
+                assert receipt['OperationId'] == str(witness_id) and receipt['Pid'] == main_pid
+                reply = socket_witness('read', witness_id)
+                assert reply['success'] and reply['mihomoProbeExit'] == receipt, reply
                 assert witness('read', witness_id, uid=ipc.uid + 1).returncode == 75
-                assert witness('read', uuid.uuid4()).returncode == 75
+                assert socket_witness('read', uuid.uuid4())['problemCode'] == 'RecoveryRequired'
                 assert (registry / (witness_id.hex + '.json')).read_bytes() == original
                 assert all(not Path(f'/proc/{pid}').exists() for pid in (main_pid, parent, descendant))
                 invocation = uuid.UUID(owner['InvocationID']).hex
@@ -3765,7 +3779,16 @@ exec {shlex.quote(str(systemctl))} "$@"
             finally:
                 service('stop', unit_name(witness_id))
                 runner.communicate(timeout=10)
-        assert witness('read', witness_id).returncode == 75
+        sealed_path = registry / (witness_id.hex + '.exit.json')
+        assert sealed_path.stat().st_uid == 0 and sealed_path.stat().st_mode & 0o777 == 0o600
+        sealed_bytes = sealed_path.read_bytes()
+        ipc.stop_helper()
+        ipc.start_helper()
+        for _ in range(2):
+            reply = socket_witness('read', witness_id)
+            assert reply['success'] and reply['mihomoProbeExit'] == receipt
+        assert sealed_path.read_bytes() == sealed_bytes
+        print(f'PASS EXTERNAL VERSION SEALED WITNESS: operation={witness_id}; same receipt after native unit release and Helper restart', flush=True)
 
         witness_pids.unlink()
         for terminate in (False, True):
@@ -3784,7 +3807,9 @@ exec {shlex.quote(str(systemctl))} "$@"
                     else:
                         output, _ = runner.communicate(input='', timeout=10)
                         assert runner.returncode == 65 and not output
-                    assert not witness_pids.exists() and witness('read', operation).returncode == 75
+                    assert not witness_pids.exists() and witness('seal', operation).returncode == 75
+                    assert socket_witness('read', operation)['problemCode'] == 'RecoveryRequired'
+                    assert not (registry / (operation.hex + '.exit.json')).exists()
                     assert (registry / (operation.hex + '.json')).read_bytes() == original
                 finally:
                     subprocess.run(['/usr/bin/systemctl', 'stop', unit_name(operation)], capture_output=True, timeout=8)
