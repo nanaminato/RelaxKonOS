@@ -61,3 +61,11 @@ Windows Release 的 Squid、Proxy Core 安全和 ManagedRuntimes 通过，可信
 - **已实现且已验证**。Windows Release Squid 专项通过，包含错误动作拒绝和正确回执匹配。Linux 已验证 Reload 响应丢失及 Start 正常终态。配置发布成功、回滚、两次中断和 Helper 原生结果未知同批通过。原始日志 `.artifacts/mb04-squid-lifecycle/linux.log` 的 SHA-256 为 `b80528054b4db3dc4447d3704d32b911ec6e6381bad332fe29ef616a4d9304a4`，归档 SHA-256 为 `7aa65c260190dcedcfbfd1b30daa0bc9579f0906e18535156f93c15eca47e83b`。已验证 Server、Helper 退出换代和专属 cgroup 清理，共享服务、配置、代理与解析器指纹一致。
 - **已实现但实机未验证**。其他服务控制动作的原生中断、Helper 在服务命令结束前退出、持久化清理中断与整机掉电仍待实测。本轮未测对象释放、ALC 回收、隔离内存差值和生产收益。
 - **未实现或仍受门禁保护**。账户及软件包变更需要各自的原生回执和权限证据。缺少服务控制终态时继续保留原准入，Proxy 保持 resident。
+
+### 服务重载在途时 Helper 退出
+
+Linux 私有 systemd 原 Reload `9eb2e972-781b-418b-8bfb-1699092232bf` 在真实 Squid 重载命令已经执行、原 systemd 作业还未结束时，终止专属 Helper。Server 原队列为 Running，工作租约为一。受保护的原生记录绑定原 ID 和 Reload，`Completed=false`，待核验标记包含原 ID。原 PID `262` 继续转发真实上游流量。
+
+释放原 systemd 作业并核对排空，重启 Helper 和 Server。原队列保留 `Interrupted / squid_lifecycle`，完成时间为空。同键返回原 ID，新重载和新配置发布被拒绝，禁用启动按原 ID 拒绝。Helper 只收到原回执查询，原记录和标记仍在，配置及 Server 投影字节不变。真实 Reload 计数为一，原进程和真实转发保持。已验证工作租约在原进程执行结束后归零，持久准入责任跨重启保留。
+
+Linux Release 通过，专属 cgroup 清理与共享服务、代理及解析器指纹核对通过。Windows Release Squid 专项见上节，生产实现未改动。本轮确认实际进程退出，未测对象释放、ALC、隔离内存和生产收益。原始日志 `.artifacts/mb04-squid-lifecycle/linux-native-unknown.log` SHA-256 为 `ffaabbcdf4bf0336387980fc486732cc298f7bd61095ef88372b7aa839213282`，归档 SHA-256 为 `61958728afbaf60fae752b8ee560bb58b612d40cf6297431e0f251dac9b64df7`。缺少原终态的可信确证、其他生命周期动作及整机掉电继续开放，Proxy 保持 resident。

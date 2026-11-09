@@ -1929,7 +1929,7 @@ def proof_full_http_shutdown(ipc, case):
     removal_admin = case == 'ipc-http-retained-administrator'
     removal_http = removal_admin or case == 'ipc-http-retained-installation'
     retained_removal = removal_http or case == 'ipc-http-retained'
-    squid = case == 'ipc-http-squid'
+    squid = case in ('ipc-http-squid', 'ipc-http-squid-lifecycle-unknown')
     zero_dns = case == 'ipc-http-zero-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
@@ -2658,6 +2658,58 @@ def proof_full_http_shutdown(ipc, case):
             raise
         original_pid = int(service('show', '-p', 'MainPID', '--value', 'squid.service'))
         assert original_pid > 1
+        if case == 'ipc-http-squid-lifecycle-unknown':
+            lifecycle = api_root + '/lifecycle'
+            action = {'action': 'Reload'}
+            key = 'squid-native-lifecycle'
+            baseline = (native.read_bytes(), desired.read_bytes())
+            hold.touch()
+            status, accepted = request(lifecycle, token, key, action)
+            assert status == 202, (status, accepted)
+            operation = accepted['operationId']
+            pending = native.parent / 'relaxkonos-lifecycle.pending'
+            receipt = native.parent / 'relaxkonos-lifecycle' / (uuid.UUID(operation).hex + '.json')
+            try:
+                until(applied.exists, 'lifecycle reconfigure dispatched')
+                assert read(operation)['state'] == 'running' and leases() == 1
+                assert pending.read_text() == operation
+                record = receipt.read_bytes()
+                assert json.loads(record) == {'OperationId': operation, 'Action': 'Reload', 'Completed': False}
+                assert forward(18883, 'lifecycle-native-held')
+                assert 'squid.service' in service('list-jobs', '--no-legend', '--no-pager', 'squid.service')
+                ipc.stop_helper()
+                assert 'squid.service' in service('list-jobs', '--no-legend', '--no-pager', 'squid.service')
+            finally:
+                hold.unlink(missing_ok=True)
+            until(lambda: not service('list-jobs', '--no-legend', '--no-pager', 'squid.service'), 'original lifecycle job drained')
+            ipc.start_helper()
+            until(lambda: read(operation)['state'] == 'interrupted' and leases() == 0, 'original lifecycle responsibility drained')
+            pid = restart('squid-restart', pid)
+            waiting = read(operation)
+            assert waiting['state'] == 'interrupted' and waiting['stage'] == 'squid_lifecycle' and not waiting.get('completedAt'), waiting
+            assert request(lifecycle, token, key, action) == (202, accepted)
+            assert request(lifecycle, token, 'squid-lifecycle-next', action)[1]['problemCode'] == 'proxy.operation_interrupted'
+            assert publish(18884, 'squid-publish-after-lifecycle', 400)['problemCode'] == 'proxy.operation_interrupted'
+            status, snapshot = request(api_root + '/status', token)
+            assert status == 200 and snapshot['recoveryRequired']
+            assert receipt.read_bytes() == record and pending.read_text() == operation
+            assert (native.read_bytes(), desired.read_bytes()) == baseline
+            assert int(service('show', '-p', 'MainPID', '--value', 'squid.service')) == original_pid
+            assert forward(18883, 'lifecycle-native-restarted')
+            assert reloads.read_text().splitlines() == ['reload']
+            assert f'operation=SquidLifecycleReceipt id={operation} ' in ipc.log.read_text()
+            assert 'operation=SquidTrackedLifecycle ' not in ipc.log.read_text()
+            os.kill(pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            worker = launch('admission-disabled')
+            assert worker.wait(timeout=15) == 0
+            assert operation in (root / 'full-startup-refused').read_text()
+            upstream.shutdown()
+            upstream.server_close()
+            print(f'PASS SQUID LIFECYCLE NATIVE UNKNOWN: original={operation}; Squid PID={original_pid}; '
+                  'one systemd reload; pending evidence and original queue retained after restart', flush=True)
+            return
+
         before = json.loads(desired.read_bytes())
         pid = restart('squid-cut', pid)
         operation = publish(18884, 'squid-change')['operationId']
@@ -3146,7 +3198,8 @@ rules:
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
             if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
-                        'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid'):
+                        'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
+                        'ipc-http-squid-lifecycle-unknown'):
                 proof_full_http_shutdown(ipc, case)
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,
