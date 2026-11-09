@@ -2104,6 +2104,7 @@ def proof_full_http_shutdown(ipc, case):
         (root / 'full-server-pid').unlink(missing_ok=True)
         (root / 'full-startup-refused').unlink(missing_ok=True)
         (root / 'full-squid-response-held').unlink(missing_ok=True)
+        (root / 'full-squid-receipt-held').unlink(missing_ok=True)
         return subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-full-server',
                                  str(root), str(ipc.socket_path), ('joint-' if joint else '') + phase])
 
@@ -2703,7 +2704,35 @@ def proof_full_http_shutdown(ipc, case):
         require_pending(operation)
         assert (desired.read_bytes(), queue.read_bytes(), receipt.read_bytes()) == (*persisted[1:], original_receipt)
         native.write_bytes(persisted[0])
-        assert terminal(operation)['completedAt'] and publish(18884, 'squid-change')['operationId'] == operation
+        pid = restart('squid-receipt-cut', pid)
+        # The original GET owns a response lease and the queue independently owns reconciliation.
+        # Keep the client waiting until the Server is actually terminated.
+        abandoned = []
+        def await_original():
+            try:
+                abandoned.append(read(operation))
+            except ConnectionError:
+                abandoned.append(None)
+        reader = threading.Thread(target=await_original)
+        reader.start()
+        try:
+            assert uuid.UUID(marker('full-squid-receipt-held')) == uuid.UUID(operation)
+            assert reader.is_alive() and leases() >= 2
+            assert (native.read_bytes(), desired.read_bytes(), queue.read_bytes(), receipt.read_bytes()) == (*persisted, original_receipt)
+            assert forward(18884, 'recovery-held') and listener_closed()
+            assert reloads.read_text().splitlines() == ['reload']
+            cut(pid)
+        finally:
+            reader.join(timeout=5)
+        assert not reader.is_alive() and abandoned == [None], abandoned
+        pid = relaunch()
+        confirmed = terminal(operation)
+        assert confirmed['completedAt'] and publish(18884, 'squid-change')['operationId'] == operation
+        assert read(operation) == confirmed and receipt.read_bytes() == original_receipt
+        assert forward(18884, 'recovery-restarted') and reloads.read_text().splitlines() == ['reload']
+        assert 'operation=SquidApplyConfiguration ' not in ipc.log.read_text()
+        print(f'PASS SQUID RECOVERY LEASE INTERRUPTED: original={operation}; configuration={digest}; '
+              f'Squid PID={original_pid}; original response held with two leases; original terminal after restart', flush=True)
         status, snapshot = request(api_root + '/configuration', token)
         assert status == 200 and snapshot['matchesPublishedConfiguration']
         assert snapshot['state']['publicationOperationId'] == operation and snapshot['status']['configurationRevision'] == digest
