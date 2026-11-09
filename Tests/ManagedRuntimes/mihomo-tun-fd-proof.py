@@ -1538,9 +1538,10 @@ class IpcPublicationWorkers:
                                            'allowedUids': [0, user.pw_uid]}))
         self.config.chmod(0o600)
         self.helper = None
+        self.helper_unit = None
         self.generation = 0
 
-    def start_helper(self, *, block_namespace_cookie=False, foreign_network=False):
+    def start_helper(self, *, block_namespace_cookie=False, foreign_network=False, isolated_cgroup=False):
         assert self.helper is None
         self.generation += 1
         self.log = root / f'ipc-helper-{self.generation}.log'
@@ -1549,6 +1550,10 @@ class IpcPublicationWorkers:
             args = [sys.executable, '-I', script, 'cookie-unavailable-helper', root, *args]
         if foreign_network:
             args = ['/usr/bin/unshare', '--net', *args]
+        if isolated_cgroup:
+            self.helper_unit = 'rk-tun-fixture-helper-' + uuid.uuid4().hex + '.service'
+            args = ['/usr/bin/systemd-run', '--quiet', '--pipe', '--wait', '--collect', '--service-type=exec',
+                    f'--unit={self.helper_unit}', '--property=KillMode=control-group', '--', *args]
         with self.log.open('x') as log:
             self.helper = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 8
@@ -1564,7 +1569,11 @@ class IpcPublicationWorkers:
     def stop_helper(self):
         if self.helper is None:
             return
-        if self.helper.poll() is None:
+        if self.helper_unit is not None:
+            if self.helper.poll() is None:
+                command('/usr/bin/systemctl', 'kill', '--kill-whom=all', '--signal=SIGKILL', self.helper_unit)
+            self.helper_unit = None
+        elif self.helper.poll() is None:
             self.helper.kill()
         self.helper.wait(timeout=5)
         self.helper = None
@@ -2568,8 +2577,10 @@ def proof_full_http_shutdown(ipc, case):
         staged = dispatch.with_suffix(f'.json.{publication}.restore')
         stage_cut = not dispatch_unknown and Path(sys.argv[3]).with_name('restored-start-stage-cut.fixture').is_file()
         sender_cut = dispatch_unknown and Path(sys.argv[3]).with_name('restored-start-sender-cut.fixture').is_file()
+        cgroup_cut = sender_cut and Path(sys.argv[3]).with_name('restored-start-helper-cgroup-cut.fixture').is_file()
+        sender_group_cut = cgroup_cut and Path(sys.argv[3]).with_name('restored-start-sender-cgroup-cut.fixture').is_file()
         sender_death = sender_cut and Path(sys.argv[3]).with_name('restored-start-sender-death.fixture').is_file()
-        sender_replied = sender_cut and not sender_death
+        sender_replied = sender_cut and not sender_death and not sender_group_cut
         recover_staged = stage_cut or sender_replied
         job = operation_dir / 'registration-start-job.json'
         witness = operation_dir / 'registration-start-process.json'
@@ -2583,6 +2594,12 @@ def proof_full_http_shutdown(ipc, case):
             reaped = select.poll()
             reaped.register(descriptor, 0)
             assert reaped.poll(8000) == [(descriptor, select.POLLHUP)]
+
+        def cgroup_members(group):
+            try:
+                return Path('/sys/fs/cgroup', group.lstrip('/'), 'cgroup.procs').read_text().splitlines()
+            except FileNotFoundError:
+                return []
 
         def pending():
             state = json.loads(state_file.read_bytes())['configuration']
@@ -2602,7 +2619,7 @@ def proof_full_http_shutdown(ipc, case):
             assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
                            '--max-time', '3', f'http://{target}:18880/mb04-restored-job-cut-{phase}') == 'upstream-through-inherited-tun'
 
-        ipc.start_helper()
+        ipc.start_helper(isolated_cgroup=cgroup_cut)
         worker = launch('restart')
         pid = int(marker('full-server-pid'))
         token = login()
@@ -2656,6 +2673,15 @@ def proof_full_http_shutdown(ipc, case):
         if dispatch_unknown and not reply_fixture.is_file():
             sender_pid, native_pid = map(int, (root / 'restored-start-sender-pids').read_text().split())
             sender_descriptor = os.pidfd_open(sender_pid)
+        if cgroup_cut:
+            helper_cgroup = command('/usr/bin/systemctl', 'show', ipc.helper_unit, '--property=ControlGroup', '--value')
+            sender_unit = f'rk-mihomo-restored-start-{publication}.service'
+            sender_cgroup = command('/usr/bin/systemctl', 'show', sender_unit, '--property=ControlGroup', '--value')
+            assert helper_cgroup.endswith('/' + ipc.helper_unit) and sender_cgroup.endswith('/' + sender_unit)
+            assert not sender_cgroup.startswith(helper_cgroup + '/')
+            assert all(Path(f'/proc/{member}/cgroup').read_text().strip() == f'0::{sender_cgroup}'
+                       for member in (sender_pid, native_pid))
+            assert len(cgroup_members(helper_cgroup)) >= 2
         if dispatch_unknown and reply_fixture.is_file():
             phase = reply_fixture.read_text().strip()
             variants = {
@@ -2678,6 +2704,10 @@ def proof_full_http_shutdown(ipc, case):
             trace.kill()
             trace.wait(timeout=8)
         ipc.stop_helper()
+        if cgroup_cut:
+            assert not cgroup_members(helper_cgroup)
+            assert all(Path(f'/proc/{member}/cgroup').read_text().strip() == f'0::{sender_cgroup}'
+                       for member in (sender_pid, native_pid))
         native_descriptor = None
         if sender_cut:
             lock = archive / 'state/restored-start-sender.lock'
@@ -2697,6 +2727,9 @@ def proof_full_http_shutdown(ipc, case):
             command('/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-restored-sender-gate', str(root), str(ipc.socket_path), str(uuid.UUID(publication)))
             ipc.stop_helper()
             assert not dispatch.exists() and not staged.exists()
+            if sender_group_cut:
+                native_descriptor = os.pidfd_open(native_pid)
+                command('/usr/bin/systemctl', 'kill', '--kill-whom=all', '--signal=SIGKILL', sender_unit)
             if sender_replied:
                 (root / 'deliver-restored-start-reply').touch()
         (root / ('discard-restored-start-reply' if dispatch_unknown else 'release-restored-job')).touch()
@@ -2715,6 +2748,8 @@ def proof_full_http_shutdown(ipc, case):
             assert recorded['JobId'] == job_id and uuid.UUID(recorded['OperationId']).hex == publication
             assert not dispatch.exists()
             (root / 'release-restored-job').touch()
+        if cgroup_cut:
+            assert not cgroup_members(sender_cgroup)
         assert worker.wait(timeout=12) == 0
 
         # An active service and a journal entry alone do not identify the dispatched job.
@@ -2748,7 +2783,7 @@ def proof_full_http_shutdown(ipc, case):
         assert worker.wait(timeout=12) == 0
         ipc.stop_helper()
         if dispatch_unknown and not sender_replied:
-            assert not dispatch.exists() and not job.exists() and not witness.exists()
+            assert not staged.exists() and not dispatch.exists() and not job.exists() and not witness.exists()
             assert sender.read_text() == publication
             assert not (root / 'restored-job-queries').exists()
             print(f'PASS TUN RESTORED DISPATCH UNKNOWN: original={publication}; native job={job_id}; '
@@ -2756,6 +2791,9 @@ def proof_full_http_shutdown(ipc, case):
             if sender_death:
                 print(f'PASS TUN RESTORED START SENDER DEATH: original={publication}; '
                       f'job={job_id}; native sender kept the lock after worker exit', flush=True)
+            if sender_group_cut:
+                print(f'PASS TUN RESTORED START SENDER CGROUP CUT: original={publication}; '
+                      f'job={job_id}; both cgroups drained, original evidence missing and gate retained', flush=True)
             return
         assert not dispatch.exists() and hidden.read_bytes() == evidence
         if recover_staged:
@@ -2821,6 +2859,9 @@ def proof_full_http_shutdown(ipc, case):
         if sender_replied:
             print(f'PASS TUN RESTORED START SENDER CUT: original={publication}; job={result["JobId"]}; '
                   f'PID={original[0]}; invocation={original[1]}; original sender survived Helper and sealed one reply', flush=True)
+        if cgroup_cut:
+            print(f'PASS TUN RESTORED START HELPER CGROUP CUT: original={publication}; '
+                  f'job={result["JobId"]}; entire Helper cgroup drained, original sender cgroup sealed one reply', flush=True)
         print(f'PASS TUN RESTORED JOB CUT: original={publication}; job={result["JobId"]}; '
               f'PID={original[0]}; original invocation={original[1]}; one StartUnit; original lease drained', flush=True)
 

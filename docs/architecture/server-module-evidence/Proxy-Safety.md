@@ -1000,7 +1000,21 @@ Linux 私有 systemd 实测原发布 `1a835627-ef45-48c4-89fd-2dceda4b06a3`。�
 
 Windows Release 38 项 TUN 边界检查与 Linux x64 Release 构建通过。正向日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-sender-platform-cut.log` 的 SHA-256 为 `1265c5b26c9dc1d1e53c380d8e9fbcd91131c55cd29a832afe4292d97af5ad5a`，归档为 `7989a1cc8f3f94b884370746efd6203ca95b4a6d423adf10bcc3cab77e89d030`。反向日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-sender-platform-death.log` 的 SHA-256 为 `c7798150a927d658094e7805cc27c034a0338cbc1dbb2d584686f66b59951a52`，归档为 `88078c41e24a0d924832135fcd6adab03c6c8fe287d7e6cd0c5c0d5ad9276cfa`。暂存发布回归的原发布为 `301845c1-28a8-4710-91ac-df9e6caae763`。首轮故障注入过早命中发送标记写入，改为在原生应答扣留后挂接。首轮日志 SHA-256 为 `f8f3ca328adb47fbe060a0a662f1c4a3f97d92b38f7d3b28e8a8cacfe5319e1d`。最终回归日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-sender-platform-stage.log` 的 SHA-256 为 `f36bc882d3be813fb1279b52eb5cc9d808e1c22500735a9987bb420a66b60c77`，归档为 `3a32264ed9ee2369cd9513decf67ce8a21dbee8d39f751d0c631d8a5275d184c`。
 
-**已实现但实机未验证。** 本轮覆盖 Helper 单进程退出、发送端退出以及原生子进程回收。整组 Helper cgroup 停止及整机掉电需独立证据。对象释放、ALC、隔离负载内存和生产收益分别待验。
+**已实现但实机未验证。** 本轮覆盖 Helper 单进程退出、发送端退出以及原生子进程回收。整组 Helper cgroup 停止见下一节。整机掉电需独立证据。对象释放、ALC、隔离负载内存和生产收益分别待验。
+
+### 整组 Helper 停止后的原发送端接续
+
+**已实现且已验证。** 固定补偿发送端运行于 PID 1 管理的独立单元。原生子进程仍继承发送锁。发送端在取锁和领取原操作前核对启动 ID 和内核网络命名空间 cookie，仍需持有原归档锁的 Helper 放行。恢复只读原记录。
+
+在既有 Linux 私有 systemd 中，原操作 `1b4fef2066cc45beb3448794d321f404` 的 `StartUnit` 已派发，原生应答尚未交付。实测 Helper 和调用 `systemd-run` 的进程所在 cgroup 被整组清空，原发送端和 `busctl` 仍在独立 cgroup。替换 Helper 的紧急停止和关账返回 `runtime.instance_busy`。放行首次应答后，原发送端保存原暂存并退出。认证 Server 按原操作核对作业 `49`、PID `524` 和调用 ID `c55f8a7fb0544cdbb1b6cbff45f1b6af`，恢复终态后归还租约。原配置身份、管理选路及真实上游请求保持，全程仅一次 `StartUnit`。
+
+反向操作 `795976da748c4cb9ad43b18a9af984ce` 在作业 `49` 已派发后，依次清空原 Helper 和原发送端的 cgroup。原发送端和 `busctl` 均退出，原暂存、作业记录与进程见证均缺失。即使 PID `534` 已用原配置提供上游流量，重启仍保留原待核验与准入门禁。全程仅一次 `StartUnit`，恢复未查询无法归属的作业日志。单独终止发送端但保留原生子进程的场景也通过，原生子进程退出前发送锁保持。原暂存写入后中断的场景重新读回同一原记录。
+
+Linux Release 构建和 Windows Release 38 项 TUN 边界检查通过。正向日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-helper-cgroup-final.log` SHA-256 为 `89efc0ae5fbafd1b05ba0a6510e4f008a6c8ca3e402c8349befd951fcf9717be`，归档为 `b948fab221cb020eb5d3d5986838c0ac6940fb4ec54d7afad2c5a240f98fc986`。反向日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-sender-cgroup-final.log` SHA-256 为 `f9b1e9410a481d3b2e987402a72ceee6909e169e7e942cfc6b052664c53d652d`，归档为 `4246a526cef8cf45819d737641322827218ff6a6014f14c78ff057b219427705`。四轮均验证专属进程退出、cgroup 清理及共享运行时、代理和 resolver 指纹一致。
+
+**已实现但实机未验证。** 整机掉电需可独立断电的专属环境。对象释放、ALC 回收、隔离负载内存差值与生产收益分别待测。
+
+**未实现或仍受门禁保护。** 两组进程均退出且缺少可信原应答时继续待核验。整模块安全交接仍开放，Proxy 保持 resident。
 
 **未实现或仍受门禁保护。** 原应答未取得且缺可信原暂存时维持门禁，禁止重派或按现有进程推导原作业。整模块交接仍待验收，Proxy 保持 resident。
 

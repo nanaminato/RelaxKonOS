@@ -29,10 +29,13 @@ if (OperatingSystem.IsLinux() && args is [LinuxMihomoProbeWitness.WorkerArgument
 if (OperatingSystem.IsLinux() && args is ["--mihomo-version-witness", var witnessAction, var witnessOperation, var witnessUid])
     return await LinuxMihomoProbeWitness.RunCommandAsync(witnessAction, witnessOperation, witnessUid);
 
-if (OperatingSystem.IsLinux() && args is [LinuxMihomoArchiveHost.RestoredStartSenderArgument, var restoredStart])
+if (OperatingSystem.IsLinux() && args is [LinuxMihomoArchiveHost.RestoredStartSenderArgument, var restoredStart, var restoredBoot, var restoredCookie])
 {
-    if (!Guid.TryParseExact(restoredStart, "N", out var operation) || operation == Guid.Empty) return 64;
-    try { await LinuxMihomoArchiveHost.SendRestoredStartAsync(operation); return 0; }
+    if (!Guid.TryParseExact(restoredStart, "N", out var operation) || operation == Guid.Empty
+        || !Guid.TryParseExact(restoredBoot, "N", out var boot) || boot == Guid.Empty
+        || !ulong.TryParse(restoredCookie, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var cookie)
+        || cookie == 0) return 64;
+    try { await LinuxMihomoArchiveHost.SendRestoredStartAsync(operation, boot, cookie); return 0; }
     catch (Exception error) when (error is RelaxKonOS.ManagedRuntimes.RuntimePolicyException or IOException
         or UnauthorizedAccessException or InvalidOperationException or OperationCanceledException or TimeoutException
         or System.ComponentModel.Win32Exception)

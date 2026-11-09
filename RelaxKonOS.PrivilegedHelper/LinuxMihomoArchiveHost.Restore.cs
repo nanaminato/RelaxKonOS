@@ -198,13 +198,20 @@ internal sealed partial class LinuxMihomoArchiveHost
     private static async Task RunRestoredStartSenderAsync(Guid operation)
     {
         RequireProtected(TunLauncher);
-        var start = new ProcessStartInfo(TunLauncher)
+        var start = new ProcessStartInfo("/usr/bin/systemd-run")
         {
             UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true,
         };
         TrustedProcessEnvironment.Apply(start);
-        start.ArgumentList.Add(RestoredStartSenderArgument);
-        start.ArgumentList.Add(operation.ToString("N"));
+        foreach (var argument in new[] { "--quiet", "--pipe", "--wait", "--collect", "--service-type=exec",
+            "--unit=rk-mihomo-restored-start-" + operation.ToString("N") + ".service",
+            "--property=ExitType=cgroup", "--property=KillMode=control-group", "--property=RuntimeMaxSec=65s",
+            "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=",
+            "--property=RestrictAddressFamilies=AF_UNIX AF_INET", "--property=ProtectControlGroups=yes",
+            "--", TunLauncher, RestoredStartSenderArgument, operation.ToString("N"),
+            LinuxMihomoTunCheckpoint.BootId().ToString("N"),
+            LinuxMihomoTunCheckpoint.NetworkNamespaceCookie().ToString(CultureInfo.InvariantCulture) })
+            start.ArgumentList.Add(argument);
         using var sender = Process.Start(start) ?? throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
         using var input = sender.StandardInput;
         using var output = sender.StandardOutput;
@@ -221,10 +228,12 @@ internal sealed partial class LinuxMihomoArchiveHost
         { throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed"); }
     }
 
-    internal static async Task SendRestoredStartAsync(Guid operation)
+    internal static async Task SendRestoredStartAsync(Guid operation, Guid boot, ulong networkCookie)
     {
         if (!RuntimeSourceProtection.IsAdministrator() || Environment.ProcessPath != TunLauncher)
             Fail("service_scope_invalid");
+        if (boot != LinuxMihomoTunCheckpoint.BootId() || networkCookie != LinuxMihomoTunCheckpoint.NetworkNamespaceCookie())
+            Fail("network_checkpoint_conflict");
         // The busctl process must keep the gate if the sender exits before it does.
         using var gate = AcquireRestoredStartSenderGate(inheritable: true);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(8));
@@ -247,7 +256,6 @@ internal sealed partial class LinuxMihomoArchiveHost
         if (await confirmation.ReadLineAsync(ct) != operation.ToString("N"))
             Fail("network_restored_start_unconfirmed");
 
-        var boot = LinuxMihomoTunCheckpoint.BootId();
         var started = MonotonicMicroseconds();
         var reply = await RunAsync("/usr/bin/busctl", ["--system", "--timeout=5s", "--json=short", "call",
             "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
