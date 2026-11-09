@@ -243,13 +243,22 @@ fi
     command('/usr/bin/mount', '--bind', str(wrapper), '/usr/sbin/ip')
 
 
-def install_dns_ack_boundary(hold_reply=True, hold_method='SetLinkDNS', allow_release=False):
+def install_dns_ack_boundary(hold_reply=True, hold_method='SetLinkDNS', allow_release=False, hold_after_exit=False):
     original = root / 'busctl-real'
     wrapper = root / 'busctl-wrapper'
     shutil.copy2('/usr/bin/busctl', original)
     wrapper.write_text(f'''#!/bin/bash
 set -eu
 real={shlex.quote(str(original))}
+work={shlex.quote(str(root))}
+if [[ {int(hold_after_exit)} == 1 && -f "$work/hold-dns-after-exit" ]]; then
+    read -r broker witness < "$work/hold-dns-after-exit"
+    if [[ "$PPID" == "$broker" && -f "$witness" ]]; then
+        touch "$work/dns-after-exit-held"
+        while kill -0 "$broker" 2>/dev/null; do sleep .05; done
+        exit 1
+    fi
+fi
 case "${{8:-}}" in
     SetLinkDefaultRoute|SetLinkDomains|SetLinkDNS)
         printf '%s\n' "$8" >> {shlex.quote(str(root / 'dns-write-attempts'))}
@@ -2067,7 +2076,8 @@ def proof_full_http_shutdown(ipc, case):
     initial_stop = replaced_stop or restored_replaced or job_replaced or job_cut or case == 'ipc-http-initial-stop'
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
-    named_dns = case == 'ipc-http-named-start-dns'
+    named_dns_settled = case == 'ipc-http-named-start-dns-settled'
+    named_dns = named_dns_settled or case == 'ipc-http-named-start-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
     assert mounts['/etc'] == 'overlay'
@@ -2805,7 +2815,7 @@ def proof_full_http_shutdown(ipc, case):
 
     def verify_named_start_dns(pid, record, publication, stopped):
         nonlocal worker, token
-        install_dns_ack_boundary()
+        install_dns_ack_boundary(allow_release=named_dns_settled, hold_after_exit=named_dns_settled)
         key = 'full-start'
         body = {'profileId': profile}
         started = submit('enable', key, body)
@@ -2825,20 +2835,27 @@ def proof_full_http_shutdown(ipc, case):
         ledger = native.read_bytes()
         proof_files = ['tun-4.json', 'dns-steps-prepared.json', 'dns-step-1-exited.json',
                        'dns-step-2-exited.json', 'dns-step-3-dispatched.json']
+        exit_witness = directory / 'dns-senders-exited.json'
+        if named_dns_settled:
+            (root / 'hold-dns-after-exit').write_text(f'{ipc.helper.pid} {exit_witness}\n')
+            (root / 'release-dns-effect').touch()
+            until((root / 'dns-after-exit-held').is_file, 'all original DNS senders acknowledged before checkpoint')
+            proof_files.append(exit_witness.name)
         evidence = [(directory / name).read_bytes() for name in proof_files]
         original = (archive / 'operations' / publication / 'tun-5.json').read_bytes()
         sender = Path('/proc', (root / 'dns-effect-sender').read_text().strip())
 
-        def verify_native(phase):
-            assert native.read_bytes() == ledger
+        def verify_native(phase, confirmed=False):
+            if not confirmed:
+                assert native.read_bytes() == ledger
             assert (archive / 'operations' / publication / 'tun-5.json').read_bytes() == original
             assert [(directory / name).read_bytes() for name in proof_files] == evidence
-            assert not (directory / 'dns-senders-exited.json').exists() and not (directory / 'tun-5.json').exists()
+            assert exit_witness.exists() == named_dns_settled and (directory / 'tun-5.json').exists() == confirmed
             assert (root / 'dns-write-attempts').read_text().splitlines() == ['SetLinkDefaultRoute', 'SetLinkDomains', 'SetLinkDNS']
             assert config.read_bytes() == mirror.read_bytes() and resolver_snapshot() == dns
             probe(current, 'named-start-' + phase)
 
-        assert sender.is_dir() and read(started)['state'] == 'running'
+        assert sender.exists() != named_dns_settled and read(started)['state'] == 'running'
         assert submit('enable', key, body) == started and leases() >= 1
         verify_native('before')
         launches = json.loads(ledger)['mihomoTunStarts']
@@ -2847,12 +2864,34 @@ def proof_full_http_shutdown(ipc, case):
         os.kill(pid, signal.SIGKILL)
         assert worker.wait(timeout=8) == 0
         ipc.stop_helper()
+        (root / 'hold-dns-after-exit').unlink(missing_ok=True)
 
         ipc.start_helper()
         worker = launch('restart')
         restart_pid = int(marker('full-server-pid'))
         token = login()
         until(lambda: not sender.exists(), 'original DNS sender exit')
+        if named_dns_settled:
+            finished = until(lambda: (reply if (reply := read(started))['state'] == 'succeeded' else None),
+                             'original named start terminal receipt')
+            assert finished['completedAt'] and submit('enable', key, body) == started and read(started) == finished
+            observed = json.loads(checkpoint(record, f'observe-action:{started}'))
+            action = observed['mihomoTunAction']
+            assert observed['pendingOperationId'] is None
+            assert uuid.UUID(action['operationId']).hex == started
+            assert uuid.UUID(action['publicationId']).hex == uuid.UUID(action['targetExecutionId']).hex == publication
+            assert action['action'] == 0 and action['outcome'] == 'Succeeded', action
+            assert ipc.log.read_text().count('operation=MihomoRuntimeRecover ') == 1
+            assert all(f'operation={verb} ' not in ipc.log.read_text()
+                       for verb in ('MihomoRuntimeConfigure', 'MihomoRuntimeTunStart', 'MihomoRuntimeTunStop'))
+            assert read(publication)['state'] == read(stopped)['state'] == 'succeeded'
+            verify_native('recovered', confirmed=True)
+            until(lambda: leases() == 0, 'confirmed reconciliation work leases')
+            os.kill(restart_pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            print(f'PASS TUN NAMED START DNS SETTLED: publication={publication}; stop={stopped}; start={started}; '
+                  f'PID={current["service"][0]}; route table={intent["RoutingTable"]}; one reconciliation, no redispatch', flush=True)
+            return
         waiting = read(started)
         assert waiting['state'] == 'interrupted' and not waiting.get('completedAt')
         assert waiting['stage'] == 'managed_tun_action'
@@ -2866,8 +2905,9 @@ def proof_full_http_shutdown(ipc, case):
         assert uuid.UUID(action['publicationId']).hex == uuid.UUID(action['targetExecutionId']).hex == publication
         assert action['action'] == 0 and action['outcome'] == 'RecoveryRequired', action
         assert f'operation=MihomoRuntimeQuery id={uuid.UUID(started)} ' in ipc.log.read_text()
+        assert 'operation=MihomoRuntimeRecover ' in ipc.log.read_text()
         assert all(f'operation={verb} ' not in ipc.log.read_text()
-                   for verb in ('MihomoRuntimeConfigure', 'MihomoRuntimeRecover', 'MihomoRuntimeTunStart', 'MihomoRuntimeTunStop'))
+                   for verb in ('MihomoRuntimeConfigure', 'MihomoRuntimeTunStart', 'MihomoRuntimeTunStop'))
         command('/usr/bin/dotnet', record['fixture'], 'runtime-mihomo-tun-named-retry',
                 root, ipc.socket_path, publication, started)
         assert read(publication)['state'] == read(stopped)['state'] == 'succeeded'
@@ -4235,7 +4275,8 @@ rules:
             ipc.start_helper()
             if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
-                        'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown', 'ipc-http-named-start-dns',
+                        'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',
+                        'ipc-http-named-start-dns', 'ipc-http-named-start-dns-settled',
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',

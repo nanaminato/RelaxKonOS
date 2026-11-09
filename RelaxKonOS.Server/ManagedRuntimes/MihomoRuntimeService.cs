@@ -100,12 +100,26 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         finally { store.Gate.Release(); }
     }
 
-    internal async Task<RuntimeSwitchResult?> RecoverUnderGateAsync(Guid requestOperationId, Guid recoveryOperationId, CancellationToken ct)
+    internal async Task<RuntimeSwitchResult?> RecoverUnderGateAsync(Guid requestOperationId, Guid recoveryOperationId,
+        CancellationToken ct, Guid? tunPublicationId = null)
     {
         await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(requestOperationId, authorization.ReadAsync);
         // A null result proves only that no pending Helper transaction remains; callers must still query its receipt.
         return await CallAsync<RuntimeSwitchResult?>(new(PrivilegedOperationKind.MihomoRuntimeRecover,
-            OperationId: requestOperationId, RuntimeLifecycle: new(Authorization: callback.Channel, RecoveryOperationId: recoveryOperationId)), ct, allowNull: true);
+            OperationId: requestOperationId, RuntimeLifecycle: new(Authorization: callback.Channel,
+                RecoveryOperationId: recoveryOperationId, MihomoTunPublicationId: tunPublicationId)), ct, allowNull: true);
+    }
+
+    internal async Task<bool> TryRecoverNamedTunStartAsync(Guid executionId, Guid publicationId, CancellationToken ct)
+    {
+        // Queue reconciliation already owns its gate. A live publisher may still need to report progress there.
+        if (!await store.Gate.WaitAsync(0, ct)) return false;
+        try
+        {
+            await RecoverUnderGateAsync(Guid.NewGuid(), executionId, CancellationToken.None, publicationId);
+            return true;
+        }
+        finally { store.Gate.Release(); }
     }
 
     /// <summary>The configuration publication coordinator already owns Gate, including confirmation.</summary>

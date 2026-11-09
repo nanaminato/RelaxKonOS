@@ -373,6 +373,15 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         try
         {
             var observed = await mihomoRuntime.QueryHelperAsync(ct, operation.OperationId);
+            if (expected == MihomoTunActionKind.Start && observed.PendingOperationId == operation.OperationId
+                && observed.MihomoTunAction is { Action: MihomoTunActionKind.Start, Outcome: RuntimeSwitchOutcome.RecoveryRequired } pending
+                && pending.OperationId == operation.OperationId && pending.PublicationId != Guid.Empty)
+            {
+                if (!await mihomoRuntime.TryRecoverNamedTunStartAsync(operation.OperationId, pending.PublicationId, ct))
+                    return false;
+                observed = await mihomoRuntime.QueryHelperAsync(CancellationToken.None, operation.OperationId);
+                if (observed.MihomoTunAction?.PublicationId != pending.PublicationId) return false;
+            }
             return observed.MihomoTunAction is { Outcome: RuntimeSwitchOutcome.Succeeded } receipt
                 && receipt.OperationId == operation.OperationId && receipt.Action == expected;
         }

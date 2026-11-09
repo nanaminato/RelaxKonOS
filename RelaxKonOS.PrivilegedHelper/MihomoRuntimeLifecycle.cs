@@ -320,10 +320,41 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
                 binary, data, CancellationToken.None);
             await ReportTunProgressAsync(progress, InstallationStage.HealthChecking);
         }
+        return await ConfirmTunStartAsync(session, linux, owner, start, authorization, CancellationToken.None);
+    }
+
+    internal async Task<RuntimeSwitchResult> RecoverNamedTunStartAsync(RuntimeAuthorizationChannel channel,
+        Guid executionId, Guid publicationId, CancellationToken ct)
+    {
+        await EnsureStateAsync(ct);
+        using var session = states.Acquire();
+        var state = session.State!;
+        if (!OperatingSystem.IsLinux() || host is not LinuxMihomoArchiveHost linux || root != LinuxMihomoArchiveHost.Root)
+            throw new RuntimePolicyException("runtime.network_platform_unsupported");
+        if (HasPending(state) || state.PendingMihomoTunStop is not null
+            || state.ActiveMihomoTun is not { } owner || owner.OperationId != publicationId
+            || state.Active is not { } revision
+            || state.PendingMihomoTunStart is not { Restart: false, Stage: RuntimeMihomoTunStartStage.Launching } start
+            || start.OperationId != executionId || start.PublicationId != publicationId)
+            return new(executionId, RuntimeSwitchOutcome.RecoveryRequired, "runtime.recovery_target_conflict");
+
+        var authorization = new Authorization(channel);
+        var tools = new MihomoArchiveAdapter(root, states, sources, new RuntimeArchiveTransport(), null, host, authorization, protect);
+        MihomoArchiveAdapter.RequireTrustedRevision(sources, revision);
+        await tools.VerifyFilesAsync(revision, ct);
+        return await ConfirmTunStartAsync(session, linux, owner, start, authorization, ct);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static async Task<RuntimeSwitchResult> ConfirmTunStartAsync(RuntimeArchiveStateStore.Session session,
+        LinuxMihomoArchiveHost linux, RuntimeMihomoTunOwnership owner, RuntimeMihomoTunStart start,
+        Authorization authorization, CancellationToken ct)
+    {
+        var operationId = start.OperationId;
         try
         {
-            material = await RequireTunGrantAsync(owner, authorization, CancellationToken.None);
-            await linux.VerifyCommittedLaunchAsync(owner, state.Installation, operationId, material, CancellationToken.None);
+            var material = await RequireTunGrantAsync(owner, authorization, ct);
+            await linux.VerifyCommittedLaunchAsync(owner, session.State!.Installation, operationId, material, ct);
         }
         catch (RuntimePolicyException error)
         {

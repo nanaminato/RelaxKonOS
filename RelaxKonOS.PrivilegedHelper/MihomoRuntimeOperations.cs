@@ -35,7 +35,7 @@ internal static class MihomoRuntimeOperations
             PrivilegedOperationKind.MihomoRuntimeExecute => input is { SourceId: null, Plan: null, Authorization: not null, Confirmed: false, FrozenPlan: { RuntimeId: "mihomo", Request: not null }, RecoveryOperationId: null, CancelOperationId: null }
                 && (input.FrozenPlan.Release is not null || input.FrozenPlan.Request.Change == RuntimeChange.Uninstall),
             PrivilegedOperationKind.MihomoRuntimeRecover => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: { } target, CancelOperationId: null }
-                && target != Guid.Empty,
+                && target != Guid.Empty && (input.MihomoTunPublicationId is not { } tunOwner || tunOwner != Guid.Empty && tunOwner != target),
             PrivilegedOperationKind.MihomoRuntimeCancel => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: { } cancelTarget }
                 && cancelTarget != Guid.Empty,
             PrivilegedOperationKind.MihomoRuntimeRecoveryQuery => input is null,
@@ -70,6 +70,8 @@ internal static class MihomoRuntimeOperations
                 PrivilegedOperationKind.MihomoRuntimeConfigure => Json(await lifecycle.ConfigureAsync(id, input!.ConfigurationPlan!, input.Authorization!, default, progress)),
                 PrivilegedOperationKind.MihomoRuntimePlan => Json(await lifecycle.PlanAsync(input!.SourceId!, input.Plan!, default)),
                 PrivilegedOperationKind.MihomoRuntimeExecute => Json(await lifecycle.ExecuteAsync(id, input!.FrozenPlan!, input.Authorization!, default, progress, request.DownloadProxy)),
+                PrivilegedOperationKind.MihomoRuntimeRecover when input!.MihomoTunPublicationId is { } tunOwner =>
+                    Json(await lifecycle.RecoverNamedTunStartAsync(input.Authorization!, input.RecoveryOperationId!.Value, tunOwner, default)),
                 PrivilegedOperationKind.MihomoRuntimeRecover => Json(await lifecycle.RecoverAsync(input!.Authorization!, input.RecoveryOperationId!.Value, default, progress)),
                 PrivilegedOperationKind.MihomoRuntimeCancel => Json(lifecycle.CancelRequest(input!.CancelOperationId!.Value)),
                 PrivilegedOperationKind.MihomoRuntimeRecoveryQuery => Json(await lifecycle.RecoveryAsync(default)),
