@@ -842,7 +842,19 @@ Windows Release 38 项 TUN 边界检查通过。Linux 原始日志 `.artifacts/m
 
 **已实现但实机未验证。** 本轮在支持该选项的内核上向专属进程注入真实系统调用错误。旧内核及整机掉电仍待独立验收。已核实进程退出，对象释放、ALC 回收、隔离内存差值和生产收益未测量。
 
-**未实现或仍受门禁保护。** 下一项是将原命名空间归属持久化到首个激活动作之前。目前归档可先写入 `SwitchStarted`，随后停止旧服务，而首个原生意图还未落盘。这个窗口仍需补齐归属证明并实测错误命名空间拒绝。整模块交接仍待验收，Proxy 保持 resident。
+**未实现或仍受门禁保护。** 首个激活动作前的归属证明与实测见下一节。整模块交接仍待验收，Proxy 保持 resident。
+
+### 首次停止前持久化原网络归属
+
+**已实现且已验证。** 受管 TUN 配置事务先持久保存原操作的 `network-owner.json`，绑定启动 ID、命名空间链接、内核 cookie、配置及冻结网络意图，再保存 `SwitchStarted`。首次停止旧服务前另外写入 `initial-service-stop.json`。后续原生检查点须匹配同一意图。恢复缺少原归属、发现记录不一致或无法核对原命名空间时保持待核验。尚未派发停止时，只读核对旧服务和配置，无需启动或停止旧服务。
+
+Linux x64 私有 systemd 使用完整 PAM/JWT Server、独立 Helper 与真实 Mihomo。原发布 `bd769993b3da43edbb891e07af1b882f` 已保存 `SwitchStarted` 与原 cookie `212189`，但首次停止和候选原生检查点都不存在。在原 Helper 重新核对网络时中断 Server 与 Helper。异网络命名空间中的 Helper 返回 `runtime.network_checkpoint_conflict`。同键仍返回无完成时间的原待核验回执，新键被拒绝。旧进程 PID `106`、原配置和管理选路、resolver 设置及真实代理流量保持，原停止未派发。回到原命名空间后，同一原 ID 完成结案，工作租约归零，旧进程仍为 PID `106`。
+
+同批通过候选注册中断的原恢复 `7ed80fcfd5c4467e8a846eea2726f624`，以及缺失、不可读和错配 cookie 后按原回执恢复 `7379e94029814248ba86699f629a320d`。三场专属进程与 cgroup 已清理，宿主共享服务、代理及 resolver 文件指纹一致。Windows Release 构建及 38 项 TUN 边界检查通过。原始 Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-early-owner.log` 的 SHA-256 为 `96bc1e409aa23d1054b2cc27cf14630f9bccaa4345a3d07125e0dae16d2f4ee2`，归档 SHA-256 为 `68b68fdc4eafedf4c26af11eb1bff4eac752456dae1658d8dc72135e430015a0`。
+
+**已实现但实机未验证。** 首次停止已记录派发但原结果未知的窗口待独立实测。整机掉电需要专属断电环境。已核对进程退出，对象释放、ALC 回收、隔离内存差值和生产收益未测量。
+
+**未实现或仍受门禁保护。** 未知派发由原操作保留。整模块安全交接仍待验收，Proxy 保持 resident。
 
 ## MB-04 受管 TUN 认证 HTTP 补偿
 

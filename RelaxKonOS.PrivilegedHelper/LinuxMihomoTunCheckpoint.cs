@@ -58,24 +58,39 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
     private static extern int getsockopt(SafeSocketHandle socket, int level, int option, out ulong value, ref uint length);
 
     private string PathFor(MihomoTunPhase phase) => Path.Combine(directory, $"tun-{(int)phase}.json");
+    private string OwnerPath => Path.Combine(directory, "network-owner.json");
+    private string InitialStopPath => Path.Combine(directory, "initial-service-stop.json");
+
+    internal Task WriteOwnerAsync(MihomoTunEffect owner)
+    {
+        Validate(null, owner);
+        return WriteAsync(OwnerPath, owner);
+    }
+
+    internal MihomoTunEffect ReadOwner()
+    {
+        var owner = ReadEntry(OwnerPath) ?? throw Conflict();
+        Validate(null, owner);
+        if (!MatchesCurrentNetwork(owner.Intent)) throw Conflict();
+        return owner;
+    }
+
+    internal Task MarkInitialStopAsync(MihomoTunEffect owner) => WriteAsync(InitialStopPath, owner);
+
+    internal bool InitialStopDispatched(MihomoTunEffect owner)
+    {
+        var dispatched = ReadEntry(InitialStopPath);
+        if (dispatched is null) return false;
+        if (dispatched != owner) throw Conflict();
+        return true;
+    }
 
     internal MihomoTunEffect? Read()
     {
         MihomoTunEffect? previous = null;
         foreach (var phase in Enum.GetValues<MihomoTunPhase>())
         {
-            var path = PathFor(phase);
-            RuntimeSourceStore.RequireNoLinks(path);
-            if (Directory.Exists(path)) throw Conflict();
-            if (!File.Exists(path)) continue;
-            RuntimeSourceProtection.RequireRootOwned(directory);
-            RuntimeSourceProtection.RequireRootOwned(path);
-            if (File.GetUnixFileMode(path) != (UnixFileMode.UserRead | UnixFileMode.UserWrite)
-                || new FileInfo(path).Length is <= 0 or > 4096)
-                throw Conflict();
-            MihomoTunEffect entry;
-            try { entry = JsonSerializer.Deserialize<MihomoTunEffect>(File.ReadAllBytes(path), CheckpointJson) ?? throw Conflict(); }
-            catch (JsonException) { throw Conflict(); }
+            if (ReadEntry(PathFor(phase)) is not { } entry) continue;
             if (entry.Phase != phase) throw Conflict();
             Validate(previous, entry);
             previous = entry;
@@ -83,11 +98,30 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
         return previous;
     }
 
-    internal async Task AppendAsync(MihomoTunEffect effect)
+    private MihomoTunEffect? ReadEntry(string path)
     {
+        RuntimeSourceStore.RequireNoLinks(path);
+        if (Directory.Exists(path)) throw Conflict();
+        if (!File.Exists(path)) return null;
         RuntimeSourceProtection.RequireRootOwned(directory);
+        RuntimeSourceProtection.RequireRootOwned(path);
+        if (File.GetUnixFileMode(path) != (UnixFileMode.UserRead | UnixFileMode.UserWrite)
+            || new FileInfo(path).Length is <= 0 or > 4096)
+            throw Conflict();
+        try { return JsonSerializer.Deserialize<MihomoTunEffect>(File.ReadAllBytes(path), CheckpointJson) ?? throw Conflict(); }
+        catch (JsonException) { throw Conflict(); }
+    }
+
+    internal Task AppendAsync(MihomoTunEffect effect)
+    {
         Validate(Read(), effect);
-        var path = PathFor(effect.Phase);
+        return WriteAsync(PathFor(effect.Phase), effect);
+    }
+
+    private async Task WriteAsync(string path, MihomoTunEffect effect)
+    {
+        RuntimeSourceStore.RequireNoLinks(path);
+        RuntimeSourceProtection.RequireRootOwned(directory);
         await using (var file = new FileStream(path, new FileStreamOptions
         {
             Mode = FileMode.CreateNew, Access = FileAccess.Write,

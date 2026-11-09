@@ -204,6 +204,15 @@ def install_rule_failure_boundary():
 set -eu
 real={shlex.quote(str(original))}
 broker={shlex.quote(str(root / 'full-zero-dns-broker'))}
+early_broker={shlex.quote(str(root / 'full-early-owner-broker'))}
+if [[ -f "$early_broker" && "$PPID" == "$(cat "$early_broker")" && "$*" == "-j link show" ]] &&
+    grep -Eq '"switchStarted"[[:space:]]*:[[:space:]]*true' {archive}/state/archive-state.json; then
+    "$real" "$@"
+    printf '%s\n' ready > {shlex.quote(str(root / 'full-early-owner-held'))}
+    parent=$PPID
+    while kill -0 "$parent" 2>/dev/null; do sleep .05; done
+    exit 0
+fi
 if [[ -f "$broker" && "$PPID" == "$(cat "$broker")" && "$*" == "-j link show dev {device}" ]] &&
     compgen -G "{archive}/operations/*/tun-3.json" >/dev/null; then
     "$real" "$@"
@@ -1431,13 +1440,15 @@ class IpcPublicationWorkers:
         self.helper = None
         self.generation = 0
 
-    def start_helper(self, *, block_namespace_cookie=False):
+    def start_helper(self, *, block_namespace_cookie=False, foreign_network=False):
         assert self.helper is None
         self.generation += 1
         self.log = root / f'ipc-helper-{self.generation}.log'
         args = [launcher, '--linux-service', '--config', self.config]
         if block_namespace_cookie:
             args = [sys.executable, '-I', script, 'cookie-unavailable-helper', root, *args]
+        if foreign_network:
+            args = ['/usr/bin/unshare', '--net', *args]
         with self.log.open('x') as log:
             self.helper = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 8
@@ -1976,6 +1987,7 @@ def proof_full_http_shutdown(ipc, case):
     retained_removal = removal_http or case == 'ipc-http-retained'
     squid = case in ('ipc-http-squid', 'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account')
     zero_dns = case == 'ipc-http-zero-dns'
+    early_owner = case == 'ipc-http-early-owner'
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
@@ -2069,6 +2081,66 @@ def proof_full_http_shutdown(ipc, case):
         assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
                        f'http://{target}:18880/mb04-{phase}') == 'upstream-through-inherited-tun'
         assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
+
+    def verify_early_owner(pid, publication, original_service, original_config, baseline, original_resolver):
+        nonlocal worker, token
+        marker('full-early-owner-held')
+        operation_dir = archive / 'operations' / publication
+        owner = operation_dir / 'network-owner.json'
+        proof = owner.read_bytes()
+        intent = json.loads(proof)['Intent']
+        assert uuid.UUID(intent['OperationId']).hex == publication
+        assert intent['NetworkNamespace'] == os.readlink('/proc/self/ns/net')
+        assert intent['NetworkNamespaceCookie'] > 0 and not (operation_dir / 'initial-service-stop.json').exists()
+        assert not (operation_dir / 'tun-0.json').exists()
+        state_file = archive / 'state' / 'archive-state.json'
+        state = json.loads(state_file.read_bytes())
+        assert state['configuration']['switchStarted'] and leases() >= 2
+
+        def check_original(phase):
+            assert service_identity() == original_service and config.read_bytes() == mirror.read_bytes() == original_config
+            assert network_baseline() == baseline and resolver_snapshot() == original_resolver
+            assert owner.read_bytes() == proof and not (operation_dir / 'initial-service-stop.json').exists()
+            assert not (operation_dir / 'tun-0.json').exists() and not (root / 'rule-delete-attempts').exists()
+            assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
+                           '--max-time', '3', f'http://{target}:18880/mb04-early-owner-{phase}') == 'upstream-through-inherited-tun'
+
+        check_original('before')
+        os.kill(pid, signal.SIGKILL)
+        assert worker.wait(timeout=8) == 0
+        ipc.stop_helper()
+        (root / 'full-early-owner-broker').unlink()
+        ipc.start_helper(foreign_network=True)
+        assert os.readlink(f'/proc/{ipc.helper.pid}/ns/net') != intent['NetworkNamespace']
+        worker = launch('restart')
+        foreign_pid = int(marker('full-server-pid'))
+        token = login()
+        until(lambda: json.loads(state_file.read_bytes())['configuration'].get('recoveryProblemCode')
+              == 'runtime.network_checkpoint_conflict', 'early owner namespace gate')
+        waiting = read(publication)
+        assert waiting['state'] == 'interrupted' and not waiting.get('completedAt')
+        assert submit('enable', 'full-publish', {'profileId': profile}) == publication
+        status, blocked = request(api + '/tun/enable', token, 'full-early-owner-foreign', {'profileId': profile})
+        assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+        assert not json.loads(state_file.read_bytes())['configuration']['recoveryStopDispatched']
+        check_original('foreign')
+        os.kill(foreign_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        ipc.stop_helper()
+        ipc.start_helper()
+        worker = launch('restart')
+        restored_pid = int(marker('full-server-pid'))
+        token = login()
+        finished = until(lambda: (reply if (reply := read(publication)).get('completedAt') else None), 'early owner receipt')
+        assert finished['state'] == 'failed' and finished['problemCode'] == 'proxy.config_apply_failed'
+        assert submit('enable', 'full-publish', {'profileId': profile}) == publication and read(publication) == finished
+        until(lambda: leases() == 0, 'early owner work lease release')
+        check_original('restored')
+        assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
+        os.kill(restored_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        print(f'PASS TUN EARLY NETWORK OWNER: original={publication}; cookie={intent["NetworkNamespaceCookie"]}; '
+              f'original PID={original_service[0]}; foreign recovery refused, same process after original receipt', flush=True)
 
     def verify_unfinished_dns(pid, publication, resolver_before):
         nonlocal worker, token
@@ -3370,7 +3442,7 @@ def proof_full_http_shutdown(ipc, case):
         print(f'PASS SQUID NATIVE UNKNOWN: original={unknown}; configuration={unknown_digest}; PID={original_pid}; '
               'real upstream after Helper exit; both ledgers unchanged and no replay')
 
-    worker = launch('zero-dns-publish' if zero_dns or partial_dns else 'squid-new' if squid else 'removal-cut' if removal_admin
+    worker = launch('zero-dns-publish' if zero_dns or partial_dns or early_owner else 'squid-new' if squid else 'removal-cut' if removal_admin
                     else 'admission' if admission or handoff or retained_removal else 'drain')
     first_worker = worker
     try:
@@ -3393,8 +3465,14 @@ with sqlite3.connect(sys.argv[1]) as database:
 ''', str(database), profile, timestamp], **ipc.identity, check=True, timeout=8)
         if zero_dns:
             (root / 'full-zero-dns-broker').write_text(str(ipc.helper.pid))
+        if early_owner:
+            initial = service_identity(), config.read_bytes(), network_baseline(), resolver_snapshot()
+            (root / 'full-early-owner-broker').write_text(str(ipc.helper.pid))
         resolver_before = resolver_snapshot() if zero_dns or partial_dns else None
         publication = submit('enable', 'full-publish', {'profileId': profile})
+        if early_owner:
+            verify_early_owner(pid, publication, *initial)
+            return
         if zero_dns or partial_dns:
             verify_unfinished_dns(pid, publication, resolver_before)
             return
@@ -3645,7 +3723,7 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
+            if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
                         'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account'):

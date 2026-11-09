@@ -91,7 +91,15 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         if (pending.Plan.NetworkIntentIdentity is not null)
         {
             if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_platform_unsupported");
-            _ = LinuxMihomoTunCheckpoint.NetworkNamespaceCookie();
+            var (_, network) = await RequireTunMaterialAsync(pending, ct);
+            var intent = new MihomoTunIntent(pending.OperationId, pending.Plan.ActiveRevisionId, pending.Plan.CandidateIdentity,
+                LinuxMihomoTunCheckpoint.BootId(), LinuxMihomoTunCheckpoint.NetworkNamespace(),
+                LinuxMihomoTunCheckpoint.NetworkNamespaceCookie(), network.Device, network.Address, network.Destination,
+                network.ManagementAddress, network.ManagementUserId, network.ManagementHash,
+                LinuxMihomoTunRoutes.TableFor(pending.OperationId), network.DnsRoutingDomain);
+            var owner = new MihomoTunEffect(MihomoTunPhase.Intent, intent);
+            await LinuxMihomoArchiveHost.VerifyUndispatchedTunNetworkAsync(owner, ct);
+            await TunCheckpoint(pending).WriteOwnerAsync(owner);
             // Capture and preparation flushed the files. Publish their names before admitting the switch.
             var operation = Operation(pending.OperationId);
             MihomoRuntimeData.SyncConfigurationDirectory(operation);
@@ -105,6 +113,16 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         var tun = pending.Plan.NetworkIntentIdentity is not null;
         var operation = Operation(pending.OperationId);
         await RequireMaterialAsync(pending, true, ct);
+        MihomoTunEffect? owner = null;
+        if (tun)
+        {
+            if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_platform_unsupported");
+            var checkpoint = TunCheckpoint(pending);
+            owner = checkpoint.ReadOwner();
+            RequireOriginalNetworkIntent(pending, owner);
+            await LinuxMihomoArchiveHost.VerifyUndispatchedTunNetworkAsync(owner, ct);
+            await checkpoint.MarkInitialStopAsync(owner);
+        }
         await host.StopAsync(ct);
         var revision = Revision(pending);
         var observed = await host.ObserveAsync(ct);
@@ -122,17 +140,14 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         await RequireMaterialAsync(pending, true, ct);
         await Tools(pending, true).ReplaceConfigurationAsync(await CandidateBytesAsync(pending, true, ct), ct);
         var binary = Tools(pending, true).Binary(revision);
-        if (tun)
+        if (owner is not null)
         {
             if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_platform_unsupported");
             MihomoRuntimeData.SyncConfigurationDirectory(root);
             var (_, network) = await RequireTunMaterialAsync(pending, ct);
-            var intent = new MihomoTunIntent(pending.OperationId, revision.RevisionId, pending.Plan.CandidateIdentity,
-                LinuxMihomoTunCheckpoint.BootId(), LinuxMihomoTunCheckpoint.NetworkNamespace(),
-                LinuxMihomoTunCheckpoint.NetworkNamespaceCookie(),
-                network.Device, network.Address, network.Destination, network.ManagementAddress, network.ManagementUserId,
-                network.ManagementHash, LinuxMihomoTunRoutes.TableFor(pending.OperationId), network.DnsRoutingDomain);
-            await TunHost().ActivateTunAsync(intent, binary, Data(revision), ct, pending);
+            if (LinuxMihomoArchiveHost.TunNetwork(owner.Intent) != network)
+                throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+            await TunHost().ActivateTunAsync(owner.Intent, binary, Data(revision), ct, pending);
             return;
         }
         await host.ConfigureAsync(binary, Data(revision), Configuration,
@@ -269,6 +284,8 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         {
             if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_transaction_required");
             await VerifyRestoredNetworkAsync(pending, effect, ct);
+            if (effect.Phase == MihomoTunPhase.Intent && !TunCheckpoint(pending).InitialStopDispatched(effect))
+                return await ObserveRestoredServiceAsync(pending, effect, ct);
             await RequireMaterialAsync(pending, false, ct);
             if (await TunHost().RestoreTunRegistrationAsync(pending, binary, data, revision.MeasuredVersion,
                 beforeNetwork: effect.Phase == MihomoTunPhase.Intent, resumeOnly: true, ct))
@@ -446,9 +463,29 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
 
     private LinuxMihomoArchiveHost TunHost() => (LinuxMihomoArchiveHost)host;
 
-    private MihomoTunEffect? ReadTunEffect(RuntimePendingConfiguration pending) => OperatingSystem.IsLinux()
-        ? new LinuxMihomoTunCheckpoint(root, pending.OperationId, pending.Plan.ActiveRevisionId, pending.Plan.CandidateIdentity).Read()
-        : null;
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private LinuxMihomoTunCheckpoint TunCheckpoint(RuntimePendingConfiguration pending) =>
+        new(root, pending.OperationId, pending.Plan.ActiveRevisionId, pending.Plan.CandidateIdentity);
+
+    private MihomoTunEffect? ReadTunEffect(RuntimePendingConfiguration pending)
+    {
+        if (!OperatingSystem.IsLinux()) return null;
+        var checkpoint = TunCheckpoint(pending);
+        var effect = checkpoint.Read();
+        if (pending.Plan.NetworkIntentIdentity is null) return effect;
+        var owner = checkpoint.ReadOwner();
+        RequireOriginalNetworkIntent(pending, owner);
+        var stopped = checkpoint.InitialStopDispatched(owner);
+        var registration = FileIn(pending, "registration-activate.json");
+        var mutation = FileIn(pending, "data-mutation");
+        RuntimeSourceStore.RequireNoLinks(registration);
+        RuntimeSourceStore.RequireNoLinks(mutation);
+        if (effect is not null && (effect.Intent != owner.Intent || !stopped)
+            || effect is null && Path.Exists(registration)
+            || !stopped && Path.Exists(mutation))
+            throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
+        return effect ?? owner;
+    }
 
     private async Task<byte[]> CandidateBytesAsync(RuntimePendingConfiguration pending, bool candidate, CancellationToken ct)
     {
