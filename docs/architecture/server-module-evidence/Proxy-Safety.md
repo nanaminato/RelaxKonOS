@@ -908,6 +908,20 @@ Linux x64 私有 systemd 使用独立 journald 和真实 Mihomo。原操作 `228
 
 **未实现或仍受门禁保护。** 整模块安全交接继续开放，Proxy 保持 resident。
 
+### 补偿启动作业完成应答中断
+
+**已实现且已验证。** Helper 取得 systemd 原 `StartUnit` 作业 ID 后，先同步原操作 ID、启动 ID、原作业 ID 和单调派发时间，再查询 PID 1 的 journal。恢复时只接受同次启动、同一服务单元、同一作业 ID 且晚于派发的成功记录。当前旧配置进程的调用 ID、PID、启动时刻和配置身份须通过原注册与进程核对。恢复写入先保存进程见证，再保存作业完成记录。若两次写入之间再次中断，已存在的进程见证仍须与当前进程逐字节一致。
+
+Linux x64 私有 systemd 在真实 Mihomo 恢复到旧配置后，截留了真实 journal 查询应答。原操作 `2ca9e510b61343b483fe260806488f3e` 的作业 `39`、旧配置 PID `507`、调用 ID `b3e85f97ce5546b58de5ed1c2bb1bef7` 相符。此时作业 ID 已落盘，完成记录与进程见证尚未生成。认证 HTTP 查询和同键保留原待核验状态，原恢复工作租约仍在。中断 Server 和 Helper 后，夹具暂存原作业 ID 记录。重启返回 `runtime.network_restored_start_unconfirmed`，原回执无完成时间，新键被 `proxy.operation_interrupted` 拒绝。
+
+原记录还原后，重启按原作业只读取得完成证据，并在原发布 ID 下保存进程见证和作业结果。HTTP 按原 ID 与同键读回同一 `proxy.config_apply_failed` 终态，工作租约归零。实际 `StartUnit` 一次，恢复 Helper 未收到配置派发。原初始停止和网络归属记录逐字节一致。三阶段的 PID、配置及 Server 镜像、管理选路、resolver 设置与真实上游 HTTP 均核对一致。
+
+同时复跑作业对应进程被替换 `feffbf550df843ca95df9c7eb981bbaf`、进程见证缺失或替换 `63afb48374b243fe8346a2e1763f3f4b`、首次停止应答中断后恢复 `bae5694db98c415e9149656e011fb5c6`。Linux Release 构建、Windows Release 激活和 38 项边界检查通过。四场专属 cgroup 已清理，验收进程退出，宿主共享服务、代理及 resolver 文件指纹一致。原实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-job-cut.log` SHA-256 为 `a6f4810199ae5e685913719a83d0a48d80aff3d276967665d55e7d593b8618f6`，运行归档 SHA-256 为 `f6885f729b5aefbc5e421b288ec0a181ec8072e6fd541793c974675313e4deb2`。
+
+**已实现但实机未验证。** 本次缺失作业 ID 的分支由暂存已保存的原记录触发。首次 D-Bus 应答未送达 Helper 的真实故障窗口仍待独立验收。整机掉电需专属可断电环境。对象释放、ALC 回收、隔离内存差值和生产内存收益未测量。
+
+**未实现或仍受门禁保护。** 缺少可信原作业身份时保留原待核验，禁止重复启动。整模块安全交接仍待验收，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

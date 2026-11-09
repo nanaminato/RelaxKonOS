@@ -10,6 +10,7 @@ internal sealed partial class LinuxMihomoArchiveHost
 {
     private sealed record RegistrationRestore(Guid OperationId, Registration Previous, Registration Restored);
     private sealed record RestoredProcess(Guid OperationId, string ConfigurationIdentity, MihomoTunProcess Process);
+    private sealed record RestoredStartDispatch(Guid OperationId, Guid BootId, uint JobId, ulong DispatchedAt);
     private sealed record RestoredStartJob(Guid OperationId, Guid BootId, uint JobId, Guid InvocationId);
 
     private async Task ConfigurePublicationTunAsync(RuntimePendingConfiguration pending, string binary, string data,
@@ -98,6 +99,7 @@ internal sealed partial class LinuxMihomoArchiveHost
             if (existing && restoredRegistration && restoredUnit && state.GetValueOrDefault("NeedDaemonReload") == "no"
                 && await ReadRestoreFileAsync(RestoredStartPath(operation), ct) == operation.ToString("N"))
             {
+                await CompleteRestoredJobObservationAsync(operation, restored, ct);
                 await VerifyRestoredTunProcessAsync(operation, ct);
                 return true;
             }
@@ -166,6 +168,12 @@ internal sealed partial class LinuxMihomoArchiveHost
     private static string RestoredJobPath(Guid operation) =>
         Path.Combine(Root, "operations", operation.ToString("N"), "registration-start-job.json");
 
+    private static string RestoredJobDispatchPath(Guid operation) =>
+        Path.Combine(Root, "operations", operation.ToString("N"), "registration-start-job-dispatched.json");
+
+    private static ulong MonotonicMicroseconds() =>
+        (ulong)((Int128)Stopwatch.GetTimestamp() * 1_000_000 / Stopwatch.Frequency);
+
     internal static async Task RequireRestoredJobJournalAsync()
     {
         var boot = LinuxMihomoTunCheckpoint.BootId();
@@ -177,10 +185,12 @@ internal sealed partial class LinuxMihomoArchiveHost
     private static async Task<RestoredStartJob> StartRestoredJobAsync(Guid operation, CancellationToken ct)
     {
         var path = RestoredJobPath(operation);
+        var dispatchPath = RestoredJobDispatchPath(operation);
         RuntimeSourceStore.RequireNoLinks(path);
-        if (Path.Exists(path)) Fail("network_restored_start_unconfirmed");
+        RuntimeSourceStore.RequireNoLinks(dispatchPath);
+        if (Path.Exists(path) || Path.Exists(dispatchPath)) Fail("network_restored_start_unconfirmed");
         var boot = LinuxMihomoTunCheckpoint.BootId();
-        var started = (ulong)((Int128)Stopwatch.GetTimestamp() * 1_000_000 / Stopwatch.Frequency);
+        var started = MonotonicMicroseconds();
         var reply = await RunAsync("/usr/bin/busctl", ["--system", "--timeout=5s", "--json=short", "call",
             "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
             "StartUnit", "ss", Unit, "fail"]);
@@ -192,12 +202,23 @@ internal sealed partial class LinuxMihomoArchiveHost
             || !uint.TryParse(objectPath.AsSpan(prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out var id)
             || id == 0)
             throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+        var dispatch = new RestoredStartDispatch(operation, boot, id, started);
+        await WriteRestoreFileAsync(operation, dispatchPath, JsonSerializer.Serialize(dispatch),
+            UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+        var receipt = await ReadRestoredJobResultAsync(dispatch, ct);
+        await WriteRestoreFileAsync(operation, path, JsonSerializer.Serialize(receipt),
+            UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+        return receipt;
+    }
+
+    private static async Task<RestoredStartJob> ReadRestoredJobResultAsync(RestoredStartDispatch dispatch, CancellationToken ct)
+    {
         for (var attempt = 0; attempt < 30; attempt++)
         {
             ct.ThrowIfCancellationRequested();
             var journal = await RunAsync("/usr/bin/journalctl", ["--quiet", "--no-pager", "--output=json",
-                "--output-fields=INVOCATION_ID", "--lines=2", "_PID=1", "_UID=0", $"_BOOT_ID={boot:N}",
-                $"UNIT={Unit}", $"JOB_ID={id.ToString(CultureInfo.InvariantCulture)}", "JOB_TYPE=start", "JOB_RESULT=done"]);
+                "--output-fields=INVOCATION_ID", "--lines=2", "_PID=1", "_UID=0", $"_BOOT_ID={dispatch.BootId:N}",
+                $"UNIT={Unit}", $"JOB_ID={dispatch.JobId.ToString(CultureInfo.InvariantCulture)}", "JOB_TYPE=start", "JOB_RESULT=done"]);
             var entries = journal.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (entries.Length > 1) Fail("network_restored_start_unconfirmed");
             if (entries.Length == 1)
@@ -207,16 +228,49 @@ internal sealed partial class LinuxMihomoArchiveHost
                 if (!fields.TryGetProperty("INVOCATION_ID", out var value) || value.ValueKind != JsonValueKind.String
                     || !Guid.TryParseExact(value.GetString(), "N", out var invocation) || invocation == Guid.Empty
                     || !ulong.TryParse(fields.GetProperty("__MONOTONIC_TIMESTAMP").GetString(), NumberStyles.None,
-                        CultureInfo.InvariantCulture, out var timestamp) || timestamp < started)
+                        CultureInfo.InvariantCulture, out var timestamp) || timestamp < dispatch.DispatchedAt)
                     throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
-                var receipt = new RestoredStartJob(operation, boot, id, invocation);
-                await WriteRestoreFileAsync(operation, path, JsonSerializer.Serialize(receipt),
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
-                return receipt;
+                return new(dispatch.OperationId, dispatch.BootId, dispatch.JobId, invocation);
             }
             await Task.Delay(100, ct);
         }
         throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+    }
+
+    private static async Task<RestoredStartDispatch> ReadRestoredJobDispatchAsync(Guid operation, CancellationToken ct)
+    {
+        var path = RestoredJobDispatchPath(operation);
+        RuntimeSourceStore.RequireNoLinks(path);
+        if (!File.Exists(path)) throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+        var text = await ReadRestoreFileAsync(path, ct);
+        var dispatch = JsonSerializer.Deserialize<RestoredStartDispatch>(text);
+        if (dispatch is null || dispatch.OperationId != operation || dispatch.BootId != LinuxMihomoTunCheckpoint.BootId()
+            || dispatch.JobId == 0 || dispatch.DispatchedAt == 0 || dispatch.DispatchedAt > MonotonicMicroseconds()
+            || JsonSerializer.Serialize(dispatch) != text)
+            throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+        return dispatch;
+    }
+
+    private static async Task CompleteRestoredJobObservationAsync(Guid operation, Registration registration, CancellationToken ct)
+    {
+        var jobPath = RestoredJobPath(operation);
+        RuntimeSourceStore.RequireNoLinks(jobPath);
+        if (Path.Exists(jobPath)) return;
+
+        var job = await ReadRestoredJobResultAsync(await ReadRestoredJobDispatchAsync(operation, ct), ct);
+        var observed = await ObserveRestoredProcessAsync(operation, registration, ct);
+        if (observed.Process.InvocationId != job.InvocationId) Fail("network_restored_start_unconfirmed");
+
+        var processPath = RestoredProcessPath(operation);
+        RuntimeSourceStore.RequireNoLinks(processPath);
+        var process = JsonSerializer.Serialize(observed);
+        // A cut between these writes can resume only with the same native process and original job.
+        if (!Path.Exists(processPath))
+            await WriteRestoreFileAsync(operation, processPath, process, UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+        else if (await ReadRestoreFileAsync(processPath, ct) != process)
+            Fail("network_restored_start_unconfirmed");
+        await WriteRestoreFileAsync(operation, jobPath, JsonSerializer.Serialize(job),
+            UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
     }
 
     private static async Task<RestoredProcess> ObserveRestoredProcessAsync(Guid operation, Registration registration, CancellationToken ct)
