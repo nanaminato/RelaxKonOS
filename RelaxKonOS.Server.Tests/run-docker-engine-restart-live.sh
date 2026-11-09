@@ -137,7 +137,7 @@ if [[ $# -ge 5 ]]; then
     RELAXKONOS_TEST_DOCKER_OUTAGE_GATE="$gate" python3 "$5" "$6" "$project" "$tests" <&3 &
     worker=$!
     exec 3<&-
-    if [[ ${RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE:-} == cleanup-unknown ]]; then
+    if [[ ${RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE:-} == cleanup-unknown || ${RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE:-} == cleanup-crash ]]; then
         wait "$worker"
         worker=
     elif [[ ${RELAXKONOS_TEST_DOCKER_OBSERVATION_OUTAGE:-} == cancel ]]; then

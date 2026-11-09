@@ -23,6 +23,7 @@ def run(server, project, helper):
     cancel_mutation = observation_mode == "cancel-mutation"
     observation_outage = observation_mode in ("1", "cancel", "cancel-mutation")
     cleanup_unknown = observation_mode == "cleanup-unknown"
+    cleanup_crash = observation_mode == "cleanup-crash"
 
     with tempfile.TemporaryDirectory(prefix="relaxkonos-auth-docker-") as directory:
         root = Path(directory)
@@ -54,7 +55,7 @@ def run(server, project, helper):
         if cancel_observation:
             read_barrier.mkdir()
             env["DockerCompose__DataDirectory"] = str(root / "compose-data")
-        if observation_outage or cleanup_unknown:
+        if observation_outage or cleanup_unknown or cleanup_crash:
             if outage_gate is None:
                 raise RuntimeError("Observation outage requires a dedicated Engine gate")
             docker = shutil.which("docker")
@@ -73,18 +74,21 @@ gate = Path({str(outage_gate)!r})
 cancel_observation = {cancel_observation!r}
 cancel_mutation = {cancel_mutation!r}
 cleanup_unknown = {cleanup_unknown!r}
+cleanup_crash = {cleanup_crash!r}
 read_barrier = Path({str(read_barrier)!r})
 args = sys.argv[1:]
-if (cancel_mutation or cleanup_unknown) and args[:1] == ['stop']:
+if (cancel_mutation or cleanup_unknown or cleanup_crash) and args[:1] == ['stop']:
     with (gate / 'mutation-pid').open('a') as marker:
         marker.write(str(os.getpid()) + '\\n')
-    if cleanup_unknown and os.fork() == 0:
+    if (cleanup_unknown or cleanup_crash) and os.fork() == 0:
         # In the private PID namespace, inherit the CLI's output pipes past its exit.
         (gate / 'output-holder').write_text(str(os.getpid()))
         deadline = time.monotonic() + 75
         while not (gate / 'release-output').exists() and time.monotonic() < deadline:
             time.sleep(0.05)
         os._exit(0)
+if cleanup_crash:
+    os.execv(docker, [docker, *args])
 if args[:4] == ['ps', '--all', '--filter', {'label=com.docker.compose.project=' + project!r}]:
     if cancel_observation and not (read_barrier / 'complete').exists():
         if (read_barrier / 'armed').exists() and not (read_barrier / 'received').exists():
@@ -283,14 +287,15 @@ os.execv(docker, [docker, *args])
                 time.sleep(0.05)
             if command.exists() or not holder.exists() or active_leases(token) != 1:
                 raise RuntimeError("The real mutation did not leave an output pipe held after CLI exit")
-            ack = request(operation_route + "/cancel", {}, token)
-            if ack["operationId"] != operation or ack["cancellable"]:
-                raise RuntimeError("The original mutation did not accept cancellation")
-            deadline = time.monotonic() + 20
-            while "Compose process or output cleanup could not be verified" not in request(operation_route + "/diagnostics", token=token)["lines"]:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError("The original cleanup fault was not persisted")
-                time.sleep(0.1)
+            if not cleanup_crash:
+                ack = request(operation_route + "/cancel", {}, token)
+                if ack["operationId"] != operation or ack["cancellable"]:
+                    raise RuntimeError("The original mutation did not accept cancellation")
+                deadline = time.monotonic() + 20
+                while "Compose process or output cleanup could not be verified" not in request(operation_route + "/diagnostics", token=token)["lines"]:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("The original cleanup fault was not persisted")
+                    time.sleep(0.1)
             original = request(operation_route, token=token)
             if str(original["state"]).lower() != "running" or original.get("completedAt") is not None \
                     or request(route, {"confirmed": True}, token, expected=202) != original or active_leases(token) != 1:
@@ -302,7 +307,8 @@ os.execv(docker, [docker, *args])
                 token = login()
                 if not holder.exists() or request(operation_route, token=token) != original \
                         or request(route, {"confirmed": True}, token, expected=202) != original or active_leases(token) != 1:
-                    raise RuntimeError("Restart released the original cleanup gate while the process remained alive")
+                    observed = request(operation_route, token=token)
+                    raise RuntimeError(f"Restart released cleanup while the process remained alive: {operation} {observed['state']}")
                 request(route, {"confirmed": True}, token, expected=409, request_key=secrets.token_hex(16))
                 subprocess.run(["docker", "start", container], check=True, stdout=subprocess.DEVNULL)
                 (outage_gate / "release-output").touch()
@@ -314,7 +320,8 @@ os.execv(docker, [docker, *args])
                         or len((outage_gate / "mutation-pid").read_text().splitlines()) != 1 \
                         or request(operation_route, token=token) != original:
                     raise RuntimeError("Cleanup changed the receipt or repeated the mutation")
-                print(f"PASS AUTHENTICATED DOCKER UNKNOWN CLI CLEANUP: operation={operation}; detached output holder exited; original receipt and gate retained across Server restart")
+                mode = "server-crash" if cleanup_crash else "cancel"
+                print(f"PASS AUTHENTICATED DOCKER UNKNOWN CLI CLEANUP: operation={operation}; mode={mode}; detached output holder exited; original receipt and gate retained across Server restart")
             finally:
                 stop(recovery)
 
@@ -424,7 +431,7 @@ os.execv(docker, [docker, *args])
                 running = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
                 if str(running["state"]).lower() != "running":
                     raise RuntimeError("Original receipt was not running at interruption")
-                if cleanup_unknown:
+                if cleanup_unknown or cleanup_crash:
                     try:
                         verify_unknown_cleanup(process, token, operation, container, initial_stops)
                     finally:
@@ -479,20 +486,21 @@ os.execv(docker, [docker, *args])
             try:
                 token = login()
                 if outage_gate is not None:
-                    verify_outage(process, token, operation, container, initial_stops)
+                    request(f"/api/v1.0/docker/stacks/{project}/services", token=token, expected=503)
+                    set_engine_state("online")
+                    subprocess.run(["docker", "start", container], check=True, stdout=subprocess.DEVNULL)
                 replay = request(route, {"confirmed": True}, token, expected=202)
-                if replay["operationId"] != operation or str(replay["state"]).lower() != "interrupted":
-                    raise RuntimeError("Server restart did not preserve the original Docker receipt")
                 observed = request(f"/api/v1.0/docker/stack-operations/{operation}", token=token)
-                if observed["operationId"] != operation or str(observed["state"]).lower() != "interrupted":
-                    raise RuntimeError("The recovered receipt was not readable by original operation ID")
+                if replay != running or observed != running or str(observed["stage"]).lower() != "applying" or active_leases(token) != 1:
+                    raise RuntimeError("Server restart did not preserve the original Applying receipt and cleanup responsibility")
+                request(route, {"confirmed": True}, token, expected=409, request_key=secrets.token_hex(16))
                 state = subprocess.check_output(["docker", "inspect", "--format", "{{.State.Status}}", container], text=True).strip()
                 stops = subprocess.check_output(["docker", "logs", container], text=True).splitlines().count("stopping")
                 if state != "running" or stops != initial_stops + 1:
                     raise RuntimeError("The original key repeated a stop after the witness was restarted")
-                print(f"PASS AUTHENTICATED SERVER DOCKER RECEIPT: operation={operation}; original response discarded; server killed while stop was running; recovered Interrupted")
+                print(f"PASS AUTHENTICATED SERVER DOCKER RECEIPT: operation={operation}; original response discarded; Server killed while stop was running; original Applying gate retained")
                 if outage_gate is not None:
-                    print(f"PASS AUTHENTICATED DOCKER ENGINE OUTAGE: operation={operation}; unavailable observation, original project blocked, same Server reconciled, stop count unchanged")
+                    print(f"PASS AUTHENTICATED DOCKER ENGINE OUTAGE: operation={operation}; original Applying gate held after Engine recovery; stop count unchanged")
             finally:
                 stop(process)
         finally:

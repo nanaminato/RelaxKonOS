@@ -841,7 +841,7 @@ internal static async Task VerifyStackOperationsAsync(string root)
     recoveryStore.Update(interrupted.OperationId, operation => operation with
     {
         State = DockerStackOperationState.Running,
-        Stage = DockerStackOperationStage.Applying,
+        Stage = DockerStackOperationStage.Observing,
         StartedAt = DateTimeOffset.UtcNow,
     }, "started");
     // A queued change that never started is equally unverifiable, and must not claim observations.
@@ -1304,13 +1304,12 @@ internal static async Task RecoverAfterDaemonRestartAsync(string ledgerDirectory
     var restored = recovery.Get(operationId);
     var replay = await recovery.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", LiveCrashKey);
     var durable = NewStackStore(ledgerDirectory, 4).Get(operationId)?.Operation;
-    TestAssert.Assert(restored is { State: DockerStackOperationState.Interrupted, ProblemCode: DockerStackProblem.Interrupted }
-        && restored.Services.Any(service => service.Service == "witness")
-        && replay.OperationId == operationId && replay.State == restored.State && replay.ProblemCode == restored.ProblemCode
-        && durable?.State == restored.State && durable.ProblemCode == restored.ProblemCode && observedScopes == 1,
-        "Daemon recovery must observe the real project and preserve the original interrupted receipt.");
+    TestAssert.Assert(restored is { State: DockerStackOperationState.Running, Stage: DockerStackOperationStage.Applying, CompletedAt: null }
+        && JsonSerializer.Serialize(replay) == JsonSerializer.Serialize(restored)
+        && JsonSerializer.Serialize(durable) == JsonSerializer.Serialize(restored) && observedScopes == 0 && recovery.HasResponsibility,
+        "An Engine restart does not prove that the original worker's CLI and output drained.");
     await recovery.StopAsync(default);
-    Console.WriteLine($"PASS DOCKER DAEMON OPERATION RECOVERY: operation={operationId}; state={restored!.State}; observation scopes=1; replay scopes=0");
+    Console.WriteLine($"PASS DOCKER DAEMON OPERATION RECOVERY: operation={operationId}; state={restored!.State}; original cleanup gate retained; scopes=0");
 }
 
 private static async Task VerifyLiveCrashRecoveryAsync(string project, string container, string ledgerDirectory,
@@ -1344,17 +1343,18 @@ private static async Task VerifyLiveCrashRecoveryAsync(string project, string co
     using var recovery = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4, events, leases);
     await recovery.StartAsync(default);
     var persisted = NewStackStore(ledgerDirectory, 4).Get(operationId)?.Operation;
-    TestAssert.Assert(persisted is { State: DockerStackOperationState.Interrupted, ProblemCode: DockerStackProblem.Interrupted }
-        && persisted.Services.Any(service => service.Service == "witness" && service.State == "exited")
-        && !events.Unprotected, "The replacement must persist an observation of the original Engine operation.");
-    var start = await recovery.ApplyActionAsync(project, DockerStackOperationKind.Start, true, "live-actor", "live-key-crash-witness-start");
-    await UntilAsync(() => Task.FromResult(recovery.Get(start.OperationId)?.State == DockerStackOperationState.Succeeded));
+    TestAssert.Assert(persisted is { State: DockerStackOperationState.Running, Stage: DockerStackOperationStage.Applying, CompletedAt: null }
+        && recovery.HasResponsibility && !events.Unprotected, "The original owner did not persist proof of CLI and output cleanup.");
+    var blocked = await CaptureStackFailureAsync(() => recovery.ApplyActionAsync(project, DockerStackOperationKind.Start, true,
+        "live-actor", "live-key-crash-witness-start"), "A new key crossed the original cleanup gate.");
+    TestAssert.Assert(blocked.ProblemCode == DockerStackProblem.OperationConflict, "The affected project must keep its original gate.");
+    await DockerAsync("start", container); // Restore the dedicated test witness outside the application.
     var replay = await recovery.ApplyActionAsync(project, DockerStackOperationKind.Stop, true, "live-actor", LiveCrashKey);
     TestAssert.Assert(replay.OperationId == operationId && JsonSerializer.Serialize(replay) == JsonSerializer.Serialize(persisted)
         && (await DockerAsync("inspect", "--format", "{{.State.Status}}", container)).Trim() == "running"
         && await StopCountAsync() == 2, "Retry must return the original crash receipt without a second stop.");
     await recovery.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(20));
-    Console.WriteLine($"PASS DOCKER LIVE CRASH RECOVERY: operation={operationId} state={replay.State}; worker killed, original CLI exited, no repeated stop");
+    Console.WriteLine($"PASS DOCKER LIVE CRASH RECOVERY: operation={operationId} state={replay.State}; original gate and one stop");
 }
 
 private static string FindLiveStopCli(string container)

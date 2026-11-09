@@ -339,10 +339,12 @@ Compose 操作轮询持久操作记录与诊断快照，阶段变化记入日志
 
 ### 栈操作中断与原回执恢复（2026-11-06）
 
-服务端取消或超时后先清理本地 Docker CLI 并排空输出，清理无法核实则保留原台账和恢复责任。协调器重启后观察真实 Engine，以原 operationId 将未决操作记为 Interrupted。相同请求和幂等键读回原回执，不会再次运行停止命令。Engine 已接受的动作可能在 CLI 断开后完成，操作员应以当前项目观察判断后续动作。测试覆盖和剩余范围见[模块边界台账 §45](../architecture/server-module-evidence/Docker.md#45-mb-05-docker-应用层在途中断与回执恢复2026-11-06)。
+服务端取消或超时后先清理本地 Docker CLI 并排空输出，清理无法核实则保留原台账和恢复责任。协调器重启后保留原 `Running / Applying` 回执、工作责任及同项目写入门禁。已进入观察阶段的操作可读取真实 Engine 并按原 operationId 记录 Interrupted。相同请求和幂等键始终读回原回执。Engine 已接受的动作可能在 CLI 断开后完成。见[模块边界台账](../architecture/server-module-evidence/Docker.md#mb-05-docker-cli-清理未知的持久门禁)。
 
 
 2026-11-06 MB-05 隔离预检：当前共享测试机的只读复核确认普通测试账户无 Docker socket 权限且非特权 user namespace 创建失败。独立 Engine daemon 重启、整个 Server 进程故障和真实 HTTP 响应排空仍待验收。 [验收台账 §50](../architecture/server-module-evidence/Milestones.md#50-mb-0305-隔离测试设施复核2026-11-06)
+
+以下早期记录保留当时的实测终态。当前版本对原 `Applying` 回执使用本节末的清理门禁。
 
 
 Windows Release 已通过 Docker 跨进程回执夹具。真实测试进程在持久 Running 回执和受控部署见证写入后被终止，新进程保留原 operationId 并记录 Interrupted，同键请求返回相同回执且没有新增部署见证。真实 Engine 故障验收仍见边界设计 §45/50。
@@ -385,4 +387,4 @@ Compose CLI 执行、文件处理和输出解析使用按需加载的程序集�
 
 Linux 私有 Engine 已实测在 `docker stop` 仍运行时取消。CLI 退出后，Engine 若暂时无法观察，原操作继续占用项目写入门禁和工作租约。恢复后原 ID 只读结案，同键仍返回原回执。见[变更 CLI 在途取消](../architecture/server-module-evidence/Docker.md#mb-05-docker-变更-cli-在途取消与-engine-观察中断)。
 
-Compose 命令退出但进程或输出清理仍无法确认时，原操作保留活动回执和项目写入门禁。Server 重启后仍可按原键及原 ID 查看回执。此时 Engine 的容器快照不能解除门禁。见[CLI 清理未知](../architecture/server-module-evidence/Docker.md#mb-05-docker-cli-清理未知的持久门禁)。
+Compose 命令退出但进程或输出清理仍无法确认时，原操作保留活动回执和项目写入门禁。Server 重启后仍可按原键及原 ID 查看回执。即使此前未请求取消，重启也按 `Applying` 阶段保留门禁。Engine 的容器快照不足以证明原 CLI 和输出已排空。见[CLI 清理未知](../architecture/server-module-evidence/Docker.md#mb-05-docker-cli-清理未知的持久门禁)。

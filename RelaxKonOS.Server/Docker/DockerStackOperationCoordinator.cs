@@ -151,7 +151,9 @@ internal sealed class DockerStackOperationCoordinator(
                 outcome = await ExecuteAsync(compose, id, kind, project, definition, cancellation, workStopping);
             }
             if (cancellation.IsCancellationRequested)
-                operations.Update(id, current => current, "cleanup-drained", cleanupPending: false);
+                operations.Update(id, current => current.Stage == DockerStackOperationStage.Applying
+                    ? current with { Stage = DockerStackOperationStage.Observing }
+                    : current, "cleanup-drained", cleanupPending: false);
             if (outcome is { AwaitingObservation: true })
             {
                 using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(workStopping, lifetime.ApplicationStopping);
@@ -382,10 +384,8 @@ internal sealed class DockerStackOperationCoordinator(
     }
 
     /// <summary>
-    /// Startup reconciliation. An operation that was queued or running when the process stopped is never
-    /// replayed — a half-applied project must not be resumed blindly — so the project is observed, the
-    /// observed services are recorded, and the outcome is reported as unverified. Losing contact with the
-    /// Engine is never upgraded into a success.
+    /// Startup never replays active operations. Applying remains protected until the original command and its
+    /// output are known to have drained. Operations ready for observation are reconciled against the Engine.
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -416,7 +416,8 @@ internal sealed class DockerStackOperationCoordinator(
     }
 
     private static bool RequiresCleanupEvidence(StackOperationEntry entry) =>
-        entry.CleanupPending && entry.Operation.State == DockerStackOperationState.Running;
+        entry.Operation.State == DockerStackOperationState.Running
+        && (entry.CleanupPending || entry.Operation.Stage == DockerStackOperationStage.Applying);
 
     private async Task RetryRecoveryAsync(List<StackOperationEntry> awaitingEngine, bool awaitingCleanup, CancellationToken ct)
     {

@@ -149,3 +149,15 @@ Linux Release 完整认证 Server 使用专属 Engine 和 Compose 项目。容�
 Linux Release 完整 Server 在专属 PID 命名空间执行真实 `docker stop`。夹具子进程持有原输出管道，真实 CLI 及容器停止已结束，原任务仍为 Running。取消后生产执行器等待输出排空超时，原操作 `1486b548-301a-4e7d-ad5b-5c2f88e51385` 保留无完成时间的回执及一个租约。杀死 Server 时持管道的进程仍活着。重启原 Server 后，同键 POST 和按 ID 查询返回同一回执，新键返回 409，一个恢复租约接续。夹具释放并确认子进程退出，原回执仍等待可信清理证据。CLI 派发和容器停止信号各一次。专属 Engine 清理容器及卷，宿主服务、容器清单和代理文件指纹一致。
 
 首轮发现同键 POST 的 202 响应还会申请新模块租约，故障隔离使它返回 503。调整为读取持久回执后复验通过。日志在 `.artifacts/mb05-cli-cleanup/`，Linux 归档 SHA-256 为 `559749b0833df463b71f68917d1af9506b425290865952a372cff68df399dcfe`。Windows Release 模块边界通过，跨进程原 `2cef56de-0335-4f98-86bb-1f93b035e48a` 返回 Interrupted，受控副作用计数为一。Linux 独立 ALC 回归验证五代收集及未知清理保留代次。实机路径只确认两个实际 CLI 相关进程退出及责任保留，执行对象释放、故障代次的 GC、隔离负载和生产内存收益未单独测量。Docker 保持 resident，整机掉电未验收。
+
+### 未请求取消时的 Docker 清理门禁
+
+**已实现且已验证。** 对照版在专属 Engine 执行真实停止。原 Docker CLI 退出后仍有子进程持有输出管道，未请求取消便强制终止 Server。重启过早把 `92f4fcee-7c46-45ea-9916-39eaed0219d5` 写成 `Interrupted`。日志 `.artifacts/mb05-cli-cleanup/linux-crash-before-cancel-baseline.log` SHA-256 为 `fa6eb051e3501c04587662e669d7fdcb2a0ca550f07c81d829ab5dd92f0c4b2e`。
+
+修正版在相同专属条件下持久保留原 `04933983-3a7f-4867-bf8c-e8cfa0c658eb` 的 `Running / Applying`。重启后按原 ID 和原键读回同一回执，工作租约为一，新键返回 409。夹具随后释放持有输出的子进程并确认退出，原门禁继续保持。原 `docker stop` 派发一次，容器只记录一次停止信号。独立 Engine 同时中断的原操作 `f59bc117-1322-4540-b7ae-b0ae4f9a631f` 也继续 `Running / Applying`，恢复未创建观察作用域，停止计数保持。已排空并进入 `Observing` 的原回执仍可按原 ID 只读对账。
+
+Windows Release 的 Docker 控制、跨进程、Compose 执行代码和模块边界回归通过。Linux 的专属 Engine 和完整 PAM Server 通过，Compose 独立回归另证实五个闲时代次收集。首轮修正版实机夹具混用了旧协议程序集，换用同次 Release 的全部托管程序集后通过。最终日志 `.artifacts/mb05-cli-cleanup/linux-crash-before-cancel-current.log` SHA-256 为 `b52a1ef76aca8c556c229587780e59e48b2124cf8a8c8909bd18d96e455564e9`，日志包含 Release Server 与测试程序的摘要。原 Linux 基础归档为 `559749b0833df463b71f68917d1af9506b425290865952a372cff68df399dcfe`。专属 CLI、输出子进程和 Engine 已退出，容器及卷清理通过。共享服务、容器清单和代理文件指纹一致。
+
+**已实现但实机未验证。** 整机掉电需专属环境。此场景分别记录了实际进程退出与独立闲时代次的 ALC 收集。故障代次的对象释放、ALC 收集、隔离负载内存和生产收益待验。
+
+**未实现或仍受门禁保护。** 原 CLI 与输出排空缺可信的原操作证明时继续保护原回执和项目准入。Docker 保持 resident。

@@ -52,11 +52,10 @@ internal static class DockerProcessRecoveryChecks
             }
 
             var recovered = DockerChecks.NewStackStore(root, 4).Get(operationId)?.Operation;
-            TestAssert.Assert(recovered is { State: DockerStackOperationState.Interrupted,
-                    ProblemCode: DockerStackProblem.Interrupted }
-                && recovered.Services.Single().Service == "witness"
+            TestAssert.Assert(recovered is { State: DockerStackOperationState.Running,
+                    Stage: DockerStackOperationStage.Applying, CompletedAt: null }
                 && File.ReadAllLines(Witness(root)).SequenceEqual(["deploy"]),
-                "A fresh reader must see the original terminal receipt and exactly one external effect.");
+                "A fresh reader must see the original unfinished receipt and exactly one external effect.");
             Console.WriteLine($"Docker cross-process recovery passed: operation={operationId}, state={recovered!.State}, effects=1.");
         }
         finally
@@ -94,10 +93,10 @@ internal static class DockerProcessRecoveryChecks
             return;
         }
 
-        TestAssert.Assert(receipt is { State: DockerStackOperationState.Interrupted,
-                ProblemCode: DockerStackProblem.Interrupted } && compose.ListServicesCalls == 1
-            && compose.DeployCalls == 0 && restored is not null
-            && JsonSerializer.Serialize(receipt) == JsonSerializer.Serialize(restored), "Startup must observe once and replay only the original receipt.");
+        TestAssert.Assert(receipt is { State: DockerStackOperationState.Running,
+                Stage: DockerStackOperationStage.Applying, CompletedAt: null } && compose.ListServicesCalls == 0
+            && compose.DeployCalls == 0 && coordinator.HasResponsibility && restored is not null
+            && JsonSerializer.Serialize(receipt) == JsonSerializer.Serialize(restored), "Startup must retain cleanup responsibility and return the original receipt.");
         await coordinator.StopAsync(default);
         Console.WriteLine(receipt.OperationId);
     }
