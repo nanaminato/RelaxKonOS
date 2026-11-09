@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -10,7 +12,7 @@ namespace RelaxKonOS.PrivilegedHelper;
 internal enum MihomoTunPhase { Intent, NetworkDispatched, LaunchDispatched, DescriptorDispatched, DnsDispatched, DnsApplied, StopDispatched, RuleRemovalDispatched, Restored }
 
 internal sealed record MihomoTunIntent(Guid OperationId, Guid RevisionId, string ConfigurationHash,
-    Guid BootId, string NetworkNamespace, string Device, string Address, string Destination, string ManagementAddress,
+    Guid BootId, string NetworkNamespace, ulong NetworkNamespaceCookie, string Device, string Address, string Destination, string ManagementAddress,
     uint ManagementUserId, string ManagementHash, uint RoutingTable, string? DnsRoutingDomain);
 
 internal sealed record MihomoTunProcess(int Pid, Guid InvocationId, ulong StartTicks);
@@ -23,6 +25,8 @@ internal sealed record MihomoTunEffect(MihomoTunPhase Phase, MihomoTunIntent Int
 [SupportedOSPlatform("linux")]
 internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Guid revisionId, string configurationHash)
 {
+    private const int SolSocket = 1;
+    private const int SoNetnsCookie = 71;
     private static readonly JsonSerializerOptions CheckpointJson = new()
     {
         AllowDuplicateProperties = false,
@@ -35,6 +39,23 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
 
     internal static string NetworkNamespace() => new FileInfo("/proc/self/ns/net").LinkTarget
         ?? throw new RuntimePolicyException("runtime.network_namespace_unknown");
+
+    internal static ulong NetworkNamespaceCookie()
+    {
+        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        uint length = sizeof(ulong);
+        if (getsockopt(socket.SafeHandle, SolSocket, SoNetnsCookie, out var cookie, ref length) != 0
+            || length != sizeof(ulong) || cookie == 0)
+            throw new RuntimePolicyException("runtime.network_namespace_unknown");
+        return cookie;
+    }
+
+    internal static bool MatchesCurrentNetwork(MihomoTunIntent intent) =>
+        intent.BootId == BootId() && intent.NetworkNamespace == NetworkNamespace()
+        && intent.NetworkNamespaceCookie == NetworkNamespaceCookie();
+
+    [DllImport("libc")]
+    private static extern int getsockopt(SafeSocketHandle socket, int level, int option, out ulong value, ref uint length);
 
     private string PathFor(MihomoTunPhase phase) => Path.Combine(directory, $"tun-{(int)phase}.json");
 
@@ -102,7 +123,7 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
             || intent.DnsRoutingDomain is { } domain && !MihomoRuntimeMaterial.ValidDnsRoutingDomain(domain)
             || (current.Dns is not null) != (intent.DnsRoutingDomain is not null && current.Phase >= MihomoTunPhase.DnsDispatched)
             || current.Dns is { } dns && !LinuxMihomoTunDns.ValidBaseline(dns)
-            || intent.BootId == Guid.Empty || string.IsNullOrEmpty(intent.NetworkNamespace)
+            || intent.BootId == Guid.Empty || string.IsNullOrEmpty(intent.NetworkNamespace) || intent.NetworkNamespaceCookie == 0
             || string.IsNullOrEmpty(intent.Device) || !LinuxMihomoTunDescriptor.ValidName(intent.Device)
             || !IPAddress.TryParse(intent.Address, out var address) || !IPAddress.TryParse(intent.Destination, out var destination)
             || !IPAddress.TryParse(intent.ManagementAddress, out var management)

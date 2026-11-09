@@ -17,8 +17,7 @@ internal sealed partial class LinuxMihomoArchiveHost
         RuntimePendingConfiguration? publication = null)
     {
         ValidatePaths(binary, data, Root + "/active.yaml", intent.ConfigurationHash);
-        if (intent.BootId != LinuxMihomoTunCheckpoint.BootId()
-            || intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
+        if (!LinuxMihomoTunCheckpoint.MatchesCurrentNetwork(intent))
             Fail("network_checkpoint_conflict");
         RequirePidFdSupport();
         var checkpoint = TunCheckpoint(binary, intent.OperationId, intent.ConfigurationHash);
@@ -101,8 +100,7 @@ internal sealed partial class LinuxMihomoArchiveHost
     {
         ct.ThrowIfCancellationRequested();
         var intent = effect.Intent;
-        if (effect.Phase != MihomoTunPhase.Intent || intent.BootId != LinuxMihomoTunCheckpoint.BootId()
-            || intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
+        if (effect.Phase != MihomoTunPhase.Intent || !LinuxMihomoTunCheckpoint.MatchesCurrentNetwork(intent))
             Fail("network_checkpoint_conflict");
         var routes = TunRoutes(intent);
         if (!await routes.IsAbsentAsync(intent.Device, 0)) Fail("network_stop_unconfirmed");
@@ -205,8 +203,7 @@ internal sealed partial class LinuxMihomoArchiveHost
     internal static async Task VerifyRestoredTunNetworkAsync(MihomoTunEffect effect, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        if (effect.Phase != MihomoTunPhase.Restored || effect.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
-            || effect.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
+        if (effect.Phase != MihomoTunPhase.Restored || !LinuxMihomoTunCheckpoint.MatchesCurrentNetwork(effect.Intent))
             Fail("network_checkpoint_conflict");
         var routes = TunRoutes(effect.Intent);
         if (effect.Process is not { } process || Directory.Exists($"/proc/{process.Pid}")
@@ -366,8 +363,7 @@ internal sealed partial class LinuxMihomoArchiveHost
         if (registration is null || registration.TunOperation != operation) Fail("network_checkpoint_conflict");
         var checkpoint = TunCheckpoint(registration.Binary, operation, registration.ConfigurationHash);
         var effect = checkpoint.Read();
-        if (effect is null || effect.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
-            || effect.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
+        if (effect is null || !LinuxMihomoTunCheckpoint.MatchesCurrentNetwork(effect.Intent))
             Fail("network_checkpoint_conflict");
         return (registration, checkpoint, effect);
     }

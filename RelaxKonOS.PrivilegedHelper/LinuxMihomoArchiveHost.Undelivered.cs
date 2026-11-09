@@ -53,8 +53,7 @@ internal sealed partial class LinuxMihomoArchiveHost
         ct.ThrowIfCancellationRequested();
         var intent = effect.Intent;
         if (!SupportsUndeliveredRecovery(effect.Phase)
-            || intent.BootId != LinuxMihomoTunCheckpoint.BootId()
-            || intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
+            || !LinuxMihomoTunCheckpoint.MatchesCurrentNetwork(intent))
             Fail("network_checkpoint_conflict");
         if (effect.Phase != MihomoTunPhase.NetworkDispatched
             && !await ReadUndeliveredCheckpointAsync(effect with { Phase = MihomoTunPhase.LaunchDispatched, Process = null, Dns = null },

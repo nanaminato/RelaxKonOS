@@ -272,8 +272,7 @@ internal static class MihomoTunDescriptorAcceptance
                 RuntimeJson.Read<RuntimeConfigurationPlan>(await File.ReadAllBytesAsync(Path.Combine(root, "tun-plan.json"))).CandidateIdentity)
             : Ledger(operation, state);
         var current = ledger.Read();
-        if (current is null ? action != "recover" : current.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
-            || current.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace()
+        if (current is null ? action != "recover" : !LinuxMihomoTunCheckpoint.MatchesCurrentNetwork(current.Intent)
             || current.Intent.ManagementHash != ManagementHash(state) || current.Intent.ManagementUserId != state.GetProperty("uid").GetUInt32()
             || (prelaunch ? current.Phase != earlyPhase
                 : current.Process != Process(state) || current.InterfaceIndex != state.GetProperty("ifindex").GetUInt32()))

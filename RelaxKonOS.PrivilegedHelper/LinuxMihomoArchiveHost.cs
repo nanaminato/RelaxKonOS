@@ -166,7 +166,8 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         ValidatePaths(binary, data, Root + "/active.yaml", configurationIdentity);
         var checkpoint = TunCheckpoint(binary, operation, configurationIdentity);
         if (checkpoint.Read() is not { Phase: MihomoTunPhase.NetworkDispatched } armed
-            || armed.BrokerPid != Environment.ProcessId) Fail("network_checkpoint_conflict");
+            || armed.BrokerPid != Environment.ProcessId
+            || !LinuxMihomoTunCheckpoint.MatchesCurrentNetwork(armed.Intent)) Fail("network_checkpoint_conflict");
         RequireProtected(TunLauncher);
         RequireProtected(checkpoint.SocketPath);
         await ConfigureCoreAsync(binary, data, Root + "/active.yaml", configurationIdentity, false, operation, ct);
@@ -178,7 +179,7 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         if (registration is null || registration.TunOperation != operation) Fail("network_checkpoint_conflict");
         var checkpoint = TunCheckpoint(registration.Binary, operation, registration.ConfigurationHash);
         if (checkpoint.Read() is not { Phase: MihomoTunPhase.NetworkDispatched } armed
-            || armed.BrokerPid != Environment.ProcessId)
+            || armed.BrokerPid != Environment.ProcessId || !LinuxMihomoTunCheckpoint.MatchesCurrentNetwork(armed.Intent))
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         var state = await StateAsync(ct);
         if (state.GetValueOrDefault("ActiveState") != "inactive" || state.GetValueOrDefault("UnitFileState") != "disabled")
@@ -200,7 +201,8 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         else
         {
             if (previous.TunOperation is { } original
-                && TunCheckpoint(previous.Binary, original, previous.ConfigurationHash).Read()?.Phase != MihomoTunPhase.Restored)
+                && (TunCheckpoint(previous.Binary, original, previous.ConfigurationHash).Read() is not { Phase: MihomoTunPhase.Restored } restored
+                    || !LinuxMihomoTunCheckpoint.MatchesCurrentNetwork(restored.Intent)))
                 Fail("network_transaction_required");
             if ((await StateAsync(ct)).GetValueOrDefault("MainPID") != "0") Fail("state_unknown");
         }
@@ -368,8 +370,7 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
             Fail("configuration_drift");
         var checkpoint = TunCheckpoint(registration.Binary, operation, registration.ConfigurationHash);
         if (checkpoint.Read() is not { Phase: MihomoTunPhase.LaunchDispatched } armed
-            || armed.Intent.BootId != LinuxMihomoTunCheckpoint.BootId()
-            || armed.Intent.NetworkNamespace != LinuxMihomoTunCheckpoint.NetworkNamespace())
+            || !LinuxMihomoTunCheckpoint.MatchesCurrentNetwork(armed.Intent))
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         RequireProtected(checkpoint.SocketPath);
         using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);

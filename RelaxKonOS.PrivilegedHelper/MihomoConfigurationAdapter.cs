@@ -90,6 +90,8 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         await CheckNativeAsync(pending, true, FileIn(pending, "check-data"), ct);
         if (pending.Plan.NetworkIntentIdentity is not null)
         {
+            if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_platform_unsupported");
+            _ = LinuxMihomoTunCheckpoint.NetworkNamespaceCookie();
             // Capture and preparation flushed the files. Publish their names before admitting the switch.
             var operation = Operation(pending.OperationId);
             MihomoRuntimeData.SyncConfigurationDirectory(operation);
@@ -127,6 +129,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             var (_, network) = await RequireTunMaterialAsync(pending, ct);
             var intent = new MihomoTunIntent(pending.OperationId, revision.RevisionId, pending.Plan.CandidateIdentity,
                 LinuxMihomoTunCheckpoint.BootId(), LinuxMihomoTunCheckpoint.NetworkNamespace(),
+                LinuxMihomoTunCheckpoint.NetworkNamespaceCookie(),
                 network.Device, network.Address, network.Destination, network.ManagementAddress, network.ManagementUserId,
                 network.ManagementHash, LinuxMihomoTunRoutes.TableFor(pending.OperationId), network.DnsRoutingDomain);
             await TunHost().ActivateTunAsync(intent, binary, Data(revision), ct, pending);

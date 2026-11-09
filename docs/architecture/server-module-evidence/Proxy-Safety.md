@@ -816,6 +816,20 @@ Windows Release TUN 回归通过，含 38 项 TUN 边界检查。原始 Linux �
 
 **未实现或仍受门禁保护。** 原发送端缺可信结果时保持原待核验。整模块安全交接继续开放，Proxy 保持 resident。
 
+### 内核网络命名空间 cookie 绑定原所有权
+
+**已实现且已验证。** Helper 在原生 TUN 意图中追加内核 `SO_NETNS_COOKIE`，与原启动 ID、命名空间链接及原 operationId 一同持久化。固定启动器、设备和服务派发、具名启停、原生恢复及已还原注册的替换都核对该身份。记录缺 cookie、内核读数不可用或三项身份不一致时保留原门禁。内核为命名空间分配 cookie，由套接字选项返回所属命名空间的 64 位值。 [Linux 命名空间初始化](https://github.com/torvalds/linux/blob/master/net/core/net_namespace.c) · [套接字选项实现](https://github.com/torvalds/linux/blob/master/net/core/sock.c)
+
+Linux x64 私有 systemd 原发布 `b43a6d31d3f84e568eb9700e4e0e7f19` 已交付描述符、尚未派发 DNS。原 cookie `211193` 与独立套接字实测一致，另一个真实专属网络命名空间返回 `211262`。夹具保持原启动 ID 和 `net:[4026532845]` 链接，将原生意图各记录中的 cookie 改为该外来值，以模拟链接相同而内核身份不同。原命名空间内的接续 Helper 返回 `runtime.network_checkpoint_conflict`，同键命中原待核验回执，新键被拒绝。管理选路、原候选和配置凭据、描述符、上游真实 HTTP、原检查点及 resolver 设置保持。规则删除、DNS 写入及配置重派均为零。
+
+归还原检查点后，原 ID 使用补偿 IPC `08c15f962ebd4c4d88f9dd1bacaf47c3`。截留原应答时仍持有恢复租约，再次重启只读确认原终态。原规则仅删除一次，恢复 Mihomo PID `764` 的真实代理流量，租约归零。同批具名停止、启动与重启的原发布 `f00fe28cecc54d318e33688cbadc9517` 及网络写入前的原注册恢复 `c46d7aab753b4dba868d6bae9854394d` 通过。三场专属 cgroup 已清理，宿主服务、代理及 resolver 文件指纹一致。
+
+Windows Release 构建及 38 项 TUN 边界检查通过。Linux 实机原始日志 `.artifacts/mb04-tun-full-zero-dns/linux-cookie.log` 的 SHA-256 为 `156649d0ebd8dc7de80e039e3031094050730ac958171cabb61c943e2db3eca1`，归档 SHA-256 为 `f5ca293ca585c7b7c3d80f76f8ceba022ce18bbeae4f3f4be1fa9d57910682b2`。
+
+**已实现但实机未验证。** 实机模拟链接相同的错配，未强制内核重新分配同一 inode。缺 cookie 的历史记录及不支持该选项的内核由代码门禁保护，未做独立实机测试。整机掉电需要专属断电环境。进程退出本轮已验证，对象释放、ALC 回收、隔离内存差值及生产收益未测量。
+
+**未实现或仍受门禁保护。** 不回填历史归属，不通过错配证据结案。整模块安全交接仍待验收，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

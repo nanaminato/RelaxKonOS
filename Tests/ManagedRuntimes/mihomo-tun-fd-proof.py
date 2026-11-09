@@ -1429,12 +1429,12 @@ class IpcPublicationWorkers:
         self.helper = None
         self.generation = 0
 
-    def start_helper(self, prefix=()):
+    def start_helper(self):
         assert self.helper is None
         self.generation += 1
         self.log = root / f'ipc-helper-{self.generation}.log'
         with self.log.open('x') as log:
-            self.helper = subprocess.Popen([*prefix, launcher, '--linux-service', '--config', self.config],
+            self.helper = subprocess.Popen([launcher, '--linux-service', '--config', self.config],
                                            stdout=log, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 8
         while self.helper.poll() is None and time.monotonic() < deadline:
@@ -2036,6 +2036,9 @@ def proof_full_http_shutdown(ipc, case):
         until(ready.is_file, ready.name)
         operation_dir = archive / 'operations' / publication
         effect = json.loads((operation_dir / 'tun-3.json').read_text())
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            original_cookie = int.from_bytes(probe.getsockopt(socket.SOL_SOCKET, 71, 8), sys.byteorder)
+        assert original_cookie != 0 and effect['Intent']['NetworkNamespaceCookie'] == original_cookie
         record = json.loads(journal.read_bytes())
         record['operation'] = publication
         sync_record(record)
@@ -2107,13 +2110,30 @@ def proof_full_http_shutdown(ipc, case):
         held_witness = witness.with_suffix('.held')
         if partial_dns and not unknown_dns:
             witness.rename(held_witness)
+        original_checkpoints = {}
+        if zero_dns:
+            # Simulate a reused namespace link with the cookie of a different kernel namespace.
+            foreign_cookie = int(command('/usr/bin/unshare', '--net', sys.executable, '-I', '-c',
+                                         'import socket, sys; '
+                                         's = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); '
+                                         'print(int.from_bytes(s.getsockopt(socket.SOL_SOCKET, 71, 8), sys.byteorder))'))
+            assert foreign_cookie != 0 and foreign_cookie != original_cookie
+            for path in operation_dir.glob('*.json'):
+                raw = path.read_bytes()
+                entry = json.loads(raw)
+                intent = entry.get('Intent')
+                if intent is not None and 'NetworkNamespaceCookie' in intent:
+                    assert intent['NetworkNamespaceCookie'] == original_cookie
+                    original_checkpoints[path] = raw
+                    intent['NetworkNamespaceCookie'] = foreign_cookie
+                    path.write_text(json.dumps(entry))
+            assert (operation_dir / 'tun-3.json') in original_checkpoints
         checkpoints = {file.name: file.read_bytes() for file in operation_dir.glob('*.json')}
         resolver_pending = resolver_snapshot()
         if unknown_dns:
             assert resolver_pending == resolver_at_cut
-        ipc.start_helper(('/usr/bin/unshare', '--net') if zero_dns else ())
-        recovery_namespace = os.readlink(f'/proc/{ipc.helper.pid}/ns/net')
-        assert (recovery_namespace != record['namespace']) == zero_dns
+        ipc.start_helper()
+        assert os.readlink(f'/proc/{ipc.helper.pid}/ns/net') == record['namespace']
         assert state_file.read_bytes() == pending_state
         worker = launch('zero-dns-recover' if unknown_dns else 'restart')
         blocked_pid = int(marker('full-server-pid'))
@@ -2177,6 +2197,8 @@ def proof_full_http_shutdown(ipc, case):
             return
         if partial_dns:
             held_witness.rename(witness)
+        for path, raw in original_checkpoints.items():
+            path.write_bytes(raw)
         pending_state = state_file.read_bytes()
         ipc.start_helper()
         assert ipc.helper.pid != original_helper_pid and state_file.read_bytes() == pending_state
@@ -2233,8 +2255,9 @@ def proof_full_http_shutdown(ipc, case):
         print(f'PASS TUN FULL JWT {label}: original={publication}; recovery IPC={correlation}; '
               f'restored PID={restored[0]}; one rule removal, original receipt and work lease drained')
         if zero_dns:
-            print(f'PASS TUN NAMESPACE OWNERSHIP: original={publication}; owner={record["namespace"]}; '
-                  f'foreign={recovery_namespace}; original candidate and native checkpoints preserved')
+            print(f'PASS TUN NAMESPACE COOKIE: original={publication}; namespace={record["namespace"]}; '
+                  f'original cookie={original_cookie}; foreign cookie={foreign_cookie}; '
+                  'matching boot and namespace link did not authorize foreign ownership')
 
     def launch(phase):
         (root / 'full-server-pid').unlink(missing_ok=True)
