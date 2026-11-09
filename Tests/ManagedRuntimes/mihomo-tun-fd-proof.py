@@ -3672,6 +3672,43 @@ exec {shlex.quote(str(systemctl))} "$@"
         if removal_http:
             print(f'PASS TUN RETAINED INSTALLATION HTTP GATE: publication={publication}; real plan; anonymous and standard PAM refused')
 
+    def management_overview():
+        status, overview = request(api, token)
+        assert status == 200 and overview['engineId'] == 'mihomo', (status, overview)
+        assert overview['activeProfile']['id'] == profile
+        status, options = request(api + '/subscriptions/download-options', token)
+        assert status == 200 and isinstance(options['systemProxyAvailable'], bool), (status, options)
+        return overview['platformCapabilities']
+
+    def verify_scoped_management(tun_record):
+        hits = []
+
+        class SubscriptionOrigin(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                hits.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'vless://550e8400-e29b-41d4-a716-446655440000@origin.example.test:443#fixture')
+
+        with http.server.ThreadingHTTPServer(('93.184.216.34', 0), SubscriptionOrigin) as origin:
+            thread = threading.Thread(target=origin.serve_forever, daemon=True)
+            thread.start()
+            try:
+                capabilities = management_overview()
+                imported = []
+                for name in ('private-one', 'private-two'):
+                    status, item = request(api + '/subscriptions', token, data={
+                        'url': f'http://93.184.216.34:{origin.server_port}/feed', 'name': name})
+                    assert status == 201 and item['name'] == name, (status, item)
+                    imported.append(item['id'])
+                assert len(set(imported)) == 2 and hits == ['/feed', '/feed']
+                assert management_overview() == capabilities
+                probe(tun_record, 'after-scoped-downloads')
+            finally:
+                origin.shutdown()
+                thread.join(timeout=5)
+        print('PASS PROXY SCOPED MANAGEMENT: stable overview and two real draft downloads while TUN forwards', flush=True)
+
     def verify_squid_publication(pid, tun_record=None):
         nonlocal worker, token
         api_root = '/api/v1.0/gateway-proxy/squid'
@@ -4134,6 +4171,7 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert forward(18884, 'confirmed') and reloads.read_text().splitlines() == ['reload']
             assert int(service('show', '-p', 'MainPID', '--value', 'squid.service')) == original_pid
             probe(tun_record, 'squid-fault-restarted')
+            management_overview()
             assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
             audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
             assert audit.count(f'operation=SquidApplyConfiguration id={operation} ') == 1
@@ -4399,6 +4437,7 @@ with sqlite3.connect(sys.argv[1]) as database:
         record = json.loads(journal.read_bytes())
         probe(record, 'jwt-before-shutdown')
         if squid_tun:
+            verify_scoped_management(record)
             verify_squid_publication(pid, record)
             return
         if admission:

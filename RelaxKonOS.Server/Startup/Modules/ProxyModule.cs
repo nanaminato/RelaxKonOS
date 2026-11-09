@@ -55,7 +55,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         // Management engine graphs are owned by request or independent operation scopes.
         builder.Services.AddScoped<IProxyEngine, MihomoEngine>();
         builder.Services.AddScoped<IProxyEngineRegistry, ProxyEngineRegistry>();
-        builder.Services.AddSingleton<IProxyPlatformService, ProxyPlatformService>();
+        builder.Services.AddScoped<IProxyPlatformService, ProxyPlatformService>();
 
         // Operation and audit ledgers are the durable record of what the operator asked for; they
         // outlive the HTTP request that started it.
@@ -133,7 +133,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
                     },
                 };
             });
-        builder.Services.AddSingleton<IProxySubscriptionDownloader, ProxySubscriptionDownloader>();
+        builder.Services.AddScoped<IProxySubscriptionDownloader, ProxySubscriptionDownloader>();
 
         // Core owns system-proxy/TUN recovery and expiry independently of this management surface.
 

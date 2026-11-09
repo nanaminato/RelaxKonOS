@@ -106,13 +106,18 @@ internal static class ProxySubscriptionBoundaryChecks
             var ledger = Path.Combine(f.Paths.GetStateDirectory(), "proxy-operations.json");
             var unchanged = await File.ReadAllTextAsync(ledger);
             try { await reopened.GetAsync(accepted.OperationId, default); throw new Exception("Unwritable recovery returned a durable receipt"); }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            catch (RelaxKonOS.Server.Residency.ModuleUnavailableException e) when (e.Code == "module-recovery-blocked")
             {
                 Check(await File.ReadAllTextAsync(ledger) == unchanged, "Failed receipt persistence leaves the original batch ledger intact");
             }
             Directory.Delete(ledger + ".new");
-            Check((await reopened.GetAsync(accepted.OperationId, default))!.State == ProxyOperationState.Interrupted,
-                "Reopening the durable running ledger reports interruption and does not replay or infer publication success");
+            Check((await reopened.GetAsync(accepted.OperationId, default))!.State == ProxyOperationState.Interrupted
+                && await File.ReadAllTextAsync(ledger) == unchanged,
+                "A quarantined recovery owner leaves the original ledger unchanged after storage becomes writable");
+            var restarted = new ProxyOperationStore(f.Paths, NullLogger<ProxyOperationStore>.Instance, new TestProxyWorkLeases());
+            Check((await restarted.GetAsync(accepted.OperationId, default))!.State == ProxyOperationState.Interrupted
+                && await File.ReadAllTextAsync(ledger) != unchanged,
+                "A fresh recovery owner reports interruption without replaying or inferring publication success");
         }
         Console.WriteLine($"Subscription background boundary checks passed: {count}");
     }

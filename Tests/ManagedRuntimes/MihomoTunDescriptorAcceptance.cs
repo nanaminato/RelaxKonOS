@@ -113,7 +113,8 @@ internal static class MihomoTunDescriptorAcceptance
         if (serverCase is "ipc-http-full" or "ipc-http-stop-reply-drop" or "ipc-http-start-reply-drop" or "ipc-http-tun-recovery-write-fault" or "ipc-http-tun-cleanup-drain" or "ipc-http-tun-cleanup-cut" or "ipc-http-tun-cleanup-fault" or "ipc-http-tun-terminal-fault" or "ipc-http-joint" or "ipc-http-admission" or "ipc-http-handoff" or "ipc-http-retained" or "ipc-http-retained-installation" or "ipc-http-retained-administrator" or "ipc-http-squid" or "ipc-http-squid-tun-recovery-fault" or "ipc-http-squid-lifecycle-unknown" or "ipc-http-squid-account" or "ipc-http-zero-dns" or "ipc-http-early-owner" or "ipc-http-initial-stop" or "ipc-http-initial-stop-replaced" or "ipc-http-restored-process-replaced" or "ipc-http-restored-job-replaced" or "ipc-http-restored-job-cut" or "ipc-http-restored-dispatch-unknown" or "ipc-http-named-start-dns" or "ipc-http-named-start-dns-settled" or "ipc-http-named-start-recovery-cut" or "ipc-http-named-start-admission" or "ipc-http-named-start-baseline" or "ipc-http-named-start-helper-profile" or "ipc-http-partial-dns" or "ipc-http-unknown-dns")
         {
             await MihomoTunFullServerAcceptance.SeedAsync(root, previousMaterial, previous,
-                serverCase is "ipc-http-joint" or "ipc-http-handoff" or "ipc-http-retained" or "ipc-http-retained-installation" or "ipc-http-retained-administrator" or "ipc-http-squid" or "ipc-http-squid-tun-recovery-fault");
+                serverCase is "ipc-http-joint" or "ipc-http-handoff" or "ipc-http-retained" or "ipc-http-retained-installation" or "ipc-http-retained-administrator" or "ipc-http-squid" or "ipc-http-squid-tun-recovery-fault",
+                allowInsecureSubscriptionSources: serverCase == "ipc-http-squid-tun-recovery-fault");
             await WriteScopeAsync(scope with { AllowManagedPublication = true });
             return;
         }

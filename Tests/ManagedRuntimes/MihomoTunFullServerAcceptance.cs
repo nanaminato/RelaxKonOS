@@ -91,7 +91,8 @@ internal static class MihomoTunFullServerAcceptance
             { Success: false, ProblemCode: PrivilegedProblemCode.RecoveryRequired, SquidPublicationReceipt: null };
     }
 
-    internal static async Task SeedAsync(string root, MihomoPublishedRuntime material, string identity, bool joint)
+    internal static async Task SeedAsync(string root, MihomoPublishedRuntime material, string identity, bool joint,
+        bool allowInsecureSubscriptionSources)
     {
         RequirePrivateFixture(root);
         var paths = new ProxyPlatformPaths();
@@ -104,6 +105,7 @@ internal static class MihomoTunFullServerAcceptance
         await store.BeginAsync(operation, 0, material, CancellationToken.None);
         await store.ConfirmAsync(operation, identity, CancellationToken.None);
         var settings = new ProxySettingsDto(joint, false, false, false, false, "info", 18881,
+            AllowInsecureSubscriptionSources: allowInsecureSubscriptionSources,
             Tun: new("gvisor", "rk-fd-proof", false, false, false, "", 1500),
             SystemProxy: new(GuardEnabled: joint, GuardIntervalSeconds: 5));
         await File.WriteAllBytesAsync(Path.Combine(paths.GetStateDirectory(), "mihomo-settings.json"),

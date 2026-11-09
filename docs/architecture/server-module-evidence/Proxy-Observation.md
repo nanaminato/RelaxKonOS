@@ -441,3 +441,17 @@ Linux x64 私有 systemd 两版分别运行同序的九个 22 秒窗口。每批
 Windows Release TUN 激活、38 项边界与模块边界聚合回归通过，Linux Release 构建通过。日志及冻结清单位于 `.artifacts/mb04-tun-full-zero-dns/`。对照日志 `linux-named-start-helper-observation-control.log` 的 SHA-256 为 `27f61ccb3a027902992ab2ea011e59126e4e5fd15d1fae64a1d5cfc7a1ad22b4`，归档为 `54ee65aa9dccbe51b96041a5b06dbd0a9130b390c1560187dccb3d7a05faed0c`。候选日志 `linux-named-start-helper-observation.log` 的 SHA-256 为 `b876dbae26d69580d1d353048263a0d5f2f13a7cc71157220c97217f1a2575af`，归档为 `9f77a780738ae100facd247e80bd5570974c71b0bfe90c51e78d7a857c1e2f0a`。
 
 **尚待独立验证。** 当前数据支持隔离负载下的命令次数和 CPU 降低，PSS 收益仍待确认。对象释放、ALC 回收、整模块安全交接和生产收益独立验收。Proxy 保持 resident。
+
+### 平台能力与订阅下载适配器作用域
+
+**已实现且已验证。** 概览的平台能力适配器与订阅下载适配器从根单例移到原执行作用域。前者由概览读作用域解析，后者由导入请求或后台工作作用域解析，下载调用结束时释放本次创建的 HTTP 客户端。Windows Release 注册检查验证同一作用域复用、跨作用域分离，Core 安全注册不引入两项管理对象。
+
+2026-11-10 Linux x64 私有 systemd 完整 PAM/JWT Server 在活跃 TUN 下读取概览和下载选项，从私有订阅源执行两次真实下载并保存两个草稿。源站收到两次请求，概览能力和活动档案保持。随后复验 [Squid 写回故障与 Core 连续性](Proxy-Squid.md#squid-恢复写回故障与-core-tun-连续性)。原 TUN 发布 `39eb917c178f4c809d75f3e716688205`、Mihomo PID `416`、配置身份、管理选路、上游 HTTP 和分流 DNS 连续通过，原配置只派发一次。重启后仍可读取概览。首轮夹具重复配置已有订阅源地址，改为直接使用私有地址后复验通过。
+
+日志 `.artifacts/mb04-tun-full-zero-dns/linux-scoped-management.log` SHA-256 为 `046667bfecc81f7648428aa03607e0c59ad1602c3e102280d703c52198c7701f`，归档为 `2e2484a4d0b33994f5bfd34cff6112a917be9904619a3457b6f7a96c5216079c`。专属进程与 cgroup 已清理，宿主指纹一致。
+
+Windows 订阅回归更新了上一阶段恢复写回故障的断言。故障代次仍可投影中断状态，持久台账字节保持。只有新恢复代次保存原批次中断结果。41 项订阅边界检查通过。
+
+**已实现但实机未验证。** 本轮验证适配器不由根单例持有，以及真实请求和进程退出。对象 GC、ALC 回收、隔离负载内存与生产收益分别待测。
+
+**未实现或仍受门禁保护。** 整模块动态驻留尚未验收，Proxy 保持 resident。

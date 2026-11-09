@@ -147,7 +147,7 @@ public sealed class ProxySubscriptionDownloader(
             (ProxySubscriptionDownloadRoute.SystemProxy, false) => "ProxySubscriptionSystemProxy",
             _ => "ProxySubscriptionSystemProxyInsecureTls",
         };
-        var http = httpClientFactory.CreateClient(clientName);
+        using var http = httpClientFactory.CreateClient(clientName);
         var transportFailure = downloadRoute == ProxySubscriptionDownloadRoute.SystemProxy
             ? ProxyProblemCodes.SubscriptionSystemProxyUnavailable
             : ProxyProblemCodes.SubscriptionFetchFailed;

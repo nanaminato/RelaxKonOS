@@ -102,6 +102,8 @@ Helper 在现有文件锁内先保存不可重派的原 ID，再处理配置和�
 
 Squid 发布投影可先于队列终态保存。队列故障隔离仍由原 Proxy 队列负责，Core 系统代理 guard 与 Helper 的 TUN 归属继续独立履行。[跨域故障实测](server-module-evidence/Proxy-Squid.md#squid-恢复写回故障与-core-tun-连续性)
 
+平台能力适配器随概览作用域解析，订阅下载适配器随请求或后台工作作用域解析。两者均为管理执行对象。[作用域证据](server-module-evidence/Proxy-Observation.md#平台能力与订阅下载适配器作用域)
+
 Docker 与运行时下载只依赖结构化的出站路由结果和必要的运行能力租约，不依赖订阅服务或整个 Proxy 模块。读取已保存的地址、旁路和认证引用不应唤醒管理模块；真正需要其控制客户端或持续安全承诺时才持有相应租约。不得把“代理流量正在经过外部 Mihomo”直接当作整个管理模块永久常驻的理由，也不得在未知所有权时撤下保护。
 
 `ProxyRuntimeRegistration` 已在 Core 注册的运行时安装/发布骨干继续遵循原领域权威；后续分离时先提供契约端口，保留冻结计划、台账、锁、Helper 复核及原操作成功证明，不在驻留协调器重写安装器。遵循[受管运行时设计](../platform/RelaxKonOS.ManagedRuntimes.Design.md)，本设计不关闭 MR/CC 的宿主生命周期验收。

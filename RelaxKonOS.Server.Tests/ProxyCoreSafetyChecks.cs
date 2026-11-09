@@ -37,6 +37,9 @@ internal static class ProxyCoreSafetyChecks
             if (enabled) new ProxyModule().ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "sqlite"));
             Check(builder.Services.Any(item => item.ServiceType == typeof(IProxyEngineRegistry)) == enabled,
                 "Core safety registration does not register the optional engine management graph");
+            Check(builder.Services.Any(item => item.ServiceType == typeof(IProxyPlatformService)) == enabled
+                && builder.Services.Any(item => item.ServiceType == typeof(IProxySubscriptionDownloader)) == enabled,
+                "Core safety does not register the management capability and download facades");
             if (enabled) Check(builder.Services.Single(item => item.ServiceType == typeof(IProxyEngineRegistry)).Lifetime == ServiceLifetime.Scoped
                 && builder.Services.Single(item => item.ServiceType == typeof(IProxyLifecycleService)).Lifetime == ServiceLifetime.Scoped,
                 "Engine registry and lifecycle facades belong to execution scopes");
@@ -69,6 +72,18 @@ internal static class ProxyCoreSafetyChecks
             await using var services = builder.Services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
             try
             {
+                if (enabled)
+                {
+                    await using var first = services.CreateAsyncScope();
+                    await using var next = services.CreateAsyncScope();
+                    var platform = first.ServiceProvider.GetRequiredService<IProxyPlatformService>();
+                    var downloader = first.ServiceProvider.GetRequiredService<IProxySubscriptionDownloader>();
+                    Check(ReferenceEquals(platform, first.ServiceProvider.GetRequiredService<IProxyPlatformService>())
+                        && ReferenceEquals(downloader, first.ServiceProvider.GetRequiredService<IProxySubscriptionDownloader>())
+                        && !ReferenceEquals(platform, next.ServiceProvider.GetRequiredService<IProxyPlatformService>())
+                        && !ReferenceEquals(downloader, next.ServiceProvider.GetRequiredService<IProxySubscriptionDownloader>()),
+                        "Capability and download facades are reused only within their execution scope");
+                }
                 foreach (var type in new[] { typeof(ProxyRecoveryHostedService), typeof(SystemProxyGuardHostedService), typeof(ProxyServerExpiryService) })
                     Check(builder.Services.Count(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == type) == 1,
                         "Exactly one Core owner regardless of management enablement: " + type.Name + "/" + enabled);
