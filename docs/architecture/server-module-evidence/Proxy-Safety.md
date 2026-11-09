@@ -790,6 +790,20 @@ Windows Release TUN 回归通过，含 38 项 TUN 边界检查。原始 Linux �
 
 **未实现或仍受门禁保护。** 原网络命名空间无法复核时保持待核验，整模块动态交接待验，Proxy 保持 resident。
 
+### 完整认证队列的部分 DNS 补偿与工作租约
+
+**已实现且已验证。** Linux x64 私有 systemd 运行完整 PAM/JWT Server、独立 Helper、真实 Mihomo 与独立 resolver。原 HTTP 发布 `6e57aed6bc204ee3a4c3917de74c4b74` 持有至少两个在途租约。原 `SetLinkDefaultRoute` 和 `SetLinkDomains` 已实际生效且两份发送端退出见证落盘，第三条 `SetLinkDNS` 的派发记录尚未替换时终止 Server 与 Helper。候选在中断前后均转发真实上游 HTTP，核对同一进程、配置凭据、TUN 描述符、专用路由和管理选路。
+
+暂时隐藏第二条发送端退出见证后重启。原 Helper 记录 `runtime.network_dns_conflict`，原 HTTP 回执为 `interrupted / managed_tun` 且无结束时间，同键命中原操作，异键受 `proxy.operation_interrupted` 拒绝。候选和部分 DNS 设置继续有效，其他原检查点与 Server 配置镜像保持，未派发停止、规则删除或新 DNS 调用。
+
+归还同一份退出见证后，原 ID 的补偿 IPC `601847a216254a1a9c8957897849433f` 只派发一次。截留 Helper 已持久化的原 `Interrupted` 应答时，HTTP 原回执仍无结束时间且恢复租约仍在。再次重启只读确认原回执，同键返回同一终态，工作租约归零。真实候选退出，原规则仅删除一次，原配置、管理选路、resolver 快照及恢复后的代理转发核对通过，恢复的 Mihomo PID 为 `762`。整个过程中仅有前两条 DNS 写入，无第三条派发或 `DnsApplied`，配置未重放。
+
+共用夹具的零 DNS 及异网络命名空间门禁回归同批通过，原 ID 为 `439a1f69471041478b0607d68c2b1677`。早期试跑分别修正空断点标记的判定及 tracer 暂停期间的终止顺序。两条最终场景均完成专属进程及 cgroup 清理，宿主服务、代理和 resolver 文件指纹一致。Windows Release TUN 回归通过，含 38 项 TUN 边界检查。Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-partial.log` 的 SHA-256 为 `6d4fe3e9bd0279fad2b41e2840ee33fd1dd98caa3bf1bc9959e2b601f4f9afd7`，归档 SHA-256 为 `d9c3eb4a68de14312c3f77dd67287fd174c2454844e6b2b1f34d05062b7c06ed`。
+
+**已实现但实机未验证。** 整机掉电需要独立断电环境。本轮核实进程退出，对象释放、ALC 回收、隔离内存差值和生产内存收益未测量。
+
+**未实现或仍受门禁保护。** 原发送端身份或结果不能确认时保留原待核验，整模块交接继续开放，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

@@ -229,7 +229,7 @@ fi
     command('/usr/bin/mount', '--bind', str(wrapper), '/usr/sbin/ip')
 
 
-def install_dns_ack_boundary(hold_reply=True, hold_method='SetLinkDNS'):
+def install_dns_ack_boundary(hold_reply=True, hold_method='SetLinkDNS', allow_release=False):
     original = root / 'busctl-real'
     wrapper = root / 'busctl-wrapper'
     shutil.copy2('/usr/bin/busctl', original)
@@ -243,7 +243,10 @@ case "${{8:-}}" in
         if [[ "$8" == {hold_method} && {'yes' if hold_reply else 'no'} == yes ]]; then
             touch {shlex.quote(str(root / 'dns-effect-ready'))}
             parent=$PPID
-            while kill -0 "$parent" 2>/dev/null; do sleep .05; done
+            while kill -0 "$parent" 2>/dev/null; do
+                if [[ {'yes' if allow_release else 'no'} == yes && -f {shlex.quote(str(root / 'release-dns-effect'))} ]]; then break; fi
+                sleep .05
+            done
         fi
         ;;
     *) exec "$real" "$@" ;;
@@ -1931,6 +1934,7 @@ def proof_full_http_shutdown(ipc, case):
     retained_removal = removal_http or case == 'ipc-http-retained'
     squid = case in ('ipc-http-squid', 'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account')
     zero_dns = case == 'ipc-http-zero-dns'
+    partial_dns = case == 'ipc-http-partial-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
     assert mounts['/etc'] == 'overlay'
@@ -2023,10 +2027,11 @@ def proof_full_http_shutdown(ipc, case):
                        f'http://{target}:18880/mb04-{phase}') == 'upstream-through-inherited-tun'
         assert '203.0.113.77' in resolver('query', '--protocol=dns', '--type=A', f'{phase}.tun.fixture.test')
 
-    def verify_zero_dns(pid, publication):
+    def verify_unfinished_dns(pid, publication, resolver_before):
         nonlocal worker, token
         key = 'full-publish'
-        marker('full-zero-dns-live')
+        ready = root / ('dns-effect-ready' if partial_dns else 'full-zero-dns-live')
+        until(ready.is_file, ready.name)
         operation_dir = archive / 'operations' / publication
         effect = json.loads((operation_dir / 'tun-3.json').read_text())
         record = json.loads(journal.read_bytes())
@@ -2036,58 +2041,99 @@ def proof_full_http_shutdown(ipc, case):
         record = json.loads(journal.read_bytes())
         state_file = archive / 'state' / 'archive-state.json'
         pending_state = state_file.read_bytes()
-        resolver_before = resolver_snapshot()
         original_mirror = mirror.read_bytes()
-        assert not (operation_dir / 'tun-4.json').exists() and leases() >= 2
+        assert (operation_dir / 'tun-4.json').exists() == partial_dns and leases() >= 2
         assert read(publication)['state'] == 'running'
         assert submit('enable', key, {'profileId': profile}) == publication
 
         def forward(phase):
             observe_runtime(record)
             assert command('/usr/bin/curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '3',
-                           f'http://{target}:18880/mb04-zero-dns-{phase}') == 'upstream-through-inherited-tun'
+                           f'http://{target}:18880/mb04-unfinished-dns-{phase}') == 'upstream-through-inherited-tun'
 
+        trace = None
+        dns_writes = root / 'dns-write-attempts'
+        expected_writes = ['SetLinkDefaultRoute', 'SetLinkDomains'] if partial_dns else []
+
+        def check_dns_writes():
+            writes = dns_writes.read_text().splitlines() if dns_writes.exists() else []
+            assert writes == expected_writes
+
+        if partial_dns:
+            check_dns_writes()
+            assert '~tun.fixture.test' in resolver('domain', device)
+            # Let the second sender exit, but hold the rename that would authorize the third call.
+            temporary = operation_dir / f'dns-step-3-dispatched.json.{publication}.restore'
+            renames = 'rename,renameat,renameat2'
+            trace = subprocess.Popen(['strace', '-f', '-qq', '-yy', '-P', str(temporary),
+                                      '-e', f'trace={renames}', '-e', f'inject={renames}:error=EIO:delay_enter=25s:when=1',
+                                      '-o', root / 'full-partial-dns.trace', '-p', str(ipc.helper.pid)])
+            until(lambda: f'TracerPid:\t{trace.pid}\n' in Path(f'/proc/{ipc.helper.pid}/status').read_text(),
+                  'third DNS dispatch tracing')
+            (root / 'release-dns-effect').touch()
+            until(temporary.is_file, 'third DNS dispatch boundary')
+            assert (operation_dir / 'dns-step-2-exited.json').is_file()
+            assert not (operation_dir / 'dns-step-3-dispatched.json').exists()
+            assert not (operation_dir / 'tun-5.json').exists()
         forward('before')
         os.kill(pid, signal.SIGKILL)
         assert worker.wait(timeout=8) == 0
         original_helper_pid = ipc.helper.pid
+        if trace is not None:
+            # Queue the fatal signal before detaching the tracer from the held rename.
+            ipc.helper.kill()
+            trace.kill()
+            trace.wait(timeout=8)
         ipc.stop_helper()
-        (root / 'full-zero-dns-broker').unlink()
-        checkpoints = {file.name: file.read_bytes() for file in operation_dir.glob('tun-*.json')}
-        ipc.start_helper(('/usr/bin/unshare', '--net'))
-        foreign_namespace = os.readlink(f'/proc/{ipc.helper.pid}/ns/net')
-        assert foreign_namespace != record['namespace']
+        if partial_dns:
+            assert not (operation_dir / 'dns-step-3-dispatched.json').exists()
+            check_dns_writes()
+        (root / 'full-zero-dns-broker').unlink(missing_ok=True)
+        witness = operation_dir / 'dns-step-2-exited.json'
+        held_witness = witness.with_suffix('.held')
+        if partial_dns:
+            witness.rename(held_witness)
+        checkpoints = {file.name: file.read_bytes() for file in operation_dir.glob('*.json')}
+        resolver_pending = resolver_snapshot()
+        ipc.start_helper(('/usr/bin/unshare', '--net') if zero_dns else ())
+        recovery_namespace = os.readlink(f'/proc/{ipc.helper.pid}/ns/net')
+        assert (recovery_namespace != record['namespace']) == zero_dns
         assert state_file.read_bytes() == pending_state
         worker = launch('restart')
-        foreign_pid = int(marker('full-server-pid'))
+        blocked_pid = int(marker('full-server-pid'))
         token = login()
 
-        def original_namespace_rejected():
+        def insufficient_evidence_rejected():
             pending = json.loads(state_file.read_bytes())['configuration']
             assert uuid.UUID(pending['operationId']).hex == publication
-            return pending.get('recoveryProblemCode') == 'runtime.network_checkpoint_conflict'
+            assert pending['recoveryStopDispatched'] is False
+            problem = 'runtime.network_dns_conflict' if partial_dns else 'runtime.network_checkpoint_conflict'
+            return pending.get('recoveryProblemCode') == problem
 
-        until(original_namespace_rejected, 'original namespace gate')
-        foreign_reply = read(publication)
-        assert foreign_reply['state'] == 'interrupted' and foreign_reply['stage'] == 'managed_tun'
-        assert not foreign_reply.get('completedAt') and submit('enable', key, {'profileId': profile}) == publication
-        status, blocked = request(api + '/tun/enable', token, 'full-foreign-namespace', {'profileId': profile})
+        until(insufficient_evidence_rejected, 'original evidence gate')
+        pending_reply = read(publication)
+        assert pending_reply['state'] == 'interrupted' and pending_reply['stage'] == 'managed_tun'
+        assert not pending_reply.get('completedAt') and submit('enable', key, {'profileId': profile}) == publication
+        status, blocked = request(api + '/tun/enable', token, 'full-missing-native-evidence', {'profileId': profile})
         assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
-        forward('foreign-namespace')
-        assert checkpoints == {file.name: file.read_bytes() for file in operation_dir.glob('tun-*.json')}
-        assert resolver_snapshot() == resolver_before and mirror.read_bytes() == original_mirror
-        assert not (root / 'rule-delete-attempts').exists() and not (root / 'dns-write-attempts').exists()
-        foreign_log = ipc.log.read_text()
-        assert 'operation=MihomoRuntimeRecover ' in foreign_log and 'operation=MihomoRuntimeConfigure ' not in foreign_log
-        os.kill(foreign_pid, signal.SIGTERM)
+        forward('pending-evidence')
+        assert checkpoints == {file.name: file.read_bytes() for file in operation_dir.glob('*.json')}
+        assert resolver_snapshot() == resolver_pending and mirror.read_bytes() == original_mirror
+        assert not (root / 'rule-delete-attempts').exists()
+        check_dns_writes()
+        blocked_log = ipc.log.read_text()
+        assert 'operation=MihomoRuntimeRecover ' in blocked_log and 'operation=MihomoRuntimeConfigure ' not in blocked_log
+        os.kill(blocked_pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
         ipc.stop_helper()
+        if partial_dns:
+            held_witness.rename(witness)
         pending_state = state_file.read_bytes()
         ipc.start_helper()
         assert ipc.helper.pid != original_helper_pid and state_file.read_bytes() == pending_state
         assert os.readlink(f'/proc/{ipc.helper.pid}/ns/net') == record['namespace']
         forward('after-helper-restart')
-        assert resolver_snapshot() == resolver_before and mirror.read_bytes() == original_mirror
+        assert resolver_snapshot() == resolver_pending and mirror.read_bytes() == original_mirror
         worker = launch('zero-dns-recover')
         recovery_pid = int(marker('full-server-pid'))
         correlation = marker('full-zero-dns-recovery-held')
@@ -2103,7 +2149,12 @@ def proof_full_http_shutdown(ipc, case):
         assert uuid.UUID(receipt['operationId']).hex == publication and receipt['outcome'] == 'Interrupted'
         assert config.read_bytes() == original_mirror and network_baseline() == record['baseline']
         assert resolver_snapshot() == resolver_before and not Path('/proc', str(record['service'][0])).exists()
-        assert not (root / 'dns-write-attempts').exists() and not (operation_dir / 'tun-4.json').exists()
+        check_dns_writes()
+        if partial_dns:
+            assert not (operation_dir / 'dns-step-3-dispatched.json').exists()
+            assert not (operation_dir / 'tun-5.json').exists()
+        else:
+            assert not (operation_dir / 'tun-4.json').exists()
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         assert ipc.log.read_text().count(f'operation=MihomoRuntimeRecover id={uuid.UUID(correlation)} ') == 1
         assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
@@ -2123,15 +2174,18 @@ def proof_full_http_shutdown(ipc, case):
         assert original['state'] == 'failed' and original['problemCode'] == 'proxy.config_apply_failed', original
         assert submit('enable', key, {'profileId': profile}) == publication
         assert read(publication) == original and service_identity() == restored and state_file.read_bytes() == terminal_state
+        check_dns_writes()
         assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text() and 'operation=MihomoRuntimeRecover ' not in ipc.log.read_text()
         assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
                        '--max-time', '3', f'http://{target}:18880/mb04-zero-dns-restored') == 'upstream-through-inherited-tun'
         os.kill(restart_pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
-        print(f'PASS TUN FULL JWT ZERO DNS: original={publication}; recovery IPC={correlation}; '
+        label = 'PARTIAL DNS' if partial_dns else 'ZERO DNS'
+        print(f'PASS TUN FULL JWT {label}: original={publication}; recovery IPC={correlation}; '
               f'restored PID={restored[0]}; one rule removal, original receipt and work lease drained')
-        print(f'PASS TUN NAMESPACE OWNERSHIP: original={publication}; owner={record["namespace"]}; '
-              f'foreign={foreign_namespace}; original candidate and native checkpoints preserved')
+        if zero_dns:
+            print(f'PASS TUN NAMESPACE OWNERSHIP: original={publication}; owner={record["namespace"]}; '
+                  f'foreign={recovery_namespace}; original candidate and native checkpoints preserved')
 
     def launch(phase):
         (root / 'full-server-pid').unlink(missing_ok=True)
@@ -3193,7 +3247,7 @@ def proof_full_http_shutdown(ipc, case):
         print(f'PASS SQUID NATIVE UNKNOWN: original={unknown}; configuration={unknown_digest}; PID={original_pid}; '
               'real upstream after Helper exit; both ledgers unchanged and no replay')
 
-    worker = launch('zero-dns-publish' if zero_dns else 'squid-new' if squid else 'removal-cut' if removal_admin
+    worker = launch('zero-dns-publish' if zero_dns or partial_dns else 'squid-new' if squid else 'removal-cut' if removal_admin
                     else 'admission' if admission or handoff or retained_removal else 'drain')
     first_worker = worker
     try:
@@ -3216,9 +3270,10 @@ with sqlite3.connect(sys.argv[1]) as database:
 ''', str(database), profile, timestamp], **ipc.identity, check=True, timeout=8)
         if zero_dns:
             (root / 'full-zero-dns-broker').write_text(str(ipc.helper.pid))
+        resolver_before = resolver_snapshot() if zero_dns or partial_dns else None
         publication = submit('enable', 'full-publish', {'profileId': profile})
-        if zero_dns:
-            verify_zero_dns(pid, publication)
+        if zero_dns or partial_dns:
+            verify_unfinished_dns(pid, publication, resolver_before)
             return
         until(lambda: terminal(publication), 'original publication')
         record = json.loads(journal.read_bytes())
@@ -3348,6 +3403,8 @@ def proof():
         install_dns_ack_boundary(hold_reply=False)
     if case == 'dns-partial-inflight':
         install_dns_ack_boundary(hold_method='SetLinkDomains')
+    if case == 'ipc-http-partial-dns':
+        install_dns_ack_boundary(hold_method='SetLinkDomains', allow_release=True)
     service('start', 'systemd-resolved.service')
     seed_foreign_dns()
     baseline_dns = resolver_snapshot() if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited',
@@ -3465,7 +3522,7 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
+            if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-partial-dns', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
                         'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account'):
                 proof_full_http_shutdown(ipc, case)
