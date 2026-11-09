@@ -25,7 +25,7 @@ MB-01B 增加 `--cases on-idle`，交错同一启用集合的认证业务与纯�
 
 MB-04 的 `proxy-management` 场景由 `Tests/Performance/run-linux-proxy-baseline.sh` 启动。通过外层 `unshare --mount --net --pid --fork --kill-child --mount-proc --propagation private` 运行，传入宿主挂载、网络、PID 命名空间身份，冻结的 Server 发布目录、Helper DLL、专属空输出目录和产品提交号。使用非 root Server 身份、独立 Helper 与 PAM，认证输入仅走 stdin。每轮只切换 Proxy 管理面，其他管理模块关闭，Core 原安全门禁继续运行。
 
-每个进程使用新的内容根。先按原方法采启动和 35 秒闲时，再进行同样的认证与模块目录读取。启用组依次读取设置、概览及运行时、档案及订阅。停用组验证路由 404，并在相同阶段采样。每个认证阶段采五点，表示已完成请求后的驻留窗口。用 `summarize_module_baseline.py --proxy-pairs` 输出逐轮数据、35 秒启停差及各阶段扣除对照漂移的增量。阶段顺序固定，共用已加载的代码及缓存，因此增量只用于选择后续工作负载。Helper 单独运行，未计入 Server 进程树。空私有状态的结果无法覆盖活跃 Mihomo、非空档案或订阅转换。
+每个进程使用新的内容根。先按原方法采启动和 35 秒闲时，再进行同样的认证与模块目录读取。启用组依次读取设置、概览及运行时、档案及订阅。停用组验证路由 404，并在相同阶段采样。每个认证阶段采五点，表示已完成请求后的驻留窗口。用 `summarize_module_baseline.py --proxy-pairs` 输出逐轮数据、35 秒启停差及各阶段扣除对照漂移的增量。阶段顺序固定，共用已加载的代码及缓存，因此增量只用于选择后续工作负载。Helper 单独运行，未计入 Server 进程树。空私有状态的结果无法覆盖活跃 Mihomo、非空档案或订阅转换。活跃具名 TUN 另用完整 Server 私有 systemd 夹具，按启用、禁用交错且保持同一运行时执行，采样明确纳入独立 Helper 和 Mihomo。见[活跃具名 TUN 配对测量](server-module-evidence/Proxy-Observation.md#mb-04-活跃具名-tun-的管理面配对测量)。
 
 连接快照的前后配对使用 `Tests/ManagedRuntimes/run-proxy-systemd-linux.sh` 的 `--authenticated`，随后附加流式改动前的 Server DLL 路径。两组共用专属 Mihomo、512 条已抵达源站的实际连接、Helper 与同一份私有 Server 数据，逐次启动新的 Server 进程。第二对交换顺序。每次登录并预热同一组概览和详情读取，记录 500 ms 后的单点 PSS、RSS 与私有驻留，再对 24 组顺序请求以约 25 ms 采样。请求计时包括客户端 HTTP、JSON 反序列化和连接集合校验。输出的 `PROXY BENCHMARK INPUT` 与 `PROXY BENCHMARK RUN` 含制品摘要、原值和逐次时间。只采样管理 Server PID。结束后才向源站放行，必须收到全部原响应，且原发布修订保持一致。测量未强制 GC，观测峰值受采样间隔限制。
 

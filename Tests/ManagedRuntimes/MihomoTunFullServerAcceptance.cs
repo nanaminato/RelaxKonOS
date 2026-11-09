@@ -99,14 +99,15 @@ internal static class MihomoTunFullServerAcceptance
         if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
             or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"
-            or "named-start-cut"))
+            or "named-start-cut" or "baseline-on" or "baseline-off"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
         var handoff = phase == "handoff-disabled";
-        var disabled = phase == "admission-disabled";
+        var disabled = phase is "admission-disabled" or "baseline-off";
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(handoff ? 90 : joint ? 75 : 45));
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(handoff ? 90 : joint ? 75
+            : phase is "baseline-on" or "baseline-off" ? 65 : 45));
         var ct = budget.Token;
         using var expiry = handoff || joint && first ? new ProxyJointShutdownExpiry(root, socket) : null;
         if (expiry is not null) await expiry.PrepareAsync(ct, handoff ? TimeSpan.FromSeconds(18) : null);

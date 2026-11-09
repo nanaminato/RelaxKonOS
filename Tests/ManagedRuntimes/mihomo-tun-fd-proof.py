@@ -10,6 +10,7 @@ import http.server
 import json
 import os
 import pwd
+import runpy
 from pathlib import Path
 import select
 import secrets
@@ -2078,7 +2079,8 @@ def proof_full_http_shutdown(ipc, case):
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
     named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
     named_admission = case == 'ipc-http-named-start-admission'
-    named_dns_settled = named_recovery_cut or named_admission or case == 'ipc-http-named-start-dns-settled'
+    named_baseline = case == 'ipc-http-named-start-baseline'
+    named_dns_settled = named_recovery_cut or named_admission or named_baseline or case == 'ipc-http-named-start-dns-settled'
     named_dns = named_dns_settled or case == 'ipc-http-named-start-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
@@ -2829,6 +2831,73 @@ def proof_full_http_shutdown(ipc, case):
         assert status == 200 and preview['restartRequired'], (status, preview)
         return proxy, preview
 
+    def measure_named_start(pid, current, publication, started):
+        nonlocal worker, token
+        sample = runpy.run_path(str(root / 'sample_process_tree.py'))['sample']
+        sampler_version = hashlib.sha256((root / 'sample_process_tree.py').read_bytes()).hexdigest()
+        native = archive / 'state' / 'archive-state.json'
+        execution = archive / 'operations' / started / 'tun-5.json'
+        committed = (queue.read_bytes(), native.read_bytes(), execution.read_bytes(), mirror.read_bytes())
+        helper = ipc.helper.pid
+        engine = current['service'][0]
+        original_identities = {}
+        content = root / 'full-server'
+        snapshot = root / 'named-baseline-server'
+
+        def terminate(server_pid):
+            os.kill(server_pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0 and not Path(f'/proc/{server_pid}').exists()
+
+        terminate(pid)
+        shutil.copytree(content, snapshot)
+        order = ('on', 'off', 'on', 'off', 'off', 'on', 'on', 'off')
+        print('TUN BASELINE MANIFEST ' + json.dumps({
+            'publication': publication, 'execution': started, 'mihomo': current['service'],
+            'sampler_sha256': sampler_version, 'modes': order, 'warmup_runs': 2, 'samples': [31, 32, 33, 34, 35],
+            'kernel': os.uname().release, 'architecture': os.uname().machine,
+            'cpus_available': len(os.sched_getaffinity(0)),
+            'runtime': command('/usr/bin/dotnet', '--list-runtimes').splitlines(),
+            'server_sha256': hashlib.file_digest(Path(sys.argv[3]).with_name('RelaxKonOS.Server.dll').open('rb'),
+                                                'sha256').hexdigest(),
+            'frozen_state_sha256': [hashlib.sha256(data).hexdigest() for data in committed],
+        }), flush=True)
+        for index, mode in enumerate(order):
+            shutil.rmtree(content)
+            shutil.copytree(snapshot, content)
+            launched = time.monotonic()
+            worker = launch('baseline-' + mode)
+            server_pid = int(marker('full-server-pid'))
+            token = login(disabled=True)
+            ready = time.monotonic()
+            status, detail = request('/api/v1.0/server/modules/relaxkonos.proxy', token)
+            assert status == 200 and detail['effectiveEnabled'] == (mode == 'on')
+            assert request(api + '/tun', token)[0] == (200 if mode == 'on' else 404)
+            names = {server_pid: 'server', helper: 'helper', engine: 'mihomo'}
+            known = {}
+            for second in (0, 5, 10, 15, 20, 25, 30, 31, 32, 33, 34, 35):
+                time.sleep(max(0, ready + second - time.monotonic()))
+                if second <= 30:
+                    probe(current, f'baseline-{index}-{second:02}')
+                    continue
+                point = sample(list(names), known)
+                roots = {names[row['pid']]: row for row in point['processes'] if row['pid'] in names}
+                assert roots.keys() == set(names.values()) and point['totals']['pss_bytes']['complete_sum'] is not None
+                for name in ('helper', 'mihomo'):
+                    assert roots[name]['start_identity'] == original_identities.setdefault(name, roots[name]['start_identity'])
+                for row in point['processes']:
+                    row.pop('raw', None)
+                print('TUN BASELINE SAMPLE ' + json.dumps({
+                    'run': index, 'mode': mode, 'target_seconds': second, 'since_login': point['monotonic_seconds'] - ready,
+                    'login_seconds': ready - launched, 'roles': names, **point,
+                }), flush=True)
+            probe(current, f'baseline-{index}-35')
+            assert (queue.read_bytes(), native.read_bytes(), execution.read_bytes(), mirror.read_bytes()) == committed
+            terminate(server_pid)
+        assert all(f'operation={verb} ' not in ipc.log.read_text() for verb in
+                   ('MihomoRuntimeConfigure', 'MihomoRuntimeTunStart', 'MihomoRuntimeTunStop'))
+        print(f'PASS TUN NAMED START BASELINE: publication={publication}; start={started}; Mihomo PID={engine}; '
+              'one warmup pair and three measured pairs', flush=True)
+
     def verify_named_start_dns(pid, record, publication, stopped):
         nonlocal worker, token
         install_dns_ack_boundary(allow_release=named_dns_settled, hold_after_exit=named_dns_settled)
@@ -2965,6 +3034,9 @@ def proof_full_http_shutdown(ipc, case):
             assert read(publication)['state'] == read(stopped)['state'] == 'succeeded'
             verify_native('recovered', confirmed=True)
             until(lambda: leases() == 0, 'confirmed reconciliation work leases')
+            if named_baseline:
+                measure_named_start(restart_pid, current, publication, started)
+                return
             if named_admission:
                 proxy, ready = preview_proxy_disable()
                 assert not proxy['orphanedWork'] and not ready['blockedBy'], (proxy, ready)
@@ -4384,7 +4456,7 @@ rules:
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
                         'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',
                         'ipc-http-named-start-dns', 'ipc-http-named-start-dns-settled', 'ipc-http-named-start-recovery-cut',
-                        'ipc-http-named-start-admission',
+                        'ipc-http-named-start-admission', 'ipc-http-named-start-baseline',
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
