@@ -32,7 +32,7 @@ internal static partial class SquidOperations
         var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
             Correlation: request.Correlation, Version: request.Version,
             SquidConfiguration: request.Operation is PrivilegedOperationKind.SquidApplyConfiguration or PrivilegedOperationKind.SquidValidateConfiguration ? request.SquidConfiguration : null,
-            SquidServiceAction: request.Operation is PrivilegedOperationKind.SquidServiceAction or PrivilegedOperationKind.SquidLifecycleReceipt
+            SquidServiceAction: request.Operation is PrivilegedOperationKind.SquidLifecycleReceipt
                 or PrivilegedOperationKind.SquidTrackedLifecycle ? request.SquidServiceAction : null,
             SquidAccount: request.Operation == PrivilegedOperationKind.SquidAccountMutate ? request.SquidAccount : null,
             SquidAccountRequestIdentity: request.Operation is PrivilegedOperationKind.SquidAccountMutate or PrivilegedOperationKind.SquidAccountReceipt
@@ -44,8 +44,6 @@ internal static partial class SquidOperations
         var account = request.Operation == PrivilegedOperationKind.SquidAccountMutate;
         if ((queryAccount || account) && !ValidHash(request.SquidAccountRequestIdentity))
             return Failure("squid.request.invalid", PrivilegedProblemCode.InvalidRequest);
-        var package = request.Operation == PrivilegedOperationKind.SquidServiceAction
-            && request.SquidServiceAction is SquidServiceAction.Install or SquidServiceAction.Uninstall;
         if ((queryPublication || queryLifecycle || queryAccount || account || request.Operation == PrivilegedOperationKind.SquidApplyConfiguration
             || request.Operation == PrivilegedOperationKind.SquidTrackedLifecycle)
             && (request.OperationId is null || request.OperationId == Guid.Empty))
@@ -59,7 +57,6 @@ internal static partial class SquidOperations
             if (request.Operation == PrivilegedOperationKind.SquidStatus) return Json(await StatusAsync());
             if (request.Operation == PrivilegedOperationKind.SquidAccountsRead)
                 return Json((await ReadAccountsAsync()).Select(account => new SquidAccount(account.Username, account.Enabled)).ToArray());
-            if (package) return await PackageAsync(request.SquidServiceAction!.Value);
             if (!File.Exists(Binary) || !File.Exists(Systemctl)) return Failure("squid.runtime.unavailable", PrivilegedProblemCode.UnsupportedOperation);
             EnsurePlainProtectedPath(DirectoryPath);
             if (!System.IO.Directory.Exists(DirectoryPath)) return Failure("squid.configuration_directory.missing");
@@ -78,9 +75,10 @@ internal static partial class SquidOperations
             if (queryPublication) return await ObservePublicationAsync(request.OperationId!.Value);
             if (queryLifecycle) return ObserveLifecycle(request.OperationId!.Value, request.SquidServiceAction);
             if (queryAccount) return ObserveAccount(request.OperationId!.Value, request.SquidAccountRequestIdentity!);
-            if (account) return await RunAccountAsync(request.OperationId!.Value, request.SquidAccountRequestIdentity!, request.SquidAccount);
             if (request.Operation == PrivilegedOperationKind.SquidValidateConfiguration)
                 return await ValidateAsync(request.SquidConfiguration?.Configuration);
+            if (PrivilegedOperationExecutor.HasPendingSquidPackage()) return UnknownPublication();
+            if (account) return await RunAccountAsync(request.OperationId!.Value, request.SquidAccountRequestIdentity!, request.SquidAccount);
             if (request.Operation == PrivilegedOperationKind.SquidTrackedLifecycle)
                 return await RunLifecycleAsync(request.OperationId!.Value, request.SquidServiceAction);
             if (File.Exists(LifecyclePendingPath) || File.Exists(AccountPendingPath)) return UnknownPublication();
@@ -95,42 +93,12 @@ internal static partial class SquidOperations
     }
 
     [SupportedOSPlatform("linux")]
-    private static async Task<PrivilegedOperationResult> PackageAsync(SquidServiceAction action)
+    internal static bool HasPendingConfigurationOrControl()
     {
-        const string apt = "/usr/bin/apt-get";
-        if (!LinuxDistributionSupport.IsSquidPackageSupported())
-            return Failure("squid.package.unsupported", PrivilegedProblemCode.UnsupportedOperation);
-        EnsurePlainProtectedPath(apt);
-        EnsurePlainProtectedPath(DirectoryPath);
         EnsurePlainProtectedPath(PendingPath);
-        // Shared with configuration and lifecycle operations, including across Helper processes.
-        System.IO.Directory.CreateDirectory(DirectoryPath);
-        var lockPath = DirectoryPath + "/relaxkonos.lock";
-        EnsurePlainProtectedPath(lockPath);
-        using var gate = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-        File.SetUnixFileMode(lockPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         EnsurePlainProtectedPath(LifecyclePendingPath);
         EnsurePlainProtectedPath(AccountPendingPath);
-        if (File.Exists(PendingPath) || File.Exists(LifecyclePendingPath) || File.Exists(AccountPendingPath)) return UnknownPublication();
-        if (action == SquidServiceAction.Install)
-        {
-            if (File.Exists(Binary)) return new(true);
-            var update = await RunAsync(apt, ["update"], TimeSpan.FromMinutes(10));
-            if (!update.Success) return update with { Error = "squid.package.update_failed" };
-            var install = await RunAsync(apt,
-                ["install", "--yes", "--no-remove", "--no-install-recommends", "-o", "Dpkg::Options::=--force-confold", "squid"], TimeSpan.FromMinutes(10));
-            if (!install.Success) return install with { Error = "squid.package.install_failed" };
-            return File.Exists(Binary) ? new(true) : Failure("squid.package.install_incomplete");
-        }
-        if (!File.Exists(Binary)) return new(true);
-        var stop = await RunAsync(Systemctl, ["stop", "squid.service"], ServiceActionTimeout);
-        if (!stop.Success) return stop;
-        var disable = await RunAsync(Systemctl, ["disable", "squid.service"], ServiceActionTimeout);
-        if (!disable.Success) return disable;
-        // remove, never purge/autoremove: preserve the administrator's config and other packages.
-        var remove = await RunAsync(apt, ["remove", "--yes", "squid"], TimeSpan.FromMinutes(10));
-        if (!remove.Success) return remove with { Error = "squid.package.uninstall_failed" };
-        return !File.Exists(Binary) ? new(true) : Failure("squid.package.uninstall_incomplete");
+        return File.Exists(PendingPath) || File.Exists(LifecyclePendingPath) || File.Exists(AccountPendingPath);
     }
 
     [SupportedOSPlatform("linux")]
@@ -143,7 +111,7 @@ internal static partial class SquidOperations
         var enabled = installed && File.Exists(Systemctl) && (await RunAsync(Systemctl, ["is-enabled", "--quiet", "squid.service"])).Success;
         if (File.Exists(ConfigurationPath) && new FileInfo(ConfigurationPath).Length > 1024 * 1024) throw new IOException();
         var content = File.Exists(ConfigurationPath) ? await File.ReadAllBytesAsync(ConfigurationPath) : [];
-        return new(true, installed, running, enabled, await IsManagedAsync(), Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant(), LinuxDistributionSupport.IsSquidPackageSupported(), File.Exists(PendingPath) || File.Exists(LifecyclePendingPath) || File.Exists(AccountPendingPath));
+        return new(true, installed, running, enabled, await IsManagedAsync(), Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant(), LinuxDistributionSupport.IsSquidPackageSupported(), HasPendingConfigurationOrControl() || PrivilegedOperationExecutor.HasPendingSquidPackage());
     }
 
     private static async Task<bool> IsManagedAsync()

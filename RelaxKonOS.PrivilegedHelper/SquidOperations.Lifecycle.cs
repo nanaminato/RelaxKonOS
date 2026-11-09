@@ -64,5 +64,5 @@ internal static partial class SquidOperations
     private static string LifecyclePath(Guid id) => Path.Combine(LifecycleDirectory, id.ToString("N") + ".json");
 
     private static bool ValidLifecycleAction(SquidServiceAction? action) =>
-        action is { } value && Enum.IsDefined(value) && value is not (SquidServiceAction.Install or SquidServiceAction.Uninstall);
+        action is { } value && Enum.IsDefined(value);
 }

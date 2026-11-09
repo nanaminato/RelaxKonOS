@@ -236,6 +236,11 @@ if (args is ["runtime-mihomo-tun-retained-removal", var tunRemovalRoot, var tunR
     await MihomoTunRetainedRemovalAcceptance.RunAsync(tunRemovalRoot, tunRemovalSocket, Guid.Parse(tunRemovalId), tunRemovalPhase);
     return;
 }
+if (args is ["runtime-squid-package-receipt", var squidPackageRoot, var squidPackageSocket, var squidPackagePhase] && OperatingSystem.IsLinux())
+{
+    await SquidPackageReceiptAcceptance.RunAsync(squidPackageRoot, squidPackageSocket, squidPackagePhase == "recover");
+    return;
+}
 if (args is ["runtime-squid-publication-replay", var squidRoot, var squidSocket, var squidOperation, var squidPort] && OperatingSystem.IsLinux())
 {
     await MihomoTunFullServerAcceptance.ProbeSquidReceiptReplayAsync(squidRoot, squidSocket, Guid.Parse(squidOperation), int.Parse(squidPort));

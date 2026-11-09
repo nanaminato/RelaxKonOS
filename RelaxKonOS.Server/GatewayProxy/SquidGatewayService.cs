@@ -24,15 +24,12 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         or "squid.accounts.not_found" or "squid.accounts.last_enabled_required" or "squid.accounts.failed_rolled_back"
         or "squid.platform.unsupported" or "squid.configuration_directory.missing" or "squid.runtime.unavailable";
 
-    internal static bool IsTrackedLifecycle(SquidServiceAction action) =>
-        Enum.IsDefined(action) && action is not (SquidServiceAction.Install or SquidServiceAction.Uninstall);
-
     internal static SquidServiceAction? LifecycleAction(string kind)
     {
         const string prefix = "squid.lifecycle.";
         return kind.StartsWith(prefix, StringComparison.Ordinal)
             && Enum.TryParse<SquidServiceAction>(kind.AsSpan(prefix.Length), true, out var action)
-            && IsTrackedLifecycle(action) && kind == prefix + action.ToString().ToLowerInvariant() ? action : null;
+            && Enum.IsDefined(action) && kind == prefix + action.ToString().ToLowerInvariant() ? action : null;
     }
 
     internal static bool IsLifecycleUnconfirmed(string? problem) => problem is not
@@ -144,17 +141,12 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
     public async Task<string?> ExecuteAsync(Guid id, SquidServiceAction action, ProxyOperationStageReporter stage, CancellationToken ct)
     {
         if (!Enum.IsDefined(action)) return "squid.action.invalid";
-        var tracked = IsTrackedLifecycle(action);
-        if (tracked)
-        {
-            if (id == Guid.Empty) throw new ArgumentException("A Squid lifecycle action requires an operation ID.", nameof(id));
-            await stage(LifecyclePending);
-        }
-        var result = await helper.ExecuteAsync(new(
-            tracked ? PrivilegedOperationKind.SquidTrackedLifecycle : PrivilegedOperationKind.SquidServiceAction,
-            OperationId: tracked ? id : null, SquidServiceAction: action), ct);
-        if (result.Success) return !tracked || MatchesLifecycle(result, id, action) ? null : "squid.recovery.required";
-        if (tracked && result.Error == "squid.runtime.unavailable" && result.ProblemCode != PrivilegedProblemCode.UnsupportedOperation)
+        if (id == Guid.Empty) throw new ArgumentException("A Squid lifecycle action requires an operation ID.", nameof(id));
+        await stage(LifecyclePending);
+        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidTrackedLifecycle,
+            OperationId: id, SquidServiceAction: action), ct);
+        if (result.Success) return MatchesLifecycle(result, id, action) ? null : "squid.recovery.required";
+        if (result.Error == "squid.runtime.unavailable" && result.ProblemCode != PrivilegedProblemCode.UnsupportedOperation)
             return "squid.recovery.required";
         // The Helper attaches the unit journal to a failed lifecycle action; only a message the host
         // actually printed may replace the generic "the daemon exited" code.

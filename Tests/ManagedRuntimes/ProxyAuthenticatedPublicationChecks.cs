@@ -1752,11 +1752,12 @@ internal static class ProxyAuthenticatedPublicationChecks
         internal TaskCompletionSource<Guid> Committed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         internal ReplyRelay(string path, string upstream, CancellationToken ct, Func<string?, Guid, bool>? hold = null,
-            bool holdConfirmedSquidRollback = false)
+            bool holdConfirmedSquidRollback = false, Action<JsonElement>? observeTerminal = null)
         {
             Path = path; this.upstream = upstream;
             this.hold = hold ?? ((operation, _) => operation == "ProxyServerApply");
             this.holdConfirmedSquidRollback = holdConfirmedSquidRollback;
+            this.observeTerminal = observeTerminal;
             listener.Bind(new UnixDomainSocketEndPoint(path));
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherWrite);
             listener.Listen(16);
@@ -1768,6 +1769,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         internal void DropHeldResponse() => release.TrySetResult(false);
 
         private readonly bool holdConfirmedSquidRollback;
+        private readonly Action<JsonElement>? observeTerminal;
 
         private async Task RunAsync()
         {
@@ -1802,6 +1804,7 @@ internal static class ProxyAuthenticatedPublicationChecks
                     {
                         using var frame = JsonDocument.Parse(response);
                         var terminal = frame.RootElement.GetProperty("Type").GetString() == "result";
+                        if (held && terminal) observeTerminal?.Invoke(frame.RootElement.GetProperty("Result"));
                         if (held && terminal && Confirmed(frame.RootElement.GetProperty("Result")))
                         {
                             Committed.TrySetResult(command.RootElement.GetProperty("operationId").GetGuid());

@@ -35,6 +35,7 @@ public static partial class PrivilegedOperationExecutor
                 JsonSerializer.Serialize(stream, receipt); stream.Flush(true);
             }
             File.Move(temporary, path, true);
+            SyncSquidPackageReceipt(definition);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
@@ -89,14 +90,15 @@ public static partial class PrivilegedOperationExecutor
         if (!audit.Success || !string.IsNullOrWhiteSpace(DecodeUtf8(audit.OutputBase64)))
             return Fail(65, PrivilegedProblemCode.Conflict, "package database needs repair");
         using var domainGate = definition.ComponentId == ComponentIds.Squid ? OpenSquidPackageGate() : null;
-        if (definition.ComponentId == ComponentIds.Squid && File.Exists("/etc/squid/relaxkonos.pending"))
+        if (definition.ComponentId == ComponentIds.Squid && RelaxKonOS.PrivilegedHelper.SquidOperations.HasPendingConfigurationOrControl())
             return Fail(65, PrivilegedProblemCode.Conflict, "configuration recovery required");
         var wasRunning = false; var wasEnabled = false;
         if (definition.Service.Length != 0)
         {
-            var serviceState = await RunFixedCommandAsync("/usr/bin/systemctl", ["is-active", "--quiet", definition.Service], TimeSpan.FromSeconds(30), "service state unavailable");
-            var bootState = await RunFixedCommandAsync("/usr/bin/systemctl", ["is-enabled", "--quiet", definition.Service], TimeSpan.FromSeconds(30), "boot state unavailable");
-            if (!serviceState.Success && serviceState.ExitCode != 3 || !bootState.Success && bootState.ExitCode != 1)
+            var serviceState = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", ["is-active", definition.Service], "service state unavailable");
+            var bootState = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", ["is-enabled", definition.Service], "boot state unavailable");
+            if (!serviceState.Success && (serviceState.ExitCode != 3 || DecodeUtf8(serviceState.OutputBase64) != "inactive")
+                || !bootState.Success && (bootState.ExitCode != 1 || DecodeUtf8(bootState.OutputBase64) != "disabled"))
                 return Fail(65, PrivilegedProblemCode.Conflict, "service state unknown");
             wasRunning = serviceState.Success; wasEnabled = bootState.Success;
         }
@@ -145,8 +147,9 @@ public static partial class PrivilegedOperationExecutor
             if (!boot.Success) return boot;
             var service = await RunFixedCommandAsync("/usr/bin/systemctl", [wasRunning ? "restart" : "stop", definition.Service], TimeSpan.FromSeconds(90), "service state restore failed");
             if (!service.Success) return service;
-            var running = (await RunFixedCommandAsync("/usr/bin/systemctl", ["is-active", "--quiet", definition.Service], TimeSpan.FromSeconds(30), "service health unavailable")).Success;
-            if (running != wasRunning) return Fail(65, PrivilegedProblemCode.Conflict, "service health mismatch");
+            var healthState = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl", ["is-active", definition.Service], "service health unavailable");
+            if (wasRunning ? !healthState.Success : healthState.ExitCode != 3 || DecodeUtf8(healthState.OutputBase64) != "inactive")
+                return Fail(65, PrivilegedProblemCode.Conflict, "service health mismatch");
             }
         }
         var resultIdentity = change.Change == RuntimeChange.Update ? await VerifyInstalledPackageAsync(definition) : null;

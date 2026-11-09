@@ -33,7 +33,7 @@ public sealed record ApplySquidConfigurationRequest(SquidConfiguration Configura
 public sealed record SquidConfigurationPreview(bool Valid, string? Configuration, string[] Errors);
 public sealed record SquidNativeValidation(bool Valid, string? ProblemCode, string Diagnostics);
 [JsonConverter(typeof(JsonStringEnumConverter<SquidServiceAction>))]
-public enum SquidServiceAction { Start, Stop, Restart, Reload, Enable, Disable, Install, Uninstall }
+public enum SquidServiceAction { Start, Stop, Restart, Reload, Enable, Disable }
 public sealed record SquidLifecycleRequest(SquidServiceAction Action);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record SquidLifecycleReceipt([property: JsonRequired] Guid OperationId, [property: JsonRequired] SquidServiceAction Action);

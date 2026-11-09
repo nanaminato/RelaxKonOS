@@ -20,6 +20,20 @@ public static partial class PrivilegedOperationExecutor
             && (File.GetUnixFileMode(path) & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0)
             throw new UnauthorizedAccessException("Component package paths must be protected.");
     }
+    internal static bool HasPendingSquidPackage()
+    {
+        var squid = HostPackageDefinitions.Find(ComponentIds.Squid)!;
+        return ReadPackageReceipt(squid) is { Committed: false } || ReadPackageChange(squid) is { Committed: false };
+    }
+
+    private static void SyncSquidPackageReceipt(HostPackageDefinition definition)
+    {
+        if (definition.ComponentId != ComponentIds.Squid) return;
+        LinuxDirectorySync.Flush(Path.GetDirectoryName(ComponentPackageRoot)!);
+        LinuxDirectorySync.Flush(ComponentPackageRoot);
+        LinuxDirectorySync.Flush(Path.Combine(ComponentPackageRoot, definition.ComponentId));
+    }
+
     private static string PackageReceiptPath(HostPackageDefinition definition) =>
         Path.Combine(ComponentPackageRoot, definition.ComponentId, "operation.json");
     private static PackageReceipt? ReadPackageReceipt(HostPackageDefinition definition)
@@ -48,6 +62,7 @@ public static partial class PrivilegedOperationExecutor
                 stream.Flush(true);
             }
             File.Move(temporary, path, true);
+            SyncSquidPackageReceipt(definition);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
@@ -128,7 +143,7 @@ public static partial class PrivilegedOperationExecutor
                 InstalledTarget = exactCommit ? receipt!.Target : null,
                 InstalledPackage = identity, ExternalPackageChange = externalChange, RecordedPackageVersion = authorized?.Version,
                 Managed = managed, RecoveryRequired = ownership.RecoveryRequired
-                    || definition.ComponentId == ComponentIds.Squid && File.Exists("/etc/squid/relaxkonos.pending"),
+                    || definition.ComponentId == ComponentIds.Squid && RelaxKonOS.PrivilegedHelper.SquidOperations.HasPendingConfigurationOrControl(),
                 CommittedOperationId = change is { Committed: true, Change.Change: RuntimeChange.Uninstall } && resolution.InstalledVersion is null ? change.OperationId : exactCommit ? receipt!.OperationId : change is { Committed: true, ResultIdentity: not null } && change.ResultIdentity == identity ? change.OperationId : null,
                 PendingOperationId = change is { Committed: false } ? change.OperationId : (receipt is not null || registration is not null) && !managed ? (receipt?.OperationId ?? registration!.OperationId) : null, RecoveryReceipt = recovered });
         }
@@ -180,7 +195,7 @@ public static partial class PrivilegedOperationExecutor
             || !AptPackageResolution.MatchesExpectation(expected, state.Candidate))
             return Fail(65, PrivilegedProblemCode.Conflict, "component package frozen state changed");
         using var domainGate = definition.ComponentId == ComponentIds.Squid ? OpenSquidPackageGate() : null;
-        if (definition.ComponentId == ComponentIds.Squid && File.Exists("/etc/squid/relaxkonos.pending"))
+        if (definition.ComponentId == ComponentIds.Squid && RelaxKonOS.PrivilegedHelper.SquidOperations.HasPendingConfigurationOrControl())
             return Fail(65, PrivilegedProblemCode.Conflict, "Squid configuration recovery required");
         // Durable intent precedes the first package mutation. An interrupted operation blocks replacement.
         var pending = new PackageReceipt(definition.ComponentId, operationId.Value, expected, false, null);

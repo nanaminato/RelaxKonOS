@@ -162,7 +162,7 @@ public static partial class PrivilegedOperationExecutor
                 : Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx archive host unsupported");
         if (request.Operation is PrivilegedOperationKind.SquidStatus or PrivilegedOperationKind.SquidApplyConfiguration
             or PrivilegedOperationKind.SquidConfigurationReceipt or PrivilegedOperationKind.SquidLifecycleReceipt or PrivilegedOperationKind.SquidTrackedLifecycle
-            or PrivilegedOperationKind.SquidServiceAction or PrivilegedOperationKind.SquidAccountReceipt
+            or PrivilegedOperationKind.SquidAccountReceipt
             or PrivilegedOperationKind.SquidValidateConfiguration or PrivilegedOperationKind.SquidAccountsRead or PrivilegedOperationKind.SquidAccountMutate)
             return await SquidOperations.ExecuteAsync(request);
         if (request.SquidConfiguration is not null || request.SquidServiceAction is not null || request.SquidAccount is not null || request.SquidAccountRequestIdentity is not null)

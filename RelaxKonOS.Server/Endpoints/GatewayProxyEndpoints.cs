@@ -43,8 +43,7 @@ public static class GatewayProxyEndpoints
         app.MapPost(GatewayProxyRoutes.Lifecycle, (SquidLifecycleRequest request, HttpContext context,
             ProxyOperationStore operations, CancellationToken ct) =>
             Enum.IsDefined(request.Action)
-                ? QueueAsync(context, operations, "lifecycle." + request.Action.ToString().ToLowerInvariant(), (execution, id, stage, _, token) => execution.ExecuteAsync(id, request.Action, stage, token), ct,
-                    SquidGatewayService.IsTrackedLifecycle(request.Action) ? request : null)
+                ? QueueAsync(context, operations, "lifecycle." + request.Action.ToString().ToLowerInvariant(), (execution, id, stage, _, token) => execution.ExecuteAsync(id, request.Action, stage, token), ct, request)
                 : Task.FromResult<IResult>(Results.BadRequest(new { problemCode = "squid.action.invalid" })))
             .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
         app.MapGet(GatewayProxyRoutes.Accounts, async (SquidGatewayService service, CancellationToken ct) =>

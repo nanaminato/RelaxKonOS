@@ -121,3 +121,17 @@ Linux 专属 systemd 分别验证五类真实服务动作。每次在 Helper 终
 ### 软件包实机准入
 
 现有 Squid 夹具隔离 systemd、网络、`/var/lib`、`/run` 和配置目录，`/usr` 的系统包目标仍共享。真实 APT 生命周期需要专属可写根文件系统、独立 APT 与 dpkg 台账和固定可验证制品。在同一原队列 ID 与可信原生终态绑定完成后，先在该环境验证派发、应答中断和原回执。软件包变更、未知原终态的人工确证、整机掉电及整模块安全交接继续开放，Proxy 保持 resident。
+
+### 固定 Squid 包升级的原回执
+
+2026-11-09 在既有 Ubuntu 26.04 amd64 测试机验证专属 overlay 根。宿主根以只读 bind 作为下层，`/usr` 的探针写入只落在上层。APT、dpkg、缓存、日志、设备、服务单元和运行目录使用专属状态，进程、网络及挂载命名空间独立。预检模拟只升级 `squid`，`squid-common` 已满足固定依赖。用 Ubuntu 归档密钥验证 `resolute-updates` 的 InRelease，从签名 SHA-256 核对解压的 Packages 索引，再核对离线制品 `squid_7.7-0ubuntu0.26.04.2_amd64.deb`，SHA-256 为 `1f962274ff78f23bef1c908319c157c02fb7426a11dac2c4f91e847237e15bcb`。预检日志 `.artifacts/mb04-squid-package/isolation.log` 的 SHA-256 为 `ea22fa65368e3b9e9cce0107f038c7309e0651d332de250b02e4fd9275385a67`。
+
+原升级 `d29717eb-5eff-485d-af1e-b3e71994556a` 由完整 PAM/JWT Server 的组件计划与安装 HTTP 受理，初始为 `7.2-2ubuntu2.2`，目标为固定 `7.7-0ubuntu0.26.04.2`。Helper 在同一原安装 ID 下完成真实 APT/dpkg 升级、校验包归属和程序摘要，持久化原终态。AF_UNIX 中继截留原应答时，按 ID 查询和同键仍返回原 Running。终止 Server 和 Helper 后，重启按原 ID 只读核验 Helper 原终态，HTTP 返回 `succeeded` 和完成时间，同键响应与原终态相等。跨 Helper 代次只出现一次 `ComponentPackageChange`，dpkg 只记录一次 Squid 升级，APT 日志、dpkg 日志和 Helper 回执在恢复前后逐字节一致。
+
+**已实现且已验证。** 系统包变更只有组件中心安装台账执行入口。Squid 服务和账户待核验时，原包执行入口保留门禁。包未结案时，Helper 同一文件锁阻止配置、账户和服务的竞争派发。Windows Release Squid 和组件回归通过。Linux 专属根、进程和 cgroup 清理完成，宿主 Squid 程序、dpkg 台账、配置、账号文件和共享服务指纹一致。原始实机日志 `.artifacts/mb04-squid-package/linux-live-final.log` 的 SHA-256 为 `a3b190c4d0e9724e1e20ede9e2dffec61ff85fa7a6f0291f85c83da517154d58`，归档 SHA-256 为 `0a7e64bce4c027457123220d69449a1d1126b0d9553ba837725316e4dc608a4b`。
+
+首轮试跑修正专属根内的 Helper .NET 启动路径和既有管理员的授权断言。其后实机发现 Helper 将 systemd 的正常停止退出码归并，导致包准入误拒。改为保留原生退出码及状态文本后通过真实升级；未知服务状态继续拒绝。此前试跑和最终复验的宿主指纹均一致。
+
+**已实现但实机未验证。** 本轮覆盖 Linux x64 的真实升级与终态已保存后的应答丢失。首次安装、真实保留数据卸载、APT 在途及终态未持久化时的进程中断、整机掉电仍待独立验收。已核实进程退出。本轮未测对象释放、ALC、隔离内存差值及生产内存收益。
+
+**未实现或仍受门禁保护。** 缺少可信原终态时须保留原操作的待核验与准入。整模块安全交接仍待验收，Proxy 保持 resident。

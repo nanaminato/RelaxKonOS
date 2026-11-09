@@ -215,7 +215,6 @@ public enum PrivilegedOperationKind
     ProcessIcon,
     SquidStatus,
     SquidApplyConfiguration,
-    SquidServiceAction,
     SquidValidateConfiguration,
     SquidAccountsRead,
     SquidAccountMutate,

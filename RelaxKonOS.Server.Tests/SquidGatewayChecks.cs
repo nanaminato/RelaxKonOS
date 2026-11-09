@@ -108,13 +108,6 @@ internal static class SquidGatewayChecks
             "The Helper must receive structured state, never caller configuration text or paths.");
         Check(await service.ExecuteAsync(operation, (SquidServiceAction)999, Report, default) == "squid.action.invalid" && helper.Requests.Count == 1,
             "Unknown lifecycle verbs must fail before dispatch.");
-        foreach (var action in new[] { SquidServiceAction.Install, SquidServiceAction.Uninstall })
-        {
-            await service.ExecuteAsync(operation, action, Report, default);
-            Check(helper.Requests.Last() is { Operation: PrivilegedOperationKind.SquidServiceAction } request
-                && request.SquidServiceAction == action && request.Path is null && request.ContentBase64 is null,
-                "Package control must use fixed typed Helper actions without command text or package names.");
-        }
         await service.ExecuteAsync(operation, SquidServiceAction.Reload, Report, default);
         Check(helper.Requests.Last() is { Operation: PrivilegedOperationKind.SquidTrackedLifecycle,
             SquidServiceAction: SquidServiceAction.Reload } tracked && tracked.OperationId == operation
@@ -142,9 +135,6 @@ internal static class SquidGatewayChecks
         incompleteStatus.Remove(nameof(SquidStatus.PackageManagementSupported));
         helper.Result = new(true, OutputBase64: Convert.ToBase64String(Encoding.UTF8.GetBytes(incompleteStatus.ToJsonString())));
         Check(await service.GetStatusAsync(default) is null, "A missing package capability must reject an outdated Helper response.");
-        helper.Result = new(false, Error: "squid.package.unsupported");
-        Check(await service.ExecuteAsync(operation, SquidServiceAction.Install, Report, default) == "squid.package.unsupported",
-            "The Helper's unsupported package-management refusal must reach the operation result.");
         var before = helper.Requests.Count;
         Check(!(await service.ValidateAsync(invalid[0], default)).Valid && helper.Requests.Count == before,
             "Invalid native validation must not invoke the Helper.");
@@ -279,25 +269,8 @@ internal static class SquidGatewayChecks
         }
         Check(operation?.State == ProxyOperationState.Succeeded && helper.Requests.Count(item => item.Operation == PrivilegedOperationKind.SquidApplyConfiguration) == 1,
             "An idempotent apply must execute once and complete in the operation ledger.");
-        foreach (var action in new[] { SquidServiceAction.Install, SquidServiceAction.Uninstall })
-        {
-            var package = new SquidLifecycleRequest(action);
-            Check((await InvokeAsync(GatewayProxyRoutes.Lifecycle, package)).Status == 400,
-                "Package mutations require an idempotency key.");
-            var queued = await InvokeAsync(GatewayProxyRoutes.Lifecycle, package, "package-" + action);
-            var replay = await InvokeAsync(GatewayProxyRoutes.Lifecycle, package, "package-" + action);
-            Check(queued.Status == 202 && queued.Body == replay.Body, "Package retries must return the same queued operation.");
-            var id = JsonSerializer.Deserialize<ProxyOperationAcceptedDto>(queued.Body, RelaxKonOSJsonOptions.Default)!.OperationId;
-            for (var attempt = 0; attempt < 200; attempt++)
-            {
-                operation = await operations.GetAsync(id, default);
-                if (operation?.State is ProxyOperationState.Succeeded or ProxyOperationState.Failed) break;
-                await Task.Delay(10);
-            }
-            Check(operation?.State == ProxyOperationState.Succeeded
-                && helper.Requests.Count(item => item.SquidServiceAction == action) == 1,
-                "Each package mutation must execute exactly once and publish its result.");
-        }
+        Check((await InvokeAsync(GatewayProxyRoutes.Lifecycle, new SquidLifecycleRequest((SquidServiceAction)6), "old-package-action")).Status == 400,
+            "Package mutation is confined to the installation ledger.");
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(SquidConfigurationRenderer.Preview(request.Configuration).Configuration!))).ToLowerInvariant();
         helper.Result = new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new SquidStatus(true, true, false, false, true, hash, true))));
         var read = await InvokeAsync(GatewayProxyRoutes.Configuration, null);
