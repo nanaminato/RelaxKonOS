@@ -8,13 +8,14 @@ internal static class SquidPackageReceiptAcceptance
         MihomoIpcStartupAcceptance.RequirePrivateHost();
         if (root != "/mnt/rk-squid-package/work" || !File.Exists("/etc/relaxkonos-squid-package-fixture"))
             throw new InvalidOperationException("The Squid package test requires the dedicated writable root.");
-        if (phase is not ("cut" or "recover" or "native-cut" or "native-recover"))
+        if (phase is not ("cut" or "install-cut" or "recover" or "native-cut" or "native-recover"))
             throw new ArgumentException("Unknown Squid package test phase.", nameof(phase));
         var recovering = phase is "recover" or "native-recover";
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         var ct = budget.Token;
-        await using var relay = phase != "cut" ? null : new ProxyAuthenticatedPublicationChecks.ReplyRelay(
-            "/run/rk-squid-package-reply.sock", socket, ct, (operation, _) => operation == "ComponentPackageChange",
+        var dispatch = phase == "install-cut" ? "ComponentPackageInstall" : "ComponentPackageChange";
+        await using var relay = phase is not ("cut" or "install-cut") ? null : new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+            "/run/rk-squid-package-reply.sock", socket, ct, (operation, _) => operation == dispatch,
             observeTerminal: result =>
             {
                 if (!result.GetProperty("success").GetBoolean() && result.TryGetProperty("error", out var error))

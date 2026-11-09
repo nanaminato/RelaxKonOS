@@ -156,6 +156,18 @@ Windows Release Squid 和组件回归通过。原始日志 `.artifacts/mb04-squi
 
 Windows Release Squid 与组件回归通过，测试临时目录放在工作区内。原始实机日志 `.artifacts/mb04-squid-package/linux-uninstall.log` 的 SHA-256 为 `a3777ba04737c52fc8c1f10d886cd3afea70493a52650291c215394189738256`，归档 SHA-256 为 `ac82f7117e911348af5448e137888187b573c8450e5286788dbe5b9a9bee67bd`。本轮验证了进程退出，对象释放、ALC 回收、隔离内存差值和生产内存收益未测量。
 
-**已实现但实机未验证。** 首次安装和整机掉电仍待验收。
+**已实现但实机未验证。** 首次安装见下一节。整机掉电仍待验收。
 
 **未实现或仍受门禁保护。** 未知终态的人工确证及整模块安全交接仍开放。Proxy 保持 resident。
+
+### 首次安装的原回执
+
+**已实现且已验证。** 2026-11-09 在专属 Ubuntu 26.04 amd64 overlay 根准备 Squid 包缺席、无既有安装回执的初态，保留基础系统及已安装的依赖。私有回环镜像只提供 Ubuntu 原签名 InRelease、签名清单校验过的原 Packages 及固定 `7.7-0ubuntu0.26.04.2` 制品。APT 用 Ubuntu 归档密钥验证索引，固定包摘要同上。移除专属缓存中的包副本，实测镜像恰好收到一次制品下载。试跑调整了 dpkg 未安装状态识别，并关闭私有镜像不提供的辅助命令索引，两次都在 Server 受理前退出，宿主指纹一致。
+
+管理员通过完整 PAM/JWT Server 提交冻结计划，原安装 ID 为 `7bab91db-9182-41b3-98d5-d16902b56972`。Helper 完成真实 dpkg 安装、校验可执行文件摘要，启动 Squid 并持久化原回执。私有 `squid.service` 为 active，回环 3128 端口可连接。中继截留原应答期间，按 ID 与同键仍返回原 Running。重启 Helper 和 Server 后，通过原 ID 只读恢复为 `succeeded`，同键返回相同终态，组件状态为 managed 且保留原提交 ID。回执、APT 和 dpkg 台账在恢复前后逐字节一致，两代 Helper 合计一次安装派发，dpkg 一次安装，服务继续监听。
+
+Windows Release Squid 和组件回归通过。Linux Release 夹具和专属资源正常退出，宿主共享服务及程序、包台账、配置和账户指纹一致。原始日志 `.artifacts/mb04-squid-package/linux-install.log` SHA-256 为 `bd7cd10f9ed51637d52c9adfa712fa629197772b3ee2cc2150bee760d9c06b89`，归档 SHA-256 为 `fc1e049351796e894673d6d3accd023db8df3c70cc994ae97e400130646f0cab`。本轮独立核对进程退出，对象释放、ALC 回收、隔离内存差值和生产内存收益未测量。
+
+**已实现但实机未验证。** 整机掉电和其他平台尚无独立证据。
+
+**未实现或仍受门禁保护。** 未知终态的人工确证和整模块安全交接仍开放，Proxy 保持 resident。

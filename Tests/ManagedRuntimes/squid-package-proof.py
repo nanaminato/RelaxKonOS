@@ -1,5 +1,6 @@
 from pathlib import Path
 import hashlib
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import pwd
@@ -7,13 +8,14 @@ import shutil
 import signal
 import socket
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
 
 root = Path("/mnt/rk-squid-package/work")
 bundle = root.parent / "bundle"
-receipt = Path("/var/lib/relaxkonos-component-packages/squid/change.json")
+receipts = Path("/var/lib/relaxkonos-component-packages/squid")
 digest = "1f962274ff78f23bef1c908319c157c02fb7426a11dac2c4f91e847237e15bcb"
 version = "7.7-0ubuntu0.26.04.2"
 api = "/api/v1.0"
@@ -56,12 +58,69 @@ def value(path, token=None, *, data=None, key=None, status=200):
     return body
 
 
+def start_signed_mirror(package):
+    lists = Path("/var/lib/apt/lists")
+    keyring = "/usr/share/keyrings/ubuntu-archive-keyring.gpg"
+    suite = "resolute-updates"
+    index_name = "main/binary-amd64/Packages"
+    release, = lists.glob(f"*_ubuntu_dists_{suite}_InRelease")
+    signed = subprocess.check_output(["gpgv", "--keyring", keyring, "--output", "-", release]).decode()
+    hashes = signed.split("\nSHA256:\n", 1)[1].split("\nSHA512:\n", 1)[0]
+    index_digest, index_size, _ = next(
+        fields for line in hashes.splitlines() if len(fields := line.split()) == 3 and fields[2] == index_name)
+    stored, = lists.glob(release.name.removesuffix("InRelease") + index_name.replace("/", "_") + "*")
+    contents = subprocess.check_output(["/usr/lib/apt/apt-helper", "cat-file", stored])
+    assert len(contents) == int(index_size) and hashlib.sha256(contents).hexdigest() == index_digest
+    entry = next(stanza for stanza in contents.split(b"\n\n")
+                 if stanza.startswith(b"Package: squid\n") and f"\nVersion: {version}\n".encode() in stanza)
+    fields = dict(line.split(b": ", 1) for line in entry.splitlines() if b": " in line and not line.startswith(b" "))
+    assert fields[b"SHA256"].decode() == digest and int(fields[b"Size"]) == package.stat().st_size
+    artifact = Path(fields[b"Filename"].decode())
+    assert not artifact.is_absolute() and artifact.parts[0] == "pool" and ".." not in artifact.parts
+    mirror_root = root / "apt-mirror"
+    distribution = mirror_root / "dists" / suite
+    index = distribution / index_name
+    index.parent.mkdir(parents=True)
+    index.write_bytes(contents)
+    shutil.copyfile(release, distribution / "InRelease")
+    (mirror_root / artifact).parent.mkdir(parents=True)
+    shutil.copyfile(package, mirror_root / artifact)
+    package.unlink()
+    downloads = []
+
+    class MirrorHandler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=mirror_root, **kwargs)
+
+        def do_GET(self):
+            if self.path == "/" + artifact.as_posix():
+                downloads.append(self.path)
+            super().do_GET()
+
+    mirror = ThreadingHTTPServer(("127.0.0.1", 0), MirrorHandler)
+    threading.Thread(target=mirror.serve_forever, daemon=True).start()
+    source = root / "squid.list"
+    source.write_text(f"deb [arch=amd64 signed-by={keyring} by-hash=no] "
+                      f"http://127.0.0.1:{mirror.server_port} {suite} main\n")
+    Path("/etc/apt/apt.conf.d/99relaxkonos-test-source").write_text(
+        f'Dir::Etc::sourcelist "{source}";\nDir::Etc::sourceparts "-";\n'
+        'Acquire::http::Proxy::127.0.0.1 "DIRECT";\n'
+        'Acquire::Languages "none";\nAcquire::CompressionTypes::Order { "uncompressed"; };\n'
+        'Acquire::IndexTargets::deb::DEP-11::DefaultEnabled "false";\n'
+        'Acquire::IndexTargets::deb::CNF::DefaultEnabled "false";\n')
+    subprocess.run(["apt-get", "update"], check=True, timeout=45)
+    assert not downloads
+    return mirror, downloads
+
+
 def run():
     assert os.geteuid() == 0 and Path("/etc/relaxkonos-squid-package-fixture").read_text().strip() == digest
     phase = (root / "phase").read_text().strip()
-    assert phase in ("receipt", "native-unknown", "uninstall")
+    assert phase in ("receipt", "native-unknown", "uninstall", "install")
     native_unknown = phase == "native-unknown"
     uninstall = phase == "uninstall"
+    install = phase == "install"
+    receipt = receipts / ("operation.json" if install else "change.json")
     mounts = {line.split()[4]: line.split(" - ", 1)[1].split()[0] for line in Path("/proc/self/mountinfo").read_text().splitlines()}
     assert mounts["/"] == "overlay" and all(mounts[path] == "tmpfs" for path in ("/var/lib", "/run", "/var/cache/apt"))
     credentials = json.loads((root / "pam").read_bytes())
@@ -131,19 +190,32 @@ def run():
             assert {path: path.read_bytes() for path in retained_files} == retained_files
         else:
             assert package_version() == version
+            if install:
+                subprocess.run(["systemctl", "is-active", "--quiet", "squid.service"], check=True, timeout=10)
+                with socket.create_connection(("127.0.0.1", 3128), timeout=5):
+                    pass
 
     package = Path("/var/cache/apt/archives/squid_" + version + "_amd64.deb")
     assert hashlib.file_digest(package.open("rb"), "sha256").hexdigest() == digest
+    if install:
+        subprocess.run(["dpkg", "--purge", "squid"], check=True, timeout=45)
+        assert not Path("/usr/sbin/squid").exists()
+        removed = subprocess.run(["dpkg-query", "-W", "-f=${db:Status-Status}", "squid"], capture_output=True, text=True)
+        assert (removed.returncode, removed.stdout) in ((1, ""), (0, "not-installed")), removed
+        mirror, downloads = start_signed_mirror(package)
     subprocess.run(["systemctl", "daemon-reload"], check=True, timeout=15)
     helper = start_helper(1)
-    worker, pid = server("native-cut" if native_unknown else "cut")
+    worker, pid = server("native-cut" if native_unknown else "install-cut" if install else "cut")
     token = login()
     component = api + "/components/squid"
     state = value(component + "/state", token)
-    assert state["installedPackage"]["version"] == package_version(), state
-    action = "uninstall" if uninstall else "upgrade"
+    if install:
+        assert state.get("installedPackage") is None and state["state"]["ownership"] == "absent", state
+    else:
+        assert state["installedPackage"]["version"] == package_version(), state
+    action, change = ("install", "Install") if install else ("uninstall", "Uninstall") if uninstall else ("upgrade", "Update")
     key = "private-squid-fixed-" + action
-    plan_request = {"componentId": "squid", "hostId": state["state"]["hostId"], "change": "Uninstall" if uninstall else "Update",
+    plan_request = {"componentId": "squid", "hostId": state["state"]["hostId"], "change": change,
                     "expectedRevision": state["state"]["revision"], "mode": "SystemPackage", "expectedSourceRevision": 0,
                     "expectedTrustRevision": 0, "requestedVersion": None if uninstall else version, "keepData": True, "idempotencyKey": key}
     plan = value(component + "/plan", token, data=plan_request)
@@ -201,11 +273,13 @@ def run():
     else:
         assert committed["Target"]["Sha256"].lower() == digest
         with open("/usr/sbin/squid", "rb") as binary:
-            assert committed["ResultIdentity"]["ExecutableSha256"].lower() == hashlib.file_digest(binary, "sha256").hexdigest()
+            executable_digest = committed["ExecutableSha256"] if install else committed["ResultIdentity"]["ExecutableSha256"]
+            assert executable_digest.lower() == hashlib.file_digest(binary, "sha256").hexdigest()
     dpkg_log = Path("/var/log/dpkg.log")
     apt_history = Path("/var/log/apt/history.log")
     dpkg_before = dpkg_log.read_bytes()
-    dpkg_action = b" remove squid:" if uninstall else b" upgrade squid:"
+    dpkg_verb = {"install": "install", "uninstall": "remove", "upgrade": "upgrade"}[action]
+    dpkg_action = f" {dpkg_verb} squid:".encode()
     assert sum(dpkg_action in line for line in dpkg_before.splitlines()) == 1
     if uninstall:
         assert b" purge squid:" not in dpkg_before
@@ -238,8 +312,9 @@ def run():
     helper_audit = (root / "helper-1.log").read_text() + (root / "helper-2.log").read_text()
     restarted_audit = (root / "helper-2.log").read_text()
     assert f"operation=ComponentPackageQuery id={operation} " in restarted_audit
-    assert "operation=ComponentPackageChange " not in restarted_audit
-    assert helper_audit.count(f"operation=ComponentPackageChange id={operation} ") == 1
+    dispatch = "ComponentPackageInstall" if install else "ComponentPackageChange"
+    assert f"operation={dispatch} " not in restarted_audit
+    assert helper_audit.count(f"operation={dispatch} id={operation} ") == 1
     if native_unknown:
         pending = value(component + "/state", token)
         assert pending["pendingOperationId"] == operation and pending["state"]["recoveryRequired"], pending
@@ -256,6 +331,12 @@ def run():
     elif uninstall:
         print(f"PASS SQUID PACKAGE UNINSTALL RECEIPT: original={operation}; previous={initial_version}; "
               "state=succeeded; one dispatch and one dpkg removal; config and data retained", flush=True)
+    elif install:
+        installed = value(component + "/state", token)
+        assert installed["committedOperationId"] == operation and installed["state"]["ownership"] == "managed", installed
+        assert len(downloads) == 1
+        print(f"PASS SQUID PACKAGE INSTALL RECEIPT: original={operation}; version={version}; "
+              f"artifact={digest}; one download, dispatch and dpkg install; Squid active", flush=True)
     else:
         print(f"PASS SQUID PACKAGE ORIGINAL RECEIPT: original={operation}; version={version}; "
               f"artifact={digest}; state=succeeded; one dispatch and one dpkg upgrade", flush=True)
@@ -263,6 +344,9 @@ def run():
     assert worker.wait(timeout=12) == 0
     helper.terminate()
     helper.wait(timeout=10)
+    if install:
+        mirror.shutdown()
+        mirror.server_close()
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 set -euo pipefail
 bundle=$(realpath -e -- "$1")
 phase=${2:-receipt}
-case "$phase" in receipt|native-unknown|uninstall) ;; *) exit 2 ;; esac
+case "$phase" in receipt|native-unknown|uninstall|install) ;; *) exit 2 ;; esac
 test "$(id -u)" = 0
 work=$(mktemp -d /var/tmp/relaxkonos-squid-apt.XXXXXXXX)
 unit="relaxkonos-squid-apt-$(cat /proc/sys/kernel/random/uuid).service"
