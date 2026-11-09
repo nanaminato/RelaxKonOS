@@ -136,6 +136,7 @@ internal static class MihomoTunFullServerAcceptance
         var overviewCleanup = phase is ("squid-restart" or "inbound-restart")
             && File.Exists(Path.Combine(root, "full-overview-cleanup-proof"));
         var squidCleanup = phase == "squid-restart" && File.Exists(Path.Combine(root, "full-squid-cleanup-proof"));
+        var controllerCleanup = phase == "inbound-restart" && File.Exists(Path.Combine(root, "full-controller-cleanup-proof"));
         var dropStopReply = phase == "stop-reply-drop";
         var dropStartReply = phase == "start-reply-drop";
         var recoveryWriteFault = dropStartReply && File.Exists(Path.Combine(root, "full-tun-query-write-fault"));
@@ -187,7 +188,7 @@ internal static class MihomoTunFullServerAcceptance
             reuse: !first && !dropStopReply && !inboundCut && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"),
             seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
-        if (phase == "squid-restart")
+        if (phase is "squid-restart" or "inbound-restart")
             start.Environment["Proxy__Mihomo__Controller__Endpoint"] = "http://127.0.0.1:18882/";
         if (cleanupScope)
         {
@@ -203,6 +204,11 @@ internal static class MihomoTunFullServerAcceptance
         {
             start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
             start.Environment["RELAXKONOS_TEST_SQUID_CLEANUP"] = start.WorkingDirectory;
+        }
+        if (controllerCleanup)
+        {
+            start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
+            start.Environment["RELAXKONOS_TEST_CONTROLLER_CLEANUP"] = start.WorkingDirectory;
         }
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
         if (recoveryWriteFault || phase is "admission-managed" or "handoff-disabled" or "handoff-restart" or "cleanup-fault")
@@ -330,7 +336,8 @@ internal static class MihomoTunFullServerAcceptance
                 await WriteMarkerAsync(root, "full-server-stopping", "cleanup");
             }
             await exited;
-            if ((recoveryWriteFault || overviewCleanup || squidCleanup || phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut" or "cleanup-fault"))
+            if ((recoveryWriteFault || overviewCleanup || squidCleanup || controllerCleanup
+                || phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut" or "cleanup-fault"))
                 && server.ExitCode == 137) return;
             if (disabled && server.ExitCode != 0 && startupRefusal.Task.IsCompletedSuccessfully)
             {

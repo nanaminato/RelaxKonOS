@@ -3445,6 +3445,8 @@ exec {shlex.quote(str(systemctl))} "$@"
         overview_cleanup.unlink()
         for marker_name in ('arm', 'fail', 'held', 'release'):
             Path(f'{prefix}-{marker_name}').unlink()
+        controller_cleanup = root / 'full-controller-cleanup-proof'
+        controller_cleanup.touch()
         worker = launch('inbound-restart')
         pid = int(marker('full-server-pid'))
         token = login()
@@ -3455,6 +3457,40 @@ exec {shlex.quote(str(systemctl))} "$@"
         assert (native.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == witness
         probe(record, 'public-subscription-after-management-restart')
         print(f'PASS PUBLIC SUBSCRIPTION WITH QUARANTINED PROXY: original subscription={subscription_id}; management blocked, anonymous token and original receipt survived restart', flush=True)
+        observation_paths = [api + suffix for suffix in ('', '/runtime', '/groups', '/controller-config', '/connections', '/traffic', '/logs?limit=1')]
+        controller_path = api + '/controller-config'
+        normal = request(controller_path, token)
+        assert normal[0] == 200 and not normal[1]['routing'].get('problemCode'), normal
+        until(lambda: leases() == 0, 'controller work before cleanup injection')
+        prefix = root / 'full-server/full-controller-cleanup'
+        Path(f'{prefix}-arm').touch()
+        Path(f'{prefix}-fail').touch()
+        try:
+            assert request(controller_path, token) == normal
+            until(lambda: Path(f'{prefix}-held').exists(), 'controller request cleanup after its response')
+            assert leases() == 1
+            probe(record, 'controller-response-cleanup-held')
+        finally:
+            Path(f'{prefix}-release').touch()
+        module_path = '/api/v1.0/server/modules/relaxkonos.proxy'
+        until(lambda: request(module_path, token)[1]['residency']['state'] == 'faulted', 'controller request quarantine')
+        assert leases() == 1
+        assert all(request(path, token)[0] == 503 for path in observation_paths)
+        assert request(download_path) == (200, exported_configuration)
+        assert queue.read_bytes() == settled_queue
+        os.kill(pid, signal.SIGKILL)
+        assert worker.wait(timeout=12) == 0 and not Path(f'/proc/{pid}').exists()
+        controller_cleanup.unlink()
+        worker = launch('inbound-restart')
+        pid = int(marker('full-server-pid'))
+        token = login()
+        assert request(controller_path, token) == normal
+        assert all(request(path, token)[0] == 200 for path in observation_paths)
+        assert inbound_receipt(operation) == terminal and queue.read_bytes() == settled_queue
+        assert (native.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == witness
+        until(lambda: leases() == 0, 'controller work after restart')
+        probe(record, 'controller-response-cleanup-restarted')
+        print(f'PASS CONTROLLER OBSERVATION CLEANUP: original inbound={operation}; response delivered with one lease, seven reads blocked and restored', flush=True)
         audit = ipc.log.read_text()
         assert audit.count(f'operation=ProxyServerApply id={operation} ') == 1
         assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1

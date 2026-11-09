@@ -4703,7 +4703,7 @@ Mihomo 连接详情从有界快照返回连接 ID、端点、规则、代理链�
 
 服务端认证后将重叠的流量请求合并为一次 `/traffic` 样本与一次连接快照读取。一个客户端断开时，其余客户端仍能收到该样本。最后一个客户端断开后取消并排空采样，后续请求读取新样本。每个 HTTP 响应都有独立的工作租约，采样结束后释放控制器作用域。见[重叠流量采样](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-重叠流量采样)。
 
-运行时、代理组、路由和 DNS 读取的工作责任覆盖控制器读取、响应和清理。代理组仍按配置顺序显示。见[控制面读取责任](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-运行时与控制面读取责任)。
+运行时、代理组、路由和 DNS 读取的工作责任覆盖控制器读取、响应和清理。代理组仍按配置顺序显示。观察响应完成后由当前管理代次继续清理。清理故障时同代七条观察路由均返回 503，启用重启后恢复读取。[观察作用域实测](../architecture/server-module-evidence/Proxy-Observation.md#mihomo-观察-http-作用域与故障隔离)见[控制面读取责任](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-运行时与控制面读取责任)。
 
 四条控制面接口已用相同的 512 条真实连接和配对请求复测。各轮返回结果一致，Server 峰值 PSS 和延迟变化未形成稳定改善。见[控制面读取配对测量](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-mihomo-控制面读取配对测量)。
 

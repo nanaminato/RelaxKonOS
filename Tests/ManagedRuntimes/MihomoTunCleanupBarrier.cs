@@ -14,6 +14,7 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
 
     internal static void RegisterSettings(string root) => Register(root, typeof(IProxySettingsWriter), "full-settings-cleanup");
     internal static void RegisterSquid(string root) => Register(root, typeof(SquidGatewayService), "full-squid-cleanup");
+    internal static void RegisterController(string root) => Register(root, typeof(IMihomoControllerClient), "full-controller-cleanup");
 
     private static void Register(string root, Type serviceType, string prefix)
     {
@@ -38,7 +39,9 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
         services.Add(ServiceDescriptor.Describe(execution.ServiceType, provider =>
         {
             provider.GetRequiredService<MihomoTunCleanupBarrier>();
-            return ActivatorUtilities.CreateInstance(provider, execution.ImplementationType!);
+            return execution.ImplementationFactory is { } factory
+                ? factory(provider)
+                : ActivatorUtilities.CreateInstance(provider, execution.ImplementationType!);
         }, execution.Lifetime));
     }
 
