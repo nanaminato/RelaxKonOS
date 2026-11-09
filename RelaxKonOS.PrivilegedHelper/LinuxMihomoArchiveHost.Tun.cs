@@ -311,6 +311,25 @@ internal sealed partial class LinuxMihomoArchiveHost
         if (SignalPidFd(handle, sigterm, 0, 0) != 0) Fail("network_stop_unconfirmed");
     }
 
+    internal async Task StopBeforeTunPublicationAsync(RuntimePendingConfiguration pending, MihomoTunEffect owner, CancellationToken ct)
+    {
+        var registration = await ReadRegistrationAsync(ct);
+        if (registration is not { TunOperation: null } || registration.ConfigurationHash != pending.Plan.PreviousIdentity)
+            throw new RuntimePolicyException("runtime.network_registration_conflict");
+        var state = await StateAsync(ct);
+        var process = await ReadTunProcessAsync(state, ct);
+        using var handle = new SafeFileHandle(OpenPidFd(process.Pid, 0), ownsHandle: true);
+        if (handle.IsInvalid || await VerifyProcessAsync(registration, state, ct) is not { } verified
+            || verified.Pid != process.Pid || await ReadTunProcessAsync(await StateAsync(ct), ct) != process)
+            Fail("network_stop_unconfirmed");
+        ct.ThrowIfCancellationRequested();
+        await TunCheckpoint(registration.Binary, pending.OperationId, pending.Plan.CandidateIdentity).MarkInitialStopAsync(owner, process);
+        const int sigterm = 15;
+        if (SignalPidFd(handle, sigterm, 0, 0) != 0) Fail("network_stop_unconfirmed");
+        await WaitAsync(current => current.GetValueOrDefault("MainPID") == "0"
+            && current.GetValueOrDefault("ActiveState") == "inactive" && !Directory.Exists($"/proc/{process.Pid}"), ct);
+    }
+
     internal async Task CompleteTunStopAsync(Guid operation, CancellationToken ct)
     {
         var (_, checkpoint, effect) = await ReadTunOperationAsync(operation, ct);
@@ -410,7 +429,7 @@ internal sealed partial class LinuxMihomoArchiveHost
         if (effect.Phase != expected) Fail("network_checkpoint_conflict");
     }
 
-    private static void RequirePidFdSupport()
+    internal static void RequirePidFdSupport()
     {
         try
         {

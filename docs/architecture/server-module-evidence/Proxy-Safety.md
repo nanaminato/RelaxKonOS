@@ -870,6 +870,20 @@ Windows Release 的 38 项 TUN 边界检查通过，Linux 专属进程和 cgroup
 
 **未实现或仍受门禁保护。** 无法核实原停止结果时保留待核验。整模块安全交接仍待验收，Proxy 保持 resident。
 
+### 首次停止锁定原 systemd 进程
+
+**已实现且已验证。** 首次停止从按单元名执行改为 Helper 对经过原配置及程序核验的进程打开 pidfd。派发前持久保存该 PID、systemd 调用 ID、启动时刻及原网络意图。通过 pidfd 向原进程发送 SIGTERM。恢复只观察原进程退出和原单元状态，原进程或替代进程仍在时保留待核验。缺少进程身份的旧派发记录不能授权当前恢复。
+
+Linux x64 私有 systemd 原发布 `14ebe7bc86dd46eda0e50038eae3c24d` 在原 pidfd 信号生效、原 PID `106` 已退出但 Helper 尚未收到系统调用结果时中断。原派发记录逐项核对 systemd 调用 ID 和启动时刻。原补偿 IPC `46dbc6233470420783b97c21d3029e46` 恢复旧配置，原应答丢失时保留工作租约。再重启只读确认原终态，同键返回原回执，租约归零。恢复 PID `462` 提供真实流量，原管理路由及 resolver 设置保持，原停止信号一次。
+
+原发布 `aed3cd908d344d4e9ab8d01abc2575ab` 在已保存派发、信号尚未进入内核时，夹具在专属 systemd 中替换原 PID `106`。放行原系统调用得到 `ESRCH`。替代 PID `369` 未收到原信号，跨 Helper 和 Server 重启继续提供真实流量，配置和管理选路保持。原回执无完成时间，同键命中原 ID，新键受阻，未派发候选网络事务。
+
+同批通过候选注册中断恢复 `590697d8a4fe4809a4eaf545be5c5057`。三场专属 cgroup 已清理，共享服务、代理及 resolver 文件指纹一致。首轮夹具比较 JSON 时漏掉空 Process 字段，修正后复验通过。Windows Release 构建及 38 项 TUN 边界检查通过。原始 Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-pinned-stop.log` SHA-256 为 `b74a47a6d60a4e1cce0419b222a0b99e8dc16335532077afa2e8a56b9327d557`，归档 SHA-256 为 `1d7f4fac7c05633c5081d9633de750fa0c8d52510f74aa28672d08b23a6567b2`。
+
+**已实现但实机未验证。** 缺进程身份的历史派发记录由代码门禁保护，未独立实测。整机掉电仍需专属断电环境。已验证进程退出，对象释放、ALC 回收、隔离内存差值及生产收益未测量。
+
+**未实现或仍受门禁保护。** 证据不足时保留原操作与准入。整模块安全交接仍待验收，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

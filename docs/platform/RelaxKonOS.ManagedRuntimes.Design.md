@@ -37,7 +37,7 @@ Linux 在替换主台账前同步 `commits` 目录及其父目录。重用原操
 
 受管 Mihomo TUN 激活前，Helper 同步含原 `Activating` 检查点的主台账目录。目录同步失败时返回原待核验操作，当前调用不进入原生激活或补偿。见[激活前目录同步门禁](../architecture/server-module-evidence/Proxy-Safety.md#激活前的原事务目录同步门禁)。
 
-MR-03 的受管 TUN 生命周期要求原生检查点包含启动 ID、网络命名空间链接及内核 cookie。新激活在切换前核对内核能力并持久保存原网络归属，随后单独保存首次停止派发。恢复只以原归属授权。见[首次停止前实测](../architecture/server-module-evidence/Proxy-Safety.md#首次停止前持久化原网络归属)。恢复、具名启动与停止、以及撤销注册均要求原证据相符。缺少 cookie 的历史检查点保留待核验，当前 Helper 无法从现有命名空间补证。
+MR-03 的受管 TUN 生命周期要求原生检查点包含启动 ID、网络命名空间链接及内核 cookie。新激活在切换前核对内核能力并持久保存原网络归属，随后以 pidfd 锁定旧进程，并保存绑定该 PID、systemd 调用 ID 与启动时刻的首次停止派发。恢复只以原归属授权。见[首次停止前实测](../architecture/server-module-evidence/Proxy-Safety.md#首次停止前持久化原网络归属)。恢复、具名启动与停止、以及撤销注册均要求原证据相符。缺少 cookie 的历史检查点保留待核验，当前 Helper 无法从现有命名空间补证。
 
 原操作补偿同样先同步主台账目录，再写入回滚阶段和调用原生适配器。同步失败时保留原检查点，原观察、停止、还原和清理留待同一操作继续核验。见[补偿前目录同步门禁](../architecture/server-module-evidence/Proxy-Safety.md#补偿前的原事务目录同步门禁)。
 

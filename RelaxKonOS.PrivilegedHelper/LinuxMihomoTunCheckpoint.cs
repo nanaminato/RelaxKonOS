@@ -75,14 +75,17 @@ internal sealed class LinuxMihomoTunCheckpoint(string root, Guid operationId, Gu
         return owner;
     }
 
-    internal Task MarkInitialStopAsync(MihomoTunEffect owner) => WriteAsync(InitialStopPath, owner);
+    internal Task MarkInitialStopAsync(MihomoTunEffect owner, MihomoTunProcess process) =>
+        WriteAsync(InitialStopPath, owner with { Process = process });
 
-    internal bool InitialStopDispatched(MihomoTunEffect owner)
+    internal MihomoTunProcess? ReadInitialStop(MihomoTunEffect owner)
     {
         var dispatched = ReadEntry(InitialStopPath);
-        if (dispatched is null) return false;
-        if (dispatched != owner) throw Conflict();
-        return true;
+        if (dispatched is null) return null;
+        if ((dispatched with { Process = null }) != owner
+            || dispatched.Process is not { Pid: > 1, StartTicks: > 0 } process || process.InvocationId == Guid.Empty)
+            throw Conflict();
+        return process;
     }
 
     internal MihomoTunEffect? Read()

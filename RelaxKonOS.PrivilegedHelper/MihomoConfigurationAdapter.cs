@@ -98,6 +98,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
                 network.ManagementAddress, network.ManagementUserId, network.ManagementHash,
                 LinuxMihomoTunRoutes.TableFor(pending.OperationId), network.DnsRoutingDomain);
             var owner = new MihomoTunEffect(MihomoTunPhase.Intent, intent);
+            LinuxMihomoArchiveHost.RequirePidFdSupport();
             await LinuxMihomoArchiveHost.VerifyUndispatchedTunNetworkAsync(owner, ct);
             await TunCheckpoint(pending).WriteOwnerAsync(owner);
             // Capture and preparation flushed the files. Publish their names before admitting the switch.
@@ -121,9 +122,9 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             owner = checkpoint.ReadOwner();
             RequireOriginalNetworkIntent(pending, owner);
             await LinuxMihomoArchiveHost.VerifyUndispatchedTunNetworkAsync(owner, ct);
-            await checkpoint.MarkInitialStopAsync(owner);
+            await TunHost().StopBeforeTunPublicationAsync(pending, owner, ct);
         }
-        await host.StopAsync(ct);
+        else await host.StopAsync(ct);
         var revision = Revision(pending);
         var observed = await host.ObserveAsync(ct);
         RequireService(observed, revision);
@@ -284,8 +285,13 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         {
             if (!IsFixedLinuxHost) throw new RuntimePolicyException("runtime.network_transaction_required");
             await VerifyRestoredNetworkAsync(pending, effect, ct);
-            if (effect.Phase == MihomoTunPhase.Intent && !TunCheckpoint(pending).InitialStopDispatched(effect))
-                return await ObserveRestoredServiceAsync(pending, effect, ct);
+            if (effect.Phase == MihomoTunPhase.Intent)
+            {
+                var stopped = TunCheckpoint(pending).ReadInitialStop(effect);
+                if (stopped is null) return await ObserveRestoredServiceAsync(pending, effect, ct);
+                if (Directory.Exists($"/proc/{stopped.Pid}"))
+                    throw new RuntimePolicyException("runtime.network_stop_unconfirmed");
+            }
             await RequireMaterialAsync(pending, false, ct);
             if (await TunHost().RestoreTunRegistrationAsync(pending, binary, data, revision.MeasuredVersion,
                 beforeNetwork: effect.Phase == MihomoTunPhase.Intent, resumeOnly: true, ct))
@@ -475,14 +481,14 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         if (pending.Plan.NetworkIntentIdentity is null) return effect;
         var owner = checkpoint.ReadOwner();
         RequireOriginalNetworkIntent(pending, owner);
-        var stopped = checkpoint.InitialStopDispatched(owner);
+        var stopDispatched = checkpoint.ReadInitialStop(owner) is not null;
         var registration = FileIn(pending, "registration-activate.json");
         var mutation = FileIn(pending, "data-mutation");
         RuntimeSourceStore.RequireNoLinks(registration);
         RuntimeSourceStore.RequireNoLinks(mutation);
-        if (effect is not null && (effect.Intent != owner.Intent || !stopped)
+        if (effect is not null && (effect.Intent != owner.Intent || !stopDispatched)
             || effect is null && Path.Exists(registration)
-            || !stopped && Path.Exists(mutation))
+            || !stopDispatched && Path.Exists(mutation))
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         return effect ?? owner;
     }
