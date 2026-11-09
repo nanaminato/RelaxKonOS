@@ -16,8 +16,15 @@ public static class ProxyEndpoints
         app.MapProxyObservationEndpoints();
         app.MapGet(ProxyApiRoutes.Settings, (IProxySettingsReader settings, CancellationToken ct) => settings.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapProxySettingsUpdateEndpoint();
-        app.MapPost(ProxyApiRoutes.RuntimeExternalDetection, async (ProxyRuntimeRequest request, IProxyRuntimeManager runtime, CancellationToken ct) =>
-            string.IsNullOrWhiteSpace(request.ExternalPath) ? Problem(ProxyProblemCodes.ExternalRuntimeInvalid, StatusCodes.Status400BadRequest) : Results.Ok(await runtime.DetectExternalAsync(request.EngineId, request.ExternalPath, ct)))
+        app.MapPost(ProxyApiRoutes.RuntimeExternalDetection, (ProxyRuntimeRequest request, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.ExternalPath))
+                    return Problem(ProxyProblemCodes.ExternalRuntimeInvalid, StatusCodes.Status400BadRequest);
+                var result = await services.GetRequiredService<MihomoExternalVersionProbe>().DetectAsync(request.EngineId, request.ExternalPath, ct);
+                return result.ProblemCode == ProxyProblemCodes.RecoveryRequired
+                    ? Problem(result.ProblemCode, StatusCodes.Status503ServiceUnavailable) : Results.Ok(result);
+            }))
             .RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.RuntimeReleases, (RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest manifest) => manifest.Available())
             .RequireAuthorization("ProxyRead").WithTags("Proxy");

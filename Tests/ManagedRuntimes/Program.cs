@@ -1,6 +1,23 @@
 using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
+if (args is ["-v"] && OperatingSystem.IsLinux()
+    && File.Exists(Path.Combine(Environment.CurrentDirectory, "private-mihomo-version-fixture")))
+{
+    using var descendant = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/usr/bin/setsid")
+    {
+        UseShellExecute = false,
+        ArgumentList = { "/usr/bin/sleep", "30" }
+    }) ?? throw new InvalidOperationException("Unable to start the private version fixture descendant.");
+    Console.WriteLine("Mihomo version fixture");
+    Console.Error.WriteLine("Mihomo version fixture stderr");
+    var marker = Path.Combine(Environment.CurrentDirectory, "private-mihomo-version-pids");
+    await File.WriteAllTextAsync(marker + ".new", $"{Environment.ProcessId} {descendant.Id}");
+    File.Move(marker + ".new", marker);
+    await descendant.WaitForExitAsync();
+    return;
+}
+
 if (args is ["runtime-proxy-direct-reload-crash", var directRoot, var directState, var directRelay])
 {
     var result = await ProxyAuthenticatedPublicationChecks.ExecuteDirectReloadFixtureAsync(directRoot, directState, directRelay, default);

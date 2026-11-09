@@ -546,4 +546,17 @@ Linux 专属 systemd 的真实 Mihomo 控制器配置读取已返回 200，异�
 
 日志 `.artifacts/mb04-tun-full-zero-dns/external-probe-repro/linux.log` SHA256 `2eb3031a8600f5a547a031898af43fe3dd7ba4c4cc5e3f968dd57dcd3f184eda`，探测使用 Server 制品 SHA256 `c2990c5c17b4b4a9021641619b0ccdae2634bdb6e30e2635d806b167f697b1ad`。
 
-**未实现或仍受门禁保护。** 外部探测需要独占原进程树、stdout 和 stderr，所有权须先于执行建立。取消或超时必须等原生退出与两路输出完成。缺少确证时保留原工作及准入门禁。先验收独占执行者和原始清理证据，再迁移前台管理租约。现有受管安装台账仍负责原受管运行时操作。Proxy 保持 resident。
+**未实现或仍受门禁保护。** 外部探测需要独占原进程树、stdout 和 stderr，所有权须先于执行建立。取消或超时必须等原生退出与两路输出完成。缺少确证时保留原工作及准入门禁。后续实现与验收见下一节。现有受管安装台账仍负责原受管运行时操作。Proxy 保持 resident。
+
+
+### 外部 Mihomo 版本探测的独占执行与重启门禁
+
+**已实现且已验证。** Linux 探测使用独占 subreaper，在原进程退出后用原生进程身份终止并回收脱离会话的后代。原执行者在进程树清空及 stdout、stderr 均到达 EOF 后返回。Server 等待原执行者退出及外层两路管道排空。派发前的持久检查点绑定操作 ID、执行者 PID 和启动时间。取消、停机或超时期间由原 Proxy 工作租约持有任务和清理。工作在途拒绝并行探测。清理不明时保留原记录和租约，同代隔离。启动启用时拒绝新探测，禁用启动拒绝隐藏原责任。
+
+Windows Release 模块边界和控制器回归通过。Linux 专属 systemd 通过匿名拒绝、实际 Mihomo 版本、前台工作租约与客户端断开。原执行者 `2056`、探测进程 `2068` 及独立会话后代 `2083` 全部退出，输出排空后释放租约和门禁。再次探测时强制终止独占执行者，原记录 `68bd19d0-f1b3-48bc-8d80-57be99c50a33` 保留。夹具按 PID 描述符清理测试进程。Server 同代保留一份租约，禁用启动拒绝，启用重启返回 503，原记录和派发见证字节保持。原入站 `d42b6030-90c9-41d3-b5b7-d77f7e10d447` 的回执和队列保持，原生应用派发一次。受管 TUN `820f580936ee4de3bfd6e19b7d20d048` 的配置身份和原生台账保持，真实上游 HTTP、分流 DNS 和管理路由通过。专属 cgroup 清理完毕，共享服务及网络文件指纹一致。
+
+复验使用 `run-proxy-systemd-linux.sh --tun-fd <tests.dll> <Helper-apphost> ipc-http-inbound-tun`，并在测试程序集旁放置同一 Release 构建的 Linux 测试 apphost，启用脱离会话的探测夹具。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-final.log` SHA256 `38b75cc659ecc0dc9a81812431da2e47a7596e21e371bf786fe593f222f57bcb`。归档 SHA256 `577637cfb8e1e2360371b01e413450011c128ec08c47c2a3a6d4f04fb19db9d0`。
+
+**已实现，实机证据有缺口。** Windows 在发送路径前将执行者绑定原生 Job，并在确认 Job 退出和两路管道排空后释放门禁。本轮 Windows 通过 Release 回归，原生 Job 故障窗口待专项验收。
+
+**未实现或仍受门禁保护。** 生产中的未知探测仍缺原执行者的可信清理确证入口。下一项验证 Server 单独中断后原执行者排空，并为按原 ID 只读对账保留证明。已单独实测 Linux 原进程退出。整模块对象释放、ALC 回收、隔离负载内存及生产收益分别待验。Proxy 保持 resident。

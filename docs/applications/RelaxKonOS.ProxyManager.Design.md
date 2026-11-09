@@ -57,7 +57,7 @@ Android Mihomo 已接入来源/目录、实测安装观察、计划预览、精�
 
 ### 2026-10-19：生产台账注册切换（Server + 桌面）
 
-`IInstallationService` 的 Mihomo 注册现为 `MihomoRuntimeInstallationService`，旧固定清单安装器 `MihomoInstallationService` 与 `MihomoInstallationRequest` 一并删除：台账 `POST /api/v1.0/installations/Mihomo/{kind}` 只接受携带冻结计划的 `ManagedRuntimeInstallationRequest`，缺计划、计划运行时/动作/制品绑定不符、幂等键不符都在受理前拒绝，不存在旧请求解析或备用执行入口。`IProxyRuntimeManager` 同时去掉下载、安装、回退与卸载成员，只有只读观察和外部探测；`/proxy/runtime/download` 路由删除。维护期的组件清理不再自行删除运行时目录，只要受管根或旧状态仍存在就返回 `deployment.component_ownership_missing`，由受管台账移除。
+`IInstallationService` 的 Mihomo 注册现为 `MihomoRuntimeInstallationService`，旧固定清单安装器 `MihomoInstallationService` 与 `MihomoInstallationRequest` 一并删除：台账 `POST /api/v1.0/installations/Mihomo/{kind}` 只接受携带冻结计划的 `ManagedRuntimeInstallationRequest`，缺计划、计划运行时/动作/制品绑定不符、幂等键不符都在受理前拒绝，不存在旧请求解析或备用执行入口。`IProxyRuntimeManager` 同时去掉下载、安装、回退与卸载成员，保留只读观察，外部探测由独立的管理作用域持有；`/proxy/runtime/download` 路由删除。维护期的组件清理不再自行删除运行时目录，只要受管根或旧状态仍存在就返回 `deployment.component_ownership_missing`，由受管台账移除。
 
 代理状态不再依赖旧安装器自己的状态文件：`MihomoRuntimeManager.GetAsync` 在本地状态缺失时投影 Helper 实测的受管安装事实（归属、实测版本、控制器可达性），无法测量时返回 `proxy.runtime_state_unknown` 而不是“未安装”。启动/停止/重启仍走同一 `relaxkonos-mihomo.service`，配置与设置发布此前已走受管事务，因此代理工作区在不改变日常操作的前提下切换到受管运行时。
 
@@ -1139,6 +1139,8 @@ previous version
 ---
 
 # 22. External Runtime
+
+外部版本探测在启动前记录原操作和执行者身份。当前 Proxy 代次持有请求及清理责任，取消或超时后仍等待原进程树退出、标准输出和标准错误排空。清理缺少确证时保留原记录，后续探测返回 503。受管安装、发布和 TUN 恢复继续由各自原台账负责。[探测实测](../architecture/server-module-evidence/Proxy-Observation.md#外部-mihomo-版本探测的独占执行与重启门禁)
 
 允许管理员指定：
 

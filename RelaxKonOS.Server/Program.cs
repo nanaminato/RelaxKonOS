@@ -6,6 +6,7 @@ using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Storage;
 
 if (args is ["terminal-worker"]) { Environment.ExitCode = await RelaxKonOS.Server.Terminal.LinuxTerminalWorker.RunLocalAsync(); return; }
+if (args is ["mihomo-version-worker"]) { Environment.ExitCode = await RelaxKonOS.Server.Proxy.Mihomo.MihomoVersionWorker.RunAsync(); return; }
 
 if (args.FirstOrDefault() == "auth") { Environment.ExitCode = await AuthMaintenanceCommand.RunAsync(args); return; }
 if (args.FirstOrDefault() == "modules") { Environment.ExitCode = await ModuleMaintenanceCommand.RunAsync(args); return; }

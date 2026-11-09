@@ -278,18 +278,6 @@ public sealed class MihomoRuntimeManager(
         finally { _gate.Release(); }
     }
 
-    public async Task<ProxyRuntimeDto> DetectExternalAsync(string engineId, string executablePath, CancellationToken cancellationToken)
-    {
-        if (engineId != MihomoEngine.Id) return Unsupported(engineId);
-        if (!TrySafeExternalPath(executablePath, out var path) || !File.Exists(path) || Directory.Exists(path)
-            || !HasExpectedArchitecture(path) || (!OperatingSystem.IsWindows() && !IsExecutable(path)))
-            return new(MihomoEngine.Id, ProxyRuntimeMode.External, ProxyRuntimeState.Failed, null, null, false, true, ProxyProblemCodes.ExternalRuntimeInvalid);
-        var version = await probe.GetVersionAsync(path, cancellationToken);
-        return version is null
-            ? new(MihomoEngine.Id, ProxyRuntimeMode.External, ProxyRuntimeState.Failed, null, null, false, true, ProxyProblemCodes.ExternalRuntimeInvalid)
-            : new(MihomoEngine.Id, ProxyRuntimeMode.External, ProxyRuntimeState.Stopped, version, null, false, true);
-    }
-
     private async Task StageAndInstallReleaseAsync(MihomoRuntimeRelease release, string finalDirectory, Func<MihomoRuntimeRelease, string, CancellationToken, Task> stageArchiveAsync, Func<string, Task>? stageReporter, CancellationToken cancellationToken)
     {
         // Directory.Move is atomic only within one filesystem. On Linux /tmp is commonly tmpfs
@@ -594,14 +582,15 @@ public sealed class MihomoRuntimeManager(
         : timedOut
             ? "Mihomo configuration validation exceeded its 10-second limit."
             : "Mihomo rejected the downloaded subscription configuration.";
-    private static bool TrySafeExternalPath(string value, out string path)
+    internal static bool TryResolveExternalExecutable(string value, out string path)
     {
         path = "";
         try
         {
             if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value)) return false;
             path = Path.GetFullPath(value);
-            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0;
+            return (File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == 0
+                && HasExpectedArchitecture(path) && IsExecutable(path);
         }
         catch { return false; }
     }

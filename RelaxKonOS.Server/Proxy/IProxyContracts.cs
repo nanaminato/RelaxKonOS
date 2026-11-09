@@ -31,7 +31,6 @@ public interface IProxyRuntimeManager
     /// belong to the managed runtime ledger; this boundary can never change which bytes are installed.
     /// </summary>
     Task<ProxyRuntimeDto> GetAsync(string engineId, CancellationToken cancellationToken);
-    Task<ProxyRuntimeDto> DetectExternalAsync(string engineId, string executablePath, CancellationToken cancellationToken);
 }
 
 public interface IProxyProfileService

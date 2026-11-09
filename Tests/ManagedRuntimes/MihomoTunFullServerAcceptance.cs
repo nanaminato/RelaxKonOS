@@ -137,6 +137,7 @@ internal static class MihomoTunFullServerAcceptance
             && File.Exists(Path.Combine(root, "full-overview-cleanup-proof"));
         var squidCleanup = phase == "squid-restart" && File.Exists(Path.Combine(root, "full-squid-cleanup-proof"));
         var controllerCleanup = phase == "inbound-restart" && File.Exists(Path.Combine(root, "full-controller-cleanup-proof"));
+        var versionWorkerFault = phase == "inbound-restart" && File.Exists(Path.Combine(root, "full-version-worker-fault-proof"));
         var dropStopReply = phase == "stop-reply-drop";
         var dropStartReply = phase == "start-reply-drop";
         var recoveryWriteFault = dropStartReply && File.Exists(Path.Combine(root, "full-tun-query-write-fault"));
@@ -336,7 +337,7 @@ internal static class MihomoTunFullServerAcceptance
                 await WriteMarkerAsync(root, "full-server-stopping", "cleanup");
             }
             await exited;
-            if ((recoveryWriteFault || overviewCleanup || squidCleanup || controllerCleanup
+            if ((recoveryWriteFault || overviewCleanup || squidCleanup || controllerCleanup || versionWorkerFault
                 || phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut" or "cleanup-fault"))
                 && server.ExitCode == 137) return;
             if (disabled && server.ExitCode != 0 && startupRefusal.Task.IsCompletedSuccessfully)

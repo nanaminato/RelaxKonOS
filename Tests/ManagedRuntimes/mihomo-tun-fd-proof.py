@@ -3491,6 +3491,12 @@ exec {shlex.quote(str(systemctl))} "$@"
         until(lambda: leases() == 0, 'controller work after restart')
         probe(record, 'controller-response-cleanup-restarted')
         print(f'PASS CONTROLLER OBSERVATION CLEANUP: original inbound={operation}; response delivered with one lease, seven reads blocked and restored', flush=True)
+        version_fixture = Path(sys.argv[3]).with_suffix('')
+        if version_fixture.is_file():
+            version_fixture.chmod(0o755)
+            pid = verify_external_version(pid, record, version_fixture)
+            assert inbound_receipt(operation) == terminal and queue.read_bytes() == settled_queue
+            assert (native.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == witness
         audit = ipc.log.read_text()
         assert audit.count(f'operation=ProxyServerApply id={operation} ') == 1
         assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
@@ -3499,6 +3505,95 @@ exec {shlex.quote(str(systemctl))} "$@"
         assert worker.wait(timeout=12) == 0
         print(f'PASS SCOPED INBOUND TUN RECOVERY: original={operation}; TUN={publication}; '
               f'Mihomo PID={record["service"][0]}; sing-box PID={inbound_pid}; configuration={record["credential"]}', flush=True)
+
+    def verify_external_version(server_pid, record, fixture):
+        nonlocal worker, token
+        route = api + '/runtime/detect-external'
+        module_path = '/api/v1.0/server/modules/relaxkonos.proxy'
+        fence = queue.with_name('mihomo-version-probe.pending')
+        enabled = root / 'full-server/private-mihomo-version-fixture'
+        pids = root / 'full-server/private-mihomo-version-pids'
+        request_body = {'engineId': 'mihomo', 'externalPath': str(fixture)}
+        enabled.touch()
+        assert request(route, data=request_body)[0] == 401 and not fence.exists()
+        status, runtime = request(route, token, data={**request_body, 'externalPath': str(root / 'mihomo')})
+        assert status == 200 and runtime['mode'] == 'external' and 'Mihomo' in runtime['version'], (status, runtime)
+        until(lambda: leases() == 0, 'version success scope drain')
+        assert not fence.exists()
+
+        def start_probe():
+            replies = []
+
+            def read():
+                try:
+                    replies.append(request(route, token, data=request_body))
+                except ConnectionError:
+                    replies.append('disconnected')
+
+            thread = threading.Thread(target=read, daemon=True)
+            thread.start()
+            until(pids.exists, 'original external process and detached descendant')
+            parent, descendant = map(int, pids.read_text().split())
+            stat = Path(f'/proc/{parent}/stat').read_text().rsplit(')', 1)[1].split()
+            owner = int(stat[1])
+            assert 'mihomo-version-worker' in Path(f'/proc/{owner}/cmdline').read_text()
+            until(lambda: Path(f'/proc/{descendant}/stat').read_text().rsplit(')', 1)[1].split()[3] == str(descendant),
+                  'detached descendant session')
+            dispatch = json.loads(fence.read_bytes())
+            assert leases() == 1 and uuid.UUID(dispatch['OperationId'])
+            assert dispatch['WorkerPid'] == owner and dispatch['WorkerStartedAt']
+            return thread, replies, owner, parent, descendant
+
+        thread, replies, owner, parent, descendant = start_probe()
+        assert request(route, token, data=request_body)[0] == 503
+        thread.join(timeout=7)
+        assert replies == ['disconnected'], replies
+        until(lambda: not fence.exists() and leases() == 0, 'cancelled original process and pipe drain')
+        assert all(not Path(f'/proc/{pid}').exists() for pid in (owner, parent, descendant))
+        pids.unlink()
+        probe(record, 'external-version-cancelled')
+        print(f'PASS EXTERNAL VERSION CANCEL: owner={owner}; root={parent}; detached={descendant}; original tree and both pipes drained', flush=True)
+
+        forced = root / 'full-version-worker-fault-proof'
+        forced.touch()
+        # The wrapper reads its expected-exit fixture flag at process startup.
+        os.kill(server_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        worker = launch('inbound-restart')
+        server_pid = int(marker('full-server-pid'))
+        token = login()
+        thread, replies, owner, parent, descendant = start_probe()
+        original = fence.read_bytes()
+        original_id = json.loads(original)['OperationId']
+        owner_fd = os.pidfd_open(owner)
+        try:
+            signal.pidfd_send_signal(owner_fd, signal.SIGKILL)
+        finally:
+            os.close(owner_fd)
+        thread.join(timeout=7)
+        until(lambda: request(module_path, token)[1]['residency']['state'] == 'faulted', 'unknown external version cleanup quarantine')
+        assert leases() == 1 and fence.read_bytes() == original
+        for pid in (parent, descendant):
+            fd = os.pidfd_open(pid)
+            try:
+                signal.pidfd_send_signal(fd, signal.SIGKILL)
+            finally:
+                os.close(fd)
+        original_processes = pids.read_bytes()
+        os.kill(server_pid, signal.SIGKILL)
+        assert worker.wait(timeout=12) == 0
+        forced.unlink()
+        worker = launch('admission-disabled')
+        assert worker.wait(timeout=15) == 0
+        assert original_id in (root / 'full-startup-refused').read_text()
+        worker = launch('inbound-restart')
+        server_pid = int(marker('full-server-pid'))
+        token = login()
+        assert request(route, token, data=request_body)[0] == 503
+        assert fence.read_bytes() == original and pids.read_bytes() == original_processes
+        probe(record, 'external-version-unknown-after-restart')
+        print(f'PASS EXTERNAL VERSION UNKNOWN: original={original_id}; disabled startup refused and enabled restart did not redispatch', flush=True)
+        return server_pid
 
     def verify_handoff(pid, record, publication):
         nonlocal worker, first_worker, token

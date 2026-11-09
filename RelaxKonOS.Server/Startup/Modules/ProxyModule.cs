@@ -56,6 +56,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         builder.Services.AddScoped<IProxyEngine, MihomoEngine>();
         builder.Services.AddScoped<IProxyEngineRegistry, ProxyEngineRegistry>();
         builder.Services.AddScoped<IProxyPlatformService, ProxyPlatformService>();
+        builder.Services.AddScoped<MihomoExternalVersionProbe>();
         builder.Services.AddScoped<IProxySettingsWriter, MihomoSettingsService>();
         builder.Services.AddScoped<IMihomoApplicationConfigurationPublisher>(services =>
             services.GetRequiredService<MihomoConfigurationPublicationService>());
@@ -188,7 +189,10 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
             ? await ProxyOperationStore.InspectPersistedResponsibilitiesAsync(services.GetRequiredService<IProxyPlatformPaths>(), cancellationToken)
             : await operations.InspectResponsibilitiesAsync(cancellationToken);
         var publication = await InspectPublicationAsync(services, confirmPublication, cancellationToken);
-        var safety = await ProxySafetyResponsibilities.InspectAsync(services, services.GetRequiredService<IProxyPlatformPaths>(), confirmPublication, cancellationToken);
+        var paths = services.GetRequiredService<IProxyPlatformPaths>();
+        var safety = await ProxySafetyResponsibilities.InspectAsync(services, paths, confirmPublication, cancellationToken);
+        var probe = MihomoExternalVersionProbe.InspectResponsibility(paths);
+        if (probe is not null) return [.. facts.Concat(safety).Select(fact => new ServerModuleOrphanedWork(Id, fact)), .. publication, new(Id, probe)];
         return [.. facts.Concat(safety).Select(fact => new ServerModuleOrphanedWork(Id, fact)), .. publication];
     }
 
