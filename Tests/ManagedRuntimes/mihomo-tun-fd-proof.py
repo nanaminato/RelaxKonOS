@@ -2153,6 +2153,7 @@ def proof_full_http_shutdown(ipc, case):
     squid = case in ('ipc-http-squid', 'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account')
     squid_tun = case == 'ipc-http-squid-tun-recovery-fault'
     zero_dns = case == 'ipc-http-zero-dns'
+    pam_retry = zero_dns and Path(sys.argv[3]).with_name('tun-pam-retry.fixture').is_file()
     early_owner = case == 'ipc-http-early-owner'
     replaced_stop = case == 'ipc-http-initial-stop-replaced'
     restored_replaced = case == 'ipc-http-restored-process-replaced'
@@ -2180,9 +2181,9 @@ def proof_full_http_shutdown(ipc, case):
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
     assert mounts['/etc'] == 'overlay'
-    if removal_admin:
+    if removal_admin or pam_retry:
         assert all(mounts.get(path) == 'tmpfs' for path in ('/var/lib', '/run', '/etc/relaxkonos', '/etc/systemd/system'))
-    administrator = json.loads(sys.stdin.readline()) if removal_admin else None
+    administrator = json.loads(sys.stdin.readline()) if removal_admin or pam_retry else None
     base = 'http://192.0.2.2:18970'
     api = '/api/v1.0/proxy'
     queue = Path('/var/lib/relaxkonos/proxy/state/proxy-operations.json')
@@ -2830,6 +2831,7 @@ def proof_full_http_shutdown(ipc, case):
             return pending.get('recoveryProblemCode') == problem
 
         for phase, problem in gates:
+            manual_owner = pam_retry and phase == 'foreign-cookie'
             original_checkpoints = {}
             if phase in ('missing-cookie', 'foreign-cookie'):
                 for path in operation_dir.glob('*.json'):
@@ -2847,7 +2849,7 @@ def proof_full_http_shutdown(ipc, case):
             ipc.start_helper(block_namespace_cookie=phase == 'unavailable-cookie')
             assert os.readlink(f'/proc/{ipc.helper.pid}/ns/net') == record['namespace']
             assert state_file.read_bytes() == pending_state
-            worker = launch('zero-dns-recover' if unknown_dns else 'restart')
+            worker = launch('zero-dns-pam-retry' if manual_owner else 'zero-dns-recover' if unknown_dns else 'restart')
             blocked_pid = int(marker('full-server-pid'))
             if unknown_dns:
                 rejected_correlation = marker('full-zero-dns-recovery-held')
@@ -2870,9 +2872,10 @@ def proof_full_http_shutdown(ipc, case):
             assert 'operation=MihomoRuntimeConfigure ' not in blocked_log
             if unknown_dns:
                 assert blocked_log.count(f'operation=MihomoRuntimeRecover id={uuid.UUID(rejected_correlation)} ') == 1
-            os.kill(blocked_pid, signal.SIGKILL if unknown_dns else signal.SIGTERM)
-            assert worker.wait(timeout=12) == 0
-            ipc.stop_helper()
+            if not manual_owner:
+                os.kill(blocked_pid, signal.SIGKILL if unknown_dns else signal.SIGTERM)
+                assert worker.wait(timeout=12) == 0
+                ipc.stop_helper()
             for path, raw in original_checkpoints.items():
                 path.write_bytes(raw)
             pending_state = state_file.read_bytes()
@@ -2908,18 +2911,51 @@ def proof_full_http_shutdown(ipc, case):
         if partial_dns:
             held_witness.rename(witness)
         pending_state = state_file.read_bytes()
-        ipc.start_helper()
+        if not pam_retry:
+            ipc.start_helper()
         assert ipc.helper.pid != original_helper_pid and state_file.read_bytes() == pending_state
         assert os.readlink(f'/proc/{ipc.helper.pid}/ns/net') == record['namespace']
         forward('after-helper-restart')
         assert resolver_snapshot() == resolver_pending and mirror.read_bytes() == original_mirror
-        worker = launch('zero-dns-recover')
-        recovery_pid = int(marker('full-server-pid'))
+        retry_thread = None
+        retry_results = []
+        if pam_retry:
+            recovery_pid = blocked_pid
+            retry = '/api/v1.0/managed-runtimes/mihomo/recovery/retry'
+            body = {'operationId': str(uuid.UUID(publication))}
+            recover_calls = ipc.log.read_text().count('operation=MihomoRuntimeRecover ')
+            assert recover_calls == 1
+            assert request(retry, data=body)[0] == 401
+            status, refused = request(retry, token, data=body)
+            assert status == 403 and refused.get('code') == 'elevation-required', (status, refused)
+            status, elevated = request('/api/v1.0/privileged/elevation', token, data={
+                'capability': 'MihomoInstall', 'target': 'mihomo',
+                'administratorUsername': administrator['identifier'], 'password': administrator['password']})
+            assert status == 200, (status, elevated.get('problemCode'))
+            assert request(retry, token, data={'operationId': str(uuid.uuid4())})[0] == 409
+            assert ipc.log.read_text().count('operation=MihomoRuntimeRecover ') == recover_calls and leases() == 0
+            original_queue = queue.read_bytes()
+            (root / 'full-pam-retry-armed').touch()
+
+            def retry_original():
+                try:
+                    retry_results.append(request(retry, token, data=body))
+                except ConnectionError:
+                    retry_results.append('disconnected')
+
+            retry_thread = threading.Thread(target=retry_original, daemon=True)
+            retry_thread.start()
+        else:
+            worker = launch('zero-dns-recover')
+            recovery_pid = int(marker('full-server-pid'))
         correlation = marker('full-zero-dns-recovery-held')
-        token = login()
+        if not pam_retry:
+            token = login()
         waiting = read(publication)
         assert waiting['state'] == 'interrupted' and waiting['stage'] == 'managed_tun' and not waiting.get('completedAt'), waiting
-        assert leases() == 0 and submit('enable', key, {'profileId': profile}) == publication
+        assert leases() == int(pam_retry) and submit('enable', key, {'profileId': profile}) == publication
+        if pam_retry:
+            assert retry_thread.is_alive() and queue.read_bytes() == original_queue
         status, blocked = request(api + '/tun/enable', token, 'full-while-recovering', {'profileId': profile})
         assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
         observed = json.loads(checkpoint(record, 'observe-commit'))
@@ -2939,9 +2975,15 @@ def proof_full_http_shutdown(ipc, case):
         assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
         restored = service_identity()
         terminal_state = state_file.read_bytes()
+        if pam_retry:
+            assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
+                           '--max-time', '3', f'http://{target}:18880/mb04-pam-retry-before-cut') == 'upstream-through-inherited-tun'
 
         os.kill(recovery_pid, signal.SIGKILL)
         assert worker.wait(timeout=8) == 0
+        if pam_retry:
+            retry_thread.join(timeout=6)
+            assert retry_results == ['disconnected']
         ipc.stop_helper()
         ipc.start_helper()
         worker = launch('restart')
@@ -2953,12 +2995,18 @@ def proof_full_http_shutdown(ipc, case):
         assert original['state'] == 'failed' and original['problemCode'] == 'proxy.config_apply_failed', original
         assert submit('enable', key, {'profileId': profile}) == publication
         assert read(publication) == original and service_identity() == restored and state_file.read_bytes() == terminal_state
+        if pam_retry:
+            assert config.read_bytes() == original_mirror and network_baseline() == record['baseline']
+            assert resolver_snapshot() == resolver_before
         check_dns_writes()
         assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text() and 'operation=MihomoRuntimeRecover ' not in ipc.log.read_text()
         assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
                        '--max-time', '3', f'http://{target}:18880/mb04-zero-dns-restored') == 'upstream-through-inherited-tun'
         os.kill(restart_pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
+        if pam_retry:
+            print(f'PASS TUN PAM EXPLICIT RETRY: original={publication}; recovery IPC={correlation}; '
+                  f'restored PID={restored[0]}; one mutation, original queue settled after reply loss', flush=True)
         label = 'PARTIAL DNS' if partial_dns else 'ZERO DNS'
         print(f'PASS TUN FULL JWT {label}: original={publication}; recovery IPC={correlation}; '
               f'restored PID={restored[0]}; one rule removal, original receipt and work lease drained')

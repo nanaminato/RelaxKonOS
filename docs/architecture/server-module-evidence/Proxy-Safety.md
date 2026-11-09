@@ -1400,7 +1400,19 @@ Windows Release 的注册 25 项、发布事务 113 项、运行时 HTTP 57 项�
 
 Windows Release 运行时 HTTP 57 项、发布 113 项、Core 安全和模块里程碑通过。Linux 两组专属进程与 cgroup 已清理，宿主运行时服务、代理及 resolver 文件指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-explicit-tun-retry-final.log` 的 SHA-256 为 `502b205de4da577d3f7947b435ee12f75957b847c9c17607c6fe89db7c6b64e0`，归档为 `708acfd68c144b57d3fcbcaf57c1edf6033ba38f4d8450dc510e00d740151ec5`。
 
-**仍待验收。** 本场景确认真实进程退出。PAM 提权与显式重试的联合实机、对象释放、ALC、隔离内存与生产收益分别开放。Proxy 保持 resident。
+本场景确认真实进程退出。完整 PAM 提权与显式重试的联合实机见下一节。对象释放、ALC、隔离内存与生产收益分别开放。Proxy 保持 resident。
+
+### 完整 Server 的 PAM 提权与原 TUN 补偿
+
+**已实现且已验证。** 既有 Linux 测试机的私有 systemd 使用生产 PAM 登录、JWT、管理员提权和真实 Helper。候选已真实转发时中断原 Server 与 Helper。缺失、不可读及错配的网络命名空间 cookie 均维持原待核验。错配组的 Core 首次只读核验已结束后，夹具恢复原检查点字节。匿名显式重试返回 401，未提权返回 403。经现有管理员账号完成 `MihomoInstall` 提权后，错误操作 ID 返回 409。上述三个请求没有增加 Helper 恢复调用。
+
+提权请求按原发布 `4782e0fb-1424-498b-a865-f93d85c76d7c` 执行一次实际补偿。原 IPC `ad59cd56-1ffe-4e7d-ba73-84a7c9c7bb1e` 的 Helper 终帧已被截留，Server 仍持一份工作租约，原队列字节保持。原配置摘要、管理选路、resolver 基线和真实上游流量在原请求断开前核对。仅强退 Server 后重启 Helper 与 Server，原恢复进程 PID `1014`、进程身份和原生台账字节保持，重启后的管理选路、配置、resolver 基线再次逐项吻合，真实上游再次通过。按 ID 与同键均返回原 `failed / proxy.config_apply_failed`，重启后的工作租约归零。全程一次原规则删除，恢复代次零配置派发，最终重启没有再次派发恢复。
+
+Windows Release 运行时 HTTP 57 项、发布 113 项及 TUN 边界 38 项通过。Linux x64 Release 完整认证验收确认进程退出、专属 cgroup 清理和宿主共享服务及代理、resolver 文件指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-pam-explicit-retry-final.log` 的 SHA-256 为 `c40e48f8bf28c58fcadeac53b3a4010b0ec6aba57710396c2601f32666ea1400`，归档为 `0ba1ac2c8903a666b552385de82d46a0a062b04108a60c342f865081942a56be`。
+
+**已实现但实机未验证。** 整机掉电及其他平台须有独立环境。本轮确认实际进程退出。对象释放、ALC、隔离内存及生产收益分别待验。
+
+**未实现或仍受门禁保护。** 显式重试服务当前在返回结果时归还原请求工作租约。HTTP 发送和请求作用域异步释放的租约接续仍待验证与接入。证据缺失时维持原门禁。Proxy 保持 resident。
 
 
 ### 原补偿作业与独立宿主见证联合复验

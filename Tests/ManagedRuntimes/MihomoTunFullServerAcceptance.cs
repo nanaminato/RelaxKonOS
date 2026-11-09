@@ -162,7 +162,7 @@ internal static class MihomoTunFullServerAcceptance
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "cleanup-drain" or "cleanup-cut" or "cleanup-fault" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart" or "inbound-cut" or "inbound-restart"
-            or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"
+            or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover" or "zero-dns-pam-retry"
             or "named-start-cut" or "stop-reply-drop" or "start-reply-drop" or "baseline-on" or "baseline-off"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
@@ -218,8 +218,9 @@ internal static class MihomoTunFullServerAcceptance
             holdConfirmedSquidRollback: phase == "squid-cut") : null;
         await using var removalRelay = phase == "removal-cut" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-removal-reply.sock", socket, ct, (operation, _) => operation == "MihomoRuntimeExecute") : null;
-        await using var recoveryRelay = phase == "zero-dns-recover" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
-            "/run/rk-zero-dns-reply.sock", socket, ct, (operation, _) => operation == "MihomoRuntimeRecover") : null;
+        await using var recoveryRelay = phase is "zero-dns-recover" or "zero-dns-pam-retry" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+            "/run/rk-zero-dns-reply.sock", socket, ct, (operation, _) => operation == "MihomoRuntimeRecover"
+                && (phase == "zero-dns-recover" || File.Exists(Path.Combine(root, "full-pam-retry-armed")))) : null;
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly,
             relay?.Path ?? expiryRelay?.Path ?? inboundRelay?.Path ?? squidRelay?.Path ?? removalRelay?.Path ?? recoveryRelay?.Path ?? socket, root,
             reuse: !first && !dropStopReply && !inboundCut && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"),
