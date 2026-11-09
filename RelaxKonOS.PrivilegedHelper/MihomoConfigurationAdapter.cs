@@ -349,7 +349,9 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
     {
         if (!(await host.ObserveRegistrationAsync(ct)).Running)
             await StartPreviousServiceAsync(pending, revision, ct, restoredTun: true);
-        return await ObserveRestoredServiceAsync(pending, effect, ct);
+        var evidence = await ObserveRestoredServiceAsync(pending, effect, ct);
+        await TunHost().VerifyRestoredTunProcessAsync(pending.OperationId, ct);
+        return evidence;
     }
 
     private async Task StartPreviousServiceAsync(RuntimePendingConfiguration pending, RuntimeStoredRevision revision, CancellationToken ct,
@@ -365,7 +367,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
             }
             else await host.StartAsync(ct);
         }
-        catch (Exception error) when (error is InvalidOperationException or TimeoutException)
+        catch (Exception error) when (!restoredTun && error is (InvalidOperationException or TimeoutException))
         {
             // systemd may have started the restored program before its command failed to return.
             var started = await host.ObserveAsync(ct);
@@ -382,7 +384,14 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
         if (pending.RestoredNetworkCheckpoint != (effect is not null))
             throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
         if (effect is not null) await VerifyRestoredNetworkAsync(pending, effect, ct);
-        return await ObserveRestoredServiceAsync(pending, effect, ct);
+        var evidence = await ObserveRestoredServiceAsync(pending, effect, ct);
+        if (effect is not null)
+        {
+            var owner = TunCheckpoint(pending).ReadOwner();
+            if (TunCheckpoint(pending).ReadInitialStop(owner) is not null)
+                await TunHost().VerifyRestoredTunProcessAsync(pending.OperationId, ct);
+        }
+        return evidence;
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]

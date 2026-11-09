@@ -884,6 +884,18 @@ Linux x64 私有 systemd 原发布 `14ebe7bc86dd46eda0e50038eae3c24d` 在原 pid
 
 **未实现或仍受门禁保护。** 证据不足时保留原操作与准入。整模块安全交接仍待验收，Proxy 保持 resident。
 
+### 补偿启动的进程见证与替换门禁
+
+**已实现且已验证。** Helper 在原补偿启动的 systemd 命令成功返回后，将实测 PID、systemd 调用 ID、进程启动时刻、旧配置摘要与原 operationId 保存为 `registration-start-process.json`。结案和恢复清理前重新核对该见证及实际进程。仅有派发记录、无法核实启动结果或当前进程与见证不符时，保留原待核验。
+
+Linux x64 私有 systemd 原发布 `8adaf28adc1d467e99d26a74a85a139f` 在恢复旧配置、记录原进程 PID `507` 后、原 Helper 尚未结案时中断。隐藏见证后重启，原 PID 继续转发，Helper 返回 `runtime.network_restored_start_unconfirmed`，未回填见证。归还原见证并在专属 systemd 中将服务替换为同配置 PID `645`，重启后仍返回相同待核验原因。原见证字节不变，原 HTTP 回执无完成时间，同键命中原 ID，异键受阻。两场均核对真实流量、原管理选路、配置及 resolver 快照。
+
+同批原停止应答丢失 `edf1d455dc8c40798acdf69f96df2d22` 在保有匹配进程见证时恢复原终态，工作租约归零。注册中断原 `2b40ba3d8e4a44089beea17fa255c1af` 恢复通过。Windows Release 构建与 38 项 TUN 边界检查通过。三场专属 cgroup 清理，宿主共享服务、代理及 resolver 文件指纹一致。原始日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-process.log` SHA-256 为 `ddb86643846e7b650d864bb8cb8fba58f805175c7bc3e45f0baf5ac259a0237e`，归档 SHA-256 为 `6c735d259d1b463d3abb427d0f1d7207bf6aa2cb5bdbe1b2f352eac652ecd2fe`。
+
+**已实现但实机未验证。** 整机掉电需独立断电环境。已验证进程退出，对象释放、ALC 回收、隔离内存差值及生产收益未测量。
+
+**未实现或仍受门禁保护。** 进程见证采自命令成功返回后的首次观察。原启动作业和首次观察之间的进程替换还需要独立的作业或启动器归属见证。缺证据的原操作继续待核验，整模块安全交接前 Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

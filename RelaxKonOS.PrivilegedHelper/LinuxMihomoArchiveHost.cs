@@ -281,8 +281,8 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         if (restoredOperation is not null && (initial.GetValueOrDefault("MainPID") != "0"
             || initial.GetValueOrDefault("UnitFileState") != "disabled"
             || initial.GetValueOrDefault("ActiveState") is not ("inactive" or "failed"))) Fail("state_unknown");
-        if (initial.GetValueOrDefault("ActiveState") == "failed") await CommandAsync("reset-failed", ct);
         if (restoredOperation is { } operation) await ArmRestoredTunStartAsync(operation, ct);
+        if (initial.GetValueOrDefault("ActiveState") == "failed") await CommandAsync("reset-failed", ct);
         try { await CommandAsync("start", ct); }
         catch (InvalidOperationException) when (restoredOperation is null)
         {
@@ -297,7 +297,15 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
             || state.GetValueOrDefault("ActiveState") == "active" && state.GetValueOrDefault("SubState") == "running"
             && int.TryParse(state.GetValueOrDefault("MainPID"), out var pid) && pid > 1
             && new FileInfo($"/proc/{pid}/exe").LinkTarget == registration.Binary, ct);
-        await ObserveAsync(ct);
+        if (restoredOperation is { } restored)
+        {
+            var process = await ObserveRestoredProcessAsync(restored, registration, ct);
+            var path = RestoredProcessPath(restored);
+            if (Path.Exists(path)) Fail("network_restored_start_unconfirmed");
+            await WriteRestoreFileAsync(restored, path, JsonSerializer.Serialize(process),
+                UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+        }
+        else await ObserveAsync(ct);
     }
 
     private static async Task WaitAsync(Func<Dictionary<string, string>, bool> settled, CancellationToken ct)

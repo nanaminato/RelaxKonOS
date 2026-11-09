@@ -7,6 +7,7 @@ namespace RelaxKonOS.PrivilegedHelper;
 internal sealed partial class LinuxMihomoArchiveHost
 {
     private sealed record RegistrationRestore(Guid OperationId, Registration Previous, Registration Restored);
+    private sealed record RestoredProcess(Guid OperationId, string ConfigurationIdentity, MihomoTunProcess Process);
 
     private async Task ConfigurePublicationTunAsync(RuntimePendingConfiguration pending, string binary, string data,
         CancellationToken ct)
@@ -93,7 +94,10 @@ internal sealed partial class LinuxMihomoArchiveHost
         {
             if (existing && restoredRegistration && restoredUnit && state.GetValueOrDefault("NeedDaemonReload") == "no"
                 && await ReadRestoreFileAsync(RestoredStartPath(operation), ct) == operation.ToString("N"))
-                return true; // The caller verifies the existing process and credential, without dispatching start again.
+            {
+                await VerifyRestoredTunProcessAsync(operation, ct);
+                return true;
+            }
             Fail("state_unknown");
         }
         RuntimeSourceStore.RequireNoLinks(RestoredStartPath(operation));
@@ -152,6 +156,33 @@ internal sealed partial class LinuxMihomoArchiveHost
 
     private static string RestoredStartPath(Guid operation) =>
         Path.Combine(Root, "operations", operation.ToString("N"), "registration-start-dispatched");
+
+    private static string RestoredProcessPath(Guid operation) =>
+        Path.Combine(Root, "operations", operation.ToString("N"), "registration-start-process.json");
+
+    private static async Task<RestoredProcess> ObserveRestoredProcessAsync(Guid operation, Registration registration, CancellationToken ct)
+    {
+        var state = await StateAsync(ct);
+        var process = await ReadTunProcessAsync(state, ct);
+        if (registration.TunOperation is not null || state.GetValueOrDefault("UnitFileState") != "disabled"
+            || await VerifyProcessAsync(registration, state, ct) is not { } verified || verified.Pid != process.Pid
+            || await ReadTunProcessAsync(await StateAsync(ct), ct) != process)
+            Fail("network_restored_start_unconfirmed");
+        return new(operation, registration.ConfigurationHash, process);
+    }
+
+    internal async Task VerifyRestoredTunProcessAsync(Guid operation, CancellationToken ct)
+    {
+        var path = RestoredProcessPath(operation);
+        RuntimeSourceStore.RequireNoLinks(path);
+        if (!File.Exists(path) || await ReadRestoreFileAsync(RestoredStartPath(operation), ct) != operation.ToString("N"))
+            Fail("network_restored_start_unconfirmed");
+        var registration = await ReadRegistrationAsync(ct) ?? throw new RuntimePolicyException("runtime.network_registration_conflict");
+        var observed = await ObserveRestoredProcessAsync(operation, registration, ct);
+        if (await ReadRestoreFileAsync(path, ct) != JsonSerializer.Serialize(observed))
+            Fail("network_restored_start_unconfirmed");
+        MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(path)!);
+    }
 
     private static async Task<string> ReadRestoreFileAsync(string path, CancellationToken ct)
     {

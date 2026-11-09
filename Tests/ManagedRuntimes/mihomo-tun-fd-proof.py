@@ -1443,7 +1443,7 @@ class IpcPublicationWorkers:
         self.helper = None
         self.generation = 0
 
-    def start_helper(self, *, block_namespace_cookie=False, foreign_network=False):
+    def start_helper(self, *, block_namespace_cookie=False, foreign_network=False, prefix=()):
         assert self.helper is None
         self.generation += 1
         self.log = root / f'ipc-helper-{self.generation}.log'
@@ -1452,8 +1452,9 @@ class IpcPublicationWorkers:
             args = [sys.executable, '-I', script, 'cookie-unavailable-helper', root, *args]
         if foreign_network:
             args = ['/usr/bin/unshare', '--net', *args]
+        self.traced = bool(prefix)
         with self.log.open('x') as log:
-            self.helper = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
+            self.helper = subprocess.Popen([*prefix, *args], stdout=log, stderr=subprocess.STDOUT, start_new_session=self.traced)
         deadline = time.monotonic() + 8
         while self.helper.poll() is None and time.monotonic() < deadline:
             try:
@@ -1467,7 +1468,12 @@ class IpcPublicationWorkers:
     def stop_helper(self):
         if self.helper is None:
             return
-        if self.helper.poll() is None:
+        if self.traced:
+            try:
+                os.killpg(self.helper.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        elif self.helper.poll() is None:
             self.helper.kill()
         self.helper.wait(timeout=5)
         self.helper = None
@@ -1992,7 +1998,8 @@ def proof_full_http_shutdown(ipc, case):
     zero_dns = case == 'ipc-http-zero-dns'
     early_owner = case == 'ipc-http-early-owner'
     replaced_stop = case == 'ipc-http-initial-stop-replaced'
-    initial_stop = replaced_stop or case == 'ipc-http-initial-stop'
+    restored_replaced = case == 'ipc-http-restored-process-replaced'
+    initial_stop = replaced_stop or restored_replaced or case == 'ipc-http-initial-stop'
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
@@ -2192,6 +2199,9 @@ def proof_full_http_shutdown(ipc, case):
         (root / 'full-early-owner-broker').unlink()
         assert trace_path.read_text().count('SIGTERM') == 1
         persisted_dispatch = dispatch.read_bytes()
+        if restored_replaced:
+            verify_restored_process_gate(publication, operation_dir, original_config, baseline, original_resolver)
+            return
         ipc.start_helper()
         if replaced_stop:
             worker = launch('restart')
@@ -2245,6 +2255,72 @@ def proof_full_http_shutdown(ipc, case):
         assert worker.wait(timeout=12) == 0
         print(f'PASS TUN INITIAL STOP RECOVERY: original={publication}; original PID={original_service[0]}; '
               f'restored PID={restored[0]}; recovery IPC={correlation}; original pidfd signal once', flush=True)
+
+    def verify_restored_process_gate(publication, operation_dir, original_config, baseline, original_resolver):
+        nonlocal worker, token
+        witness = operation_dir / 'registration-start-process.json'
+        sender = operation_dir / 'registration-start-dispatched'
+        opens = 'open,openat,openat2'
+        ipc.start_helper(prefix=['strace', '-f', '-qq', '-P', str(witness), '-e', f'trace={opens}',
+                                 '-e', f'inject={opens}:delay_enter=25s:when=1', '-o', root / 'restored-process.trace'])
+        worker = launch('restart')
+        cut_pid = int(marker('full-server-pid'))
+        token = login()
+        until(witness.is_file, 'restored process witness')
+        pending_file = archive / 'state' / 'archive-state.json'
+        pending = json.loads(pending_file.read_bytes())['configuration']
+        assert uuid.UUID(pending['operationId']).hex == publication and not pending['previousRestored']
+        original = service_identity()
+        evidence = witness.read_bytes()
+        record = json.loads(evidence)
+        assert uuid.UUID(record['OperationId']).hex == publication
+        assert record['ConfigurationIdentity'].lower() == hashlib.sha256(original_config).hexdigest()
+        assert record['Process']['Pid'] == original[0] and int(record['Process']['StartTicks']) == int(original[2])
+        assert uuid.UUID(record['Process']['InvocationId']).hex == original[1]
+        assert sender.read_text() == publication
+        os.kill(cut_pid, signal.SIGTERM)
+        # The real Helper query is held at the witness read. Kill that generation before it can acknowledge.
+        ipc.stop_helper()
+        assert worker.wait(timeout=12) == 0
+        assert witness.read_bytes() == evidence
+
+        def verify_blocked(phase, expected_service):
+            nonlocal worker, token
+            ipc.start_helper()
+            worker = launch('restart')
+            blocked_pid = int(marker('full-server-pid'))
+            token = login()
+            until(lambda: 'operation=MihomoRuntimeRecover ' in ipc.log.read_text(), phase + ' recovery attempt')
+            pending = json.loads(pending_file.read_bytes())['configuration']
+            assert uuid.UUID(pending['operationId']).hex == publication and not pending['previousRestored']
+            assert pending['recoveryProblemCode'] == 'runtime.network_restored_start_unconfirmed'
+            waiting = read(publication)
+            assert waiting['state'] == 'interrupted' and not waiting.get('completedAt')
+            assert submit('enable', 'full-publish', {'profileId': profile}) == publication
+            status, blocked = request(api + '/tun/enable', token, 'full-restored-process-' + phase, {'profileId': profile})
+            assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+            assert service_identity() == expected_service and sender.read_text() == publication
+            assert config.read_bytes() == mirror.read_bytes() == original_config
+            assert network_baseline() == baseline and resolver_snapshot() == original_resolver
+            assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
+                           '--max-time', '3', f'http://{target}:18880/mb04-restored-process-{phase}') == 'upstream-through-inherited-tun'
+            assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
+            os.kill(blocked_pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            ipc.stop_helper()
+
+        hidden = witness.with_suffix('.held')
+        witness.rename(hidden)
+        verify_blocked('missing', original)
+        assert not witness.exists()
+        hidden.rename(witness)
+        service('restart', unit)
+        replacement = service_identity()
+        assert replacement != original
+        verify_blocked('replaced', replacement)
+        assert witness.read_bytes() == evidence
+        print(f'PASS TUN RESTORED PROCESS GATE: original={publication}; restored PID={original[0]}; '
+              f'replacement PID={replacement[0]}; missing and mismatched witnesses retained original gate', flush=True)
 
     def verify_unfinished_dns(pid, publication, resolver_before):
         nonlocal worker, token
@@ -3830,7 +3906,8 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop', 'ipc-http-initial-stop-replaced',
+            if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
+                        'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced',
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
