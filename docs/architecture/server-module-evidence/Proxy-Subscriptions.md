@@ -250,4 +250,16 @@ Windows Release 订阅后台边界 40 项、独立程序集与驻留 31 项、�
 
 Windows Release 订阅边界 44 项与模块里程碑通过。原始日志 `.artifacts/mb04-tun-full-zero-dns/linux-shared-gate-managed.log` 的 SHA-256 为 `8603e8c6c92f6f6d15de91c3f5347acc04f95fedd69f3916e14a451af616d887`，归档为 `4d639741da2325364ca621c6c54532dfb01619eabaa7c9034eac38b928afb63e`。Windows 模块日志 `.artifacts/mb04-tun-full-zero-dns/windows-shared-gate-module-boundary-milestones.log` 的 SHA-256 为 `3a7aaadcbc7e5bd803463bb0d3edb8dcad8e0c57106dd626f50efa87f3b75d25`。
 
-**剩余验收。** 前台先持发布锁时后台订阅的等待和排空需独立实测。本轮确认专属进程退出，对象释放、ALC 回收、隔离内存差值与生产收益分别待测。受管 TUN 管理选路和 HTTP/DNS 连续性沿用[前台配置写入实测](Proxy-Publication.md#前台配置写入的原代次)。整模块安全交接仍开放，Proxy 保持 resident。
+**剩余验收。** 反向竞争见下一节。本轮确认专属进程退出，对象释放、ALC 回收、隔离内存差值与生产收益分别待测。受管 TUN 管理选路和 HTTP/DNS 连续性沿用[前台配置写入实测](Proxy-Publication.md#前台配置写入的原代次)。整模块安全交接仍开放，Proxy 保持 resident。
+
+### 前台持锁与订阅独立排空
+
+**已实现且已验证。** Linux Release 专属 systemd 中，前台设置 `cb368162-fb36-446c-b31f-dcc0d6bf615e` 已产生原生效果，中继暂扣原终帧。后台激活 `85ecfa79-5094-4bb3-b6b8-96ca759db25d` 使用同一发布锁，两项租约均可见，后台尚未向 Helper 派发。同键返回原后台 ID，订阅下载计数保持。
+
+释放前台终帧后暂扣其作用域清理。后台恰好派发一次，按原 ID 保存无效草稿的 `failed / proxy.config_apply_failed` 终态并归还租约。前台清理仍持有一项租约，设置、配置身份、已选订阅和真实 HTTP 上游均符合原提交。释放前台清理后两项租约均归还。重启后同键返回原后台终态，Helper 两份回执相同，真实转发通过。
+
+早期夹具复用前台 HTTP 连接查询后台终态，前台异步清理未结束时该连接阻塞，夹具超时触发 `module-background-work-failed`。改为独立 HTTP 连接后通过，未修改生产实现。Windows Release 订阅边界 44 项、模块里程碑、Squid 和组件回归通过。完整 Linux Mihomo 矩阵 180 项通过，专属进程和 cgroup 已清理，宿主共享服务及代理文件指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-settings-first-separate-client.log` 的 SHA-256 为 `065b1f53887dbd4d9f2c83513f43c731cb64abdf06a938266eb077f056e33651`，归档为 `c284a84f7e53f5f56a33ce9e49320cdae1d36d2746380c0f5e4ee310f689c8a3`。
+
+**已实现但实机未验证。** 此用例核对了实际进程退出。对象释放、ALC 回收、隔离负载内存差值及生产内存收益分别待测。
+
+**未实现或仍受门禁保护。** 整模块安全交接仍待验收，Proxy 保持 resident。

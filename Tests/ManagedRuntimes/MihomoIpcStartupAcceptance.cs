@@ -318,7 +318,7 @@ internal static class MihomoIpcStartupAcceptance
                 var log = interruptedLog ?? await helper.StopAsync(drainCompletedRequests: true);
                 var dispatches = log.Split('\n').Where(line => line.Contains("operation=MihomoRuntimeConfigure ", StringComparison.Ordinal)).ToArray();
                 var compensatedBeforeRestart = postSwitch is not null && !interruptHelper;
-                if (dispatches.Length != (compensatedBeforeRestart ? 6 : 5)
+                if (dispatches.Length != (compensatedBeforeRestart ? 8 : 7)
                     || (compensatedBeforeRestart && dispatches.Count(line => line.Contains($"id={postSwitch} ", StringComparison.OrdinalIgnoreCase)) != 1)
                     || log.Contains("operation=MihomoRuntimeRecover ", StringComparison.Ordinal))
                     throw new InvalidOperationException("Subscription activation and each refresh must configure once without native replay.");

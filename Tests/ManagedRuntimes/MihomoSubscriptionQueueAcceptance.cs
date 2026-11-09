@@ -164,6 +164,7 @@ internal static class MihomoSubscriptionQueueAcceptance
             await VerifyActiveRefreshResponseLossAsync();
             await VerifyFailedPublicationAsync(activation: false);
             await VerifyFailedPublicationAsync(activation: true);
+            await VerifySettingsFirstAsync();
             return postSwitch && OperatingSystem.IsLinux() ? await VerifyPostSwitchCompensationAsync() : null;
 
             async Task VerifyActiveRefreshAsync()
@@ -477,6 +478,119 @@ internal static class MihomoSubscriptionQueueAcceptance
                 finally { await ProxyAuthenticatedPublicationChecks.StopAsync(recovery); }
             }
 
+            async Task VerifySettingsFirstAsync()
+            {
+                var socket = start.Environment["PrivilegedHelper__SocketPath"]!;
+                var prefix = Path.Combine(start.WorkingDirectory, "full-settings-cleanup");
+                foreach (var marker in new[] { "arm", "held", "release", "complete" }) File.Delete(prefix + "-" + marker);
+                await File.WriteAllTextAsync(prefix + "-arm", "armed", ct);
+                var previous = await new ProxySettingsReader(paths).GetAsync(ct);
+                var desired = previous with { LogLevel = previous.LogLevel == "error" ? "warning" : "error" };
+                var payload = new UpdateProxySettingsRequest(desired.SystemProxyEnabled, desired.AllowLan, desired.DnsEnabled,
+                    desired.Ipv6Enabled, desired.UnifiedDelay, desired.LogLevel, desired.MixedPort,
+                    desired.AllowInsecureSubscriptionSources, desired.SystemProxyHost, desired.Tun, desired.SystemProxy);
+                var route = SubscriptionRoute(ProxyApiRoutes.SubscriptionActivatePattern, subscriptionId);
+                var key = Guid.NewGuid().ToString("N");
+                var dispatches = new System.Collections.Concurrent.ConcurrentQueue<Guid>();
+                Guid settingsId;
+                Guid activationId;
+                ProxyOperationDto final;
+                RuntimeInstallationSnapshot nativeSettings;
+                RuntimeInstallationSnapshot nativeActivation;
+                await using (var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/relaxkonos-settings-first.sock",
+                    socket, ct, (kind, id) =>
+                    {
+                        if (kind != "MihomoRuntimeConfigure") return false;
+                        dispatches.Enqueue(id);
+                        return true;
+                    }))
+                {
+                    start.Environment["PrivilegedHelper__SocketPath"] = relay.Path;
+                    start.Environment["RELAXKONOS_TEST_SETTINGS_CLEANUP"] = start.WorkingDirectory;
+                    using var server = ProxyAuthenticatedPublicationChecks.Start(start, OnError, line =>
+                    {
+                        if (line.Contains("Exception", StringComparison.Ordinal) || line.Contains("Proxy operation", StringComparison.Ordinal)
+                            || line.Contains("ProblemCode=module-", StringComparison.Ordinal)) Console.WriteLine(line);
+                    });
+                    try
+                    {
+                        using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, ct);
+                        using var settingsClient = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, ct);
+                        var selectedBefore = await ReadSubscriptionAsync(client);
+                        // The settings connection may receive its 204 while the Server still owns scope cleanup.
+                        var write = settingsClient.PutAsJsonAsync(ProxyApiRoutes.Settings, payload, RelaxKonOSJsonOptions.Default, ct);
+                        if (await Task.WhenAny(relay.Committed.Task, write).WaitAsync(ct) == write)
+                        {
+                            using var early = await write;
+                            throw new InvalidOperationException($"Settings returned {early.StatusCode} before the original reply was held.");
+                        }
+                        settingsId = await relay.Committed.Task;
+                        nativeSettings = await lifecycle.QueryAsync(ct, settingsId);
+                        var pending = (await publication.ReadAsync(ct)).Pending;
+                        if (pending?.OperationId != settingsId || pending.Settings?.Candidate != desired
+                            || nativeSettings.Receipt is not { Outcome: RuntimeSwitchOutcome.Succeeded }
+                            || nativeSettings.ConfigurationIdentity != pending.Identity || !await probe(port))
+                            throw new InvalidOperationException("The foreground settings did not commit under their original ID.");
+
+                        activationId = await SubmitAsync(client, route, key);
+                        while ((await ReadOperationAsync(client, activationId)).State == ProxyOperationState.Queued) await Task.Delay(25, ct);
+                        if ((await ReadOperationAsync(client, activationId)).State != ProxyOperationState.Running
+                            || await ReadLeasesAsync(client) != 2 || !dispatches.ToArray().SequenceEqual([settingsId])
+                            || (await publication.ReadAsync(ct)).Pending?.OperationId != settingsId
+                            || await SubmitAsync(client, route, key) != activationId || Volatile.Read(ref requests) != 5)
+                            throw new InvalidOperationException("The queued activation did not wait with its own lease behind the foreground gate.");
+
+                        Console.WriteLine($"MIHOMO SETTINGS FIRST WAITING: settings {settingsId}; activation {activationId}");
+                        relay.ReleaseHeldResponse();
+                        while (!File.Exists(prefix + "-held")) await Task.Delay(25, ct);
+                        Console.WriteLine("MIHOMO SETTINGS FIRST CLEANUP: foreground scope held");
+                        do
+                        {
+                            final = await ReadOperationAsync(client, activationId);
+                            if (final.CompletedAt is not null) break;
+                            await Task.Delay(25, ct);
+                        } while (true);
+                        while (await ReadLeasesAsync(client) != 1) await Task.Delay(25, ct);
+                        nativeActivation = await lifecycle.QueryAsync(ct, activationId);
+                        var settled = await publication.ReadAsync(ct);
+                        if (final.State != ProxyOperationState.Failed || final.ProblemCode != ProxyProblemCodes.ConfigApplyFailed
+                            || nativeActivation.Receipt is not { Outcome: RuntimeSwitchOutcome.Failed }
+                            || settled.Pending is not null || settled.Identity != nativeSettings.ConfigurationIdentity
+                            || nativeActivation.ConfigurationIdentity != settled.Identity || await ReadSubscriptionAsync(client) != selectedBefore
+                            || await new ProxySettingsReader(paths).GetAsync(ct) != desired || Volatile.Read(ref requests) != 5
+                            || !dispatches.ToArray().SequenceEqual([settingsId, activationId]) || !await probe(port))
+                            throw new InvalidOperationException("The queued activation did not finish once while the foreground scope still owned cleanup.");
+                        await File.WriteAllTextAsync(prefix + "-release", "release", ct);
+                        using var response = await write;
+                        response.EnsureSuccessStatusCode();
+                        while (!File.Exists(prefix + "-complete") || await ReadLeasesAsync(client) != 0) await Task.Delay(25, ct);
+                        Console.WriteLine("MIHOMO SETTINGS FIRST CLEANUP: both owners drained");
+                    }
+                    finally
+                    {
+                        relay.ReleaseHeldResponse();
+                        await File.WriteAllTextAsync(prefix + "-release", "release", CancellationToken.None);
+                        start.Environment.Remove("RELAXKONOS_TEST_SETTINGS_CLEANUP");
+                        await ProxyAuthenticatedPublicationChecks.StopAsync(server);
+                        start.Environment["PrivilegedHelper__SocketPath"] = socket;
+                    }
+                }
+                using var restarted = ProxyAuthenticatedPublicationChecks.Start(start, OnError);
+                try
+                {
+                    using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(restarted, login, ct);
+                    var afterSettings = await lifecycle.QueryAsync(ct, settingsId);
+                    var afterActivation = await lifecycle.QueryAsync(ct, activationId);
+                    if (await SubmitAsync(client, route, key) != activationId || await ReadOperationAsync(client, activationId) != final
+                        || afterSettings.Receipt != nativeSettings.Receipt || afterActivation.Receipt != nativeActivation.Receipt
+                        || afterActivation.ConfigurationIdentity != nativeSettings.ConfigurationIdentity || await ReadLeasesAsync(client) != 0
+                        || Volatile.Read(ref requests) != 5 || !await probe(port))
+                        throw new InvalidOperationException("Restart changed an original receipt or repeated a subscription side effect.");
+                    Console.WriteLine($"PASS MANAGED MIHOMO SETTINGS FIRST DRAIN: settings {settingsId}; activation {activationId}; ordered dispatch, independent cleanup, original receipts");
+                }
+                finally { await ProxyAuthenticatedPublicationChecks.StopAsync(restarted); }
+            }
+
             [SupportedOSPlatform("linux")]
             async Task<Guid> VerifyPostSwitchCompensationAsync()
             {
@@ -668,10 +782,16 @@ internal static class MihomoSubscriptionQueueAcceptance
                 return (await response.Content.ReadFromJsonAsync<ProxyOperationAcceptedDto>(RelaxKonOSJsonOptions.Default, ct))!.OperationId;
             }
 
-            async Task<ProxyOperationDto> ReadOperationAsync(HttpClient client, Guid id) =>
-                await client.GetFromJsonAsync<ProxyOperationDto>(ProxyApiRoutes.Proxy
+            async Task<ProxyOperationDto> ReadOperationAsync(HttpClient client, Guid id)
+            {
+                using var response = await client.GetAsync(ProxyApiRoutes.Proxy
                     + ProxyApiRoutes.OperationsPattern.Replace("{operationId:guid}", id.ToString("D"), StringComparison.Ordinal),
-                    RelaxKonOSJsonOptions.Default, ct) ?? throw new InvalidOperationException("Missing original subscription operation.");
+                    ct);
+                if (!response.IsSuccessStatusCode)
+                    throw new InvalidOperationException($"Subscription operation {id} returned {response.StatusCode}: {await response.Content.ReadAsStringAsync(ct)}");
+                return await response.Content.ReadFromJsonAsync<ProxyOperationDto>(RelaxKonOSJsonOptions.Default, ct)
+                    ?? throw new InvalidOperationException("Missing original subscription operation.");
+            }
 
             async Task<ProxyOperationDto> WaitForTerminalAsync(HttpClient client, Guid id)
             {
