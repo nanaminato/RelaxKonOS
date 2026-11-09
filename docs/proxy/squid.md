@@ -180,6 +180,8 @@ dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no
 
 软件包操作派发后若 Helper 的 IPC 终帧丢失，Core 安装队列按原安装 ID 只读查询 Helper，并核对原提交与当前包身份。确认后用原 ID 结案，同键返回同一终态。缺少可核对的原回执时保留待核验，未完成的原生事务继续受包准入门禁保护。
 
+Ubuntu 26.04 专属环境已验证固定包首次安装、升级和保留数据卸载的终帧丢失恢复。首次安装验证一次下载和实际服务启动，卸载验证配置和数据保留。[实机矩阵](../architecture/server-module-evidence/Proxy-Squid.md#首次安装与保留数据卸载的终帧丢失矩阵)
+
 ### 访问控制与独立代理账号
 
 `SquidConfiguration.accessMode` 是必需的当前协议字段：`ipWhitelist`（仅 IP）、`password`（仅账密）、`passwordAndIpWhitelist`（账密＋IP）。仅账密模式允许空来源列表，不输出来源 ACL；组合模式先拒绝不在白名单内的来源，再进行账号认证，密码不能绕过 IP 限制。域名与目标端口／地址限制在所有模式下保留。IP 模式不要求账号。认证模式在原生校验与应用时要求至少一个已启用账号，缺失时拒绝，绝不自动退回无认证模式。

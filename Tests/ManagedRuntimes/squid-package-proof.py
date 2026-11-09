@@ -116,14 +116,15 @@ def start_signed_mirror(package):
 def run():
     assert os.geteuid() == 0 and Path("/etc/relaxkonos-squid-package-fixture").read_text().strip() == digest
     phase = (root / "phase").read_text().strip()
-    assert phase in ("receipt", "recovery-cut", "reply-drop", "reply-drop-unknown", "native-unknown", "uninstall", "install")
+    assert phase in ("receipt", "recovery-cut", "reply-drop", "reply-drop-unknown", "reply-drop-install",
+                     "reply-drop-uninstall", "native-unknown", "uninstall", "install")
     recovery_cut = phase == "recovery-cut"
-    reply_drop = phase == "reply-drop"
+    reply_drop = phase in ("reply-drop", "reply-drop-install", "reply-drop-uninstall")
     reply_drop_unknown = phase == "reply-drop-unknown"
     native_unknown = phase == "native-unknown" or reply_drop_unknown
     live_loss = reply_drop or reply_drop_unknown
-    uninstall = phase == "uninstall"
-    install = phase == "install"
+    uninstall = phase in ("uninstall", "reply-drop-uninstall")
+    install = phase in ("install", "reply-drop-install")
     receipt = receipts / ("operation.json" if install else "change.json")
     mounts = {line.split()[4]: line.split(" - ", 1)[1].split()[0] for line in Path("/proc/self/mountinfo").read_text().splitlines()}
     assert mounts["/"] == "overlay" and all(mounts[path] == "tmpfs" for path in ("/var/lib", "/run", "/var/cache/apt"))
@@ -209,7 +210,13 @@ def run():
         mirror, downloads = start_signed_mirror(package)
     subprocess.run(["systemctl", "daemon-reload"], check=True, timeout=15)
     helper = start_helper(1)
-    worker, pid = server("native-cut" if native_unknown else "install-cut" if install else "drop" if reply_drop else "cut")
+    if native_unknown:
+        initial_phase = "native-cut"
+    elif install:
+        initial_phase = "install-drop" if reply_drop else "install-cut"
+    else:
+        initial_phase = "drop" if reply_drop else "cut"
+    worker, pid = server(initial_phase)
     token = login()
     component = api + "/components/squid"
     state = value(component + "/state", token)
@@ -379,6 +386,10 @@ def run():
         assert f"operation={dispatch} id={operation} " in audits[0]
     if reply_drop:
         assert audits[0].count(f"operation=ComponentPackageQuery id={operation} ") == 1
+        entries = json.loads(original_ledger)
+        terminal = [item for item in entries["audit"]
+                    if item["operationId"] == operation and item["event"] in ("completed", "recovered")]
+        assert len(terminal) == 1 and terminal[0]["event"] == "completed", terminal
     if native_unknown:
         pending = value(component + "/state", token)
         assert pending["pendingOperationId"] == operation and pending["state"]["recoveryRequired"], pending
@@ -415,18 +426,14 @@ def run():
         print(f"Original receipt SHA256 {hashlib.sha256(native).hexdigest()}; "
               f"unchanged pending Server ledger SHA256 {hashlib.sha256(original_ledger).hexdigest()}; "
               f"dpkg ledger SHA256 {hashlib.sha256(dpkg_before).hexdigest()}", flush=True)
-    elif reply_drop:
-        entries = json.loads(original_ledger)
-        terminal = [item for item in entries["audit"]
-                    if item["operationId"] == operation and item["event"] in ("completed", "recovered")]
-        assert len(terminal) == 1 and terminal[0]["event"] == "completed", terminal
-        print(f"PASS SQUID PACKAGE REPLY DROP: original={operation}; version={version}; "
-              "one original query, one dispatch and one dpkg upgrade; same terminal after restart with Proxy enabled")
-        print(f"Original receipt SHA256 {hashlib.sha256(native).hexdigest()}; "
-              f"dpkg ledger SHA256 {hashlib.sha256(dpkg_before).hexdigest()}", flush=True)
-    else:
+    elif not reply_drop:
         print(f"PASS SQUID PACKAGE ORIGINAL RECEIPT: original={operation}; version={version}; "
               f"artifact={digest}; state=succeeded; one dispatch and one dpkg upgrade", flush=True)
+    if reply_drop:
+        print(f"PASS SQUID PACKAGE REPLY DROP: action={action}; original={operation}; "
+              f"one original query, one dispatch and one dpkg {dpkg_verb}; same terminal after restart with Proxy enabled")
+        print(f"Original receipt SHA256 {hashlib.sha256(native).hexdigest()}; "
+              f"dpkg ledger SHA256 {hashlib.sha256(dpkg_before).hexdigest()}", flush=True)
     os.kill(pid, signal.SIGTERM)
     assert worker.wait(timeout=12) == 0
     helper.terminate()

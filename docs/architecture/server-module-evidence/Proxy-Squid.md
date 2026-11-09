@@ -198,6 +198,18 @@ Windows Release Squid 与组件回归、Linux Release 构建及专属 systemd �
 
 反向实测日志 `.artifacts/mb04-squid-package/linux-reply-drop-unknown.log` 的 SHA-256 为 `7159e9bbd98ad414e646c9b9e9e02c25dc1ab1a00ebae4fd9fdffb8cc96a9ce8`，归档为 `2a5c88fa45af0985f361bbc42da5fcc20c6035b3f861e463e8c9f60cc29fba43`。待核验检查点与 dpkg 日志的 SHA-256 分别为 `d01163d1f789d2e42b952d8dbf51c1d8dbd6caa2dd503b950a9ade7f84f7067a` 和 `b2b60e193120091ddcf38d527fdacc7645b5966f44067c261089f22909ff2dce`。Linux Release 构建及 Windows Release 的 Squid、组件、模块边界回归通过。本轮确认 Server、Helper、APT 与专属夹具退出，专属 cgroup 和根已清理，宿主共享服务、程序、包台账、配置和账户指纹一致。
 
-**已实现但实机未验证。** 本节覆盖固定 Squid 升级。存活 Server 在首次安装或保留数据卸载终帧丢失时的路径、其他软件包与整机掉电仍需独立证据。对象释放、ALC 回收、隔离负载内存差值与生产内存收益均未测量。
+**已实现但实机未验证。** 本节覆盖固定 Squid 升级。首次安装和保留数据卸载见下一节。其他软件包与整机掉电仍需独立证据。对象释放、ALC 回收、隔离负载内存差值与生产内存收益均未测量。
 
 **未实现或仍受门禁保护。** 缺失可信原终态的人工确证及整模块安全交接继续开放。Proxy 保持 resident。
+
+### 首次安装与保留数据卸载的终帧丢失矩阵
+
+**已实现且已验证。** 首次安装 `367b9d55-58e3-480a-8edc-1c0e885da1d7` 在 Squid 缺席的专属根使用原签名索引的固定包。专属镜像收到一次制品下载，Helper 派发一次，dpkg 安装一次，私有 Squid 启动并监听。丢弃 Helper 终帧后，存活 Server 对原 ID 只读查询一次并持久化原终态。重启后原 ID 和同键均返回相同 `succeeded`。日志 `.artifacts/mb04-squid-package/linux-reply-drop-install.log` 的 SHA-256 为 `322a1569212d0839fc6329b46732ffc903bdf9f0861693bc8c13736ae27ab502`，归档为 `cce122c328cc236bcea814ad21ac4ba77e0ae21dc72959937c50df2d14b5200f`。Helper 原回执及 dpkg 台账的 SHA-256 分别为 `f806ee168068fe76728602e4555e05187b6b0609d4e1b4af3a420ceff53a8aad` 和 `8d9b80bc2ababd84078b8fb4acfd29b6c7dd1e1a79b9d4757a999a47e72c32b4`。
+
+保留数据卸载 `4e66e6f8-3c2a-4934-b3a8-fe71302b9f7e` 绑定初始 `7.2-2ubuntu2.2` 包身份。专属 dpkg 进入 `config-files`，二进制消失，配置和数据探针字节保持。dpkg 只记录一次 remove。丢弃 Helper 终帧后，存活 Server 按原 ID 只读查询一次并持久化原终态。重启后按 ID 和同键返回相同 `succeeded`。日志 `.artifacts/mb04-squid-package/linux-reply-drop-uninstall.log` 的 SHA-256 为 `0689a1aae471d62e47416421f8a6807c7669662e20b188aa0e8d3c165d138dd5`，归档为 `91b99fdcae0020f452ed6544eaae50cc1d9b7ac73bac7a091b619b744ed4c422`。Helper 原回执及 dpkg 台账的 SHA-256 分别为 `d35204aff1821ef2266bed705be2714cc0c018e140edb7cf78c167513355e24d` 和 `994943bbd4c170d566abcf08c4486f49e3194148178b612599e347ee6db87292`。
+
+两轮均通过完整 PAM/JWT、Linux Release 专属 systemd 和 Windows Release Squid、组件及模块边界回归。每个原操作只有一条完成事件，Core 安装台账、Helper 回执、APT/dpkg 记录均通过跨重启字节核对。Proxy 入口在两代均可读取。进程退出、专属 cgroup 与包根清理通过，宿主共享服务及程序、包台账、配置和账号指纹一致。
+
+**已实现但实机未验证。** 整机掉电和其他平台需独立环境。本次核对进程退出，对象释放、ALC 回收、隔离负载内存和生产收益分别留待验证。
+
+**未实现或仍受门禁保护。** 缺失可信原终态的人工确证和整模块动态驻留仍待验收。Proxy 保持 resident。
