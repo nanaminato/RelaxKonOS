@@ -4609,6 +4609,8 @@ Helper 尚未提交且原候选仍在转发时，管理选路漂移也会阻止�
 
 Linux 完整 Server 已用 PAM 登录签发的 JWT 验证受管 TUN 发布及停用。正常停机等待已受理的具名停用收到 Helper 响应、写入审计并持久化原队列终态后退出。重启仍可按原键取得原回执，再次启用沿用已确认发布。见[完整 Server 停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的受管-tun-停机排空)。
 
+Helper 已提交具名停止而 IPC 终帧丢失时，存活 Server 先保留原队列的待核验记录。按原 ID 查询核对同一 Stop 回执后结案，同键和重启后均返回原终态。再次启用实测沿用已确认配置，管理选路、上游 HTTP 和分流 DNS 均通过。[具名停止终帧丢失实测](../architecture/server-module-evidence/Proxy-Safety.md#server-存活时丢失具名停止终帧)
+
 系统代理 guard 与受管停用共用发布锁。若 guard 已派发，停用保留原队列及租约，等 guard 响应后继续。sing-box 到期由独立责任方排空。已在同一次 SIGTERM 验证三者的响应顺序、原生状态和重启回执。见[同次停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-与-proxy-安全责任同次停机)。
 
 停用 Proxy 管理模块的计划、应用及禁用启动都会核验已确认受管 TUN 的原发布和当前 Helper 归属。Helper 不可用、设备归属漂移或存在原生待核验执行时，计划保留 `module-recovery-blocked`，启动拒绝并给出原发布或执行 ID。已确认的运行或停止不改变原运行时所有权。具名启动待核验时，停用计划、应用和禁用启动均保留原执行的门禁。结案后应用停用计划，禁用启动继续核对并保留同一具名执行和真实流量。见[具名启动停用实测](../architecture/server-module-evidence/Proxy-Safety.md#具名启动的模块停用门禁与禁用接续)。静态启用与禁用管理面的隔离资源差值已单列 Server、Helper 和 Mihomo。见[活跃具名 TUN 配对测量](../architecture/server-module-evidence/Proxy-Observation.md#mb-04-活跃具名-tun-的管理面配对测量)。空闲、PAM 与原具名运行时查询的 Helper 隔离成本已单列，见[只读成本分解](../architecture/server-module-evidence/Proxy-Observation.md#活跃-tun-的-helper-只读成本分解)。原具名查询的本机输出管道已验证在请求完成时关闭。见[管道关闭实测](../architecture/server-module-evidence/Proxy-Observation.md#本机查询的输出管道关闭)。具名 TUN 运行态查询在一次调用内复用通过验证的进程身份，并继续核对原制品、配置、管理选路及 DNS 归属。见[核验复用实测](../architecture/server-module-evidence/Proxy-Observation.md#复用具名-tun-查询的进程核验)。见[模块停用门禁](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-模块停用门禁)。

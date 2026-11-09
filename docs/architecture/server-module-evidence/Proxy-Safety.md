@@ -1026,6 +1026,18 @@ Linux x64 私有 systemd 在真实 Mihomo 恢复到旧配置后，截留了真�
 
 受管 TUN 与系统代理 guard、授权到期由后续[同次停机](#mb-04-受管-tun-与-proxy-安全责任同次停机)覆盖。本批确认专属 Server、原 Mihomo 进程退出及环境清理。对象释放、ALC 回收、隔离内存和生产收益未测量。
 
+### Server 存活时丢失具名停止终帧
+
+**已实现且已验证。** 在既有 Linux x64 测试机的私有 systemd 中，非 root 完整 Server 经 PAM/JWT 受理原发布 `9aad47316c524055acc971ad28bd3861` 与具名停止 `aea5a6767af44da8bfe150c35d1a2bda`。停止前验证管理选路、进程内配置凭据、真实上游 HTTP 和分流 DNS。独立 Helper 已保存绑定原发布与目标执行的 Stop 成功回执，Mihomo 进程退出、TUN 设备移除、管理选路回到基线，队列仍为 Running 且至少持有一项工作租约。
+
+AF_UNIX 中继丢弃原成功终帧，Server 保持运行。原队列持久化为 `Interrupted / managed_tun_action`，完成时间为空。按原 ID 查询触发原执行器一次只读对账，读取同一 Stop 回执并保存成功终态。同键返回同一原 ID，原生台账字节一致，查询结束后租约归零。Server 正常退出并重启，原 HTTP 终态与 Helper 回执保持一致。重新启用 `ada9fecda0f348e486f9bc65174807c5` 后，以实际进程凭据核对相同配置摘要 `94369c12d56c4916a206a041fd0c9ffb2c7b76b7df2ab411ce1bfc9fd5f21334`，管理选路、上游 HTTP 和分流 DNS 再次通过。Helper 原配置、停止和后续启动各派发一次，原规则删除一次。
+
+Linux Release 构建及 Windows Release 的 TUN 执行边界 38 项和模块边界聚合回归通过。首轮夹具在进入完整 Server 前因场景名漏注册而超时，补齐分流后复验通过。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-stop-reply-drop-final.log` SHA-256 为 `fcc8e8b210e1e40469c9188b2ac33b8260f841999eb193ee72cf5504b383c937`，运行归档为 `0e8384e56d300ce240b5c168d995004ed8bd905edbc38257b922bc89065d6ebf`。首轮及最终专属 cgroup 已清理，宿主服务、代理、resolver 和账号指纹一致。
+
+**已实现但实机未验证。** 本次覆盖存活 Server 的停止终帧丢失。具名启动的同类窗口仍需独立核对。本轮确认专属进程退出。对象释放、ALC 回收、隔离负载内存与生产收益分别待测。
+
+**未实现或仍受门禁保护。** 原生回执不足时继续沿用原持久准入门禁。Proxy 保持 resident，整模块交接独立验收。
+
 ## MB-04 受管 TUN 与 Proxy 安全责任同次停机
 
 **已实现且已验证。** Linux x64 私有 systemd 的完整非 root Server 使用生产 PAM/JWT、独立 root Helper 和三个可分别释放响应的 AF_UNIX relay。使用两条真实 TLS VLESS 授权，先验证即将撤回的授权可转发，再以已到期状态启动生产到期 worker。原 Helper 提交后扣留到期响应，核对原回执和 Server 待确认状态。旧连接关闭、到期授权拒绝、保留授权继续转发。

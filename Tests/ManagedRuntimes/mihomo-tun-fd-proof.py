@@ -2077,6 +2077,7 @@ def proof_full_http_shutdown(ipc, case):
     initial_stop = replaced_stop or restored_replaced or job_replaced or job_cut or case == 'ipc-http-initial-stop'
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
+    drop_stop_reply = case == 'ipc-http-stop-reply-drop'
     named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
     named_admission = case == 'ipc-http-named-start-admission'
     named_baseline = case == 'ipc-http-named-start-baseline'
@@ -4253,7 +4254,8 @@ exec {shlex.quote(str(systemctl))} "$@"
               'real upstream after Helper exit; both ledgers unchanged and no replay')
 
     worker = launch('zero-dns-publish' if zero_dns or partial_dns or early_owner or initial_stop else 'squid-new' if squid else 'removal-cut' if removal_admin
-                    else 'admission' if admission or handoff or retained_removal else 'drain')
+                    else 'admission' if admission or handoff or retained_removal
+                    else 'stop-reply-drop' if drop_stop_reply else 'drain')
     first_worker = worker
     try:
         pid = int(marker('full-server-pid'))
@@ -4333,12 +4335,44 @@ with sqlite3.connect(sys.argv[1]) as database:
         stopped_receipt = json.loads(checkpoint(record, f'observe-action:{stopped}'))['mihomoTunAction']
         assert stopped_receipt['outcome'] == 'Succeeded' and uuid.UUID(stopped_receipt['operationId']).hex == stopped
         durable_running = queue.read_bytes()
-        if not joint:
+        live_stop = None
+        if drop_stop_reply:
+            assert uuid.UUID(stopped_receipt['publicationId']).hex == publication
+            assert uuid.UUID(stopped_receipt['targetExecutionId']).hex == publication
+            assert stopped_receipt['action'] == 2  # MihomoTunActionKind.Stop
+            native_state = archive / 'state' / 'archive-state.json'
+            stopped_state = native_state.read_bytes()
+            original_query = f'operation=MihomoRuntimeQuery id={uuid.UUID(stopped)} '
+            queries_before_drop = ipc.log.read_text().count(original_query)
+            (root / 'full-tun-response-drop').touch()
+            until(lambda: queue.read_bytes() != durable_running and leases() == 0,
+                  'original stop waiting for read-only reconciliation')
+            pending = next(entry['Operation'] for entry in json.loads(queue.read_bytes())
+                           if uuid.UUID(entry['Operation']['OperationId']).hex == stopped)
+            assert pending['State'] == 5 and pending['Stage'] == 'managed_tun_action'  # Interrupted
+            assert pending['CompletedAt'] is None and pending['ProblemCode'] == 'proxy.recovery_required'
+
+            def confirmed_stop():
+                reply = read(stopped)
+                assert reply['state'] != 'failed', reply
+                return reply if reply['state'] == 'succeeded' else None
+
+            live_stop = until(confirmed_stop, 'original stop confirmed in the live Server')
+            assert submit('disable', 'full-stop') == stopped and read(stopped) == live_stop
+            assert Path(f'/proc/{pid}').exists()
+            until(lambda: leases() == 0, 'drained stop work leases')
+            assert ipc.log.read_text().count(original_query) == queries_before_drop + 1
+            assert native_state.read_bytes() == stopped_state
+            assert network_baseline() == record['baseline']
+            assert json.loads(checkpoint(record, f'observe-action:{stopped}'))['mihomoTunAction'] == stopped_receipt
+            os.kill(pid, signal.SIGTERM)
+        elif not joint:
             os.kill(pid, signal.SIGTERM)
             assert marker('full-server-stopping') == stopped
-        time.sleep(.2)
-        assert worker.poll() is None and Path(f'/proc/{pid}').exists() and queue.read_bytes() == durable_running
-        (root / 'full-tun-response-release').touch()
+        if not drop_stop_reply:
+            time.sleep(.2)
+            assert worker.poll() is None and Path(f'/proc/{pid}').exists() and queue.read_bytes() == durable_running
+            (root / 'full-tun-response-release').touch()
         if joint:
             assert marker('full-server-exited') == '0'
         else:
@@ -4347,7 +4381,8 @@ with sqlite3.connect(sys.argv[1]) as database:
         persisted = queue.read_bytes()
         assert persisted != durable_running
         audit = [json.loads(line) for line in queue.with_name('proxy-audit.jsonl').read_text().splitlines()]
-        assert len([entry for entry in audit if entry['action'] == 'tun.disable' and entry['result'] == 'succeeded']) == 1
+        if not drop_stop_reply:
+            assert len([entry for entry in audit if entry['action'] == 'tun.disable' and entry['result'] == 'succeeded']) == 1
 
         worker = launch('named-start-cut' if named_dns else 'restart')
         restart_pid = int(marker('full-server-pid'))
@@ -4355,6 +4390,9 @@ with sqlite3.connect(sys.argv[1]) as database:
         token = login()
         original = until(lambda: terminal(stopped), 'persisted stop receipt')
         assert original['completedAt'] and submit('disable', 'full-stop') == stopped and read(stopped) == original
+        if drop_stop_reply:
+            assert original == live_stop
+            assert native_state.read_bytes() == stopped_state
         assert queue.read_bytes() == persisted and leases() == 0
         assert json.loads(checkpoint(record, f'observe-action:{stopped}'))['mihomoTunAction'] == stopped_receipt
         assert network_baseline() == record['baseline']
@@ -4376,6 +4414,8 @@ with sqlite3.connect(sys.argv[1]) as database:
             (root / 'full-joint-finish').touch()
             assert first_worker.wait(timeout=12) == 0
         assert ipc.log.read_text().count(f'operation=MihomoRuntimeTunStop id={uuid.UUID(stopped)} ') == 1
+        if drop_stop_reply:
+            assert ipc.log.read_text().count(f'operation=MihomoRuntimeTunStart id={uuid.UUID(started)} ') == 1
         assert ipc.log.read_text().count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         os.kill(restart_pid, signal.SIGTERM)
@@ -4383,6 +4423,9 @@ with sqlite3.connect(sys.argv[1]) as database:
         if joint:
             print(f'PASS TUN JOINT SAFETY SHUTDOWN: publication={publication}; stop={stopped}; start={started}; '
                   f'guard={guard}; expiry={expiry}; configuration={record["credential"]}; live PID={current["service"][0]}')
+        if drop_stop_reply:
+            print(f'PASS TUN LIVE STOP REPLY DROP: publication={publication}; stop={stopped}; start={started}; '
+                  f'configuration={record["credential"]}; Server PID {pid}->{restart_pid}; restored upstream HTTP and DNS')
         print(f'PASS TUN FULL SERVER JWT SHUTDOWN: publication={publication}; stop={stopped}; start={started}; '
               f'Server PID {pid}->{restart_pid}; live PID={current["service"][0]}; configuration={record["credential"]}')
     finally:
@@ -4546,7 +4589,7 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
+            if case in ('ipc-http-full', 'ipc-http-stop-reply-drop', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
                         'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',
                         'ipc-http-named-start-dns', 'ipc-http-named-start-dns-settled', 'ipc-http-named-start-recovery-cut',

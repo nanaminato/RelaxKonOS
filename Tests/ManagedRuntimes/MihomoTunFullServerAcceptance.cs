@@ -125,10 +125,11 @@ internal static class MihomoTunFullServerAcceptance
         if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
             or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"
-            or "named-start-cut" or "baseline-on" or "baseline-off"))
+            or "named-start-cut" or "stop-reply-drop" or "baseline-on" or "baseline-off"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
+        var dropStopReply = phase == "stop-reply-drop";
         var handoff = phase == "handoff-disabled";
         var disabled = phase is "admission-disabled" or "baseline-off";
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
@@ -143,7 +144,7 @@ internal static class MihomoTunFullServerAcceptance
                     || line == "http_proxy=\"http://127.0.0.1:14444\"")) : null;
         await using var expiryRelay = expiry is not null ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-expiry-reply.sock",
             guard!.Path, ct, (operation, _) => operation == "ProxyServerApply") : null;
-        await using var relay = first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-tun-reply.sock", expiryRelay?.Path ?? socket, ct,
+        await using var relay = first || dropStopReply ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-tun-reply.sock", expiryRelay?.Path ?? socket, ct,
             (operation, _) => operation == "MihomoRuntimeTunStop") : null;
         var squidOperation = phase switch
         {
@@ -162,7 +163,7 @@ internal static class MihomoTunFullServerAcceptance
             "/run/rk-zero-dns-reply.sock", socket, ct, (operation, _) => operation == "MihomoRuntimeRecover") : null;
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly,
             relay?.Path ?? expiryRelay?.Path ?? squidRelay?.Path ?? removalRelay?.Path ?? recoveryRelay?.Path ?? socket, root,
-            reuse: !first && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"), seedProxyServer: false);
+            reuse: !first && !dropStopReply && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"), seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
         if (phase is "admission-managed" or "handoff-disabled" or "handoff-restart")
@@ -234,10 +235,18 @@ internal static class MihomoTunFullServerAcceptance
                     throw new InvalidOperationException("Full Server stopped before the named TUN response reached the relay.");
                 var original = await relay.Committed.Task.WaitAsync(ct);
                 await WriteMarkerAsync(root, "full-tun-response-held", original.ToString("N"));
-                await stopping.Task.WaitAsync(ct);
-                await WriteMarkerAsync(root, "full-server-stopping", original.ToString("N"));
-                while (!File.Exists(Path.Combine(root, "full-tun-response-release"))) await Task.Delay(25, ct);
-                relay.ReleaseHeldResponse();
+                if (dropStopReply)
+                {
+                    await WaitForMarkerAsync("full-tun-response-drop");
+                    relay.DropHeldResponse();
+                }
+                else
+                {
+                    await stopping.Task.WaitAsync(ct);
+                    await WriteMarkerAsync(root, "full-server-stopping", original.ToString("N"));
+                    await WaitForMarkerAsync("full-tun-response-release");
+                    relay.ReleaseHeldResponse();
+                }
             }
             await exited;
             if (phase is ("zero-dns-publish" or "named-start-cut") && server.ExitCode == 137) return;
