@@ -220,6 +220,11 @@ internal static class MihomoTunFullServerAcceptance
                     : removalRelay is not null ? "full-removal-response-held"
                     : phase == "squid-receipt-cut" ? "full-squid-receipt-held" : "full-squid-response-held";
                 await WriteMarkerAsync(root, marker, original.ToString("N"));
+                if (phase == "squid-receipt-cut" && File.Exists(Path.Combine(root, "full-squid-write-fault")))
+                {
+                    await WaitForMarkerAsync("full-squid-receipt-release");
+                    committedReply.ReleaseHeldResponse();
+                }
                 await exited;
                 if (server.ExitCode == 137) return;
                 throw new InvalidOperationException($"Expected SIGKILL at the original response boundary, got {server.ExitCode}.");

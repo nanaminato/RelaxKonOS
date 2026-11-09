@@ -213,3 +213,17 @@ Windows Release Squid 与组件回归、Linux Release 构建及专属 systemd �
 **已实现但实机未验证。** 整机掉电和其他平台需独立环境。本次核对进程退出，对象释放、ALC 回收、隔离负载内存和生产收益分别留待验证。
 
 **未实现或仍受门禁保护。** 缺失可信原终态的人工确证和整模块动态驻留仍待验收。Proxy 保持 resident。
+
+### Squid 恢复写回故障与 Core TUN 连续性
+
+**已实现且已验证。** 2026-11-10 在 Linux x64 私有 systemd 中，完整 PAM/JWT Server 同时运行真实 Squid 与受管 Mihomo TUN。Squid 发布 `333bd338-1a7d-4ac4-97d7-a810ec61ba84` 的原生重载已完成，Server 在原应答未交付时中断。重启后按原 ID 查询，暂扣回执时观察到响应和恢复至少两项租约。阻断队列临时文件写入后放行回执，查询返回 503 / `module-recovery-blocked`，Proxy 进入 Faulted，新键及停用预览保留门禁。
+
+Squid 的已确认发布投影先于队列终态落盘。投影中的发布 ID、修订和摘要均与 Helper 原回执匹配。队列写回失败期间，原操作台账、原生配置及 Helper 回执字节保持，投影在后续恢复前后保持。首轮夹具误把投影与队列视作一次写入，修正后复验通过。
+
+Proxy 隔离时，在私有 `/etc/environment` 中引入漂移。同一 Server 的 Core guard 经 Helper 操作 `f743e528-20cf-430a-9dd9-56aa380a852e` 修复原系统代理设置。原 TUN 发布 `e7c1897156b948f5a7419d653197444b` 的管理选路、配置身份、原检查点、真实 HTTP 和分流 DNS 连续通过。Mihomo PID `417` 和 Squid PID `592` 在故障及重启前后保持。禁用 Proxy 的启动仍因原 Squid ID 被拒绝，启用重启后按原 ID 只读结案，同键返回原终态。Squid 原配置派发和实际重载各一次，Mihomo 配置派发一次。
+
+Linux Release 构建和 Windows Release Squid、Proxy Core 安全及模块边界回归通过。两轮专属 cgroup 清理完成，宿主共享服务、代理、resolver、Squid 配置和账号指纹一致。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-squid-tun-recovery-fault.log` SHA-256 为 `628e1cbd58abad20e43074bb9d5dfe4aa3bc51015310a4c02cdb6ab7b4bcd04b`，归档为 `e6bc9e8dfc409fd28be4bed422d4a529292e7467ac3b732eb6ac8aedba6150d3`。
+
+**已实现但实机未验证。** 本次确认故障进程退出、原运行时连续性和 Core guard 的实际修复。对象释放、ALC 回收、隔离负载内存和生产收益分别待测。
+
+**未实现或仍受门禁保护。** 整模块安全交接仍待验收。Proxy 保持 resident。

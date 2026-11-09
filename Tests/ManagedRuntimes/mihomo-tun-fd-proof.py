@@ -2067,6 +2067,7 @@ def proof_full_http_shutdown(ipc, case):
     removal_http = removal_admin or case == 'ipc-http-retained-installation'
     retained_removal = removal_http or case == 'ipc-http-retained'
     squid = case in ('ipc-http-squid', 'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account')
+    squid_tun = case == 'ipc-http-squid-tun-recovery-fault'
     zero_dns = case == 'ipc-http-zero-dns'
     early_owner = case == 'ipc-http-early-owner'
     replaced_stop = case == 'ipc-http-initial-stop-replaced'
@@ -3671,7 +3672,7 @@ exec {shlex.quote(str(systemctl))} "$@"
         if removal_http:
             print(f'PASS TUN RETAINED INSTALLATION HTTP GATE: publication={publication}; real plan; anonymous and standard PAM refused')
 
-    def verify_squid_publication(pid):
+    def verify_squid_publication(pid, tun_record=None):
         nonlocal worker, token
         api_root = '/api/v1.0/gateway-proxy/squid'
         native = Path('/etc/squid/squid.conf')
@@ -4066,6 +4067,86 @@ exec {shlex.quote(str(systemctl))} "$@"
         original_receipt = receipt.read_bytes()
         assert json.loads(original_receipt)['Receipt']['Applied'] is True
         cut(pid)
+        if tun_record is not None:
+            native_ledger = archive / 'state' / 'archive-state.json'
+            execution = archive / 'operations' / tun_record['operation'] / 'tun-5.json'
+            tun_witness = (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes())
+            (root / 'full-squid-write-fault').touch()
+            ipc.start_helper()
+            worker = launch('squid-receipt-cut')
+            pid = int(marker('full-server-pid'))
+            token = login()
+            replies = []
+
+            def read_receipt():
+                replies.append(request(f'{api}/operations/{operation}', token))
+
+            reader = threading.Thread(target=read_receipt)
+            reader.start()
+            try:
+                assert uuid.UUID(marker('full-squid-receipt-held')) == uuid.UUID(operation)
+                assert reader.is_alive() and leases() >= 2 and queue.read_bytes() == persisted[2]
+                obstruction = queue.with_name(queue.name + '.new')
+                obstruction.mkdir()
+            finally:
+                (root / 'full-squid-receipt-release').touch()
+                reader.join(timeout=7)
+            assert not reader.is_alive() and len(replies) == 1, replies
+            status, response = replies[0]
+            assert status == 503 and response['problemCode'] == 'module-recovery-blocked', replies
+            obstruction.rmdir()
+            proxy, plan = preview_proxy_disable()
+            assert proxy['residency']['state'] == 'faulted' and proxy['residency']['activeLeases'] == 0
+            assert any(item['problemCode'] == 'module-recovery-blocked' for item in plan['blockedBy'])
+            assert publish(18885, 'squid-fault-new', 400)['problemCode'] == 'proxy.operation_interrupted'
+            until(guard_applied, 'Core system proxy baseline')
+            guard_calls = ipc.log.read_text().count('operation=LinuxSystemProxyApply ')
+            drift = environment.read_text().replace('http://127.0.0.1:18881', 'http://127.0.0.1:14444', 1)
+            changed = environment.with_name('environment.squid-fixture-new')
+            changed.write_text(drift)
+            changed.chmod(environment.stat().st_mode & 0o777)
+            changed.replace(environment)
+            until(lambda: guard_applied() and ipc.log.read_text().count('operation=LinuxSystemProxyApply ') > guard_calls,
+                  'Core guard repair while Proxy is quarantined')
+            assert forward(18884, 'quarantined')
+            assert int(service('show', '-p', 'MainPID', '--value', 'squid.service')) == original_pid
+            probe(tun_record, 'squid-quarantined')
+            assert (native.read_bytes(), queue.read_bytes(), receipt.read_bytes()) == (persisted[0], persisted[2], original_receipt)
+            projected = desired.read_bytes()
+            projection = json.loads(projected)
+            assert projection['PublicationOperationId'] == operation and projection['LastProblemCode'] is None
+            assert projection['PublishedRevision'] == projection['DesiredRevision'] == pending['DesiredRevision']
+            assert projection['PublishedConfigurationHash'] == digest
+            assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
+            cut(pid)
+            ipc.start_helper()
+            worker = launch('admission-disabled')
+            assert worker.wait(timeout=15) == 0
+            assert operation in (root / 'full-startup-refused').read_text()
+            assert queue.read_bytes() == persisted[2]
+            worker = launch('squid-restart')
+            pid = int(marker('full-server-pid'))
+            token = login()
+            confirmed = until(lambda: terminal(operation), 'original Squid receipt after quarantine')
+            assert confirmed['completedAt'] and publish(18884, 'squid-change')['operationId'] == operation
+            assert read(operation) == confirmed and receipt.read_bytes() == original_receipt
+            assert native.read_bytes() == persisted[0] and desired.read_bytes() == projected
+            assert forward(18884, 'confirmed') and reloads.read_text().splitlines() == ['reload']
+            assert int(service('show', '-p', 'MainPID', '--value', 'squid.service')) == original_pid
+            probe(tun_record, 'squid-fault-restarted')
+            assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
+            audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+            assert audit.count(f'operation=SquidApplyConfiguration id={operation} ') == 1
+            assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(tun_record["operation"])} ') == 1
+            assert all(f'operation={kind} ' not in audit for kind in ('MihomoRuntimeTunStop', 'MihomoRuntimeTunStart', 'MihomoRuntimeRecover'))
+            os.kill(pid, signal.SIGTERM)
+            assert worker.wait(timeout=12) == 0
+            upstream.shutdown()
+            upstream.server_close()
+            print(f'PASS SQUID FAULT CORE TUN CONTINUITY: original={operation}; publication={tun_record["operation"]}; '
+                  f'Mihomo PID={tun_record["service"][0]}; configuration={tun_record["credential"]}; '
+                  f'Squid PID={original_pid}; Core guard repaired, one reload, original receipts retained', flush=True)
+            return
         missing = receipt.with_suffix('.held')
         receipt.rename(missing)
         pid = relaunch()
@@ -4264,7 +4345,7 @@ exec {shlex.quote(str(systemctl))} "$@"
               'real upstream after Helper exit; both ledgers unchanged and no replay')
 
     worker = launch('zero-dns-publish' if zero_dns or partial_dns or early_owner or initial_stop else 'squid-new' if squid else 'removal-cut' if removal_admin
-                    else 'admission' if admission or handoff or retained_removal or quarantine
+                    else 'admission' if admission or handoff or retained_removal or quarantine or squid_tun
                     else 'stop-reply-drop' if drop_stop_reply else 'cleanup-drain' if cleanup_drain
                     else 'cleanup-cut' if cleanup_cut else 'drain')
     first_worker = worker
@@ -4317,6 +4398,9 @@ with sqlite3.connect(sys.argv[1]) as database:
         prepare(published_effect['InterfaceIndex'], ipc.helper.pid)
         record = json.loads(journal.read_bytes())
         probe(record, 'jwt-before-shutdown')
+        if squid_tun:
+            verify_squid_publication(pid, record)
+            return
         if admission:
             verify_admission(pid, record, publication)
             return
@@ -4807,7 +4891,7 @@ rules:
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
-                        'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account'):
+                        'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account', 'ipc-http-squid-tun-recovery-fault'):
                 proof_full_http_shutdown(ipc, case)
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,

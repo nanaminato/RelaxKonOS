@@ -139,6 +139,8 @@ Server 在受保护状态目录的 `squid-configuration.json` 保存主机级结
 
 GET `/configuration` 返回 `state`、实时 `status` 和 `matchesPublishedConfiguration`。只有受管文件摘要匹配上次成功发布摘要且没有恢复标记时，匹配值才为 true；这不代表最近的 desired 已发布，也不证明运行时加载成功。Helper 不可用返回 503。写入使用私有文件、同目录原子替换和进程内串行化；配置读取等待当前 apply 结束。该主机级状态不使用现有用户/设备/工作区 Registry，避免把共享 Squid 配置错误绑定到某个用户。
 
+恢复查询确认 Helper 原发布后，可以先写入发布投影。原队列终态保存失败时，原操作继续保护新变更和模块停用。启用 Proxy 重启后按原 ID 结案。[恢复写回故障实测](../architecture/server-module-evidence/Proxy-Squid.md#squid-恢复写回故障与-core-tun-连续性)
+
 ## 部署与验收
 
 先在独立 Linux 测试主机安装发行版 Squid 包，确认上述固定路径和 squid.service，部署同一版本的 Server 与 Helper。不要先启动不熟悉的发行版默认配置；审阅其访问规则。应用后再通过 lifecycle 启动。
