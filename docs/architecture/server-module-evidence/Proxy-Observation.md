@@ -702,3 +702,15 @@ Windows Release 模块边界、Helper socket 和 Proxy 常驻专项通过。Linu
 **已实现但实机未验证。** 整机掉电与其他平台故障窗口需独立环境。此轮验证实际进程退出和回收。对象释放、ALC 回收、隔离负载内存和生产收益分别待验。
 
 **未实现或仍受门禁保护。** 信号退出或缺少可信原登记时保留待核验。整模块安全交接及已结案见证的长期回收策略继续开放。Proxy 保持 resident。
+
+### TUN 与恢复状态的管理响应租约
+
+**已实现且已验证。** 管理 GET `/api/v1.0/proxy/tun` 与 `/api/v1.0/proxy/recovery` 在当前 Proxy 代次取得请求租约并借用 Core 的同一安全服务。租约覆盖实际读取、响应和作用域清理。Linux 私有 systemd 的完整认证 Server 在活跃发布 `d93bba41f19e4d9c9f5c04bd42005bf3` 与具名启动 `198c9c774200425b87ec7cbbfb7087cd` 下并行执行两条读取。两次真实 Helper 查询已完成，两个 HTTP 响应在发送前暂扣，当前代次持有两项租约。放行后两个 200 响应相同，租约归零。原队列、原 Helper 台账和配置镜像逐字节保持，原管理选路、真实 HTTP 及分流 DNS 保持。
+
+原具名停止 `80884c02c74a497c88243affd92499fb` 的清理故障隔离原代次后，两条管理读取都返回 `503 / module-load-failed`，Helper 查询计数未增加。模块诊断仍显示 `module-recovery-blocked`，原队列和原 Helper 台账保持，停用申请与禁用启动拒绝越过原门禁。启用重启按原停止 ID 只读结案，后续具名启动恢复真实 HTTP 和分流 DNS。原停止只派发一次。
+
+Release 25 项注册、38 项 TUN 边界、48 项 Core 安全、37 项工作作用域和 31 项驻留检查通过。两轮专属进程与 cgroup 已清理，宿主共享运行时、代理和 resolver 指纹一致。正向日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-status-scope.log` SHA-256 为 `490b95998d55e21101f083ed6d0452dbac36391237ba06efe85973614b997960`，归档为 `30d9e1717a455b085e1cc834440806b1bd758c205cf2c1c7395b958da9450ac4`。故障复验日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-status-fault-retest.log` SHA-256 为 `2925901e6019a1d739335e905a189116b7303e38716e31174ad406cdb74c1f03`，归档为 `6c8c872850edd5083ff46fa215895ae1a814c6ecd61e15e6446ea89f65c08eb3`。早期反向夹具混淆诊断与 HTTP 错误码，随后新增循环变量遮蔽路由核验函数，均修正后复验通过。
+
+**已实现但实机未验证。** 本轮确认专属进程退出。故障对象释放、整模块 ALC 回收、隔离负载内存和生产收益分别待验。
+
+**未实现或仍受门禁保护。** 整模块安全交接仍开放，Proxy 保持 resident。

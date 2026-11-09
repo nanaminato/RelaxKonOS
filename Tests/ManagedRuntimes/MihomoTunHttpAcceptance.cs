@@ -42,7 +42,7 @@ internal static class MihomoTunHttpAcceptance
             options.AddPolicy(RuntimeCatalogEndpoints.ManagePolicy, policy => policy.RequireClaim("permission", "manage"));
         });
         var ids = new HashSet<string> { ServerModules.ProxyId };
-        builder.Services.AddSingleton(services => new ModuleResidencyCoordinator([new ResidentModuleWorkRuntimeFactory(ServerModules.ProxyId)],
+        builder.Services.AddSingleton(services => new ModuleResidencyCoordinator([new ProxyWorkRuntimeFactory()],
             ModuleResidencyOptions.Parse(builder.Configuration, ids, ids), services,
             ServerModuleContext.Create(builder.Configuration, builder.Environment, "private-systemd-http"),
             NullLogger<ModuleResidencyCoordinator>.Instance, residentWorkModuleIds: ids));

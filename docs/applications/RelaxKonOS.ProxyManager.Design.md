@@ -4764,3 +4764,5 @@ Core 调度器按原 ID 恢复已受理的受管 TUN 发布。管理队列仍按
 档案列表、读取、创建、修订和删除使用当前管理代次的前台作用域。修订仍按原档案的期望修订核对。[档案实测](../architecture/server-module-evidence/Proxy-Publication.md#档案管理的前台作用域)
 
 控制器分组选择、路由切换、延迟探测和连接关闭由当前管理代次持有前台作用域。路由切换使用 Mihomo 原生模式更新，实测切换后可读回该模式。[控制器实测](../architecture/server-module-evidence/Proxy-Observation.md#mihomo-控制器前台管理作用域)
+
+TUN 和恢复状态的管理 GET 各持当前 Proxy 代次的一项工作租约，覆盖 Core 安全状态读取、响应和作用域清理。代次故障隔离时返回 HTTP 503，宿主安全调度继续由 Core 负责。[状态响应实测](../architecture/server-module-evidence/Proxy-Observation.md#tun-与恢复状态的管理响应租约)

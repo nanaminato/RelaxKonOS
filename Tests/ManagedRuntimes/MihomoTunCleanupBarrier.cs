@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.GatewayProxy;
 using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.Proxy.Mihomo;
@@ -22,7 +23,16 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
     internal static void RegisterRetry(string root) => Register(root, typeof(MihomoRuntimeRecoveryService), "full-pam-retry-cleanup",
         services => services.AddSingleton<IStartupFilter>(new RetryResponseBarrier(root)));
 
+    internal static void RegisterStatusResponse(string root) => RegisterHost(services =>
+    {
+        if (services.Any(service => service.ServiceType == typeof(IProxyTunSafetyService)))
+            services.AddSingleton<IStartupFilter>(new StatusResponseBarrier(root));
+    });
+
     private static void Register(string root, Type serviceType, string prefix, Action<IServiceCollection>? configure = null)
+        => RegisterHost(services => AddBarrier(services, root, serviceType, prefix, configure));
+
+    private static void RegisterHost(Action<IServiceCollection> configure)
     {
         DiagnosticListener.AllListeners.Subscribe(new Observer<DiagnosticListener>(listener =>
         {
@@ -30,7 +40,7 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
                 listener.Subscribe(new Observer<KeyValuePair<string, object?>>(entry =>
                 {
                     if (entry is { Key: "HostBuilding", Value: IHostBuilder host })
-                        host.ConfigureServices(services => AddBarrier(services, root, serviceType, prefix, configure));
+                        host.ConfigureServices(configure);
                 }));
         }));
     }
@@ -75,6 +85,26 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
             {
                 if (context.Request.Path == RuntimeRoutes.MihomoRecoveryRetry)
                     context.Response.OnStarting(() => HoldAsync(root, "full-pam-retry-response", "sending", "released"));
+                return resume(context);
+            });
+            next(app);
+        };
+    }
+
+    private sealed class StatusResponseBarrier(string root) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use((context, resume) =>
+            {
+                var prefix = context.Request.Path.Value switch
+                {
+                    ProxyApiRoutes.Tun => "full-tun-status-response",
+                    ProxyApiRoutes.Recovery => "full-tun-recovery-response",
+                    _ => null,
+                };
+                if (prefix is not null)
+                    context.Response.OnStarting(() => HoldAsync(root, prefix, "sending", "released"));
                 return resume(context);
             });
             next(app);

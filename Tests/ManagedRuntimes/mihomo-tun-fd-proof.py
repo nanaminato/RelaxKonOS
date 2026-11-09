@@ -2246,6 +2246,7 @@ def proof_full_http_shutdown(ipc, case):
     named_admission = case == 'ipc-http-named-start-admission'
     named_baseline = case == 'ipc-http-named-start-baseline'
     helper_profile = case == 'ipc-http-named-start-helper-profile'
+    tun_status_scope = case == 'ipc-http-named-start-dns-settled' and Path(sys.argv[3]).with_name('tun-status-scope.fixture').is_file()
     named_dns_settled = named_recovery_cut or named_admission or named_baseline or helper_profile or case == 'ipc-http-named-start-dns-settled'
     named_dns = named_dns_settled or case == 'ipc-http-named-start-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
@@ -3577,6 +3578,8 @@ exec {shlex.quote(str(systemctl))} "$@"
             token = login()
             os.kill(enabled_pid, signal.SIGTERM)
             assert worker.wait(timeout=12) == 0
+        if tun_status_scope:
+            (root / 'full-tun-status-response-proof').touch()
         worker = launch('zero-dns-recover' if named_recovery_cut else 'admission-managed' if named_admission else 'restart')
         restart_pid = int(marker('full-server-pid'))
         token = login()
@@ -3644,6 +3647,40 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert read(publication)['state'] == read(stopped)['state'] == 'succeeded'
             verify_native('recovered', confirmed=True)
             until(lambda: leases() == 0, 'confirmed reconciliation work leases')
+            if tun_status_scope:
+                prefixes = ('full-server/full-tun-status-response', 'full-server/full-tun-recovery-response')
+                saved = queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()
+                query_count = ipc.log.read_text().count('operation=MihomoRuntimeQuery ')
+                for prefix in prefixes:
+                    (root / f'{prefix}-arm').touch()
+                results = {}
+
+                def read_status(route):
+                    results[route] = request(api + route, token)
+
+                readers = [threading.Thread(target=read_status, args=(route,)) for route in ('/tun', '/recovery')]
+                for reader in readers:
+                    reader.start()
+                try:
+                    for prefix in prefixes:
+                        assert marker(f'{prefix}-held') == 'sending'
+                    assert all(reader.is_alive() for reader in readers)
+                    assert leases() == 2 and ipc.log.read_text().count('operation=MihomoRuntimeQuery ') == query_count + 2
+                    verify_native('status-response-held', confirmed=True)
+                    assert (queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()) == saved
+                finally:
+                    for prefix in prefixes:
+                        (root / f'{prefix}-release').touch()
+                    for reader in readers:
+                        reader.join(timeout=8)
+                assert all(not reader.is_alive() for reader in readers)
+                assert results['/tun'] == results['/recovery'] and results['/tun'][0] == 200
+                assert not results['/tun'][1]['recoveryRequired']
+                until(lambda: leases() == 0, 'both TUN status response leases drained')
+                assert (queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()) == saved
+                verify_native('status-response-drained', confirmed=True)
+                print(f'PASS TUN STATUS RESPONSE LEASES: publication={publication}; start={started}; '
+                      'two native reads, two held responses, zero leases after release', flush=True)
             if named_baseline:
                 measure_named_start(restart_pid, current, publication, started)
                 return
@@ -5893,6 +5930,11 @@ with sqlite3.connect(sys.argv[1]) as database:
             assert status == 503, (status, rejection)
             status, rejection = request(api + '/tun/disable', token, 'cleanup-fault-new')
             assert status == 400 and rejection['problemCode'] == 'proxy.operation_interrupted', (status, rejection)
+            status_queries = ipc.log.read_text().count('operation=MihomoRuntimeQuery ')
+            for status_path in ('/tun', '/recovery'):
+                status, rejection = request(api + status_path, token)
+                assert status == 503 and rejection['problemCode'] == 'module-load-failed', (status, rejection)
+            assert ipc.log.read_text().count('operation=MihomoRuntimeQuery ') == status_queries
             assert faulted() and queue.read_bytes() == pending and cleanup_native.read_bytes() == cleanup_native_before
             os.kill(pid, signal.SIGKILL)
         elif cleanup_cut:

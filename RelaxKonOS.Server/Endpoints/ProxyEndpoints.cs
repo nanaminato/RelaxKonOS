@@ -37,7 +37,10 @@ public static class ProxyEndpoints
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
 
         app.MapTunOperationEndpoints();
-        app.MapGet(ProxyApiRoutes.Recovery, (IProxyRecoveryService recovery, CancellationToken ct) => recovery.GetStatusAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapGet(ProxyApiRoutes.Recovery, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, static async (services, ct) =>
+                Results.Ok(await services.GetRequiredService<IProxyRecoveryService>().GetStatusAsync(ct))))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyRecoveryStatusDto>();
 
         app.MapGet(ProxyApiRoutes.Profiles, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
             ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, static async (services, ct) =>
@@ -148,8 +151,10 @@ public static class ProxyEndpoints
 
     internal static void MapTunOperationEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(ProxyApiRoutes.Tun, (IProxyTunSafetyService tun, CancellationToken ct) => tun.GetStatusAsync(ct))
-            .RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapGet(ProxyApiRoutes.Tun, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, static async (services, ct) =>
+                Results.Ok(await services.GetRequiredService<IProxyTunSafetyService>().GetStatusAsync(ct))))
+            .RequireAuthorization("ProxyRead").WithTags("Proxy").Produces<ProxyRecoveryStatusDto>();
         app.MapPost(ProxyApiRoutes.TunEnable, (ProxyTunRequest request, HttpContext context, ProxyLifecycleOperations operations, CancellationToken ct) =>
         {
             var address = context.Connection.RemoteIpAddress;

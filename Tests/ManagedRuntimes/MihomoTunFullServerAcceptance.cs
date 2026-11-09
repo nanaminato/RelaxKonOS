@@ -269,6 +269,11 @@ internal static class MihomoTunFullServerAcceptance
             start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
             start.Environment["RELAXKONOS_TEST_PAM_RETRY_CLEANUP"] = start.WorkingDirectory;
         }
+        if (File.Exists(Path.Combine(root, "full-tun-status-response-proof")))
+        {
+            start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
+            start.Environment["RELAXKONOS_TEST_TUN_STATUS_RESPONSE"] = start.WorkingDirectory;
+        }
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
         if (recoveryWriteFault || phase is "admission-managed" or "handoff-disabled" or "handoff-restart" or "cleanup-fault")
         {
