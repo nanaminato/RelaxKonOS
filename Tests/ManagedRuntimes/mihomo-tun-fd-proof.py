@@ -1425,12 +1425,12 @@ class IpcPublicationWorkers:
         self.helper = None
         self.generation = 0
 
-    def start_helper(self):
+    def start_helper(self, prefix=()):
         assert self.helper is None
         self.generation += 1
         self.log = root / f'ipc-helper-{self.generation}.log'
         with self.log.open('x') as log:
-            self.helper = subprocess.Popen([launcher, '--linux-service', '--config', self.config],
+            self.helper = subprocess.Popen([*prefix, launcher, '--linux-service', '--config', self.config],
                                            stdout=log, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 8
         while self.helper.poll() is None and time.monotonic() < deadline:
@@ -2053,8 +2053,39 @@ def proof_full_http_shutdown(ipc, case):
         original_helper_pid = ipc.helper.pid
         ipc.stop_helper()
         (root / 'full-zero-dns-broker').unlink()
+        checkpoints = {file.name: file.read_bytes() for file in operation_dir.glob('tun-*.json')}
+        ipc.start_helper(('/usr/bin/unshare', '--net'))
+        foreign_namespace = os.readlink(f'/proc/{ipc.helper.pid}/ns/net')
+        assert foreign_namespace != record['namespace']
+        assert state_file.read_bytes() == pending_state
+        worker = launch('restart')
+        foreign_pid = int(marker('full-server-pid'))
+        token = login()
+
+        def original_namespace_rejected():
+            pending = json.loads(state_file.read_bytes())['configuration']
+            assert uuid.UUID(pending['operationId']).hex == publication
+            return pending.get('recoveryProblemCode') == 'runtime.network_checkpoint_conflict'
+
+        until(original_namespace_rejected, 'original namespace gate')
+        foreign_reply = read(publication)
+        assert foreign_reply['state'] == 'interrupted' and foreign_reply['stage'] == 'managed_tun'
+        assert not foreign_reply.get('completedAt') and submit('enable', key, {'profileId': profile}) == publication
+        status, blocked = request(api + '/tun/enable', token, 'full-foreign-namespace', {'profileId': profile})
+        assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+        forward('foreign-namespace')
+        assert checkpoints == {file.name: file.read_bytes() for file in operation_dir.glob('tun-*.json')}
+        assert resolver_snapshot() == resolver_before and mirror.read_bytes() == original_mirror
+        assert not (root / 'rule-delete-attempts').exists() and not (root / 'dns-write-attempts').exists()
+        foreign_log = ipc.log.read_text()
+        assert 'operation=MihomoRuntimeRecover ' in foreign_log and 'operation=MihomoRuntimeConfigure ' not in foreign_log
+        os.kill(foreign_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        ipc.stop_helper()
+        pending_state = state_file.read_bytes()
         ipc.start_helper()
         assert ipc.helper.pid != original_helper_pid and state_file.read_bytes() == pending_state
+        assert os.readlink(f'/proc/{ipc.helper.pid}/ns/net') == record['namespace']
         forward('after-helper-restart')
         assert resolver_snapshot() == resolver_before and mirror.read_bytes() == original_mirror
         worker = launch('zero-dns-recover')
@@ -2099,6 +2130,8 @@ def proof_full_http_shutdown(ipc, case):
         assert worker.wait(timeout=12) == 0
         print(f'PASS TUN FULL JWT ZERO DNS: original={publication}; recovery IPC={correlation}; '
               f'restored PID={restored[0]}; one rule removal, original receipt and work lease drained')
+        print(f'PASS TUN NAMESPACE OWNERSHIP: original={publication}; owner={record["namespace"]}; '
+              f'foreign={foreign_namespace}; original candidate and native checkpoints preserved')
 
     def launch(phase):
         (root / 'full-server-pid').unlink(missing_ok=True)

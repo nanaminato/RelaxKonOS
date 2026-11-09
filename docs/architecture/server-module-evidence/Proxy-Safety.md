@@ -776,6 +776,20 @@ Server 重启以原 ID 发起补偿。AF_UNIX 中继在 Helper 持久保存原 `
 - **已实现但实机未验证**。此专项只覆盖 DNS 派发前的零写入补偿；整机掉电不在此次运行范围。工作租约归零是责任排空证据。对象释放和 ALC 回收本次未测。
 - **未实现或阻塞**。整模块安全交接仍待验收，Proxy 保持 resident。此专项未测隔离内存差值和生产内存收益。
 
+### Helper 网络命名空间换代时的原所有权门禁
+
+**已实现且已验证。** 在同一 Linux x64 专属 systemd、完整 PAM/JWT Server 与独立 Helper 上扩展零 DNS 夹具。原发布 `24f4471dddf84bfa936ecbce0c209cf4` 交付真实 TUN 描述符后、DNS 尚未派发时终止原 Server 与 Helper。原候选继续在 `net:[4026532845]` 运行。在共享该专属挂载及原台账的前提下，令接续 Helper 进入独立的 `net:[4026532954]`，完整 Server 仍从原管理网络启动并按原 ID 进入恢复。
+
+Helper 记录 `runtime.network_checkpoint_conflict`。原 HTTP 回执保持 `interrupted / managed_tun`、无结束时间，同键返回原操作，异键受 `proxy.operation_interrupted` 拒绝。原管理选路、专用路由、候选进程身份、TUN 描述符、运行配置凭据及真实 HTTP 上游均核对一致。原检查点、Server 配置镜像及 resolver 设置保持，规则删除、DNS 写入和配置重派均为零。
+
+以 SIGTERM 排空异命名空间 Helper 所服务的 Server，再让 Helper 回到原命名空间。原 ID 的补偿 IPC 为 `99b8c1a831ed434ea46aff9a42995770`。扣留应答时保留原工作租约，再次重启只读恢复原终态，候选退出，原规则仅删除一次，旧配置、管理选路及真实转发恢复，工作租约归零。恢复后的 Mihomo PID 为 `751`。首次试跑已命中门禁，夹具因将正常停机阶段强制终止而退出，改用 SIGTERM 后完整复验通过。专属 cgroup 清理通过，宿主运行时服务、系统代理和 resolver 文件指纹一致。
+
+Windows Release TUN 回归通过，含 38 项 TUN 边界检查。原始 Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-namespace.log` 的 SHA-256 为 `de79135068af841a8487872211ae732c73e375bdf9dd8bc6c6b1524a60da9651`，归档 SHA-256 为 `b2e9611594d371c07b26ded3c501bc20744135e0b4ca8fdcc67c6844880339dc`。
+
+**已实现但实机未验证。** 整机掉电需要独立断电环境。进程退出本轮已核实，对象释放、ALC 回收、隔离内存差值和生产内存收益未测量。
+
+**未实现或仍受门禁保护。** 原网络命名空间无法复核时保持待核验，整模块动态交接待验，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。
