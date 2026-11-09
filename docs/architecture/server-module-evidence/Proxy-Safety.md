@@ -1418,4 +1418,17 @@ Windows Release 模块边界回归通过。Linux 专属 systemd 在原发布 `77
 
 实测入口为 `ipc-http-restored-job-cut` 和 `ipc-http-restored-dispatch-unknown`。在测试程序集旁放置空文件 `restored-job-journal-identity.fixture` 可启用五组日志异常注入。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-job-journal-identity.log` SHA256 `cad09e7cfdba3bae661002d111b8aa95577616de2ecf9f9058054d21b2f81a57`，归档 SHA256 `be99fbecf03254010c647b8d416a6aaadb5d8e3a0254c679eb3a0925a5a032fc`。
 
-**仍待验收。** 首次 StartUnit 应答的歧义格式另行核对。此轮分别确认原进程连续性与专属进程退出。整模块对象释放、ALC 回收、隔离负载内存与生产收益仍独立待验。Proxy 保持 resident。
+**仍待验收。** 首次 StartUnit 应答的格式实测见下一节。此轮分别确认原进程连续性与专属进程退出。整模块对象释放、ALC 回收、隔离负载内存与生产收益仍独立待验。Proxy 保持 resident。
+
+
+### 补偿启动首次应答的格式门禁
+
+**已实现且已验证。** Helper 只接受类型为 `o` 且含单个规范作业路径的首次 StartUnit 应答。重复字段、前导零和无效 JSON 统一保留原补偿待核验状态。原派发标记先于 StartUnit 持久化。应答未通过时继续保留原标记，作业 ID 与进程见证保持缺失。
+
+Linux 私有 systemd 对原发布 `25c79eb1ee364ec8a77ad5c0c99f0a98`、`82607007d5424d1a9f0b975a86d94b76` 和 `9994d08cced941cfb3aa3100bf789cde` 分别验证重复 `data`、作业 ID 前导零和无效 JSON。每组原生作业 `39` 已实际恢复旧配置服务，再由夹具替换应答。Helper 拒绝落盘作业 ID，重启后同键保持待核验，新键被拒绝。三组的原进程、配置身份、管理路由、解析器快照和真实上游 HTTP 均保持。每组只执行一次 StartUnit，配置重派为零。
+
+使用真实应答的对照组 `c082acb94f2b4083b4a763e1c65fef3d` 按原作业 `39`、原 PID `510` 及 invocation `ce2c0ad536854d12a911c56bdfdae3de` 完成只读对账，同键返回原终态，租约排空。Windows Release 模块边界回归通过。四个专属 cgroup 已清理，共享服务及网络文件指纹一致。
+
+复验入口为 `ipc-http-restored-job-cut` 和 `ipc-http-restored-dispatch-unknown`。后者可在测试程序集旁放置 `restored-start-reply-shape.fixture`，内容为 `duplicate-data`、`leading-zero` 或 `invalid-json`，每个变体使用独立私有单元。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-reply-shape.log` SHA256 `d2077ccb7dd8ba673191a343bd20aa379a37f3833540d0f8f0c477e06b2d045d`，归档 SHA256 `670d09ffb333f916cc325e3fbd4f61ae9e47faaba21cfb85c741df78324fc467`。
+
+**仍待验收。** 本轮验证原进程连续性和专属进程退出。外部版本探测的生产独立退出见证、整模块对象释放、ALC 回收、隔离负载内存和生产收益仍分别开放。Proxy 保持 resident。

@@ -194,14 +194,7 @@ internal sealed partial class LinuxMihomoArchiveHost
         var reply = await RunAsync("/usr/bin/busctl", ["--system", "--timeout=5s", "--json=short", "call",
             "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
             "StartUnit", "ss", Unit, "fail"]);
-        using var response = JsonDocument.Parse(reply);
-        var job = response.RootElement.GetProperty("data");
-        const string prefix = "/org/freedesktop/systemd1/job/";
-        if (response.RootElement.GetProperty("type").GetString() != "o" || job.GetArrayLength() != 1
-            || job[0].GetString() is not { } objectPath || !objectPath.StartsWith(prefix, StringComparison.Ordinal)
-            || !uint.TryParse(objectPath.AsSpan(prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out var id)
-            || id == 0)
-            throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+        var id = ParseRestoredStartJobId(reply);
         var dispatch = new RestoredStartDispatch(operation, boot, id, started);
         await WriteRestoreFileAsync(operation, dispatchPath, JsonSerializer.Serialize(dispatch),
             UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
@@ -209,6 +202,29 @@ internal sealed partial class LinuxMihomoArchiveHost
         await WriteRestoreFileAsync(operation, path, JsonSerializer.Serialize(receipt),
             UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
         return receipt;
+    }
+
+    private static uint ParseRestoredStartJobId(string reply)
+    {
+        const string problem = "runtime.network_restored_start_unconfirmed";
+        const string prefix = "/org/freedesktop/systemd1/job/";
+        try
+        {
+            using var response = JsonDocument.Parse(reply);
+            var root = response.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || root.EnumerateObject().Count() != 2
+                || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "o"
+                || !root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array || data.GetArrayLength() != 1
+                || data[0].ValueKind != JsonValueKind.String || data[0].GetString() is not { } path
+                || !path.StartsWith(prefix, StringComparison.Ordinal))
+                throw new RuntimePolicyException(problem);
+            var value = path.AsSpan(prefix.Length);
+            if (!uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id)
+                || id == 0 || !value.SequenceEqual(id.ToString(CultureInfo.InvariantCulture)))
+                throw new RuntimePolicyException(problem);
+            return id;
+        }
+        catch (JsonException) { throw new RuntimePolicyException(problem); }
     }
 
     private static async Task<RestoredStartJob> ReadRestoredJobResultAsync(RestoredStartDispatch dispatch, CancellationToken ct)

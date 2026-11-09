@@ -296,6 +296,10 @@ if [[ "$*" == *"StartUnit ss {unit} fail" ]]; then
         printf '%s\\n' "$result" > "$work/restored-start-reply.new"
         mv "$work/restored-start-reply.new" "$work/restored-start-reply"
         while [[ ! -f "$work/discard-restored-start-reply" ]]; do sleep .05; done
+        if [[ -f "$work/restored-start-reply-override" ]]; then
+            cat "$work/restored-start-reply-override"
+            exit 0
+        fi
         exit 1
     fi
 fi
@@ -2608,6 +2612,22 @@ def proof_full_http_shutdown(ipc, case):
         pending()
         assert leases() == 0
         probe_restored('in-flight')
+        reply_fixture = Path(sys.argv[3]).with_name('restored-start-reply-shape.fixture')
+        if dispatch_unknown and reply_fixture.is_file():
+            phase = reply_fixture.read_text().strip()
+            variants = {
+                'duplicate-data': '{"data":["' + prefix + str(job_id + 1) + '"],' + json.dumps(reply)[1:],
+                'leading-zero': json.dumps({**reply, 'data': [prefix + '0' + str(job_id)]}),
+                'invalid-json': '{',
+            }
+            (root / 'restored-start-reply-override').write_text(variants[phase] + '\n')
+            (root / 'discard-restored-start-reply').touch()
+            until(lambda: 'event=request-completed operation=MihomoRuntimeRecover ' in ipc.log.read_text(),
+                  'initial StartUnit reply refusal')
+            assert pending()['recoveryProblemCode'] == 'runtime.network_restored_start_unconfirmed'
+            assert not dispatch.exists() and not (root / 'restored-job-queries').exists()
+            probe_restored(phase)
+            print(f'PASS TUN RESTORED START REPLY SHAPE: original={publication}; actual job={job_id}; variant={phase}; no durable job or redispatch', flush=True)
         os.kill(pid, signal.SIGTERM)
         ipc.stop_helper()
         (root / ('discard-restored-start-reply' if dispatch_unknown else 'release-restored-job')).touch()
