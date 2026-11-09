@@ -97,7 +97,9 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             }
             if (Volatile.Read(ref _stopping) || _recoveryBlocked || entries.Any(entry => IsUnresolved(entry)
                 && (!_running.ContainsKey(entry.Operation.OperationId)
-                    || kind.StartsWith("squid.", StringComparison.Ordinal) && entry.Operation.Kind == SquidGatewayService.PublicationKind)))
+                    || kind.StartsWith("squid.", StringComparison.Ordinal)
+                        && (entry.Operation.Kind == SquidGatewayService.PublicationKind
+                            || SquidGatewayService.LifecycleAction(entry.Operation.Kind) is not null))))
                 throw new ProxyOperationValidationException(ProxyProblemCodes.OperationInterrupted);
             work = await workLeases.AcquireAsync(cancellationToken);
             item = new ProxyOperationDto(Guid.NewGuid(), kind, ProxyOperationState.Queued, "queued", "", null, null);
@@ -226,20 +228,23 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             if (!NeedsReconciliation(entry) || requested is not null && requested != operation.OperationId)
                 continue;
 
-            if (operation.Stage == SquidGatewayService.PublicationPending)
+            if (operation.Stage is SquidGatewayService.PublicationPending or SquidGatewayService.LifecyclePending)
             {
-                if (scopes is null || operation.Kind != SquidGatewayService.PublicationKind
+                var isPublication = operation.Stage == SquidGatewayService.PublicationPending;
+                var lifecycleAction = SquidGatewayService.LifecycleAction(operation.Kind);
+                if (scopes is null || (isPublication ? operation.Kind != SquidGatewayService.PublicationKind : lifecycleAction is null)
                     || _cleanupFailures.ContainsKey(operation.OperationId)) continue;
                 var scope = scopes.CreateAsyncScope();
-                RelaxKonOS.Protocol.GatewayProxy.SquidPublicationReceipt? receipt = null;
+                bool? applied = null;
                 try
                 {
-                    receipt = await scope.ServiceProvider.GetRequiredService<SquidGatewayService>()
-                        .RecoverPublicationAsync(operation.OperationId, ct);
+                    var squid = scope.ServiceProvider.GetRequiredService<SquidGatewayService>();
+                    if (isPublication) applied = (await squid.RecoverPublicationAsync(operation.OperationId, ct))?.Applied;
+                    else if (await squid.RecoverLifecycleAsync(operation.OperationId, lifecycleAction!.Value)) applied = true;
                 }
                 catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException
                     or JsonException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException)
-                { logger.LogWarning(error, "Original Squid publication could not be verified. OperationId={OperationId}", operation.OperationId); }
+                { logger.LogWarning(error, "Original Squid operation could not be verified. OperationId={OperationId}", operation.OperationId); }
                 finally
                 {
                     try { await scope.DisposeAsync(); }
@@ -251,12 +256,12 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                         throw;
                     }
                 }
-                if (receipt is null) continue;
+                if (applied is null) continue;
                 entries[index] = entry with { Operation = operation with
                 {
-                    State = receipt.Applied ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
-                    Stage = receipt.Applied ? "completed" : "failed",
-                    ProblemCode = receipt.Applied ? "" : SquidGatewayService.RolledBack,
+                    State = applied.Value ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
+                    Stage = applied.Value ? "completed" : "failed",
+                    ProblemCode = applied.Value ? "" : SquidGatewayService.RolledBack,
                     CompletedAt = DateTimeOffset.UtcNow
                 } };
                 changed = true;
@@ -416,7 +421,8 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
             var publicationPending = false;
             var batchPending = original.Kind == RefreshBatchKind && problem == ProxyProblemCodes.RecoveryRequired;
             var pendingNative = MihomoManagedTunOperations.IsPendingStage(lastStage) && problem == ProxyProblemCodes.RecoveryRequired
-                || lastStage == SquidGatewayService.PublicationPending && SquidGatewayService.IsPublicationUnconfirmed(problem);
+                || lastStage == SquidGatewayService.PublicationPending && SquidGatewayService.IsPublicationUnconfirmed(problem)
+                || lastStage == SquidGatewayService.LifecyclePending && SquidGatewayService.IsLifecycleUnconfirmed(problem);
             if (IsSubscriptionPublication(original.Kind) && problem == ProxyProblemCodes.RecoveryRequired && publication is not null)
             {
                 try
@@ -490,7 +496,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
     private static bool IsUnresolved(Entry entry) => !IsSettledBatchInterruption(entry) && IsUnresolved(entry.Operation);
 
     private static bool IsPendingNativeStage(string stage) => MihomoManagedTunOperations.IsPendingStage(stage)
-        || stage == SquidGatewayService.PublicationPending;
+        || stage is SquidGatewayService.PublicationPending or SquidGatewayService.LifecyclePending;
 
     private static bool IsUnresolved(ProxyOperationDto operation) =>
         operation.State is ProxyOperationState.Queued or ProxyOperationState.Running or ProxyOperationState.Interrupted

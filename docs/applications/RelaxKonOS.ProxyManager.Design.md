@@ -4421,6 +4421,8 @@ Squid 配置发布沿用原队列 ID 调用 Helper。请求响应或终态无法
 
 查询原操作或重试同键时，原队列可按 ID 读取 Helper 的持久回执。只有候选与原记录一致、当前配置摘要仍匹配、原生待清理标记已移除时，才确认原成功或已回滚的原失败。查询不重发配置或重载。证据缺失或漂移时继续等待核验。见[原回执实机证据](../architecture/server-module-evidence/Proxy-Squid.md#原成功与回滚回执)。认证查询与原队列分别持有租约，恢复查询在途时再次中断仍可在重启后按原 ID 结案。见[恢复查询实机证据](../architecture/server-module-evidence/Proxy-Squid.md#原发布回执查询在途时再次中断)。
 
+Squid 的启动、停止、重启、重载、启用和禁用使用原队列 ID 与动作调用 Helper。Helper 在派发前保存执行记录，命令成功并持久化原回执后才确认。查询和同键提交只按原记录核对，原回执缺失时阻止新变更及 Proxy 停用。软件包安装与卸载沿用其原入口。
+
 Squid 已在新端口转发、Helper 却在保存终态前退出时，重启后仍显示原配置发布待核验。同键返回原操作，新发布和禁用启动继续受阻。实际监听与配置摘要供只读核对。见[Helper 中断实机证据](../architecture/server-module-evidence/Proxy-Squid.md#helper-在原生效果生效后中断)。
 
 2026-11-04：排队 Proxy 工作在持久 queued 前取得真实驻留工作租约，覆盖审计、异步清理和终态确认；失败 owner 隔离，不丢失恢复责任。订阅转换迁入独立 bundled 程序集，仅共享文本 ABI；按调用创建 collectible ALC，未引入私有实现静态引用。Core guard/TUN/到期/补偿责任保留，Proxy 仍 resident。完整当前事实见[边界设计 §20](../architecture/server-module-evidence/Milestones.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。

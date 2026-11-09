@@ -77,7 +77,7 @@ internal static class MihomoTunFullServerAcceptance
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
-            or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"))
+            or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
@@ -96,11 +96,16 @@ internal static class MihomoTunFullServerAcceptance
             guard!.Path, ct, (operation, _) => operation == "ProxyServerApply") : null;
         await using var relay = first ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-tun-reply.sock", expiryRelay?.Path ?? socket, ct,
             (operation, _) => operation == "MihomoRuntimeTunStop") : null;
-        var squidReceiptCut = phase == "squid-receipt-cut";
-        await using var squidRelay = phase == "squid-cut" || squidReceiptCut ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
-            "/run/rk-squid-reply.sock", socket, ct,
-            (operation, _) => operation == (squidReceiptCut ? "SquidConfigurationReceipt" : "SquidApplyConfiguration"),
-            holdConfirmedSquidRollback: !squidReceiptCut) : null;
+        var squidOperation = phase switch
+        {
+            "squid-cut" => "SquidApplyConfiguration",
+            "squid-receipt-cut" => "SquidConfigurationReceipt",
+            "squid-lifecycle-cut" => "SquidTrackedLifecycle",
+            _ => null
+        };
+        await using var squidRelay = squidOperation is not null ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+            "/run/rk-squid-reply.sock", socket, ct, (operation, _) => operation == squidOperation,
+            holdConfirmedSquidRollback: phase == "squid-cut") : null;
         await using var removalRelay = phase == "removal-cut" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-removal-reply.sock", socket, ct, (operation, _) => operation == "MihomoRuntimeExecute") : null;
         await using var recoveryRelay = phase == "zero-dns-recover" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
@@ -146,7 +151,7 @@ internal static class MihomoTunFullServerAcceptance
                 var original = await committedReply.Committed.Task.WaitAsync(ct);
                 var marker = recoveryRelay is not null ? "full-zero-dns-recovery-held"
                     : removalRelay is not null ? "full-removal-response-held"
-                    : squidReceiptCut ? "full-squid-receipt-held" : "full-squid-response-held";
+                    : phase == "squid-receipt-cut" ? "full-squid-receipt-held" : "full-squid-response-held";
                 await WriteMarkerAsync(root, marker, original.ToString("N"));
                 await exited;
                 if (server.ExitCode == 137) return;

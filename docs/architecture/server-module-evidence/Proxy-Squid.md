@@ -51,3 +51,13 @@ Windows Release 的 Squid、Proxy Core 安全和 ManagedRuntimes 通过，可信
 - **已实现且已验证**。Windows Release Squid 专项通过。Linux Release 同批复验原回滚 `6ffb7b9b-a800-4607-b3db-82ecd5375926` 及 Helper 终态缺失 `5419eaa9-6e7f-4e91-9b8a-3e73ccf7e652`。已核对 Server 与 Helper 实际退出、Squid 连续转发和专属进程树清理。原始日志 `.artifacts/mb04-squid-recovery-lease/linux.log` 的 SHA-256 为 `995ce856796a795214b3daa5a4d58fd94fa95628c5fad49b24670f9f325e83e4`，测试归档 SHA-256 为 `0d3be44d4cdd80407c1395276a1b8f3d5c901578036f210a484cab860947f984`。
 - **已实现但实机未验证**。整机掉电仍需独立环境。本轮分别观察租约和进程退出，对象释放、ALC 回收、隔离内存差值及生产收益未测。
 - **未实现或仍受门禁保护**。Squid 账户和生命周期队列目前未向 Helper 传递原队列 ID，缺少原生具名终态查询，尚无法验收中断后的原回执连续性。缺少原配置发布终态的人工确证入口及整模块交接继续开放。Proxy 保持 resident。
+
+## 服务控制原回执与重启恢复
+
+服务控制的原队列 ID 和动作随专属 IPC 传递。Helper 在原 Squid 文件锁内先耐久记录操作和待核验标记，再派发 systemd 命令。成功时先同步原回执，再移除并同步待核验标记。重复的同 ID 和动作只读回执。身份不匹配、无终态或待核验标记未清理时禁止重发。原队列通过只读 IPC 核验同 ID 与动作后才写入终态，工作租约覆盖查询、作用域清理和终态写入。
+
+2026-11-09 Linux 私有 systemd 使用完整 PAM/JWT Server 和独立生产 Helper 验证原 Reload `a878be0d-7e51-4df1-9cba-4c7ceddf298b`。真实 Squid 重载成功且原回执落盘后截留应答。原队列仍 Running 且持有一个工作租约。同键返回原 ID，改动作和新键被拒绝，原 Squid PID `264` 继续向独立源站转发。终止 Server 后更换 Helper，暂移原回执可复现待核验及停用拒绝。恢复原字节后按原 ID 和动作读回成功，原队列结案、租约归零。同键返回原 ID，原回执字节保持，跨 Helper 代次只有一次原操作派发、一次实际 Reload。
+
+- **已实现且已验证**。Windows Release Squid 专项通过，包含错误动作拒绝和正确回执匹配。Linux 已验证 Reload 响应丢失及 Start 正常终态。配置发布成功、回滚、两次中断和 Helper 原生结果未知同批通过。原始日志 `.artifacts/mb04-squid-lifecycle/linux.log` 的 SHA-256 为 `b80528054b4db3dc4447d3704d32b911ec6e6381bad332fe29ef616a4d9304a4`，归档 SHA-256 为 `7aa65c260190dcedcfbfd1b30daa0bc9579f0906e18535156f93c15eca47e83b`。已验证 Server、Helper 退出换代和专属 cgroup 清理，共享服务、配置、代理与解析器指纹一致。
+- **已实现但实机未验证**。其他服务控制动作的原生中断、Helper 在服务命令结束前退出、持久化清理中断与整机掉电仍待实测。本轮未测对象释放、ALC 回收、隔离内存差值和生产收益。
+- **未实现或仍受门禁保护**。账户及软件包变更需要各自的原生回执和权限证据。缺少服务控制终态时继续保留原准入，Proxy 保持 resident。

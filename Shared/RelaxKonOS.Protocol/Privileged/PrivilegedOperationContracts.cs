@@ -224,6 +224,8 @@ public enum PrivilegedOperationKind
     ProxyServerRecoverPublication,
     LinuxSystemProxyApplyTracked,
     LinuxSystemProxyReceipt,
+    SquidLifecycleReceipt,
+    SquidTrackedLifecycle,
 }
 
 /// <summary>

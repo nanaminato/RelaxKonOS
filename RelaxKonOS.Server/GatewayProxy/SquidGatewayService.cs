@@ -12,6 +12,22 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
 {
     internal const string PublicationPending = "squid_publication";
     internal const string PublicationKind = "squid.configuration.apply";
+    internal const string LifecyclePending = "squid_lifecycle";
+
+    internal static bool IsTrackedLifecycle(SquidServiceAction action) =>
+        Enum.IsDefined(action) && action is not (SquidServiceAction.Install or SquidServiceAction.Uninstall);
+
+    internal static SquidServiceAction? LifecycleAction(string kind)
+    {
+        const string prefix = "squid.lifecycle.";
+        return kind.StartsWith(prefix, StringComparison.Ordinal)
+            && Enum.TryParse<SquidServiceAction>(kind.AsSpan(prefix.Length), true, out var action)
+            && IsTrackedLifecycle(action) && kind == prefix + action.ToString().ToLowerInvariant() ? action : null;
+    }
+
+    internal static bool IsLifecycleUnconfirmed(string? problem) => problem is not
+        (null or "squid.action.invalid" or "squid.platform.unsupported" or "squid.configuration.adoption_required"
+            or "squid.configuration_directory.missing" or "squid.runtime.unavailable");
 
     internal static bool IsPublicationUnconfirmed(string? problem) => problem is "squid.publication.unconfirmed"
         or "squid.helper.unavailable" or "squid.recovery.required" or "squid.io_or_busy" or "squid.runtime.unavailable"
@@ -115,15 +131,39 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         return new(result.Success, Problem(result), diagnostics.Length > 16384 ? diagnostics[..16384] : diagnostics);
     }
 
-    public async Task<string?> ExecuteAsync(SquidServiceAction action, CancellationToken ct)
+    public async Task<string?> ExecuteAsync(Guid id, SquidServiceAction action, ProxyOperationStageReporter stage, CancellationToken ct)
     {
         if (!Enum.IsDefined(action)) return "squid.action.invalid";
-        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidServiceAction, SquidServiceAction: action), ct);
-        if (result.Success) return null;
+        var tracked = IsTrackedLifecycle(action);
+        if (tracked)
+        {
+            if (id == Guid.Empty) throw new ArgumentException("A Squid lifecycle action requires an operation ID.", nameof(id));
+            await stage(LifecyclePending);
+        }
+        var result = await helper.ExecuteAsync(new(
+            tracked ? PrivilegedOperationKind.SquidTrackedLifecycle : PrivilegedOperationKind.SquidServiceAction,
+            OperationId: tracked ? id : null, SquidServiceAction: action), ct);
+        if (result.Success) return !tracked || MatchesLifecycle(result, id, action) ? null : "squid.recovery.required";
+        if (tracked && result.Error == "squid.runtime.unavailable" && result.ProblemCode != PrivilegedProblemCode.UnsupportedOperation)
+            return "squid.recovery.required";
         // The Helper attaches the unit journal to a failed lifecycle action; only a message the host
         // actually printed may replace the generic "the daemon exited" code.
         var classified = SquidFailureClassifier.Classify(Evidence(result));
         return classified != SquidFailureClassifier.ProcessFailed ? classified : Problem(result);
+    }
+
+    internal async Task<bool> RecoverLifecycleAsync(Guid id, SquidServiceAction action)
+    {
+        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidLifecycleReceipt,
+            OperationId: id, SquidServiceAction: action), CancellationToken.None);
+        return MatchesLifecycle(result, id, action);
+    }
+
+    private static bool MatchesLifecycle(PrivilegedOperationResult result, Guid id, SquidServiceAction action)
+    {
+        if (!result.Success || result.OutputBase64 is not { } output) return false;
+        try { return JsonSerializer.Deserialize<SquidLifecycleReceipt>(Convert.FromBase64String(output)) == new SquidLifecycleReceipt(id, action); }
+        catch (Exception error) when (error is JsonException or FormatException) { return false; }
     }
 
     public async Task<SquidAccount[]?> GetAccountsAsync(CancellationToken ct)

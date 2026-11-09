@@ -86,7 +86,7 @@ internal static partial class SquidOperations
     }
 
     [SupportedOSPlatform("linux")]
-    private static void WritePublication(string path, PublicationRecord record, bool overwrite)
+    private static void WritePublication<T>(string path, T record, bool overwrite)
     {
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -101,7 +101,7 @@ internal static partial class SquidOperations
                 stream.Flush(flushToDisk: true);
             }
             File.Move(temporary, path, overwrite);
-            LinuxDirectorySync.Flush(PublicationDirectory);
+            LinuxDirectorySync.Flush(Path.GetDirectoryName(path)!);
         }
         finally { File.Delete(temporary); }
     }

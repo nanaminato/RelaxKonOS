@@ -40,7 +40,8 @@ public static class GatewayProxyEndpoints
         app.MapPost(GatewayProxyRoutes.Lifecycle, (SquidLifecycleRequest request, HttpContext context,
             ProxyOperationStore operations, CancellationToken ct) =>
             Enum.IsDefined(request.Action)
-                ? QueueAsync(context, operations, "lifecycle." + request.Action.ToString().ToLowerInvariant(), (execution, _, _, token) => execution.ExecuteAsync(request.Action, token), ct)
+                ? QueueAsync(context, operations, "lifecycle." + request.Action.ToString().ToLowerInvariant(), (execution, id, stage, token) => execution.ExecuteAsync(id, request.Action, stage, token), ct,
+                    SquidGatewayService.IsTrackedLifecycle(request.Action) ? request : null)
                 : Task.FromResult<IResult>(Results.BadRequest(new { problemCode = "squid.action.invalid" })))
             .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
         app.MapGet(GatewayProxyRoutes.Accounts, async (SquidGatewayService service, CancellationToken ct) =>
@@ -57,15 +58,15 @@ public static class GatewayProxyEndpoints
 
     private static async Task<IResult> QueueAsync(HttpContext context, ProxyOperationStore store,
         string kind, Func<SquidGatewayService, Guid, ProxyOperationStageReporter, CancellationToken, Task<string?>> action,
-        CancellationToken ct, ApplySquidConfigurationRequest? publication = null)
+        CancellationToken ct, object? identifiedRequest = null)
     {
         var key = context.Request.Headers["Idempotency-Key"].ToString();
         if (string.IsNullOrWhiteSpace(key) || key.Length > 160)
             return Results.BadRequest(new { problemCode = "squid.idempotency_key.required_or_too_long" });
         var actor = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User.FindFirstValue("sub") ?? "unknown";
         var scopes = context.RequestServices.GetRequiredService<IServiceScopeFactory>();
-        var requestIdentity = publication is null ? null
-            : Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { actor, publication })));
+        var requestIdentity = identifiedRequest is null ? null
+            : Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { actor, publication = identifiedRequest })));
         try
         {
             var item = await store.EnqueueIdentifiedAsync("squid:" + key, "squid." + kind, (id, stage, _, token) =>

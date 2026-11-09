@@ -2773,7 +2773,51 @@ def proof_full_http_shutdown(ipc, case):
         token = login(disabled=True)
         assert request(api_root + '/configuration', token)[0] == 404
 
-        pid = restart('squid-restart', pid)
+        pid = restart('squid-lifecycle-cut', pid)
+        lifecycle = api_root + '/lifecycle'
+        key = 'squid-original-reload'
+        action = {'action': 'Reload'}
+        status, accepted = request(lifecycle, token, key, action)
+        assert status == 202, (status, accepted)
+        reload_id = accepted['operationId']
+        assert uuid.UUID(marker('full-squid-response-held')) == uuid.UUID(reload_id)
+        assert read(reload_id)['state'] == 'running' and leases() == 1
+        assert request(lifecycle, token, key, action) == (202, accepted)
+        assert request(lifecycle, token, key, {'action': 'Restart'})[1]['problemCode'] == 'proxy.idempotency_conflict'
+        assert request(lifecycle, token, 'competing-reload', action)[1]['problemCode'] == 'proxy.operation_interrupted'
+        assert forward(18884, 'lifecycle-held') and reloads.read_text().splitlines() == ['reload'] * 4
+        lifecycle_receipt = native.parent / 'relaxkonos-lifecycle' / (uuid.UUID(reload_id).hex + '.json')
+        original_lifecycle = lifecycle_receipt.read_bytes()
+        assert json.loads(original_lifecycle) == {'OperationId': reload_id, 'Action': 'Reload', 'Completed': True}
+        cut(pid)
+        hidden_lifecycle = lifecycle_receipt.with_suffix('.held')
+        lifecycle_receipt.rename(hidden_lifecycle)
+        pid = relaunch()
+        waiting = read(reload_id)
+        assert waiting['state'] == 'interrupted' and waiting['stage'] == 'squid_lifecycle' and not waiting.get('completedAt'), waiting
+        assert request(lifecycle, token, key, action) == (202, accepted)
+        assert request(lifecycle, token, 'competing-reload', action)[1]['problemCode'] == 'proxy.operation_interrupted'
+        os.kill(pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        worker = launch('admission-disabled')
+        assert worker.wait(timeout=15) == 0
+        assert reload_id in (root / 'full-startup-refused').read_text()
+        hidden_lifecycle.rename(lifecycle_receipt)
+        worker = launch('squid-restart')
+        pid = int(marker('full-server-pid'))
+        token = login()
+        completed = terminal(reload_id)
+        assert completed['completedAt'] and request(lifecycle, token, key, action) == (202, accepted)
+        assert read(reload_id) == completed and leases() == 0
+        assert lifecycle_receipt.read_bytes() == original_lifecycle and forward(18884, 'lifecycle-restarted')
+        assert int(service('show', '-p', 'MainPID', '--value', 'squid.service')) == original_pid
+        assert reloads.read_text().splitlines() == ['reload'] * 4
+        audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+        assert audit.count(f'operation=SquidTrackedLifecycle id={reload_id} ') == 1
+        assert f'operation=SquidLifecycleReceipt id={reload_id} ' in audit
+        print(f'PASS SQUID LIFECYCLE RECOVERY: original={reload_id}; action=Reload; Squid PID={original_pid}; '
+              'original receipt and work lease recovered; one lifecycle dispatch', flush=True)
+
         hold.touch()
         unknown = publish(18886, 'squid-native-unknown')['operationId']
         pending_path = native.parent / 'relaxkonos.pending'
@@ -2815,7 +2859,7 @@ def proof_full_http_shutdown(ipc, case):
         command('/usr/bin/dotnet', sys.argv[3], 'runtime-squid-publication-replay', str(root), str(ipc.socket_path), unknown, '18886')
         assert sorted(original_unknown.parent.glob('*.json')) == records
         assert (native.read_bytes(), pending_path.read_bytes(), original_unknown.read_bytes()) == native_evidence
-        assert reloads.read_text().splitlines() == ['reload'] * 4
+        assert reloads.read_text().splitlines() == ['reload'] * 5
         os.kill(pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
         worker = launch('admission-disabled')

@@ -106,21 +106,32 @@ internal static class SquidGatewayChecks
         Check(helper.Requests.Single() is { Operation: PrivilegedOperationKind.SquidApplyConfiguration, Path: null, ContentBase64: null,
             SquidConfiguration.AdoptExistingConfiguration: true } applied && applied.OperationId == operation,
             "The Helper must receive structured state, never caller configuration text or paths.");
-        Check(await service.ExecuteAsync((SquidServiceAction)999, default) == "squid.action.invalid" && helper.Requests.Count == 1,
+        Check(await service.ExecuteAsync(operation, (SquidServiceAction)999, Report, default) == "squid.action.invalid" && helper.Requests.Count == 1,
             "Unknown lifecycle verbs must fail before dispatch.");
         foreach (var action in new[] { SquidServiceAction.Install, SquidServiceAction.Uninstall })
         {
-            await service.ExecuteAsync(action, default);
+            await service.ExecuteAsync(operation, action, Report, default);
             Check(helper.Requests.Last() is { Operation: PrivilegedOperationKind.SquidServiceAction } request
                 && request.SquidServiceAction == action && request.Path is null && request.ContentBase64 is null,
                 "Package control must use fixed typed Helper actions without command text or package names.");
         }
-        await service.ExecuteAsync(SquidServiceAction.Reload, default);
-        Check(helper.Requests.Last().SquidServiceAction == SquidServiceAction.Reload, "Reload was not preserved.");
+        await service.ExecuteAsync(operation, SquidServiceAction.Reload, Report, default);
+        Check(helper.Requests.Last() is { Operation: PrivilegedOperationKind.SquidTrackedLifecycle,
+            SquidServiceAction: SquidServiceAction.Reload } tracked && tracked.OperationId == operation
+            && stage == SquidGatewayService.LifecyclePending, "Reload must carry its original ID and checkpoint.");
+        helper.Result = new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(
+            new SquidLifecycleReceipt(operation, SquidServiceAction.Start))));
+        Check(!await service.RecoverLifecycleAsync(operation, SquidServiceAction.Reload),
+            "A terminal for another action cannot confirm the original reload.");
+        helper.Result = new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(
+            new SquidLifecycleReceipt(operation, SquidServiceAction.Reload))));
+        Check(await service.RecoverLifecycleAsync(operation, SquidServiceAction.Reload)
+            && helper.Requests.Last() is { Operation: PrivilegedOperationKind.SquidLifecycleReceipt } query
+            && query.OperationId == operation, "Only the original named lifecycle receipt can close recovery.");
         helper.Result = new(false, Error: "squid.recovery.required");
-        Check(await service.ExecuteAsync(SquidServiceAction.Start, default) == "squid.recovery.required", "Recovery failure was hidden.");
+        Check(await service.ExecuteAsync(operation, SquidServiceAction.Start, Report, default) == "squid.recovery.required", "Recovery failure was hidden.");
         helper.Result = new(false, Error: "arbitrary transport diagnostic");
-        Check(await service.ExecuteAsync(SquidServiceAction.Start, default) == "squid.helper.unavailable", "Unstructured transport errors must not become problem codes.");
+        Check(await service.ExecuteAsync(operation, SquidServiceAction.Start, Report, default) == "squid.helper.unavailable", "Unstructured transport errors must not become problem codes.");
         Check(await service.GetStatusAsync(default) is null, "Unavailable status must not masquerade as stopped.");
         helper.Result = new(true, OutputBase64: "invalid base64");
         Check(await service.GetStatusAsync(default) is null, "Malformed helper status must fail closed.");
@@ -132,7 +143,7 @@ internal static class SquidGatewayChecks
         helper.Result = new(true, OutputBase64: Convert.ToBase64String(Encoding.UTF8.GetBytes(incompleteStatus.ToJsonString())));
         Check(await service.GetStatusAsync(default) is null, "A missing package capability must reject an outdated Helper response.");
         helper.Result = new(false, Error: "squid.package.unsupported");
-        Check(await service.ExecuteAsync(SquidServiceAction.Install, default) == "squid.package.unsupported",
+        Check(await service.ExecuteAsync(operation, SquidServiceAction.Install, Report, default) == "squid.package.unsupported",
             "The Helper's unsupported package-management refusal must reach the operation result.");
         var before = helper.Requests.Count;
         Check(!(await service.ValidateAsync(invalid[0], default)).Valid && helper.Requests.Count == before,

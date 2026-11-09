@@ -35,6 +35,8 @@ public sealed record SquidNativeValidation(bool Valid, string? ProblemCode, stri
 [JsonConverter(typeof(JsonStringEnumConverter<SquidServiceAction>))]
 public enum SquidServiceAction { Start, Stop, Restart, Reload, Enable, Disable, Install, Uninstall }
 public sealed record SquidLifecycleRequest(SquidServiceAction Action);
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record SquidLifecycleReceipt([property: JsonRequired] Guid OperationId, [property: JsonRequired] SquidServiceAction Action);
 public sealed record SquidStatus(bool Supported, bool Installed, bool Running, bool Enabled, bool Managed, string ConfigurationRevision, [property: JsonRequired] bool PackageManagementSupported, bool RecoveryRequired = false);
 
 /// <summary>Last submitted editor state and publication receipt; never a runtime applied claim.</summary>

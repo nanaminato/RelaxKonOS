@@ -24,5 +24,6 @@ internal static class PrivilegedOperationReplayPolicy
         or PrivilegedOperationKind.NginxReloadReceipt
         or PrivilegedOperationKind.NginxRetireReloadReceipt
         or PrivilegedOperationKind.LinuxSystemProxyApplyTracked or PrivilegedOperationKind.LinuxSystemProxyReceipt
-        or PrivilegedOperationKind.SquidApplyConfiguration or PrivilegedOperationKind.SquidConfigurationReceipt;
+        or PrivilegedOperationKind.SquidApplyConfiguration or PrivilegedOperationKind.SquidConfigurationReceipt
+        or PrivilegedOperationKind.SquidTrackedLifecycle or PrivilegedOperationKind.SquidLifecycleReceipt;
 }
