@@ -31,8 +31,10 @@ internal static class NativeRuntimeProcess
         foreach (var variable in new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy" })
             process.StartInfo.Environment.Remove(variable);
         if (!process.Start()) throw new IOException();
-        var output = ReadBoundedAsync(process.StandardOutput, maximumOutputCharacters);
-        var errors = ReadBoundedAsync(process.StandardError, maximumOutputCharacters);
+        using var stdout = process.StandardOutput;
+        using var stderr = process.StandardError;
+        var output = ReadBoundedAsync(stdout, maximumOutputCharacters);
+        var errors = ReadBoundedAsync(stderr, maximumOutputCharacters);
         try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45)); }
         catch { try { process.Kill(true); } catch (InvalidOperationException) { } throw; }
         await Task.WhenAll(output, errors);

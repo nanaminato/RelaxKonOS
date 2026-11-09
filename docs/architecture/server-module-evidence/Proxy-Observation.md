@@ -414,4 +414,18 @@ Helper PSS 从 98.617 MiB 到 123.438 MiB。私有驻留的变化与 PSS 方向�
 
 Windows Release TUN 激活与 38 项边界检查、Linux Release 构建通过。Server、Helper、Mihomo 及专属 cgroup 退出清理完成，宿主共享服务、代理和 resolver 文件指纹一致。记录位于 `.artifacts/mb04-tun-full-zero-dns/`。原始日志 `linux-named-start-helper-profile.log` SHA-256 为 `fa1c47f2aa6f7e23b7e0e734c75fd7289b11d7ccfdc895979fce3cfcde497d4a`，摘要 `named-start-helper-profile-summary.json` 为 `d1b2f447474aa8e538e10df4fe5c5c2722ceb615b7b35ba071e2e976babd44a2`，冻结清单 `named-start-helper-profile-manifest.json` 为 `62a25b0d9f2dfcc93ba12ce877d4111785089e8f31b544f0ed38795961842f5d`，运行归档为 `17ab58ad40ffe6ae75be98db5ad76954601dd8bae77908b1c2a71d5a1d1a04fd`。
 
-下一项追踪原具名查询所调用的本机子进程 stdout、stderr 和退出边界，核对每次完成后描述符是否及时关闭，并用同一流量条件做修正前后对照。整模块交接、对象释放、ALC 回收和生产收益分别验收。Proxy 保持 resident。
+原具名查询所调用的本机子进程输出管道见下一节。整模块交接、对象释放、ALC 回收和生产收益分别验收。Proxy 保持 resident。
+
+### 本机查询的输出管道关闭
+
+**已实现且已验证。** `NativeRuntimeProcess` 同时读取并在调用退出时显式关闭 stdout 和 stderr。保留有界输出和诊断隔离。该 .NET 版本将已取得的输出流交由调用方关闭。[.NET 10.0.14 Process 实现](https://github.com/dotnet/runtime/blob/v10.0.14/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/Process.cs#L831-L852)
+
+Linux 私有 systemd 使用同一夹具和六次原具名执行查询，对照归档只将独立 Helper 替换为上一轮原二进制。旧版在六次 PAM 请求后保持 46 条管道，在六次原具名查询后为 310 条，其中 264 条为该批开始时不存在的管道。新增管道断言按预期失败，专属 cgroup 仍完成清理。对照日志 `linux-named-start-helper-pipes-control.log` 的 SHA-256 为 `40abdd64e173efdb0a6435ee55e72e6e24951422ea103b203d70b560a7a1f2aa`，归档为 `a86299203d0b7fc8ba16256e34b848facd9500ac6604db29a6ad6f1fb75a09f8`。
+
+修正版原发布 `efc45321e3dc4539b00f43ca2ce8f8dd`、具名执行 `79c1e225701b4013bd8ae8b9a7b5bb9c`、Helper PID `1042`、Mihomo PID `952`。完成同序的九个 22 秒窗口。三批各六次查询的管道数均为 4→4，管道身份无新增。54 个采样点的 Helper 文件描述符总数均为 126。原回执、管理选路、配置身份、真实 HTTP 和分流 DNS 全程核对，审计无原生变更重派。
+
+修正版 Helper 查询窗口 PSS 增量依次为 +7.211、+7.918、+3.863 MiB，中位 +7.211 MiB。前轮完整同负载中位为 +7.281 MiB。此次证据确认管道关闭，查询驻留增长仍存在。Windows Release TUN 激活、38 项边界检查和模块边界聚合回归通过。Linux Release 构建、专属进程退出和 cgroup 清理通过，宿主共享服务、代理及 resolver 文件指纹一致。
+
+原始记录位于 `.artifacts/mb04-tun-full-zero-dns/`。`linux-named-start-helper-pipes.log` SHA-256 为 `2b7c8a2e73fd8d6b14897af25c572aa0e8409dba820aa177d75b2d8fe4bd3f2c`，摘要 `named-start-helper-pipes-summary.json` 为 `5bd168bebedabda64d5c89f06274c228c2a9351bb146e5606ca1751b60143f47`，冻结清单 `named-start-helper-pipes-manifest.json` 为 `20d86bb2027dd287c61d66d241994df29f22f346b5b0d2f498f171061780daee`，运行归档为 `691002d9955ab2641636a63118bb0b7f5ebb71bf8c8c80cf39a0515847b9c143`。
+
+**尚待独立验证。** 下一项统计具名运行时查询内部重复的原生核验，量化其资源开销，在保留进程、配置及网络归属复核的前提下评估合并。对象释放、ALC 回收、动态休眠和生产收益仍分别验收。Proxy 保持 resident。

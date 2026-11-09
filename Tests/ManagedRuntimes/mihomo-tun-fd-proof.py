@@ -2910,6 +2910,18 @@ def proof_full_http_shutdown(ipc, case):
         files = [queue, native, proof, mirror, config]
         frozen = [path.read_bytes() for path in files]
         order = ('idle', 'pam', 'query', 'pam', 'query', 'idle', 'query', 'idle', 'pam')
+
+        def helper_pipes():
+            pipes = set()
+            for descriptor in Path('/proc', str(roots[0]), 'fd').iterdir():
+                try:
+                    target = os.readlink(descriptor)
+                except FileNotFoundError:
+                    continue
+                if target.startswith('pipe:['):
+                    pipes.add(target)
+            return pipes
+
         print('TUN HELPER PROFILE MANIFEST ' + json.dumps({
             'publication': publication, 'execution': started, 'roots': dict(zip(('helper', 'mihomo'), roots)),
             'order': order, 'requests_per_active_window': 6, 'window_seconds': 22, 'points': [0, 1, 2, 19, 20, 21],
@@ -2927,10 +2939,17 @@ def proof_full_http_shutdown(ipc, case):
                 time.sleep(max(0, started_at + second - time.monotonic()))
                 if second == 3:
                     if mode != 'idle':
+                        before_pipes = helper_pipes()
                         subprocess.run(['/usr/bin/dotnet', current['fixture'], 'runtime-mihomo-tun-helper-profile',
                                         root, ipc.socket_path, mode, publication, started, identity],
                                        input=password + '\n' if mode == 'pam' else '', text=True,
                                        check=True, timeout=21, **ipc.identity)
+                        after_pipes = helper_pipes()
+                        new_pipes = after_pipes - before_pipes
+                        print(f'TUN HELPER PIPE LIFETIME {mode}: before={len(before_pipes)}; '
+                              f'after={len(after_pipes)}; new={len(new_pipes)}', flush=True)
+                        if mode == 'query':
+                            assert not new_pipes, f'{len(new_pipes)} new Helper pipes after completed queries'
                     continue
                 if second in (15, 22):
                     probe(current, f'helper-profile-{index}-{second}')
