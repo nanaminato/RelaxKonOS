@@ -121,6 +121,12 @@ internal static class QueueBoundaryChecks
             using var readReceipt = await readingReceipt;
             Require(readReceipt.IsSuccessStatusCode && state.Created == 1, "Reading the original operation does not start another executor.");
             while (coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 0) await Task.Delay(20, budget.Token);
+            var export = ProxyServerRoutes.Credentials + "/" + Guid.NewGuid() + "/export";
+            using var invalidExport = await client.PostAsJsonAsync(export, new ProxyServerExportRequest(Guid.Empty, "sing-box"), budget.Token);
+            using var invalidIssue = await client.PostAsJsonAsync<IssueProxyServerSubscription?>(ProxyServerRoutes.Subscriptions, null, budget.Token);
+            Require(invalidExport.StatusCode == HttpStatusCode.BadRequest && invalidExport.Headers.CacheControl?.NoStore == true
+                && invalidIssue.StatusCode == HttpStatusCode.BadRequest && invalidIssue.Headers.CacheControl?.NoStore == true,
+                "Credential export and token issuance must keep no-store on their scoped responses.");
             var stop = app.StopAsync(); Require(!stop.IsCompleted, "Shutdown must wait for the inbound operation's async cleanup.");
             state.Release.TrySetResult(); await stop.WaitAsync(TimeSpan.FromSeconds(5));
             Require(state.Disposed == 1 && (await app.Services.GetRequiredService<ProxyServerStore>().ReadAsync(default)).Configuration.Revision == 1,

@@ -72,7 +72,7 @@ internal sealed class ProxyJointShutdownExpiry(string root, string socket) : IDi
         added = retained with { Id = Guid.NewGuid(), Value = Guid.NewGuid().ToString("D") };
         await store.WriteAsync(state with
         {
-            Configuration = state.Configuration with { Revision = state.Configuration.Revision + 1 },
+            Configuration = state.Configuration with { Revision = state.Configuration.Revision + 1, SubscriptionBaseUrl = "https://proxy.example.test" },
             Credentials = [.. state.Credentials, new StoredCredential(added.Id, Guid.NewGuid(), "joint-publish",
                 added.InboundIds.ToArray(), added.Value, true, null)]
         }, ct);

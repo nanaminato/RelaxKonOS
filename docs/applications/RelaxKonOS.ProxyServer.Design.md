@@ -396,3 +396,5 @@ Windows Release 的生命周期回归使用符合平台的 `sing-box.exe` 测试
 隔离 Linux 联合停机中，真实撤销的原回执先完成入站终态，Server 仍等待独立的 TUN 恢复。重启后按原 ID 核对 Helper 回执，过期授权继续被拒绝，保留授权仍可转发。见[Proxy 联合安全责任](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-同次停机的-proxy-安全责任与恢复)。
 
 入站管理读取、原操作查询和原生校验使用当前 Proxy 代次的前台作用域。该代次负责响应与异步清理，原操作台账仍拥有终态。[入站读取与校验实测](../architecture/server-module-evidence/Proxy-Publication.md#入站管理读取与校验的前台作用域)
+
+导出格式查询、凭据导出及订阅签发使用同一管理代次的前台作用域。签发令牌仅在首次响应交付，同键读回原订阅元数据。匿名下载仍按令牌校验授权和已应用配置。[导出和签发实测](../architecture/server-module-evidence/Proxy-Publication.md#入站凭据导出与订阅签发的前台作用域)

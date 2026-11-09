@@ -154,49 +154,60 @@ public static class ProxyServerEndpoints
                     (execution, token) => execution.RotateCredentialAsync(id, request, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
-        app.MapGet(Route(ProxyServerRoutes.CredentialExportFormatsPattern), async (Guid id, ProxyServerService service,
-                CancellationToken ct) =>
+        app.MapGet(Route(ProxyServerRoutes.CredentialExportFormatsPattern), (Guid id, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, async (service, ct) =>
             {
                 try { return Results.Ok(await service.ExportFormatsAsync(id, ct)); }
                 catch (ProxyServerException ex) { return Problem(ex.Message); }
-            })
+            }))
             .RequireAuthorization(ExportPolicy).WithTags("Proxy Server");
-        app.MapPost(Route(ProxyServerRoutes.CredentialExportPattern), async (Guid id, ProxyServerExportRequest? request,
-                HttpContext context, ProxyServerService service, ProxyAuditStore audit, CancellationToken ct) =>
+        app.MapPost(Route(ProxyServerRoutes.CredentialExportPattern), (Guid id, ProxyServerExportRequest? request,
+                HttpContext context, ModuleResidencyCoordinator coordinator) =>
             {
                 context.Response.Headers.CacheControl = "no-store";
-                if (request is null || request.CredentialId != id) return Problem("proxy_server.request_invalid");
-                try
+                return ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
                 {
-                    var export = await service.ExportAsync(request, ct);
-                    await audit.RecordAsync(Actor(context), "proxy_server.credential.export", "succeeded", null, ct);
-                    return Results.Ok(export);
-                }
-                catch (ProxyServerException ex)
-                {
-                    await audit.RecordAsync(Actor(context), "proxy_server.credential.export", "failed", ex.Message, ct);
-                    return Problem(ex.Message);
-                }
+                    if (request is null || request.CredentialId != id) return Problem("proxy_server.request_invalid");
+                    var service = services.GetRequiredService<ProxyServerService>();
+                    var audit = services.GetRequiredService<ProxyAuditStore>();
+                    var actor = Actor(context);
+                    try
+                    {
+                        var export = await service.ExportAsync(request, ct);
+                        await audit.RecordAsync(actor, "proxy_server.credential.export", "succeeded", null, ct);
+                        return Results.Ok(export);
+                    }
+                    catch (ProxyServerException ex)
+                    {
+                        await audit.RecordAsync(actor, "proxy_server.credential.export", "failed", ex.Message, ct);
+                        return Problem(ex.Message);
+                    }
+                });
             })
             .RequireAuthorization(ExportPolicy).WithTags("Proxy Server");
 
-        app.MapPost(ProxyServerRoutes.Subscriptions, async (IssueProxyServerSubscription? request, HttpContext context,
-                ProxyServerService service, ProxyAuditStore audit, CancellationToken ct) =>
+        app.MapPost(ProxyServerRoutes.Subscriptions, (IssueProxyServerSubscription? request, HttpContext context,
+                ModuleResidencyCoordinator coordinator) =>
             {
                 context.Response.Headers.CacheControl = "no-store";
-                if (request is null) return Problem("proxy_server.request_invalid");
-                try
+                return ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
                 {
-                    var issued = await service.IssueSubscriptionAsync(request, Actor(context), context.Request.Headers["Idempotency-Key"].ToString(), ct);
-                    // Only the subscription id reaches the audit trail; the token does not.
-                    await audit.RecordAsync(Actor(context), "proxy_server.subscription.issue", "succeeded", null, ct);
-                    return Results.Created(ProxyServerRoutes.Subscriptions + "/" + issued.Subscription.Id, issued);
-                }
-                catch (ProxyServerException ex)
-                {
-                    await audit.RecordAsync(Actor(context), "proxy_server.subscription.issue", "failed", ex.Message, ct);
-                    return Problem(ex.Message);
-                }
+                    if (request is null) return Problem("proxy_server.request_invalid");
+                    var service = services.GetRequiredService<ProxyServerService>();
+                    var audit = services.GetRequiredService<ProxyAuditStore>();
+                    var actor = Actor(context);
+                    try
+                    {
+                        var issued = await service.IssueSubscriptionAsync(request, actor, context.Request.Headers["Idempotency-Key"].ToString(), ct);
+                        await audit.RecordAsync(actor, "proxy_server.subscription.issue", "succeeded", null, ct);
+                        return Results.Created(ProxyServerRoutes.Subscriptions + "/" + issued.Subscription.Id, issued);
+                    }
+                    catch (ProxyServerException ex)
+                    {
+                        await audit.RecordAsync(actor, "proxy_server.subscription.issue", "failed", ex.Message, ct);
+                        return Problem(ex.Message);
+                    }
+                });
             })
             .RequireAuthorization(ExportPolicy).WithTags("Proxy Server");
         app.MapDelete(Route(ProxyServerRoutes.SubscriptionPattern), (Guid id, HttpContext context, ProxyServerOperationQueue queue,

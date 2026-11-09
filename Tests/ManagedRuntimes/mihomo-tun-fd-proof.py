@@ -3385,6 +3385,36 @@ exec {shlex.quote(str(systemctl))} "$@"
         until(lambda: leases() == 0, 'inbound foreground management scopes drained')
         assert (native.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == witness
         print(f'PASS SCOPED INBOUND OBSERVATIONS: original={operation}; eight reads and native validation drained', flush=True)
+
+        status, credentials = request(inbound + '/credentials', token)
+        assert status == 200
+        credential_id = next(item['id'] for item in credentials if item['name'] == 'joint-publish')
+        export_path = f'{inbound}/credentials/{credential_id}/export'
+        export_request = {'credentialId': credential_id, 'format': 'sing-box'}
+        assert request(export_path, data=export_request)[0] == 401
+        status, formats = request(export_path + '-formats', token)
+        assert status == 200 and any(item['format'] == 'sing-box' and item['supported'] for item in formats)
+        status, exported = request(export_path, token, data=export_request)
+        assert status == 200 and exported['format'] == 'sing-box'
+        exported_configuration = json.loads(exported['content'])
+        assert isinstance(exported_configuration, dict) and exported_configuration
+
+        issue_request = {'credentialId': credential_id, 'formats': ['sing-box']}
+        issue_key = 'inbound-subscription-original'
+        status, issued = request(inbound + '/subscriptions', token, issue_key, issue_request)
+        assert status == 201 and issued['token'] and len(issued['urls']) == 1
+        subscription_id = issued['subscription']['id']
+        status, replayed = request(inbound + '/subscriptions', token, issue_key, issue_request)
+        assert status == 201 and replayed['subscription'] == issued['subscription']
+        assert replayed['token'] == '' and replayed['urls'] == []
+        status, subscriptions = request(inbound + '/subscriptions', token)
+        assert status == 200 and sum(item['id'] == subscription_id for item in subscriptions) == 1
+        public_subscription = '/api/v1.0/proxy-subscriptions/'
+        status, downloaded = request(public_subscription + issued['token'] + '/sing-box')
+        assert status == 200 and downloaded == exported_configuration
+        assert request(public_subscription + '0' * 43 + '/sing-box')[0] == 404
+        until(lambda: leases() == 0, 'credential export and issuance leases drained')
+        print(f'PASS SCOPED INBOUND EXPORT: original subscription={subscription_id}; one token, same-key metadata, anonymous token read', flush=True)
         audit = ipc.log.read_text()
         assert audit.count(f'operation=ProxyServerApply id={operation} ') == 1
         assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1

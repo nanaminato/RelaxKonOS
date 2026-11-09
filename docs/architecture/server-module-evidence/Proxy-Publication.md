@@ -544,4 +544,14 @@ Linux 专属 systemd 在活跃 Mihomo TUN 中按原 ID 恢复 sing-box 发布 `7
 
 实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-inbound-foreground-run.log` 的 SHA-256 为 `1f5ed054b514e3d3511948f5d0004ff9166b99b24b20ad0c506da4fb265b02bb`，归档为 `90592d61ded1ab222636ab2aae7a910425c2ddee7bae18178620455fc70cf3ce`。首轮包装器的用例登记缺失，实机未启动，登记后通过。
 
-**仍待验收。** 入站导出、签发与公开订阅的作用域独立核对。本次确认实际进程退出。对象释放、ALC、隔离负载内存及生产收益仍分别开放。Proxy 保持 resident。
+**仍待验收。** 入站导出、签发与公开订阅见下一节。本次确认实际进程退出。对象释放、ALC、隔离负载内存及生产收益仍分别开放。Proxy 保持 resident。
+
+### 入站凭据导出与订阅签发的前台作用域
+
+**已实现且已验证。** 当前 Proxy 代次持有导出格式查询、凭据导出及订阅签发的管理作用域。Windows Release 通过真实 HTTP 的导出和签发 `no-store` 检查，以及入站专项和模块里程碑。Linux 完整认证 Server 使用已实际发布的 sing-box 凭据，拒绝匿名导出，授权导出成功。
+
+原订阅 `dc1eff84-ebbc-455b-9088-23b69619d1be` 首次签发交付一个令牌。相同键返回相同元数据，令牌和链接列表为空，持久列表只有一条原订阅。匿名公开路由凭该令牌取得与认证导出一致的配置，无效令牌返回 404。测试日志只保存订阅 ID。管理租约归零，原入站发布 `fca934cb-7819-415e-96f9-de754b9af227`、原 TUN 及真实转发保持。专属进程和 cgroup 清理通过，宿主服务、代理与 resolver 指纹一致。
+
+Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-inbound-export.log` 的 SHA-256 为 `995b9a87adfa2967b6a519c8768d85fed8adf63c5fa18a7fa57064c15618d87d`，归档为 `55aff8c69e325cb705999ddebcee328800594d9ecc0a81e8dac20ef0fe9821d1`。
+
+**仍待验收。** 公开订阅已验证正常令牌边界。管理代次故障隔离期间的匿名读取和跨重启原签发回执仍待核对。对象释放、ALC、隔离内存及生产收益独立开放，Proxy 保持 resident。
