@@ -302,7 +302,7 @@ public sealed class MihomoRuntimeManager(
             await ReportStageAsync(stageReporter, "verifying");
             await ReportStageAsync(stageReporter, "extracting");
             await ExtractExpectedBinaryAsync(release, archive, staging, cancellationToken);
-            if (!HasExpectedArchitecture(Path.Combine(staging, BinaryName())) || await probe.GetVersionAsync(Path.Combine(staging, BinaryName()), cancellationToken) is null)
+            if (!MihomoVersionWorker.HasExpectedArchitecture(Path.Combine(staging, BinaryName())) || await probe.GetVersionAsync(Path.Combine(staging, BinaryName()), cancellationToken) is null)
                 throw new RuntimeInstallException(ProxyProblemCodes.RuntimeHealthCheckFailed);
             Directory.Move(staging, finalDirectory);
             MakePrivateDirectory(finalDirectory);
@@ -562,11 +562,6 @@ public sealed class MihomoRuntimeManager(
     private static string BinaryName() => OperatingSystem.IsWindows() ? "mihomo.exe" : "mihomo";
     private static ProxyRuntimeDto Unsupported(string engineId) => new(engineId, ProxyRuntimeMode.None, ProxyRuntimeState.Failed, null, null, false, false, ProxyProblemCodes.NotSupported);
     private static ProxyRuntimeDto Failure(RuntimeState? state, string problemCode, string? version = null) => new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Failed, version ?? state?.ActiveVersion, state?.PreviousVersion, false, false, string.IsNullOrEmpty(problemCode) ? ProxyProblemCodes.RuntimeHealthCheckFailed : problemCode);
-    private static bool IsExecutable(string path)
-    {
-        if (OperatingSystem.IsWindows()) return true;
-        return (File.GetUnixFileMode(path) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
-    }
     private static string ClassifyConfigurationValidationFailure(string output, bool timedOut)
     {
         var normalized = output.ToLowerInvariant();
@@ -582,42 +577,6 @@ public sealed class MihomoRuntimeManager(
         : timedOut
             ? "Mihomo configuration validation exceeded its 10-second limit."
             : "Mihomo rejected the downloaded subscription configuration.";
-    internal static bool TryResolveExternalExecutable(string value, out string path)
-    {
-        path = "";
-        try
-        {
-            if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value)) return false;
-            path = Path.GetFullPath(value);
-            return (File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == 0
-                && HasExpectedArchitecture(path) && IsExecutable(path);
-        }
-        catch { return false; }
-    }
-    private static bool HasExpectedArchitecture(string path)
-    {
-        try
-        {
-            using var input = File.OpenRead(path); var header = new byte[512]; var count = input.Read(header, 0, header.Length);
-            if (count < 64) return false;
-            ushort machine;
-            if (header[0] == 0x7f && header[1] == (byte)'E' && header[2] == (byte)'L' && header[3] == (byte)'F') machine = BitConverter.ToUInt16(header, 18);
-            else if (header[0] == (byte)'M' && header[1] == (byte)'Z')
-            {
-                var offset = BitConverter.ToInt32(header, 0x3c);
-                if (offset < 0 || offset + 6 > count || header[offset] != (byte)'P' || header[offset + 1] != (byte)'E') return false;
-                machine = BitConverter.ToUInt16(header, offset + 4);
-            }
-            else return false;
-            return System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
-            {
-                System.Runtime.InteropServices.Architecture.X64 => machine == 0x8664 || machine == 62,
-                System.Runtime.InteropServices.Architecture.Arm64 => machine == 0xaa64 || machine == 183,
-                _ => false,
-            };
-        }
-        catch { return false; }
-    }
     private static void EnsureSafeArchiveEntry(string name, long length)
     {
         var normal = name.Replace('\\', '/');

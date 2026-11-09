@@ -3686,92 +3686,110 @@ exec {shlex.quote(str(systemctl))} "$@"
         return server_pid
 
     def verify_external_version_manager_witness(fixture):
-        witness_id = uuid.uuid4().hex
-        witness_unit = f'rk-mihomo-version-witness-{witness_id}.service'
-        work = root / 'full-server' / witness_id
+        witness_id = uuid.uuid4()
+        work = root / 'full-server' / witness_id.hex
         work.mkdir(mode=0o700)
         os.chown(work, ipc.uid, ipc.identity['group'])
         (work / 'private-mihomo-version-fixture').touch()
         witness_pids = work / 'private-mihomo-version-pids'
-        assembly = fixture.with_name('RelaxKonOS.Server.dll')
-        boot = uuid.UUID(Path('/proc/sys/kernel/random/boot_id').read_text().strip()).hex
-        before = time.clock_gettime_ns(time.CLOCK_MONOTONIC) // 1000
+        registry = Path('/var/lib/relaxkonos/mihomo-probe-witnesses')
 
-        def start(unit_name):
+        def unit_name(operation):
+            return f'rk-mihomo-probe-{operation.hex}.service'
+
+        def start(operation):
             return subprocess.Popen(['/usr/bin/systemd-run', '--quiet', '--pipe', '--wait', '--collect', '--service-type=exec',
-                                     f'--unit={unit_name}', '--property=RuntimeMaxSec=18s', '--property=User=' + str(ipc.uid),
-                                     '--property=NoNewPrivileges=yes', '--property=KillMode=control-group',
-                                     '--property=WorkingDirectory=' + str(work),
-                                     '/usr/bin/dotnet', str(assembly), 'mihomo-version-worker'],
+                                     '--unit=' + unit_name(operation), '--property=RuntimeMaxSec=25s',
+                                     '--property=User=' + str(ipc.uid), '--property=NoNewPrivileges=yes',
+                                     '--property=CapabilityBoundingSet=', '--property=KillMode=control-group',
+                                     '--property=RemainAfterExit=yes', '--property=WorkingDirectory=' + str(work),
+                                     launcher, '--mihomo-version-worker', str(operation)],
                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-        def properties(unit_name):
-            return dict(line.split('=', 1) for line in service('show', '--property=MainPID,InvocationID,ExecMainStartTimestampMonotonic',
-                                                               unit_name).splitlines())
+        def properties(operation):
+            return dict(line.split('=', 1) for line in service('show', '--property=MainPID,InvocationID,SubState',
+                                                               unit_name(operation)).splitlines())
 
-        # The unit and the executable are fixture-owned. Its dispatch is independent of the retained probe.
-        with start(witness_unit) as runner:
+        def witness(action, operation, uid=ipc.uid, identity=None):
+            return subprocess.run([launcher, '--mihomo-version-witness', action, str(operation), str(uid)],
+                                  **(identity or {}), capture_output=True, text=True, timeout=7)
+
+        def await_owner(operation, runner):
+            def observe():
+                try:
+                    owner = properties(operation)
+                except subprocess.CalledProcessError:
+                    assert runner.poll() is None
+                    return None
+                return owner if int(owner.get('MainPID', '0')) > 0 and owner.get('InvocationID') else None
+            return until(observe, 'fixed Helper worker invocation')
+
+        def register(operation):
+            result = witness('register', operation)
+            assert result.returncode == 0, (result.returncode, result.stderr)
+            path = registry / (operation.hex + '.json')
+            assert path.stat().st_uid == 0 and path.stat().st_mode & 0o777 == 0o600
+            assert registry.stat().st_uid == 0 and registry.stat().st_mode & 0o777 == 0o700
+            return path.read_bytes()
+
+        assert subprocess.run([launcher, '--mihomo-version-worker', str(witness_id)], input='', text=True, timeout=5).returncode == 77
+        assert witness('read', witness_id, identity=ipc.identity).returncode == 77
+        assert witness('read', witness_id).returncode == 75
+
+        # The root-owned registration is committed before the fixed worker receives any probe request.
+        with start(witness_id) as runner:
             try:
-                runner.stdin.write(json.dumps({'OperationId': str(uuid.UUID(witness_id)), 'Executable': str(fixture)}) + '\n')
+                owner = await_owner(witness_id, runner)
+                original = register(witness_id)
+                assert witness('register', witness_id).returncode == 75
+                assert witness('read', witness_id).returncode == 75
+                assert not witness_pids.exists()
+                runner.stdin.write(json.dumps({'OperationId': str(witness_id), 'Executable': str(fixture)}) + '\n')
                 runner.stdin.flush()
                 until(witness_pids.exists, 'independent witness version process')
                 parent, descendant = map(int, witness_pids.read_text().split())
-                owner = properties(witness_unit)
-                invocation = uuid.UUID(owner['InvocationID']).hex
                 main_pid = int(owner['MainPID'])
-                started = int(owner['ExecMainStartTimestampMonotonic'])
-                assert started >= before and int(Path(f'/proc/{parent}/stat').read_text().rsplit(')', 1)[1].split()[1]) == main_pid
+                assert int(Path(f'/proc/{parent}/stat').read_text().rsplit(')', 1)[1].split()[1]) == main_pid
                 runner.stdin.close()
                 runner.stdin = None
-                output, errors = runner.communicate(timeout=10)
-                assert runner.returncode == 0 and not output and not errors, (runner.returncode, output, errors)
+                until(lambda: properties(witness_id).get('SubState') == 'exited', 'original fixed worker terminal')
+                reply = witness('read', witness_id)
+                assert reply.returncode == 0 and json.loads(reply.stdout) == json.loads(original), reply
+                assert witness('read', witness_id, uid=ipc.uid + 1).returncode == 75
+                assert witness('read', uuid.uuid4()).returncode == 75
+                assert (registry / (witness_id.hex + '.json')).read_bytes() == original
                 assert all(not Path(f'/proc/{pid}').exists() for pid in (main_pid, parent, descendant))
+                invocation = uuid.UUID(owner['InvocationID']).hex
+                print(f'PASS EXTERNAL VERSION REGISTERED WITNESS: operation={witness_id}; invocation={invocation}; '
+                      f'owner={main_pid}; exact native exit confirmed by original ID', flush=True)
             finally:
-                if runner.poll() is None:
-                    runner.kill()
-                    service('stop', witness_unit)
+                service('stop', unit_name(witness_id))
+                runner.communicate(timeout=10)
+        assert witness('read', witness_id).returncode == 75
 
-        def journal(invocation_id, identity=None, unit_name=witness_unit):
-            args = ['/usr/bin/journalctl', '--quiet', '--no-pager', '--output=json',
-                    '--output-fields=MESSAGE_ID,UNIT,INVOCATION_ID,RESULT,JOB_TYPE,JOB_RESULT,_PID,_UID',
-                    '--lines=12', '_PID=1', '_UID=0', f'_BOOT_ID={boot}', f'UNIT={unit_name}', f'INVOCATION_ID={invocation_id}']
-            result = subprocess.run(args, **(identity or {}), capture_output=True, text=True, timeout=5)
-            if identity and result.returncode != 0 and 'permission' in result.stderr.lower():
-                return []
-            result.check_returncode()
-            return [json.loads(line) for line in result.stdout.splitlines()]
-
-        events = until(lambda: journal(invocation), 'PID 1 journal for exact witness invocation')
-        assert not journal(uuid.uuid4().hex)
-        terminal = [event for event in events if event.get('MESSAGE_ID') == '7ad2d189f7e94e70a38c781354912448']
-        assert len(terminal) == 1, events
-        assert int(terminal[0]['__MONOTONIC_TIMESTAMP']) >= started
-        accessible = bool(journal(invocation, ipc.identity))
-        print(f'PASS EXTERNAL VERSION MANAGER WITNESS: fixture={witness_id}; invocation={invocation}; '
-              f'owner={main_pid}; PID 1 terminal observed; unprivileged journal visible={accessible}', flush=True)
         witness_pids.unlink()
-        idle_unit = f'rk-mihomo-version-idle-{witness_id}.service'
-        with start(idle_unit) as runner:
-            try:
-                def idle_owner():
-                    try:
-                        owner = properties(idle_unit)
-                    except subprocess.CalledProcessError:
-                        assert runner.poll() is None
-                        return None
-                    return owner if int(owner.get('MainPID', '0')) > 0 and owner.get('InvocationID') else None
-
-                idle = until(idle_owner, 'original idle worker invocation')
-                output, _ = runner.communicate(input='', timeout=10)
-                assert runner.returncode == 65 and not output and not witness_pids.exists()
-            finally:
-                if runner.poll() is None:
-                    runner.kill()
-                    service('stop', idle_unit)
-        idle_invocation = uuid.UUID(idle['InvocationID']).hex
-        events = until(lambda: journal(idle_invocation, unit_name=idle_unit), 'PID 1 journal for idle invocation')
-        assert all(event.get('MESSAGE_ID') != '7ad2d189f7e94e70a38c781354912448' for event in events)
-        print(f'PASS EXTERNAL VERSION MANAGER NO DISPATCH: invocation={idle_invocation}; worker exit 65; no probe process or success terminal', flush=True)
+        for terminate in (False, True):
+            operation = uuid.uuid4()
+            with start(operation) as runner:
+                try:
+                    owner = await_owner(operation, runner)
+                    original = register(operation)
+                    if terminate:
+                        descriptor = os.pidfd_open(int(owner['MainPID']))
+                        try:
+                            signal.pidfd_send_signal(descriptor, signal.SIGTERM)
+                        finally:
+                            os.close(descriptor)
+                        until(lambda: properties(operation).get('MainPID') == '0', 'original worker signal exit')
+                    else:
+                        output, _ = runner.communicate(input='', timeout=10)
+                        assert runner.returncode == 65 and not output
+                    assert not witness_pids.exists() and witness('read', operation).returncode == 75
+                    assert (registry / (operation.hex + '.json')).read_bytes() == original
+                finally:
+                    subprocess.run(['/usr/bin/systemctl', 'stop', unit_name(operation)], capture_output=True, timeout=8)
+                    runner.communicate(timeout=10)
+            print(f'PASS EXTERNAL VERSION REGISTERED REFUSAL: operation={operation}; signal={terminate}; no successful witness', flush=True)
 
     def verify_handoff(pid, record, publication):
         nonlocal worker, first_worker, token

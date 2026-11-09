@@ -23,6 +23,7 @@
     <Compile Include="../RelaxKonOS.Server/Terminal/ConPty.cs" Link="Terminal/ConPty.cs" />
     <Compile Include="../RelaxKonOS.Server/Terminal/ITerminalPtyLifetime.cs" Link="Terminal/ITerminalPtyLifetime.cs" />
     <Compile Include="../RelaxKonOS.Server/Terminal/LinuxTerminalProcessExit.cs" Link="Terminal/LinuxTerminalProcessExit.cs" />
+    <Compile Include="../RelaxKonOS.Server/Proxy/Mihomo/MihomoVersionWorker.cs" Link="Proxy/MihomoVersionWorker.cs" />
     <Compile Include="../RelaxKonOS.Server/Terminal/TerminalUserEnvironment.cs" Link="Terminal/TerminalUserEnvironment.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemMonitor/ProcessInstanceTermination.cs" Link="SystemMonitor/ProcessInstanceTermination.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemPerformance/ProcessTreeMetadata.cs" Link="SystemPerformance/ProcessTreeMetadata.cs" />

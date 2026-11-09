@@ -595,3 +595,18 @@ Linux 私有 systemd 实测真实版本与原生探测失败的 HTTP 结果，�
 Windows Release 模块边界及控制器回归通过。Linux 联合日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-dispatch-witness-final.log` SHA256 `d8bc99f128f02bda82ed62e8c77e2784abbdb109d9a92ce5b0c5e177a166998d`，归档 SHA256 `a0cb03e5aa3d8d142a4865cc42c04817a8773b0de0b7aa0fed33eb5baa6db1f5`。
 
 **仍待验收。** 生产需持久登记固定低权限执行者的派发身份，宿主只读入口仅查询已登记的原记录。Helper 的闭合协议禁止把通用可执行路径、任意命令参数、工作目录或进程环境用作执行输入。独立见证缺失时保留原门禁。Windows 原生 Job 的故障窗口、整模块对象释放、ALC 回收、隔离负载内存及生产收益分别开放。Proxy 保持 resident。
+
+
+### 固定探测执行者的宿主登记与原终态
+
+**已实现且已验证。** 固定安装路径的 Linux Helper 复用同一版本探测执行者。工作进程必须为非 root、启用 NoNewPrivs，并在读取请求前禁止普通进程转储与调试。执行者按启动参数校验原操作 ID。宿主仅接受本地 root 登记，核对固定安装路径、进程参数、UID、权限与同一 systemd 进程身份。原登记以不可覆盖文件持久保存，绑定 boot、PID、进程启动 ticks、原 invocation 与单元启动时刻。
+
+只读查询要求原进程已退出，且原 invocation 的保留单元仍提供相同 PID、启动时刻、正常退出类别与状态码 0。采用 systemd 的进程级状态，因为单元的通用成功状态也可能涵盖信号退出。查询不写登记。原单元释放或身份、状态证据缺失时继续待核验。
+
+隔离 Linux 以同一 Release 的固定 Helper apphost 登记原探测 `66e566cd-7d86-42c0-88a5-1775fbe59f30`，在发送请求前读回 root 专属记录并拒绝再次登记。执行者 `2553` 排空后，按原 invocation `2af0a2362928440ca7c78c629935212a` 读回同一登记。运行中、错误 UID、其他操作 ID、未派发、信号退出、原单元释放和非 root 查询均拒绝确认。root 身份直接进入版本执行者也被拒绝。试验未解除原 HTTP 探测 `b905adee-1adf-4b22-943e-839d001d1ba8` 的门禁，重启仍拒绝重派。
+
+活跃 TUN `bcf8f374d597451d869c603d1c169c48` 的管理选路、配置、原台账、真实 HTTP 与分流 DNS 均保持。独立 TUN 补偿 `a6c4a5dd8c344011ad45fbc24069b764` 以原作业 `39`、PID `515` 和原 invocation `c1c5a26de0ba4553a0f083a8a1c1b2b2` 完成对账。只派发一次 StartUnit，同键原终态与租约排空通过。两个专属 cgroup 清理完成，共享服务与网络文件指纹一致。Windows Release 模块边界及控制器回归通过。
+
+实测入口为 `ipc-http-inbound-tun` 和 `ipc-http-restored-job-cut`。前者在测试程序集旁放置同构建 Linux 测试 apphost、`external-version-server-cut.fixture` 与 `external-version-manager-witness.fixture`。Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-registered-witness.log` SHA256 `08c042a72b888c0addd8a16370211609e000078a6abc35e089f0b7e884c5bc86`，归档 SHA256 `59172f9a61b998288e705078daa3d3155578ae817cf78725c68222a48ab4ae3f`。
+
+**仍待验收。** 生产 HTTP 尚未使用该固定宿主执行者。下一项接入认证 Helper 传输，按可信同伴身份登记并只读核验原操作。需要在释放原单元前保存独立终态，并为自动登记定义有界保留。缺少证据时保留原门禁。Windows 原生 Job 故障窗口、整模块对象释放、ALC 回收、隔离负载内存与生产收益分别开放。Proxy 保持 resident。

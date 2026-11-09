@@ -25,7 +25,7 @@ internal sealed class MihomoExternalVersionProbe(IProxyPlatformPaths paths) : IA
     {
         if (engineId != MihomoEngine.Id)
             return new(engineId, ProxyRuntimeMode.None, ProxyRuntimeState.Failed, null, null, false, false, ProxyProblemCodes.NotSupported);
-        if (!MihomoRuntimeManager.TryResolveExternalExecutable(executable, out var path)) return Invalid();
+        if (!MihomoVersionWorker.TryResolveExternalExecutable(executable, out var path)) return Invalid();
         ct.ThrowIfCancellationRequested();
         if (!TryReserve()) return Invalid(ProxyProblemCodes.RecoveryRequired);
         var version = await ProbeAsync(path, ct);

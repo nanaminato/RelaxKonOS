@@ -20,13 +20,14 @@ internal static class MihomoVersionWorker
         RespectRequiredConstructorParameters = true
     };
 
-    internal static async Task<int> RunAsync()
+    internal static async Task<int> RunAsync(Guid? expectedOperationId = null)
     {
         var line = await Console.In.ReadLineAsync();
         if (line is null) return NoDispatch;
         var request = JsonSerializer.Deserialize<Request>(line, WireJson);
         if (request is null || request.OperationId == Guid.Empty
-            || !MihomoRuntimeManager.TryResolveExternalExecutable(request.Executable, out var executable))
+            || (expectedOperationId is { } expected && request.OperationId != expected)
+            || !TryResolveExternalExecutable(request.Executable, out var executable))
             return NoDispatch;
 
         // The Windows parent assigns this worker to its Job before sending the request.
@@ -86,5 +87,47 @@ internal static class MihomoVersionWorker
         while ((read = await reader.ReadAsync(buffer)) != 0)
             version.Append(buffer, 0, Math.Min(read, 128 - version.Length));
         return version.ToString().Trim();
+    }
+
+    private static bool IsExecutable(string path)
+    {
+        if (OperatingSystem.IsWindows()) return true;
+        return (File.GetUnixFileMode(path) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+    }
+    internal static bool TryResolveExternalExecutable(string value, out string path)
+    {
+        path = "";
+        try
+        {
+            if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value)) return false;
+            path = Path.GetFullPath(value);
+            return (File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == 0
+                && HasExpectedArchitecture(path) && IsExecutable(path);
+        }
+        catch { return false; }
+    }
+    internal static bool HasExpectedArchitecture(string path)
+    {
+        try
+        {
+            using var input = File.OpenRead(path); var header = new byte[512]; var count = input.Read(header, 0, header.Length);
+            if (count < 64) return false;
+            ushort machine;
+            if (header[0] == 0x7f && header[1] == (byte)'E' && header[2] == (byte)'L' && header[3] == (byte)'F') machine = BitConverter.ToUInt16(header, 18);
+            else if (header[0] == (byte)'M' && header[1] == (byte)'Z')
+            {
+                var offset = BitConverter.ToInt32(header, 0x3c);
+                if (offset < 0 || offset + 6 > count || header[offset] != (byte)'P' || header[offset + 1] != (byte)'E') return false;
+                machine = BitConverter.ToUInt16(header, offset + 4);
+            }
+            else return false;
+            return System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
+            {
+                System.Runtime.InteropServices.Architecture.X64 => machine == 0x8664 || machine == 62,
+                System.Runtime.InteropServices.Architecture.Arm64 => machine == 0xaa64 || machine == 183,
+                _ => false,
+            };
+        }
+        catch { return false; }
     }
 }
