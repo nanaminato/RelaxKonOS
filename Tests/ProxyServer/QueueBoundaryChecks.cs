@@ -17,6 +17,8 @@ using RelaxKonOS.Server.ProxyServer;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
 
@@ -33,6 +35,7 @@ internal static class QueueBoundaryChecks
         builder.Services.AddSingleton<ProxyServerStore>(); builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); builder.Services.AddSingleton<ProxyOperationStore>(); builder.Services.AddSingleton<ProxyAuditStore>();
         var responseLeases = new TestProxyWorkLeases();
         builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource>(responseLeases);
+        RegisterProxyGeneration(builder);
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
         builder.Services.AddScoped<ProxyServerOperationQueue>(); builder.Services.AddTransient<ProxyServerService>();
         builder.Services.AddScoped<IProxyEngineRegistry>(_ => new Engines(state));
@@ -40,10 +43,18 @@ internal static class QueueBoundaryChecks
         var aborted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseResponse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var responseExited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         await using var app = builder.Build();
         app.Use(async (context, next) =>
         {
+            if (context.Request.Headers.ContainsKey("X-Hold-Read"))
+                context.Response.OnStarting(async () =>
+                {
+                    reading.TrySetResult();
+                    await releaseRead.Task.WaitAsync(budget.Token);
+                });
             if (!context.Request.Headers.ContainsKey("X-Hold-Receipt"))
             {
                 await next(context);
@@ -96,6 +107,20 @@ internal static class QueueBoundaryChecks
             Require(original is not null && retried?.OperationId == original.OperationId && state.Created == 1,
                 "The retry after disconnect must return the original operation ID.");
             Console.WriteLine($"PASS PROXY HTTP RECEIPT DRAIN: operation={original!.OperationId}");
+            using var readRequest = new HttpRequestMessage(HttpMethod.Get, ProxyServerRoutes.Root + "/operations/" + original.OperationId);
+            readRequest.Headers.Add("X-Hold-Read", "1");
+            var readingReceipt = client.SendAsync(readRequest, budget.Token);
+            var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
+            try
+            {
+                await reading.Task.WaitAsync(budget.Token);
+                Require(!readingReceipt.IsCompleted && coordinator.Describe(ServerModules.ProxyId) is { ActiveLeases: 1 },
+                    "An inbound operation read retains its original generation while writing the response.");
+            }
+            finally { releaseRead.TrySetResult(); }
+            using var readReceipt = await readingReceipt;
+            Require(readReceipt.IsSuccessStatusCode && state.Created == 1, "Reading the original operation does not start another executor.");
+            while (coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 0) await Task.Delay(20, budget.Token);
             var stop = app.StopAsync(); Require(!stop.IsCompleted, "Shutdown must wait for the inbound operation's async cleanup.");
             state.Release.TrySetResult(); await stop.WaitAsync(TimeSpan.FromSeconds(5));
             Require(state.Disposed == 1 && (await app.Services.GetRequiredService<ProxyServerStore>().ReadAsync(default)).Configuration.Revision == 1,
@@ -106,6 +131,15 @@ internal static class QueueBoundaryChecks
         {
             state.Release.TrySetResult(); await app.StopAsync(); if (Directory.Exists(root)) Directory.Delete(root, true);
         }
+    }
+
+    internal static void RegisterProxyGeneration(WebApplicationBuilder builder)
+    {
+        var ids = new HashSet<string> { ServerModules.ProxyId };
+        var module = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+        builder.Services.AddSingleton(services => new ModuleResidencyCoordinator([new ProxyWorkRuntimeFactory()],
+            ModuleResidencyOptions.Parse(builder.Configuration, ids, ids), services, module,
+            NullLogger<ModuleResidencyCoordinator>.Instance, residentWorkModuleIds: ids));
     }
     private static void Require(bool ok, string label) { if (!ok) throw new Exception(label); }
     private sealed class State

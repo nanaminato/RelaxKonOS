@@ -121,6 +121,7 @@ internal static class QueueRecoveryChecks
         builder.Services.AddSingleton<ProxyOperationStore>(); builder.Services.AddSingleton<ProxyAuditStore>();
         builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>();
         builder.Services.AddSingleton<IResidentModuleWorkLeaseSource, TestProxyWorkLeases>();
+        QueueBoundaryChecks.RegisterProxyGeneration(builder);
         builder.Services.AddHostedService(services => services.GetRequiredService<ProxyOperationStore>());
         builder.Services.AddScoped<IProxyEngineRegistry>(_ => new FixtureEngines(root, stage));
         builder.Services.AddTransient<ProxyServerService>();

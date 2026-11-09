@@ -3376,7 +3376,15 @@ exec {shlex.quote(str(systemctl))} "$@"
         inbound_pid = marker('full-inbound-verified')
         assert first_worker.wait(timeout=12) == 0
         probe(record, 'inbound-recovery-after')
-        assert (native.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == witness and leases() == 0
+        assert request(inbound + '/status')[0] == 401
+        for path in ('/capabilities', '/status', '/configuration', '/principals', '/credentials', '/subscriptions', '/runtime/releases'):
+            status, payload = request(inbound + path, token)
+            assert status == 200 and payload is not None, (path, status)
+        status, validation = request(inbound + '/configuration/validate', token, method='POST')
+        assert status == 200 and validation['valid'], (status, validation.get('problems'))
+        until(lambda: leases() == 0, 'inbound foreground management scopes drained')
+        assert (native.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == witness
+        print(f'PASS SCOPED INBOUND OBSERVATIONS: original={operation}; eight reads and native validation drained', flush=True)
         audit = ipc.log.read_text()
         assert audit.count(f'operation=ProxyServerApply id={operation} ') == 1
         assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1

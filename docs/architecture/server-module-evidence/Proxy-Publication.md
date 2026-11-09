@@ -535,3 +535,13 @@ Linux 受管 Mihomo Release 通过 180 项。真实设置写入 `5fb6368b-45cc-4
 Windows Release 档案发布 23 项、Core 安全和模块里程碑通过。Linux 专属进程与 cgroup 已清理，宿主运行时服务、代理及 resolver 指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-profile-foreground.log` 的 SHA-256 为 `b09b9b0af6371737717986e2a2e1ba1eafd079ea413daec27dd52173ea9faeb4`，归档为 `663f6c27620baf92e3584989d451da8dcd26da7d95760bb43dafa8d2ef5f9fe5`。
 
 **仍待验收。** 本次确认真实进程退出，档案前台对象释放、ALC、隔离内存及生产收益分别待测。整模块交接仍开放，Proxy 保持 resident。
+
+### 入站管理读取与校验的前台作用域
+
+**已实现且已验证。** 入站能力、状态、配置、主体、凭据元数据、订阅元数据、运行时目录和原操作查询由当前 Proxy 代次持有管理作用域。原生校验也使用该作用域。Windows Release 的真实 HTTP 夹具截留原回执的响应，观测一项代次租约，响应及清理完成后归零，原执行器构造数保持。入站专项和模块里程碑通过。
+
+Linux 专属 systemd 在活跃 Mihomo TUN 中按原 ID 恢复 sing-box 发布 `7c7043d1-8060-43c3-accc-6e1bc4ac46a6`。原发布键、恢复键及入站查询读回同一终态，原发布只执行一次。认证后的八项读取和真实原生校验成功，匿名状态读取拒绝，管理租约归零。原 TUN `e50a5c8ca28741369da2113ef85c750c` 的 Helper 台账、配置身份和真实 HTTP/DNS 转发保持。Linux 进程和专属 cgroup 清理通过，宿主服务、代理及 resolver 指纹一致。
+
+实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-inbound-foreground-run.log` 的 SHA-256 为 `1f5ed054b514e3d3511948f5d0004ff9166b99b24b20ad0c506da4fb265b02bb`，归档为 `90592d61ded1ab222636ab2aae7a910425c2ddee7bae18178620455fc70cf3ce`。首轮包装器的用例登记缺失，实机未启动，登记后通过。
+
+**仍待验收。** 入站导出、签发与公开订阅的作用域独立核对。本次确认实际进程退出。对象释放、ALC、隔离负载内存及生产收益仍分别开放。Proxy 保持 resident。

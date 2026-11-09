@@ -4,6 +4,7 @@ using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.ProxyServer;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -20,33 +21,35 @@ public static class ProxyServerEndpoints
 
     public static IEndpointRouteBuilder MapProxyServerEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(ProxyServerRoutes.Capabilities, (ProxyServerService service) => Results.Ok(service.Capabilities()))
+        app.MapGet(ProxyServerRoutes.Capabilities, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, static (service, _) => Task.FromResult<IResult>(Results.Ok(service.Capabilities()))))
             .RequireAuthorization(ReadPolicy).WithTags("Proxy Server");
-        app.MapGet(ProxyServerRoutes.Status, async (ProxyServerService service, CancellationToken ct) =>
-                Results.Ok(await service.StatusAsync(ct)))
+        app.MapGet(ProxyServerRoutes.Status, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, static async (service, ct) => Results.Ok(await service.StatusAsync(ct))))
             .RequireAuthorization(ReadPolicy).WithTags("Proxy Server");
-        app.MapGet(ProxyServerRoutes.Configuration, async (ProxyServerService service, CancellationToken ct) =>
-                Results.Ok(await service.ReadAsync(ct)))
+        app.MapGet(ProxyServerRoutes.Configuration, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, static async (service, ct) => Results.Ok(await service.ReadAsync(ct))))
             .RequireAuthorization(ReadPolicy).WithTags("Proxy Server");
-        app.MapGet(ProxyServerRoutes.Principals, async (ProxyServerService service, CancellationToken ct) =>
-                Results.Ok((await service.ReadAsync(ct)).Principals))
+        app.MapGet(ProxyServerRoutes.Principals, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, static async (service, ct) => Results.Ok((await service.ReadAsync(ct)).Principals)))
             .RequireAuthorization(ReadPolicy).WithTags("Proxy Server");
-        app.MapGet(ProxyServerRoutes.Credentials, async (ProxyServerService service, CancellationToken ct) =>
-                Results.Ok((await service.ReadAsync(ct)).Credentials))
+        app.MapGet(ProxyServerRoutes.Credentials, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, static async (service, ct) => Results.Ok((await service.ReadAsync(ct)).Credentials)))
             .RequireAuthorization(ReadPolicy).WithTags("Proxy Server");
-        app.MapGet(ProxyServerRoutes.Subscriptions, async (ProxyServerService service, CancellationToken ct) =>
-                Results.Ok(await service.SubscriptionsAsync(ct)))
+        app.MapGet(ProxyServerRoutes.Subscriptions, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, static async (service, ct) => Results.Ok(await service.SubscriptionsAsync(ct))))
             .RequireAuthorization(ReadPolicy).WithTags("Proxy Server");
-        app.MapGet(ProxyServerRoutes.RuntimeReleases, async (ProxyServerService service, CancellationToken ct) =>
-                Results.Ok(await service.ReleasesAsync(ct)))
+        app.MapGet(ProxyServerRoutes.RuntimeReleases, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, static async (service, ct) => Results.Ok(await service.ReleasesAsync(ct))))
             .RequireAuthorization(ReadPolicy).WithTags("Proxy Server");
-        app.MapGet(ProxyServerRoutes.OperationPattern, async (Guid id, ProxyOperationStore operations, CancellationToken ct) =>
+        app.MapGet(ProxyServerRoutes.OperationPattern, (Guid id, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, async (services, ct) =>
             {
-                var operation = await operations.GetAsync(id, ct);
+                var operation = await services.GetRequiredService<ProxyOperationStore>().GetAsync(id, ct);
                 return operation is null || !operation.Kind.StartsWith("proxy_server.", StringComparison.Ordinal)
                     ? Results.NotFound()
                     : Results.Ok(operation);
-            })
+            }))
             .RequireAuthorization(ReadPolicy).WithTags("Proxy Server");
 
         app.MapPut(ProxyServerRoutes.Configuration, (SaveProxyServerConfiguration? request, HttpContext context,
@@ -56,11 +59,12 @@ public static class ProxyServerEndpoints
                         (execution, token) => execution.SaveAsync(request, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
-        app.MapPost(ProxyServerRoutes.Validate, async (ProxyServerService service, CancellationToken ct) =>
-        {
-            try { return Results.Ok(await service.ValidateAsync(ct)); }
-            catch (ProxyServerException ex) { return Problem(ex.Message); }
-        }).RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
+        app.MapPost(ProxyServerRoutes.Validate, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, static async (service, ct) =>
+            {
+                try { return Results.Ok(await service.ValidateAsync(ct)); }
+                catch (ProxyServerException ex) { return Problem(ex.Message); }
+            })).RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
         app.MapPost(ProxyServerRoutes.Apply, (HttpContext context, ProxyServerOperationQueue queue,
                 ProxyOperationStore operations, CancellationToken ct) =>
@@ -224,6 +228,11 @@ public static class ProxyServerEndpoints
             .WithTags("Proxy Server");
         return app;
     }
+
+    private static Task ExecuteAsync(HttpContext context, ModuleResidencyCoordinator coordinator,
+        Func<ProxyServerService, CancellationToken, Task<IResult>> execute) =>
+        ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, (services, ct) =>
+            execute(services.GetRequiredService<ProxyServerService>(), ct));
 
     private static Task<IResult> QueueAsync(HttpContext context, ProxyServerOperationQueue queue, ProxyOperationStore operations,
         string kind, object request, Func<ProxyServerService, CancellationToken, Task<string?>> action, CancellationToken ct) =>

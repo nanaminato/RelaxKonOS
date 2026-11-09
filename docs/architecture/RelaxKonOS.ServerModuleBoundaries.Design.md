@@ -108,6 +108,8 @@ Squid 配置、状态、账户读取、预览与原生校验由当前 Proxy 代�
 
 入站 HTTP 受理对象随请求解析，原共享锁与发布台账由 Core 的 `ProxyServerStore` 持有，原队列继续持有工作租约及发布恢复责任。[入站受理与原回执实测](server-module-evidence/Proxy-Publication.md#入站受理作用域与活跃-tun-的原回执恢复)
 
+认证的入站管理读取、校验及原回执查询由当前 Proxy 代次持有前台作用域。读取原操作沿用同一队列及持久台账。[入站管理读取实测](server-module-evidence/Proxy-Publication.md#入站管理读取与校验的前台作用域)
+
 订阅和运行时的后台受理对象也随请求解析。订阅队列只保留原台账、作用域工厂和操作参数，运行时与具名 TUN 队列只保留作用域工厂和操作参数。原队列持有任务、响应、清理和终态写入责任。[后台受理与执行闭包实测](server-module-evidence/Proxy-Subscriptions.md#后台受理对象与执行闭包分离)
 
 订阅导入、列表、下载选项和原内容读取使用当前管理代次的前台作用域。持久草稿仍由原仓储和发布锁保护。[前台订阅实测](server-module-evidence/Proxy-Subscriptions.md#订阅前台导入与读取的管理作用域)
