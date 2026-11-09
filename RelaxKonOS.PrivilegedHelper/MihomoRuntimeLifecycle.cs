@@ -106,16 +106,18 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
                 throw new RuntimePolicyException("runtime.network_start_unconfirmed");
             if (state.PendingMihomoTunStop is not null)
                 throw new RuntimePolicyException("runtime.network_stop_unconfirmed");
-            var service = await host.ObserveAsync(ct);
+            MihomoServiceObservation service;
             bool? tunRunning = null;
-            if (service.TunOperation != state.CurrentMihomoTunExecution)
-                throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
             if (state.ActiveMihomoTun is { } tun)
             {
                 if (!OperatingSystem.IsLinux() || host is not LinuxMihomoArchiveHost linux)
                     throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
-                tunRunning = await linux.VerifyCommittedTunAsync(tun, state.Installation, state.CurrentMihomoTunExecution!.Value, ct);
+                service = await linux.ObserveCommittedTunAsync(tun, state.Installation, state.CurrentMihomoTunExecution!.Value, ct);
+                tunRunning = service.Running;
             }
+            else service = await host.ObserveAsync(ct);
+            if (service.TunOperation != state.CurrentMihomoTunExecution)
+                throw new RuntimePolicyException("runtime.network_checkpoint_conflict");
             if (state.Active is null)
             {
                 if (service.Exists) return (state.Installation with { Ownership = RuntimeOwnership.External }, "runtime.external_installation", null);

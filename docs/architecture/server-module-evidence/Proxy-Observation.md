@@ -428,4 +428,16 @@ Linux 私有 systemd 使用同一夹具和六次原具名执行查询，对照�
 
 原始记录位于 `.artifacts/mb04-tun-full-zero-dns/`。`linux-named-start-helper-pipes.log` SHA-256 为 `2b7c8a2e73fd8d6b14897af25c572aa0e8409dba820aa177d75b2d8fe4bd3f2c`，摘要 `named-start-helper-pipes-summary.json` 为 `5bd168bebedabda64d5c89f06274c228c2a9351bb146e5606ca1751b60143f47`，冻结清单 `named-start-helper-pipes-manifest.json` 为 `20d86bb2027dd287c61d66d241994df29f22f346b5b0d2f498f171061780daee`，运行归档为 `691002d9955ab2641636a63118bb0b7f5ebb71bf8c8c80cf39a0515847b9c143`。
 
-**尚待独立验证。** 下一项统计具名运行时查询内部重复的原生核验，量化其资源开销，在保留进程、配置及网络归属复核的前提下评估合并。对象释放、ALC 回收、动态休眠和生产收益仍分别验收。Proxy 保持 resident。
+**尚待独立验证。** 具名运行时查询的重复原生核验见下一节。对象释放、ALC 回收、动态休眠和生产收益仍分别验收。Proxy 保持 resident。
+
+### 复用具名 TUN 查询的进程核验
+
+**已实现且已验证。** 运行中的受管 TUN 查询直接使用同一次原生归属核验得到的注册与进程身份。该路径仍核对进程和调用 ID、运行程序摘要、已加载凭据、已安装制品、原配置、管理选路、设备、规则及 DNS。保留网络核验后的进程身份复核。停止路径继续使用原停止核验，外部单元与未确认执行依原门禁拒绝。
+
+Linux x64 私有 systemd 两版分别运行同序的九个 22 秒窗口。每批六次原具名查询，夹具只统计直接由 Helper 派发的固定单元 `systemctl show`。对照使用上一轮已修复管道的 Helper，三批均为 18 次。候选三批均为 12 次，空闲和 PAM 仍为零。六次查询的 Helper CPU 原值为 1.48、1.32、1.20 秒，候选为 1.12、1.04、0.81 秒，中位数减少 0.28 秒。两版的查询窗口 PSS 中位增量分别为 +6.012 和 +4.613 MiB，三批差值方向不一致。两版各 54 点的 Helper 文件描述符均为 126，查询完成后无新增残留管道。
+
+候选原发布 `65755d3832bf4774874505f088b972cc`、具名执行 `7f53cf637a284b1ba109a64fabda3ed2`、Helper PID `1038`、Mihomo PID `946`。原回执、管理选路、配置及真实 HTTP 和分流 DNS 流量通过核对。具名执行停用接续 `cc9e79649fc5437a83abf3b8304aa36f`、原发布停用门禁 `d6299318032c4ec183db278d996800a9` 复验通过，包含检查点损坏、缺失或不匹配见证，以及原生停止的待核验保护。所有专属进程与 cgroup 清理完成，宿主共享服务、代理和 resolver 文件指纹一致。
+
+Windows Release TUN 激活、38 项边界与模块边界聚合回归通过，Linux Release 构建通过。日志及冻结清单位于 `.artifacts/mb04-tun-full-zero-dns/`。对照日志 `linux-named-start-helper-observation-control.log` 的 SHA-256 为 `27f61ccb3a027902992ab2ea011e59126e4e5fd15d1fae64a1d5cfc7a1ad22b4`，归档为 `54ee65aa9dccbe51b96041a5b06dbd0a9130b390c1560187dccb3d7a05faed0c`。候选日志 `linux-named-start-helper-observation.log` 的 SHA-256 为 `b876dbae26d69580d1d353048263a0d5f2f13a7cc71157220c97217f1a2575af`，归档为 `9f77a780738ae100facd247e80bd5570974c71b0bfe90c51e78d7a857c1e2f0a`。
+
+**尚待独立验证。** 当前数据支持隔离负载下的命令次数和 CPU 降低，PSS 收益仍待确认。对象释放、ALC 回收、整模块安全交接和生产收益独立验收。Proxy 保持 resident。

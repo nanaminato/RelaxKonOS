@@ -2905,6 +2905,19 @@ def proof_full_http_shutdown(ipc, case):
         sampler = runpy.run_path(str(root / 'sample_process_tree.py'))
         roots = [ipc.helper.pid, current['service'][0]]
         known = {}
+        systemctl = root / 'profile-systemctl-real'
+        wrapper = root / 'profile-systemctl-wrapper'
+        show_log = root / 'profile-systemctl-shows'
+        shutil.copy2('/usr/bin/systemctl', systemctl)
+        wrapper.write_text(f'''#!/bin/bash
+set -eu
+if [[ "$PPID" == {roots[0]} && "${{1:-}}" == show && "${{2:-}}" == {unit} ]]; then
+    printf 'show\\n' >> {shlex.quote(str(show_log))}
+fi
+exec {shlex.quote(str(systemctl))} "$@"
+''')
+        wrapper.chmod(0o755)
+        command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/systemctl')
         native = archive / 'state' / 'archive-state.json'
         proof = archive / 'operations' / started / 'tun-5.json'
         files = [queue, native, proof, mirror, config]
@@ -2933,6 +2946,7 @@ def proof_full_http_shutdown(ipc, case):
         }), flush=True)
         for index, mode in enumerate(order):
             offset = ipc.log.stat().st_size
+            show_log.write_text('')
             probe(current, f'helper-profile-{index}-before')
             started_at = time.monotonic()
             for second in (0, 1, 2, 3, 15, 19, 20, 21, 22):
@@ -2968,6 +2982,9 @@ def proof_full_http_shutdown(ipc, case):
             assert audit.count('event=request-completed ') == (0 if verb is None else 6)
             if verb is not None:
                 assert audit.count(f'operation={verb} ') == 6
+            show_count = len(show_log.read_text().splitlines())
+            assert mode == 'query' or show_count == 0
+            print(f'TUN HELPER NATIVE SHOWS run={index} mode={mode} count={show_count}', flush=True)
             assert [path.read_bytes() for path in files] == frozen
         print(f'PASS TUN HELPER PROFILE: publication={publication}; start={started}; Helper PID={roots[0]}; '
               f'Mihomo PID={roots[1]}; three windows per mode, no ledger or native changes', flush=True)

@@ -124,13 +124,7 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
     public async Task<MihomoServiceObservation> ObserveAsync(CancellationToken ct)
     {
         var registration = await ReadRegistrationAsync(ct);
-        if (registration is null)
-        {
-            // A vendor unit or transient service is still an external installation.
-            var load = (await RunAsync("/usr/bin/systemctl", ["show", Unit, "--property=LoadState", "--value"])).Trim();
-            if (load != "not-found") Fail("external_installation");
-            return new(false, true, false, false, null, null, null);
-        }
+        if (registration is null) return await ObserveAbsentAsync();
         var state = await StateAsync(ct);
         // Stopped services have no process proof. Their program, configuration and writable data scope
         // still need the same ownership/write protection checked before start.
@@ -140,6 +134,14 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
         bool? boot = state.GetValueOrDefault("UnitFileState") switch { "enabled" => true, "disabled" => false, _ => null };
         var process = await VerifyProcessAsync(registration, state, ct);
         return new(true, true, process is not null, boot, registration.Binary, process?.Identity, registration.Data, registration.TunOperation);
+    }
+
+    private static async Task<MihomoServiceObservation> ObserveAbsentAsync()
+    {
+        // A vendor unit or transient service is still an external installation.
+        var load = (await RunAsync("/usr/bin/systemctl", ["show", Unit, "--property=LoadState", "--value"])).Trim();
+        if (load != "not-found") Fail("external_installation");
+        return new(false, true, false, false, null, null, null);
     }
 
     public async Task<RuntimeServiceObservation> ObserveRegistrationAsync(CancellationToken ct)
