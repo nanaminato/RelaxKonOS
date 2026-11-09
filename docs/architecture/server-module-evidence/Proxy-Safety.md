@@ -1366,6 +1366,16 @@ Proxy 保持 resident。无法认证任何监听时，安全策略可能仍指�
 
 Windows Release 的发布事务 113 项、注册 24 项、TUN 边界 38 项、Core 安全所有权 48 项、驻留与独立程序集 31 项、生命周期作用域 37 项及模块里程碑通过。Linux Release 专属进程及 cgroup 清理通过，宿主运行时服务、代理及 resolver 文件指纹一致。矩阵日志 `.artifacts/mb04-tun-full-zero-dns/linux-core-recovery.log` 的 SHA-256 为 `edec191b80baccc9344dd4c49b5e2f826736ed84ef75abe72f2ff2cbb0315f7a`，归档为 `e43e622f2c4d0e5ef602e0ec3f70d6777649e12e9ff113de7c09e94cf0aebdb2`。禁用门禁日志 `.artifacts/mb04-tun-full-zero-dns/linux-core-recovery-disabled.log` 的 SHA-256 为 `efb87abf7b9198f34daa6e7d9dda51c4bc074e23dda753d910d83fb27ac85a8e`，归档为 `d2743bd50173ef4550fb95495f3c2a1668be98368c808b72d5c1290521eddca6`。
 
-**已实现但实机未验证。** 下一步验证管理代次已故障隔离时，Core 仍能接手原待核验发布。此轮确认真实进程退出，对象释放、ALC 回收、隔离内存差值及生产收益分别待测。
+**已实现但实机未验证。** 管理代次故障隔离后的接续见下一节。此轮确认真实进程退出，对象释放、ALC 回收、隔离内存差值及生产收益分别待测。
 
 **未实现或仍受门禁保护。** 缺失可信原回执的恢复继续保持原门禁，整模块动态交接仍待验收。Proxy 保持 resident。
+
+### 管理代次已故障隔离时的 Core 恢复
+
+**已验证。** 专属 Linux systemd 夹具在启动 Core 调度器前，通过生产协调器将原 Proxy 工作租约隔离在第 1 代。Helper 在原管理选路归位后，对 `0ebeeaee-c242-46d6-be32-d543ff35cd11` 执行一次真实补偿。暂扣原终帧时，Core 仍持原发布锁，原管理查询返回 503，原队列逐字节保持。
+
+交付原终帧后，Core 完成持久发布，原管理代次保持 faulted 及一项保留租约。管理查询继续返回 503，原队列字节保持。强制退出后，新 Server 按原 ID 确认原管理终态。同键和原 ID 返回相同结果，Helper 原回执、配置摘要 `695d7b7fc4a12f8ae9ab81ece9e03c61ad141a5f32ea727b4efb6321cb38c12d`、服务恢复、网络规则和控制器实际响应均核对通过。两代之间没有新增配置派发或补偿。该场景通过夹具注入隔离状态，真实异步清理触发隔离的路径见[概览清理故障](Proxy-Observation.md#概览读取失败与清理隔离)。
+
+首轮夹具的诊断路由读取调度索引时等待原发布锁，导致超时。改用原持久发布的只读快照后通过。Windows Release 发布事务、Core 安全和模块里程碑回归通过。Linux Release 原进程及专属 cgroup 清理通过，宿主运行时服务、代理及 resolver 文件指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-core-recovery-quarantine-final.log` 的 SHA-256 为 `1e31689e9ed932aeb873bb7de57f7820c5f6006ed9b896289b2417be9c44a150`，归档为 `e8171fc83c4b6317b38a8a831c5b76ecc4354a3a979988ac539dfae49e0e2417`。
+
+**仍待验收。** 整模块动态交接、故障代次对象释放、ALC 回收、隔离负载内存和生产收益分别开放。Proxy 保持 resident。

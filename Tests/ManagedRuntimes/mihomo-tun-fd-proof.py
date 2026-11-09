@@ -1890,6 +1890,34 @@ def proof_http_publication(owner, ipc, previous, case):
         ipc.stop_helper()
         ipc.start_helper()
         probe(record, 'http-compensation-route-restored')
+        quarantine = state_dir / 'http-quarantine'
+        quarantine.touch()
+        operation_path = '/operations/' + str(uuid.UUID(operation))
+        with subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity) as isolated:
+            try:
+                wait_file('http-ready', isolated)
+                original, correlation = wait_file('http-recovery-reply', isolated).read_text().split()
+                assert original == operation
+                status, faulted = http('/fixture-core-publication')
+                assert status == 200 and faulted['state'] == 'Faulted' and faulted['activeLeases'] == 1
+                assert uuid.UUID(faulted['pending']).hex == operation
+                assert http(operation_path)[0] == 503 and queue.read_bytes() == original_queue
+                assert config.read_bytes() == previous.read_bytes() == mirror.read_bytes()
+                assert network_baseline() == record['baseline'] and device not in devices()
+                assert not Path(f'/proc/{record["service"][0]}').exists()
+                (state_dir / 'http-recovery-release').touch()
+                deadline = time.monotonic() + 8
+                recovered = (200, dict(faulted, pending=None))
+                while http('/fixture-core-publication') != recovered:
+                    assert isolated.poll() is None and time.monotonic() < deadline
+                    time.sleep(.05)
+                assert http(operation_path)[0] == 503 and queue.read_bytes() == original_queue
+                print(f'PASS TUN CORE RECOVERY WITH QUARANTINED PROXY: original={operation}; '
+                      f'generation={faulted["generation"]}; retained management lease and original queue bytes')
+            finally:
+                isolated.kill()
+        for name in ('http-recovery-reply', 'http-recovery-release', 'http-ready', 'http-quarantine'):
+            (state_dir / name).unlink()
     if case == 'ipc-http-commit':
         queue = state_dir / 'proxy-operations.json'
         committed = json.loads(checkpoint(record, 'observe-commit'))
@@ -1942,21 +1970,9 @@ def proof_http_publication(owner, ipc, previous, case):
     restarted = subprocess.Popen([*ipc.server, 'http-recover'], **ipc.identity, stdout=subprocess.PIPE, text=True)
     try:
         wait_file('http-ready', restarted)
-        if pending:
-            original, correlation = wait_file('http-recovery-reply', restarted).read_text().split()
-            assert original == operation
         assert accepted('/tun/enable', key, {'profileId': profile}) == operation
         if pending:
             path = '/operations/' + str(uuid.UUID(operation))
-            status, waiting = http(path)
-            assert status == 200 and waiting['stage'] == 'managed_tun' and waiting['state'] == 5 and not waiting['completedAt']
-            blocked, detail = http('/tun/enable', 'managed-tun-second-executor', {'profileId': profile})
-            assert blocked == 400 and detail['problemCode'] == 'proxy.operation_interrupted'
-            assert http('/fixture-work-leases') == (200, 0)
-            assert config.read_bytes() == previous.read_bytes() == mirror.read_bytes()
-            assert network_baseline() == record['baseline'] and device not in devices()
-            assert not Path(f'/proc/{record["service"][0]}').exists()
-            (state_dir / 'http-recovery-release').touch()
             final = terminal(operation, 'proxy.config_apply_failed')
             assert accepted('/tun/enable', key, {'profileId': profile}) == operation
             assert http(path) == (200, final)

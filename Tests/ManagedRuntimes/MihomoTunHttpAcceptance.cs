@@ -28,6 +28,7 @@ internal static class MihomoTunHttpAcceptance
     internal static async Task RunAsync(string root, MihomoPublicationStore store, IProxyPlatformPaths paths,
         IProxyControllerSecretStore secrets, IServerModeResolver mode, string socket, bool firstRun, bool pending)
     {
+        var quarantine = !firstRun && pending && File.Exists(Path.Combine(paths.GetStateDirectory(), "http-quarantine"));
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root, EnvironmentName = "Testing" });
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://192.0.2.2:18970");
@@ -48,7 +49,8 @@ internal static class MihomoTunHttpAcceptance
         builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(new MihomoRuntimeAuthorizationProvider(store, paths, secrets));
         builder.Services.AddSingleton(services => new MihomoRuntimeService(
-            new PublicationTransport(socket, paths.GetStateDirectory(), store, services.GetRequiredService<ModuleResidencyCoordinator>(), firstRun, pending),
+            new PublicationTransport(socket, paths.GetStateDirectory(), store, services.GetRequiredService<ModuleResidencyCoordinator>(),
+                firstRun, pending, quarantine),
             store, services.GetRequiredService<MihomoRuntimeAuthorizationProvider>(), mode, new DirectDownloads()));
         builder.Services.AddSingleton<IProxyProfileRepository>(MihomoPublicationTransactionChecks.Stub<IProxyProfileRepository>(member =>
             member.Name == nameof(IProxyProfileRepository.GetActiveAsync)
@@ -68,6 +70,20 @@ internal static class MihomoTunHttpAcceptance
         builder.Services.AddTransient<MihomoPublicationRecoveryService>();
         builder.Services.AddHostedService<MihomoPublicationRecoveryScheduler>();
         await using var app = builder.Build();
+        if (quarantine)
+        {
+            var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
+            using var admission = await coordinator.AcquireAsync(ServerModules.ProxyId);
+            // Inject the same retained generation lease as a failed management cleanup before Core starts.
+            new ModuleWorkLeaseSource(coordinator, admission.Runtime).Acquire().RequireRecovery();
+            app.MapGet("/api/v1.0/proxy/fixture-core-publication", async (CancellationToken ct) =>
+            {
+                var owner = coordinator.Describe(ServerModules.ProxyId)!;
+                return Results.Json(new { pending = (await store.ReadAsync(ct)).Pending?.OperationId,
+                    state = owner.State.ToString(), owner.Generation, owner.ActiveLeases });
+            }).RequireAuthorization("ProxyDangerous");
+        }
+        app.UseServerProblemMapping();
         app.UseAuthentication();
         app.UseAuthorization();
         app.Use(async (context, next) =>
@@ -110,7 +126,7 @@ internal static class MihomoTunHttpAcceptance
     }
 
     private sealed class PublicationTransport(string socket, string state, MihomoPublicationStore store,
-        ModuleResidencyCoordinator coordinator, bool firstRun, bool pending)
+        ModuleResidencyCoordinator coordinator, bool firstRun, bool pending, bool quarantine)
         : IPrivilegedOperationTransport
     {
         private readonly UnixSocketPrivilegedOperationTransport inner = new(new() { SocketPath = socket },
@@ -141,7 +157,8 @@ internal static class MihomoTunHttpAcceptance
             }
             if (!firstRun && pending && request.Operation == PrivilegedOperationKind.MihomoRuntimeRecover)
             {
-                if (store.Gate.CurrentCount != 0 || coordinator.Describe(ServerModules.ProxyId) is not { ActiveLeases: 0 })
+                var expectedLeases = quarantine ? 1 : 0;
+                if (store.Gate.CurrentCount != 0 || coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != expectedLeases)
                     throw new InvalidOperationException("The original Core recovery did not independently hold the publication gate through the Helper response.");
                 var ready = Path.Combine(state, "http-recovery-reply");
                 await File.WriteAllTextAsync(ready + ".new",
