@@ -271,6 +271,52 @@ esac
     command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/busctl')
 
 
+def install_restored_job_boundary():
+    original = root / 'journalctl-original'
+    wrapper = root / 'journalctl-wrapper'
+    shutil.copy2('/usr/bin/journalctl', original)
+    wrapper.write_text(f'''#!/bin/bash
+set -eu
+real={shlex.quote(str(original))}
+work={shlex.quote(str(root))}
+if [[ "$*" == *"UNIT={unit}"*"JOB_TYPE=start JOB_RESULT=done"* ]]; then
+    result=$("$real" "$@")
+    if [[ -n "$result" && ! -f "$work/restored-job-observed" ]]; then
+        printf '%s\n' "$result" > "$work/restored-job-observed.new"
+        mv "$work/restored-job-observed.new" "$work/restored-job-observed"
+        while [[ ! -f "$work/release-restored-job" ]]; do sleep .05; done
+    fi
+    printf '%s\n' "$result"
+    exit 0
+fi
+exec "$real" "$@"
+''')
+    wrapper.chmod(0o755)
+    command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/journalctl')
+
+
+def install_restored_process_boundary():
+    original = root / 'systemctl-original'
+    wrapper = root / 'systemctl-wrapper'
+    shutil.copy2('/usr/bin/systemctl', original)
+    wrapper.write_text(f'''#!/bin/bash
+set -eu
+real={shlex.quote(str(original))}
+work={shlex.quote(str(root))}
+if [[ "$*" == "show {unit} "* && -f "$work/restored-process-origin" &&
+      "$PPID" == "$(cat "$work/restored-process-origin")" ]] &&
+      compgen -G "{archive}/operations/*/registration-start-process.json" >/dev/null; then
+    printf '%s\n' ready > "$work/restored-process-held"
+    parent=$PPID
+    while kill -0 "$parent" 2>/dev/null; do sleep .05; done
+    exit 1
+fi
+exec "$real" "$@"
+''')
+    wrapper.chmod(0o755)
+    command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/systemctl')
+
+
 class Upstream(http.server.BaseHTTPRequestHandler):
     hits = []
     tunnels = []
@@ -1443,7 +1489,7 @@ class IpcPublicationWorkers:
         self.helper = None
         self.generation = 0
 
-    def start_helper(self, *, block_namespace_cookie=False, foreign_network=False, prefix=()):
+    def start_helper(self, *, block_namespace_cookie=False, foreign_network=False):
         assert self.helper is None
         self.generation += 1
         self.log = root / f'ipc-helper-{self.generation}.log'
@@ -1452,9 +1498,8 @@ class IpcPublicationWorkers:
             args = [sys.executable, '-I', script, 'cookie-unavailable-helper', root, *args]
         if foreign_network:
             args = ['/usr/bin/unshare', '--net', *args]
-        self.traced = bool(prefix)
         with self.log.open('x') as log:
-            self.helper = subprocess.Popen([*prefix, *args], stdout=log, stderr=subprocess.STDOUT, start_new_session=self.traced)
+            self.helper = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 8
         while self.helper.poll() is None and time.monotonic() < deadline:
             try:
@@ -1468,12 +1513,7 @@ class IpcPublicationWorkers:
     def stop_helper(self):
         if self.helper is None:
             return
-        if self.traced:
-            try:
-                os.killpg(self.helper.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        elif self.helper.poll() is None:
+        if self.helper.poll() is None:
             self.helper.kill()
         self.helper.wait(timeout=5)
         self.helper = None
@@ -1999,7 +2039,8 @@ def proof_full_http_shutdown(ipc, case):
     early_owner = case == 'ipc-http-early-owner'
     replaced_stop = case == 'ipc-http-initial-stop-replaced'
     restored_replaced = case == 'ipc-http-restored-process-replaced'
-    initial_stop = replaced_stop or restored_replaced or case == 'ipc-http-initial-stop'
+    job_replaced = case == 'ipc-http-restored-job-replaced'
+    initial_stop = replaced_stop or restored_replaced or job_replaced or case == 'ipc-http-initial-stop'
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
@@ -2202,6 +2243,9 @@ def proof_full_http_shutdown(ipc, case):
         if restored_replaced:
             verify_restored_process_gate(publication, operation_dir, original_config, baseline, original_resolver)
             return
+        if job_replaced:
+            verify_restored_job_gate(publication, operation_dir, original_config, baseline, original_resolver)
+            return
         ipc.start_helper()
         if replaced_stop:
             worker = launch('restart')
@@ -2260,13 +2304,12 @@ def proof_full_http_shutdown(ipc, case):
         nonlocal worker, token
         witness = operation_dir / 'registration-start-process.json'
         sender = operation_dir / 'registration-start-dispatched'
-        opens = 'open,openat,openat2'
-        ipc.start_helper(prefix=['strace', '-f', '-qq', '-P', str(witness), '-e', f'trace={opens}',
-                                 '-e', f'inject={opens}:delay_enter=25s:when=1', '-o', root / 'restored-process.trace'])
+        ipc.start_helper()
+        (root / 'restored-process-origin').write_text(str(ipc.helper.pid))
         worker = launch('restart')
         cut_pid = int(marker('full-server-pid'))
         token = login()
-        until(witness.is_file, 'restored process witness')
+        marker('restored-process-held')
         pending_file = archive / 'state' / 'archive-state.json'
         pending = json.loads(pending_file.read_bytes())['configuration']
         assert uuid.UUID(pending['operationId']).hex == publication and not pending['previousRestored']
@@ -2281,6 +2324,7 @@ def proof_full_http_shutdown(ipc, case):
         os.kill(cut_pid, signal.SIGTERM)
         # The real Helper query is held at the witness read. Kill that generation before it can acknowledge.
         ipc.stop_helper()
+        (root / 'restored-process-origin').unlink()
         assert worker.wait(timeout=12) == 0
         assert witness.read_bytes() == evidence
 
@@ -2321,6 +2365,54 @@ def proof_full_http_shutdown(ipc, case):
         assert witness.read_bytes() == evidence
         print(f'PASS TUN RESTORED PROCESS GATE: original={publication}; restored PID={original[0]}; '
               f'replacement PID={replacement[0]}; missing and mismatched witnesses retained original gate', flush=True)
+
+    def verify_restored_job_gate(publication, operation_dir, original_config, baseline, original_resolver):
+        nonlocal worker, token
+        job = operation_dir / 'registration-start-job.json'
+        witness = operation_dir / 'registration-start-process.json'
+        ipc.start_helper()
+        worker = launch('restart')
+        server_pid = int(marker('full-server-pid'))
+        token = login()
+        logged = json.loads(marker('restored-job-observed', seconds=25))
+        original = service_identity()
+        assert logged['INVOCATION_ID'] == original[1] and not job.exists() and not witness.exists()
+        service('restart', unit)
+        replacement = service_identity()
+        assert replacement[1] != original[1]
+        (root / 'release-restored-job').touch()
+        until(lambda: 'operation=MihomoRuntimeRecover ' in ipc.log.read_text(), 'rejection of the replacement invocation', seconds=25)
+        evidence = job.read_bytes()
+        recorded = json.loads(evidence)
+        assert uuid.UUID(recorded['OperationId']).hex == publication and recorded['JobId'] > 0
+        assert uuid.UUID(recorded['InvocationId']).hex == original[1]
+        state_file = archive / 'state' / 'archive-state.json'
+        pending = json.loads(state_file.read_bytes())['configuration']
+        assert uuid.UUID(pending['operationId']).hex == publication and not pending['previousRestored']
+        assert pending['recoveryProblemCode'] == 'runtime.network_restored_start_unconfirmed'
+        assert job.read_bytes() == evidence and not witness.exists()
+        os.kill(server_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        ipc.stop_helper()
+        ipc.start_helper()
+        worker = launch('restart')
+        restart_pid = int(marker('full-server-pid'))
+        token = login()
+        until(lambda: 'operation=MihomoRuntimeRecover ' in ipc.log.read_text(), 'restarted original job gate')
+        waiting = read(publication)
+        assert waiting['state'] == 'interrupted' and not waiting.get('completedAt')
+        assert submit('enable', 'full-publish', {'profileId': profile}) == publication
+        status, blocked = request(api + '/tun/enable', token, 'full-restored-job-replaced', {'profileId': profile})
+        assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+        assert job.read_bytes() == evidence and not witness.exists() and service_identity() == replacement
+        assert config.read_bytes() == mirror.read_bytes() == original_config
+        assert network_baseline() == baseline and resolver_snapshot() == original_resolver
+        assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
+                       '--max-time', '3', f'http://{target}:18880/mb04-restored-job-replacement') == 'upstream-through-inherited-tun'
+        os.kill(restart_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        print(f'PASS TUN RESTORED JOB GATE: original={publication}; job={recorded["JobId"]}; '
+              f'original PID={original[0]}; replacement PID={replacement[0]}; before first process observation', flush=True)
 
     def verify_unfinished_dns(pid, publication, resolver_before):
         nonlocal worker, token
@@ -3771,9 +3863,16 @@ def proof():
     assert os.geteuid() == 0 and Path('/proc/1/comm').read_text().strip() == 'systemd'
     mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines() if ' - tmpfs ' in line}
     assert {'/run', '/var/lib', '/etc/systemd/system'} <= mounts
+    # PID 1 started before the private journal socket existed. Reopen its log target now.
+    service('log-target', 'console')
+    service('log-target', 'journal')
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
+    if case == 'ipc-http-restored-job-replaced':
+        install_restored_job_boundary()
+    if case == 'ipc-http-restored-process-replaced':
+        install_restored_process_boundary()
     http_case = case.startswith('ipc-http-')
     if http_case:
         ip('netns', 'add', 'rk-http-client')
@@ -3907,7 +4006,7 @@ rules:
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
             if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
-                        'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced',
+                        'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
@@ -4079,6 +4178,14 @@ rules:
         print(f'PASS MIHOMO INHERITED TUN CLEANUP: {operation}, interrupted stop reconciled without replay; '
               'original receipt on retry; process, device and route gone')
     except Exception:
+        if case in ('ipc-http-initial-stop', 'ipc-http-restored-job-replaced'):
+            subprocess.run(['/usr/bin/journalctl', '--quiet', '--no-pager', '--output=json',
+                            '--output-fields=UNIT,JOB_ID,JOB_RESULT,INVOCATION_ID,USER_INVOCATION_ID,_PID,_UID,_BOOT_ID,_TRANSPORT,SYSLOG_IDENTIFIER',
+                            '--lines=20', 'SYSLOG_IDENTIFIER=systemd'], check=False, timeout=8)
+            print(f'Private manager log target: {service("log-target")}', flush=True)
+            state = json.loads((archive / 'state' / 'archive-state.json').read_bytes()).get('configuration')
+            if state:
+                print(f'Original recovery diagnostic: {state.get("recoveryProblemCode")}', flush=True)
         subprocess.run(['/usr/bin/resolvectl', 'status', device], check=False)
         subprocess.run(['/usr/bin/dig', '@' + target, 'diagnostic.tun.fixture.test', '+time=2', '+tries=1'], check=False)
         print(f'DNS relay associations={dns_relay.associations}, queries={queries}', file=sys.stderr)

@@ -99,6 +99,7 @@ internal sealed class MihomoConfigurationAdapter(string root, RuntimeArchiveStat
                 LinuxMihomoTunRoutes.TableFor(pending.OperationId), network.DnsRoutingDomain);
             var owner = new MihomoTunEffect(MihomoTunPhase.Intent, intent);
             LinuxMihomoArchiveHost.RequirePidFdSupport();
+            await LinuxMihomoArchiveHost.RequireRestoredJobJournalAsync();
             await LinuxMihomoArchiveHost.VerifyUndispatchedTunNetworkAsync(owner, ct);
             await TunCheckpoint(pending).WriteOwnerAsync(owner);
             // Capture and preparation flushed the files. Publish their names before admitting the switch.

@@ -8,12 +8,12 @@ run_seconds=150
 if [[ ( $# == 3 || $# == 4 ) && $1 == --tun-fd ]]; then
     tun_fd=1
     tun_case=${4:-full}
-    case "$tun_case" in full|dns-receipt|dns-owner|dns-registration|registration-before-network|network-before-launch|launch-before-descriptor|descriptor-outcome-unknown|descriptor-live-stop|dns-exited|dns-exited-owner|dns-applied-exited|dns-partial-exited|dns-partial-inflight|dns-partial-live|committed|committed-stop|committed-stop-before-delete|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-zero-dns|ipc-http-early-owner|ipc-http-initial-stop|ipc-http-initial-stop-replaced|ipc-http-restored-process-replaced|ipc-http-partial-dns|ipc-http-unknown-dns|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained|ipc-http-retained-installation|ipc-http-retained-administrator|ipc-http-squid|ipc-http-squid-lifecycle-unknown|ipc-http-squid-account) ;; *) exit 2 ;; esac
+    case "$tun_case" in full|dns-receipt|dns-owner|dns-registration|registration-before-network|network-before-launch|launch-before-descriptor|descriptor-outcome-unknown|descriptor-live-stop|dns-exited|dns-exited-owner|dns-applied-exited|dns-partial-exited|dns-partial-inflight|dns-partial-live|committed|committed-stop|committed-stop-before-delete|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-zero-dns|ipc-http-early-owner|ipc-http-initial-stop|ipc-http-initial-stop-replaced|ipc-http-restored-process-replaced|ipc-http-restored-job-replaced|ipc-http-partial-dns|ipc-http-unknown-dns|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained|ipc-http-retained-installation|ipc-http-retained-administrator|ipc-http-squid|ipc-http-squid-lifecycle-unknown|ipc-http-squid-account) ;; *) exit 2 ;; esac
     fixture=$(realpath -e -- "$2")
     helper=$(realpath -e -- "$3")
     tun_script=$(realpath -e -- "$(dirname -- "$0")/mihomo-tun-fd-proof.py")
     run_seconds=60
-    if [[ $tun_case == ipc-http-full || $tun_case == ipc-http-zero-dns || $tun_case == ipc-http-early-owner || $tun_case == ipc-http-initial-stop || $tun_case == ipc-http-initial-stop-replaced || $tun_case == ipc-http-restored-process-replaced || $tun_case == ipc-http-partial-dns || $tun_case == ipc-http-unknown-dns || $tun_case == ipc-http-joint || $tun_case == ipc-http-admission || $tun_case == ipc-http-handoff || $tun_case == ipc-http-retained || $tun_case == ipc-http-retained-installation || $tun_case == ipc-http-retained-administrator || $tun_case == ipc-http-squid || $tun_case == ipc-http-squid-lifecycle-unknown || $tun_case == ipc-http-squid-account ]]; then
+    if [[ $tun_case == ipc-http-full || $tun_case == ipc-http-zero-dns || $tun_case == ipc-http-early-owner || $tun_case == ipc-http-initial-stop || $tun_case == ipc-http-initial-stop-replaced || $tun_case == ipc-http-restored-process-replaced || $tun_case == ipc-http-restored-job-replaced || $tun_case == ipc-http-partial-dns || $tun_case == ipc-http-unknown-dns || $tun_case == ipc-http-joint || $tun_case == ipc-http-admission || $tun_case == ipc-http-handoff || $tun_case == ipc-http-retained || $tun_case == ipc-http-retained-installation || $tun_case == ipc-http-retained-administrator || $tun_case == ipc-http-squid || $tun_case == ipc-http-squid-lifecycle-unknown || $tun_case == ipc-http-squid-account ]]; then
         run_seconds=110
         for artifact in RelaxKonOS.Server.dll RelaxKonOS.Server.deps.json RelaxKonOS.Server.runtimeconfig.json; do
             if [[ ! -f "$(dirname -- "$fixture")/$artifact" ]]; then
@@ -24,7 +24,7 @@ if [[ ( $# == 3 || $# == 4 ) && $1 == --tun-fd ]]; then
     fi
 else
     if [[ $# -lt 3 || $# -gt 6 || ( $# -ge 5 && $5 != --authenticated ) ]]; then
-        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd tests.dll Helper-apphost [full|dns-receipt|dns-owner|dns-registration|registration-before-network|network-before-launch|launch-before-descriptor|descriptor-outcome-unknown|descriptor-live-stop|dns-exited|dns-exited-owner|dns-applied-exited|dns-partial-exited|dns-partial-inflight|dns-partial-live|committed|committed-stop|committed-stop-before-delete|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-zero-dns|ipc-http-early-owner|ipc-http-initial-stop|ipc-http-initial-stop-replaced|ipc-http-restored-process-replaced|ipc-http-partial-dns|ipc-http-unknown-dns|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained|ipc-http-retained-installation|ipc-http-retained-administrator|ipc-http-squid|ipc-http-squid-lifecycle-unknown|ipc-http-squid-account]" >&2
+        echo "Usage: sudo bash $0 tests.dll Helper.dll Server.dll [proxy-tests.dll [--authenticated [baseline-Server.dll]]] | --tun-fd tests.dll Helper-apphost [full|dns-receipt|dns-owner|dns-registration|registration-before-network|network-before-launch|launch-before-descriptor|descriptor-outcome-unknown|descriptor-live-stop|dns-exited|dns-exited-owner|dns-applied-exited|dns-partial-exited|dns-partial-inflight|dns-partial-live|committed|committed-stop|committed-stop-before-delete|committed-start|committed-remove-keep|committed-remove-purge|server-commit|server-pending|ipc-server-commit|ipc-server-pending|ipc-http-commit|ipc-http-pending|ipc-http-action|ipc-http-full|ipc-http-zero-dns|ipc-http-early-owner|ipc-http-initial-stop|ipc-http-initial-stop-replaced|ipc-http-restored-process-replaced|ipc-http-restored-job-replaced|ipc-http-partial-dns|ipc-http-unknown-dns|ipc-http-joint|ipc-http-admission|ipc-http-handoff|ipc-http-retained|ipc-http-retained-installation|ipc-http-retained-administrator|ipc-http-squid|ipc-http-squid-lifecycle-unknown|ipc-http-squid-account]" >&2
         exit 2
     fi
     fixture=$(realpath -e -- "$1")
@@ -66,7 +66,7 @@ proxy_fingerprint() {
 }
 proxy_before=$(proxy_fingerprint)
 account_before=
-if [[ $tun_case == ipc-http-full || $tun_case == ipc-http-zero-dns || $tun_case == ipc-http-early-owner || $tun_case == ipc-http-initial-stop || $tun_case == ipc-http-initial-stop-replaced || $tun_case == ipc-http-restored-process-replaced || $tun_case == ipc-http-partial-dns || $tun_case == ipc-http-unknown-dns || $tun_case == ipc-http-joint || $tun_case == ipc-http-admission || $tun_case == ipc-http-handoff || $tun_case == ipc-http-retained || $tun_case == ipc-http-retained-installation || $tun_case == ipc-http-retained-administrator || $tun_case == ipc-http-squid || $tun_case == ipc-http-squid-lifecycle-unknown || $tun_case == ipc-http-squid-account ]]; then
+if [[ $tun_case == ipc-http-full || $tun_case == ipc-http-zero-dns || $tun_case == ipc-http-early-owner || $tun_case == ipc-http-initial-stop || $tun_case == ipc-http-initial-stop-replaced || $tun_case == ipc-http-restored-process-replaced || $tun_case == ipc-http-restored-job-replaced || $tun_case == ipc-http-partial-dns || $tun_case == ipc-http-unknown-dns || $tun_case == ipc-http-joint || $tun_case == ipc-http-admission || $tun_case == ipc-http-handoff || $tun_case == ipc-http-retained || $tun_case == ipc-http-retained-installation || $tun_case == ipc-http-retained-administrator || $tun_case == ipc-http-squid || $tun_case == ipc-http-squid-lifecycle-unknown || $tun_case == ipc-http-squid-account ]]; then
     account_before=$(sha256sum /etc/passwd /etc/shadow /etc/group /etc/gshadow)
 fi
 credential_writer=
@@ -209,6 +209,19 @@ if [[ $6 == 1 ]]; then
     # their socket live in the already private /etc and /run mounts.
     cp -L -- /usr/lib/systemd/system/dbus.{socket,service} /etc/systemd/system/
     cp -L -- /usr/lib/systemd/system/systemd-resolved.service /etc/systemd/system/
+    mkdir -p /run/systemd/journal /run/log/journal /etc/systemd/journald.conf.d
+    printf '[Journal]\nStorage=volatile\nReadKMsg=no\nForwardToKMsg=no\nForwardToSyslog=no\n' +        > /etc/systemd/journald.conf.d/99-relaxkonos-fixture.conf
+    cat > /etc/systemd/system/systemd-journald.service <<'JOURNAL'
+[Unit]
+DefaultDependencies=no
+Requires=systemd-journald.socket
+After=systemd-journald.socket
+[Service]
+Type=notify
+ExecStart=/usr/lib/systemd/systemd-journald
+JOURNAL
+    cp -L -- /usr/lib/systemd/system/systemd-journald.socket /etc/systemd/system/
+    sed -i '/^DefaultDependencies=no$/a Requires=systemd-journald.service\nAfter=systemd-journald.service' /etc/systemd/system/relaxkonos-test.service
     printf '[Resolve]\nDNS=\nFallbackDNS=\nDomains=\nDNSStubListener=no\nDNSSEC=no\nDNSOverTLS=no\nLLMNR=no\nMulticastDNS=no\n' > /etc/systemd/resolved.conf
     sed -i '/^DefaultDependencies=no$/a Wants=dbus.socket\nAfter=dbus.socket' /etc/systemd/system/relaxkonos-test.service
 fi
@@ -218,7 +231,9 @@ done
 export container=relaxkonos-test
 export SYSTEMD_GENERATOR_PATH=/dev/null
 export SYSTEMD_UNIT_PATH=/etc/systemd/system
-exec /usr/lib/systemd/systemd --system --unit=relaxkonos-test.target --log-target=console --log-level=info > "$work/manager.log" 2>&1
+log_target=console
+if [[ $6 == 1 ]]; then log_target=journal; fi
+exec /usr/lib/systemd/systemd --system --unit=relaxkonos-test.target --log-target="$log_target" --log-level=info > "$work/manager.log" 2>&1
 MANAGER
 systemd-run --unit="$unit" --property=Delegate=yes --property=RuntimeMaxSec="$((run_seconds + 30))s" --property=LimitNOFILE=4096 \
     --property=TimeoutStopSec=5s --property=KillMode=control-group --collect \

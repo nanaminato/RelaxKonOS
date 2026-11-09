@@ -894,7 +894,19 @@ Linux x64 私有 systemd 原发布 `8adaf28adc1d467e99d26a74a85a139f` 在恢复�
 
 **已实现但实机未验证。** 整机掉电需独立断电环境。已验证进程退出，对象释放、ALC 回收、隔离内存差值及生产收益未测量。
 
-**未实现或仍受门禁保护。** 进程见证采自命令成功返回后的首次观察。原启动作业和首次观察之间的进程替换还需要独立的作业或启动器归属见证。缺证据的原操作继续待核验，整模块安全交接前 Proxy 保持 resident。
+**未实现或仍受门禁保护。** 进程见证采自命令成功返回后的首次观察。原启动作业到首次观察的调用 ID 绑定见下一节。缺证据的原操作继续待核验，整模块安全交接前 Proxy 保持 resident。
+
+### 补偿启动作业绑定首次进程观察
+
+**已实现且已验证。** 受管 TUN 切换前核对同次启动的 PID 1 journal 可读。补偿启动使用原 systemd `StartUnit` 返回的作业 ID，只接受同一启动、PID 1、固定服务单元、同一作业 ID 的成功日志。日志时间不得早于原派发。将作业及其调用 ID 持久化后，只有当前进程调用 ID 一致时才允许写入首份进程见证。缺少原作业结果、缺少证据或调用 ID 错配时保持原门禁。 [systemd 原生作业日志](https://github.com/systemd/systemd/blob/main/src/core/job.c)
+
+Linux x64 私有 systemd 使用独立 journald 和真实 Mihomo。原操作 `2287861f64d74755baf7eb9989adc1b1` 的作业 `39` 已启动旧配置 PID `511`。夹具截留真实 journal 查询应答时，Helper 尚未开始首次进程观察。此时替换为同配置 PID `554`，再放行原查询。Helper 保存原作业而拒绝为替代进程建立见证，返回 `runtime.network_restored_start_unconfirmed`。重启继续返回原待核验，同键命中原 ID，新键被拒绝。替代进程与真实流量保持，原管理路由、配置和 resolver 设置核对一致。
+
+同批复验缺失与写入后替换进程见证的原操作 `6f2ead8a06394fba875e384cf0b70112`，以及原停止应答丢失后按匹配作业和进程见证恢复的原操作 `6c32d4e1de634ec2af676af8b8b1fcb7`。首次试跑的私有 journal 缺发行版 socket 单元，导致正向恢复无法取得可信日志。启用专属 socket 后通过。两条故障夹具分别暂扣实际 journal 应答和 systemctl 观察，规避全程跟踪导致的等待超时。 同批候选注册中断原 `d557533606354bbc8312e32450f3da28` 通过。Windows Release 构建及 38 项 TUN 边界检查通过。四场专属 cgroup 已清理，宿主共享服务与代理及 resolver 文件指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-job.log` SHA-256 为 `730708ed64e0c58c5e9afea4b6e4c9e7c1b5c478e5cdadd3bcf8f4846d203f93`，归档 SHA-256 为 `de5cbf0b0f6b8df4fcb550b2aed616c907829bd045fb34167c416f6287151706`。
+
+**已实现但实机未验证。** 缺原作业回执仍须保留门禁，整机掉电需独立断电环境。对象释放、ALC 回收、隔离内存差值及生产收益未测量。
+
+**未实现或仍受门禁保护。** 整模块安全交接继续开放，Proxy 保持 resident。
 
 ## MB-04 受管 TUN 认证 HTTP 补偿
 

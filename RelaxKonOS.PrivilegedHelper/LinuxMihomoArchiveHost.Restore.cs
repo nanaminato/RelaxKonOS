@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using System.Diagnostics;
+using System.Globalization;
 using RelaxKonOS.ManagedRuntimes;
 
 namespace RelaxKonOS.PrivilegedHelper;
@@ -8,6 +10,7 @@ internal sealed partial class LinuxMihomoArchiveHost
 {
     private sealed record RegistrationRestore(Guid OperationId, Registration Previous, Registration Restored);
     private sealed record RestoredProcess(Guid OperationId, string ConfigurationIdentity, MihomoTunProcess Process);
+    private sealed record RestoredStartJob(Guid OperationId, Guid BootId, uint JobId, Guid InvocationId);
 
     private async Task ConfigurePublicationTunAsync(RuntimePendingConfiguration pending, string binary, string data,
         CancellationToken ct)
@@ -160,6 +163,62 @@ internal sealed partial class LinuxMihomoArchiveHost
     private static string RestoredProcessPath(Guid operation) =>
         Path.Combine(Root, "operations", operation.ToString("N"), "registration-start-process.json");
 
+    private static string RestoredJobPath(Guid operation) =>
+        Path.Combine(Root, "operations", operation.ToString("N"), "registration-start-job.json");
+
+    internal static async Task RequireRestoredJobJournalAsync()
+    {
+        var boot = LinuxMihomoTunCheckpoint.BootId();
+        var journal = await RunAsync("/usr/bin/journalctl", ["--quiet", "--no-pager", "--output=json",
+            "--output-fields=_BOOT_ID", "--lines=1", "_PID=1", "_UID=0", $"_BOOT_ID={boot:N}"]);
+        if (string.IsNullOrWhiteSpace(journal)) Fail("network_restored_start_unconfirmed");
+    }
+
+    private static async Task<RestoredStartJob> StartRestoredJobAsync(Guid operation, CancellationToken ct)
+    {
+        var path = RestoredJobPath(operation);
+        RuntimeSourceStore.RequireNoLinks(path);
+        if (Path.Exists(path)) Fail("network_restored_start_unconfirmed");
+        var boot = LinuxMihomoTunCheckpoint.BootId();
+        var started = (ulong)((Int128)Stopwatch.GetTimestamp() * 1_000_000 / Stopwatch.Frequency);
+        var reply = await RunAsync("/usr/bin/busctl", ["--system", "--timeout=5s", "--json=short", "call",
+            "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
+            "StartUnit", "ss", Unit, "fail"]);
+        using var response = JsonDocument.Parse(reply);
+        var job = response.RootElement.GetProperty("data");
+        const string prefix = "/org/freedesktop/systemd1/job/";
+        if (response.RootElement.GetProperty("type").GetString() != "o" || job.GetArrayLength() != 1
+            || job[0].GetString() is not { } objectPath || !objectPath.StartsWith(prefix, StringComparison.Ordinal)
+            || !uint.TryParse(objectPath.AsSpan(prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out var id)
+            || id == 0)
+            throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+        for (var attempt = 0; attempt < 30; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var journal = await RunAsync("/usr/bin/journalctl", ["--quiet", "--no-pager", "--output=json",
+                "--output-fields=INVOCATION_ID", "--lines=2", "_PID=1", "_UID=0", $"_BOOT_ID={boot:N}",
+                $"UNIT={Unit}", $"JOB_ID={id.ToString(CultureInfo.InvariantCulture)}", "JOB_TYPE=start", "JOB_RESULT=done"]);
+            var entries = journal.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (entries.Length > 1) Fail("network_restored_start_unconfirmed");
+            if (entries.Length == 1)
+            {
+                using var entry = JsonDocument.Parse(entries[0]);
+                var fields = entry.RootElement;
+                if (!fields.TryGetProperty("INVOCATION_ID", out var value) || value.ValueKind != JsonValueKind.String
+                    || !Guid.TryParseExact(value.GetString(), "N", out var invocation) || invocation == Guid.Empty
+                    || !ulong.TryParse(fields.GetProperty("__MONOTONIC_TIMESTAMP").GetString(), NumberStyles.None,
+                        CultureInfo.InvariantCulture, out var timestamp) || timestamp < started)
+                    throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+                var receipt = new RestoredStartJob(operation, boot, id, invocation);
+                await WriteRestoreFileAsync(operation, path, JsonSerializer.Serialize(receipt),
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+                return receipt;
+            }
+            await Task.Delay(100, ct);
+        }
+        throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+    }
+
     private static async Task<RestoredProcess> ObserveRestoredProcessAsync(Guid operation, Registration registration, CancellationToken ct)
     {
         var state = await StateAsync(ct);
@@ -179,7 +238,10 @@ internal sealed partial class LinuxMihomoArchiveHost
             Fail("network_restored_start_unconfirmed");
         var registration = await ReadRegistrationAsync(ct) ?? throw new RuntimePolicyException("runtime.network_registration_conflict");
         var observed = await ObserveRestoredProcessAsync(operation, registration, ct);
-        if (await ReadRestoreFileAsync(path, ct) != JsonSerializer.Serialize(observed))
+        var job = JsonSerializer.Deserialize<RestoredStartJob>(await ReadRestoreFileAsync(RestoredJobPath(operation), ct));
+        if (job is null || job.OperationId != operation || job.BootId != LinuxMihomoTunCheckpoint.BootId()
+            || job.JobId == 0 || job.InvocationId != observed.Process.InvocationId
+            || await ReadRestoreFileAsync(path, ct) != JsonSerializer.Serialize(observed))
             Fail("network_restored_start_unconfirmed");
         MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(path)!);
     }
