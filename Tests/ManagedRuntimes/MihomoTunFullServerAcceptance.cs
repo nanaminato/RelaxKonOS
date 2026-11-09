@@ -122,13 +122,15 @@ internal static class MihomoTunFullServerAcceptance
     internal static async Task RunAsync(string root, string socket, string phase)
     {
         RequirePrivateFixture(root);
-        if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
+        if (phase is not ("drain" or "cleanup-drain" or "cleanup-cut" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
             or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"
             or "named-start-cut" or "stop-reply-drop" or "start-reply-drop" or "baseline-on" or "baseline-off"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
-        var first = phase.EndsWith("drain", StringComparison.Ordinal);
+        var first = phase.EndsWith("drain", StringComparison.Ordinal) || phase == "cleanup-cut";
+        var cleanupDrain = phase == "cleanup-drain";
+        var cleanupScope = cleanupDrain || phase == "cleanup-cut";
         var dropStopReply = phase == "stop-reply-drop";
         var dropStartReply = phase == "start-reply-drop";
         var handoff = phase == "handoff-disabled";
@@ -151,7 +153,7 @@ internal static class MihomoTunFullServerAcceptance
                 && originalStart.Task.IsCompletedSuccessfully && id == originalStart.Task.Result
                 && !File.Exists(Path.Combine(root, "full-tun-query-resume"))) : null;
         var tunOperation = dropStartReply ? "MihomoRuntimeTunStart" : "MihomoRuntimeTunStop";
-        await using var relay = first || dropStopReply || dropStartReply ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+        await using var relay = (first && !cleanupScope) || dropStopReply || dropStartReply ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-tun-reply.sock", queryRelay?.Path ?? expiryRelay?.Path ?? socket, ct,
             (operation, _) => operation == tunOperation) : null;
         var squidOperation = phase switch
@@ -173,6 +175,11 @@ internal static class MihomoTunFullServerAcceptance
             relay?.Path ?? expiryRelay?.Path ?? squidRelay?.Path ?? removalRelay?.Path ?? recoveryRelay?.Path ?? socket, root,
             reuse: !first && !dropStopReply && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"), seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
+        if (cleanupScope)
+        {
+            start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
+            start.Environment["RELAXKONOS_TEST_TUN_CLEANUP"] = start.WorkingDirectory;
+        }
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
         if (phase is "admission-managed" or "handoff-disabled" or "handoff-restart")
         {
@@ -264,8 +271,13 @@ internal static class MihomoTunFullServerAcceptance
                     relay.ReleaseHeldResponse();
                 }
             }
+            if (cleanupDrain)
+            {
+                await stopping.Task.WaitAsync(ct);
+                await WriteMarkerAsync(root, "full-server-stopping", "cleanup");
+            }
             await exited;
-            if (phase is ("zero-dns-publish" or "named-start-cut") && server.ExitCode == 137) return;
+            if (phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut") && server.ExitCode == 137) return;
             if (disabled && server.ExitCode != 0 && startupRefusal.Task.IsCompletedSuccessfully)
             {
                 await WriteMarkerAsync(root, "full-startup-refused", await startupRefusal.Task);

@@ -1050,6 +1050,21 @@ Linux Release 构建、Windows Release 的 38 项 TUN 执行边界和模块边�
 
 **未实现或仍受门禁保护。** 证据不足时持久准入继续生效。Proxy 保持 resident，整模块交接独立验收。
 
+### 完整 Server 的具名停止作用域清理与恢复
+
+**已实现且已验证。** 2026-11-10 在 Linux x64 私有 systemd 内，用测试启动钩子向具名 TUN 的生产执行作用域加入一个可暂停的 `DisposeAsync` 对象。PAM/JWT、Server 队列、独立 Helper、systemd 服务和网络路径均走生产代码。两组都在实际停止完成、原生回执已绑定原发布和目标执行后暂停清理。此时原 HTTP 队列仍为 Running，同键返回原 ID，至少一项工作租约仍由原队列持有，管理选路恢复基线。
+
+- 正常停机的原停止为 `627a55e536fd4bb8ae8f0261704b57b8`。收到 SIGTERM 后，Server 保持运行且原队列字节保持。放行异步清理后，观察到释放完成标记、原成功终态持久化及 Server 正常退出。重启后同键和原 ID 返回同一终态，无新增原 ID 查询。
+- 强制退出的原停止为 `b9c8c7e1a3b5420bb775d72e1b47b30c`。在释放标记出现前终止 Server，原队列保持 Running。重启后由原队列按原 ID 只读查询一次，保存终态。同键和原 ID 返回同一回执，原生台账字节保持，工作租约归零。
+
+每组原停止仅派发一次，原规则只删除一次。再次启用沿用原配置，进程凭据、管理选路、真实上游 HTTP 和分流 DNS 均通过。两组专属进程退出及 cgroup 清理通过，宿主服务、代理、resolver 和账号指纹一致。首轮钩子同时进入独立权限 broker，修正为仅在注册 TUN 执行器的主 Server 上安装后通过。
+
+Linux Release 构建、Windows Release 的 38 项 TUN 边界和模块边界回归通过。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-cleanup-matrix.log` SHA-256 为 `6a2db84df68f634184ec9c7b4d6ac27cba944a169f39e1d69a24301fdbf5ff6a`，运行归档为 `067c7dca1c9920091f19c9f7560f3353dacdfb02e0b5b0bf37ea38f26b41b951`。
+
+**已实现但实机未验证。** 此矩阵确认作用域释放顺序和进程退出。清理回调抛错后的同代隔离仍需实机核对。对象释放、ALC 回收、隔离负载内存及生产收益分别待测。
+
+**未实现或仍受门禁保护。** 缺失可信原回执时沿用原准入门禁。整模块动态驻留尚未验收，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 与 Proxy 安全责任同次停机
 
 **已实现且已验证。** Linux x64 私有 systemd 的完整非 root Server 使用生产 PAM/JWT、独立 root Helper 和三个可分别释放响应的 AF_UNIX relay。使用两条真实 TLS VLESS 授权，先验证即将撤回的授权可转发，再以已到期状态启动生产到期 worker。原 Helper 提交后扣留到期响应，核对原回执和 Server 待确认状态。旧连接关闭、到期授权拒绝、保留授权继续转发。

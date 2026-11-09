@@ -354,6 +354,8 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 
 2026-11-10（MR-03 / MB-04）具名启动与随后查询的 IPC 终帧丢失已在存活 Server 实测。缺失可读回执期间保留原队列和新键门禁。恢复交付后按原 ID 只读结案，重启时同一运行时和原生台账保持。[原启动终帧证据](../architecture/server-module-evidence/Proxy-Safety.md#server-存活时丢失具名启动和查询终帧)
 
+2026-11-10（MR-03 / MB-04）具名停止在异步作用域清理期间保留原工作租约。正常停机完成清理后持久化原终态，强制退出后按原 ID 读取已提交回执。两条路径均已在私有 systemd 验证单次派发和再次启用后的流量。[作用域清理证据](../architecture/server-module-evidence/Proxy-Safety.md#完整-server-的具名停止作用域清理与恢复)
+
 2026-11-08（MR-03 / MB-04）同次 SIGTERM 验证受管 TUN、系统代理 guard 与独立 sing-box 到期的原执行排空。重启保持 Mihomo 配置身份、原停止回执、guard 归属与 sing-box 到期回执。范围见[同次停机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-与-proxy-安全责任同次停机)。
 
 2026-11-08（MR-03 / MB-04）管理模块停用计划和禁用启动读取已确认受管 TUN 的 Helper 原见证及当前归属。独立 Helper 不可用、漂移及无 Server 队列的原生待核验均保留准入门禁。保留数据移除的判定要求原移除见证和当前缺席。范围见[模块停用门禁](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-受管-tun-模块停用门禁)。

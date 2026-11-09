@@ -9,6 +9,9 @@ internal static class StartupHook
 
     public static void Initialize()
     {
+        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_TUN_CLEANUP") is { } cleanupRoot)
+            MihomoTunCleanupBarrier.Register(cleanupRoot);
+
         AppDomain.CurrentDomain.AssemblyLoad += static (_, args) =>
         {
             if (args.LoadedAssembly.GetName().Name != "RelaxKonOS.ServerModule.Proxy"
