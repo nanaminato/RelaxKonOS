@@ -1926,12 +1926,17 @@ def proof_full_http_shutdown(ipc, case):
     joint = case == 'ipc-http-joint'
     admission = case == 'ipc-http-admission'
     handoff = case == 'ipc-http-handoff'
-    removal_http = case == 'ipc-http-retained-installation'
+    removal_admin = case == 'ipc-http-retained-administrator'
+    removal_http = removal_admin or case == 'ipc-http-retained-installation'
     retained_removal = removal_http or case == 'ipc-http-retained'
     squid = case == 'ipc-http-squid'
     zero_dns = case == 'ipc-http-zero-dns'
-    assert any(line.split()[4] == '/etc' and ' - overlay ' in line
-               for line in Path('/proc/self/mountinfo').read_text().splitlines())
+    mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
+              for line in Path('/proc/self/mountinfo').read_text().splitlines()}
+    assert mounts['/etc'] == 'overlay'
+    if removal_admin:
+        assert all(mounts.get(path) == 'tmpfs' for path in ('/var/lib', '/run', '/etc/relaxkonos', '/etc/systemd/system'))
+    administrator = json.loads(sys.stdin.readline()) if removal_admin else None
     base = 'http://192.0.2.2:18970'
     api = '/api/v1.0/proxy'
     queue = Path('/var/lib/relaxkonos/proxy/state/proxy-operations.json')
@@ -2404,6 +2409,12 @@ def proof_full_http_shutdown(ipc, case):
         uninstall_api = '/api/v1.0/installations/mihomo/uninstall'
         install_key = 'retained-uninstall'
 
+        def elevate():
+            status, reply = request('/api/v1.0/privileged/elevation', token, data={
+                'capability': 'MihomoInstall', 'target': 'mihomo',
+                'administratorUsername': administrator['identifier'], 'password': administrator['password']})
+            assert status == 200, (status, reply.get('problemCode'))
+
         def run_removal(phase):
             return subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-retained-removal',
                                      str(root), str(ipc.socket_path), str(operation), phase], **ipc.identity)
@@ -2461,17 +2472,35 @@ def proof_full_http_shutdown(ipc, case):
             assert request('/api/v1.0/installations/active?service=mihomo', token)[0] == 404
             assert published_ledger.read_bytes() == before_refusal
             assert 'operation=MihomoRuntimeExecute ' not in ipc.log.read_text()
-        terminate(pid)
-        worker = run_removal('remove')
-        try:
-            held = content / 'retained-removal-held'
-            assert until(lambda: held.read_text() if held.exists() else None, 'committed Helper removal response') == operation.hex
-            worker.kill()
-            assert worker.wait(timeout=5) == -signal.SIGKILL
-        finally:
-            if worker.poll() is None:
+        if removal_admin:
+            lookup = '/api/v1.0/installations/'
+            status, _ = request(lookup + str(uuid.uuid4()), token)
+            assert status == 404, f'Installation receipt route preflight returned HTTP {status}'
+            print('PASS INSTALLATION RECEIPT ROUTE: authenticated unknown operation returned 404', flush=True)
+            elevate()
+            status, accepted = request(uninstall_api, token, install_key, payload)
+            assert status == 202, (status, accepted)
+            operation = uuid.UUID(accepted['operationId'])
+            installation_path = lookup + str(operation)
+            assert marker('full-removal-response-held') == operation.hex
+            status, active = request('/api/v1.0/installations/active?service=mihomo', token)
+            assert status == 200 and uuid.UUID(active['operationId']) == operation and not active.get('completedAt')
+            assert request(installation_path, token) == (200, active)
+            assert request(uninstall_api, token, install_key, payload) == (202, active)
+            os.kill(pid, signal.SIGKILL)
+            assert worker.wait(timeout=12) == 0
+        else:
+            terminate(pid)
+            worker = run_removal('remove')
+            try:
+                held = content / 'retained-removal-held'
+                assert until(lambda: held.read_text() if held.exists() else None, 'committed Helper removal response') == operation.hex
                 worker.kill()
-                worker.wait(timeout=5)
+                assert worker.wait(timeout=5) == -signal.SIGKILL
+            finally:
+                if worker.poll() is None:
+                    worker.kill()
+                    worker.wait(timeout=5)
         assert service('show', '-p', 'LoadState', '--value', unit) == 'not-found'
         assert not (archive / 'versions').exists() and retained.exists() and config.read_bytes() == before[1]
         assert (archive / 'data' / uuid.UUID(record['revision']).hex / 'fixture-mutable-data').exists()
@@ -2482,8 +2511,24 @@ def proof_full_http_shutdown(ipc, case):
         ipc.start_helper()
         refused(operation)
         assert (native_ledger.read_bytes(), published_ledger.read_bytes(), retained.read_bytes()) == uncertain
-        worker = run_removal('recover')
-        assert worker.wait(timeout=12) == 0
+        if removal_admin:
+            worker = launch('restart')
+            pid = int(marker('full-server-pid'))
+            token = login()
+            status, completed = request(installation_path, token)
+            assert status == 200 and uuid.UUID(completed['operationId']) == operation, (status, completed)
+            assert completed['state'] == 'succeeded' and completed['completedAt'], completed
+            elevate()
+            assert request(uninstall_api, token, install_key, payload) == (202, completed)
+            assert request('/api/v1.0/installations/active?service=mihomo', token)[0] == 404
+            terminate(pid)
+            receipt_digest = hashlib.sha256(json.dumps(completed, sort_keys=True).encode()).hexdigest()
+            print(f'PASS TUN RETAINED INSTALLATION HTTP RECOVERY: publication={publication}; removal={operation}; '
+                  f'state={completed["state"]}; completedAt={completed["completedAt"]}; '
+                  f'identical same-key receipt SHA256={receipt_digest}', flush=True)
+        else:
+            worker = run_removal('recover')
+            assert worker.wait(timeout=12) == 0
         assert observe() == original and native_ledger.read_bytes() == uncertain[0]
         assert published_ledger.read_bytes() != uncertain[1] and original_host_proxy() and not guard_ledger.exists()
         assert json.loads(queue.with_name('mihomo-settings.json').read_bytes())['SystemProxyEnabled'] is False
@@ -2511,8 +2556,11 @@ def proof_full_http_shutdown(ipc, case):
         assert (environment.read_bytes(), environment.stat().st_mtime_ns) == host_policy
         assert (root / 'rule-delete-attempts').read_text().splitlines() == ['attempt']
         audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
-        assert audit.count(f'operation=MihomoRuntimeExecute id={operation} ') == 1
+        assert audit.count('operation=MihomoRuntimeExecute ') == 1
+        assert f'operation=MihomoRuntimeExecute id={operation} ' in audit
         assert 'operation=MihomoRuntimeRecover ' not in audit
+        if removal_admin:
+            print(f'PASS INSTALLATION DISPATCH AUDIT: removal={operation}; execute=1; recover=0', flush=True)
         terminate(pid)
         print(f'PASS TUN RETAINED REMOVAL DISABLED STARTUP: publication={publication}; stop={stopped}; removal={operation}; '
               f'configuration={record["credential"]}; original PID={record["service"][0]}; no replay')
@@ -2752,7 +2800,7 @@ def proof_full_http_shutdown(ipc, case):
         print(f'PASS SQUID NATIVE UNKNOWN: original={unknown}; configuration={unknown_digest}; PID={original_pid}; '
               'real upstream after Helper exit; both ledgers unchanged and no replay')
 
-    worker = launch('zero-dns-publish' if zero_dns else 'squid-new' if squid
+    worker = launch('zero-dns-publish' if zero_dns else 'squid-new' if squid else 'removal-cut' if removal_admin
                     else 'admission' if admission or handoff or retained_removal else 'drain')
     first_worker = worker
     try:
@@ -3025,7 +3073,7 @@ rules:
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
             if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-joint', 'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
-                        'ipc-http-retained-installation', 'ipc-http-squid'):
+                        'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid'):
                 proof_full_http_shutdown(ipc, case)
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,

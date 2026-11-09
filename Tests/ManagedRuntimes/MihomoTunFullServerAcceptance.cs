@@ -77,7 +77,7 @@ internal static class MihomoTunFullServerAcceptance
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart"
-            or "squid-new" or "squid-cut" or "squid-restart" or "zero-dns-publish" or "zero-dns-recover"))
+            or "squid-new" or "squid-cut" or "squid-restart" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
         var joint = phase.StartsWith("joint-", StringComparison.Ordinal);
         var first = phase.EndsWith("drain", StringComparison.Ordinal);
@@ -99,11 +99,13 @@ internal static class MihomoTunFullServerAcceptance
         await using var squidRelay = phase == "squid-cut" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-squid-reply.sock", socket, ct, (operation, _) => operation == "SquidApplyConfiguration",
             holdConfirmedSquidRollback: true) : null;
+        await using var removalRelay = phase == "removal-cut" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
+            "/run/rk-removal-reply.sock", socket, ct, (operation, _) => operation == "MihomoRuntimeExecute") : null;
         await using var recoveryRelay = phase == "zero-dns-recover" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-zero-dns-reply.sock", socket, ct, (operation, _) => operation == "MihomoRuntimeRecover") : null;
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly,
-            relay?.Path ?? expiryRelay?.Path ?? squidRelay?.Path ?? recoveryRelay?.Path ?? socket, root,
-            reuse: !first && phase is not ("admission" or "squid-new" or "zero-dns-publish"), seedProxyServer: false);
+            relay?.Path ?? expiryRelay?.Path ?? squidRelay?.Path ?? removalRelay?.Path ?? recoveryRelay?.Path ?? socket, root,
+            reuse: !first && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"), seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
         if (phase is "admission-managed" or "handoff-disabled" or "handoff-restart")
@@ -134,13 +136,14 @@ internal static class MihomoTunFullServerAcceptance
         {
             await WriteMarkerAsync(root, "full-server-pid", server.Id.ToString());
             var exited = server.WaitForExitAsync(ct);
-            var committedReply = squidRelay ?? recoveryRelay;
+            var committedReply = squidRelay ?? removalRelay ?? recoveryRelay;
             if (committedReply is not null)
             {
                 if (await Task.WhenAny(committedReply.Committed.Task, exited) == exited)
                     throw new InvalidOperationException("Full Server stopped before the original response reached the relay.");
                 var original = await committedReply.Committed.Task.WaitAsync(ct);
-                var marker = recoveryRelay is not null ? "full-zero-dns-recovery-held" : "full-squid-response-held";
+                var marker = recoveryRelay is not null ? "full-zero-dns-recovery-held"
+                    : removalRelay is not null ? "full-removal-response-held" : "full-squid-response-held";
                 await WriteMarkerAsync(root, marker, original.ToString("N"));
                 await exited;
                 if (server.ExitCode == 137) return;

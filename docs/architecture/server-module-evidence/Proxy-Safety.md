@@ -924,10 +924,17 @@ Windows Release ManagedRuntimes 复跑通过，包含 104 项配置事务检查�
 
 2026-11-09 经明确授权，在既有 Linux 测试机的私有 systemd 环境使用既有管理员 PAM 提权执行一次保留数据卸载。原 TUN 发布为 `a608d40e-9d8a-49c4-b8e1-dd4c490d814c`，原卸载为 `7e135f5a-553a-4f58-9503-c61e39ff7da9`。生产 HTTP 接受原卸载，AF_UNIX 中继取得原 Helper 成功应答后暂扣。原安装操作仍活动且无完成时间，同键返回完全相同的活动回执。随后终止原 Server，确认原生 unit 已注销、版本目录已移除、数据标记和原配置仍保留。只读核对同一原卸载 ID 的 Helper 成功见证、配置身份和当前缺席。
 
-重启 Helper 后，禁用 Proxy 的启动按同一卸载 ID 拒绝，Core 保留恢复责任。启用 Proxy 启动时按原 ID 查询 Helper，并记录 `Mihomo publication reconciled at startup / Confirmed`。启动日志未出现重复卸载派发。随后夹具对错误的 `/installations/operations/{id}` 发起 GET，得到 405，未执行重启后的正确终态查询、同键重试及跨 Helper 代次的全量派发计数。已修正为当前 `/installations/{id}`，并在卸载前检查该路由。隔离环境按预定流程清理，原台账随专属环境销毁。本次授权只覆盖一次真实卸载。
+重启 Helper 后，禁用 Proxy 的启动按同一卸载 ID 拒绝，Core 保留恢复责任。启用 Proxy 启动时按原 ID 查询 Helper，并记录 `Mihomo publication reconciled at startup / Confirmed`。启动日志未出现重复卸载派发。随后夹具对错误的 `/installations/operations/{id}` 发起 GET，得到 405，未执行重启后的正确终态查询、同键重试及跨 Helper 代次的全量派发计数。已修正为当前 `/installations/{id}`，并在卸载前检查该路由。隔离环境按预定流程清理，原台账随专属环境销毁。修正后的实机复验见下节。
 
 - **已实现且已验证**。Windows Release apphost 回归通过，含安装协调器 47 项和卸载发布 92 项。可信下载探针因缺少进程级 CA 覆盖跳过。Linux 验证原进程退出、应答截留、原生移除和数据保留、在途同键、禁用启动拒绝、启用启动按原 ID 确认，以及专属 cgroup 清理与共享服务、代理、解析器和宿主账号文件指纹检查。测试归档 SHA-256 为 `79bbac8318c8fd98ea3eff96f94bd349c1f5996029c4bfad5eaf7809c4304a38`，原始日志 `.artifacts/mb04-retained-http-admin/linux-authorized.log` 的 SHA-256 为 `61842c7f149e116a8d3a747f7a33f1c8fdedd6e533ab2f7c53c7c3740b723a86`。
-- **已实现但实机未验证**。重启后通过安装 HTTP 读回有结束时间的原终态、同键返回同一终态，以及包括该次同键在内的全程单次派发断言。后续需获准复验并保存原观察。
+### 重启后原安装 HTTP 回执与单次派发
+
+2026-11-09 经单次复验授权，在相同专属 systemd 环境先以认证 GET 查询不存在的 ID，确认当前 `/api/v1.0/installations/{id}` 返回 404。正式卸载原 ID 为 `b9b563bf-3df8-41ef-9837-fef37797a2c0`，对应原 TUN 发布 `8c4fc215702847e4bbfa34940e9be440`、具名停止 `5b3b0a2b29b04f62ace86f9cabca72b4`。Helper 原应答被截留时，按原 ID 查询与同键提交均返回原在途回执。终止 Server 后核对已注销的 unit、保留数据、原配置摘要与原成功见证。重启 Helper 后，禁用 Proxy 的启动保留原卸载门禁。启用 Proxy 启动按原 ID 只读确认。
+
+重启后认证 GET 按原 ID 返回 `200 / succeeded`，完成时间为 2026-11-09 19:14:07.8661284（UTC+8）。同键 POST 返回 `202`，响应 DTO 与 GET 完全相等，按字段排序后的 JSON SHA-256 为 `54cb79b53b89261dde14487835ec40d68ffa902062a2a0727786a533c6b4658a`。跨全部 Helper 代次只记录一次原 ID 的 `MihomoRuntimeExecute`，`MihomoRuntimeRecover` 为零。最终禁用启动通过，管理路由基线及原配置身份 `1f09a94668e9e54dca3b0adefc17c568ea3d10228dba76677d421e4aa08a2005` 核对通过。夹具在清理前输出原回执摘要与派发计数。专属 cgroup 已移除，宿主共享运行时、代理、解析器及账号文件指纹核对通过。
+
+- **已实现且已验证**。Windows Release apphost 回归通过。Linux x64 完整生产 PAM/JWT 安装 HTTP 的重启原终态、同键终态、单次派发与相关进程退出通过。原始日志 `.artifacts/mb04-retained-http-admin/linux-authorized-receipt.log` 的 SHA-256 为 `569582c99c07e2cac215edcbb89d8f3f3c708c75a3071f8949d31f2996f9726d`。测试归档 SHA-256 为 `e21b9e1822dc9c564ce3c4b30ed8f7858f5dcd7ae6a9aa0eb37c059c7148f350`。
+- **已实现但实机未验证**。本次覆盖 Linux x64 的进程中断。整机掉电与其他架构仍待实机验证。
 - **未实现或仍阻塞**。整模块安全交接继续开放，Proxy 保持 resident。本轮未测对象释放、ALC 回收、隔离负载内存差值或生产内存收益。
 
 **未实现或仍受门禁保护。** Proxy 保持 resident。进程退出和专属进程树清理已验证。对象释放、ALC 回收、隔离负载内存和生产收益未测量。
