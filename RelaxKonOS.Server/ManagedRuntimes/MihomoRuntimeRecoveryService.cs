@@ -10,7 +10,7 @@ namespace RelaxKonOS.Server.ManagedRuntimes;
 public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, MihomoRuntimeService runtime,
     IMihomoConfigurationPublicationRecovery configuration, MihomoInstallationPublicationService installation,
     MihomoRemovalPublicationService removal, IProxyProfileRepository? profiles = null,
-    MihomoSettingsPublicationFiles? settingsFiles = null)
+    MihomoSettingsPublicationFiles? settingsFiles = null, IProxyWorkLeaseSource? workLeases = null)
 {
     public async Task<RuntimeSwitchResult> RetryAsync(Guid operationId, CancellationToken ct)
     {
@@ -37,6 +37,9 @@ public sealed class MihomoRuntimeRecoveryService(MihomoPublicationStore store, M
                 return await runtime.RecoverUnderGateAsync(Guid.NewGuid(), operationId, CancellationToken.None)
                     ?? throw new RuntimeLifecycleException("runtime.recovery_absent");
             if (pending.OperationId != operationId) throw new RuntimeLifecycleException("runtime.recovery_target_conflict");
+            using var work = pending.ConfigurationPlan is not null && pending.TunIntent is not null
+                ? await (workLeases ?? throw new RuntimePolicyException("runtime.publication_work_unavailable")).AcquireAsync(CancellationToken.None)
+                : null;
             var result = pending.RemovalPlan is not null ? await removal.RecoverUnderGateAsync(state, CancellationToken.None)
                 : pending.InstallationPlan is not null ? await installation.RecoverUnderGateAsync(state, CancellationToken.None)
                 : pending.ConfigurationPlan is not null ? await configuration.RecoverUnderGateAsync(state, CancellationToken.None)

@@ -15,5 +15,6 @@ public interface IMihomoConfigurationPublicationRecovery
 {
     // The Core hosted scan owns this call and drains it with its recovery scope.
     Task<MihomoPublicationResult> RecoverAsync(Guid operationId, CancellationToken ct);
+    // Explicit recovery already holds the publication gate and any management work lease.
     Task<MihomoPublicationResult> RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct);
 }

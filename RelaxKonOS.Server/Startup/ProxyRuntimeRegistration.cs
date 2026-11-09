@@ -52,7 +52,6 @@ internal static class ProxyRuntimeRegistration
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoConfigurationPublicationService>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.IMihomoConfigurationPublicationRecovery>(services =>
             services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoConfigurationPublicationService>());
-        builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoManagedTunOperations>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationPublicationService>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoInstallationBootstrapService>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoRemovalPublicationService>();

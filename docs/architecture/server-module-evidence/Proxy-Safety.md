@@ -1379,3 +1379,15 @@ Windows Release 的发布事务 113 项、注册 24 项、TUN 边界 38 项、Co
 首轮夹具的诊断路由读取调度索引时等待原发布锁，导致超时。改用原持久发布的只读快照后通过。Windows Release 发布事务、Core 安全和模块里程碑回归通过。Linux Release 原进程及专属 cgroup 清理通过，宿主运行时服务、代理及 resolver 文件指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-core-recovery-quarantine-final.log` 的 SHA-256 为 `1e31689e9ed932aeb873bb7de57f7820c5f6006ed9b896289b2417be9c44a150`，归档为 `e8171fc83c4b6317b38a8a831c5b76ecc4354a3a979988ac539dfae49e0e2417`。
 
 **仍待验收。** 整模块动态交接、故障代次对象释放、ALC 回收、隔离负载内存和生产收益分别开放。Proxy 保持 resident。
+
+### 受管 TUN 管理执行作用域
+
+**已实现且已验证。** 首次受管 TUN 管理执行器由 Proxy 注册并在原排队作用域解析。注册回归确认 Core 不注册该执行器。同一作用域复用同一执行对象。管理派发调用 Core 发布前持有原工作租约，Core 发布协调器只处理原发布锁、冻结材料和原 Helper 回执。
+
+Linux Release 原发布 `30e1c5cb-a041-4d26-8ff2-754f3bf3075f` 的完整认证路径执行真实网络变更。具名停止 `a28ba6f9-8a70-4845-8e18-09882d85a7e1` 在异步清理期间保留原队列及租约，清理结束后才持久化终态。Server 重启后按原 ID 查询并执行独立的具名启动 `63882b97-affc-49d9-9334-7a578fe13782`，配置摘要与真实流量通过。AF_UNIX 原补偿、故障管理代次下的原发布恢复和待核验发布的禁用门禁同批通过。四个专属 cgroup 已清理，宿主运行时服务、代理及 resolver 文件指纹一致。
+
+Windows Release 的注册 25 项、发布事务 113 项、运行时 HTTP 57 项、Core 安全和模块里程碑通过。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-managed-tun-scope.log` 的 SHA-256 为 `775f165d19792d011863e912e96640c6100047db328e1435577c1122ca59e348`，归档为 `74824cff3a2630c587a34800dbeb57b2aa474ed9dafddf7c3292ae0031313c8a`。
+
+**已实现但实机未验证。** 显式人工重试的受管网络发布租约已移至调用方，通用运行时 HTTP 回归通过，实际待核验网络发布的显式重试需单独验收。此轮核对了真实进程退出。对象释放、ALC、隔离负载内存及生产收益分别待测。
+
+**未实现或仍受门禁保护。** Proxy 继续 resident，整模块动态交接仍开放。

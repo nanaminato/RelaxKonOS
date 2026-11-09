@@ -15,7 +15,7 @@ public sealed record MihomoPublicationResult(Guid OperationId, MihomoPublication
 /// </summary>
 public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore store,
     MihomoRuntimeAuthorizationProvider authorization, MihomoRuntimeService runtime, IProxyPlatformPaths paths,
-    MihomoSettingsPublicationFiles? settingsFiles = null, IProxyProfileRepository? profiles = null, IProxyWorkLeaseSource? workLeases = null)
+    MihomoSettingsPublicationFiles? settingsFiles = null, IProxyProfileRepository? profiles = null)
     : IMihomoApplicationConfigurationPublisher, IMihomoConfigurationPublicationRecovery
 {
     public async Task<MihomoPublicationResult> PublishAsync(Guid operationId, long expectedPublicationRevision,
@@ -37,6 +37,7 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
         finally { store.Gate.Release(); }
     }
 
+    // The management caller owns its work lease before entering the original publication transaction.
     internal Task<MihomoPublicationResult> PublishManagedTunUnderGateAsync(Guid operationId, long expectedPublicationRevision,
         MihomoManagedTunPlan frozen, CancellationToken ct) =>
         PublishCoreAsync(operationId, expectedPublicationRevision, frozen.Plan, frozen.Candidate, ct, null, null, frozen.Intent);
@@ -51,7 +52,7 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
         PublishUnderGateAsync(operationId, expectedPublicationRevision, plan, candidate, ct, settings, profile);
 
     Task<MihomoPublicationResult> IMihomoConfigurationPublicationRecovery.RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct) =>
-        RecoverUnderGateAsync(state, ct);
+        ResolvePendingAsync(state, ct);
 
     private async Task<MihomoPublicationResult> PublishCoreAsync(Guid operationId, long expectedPublicationRevision,
         RuntimeConfigurationPlan plan, MihomoPublishedRuntime candidate, CancellationToken ct, MihomoSettingsPublication? settings,
@@ -74,9 +75,8 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
                 || !Same(state.Pending.Profile, profile) || state.Pending.TunIntent != tunIntent)
                 throw new RuntimePolicyException("runtime.publication_unconfirmed");
             // Replayed requests reconcile; they never re-send a potentially accepted configuration.
-            return await RecoverUnderGateAsync(state, CancellationToken.None);
+            return await ResolvePendingAsync(state, CancellationToken.None);
         }
-        using var work = tunIntent is null ? null : await RequireWorkLeases().AcquireAsync(ct);
         if (state.LastConfiguration is { } completed && completed.OperationId == operationId)
         {
             if (completed.RequestHash != MihomoPublicationStore.ConfigurationRequestHash(plan, candidate, settings, profile))
@@ -142,12 +142,6 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
             return await ResolvePendingAsync(state, CancellationToken.None);
         }
         finally { store.Gate.Release(); }
-    }
-
-    internal async Task<MihomoPublicationResult> RecoverUnderGateAsync(MihomoPublicationState state, CancellationToken ct)
-    {
-        using var work = state.Pending!.TunIntent is null ? null : await RequireWorkLeases().AcquireAsync(ct);
-        return await ResolvePendingAsync(state, ct);
     }
 
     private async Task<MihomoPublicationResult> ResolvePendingAsync(MihomoPublicationState state, CancellationToken ct)
@@ -224,9 +218,6 @@ public sealed class MihomoConfigurationPublicationService(MihomoPublicationStore
         }
         throw new RuntimePolicyException("runtime.publication_unconfirmed");
     }
-
-    private IProxyWorkLeaseSource RequireWorkLeases() =>
-        workLeases ?? throw new RuntimePolicyException("runtime.publication_work_unavailable");
 
     private static void RequireTunCommit(RuntimeConfigurationPlan plan, Guid operationId, RuntimeInstallationSnapshot observed)
     {

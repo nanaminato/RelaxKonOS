@@ -10,7 +10,7 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 /// <summary>The Helper is the native owner of a managed TUN. Direct TUN keeps its existing marker owner.</summary>
 internal sealed class MihomoManagedTunOperations(MihomoPublicationStore store, MihomoRuntimeService runtime,
     MihomoConfigurationPublicationService publication, IProxySettingsReader settings, IProxyProfileRepository profiles,
-    IProxyNetworkSafetyPlatform platform, IProxyTunSafetyService direct)
+    IProxyNetworkSafetyPlatform platform, IProxyTunSafetyService direct, IProxyWorkLeaseSource workLeases)
 {
     internal const string QueueStage = "managed_tun";
     internal const string ActionQueueStage = "managed_tun_action";
@@ -70,6 +70,7 @@ internal sealed class MihomoManagedTunOperations(MihomoPublicationStore store, M
                 observed.Installation.StateRevision, revision, state.Identity!, state.Identity!, operationId.ToString("N"));
             var frozen = await MihomoManagedTunPlan.FreezeAsync(operationId, plan, material, tun, snapshot, ct);
             dispatched = true;
+            using var work = await workLeases.AcquireAsync(ct);
             var result = await publication.PublishManagedTunUnderGateAsync(operationId, state.Revision, frozen, ct);
             return (true, result.Outcome switch
             {

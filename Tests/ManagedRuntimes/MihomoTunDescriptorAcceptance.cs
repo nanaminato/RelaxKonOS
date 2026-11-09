@@ -402,8 +402,12 @@ internal static class MihomoTunDescriptorAcceptance
         }), RequireLease, cut is "server-commit" or "ipc-server-commit" ? PauseAsync : null);
         var runtime = new MihomoRuntimeService(transport, store, authorization, paths, new DirectDownloads());
         var leases = new ProxyWorkLeaseSource(coordinator);
-        var service = new MihomoConfigurationPublicationService(store, authorization, runtime, paths,
-            workLeases: leases);
+        var service = new MihomoConfigurationPublicationService(store, authorization, runtime, paths);
+        async Task<MihomoPublicationResult> PublishManagedAsync()
+        {
+            using var work = await leases.AcquireAsync(CancellationToken.None);
+            return await service.PublishManagedTunAsync(operation, expectedRevision, frozen, CancellationToken.None);
+        }
         if (runLifecycle)
         {
             var result = await RunIpcLifecycleAsync(store, runtime, leases, operation);
@@ -418,21 +422,20 @@ internal static class MihomoTunDescriptorAcceptance
                 service.PublishAsync(operation, expectedRevision, frozen.Plan, frozen.Candidate, CancellationToken.None));
             if (ipc is null)
             {
-                await RefusesAsync("runtime.network_lifecycle_unverified", () =>
-                    service.PublishManagedTunAsync(operation, expectedRevision, frozen, CancellationToken.None));
+                await RefusesAsync("runtime.network_lifecycle_unverified", PublishManagedAsync);
                 if ((await store.ReadAsync(CancellationToken.None)).Pending is not null || transport.ConfigureCalls != 0)
                     throw new InvalidOperationException("A closed publication gate changed state.");
                 await WriteScopeAsync(scope! with { AllowManagedPublication = true });
             }
             await RefusesAsync("runtime.network_transaction_required", () =>
                 service.PublishAsync(operation, expectedRevision, frozen.Plan, frozen.Candidate, CancellationToken.None));
-            var unexpected = await service.PublishManagedTunAsync(operation, expectedRevision, frozen, CancellationToken.None);
+            var unexpected = await PublishManagedAsync();
             throw new InvalidOperationException($"The Server missed its expected cut: {unexpected.Outcome} {unexpected.Receipt?.ProblemCode}.");
         }
         coreRecovery = true;
         var resolved = await service.RecoverAsync(operation, CancellationToken.None);
         coreRecovery = false;
-        var replay = await service.PublishManagedTunAsync(operation, expectedRevision, frozen, CancellationToken.None);
+        var replay = await PublishManagedAsync();
         var state = await store.ReadAsync(CancellationToken.None);
         if (resolved != replay || transport.ConfigureCalls != 0 || state.Pending is not null
             || coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 0

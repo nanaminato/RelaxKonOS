@@ -4743,6 +4743,8 @@ Core 调度器按原 ID 恢复已受理的受管 TUN 发布。管理队列仍按
 
 管理代次故障隔离时，Core 仍可持久化受管 TUN 的原发布结果。管理查询维持准入门禁，启用重启后由原队列读回原管理终态。[故障代次实测](../architecture/server-module-evidence/Proxy-Safety.md#管理代次已故障隔离时的-core-恢复)
 
+首次受管 TUN 启用使用原 Proxy 队列的管理执行作用域。该作用域保护派发和原终态清理，Core 继续持有发布台账。[管理执行作用域实测](../architecture/server-module-evidence/Proxy-Safety.md#受管-tun-管理执行作用域)
+
 设置更新、档案配置应用和档案激活由当前 Proxy 代次持有前台作用域。请求断开后，已经受理的原事务仍按原回执收尾。作用域清理失败时，该代次保留工作租约并拒绝新管理调用。[前台配置写入实测](../architecture/server-module-evidence/Proxy-Publication.md#前台配置写入的原代次)
 
 后台订阅激活占用发布锁时，等待中的前台设置写入可独立取消和排空。原订阅操作仍持有自己的工作租约和回执责任，重启按原 ID 核对结果。[订阅与前台写入实机证据](../architecture/server-module-evidence/Proxy-Subscriptions.md#订阅持锁与前台写入独立排空)
