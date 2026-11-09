@@ -852,9 +852,23 @@ Linux x64 私有 systemd 使用完整 PAM/JWT Server、独立 Helper 与真实 M
 
 同批通过候选注册中断的原恢复 `7ed80fcfd5c4467e8a846eea2726f624`，以及缺失、不可读和错配 cookie 后按原回执恢复 `7379e94029814248ba86699f629a320d`。三场专属进程与 cgroup 已清理，宿主共享服务、代理及 resolver 文件指纹一致。Windows Release 构建及 38 项 TUN 边界检查通过。原始 Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-early-owner.log` 的 SHA-256 为 `96bc1e409aa23d1054b2cc27cf14630f9bccaa4345a3d07125e0dae16d2f4ee2`，归档 SHA-256 为 `68b68fdc4eafedf4c26af11eb1bff4eac752456dae1658d8dc72135e430015a0`。
 
-**已实现但实机未验证。** 首次停止已记录派发但原结果未知的窗口待独立实测。整机掉电需要专属断电环境。已核对进程退出，对象释放、ALC 回收、隔离内存差值和生产收益未测量。
+**已实现但实机未验证。** 首次停止派发后的原回执见下一节。整机掉电需要专属断电环境。已核对进程退出，对象释放、ALC 回收、隔离内存差值和生产收益未测量。
 
 **未实现或仍受门禁保护。** 未知派发由原操作保留。整模块安全交接仍待验收，Proxy 保持 resident。
+
+### 首次停止派发后的原回执恢复
+
+**已实现且已验证。** Linux x64 私有 systemd 使用完整 PAM/JWT Server、独立 Helper 与真实 Mihomo。原发布 `9131a4b0ae5c4a5288f24694d7826185` 已持久保存网络归属及首次停止派发，候选原生检查点尚未生成。专属 systemctl 包装器暂扣已启动的原发送端 PID `331`。终止 Server 和 Helper 后，原发送端仍活着，旧 Mihomo PID `107` 继续转发真实上游流量。
+
+重启的原 owner 返回 `runtime.state_unknown`。原 HTTP 回执保持 `interrupted / managed_tun` 且无完成时间，同键返回原 ID，新键被拒绝。归属及派发记录逐字节一致，配置、管理选路、resolver 和真实流量保持。没有第二次停止派发，也未派发候选网络事务。
+
+停止接续的 Server 和 Helper 后，只放行原发送端，使真实 systemd 执行一次停止并确认旧进程退出。原 Helper 已退出，未收到应答。下一次启动通过同一原操作核对 systemd 原生结果，以补偿 IPC `287060f2848a46ab9b48f2373d382c1c` 恢复旧配置服务。截留已持久化的恢复应答时，原 HTTP 回执仍在途且持有工作租约。再次重启只读确认原终态，同键返回同一回执，租约归零。恢复的 Mihomo PID `648` 持续转发，配置、管理选路和 resolver 设置与基线一致。原停止派发计数为一，配置重派和规则删除为零。
+
+Windows Release 的 38 项 TUN 边界检查通过，Linux 专属进程和 cgroup 已清理，宿主共享服务、代理及 resolver 文件指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-initial-stop.log` SHA-256 为 `ef2a9dadf733399f1accd3d1282d3c5634157e82b6b371232b13563d3da66d7a`，归档 SHA-256 为 `18ca181fa8347abf45a824003c0d86c79cee13add14e84d11f8b683105718876`。
+
+**已实现但实机未验证。** 整机掉电仍需专属断电环境。已核对进程退出，对象释放、ALC 回收、隔离内存差值和生产收益未测量。
+
+**未实现或仍受门禁保护。** 无法核实原停止结果时保留待核验。整模块安全交接仍待验收，Proxy 保持 resident。
 
 ## MB-04 受管 TUN 认证 HTTP 补偿
 

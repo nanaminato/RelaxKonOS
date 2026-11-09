@@ -240,6 +240,31 @@ fi
     command('/usr/bin/mount', '--bind', str(wrapper), '/usr/sbin/ip')
 
 
+def install_initial_stop_boundary():
+    original = root / 'systemctl-original'
+    wrapper = root / 'systemctl-wrapper'
+    shutil.copy2('/usr/bin/systemctl', original)
+    wrapper.write_text(f'''#!/bin/bash
+set -eu
+real={shlex.quote(str(original))}
+work={shlex.quote(str(root))}
+if [[ "$*" == "stop {unit}" && -f "$work/first-stop-origin" ]]; then
+    printf '%s\n' "$PPID" >> "$work/first-stop-dispatches"
+    if [[ "$PPID" == "$(cat "$work/first-stop-origin")" ]]; then
+        printf '%s\n' "$$" > "$work/first-stop-held"
+        while [[ ! -f "$work/first-stop-release" ]]; do sleep .05; done
+        status=0
+        "$real" "$@" > "$work/first-stop-command.log" 2>&1 || status=$?
+        printf '%s\n' "$status" > "$work/first-stop-result"
+        exit "$status"
+    fi
+fi
+exec "$real" "$@"
+''')
+    wrapper.chmod(0o755)
+    command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/systemctl')
+
+
 def install_dns_ack_boundary(hold_reply=True, hold_method='SetLinkDNS', allow_release=False):
     original = root / 'busctl-real'
     wrapper = root / 'busctl-wrapper'
@@ -1988,6 +2013,7 @@ def proof_full_http_shutdown(ipc, case):
     squid = case in ('ipc-http-squid', 'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account')
     zero_dns = case == 'ipc-http-zero-dns'
     early_owner = case == 'ipc-http-early-owner'
+    initial_stop = case == 'ipc-http-initial-stop'
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
@@ -2141,6 +2167,91 @@ def proof_full_http_shutdown(ipc, case):
         assert worker.wait(timeout=12) == 0
         print(f'PASS TUN EARLY NETWORK OWNER: original={publication}; cookie={intent["NetworkNamespaceCookie"]}; '
               f'original PID={original_service[0]}; foreign recovery refused, same process after original receipt', flush=True)
+
+    def verify_initial_stop(pid, publication, original_service, original_config, baseline, original_resolver):
+        nonlocal worker, token
+        sender = int(marker('first-stop-held'))
+        operation_dir = archive / 'operations' / publication
+        owner = operation_dir / 'network-owner.json'
+        dispatch = operation_dir / 'initial-service-stop.json'
+        proof = owner.read_bytes()
+        assert dispatch.read_bytes() == proof and Path(f'/proc/{sender}').exists()
+        state_file = archive / 'state' / 'archive-state.json'
+        original_broker = ipc.helper.pid
+        assert json.loads(state_file.read_bytes())['configuration']['switchStarted'] and leases() >= 2
+
+        def check_original(phase):
+            assert owner.read_bytes() == dispatch.read_bytes() == proof
+            assert not (operation_dir / 'tun-0.json').exists() and not (root / 'rule-delete-attempts').exists()
+            assert (root / 'first-stop-dispatches').read_text().splitlines() == [str(original_broker)]
+            assert config.read_bytes() == mirror.read_bytes() == original_config
+            assert network_baseline() == baseline and resolver_snapshot() == original_resolver
+            assert command('/usr/bin/curl', '--noproxy', '', '--proxy', 'http://127.0.0.1:18881', '--silent', '--fail',
+                           '--max-time', '3', f'http://{target}:18880/mb04-initial-stop-{phase}') == 'upstream-through-inherited-tun'
+
+        assert service_identity() == original_service and read(publication)['state'] == 'running'
+        check_original('before')
+        os.kill(pid, signal.SIGKILL)
+        assert worker.wait(timeout=8) == 0
+        ipc.stop_helper()
+        assert Path(f'/proc/{sender}').exists()
+        ipc.start_helper()
+        worker = launch('restart')
+        pending_pid = int(marker('full-server-pid'))
+        token = login()
+        until(lambda: 'operation=MihomoRuntimeRecover ' in ipc.log.read_text(), 'initial stop recovery attempt')
+        pending = json.loads(state_file.read_bytes())['configuration']
+        assert uuid.UUID(pending['operationId']).hex == publication and not pending['recoveryStopDispatched']
+        assert pending['recoveryProblemCode'] == 'runtime.state_unknown', pending['recoveryProblemCode']
+        waiting = read(publication)
+        assert waiting['state'] == 'interrupted' and waiting['stage'] == 'managed_tun' and not waiting.get('completedAt')
+        assert submit('enable', 'full-publish', {'profileId': profile}) == publication
+        status, blocked = request(api + '/tun/enable', token, 'full-initial-stop-unknown', {'profileId': profile})
+        assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+        assert service_identity() == original_service and Path(f'/proc/{sender}').exists()
+        check_original('pending')
+        os.kill(pending_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        ipc.stop_helper()
+
+        # Allow the original sender, which survived its Helper, to finish the one real stop.
+        (root / 'first-stop-release').touch()
+        result = root / 'first-stop-result'
+        deadline = time.monotonic() + 12
+        while (not result.is_file() or Path(f'/proc/{sender}').exists()) and time.monotonic() < deadline:
+            time.sleep(.05)
+        assert result.read_text().strip() == '0' and not Path(f'/proc/{sender}').exists()
+        assert not Path(f'/proc/{original_service[0]}').exists()
+        assert service('show', '-p', 'ActiveState', '--value', unit) == 'inactive'
+        ipc.start_helper()
+        worker = launch('zero-dns-recover')
+        recovery_pid = int(marker('full-server-pid'))
+        correlation = marker('full-zero-dns-recovery-held')
+        token = login()
+        assert read(publication) == waiting and leases() >= 1
+        restored = service_identity()
+        assert restored != original_service
+        check_original('restored')
+        assert ipc.log.read_text().count(f'operation=MihomoRuntimeRecover id={uuid.UUID(correlation)} ') == 1
+        os.kill(recovery_pid, signal.SIGKILL)
+        assert worker.wait(timeout=8) == 0
+        ipc.stop_helper()
+        ipc.start_helper()
+        worker = launch('restart')
+        restart_pid = int(marker('full-server-pid'))
+        token = login()
+        finished = until(lambda: (reply if (reply := read(publication)).get('completedAt') else None), 'initial stop receipt')
+        assert finished['state'] == 'failed' and finished['problemCode'] == 'proxy.config_apply_failed'
+        assert submit('enable', 'full-publish', {'profileId': profile}) == publication and read(publication) == finished
+        until(lambda: leases() == 0, 'initial stop work lease release')
+        assert service_identity() == restored
+        assert 'operation=MihomoRuntimeRecover ' not in ipc.log.read_text() and 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
+        check_original('terminal')
+        os.kill(restart_pid, signal.SIGTERM)
+        assert worker.wait(timeout=12) == 0
+        (root / 'first-stop-origin').unlink()
+        print(f'PASS TUN INITIAL STOP RECOVERY: original={publication}; sender={sender}; original PID={original_service[0]}; '
+              f'restored PID={restored[0]}; recovery IPC={correlation}; original stop dispatched once', flush=True)
 
     def verify_unfinished_dns(pid, publication, resolver_before):
         nonlocal worker, token
@@ -3442,7 +3553,7 @@ def proof_full_http_shutdown(ipc, case):
         print(f'PASS SQUID NATIVE UNKNOWN: original={unknown}; configuration={unknown_digest}; PID={original_pid}; '
               'real upstream after Helper exit; both ledgers unchanged and no replay')
 
-    worker = launch('zero-dns-publish' if zero_dns or partial_dns or early_owner else 'squid-new' if squid else 'removal-cut' if removal_admin
+    worker = launch('zero-dns-publish' if zero_dns or partial_dns or early_owner or initial_stop else 'squid-new' if squid else 'removal-cut' if removal_admin
                     else 'admission' if admission or handoff or retained_removal else 'drain')
     first_worker = worker
     try:
@@ -3465,13 +3576,16 @@ with sqlite3.connect(sys.argv[1]) as database:
 ''', str(database), profile, timestamp], **ipc.identity, check=True, timeout=8)
         if zero_dns:
             (root / 'full-zero-dns-broker').write_text(str(ipc.helper.pid))
-        if early_owner:
+        if early_owner or initial_stop:
             initial = service_identity(), config.read_bytes(), network_baseline(), resolver_snapshot()
-            (root / 'full-early-owner-broker').write_text(str(ipc.helper.pid))
+            (root / ('first-stop-origin' if initial_stop else 'full-early-owner-broker')).write_text(str(ipc.helper.pid))
         resolver_before = resolver_snapshot() if zero_dns or partial_dns else None
         publication = submit('enable', 'full-publish', {'profileId': profile})
         if early_owner:
             verify_early_owner(pid, publication, *initial)
+            return
+        if initial_stop:
+            verify_initial_stop(pid, publication, *initial)
             return
         if zero_dns or partial_dns:
             verify_unfinished_dns(pid, publication, resolver_before)
@@ -3591,6 +3705,8 @@ def proof():
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
+    if case == 'ipc-http-initial-stop':
+        install_initial_stop_boundary()
     http_case = case.startswith('ipc-http-')
     if http_case:
         ip('netns', 'add', 'rk-http-client')
@@ -3723,7 +3839,8 @@ rules:
             owner.stdout.close()
             ipc = IpcPublicationWorkers(sys.argv[3], user)
             ipc.start_helper()
-            if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
+            if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
+                        'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
                         'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account'):
