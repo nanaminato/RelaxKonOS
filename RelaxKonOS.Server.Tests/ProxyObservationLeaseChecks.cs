@@ -431,7 +431,7 @@ internal static class ProxyObservationLeaseChecks
         long? originalGeneration = null;
         try
         {
-            var pending = ProxyWriteScopeOwner.ExecuteAsync(request, coordinator, (scope, _) =>
+            var pending = ProxyRequestScopeOwner.ExecuteAsync(request, coordinator, (scope, _) =>
             {
                 scope.GetRequiredService<FixtureWrite>();
                 count++;
@@ -454,7 +454,7 @@ internal static class ProxyObservationLeaseChecks
                 && scenario.PlatformResource is { IsAlive: true }, "The faulted generation must retain the original write scope and lease.");
             try
             {
-                await ProxyWriteScopeOwner.ExecuteAsync(request, coordinator, (_, _) =>
+                await ProxyRequestScopeOwner.ExecuteAsync(request, coordinator, (_, _) =>
                 {
                     count++;
                     throw new InvalidOperationException("A new write bypassed the original cleanup gate.");

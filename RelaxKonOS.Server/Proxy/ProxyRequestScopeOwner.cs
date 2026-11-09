@@ -4,8 +4,8 @@ using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.Proxy;
 
-/// <summary>Owns foreground configuration work and any scope whose cleanup could not be confirmed.</summary>
-internal sealed class ProxyWriteScopeOwner(IServiceScopeFactory scopes, IModuleWorkLeaseSource leases)
+/// <summary>Owns foreground management requests and any scope whose cleanup could not be confirmed.</summary>
+internal sealed class ProxyRequestScopeOwner(IServiceScopeFactory scopes, IModuleWorkLeaseSource leases)
 {
     private readonly List<AsyncServiceScope> failedScopes = [];
 
@@ -15,7 +15,7 @@ internal sealed class ProxyWriteScopeOwner(IServiceScopeFactory scopes, IModuleW
         Task response;
         using (var admission = await coordinator.AcquireAsync(ServerModules.ProxyId, context.RequestAborted))
         {
-            var owner = (ProxyWriteScopeOwner)admission.Runtime.Resolve(typeof(ProxyWriteScopeOwner));
+            var owner = (ProxyRequestScopeOwner)admission.Runtime.Resolve(typeof(ProxyRequestScopeOwner));
             response = owner.ExecuteAsync(context, execute);
         }
         await response;

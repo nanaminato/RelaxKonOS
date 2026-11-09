@@ -4425,6 +4425,8 @@ Squid 的启动、停止、重启、重载、启用和禁用使用原队列 ID �
 
 Squid 账户变更将原队列 ID 与绑定操作者和请求的 HMAC 传给 Helper。原队列和原生回执不保存请求口令。Helper 只在账户文件及重载结果已确认后写入成功终态。相同操作者与相同请求可用原键取回原 ID，改换口令的同键请求返回冲突。认证签名密钥轮换后，原操作仍可通过原 ID 查询，台账不重绑旧请求键。见[账户原回执实机证据](../architecture/server-module-evidence/Proxy-Squid.md#账户口令变更的原回执)。
 
+Squid 配置、状态、账户读取、预览和原生校验使用当前 Proxy 管理代次。该代次故障隔离时，这些请求返回模块不可用。启用重启后可按原回执继续读取。[观察路由实测](../architecture/server-module-evidence/Proxy-Squid.md#squid-观察路由的管理租约)
+
 Squid 已在新端口转发、Helper 却在保存终态前退出时，重启后仍显示原配置发布待核验。同键返回原操作，新发布和禁用启动继续受阻。实际监听与配置摘要供只读核对。见[Helper 中断实机证据](../architecture/server-module-evidence/Proxy-Squid.md#helper-在原生效果生效后中断)。
 
 2026-11-04：排队 Proxy 工作在持久 queued 前取得真实驻留工作租约，覆盖审计、异步清理和终态确认；失败 owner 隔离，不丢失恢复责任。订阅转换迁入独立 bundled 程序集，仅共享文本 ABI；按调用创建 collectible ALC，未引入私有实现静态引用。Core guard/TUN/到期/补偿责任保留，Proxy 仍 resident。完整当前事实见[边界设计 §20](../architecture/server-module-evidence/Milestones.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。

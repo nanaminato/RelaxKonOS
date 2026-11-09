@@ -249,6 +249,18 @@ Proxy 隔离时，在私有 `/etc/environment` 中引入漂移。同一 Server �
 
 Linux Release 构建和 Windows Release Squid、Proxy Core 安全及模块边界回归通过。两轮专属 cgroup 清理完成，宿主共享服务、代理、resolver、Squid 配置和账号指纹一致。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-squid-tun-recovery-fault.log` SHA-256 为 `628e1cbd58abad20e43074bb9d5dfe4aa3bc51015310a4c02cdb6ab7b4bcd04b`，归档为 `e6bc9e8dfc409fd28be4bed422d4a529292e7467ac3b732eb6ac8aedba6150d3`。
 
+### Squid 观察路由的管理租约
+
+**已实现且已验证。** 配置、状态、账户读取、预览和原生校验共用当前 Proxy 代次的前台作用域。Windows Release 截留原生校验回执时观察到一项租约，响应与作用域清理后归零，结构化校验诊断及原路由权限保持。Squid、Proxy Core 安全及模块里程碑回归通过。
+
+Linux 专属 systemd 的完整认证 Server 在真实 Squid 与活跃受管 TUN 下验证五条路由返回成功。概览清理失败隔离原代次后，五条路由返回 503，Helper 的状态、账户与校验请求计数保持。原故障租约仍在，Core guard 和原 TUN 流量连续。启用重启后五条路由恢复，Squid 原 `40f8422d-34ff-42e9-a121-b2a1f6e3cd4e` 的回执保持，原重载只派发一次。专属进程及 cgroup 已清理，宿主运行时、代理、resolver、Squid 配置及账号文件指纹一致。
+
+原始实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-squid-observation.log` 的 SHA-256 为 `3fcb371d73188b3eef33086d888a5c6f8fe8a887670702e71deb3daa8a2eeea0`，归档为 `3856fdcde96b3d96eb47bb8506cf61a1ccbf24abee84e3e11c5bd02b3e31b23f`。
+
+**已实现但实机未验证。** Squid 自己的作用域在响应完成后清理失败的实机边界仍待核对。此轮验证专属进程退出，对象释放、ALC、隔离内存和生产收益分别待测。
+
+**未实现或仍受门禁保护。** 整模块动态交接仍开放，Proxy 保持 resident。
+
 **已实现但实机未验证。** 本次确认故障进程退出、原运行时连续性和 Core guard 的实际修复。对象释放、ALC 回收、隔离负载内存和生产收益分别待测。
 
 **未实现或仍受门禁保护。** 整模块安全交接仍待验收。Proxy 保持 resident。

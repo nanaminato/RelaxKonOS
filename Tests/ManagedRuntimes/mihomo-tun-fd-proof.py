@@ -4320,6 +4320,16 @@ exec {shlex.quote(str(systemctl))} "$@"
             probe(tun_record, 'squid-fault-restarted')
             management_overview()
             assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
+            observation_routes = [(path, None) for path in ('/configuration', '/status', '/accounts')]
+            observation_routes += [(path, {'accessMode': 'ipWhitelist', 'port': 18884})
+                                   for path in ('/configuration/preview', '/configuration/validate')]
+
+            def verify_squid_observations(expected):
+                for path, body in observation_routes:
+                    reply = request(api_root + path, token, data=body)
+                    assert reply[0] == expected, (path, reply)
+
+            verify_squid_observations(200)
             cleanup = root / 'full-server/full-overview-cleanup'
             Path(f'{cleanup}-arm').touch()
             Path(f'{cleanup}-fail').touch()
@@ -4338,11 +4348,18 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert status == 200 and proxy['residency']['state'] == 'faulted'
             assert proxy['residency']['activeLeases'] == 1 and proxy['residency']['blockedBy'] == 'module-recovery-blocked'
             assert request(api, token)[0] == 503
+            observations = ('SquidStatus', 'SquidAccountsRead', 'SquidValidateConfiguration')
+            before = [line for line in ipc.log.read_text().splitlines() if any(f'operation={kind} ' in line for kind in observations)]
+            verify_squid_observations(503)
+            after = [line for line in ipc.log.read_text().splitlines() if any(f'operation={kind} ' in line for kind in observations)]
+            assert before == after
             probe(tun_record, 'overview-cleanup-quarantined')
             cut(pid)
             (root / 'full-overview-cleanup-proof').unlink()
             pid = relaunch()
             management_overview()
+            verify_squid_observations(200)
+            print('PASS SQUID OBSERVATION QUARANTINE: all five routes denied without Helper calls and restored after restart', flush=True)
             assert read(operation) == confirmed and receipt.read_bytes() == original_receipt
             assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
             probe(tun_record, 'overview-cleanup-restarted')

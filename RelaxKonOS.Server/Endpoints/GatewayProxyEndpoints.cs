@@ -9,6 +9,7 @@ using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.GatewayProxy;
 using RelaxKonOS.Server.Proxy;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -16,22 +17,21 @@ public static class GatewayProxyEndpoints
 {
     public static IEndpointRouteBuilder MapGatewayProxyEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(GatewayProxyRoutes.Configuration, async (SquidGatewayService service, CancellationToken ct) =>
-            await service.GetConfigurationAsync(ct) is { } snapshot ? Results.Ok(snapshot) : Results.Problem(statusCode: 503, title: "squid.helper.unavailable"))
+        app.MapGet(GatewayProxyRoutes.Configuration, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, async (service, ct) =>
+                await service.GetConfigurationAsync(ct) is { } snapshot ? Results.Ok(snapshot) : Results.Problem(statusCode: 503, title: "squid.helper.unavailable")))
             .RequireAuthorization("ProxyRead").WithTags("Gateway Proxy");
-        app.MapGet(GatewayProxyRoutes.Status, async (SquidGatewayService service, CancellationToken ct) =>
-            await service.GetStatusAsync(ct) is { } status ? Results.Ok(status) : Results.Problem(statusCode: 503, title: "squid.helper.unavailable"))
+        app.MapGet(GatewayProxyRoutes.Status, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, async (service, ct) =>
+                await service.GetStatusAsync(ct) is { } status ? Results.Ok(status) : Results.Problem(statusCode: 503, title: "squid.helper.unavailable")))
             .RequireAuthorization("ProxyRead").WithTags("Gateway Proxy");
-        app.MapPost(GatewayProxyRoutes.Preview, (SquidConfiguration configuration) =>
-        {
-            var preview = SquidConfigurationRenderer.Preview(configuration);
-            return Results.Ok(preview);
-        }).RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
-        app.MapPost(GatewayProxyRoutes.Validate, async (SquidConfiguration configuration, SquidGatewayService service, CancellationToken ct) =>
-        {
-            var result = await service.ValidateAsync(configuration, ct);
-            return Results.Ok(result);
-        }).RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
+        app.MapPost(GatewayProxyRoutes.Preview, (SquidConfiguration configuration, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, (_, _) =>
+                Task.FromResult<IResult>(Results.Ok(SquidConfigurationRenderer.Preview(configuration)))))
+            .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
+        app.MapPost(GatewayProxyRoutes.Validate, (SquidConfiguration configuration, HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, async (service, ct) => Results.Ok(await service.ValidateAsync(configuration, ct))))
+            .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
         app.MapPost(GatewayProxyRoutes.Apply, (ApplySquidConfigurationRequest request, HttpContext context,
             ProxyOperationStore operations, CancellationToken ct) =>
         {
@@ -46,8 +46,9 @@ public static class GatewayProxyEndpoints
                 ? QueueAsync(context, operations, "lifecycle." + request.Action.ToString().ToLowerInvariant(), (execution, id, stage, _, token) => execution.ExecuteAsync(id, request.Action, stage, token), ct, request)
                 : Task.FromResult<IResult>(Results.BadRequest(new { problemCode = "squid.action.invalid" })))
             .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
-        app.MapGet(GatewayProxyRoutes.Accounts, async (SquidGatewayService service, CancellationToken ct) =>
-            await service.GetAccountsAsync(ct) is { } accounts ? Results.Ok(accounts) : Results.Problem(statusCode: 503, title: "squid.helper.unavailable"))
+        app.MapGet(GatewayProxyRoutes.Accounts, (HttpContext context, ModuleResidencyCoordinator coordinator) =>
+            ExecuteAsync(context, coordinator, async (service, ct) =>
+                await service.GetAccountsAsync(ct) is { } accounts ? Results.Ok(accounts) : Results.Problem(statusCode: 503, title: "squid.helper.unavailable")))
             .RequireAuthorization("ProxyRead").WithTags("Gateway Proxy");
         app.MapPost(GatewayProxyRoutes.Accounts, (SquidAccountMutation request, HttpContext context,
             ProxyOperationStore operations, CancellationToken ct) =>
@@ -57,6 +58,11 @@ public static class GatewayProxyEndpoints
             .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
         return app;
     }
+
+    private static Task ExecuteAsync(HttpContext context, ModuleResidencyCoordinator coordinator,
+        Func<SquidGatewayService, CancellationToken, Task<IResult>> execute) =>
+        ProxyRequestScopeOwner.ExecuteAsync(context, coordinator, (services, ct) =>
+            execute(services.GetRequiredService<SquidGatewayService>(), ct));
 
     private static async Task<IResult> QueueAsync(HttpContext context, ProxyOperationStore store,
         string kind, Func<SquidGatewayService, Guid, ProxyOperationStageReporter, string?, CancellationToken, Task<string?>> action,

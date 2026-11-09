@@ -12,6 +12,8 @@ using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.EventAlerts;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Proxy;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 internal static class SquidGatewayChecks
 {
@@ -226,7 +228,12 @@ internal static class SquidGatewayChecks
         builder.Services.AddSingleton<IPrivilegedOperationTransport>(helper);
         builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
         builder.Services.AddSingleton<SquidConfigurationStore>();
-        builder.Services.AddSingleton<SquidGatewayService>();
+        builder.Services.AddScoped<SquidGatewayService>();
+        var ids = new HashSet<string> { ServerModules.ProxyId };
+        var module = ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory");
+        builder.Services.AddSingleton(services => new ModuleResidencyCoordinator([new ProxyWorkRuntimeFactory()],
+            ModuleResidencyOptions.Parse(builder.Configuration, ids, ids), services, module,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ModuleResidencyCoordinator>.Instance, residentWorkModuleIds: ids));
         builder.Services.AddSingleton<IProxyWorkLeaseSource, TestProxyWorkLeases>(); builder.Services.AddSingleton<ProxyOperationStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Residency.IResidentModuleWorkLeaseSource, TestResidentBackgroundLeases>();
         builder.Services.AddSingleton<ProxyAuditStore>();
@@ -246,7 +253,22 @@ internal static class SquidGatewayChecks
         Check(invalidPreview.Status == 200 && !JsonSerializer.Deserialize<SquidConfigurationPreview>(invalidPreview.Body, RelaxKonOSJsonOptions.Default)!.Valid,
             "Invalid previews must retain their structured HTTP 200 outcome for both clients.");
         helper.Result = new(false, Error: "squid.configuration.parse_failed", OutputBase64: Convert.ToBase64String(Encoding.UTF8.GetBytes("native parse error")));
-        var native = await InvokeAsync(GatewayProxyRoutes.Validate, new SquidConfiguration());
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        helper.AwaitReply = token => { started.TrySetResult(); return release.Task.WaitAsync(token); };
+        var validating = InvokeAsync(GatewayProxyRoutes.Validate, new SquidConfiguration());
+        var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(!validating.IsCompleted && coordinator.Describe(ServerModules.ProxyId) is { ActiveLeases: 1 },
+                "Squid native validation must retain the management lease while the Helper response is pending.");
+        }
+        finally { release.TrySetResult(); }
+        var native = await validating;
+        helper.AwaitReply = null;
+        Check(coordinator.Describe(ServerModules.ProxyId) is { ActiveLeases: 0 },
+            "Squid native validation must release the management lease after the response and scope cleanup.");
         Check(native.Status == 200 && JsonSerializer.Deserialize<SquidNativeValidation>(native.Body, RelaxKonOSJsonOptions.Default) is { Valid: false, Diagnostics: "native parse error" },
             "Native parse failure must preserve structured diagnostics for client editors.");
         helper.Result = new(true);
@@ -381,21 +403,23 @@ internal static class SquidGatewayChecks
     {
         public List<PrivilegedOperationRequest> Requests { get; } = [];
         public PrivilegedOperationResult Result { get; set; } = new(true);
-        public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        public Func<CancellationToken, Task>? AwaitReply { get; set; }
+        public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
         {
             Requests.Add(request);
+            if (AwaitReply is { } awaitReply) await awaitReply(cancellationToken);
             if (Result.Success && request is { Operation: PrivilegedOperationKind.SquidAccountMutate,
                 OperationId: { } accountId, SquidAccountRequestIdentity: { } identity })
-                return Task.FromResult(new PrivilegedOperationResult(true, OutputBase64: Convert.ToBase64String(
-                    JsonSerializer.SerializeToUtf8Bytes(new SquidAccountReceipt(accountId, identity, null)))));
+                return new PrivilegedOperationResult(true, OutputBase64: Convert.ToBase64String(
+                    JsonSerializer.SerializeToUtf8Bytes(new SquidAccountReceipt(accountId, identity, null))));
             if (Result.Success && request is { Operation: PrivilegedOperationKind.SquidApplyConfiguration,
                     OperationId: { } id, SquidConfiguration.Configuration: { } configuration })
             {
                 var rendered = SquidConfigurationRenderer.Preview(configuration).Configuration!;
                 var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(rendered)));
-                return Task.FromResult(Result with { SquidPublicationReceipt = new(id, hash, hash, true) });
+                return Result with { SquidPublicationReceipt = new(id, hash, hash, true) };
             }
-            return Task.FromResult(Result);
+            return Result;
         }
     }
 }

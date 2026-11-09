@@ -147,7 +147,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
 
         // Squid gateway: configuration plus lifecycle through the privileged Helper.
         builder.Services.AddSingleton<SquidConfigurationStore>();
-        builder.Services.AddTransient<SquidGatewayService>();
+        builder.Services.AddScoped<SquidGatewayService>();
 
         // Profile/subscription/configuration services. Their repositories are registered with the
         // storage provider (SQLite only today), so a memory-storage host keeps exactly the state it
