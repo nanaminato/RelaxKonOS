@@ -271,16 +271,25 @@ esac
     command('/usr/bin/mount', '--bind', str(wrapper), '/usr/bin/busctl')
 
 
-def install_restored_job_boundary():
+def install_restored_job_boundary(hold_dispatch_reply=False):
     busctl = root / 'busctl-original'
     audit = root / 'busctl-restored-start'
     shutil.copy2('/usr/bin/busctl', busctl)
     audit.write_text(f'''#!/bin/bash
 set -eu
+work={shlex.quote(str(root))}
+real={shlex.quote(str(busctl))}
 if [[ "$*" == *"StartUnit ss {unit} fail" ]]; then
-    printf '%s\\n' "$*" >> {shlex.quote(str(root / 'restored-start-dispatches'))}
+    printf '%s\\n' "$*" >> "$work/restored-start-dispatches"
+    if [[ {int(hold_dispatch_reply)} == 1 ]]; then
+        result=$("$real" "$@")
+        printf '%s\\n' "$result" > "$work/restored-start-reply.new"
+        mv "$work/restored-start-reply.new" "$work/restored-start-reply"
+        while [[ ! -f "$work/discard-restored-start-reply" ]]; do sleep .05; done
+        exit 1
+    fi
 fi
-exec {shlex.quote(str(busctl))} "$@"
+exec "$real" "$@"
 ''')
     audit.chmod(0o755)
     command('/usr/bin/mount', '--bind', str(audit), '/usr/bin/busctl')
@@ -292,6 +301,7 @@ set -eu
 real={shlex.quote(str(original))}
 work={shlex.quote(str(root))}
 if [[ "$*" == *"UNIT={unit}"*"JOB_TYPE=start JOB_RESULT=done"* ]]; then
+    printf '%s\\n' "$*" >> "$work/restored-job-queries"
     result=$("$real" "$@")
     if [[ -n "$result" && ! -f "$work/restored-job-observed" ]]; then
         printf '%s\n' "$result" > "$work/restored-job-observed.new"
@@ -2052,7 +2062,8 @@ def proof_full_http_shutdown(ipc, case):
     replaced_stop = case == 'ipc-http-initial-stop-replaced'
     restored_replaced = case == 'ipc-http-restored-process-replaced'
     job_replaced = case == 'ipc-http-restored-job-replaced'
-    job_cut = case == 'ipc-http-restored-job-cut'
+    dispatch_unknown = case == 'ipc-http-restored-dispatch-unknown'
+    job_cut = dispatch_unknown or case == 'ipc-http-restored-job-cut'
     initial_stop = replaced_stop or restored_replaced or job_replaced or job_cut or case == 'ipc-http-initial-stop'
     unknown_dns = case == 'ipc-http-unknown-dns'
     partial_dns = unknown_dns or case == 'ipc-http-partial-dns'
@@ -2463,26 +2474,47 @@ def proof_full_http_shutdown(ipc, case):
         worker = launch('restart')
         pid = int(marker('full-server-pid'))
         token = login()
-        logged = json.loads(marker('restored-job-observed', seconds=25))
+        if dispatch_unknown:
+            reply = json.loads(marker('restored-start-reply', seconds=25))
+            assert reply['type'] == 'o' and len(reply['data']) == 1
+            prefix = '/org/freedesktop/systemd1/job/'
+            job_path = reply['data'][0]
+            assert job_path.startswith(prefix)
+            job_id = int(job_path.removeprefix(prefix))
+            assert job_id > 0
+            boot = uuid.UUID(Path('/proc/sys/kernel/random/boot_id').read_text().strip()).hex
+            logged = json.loads(until(lambda: command(str(root / 'journalctl-original'), '--quiet', '--no-pager',
+                '--output=json', '--output-fields=INVOCATION_ID', '--lines=2', '_PID=1', '_UID=0', f'_BOOT_ID={boot}',
+                f'UNIT={unit}', f'JOB_ID={job_id}', 'JOB_TYPE=start', 'JOB_RESULT=done'), 'actual native start completion'))
+            assert logged['_BOOT_ID'] == boot
+            assert not dispatch.exists()
+        else:
+            logged = json.loads(marker('restored-job-observed', seconds=25))
+            evidence = dispatch.read_bytes()
+            recorded = json.loads(evidence)
+            assert uuid.UUID(recorded['OperationId']).hex == publication and recorded['JobId'] > 0
+            assert uuid.UUID(recorded['BootId']).hex == logged['_BOOT_ID']
+            assert 0 < recorded['DispatchedAt'] <= int(logged['__MONOTONIC_TIMESTAMP'])
         original = service_identity()
-        evidence = dispatch.read_bytes()
-        recorded = json.loads(evidence)
-        assert uuid.UUID(recorded['OperationId']).hex == publication and recorded['JobId'] > 0
-        assert uuid.UUID(recorded['BootId']).hex == logged['_BOOT_ID']
-        assert 0 < recorded['DispatchedAt'] <= int(logged['__MONOTONIC_TIMESTAMP'])
         assert logged['INVOCATION_ID'] == original[1]
         pending()
         assert leases() >= 1
         probe_restored('in-flight')
         os.kill(pid, signal.SIGTERM)
         ipc.stop_helper()
-        (root / 'release-restored-job').touch()
+        (root / ('discard-restored-start-reply' if dispatch_unknown else 'release-restored-job')).touch()
         assert worker.wait(timeout=12) == 0
-        assert dispatch.read_bytes() == evidence and not job.exists() and not witness.exists()
 
         # An active service and a journal entry alone do not identify the dispatched job.
-        hidden = dispatch.with_suffix('.held')
-        dispatch.rename(hidden)
+        assert not job.exists() and not witness.exists()
+        if dispatch_unknown:
+            assert not dispatch.exists()
+            sender = operation_dir / 'registration-start-dispatched'
+            assert sender.read_text() == publication
+        else:
+            assert dispatch.read_bytes() == evidence
+            hidden = dispatch.with_suffix('.held')
+            dispatch.rename(hidden)
         ipc.start_helper()
         worker = launch('restart')
         pid = int(marker('full-server-pid'))
@@ -2492,9 +2524,17 @@ def proof_full_http_shutdown(ipc, case):
         status, blocked = request(api + '/tun/enable', token, 'full-restored-job-cut-new', {'profileId': profile})
         assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
         probe_restored('missing-id')
+        assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
         os.kill(pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
         ipc.stop_helper()
+        if dispatch_unknown:
+            assert not dispatch.exists() and not job.exists() and not witness.exists()
+            assert sender.read_text() == publication
+            assert not (root / 'restored-job-queries').exists()
+            print(f'PASS TUN RESTORED DISPATCH UNKNOWN: original={publication}; native job={job_id}; '
+                  f'PID={original[0]}; invocation={original[1]}; one StartUnit; original gate retained', flush=True)
+            return
         assert not dispatch.exists() and hidden.read_bytes() == evidence
         hidden.rename(dispatch)
 
@@ -3977,8 +4017,8 @@ def proof():
     assert devices() == {'lo', 'rk-egress', 'rk-peer'}
     install_rule_failure_boundary()
     case = sys.argv[4]
-    if case in ('ipc-http-restored-job-replaced', 'ipc-http-restored-job-cut'):
-        install_restored_job_boundary()
+    if case in ('ipc-http-restored-job-replaced', 'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown'):
+        install_restored_job_boundary(hold_dispatch_reply=case == 'ipc-http-restored-dispatch-unknown')
     if case == 'ipc-http-restored-process-replaced':
         install_restored_process_boundary()
     http_case = case.startswith('ipc-http-')
@@ -4115,7 +4155,7 @@ rules:
             ipc.start_helper()
             if case in ('ipc-http-full', 'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
-                        'ipc-http-restored-job-cut',
+                        'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
@@ -4287,7 +4327,8 @@ rules:
         print(f'PASS MIHOMO INHERITED TUN CLEANUP: {operation}, interrupted stop reconciled without replay; '
               'original receipt on retry; process, device and route gone')
     except Exception:
-        if case in ('ipc-http-initial-stop', 'ipc-http-restored-job-replaced', 'ipc-http-restored-job-cut'):
+        if case in ('ipc-http-initial-stop', 'ipc-http-restored-job-replaced', 'ipc-http-restored-job-cut',
+                    'ipc-http-restored-dispatch-unknown'):
             subprocess.run(['/usr/bin/journalctl', '--quiet', '--no-pager', '--output=json',
                             '--output-fields=UNIT,JOB_ID,JOB_RESULT,INVOCATION_ID,USER_INVOCATION_ID,_PID,_UID,_BOOT_ID,_TRANSPORT,SYSLOG_IDENTIFIER',
                             '--lines=20', 'SYSLOG_IDENTIFIER=systemd'], check=False, timeout=8)

@@ -918,9 +918,21 @@ Linux x64 私有 systemd 在真实 Mihomo 恢复到旧配置后，截留了真�
 
 同时复跑作业对应进程被替换 `feffbf550df843ca95df9c7eb981bbaf`、进程见证缺失或替换 `63afb48374b243fe8346a2e1763f3f4b`、首次停止应答中断后恢复 `bae5694db98c415e9149656e011fb5c6`。Linux Release 构建、Windows Release 激活和 38 项边界检查通过。四场专属 cgroup 已清理，验收进程退出，宿主共享服务、代理及 resolver 文件指纹一致。原实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-job-cut.log` SHA-256 为 `a6f4810199ae5e685913719a83d0a48d80aff3d276967665d55e7d593b8618f6`，运行归档 SHA-256 为 `f6885f729b5aefbc5e421b288ec0a181ec8072e6fd541793c974675313e4deb2`。
 
-**已实现但实机未验证。** 本次缺失作业 ID 的分支由暂存已保存的原记录触发。首次 D-Bus 应答未送达 Helper 的真实故障窗口仍待独立验收。整机掉电需专属可断电环境。对象释放、ALC 回收、隔离内存差值和生产内存收益未测量。
+**已实现但实机未验证。** 本次缺失作业 ID 的分支由暂存已保存的原记录触发，首次应答中断的独立实测见下一节。整机掉电需专属可断电环境。对象释放、ALC 回收、隔离内存差值和生产内存收益未测量。
 
 **未实现或仍受门禁保护。** 缺少可信原作业身份时保留原待核验，禁止重复启动。整模块安全交接仍待验收，Proxy 保持 resident。
+
+### 补偿启动首次应答未知
+
+**已实现且已验证。** Linux x64 专属 systemd 先用原 PID 描述符停止旧服务，再按原发布 ID 恢复旧配置。夹具在真正的 `busctl` 收到 systemd `StartUnit` 返回值后截留 stdout，Helper 从未收到原作业 ID。夹具独立核实 PID 1 的真实成功日志及实际旧配置进程。原操作 `8d97f102d66c44b98d37a6dc53e81910`、原生作业 `39`、Mihomo PID `512`、调用 ID `9d94b12dbed74236adf9625df77f9722`。原发布 HTTP 为待核验且工作租约仍在。
+
+中断 Server 和 Helper 并丢弃首次应答。重启只保留原操作的启动派发标记，未产生原作业 ID、作业完成记录或进程见证。原回执继续为 `interrupted`、无完成时间，恢复诊断为 `runtime.network_restored_start_unconfirmed`。同键仍返回原 ID，新键以 `proxy.operation_interrupted` 拒绝。Helper 未调用按作业 ID 查询 journal，配置未重派，全程实际 `StartUnit` 一次。两阶段核对同一 PID、调用 ID、启动时刻、配置和 Server 镜像、真实管理选路、resolver 设置及上游 HTTP；原初始停止记录和网络归属逐字节一致。
+
+对照操作 `1cc48afadaa44f6588798881aa0c730d` 在已保存原作业 `39` 后丢失完成应答，重启可确认原 PID `510` 和同键终态，工作租约归零。Windows Release 激活及 38 项边界检查通过。两场验收进程退出，专属 cgroup 清理，宿主共享服务与代理及 resolver 文件指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-dispatch-unknown.log` SHA-256 为 `089122663a94db821a4b0b3ce90c48e0e7ef30c7b8ed4d4d9cf358ff7c5298bd`，运行归档 SHA-256 为 `83cc3aae91c7e4577698f16cda5d205fc5265153094a6744f18909b90882655d`。
+
+**已实现但实机未验证。** 整机掉电及其他架构需独立环境。本轮核实进程退出，对象释放、ALC 回收、隔离内存差值和生产内存收益未测量。
+
+**未实现或仍受门禁保护。** 原作业 ID 从未到达 Helper 时，须有能绑定原操作的可信证据才可结案。原 owner 继续保留门禁。整模块安全交接仍待验收，Proxy 保持 resident。
 
 ## MB-04 受管 TUN 认证 HTTP 补偿
 

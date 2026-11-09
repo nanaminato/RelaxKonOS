@@ -360,4 +360,4 @@ Core 唯一 `MihomoPublicationRecoveryScheduler` 持续扫描原持久 pending�
 
 2026-11-08（MR-03 / MB-04）完整安装 HTTP 已验证保留数据移除的冻结计划、匿名拒绝和普通 PAM 账号提权拒绝。拒绝未建立安装记录或派发 Helper。2026-11-09 已在单次授权下验证真实管理员卸载、保留数据、同键在途回执及按原 ID 的启动对账。同日复验确认重启后按原 ID 读回 HTTP 成功终态、同键返回同一终态，跨 Helper 代次只派发一次卸载。见[管理员卸载重启复验](../architecture/server-module-evidence/Proxy-Safety.md#重启后原安装-http-回执与单次派发)。见[安装 HTTP 准入实机证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-保留数据移除的安装-http-准入)。
 
-MR-03 / MB-04 在 Linux 私有 systemd 验证补偿启动作业 ID 落盘后的完成应答中断。重启沿用原归档操作，核对同次启动的 PID 1 journal、原作业及同一旧配置进程，确认后恢复原回执。原作业 ID 缺失时保留原门禁。见[作业完成应答中断实测](../architecture/server-module-evidence/Proxy-Safety.md#补偿启动作业完成应答中断)。
+MR-03 / MB-04 在 Linux 私有 systemd 验证补偿启动作业 ID 落盘后的完成应答中断。重启沿用原归档操作，核对同次启动的 PID 1 journal、原作业及同一旧配置进程，确认后恢复原回执。真实 StartUnit 首次应答未到达 Helper 时也已验证同一原回执、原门禁及单次派发。见[首次应答中断实测](../architecture/server-module-evidence/Proxy-Safety.md#补偿启动首次应答未知)。见[作业完成应答中断实测](../architecture/server-module-evidence/Proxy-Safety.md#补偿启动作业完成应答中断)。
