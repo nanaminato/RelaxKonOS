@@ -186,9 +186,11 @@ internal sealed partial class LinuxMihomoArchiveHost
     {
         var path = RestoredJobPath(operation);
         var dispatchPath = RestoredJobDispatchPath(operation);
+        var staged = RestoredJobDispatchStagePath(operation);
         RuntimeSourceStore.RequireNoLinks(path);
         RuntimeSourceStore.RequireNoLinks(dispatchPath);
-        if (Path.Exists(path) || Path.Exists(dispatchPath)) Fail("network_restored_start_unconfirmed");
+        RuntimeSourceStore.RequireNoLinks(staged);
+        if (Path.Exists(path) || Path.Exists(dispatchPath) || Path.Exists(staged)) Fail("network_restored_start_unconfirmed");
         var boot = LinuxMihomoTunCheckpoint.BootId();
         var started = MonotonicMicroseconds();
         var reply = await RunAsync("/usr/bin/busctl", ["--system", "--timeout=5s", "--json=short", "call",
@@ -196,8 +198,15 @@ internal sealed partial class LinuxMihomoArchiveHost
             "StartUnit", "ss", Unit, "fail"]);
         var id = ParseRestoredStartJobId(reply);
         var dispatch = new RestoredStartDispatch(operation, boot, id, started);
-        await WriteRestoreFileAsync(operation, dispatchPath, JsonSerializer.Serialize(dispatch),
-            UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
+        await using (var output = new FileStream(staged, new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
+        }))
+        {
+            await output.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(dispatch), ct);
+            output.Flush(true);
+        }
+        PublishRestoredJobDispatch(staged, dispatchPath);
         var receipt = await ReadRestoredJobResultAsync(dispatch, ct);
         await WriteRestoreFileAsync(operation, path, JsonSerializer.Serialize(receipt),
             UnixFileMode.UserRead | UnixFileMode.UserWrite, ct);
@@ -278,14 +287,39 @@ internal sealed partial class LinuxMihomoArchiveHost
     {
         var path = RestoredJobDispatchPath(operation);
         RuntimeSourceStore.RequireNoLinks(path);
-        if (!File.Exists(path)) throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
-        var text = await ReadRestoreFileAsync(path, ct);
-        var dispatch = JsonSerializer.Deserialize<RestoredStartDispatch>(text);
+        var staged = RestoredJobDispatchStagePath(operation);
+        var recovering = !File.Exists(path);
+        var source = recovering ? staged : path;
+        RuntimeSourceStore.RequireNoLinks(source);
+        if (!File.Exists(source)) throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+        var text = await ReadRestoreFileAsync(source, ct);
+        RestoredStartDispatch? dispatch;
+        try { dispatch = JsonSerializer.Deserialize<RestoredStartDispatch>(text); }
+        catch (JsonException) { throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed"); }
         if (dispatch is null || dispatch.OperationId != operation || dispatch.BootId != LinuxMihomoTunCheckpoint.BootId()
             || dispatch.JobId == 0 || dispatch.DispatchedAt == 0 || dispatch.DispatchedAt > MonotonicMicroseconds()
             || JsonSerializer.Serialize(dispatch) != text)
             throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+        if (recovering)
+        {
+            if (await ReadRestoreFileAsync(RestoredStartPath(operation), ct) != operation.ToString("N"))
+                Fail("network_restored_start_unconfirmed");
+            using (var input = new FileStream(staged, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) input.Flush(true);
+            PublishRestoredJobDispatch(staged, path);
+        }
+        else MihomoRuntimeData.SyncConfigurationDirectory(Path.GetDirectoryName(path)!);
         return dispatch;
+    }
+
+    private static string RestoredJobDispatchStagePath(Guid operation) => RestoreTemporaryPath(operation, RestoredJobDispatchPath(operation));
+
+    private static void PublishRestoredJobDispatch(string staged, string path)
+    {
+        var directory = Path.GetDirectoryName(path)!;
+        // Keep the first reply recoverable if the Helper exits between the two directory states.
+        MihomoRuntimeData.SyncConfigurationDirectory(directory);
+        File.Move(staged, path, overwrite: false);
+        MihomoRuntimeData.SyncConfigurationDirectory(directory);
     }
 
     private static async Task CompleteRestoredJobObservationAsync(Guid operation, Registration registration, CancellationToken ct)
@@ -371,7 +405,7 @@ internal sealed partial class LinuxMihomoArchiveHost
 
     private static string ClearRestoreTemporary(Guid operation, string path)
     {
-        var temporary = path + "." + operation.ToString("N") + ".restore";
+        var temporary = RestoreTemporaryPath(operation, path);
         RuntimeSourceStore.RequireNoLinks(temporary);
         if (File.Exists(temporary))
         {
@@ -380,4 +414,6 @@ internal sealed partial class LinuxMihomoArchiveHost
         }
         return temporary;
     }
+
+    private static string RestoreTemporaryPath(Guid operation, string path) => path + "." + operation.ToString("N") + ".restore";
 }

@@ -976,6 +976,20 @@ Linux x64 私有 systemd 在真实 Mihomo 恢复到旧配置后，截留了真�
 
 **未实现或仍受门禁保护。** 原作业 ID 从未到达 Helper 时，须有能绑定原操作的可信证据才可结案。原 owner 继续保留门禁。整模块安全交接仍待验收，Proxy 保持 resident。
 
+### 补偿启动首次应答的持久暂存
+
+**已实现且已验证。** Helper 解析首次 `StartUnit` 应答后，将原操作 ID、boot、作业 ID 和派发时刻写入原操作的私有暂存文件。同步文件和所在目录后发布正式作业记录，再次同步目录。重启持有原归档锁时，正式记录缺失可读取原暂存。必须核对原启动派发标记、受保护路径、规范记录、同一 boot 和原操作身份，再同步并发布。已存在的正式记录优先，恢复不会覆盖。发布原作业记录后，仍须核对 PID 1 的原作业终态和同一旧配置进程。
+
+Linux x64 私有 systemd 对原发布 `bad0c9f6-be8e-47a4-9252-7b3e3a58f5f0` 使用系统调用夹具暂停正式记录发布。原暂存已写入，真实 systemd 作业 `39` 已完成，Helper 被中断。错配原 ID 的暂存使重启继续保持 `runtime.network_restored_start_unconfirmed`，未读取作业日志。恢复原暂存字节后，Helper 发布相同字节并按作业 `39` 核对原 invocation `da30371f37594f56b1f1fb4606761b7b`、旧配置进程 PID `516` 和启动时刻。管理选路、配置、resolver 和真实上游跨中断、待核验与终态一致，原网络归属及首次停止证据逐字节保持。原 ID 和同键读回同一终态，全程一次 `StartUnit`，恢复代次零配置派发。
+
+未收到首次应答的对照原发布 `24856a73-47ce-4870-9cac-c800c8524e76` 保持待核验。真实作业 `39` 和恢复 PID `510` 可见，原暂存与正式作业记录均未生成，Helper 未查询作业日志，全程一次 `StartUnit`。两组均清理了专属 cgroup，宿主共享服务、代理与 resolver 文件指纹一致。
+
+Windows Release 38 项 TUN 边界检查及 Linux x64 Release 构建通过。正向日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-stage-cut.log` 的 SHA-256 为 `f9b2b94a927118fea1470e80a2df7e76fce466f2c6f032b5f2e35b89950a4378`，归档为 `2606e562bb5b67192d98212afdd9c32778de2cfe0d9563af2c54a98fc60085a7`。反向日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-stage-absent.log` 的 SHA-256 为 `5724e4f3666bd9dee90183980633dc19a35a920d236af1223b542098807ef504`，归档为 `90773e8d713d566debc7132fe7c9aed09305ed512234498ce9c35b05d5520e2b`。首轮包装器在正向通过后拒绝了未注册的反向用例名，两个场景分开记录。工作盘空间不足，使用系统临时目录存放本轮 Release 制品及归档。
+
+**已实现但实机未验证。** 整机掉电和其他平台须有独立环境。进程退出和专属 cgroup 清理已核对，对象释放、ALC、隔离负载内存及生产收益分别待验。
+
+**未实现或仍受门禁保护。** 原应答在 Helper 取得并写入前丢失时，当前原记录不足以确认作业 ID。恢复保持待核验，禁止重派或按现有服务推导作业。Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。

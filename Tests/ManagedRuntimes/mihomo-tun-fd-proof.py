@@ -2559,6 +2559,8 @@ def proof_full_http_shutdown(ipc, case):
     def verify_restored_job_cut(publication, operation_dir, original_config, baseline, original_resolver):
         nonlocal worker, token
         dispatch = operation_dir / 'registration-start-job-dispatched.json'
+        staged = dispatch.with_suffix(f'.json.{publication}.restore')
+        stage_cut = not dispatch_unknown and Path(sys.argv[3]).with_name('restored-start-stage-cut.fixture').is_file()
         job = operation_dir / 'registration-start-job.json'
         witness = operation_dir / 'registration-start-process.json'
         starts = root / 'restored-start-dispatches'
@@ -2586,16 +2588,32 @@ def proof_full_http_shutdown(ipc, case):
                            '--max-time', '3', f'http://{target}:18880/mb04-restored-job-cut-{phase}') == 'upstream-through-inherited-tun'
 
         ipc.start_helper()
+        if stage_cut:
+            moves = 'rename,renameat,renameat2,link,linkat'
+            trace = subprocess.Popen(['strace', '-f', '-qq', '-P', str(staged), '-e', f'trace={moves}',
+                                      '-e', f'inject={moves}:error=EIO:delay_enter=20s:when=1',
+                                      '-o', root / 'restored-start-stage.trace', '-p', str(ipc.helper.pid)])
+            deadline = time.monotonic() + 5
+            while f'TracerPid:\t{trace.pid}\n' not in Path(f'/proc/{ipc.helper.pid}/status').read_text():
+                assert trace.poll() is None and time.monotonic() < deadline
+                time.sleep(.025)
         worker = launch('restart')
         pid = int(marker('full-server-pid'))
         token = login()
-        if dispatch_unknown:
-            reply = json.loads(marker('restored-start-reply', seconds=25))
-            assert reply['type'] == 'o' and len(reply['data']) == 1
-            prefix = '/org/freedesktop/systemd1/job/'
-            job_path = reply['data'][0]
-            assert job_path.startswith(prefix)
-            job_id = int(job_path.removeprefix(prefix))
+        if dispatch_unknown or stage_cut:
+            if stage_cut:
+                until(lambda: staged.is_file() and staged.stat().st_size > 0, 'first StartUnit reply staging', seconds=25)
+                evidence = staged.read_bytes()
+                recorded = json.loads(evidence)
+                assert uuid.UUID(recorded['OperationId']).hex == publication
+                job_id = recorded['JobId']
+            else:
+                reply = json.loads(marker('restored-start-reply', seconds=25))
+                assert reply['type'] == 'o' and len(reply['data']) == 1
+                prefix = '/org/freedesktop/systemd1/job/'
+                job_path = reply['data'][0]
+                assert job_path.startswith(prefix)
+                job_id = int(job_path.removeprefix(prefix))
             assert job_id > 0
             boot = uuid.UUID(Path('/proc/sys/kernel/random/boot_id').read_text().strip()).hex
             logged = json.loads(until(lambda: command(str(root / 'journalctl-original'), '--quiet', '--no-pager',
@@ -2632,6 +2650,11 @@ def proof_full_http_shutdown(ipc, case):
             probe_restored(phase)
             print(f'PASS TUN RESTORED START REPLY SHAPE: original={publication}; actual job={job_id}; variant={phase}; no durable job or redispatch', flush=True)
         os.kill(pid, signal.SIGTERM)
+        if stage_cut:
+            assert not dispatch.exists() and staged.read_bytes() == evidence and trace.poll() is None
+            ipc.helper.kill()
+            trace.kill()
+            trace.wait(timeout=8)
         ipc.stop_helper()
         (root / ('discard-restored-start-reply' if dispatch_unknown else 'release-restored-job')).touch()
         assert worker.wait(timeout=12) == 0
@@ -2642,6 +2665,13 @@ def proof_full_http_shutdown(ipc, case):
             assert not dispatch.exists()
             sender = operation_dir / 'registration-start-dispatched'
             assert sender.read_text() == publication
+        elif stage_cut:
+            assert not dispatch.exists() and staged.read_bytes() == evidence
+            hidden = staged.with_suffix('.held')
+            staged.rename(hidden)
+            staged.write_text(evidence.decode().replace(recorded['OperationId'], str(uuid.uuid4())))
+            staged.chmod(0o600)
+            rejected_stage = staged.read_bytes()
         else:
             assert dispatch.read_bytes() == evidence
             hidden = dispatch.with_suffix('.held')
@@ -2667,7 +2697,12 @@ def proof_full_http_shutdown(ipc, case):
                   f'PID={original[0]}; invocation={original[1]}; one StartUnit; original gate retained', flush=True)
             return
         assert not dispatch.exists() and hidden.read_bytes() == evidence
-        hidden.rename(dispatch)
+        if stage_cut:
+            assert staged.read_bytes() == rejected_stage and not (root / 'restored-job-queries').exists()
+            staged.unlink()
+            hidden.rename(staged)
+        else:
+            hidden.rename(dispatch)
 
         if Path(sys.argv[3]).with_name('restored-job-journal-identity.fixture').is_file():
             override = root / 'restored-job-journal-override'
@@ -2706,6 +2741,8 @@ def proof_full_http_shutdown(ipc, case):
         until(lambda: leases() == 0, 'original job recovery lease release')
         probe_restored('terminal')
         assert dispatch.read_bytes() == evidence
+        if stage_cut:
+            assert not staged.exists()
         result = json.loads(job.read_bytes())
         assert result['JobId'] == recorded['JobId'] and result['OperationId'] == recorded['OperationId']
         assert result['BootId'] == recorded['BootId'] and uuid.UUID(result['InvocationId']).hex == original[1]
@@ -2717,6 +2754,9 @@ def proof_full_http_shutdown(ipc, case):
         assert 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
         os.kill(pid, signal.SIGTERM)
         assert worker.wait(timeout=12) == 0
+        if stage_cut:
+            print(f'PASS TUN RESTORED START STAGE CUT: original={publication}; job={result["JobId"]}; '
+                  f'PID={original[0]}; invocation={original[1]}; same staged receipt and one StartUnit', flush=True)
         print(f'PASS TUN RESTORED JOB CUT: original={publication}; job={result["JobId"]}; '
               f'PID={original[0]}; original invocation={original[1]}; one StartUnit; original lease drained', flush=True)
 
