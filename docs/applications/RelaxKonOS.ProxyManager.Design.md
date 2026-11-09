@@ -4597,7 +4597,7 @@ DNS 派发后若候选退出，Helper 先核对原 DNS 发送端退出见证及�
 
 候选仍运行时，Helper 只有在原进程、配置、管理选路及分流 DNS 已确认部分均相符时，才按原操作记录并派发停止。恢复同一操作时按原停止派发记录续接，未派发的 DNS 调用保持未派发。见[分流 DNS 部分变更时停止原候选](../architecture/server-module-evidence/Proxy-Safety.md#分流-dns-部分变更时停止原候选)。
 
-完整 Server 重启后，如果部分 DNS 写入缺少原发送端退出见证，同键仍指向原待核验操作，新键继续受阻。原见证恢复后，由原协调器持有工作租约直到补偿、终态持久化和清理结束。未派发的 DNS 调用不会补发。见[完整认证队列实测](../architecture/server-module-evidence/Proxy-Safety.md#完整认证队列的部分-dns-补偿与工作租约)。
+完整 Server 重启后，如果部分 DNS 写入缺少原发送端退出见证，同键仍指向原待核验操作，新键继续受阻。原见证恢复后，由原协调器持有工作租约直到补偿、终态持久化和清理结束。未派发的 DNS 调用不会补发。见[完整认证队列实测](../architecture/server-module-evidence/Proxy-Safety.md#完整认证队列的部分-dns-补偿与工作租约)。 即使 resolver 已显示第二条设置生效且发送进程已退出，缺少原发送端结果仍须保持原候选、原回执与新变更门禁。见[未知发送端结果实测](../architecture/server-module-evidence/Proxy-Safety.md#原-dns-发送端结果未知时的完整队列门禁)。
 
 描述符已交付而 DNS 尚未派发时，Helper 使用描述符交付前保存的原解析器基线核对停止准入。原基线缺失或设置漂移时保留原待核验。见[DNS 派发前停止已接收描述符的候选](../architecture/server-module-evidence/Proxy-Safety.md#dns-派发前停止已接收描述符的候选)。
 

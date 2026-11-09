@@ -804,6 +804,18 @@ Windows Release TUN 回归通过，含 38 项 TUN 边界检查。原始 Linux �
 
 **未实现或仍受门禁保护。** 原发送端身份或结果不能确认时保留原待核验，整模块交接继续开放，Proxy 保持 resident。
 
+### 原 DNS 发送端结果未知时的完整队列门禁
+
+**已实现且已验证。** Linux x64 私有 systemd 使用完整 PAM/JWT Server、独立 Helper、实际 Mihomo 及 resolver。原发布 `5ce13339175b472e9bfa1b2f4818bcc6` 的第二条 `SetLinkDomains` 已在 resolver 生效，发送端应答仍被扣留。已有第二条派发记录，未生成发送端退出见证或第三条派发。终止原 Server 与 Helper 后，观察原发送端实际退出，原退出见证仍缺失。候选 PID `372` 的配置凭据 SHA-256 为 `c5bfdc5a660c8b1f8afe52dc21134cd257f22afa8a45dc4a780c2268174367eb`。原进程、描述符、管理选路、配置身份、resolver 快照和真实上游转发跨中断核对一致。
+
+第一次重启的原恢复 IPC `a8893d87c4144d4ab36d142b7407be67` 返回待核验。截留应答时，原工作租约仍在，原 HTTP 回执为 `interrupted / managed_tun` 且无结束时间，同键返回原 ID，异键受 `proxy.operation_interrupted` 拒绝。第二次重启重新核验后，Helper 仍记录 `runtime.network_dns_conflict`，原 HTTP 回执、原生检查点及运行事实保持，只有 Helper 台账的尝试修订号推进。全程只有原前两条 DNS 写入，零配置重派、停止派发、规则删除或第三条 DNS 派发。原候选持续转发至专属夹具清理。
+
+同批复验已知部分写入可补偿的原操作 `2da327146e044bdaa7179e71994e7d60`，恢复原终态且规则只删除一次。首次试跑将台账修订号推进视为原回执变化，修正为独立检查修订号及其余字段后通过。Windows Release 38 项 TUN 边界检查通过。两场专属进程及 cgroup 清理通过，宿主服务、代理与 resolver 指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-unknown-dns.log` SHA-256 为 `46f11d52abf07e418b1008fc0128a11d8a13ec625fba0ecae3f2c1ff3e02c2fd`，归档 SHA-256 为 `fc4667ac466aaad9147039ada3e1e1d342ddb16301aba441fe86d951498d1ed8`。
+
+**已实现但实机未验证。** 整机掉电需独立断电环境。本轮核对发送端及夹具进程退出。对象释放、ALC 回收、隔离内存差值及生产内存收益未测量。
+
+**未实现或仍受门禁保护。** 原发送端缺可信结果时保持原待核验。整模块安全交接继续开放，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。
