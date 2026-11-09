@@ -559,4 +559,15 @@ Windows Release 模块边界和控制器回归通过。Linux 专属 systemd 通�
 
 **已实现，实机证据有缺口。** Windows 在发送路径前将执行者绑定原生 Job，并在确认 Job 退出和两路管道排空后释放门禁。本轮 Windows 通过 Release 回归，原生 Job 故障窗口待专项验收。
 
-**未实现或仍受门禁保护。** 生产中的未知探测仍缺原执行者的可信清理确证入口。下一项验证 Server 单独中断后原执行者排空，并为按原 ID 只读对账保留证明。已单独实测 Linux 原进程退出。整模块对象释放、ALC 回收、隔离负载内存及生产收益分别待验。Proxy 保持 resident。
+**未实现或仍受门禁保护。** 生产中的未知探测仍缺原执行者的可信清理确证入口。Server 单独中断的实测见下一节。已单独实测 Linux 原进程退出。整模块对象释放、ALC 回收、隔离负载内存及生产收益分别待验。Proxy 保持 resident。
+
+
+### 外部 Mihomo 版本探测的 Server 单独中断
+
+**已实现且已验证。** Windows Release 模块边界回归通过。Linux 专属 systemd 中，生产 HTTP 启动原探测 `255abb5a-95f7-4edc-945a-9aee9690928d`。夹具在派发后核对一份工作租约、原执行者身份和脱离会话的后代，用 pidfd 绑定 Server、原执行者及两代探测进程，仅向 Server 发送 SIGKILL。隔离夹具以 subreaper 收取原执行者 `2237` 的实际退出码 0，原探测进程 `2250` 和脱离会话的后代 `2265` 均已回收。执行者成功退出的生产路径等待原进程树及探测进程的 stdout 和 stderr 排空。外层 Server 的输出收尾随原进程中断而失去见证。
+
+禁用启动按原 ID 拒绝。启用重启后原探测返回 503，原门禁及派发见证字节保持，未产生第二次派发。Server 中断期间和启用重启后，原 TUN `ce678ec0ba0b4d3f9e792b5396ea7171` 的管理选路、进程身份、配置摘要、真实 HTTP 与分流 DNS 均通过。原生台账与原入站 `634254c2-28c2-480a-8404-7129faa4ea4f` 的回执一致，原发布仅派发一次。专属 cgroup 清理完成，共享服务及网络文件指纹一致。
+
+复验沿用 `ipc-http-inbound-tun` 和同构建 Linux 测试 apphost，并在测试程序集旁放置空文件 `external-version-server-cut.fixture` 以选择仅 Server 中断的分支。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-external-version-server-cut.log` SHA256 `9c8c5b018a6580826c400eb5a2fd89233dcb1c1956c6495fa1e805531a666bfc`，归档 SHA256 `0d9542df9f8518e36063f35a76a2c3e945d11b0c3baf10c0c6e8c728f0e390cc`。
+
+**未实现或仍受门禁保护。** 隔离夹具的父进程证据只用于实测。生产仍需由独立可信来源保存绑定原操作、原执行者、进程树及输出排空的见证，之后才能按原 ID 只读对账。Windows 原生 Job 故障窗口待验。此轮确认实际进程退出，整模块对象释放、ALC 回收、隔离负载内存及生产收益分别待验。Proxy 保持 resident。

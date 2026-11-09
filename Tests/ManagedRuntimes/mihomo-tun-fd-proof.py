@@ -3513,6 +3513,7 @@ exec {shlex.quote(str(systemctl))} "$@"
         fence = queue.with_name('mihomo-version-probe.pending')
         enabled = root / 'full-server/private-mihomo-version-fixture'
         pids = root / 'full-server/private-mihomo-version-pids'
+        server_cut = fixture.with_name('external-version-server-cut.fixture').is_file()
         request_body = {'engineId': 'mihomo', 'externalPath': str(fixture)}
         enabled.touch()
         assert request(route, data=request_body)[0] == 401 and not fence.exists()
@@ -3520,6 +3521,17 @@ exec {shlex.quote(str(systemctl))} "$@"
         assert status == 200 and runtime['mode'] == 'external' and 'Mihomo' in runtime['version'], (status, runtime)
         until(lambda: leases() == 0, 'version success scope drain')
         assert not fence.exists()
+
+        @contextmanager
+        def contextmanager_pidfds(*processes):
+            descriptors = []
+            try:
+                for pid in processes:
+                    descriptors.append(os.pidfd_open(pid))
+                yield descriptors
+            finally:
+                for descriptor in descriptors:
+                    os.close(descriptor)
 
         def start_probe():
             replies = []
@@ -3565,23 +3577,41 @@ exec {shlex.quote(str(systemctl))} "$@"
         thread, replies, owner, parent, descendant = start_probe()
         original = fence.read_bytes()
         original_id = json.loads(original)['OperationId']
-        owner_fd = os.pidfd_open(owner)
-        try:
-            signal.pidfd_send_signal(owner_fd, signal.SIGKILL)
-        finally:
-            os.close(owner_fd)
-        thread.join(timeout=7)
-        until(lambda: request(module_path, token)[1]['residency']['state'] == 'faulted', 'unknown external version cleanup quarantine')
-        assert leases() == 1 and fence.read_bytes() == original
-        for pid in (parent, descendant):
-            fd = os.pidfd_open(pid)
-            try:
-                signal.pidfd_send_signal(fd, signal.SIGKILL)
-            finally:
-                os.close(fd)
         original_processes = pids.read_bytes()
-        os.kill(server_pid, signal.SIGKILL)
-        assert worker.wait(timeout=12) == 0
+        if server_cut:
+            assert int(Path(f'/proc/{owner}/stat').read_text().rsplit(')', 1)[1].split()[1]) == server_pid
+            # Collect the original fixture worker's exit code after it is reparented.
+            prctl = ctypes.CDLL(None, use_errno=True).prctl
+            subreaper = ctypes.c_int()
+            assert prctl(37, ctypes.byref(subreaper), 0, 0, 0) == 0
+            assert prctl(36, 1, 0, 0, 0) == 0
+            try:
+                with contextmanager_pidfds(server_pid, owner, parent, descendant) as descriptors:
+                    signal.pidfd_send_signal(descriptors[0], signal.SIGKILL)
+                    assert worker.wait(timeout=12) == 0
+                    for descriptor in descriptors[1:]:
+                        ready = select.poll()
+                        ready.register(descriptor, select.POLLIN)
+                        assert ready.poll(8000), 'original probe process did not exit after Server cut'
+                    outcome = os.waitid(os.P_PIDFD, descriptors[1], os.WEXITED)
+                    assert outcome.si_pid == owner and outcome.si_code == os.CLD_EXITED and outcome.si_status == 0, outcome
+            finally:
+                assert prctl(36, subreaper.value, 0, 0, 0) == 0
+            thread.join(timeout=7)
+            assert replies == ['disconnected'] and fence.read_bytes() == original
+            assert all(not Path(f'/proc/{pid}').exists() for pid in (owner, parent, descendant))
+            probe(record, 'external-version-server-cut-before-restart')
+            print(f'PASS EXTERNAL VERSION SERVER CUT: original={original_id}; owner={owner} exited 0; root={parent} detached={descendant} reaped', flush=True)
+        else:
+            with contextmanager_pidfds(owner, parent, descendant) as descriptors:
+                signal.pidfd_send_signal(descriptors[0], signal.SIGKILL)
+                thread.join(timeout=7)
+                until(lambda: request(module_path, token)[1]['residency']['state'] == 'faulted', 'unknown external version cleanup quarantine')
+                assert leases() == 1 and fence.read_bytes() == original
+                for descriptor in descriptors[1:]:
+                    signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+            os.kill(server_pid, signal.SIGKILL)
+            assert worker.wait(timeout=12) == 0
         forced.unlink()
         worker = launch('admission-disabled')
         assert worker.wait(timeout=15) == 0
