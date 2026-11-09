@@ -130,6 +130,8 @@ Squid 配置夹具的 `/usr` 与宿主共享，真实 APT 生命周期使用独�
 
 同机只读核对未发现 QEMU、`qemu-img`、`virsh`、`systemd-nspawn` 或 `/dev/kvm`。现有覆盖根和命名空间使用共享宿主内核，无法在其中取得整机掉电证据。日志 `.artifacts/mb04-squid-package/power-gate.log` 的 SHA-256 为 `194e0336f0de0b72a329ba188a869683330fcacb3e541c85fae12f02d6e75a8b`。
 
+2026-11-10 在同一 Ubuntu 26.04 amd64 测试机再次验证专属可写根、独立 APT/dpkg 台账与固定 `7.7-0ubuntu0.26.04.2` 签名制品。APT 模拟仍只选中 Squid 升级。复核日志 `.artifacts/mb04-squid-package/isolation-recheck-latest.log` 的 SHA-256 为 `8cd0f3e39cabc59da38153fffb475303dd29805e111f9dc2cea8d1408f38d206`。升级、首次安装及保留数据卸载的终帧丢失原日志摘要均与下文一致，沿用已有原 ID、原终态和单次派发的验收。此次复核只执行专属写入探针和 APT 模拟。断电条件复核日志 `.artifacts/mb04-squid-package/power-gate-latest.log` 与前次 SHA-256 一致。
+
 ### 固定 Squid 包升级的原回执
 
 2026-11-09 在既有 Ubuntu 26.04 amd64 测试机验证专属 overlay 根。宿主根以只读 bind 作为下层，`/usr` 的探针写入只落在上层。APT、dpkg、缓存、日志、设备、服务单元和运行目录使用专属状态，进程、网络及挂载命名空间独立。预检模拟只升级 `squid`，`squid-common` 已满足固定依赖。用 Ubuntu 归档密钥验证 `resolute-updates` 的 InRelease，从签名 SHA-256 核对解压的 Packages 索引，再核对离线制品 `squid_7.7-0ubuntu0.26.04.2_amd64.deb`，SHA-256 为 `1f962274ff78f23bef1c908319c157c02fb7426a11dac2c4f91e847237e15bcb`。预检日志 `.artifacts/mb04-squid-package/isolation.log` 的 SHA-256 为 `ea22fa65368e3b9e9cce0107f038c7309e0651d332de250b02e4fd9275385a67`。

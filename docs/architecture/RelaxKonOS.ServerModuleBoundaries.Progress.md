@@ -44,7 +44,7 @@ Squid 已补齐[原包回执查询在途时再次中断](server-module-evidence/
 
 ## 专项证据入口
 
-MB-04 Squid 软件包的[现机准入与原日志](server-module-evidence/Proxy-Squid.md#当前测试机的准入复核)已复核。已有原回执矩阵覆盖进程中断和重启。下一项软件包持久性验收仍需专属断电环境。
+2026-11-10 已重新通过 MB-04 Squid 软件包的[现机准入与原日志核对](server-module-evidence/Proxy-Squid.md#当前测试机的准入复核)。现有原回执矩阵覆盖首次安装、固定升级和保留数据卸载的应答丢失、进程中断及重启。取得可独立断电的专属环境后，首先按原安装 ID 核对掉电前后的 Helper 回执和 APT/dpkg 台账。
 
 | 范围 | 原始记录 |
 | --- | --- |
