@@ -1406,3 +1406,16 @@ Windows Release 运行时 HTTP 57 项、发布 113 项、Core 安全和模块里
 ### 原补偿作业与独立宿主见证联合复验
 
 同一 Release 归档在独立私有 systemd 单元执行 `ipc-http-restored-job-cut`。原发布 `d08b3645e1314686be292e0a1eb39616` 的补偿作业为 `39`，原 invocation `22b10d5355e84bc99577d13b93ebffc9` 和已恢复进程 `514` 保持。暂扣原作业 ID 后，重启保留待核验并拒绝新键。放回原作业记录后，按原 ID 验证原 PID、启动时刻和配置摘要，同键返回原失败终态，恢复租约排空。全程一次 StartUnit，配置重派零次。管理选路、原解析器快照、运行配置和真实上游 HTTP 在原作业待核验、记录暂缺和终态三个阶段均一致。两个专属 cgroup 清理完成，共享服务及网络文件指纹一致。[联合日志与制品摘要](Proxy-Observation.md#外部-mihomo-版本探测的-pid-1-退出见证试验)
+
+
+### 补偿作业日志的原身份与时间边界
+
+**已实现且已验证。** Helper 从 PID 1 的日志读取原补偿作业后，复核实际返回的 PID、UID、启动 ID、单元、作业 ID、类型及结果。调用 ID 必须唯一且有效，日志时刻须落在原派发与读取之间。重复字段、错误类型或无效 JSON 保留同一待核验结果。
+
+Windows Release 模块边界回归通过。Linux 专属 systemd 在原发布 `77057e6a0a3d49bea4f8dc1439a16f56` 的补偿作业 `39` 已恢复旧服务后，暂扣原作业完成应答。夹具以同一真实日志为基线，分别替换启动 ID、作业 ID、未来时间、重复 invocation 和无效 JSON。五组均保留同键待核验、拒绝新键，原派发与停止见证不变，原配置服务 PID `509` 持续提供真实上游 HTTP，管理选路和解析器快照一致。恢复原日志后按同一作业和 invocation `99f3b90484fb4319abcb08b10016d16c` 写入原进程见证，同键读回原失败终态，租约排空。全程一次 StartUnit，配置重派为零。
+
+独立用例再次切断原发布 `02ef81e0942b4a609f09f2d9de7fe368` 的首次启动应答。原生作业 `39`、旧配置服务 PID `512` 和真实上游 HTTP 可观测。原作业 ID 未落盘时保留门禁，未重新派发或从当前服务回填。两组专属进程与 cgroup 清理通过，共享服务及网络文件指纹一致。
+
+实测入口为 `ipc-http-restored-job-cut` 和 `ipc-http-restored-dispatch-unknown`。在测试程序集旁放置空文件 `restored-job-journal-identity.fixture` 可启用五组日志异常注入。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-job-journal-identity.log` SHA256 `cad09e7cfdba3bae661002d111b8aa95577616de2ecf9f9058054d21b2f81a57`，归档 SHA256 `be99fbecf03254010c647b8d416a6aaadb5d8e3a0254c679eb3a0925a5a032fc`。
+
+**仍待验收。** 首次 StartUnit 应答的歧义格式另行核对。此轮分别确认原进程连续性与专属进程退出。整模块对象释放、ALC 回收、隔离负载内存与生产收益仍独立待验。Proxy 保持 resident。

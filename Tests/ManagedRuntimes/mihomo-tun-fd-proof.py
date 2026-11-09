@@ -318,6 +318,10 @@ if [[ "$*" == *"UNIT={unit}"*"JOB_TYPE=start JOB_RESULT=done"* ]]; then
         mv "$work/restored-job-observed.new" "$work/restored-job-observed"
         while [[ ! -f "$work/release-restored-job" ]]; do sleep .05; done
     fi
+    if [[ -f "$work/restored-job-journal-override" ]]; then
+        cat "$work/restored-job-journal-override"
+        exit 0
+    fi
     printf '%s\n' "$result"
     exit 0
 fi
@@ -2641,6 +2645,33 @@ def proof_full_http_shutdown(ipc, case):
             return
         assert not dispatch.exists() and hidden.read_bytes() == evidence
         hidden.rename(dispatch)
+
+        if Path(sys.argv[3]).with_name('restored-job-journal-identity.fixture').is_file():
+            override = root / 'restored-job-journal-override'
+            malformed = [
+                ('wrong-boot', json.dumps({**logged, '_BOOT_ID': uuid.uuid4().hex})),
+                ('wrong-job', json.dumps({**logged, 'JOB_ID': str(recorded['JobId'] + 1)})),
+                ('future', json.dumps({**logged, '__MONOTONIC_TIMESTAMP': str(2**63)})),
+                ('duplicate-invocation', '{"INVOCATION_ID":"' + uuid.uuid4().hex + '",' + json.dumps(logged)[1:]),
+                ('malformed', '{'),
+            ]
+            for phase, reply in malformed:
+                override.write_text(reply + '\n')
+                ipc.start_helper()
+                worker = launch('restart')
+                pid = int(marker('full-server-pid'))
+                token = login()
+                until(lambda: 'operation=MihomoRuntimeRecover ' in ipc.log.read_text(), 'original journal refusal ' + phase)
+                assert pending()['recoveryProblemCode'] == 'runtime.network_restored_start_unconfirmed'
+                status, blocked = request(api + '/tun/enable', token, 'full-restored-job-cut-' + phase, {'profileId': profile})
+                assert status == 400 and blocked['problemCode'] == 'proxy.operation_interrupted'
+                assert dispatch.read_bytes() == evidence and 'operation=MihomoRuntimeConfigure ' not in ipc.log.read_text()
+                probe_restored(phase)
+                os.kill(pid, signal.SIGTERM)
+                assert worker.wait(timeout=12) == 0
+                ipc.stop_helper()
+            override.unlink()
+            print(f'PASS TUN RESTORED JOURNAL IDENTITY: original={publication}; all five invalid records refused without replay', flush=True)
 
         ipc.start_helper()
         worker = launch('restart')

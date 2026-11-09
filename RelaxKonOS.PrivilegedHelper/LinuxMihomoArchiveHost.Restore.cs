@@ -213,28 +213,49 @@ internal sealed partial class LinuxMihomoArchiveHost
 
     private static async Task<RestoredStartJob> ReadRestoredJobResultAsync(RestoredStartDispatch dispatch, CancellationToken ct)
     {
+        var bootId = dispatch.BootId.ToString("N");
+        var jobId = dispatch.JobId.ToString(CultureInfo.InvariantCulture);
         for (var attempt = 0; attempt < 30; attempt++)
         {
             ct.ThrowIfCancellationRequested();
             var journal = await RunAsync("/usr/bin/journalctl", ["--quiet", "--no-pager", "--output=json",
-                "--output-fields=INVOCATION_ID", "--lines=2", "_PID=1", "_UID=0", $"_BOOT_ID={dispatch.BootId:N}",
-                $"UNIT={Unit}", $"JOB_ID={dispatch.JobId.ToString(CultureInfo.InvariantCulture)}", "JOB_TYPE=start", "JOB_RESULT=done"]);
+                "--output-fields=_PID,_UID,_BOOT_ID,UNIT,JOB_ID,JOB_TYPE,JOB_RESULT,INVOCATION_ID", "--lines=2",
+                "_PID=1", "_UID=0", $"_BOOT_ID={bootId}", $"UNIT={Unit}", $"JOB_ID={jobId}", "JOB_TYPE=start", "JOB_RESULT=done"]);
             var entries = journal.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (entries.Length > 1) Fail("network_restored_start_unconfirmed");
             if (entries.Length == 1)
             {
-                using var entry = JsonDocument.Parse(entries[0]);
-                var fields = entry.RootElement;
-                if (!fields.TryGetProperty("INVOCATION_ID", out var value) || value.ValueKind != JsonValueKind.String
-                    || !Guid.TryParseExact(value.GetString(), "N", out var invocation) || invocation == Guid.Empty
-                    || !ulong.TryParse(fields.GetProperty("__MONOTONIC_TIMESTAMP").GetString(), NumberStyles.None,
-                        CultureInfo.InvariantCulture, out var timestamp) || timestamp < dispatch.DispatchedAt)
-                    throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+                var invocation = ValidateRestoredJobResult(entries[0], dispatch, bootId, jobId);
                 return new(dispatch.OperationId, dispatch.BootId, dispatch.JobId, invocation);
             }
             await Task.Delay(100, ct);
         }
         throw new RuntimePolicyException("runtime.network_restored_start_unconfirmed");
+    }
+
+    private static Guid ValidateRestoredJobResult(string line, RestoredStartDispatch dispatch, string bootId, string jobId)
+    {
+        const string problem = "runtime.network_restored_start_unconfirmed";
+        try
+        {
+            using var entry = JsonDocument.Parse(line);
+            if (entry.RootElement.ValueKind != JsonValueKind.Object) throw new RuntimePolicyException(problem);
+            var fields = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+            foreach (var field in entry.RootElement.EnumerateObject())
+                if (!fields.TryAdd(field.Name, field.Value)) throw new RuntimePolicyException(problem);
+
+            if (Text("_PID") != "1" || Text("_UID") != "0" || Text("_BOOT_ID") != bootId
+                || Text("UNIT") != Unit || Text("JOB_ID") != jobId || Text("JOB_TYPE") != "start" || Text("JOB_RESULT") != "done"
+                || !Guid.TryParseExact(Text("INVOCATION_ID"), "N", out var invocation) || invocation == Guid.Empty
+                || !ulong.TryParse(Text("__MONOTONIC_TIMESTAMP"), NumberStyles.None, CultureInfo.InvariantCulture, out var timestamp)
+                || timestamp < dispatch.DispatchedAt || timestamp > MonotonicMicroseconds())
+                throw new RuntimePolicyException(problem);
+            return invocation;
+
+            string? Text(string name) => fields.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString() : null;
+        }
+        catch (JsonException) { throw new RuntimePolicyException(problem); }
     }
 
     private static async Task<RestoredStartDispatch> ReadRestoredJobDispatchAsync(Guid operation, CancellationToken ct)
