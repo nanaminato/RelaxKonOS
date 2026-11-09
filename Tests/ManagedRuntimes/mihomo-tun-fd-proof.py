@@ -2668,11 +2668,11 @@ def proof_full_http_shutdown(ipc, case):
             old_password = secrets.token_urlsafe(24)
             new_password = secrets.token_urlsafe(24)
 
-            def authenticate(password):
+            def authenticate(password, account=username):
                 result = subprocess.run(['/usr/bin/curl', '--config', '-', '--noproxy', '', '--silent', '--fail',
                                          '--max-time', '3', '--proxy', 'http://127.0.0.1:18883',
                                          f'http://192.0.2.2:{upstream.server_port}/squid-authenticated'],
-                                        input=f'proxy-user = "{username}:{password}"\n', text=True,
+                                        input=f'proxy-user = "{account}:{password}"\n', text=True,
                                         capture_output=True, timeout=5)
                 return result.returncode == 0 and result.stdout == 'upstream-through-inherited-tun'
 
@@ -2734,6 +2734,76 @@ def proof_full_http_shutdown(ipc, case):
                             'last enabled account refusal')
             assert refusal['state'] == 'failed' and refusal['problemCode'] == 'squid.accounts.last_enabled_required'
             assert reloads.read_bytes() == counters and authenticate(new_password)
+
+            secondary = 'isolated-secondary'
+            secondary_password = secrets.token_urlsafe(24)
+            mutations = (
+                ('create', {'action': 'Create', 'username': secondary, 'password': secondary_password}, True),
+                ('disable', {'action': 'SetEnabled', 'username': secondary, 'enabled': False}, False),
+                ('enable', {'action': 'SetEnabled', 'username': secondary, 'enabled': True}, True),
+                ('delete', {'action': 'Delete', 'username': secondary}, None),
+            )
+            for name, payload, enabled in mutations:
+                pid = restart('squid-account-cut', pid)
+                key = 'squid-account-' + name + '-matrix'
+                status, accepted = request(accounts, token, key, payload)
+                assert status == 202, (status, accepted)
+                account_id = accepted['operationId']
+                assert uuid.UUID(marker('full-squid-response-held')) == uuid.UUID(account_id)
+                assert read(account_id)['state'] == 'running' and leases() == 1
+                assert request(accounts, token, key, payload) == (202, accepted)
+                until(lambda: authenticate(secondary_password, secondary) == (enabled is True),
+                      'secondary authentication ' + name)
+                assert authenticate(new_password)
+                assert reloads.read_bytes() == counters + b'reload\n'
+                counters = reloads.read_bytes()
+                original_path = receipt.parent / (uuid.UUID(account_id).hex + '.json')
+                original_bytes = original_path.read_bytes()
+                cut(pid)
+                pid = relaunch()
+                final = terminal(account_id)
+                assert final['completedAt'] and request(accounts, token, key, payload) == (202, accepted)
+                assert read(account_id) == final and leases() == 0
+                status, metadata = request(accounts, token)
+                assert status == 200
+                expected = [] if enabled is None else [{'username': secondary, 'enabled': enabled}]
+                assert [item for item in metadata if item['username'] == secondary] == expected
+                assert authenticate(secondary_password, secondary) == (enabled is True)
+                assert authenticate(new_password) and reloads.read_bytes() == counters
+                assert original_path.read_bytes() == original_bytes and secondary_password.encode() not in original_bytes
+                audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+                assert audit.count(f'operation=SquidAccountMutate id={account_id} ') == 1
+                assert f'operation=SquidAccountReceipt id={account_id} ' in audit
+                print(f'PASS SQUID ACCOUNT ACTION: action={name}; original={account_id}; '
+                      'native authentication and original receipt after restart', flush=True)
+
+            pid = restart('squid-account-cut', pid)
+            reject.touch()
+            rejected_password = secrets.token_urlsafe(24)
+            rollback = dict(mutation, password=rejected_password)
+            key = 'squid-account-rollback'
+            status, accepted = request(accounts, token, key, rollback)
+            assert status == 202, (status, accepted)
+            rollback_id = accepted['operationId']
+            assert uuid.UUID(marker('full-squid-response-held')) == uuid.UUID(rollback_id)
+            assert read(rollback_id)['state'] == 'running' and leases() == 1
+            assert authenticate(new_password) and not authenticate(rejected_password)
+            assert reloads.read_bytes() == counters + b'reload\nreload\n'
+            counters = reloads.read_bytes()
+            record_path = receipt.parent / (uuid.UUID(rollback_id).hex + '.json')
+            rollback_record = record_path.read_bytes()
+            assert json.loads(rollback_record)['Receipt']['Problem'] == 'squid.accounts.failed_rolled_back'
+            cut(pid)
+            pid = relaunch()
+            failed = read(rollback_id)
+            assert failed['state'] == 'failed' and failed['completedAt'] and failed['problemCode'] == 'squid.accounts.failed_rolled_back'
+            assert request(accounts, token, key, rollback) == (202, accepted) and read(rollback_id) == failed
+            assert authenticate(new_password) and not authenticate(rejected_password) and leases() == 0
+            assert record_path.read_bytes() == rollback_record and reloads.read_bytes() == counters
+            audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
+            assert audit.count(f'operation=SquidAccountMutate id={rollback_id} ') == 1
+            assert f'operation=SquidAccountReceipt id={rollback_id} ' in audit
+            print(f'PASS SQUID ACCOUNT ROLLBACK: original={rollback_id}; one attempt and one real rollback', flush=True)
 
             pid = restart('squid-restart', pid)
             interrupted_password = secrets.token_urlsafe(24)
