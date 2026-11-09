@@ -4356,6 +4356,8 @@ exec {shlex.quote(str(systemctl))} "$@"
             probe(tun_record, 'overview-cleanup-quarantined')
             cut(pid)
             (root / 'full-overview-cleanup-proof').unlink()
+            squid_cleanup = root / 'full-squid-cleanup-proof'
+            squid_cleanup.touch()
             pid = relaunch()
             management_overview()
             verify_squid_observations(200)
@@ -4364,6 +4366,45 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
             probe(tun_record, 'overview-cleanup-restarted')
             print('PASS OVERVIEW CLEANUP TUN CONTINUITY: original sample quarantined, new reads blocked, same TUN and receipt after restart', flush=True)
+
+            module_path = '/api/v1.0/server/modules/relaxkonos.proxy'
+            generation_log = marker('full-squid-generation')
+            assert len(generation_log.splitlines()) == 1
+            generation = generation_log.split('(generation ')[1].strip().removesuffix(')')
+            queue_before_cleanup = queue.read_bytes()
+            prefix = root / 'full-server/full-squid-cleanup'
+            Path(f'{prefix}-arm').touch()
+            Path(f'{prefix}-fail').touch()
+            try:
+                status, observed_status = request(api_root + '/status', token)
+                assert status == 200 and observed_status['running']
+                until(lambda: Path(f'{prefix}-held').exists(), 'Squid status scope cleanup after response')
+                active = request(module_path, token)[1]['residency']
+                assert active['state'] == 'resident' and active['activeLeases'] == 1, active
+                probe(tun_record, 'squid-cleanup-held')
+            finally:
+                Path(f'{prefix}-release').touch()
+            fault = until(lambda: state if (state := request(module_path, token)[1]['residency'])['state'] == 'faulted' else None,
+                          'Squid scope cleanup isolation')
+            assert fault['activeLeases'] == 1 and marker('full-squid-generation') == generation_log
+            assert fault['blockedBy'] == 'module-recovery-blocked'
+            before = [line for line in ipc.log.read_text().splitlines() if any(f'operation={kind} ' in line for kind in observations)]
+            verify_squid_observations(503)
+            after = [line for line in ipc.log.read_text().splitlines() if any(f'operation={kind} ' in line for kind in observations)]
+            assert before == after and queue.read_bytes() == queue_before_cleanup
+            assert receipt.read_bytes() == original_receipt and forward(18884, 'cleanup-fault')
+            probe(tun_record, 'squid-cleanup-quarantined')
+            cut(pid)
+            squid_cleanup.unlink()
+            (root / 'full-squid-generation').unlink()
+            for marker_name in ('arm', 'fail', 'held', 'release'):
+                Path(f'{prefix}-{marker_name}').unlink()
+            pid = relaunch()
+            verify_squid_observations(200)
+            assert read(operation) == confirmed and receipt.read_bytes() == original_receipt
+            assert (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes()) == tun_witness
+            probe(tun_record, 'squid-cleanup-restarted')
+            print(f'PASS SQUID RESPONSE CLEANUP OWNER: generation={generation}; HTTP completed, one lease retained after cleanup failure, original receipt after restart', flush=True)
             audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
             assert audit.count(f'operation=SquidApplyConfiguration id={operation} ') == 1
             assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(tun_record["operation"])} ') == 1

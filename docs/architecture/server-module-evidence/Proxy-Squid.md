@@ -128,6 +128,8 @@ Squid 配置夹具的 `/usr` 与宿主共享，真实 APT 生命周期使用独�
 
 重新计算了[升级](#server-存活时丢失软件包终帧)、[首次安装和保留数据卸载](#首次安装与保留数据卸载的终帧丢失矩阵)三份原日志的摘要，均与台账相符。原日志逐项记录原安装 ID、同键跨重启终态、一次 Helper 派发、一次真实 dpkg 变更、专属资源清理及宿主指纹一致。本轮只运行隔离预检与 APT 模拟。整机掉电证据仍需要可独立断电并检查持久状态的专属主机。
 
+同机只读核对未发现 QEMU、`qemu-img`、`virsh`、`systemd-nspawn` 或 `/dev/kvm`。现有覆盖根和命名空间使用共享宿主内核，无法在其中取得整机掉电证据。日志 `.artifacts/mb04-squid-package/power-gate.log` 的 SHA-256 为 `194e0336f0de0b72a329ba188a869683330fcacb3e541c85fae12f02d6e75a8b`。
+
 ### 固定 Squid 包升级的原回执
 
 2026-11-09 在既有 Ubuntu 26.04 amd64 测试机验证专属 overlay 根。宿主根以只读 bind 作为下层，`/usr` 的探针写入只落在上层。APT、dpkg、缓存、日志、设备、服务单元和运行目录使用专属状态，进程、网络及挂载命名空间独立。预检模拟只升级 `squid`，`squid-common` 已满足固定依赖。用 Ubuntu 归档密钥验证 `resolute-updates` 的 InRelease，从签名 SHA-256 核对解压的 Packages 索引，再核对离线制品 `squid_7.7-0ubuntu0.26.04.2_amd64.deb`，SHA-256 为 `1f962274ff78f23bef1c908319c157c02fb7426a11dac2c4f91e847237e15bcb`。预检日志 `.artifacts/mb04-squid-package/isolation.log` 的 SHA-256 为 `ea22fa65368e3b9e9cce0107f038c7309e0651d332de250b02e4fd9275385a67`。
@@ -257,9 +259,17 @@ Linux 专属 systemd 的完整认证 Server 在真实 Squid 与活跃受管 TUN 
 
 原始实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-squid-observation.log` 的 SHA-256 为 `3fcb371d73188b3eef33086d888a5c6f8fe8a887670702e71deb3daa8a2eeea0`，归档为 `3856fdcde96b3d96eb47bb8506cf61a1ccbf24abee84e3e11c5bd02b3e31b23f`。
 
-**已实现但实机未验证。** Squid 自己的作用域在响应完成后清理失败的实机边界仍待核对。此轮验证专属进程退出，对象释放、ALC、隔离内存和生产收益分别待测。
+**已实现但实机未验证。** Squid 自己的清理故障见下一节。此轮验证专属进程退出，对象释放、ALC、隔离内存和生产收益分别待测。
 
 **未实现或仍受门禁保护。** 整模块动态交接仍开放，Proxy 保持 resident。
+
+#### Squid 状态响应后的清理责任
+
+**已验证。** Linux 专属 systemd 使用真实 Squid 状态请求。客户端已收到含真实运行状态的 HTTP 200，前台作用域的异步清理仍持一项工作租约。故意触发清理失败后，第 1 代保留该租约并进入 `module-recovery-blocked`，加载日志仅有该代。五条管理路由继续返回 503，Helper 观察请求数保持。原队列及 Squid 发布回执逐字节保持，Mihomo 真实 HTTP 和分流 DNS 通过。
+
+确认故障 Server 退出后，启用启动恢复五条路由，并按原 `068c4c90-72d0-47e8-a980-ac54850f93b7` 读取相同 Squid 终态。原重载只执行一次。完整 Release Linux 矩阵、Windows Release Squid、Core 安全及模块里程碑均通过。早期夹具误读了公开诊断的代次和驻留字段，并漏登记预期的强制退出，均已修正。日志 `.artifacts/mb04-tun-full-zero-dns/linux-squid-cleanup-owner-restart.log` 的 SHA-256 为 `ddc009ab8305c7b55b4092d92a273314e2240e6adc551382858c2e4b81eb8d13`，归档为 `5a495ec0da1a01811add7ec6e500d8e830c70f7edba79d4059c22f4f485c45b6`。专属 cgroup 已清理，宿主共享运行时、代理及 resolver 指纹一致。
+
+**仍待验收。** 本场景确认实际进程退出。故障作用域对象释放、ALC、隔离负载内存、生产收益及整模块动态交接分别开放。
 
 **已实现但实机未验证。** 本次确认故障进程退出、原运行时连续性和 Core guard 的实际修复。对象释放、ALC 回收、隔离负载内存和生产收益分别待测。
 

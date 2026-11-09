@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using RelaxKonOS.Server.GatewayProxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Proxy;
 
@@ -12,6 +13,7 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
     internal static void RegisterOverview(string root) => Register(root, typeof(IProxyPlatformService), "full-overview-cleanup");
 
     internal static void RegisterSettings(string root) => Register(root, typeof(IProxySettingsWriter), "full-settings-cleanup");
+    internal static void RegisterSquid(string root) => Register(root, typeof(SquidGatewayService), "full-squid-cleanup");
 
     private static void Register(string root, Type serviceType, string prefix)
     {
