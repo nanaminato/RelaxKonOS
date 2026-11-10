@@ -6,6 +6,9 @@ using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Files;
+using RelaxKonOS.Server.Docker;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -39,6 +42,21 @@ public static class ApplicationDeploymentEndpoints
         group.MapGet(ApplicationDeploymentApiRoutes.CatalogTemplatePattern,
             (string templateId, string templateVersion) =>
                 Handle(() => Results.Ok(ApplicationCatalog.Require(templateId, templateVersion).Describe())))
+            .RequireAuthorization(ReadPolicy);
+
+        group.MapGet(ApplicationDeploymentApiRoutes.CatalogTopologyPattern,
+            (string templateId, string templateVersion, int hostPort, HttpContext http) =>
+                ResidentScopedResponse.ExecuteAsync(http, http.RequestServices.GetRequiredService<IResidentModuleWorkLeaseSource>(),
+                    ServerModules.DockerId, (services, ct) => HandleAsync(async () =>
+                    {
+                        var release = ApplicationCatalog.Require(templateId, templateVersion);
+                        var plan = release.CompileTopology(Guid.NewGuid(), hostPort);
+                        try { await services.GetRequiredService<IDockerComposeService>().PreviewManagedAsync(plan, ct); }
+                        catch (DockerStackException error) { return Problem(error.ProblemCode, error.StatusCode); }
+                        return Results.Ok(new CatalogApplicationTopologyDto(release.Id, release.Version, "127.0.0.1", hostPort,
+                            release.WebService, release.HealthPath, [.. release.Services.Select(service => new CatalogApplicationServiceDto(
+                                service.Id, service.ImageReference, service.ContainerPort, service.DependsOn, service.Volumes))]));
+                    }), static error => error is DockerComposeCleanupException))
             .RequireAuthorization(ReadPolicy);
 
         group.MapPost(ApplicationDeploymentApiRoutes.CatalogInstallPattern,

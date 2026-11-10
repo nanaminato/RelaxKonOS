@@ -92,6 +92,7 @@ internal sealed class ApplicationCatalogView : UserControl
         if (SelectedRelease is not { } release) return;
 
         install.IsEnabled = release is { Trusted: true, Withdrawn: false, SchemaVersion: "2", Source: "built-in" }
+            && !release.RequiredCapabilities.Contains("server.application-deployments.compose", StringComparer.Ordinal)
             && release.Fields.All(field => field.Type is "text" or "secret");
         var volumes = string.Join(", ", release.Volumes.Select(volume => volume.ContainerPath));
         details.Text = $"{release.Description}\n{release.MaintenanceNotes}\n"

@@ -100,6 +100,7 @@ internal static class DockerComposeHttpChecks
     {
         public Task<IReadOnlyList<DockerStackDto>> ListAsync(CancellationToken ct) => ReadAsync<IReadOnlyList<DockerStackDto>>([]);
         public Task<DockerStackPreviewDto> PreviewAsync(DockerStackDefinitionDto definition, CancellationToken ct) => ReadAsync(new DockerStackPreviewDto(definition.Name, "fixture", [], [], []));
+        public Task<DockerStackPreviewDto> PreviewManagedAsync(ManagedComposePlan plan, CancellationToken ct) => throw new NotSupportedException();
         public Task<DockerStackDefinitionDto?> GetDefinitionAsync(string name, CancellationToken ct) => ReadAsync<DockerStackDefinitionDto?>(new(name, "services: {}"));
         public Task<IReadOnlyList<DockerStackServiceDto>> ListServicesAsync(string name, CancellationToken ct) => ReadAsync<IReadOnlyList<DockerStackServiceDto>>([]);
         public Task<DockerStackMutationResult> DeployAsync(DockerStackDefinitionDto definition, CancellationToken ct) => throw new NotSupportedException();

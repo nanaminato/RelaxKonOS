@@ -43,6 +43,13 @@ public sealed record ApplicationCatalogTextDto(
     [property: JsonPropertyName("zh")] string Chinese,
     [property: JsonPropertyName("ja")] string Japanese);
 
+/// <summary>Validated topology for a catalog release. No resource has been allocated.</summary>
+public sealed record CatalogApplicationTopologyDto(string TemplateId, string TemplateVersion, string BindAddress,
+    int HostPort, string WebService, string HealthPath, IReadOnlyList<CatalogApplicationServiceDto> Services);
+
+public sealed record CatalogApplicationServiceDto(string Id, string ImageReference, int ContainerPort,
+    IReadOnlyList<string> DependsOn, IReadOnlyList<ApplicationVolumeDto> Volumes);
+
 /// <summary>One supplied field value. Secret values are accepted only to create the protected deployment secret.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record ApplicationCatalogFieldValueDto(

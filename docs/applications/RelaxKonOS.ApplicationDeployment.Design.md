@@ -88,6 +88,7 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 | GET | `/templates` | 四个模板的能力描述 | Read |
 | GET | `/catalog` | 可信、版本化的应用用途模板目录（不含可执行脚本） | Read |
 | GET | `/catalog/{templateId}/{templateVersion}` | 一个精确发布的受限字段与维护说明 | Read |
+| GET | `/catalog/{templateId}/{templateVersion}/topology?hostPort=…` | 双服务包的只读 Compose 拓扑校验和回环端口、依赖、卷布局预览 | Read |
 | POST | `/catalog/install` | 用精确模板版本和显式宿主端口创建定义并排队首次部署 → `202` | Manage |
 | GET | `/applications/{id}/catalog-update?templateVersion=…` | 精确模板版本与当前定义/修订的只读更新预览 | Read |
 | POST | `/applications/{id}/catalog-update` | 确认预览中的精确目标镜像、当前修订和定义时间，保留定义、秘密引用与卷并排队升级 → `202` | Manage |

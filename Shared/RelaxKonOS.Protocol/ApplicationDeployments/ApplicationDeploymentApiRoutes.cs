@@ -20,6 +20,7 @@ public static class ApplicationDeploymentApiRoutes
     public const string CatalogInstall = Catalog + "/install";
     public const string CatalogPattern = "/catalog";
     public const string CatalogTemplatePattern = "/catalog/{templateId}/{templateVersion}";
+    public const string CatalogTopologyPattern = "/catalog/{templateId}/{templateVersion}/topology";
     public const string CatalogInstallPattern = "/catalog/install";
 
     /// <summary>Recent selectable tags for a public image repository.</summary>

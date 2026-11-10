@@ -19,6 +19,15 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
     public async Task<DockerStackPreviewDto> PreviewAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default)
     {
         Validate(definition);
+        return await PreviewConfigurationAsync(definition, DockerComposeSubsetValidation.RequireUnmanagedConfiguration, cancellationToken);
+    }
+
+    public Task<DockerStackPreviewDto> PreviewManagedAsync(ManagedComposePlan plan, CancellationToken cancellationToken = default) =>
+        PreviewConfigurationAsync(plan.RenderPreview(), plan.RequireResolvedTopology, cancellationToken);
+
+    private async Task<DockerStackPreviewDto> PreviewConfigurationAsync(DockerStackDefinitionDto definition,
+        Action<JsonElement> requireConfiguration, CancellationToken cancellationToken)
+    {
         var directory = Path.Combine(dataDirectory, "preview", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var composePath = Path.Combine(directory, "compose.yaml");
@@ -27,7 +36,7 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
             await File.WriteAllTextAsync(composePath, definition.ComposeYaml, cancellationToken);
             var result = await RunAsync(["compose", "--project-name", definition.Name, "--file", composePath, "config", "--format", "json"], cancellationToken);
             if (!result.Success) throw new DockerStackException(ToProblemCode(result.Error), 409);
-            return ParsePreview(definition, result.Output);
+            return ParsePreview(definition, result.Output, requireConfiguration);
         }
         finally
         {
@@ -39,7 +48,7 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
 
     /// <summary>Reads the Compose parser's own JSON. Only the members an operator can act on are kept;
     /// anything unrecognised is ignored rather than guessed at.</summary>
-    private static DockerStackPreviewDto ParsePreview(DockerStackDefinitionDto definition, string json)
+    private static DockerStackPreviewDto ParsePreview(DockerStackDefinitionDto definition, string json, Action<JsonElement> requireConfiguration)
     {
         var services = new List<DockerStackPreviewServiceDto>();
         var volumes = new List<string>();
@@ -48,7 +57,7 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
         {
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
-            DockerComposeSubsetValidation.RequireUnmanagedConfiguration(root);
+            requireConfiguration(root);
             if (root.TryGetProperty("services", out var serviceMap) && serviceMap.ValueKind == JsonValueKind.Object)
             {
                 foreach (var service in serviceMap.EnumerateObject())

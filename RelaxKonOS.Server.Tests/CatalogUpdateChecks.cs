@@ -9,6 +9,7 @@ using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Files;
+using RelaxKonOS.Server.Residency;
 
 internal static class CatalogUpdateChecks
 {
@@ -23,6 +24,7 @@ internal static class CatalogUpdateChecks
     private static async Task VerifyAsync(string root)
     {
         VerifyManifestDirectory(root);
+        VerifyTopologyManifest();
         await VerifyEngineBoundariesAsync();
         var environment = new TestHostEnvironment(root);
         var options = new ApplicationDeploymentOptions();
@@ -112,12 +114,27 @@ internal static class CatalogUpdateChecks
         builder.Services.AddSingleton(options); builder.Services.AddSingleton(manager); builder.Services.AddSingleton(coordinator);
         builder.Services.AddSingleton<ApplicationDeploymentDefinitionMutationStore>(); builder.Services.AddSingleton<ApplicationDeploymentStagingStore>();
         builder.Services.AddSingleton<IFileService>(_ => throw new NotSupportedException());
+        var compose = new FakeComposeService();
+        var composeLeases = new TestResidentBackgroundLeases();
+        builder.Services.AddSingleton<IDockerComposeService>(compose);
+        builder.Services.AddSingleton<IResidentModuleWorkLeaseSource>(composeLeases);
         await using var host = builder.Build();
         host.UseAuthentication(); host.UseAuthorization(); host.MapApplicationDeploymentEndpoints(); await host.StartAsync();
         using var http = new HttpClient { BaseAddress = new Uri(host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
         var route = ApplicationDeploymentApiRoutes.CatalogUpdate(app.Id);
+        var topologyRoute = ApplicationDeploymentApiRoutes.Catalog + "/fixture-web-db-plan/1.0.0/topology?hostPort=18083";
+        using (var denied = await http.GetAsync(topologyRoute))
+            Check(denied.StatusCode == HttpStatusCode.Unauthorized && composeLeases.Acquired == 0,
+                "An unauthorized topology read must not admit Compose parser work.");
         using (var denied = await http.GetAsync(route + "?templateVersion=1.0.0")) Check(denied.StatusCode == HttpStatusCode.Unauthorized, "Preview requires authentication.");
         http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
+        using (var topology = await http.GetAsync(topologyRoute))
+        {
+            var reply = await topology.Content.ReadFromJsonAsync<CatalogApplicationTopologyDto>(RelaxKonOSJsonOptions.Default);
+            Check(topology.IsSuccessStatusCode && reply is { BindAddress: "127.0.0.1", HostPort: 18083, WebService: "web", Services.Count: 2 }
+                && compose.ManagedPreview is { HostPort: 18083 } && composeLeases.Acquired == 1 && operations.Read().Length == 0,
+                "The topology route passes a typed plan to Compose and returns public topology without allocating an operation.");
+        }
         var detail = $"{ApplicationDeploymentApiRoutes.Catalog}/{target.Id}/{target.Version}";
         using (var release = await http.GetAsync(detail))
             Check((await release.Content.ReadFromJsonAsync<ApplicationCatalogTemplateDto>(RelaxKonOSJsonOptions.Default))?.Version == target.Version,
@@ -134,6 +151,15 @@ internal static class CatalogUpdateChecks
         }
         using (var denied = await http.PostAsJsonAsync(route, request, RelaxKonOSJsonOptions.Default)) Check(denied.StatusCode == HttpStatusCode.Forbidden, "Reading a preview does not grant update permission.");
         http.DefaultRequestHeaders.Remove("X-Test-Role"); http.DefaultRequestHeaders.Add("X-Test-Role", "controller");
+        using (var blockedInstall = new HttpRequestMessage(HttpMethod.Post, ApplicationDeploymentApiRoutes.CatalogInstall))
+        {
+            blockedInstall.Headers.Add("Idempotency-Key", "multi-execution-unavailable");
+            blockedInstall.Content = JsonContent.Create(new InstallCatalogApplicationRequest("fixture-web-db-plan", "1.0.0",
+                "unavailable-multi", 18083, [new("password", "fixture-only")], true), options: RelaxKonOSJsonOptions.Default);
+            using var rejected = await http.SendAsync(blockedInstall);
+            Check(rejected.StatusCode == HttpStatusCode.Conflict && catalog.FindByName("unavailable-multi") is null && operations.Read().Length == 0,
+                "A preview-only release must not allocate a definition, secrets or an operation.");
+        }
         using (var noKey = await http.PostAsJsonAsync(route, request, RelaxKonOSJsonOptions.Default)) Check(noKey.StatusCode == HttpStatusCode.BadRequest, "Update requires an idempotency key.");
         http.DefaultRequestHeaders.Add("Idempotency-Key", "catalog-update-test");
         using (var unconfirmed = await http.PostAsJsonAsync(route, request with { Confirmed = false }, RelaxKonOSJsonOptions.Default)) Check(unconfirmed.StatusCode == HttpStatusCode.BadRequest, "Update requires explicit confirmation.");
@@ -224,6 +250,25 @@ internal static class CatalogUpdateChecks
         Console.WriteLine("Catalog checks passed, including exact predecessor and target digest, bypass refusal, retained records and original receipt fencing.");
     }
 
+    private static void VerifyTopologyManifest()
+    {
+        var release = ApplicationCatalog.Require("fixture-web-db-plan", "1.0.0");
+        var web = release.Services.Single(service => service.Id == "web");
+        var db = release.Services.Single(service => service.Id == "db");
+        Check(!(release with { Services = [web, db with { DependsOn = ["web"] }] }).IsValid(),
+            "A service dependency cycle cannot be admitted.");
+        Check(!(release with { Services = [web with { DependsOn = ["external"] }, db] }).IsValid(),
+            "An undeclared dependency cannot be admitted.");
+        var password = release.Fields.Single();
+        Check(!(release with { Fields = [password with { Bindings = [new("external", "PASSWORD")] }] }).IsValid(),
+            "A package field cannot inject values into an undeclared service.");
+        var compiled = release.CompileTopology(Guid.NewGuid(), 18083);
+        Check(compiled.Services.Count == 2 && compiled.Services.Single(service => service.Id == "db").EnvironmentNames.SequenceEqual(["POSTGRES_PASSWORD"]),
+            "Both service identities and the database secret target must be carried in the plan.");
+        Expect(() => release.Bind(new(release.Id, release.Version, "not-deployed", 18083, [], true)), ApplicationDeploymentProblemCodes.NotSupported);
+        Console.WriteLine("Managed catalog topology rejects cycles and undeclared injection targets before installation.");
+    }
+
     private static void VerifyManifestDirectory(string root)
     {
         var directory = Directory.CreateDirectory(Path.Combine(root, "packages")).FullName;
@@ -239,8 +284,8 @@ internal static class CatalogUpdateChecks
         foreach (var invalid in new[]
         {
             original,
-            original.Replace("\"2\"", "\"1\"", StringComparison.Ordinal),
-            original.Replace("\"schemaVersion\": \"2\"", "\"schemaVersion\": \"2\", \"schemaVersion\": \"2\"", StringComparison.Ordinal),
+            original.Replace("\"3\"", "\"2\"", StringComparison.Ordinal),
+            original.Replace("\"schemaVersion\": \"3\"", "\"schemaVersion\": \"3\", \"schemaVersion\": \"3\"", StringComparison.Ordinal),
             original.Replace("\"healthPath\"", "\"privileged\": true, \"healthPath\"", StringComparison.Ordinal),
             original.Replace("docker.io/library/nginx@sha256:", "nginx:latest", StringComparison.Ordinal),
         })

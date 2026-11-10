@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "3",
+  "release": {
+    "id": "fixture-web-db-plan",
+    "version": "1.0.0",
+    "purpose": "Web and database topology fixture",
+    "description": "Parser-only fixture with synthetic image identities.",
+    "webService": "web",
+    "healthPath": "/healthz",
+    "services": [
+      {
+        "id": "web",
+        "imageReference": "registry.example/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "containerPort": 8080,
+        "volumes": [],
+        "dependsOn": ["db"]
+      },
+      {
+        "id": "db",
+        "imageReference": "registry.example/db@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "containerPort": 5432,
+        "volumes": [{ "name": "db-data", "containerPath": "/var/lib/postgresql/data" }],
+        "dependsOn": []
+      }
+    ],
+    "fields": [
+      {
+        "id": "password",
+        "type": "secret",
+        "required": true,
+        "bindings": [
+          { "service": "web", "environmentName": "DB_PASSWORD" },
+          { "service": "db", "environmentName": "POSTGRES_PASSWORD" }
+        ],
+        "labels": { "en": "Database password", "zh": "数据库密码", "ja": "データベースのパスワード" }
+      }
+    ]
+  }
+}

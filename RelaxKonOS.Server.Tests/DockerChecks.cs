@@ -1521,6 +1521,7 @@ internal sealed class FakeComposeService : IDockerComposeService
     public IReadOnlyList<DockerStackServiceDto> Observed { get; set; } = [];
     public List<DockerStackOperationKind> AppliedActions { get; } = [];
     public int DeployCalls { get; private set; }
+    public ManagedComposePlan? ManagedPreview { get; private set; }
     public int ListServicesCalls { get; private set; }
     public volatile bool ObservationUnavailable;
     private TaskCompletionSource? observationGate;
@@ -1546,6 +1547,12 @@ internal sealed class FakeComposeService : IDockerComposeService
 
     public Task<DockerStackDefinitionDto?> GetDefinitionAsync(string name, CancellationToken cancellationToken = default) =>
         Task.FromResult<DockerStackDefinitionDto?>(null);
+
+    public Task<DockerStackPreviewDto> PreviewManagedAsync(ManagedComposePlan plan, CancellationToken cancellationToken = default)
+    {
+        ManagedPreview = plan;
+        return Task.FromResult(new DockerStackPreviewDto(plan.Project, "fixture", [], [], []));
+    }
 
     public async Task<IReadOnlyList<DockerStackServiceDto>> ListServicesAsync(string name, CancellationToken cancellationToken = default)
     {

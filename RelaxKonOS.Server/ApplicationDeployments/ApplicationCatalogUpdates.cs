@@ -23,12 +23,12 @@ internal static class ApplicationCatalogUpdates
                 && source.ImageReference == current.ImageReference) != true)
             blockers.Add(ApplicationDeploymentProblemCodes.CatalogUpdateSourceUnverified);
 
-        if (application.ContainerPort != target.ContainerPort || application.WorkloadKind != ApplicationWorkloadKind.Web
+        if (target.IsMultiService || application.ContainerPort != target.ContainerPort || application.WorkloadKind != ApplicationWorkloadKind.Web
             || application.ReadinessLevel != ApplicationReadinessLevel.Http
             || application.HealthCheckPath != target.HealthPath || application.DesiredState == ApplicationDesiredState.Retained
             || !MatchesVolumes(application.Volumes, target.Volumes)
             || current is not null && !MatchesVolumes(current.Volumes, target.Volumes)
-            || target.Fields.Any(field => field.Required && !application.Configuration.Any(actual => actual.Name == field.EnvironmentName &&
+            || target.Fields.Any(field => field.Required && !application.Configuration.Any(actual => actual.Name == field.Bindings.Single().EnvironmentName &&
                 (field.Type == "secret" ? actual.IsSecret && actual.SecretVersion > 0 : !actual.IsSecret && !string.IsNullOrWhiteSpace(actual.Value))))
             || minimum.CpuCores is { } minCpu && application.Limits.CpuCores is { } cpu && cpu < minCpu
             || minimum.MemoryBytes is { } minMemory && application.Limits.MemoryBytes is { } memory && memory < minMemory

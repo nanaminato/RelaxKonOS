@@ -25,6 +25,14 @@ internal static class DockerComposeExecutionChecks
             var preview = await compose.PreviewAsync(new("ordinary", normal), budget.Token);
             TestAssert.Assert(preview.Services.Count == 1 && preview.Volumes.SequenceEqual(["ordinary_data"]),
                 "The real parser must admit an ordinary named-volume document.");
+            var release = RelaxKonOS.Server.ApplicationDeployments.ApplicationCatalog.Require("fixture-web-db-plan", "1.0.0");
+            var plan = release.CompileTopology(Guid.NewGuid(), 18083);
+            var managed = await compose.PreviewManagedAsync(plan, budget.Token);
+            TestAssert.Assert(managed.Services.Count == 2
+                && managed.Services.Single(service => service.Service == "web").Ports.SequenceEqual(["18083:8080"])
+                && managed.Services.Single(service => service.Service == "db").Ports.Count == 0
+                && managed.Volumes.SequenceEqual([plan.Project + "_db-data"]),
+                "The real parser must retain both managed services and keep the database off the host port map.");
 
             const string escaped = """
                 services:
@@ -47,6 +55,7 @@ internal static class DockerComposeExecutionChecks
                     "A rejected definition must not leave a published configuration or a pending draft.");
             }
             Console.WriteLine("Real Docker Compose config parsed an ordinary project and refused an escaped application volume before up.");
+            Console.WriteLine("Real Docker Compose config verified a typed two-service topology with only the web port published.");
         }
         finally { Directory.Delete(data, recursive: true); }
     }

@@ -19,6 +19,9 @@ public sealed class DockerComposeService : IDockerComposeService, IDisposable
     public Task<DockerStackPreviewDto> PreviewAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default) =>
         InvokeAsync(executor => executor.PreviewAsync(definition, cancellationToken), cancellationToken);
 
+    public Task<DockerStackPreviewDto> PreviewManagedAsync(ManagedComposePlan plan, CancellationToken cancellationToken = default) =>
+        InvokeAsync(executor => executor.PreviewManagedAsync(plan, cancellationToken), cancellationToken);
+
     public Task<DockerStackDefinitionDto?> GetDefinitionAsync(string name, CancellationToken cancellationToken = default) =>
         InvokeAsync(executor => executor.GetDefinitionAsync(name, cancellationToken), cancellationToken);
 
