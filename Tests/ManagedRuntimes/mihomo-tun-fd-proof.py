@@ -2253,6 +2253,7 @@ def proof_full_http_shutdown(ipc, case):
     named_admission = case == 'ipc-http-named-start-admission'
     named_baseline = case == 'ipc-http-named-start-baseline'
     helper_profile = case == 'ipc-http-named-start-helper-profile'
+    helper_query_pairs = helper_profile and Path(sys.argv[3]).with_name('tun-helper-query-pairs.fixture').is_file()
     tun_status_scope = case == 'ipc-http-named-start-dns-settled' and Path(sys.argv[3]).with_name('tun-status-scope.fixture').is_file()
     named_scope = case == 'ipc-http-named-start-dns-settled' and Path(sys.argv[3]).with_name('tun-named-recovery-scope.fixture').is_file()
     named_scope_fault = named_scope and Path(sys.argv[3]).with_name('tun-named-recovery-scope-fault.fixture').is_file()
@@ -3503,7 +3504,8 @@ exec {shlex.quote(str(systemctl))} "$@"
         proof = archive / 'operations' / started / 'tun-5.json'
         files = [queue, native, proof, mirror, config]
         frozen = [path.read_bytes() for path in files]
-        order = ('idle', 'pam', 'query', 'pam', 'query', 'idle', 'query', 'idle', 'pam')
+        order = ('query', 'inventory', 'inventory', 'query') * 2 if helper_query_pairs else (
+            'idle', 'pam', 'query', 'pam', 'query', 'idle', 'query', 'idle', 'pam')
 
         def helper_pipes():
             pipes = set()
@@ -3518,6 +3520,7 @@ exec {shlex.quote(str(systemctl))} "$@"
 
         print('TUN HELPER PROFILE MANIFEST ' + json.dumps({
             'publication': publication, 'execution': started, 'roots': dict(zip(('helper', 'mihomo'), roots)),
+            'configuration': current['credential'], 'routing_table': current['routing_table'],
             'order': order, 'requests_per_active_window': 6, 'window_seconds': 22, 'points': [0, 1, 2, 19, 20, 21],
             'kernel': os.uname().release, 'architecture': os.uname().machine,
             'cpus_available': len(os.sched_getaffinity(0)),
@@ -3536,14 +3539,15 @@ exec {shlex.quote(str(systemctl))} "$@"
                     if mode != 'idle':
                         before_pipes = helper_pipes()
                         subprocess.run(['/usr/bin/dotnet', current['fixture'], 'runtime-mihomo-tun-helper-profile',
-                                        root, ipc.socket_path, mode, publication, started, identity],
+                                        root, ipc.socket_path, mode, publication, started,
+                                        identity if mode == 'pam' else current['credential']],
                                        input=password + '\n' if mode == 'pam' else '', text=True,
                                        check=True, timeout=21, **ipc.identity)
                         after_pipes = helper_pipes()
                         new_pipes = after_pipes - before_pipes
                         print(f'TUN HELPER PIPE LIFETIME {mode}: before={len(before_pipes)}; '
                               f'after={len(after_pipes)}; new={len(new_pipes)}', flush=True)
-                        if mode == 'query':
+                        if mode in ('query', 'inventory'):
                             assert not new_pipes, f'{len(new_pipes)} new Helper pipes after completed queries'
                     continue
                 if second in (15, 22):
@@ -3559,16 +3563,16 @@ exec {shlex.quote(str(systemctl))} "$@"
                     **point,
                 }), flush=True)
             audit = ipc.log.read_bytes()[offset:].decode()
-            verb = {'pam': 'AuthenticateSystemUser', 'query': 'MihomoRuntimeQuery'}.get(mode)
+            verb = {'pam': 'AuthenticateSystemUser', 'query': 'MihomoRuntimeQuery', 'inventory': 'MihomoRuntimeInventoryQuery'}.get(mode)
             assert audit.count('event=request-completed ') == (0 if verb is None else 6)
             if verb is not None:
                 assert audit.count(f'operation={verb} ') == 6
             show_count = len(show_log.read_text().splitlines())
-            assert mode == 'query' or show_count == 0
+            assert mode in ('query', 'inventory') or show_count == 0
             print(f'TUN HELPER NATIVE SHOWS run={index} mode={mode} count={show_count}', flush=True)
             assert [path.read_bytes() for path in files] == frozen
         print(f'PASS TUN HELPER PROFILE: publication={publication}; start={started}; Helper PID={roots[0]}; '
-              f'Mihomo PID={roots[1]}; three windows per mode, no ledger or native changes', flush=True)
+              f'Mihomo PID={roots[1]}; {len(order)} windows, no ledger or native changes', flush=True)
 
     def verify_named_start_dns(pid, record, publication, stopped):
         nonlocal worker, token

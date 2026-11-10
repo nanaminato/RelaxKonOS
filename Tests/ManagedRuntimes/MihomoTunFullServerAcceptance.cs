@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
@@ -71,26 +72,42 @@ internal static class MihomoTunFullServerAcceptance
         Guid publicationId, Guid executionId, string identity)
     {
         MihomoIpcStartupAcceptance.RequirePrivateHost(rootRequired: false);
-        if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK") || mode is not ("pam" or "query"))
+        if (root != Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK") || mode is not ("pam" or "query" or "inventory"))
             throw new InvalidOperationException("The Helper profile requires its private systemd fixture.");
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
             NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
         var password = mode == "pam" ? await Console.In.ReadLineAsync(budget.Token) : null;
+        var latency = new double[6];
+        var responseBytes = new int[6];
         for (var index = 0; index < 6; index++)
         {
-            var request = mode == "pam"
-                ? new PrivilegedOperationRequest(PrivilegedOperationKind.AuthenticateSystemUser,
-                    SystemAuthenticationUsername: identity, SystemAuthenticationPassword: password)
-                : new(PrivilegedOperationKind.MihomoRuntimeQuery, OperationId: executionId);
+            PrivilegedOperationRequest request = mode switch
+            {
+                "pam" => new PrivilegedOperationRequest(PrivilegedOperationKind.AuthenticateSystemUser,
+                    SystemAuthenticationUsername: identity, SystemAuthenticationPassword: password),
+                "inventory" => new(PrivilegedOperationKind.MihomoRuntimeInventoryQuery),
+                _ => new(PrivilegedOperationKind.MihomoRuntimeQuery, OperationId: executionId)
+            };
+            var start = Stopwatch.GetTimestamp();
             var result = await transport.ExecuteAsync(request, budget.Token);
+            latency[index] = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             if (!result.Success) throw new InvalidOperationException("The fixture Helper read failed.");
-            if (mode == "query" && (result.OutputBase64 is not { } output
-                || JsonSerializer.Deserialize<RuntimeInstallationSnapshot>(Convert.FromBase64String(output)) is not
-                    { PendingOperationId: null, MihomoTunRunning: true, MihomoTunAction: { Outcome: RuntimeSwitchOutcome.Succeeded } receipt }
-                || receipt.OperationId != executionId || receipt.PublicationId != publicationId))
+            if (mode == "pam") continue;
+            var payload = Convert.FromBase64String(result.OutputBase64 ?? "");
+            responseBytes[index] = payload.Length;
+            if (JsonSerializer.Deserialize<RuntimeInstallationSnapshot>(payload) is not { PendingOperationId: null, MihomoTunRunning: true } observed
+                || observed.MihomoTunPublicationId != publicationId
+                || !string.Equals(observed.ConfigurationIdentity, identity, StringComparison.OrdinalIgnoreCase)
+                || (mode == "query"
+                    ? observed.Environment is not null
+                        || observed.MihomoTunAction is not { Outcome: RuntimeSwitchOutcome.Succeeded } receipt
+                        || receipt.OperationId != executionId || receipt.PublicationId != publicationId
+                    : observed.Environment?.Observations.Count != 5 || observed.Receipt is not null || observed.MihomoTunAction is not null))
                 throw new InvalidOperationException("The read did not match the active named execution.");
         }
+        if (mode != "pam")
+            Console.WriteLine("TUN HELPER QUERY TIMING " + JsonSerializer.Serialize(new { mode, latency_ms = latency, response_bytes = responseBytes }));
     }
 
     internal static async Task ProbeNamedStartRecoveryAsync(string root, string socket, Guid publicationId, Guid executionId)
