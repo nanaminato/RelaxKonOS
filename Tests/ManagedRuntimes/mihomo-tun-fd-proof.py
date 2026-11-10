@@ -2215,6 +2215,7 @@ def proof_full_http_shutdown(ipc, case):
     admission = case == 'ipc-http-admission'
     handoff = case == 'ipc-http-handoff'
     expiry_quarantine = handoff and Path(sys.argv[3]).with_name('tun-expiry-quarantine.fixture').is_file()
+    quarantine_guard = expiry_quarantine and Path(sys.argv[3]).with_name('tun-quarantine-guard.fixture').is_file()
     inbound_tun = case == 'ipc-http-inbound-tun'
     removal_admin = case == 'ipc-http-retained-administrator'
     removal_http = removal_admin or case == 'ipc-http-retained-installation'
@@ -4529,6 +4530,8 @@ exec {shlex.quote(str(systemctl))} "$@"
         original_tun = tun_evidence()
         terminate(pid)
         if expiry_quarantine:
+            if quarantine_guard:
+                (root / 'full-quarantine-guard').touch()
             worker = launch('expiry-quarantine')
             first_worker = worker
             pid = int(marker('full-server-pid'))
@@ -4549,12 +4552,19 @@ exec {shlex.quote(str(systemctl))} "$@"
             probe(record, 'quarantined-before-expiry')
             expiry = marker('full-expiry-response-held', 42)
             pending_expiry = expiry_ledger.read_bytes()
+            if quarantine_guard:
+                guard, guarded = hold_guard_repair()
+                verify_guard_traffic('quarantine-guard-repaired')
+                assert expiry_ledger.read_bytes() == pending_expiry
+                guard_requests = ipc.log.read_text().count('operation=LinuxSystemProxyApply ')
             assert request(module_path, token)[1]['residency']['state'] == 'faulted' and leases() == 1
             probe(record, 'quarantined-native-expiry')
             assert tun_evidence() == original_tun
             os.kill(pid, signal.SIGKILL)
             until(lambda: not Path(f'/proc/{pid}').exists(), 'faulted Server process exit')
             assert expiry_ledger.read_bytes() == pending_expiry and tun_evidence() == original_tun
+            if quarantine_guard:
+                assert guard_evidence() == guarded
             worker = launch('expiry-quarantine-restart')
             restart_pid = int(marker('full-server-pid'))
             token = login()
@@ -4567,6 +4577,15 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert helper_audit.count('operation=ProxyServerApply ') == 1
             assert helper_audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
             assert 'operation=MihomoRuntimeTunStop ' not in helper_audit and 'operation=MihomoRuntimeRecover ' not in helper_audit
+            if quarantine_guard:
+                until(lambda: ipc.log.read_text().count('operation=LinuxSystemProxyApply ') > guard_requests,
+                      'replacement Core guard reconciliation')
+                assert guard_evidence() == guarded
+                assert ipc.log.read_text().count(f'operation=LinuxSystemProxyApply id={uuid.UUID(guard)} ') == 1
+                verify_guard_traffic('quarantine-guard-restarted')
+                print(f'PASS TUN GUARD AND EXPIRY WITH QUARANTINED PROXY: publication={publication}; '
+                      f'expiry={expiry}; guard={guard}; original Mihomo PID={record["service"][0]}; '
+                      'two original replies cut, no replay, original flow retained', flush=True)
             (root / 'full-joint-finish').touch()
             assert first_worker.wait(timeout=12) == 0
             terminate(restart_pid)
@@ -4619,6 +4638,12 @@ exec {shlex.quote(str(systemctl))} "$@"
         print(f'PASS TUN DISABLED SAFETY HANDOFF: publication={publication}; disable={disable_id}; guard={guard}; '
               f'expiry={expiry}; Server PID {pid}->{restart_pid}; original Mihomo PID={record["service"][0]}; '
               f'configuration={record["credential"]}')
+
+    def verify_guard_traffic(phase):
+        proxy = next(line.partition('=')[2].strip('"') for line in environment.read_text().splitlines() if line.startswith('http_proxy='))
+        assert proxy == 'http://127.0.0.1:18881'
+        assert command('/usr/bin/curl', '--noproxy', '', '--proxy', proxy, '--silent', '--fail',
+                       '--max-time', '3', f'http://{target}:18880/mb04-{phase}') == 'upstream-through-inherited-tun'
 
     def verify_admission(pid, record, publication):
         nonlocal worker, token

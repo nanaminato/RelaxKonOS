@@ -189,6 +189,7 @@ internal static class MihomoTunFullServerAcceptance
             && File.Exists(Path.Combine(root, "full-overview-cleanup-proof"));
         var squidCleanup = phase == "squid-restart" && File.Exists(Path.Combine(root, "full-squid-cleanup-proof"));
         var expiryQuarantine = phase == "expiry-quarantine";
+        var quarantineGuard = expiryQuarantine && File.Exists(Path.Combine(root, "full-quarantine-guard"));
         var controllerCleanup = expiryQuarantine || phase is ("inbound-restart" or "restart")
             && File.Exists(Path.Combine(root, "full-controller-cleanup-proof"));
         var retryCleanup = phase == "zero-dns-pam-retry" && File.Exists(Path.Combine(root, "full-pam-retry-cleanup-proof"));
@@ -209,7 +210,7 @@ internal static class MihomoTunFullServerAcceptance
         if (inbound is not null) await inbound.PreparePublicationAsync(ct);
         await using var inboundRelay = inboundCut ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-inbound-reply.sock", socket, ct, (operation, _) => operation == "ProxyServerApply") : null;
-        await using var guard = expiry is not null && !expiryQuarantine ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-guard-reply.sock", socket, ct,
+        await using var guard = expiry is not null && (!expiryQuarantine || quarantineGuard) ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-guard-reply.sock", socket, ct,
             (operation, _) => operation == "LinuxSystemProxyApply"
                 && File.ReadLines("/etc/environment").Any(line => line == "http_proxy=http://127.0.0.1:14444"
                     || line == "http_proxy=\"http://127.0.0.1:14444\"")) : null;
@@ -316,6 +317,11 @@ internal static class MihomoTunFullServerAcceptance
                 var original = await expiryRelay!.Committed.Task.WaitAsync(ct);
                 var (receipt, pid) = await expiry.ObserveAsync(original, ct);
                 await WriteMarkerAsync(root, "full-expiry-response-held", original.ToString("N"));
+                if (quarantineGuard)
+                {
+                    var guardOperation = await guard!.Committed.Task.WaitAsync(ct);
+                    await WriteMarkerAsync(root, "full-guard-response-held", guardOperation.ToString("N"));
+                }
                 await exited;
                 if (server.ExitCode != 137) throw new InvalidOperationException("Expected SIGKILL with the original expiry reply held.");
                 await WaitForMarkerAsync("full-joint-finish");

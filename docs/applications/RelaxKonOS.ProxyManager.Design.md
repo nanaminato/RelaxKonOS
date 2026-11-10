@@ -4770,3 +4770,5 @@ TUN 和恢复状态的管理 GET 各持当前 Proxy 代次的一项工作租约�
 Proxy 管理代次故障时，组件中心的 Core 恢复查询及授权紧急停止仍按原受管操作核验。紧急停止确认原服务状态，原发布未决时关账仍受门禁保护。[授权恢复实测](../architecture/server-module-evidence/Proxy-Safety.md#proxy-隔离后的-core-授权紧急恢复)
 
 Core 入站授权到期处理与活动 TUN 已在同一故障代次联验。入站撤销原应答被中断并在重启后确认期间，原 TUN 进程、配置、管理选路和真实 HTTP/DNS 转发保持。见[联合实测](../architecture/server-module-evidence/Proxy-Safety.md#proxy-代次隔离后的入站到期与活动-tun)。
+
+同一隔离代次中，Core guard 仍按原代理策略修复漂移。guard 与入站到期的原 Helper 应答均在途时中断 Server，重启后已修复的代理文件及原 TUN 保持，实际代理转发通过。见[三项安全职责联验](../architecture/server-module-evidence/Proxy-Safety.md#proxy-代次隔离后的-guard-到期与-tun-联合接续)。

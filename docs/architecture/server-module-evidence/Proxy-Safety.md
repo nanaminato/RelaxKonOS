@@ -1074,6 +1074,18 @@ Linux Release 构建及 Windows Release TUN、Core 安全与驻留回归通过�
 
 **未实现或仍受门禁保护。** 整模块安全交接仍开放，Proxy 保持 resident。
 
+### Proxy 代次隔离后的 guard 到期与 TUN 联合接续
+
+**已实现且已验证。** Linux 私有 systemd 中，管理作用域清理故障隔离原 Proxy 代次并保留一项租约。活动受管 TUN 发布 `2f6b9e063413441f869ca06005e80a98` 保持。Core 入站到期操作 `31273cc0efc2441ebae4c6722ec2c3f4` 在 Helper 提交后暂扣原应答。旧连接关闭，过期凭据被拒绝，保留凭据继续转发。此时在专属 `/etc/environment` 注入漂移，Core guard 以 `0e15cc8c8d124aebbaac90fb7f4a457b` 实际修复，第二份原应答亦暂扣。经修复的 HTTP 代理通过真实上游探针。
+
+两份应答在途时强制终止 Server。启用重启后按原入站回执确认撤销，sing-box PID `1033`、配置身份及原回执保持，真实撤销仅派发一次。重启后的 guard 巡检已执行，原修复 ID 只有一次派发，环境和 guard 台账的字节及修改时间保持。Mihomo PID `415`、受管程序与配置、管理选路、TUN 路由、原队列及原生检查点在各阶段保持。真实 HTTP、分流 DNS 和修复后的 HTTP 代理转发均通过，TUN 停止与补偿零派发。
+
+Linux Release 构建、25 项注册及 Windows Release 系统代理、TUN 和 Core 安全回归通过。专属进程与 cgroup 已清理，宿主共享服务、代理和 resolver 指纹一致。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-joint-quarantine-final.log` SHA-256 为 `a2332223516536687f38c3458e69ac0bb5f3e34c31dc02c00375786f8f0dcddf`，归档为 `1775f6ca77485b4c9d883f913f33ef719b97291db88644b39a4a1992c32b3a46`。首轮夹具把 guard 的日常巡检也计作重放，修正为核对原修复 ID 与重启巡检后的文件指纹后复验通过。
+
+**已实现但实机未验证。** 本轮确认实际进程退出。故障对象释放、ALC 回收、隔离负载内存、生产收益与整机掉电分别待验。
+
+**未实现或仍受门禁保护。** 整模块安全交接仍开放，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。
