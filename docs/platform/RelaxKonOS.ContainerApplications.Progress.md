@@ -108,3 +108,15 @@ Windows x64 / .NET SDK 10.0.300 环境构建 Server Tests（`--no-restore -m:1 -
 最终构建及 `--deployment-definition-only`、`--deployment-progress-only`、`--stack-operations-only`、`--docker-compose-config-only`、`--module-boundary-milestones-only` 均退出 0。桌面 WindowPreviews Tests 构建及 `--deployments-only` 退出 0。对应记录见 `ca-build/ca03-install-*.log`。
 
 下一步是用真实 Web＋数据库镜像夹具、Linux 专用 Engine 和真实业务探针替换受控响应，验证强制终止 Server、兼容升级及重装证据，并接入通过验收后开放的客户端能力。当前没有实机写入、业务数据或同二进制新增包证据。
+
+## 第 7.1 节业务夹具与镜像证据
+
+加入可重复构建的 Web＋PostgreSQL 和上游 ntfy 双版本夹具。Web 就绪、写入和读取均访问 PostgreSQL。ntfy 2.37.0 和 2.37.2 使用同一个 SQLite 消息缓存路径。清单生成器只接受本机回环 Registry 的固定摘要，拒绝外部镜像引用与覆盖已有清单。测试资产留在测试目录，生成清单时显式选择隔离 Server 发布目录。见[夹具操作规程](../../RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md)。
+
+Windows x64、Docker Desktop Linux amd64 Engine、Compose v5.5.1、Python 3.14.8、.NET SDK 10.0.300。以 `docker build --platform linux/amd64` 构建镜像，在临时 Compose 项目中执行 `up`、`stop db`、`start db` 和 `up --no-deps --force-recreate web`，并用 `curl` 复验。数据库无宿主端口绑定，停库后 Web 返回 503，恢复数据库并重建 Web 后读回同一随机标记。以 `docker run` 对两个 ntfy 版本复用独立测试卷，升级和同版重建后均通过业务 API 读回原消息。证据见 `ca-build/ca-fixture-web-db-{build,smoke}.log` 和 `ca-build/ca-fixture-ntfy-smoke.log`。
+
+在 Docker Desktop 的 Linux 守护进程网络中使用临时回环 Registry，执行 `docker push` 和按摘要 `docker pull`，三份镜像均确认 Linux amd64。先写入两个 ntfy 清单，再添加 Web＋数据库包。用 `--catalog-fixtures-only <目录>` 调用正式目录加载器复验三份清单及精确升级边，Server 构建产物哈希未变。第一次使用 Windows 端口映射时，Docker 守护进程自己的回环无法连接。改在 Linux 守护进程网络内监听后复验退出 0。证据见 `ca-build/ca-fixture-daemon-registry*.log`。容器、网络、卷和测试 Registry 均已清理。
+
+本次 Server Tests 构建命令为 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，并复跑 `--catalog-update-only`。两项均退出 0，证据见 `ca-build/ca-fixture-server-build.log` 与 `ca-build/ca-fixture-catalog-regression.log`。
+
+上述镜像和业务证据来自 Docker Desktop 隔离测试项目。待在专用 Linux Engine 上通过完整 Server 与客户端目录流程复验安装、兼容升级、保留卸载重装、归属和越权、强制终止原 ID 对账，以及同一组 Server 和客户端二进制新增包。当前 Windows SSH agent 仍无密钥，两个实机地址此前均通过同一主机密钥校验。

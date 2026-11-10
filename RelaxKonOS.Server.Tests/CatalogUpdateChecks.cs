@@ -13,6 +13,23 @@ using RelaxKonOS.Server.Residency;
 
 internal static class CatalogUpdateChecks
 {
+    internal static void VerifyGeneratedFixtures(string directory)
+    {
+        var releases = ApplicationCatalog.Load(directory);
+        var webDb = releases.Single(release => release.Id == "fixture-web-db");
+        var plan = webDb.CompileTopology(Guid.NewGuid(), 18083);
+        Check(plan.WebService == "web" && plan.Services.Count == 2
+            && plan.Services.Single(service => service.Id == "db").Volumes is [{ Name: "db-data", Path: "/var/lib/postgresql/data" }],
+            "The generated PostgreSQL release must compile as the two-service acceptance plan.");
+        var ntfy = releases.Where(release => release.Id == "fixture-ntfy").OrderBy(release => release.Version, StringComparer.Ordinal).ToArray();
+        Check(ntfy.Length == 2 && ntfy[0].Version == "2.37.0" && ntfy[1].Version == "2.37.2"
+            && ntfy[1].UpgradeFrom is [{ Version: "2.37.0" } edge] && edge.ImageReference == ntfy[0].ImageReference
+            && ntfy[0].Volumes.SequenceEqual(ntfy[1].Volumes)
+            && ntfy[0].ImageReference != ntfy[1].ImageReference,
+            "Generated ntfy releases must bind the exact compatible predecessor with the same volume contract.");
+        Console.WriteLine("Generated acceptance manifests loaded through the production catalog reader.");
+    }
+
     public static async Task RunAsync()
     {
         var root = Path.Combine(Path.GetTempPath(), "relaxkonos-catalog-update-" + Guid.NewGuid().ToString("N"));

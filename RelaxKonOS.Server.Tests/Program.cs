@@ -581,6 +581,11 @@ if (args.Contains("--performance-only"))
     Console.WriteLine("Performance sampler checks passed.");
     return;
 }
+if (args is ["--catalog-fixtures-only", var fixtureCatalog])
+{
+    CatalogUpdateChecks.VerifyGeneratedFixtures(fixtureCatalog);
+    return;
+}
 if (args.Contains("--catalog-update-only"))
 {
     try { await CatalogUpdateChecks.RunAsync(); }
