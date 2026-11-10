@@ -6,10 +6,14 @@ namespace RelaxKonOS.Server.Proxy;
 public interface IProxyWorkLeaseSource
 {
     ValueTask<IModuleWorkLease> AcquireAsync(CancellationToken ct);
+    void RetainFailedResource(IModuleWorkLease work, IAsyncDisposable resource);
 }
 
 internal sealed class ProxyWorkLeaseSource(ModuleResidencyCoordinator coordinator) : IProxyWorkLeaseSource
 {
+    public void RetainFailedResource(IModuleWorkLease work, IAsyncDisposable resource)
+        => ProxyRequestScopeOwner.RetainFailedResource((ModuleWorkLeaseSource.WorkLease)work, resource);
+
     public async ValueTask<IModuleWorkLease> AcquireAsync(CancellationToken ct)
     {
         try

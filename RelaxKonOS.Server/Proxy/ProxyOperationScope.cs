@@ -39,8 +39,8 @@ internal static class ProxyOperationScope
     }
 }
 
-internal sealed class ProxyOperationCleanupException(IAsyncDisposable resource, Exception inner)
+internal sealed class ProxyOperationCleanupException(IAsyncDisposable? resource = null, Exception? inner = null)
     : Exception("Proxy execution scope cleanup requires recovery.", inner)
 {
-    internal IAsyncDisposable Resource { get; } = resource;
+    internal IAsyncDisposable? Resource { get; } = resource;
 }

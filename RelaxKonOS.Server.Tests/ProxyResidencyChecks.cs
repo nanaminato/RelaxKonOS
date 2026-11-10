@@ -38,16 +38,35 @@ internal static class ProxyResidencyChecks
             Check(!f.Coordinator.HasBackgroundWork(ServerModules.ProxyId) && (await f.Store.GetAsync(item.OperationId, default))!.State == ProxyOperationState.Succeeded,
                 "Scope cleanup and durable terminal confirmation precede work-lease release");
         }
-        await using (var f = new Fixture())
+        foreach (var failTerminalWrite in new[] { false, true })
         {
+            await using var f = new Fixture();
+            ProxyRequestScopeOwner owner;
+            using (var admission = await f.Coordinator.AcquireAsync(ServerModules.ProxyId, default))
+                owner = (ProxyRequestScopeOwner)admission.Runtime.Resolve(typeof(ProxyRequestScopeOwner));
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var item = await f.Store.EnqueueAsync("cleanup-failure", "test", (_, token) =>
                 ProxyOperationScope.RunAsync(f.Services.GetRequiredService<IServiceScopeFactory>(), "operator", "test",
-                    (services, execution) => { services.GetRequiredService<Cleanup>().Fail = true; return Task.FromResult<string?>(null); }, token), default);
-            try { await f.Store.StopAsync(default); throw new Exception("Failed cleanup was ignored"); } catch (ProxyOperationCleanupException) { }
+                    (services, _) =>
+                    {
+                        var cleanup = services.GetRequiredService<Cleanup>();
+                        cleanup.Fail = true;
+                        cleanup.Configure(entered, release);
+                        return Task.FromResult<string?>(null);
+                    }, token), default);
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (failTerminalWrite) Directory.CreateDirectory(Path.Combine(f.Root, "proxy-operations.json.new"));
+            release.TrySetResult();
+            try { await f.Store.StopAsync(default); throw new Exception("Failed cleanup was ignored"); }
+            catch (ProxyOperationCleanupException error) when (!failTerminalWrite && error.Resource is null && error.InnerException is null) { }
+            catch (Exception error) when (failTerminalWrite && error is IOException or UnauthorizedAccessException) { }
             Check(f.Coordinator.Describe(ServerModules.ProxyId) is { State: ModuleResidencyState.Faulted, BlockedBy: "module-recovery-blocked", ActiveLeases: 0 }
                 && await f.Coordinator.TrySleepAsync(ServerModules.ProxyId, default) == "module-recovery-blocked", "Failed scope disposal quarantines the real resident generation after retaining recovery ownership");
-            Check((await f.Store.InspectResponsibilitiesAsync(default)).Count > 0 && (await f.Store.GetAsync(item.OperationId, default))!.ProblemCode == ProxyProblemCodes.OperationInterrupted,
-                "Quarantine does not discard failed scope or durable interruption responsibility");
+            var original = (await f.Store.GetAsync(item.OperationId, default))!;
+            Check(owner.FailedScopeCount == 1 && (await f.Store.InspectResponsibilitiesAsync(default)).Count > 0
+                && (failTerminalWrite ? original.State == ProxyOperationState.Running : original.ProblemCode == ProxyProblemCodes.OperationInterrupted),
+                "The original generation retains failed cleanup independently of the Host terminal write");
         }
         await using (var f = new Fixture())
         {

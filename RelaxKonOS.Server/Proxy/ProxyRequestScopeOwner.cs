@@ -4,10 +4,11 @@ using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.Proxy;
 
-/// <summary>Owns foreground management requests and any scope whose cleanup could not be confirmed.</summary>
+/// <summary>Owns foreground requests and retains failed management scopes for the original generation.</summary>
 internal sealed class ProxyRequestScopeOwner(IServiceScopeFactory scopes, IModuleWorkLeaseSource leases)
 {
-    private readonly List<AsyncServiceScope> failedScopes = [];
+    private readonly List<IAsyncDisposable> failedScopes = [];
+    internal int FailedScopeCount { get { lock (failedScopes) return failedScopes.Count; } }
 
     internal static async Task ExecuteAsync(HttpContext context, ModuleResidencyCoordinator coordinator,
         Func<IServiceProvider, CancellationToken, Task<IResult>> execute)
@@ -33,13 +34,16 @@ internal sealed class ProxyRequestScopeOwner(IServiceScopeFactory scopes, IModul
 
     internal static void RetainFailedScope(IModuleWorkLease work, AsyncServiceScope scope)
     {
-        if (work is ModuleWorkLeaseSource.WorkLease lease
-            && lease.Runtime.Resolve(typeof(ProxyRequestScopeOwner)) is ProxyRequestScopeOwner owner)
-            owner.RetainFailedScope(scope);
+        if (work is ModuleWorkLeaseSource.WorkLease lease) RetainFailedResource(lease, scope);
     }
 
-    private void RetainFailedScope(AsyncServiceScope scope)
+    internal static void RetainFailedResource(ModuleWorkLeaseSource.WorkLease lease, IAsyncDisposable resource)
+        => ((ProxyRequestScopeOwner)lease.Runtime.Resolve(typeof(ProxyRequestScopeOwner))).RetainFailedResource(resource);
+
+    private void RetainFailedScope(AsyncServiceScope scope) => RetainFailedResource(scope);
+
+    private void RetainFailedResource(IAsyncDisposable resource)
     {
-        lock (failedScopes) failedScopes.Add(scope);
+        lock (failedScopes) failedScopes.Add(resource);
     }
 }

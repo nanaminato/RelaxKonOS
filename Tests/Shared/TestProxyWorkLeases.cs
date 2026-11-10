@@ -6,6 +6,13 @@ internal sealed class TestProxyWorkLeases : IProxyWorkLeaseSource, IResidentModu
 {
     internal int Active, Acquired, Recoveries;
     internal Exception? Failure { get; init; }
+    private readonly List<IAsyncDisposable> failedResources = [];
+
+    public void RetainFailedResource(IModuleWorkLease work, IAsyncDisposable resource)
+    {
+        lock (failedResources) failedResources.Add(resource);
+    }
+
     public ValueTask<IModuleWorkLease> AcquireAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested(); if (Failure is not null) throw Failure;

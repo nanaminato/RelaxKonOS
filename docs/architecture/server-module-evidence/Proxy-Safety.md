@@ -1201,6 +1201,20 @@ Linux Release 构建、Windows Release 的 31 项 Proxy 驻留、38 项 TUN 边�
 
 **未实现或仍受门禁保护。** 缺失可信回执继续保留原准入。整模块安全交接独立验收，Proxy 保持 resident。
 
+### 具名停止清理与终态写入同时失败
+
+**已实现且已验证。** 原 `ProxyOperationStore` 保留准入、运行 ID、停机等待和持久终态。执行或原回执查询的异步清理失败时，原工作租约将失败资源交给同一 Proxy 代次，队列的停机错误只传递失败状态。Windows Release 确认原代次在单独清理失败和清理加写回双故障中均保留原作用域。首轮订阅回归发现测试租约缺资源接收入口，改为由租约接口显式接收后通过。最终订阅边界 44 项、驻留 33 项、Core 安全 50 项、生命周期/TUN 作用域 37 项及 Squid、入站 ProxyServer、模块边界回归通过。
+
+2026-11-10 在既有 Linux 私有 systemd 中，完整 Server 的具名停止 `20edea63-b577-41bb-882e-c0859ce6cee6` 已产生原进程退出、设备移除与管理选路回到基线的效果。Helper 成功回执绑定发布及目标执行 `e9570967-116c-4764-98d8-5961268f1c39`。夹具在原工作租约仍有效时同时阻断异步清理和 `proxy-operations.json.new`。原 Running 台账与 Helper 原生台账字节保持，原 Proxy 代次进入 `Faulted / module-recovery-blocked`。同键、新键、停用预览及故障前停用计划继续受门禁保护。强制退出后，禁用启动按原停止 ID 拒绝。
+
+启用重启按原 ID 只读核验，按 ID 和同键返回同一成功终态。原 Helper 台账保持，原租约归零，整个过程仅一次原生停止。独立授权的具名启动 `23adb106-4bd5-4911-bf83-98e1e4fe67e5` 恢复原配置摘要 `69d7bd50838df0aa34e47b8cad261939106ecc919b128da540515857b0b249a6`，实测管理选路、真实上游 HTTP 和分流 DNS。
+
+同批 Squid 写回故障对照 `4e730bdb-aa57-4c4f-9f6a-ab53f7c1831f` 验证原 Squid 回执、单次 reload、Core guard 修复和原 TUN 发布 `ffe2649f-f106-4900-b453-ba8c4e03a44d` 持续转发。两轮专属进程及 cgroup 清理通过，宿主运行时、代理和 resolver 指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-queue-scope-final.log` 的 SHA-256 为 `f4e0dfa451a0d697e75f6fc8226be922b036862a2861777cd281fb224c159902`，归档为 `3b231712a67cfd6612556d1bab84ffc0e108587f74314061ffd494c4fa0efcf0`。
+
+**已实现但实机未验证。** 本轮核对了失败作用域保留及专属进程退出。Squid 原回执查询作用域自身的异步清理故障需独立实测。本节未测对象释放、ALC 回收、隔离负载内存或生产收益。
+
+**未实现或仍受门禁保护。** 原终态证据不足时继续保护准入。整模块安全交接仍待验收，Proxy 保持 resident。
+
 ### 恢复查询终态写入失败的同代隔离
 
 **已实现且已验证。** 2026-11-10 在 Linux x64 私有 systemd 中，用原版 Server 复现恢复查询拿到 Helper 回执后写回失败。夹具占住 `proxy-operations.json.new`，生产写入返回访问拒绝，HTTP 返回 500。原版对照日志 `.artifacts/mb04-tun-full-zero-dns/linux-recovery-write-baseline.log` SHA-256 为 `4e23e8dfe813374964b7f5ee9d7058f080004e59814cc6db1158283b2ffd4c63`。首轮夹具过早检查进程 UID，改为等待降权完成后通过对照。

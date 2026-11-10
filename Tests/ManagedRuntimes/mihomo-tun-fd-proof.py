@@ -2241,8 +2241,10 @@ def proof_full_http_shutdown(ipc, case):
     drop_start_reply = recovery_write_fault or case == 'ipc-http-start-reply-drop'
     cleanup_drain = case == 'ipc-http-tun-cleanup-drain'
     cleanup_cut = case == 'ipc-http-tun-cleanup-cut'
-    terminal_fault = case == 'ipc-http-tun-terminal-fault'
-    quarantine = terminal_fault or case == 'ipc-http-tun-cleanup-fault'
+    combined_queue_fault = case == 'ipc-http-tun-cleanup-terminal-fault'
+    terminal_fault = combined_queue_fault or case == 'ipc-http-tun-terminal-fault'
+    cleanup_fault = combined_queue_fault or case == 'ipc-http-tun-cleanup-fault'
+    quarantine = terminal_fault or cleanup_fault
     cleanup_recover = cleanup_cut or quarantine
     cleanup_scope = cleanup_drain or cleanup_recover
     named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
@@ -6022,7 +6024,7 @@ with sqlite3.connect(sys.argv[1]) as database:
                 # Block only the atomic replacement staging path, after native commit.
                 obstruction = queue.with_name(queue.name + '.new')
                 obstruction.mkdir()
-            else:
+            if cleanup_fault:
                 (root / 'full-server/full-tun-cleanup-fail').touch()
             (root / 'full-server/full-tun-cleanup-release').touch()
 
@@ -6033,9 +6035,11 @@ with sqlite3.connect(sys.argv[1]) as database:
 
             proxy = until(faulted, 'quarantined original Proxy generation')
             if terminal_fault:
-                assert cleanup_completed.read_text() == 'disposed'
                 assert queue.read_bytes() == durable_running
                 obstruction.rmdir()
+            assert cleanup_completed.exists() == (terminal_fault and not cleanup_fault)
+            if cleanup_completed.exists():
+                assert cleanup_completed.read_text() == 'disposed'
             assert proxy['residency']['blockedBy'] == 'module-recovery-blocked' and not proxy['residency']['releasable']
             assert proxy['processGeneration'] == healthy_proxy['processGeneration']
             assert proxy['residency'].get('lastReleasedAt') == healthy_proxy['residency'].get('lastReleasedAt')
@@ -6101,7 +6105,7 @@ with sqlite3.connect(sys.argv[1]) as database:
         token = login()
         if cleanup_recover:
             assert queue.read_bytes() == persisted
-            assert cleanup_completed.exists() == terminal_fault
+            assert cleanup_completed.exists() == (terminal_fault and not cleanup_fault)
         original = until(lambda: terminal(stopped), 'persisted stop receipt')
         assert original['completedAt'] and submit('disable', 'full-stop') == stopped and read(stopped) == original
         if drop_stop_reply:
@@ -6252,7 +6256,7 @@ with sqlite3.connect(sys.argv[1]) as database:
             print(f'PASS TUN EXECUTION SCOPE DRAIN: publication={publication}; stop={stopped}; start={started}; '
                   f'configuration={record["credential"]}; {outcome}')
         if quarantine:
-            fault = 'TERMINAL WRITE' if terminal_fault else 'CLEANUP'
+            fault = 'CLEANUP AND TERMINAL WRITE' if combined_queue_fault else 'TERMINAL WRITE' if terminal_fault else 'CLEANUP'
             print(f'PASS TUN {fault} FAULT QUARANTINE: publication={publication}; stop={stopped}; start={started}; '
                   f'configuration={record["credential"]}; disable apply and disabled startup refused, one native stop')
         print(f'PASS TUN FULL SERVER JWT SHUTDOWN: publication={publication}; stop={stopped}; start={started}; '
@@ -6424,7 +6428,7 @@ rules:
             ipc.start_helper()
             if case in ('ipc-http-full', 'ipc-http-stop-reply-drop', 'ipc-http-start-reply-drop', 'ipc-http-tun-recovery-write-fault',
                         'ipc-http-tun-cleanup-drain', 'ipc-http-tun-cleanup-cut', 'ipc-http-tun-cleanup-fault',
-                        'ipc-http-tun-terminal-fault',
+                        'ipc-http-tun-terminal-fault', 'ipc-http-tun-cleanup-terminal-fault',
                         'ipc-http-zero-dns', 'ipc-http-early-owner', 'ipc-http-initial-stop',
                         'ipc-http-initial-stop-replaced', 'ipc-http-restored-process-replaced', 'ipc-http-restored-job-replaced',
                         'ipc-http-restored-job-cut', 'ipc-http-restored-dispatch-unknown',

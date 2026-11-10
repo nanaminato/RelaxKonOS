@@ -25,8 +25,6 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
     private bool _stopping;
     private bool _recoveryBlocked;
     private readonly Dictionary<Guid, TaskCompletionSource> _running = [];
-    // Separate retention survives a second failure while writing the failed terminal record.
-    private readonly Dictionary<Guid, ProxyOperationCleanupException> _cleanupFailures = [];
 
     public async Task<IReadOnlyList<string>> InspectResponsibilitiesAsync(CancellationToken ct)
     {
@@ -35,7 +33,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         {
             var facts = new List<string>();
             if (_running.Count != 0) facts.Add("Proxy execution, cleanup or terminal confirmation is still owned by this host.");
-            if (_recoveryBlocked || _cleanupFailures.Count != 0) facts.Add("Proxy task cleanup or terminal confirmation requires recovery.");
+            if (_recoveryBlocked) facts.Add("Proxy task cleanup or terminal confirmation requires recovery.");
             facts.AddRange(await InspectPersistedResponsibilitiesAsync(paths, ct));
             return facts;
         }
@@ -154,12 +152,13 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         IDisposable? execution = null;
         try
         {
-            try { await ExecuteAsync(original, (stage, token) => operation(stage, HoldExecution, token)); }
+            try { await ExecuteAsync(original, (stage, token) => operation(stage, HoldExecution, token), work); }
             finally { execution?.Dispose(); }
         }
         catch (Exception exception)
         {
-            failure = exception;
+            // The original generation owns the failed resource. Keep only a neutral shutdown failure in the queue.
+            failure = exception is ProxyOperationCleanupException ? new ProxyOperationCleanupException() : exception;
             logger.LogError(exception, "Proxy operation did not finish cleanly; recovery ownership is retained. OperationId={OperationId}", id);
         }
         await _gate.WaitAsync();
@@ -231,7 +230,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
 
             if (operation.Stage is SquidGatewayService.PublicationPending or SquidGatewayService.LifecyclePending or SquidGatewayService.AccountPending)
             {
-                if (scopes is null || _cleanupFailures.ContainsKey(operation.OperationId)) continue;
+                if (scopes is null) continue;
                 var scope = scopes.CreateAsyncScope();
                 var verified = false;
                 string? failure = null;
@@ -263,9 +262,9 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                     try { await scope.DisposeAsync(); }
                     catch (Exception error)
                     {
-                        work.RequireRecovery();
                         _recoveryBlocked = true;
-                        _cleanupFailures[operation.OperationId] = new(scope, error);
+                        workLeases.RetainFailedResource(work, scope);
+                        work.RequireRecovery();
                         throw;
                     }
                 }
@@ -434,7 +433,8 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         };
     }
 
-    private async Task ExecuteAsync(ProxyOperationDto original, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation)
+    private async Task ExecuteAsync(ProxyOperationDto original, Func<ProxyOperationStageReporter, CancellationToken, Task<string?>> operation,
+        RelaxKonOS.Server.Residency.IModuleWorkLease work)
     {
         var id = original.OperationId;
         try
@@ -483,10 +483,14 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         }
         catch (Exception exception)
         {
-            if (exception is ProxyOperationCleanupException cleanup)
+            if (exception is ProxyOperationCleanupException { Resource: { } resource })
             {
                 await _gate.WaitAsync();
-                try { _recoveryBlocked = true; _cleanupFailures[id] = cleanup; }
+                try
+                {
+                    _recoveryBlocked = true;
+                    workLeases.RetainFailedResource(work, resource);
+                }
                 finally { _gate.Release(); }
             }
             logger.LogWarning(exception, "Proxy operation {OperationId} failed.", id);

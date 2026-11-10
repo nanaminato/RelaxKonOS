@@ -4625,6 +4625,8 @@ Helper 已提交具名停止而 IPC 终帧丢失时，存活 Server 先保留原
 
 具名停止的原生操作及清理完成后，若 Server 无法保存队列终态，原 Running 记录继续保护准入。实测恢复写入条件后，故障代次仍受隔离，启用 Proxy 重启后再按原 ID 核对 Helper 回执。[终态写入失败实测](../architecture/server-module-evidence/Proxy-Safety.md#具名停止终态写入失败的同代隔离)
 
+若异步清理与终态写入同时失败，失败作用域由原 Proxy 代次保留。原 Running 记录继续保护停用及新变更准入。恢复写入条件并启用 Proxy 重启后，同键返回按原 ID 核验的终态。[双故障实测](../architecture/server-module-evidence/Proxy-Safety.md#具名停止清理与终态写入同时失败)
+
 恢复查询读到原 Helper 回执后若无法保存终态，查询返回 `module-recovery-blocked`，原待核验记录继续保护准入。恢复写入条件并启用 Proxy 重启后，原队列按同一 ID 核对回执。[恢复查询写入失败实测](../architecture/server-module-evidence/Proxy-Safety.md#恢复查询终态写入失败的同代隔离)
 
 Squid 发布恢复写回故障导致 Proxy 管理面隔离时，Core 系统代理 guard 仍能修复宿主漂移，原受管 TUN 继续转发。Squid 待核验记录继续阻止禁用启动。[跨域故障实测](../architecture/server-module-evidence/Proxy-Squid.md#squid-恢复写回故障与-core-tun-连续性)
