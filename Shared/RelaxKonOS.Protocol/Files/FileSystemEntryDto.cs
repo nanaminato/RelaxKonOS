@@ -14,4 +14,9 @@ public sealed record FileSystemEntryDto(
     [property: JsonPropertyName("accessed")] DateTimeOffset? Accessed,
     [property: JsonPropertyName("isHidden")] bool IsHidden,
     [property: JsonPropertyName("isSystem")] bool IsSystem,
-    [property: JsonPropertyName("mimeType")] string? MimeType);
+    [property: JsonPropertyName("mimeType")] string? MimeType)
+{
+    [JsonPropertyName("availableFreeSpace")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? AvailableFreeSpace { get; init; }
+}

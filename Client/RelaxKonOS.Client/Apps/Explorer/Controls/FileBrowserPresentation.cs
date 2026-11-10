@@ -10,7 +10,9 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using RelaxKonOS.Client.Apps.Explorer.Converters;
 using RelaxKonOS.Client.Apps.Explorer.Models;
+using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer.Controls;
 
@@ -190,7 +192,18 @@ internal sealed class FileBrowserPresentation
                     if (child is TextBlock text) { text.MaxLines = 2; text.TextWrapping = TextWrapping.Wrap; text.TextAlignment = TextAlignment.Center; }
                 }
             }
-            return content;
+            if (entry is not FileSystemEntryDto { Type: FileSystemEntryType.Drive } drive) return content;
+
+            var capacity = new TextBlock
+            {
+                Text = EntrySizeToStringConverter.FormatDriveCapacity(drive),
+                FontSize = 11,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                TextAlignment = large ? TextAlignment.Center : TextAlignment.Left,
+                Margin = large ? new Thickness(4, 0) : new Thickness(list ? 30 : 42, 0, 0, 0),
+            };
+            ToolTip.SetTip(capacity, capacity.Text);
+            return new StackPanel { Width = content.Width, Children = { content, capacity } };
         });
         _details.IsVisible = mode == ExplorerViewMode.Details;
         Items.IsVisible = !_details.IsVisible;

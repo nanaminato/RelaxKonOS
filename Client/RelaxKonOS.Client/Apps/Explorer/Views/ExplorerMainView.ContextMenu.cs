@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
@@ -41,10 +42,10 @@ public partial class ExplorerMainView
         items.Insert(insertAt + 2, _extractMenuItem);
         _extractToMenuItem = new MenuItem { Header = LocalizedText.Get("explorer.archive.extract_to") };
         items.Insert(insertAt + 3, _extractToMenuItem);
-        _entryContextMenu.Opened += EntryContextMenu_Opened;
+        _entryContextMenu.Opening += EntryContextMenu_Opening;
     }
 
-    private void EntryContextMenu_Opened(object? sender, EventArgs e)
+    private void EntryContextMenu_Opening(object? sender, CancelEventArgs e)
     {
         if (ViewModel is not { } vm || _entryContextMenu is null || _saveToHostMenuItem is null) return;
 
@@ -53,15 +54,13 @@ public partial class ExplorerMainView
         var singleFile = single && vm.SelectedEntry!.Type == FileSystemEntryType.File;
         var singleFolder = single && vm.SelectedEntry!.Type is FileSystemEntryType.Directory or FileSystemEntryType.Drive;
 
-        foreach (var item in _entryContextMenu.Items.OfType<MenuItem>())
-        {
-            if (ReferenceEquals(item.Command, vm.OpenCommand)) item.IsVisible = single;
-            else if (ReferenceEquals(item.Command, vm.OpenFolderInTabCommand)) item.IsVisible = singleFolder && !vm.IsPickerMode;
-            else if (ReferenceEquals(item.Command, vm.OpenWithSelectedCommand)) item.IsVisible = singleFile;
-            else if (ReferenceEquals(item.Command, vm.OpenTerminalCommand)) item.IsVisible = singleFolder;
-            else if (ReferenceEquals(item.Command, vm.RenameCommand)) item.IsVisible = single && vm.CanRenameSelection;
-            else if (ReferenceEquals(item.Command, vm.PropertiesCommand)) item.IsVisible = single;
-        }
+        // Set visibility before the popup measures. Command bindings may attach when it opens.
+        EntryOpenItem.IsVisible = single;
+        EntryOpenInTabItem.IsVisible = singleFolder && !vm.IsPickerMode;
+        EntryOpenWithItem.IsVisible = singleFile;
+        EntryOpenTerminalItem.IsVisible = singleFolder;
+        EntryRenameItem.IsVisible = single && vm.CanRenameSelection;
+        EntryPropertiesItem.IsVisible = single;
 
         if (_compressMenuItem is not null && _extractMenuItem is not null)
         {

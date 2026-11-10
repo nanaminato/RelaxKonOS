@@ -84,6 +84,21 @@ public sealed class EntrySizeToStringConverter : IValueConverter
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
+        if (value is not FileSystemEntryDto entry) return string.Empty;
+        return entry.Type == FileSystemEntryType.Drive
+            ? FormatDriveCapacity(entry)
+            : FormatSize(entry.Size);
+    }
+
+    internal static string FormatDriveCapacity(FileSystemEntryDto drive)
+        => drive.AvailableFreeSpace is null && drive.Size is null
+            ? "—"
+            : LocalizedText.Format("explorer.drive_capacity",
+                drive.AvailableFreeSpace is { } available ? FileTransferMetrics.FormatBytes(available) : "—",
+                drive.Size is { } total ? FileTransferMetrics.FormatBytes(total) : "—");
+
+    private static string FormatSize(long? value)
+    {
         if (value is not long size || size <= 0) return string.Empty;
         var mag = (int)Math.Log(size, 1024);
         if (mag >= Suffixes.Length) mag = Suffixes.Length - 1;

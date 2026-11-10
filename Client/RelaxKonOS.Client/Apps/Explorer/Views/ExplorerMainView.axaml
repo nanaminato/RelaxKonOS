@@ -376,19 +376,19 @@
                       DragDrop.Drop="Explorer_Drop" Classes="resource-table">
                 <DataGrid.ContextMenu>
                     <ContextMenu DataContext="{Binding #EntriesGrid.DataContext}" IsEnabled="{Binding !IsBusy}">
-                        <MenuItem Header="{loc:Loc common.open}" Command="{Binding OpenCommand}" />
-                        <MenuItem Header="{loc:Loc explorer.open_in_new_tab}" Command="{Binding OpenFolderInTabCommand}" IsVisible="{Binding !IsPickerMode}" />
-                        <MenuItem Header="{loc:Loc explorer.open_with}" Command="{Binding OpenWithSelectedCommand}" />
-                        <MenuItem Header="{loc:Loc explorer.open_terminal}" Command="{Binding OpenTerminalCommand}" />
+                        <MenuItem x:Name="EntryOpenItem" Header="{loc:Loc common.open}" Command="{Binding OpenCommand}" />
+                        <MenuItem x:Name="EntryOpenInTabItem" Header="{loc:Loc explorer.open_in_new_tab}" Command="{Binding OpenFolderInTabCommand}" />
+                        <MenuItem x:Name="EntryOpenWithItem" Header="{loc:Loc explorer.open_with}" Command="{Binding OpenWithSelectedCommand}" />
+                        <MenuItem x:Name="EntryOpenTerminalItem" Header="{loc:Loc explorer.open_terminal}" Command="{Binding OpenTerminalCommand}" />
                         <Separator />
                         <MenuItem Header="{loc:Loc explorer.copy}" Command="{Binding CopyCommand}" />
                         <MenuItem Header="{loc:Loc explorer.cut}" Command="{Binding CutCommand}" />
                         <MenuItem Header="{loc:Loc explorer.paste}" Command="{Binding PasteCommand}" />
                         <Separator />
-                        <MenuItem Header="{loc:Loc common.rename}" Command="{Binding RenameCommand}" />
+                        <MenuItem x:Name="EntryRenameItem" Header="{loc:Loc common.rename}" Command="{Binding RenameCommand}" />
                         <MenuItem Header="{loc:Loc common.delete}" Command="{Binding DeleteCommand}" />
                         <Separator />
-                        <MenuItem Header="{loc:Loc explorer.properties}" Command="{Binding PropertiesCommand}" />
+                        <MenuItem x:Name="EntryPropertiesItem" Header="{loc:Loc explorer.properties}" Command="{Binding PropertiesCommand}" />
                     </ContextMenu>
                 </DataGrid.ContextMenu>
                 <DataGrid.Styles>
@@ -491,10 +491,11 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.SizeColumnHeader}" Width="112" MinWidth="96" SortMemberPath="Size">
+                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.SizeColumnHeader}" Width="164" MinWidth="96" SortMemberPath="Size">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:DataType="d:FileSystemEntryDto">
-                                <TextBlock Text="{Binding Size, Converter={StaticResource SizeConverter}}" Padding="8,0"
+                                <TextBlock Text="{Binding Converter={StaticResource SizeConverter}}" Padding="8,0"
+                                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Converter={StaticResource SizeConverter}}"
                                            FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center">
                                     <TextBlock.Opacity>
                                         <MultiBinding Converter="{StaticResource CutEntryOpacityConverter}" ConverterParameter="secondary">

@@ -22,6 +22,20 @@ void Check(bool condition, string label)
 await PickerMemoryChecks.RunAsync(Check);
 await OwnershipDialogChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
+var driveClient = DispatchProxy.Create<IExplorerClient, ExplorerFake>();
+var driveFake = (ExplorerFake)(object)driveClient;
+driveFake.Drive = driveFake.Drive with { TotalSize = 4096, AvailableFreeSpace = 1024 };
+using (var driveView = new ExplorerViewModel(driveClient) { FileListCacheEnabled = true })
+{
+    await driveView.NavigateToAsync(null);
+    Check(driveView.Entries.Single() is { Size: 4096, AvailableFreeSpace: 1024 },
+        "Computer keeps both capacity fields from the drive listing");
+    await driveView.NavigateToAsync("/other");
+    driveFake.Drive = driveFake.Drive with { AvailableFreeSpace = 0 };
+    await driveView.NavigateToAsync(null);
+    Check(driveView.Entries.Single() is { Size: 4096, AvailableFreeSpace: 0 },
+        "Computer refreshes cached drive capacity and preserves zero free bytes");
+}
 ImageViewerChecks.Run(Check);
 await ArchiveBrowserChecks.RunAsync(Check);
 await HostFileClipboardChecks.RunAsync(Check);
@@ -318,6 +332,7 @@ Console.WriteLine($"{passed} Explorer regression checks passed.");
 
 public class ExplorerFake : DispatchProxy
 {
+    public DriveDto Drive { get; set; } = new("/", "/", null, null, true, true);
     public int DirectoryReads { get; private set; }
     public string? Denied { get; set; }
     public string? CreatedPath { get; set; }
@@ -343,7 +358,7 @@ public class ExplorerFake : DispatchProxy
             return Task.FromResult(Directory(path));
         }
         if (method.Name == nameof(IExplorerClient.GetDrivesAsync))
-            return Task.FromResult<IReadOnlyList<DriveDto>>([new DriveDto("/", "/", null, true, true)]);
+            return Task.FromResult<IReadOnlyList<DriveDto>>([Drive]);
         if (method.Name == nameof(IExplorerClient.GetSpecialLocationsAsync))
         {
             if (FailSpecialLocations)

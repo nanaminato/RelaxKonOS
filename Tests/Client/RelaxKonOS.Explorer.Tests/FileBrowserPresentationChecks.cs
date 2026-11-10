@@ -8,7 +8,10 @@ using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.Explorer.Controls;
+using RelaxKonOS.Client.Apps.Explorer.Converters;
 using RelaxKonOS.Client.Apps.Explorer.Models;
+using RelaxKonOS.Protocol.Files;
+using System.Globalization;
 
 internal static class FileBrowserPresentationChecks
 {
@@ -148,6 +151,26 @@ internal static class FileBrowserPresentationChecks
         using (var cancellation = new CancellationTokenSource(450)) Dispatcher.UIThread.MainLoop(cancellation.Token);
         window.MouseUp(new Point(595, 2), MouseButton.Left);
         check(scroll.Offset.X > 0 && grid.SelectedItems.Count > 10, "List rubber-band scrolls horizontally and selects newly exposed entries");
+
+        var drive = new FileSystemEntryDto("/", "/", 4096, FileSystemEntryType.Drive, null, null, null, false, false, null)
+        { AvailableFreeSpace = 0 };
+        var converter = new EntrySizeToStringConverter();
+        var caption = converter.Convert(drive, typeof(string), null, CultureInfo.InvariantCulture);
+        check(caption is "explorer.drive_capacity: 0 B, 4 KB", "Details show zero free space and total capacity");
+        check(converter.Convert(drive with { Size = null, AvailableFreeSpace = null }, typeof(string), null, CultureInfo.InvariantCulture) is "—",
+            "Unknown drive capacity shows a dash");
+        grid.Columns[0] = new DataGridTemplateColumn
+        {
+            CellTemplate = new FuncDataTemplate<FileSystemEntryDto>((entry, _) => new TextBlock { Text = entry?.Name }),
+        };
+        grid.ItemsSource = new[] { drive };
+        foreach (var mode in new[] { ExplorerViewMode.List, ExplorerViewMode.SmallIcons, ExplorerViewMode.LargeIcons })
+        {
+            presentation.SetMode(mode);
+            Pump();
+            check(presentation.Items.GetVisualDescendants().OfType<TextBlock>().Any(text => text.IsVisible && Equals(text.Text, caption)),
+                $"{mode}: drive capacity is visible");
+        }
         window.Close();
         SynchronizationContext.SetSynchronizationContext(null);
     }

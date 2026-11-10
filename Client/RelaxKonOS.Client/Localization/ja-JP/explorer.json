@@ -163,6 +163,7 @@
         "explorer.open_with": "プログラムから開く...",
         "explorer.properties": "プロパティ",
         "explorer.size": "サイズ",
+        "explorer.drive_capacity": "空き {0} / {1}",
         "explorer.modified": "更新日時",
         "explorer.permission.read": "読み取り",
         "explorer.permission.write": "書き込み",

@@ -89,6 +89,7 @@ internal static class FusedApplicationChecks
             codeView.AttachWindowHeader(codeWindow);
             var explorerWindow = manager.Create(new WindowCreateOptions(new AppId("test.explorer"), "Explorer", explorerView, new CoreRect(10, 10, 960, 640)));
             explorerView.AttachWindowHeader(explorerWindow);
+            CheckExplorerMenu(host, explorerView);
             var output = Path.Combine(AppContext.BaseDirectory, "preview-qa", "fused-apps");
             Directory.CreateDirectory(output);
             foreach (var style in new[] { SystemStyleIds.WindowsLike, SystemStyleIds.MacOsLike })
@@ -266,6 +267,38 @@ internal static class FusedApplicationChecks
             Console.WriteLine("PASS: Fused editor/explorer across 2 styles, 2 themes, 3 languages, 3 widths; independent tab history, failed/pending reads, close bindings, dirty guards and picker isolation.");
         }
         finally { host.Close(); settings.Apply(original); Pump(); }
+    }
+
+    private static void CheckExplorerMenu(Window host, ExplorerMainView view)
+    {
+        Pump();
+        host.UpdateLayout();
+        var grid = view.FindControl<DataGrid>("EntriesGrid")!;
+        var menu = grid.ContextMenu!;
+        var openWith = menu.Items.OfType<MenuItem>().Single(item => item.Name == "EntryOpenWithItem");
+        var terminal = menu.Items.OfType<MenuItem>().Single(item => item.Name == "EntryOpenTerminalItem");
+        var layouts = new List<(bool OpenWith, bool Terminal)>();
+        void OnOpening(object? sender, System.ComponentModel.CancelEventArgs args)
+            => layouts.Add((openWith.IsVisible, terminal.IsVisible));
+        menu.Opening += OnOpening;
+        try
+        {
+            foreach (var type in new[] { FileSystemEntryType.Directory, FileSystemEntryType.File })
+            {
+                var row = grid.GetVisualDescendants().OfType<DataGridRow>()
+                    .Single(control => control.DataContext is FileSystemEntryDto entry && entry.Type == type);
+                var point = row.TranslatePoint(new Point(24, row.Bounds.Height / 2), host)!.Value;
+                host.MouseDown(point, MouseButton.Right);
+                host.MouseUp(point, MouseButton.Right);
+                Pump();
+                Check(menu.IsOpen, $"Right-clicking an Explorer {type} opens the entry menu.");
+                menu.Close();
+                Pump();
+            }
+            Check(layouts.SequenceEqual(new[] { (false, true), (true, false) }),
+                "The entry menu hides irrelevant items before popup layout on the first and subsequent right-clicks.");
+        }
+        finally { menu.Opening -= OnOpening; }
     }
 
     private static T Part<T>(Control view, string name) where T : Control => view.GetVisualDescendants().OfType<T>().Single(control => control.Name == name);

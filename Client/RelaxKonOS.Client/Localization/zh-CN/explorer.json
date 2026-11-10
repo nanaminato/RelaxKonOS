@@ -163,6 +163,7 @@
         "explorer.open_with": "打开方式...",
         "explorer.properties": "属性",
         "explorer.size": "大小",
+        "explorer.drive_capacity": "可用 {0} / {1}",
         "explorer.modified": "修改日期",
         "explorer.permission.read": "读取",
         "explorer.permission.write": "写入",

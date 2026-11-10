@@ -301,7 +301,7 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 | `FileEntryDto.cs` | 文件条目（含 extension，非空 size）——用于 `DirectoryDto.Files` 列表 |
 | `FilePropertiesDto.cs` / `UpdateUnixPermissionsRequest.cs` | 文件/目录属性、宿主权限摘要与 Linux POSIX 权限更新契约 |
 | `DirectoryDto.cs` | 目录列举结果：目录自身元数据 + `Directories[]` + `Files[]` |
-| `DriveDto.cs` | 驱动器/根挂载点：name/path/totalSize/isReady |
+| `DriveDto.cs` | 驱动器/根挂载点：name/path/totalSize/availableFreeSpace/isReady/isBrowsable。容量以字节为单位，无法读取时为 null。 |
 | `SpecialFolderKind.cs` | enum `Home/Desktop/Documents/Downloads/Pictures/Music/Videos`（camelCase 序列化，由 `RelaxKonOSJsonOptions.Default` 全局生效，无需显式 `[JsonStringEnumConverter]`） |
 | `SpecialLocationDto.cs` | 特殊文件夹位置：kind/name/path（Server `GetSpecialLocations` 返回，已 `Directory.Exists` 过滤） |
 | `RenameRequest.cs` / `MoveRequest.cs` / `CopyRequest.cs` | 操作请求 body |
@@ -349,6 +349,8 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 普通文件浏览器和 SSH 文件浏览器均提供详细信息、列表、小图标、大图标四种视图。切换视图保留所选条目，文件菜单、键盘操作和选择状态共用；普通文件浏览器继续支持行内重命名、剪切淡化和文件拖放。
 
 大图标采用统一尺寸的网格项，图标居中，文件名使用完整标签宽度居中显示，最多两行并截断超长名称。所有视图均可按名称、修改时间、类型和大小排序；非详细信息视图隐藏元数据列，但保留工具栏中的排序字段与降序选项。
+
+「此电脑」的驱动器条目显示服务器上对应文件系统的「可用空间 / 总空间」。详细信息视图在「大小」列显示，列表和图标视图在驱动器名称下方显示。无法读取的容量显示为「—」。
 
 列表视图按 Windows 文件资源管理器的方向排列：先从上到下填满当前列，再向右换列；窗口高度变化时重新排列，内容超出宽度时横向滚动。框选靠近左右边缘时支持横向自动滚动。
 

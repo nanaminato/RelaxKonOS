@@ -9,5 +9,6 @@ public sealed record DriveDto(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("totalSize")] long? TotalSize,
+    [property: JsonPropertyName("availableFreeSpace")] long? AvailableFreeSpace,
     [property: JsonPropertyName("isReady")] bool IsReady,
     [property: JsonPropertyName("isBrowsable")] bool IsBrowsable);

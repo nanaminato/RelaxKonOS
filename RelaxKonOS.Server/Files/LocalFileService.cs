@@ -45,8 +45,7 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         if (mode.Mode == ServerMode.User && !OperatingSystem.IsWindows())
         {
             var home = UserRoot;
-            var root = new DriveInfo(Path.GetPathRoot(home)!);
-            return [new DriveDto(Path.GetFileName(home), home, root.IsReady ? root.TotalSize : null, root.IsReady, true)];
+            return [DescribeDrive(new DriveInfo(home), Path.GetFileName(home), home)];
         }
         // DriveInfo.GetDrives() 在 Linux 上会枚举每一个挂载点，其中包含 /dev、
         // /dev/pts、/dev/shm 等嵌套的伪文件系统。把它们全部作为“此电脑”的
@@ -56,26 +55,30 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         if (IsLinux)
         {
             var root = new DriveInfo(Path.DirectorySeparatorChar.ToString());
-            return [new DriveDto(
-                Name: root.Name,
-                Path: root.RootDirectory.FullName,
-                TotalSize: root.IsReady ? root.TotalSize : null,
-                IsReady: root.IsReady,
-                IsBrowsable: true)];
+            return [DescribeDrive(root, root.Name, root.RootDirectory.FullName)];
         }
 
-        var list = new List<DriveDto>();
-        foreach (var d in DriveInfo.GetDrives())
+        return DriveInfo.GetDrives()
+            .Select(drive => DescribeDrive(drive, drive.Name, drive.RootDirectory.FullName))
+            .ToArray();
+    }
+
+    private static DriveDto DescribeDrive(DriveInfo drive, string name, string path)
+    {
+        var isReady = drive.IsReady;
+        long? totalSize = null;
+        long? availableFreeSpace = null;
+        if (isReady)
         {
-            long? total = d.IsReady ? d.TotalSize : null;
-            list.Add(new DriveDto(
-                Name: d.Name,
-                Path: d.RootDirectory.FullName,
-                TotalSize: total,
-                IsReady: d.IsReady,
-                IsBrowsable: true));
+            try
+            {
+                totalSize = drive.TotalSize;
+                availableFreeSpace = drive.AvailableFreeSpace;
+            }
+            catch (IOException) { } // Media can disappear after the readiness check.
+            catch (UnauthorizedAccessException) { }
         }
-        return list;
+        return new DriveDto(name, path, totalSize, availableFreeSpace, isReady, IsBrowsable: true);
     }
 
     public IReadOnlyList<SpecialLocationDto> GetSpecialLocations(string? userHomeDirectory = null)
@@ -171,20 +174,20 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
 
             // Windows：顶层 directories = 各盘符（与 Jaya 一致）
             var dirs = new List<FileSystemEntryDto>();
-            foreach (var d in DriveInfo.GetDrives())
+            foreach (var drive in GetDrives())
             {
-                if (!d.IsReady) continue;
+                if (!drive.IsReady) continue;
                 dirs.Add(new FileSystemEntryDto(
-                    Path: d.RootDirectory.FullName,
-                    Name: d.Name,
-                    Size: d.TotalSize,
+                    Path: drive.Path,
+                    Name: drive.Name,
+                    Size: drive.TotalSize,
                     Type: FileSystemEntryType.Drive,
                     Created: null,
                     Modified: null,
                     Accessed: null,
                     IsHidden: false,
                     IsSystem: false,
-                    MimeType: null));
+                    MimeType: null) { AvailableFreeSpace = drive.AvailableFreeSpace });
             }
             return new DirectoryDto(
                 Path: string.Empty,

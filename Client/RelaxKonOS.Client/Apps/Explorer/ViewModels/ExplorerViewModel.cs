@@ -755,8 +755,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             {
                 var drives = GetNavigationDrives(await _client.GetDrivesAsync());
                 if (FileListCacheScope?.Invoke() != scope) return false;
-                loaded.AddRange(drives.Select(d => new FileSystemEntryDto(d.Path, d.Name, d.TotalSize,
-                    FileSystemEntryType.Drive, null, null, null, false, false, null)));
+                loaded.AddRange(drives.Select(ToDriveEntry));
                 if (FileListCacheEnabled) _listingCache.Put("\0roots", new DirectoryDto("", "", FileSystemEntryType.Drive,
                     loaded.ToArray(), [], null, null), loaded.Count);
                 confirmedPath = null;
@@ -831,8 +830,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         {
             var directory = path is not null ? await _client.GetDirectoryAsync(path)
                 : new DirectoryDto("", "", FileSystemEntryType.Drive,
-                    GetNavigationDrives(await _client.GetDrivesAsync()).Select(drive => new FileSystemEntryDto(drive.Path, drive.Name,
-                        drive.TotalSize, FileSystemEntryType.Drive, null, null, null, false, false, null)).ToArray(), [], null, null);
+                    GetNavigationDrives(await _client.GetDrivesAsync()).Select(ToDriveEntry).ToArray(), [], null, null);
             if (_disposed || generation != _listingGeneration || FileListCacheScope?.Invoke() != scope || !FileListCacheEnabled || IsBusy || IsRenaming || IsBatchActive) return;
             _listingCache.Put(path ?? "\0roots", directory, directory.Directories.Count + directory.Files.Count);
             ApplyCachedDirectory(directory); IsShowingCachedFiles = false;
@@ -933,6 +931,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         var posixRoot = readyDrives.FirstOrDefault(d => string.Equals(d.Path, "/", StringComparison.Ordinal));
         return posixRoot is null ? readyDrives : [posixRoot];
     }
+
+    private static FileSystemEntryDto ToDriveEntry(DriveDto drive)
+        => new(drive.Path, drive.Name, drive.TotalSize, FileSystemEntryType.Drive, null, null, null, false, false, null)
+        { AvailableFreeSpace = drive.AvailableFreeSpace };
 
     /// <summary>Whether a list entry can initiate a move drag.</summary>
     public bool CanDragEntry(FileSystemEntryDto entry)

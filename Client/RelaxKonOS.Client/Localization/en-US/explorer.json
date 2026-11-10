@@ -163,6 +163,7 @@
         "explorer.open_with": "Open with...",
         "explorer.properties": "Properties",
         "explorer.size": "Size",
+        "explorer.drive_capacity": "Free {0} / {1}",
         "explorer.modified": "Date modified",
         "explorer.permission.read": "Read",
         "explorer.permission.write": "Write",
