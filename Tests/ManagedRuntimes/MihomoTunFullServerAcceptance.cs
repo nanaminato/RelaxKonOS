@@ -187,7 +187,7 @@ internal static class MihomoTunFullServerAcceptance
         var overviewCleanup = phase is ("squid-restart" or "inbound-restart")
             && File.Exists(Path.Combine(root, "full-overview-cleanup-proof"));
         var squidCleanup = phase == "squid-restart" && File.Exists(Path.Combine(root, "full-squid-cleanup-proof"));
-        var controllerCleanup = phase == "inbound-restart" && File.Exists(Path.Combine(root, "full-controller-cleanup-proof"));
+        var controllerCleanup = phase is ("inbound-restart" or "restart") && File.Exists(Path.Combine(root, "full-controller-cleanup-proof"));
         var retryCleanup = phase == "zero-dns-pam-retry" && File.Exists(Path.Combine(root, "full-pam-retry-cleanup-proof"));
         var versionWorkerFault = phase == "inbound-restart" && File.Exists(Path.Combine(root, "full-version-worker-fault-proof"));
         var dropStopReply = phase == "stop-reply-drop";

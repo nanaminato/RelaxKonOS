@@ -5,7 +5,7 @@ tun_case=full
 fixture= helper= server= authenticated= baseline= tun_script=
 proxy_tests=
 run_seconds=150
-pam_retry=0
+fixture_pam=0
 if [[ ( $# == 3 || $# == 4 ) && $1 == --tun-fd ]]; then
     tun_fd=1
     tun_case=${4:-full}
@@ -13,7 +13,10 @@ if [[ ( $# == 3 || $# == 4 ) && $1 == --tun-fd ]]; then
     fixture=$(realpath -e -- "$2")
     helper=$(realpath -e -- "$3")
     tun_script=$(realpath -e -- "$(dirname -- "$0")/mihomo-tun-fd-proof.py")
-    if [[ $tun_case == ipc-http-zero-dns && -f $(dirname -- "$fixture")/tun-pam-retry.fixture ]]; then pam_retry=1; fi
+    if [[ $tun_case == ipc-http-zero-dns && -f $(dirname -- "$fixture")/tun-pam-retry.fixture ]] ||
+        [[ $tun_case == ipc-http-restored-dispatch-unknown && -f $(dirname -- "$fixture")/tun-core-emergency.fixture ]]; then
+        fixture_pam=1
+    fi
     run_seconds=60
     if [[ $tun_case == ipc-http-inbound-tun || $tun_case == ipc-http-squid-tun-recovery-fault || $tun_case == ipc-http-tun-recovery-write-fault || $tun_case == ipc-http-tun-terminal-fault || $tun_case == ipc-http-tun-cleanup-fault || $tun_case == ipc-http-tun-cleanup-cut || $tun_case == ipc-http-tun-cleanup-drain || $tun_case == ipc-http-start-reply-drop || $tun_case == ipc-http-stop-reply-drop || $tun_case == ipc-http-full || $tun_case == ipc-http-zero-dns || $tun_case == ipc-http-early-owner || $tun_case == ipc-http-initial-stop || $tun_case == ipc-http-initial-stop-replaced || $tun_case == ipc-http-restored-process-replaced || $tun_case == ipc-http-restored-job-replaced || $tun_case == ipc-http-restored-job-cut || $tun_case == ipc-http-restored-dispatch-unknown || $tun_case == ipc-http-named-start-dns || $tun_case == ipc-http-named-start-dns-settled || $tun_case == ipc-http-named-start-recovery-cut || $tun_case == ipc-http-named-start-admission || $tun_case == ipc-http-named-start-baseline || $tun_case == ipc-http-named-start-helper-profile || $tun_case == ipc-http-partial-dns || $tun_case == ipc-http-unknown-dns || $tun_case == ipc-http-joint || $tun_case == ipc-http-admission || $tun_case == ipc-http-handoff || $tun_case == ipc-http-retained || $tun_case == ipc-http-retained-installation || $tun_case == ipc-http-retained-administrator || $tun_case == ipc-http-squid || $tun_case == ipc-http-squid-lifecycle-unknown || $tun_case == ipc-http-squid-account ]]; then
         run_seconds=110
@@ -98,7 +101,7 @@ cleanup() {
     echo "PASS HOST SYSTEMD CLEANUP: dedicated cgroup removed, host runtime services, proxy and resolver files unchanged"
 }
 trap cleanup EXIT
-if [[ $authenticated == --authenticated || $tun_case == ipc-http-retained-administrator || $pam_retry == 1 ]]; then
+if [[ $authenticated == --authenticated || $tun_case == ipc-http-retained-administrator || $fixture_pam == 1 ]]; then
     mkfifo -m 0600 "$work/credentials"
     exec 3<&0
     cat <&3 > "$work/credentials" &
@@ -128,7 +131,7 @@ run_checks() {
         install -d -m 0755 "\$helper_dir" || return
         install -m 0755 "$helper" "\$helper_dir/RelaxKonOS.PrivilegedHelper" || return
         cp -- "$(dirname "$helper")"/*.dll "$(dirname "$helper")"/RelaxKonOS.PrivilegedHelper.{deps,runtimeconfig}.json "\$helper_dir/" || return
-        if [[ $tun_case == ipc-http-retained-administrator || $pam_retry == 1 ]]; then
+        if [[ $tun_case == ipc-http-retained-administrator || $fixture_pam == 1 ]]; then
             /usr/bin/python3 -I "$work/mihomo-tun-fd-proof.py" proof "$work" "$fixture" "$tun_case" < "$work/credentials"
         else
             /usr/bin/python3 -I "$work/mihomo-tun-fd-proof.py" proof "$work" "$fixture" "$tun_case"

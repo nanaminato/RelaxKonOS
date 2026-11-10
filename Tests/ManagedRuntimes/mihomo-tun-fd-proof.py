@@ -2229,6 +2229,7 @@ def proof_full_http_shutdown(ipc, case):
     restored_replaced = case == 'ipc-http-restored-process-replaced'
     job_replaced = case == 'ipc-http-restored-job-replaced'
     dispatch_unknown = case == 'ipc-http-restored-dispatch-unknown'
+    core_emergency = dispatch_unknown and Path(sys.argv[3]).with_name('tun-core-emergency.fixture').is_file()
     job_cut = dispatch_unknown or case == 'ipc-http-restored-job-cut'
     initial_stop = replaced_stop or restored_replaced or job_replaced or job_cut or case == 'ipc-http-initial-stop'
     unknown_dns = case == 'ipc-http-unknown-dns'
@@ -2252,9 +2253,9 @@ def proof_full_http_shutdown(ipc, case):
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
     assert mounts['/etc'] == 'overlay'
-    if removal_admin or pam_retry:
+    if removal_admin or pam_retry or core_emergency:
         assert all(mounts.get(path) == 'tmpfs' for path in ('/var/lib', '/run', '/etc/relaxkonos', '/etc/systemd/system'))
-    administrator = json.loads(sys.stdin.readline()) if removal_admin or pam_retry else None
+    administrator = json.loads(sys.stdin.readline()) if removal_admin or pam_retry or core_emergency else None
     base = 'http://192.0.2.2:18970'
     api = '/api/v1.0/proxy'
     queue = Path('/var/lib/relaxkonos/proxy/state/proxy-operations.json')
@@ -2698,6 +2699,8 @@ def proof_full_http_shutdown(ipc, case):
             assert worker.wait(timeout=12) == 0
             ipc.stop_helper()
             ipc.start_helper()
+            if core_emergency:
+                (root / 'full-controller-cleanup-proof').touch()
             worker = launch('restart')
             pid = int(marker('full-server-pid'))
             token = login()
@@ -2711,6 +2714,56 @@ def proof_full_http_shutdown(ipc, case):
             assert service('show', '-p', 'ActiveState', '--value', unit) == 'inactive'
             assert config.read_bytes() == mirror.read_bytes() == original_config
             assert network_baseline() == baseline and resolver_snapshot() == original_resolver
+            if core_emergency:
+                recovery_api = '/api/v1.0/managed-runtimes/mihomo/recovery'
+                stop_api, close_api = recovery_api + '/stop', recovery_api + '/close'
+                body = {'operationId': str(uuid.UUID(publication))}
+                close = dict(body, confirmed=True)
+                baseline_reply = request(recovery_api, token)
+                assert baseline_reply[0] == 200 and baseline_reply[1]['required']
+                assert uuid.UUID(baseline_reply[1]['operationId']).hex == publication
+                files = (queue, state_file, owner, initial_stop, config, mirror)
+                saved = tuple(path.read_bytes() for path in files)
+                prefix = root / 'full-server/full-controller-cleanup'
+                Path(f'{prefix}-arm').touch()
+                Path(f'{prefix}-fail').touch()
+                try:
+                    assert request(api + '/controller-config', token)[0] == 200
+                    assert marker('full-server/full-controller-cleanup-held') == 'disposing' and leases() == 1
+                finally:
+                    Path(f'{prefix}-release').touch()
+                module_path = '/api/v1.0/server/modules/relaxkonos.proxy'
+                until(lambda: request(module_path, token)[1]['residency']['state'] == 'faulted', 'original Proxy scope quarantine')
+                assert all(request(api + path, token)[0] == 503 for path in ('/tun', '/recovery'))
+                assert request(recovery_api, token) == baseline_reply and leases() == 1
+                for endpoint, payload in ((stop_api, body), (close_api, close)):
+                    assert request(endpoint, data=payload)[0] == 401
+                    status, denied = request(endpoint, token, data=payload)
+                    assert status == 403 and denied['code'] == 'elevation-required'
+                assert 'operation=MihomoRuntimeRecoveryStop ' not in ipc.log.read_text()
+                status, _ = request('/api/v1.0/privileged/elevation', token, data={
+                    'capability': 'MihomoInstall', 'target': 'mihomo',
+                    'administratorUsername': administrator['identifier'], 'password': administrator['password']})
+                assert status == 200
+                status, rejected = request(stop_api, token, data={'operationId': str(uuid.uuid4())})
+                assert status == 409 and rejected['code'] == 'runtime.recovery_target_conflict'
+                status, stopped = request(stop_api, token, data=body)
+                assert status == 200 and stopped['required'] and uuid.UUID(stopped['operationId']).hex == publication
+                assert stopped['service']['running'] is False and stopped['service']['bootEnabled'] is False
+                status, rejected = request(close_api, token, data=body)
+                assert status == 400 and rejected['code'] == 'runtime.recovery_confirmation_required'
+                status, rejected = request(close_api, token, data=close)
+                assert status == 409 and rejected['code'] == 'runtime.publication_unconfirmed'
+                log = ipc.log.read_text()
+                assert log.count('operation=MihomoRuntimeRecoveryStop ') == 2 and 'operation=MihomoRuntimeRecoveryClose ' not in log
+                assert tuple(path.read_bytes() for path in files) == saved and not starts.exists()
+                assert network_baseline() == baseline and resolver_snapshot() == original_resolver
+                assert request(recovery_api, token) == baseline_reply and leases() == 1
+                os.kill(pid, signal.SIGKILL)
+                assert worker.wait(timeout=12) == 0
+                print(f'PASS TUN CORE EMERGENCY WITH QUARANTINED PROXY: original={publication}; '
+                      'PAM authorized original stop; mismatched ID and close blocked; original records retained', flush=True)
+                return
             os.kill(pid, signal.SIGTERM)
             assert worker.wait(timeout=12) == 0
             print(f'PASS TUN RESTORED START FOREIGN SENDER: original={publication}; '

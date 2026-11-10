@@ -1050,6 +1050,18 @@ Release 25 项注册及 38 项 TUN 边界回归通过。Linux 专属 cgroup 和�
 
 **未实现或仍受门禁保护。** 原发送端无法取得同一网络归属时保留原操作及准入门禁。Proxy 保持 resident，整模块安全交接仍开放。
 
+### Proxy 隔离后的 Core 授权紧急恢复
+
+**已实现且已验证。** Linux 私有 systemd 的完整认证 Server 按原发布 `49d4285d2bb34f6d93141e5a9182f7f5` 保留异网络命名空间发送端的待核验记录。重启后通过控制器管理请求注入真实异步作用域清理故障。原 Proxy 代次保留一项故障租约，两条管理状态路由返回 503。Core 受管运行时恢复查询仍返回同一原 ID 和待核验回执。
+
+紧急停止与关账对匿名请求返回 401，对未提权请求返回 `403 / elevation-required`。实际 PAM 管理员提权后，Helper 拒绝错配停止 ID。原 ID 的紧急停止返回 200，确认专属单元已停止且开机启动关闭。未明确确认的关账返回 400，确认后的关账因 Server 原发布仍未决返回 `409 / runtime.publication_unconfirmed`，Helper 关账派发为零。两次 Helper 停止请求分别为错配拒绝和原 ID 执行，补偿 `StartUnit` 派发为零。原队列、原归档、网络归属、首次停止记录、管理选路、resolver、配置与镜像保持。
+
+Linux Release 构建、25 项注册检查及 Windows Release TUN 和 Core 安全回归通过。专属进程和 cgroup 已清理，宿主共享服务、代理与 resolver 指纹一致。原日志 `.artifacts/mb04-tun-full-zero-dns/linux-core-emergency.log` SHA-256 为 `3bddda027f9871ec920e967650d3f897732475700fdf5e7cefeef4c68d1862a4`，归档为 `312e8a26e493a824ec23aca2ab077f1e8295022cff035ca0ab99d1022ea62238`。
+
+**已实现但实机未验证。** 本场景的原专属服务已停止。真实流量的正向连续性见[整组 Helper 停止后的原发送端接续](#整组-helper-停止后的原发送端接续)。对象释放、ALC、隔离负载内存、生产收益与整机掉电分别待验。
+
+**未实现或仍受门禁保护。** 证据不足的原发布继续待核验。整模块安全交接仍开放，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。
