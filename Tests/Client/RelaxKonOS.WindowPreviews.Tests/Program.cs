@@ -47,6 +47,12 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args is ["--catalog-live-desktop", var liveCatalogServer, var liveCatalogPackage, var liveCatalogPhase]
+    && liveCatalogPhase is "absent" or "install")
+{
+    ApplicationCatalogLiveChecks.Run(liveCatalogServer, liveCatalogPackage, liveCatalogPhase);
+    return;
+}
 if (args.Contains("--windows11-only")) { Windows11DesktopChecks.RunAsync().GetAwaiter().GetResult(); return; }
 if (args.Contains("--readiness-only")) { ApplicationReadinessShellChecks.Run(settings, localization, services); return; }
 if (args.Contains("--websites-only")) { WebSiteEditorChecks.Run(); WebSiteReadRecoveryChecks.Run(); WebSiteScopeChecks.Run(); CurrentNginxChecks.Run(); return; }

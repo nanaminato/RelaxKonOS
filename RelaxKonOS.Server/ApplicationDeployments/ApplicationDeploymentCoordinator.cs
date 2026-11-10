@@ -46,6 +46,8 @@ internal sealed class ApplicationDeploymentCoordinator(
             {
                 var replay = operations.FindIdempotent(application.Id, request.Kind, actor, key, fingerprint);
                 if (replay is not null) return replay.Operation;
+                if (operations.HasUnresolvedOutcome(application.Id))
+                    throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
                 if (request.ExpectedUpdatedAt is { } expected && (expected == default || application.UpdatedAt != expected))
                     throw new ApplicationDeploymentException(expected == default ? ApplicationDeploymentProblemCodes.InvalidRequest : ApplicationDeploymentProblemCodes.DefinitionConflict, expected == default ? 400 : 409);
                 ApplicationDeploymentService.ValidateCatalogLifecycle(application, request);

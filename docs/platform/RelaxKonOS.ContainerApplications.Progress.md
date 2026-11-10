@@ -153,4 +153,16 @@ Server 制品来自 `5fad1752`，以 `dotnet publish RelaxKonOS.Server/RelaxKonO
 
 `verify_live.py stateful` 与 `verify_live.py web-db` 均通过真实 API，退出 0。先安装两个 ntfy 实例并写入独立消息。实例 `f4189dd5-b378-4b39-99fe-e2482445abf2` 从 2.37.0 升级至 2.37.2，实际 Engine 镜像 ID 不同。保留卸载关闭端口，显式重装保留原修订与卷，两个实例的消息均可读回。另一实例的受管卷删除被 Docker 管理器拒绝。新增 Web＋数据库包后以同一 Server 哈希 `c7d555a270b2f14ccebf0adecadb27ba138edd281bb613c0fb1631db64706c79` 重启。读者安装返回 403，资源清单未变化。控制者完成目录安装、业务读写与同键回放。数据库未发布宿主端口，受管卷删除被拒绝。原应用操作为 `c58375c8-ac47-46b4-9a36-e03fcee13cfb`，原 Docker 子回执为 `3359f62b-8759-4625-b1f1-694bde07ac80`。脱敏证据为 `ca-build/wsl-ca-preview-efdc/{stateful,web-db}.jsonl`。
 
-该证据来自独立 WSL2 Linux Server 和专用 Engine。完整 Server 的强制终止及缺失回执验收尚待执行。新增包已复用同一 Server 二进制，固定桌面客户端二进制的新增包、动态表单和实际安装仍待记录。专用环境保留用于后续验收。
+该证据来自独立 WSL2 Linux Server 和专用 Engine。完整 Server 的强制终止、缺失回执以及固定桌面程序集的新增包验证见下一节。
+
+## 第 7.1 节完整 Server 强制终止与固定客户端
+
+在同一专用 Engine、真实 PAM 和完整 Server 上使用 `hold_compose_association.c` 编译的原生库，先使原 Docker 操作持久化成功，再在应用关联写回之前发送 SIGKILL。首次核验误用 HTTP 的小写枚举格式读取磁盘账本。修正后确认真实退出码 137。进一步发现同端口安装冲突会提前触发端口门禁，因而把未核验操作的冲突判断移到生命周期准入之前。修正版用同一构建复验原结果与缺失副本。
+
+复验使用 Linux amd64、Engine 29.1.3、Compose 2.40.3、.NET 10.0.14 和 Server SHA-256 `3025d80bdf367edd94cda0c24611e4d0ad56853808f6e3b73a7d3eee83e46814`。原应用操作 `65a37d1e-c042-4ec5-a166-b5bb0482f5c1` 与 Docker 操作 `d1163eb2-3896-4fc9-bcf6-34cec0c63413` 均可查。同键重试沿用原回执，业务标记可读，原容器、网络、卷、单一秘密版本及派发次数保持一致。缺失 Docker 回执的独立状态副本保留 `managed_compose_outcome_unknown`，直接针对原实例提交新操作键返回 `resource_conflict`。真实 Server 命令及脱敏证据位于 `ca-build/wsl-ca-preview-efdc/run-crash.py`、`crash-45141c6f04b5.jsonl` 与 `ca-build/ca-wsl-live-crash-fence.log`。
+
+使用 `dotnet build Tests/Client/RelaxKonOS.WindowPreviews.Tests/RelaxKonOS.WindowPreviews.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q` 构建桌面程序集。在专用 Linux 环境，使用同一套 Server 和 Avalonia 桌面程序集分别运行 `--catalog-live-desktop http://127.0.0.1:18080 fixture-web-db-client absent` 与 `install`。通过真实 PAM 登录和实际目录 API。只添加清单并重启 Server 后，客户端识别新包，渲染遮蔽秘密字段，预览真实拓扑并提交，操作 `67c1a004-c7d2-42e5-bca0-84b91c187321` 成功，业务标记写入和读取成功。Server SHA-256 为 `c7d555a270b2f14ccebf0adecadb27ba138edd281bb613c0fb1631db64706c79`，桌面程序集 SHA-256 为 `13b9a58f2d3c41a24802f4c71cd81f7d37434557cb9dce6cb2ee6da79c88b60d`，前后哈希一致。桌面通过无头 Avalonia 驱动真实表单。记录位于 `ca-build/ca-wsl-desktop-{absent,add,install}.log`。
+
+最终 Server 目录 `--catalog-update-only` 和桌面 `--deployments-only` 回归通过，日志见 `ca-build/ca-final-{server,desktop}-regression.log`。Engine ID、最终容器、卷、网络清单和清单摘要见 `ca-build/ca-wsl-final-inventory.log`。第 7.1 节四项在独立 WSL2 Linux Server、专用 Engine 与上述客户端制品上通过。发布制品和操作流程见[首版发布评审方案](RelaxKonOS.ContainerApplications.PreviewRelease.md)，发布仍需批准。
+
+验收后已正常停止专用 dockerd 和专用 WSL2 发行版，保留验收虚拟磁盘与脱敏证据。退出记录见 `ca-build/ca-wsl-shutdown.log`。

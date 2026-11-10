@@ -374,7 +374,15 @@ internal static class CatalogUpdateChecks
             $"Activation must bind both verified images and the healthy Web service while retaining one protected secret. State={original.Operation.State}, recovery={original.Operation.RecoveryProblemCode}.");
 
         catalog.Update(application.Id, item => item with { CurrentRevisionId = null, ContainerName = null, ContainerId = null, DesiredState = ApplicationDesiredState.Stopped });
-        operations.Update(original.Operation.OperationId, prior => prior with { State = DeploymentOperationState.Running, Stage = DeploymentStage.Activating, CompletedAt = null }, "test-before-activation");
+        operations.Update(original.Operation.OperationId, prior => prior with
+        {
+            State = DeploymentOperationState.Interrupted,
+            Stage = DeploymentStage.Interrupted,
+            RecoveryProblemCode = ApplicationManagedComposeDispatch.OutcomeUnknown,
+        }, "test-before-activation");
+        Expect(() => coordinator.Start(new(application.Id, DeploymentOperationKind.Deploy,
+            new(ImageReference: release.ImageReference)), "catalog-test", "new-while-unverified"),
+            ApplicationDeploymentProblemCodes.ResourceConflict);
         await coordinator.StartAsync(default);
         using var replay = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.CatalogInstall, request, RelaxKonOSJsonOptions.Default);
         var repeated = (await replay.Content.ReadFromJsonAsync<CatalogApplicationInstallDto>(RelaxKonOSJsonOptions.Default))!;
