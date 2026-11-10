@@ -11,6 +11,13 @@ internal sealed class ApplicationManagedComposeDispatch(ApplicationDeploymentOpe
     internal const string OutcomeUnknown = "application-deployment.managed_compose_outcome_unknown";
     internal bool Available => docker is not null;
 
+    internal async Task PreflightAsync(ManagedComposePlan plan, CancellationToken ct)
+    {
+        if (docker is null) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 503);
+        try { await docker.PreflightManagedAsync(plan, ct); }
+        catch (DockerStackException error) { throw new ApplicationDeploymentException(error.ProblemCode, error.StatusCode); }
+    }
+
     internal async Task<DockerStackOperationDto> DispatchAsync(Guid operationId, Guid revisionId, ManagedComposePlan plan,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment, string credentialRevision,
         CancellationToken cancellationToken)

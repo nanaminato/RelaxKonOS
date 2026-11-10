@@ -6,9 +6,11 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using RelaxKonOS.Protocol.ApplicationDeployments;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Files;
+using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Residency;
 
 internal static class CatalogUpdateChecks
@@ -42,6 +44,7 @@ internal static class CatalogUpdateChecks
     {
         VerifyManifestDirectory(root);
         VerifyTopologyManifest();
+        VerifyComposeCapability();
         await VerifyEngineBoundariesAsync();
         await VerifyManagedComposeRecoveryAsync(Path.Combine(root, "compose-recovery"));
         var environment = new TestHostEnvironment(root);
@@ -275,6 +278,30 @@ internal static class CatalogUpdateChecks
         Console.WriteLine("Catalog checks passed, including exact predecessor and target digest, bypass refusal, retained records and original receipt fencing.");
     }
 
+    private static void VerifyComposeCapability()
+    {
+        var mode = new CatalogDescriptorMode();
+        bool Has(HostPlatformKind platform, bool enabled, params string[] modules) =>
+            ServerDescriptorFactory.Create(platform, mode, new(), new RelaxKonOS.Server.BackupRecovery.ConfigurationBackupRecoveryKeyProvider(new()),
+                modules.ToHashSet(StringComparer.Ordinal), enabled).Capabilities.Contains(ServerCapabilities.ApplicationDeploymentsCompose);
+        Check(Has(HostPlatformKind.Linux, true, ServerCapabilities.Docker)
+            && !Has(HostPlatformKind.Linux, false, ServerCapabilities.Docker)
+            && !Has(HostPlatformKind.Windows, true, ServerCapabilities.Docker)
+            && !Has(HostPlatformKind.Linux, true),
+            "Managed Compose capability requires the explicit preview flag, Linux and the Docker module.");
+        mode.Deployments = false;
+        Check(!Has(HostPlatformKind.Linux, true, ServerCapabilities.Docker), "The host deployment boundary must also grant the capability.");
+    }
+
+    private sealed class CatalogDescriptorMode : IServerModeResolver
+    {
+        public bool Deployments { get; set; } = true;
+        public ServerMode Mode => ServerMode.System;
+        public bool Supports(ServerHostFeature feature) => false;
+        public ServerCapabilitiesDto Describe() => new(Mode, new(0, "test", "/root"), new("loopback"), new("hostAccount", "helper"),
+            new(false, false, false, false, false, false, true, false, false, false, false, false, false, false, Deployments), []);
+    }
+
     private static async Task VerifyManagedInstallAsync(HttpClient http, ApplicationDeploymentCoordinator coordinator,
         ApplicationDeploymentOptions options, FakeComposeService compose, CatalogUpdateEngine engine, FixtureHttpClientFactory clients,
         ApplicationDeploymentCatalogStore catalog, ApplicationDeploymentOperationStore operations, ApplicationDeploymentSecretStore secrets,
@@ -325,6 +352,11 @@ internal static class CatalogUpdateChecks
                 "Managed Compose preview remains restricted to the controller.");
         http.DefaultRequestHeaders.Remove("X-Test-Role");
         http.DefaultRequestHeaders.Add("X-Test-Role", "controller");
+        compose.ManagedPreviewProblem = DockerStackProblem.DefinitionChanged;
+        using (var refused = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.CatalogInstall, request, RelaxKonOSJsonOptions.Default))
+            Check(refused.StatusCode == HttpStatusCode.Conflict && catalog.FindByName(request.Name) is null
+                && compose.ManagedDeployCalls == 0, "Server-side Compose parser rejection must precede allocation and dispatch.");
+        compose.ManagedPreviewProblem = null;
         using var response = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.CatalogInstall, request, RelaxKonOSJsonOptions.Default);
         if (response.StatusCode != HttpStatusCode.Accepted)
             throw new InvalidOperationException($"Managed catalog install returned {(int)response.StatusCode}. {await response.Content.ReadAsStringAsync()}");

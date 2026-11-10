@@ -20,6 +20,10 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
     public Task<IReadOnlyList<ApplicationCatalogTemplateDto>> ListCatalogAsync(CancellationToken cancellationToken = default) =>
         SendAsync<IReadOnlyList<ApplicationCatalogTemplateDto>>(ApplicationDeploymentApiRoutes.Catalog, cancellationToken);
 
+    public Task<CatalogApplicationTopologyDto> PreviewCatalogTopologyAsync(string templateId, string templateVersion, int hostPort,
+        CancellationToken cancellationToken = default) =>
+        SendAsync<CatalogApplicationTopologyDto>(ApplicationDeploymentApiRoutes.CatalogTopology(templateId, templateVersion, hostPort), cancellationToken);
+
     public Task<CatalogApplicationInstallDto> InstallCatalogAsync(InstallCatalogApplicationRequest request, string key, CancellationToken cancellationToken = default) =>
         SendAsync<CatalogApplicationInstallDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.CatalogInstall, request, key, cancellationToken);
 

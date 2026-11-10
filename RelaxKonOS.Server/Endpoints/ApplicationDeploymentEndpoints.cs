@@ -76,6 +76,11 @@ public static class ApplicationDeploymentEndpoints
                             var template = ApplicationCatalog.Require(request.TemplateId, request.TemplateVersion);
                             var bound = template.Bind(request, options.EnableManagedComposePreview && dispatch.Available);
                             await manager.PreflightCatalogInstallAsync(bound.Definition, ct, template.IsMultiService);
+                            if (template.IsMultiService)
+                            {
+                                var fields = (bound.Definition.Configuration ?? []).Select(field => field.Name).ToHashSet(StringComparer.Ordinal);
+                                await dispatch.PreflightAsync(template.CompileTopology(Guid.NewGuid(), request.HostPort, fields), ct);
+                            }
                             var application = await manager.CreateAsync(bound.Definition, actor, ct, template);
                             var operation = coordinator.Start(new DeploymentRequest(application.Id, DeploymentOperationKind.Deploy,
                                 bound.Source, ExpectedUpdatedAt: application.UpdatedAt, ManagedComposeInstall: template.IsMultiService), actor, Key(http));

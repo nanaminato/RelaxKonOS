@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.ApplicationDeployments;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Server.Docker;
 
 namespace RelaxKonOS.Server.ApplicationDeployments;
@@ -102,7 +103,9 @@ internal static class ApplicationCatalog
         }
 
         public ApplicationCatalogTemplateDto Describe() => new(SchemaVersion, Id, Version, "RelaxKonOS", "built-in", true, Purpose, Description,
-            ["linux/amd64"], IsMultiService ? ["server.application-deployments", "server.docker", "server.application-deployments.compose"] : ["server.application-deployments", "server.docker"],
+            ["linux/amd64"], IsMultiService
+                ? [ServerCapabilities.ApplicationDeployments, ServerCapabilities.Docker, ServerCapabilities.ApplicationDeploymentsCompose]
+                : [ServerCapabilities.ApplicationDeployments, ServerCapabilities.Docker],
             new(1, 512L * 1024 * 1024, 512), [.. Fields.Select(x => x.Describe())], Volumes, ContainerPort, HealthPath,
             "Updates and removal retain managed data volumes. Installed instances are never changed by a catalogue refresh.");
 

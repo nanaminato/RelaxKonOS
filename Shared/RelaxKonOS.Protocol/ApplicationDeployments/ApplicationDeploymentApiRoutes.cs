@@ -66,6 +66,8 @@ public static class ApplicationDeploymentApiRoutes
     public static string Logs(Guid applicationId) => $"{Applications}/{applicationId:D}/logs";
     public static string Deploy(Guid applicationId) => $"{Applications}/{applicationId:D}/deploy";
     public static string CatalogUpdate(Guid applicationId) => $"{Applications}/{applicationId:D}/catalog-update";
+    public static string CatalogTopology(string templateId, string templateVersion, int hostPort) =>
+        $"{Catalog}/{Uri.EscapeDataString(templateId)}/{Uri.EscapeDataString(templateVersion)}/topology?hostPort={hostPort.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
     public static string Rollback(Guid applicationId) => $"{Applications}/{applicationId:D}/rollback";
     public static string CatalogReinstall(Guid applicationId) => $"{Applications}/{applicationId:D}/catalog-reinstall";
     public static string Start(Guid applicationId) => $"{Applications}/{applicationId:D}/start";

@@ -11,6 +11,8 @@ public interface IRemoteApplicationDeploymentClient
 {
     Task<IReadOnlyList<ApplicationDeploymentTemplateDto>> ListTemplatesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ApplicationCatalogTemplateDto>> ListCatalogAsync(CancellationToken cancellationToken = default);
+    Task<CatalogApplicationTopologyDto> PreviewCatalogTopologyAsync(string templateId, string templateVersion, int hostPort,
+        CancellationToken cancellationToken = default);
     Task<CatalogApplicationInstallDto> InstallCatalogAsync(InstallCatalogApplicationRequest request, string key, CancellationToken cancellationToken = default);
     Task<ApplicationImageTagsDto> ListImageTagsAsync(string repository, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ApplicationDto>> ListApplicationsAsync(CancellationToken cancellationToken = default);

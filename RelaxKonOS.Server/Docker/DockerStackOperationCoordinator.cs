@@ -52,6 +52,22 @@ internal sealed class DockerStackOperationCoordinator(
             DockerStackValidation.Reference($"{DockerStackOperationKind.Deploy}|{definition.Name}|{request.DefinitionVersion}"), ct);
     }
 
+    internal async Task PreflightManagedAsync(ManagedComposePlan plan, CancellationToken ct)
+    {
+        using var work = await workOwner.AdmitAsync(ct);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, work.Token);
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<IDockerComposeService>().PreviewManagedAsync(plan, cancellation.Token);
+        }
+        catch (DockerComposeCleanupException error)
+        {
+            work.Fail(error);
+            throw;
+        }
+    }
+
     internal Task<DockerStackOperationDto> DeployManagedAsync(ManagedComposePlan plan,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment,
         Guid applicationOperationId, string credentialRevision, CancellationToken ct = default)

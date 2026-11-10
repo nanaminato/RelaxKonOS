@@ -1585,9 +1585,11 @@ internal sealed class FakeComposeService : IDockerComposeService
     public Task<DockerStackPreviewDto> PreviewManagedAsync(ManagedComposePlan plan, CancellationToken cancellationToken = default)
     {
         ManagedPreview = plan;
+        if (ManagedPreviewProblem is { } problem) throw new DockerStackException(problem);
         return Task.FromResult(new DockerStackPreviewDto(plan.Project, "fixture", [], [], []));
     }
 
+    public string? ManagedPreviewProblem { get; set; }
     public int ManagedDeployCalls { get; private set; }
     internal Action<ManagedComposePlan, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>>? OnManagedDeploy { get; set; }
     public Task<DockerStackMutationResult> DeployManagedAsync(ManagedComposePlan plan,

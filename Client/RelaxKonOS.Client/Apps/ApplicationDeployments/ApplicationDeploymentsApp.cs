@@ -75,7 +75,7 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
             dialog => new DeploymentWizardView(wizard, dialog), new Size(780, 740));
         viewModel.ShowCatalogAsync = releases => context.ShowDialogAsync<CatalogApplicationInstallDto?>(window!,
             LocalizedText.Get("application_deployments.catalog.title"),
-            dialog => new ApplicationCatalogView(client, releases, dialog), new Size(600, 680));
+            dialog => new ApplicationCatalogView(client, releases, session.CurrentServer, dialog), new Size(600, 680));
         viewModel.ShowCatalogUpgradeAsync = (application, releases) => context.ShowDialogAsync<DeploymentOperationDto?>(window!,
             LocalizedText.Get("application_deployments.catalog.upgrade"),
             dialog => new ApplicationCatalogUpgradeView(client, application, releases, dialog), new Size(680, 520));

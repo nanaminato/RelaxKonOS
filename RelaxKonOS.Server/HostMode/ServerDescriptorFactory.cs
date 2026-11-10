@@ -24,7 +24,8 @@ public static class ServerDescriptorFactory
         });
 
     public static ServerDescriptorDto Create(HostPlatformKind platform, IServerModeResolver serverMode,
-        EventAlertsOptions eventAlerts, IBackupRecoveryKeyProvider backupRecovery, IReadOnlySet<string> enabledModuleCapabilities)
+        EventAlertsOptions eventAlerts, IBackupRecoveryKeyProvider backupRecovery, IReadOnlySet<string> enabledModuleCapabilities,
+        bool managedComposePreview = false)
     {
         var isWindows = platform == HostPlatformKind.Windows;
         // Deployment mode still owns the upper bound: a module cannot grant what the host refuses.
@@ -57,6 +58,8 @@ public static class ServerDescriptorFactory
         if (hostCapabilities.Proxy) capabilities.Add(ServerCapabilities.GatewayProxy);
         if (hostCapabilities.Proxy && serverMode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System) capabilities.Add(ServerCapabilities.ProxyServer);
         if (hostCapabilities.ApplicationDeployments) capabilities.Add(ServerCapabilities.ApplicationDeployments);
+        if (managedComposePreview && platform == HostPlatformKind.Linux && hostCapabilities.ApplicationDeployments && hostCapabilities.Docker)
+            capabilities.Add(ServerCapabilities.ApplicationDeploymentsCompose);
         if (!isWindows && serverMode.Supports(ServerHostFeature.Firewall)) capabilities.Add(ServerCapabilities.PosixPermissions);
         if (eventAlerts.Enabled) capabilities.Add(ServerCapabilities.EventAlerts);
         if (hostCapabilities.ApplicationDeployments && backupRecovery.Availability.Available)

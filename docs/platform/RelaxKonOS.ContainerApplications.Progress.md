@@ -120,3 +120,11 @@ Windows x64、Docker Desktop Linux amd64 Engine、Compose v5.5.1、Python 3.14.8
 本次 Server Tests 构建命令为 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，并复跑 `--catalog-update-only`。两项均退出 0，证据见 `ca-build/ca-fixture-server-build.log` 与 `ca-build/ca-fixture-catalog-regression.log`。
 
 上述镜像和业务证据来自 Docker Desktop 隔离测试项目。待在专用 Linux Engine 上通过完整 Server 与客户端目录流程复验安装、兼容升级、保留卸载重装、归属和越权、强制终止原 ID 对账，以及同一组 Server 和客户端二进制新增包。当前 Windows SSH agent 仍无密钥，两个实机地址此前均通过同一主机密钥校验。
+
+## CA-02 客户端验收入口
+
+Linux x64 Server 仅在应用部署和 Docker 模块可用、且显式打开验收开关时，在登录描述符中声明双服务能力。桌面目录按登录描述符与包声明判定可用性，同一客户端能渲染新增包的字段。双服务表单要求预览精确版本及端口，显示 Web 回环发布、内部服务、依赖和卷路径。修改版本或端口会清除预览。提交端点独立检查本地 Engine 与 Compose 解析，解析拒绝发生在创建实例或秘密之前。
+
+Windows x64 / .NET SDK 10.0.300，使用 `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -v:q` 分别构建 Server Tests 与桌面 WindowPreviews Tests。Server 测试 DLL 的 `--catalog-update-only`、`--deployment-definition-only`、`--docker-compose-config-only` 和桌面测试 DLL 的 `--deployments-only` 均退出 0。受控 HTTP 测试确认 Compose 解析拒绝不留下定义和派发记录。无头桌面测试确认同一客户端按能力开关决定可用性、遮蔽秘密、显示数据库卷、使过期端口预览失效，并使用原目录字段提交。日志见 `ca-build/ca-client-preview-*.log`。
+
+实机验收仍需使用完整 Server、专用 Linux Engine 和固定客户端二进制执行。登录描述符表示验收入口已配置，实际安装仍由本地 Engine、解析器和权限检查决定。
