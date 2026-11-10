@@ -195,7 +195,7 @@ internal static class MihomoPublicationTransactionChecks
                 ? Task.FromResult(new ProxySettingsDto(false, false, false, false, false, "warning", 18889, false, "127.0.0.1", ProxyTunSettingsDto.Default))
                 : throw new Exception("Unexpected settings mutation"));
             f.Profiles = profiles; f.RecreateService();
-            var runtime = new MihomoRuntimeService(f, f.Store, f.Provider, f, new DirectDownloads());
+            var runtime = new MihomoRuntimeReceiptReader(f, f);
             var service = new ProxyConfigurationTransactionService(f, new ProxyEngineRegistry([engine]), profiles, f,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:19090/") }, f.Store,
                 settingsService: settings, managedPublication: f.Service, managedRuntime: runtime);
@@ -255,7 +255,7 @@ internal static class MihomoPublicationTransactionChecks
             var settingsFiles = new MihomoSettingsPublicationFiles(f, f.HostProxy);
             var service = new MihomoSettingsService(f, controller, f,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:19090/") }, f.HostProxy, f.Store,
-                managedPublication: f.Service, managedRuntime: new MihomoRuntimeService(f, f.Store, f.Provider, f, new DirectDownloads()),
+                managedPublication: f.Service, managedRuntime: new MihomoRuntimeReceiptReader(f, f),
                 settingsFiles: settingsFiles);
             var metadataOnly = mode.StartsWith("metadata-", StringComparison.Ordinal);
             var request = new UpdateProxySettingsRequest(false, false, true, true, false, "warning", metadataOnly ? 18888 : 18889,
@@ -269,7 +269,7 @@ internal static class MihomoPublicationTransactionChecks
                 Check(f.ConfigureCalls == (metadataOnly ? 0 : 1) && f.HostProxy.Calls == 1,
                     "Unchanged YAML settings avoid native restarts and fabricated receipts: " + mode);
                 Check(await new MihomoSystemProxyReconciler(f, new ProxySettingsReader(f), f, f.HostProxy, f.Store,
-                    new MihomoRuntimeService(f, f.Store, f.Provider, f, new DirectDownloads()), settingsFiles).ReconcileSystemProxyAsync(true, default) is null && f.HostProxy.Calls == 2,
+                    new MihomoRuntimeReceiptReader(f, f), settingsFiles).ReconcileSystemProxyAsync(true, default) is null && f.HostProxy.Calls == 2,
                     "Confirmed managed settings can reconcile the system proxy at startup: " + mode);
             }
             else if (mode is "revoked" or "corrupt-settings")
@@ -344,7 +344,7 @@ internal static class MihomoPublicationTransactionChecks
         {
             using var f = await Fixture.CreateAsync();
             var reconciler = new MihomoSystemProxyReconciler(f, new ProxySettingsReader(f), f, f.HostProxy, f.Store,
-                new MihomoRuntimeService(f, f.Store, f.Provider, f, new DirectDownloads()), new(f, f.HostProxy));
+                new MihomoRuntimeReceiptReader(f, f), new(f, f.HostProxy));
             if (failure == "revoked") f.Secret = null;
             if (failure == "yaml-drift") await File.WriteAllTextAsync(f.Active, "# unrelated YAML");
             if (failure == "settings-corrupt") await File.WriteAllTextAsync(f.SettingsPath, "corrupt");

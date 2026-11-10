@@ -25,6 +25,8 @@
 
 2026-11-10（MB-04 / MR-03 显式恢复作用域）。受管 TUN 显式重试沿用原发布锁、原操作及原 Helper 回执。实际响应与异步清理由同一 Proxy 工作租约保护。清理失败隔离原代次，重启按既有原终态核对。 [验收证据](../architecture/server-module-evidence/Proxy-Safety.md#显式-tun-重试的响应与异步清理)
 
+2026-11-10（MB-04 / MR-03 原回执读取）。TUN 停用计划及禁用启动使用独立的 Helper 只读回执端口。端口仅依赖宿主模式和 Helper 传输，与变更服务共用原 IPC 快照及见证校验。原发布锁和所有权仍由原台账裁决。[验收证据](../architecture/server-module-evidence/Proxy-Safety.md#停用准入的独立-tun-回执读取)
+
 2026-11-10（MB-04 / MR-06 固定升级复验）。专属根中断原包应答及首次恢复查询后，Core 安装台账继续按原 ID 和原 Helper 回执结案。实测两次原查询和一次实际升级，同键返回原终态。整机掉电仍需独立环境。[现机原回执复验](../architecture/server-module-evidence/Proxy-Squid.md#固定升级的现机原回执复验)
 
 ## Windows 日常安装入口调整（2026-10-27，MR-03/04/05）

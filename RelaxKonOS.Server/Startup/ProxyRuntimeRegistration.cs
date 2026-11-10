@@ -82,8 +82,8 @@ internal static class ProxyRuntimeRegistration
         // Managed runtime lifecycle: the component center and the installation domain install and
         // switch mihomo/sing-box releases through these services.
         builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.IMihomoRuntimeReceiptReader>(services =>
-            services.GetRequiredService<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>());
+        builder.Services.AddSingleton<RelaxKonOS.Server.ManagedRuntimes.IMihomoRuntimeReceiptReader,
+            RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeReceiptReader>();
         builder.Services.AddTransient<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeRecoveryService>();
         builder.Services.AddTransient<RelaxKonOS.Server.Proxy.Mihomo.MihomoDirectSettingsCompensationService>();
 

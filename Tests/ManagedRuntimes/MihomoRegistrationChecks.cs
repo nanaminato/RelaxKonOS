@@ -66,8 +66,15 @@ internal static class MihomoRegistrationChecks
         Check(services.GetRequiredService<IProxySystemProxyReconciler>() is MihomoSystemProxyReconciler
             && services.GetRequiredService<IProxyTunRuntimeController>() is ScopedProxyTunRuntimeController
             && builder.Services.Single(item => item.ServiceType == typeof(MihomoTunRuntimeController)).Lifetime == ServiceLifetime.Scoped
-            && ReferenceEquals(services.GetRequiredService<IMihomoRuntimeReceiptReader>(), services.GetRequiredService<MihomoRuntimeService>()),
-            "Guard and TUN have narrow executors and the receipt port uses the original runtime owner");
+            && services.GetRequiredService<IMihomoRuntimeReceiptReader>() is MihomoRuntimeReceiptReader,
+            "Guard and TUN have narrow executors and the receipt port reads the original Helper owner independently");
+        IServiceCollection receiptServices = new ServiceCollection();
+        receiptServices.Add(builder.Services.Single(item => item.ServiceType == typeof(IMihomoRuntimeReceiptReader)));
+        receiptServices.AddSingleton<IServerModeResolver>(new FixedMode());
+        receiptServices.AddSingleton<IPrivilegedOperationTransport>(new NoHelper());
+        await using (var receiptProvider = receiptServices.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true }))
+            Check(receiptProvider.GetRequiredService<IMihomoRuntimeReceiptReader>() is MihomoRuntimeReceiptReader,
+                "The registered receipt reader resolves with only the Helper transport and host mode");
         Check(builder.Services.Single(x => x.ServiceType == typeof(IProxySettingsWriter)).Lifetime == ServiceLifetime.Scoped
             && scope.ServiceProvider.GetRequiredService<IProxySettingsWriter>() is MihomoSettingsService
             && scope.ServiceProvider.GetRequiredService<IMihomoApplicationConfigurationPublisher>() is MihomoConfigurationPublicationService

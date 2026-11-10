@@ -134,6 +134,8 @@ Squid 配置、状态、账户读取、预览与原生校验由当前 Proxy 代�
 
 受管 TUN 持久发布由 Core 调度器按原 ID 恢复。Core 使用原发布锁和宿主托管的恢复作用域，Proxy 队列仍负责管理请求的原回执。禁用启动发现未结案的受管网络发布时，继续拒绝准入。[Core 发布恢复与管理代次](server-module-evidence/Proxy-Safety.md#core-受管-tun-发布恢复与管理代次)
 
+受管 TUN 的停用计划与禁用启动在原发布锁下使用独立的 Helper 回执读端口，验证原提交见证和当前配置及网络归属。该端口只构造宿主模式和 Helper 传输依赖。启用管理时和禁用启动时均由原 Helper 提供同一原发布的证据。[只读回执验收](server-module-evidence/Proxy-Safety.md#停用准入的独立-tun-回执读取)
+
 首次受管 TUN 的执行器由 Proxy 排队作用域创建。管理派发和显式恢复在调用 Core 发布端口前取得相应租约。Core 发布端口保存同一冻结计划、台账和原 ID。[受管 TUN 管理执行作用域](server-module-evidence/Proxy-Safety.md#受管-tun-管理执行作用域)
 
 显式重试使用原发布锁确认待恢复的受管 TUN，再将取得的工作租约交给本次 HTTP 执行作用域。原发布端口完成终态写入后归还发布锁，响应完成及作用域清理后才归还租约。无法确认清理时由同一 Proxy 代次保留失败作用域及租约。

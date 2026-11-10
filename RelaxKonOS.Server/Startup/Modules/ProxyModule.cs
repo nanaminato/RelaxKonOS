@@ -206,7 +206,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
         try
         {
             if ((await store.ReadAsync(ct)).Revision != state.Revision) return [unverified];
-            if (services.GetService<MihomoRuntimeService>() is not { } runtime) return [unverified];
+            if (services.GetService<IMihomoRuntimeReceiptReader>() is not { } runtime) return [unverified];
             var observed = await runtime.QueryHelperAsync(ct, publication);
             if (observed.PendingOperationId is { } pending)
                 return [new(Id, $"Managed Mihomo TUN operation {pending:D} is unresolved; original Helper ownership is retained.",

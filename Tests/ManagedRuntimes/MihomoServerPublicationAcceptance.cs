@@ -44,6 +44,7 @@ internal static class MihomoServerPublicationAcceptance
 
         MihomoRuntimeService Runtime(MihomoPublicationStore selected) => new(transport, selected,
             new(selected, paths, paths), paths, new DirectDownloads());
+        var receiptReader = new MihomoRuntimeReceiptReader(transport, paths);
         MihomoConfigurationPublicationService Service(MihomoPublicationStore selected) =>
             new(selected, new(selected, paths, paths), Runtime(selected), paths, new(paths, systemProxy), publicationProfiles);
         async Task<(Guid Operation, RuntimeConfigurationPlan Plan, long Revision)> PlanAsync(MihomoPublishedRuntime target)
@@ -135,7 +136,7 @@ internal static class MihomoServerPublicationAcceptance
                 : throw new Exception("Unexpected settings call"));
             var application = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), profiles, paths,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:" + original.ControllerPort + "/") }, store,
-                settingsService: settings, managedPublication: Service(store), managedRuntime: Runtime(store));
+                settingsService: settings, managedPublication: Service(store), managedRuntime: receiptReader);
             Check(await application.ApplyAsync(profileId, "rules:\n  - MATCH,DIRECT\n", default) is null
                 && (await profiles.GetAsync(profileId, default)) is { IsActive: true, Revision: 2 } && await probe(originalPort + 2),
                 "Application profile activation reaches real Helper transaction and serves HTTP on the selected listener");
@@ -277,7 +278,7 @@ internal static class MihomoServerPublicationAcceptance
             }
             var noOpApplication = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), publicationProfiles, paths,
                 new MihomoControllerOptions { Endpoint = new("http://127.0.0.1:" + original.ControllerPort + "/") }, store,
-                settingsService: settings, managedPublication: Service(store), managedRuntime: Runtime(store));
+                settingsService: settings, managedPublication: Service(store), managedRuntime: receiptReader);
             var beforeSelectionOnly = await lifecycle.QueryAsync(default);
             Check(await noOpApplication.ActivateStoredAsync(nextProfile.Id, default) is null && transport.ConfigureCalls == beforeProfileRecovery
                 && (await lifecycle.QueryAsync(default)).Installation.StateRevision == beforeSelectionOnly.Installation.StateRevision,
@@ -289,7 +290,7 @@ internal static class MihomoServerPublicationAcceptance
             MihomoSettingsService SettingsService() => new(paths,
                 MihomoPublicationTransactionChecks.Stub<IMihomoControllerClient>(_ => throw new Exception("Settings used direct controller")),
                 paths, new MihomoControllerOptions(), systemProxy, store,
-                managedPublication: Service(store), managedRuntime: Runtime(store), settingsFiles: new(paths, systemProxy));
+                managedPublication: Service(store), managedRuntime: receiptReader, settingsFiles: new(paths, systemProxy));
             var settingsRequest = new UpdateProxySettingsRequest(false, false, false, false, false, "warning", originalPort + 4);
             hostFailures = 1;
             var settingsProblem = await SettingsService().UpdateAsync(settingsRequest, default);
