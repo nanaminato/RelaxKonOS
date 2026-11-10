@@ -17,7 +17,8 @@ internal static class ApplicationDeploymentDiagnosticsVerification
     public static void Run(string root)
     {
         var catalogue = ApplicationCatalog.DescribeAll();
-        Check(catalogue.Length == 4
+        Check(catalogue.Select(template => (template.Id, template.Version)).Distinct().Count() == catalogue.Length
+            && catalogue.Any(template => template.Id == "personal-site")
             && catalogue.All(template => template.SchemaVersion == ApplicationCatalog.SchemaVersion
                 && template.Trusted
                 && template.Source == "built-in"

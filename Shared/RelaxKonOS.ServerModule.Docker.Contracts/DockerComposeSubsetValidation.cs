@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Text.Json;
 
 namespace RelaxKonOS.Server.Docker;
 
@@ -13,6 +14,64 @@ namespace RelaxKonOS.Server.Docker;
 public static partial class DockerComposeSubsetValidation
 {
     public const string UnsupportedFeature = DockerStackProblem.FeatureUnsupported;
+
+    /// <summary>Checks normalized Compose parser output before any Docker Manager write.</summary>
+    public static void RequireUnmanagedConfiguration(JsonElement root)
+    {
+        if (DockerStackValidation.IsApplicationResourceName(Text(root, "name")))
+            throw new DockerStackException(DockerStackProblem.ApplicationResourceManaged);
+        foreach (var property in new[] { "volumes", "networks" })
+        {
+            foreach (var entry in Map(root, property))
+            {
+                var item = entry.Value;
+                RequireUnmanagedResource(item, Text(item, "name") ?? entry.Name);
+                if (item.TryGetProperty("external", out var external) && external.ValueKind == JsonValueKind.True
+                    || item.TryGetProperty("driver_opts", out _))
+                    throw new DockerStackException(UnsupportedFeature);
+            }
+        }
+
+        if (Map(root, "configs").Any() || Map(root, "secrets").Any())
+            throw new DockerStackException(UnsupportedFeature);
+        foreach (var entry in Map(root, "services"))
+        {
+            var service = entry.Value;
+            RequireUnmanagedResource(service, Text(service, "container_name"));
+            if (service.TryGetProperty("privileged", out var privileged) && privileged.ValueKind == JsonValueKind.True
+                || new[] { "build", "network_mode", "pid", "ipc", "userns_mode", "devices", "device_cgroup_rules", "cap_add", "cap_drop" }
+                    .Any(property => service.TryGetProperty(property, out _)))
+                throw new DockerStackException(UnsupportedFeature);
+
+            if (!service.TryGetProperty("volumes", out var mounts)) continue;
+            if (mounts.ValueKind != JsonValueKind.Array) throw new DockerStackException(UnsupportedFeature);
+            foreach (var mount in mounts.EnumerateArray())
+            {
+                if (DockerStackValidation.IsApplicationResourceName(Text(mount, "source")))
+                    throw new DockerStackException(DockerStackProblem.ApplicationResourceManaged);
+                if (Text(mount, "type") != "volume")
+                    throw new DockerStackException(UnsupportedFeature);
+            }
+        }
+    }
+
+    private static void RequireUnmanagedResource(JsonElement item, string? name)
+    {
+        if (DockerStackValidation.IsApplicationResourceName(name) || Map(item, "labels").Any(label =>
+            DockerStackValidation.IsReservedApplicationLabel(label.Name, label.Value.ValueKind == JsonValueKind.String ? label.Value.GetString() : null)))
+            throw new DockerStackException(DockerStackProblem.ApplicationResourceManaged);
+    }
+
+    private static IEnumerable<JsonProperty> Map(JsonElement item, string property)
+    {
+        if (item.ValueKind != JsonValueKind.Object) throw new DockerStackException(DockerStackProblem.InvalidCompose);
+        if (!item.TryGetProperty(property, out var map)) return [];
+        if (map.ValueKind != JsonValueKind.Object) throw new DockerStackException(DockerStackProblem.InvalidCompose);
+        return map.EnumerateObject();
+    }
+
+    private static string? Text(JsonElement item, string property) => item.ValueKind == JsonValueKind.Object
+        && item.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     public static bool IsSupported(string composeYaml, out string problemCode)
     {
@@ -85,7 +144,7 @@ public static partial class DockerComposeSubsetValidation
     /// </summary>
     private static bool ReferencesVariable(string line) => VariableReference().IsMatch(line.Replace("$$", string.Empty));
 
-    [GeneratedRegex(@"^\s*(?:build|privileged|external|network_mode|pid|ipc|userns_mode|devices|device_cgroup_rules|cap_add|cap_drop)\s*:", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^\s*(?:build|privileged|external|network_mode|pid|ipc|userns_mode|devices|device_cgroup_rules|cap_add|cap_drop|include|extends|env_file|label_file|configs|secrets|driver_opts)\s*:", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex UnsupportedKey();
 
     // Bare `$NAME`, braced `${NAME}`, and the whole `${NAME:-default}` / `${NAME:?error}` guard family

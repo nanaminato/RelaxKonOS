@@ -8,6 +8,7 @@ namespace RelaxKonOS.Server.Docker;
 /// proves nothing about what the daemon actually uses.
 /// </summary>
 public sealed record DockerEngineProxyState(string HttpProxy, string HttpsProxy, string NoProxy);
+public sealed record DockerImageIdentity(string Id, string OperatingSystem, string Architecture, IReadOnlyList<string> RepositoryDigests);
 
 /// <summary>The only server boundary allowed to invoke the host's local Docker CLI/transport.</summary>
 public interface IDockerEngineService
@@ -17,6 +18,7 @@ public interface IDockerEngineService
     Task<DockerEngineProxyState?> GetProxyStateAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerImageDto>> ListImagesAsync(CancellationToken cancellationToken = default);
+    Task<DockerImageIdentity?> InspectImageAsync(string imageReference, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerNetworkDto>> ListNetworksAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerVolumeDto>> ListVolumesAsync(CancellationToken cancellationToken = default);
     Task<DockerContainerDetailsDto?> GetContainerAsync(string id, CancellationToken cancellationToken = default);

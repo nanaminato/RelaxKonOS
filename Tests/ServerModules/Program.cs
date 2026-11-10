@@ -1218,6 +1218,7 @@ sealed class NoDockerEngine : RelaxKonOS.Server.Docker.IDockerEngineService
     public Task<RelaxKonOS.Server.Docker.DockerEngineProxyState?> GetProxyStateAsync(CancellationToken ct = default) => throw Missing();
     public Task<IReadOnlyList<RelaxKonOS.Protocol.Docker.DockerContainerDto>> ListContainersAsync(CancellationToken ct = default) => throw Missing();
     public Task<IReadOnlyList<RelaxKonOS.Protocol.Docker.DockerImageDto>> ListImagesAsync(CancellationToken ct = default) => throw Missing();
+    public Task<RelaxKonOS.Server.Docker.DockerImageIdentity?> InspectImageAsync(string imageReference, CancellationToken ct = default) => throw Missing();
     public Task<IReadOnlyList<RelaxKonOS.Protocol.Docker.DockerNetworkDto>> ListNetworksAsync(CancellationToken ct = default) => throw Missing();
     public Task<IReadOnlyList<RelaxKonOS.Protocol.Docker.DockerVolumeDto>> ListVolumesAsync(CancellationToken ct = default) => throw Missing();
     public Task<RelaxKonOS.Protocol.Docker.DockerContainerDetailsDto?> GetContainerAsync(string id, CancellationToken ct = default) => throw Missing();

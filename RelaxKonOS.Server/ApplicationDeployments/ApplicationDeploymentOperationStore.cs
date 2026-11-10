@@ -133,7 +133,7 @@ internal sealed class ApplicationDeploymentOperationStore
             }
 
             var locks = resources.Select(Reference).Distinct().Order(StringComparer.Ordinal).ToArray();
-            if (ledger.Entries.Any(x => Active(x.Operation) && x.Resources.Intersect(locks, StringComparer.Ordinal).Any()))
+            if (ledger.Entries.Any(x => BlocksMutation(x.Operation) && x.Resources.Intersect(locks, StringComparer.Ordinal).Any()))
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
 
             var entry = new DeploymentEntry(
@@ -224,8 +224,8 @@ internal sealed class ApplicationDeploymentOperationStore
         var entries = next.Entries;
         if (entries.Length > RetainedOperations)
         {
-            var active = entries.Where(x => Active(x.Operation)).ToArray();
-            var retired = entries.Where(x => !Active(x.Operation))
+            var active = entries.Where(x => BlocksMutation(x.Operation)).ToArray();
+            var retired = entries.Where(x => !BlocksMutation(x.Operation))
                 .OrderByDescending(x => x.Operation.CreatedAt)
                 .Take(Math.Max(0, RetainedOperations - active.Length))
                 .ToArray();
@@ -238,6 +238,12 @@ internal sealed class ApplicationDeploymentOperationStore
             audit = [.. audit.OrderByDescending(x => x.At).Take(RetainedAuditRecords).OrderBy(x => x.At)];
         return new(entries, audit);
     }
+
+    internal bool HasUnresolvedRetention(Guid applicationId) => Read().Any(x =>
+        x.Operation.ApplicationId == applicationId && x.Operation.RecoveryProblemCode == ApplicationDeploymentService.RetainedOutcomeUnknown);
+
+    private static bool BlocksMutation(DeploymentOperationDto operation) => Active(operation)
+        || operation.RecoveryProblemCode == ApplicationDeploymentService.RetainedOutcomeUnknown;
 
     private void EnsureAvailable()
     {

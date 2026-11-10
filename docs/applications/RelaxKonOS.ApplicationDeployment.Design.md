@@ -1,6 +1,7 @@
 # RelaxKonOS 容器化应用部署设计
 
 > 本文统一维护应用部署的设计、当前实现、测试矩阵与验证记录。
+> 应用包目录与受管多服务实例的后续架构见[容器应用平台设计](../platform/RelaxKonOS.ContainerApplications.Design.md)。
 >
 > 冻结日期：2026-09-19。
 >
@@ -86,16 +87,17 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 | --- | --- | --- | --- |
 | GET | `/templates` | 四个模板的能力描述 | Read |
 | GET | `/catalog` | 可信、版本化的应用用途模板目录（不含可执行脚本） | Read |
-| GET | `/catalog/{templateId}` | 一个用途模板的受限字段与维护说明 | Read |
+| GET | `/catalog/{templateId}/{templateVersion}` | 一个精确发布的受限字段与维护说明 | Read |
 | POST | `/catalog/install` | 用精确模板版本和显式宿主端口创建定义并排队首次部署 → `202` | Manage |
 | GET | `/applications/{id}/catalog-update?templateVersion=…` | 精确模板版本与当前定义/修订的只读更新预览 | Read |
-| POST | `/applications/{id}/catalog-update` | 明确确认精确版本，保留定义/秘密引用/卷并排队更新 → `202` | Manage |
+| POST | `/applications/{id}/catalog-update` | 确认预览中的精确目标镜像、当前修订和定义时间，保留定义、秘密引用与卷并排队升级 → `202` | Manage |
 | GET | `/image-tags?repository=` | Docker Hub 公共仓库的最近 20 个非 `latest` tag；其他仓库保留手动填写 | Read |
 | GET | `/applications` | 应用列表（含观测状态） | Read |
 | POST | `/applications` | 创建应用定义 | Manage |
 | GET | `/applications/{id}` | 应用快照（应用 + 修订 + 近期操作 + 活动操作） | Read |
 | PUT | `/applications/{id}` | 替换应用定义 | Manage |
-| DELETE | `/applications/{id}` | 删除应用 → `202` | Manage |
+| DELETE | `/applications/{id}` | 删除普通应用。已部署目录实例需确认，卸载后保留实例、活动修订、卷及秘密版本 → `202` | Manage |
+| POST | `/applications/{id}/catalog-reinstall` | 确认并提交原实例的保留修订 ID，核对原镜像和自有卷后重装 → `202` | Manage |
 | GET | `/applications/{id}/revisions` | 修订列表 | Read |
 | GET | `/applications/{id}/operations` | 该应用的近期操作 | Read |
 | GET | `/applications/{id}/logs` | 有界脱敏日志 | Read |
@@ -116,7 +118,7 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 
 `ApplicationCatalogTemplateDto` 是唯一的用途模板描述。它必须携带稳定 `id`、精确 `version`、发布者和 `source`，以及由服务端目录校验结果写入的 `trusted`。客户端只将 `trusted: true`、已知 `schemaVersion`、已知字段类型（`text`、`number`、`enum`、`secret`）、满足所需 capability 且与 Docker OS/架构相符的条目开放安装；这些检查只帮助用户，服务端在 `POST /catalog/install` 时仍按 ID/版本重新验证。目录字段不会携带脚本、Dockerfile、宿主路径或 UI 代码。
 
-安装成功后，`ApplicationDto` 和其不可变 `ApplicationRevisionDto` 都保留 `catalogTemplateId` 与 `catalogTemplateVersion`。后续目录刷新或模板撤回只影响新的安装选择，绝不修改、停止或替换已有实例；更新使用 `CatalogApplicationUpdatePreviewDto` 和 `UpdateCatalogApplicationRequest`：精确目标 ID/版本、完整定义版本、当前绑定版本及当前修订 ID（必传，允许显式 null）。
+安装成功后，`ApplicationDto` 和其不可变 `ApplicationRevisionDto` 都保留 `catalogTemplateId` 与 `catalogTemplateVersion`。目录刷新或模板撤回只影响后续操作准入。升级提交使用预览中的精确目标 ID、版本、`expectedTargetImageReference`、完整定义版本、当前绑定版本和当前修订 ID（必传，允许显式 null）。目标包的 `upgradeFrom` 须匹配已提交来源的版本和不可变镜像。
 
 预览包含镜像差异、更新说明和阻断原因，不携带秘密。更新只选择受信目录镜像，保留用户定义与秘密版本；若当前定义不满足目标模板的端口/工作负载/必需挂载、字段和最低资源，先显式编辑定义。目录版本不会静默作用于实例；实例模板绑定只在修订激活成功时提交，失败保留旧绑定，回滚恢复所选修订绑定。
 

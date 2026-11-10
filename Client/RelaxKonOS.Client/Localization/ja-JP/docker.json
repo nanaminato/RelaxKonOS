@@ -1,6 +1,7 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "docker.problem.application_resource_managed": "この管理対象リソースはアプリケーションデプロイから変更してください。",
     "docker.login_required": "Docker マネージャーを開始するには、RelaxKonOS Server にサインインして接続してください。",
     "docker.status.loading": "サーバーのローカル Docker Engine を確認しています…",
     "docker.status.available": "Docker Engine {0} を利用できます（{1}）。",

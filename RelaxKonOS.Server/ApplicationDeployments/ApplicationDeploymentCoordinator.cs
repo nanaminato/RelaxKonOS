@@ -45,6 +45,7 @@ internal sealed class ApplicationDeploymentCoordinator(
                 if (replay is not null) return replay.Operation;
                 if (request.ExpectedUpdatedAt is { } expected && (expected == default || application.UpdatedAt != expected))
                     throw new ApplicationDeploymentException(expected == default ? ApplicationDeploymentProblemCodes.InvalidRequest : ApplicationDeploymentProblemCodes.DefinitionConflict, expected == default ? 400 : 409);
+                ApplicationDeploymentService.ValidateCatalogLifecycle(application, request);
                 if (request.CatalogUpdate is { } update)
                     ApplicationCatalogUpdates.Validate(application, application.CurrentRevisionId is { } revisionId ? catalog.FindRevision(revisionId) : null, update);
                 // The concurrency ceiling is decided before the record is written, so a rejected request
@@ -56,10 +57,12 @@ internal sealed class ApplicationDeploymentCoordinator(
                     ApplicationDeploymentService.Resources(application.Id), out var created);
                 if (created)
                 {
+                    var retainedLifecycle = request.Kind == DeploymentOperationKind.Reinstall
+                        || request.Kind == DeploymentOperationKind.Delete && application.CatalogTemplateId is not null;
                     var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
                     cancellations[entry.Operation.OperationId] = cancellation;
                     running[entry.Operation.OperationId] = Task.Run(
-                        () => RunAsync(entry.Operation, request, actor, cancellation), CancellationToken.None);
+                        () => RunAsync(entry.Operation, request, actor, cancellation, retainedLifecycle), CancellationToken.None);
                 }
                 return entry.Operation;
             });
@@ -88,7 +91,8 @@ internal sealed class ApplicationDeploymentCoordinator(
         }
     }
 
-    private async Task RunAsync(DeploymentOperationDto operation, DeploymentRequest request, string actor, CancellationTokenSource cancellation)
+    private async Task RunAsync(DeploymentOperationDto operation, DeploymentRequest request, string actor,
+        CancellationTokenSource cancellation, bool retainedLifecycle)
     {
         var id = operation.OperationId;
         try
@@ -109,8 +113,13 @@ internal sealed class ApplicationDeploymentCoordinator(
             // A process that is stopping has not failed: it leaves the operation interrupted so the
             // next startup reconciles it instead of reporting a phantom failure.
             var stopping = lifetime.ApplicationStopping.IsCancellationRequested;
-            Complete(id, stopping ? DeploymentOperationState.Interrupted : DeploymentOperationState.Cancelled, null,
-                stopping ? ApplicationDeploymentProblemCodes.Interrupted : ApplicationDeploymentProblemCodes.Cancelled);
+            var stage = retainedLifecycle && stopping ? operations.Get(id)?.Operation.Stage : null;
+            var unresolved = stage is DeploymentStage.Creating or DeploymentStage.HealthChecking or DeploymentStage.Activating
+                or DeploymentStage.Deactivating or DeploymentStage.CleaningUp or DeploymentStage.Completed;
+            Complete(id, stopping ? DeploymentOperationState.Interrupted : DeploymentOperationState.Cancelled,
+                unresolved ? ApplicationDeploymentProblemCodes.Interrupted : null,
+                unresolved ? ApplicationDeploymentService.RetainedOutcomeUnknown
+                    : stopping ? ApplicationDeploymentProblemCodes.Interrupted : ApplicationDeploymentProblemCodes.Cancelled);
         }
         catch (DeploymentFailure failure)
         {

@@ -9,6 +9,7 @@
   <ItemGroup>
     <!-- 动图夹具是真文件而不是编码成的常量：检查要先证明原图确实带三帧，只有真 GIF 能证明。 -->
     <None Update="Fixtures/**/*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures/ApplicationCatalog/upgrade-fixture.json" TargetPath="Assets/ApplicationCatalog/upgrade-fixture.json" />
     <ProjectReference Include="../RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsFirewallOperations.cs" Link="WindowsFirewallOperations.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimePolicy.cs" Link="WindowsManagedRuntimePolicy.cs" />

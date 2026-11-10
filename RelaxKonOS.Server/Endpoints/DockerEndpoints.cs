@@ -18,9 +18,14 @@ public static class DockerEndpoints
         group.MapPost("/engine/{action}", (string action, DockerEngineActionRequest request, RelaxKonOS.Server.Docker.IDockerEngineControlService service, CancellationToken ct) => service.ApplyAsync(action, request.Confirmed, ct));
         group.MapGet("/containers", (RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => ReadAsync(() => service.ListContainersAsync(ct)));
         group.MapGet("/containers/{id}", async (string id, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await HandleAsync(async () => await service.GetContainerAsync(id, ct) is { } details ? Results.Ok(details) : Results.NotFound()));
-        group.MapPost("/containers", (DockerContainerCreateRequest request, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.CreateContainerAsync(request, ct));
-        group.MapPut("/containers/{id}", (string id, DockerContainerUpdateRequest request, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.UpdateContainerAsync(id, request, ct));
-        group.MapPost("/containers/{id}/{action}", (string id, string action, DockerContainerActionRequest request, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.ApplyContainerActionAsync(id, action, request, ct));
+        group.MapPost("/containers", (DockerContainerCreateRequest request, IDockerEngineService service, CancellationToken ct) =>
+            ReadAsync(() => DockerApplicationResourcePolicy.CreateContainerAsync(service, request, ct)));
+        group.MapPut("/containers/{id}", (string id, DockerContainerUpdateRequest request, IDockerEngineService service, CancellationToken ct) =>
+            ReadAsync(() => DockerApplicationResourcePolicy.ChangeContainerAsync(service, id, request.Name,
+                resolved => service.UpdateContainerAsync(resolved, request, ct), ct)));
+        group.MapPost("/containers/{id}/{action}", (string id, string action, DockerContainerActionRequest request, IDockerEngineService service, CancellationToken ct) =>
+            ReadAsync(() => DockerApplicationResourcePolicy.ChangeContainerAsync(service, id, null,
+                resolved => service.ApplyContainerActionAsync(resolved, action, request, ct), ct)));
         group.MapGet("/images", (RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => ReadAsync(() => service.ListImagesAsync(ct)));
         group.MapPost("/images/pull", (DockerImageOperationRequest request, ClaimsPrincipal principal, RelaxKonOS.Server.ImageMirrors.IDockerImageMirrorResolver mirrors, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) =>
         {
@@ -35,12 +40,16 @@ public static class DockerEndpoints
         group.MapDelete("/images/{id}", (string id, [Microsoft.AspNetCore.Mvc.FromBody] DockerImageOperationRequest request, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.DeleteImageAsync(id, request, ct));
         group.MapGet("/networks", (RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => ReadAsync(() => service.ListNetworksAsync(ct)));
         group.MapGet("/volumes", (RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => ReadAsync(() => service.ListVolumesAsync(ct)));
-        group.MapPost("/networks", (DockerNetworkCreateRequest request, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.CreateNetworkAsync(request, ct));
+        group.MapPost("/networks", (DockerNetworkCreateRequest request, IDockerEngineService service, CancellationToken ct) =>
+            DockerApplicationResourcePolicy.CreateNetworkAsync(service, request, ct));
         group.MapGet("/networks/{id}", async (string id, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await HandleAsync(async () => await service.GetNetworkAsync(id, ct) is { } details ? Results.Ok(details) : Results.NotFound()));
-        group.MapPost("/volumes", (DockerVolumeCreateRequest request, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.CreateVolumeAsync(request, ct));
+        group.MapPost("/volumes", (DockerVolumeCreateRequest request, IDockerEngineService service, CancellationToken ct) =>
+            DockerApplicationResourcePolicy.CreateVolumeAsync(service, request, ct));
         group.MapGet("/volumes/{name}", async (string name, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await HandleAsync(async () => await service.GetVolumeAsync(name, ct) is { } details ? Results.Ok(details) : Results.NotFound()));
-        group.MapDelete("/networks/{id}", (string id, bool confirmed, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.DeleteNetworkAsync(id, confirmed, ct));
-        group.MapDelete("/volumes/{name}", (string name, bool confirmed, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => ReadAsync(() => service.DeleteVolumeAsync(name, confirmed, ct)));
+        group.MapDelete("/networks/{id}", (string id, bool confirmed, IDockerEngineService service, CancellationToken ct) =>
+            ReadAsync(() => DockerApplicationResourcePolicy.DeleteNetworkAsync(service, id, confirmed, ct)));
+        group.MapDelete("/volumes/{name}", (string name, bool confirmed, IDockerEngineService service, CancellationToken ct) =>
+            ReadAsync(() => DockerApplicationResourcePolicy.DeleteVolumeAsync(service, name, confirmed, ct)));
         group.MapGet("/containers/{id}/logs", async (string id, int? tail, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await service.GetContainerLogsAsync(id, tail ?? 200, ct) is { } logs ? Results.Ok(logs) : Results.NotFound());
         group.MapGet("/containers/{id}/stats", async (string id, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await HandleAsync(async () => await service.GetContainerStatsAsync(id, ct) is { } stats ? Results.Ok(stats) : Results.NotFound()));
         group.MapPost("/images/build", (DockerBuildRequest request, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.BuildImageAsync(request, cancellationToken: ct));

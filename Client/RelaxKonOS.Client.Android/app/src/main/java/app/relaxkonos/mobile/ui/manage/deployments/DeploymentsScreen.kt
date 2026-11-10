@@ -634,7 +634,8 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                                                     browser.state.value.owner === owner && (browser.state.value.detail as? ApiResult.Success)?.value?.application == app
                                                 } }
                                             if (app.driftProblemCode != null) Text(stringResource(R.string.deployments_drift), color = MaterialTheme.colorScheme.error)
-                                            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                                            val retained = app.desiredState == "retained"
+                                            if (!retained) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                                 if (app.actualState == "running") {
                                                     TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Stop }, enabled = !state.submitting && !state.controlBlocked) {
                                                         Text(stringResource(R.string.deployment_stop))
@@ -648,17 +649,17 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                                                     }
                                                 }
                                             }
-                                            TextButton(onClick = { deleteConfirmation = true }, enabled = !state.submitting && !state.controlBlocked) {
+                                            if (!retained) TextButton(onClick = { deleteConfirmation = true }, enabled = !state.submitting && !state.controlBlocked) {
                                                 Text(stringResource(R.string.deployment_delete), color = MaterialTheme.colorScheme.error)
                                             }
-                                            if (app.catalogTemplateId != null) TextButton(onClick = { updateTemplate = app }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null && state.catalog is ApiResult.Success) {
+                                            if (!retained && app.catalogTemplateId != null && app.currentRevisionNumber != null) TextButton(onClick = { updateTemplate = app }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null && state.catalog is ApiResult.Success) {
                                                 Text(stringResource(R.string.catalog_update_title))
                                             }
-                                            TextButton(onClick = { viewModel.clearStagedArchive(); newRevision = snapshot }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null &&
+                                            if (app.catalogTemplateId == null) TextButton(onClick = { viewModel.clearStagedArchive(); newRevision = snapshot }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null &&
                                             (state.runtime as? ApiResult.Success)?.value?.isAvailable == true) {
                                                 Text(stringResource(R.string.deployments_new_revision))
                                             }
-                                            TextButton(onClick = { editDefinition = app }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null) {
+                                            if (!retained) TextButton(onClick = { editDefinition = app }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null) {
                                                 Text(stringResource(R.string.deployments_edit_definition))
                                             }
                                         }
@@ -678,7 +679,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                                                 revision.catalogTemplateId?.let { Text(stringResource(R.string.catalog_instance_version, it, revision.catalogTemplateVersion.orEmpty()), style = MaterialTheme.typography.bodySmall) }
                                                 if (revision.isCurrent) {
                                                     Text(stringResource(R.string.deployments_current), color = MaterialTheme.colorScheme.primary)
-                                                } else {
+                                                } else if (snapshot.application.catalogTemplateId == null) {
                                                     TextButton(onClick = { rollbackRevision = revision }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null) {
                                                         Text(stringResource(R.string.deployment_rollback))
                                                     }

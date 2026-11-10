@@ -37,6 +37,7 @@ internal sealed class ApplicationDeploymentService(
 {
     /// <summary>Read-only secret delivery path inside the workload container.</summary>
     public const string SecretsMountPath = "/run/relaxkonos/secrets";
+    internal const string RetainedOutcomeUnknown = "application-deployment.retained_outcome_unknown";
     private const int PreservedBuildContexts = 20;
 
     public static IReadOnlyList<string> Resources(Guid applicationId) => [$"application-deployment:{applicationId:D}"];
@@ -64,12 +65,38 @@ internal sealed class ApplicationDeploymentService(
     /// <summary>Cancellation is offered only before the activation or recovery critical section.</summary>
     public bool Cancel(DeploymentOperationDto operation) => operation.Cancellable;
 
+    internal static void ValidateCatalogLifecycle(ApplicationRecord application, DeploymentRequest request)
+    {
+        if (request.Kind == DeploymentOperationKind.Reinstall)
+        {
+            if (application.CatalogTemplateId is null || application.DesiredState != ApplicationDesiredState.Retained
+                || application.CurrentRevisionId is null || request.RevisionId != application.CurrentRevisionId)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DefinitionConflict);
+        }
+        else if (application.DesiredState == ApplicationDesiredState.Retained
+            || application.CatalogTemplateId is not null && (request.Kind == DeploymentOperationKind.Rollback
+                || request.Kind == DeploymentOperationKind.Delete && (request.DeleteVolumes || application.SiteId is not null)))
+        {
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 409);
+        }
+
+        if (application.CatalogTemplateId is { } catalogId && request.Kind == DeploymentOperationKind.Deploy && request.CatalogUpdate is null)
+        {
+            if (application.CurrentRevisionId is not null)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 409);
+            var release = ApplicationCatalog.Require(catalogId, application.CatalogTemplateVersion);
+            if (request.Source != new DeploymentSourceInputDto(ImageReference: release.ImageReference))
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.CatalogTemplateInvalid, 409);
+        }
+    }
+
     public async Task StartAsync(Guid operationId, DeploymentRequest request, string actor, IApplicationDeploymentProgress progress, CancellationToken cancellationToken)
     {
         var application = catalog.Find(request.ApplicationId)
             ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ApplicationNotFound, 404);
         if (request.ExpectedUpdatedAt is { } expected && application.UpdatedAt != expected)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DefinitionConflict);
+        ValidateCatalogLifecycle(application, request);
         if (request.CatalogUpdate is { } update)
         {
             var target = ApplicationCatalogUpdates.Validate(application, application.CurrentRevisionId is { } id ? catalog.FindRevision(id) : null, update);
@@ -90,6 +117,9 @@ internal sealed class ApplicationDeploymentService(
             case DeploymentOperationKind.Delete:
                 await DeleteAsync(application, operationId, progress, request.DeleteVolumes, cancellationToken);
                 return;
+            case DeploymentOperationKind.Reinstall:
+                await ReinstallAsync(application, operationId, progress, cancellationToken);
+                return;
             default:
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 400);
         }
@@ -108,6 +138,14 @@ internal sealed class ApplicationDeploymentService(
 
         try
         {
+            if (application.CatalogTemplateId is not null && operation.Kind is DeploymentOperationKind.Delete or DeploymentOperationKind.Reinstall)
+            {
+                // The prior container command can still have an unknown outcome after a process exit.
+                // Preserve the original receipt and data, and never issue another command from recovery.
+                return new(DeploymentOperationState.Interrupted, ApplicationDeploymentProblemCodes.Interrupted,
+                    RetainedOutcomeUnknown);
+            }
+
             var candidate = await runtime.FindOwnedContainerAsync(application.Id,
                 ApplicationDeploymentValidation.CandidateContainerName(application.Id), cancellationToken);
             if (candidate is not null)
@@ -161,11 +199,16 @@ internal sealed class ApplicationDeploymentService(
     {
         await progress.ReportAsync(new(DeploymentStage.Preflight, null, true), cancellationToken);
         var platform = await runtime.PreflightEngineAsync(cancellationToken);
+        if (application.CatalogTemplateId is not null) ApplicationDeploymentRuntime.RequireCatalogPlatform(platform);
         EnsureExecutableDefinition(application);
 
         if (request.Source is not { } source)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
-        if (runtime.ProbeBindAddress(application.BindAddress, application.HostPort) is { } conflict) throw conflict;
+        if (runtime.ProbeBindAddress(application.BindAddress, application.HostPort) is { } conflict
+            && !(application.CurrentRevisionId is { } currentId && catalog.FindRevision(currentId) is { } current
+                && current.BindAddress == application.BindAddress && current.HostPort == application.HostPort
+                && await runtime.FindOwnedContainerAsync(application.Id, ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken) is { State: "running" }))
+            throw conflict;
         CleanupExpiredBuildContexts();
 
         var inputReference = ApplicationDeploymentValidation.Reference(Canonical(source));
@@ -214,10 +257,13 @@ internal sealed class ApplicationDeploymentService(
         if (gitImageReference is null)
             await ProduceImageAsync(template, plan, contextDirectory, operationId, cancellationToken);
 
-        var identity = await runtime.ResolveImageIdentityAsync(plan.ImageReference, cancellationToken);
+        var identity = await runtime.ResolveImageIdentityAsync(plan.ImageReference, platform, cancellationToken);
         if (identity.ImageId is null)
             throw new ApplicationDeploymentException(
                 template is ImageTemplate ? ApplicationDeploymentProblemCodes.ImageNotFound : ApplicationDeploymentProblemCodes.BuildFailed, 409);
+        if (request.CatalogUpdate?.ExpectedRevisionId is { } predecessorId
+            && catalog.FindRevision(predecessorId)?.ImageId == identity.ImageId)
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.CatalogUpdateAlreadyCurrent, 409);
         if (gitBuild is not null && !string.Equals(identity.ImageId, gitBuild.ImageId, StringComparison.Ordinal))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImageReferenceInvalid, 409);
 
@@ -267,7 +313,7 @@ internal sealed class ApplicationDeploymentService(
     /// side effect is recorded around the ledger, and every failure path attempts a restore.
     /// </summary>
     private async Task ActivateRevisionAsync(ApplicationRecord application, Guid operationId, RevisionRecord revision,
-        IApplicationDeploymentProgress progress, CancellationToken cancellationToken, bool rollback)
+        IApplicationDeploymentProgress progress, CancellationToken cancellationToken, bool rollback, bool retained = false)
     {
         var definition = EffectiveDefinition(application, revision);
         var previous = await runtime.FindOwnedContainerAsync(application.Id,
@@ -277,10 +323,18 @@ internal sealed class ApplicationDeploymentService(
         var previousRenamed = false;
         ApplicationDeploymentProxyResult? proxyApplied = null;
 
+        if (retained)
+        {
+            if (previous is not null || (await runtime.FindApplicationContainersAsync(application.Id, cancellationToken)).Count != 0)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
+            await runtime.RequireRetainedVolumesAsync(application.Id, revision.Volumes, cancellationToken);
+        }
+
         try
         {
-            foreach (var volume in revision.Volumes)
-                await runtime.EnsureVolumeAsync(definition, revision, operationId, volume.Name, cancellationToken);
+            if (!retained)
+                foreach (var volume in revision.Volumes)
+                    await runtime.EnsureVolumeAsync(definition, revision, operationId, volume.Name, cancellationToken);
 
             // Candidate creation, start, and readiness all have a safe cleanup path. Cancellation is
             // withheld only once activation begins to alter the canonical instance and proxy route.
@@ -405,7 +459,8 @@ internal sealed class ApplicationDeploymentService(
 
             if (previous is null)
             {
-                catalog.BindRuntime(application.Id, null, null, ApplicationDesiredState.Stopped);
+                if (application.DesiredState == ApplicationDesiredState.Retained) catalog.MarkRetained(application.Id);
+                else catalog.BindRuntime(application.Id, null, null, ApplicationDesiredState.Stopped);
                 return new(true, ApplicationDeploymentProblemCodes.PreviousInstanceRestored, null, null, null, null);
             }
 
@@ -476,8 +531,15 @@ internal sealed class ApplicationDeploymentService(
         // dropped while its container kept running as an untracked orphan.
         await runtime.PreflightEngineAsync(cancellationToken);
 
-        await progress.ReportAsync(new(DeploymentStage.Deactivating, null, false), cancellationToken);
         var containers = await runtime.FindApplicationContainersAsync(application.Id, cancellationToken);
+        var retainedRevision = application.CatalogTemplateId is not null && application.CurrentRevisionId is { } revisionId
+            ? catalog.FindRevision(revisionId) ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RevisionNotFound, 409)
+            : null;
+        if (retainedRevision is not null)
+            await runtime.RequireRetainedVolumesAsync(application.Id, retainedRevision.Volumes, cancellationToken,
+                containers.Select(container => container.Names).ToHashSet(StringComparer.Ordinal));
+
+        await progress.ReportAsync(new(DeploymentStage.Deactivating, null, false), cancellationToken);
         foreach (var container in containers)
         {
             await runtime.StopAsync(container.Id, force: true, cancellationToken);
@@ -486,6 +548,15 @@ internal sealed class ApplicationDeploymentService(
         }
 
         await progress.ReportAsync(new(DeploymentStage.CleaningUp, null, false), cancellationToken);
+        if (retainedRevision is not null)
+        {
+            await runtime.RequireRetainedVolumesAsync(application.Id, retainedRevision.Volumes, cancellationToken);
+            secrets.ReleaseMaterialized(application.Id, retainedRevision.Id);
+            catalog.MarkRetained(application.Id);
+            await progress.ReportAsync(new(DeploymentStage.Completed, null, false), cancellationToken);
+            return;
+        }
+
         if (deleteVolumes)
         {
             var volumeNames = catalog.ReadRevisions(application.Id)
@@ -513,6 +584,29 @@ internal sealed class ApplicationDeploymentService(
         catalog.Delete(application.Id);
         runtime.LogOperation("delete", operationId, ("Application", application.Name), ("Containers", containers.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         await progress.ReportAsync(new(DeploymentStage.Completed, null, false), cancellationToken);
+    }
+
+    private async Task ReinstallAsync(ApplicationRecord application, Guid operationId,
+        IApplicationDeploymentProgress progress, CancellationToken cancellationToken)
+    {
+        await progress.ReportAsync(new(DeploymentStage.Preflight, null, true), cancellationToken);
+        var platform = await runtime.PreflightEngineAsync(cancellationToken);
+        ApplicationDeploymentRuntime.RequireCatalogPlatform(platform);
+        var revision = catalog.FindRevision(application.CurrentRevisionId!.Value)
+            ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RevisionNotFound, 409);
+        var release = ApplicationCatalog.Require(application.CatalogTemplateId, application.CatalogTemplateVersion);
+        if (release.ImageReference != revision.ImageReference || revision.ImageId is not { Length: > 0 }
+            || (await runtime.ResolveImageIdentityAsync(release.ImageReference, platform, cancellationToken)).ImageId != revision.ImageId)
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImageNotFound, 409);
+
+        var definition = EffectiveDefinition(application, revision);
+        EnsureExecutableDefinition(definition);
+        if (runtime.ProbeBindAddress(definition.BindAddress, definition.HostPort) is { } conflict) throw conflict;
+        foreach (var entry in revision.Configuration.Where(entry => entry.IsSecret))
+            if (!secrets.Has(application.Id, entry.Name, entry.SecretVersion))
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.SecretVersionMissing, 409);
+
+        await ActivateRevisionAsync(application, operationId, revision, progress, cancellationToken, rollback: false, retained: true);
     }
 
     private async Task ProduceImageAsync(IApplicationTemplate template, DeploymentPlan plan, string contextDirectory, Guid operationId, CancellationToken cancellationToken)

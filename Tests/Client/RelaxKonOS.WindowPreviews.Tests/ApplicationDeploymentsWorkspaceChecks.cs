@@ -32,6 +32,9 @@ internal static class ApplicationDeploymentsWorkspaceChecks
             }
             Narrow(settings, output);
             EmptyState(settings, output);
+            CatalogReceipt();
+            CatalogUpgradeOptions();
+            RetainedActions();
             BusyState(settings, output);
             RefusedState(settings, output);
             DarkAppearance(settings, output);
@@ -43,6 +46,71 @@ internal static class ApplicationDeploymentsWorkspaceChecks
             Dispatcher.UIThread.RunJobs();
         }
         Console.WriteLine("Application deployment workspace checks passed (" + output + ").");
+    }
+
+    private static void CatalogReceipt()
+    {
+        var model = Model(out var host);
+        var view = ApplicationDeploymentsWorkspace.Create(model);
+        var application = host.Applications[1];
+        var operation = host.Snapshots[host.Applications[0].Id].Operations[0] with { ApplicationId = application.Id };
+        var release = new ApplicationCatalogTemplateDto("2", "added-by-data", "4.3.2", "RelaxKonOS", "built-in", true,
+            "New package", "A release returned by the test host.", ["linux/amd64"], [], new(),
+            [new("serviceToken", "secret", true, null, [], new("Token", "令牌", "トークン"))],
+            [], 8080, "/healthz", "Maintenance");
+        host.Catalog = [release];
+        model.ShowCatalogAsync = releases =>
+        {
+            Check(releases.Count == 1 && releases[0] == release, "Catalog command forwards arbitrary release and field metadata to the dialog.");
+            return Task.FromResult<CatalogApplicationInstallDto?>(new(application, operation, release.Id, release.Version));
+        };
+        Dispatcher.UIThread.RunJobs();
+        Check(view.FindControl<Button>("OpenCatalogButton")?.Command == model.OpenCatalogCommand, "Workspace binds its official catalog action.");
+        var submitted = model.OpenCatalogCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        Check(submitted.IsCompletedSuccessfully && model.SelectedApplication?.Id == application.Id,
+            "Catalog install receipt selects its instance instead of the previous selection.");
+    }
+
+    private static void CatalogUpgradeOptions()
+    {
+        var model = Model(out var host);
+        var application = host.Applications[0] with { CatalogTemplateId = "data-app", CatalogTemplateVersion = "1.0.0" };
+        host.Applications[0] = application;
+        host.Snapshots[application.Id] = host.Snapshots[application.Id] with { Application = application };
+        var candidate = new ApplicationCatalogTemplateDto("2", "data-app", "2.0.0", "RelaxKonOS", "built-in", true,
+            "New version", "Target release", ["linux/amd64"], [], new(), [], [], 8080, "/healthz", "Maintenance");
+        host.Catalog = [candidate, candidate with { Version = "1.0.0" }, candidate with { Id = "other-app" },
+            candidate with { Version = "3.0.0", Withdrawn = true }];
+        model.StartAsync().GetAwaiter().GetResult();
+        Check(model.ShowCatalogUpgradeAction && !model.ShowManualDeployAction, "Catalog instances expose the catalog upgrade entry point.");
+        var showedPreview = false;
+        model.ShowCatalogUpgradeAsync = (current, releases) =>
+        {
+            Check(current.Id == application.Id && releases.SequenceEqual([candidate]),
+                "Upgrade picker excludes the installed release, other packages and withdrawn releases.");
+            showedPreview = true;
+            return Task.FromResult<DeploymentOperationDto?>(null);
+        };
+        model.UpgradeCatalogCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(showedPreview, "The catalog upgrade command loads targets from the server.");
+    }
+
+    private static void RetainedActions()
+    {
+        var model = Model(out var host);
+        var application = host.Applications[0] with
+        {
+            DesiredState = ApplicationDesiredState.Retained,
+            ActualState = ApplicationActualState.Stopped,
+            CatalogTemplateId = "added-by-data",
+            Endpoint = null,
+        };
+        host.Applications[0] = application;
+        host.Snapshots[application.Id] = host.Snapshots[application.Id] with { Application = application };
+        model.StartAsync().GetAwaiter().GetResult();
+        Check(model.ShowReinstallAction && !model.ShowStartAction && !model.CanActOnSelection && !model.HasEndpointAddress,
+            "A retained catalog instance offers reinstall without advertising a live endpoint or ordinary lifecycle actions.");
     }
 
     /// <summary>The two-pane workspace: the list, the facts, and the actions that apply to the observed state.</summary>
@@ -324,6 +392,7 @@ internal static class ApplicationDeploymentsWorkspaceChecks
 /// operation, and an optional running operation for the busy state.</summary>
 public class DeploymentHostStub : DispatchProxy
 {
+    public IReadOnlyList<ApplicationCatalogTemplateDto> Catalog { get; set; } = [];
     public List<ApplicationDto> Applications { get; } = [];
     public Dictionary<Guid, ApplicationDeploymentSnapshotDto> Snapshots { get; } = [];
     public DeploymentOperationDto? ActiveOperation { get; set; }
@@ -401,6 +470,7 @@ public class DeploymentHostStub : DispatchProxy
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
     {
         "ListTemplatesAsync" => Task.FromResult<IReadOnlyList<ApplicationDeploymentTemplateDto>>([]),
+        "ListCatalogAsync" => Task.FromResult(Catalog),
         "ListApplicationsAsync" => Task.FromResult<IReadOnlyList<ApplicationDto>>([.. Applications]),
         "GetSnapshotAsync" => Snapshot((Guid)args![0]!),
         "GetOperationAsync" => Task.FromResult(ActiveOperation),

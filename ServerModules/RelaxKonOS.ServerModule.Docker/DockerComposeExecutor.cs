@@ -9,6 +9,8 @@ namespace RelaxKonOS.Server.Docker;
 public sealed class DockerComposeExecutor(string dataDirectory) : IDockerComposeService
 {
     private const int MaximumComposeBytes = 1024 * 1024;
+    private const string ResolvedFile = "compose.resolved.yaml";
+    private const string SourceFile = "compose.source.yaml";
     /// <summary>
     /// Parses the definition with the Docker CLI itself. The result is the contract an operator approves,
     /// so it is produced by the same parser that will later apply it — never by a second, disagreeing
@@ -46,6 +48,7 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
         {
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
+            DockerComposeSubsetValidation.RequireUnmanagedConfiguration(root);
             if (root.TryGetProperty("services", out var serviceMap) && serviceMap.ValueKind == JsonValueKind.Object)
             {
                 foreach (var service in serviceMap.EnumerateObject())
@@ -101,8 +104,33 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
         Validate(definition);
         var directory = Path.Combine(dataDirectory, definition.Name);
         Directory.CreateDirectory(directory);
-        var composePath = Path.Combine(directory, "compose.yaml");
-        await File.WriteAllTextAsync(composePath, definition.ComposeYaml, cancellationToken);
+        var pending = Path.Combine(directory, $"compose.pending-{Guid.NewGuid():N}.yaml");
+        var composePath = Path.Combine(directory, ResolvedFile);
+        try
+        {
+            await File.WriteAllTextAsync(pending, definition.ComposeYaml, cancellationToken);
+            var config = await RunAsync(["compose", "--project-name", definition.Name, "--file", pending, "config", "--format", "json"], cancellationToken);
+            if (!config.Success) return new DockerStackMutationResult(false, ToProblemCode(config.Error), []);
+
+            using var resolved = JsonDocument.Parse(config.Output);
+            DockerComposeSubsetValidation.RequireUnmanagedConfiguration(resolved.RootElement);
+            await File.WriteAllTextAsync(pending, config.Output, cancellationToken);
+            // The parser escapes Compose interpolation in its own output. A different CLI
+            // may emit a document that reparses differently, so prove stability before up.
+            var checkedConfig = await RunAsync(["compose", "--project-name", definition.Name, "--file", pending, "config", "--format", "json"], cancellationToken);
+            if (!checkedConfig.Success) return new DockerStackMutationResult(false, ToProblemCode(checkedConfig.Error), []);
+            using var roundTrip = JsonDocument.Parse(checkedConfig.Output);
+            if (!JsonElement.DeepEquals(resolved.RootElement, roundTrip.RootElement))
+                throw new DockerStackException(DockerStackProblem.DefinitionChanged);
+            File.Move(pending, composePath, overwrite: true);
+            await File.WriteAllTextAsync(Path.Combine(directory, SourceFile), definition.ComposeYaml, cancellationToken);
+        }
+        catch (JsonException) { throw new DockerStackException(DockerStackProblem.ComposeFailed); }
+        finally
+        {
+            try { File.Delete(pending); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { throw new DockerComposeCleanupException(); }
+        }
         var result = await RunAsync(["compose", "--project-name", definition.Name, "--file", composePath, "up", "--detach", "--remove-orphans"], cancellationToken);
         // Compose errors can echo substituted environment values. Clients receive only a stable problem
         // code plus the bounded progress lines; raw daemon diagnostics stay on the host.
@@ -246,6 +274,10 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
         if (composePath is null || !File.Exists(composePath)) return null;
         try
         {
+            var resolvedPath = Path.Combine(dataDirectory, name, ResolvedFile);
+            var original = Path.Combine(dataDirectory, name, SourceFile);
+            if (Path.GetFullPath(composePath).Equals(Path.GetFullPath(resolvedPath), StringComparison.Ordinal) && File.Exists(original))
+                composePath = original;
             var yaml = await File.ReadAllTextAsync(composePath, cancellationToken);
             return yaml.Length <= MaximumComposeBytes ? new DockerStackDefinitionDto(stack!.Name, yaml) : null;
         }

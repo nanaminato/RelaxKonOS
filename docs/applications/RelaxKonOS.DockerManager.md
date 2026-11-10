@@ -18,6 +18,8 @@
 
 ## 1. 目标、范围与非目标
 
+受管应用容器、网络和卷由应用部署负责变更。Docker 管理器按实际资源名称和归属标签拒绝直接变更，通过别名提交的容器及网络操作先解析到 Engine ID。管理器创建容器支持命名卷和匿名卷，应用网络、应用卷和宿主绑定挂载由服务端准入拒绝。Compose 预览和部署核对解析后的有效资源名、标签及挂载，部署执行通过校验的解析结果，并单独保留提交源。见[容器应用平台设计](../platform/RelaxKonOS.ContainerApplications.Design.md)。
+
 `RemoteDockerManager`（应用 ID：`relaxkonos.docker`）面向单台 RelaxKonOS Server，覆盖 Docker Engine 的完整日常运维闭环：发现或安装运行时、验证、镜像和容器生命周期、Compose Stack、网络与卷、日志/终端、资源统计、备份与审计。
 
 设计参考了 Portainer 的环境、Stack、模板、镜像仓库与按角色授权的组织方式，以及 Docker Engine 的版本化 API；但 v1 **只管理本机单一 Engine**，不实现 Swarm/Kubernetes、多节点代理或远程 TCP Docker API。

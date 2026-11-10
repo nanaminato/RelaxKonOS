@@ -139,7 +139,13 @@ if (args.Contains("--acme-code-only"))
 }
 if (args.Contains("--docker-compose-code-only"))
 {
+    DockerChecks.VerifyComposeSubsetValidation();
     await DockerComposeExecutionChecks.RunAsync();
+    return;
+}
+if (args.Contains("--docker-compose-config-only"))
+{
+    await DockerComposeExecutionChecks.VerifyRealParserAsync();
     return;
 }
 if (args.Contains("--module-boundary-milestones-only"))

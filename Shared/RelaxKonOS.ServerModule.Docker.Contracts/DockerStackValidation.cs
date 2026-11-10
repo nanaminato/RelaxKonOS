@@ -36,11 +36,26 @@ public static class DockerStackProblem
     public const string StoreUnavailable = "docker.stack_store_unavailable";
     public const string EngineUnavailable = "docker.unavailable";
     public const string ValidationFailed = "docker.validation_failed";
+    public const string ApplicationResourceManaged = "docker.application_resource_managed";
 }
 
 /// <summary>Shared value rules for the Compose stack domain.</summary>
 public static class DockerStackValidation
 {
+    public const string ApplicationComposeProjectPrefix = "relaxkonos-ca-";
+    public const string ApplicationResourcePrefix = "relaxkonos-ad-";
+    public const string ApplicationOwnerLabel = "relaxkonos.owner";
+    public const string ApplicationIdLabel = "relaxkonos.application-id";
+    public const string ApplicationOwnerValue = "application-deployment";
+    public const string ComposeProjectLabel = "com.docker.compose.project";
+
+    public static bool IsApplicationResourceName(string? name) => name is not null
+        && (name.StartsWith(ApplicationResourcePrefix, StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith(ApplicationComposeProjectPrefix, StringComparison.OrdinalIgnoreCase));
+
+    public static bool IsReservedApplicationLabel(string key, string? value) => key is ApplicationOwnerLabel or ApplicationIdLabel
+        || key == ComposeProjectLabel && IsApplicationResourceName(value);
+
     /// <summary>A Compose project name is also the Docker resource prefix, so it stays narrow.</summary>
     public static bool IsValidProjectName(string? value) => value is { Length: >= 1 and <= 63 }
         && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');

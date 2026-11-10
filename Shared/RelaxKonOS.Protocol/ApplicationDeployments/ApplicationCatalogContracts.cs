@@ -27,7 +27,7 @@ public sealed record ApplicationCatalogTemplateDto(
     [property: JsonPropertyName("maintenanceNotes")] string MaintenanceNotes,
     [property: JsonPropertyName("withdrawn")] bool Withdrawn = false);
 
-/// <summary>A constrained native form field.  The only supported types are text, number, enum and secret.</summary>
+/// <summary>A constrained native form field. The current official directory emits text and secret fields.</summary>
 public sealed record ApplicationCatalogFieldDto(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("type")] string Type,

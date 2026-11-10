@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="docker_problem_application_resource_managed">Use Application Deployments to change this managed resource.</string>
     <string name="docker_stack_recovery_title">Verify original Compose request</string>
     <string name="docker_stack_result_unknown">The original change has no verified receipt. Verify it before another change. Nothing will be replayed.</string>
     <string name="docker_stack_lookup_unresolved">The original request is still unverified. It may still be processing, or its record may no longer be retained. Keep this record and verify again; do not submit a new change.</string>

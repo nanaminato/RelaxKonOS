@@ -63,6 +63,34 @@ internal static class DockerChecks
                 && problem == DockerStackProblem.VariableUnresolved,
                 "The Android Compose subset accepted a variable reference the server has no value for.");
         }
+
+        using var ordinary = System.Text.Json.JsonDocument.Parse("""
+            {"name":"ordinary","services":{"web":{"image":"nginx:alpine","volumes":[{"type":"volume","source":"data","target":"/data"}]}},
+             "volumes":{"data":{"name":"ordinary_data"}},"networks":{"default":{"name":"ordinary_default"}}}
+            """);
+        DockerComposeSubsetValidation.RequireUnmanagedConfiguration(ordinary.RootElement);
+        foreach (var (configuration, problem) in new[]
+        {
+            ("""{"services":{"web":{"container_name":"relaxkonos-ca-id-web"}}}""", DockerStackProblem.ApplicationResourceManaged),
+            ("""{"volumes":{"alias":{"name":"relaxkonos-ad-id-data"}}}""", DockerStackProblem.ApplicationResourceManaged),
+            ("""{"networks":{"alias":{"name":"relaxkonos-ca-id_default"}}}""", DockerStackProblem.ApplicationResourceManaged),
+            ("""{"services":{"web":{"labels":{"relaxkonos.owner":"application-deployment"}}}}""", DockerStackProblem.ApplicationResourceManaged),
+            ("""{"services":{"web":{"volumes":[{"type":"bind","source":"/var/lib/docker","target":"/data"}]}}}""", DockerStackProblem.FeatureUnsupported),
+            ("""{"volumes":{"alias":{"driver_opts":{"device":"/var/lib/docker"}}}}""", DockerStackProblem.FeatureUnsupported),
+        })
+        {
+            using var resolved = System.Text.Json.JsonDocument.Parse(configuration);
+            try
+            {
+                DockerComposeSubsetValidation.RequireUnmanagedConfiguration(resolved.RootElement);
+                throw new InvalidOperationException("Resolved Compose configuration crossed the application resource boundary.");
+            }
+            catch (DockerStackException failure)
+            {
+                TestAssert.Assert(failure.ProblemCode == problem, "Resolved Compose configuration returned the wrong refusal.");
+            }
+        }
+        Console.WriteLine("Resolved Compose checks passed for resource names, owner labels, host binds, and volume driver options.");
     }
 
 internal static async Task VerifyDockerProxyAsync(string root)

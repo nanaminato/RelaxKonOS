@@ -150,6 +150,13 @@ internal sealed class ApplicationDeploymentManager(
         }
     }
 
+    internal async Task PreflightCatalogInstallAsync(CreateApplicationRequest definition, CancellationToken cancellationToken)
+    {
+        ApplicationDeploymentRuntime.RequireCatalogPlatform(await runtime.PreflightEngineAsync(cancellationToken));
+        if (runtime.ProbeBindAddress(definition.BindAddress ?? "127.0.0.1", definition.HostPort) is { } conflict)
+            throw conflict;
+    }
+
     /// <summary>
     /// Replaces the stored definition. Runtime-bound fields such as ports, limits, and mounts only take
     /// effect on the next deployment, because applying them means replacing the container instance.
@@ -157,11 +164,13 @@ internal sealed class ApplicationDeploymentManager(
     public async Task<ApplicationDto> UpdateAsync(Guid applicationId, UpdateApplicationRequest request, CancellationToken cancellationToken)
     {
         var baseline = Require(applicationId);
+        if (baseline.DesiredState == ApplicationDesiredState.Retained)
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 409);
         if (request.ExpectedUpdatedAt == default)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
         if (baseline.UpdatedAt != request.ExpectedUpdatedAt)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DefinitionConflict, 409);
-        if (operations.GetActive(applicationId) is not null)
+        if (operations.GetActive(applicationId) is not null || operations.HasUnresolvedRetention(applicationId))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
         var volumes = Volumes(request.Volumes);
         // The secret store reads retained catalog references during rotation. Resolve outside the
@@ -175,7 +184,7 @@ internal sealed class ApplicationDeploymentManager(
             // Checking again under the write lock closes the gap between validation and commit.
             if (application.UpdatedAt != request.ExpectedUpdatedAt)
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DefinitionConflict, 409);
-            if (operations.GetActive(applicationId) is not null)
+            if (operations.GetActive(applicationId) is not null || operations.HasUnresolvedRetention(applicationId))
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
             var now = DateTimeOffset.UtcNow;
             return application with

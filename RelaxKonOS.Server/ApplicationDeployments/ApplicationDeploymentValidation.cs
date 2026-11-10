@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using RelaxKonOS.Protocol.ApplicationDeployments;
+using RelaxKonOS.Server.Docker;
 
 namespace RelaxKonOS.Server.ApplicationDeployments;
 
@@ -13,9 +14,9 @@ internal static class ApplicationDeploymentValidation
     /// <summary>Label prefix that marks every managed Docker resource and its owner.</summary>
     public const string LabelPrefix = "relaxkonos.";
     public const string ManagedLabel = "relaxkonos.managed";
-    public const string OwnerLabel = "relaxkonos.owner";
-    public const string OwnerValue = "application-deployment";
-    public const string ApplicationIdLabel = "relaxkonos.application-id";
+    public const string OwnerLabel = DockerStackValidation.ApplicationOwnerLabel;
+    public const string OwnerValue = DockerStackValidation.ApplicationOwnerValue;
+    public const string ApplicationIdLabel = DockerStackValidation.ApplicationIdLabel;
     public const string ApplicationLabel = "relaxkonos.application";
     public const string RevisionIdLabel = "relaxkonos.revision-id";
     public const string RevisionLabel = "relaxkonos.revision";
@@ -24,6 +25,7 @@ internal static class ApplicationDeploymentValidation
     public const string RoleWorkload = "workload";
     public const string RoleCandidate = "candidate";
     public const string RoleVolume = "volume";
+    public const string ResourcePrefix = DockerStackValidation.ApplicationResourcePrefix;
 
     public static readonly IReadOnlyList<string> SupportedBindAddresses = ["127.0.0.1", "0.0.0.0", "::1"];
     public static readonly IReadOnlyList<string> SupportedPlatforms = ["linux/amd64", "linux/arm64", "linux/arm"];
@@ -81,7 +83,7 @@ internal static class ApplicationDeploymentValidation
     public static string ContainerName(Guid applicationId)
     {
         var suffix = applicationId.ToString("N")[..12];
-        return $"relaxkonos-ad-{suffix}";
+        return ResourcePrefix + suffix;
     }
 
     public static string CandidateContainerName(Guid applicationId) => ContainerName(applicationId) + "-cand";
@@ -99,17 +101,17 @@ internal static class ApplicationDeploymentValidation
     public static string BuiltImageReference(string applicationName, string inputReference) =>
         $"relaxkonos-ad/{applicationName}:b{inputReference[..12].ToLowerInvariant()}";
 
-    public static bool IsValidImageReference(string? value) => value is { Length: >= 1 and <= 255 }
-        && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '/' or ':' or '.' or '_' or '-');
+    public static bool IsValidImageReference(string? value) => DockerImageReference.IsValid(value);
 
     /// <summary>
-    /// Requires an explicit, non-<c>latest</c> tag. Docker treats a reference without a tag as
+    /// Requires a digest or an explicit, non-<c>latest</c> tag. Docker treats a reference without a tag as
     /// <c>latest</c>, including references whose registry host itself contains a port, so the last
     /// colon is meaningful only when it occurs after the last slash.
     /// </summary>
     public static bool IsPinnedImageReference(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return false;
+        if (value.Contains('@')) return DockerImageReference.HasSha256Digest(value);
         var separator = value.LastIndexOf(':');
         if (separator <= value.LastIndexOf('/') || separator == value.Length - 1) return false;
         return !string.Equals(value[(separator + 1)..], "latest", StringComparison.OrdinalIgnoreCase);

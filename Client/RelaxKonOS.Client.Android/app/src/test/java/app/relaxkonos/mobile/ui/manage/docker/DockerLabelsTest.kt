@@ -17,6 +17,7 @@ class DockerLabelsTest {
             "docker.stack_invalid_name",
             "docker.stack_invalid_compose",
             "docker.compose_feature_unsupported",
+            "docker.application_resource_managed",
             "docker.compose_variable_unresolved",
             "docker.stack_definition_changed",
             "docker.confirmation_required",
@@ -32,7 +33,7 @@ class DockerLabelsTest {
         assertTrue("a refusal fell through to the generic sentence", messages.none { it == R.string.error_generic })
         // Not all distinct: the two "not found" codes intentionally share one sentence. What must not
         // happen is a refusal being indistinguishable from an unrelated one.
-        assertEquals(12, messages.toSet().size)
+        assertEquals(13, messages.toSet().size)
     }
 
     @Test fun `a code this build does not know still reads as a refusal`() {

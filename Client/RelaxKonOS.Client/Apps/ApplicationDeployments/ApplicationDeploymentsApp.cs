@@ -16,6 +16,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
@@ -72,6 +73,12 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
         viewModel.ShowWizardAsync = wizard => context.ShowDialogAsync<bool>(window!,
             LocalizedText.Get("application_deployments.wizard.title"),
             dialog => new DeploymentWizardView(wizard, dialog), new Size(780, 740));
+        viewModel.ShowCatalogAsync = releases => context.ShowDialogAsync<CatalogApplicationInstallDto?>(window!,
+            LocalizedText.Get("application_deployments.catalog.title"),
+            dialog => new ApplicationCatalogView(client, releases, dialog), new Size(600, 680));
+        viewModel.ShowCatalogUpgradeAsync = (application, releases) => context.ShowDialogAsync<DeploymentOperationDto?>(window!,
+            LocalizedText.Get("application_deployments.catalog.upgrade"),
+            dialog => new ApplicationCatalogUpgradeView(client, application, releases, dialog), new Size(680, 520));
 
         // The access address is the one field an operator routinely needs outside this window, so the
         // shell supplies both ways out of it: the system clipboard, and the default browser.

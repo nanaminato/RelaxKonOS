@@ -306,7 +306,7 @@ class DeploymentBrowser(
     fun installCatalog(template: CatalogTemplate, name: String, hostPort: Int, fields: List<CatalogFieldValue>) {
         if (mutableState.value.submitting) return
         val owner = mutableState.value.owner ?: return
-        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities || template.schemaVersion != "1" || template.withdrawn) return
+        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities || template.schemaVersion != "2" || template.withdrawn) return
         listJob?.cancel()
         val generation = ++listGeneration
         mutableState.update { it.copy(submitting = true, submission = null) }

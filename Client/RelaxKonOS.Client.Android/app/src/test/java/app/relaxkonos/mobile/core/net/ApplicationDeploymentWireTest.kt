@@ -110,13 +110,13 @@ class ApplicationDeploymentWireTest {
     }
 
     @Test fun `catalogue keeps a server version and never gives a secret field a stored value`() {
-        val template = ApplicationDeploymentWire.catalog("""[{"schemaVersion":"1","id":"file-service","version":"1.0.0",
+        val template = ApplicationDeploymentWire.catalog("""[{"schemaVersion":"2","id":"file-service","version":"1.0.0",
             "publisher":"RelaxKonOS","source":"built-in","trusted":true,"purpose":"File service","description":"Files",
             "supportedPlatforms":["linux/amd64"],"requiredCapabilities":["server.application-deployments"],
             "minimumResources":{"cpuCores":1,"memoryBytes":536870912,"pidsLimit":512},
             "fields":[{"id":"adminPassword","type":"secret","required":true,"defaultValue":null,"options":[],"labels":{"en":"Password","zh":"密码","ja":"パスワード"},"help":null}],
             "volumes":[{"name":"database","containerPath":"/database","readOnly":false}],"containerPort":80,"accessPath":"/","maintenanceNotes":"Keep data","withdrawn":false}]""").single()
-        assertEquals("1", template.schemaVersion)
+        assertEquals("2", template.schemaVersion)
         assertEquals("1.0.0", template.version)
         assertTrue(template.trusted)
         assertEquals(listOf("linux/amd64"), template.supportedPlatforms)
@@ -126,7 +126,7 @@ class ApplicationDeploymentWireTest {
     }
 
     @Test fun `catalogue blocks unverified schemas fields capabilities and incompatible platforms locally`() {
-        val template = ApplicationDeploymentWire.catalog("""[{"schemaVersion":"2","id":"example","version":"2.0.0",
+        val template = ApplicationDeploymentWire.catalog("""[{"schemaVersion":"1","id":"example","version":"2.0.0",
             "publisher":"Example","source":"remote","trusted":false,"purpose":"Example","description":"Example",
             "supportedPlatforms":["linux/arm64"],"requiredCapabilities":["server.application-deployments"],
             "minimumResources":{"cpuCores":1,"memoryBytes":536870912,"pidsLimit":512},
@@ -144,7 +144,7 @@ class ApplicationDeploymentWireTest {
     }
 
     @Test fun `catalogue accepts a trusted known schema on a normalized platform`() {
-        val template = ApplicationDeploymentWire.catalog("""[{"schemaVersion":"1","id":"example","version":"1.0.0",
+        val template = ApplicationDeploymentWire.catalog("""[{"schemaVersion":"2","id":"example","version":"1.0.0",
             "publisher":"Example","source":"built-in","trusted":true,"purpose":"Example","description":"Example",
             "supportedPlatforms":["linux/arm64"],"requiredCapabilities":["server.application-deployments"],
             "minimumResources":{"cpuCores":1,"memoryBytes":536870912,"pidsLimit":512},

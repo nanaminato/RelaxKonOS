@@ -254,7 +254,7 @@ class DeploymentHttpTest {
             assertEquals("DELETE /api/v1.0/application-deployments/applications/$applicationId", requests.single().first)
             assertEquals("delete-key", requests.single().second)
             assertTrue(requests.single().third.contains("\"deleteVolumes\":false"))
-            assertTrue(requests.single().third.contains("\"confirmed\":false"))
+            assertTrue(requests.single().third.contains("\"confirmed\":true"))
         } finally {
             server.stop(0)
         }

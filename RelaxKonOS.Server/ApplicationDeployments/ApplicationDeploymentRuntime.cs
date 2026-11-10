@@ -20,6 +20,14 @@ internal sealed class ApplicationDeploymentRuntime(
 {
     public const string HealthClientName = "application-deployment-health";
 
+    internal static void RequireCatalogPlatform(string platform)
+    {
+        if (!OperatingSystem.IsLinux()
+            || System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture != System.Runtime.InteropServices.Architecture.X64
+            || platform != "linux/amd64")
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.PlatformUnsupported, 409);
+    }
+
     /// <summary>Verifies the engine is present, reachable, and able to run Linux containers.</summary>
     public async Task<string> PreflightEngineAsync(CancellationToken cancellationToken)
     {
@@ -120,8 +128,19 @@ internal sealed class ApplicationDeploymentRuntime(
         => await engine.BuildImageAsync(new DockerBuildRequest(contextDirectory, imageReference), includeBuildOutput: true, cancellationToken, onOutput);
 
     /// <summary>Resolves the observed identity of an image. Tags are display only; this is the binding.</summary>
-    public async Task<(string? ImageId, string? Reference)> ResolveImageIdentityAsync(string imageReference, CancellationToken cancellationToken)
+    public async Task<(string? ImageId, string? Reference)> ResolveImageIdentityAsync(string imageReference, string platform, CancellationToken cancellationToken)
     {
+        if (DockerImageReference.HasSha256Digest(imageReference))
+        {
+            var image = await engine.InspectImageAsync(imageReference, cancellationToken);
+            return image is { Id.Length: 71 }
+                && image.Id.StartsWith("sha256:", StringComparison.Ordinal)
+                && image.Id[7..].All(char.IsAsciiHexDigitLower)
+                && ContainerImageFacts.Describe(image.OperatingSystem, image.Architecture) == platform
+                && image.RepositoryDigests.Any(reference => reference.EndsWith(imageReference[^72..], StringComparison.Ordinal))
+                ? (image.Id, imageReference) : (null, null);
+        }
+
         var images = await engine.ListImagesAsync(cancellationToken);
         var expected = SplitReference(imageReference);
         var match = images.FirstOrDefault(image => string.Equals(image.Repository, expected.Repository, StringComparison.Ordinal)
@@ -161,6 +180,22 @@ internal sealed class ApplicationDeploymentRuntime(
         var name = ApplicationDeploymentValidation.VolumeName(applicationId, volumeName);
         var details = await engine.GetVolumeAsync(name, cancellationToken);
         return details is not null && ApplicationDeploymentValidation.IsOwnedBy(details.Labels, applicationId);
+    }
+
+    internal async Task RequireRetainedVolumesAsync(Guid applicationId, IReadOnlyList<ApplicationVolumeRecord> volumes,
+        CancellationToken cancellationToken, IReadOnlySet<string>? removableContainers = null)
+    {
+        foreach (var volume in volumes)
+        {
+            var name = ApplicationDeploymentValidation.VolumeName(applicationId, volume.Name);
+            var details = await engine.GetVolumeAsync(name, cancellationToken);
+            if (details is null || details.Name != name || !ApplicationDeploymentValidation.IsOwnedBy(details.Labels, applicationId)
+                || !details.Labels.TryGetValue(ApplicationDeploymentValidation.RoleLabel, out var role)
+                || role != ApplicationDeploymentValidation.RoleVolume)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DriftUnownedResource);
+            if (details.UsedBy.Any(container => removableContainers?.Contains(container) != true))
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
+        }
     }
 
     /// <summary>Creates the container for one published revision. It is always created stopped, then

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "2",
+  "release": {
+    "id": "file-service",
+    "version": "1.0.0",
+    "purpose": "File service",
+    "description": "File Browser with a managed persistent database.",
+    "imageReference": "docker.io/filebrowser/filebrowser@sha256:4ef527ecf463f5ac3969fcf59f7428c926dada56d8080e03e24d7ccbbee7ca4f",
+    "containerPort": 80,
+    "healthPath": "/",
+    "volumes": [
+      {
+        "name": "database",
+        "containerPath": "/database"
+      }
+    ],
+    "fields": [
+      {
+        "id": "adminPassword",
+        "type": "secret",
+        "required": true,
+        "environmentName": "FB_PASSWORD",
+        "labels": {
+          "en": "Administrator password",
+          "zh": "管理员密码",
+          "ja": "管理者パスワード"
+        }
+      }
+    ]
+  }
+}

@@ -2,6 +2,55 @@ using System.Runtime.Loader;
 
 internal static class DockerComposeExecutionChecks
 {
+    internal static async Task VerifyRealParserAsync()
+    {
+        var temp = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
+        var data = Path.GetFullPath(Path.Combine(temp, $"relaxkonos-compose-config-{Guid.NewGuid():N}"));
+        if (!string.Equals(Path.GetDirectoryName(data), temp, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Compose config test directory escaped its temporary root.");
+        Directory.CreateDirectory(data);
+        try
+        {
+            using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            using var compose = new DockerComposeService(data, new DockerComposeExecution(TimeSpan.FromMilliseconds(30)));
+            const string normal = """
+                services:
+                  web:
+                    image: nginx:alpine
+                    volumes:
+                      - data:/data
+                volumes:
+                  data:
+                """;
+            var preview = await compose.PreviewAsync(new("ordinary", normal), budget.Token);
+            TestAssert.Assert(preview.Services.Count == 1 && preview.Volumes.SequenceEqual(["ordinary_data"]),
+                "The real parser must admit an ordinary named-volume document.");
+
+            const string escaped = """
+                services:
+                  web:
+                    image: nginx:alpine
+                    volumes:
+                      - data:/data
+                volumes:
+                  data:
+                    name: "relaxkonos-\x63a-other_data"
+                """;
+            try
+            {
+                await compose.DeployAsync(new("ordinary", escaped), budget.Token);
+                throw new InvalidOperationException("An escaped name reached the Engine mutation stage.");
+            }
+            catch (DockerStackException error) when (error.ProblemCode == DockerStackProblem.ApplicationResourceManaged)
+            {
+                TestAssert.Assert(!Directory.EnumerateFiles(Path.Combine(data, "ordinary")).Any(),
+                    "A rejected definition must not leave a published configuration or a pending draft.");
+            }
+            Console.WriteLine("Real Docker Compose config parsed an ordinary project and refused an escaped application volume before up.");
+        }
+        finally { Directory.Delete(data, recursive: true); }
+    }
+
     internal static async Task RunAsync()
     {
         var gate = new DockerComposeExecution(TimeSpan.FromMilliseconds(30));

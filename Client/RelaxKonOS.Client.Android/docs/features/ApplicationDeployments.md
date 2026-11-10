@@ -79,7 +79,9 @@ Server 秘密存储保留当前定义/不可变修订引用的原版本以及最
 
 确认页展示原实例端口、工作负载、就绪检查、字节资源、逐项卷、普通配置、秘密值及版本和站点。Repository 每次提交及 401 重试先核对完整定义/当前修订与原登录会话，活动操作阻断；Server 在定义锁内再次核对必传版本并预留操作，执行前再核对。成功原操作 ID 进入运维索引并观察，停止观察不会取消发布。
 
-模板更新走 `GET/POST /applications/{id}/catalog-update`，使用精确 `templateId/templateVersion`、完整 `expectedUpdatedAt`、明确的 `expectedRevisionId`（空值也必须在正文）、当前绑定版本与显式确认。
+官方目录读取 schema 2。模板更新走 `GET/POST /applications/{id}/catalog-update`，提交精确 `templateId/templateVersion`、预览中的 `expectedTargetImageReference`、完整 `expectedUpdatedAt`、明确的 `expectedRevisionId`（空值也必须在正文）、当前绑定版本与显式确认。
+
+目录实例使用目录升级入口。保留数据卸载后的记录在 Android 上供查看，显式重装由桌面客户端提交。
 
 客户端再次读取相同预览，变化后要求重新检查；Server 校验后仅选择可信目录镜像，沿用现有工作负载、配置/秘密引用、资源、卷和站点。新必填配置/秘密、端口/挂载或最低资源不满足时要求先显式编辑定义，不能静默生成秘密、挂载或默认覆盖。实例绑定只在修订激活成功时与该修订同步；失败保留旧绑定，回滚恢复所选不可变修订的真实模板版本。
 

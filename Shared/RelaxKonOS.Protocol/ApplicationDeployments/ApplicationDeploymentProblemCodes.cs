@@ -29,6 +29,7 @@ public static class ApplicationDeploymentProblemCodes
 
     public const string CatalogUpdateAlreadyCurrent = "application-catalog.already_current";
     public const string CatalogUpdateDefinitionIncompatible = "application-catalog.definition_incompatible";
+    public const string CatalogUpdateSourceUnverified = "application-catalog.upgrade_source_unverified";
 
     // Preflight.
     public const string EngineUnavailable = "application-deployment.engine_unavailable";

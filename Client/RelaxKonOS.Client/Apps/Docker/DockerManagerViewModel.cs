@@ -900,6 +900,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         "docker.stack_no_services" => LocalizedText.Get("docker.problem.stack_no_services"),
         "docker.stack_source_unavailable" => LocalizedText.Get("docker.stack.source_unavailable"),
         "docker.volume_in_use" => LocalizedText.Get("docker.volume.in_use"),
+        "docker.application_resource_managed" => LocalizedText.Get("docker.problem.application_resource_managed"),
         "docker.stack_invalid_name" => LocalizedText.Get("docker.problem.stack_invalid_name"),
         "docker.stack_invalid_compose" => LocalizedText.Get("docker.problem.stack_invalid_compose"),
         "docker.compose_feature_unsupported" => LocalizedText.Get("docker.problem.compose_feature_unsupported"),

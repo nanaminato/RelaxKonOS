@@ -17,6 +17,12 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
     public Task<IReadOnlyList<ApplicationDeploymentTemplateDto>> ListTemplatesAsync(CancellationToken cancellationToken = default) =>
         SendAsync<IReadOnlyList<ApplicationDeploymentTemplateDto>>(ApplicationDeploymentApiRoutes.Templates, cancellationToken);
 
+    public Task<IReadOnlyList<ApplicationCatalogTemplateDto>> ListCatalogAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<IReadOnlyList<ApplicationCatalogTemplateDto>>(ApplicationDeploymentApiRoutes.Catalog, cancellationToken);
+
+    public Task<CatalogApplicationInstallDto> InstallCatalogAsync(InstallCatalogApplicationRequest request, string key, CancellationToken cancellationToken = default) =>
+        SendAsync<CatalogApplicationInstallDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.CatalogInstall, request, key, cancellationToken);
+
     public Task<ApplicationImageTagsDto> ListImageTagsAsync(string repository, CancellationToken cancellationToken = default) =>
         SendAsync<ApplicationImageTagsDto>($"{ApplicationDeploymentApiRoutes.ImageTags}?repository={Uri.EscapeDataString(repository)}", cancellationToken);
 
@@ -55,6 +61,9 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
 
     public Task<DeploymentOperationDto> RollbackAsync(Guid applicationId, RollbackApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default) =>
         SendAsync<DeploymentOperationDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.Rollback(applicationId), request, idempotencyKey, cancellationToken);
+
+    public Task<DeploymentOperationDto> ReinstallCatalogAsync(Guid applicationId, ReinstallCatalogApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAsync<DeploymentOperationDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.CatalogReinstall(applicationId), request, idempotencyKey, cancellationToken);
 
     public Task<DeploymentOperationDto> LifecycleAsync(Guid applicationId, string action, ApplicationLifecycleRequest request, string idempotencyKey, CancellationToken cancellationToken = default)
     {

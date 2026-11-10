@@ -10,7 +10,7 @@ public enum ApplicationSourceKind { Image, JavaJar, DotNetPublish, PythonProject
 /// <summary>The operator's intent. The observed <see cref="ApplicationActualState"/> is separate so a
 /// failed deployment can never be reported as running.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ApplicationDesiredState>))]
-public enum ApplicationDesiredState { Stopped, Running }
+public enum ApplicationDesiredState { Stopped, Running, Retained }
 
 /// <summary>Observed workload state, reconciled against real containers rather than the ledger alone.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ApplicationActualState>))]
@@ -28,7 +28,7 @@ public enum ApplicationReadinessLevel { Process, Http }
 public enum ApplicationWorkloadKind { Web, Worker }
 
 [JsonConverter(typeof(JsonStringEnumConverter<DeploymentOperationKind>))]
-public enum DeploymentOperationKind { Deploy, Rollback, Start, Stop, Restart, Delete }
+public enum DeploymentOperationKind { Deploy, Rollback, Start, Stop, Restart, Delete, Reinstall }
 
 [JsonConverter(typeof(JsonStringEnumConverter<DeploymentOperationState>))]
 public enum DeploymentOperationState { Queued, Running, Succeeded, Failed, Cancelled, Interrupted }

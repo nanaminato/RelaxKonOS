@@ -197,6 +197,14 @@ internal sealed class ApplicationDeploymentCatalogStore
             UpdatedAt = DateTimeOffset.UtcNow,
         });
 
+    internal ApplicationRecord MarkRetained(Guid applicationId) => Update(applicationId, application => application with
+    {
+        ContainerName = null,
+        ContainerId = null,
+        DesiredState = ApplicationDesiredState.Retained,
+        UpdatedAt = DateTimeOffset.UtcNow,
+    });
+
     /// <summary>Records the optional reverse-proxy association resolved by the server.</summary>
     public ApplicationRecord BindSite(Guid applicationId, string? siteInstanceId, string? siteId, string? domain)
         => Update(applicationId, application => application with

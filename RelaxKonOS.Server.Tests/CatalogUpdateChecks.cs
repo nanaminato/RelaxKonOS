@@ -22,6 +22,8 @@ internal static class CatalogUpdateChecks
 
     private static async Task VerifyAsync(string root)
     {
+        VerifyManifestDirectory(root);
+        await VerifyEngineBoundariesAsync();
         var environment = new TestHostEnvironment(root);
         var options = new ApplicationDeploymentOptions();
         var catalog = new ApplicationDeploymentCatalogStore(environment, options);
@@ -33,7 +35,9 @@ internal static class CatalogUpdateChecks
         var runtime = new ApplicationDeploymentRuntime(engine, options, clients, NullLogger<ApplicationDeploymentRuntime>.Instance);
         var manager = new ApplicationDeploymentManager(catalog, secrets, operations, runtime, options,
             new ApplicationDeploymentImageTagCatalog(clients, NullLogger<ApplicationDeploymentImageTagCatalog>.Instance));
-        var target = ApplicationCatalog.Require("personal-site", "1.0.0");
+        var target = ApplicationCatalog.Require("upgrade-fixture", "1.0.0");
+        Check(!(target with { UpgradeFrom = [new("0.9.0", target.ImageReference.Replace("registry.example", "mirror.example"))] }).IsValid(),
+            "A different repository name for the same digest cannot be declared as an upgrade source.");
         var bound = target.Bind(new InstallCatalogApplicationRequest(target.Id, target.Version, "new-site", 8088, [], true));
         Check(bound.Definition.HostPort == 8088 && bound.Definition.BindAddress == "127.0.0.1" && bound.Definition.ContainerPort == 80,
             "Catalog install must bind the explicitly selected host port for real HTTP readiness.");
@@ -47,7 +51,7 @@ internal static class CatalogUpdateChecks
         catalog.Update(app.Id, before => before with { CatalogTemplateVersion = "0.9.0" });
         var before = catalog.Find(app.Id)!;
         var oldRevision = catalog.AddRevision(new(Guid.NewGuid(), app.Id, 0, before.SourceKind, "1.0",
-            ApplicationDeploymentValidation.Reference("old-input"), "nginx:1.26.0-alpine", "sha256:old", "linux/amd64", null,
+            ApplicationDeploymentValidation.Reference("old-input"), target.UpgradeFrom!.Single().ImageReference, "sha256:" + new string('c', 64), "linux/amd64", null,
             before.WorkloadKind, before.ReadinessLevel, before.HealthCheckPath, "image default", [], before.ContainerPort,
             before.HostPort, before.BindAddress, before.Limits, before.Volumes, before.Configuration, before.SiteId, before.OwnerReference,
             DateTimeOffset.UtcNow, target.Id, "0.9.0"), out _);
@@ -57,7 +61,13 @@ internal static class CatalogUpdateChecks
         Check(preview.Blockers.Count == 0 && preview.ExpectedUpdatedAt == before.UpdatedAt && preview.ExpectedRevisionId == oldRevision.Id,
             "A preview must bind exact definition ticks and current revision.");
         Check(preview.CurrentTemplateVersion == "0.9.0" && preview.Target.Version == "1.0.0" && preview.CurrentImageReference == oldRevision.ImageReference && preview.TargetImageReference == target.ImageReference,
-            "Diff must expose actual image and exact template versions, including an unavailable installed version.");
+            "Diff must expose the exact target image and the verified predecessor, even when the predecessor is no longer listed.");
+        Check(ApplicationCatalogUpdates.Preview(before, oldRevision, target with { UpgradeFrom = null }, false)
+            .Blockers.Contains(ApplicationDeploymentProblemCodes.CatalogUpdateSourceUnverified),
+            "An undeclared predecessor must block an upgrade.");
+        Check(ApplicationCatalogUpdates.Preview(before, oldRevision with { ImageReference = target.ImageReference }, target, false)
+            .Blockers.Contains(ApplicationDeploymentProblemCodes.CatalogUpdateSourceUnverified),
+            "A different image under the same source version cannot satisfy the declaration.");
         Check(catalog.Find(app.Id) == before && operations.Read().Length == 0 && !JsonSerializer.Serialize(preview).Contains("hidden_value"),
             "Preview and catalog refresh must not mutate the instance or expose secret values.");
         Check(ApplicationCatalogUpdates.Preview(before with { ContainerPort = 8080 }, oldRevision, target, false).Blockers.Contains(ApplicationDeploymentProblemCodes.CatalogUpdateDefinitionIncompatible),
@@ -71,15 +81,21 @@ internal static class CatalogUpdateChecks
             "Minimum resource changes must be reviewed explicitly.");
         Check(ApplicationCatalogUpdates.Preview(before with { CatalogTemplateVersion = target.Version }, oldRevision, target, false).Blockers.Contains(ApplicationDeploymentProblemCodes.CatalogUpdateAlreadyCurrent),
             "A current template must not create a phantom update.");
-        var request = new UpdateCatalogApplicationRequest(target.Id, target.Version, before.UpdatedAt, oldRevision.Id, "0.9.0", true);
+        var request = new UpdateCatalogApplicationRequest(target.Id, target.Version, before.UpdatedAt, oldRevision.Id, "0.9.0", target.ImageReference, true);
         var json = JsonSerializer.SerializeToNode(request, RelaxKonOSJsonOptions.Default)!.AsObject();
         json.Remove("expectedRevisionId");
         try { JsonSerializer.Deserialize<UpdateCatalogApplicationRequest>(json.ToJsonString(), RelaxKonOSJsonOptions.Default); throw new Exception("Missing revision baseline accepted."); }
+        catch (JsonException) { }
+        json = JsonSerializer.SerializeToNode(request, RelaxKonOSJsonOptions.Default)!.AsObject();
+        json.Remove("expectedTargetImageReference");
+        try { JsonSerializer.Deserialize<UpdateCatalogApplicationRequest>(json.ToJsonString(), RelaxKonOSJsonOptions.Default); throw new Exception("Missing target image accepted."); }
         catch (JsonException) { }
         Expect(() => ApplicationCatalogUpdates.Validate(before, oldRevision, request with { ExpectedUpdatedAt = before.UpdatedAt.AddTicks(1) }), ApplicationDeploymentProblemCodes.DefinitionConflict);
         Expect(() => ApplicationCatalogUpdates.Validate(before, oldRevision, request with { ExpectedRevisionId = Guid.NewGuid() }), ApplicationDeploymentProblemCodes.DefinitionConflict);
         Expect(() => ApplicationCatalogUpdates.Validate(before, oldRevision, request with { TemplateVersion = "2.0.0" }), ApplicationDeploymentProblemCodes.CatalogTemplateVersionUnavailable);
         Expect(() => ApplicationCatalogUpdates.Validate(before, oldRevision, request with { Confirmed = false }), ApplicationDeploymentProblemCodes.ConfirmationRequired);
+        Expect(() => ApplicationCatalogUpdates.Validate(before, oldRevision, request with { ExpectedTargetImageReference = oldRevision.ImageReference }),
+            ApplicationDeploymentProblemCodes.DefinitionConflict);
 
         var logs = new ApplicationDeploymentLiveLogs();
         var service = new ApplicationDeploymentService(catalog, secrets, new(environment, options, NullLogger<ApplicationDeploymentStagingStore>.Instance), runtime, null!, options, environment, logs, null!, NullLogger<ApplicationDeploymentService>.Instance);
@@ -102,6 +118,16 @@ internal static class CatalogUpdateChecks
         var route = ApplicationDeploymentApiRoutes.CatalogUpdate(app.Id);
         using (var denied = await http.GetAsync(route + "?templateVersion=1.0.0")) Check(denied.StatusCode == HttpStatusCode.Unauthorized, "Preview requires authentication.");
         http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
+        var detail = $"{ApplicationDeploymentApiRoutes.Catalog}/{target.Id}/{target.Version}";
+        using (var release = await http.GetAsync(detail))
+            Check((await release.Content.ReadFromJsonAsync<ApplicationCatalogTemplateDto>(RelaxKonOSJsonOptions.Default))?.Version == target.Version,
+                "Catalogue detail must select the exact published release.");
+        using (var missingVersion = await http.GetAsync($"{ApplicationDeploymentApiRoutes.Catalog}/{target.Id}"))
+            Check(missingVersion.StatusCode == HttpStatusCode.NotFound, "The versionless catalogue route must not remain registered.");
+        using (var denied = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.Catalog + "/install",
+            new InstallCatalogApplicationRequest(target.Id, target.Version, "denied-site", 8088, [], true), RelaxKonOSJsonOptions.Default))
+            Check(denied.StatusCode == HttpStatusCode.Forbidden && catalog.FindByName("denied-site") is null && operations.Read().Length == 0,
+                "A read-only caller cannot allocate an application or an operation through catalogue install.");
         using (var read = await http.GetAsync(route + "?templateVersion=1.0.0")) {
             var receipt = await read.Content.ReadFromJsonAsync<CatalogApplicationUpdatePreviewDto>(RelaxKonOSJsonOptions.Default);
             Check(read.IsSuccessStatusCode && receipt!.ExpectedUpdatedAt == before.UpdatedAt && receipt.CurrentTemplateVersion == "0.9.0", "Production GET must preserve complete baseline precision.");
@@ -115,6 +141,8 @@ internal static class CatalogUpdateChecks
             Check(missingBaseline.StatusCode == HttpStatusCode.BadRequest, "Deploy must reject the old versionless wire body.");
         using (var staleDeploy = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.Deploy(app.Id), new DeployApplicationRequest(new(ImageReference: target.ImageReference), before.UpdatedAt.AddTicks(1), true), RelaxKonOSJsonOptions.Default))
             Check(staleDeploy.StatusCode == HttpStatusCode.Conflict && operations.Read().Length == 0, "Ordinary revision submission must atomically reject stale definition ticks before queueing.");
+        using (var bypass = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.Deploy(app.Id), new DeployApplicationRequest(new(ImageReference: target.ImageReference), before.UpdatedAt, true), RelaxKonOSJsonOptions.Default))
+            Check(bypass.StatusCode == HttpStatusCode.Conflict && operations.Read().Length == 0, "Generic deployment cannot bypass the catalog upgrade gate.");
         DeploymentOperationDto queued;
         using (var accepted = await http.PostAsJsonAsync(route, request, RelaxKonOSJsonOptions.Default)) {
             Check(accepted.StatusCode == HttpStatusCode.Accepted, "Confirmed exact update must queue a durable operation.");
@@ -139,8 +167,175 @@ internal static class CatalogUpdateChecks
         Check(catalog.Find(app.Id)!.CatalogTemplateVersion == "0.9.0" && new ApplicationDeploymentCatalogStore(environment, options).Find(app.Id)!.CurrentRevisionId == oldRevision.Id,
             "Rollback restores the revision's real binding and the result survives reopening the store.");
         Check(secrets.Reveal(app.Id, "TOKEN", 1) == "hidden_value" && controlled.Calls.All(x => x is nameof(IDockerEngineService.ListContainersAsync) or nameof(IDockerEngineService.GetStatusAsync)), "Update verification must retain secrets and execute no Docker write.");
+
+        var retention = await manager.CreateAsync(bound.Definition with
+        {
+            Name = "retained-site", Configuration = [new("TOKEN", "retained_secret", true)],
+        }, "catalog-test", default, target);
+        var retainedDefinition = catalog.Find(retention.Id)!;
+        var retainedRevision = catalog.AddRevision(published with
+        {
+            Id = Guid.NewGuid(), ApplicationId = retention.Id, Number = 0, SiteId = null,
+            Configuration = retainedDefinition.Configuration,
+        }, out _);
+        catalog.Activate(retention.Id, retainedRevision.Id, DateTimeOffset.UtcNow);
+        catalog.BindRuntime(retention.Id, "retained-container", "old-id", null);
+        controlled.ReportedStatus = new(true, "", "29.0", "linux", "amd64");
+        var volume = retainedRevision.Volumes.Single();
+        var volumeName = ApplicationDeploymentValidation.VolumeName(retention.Id, volume.Name);
+        controlled.Volume = new(volumeName, "local", "/private",
+            ApplicationDeploymentValidation.Labels(retention.Id, retention.Name, retainedRevision.Id, retainedRevision.Number, null,
+                ApplicationDeploymentValidation.RoleVolume)
+                .Select(label => label.Split('=', 2)).ToDictionary(pair => pair[0], pair => pair[1]), []);
+        var uninstall = new DeploymentRequest(retention.Id, DeploymentOperationKind.Delete);
+        Expect(() => coordinator.Start(uninstall with { DeleteVolumes = true }, "catalog-test", "no-purge"), ApplicationDeploymentProblemCodes.NotSupported);
+        var removed = coordinator.Start(uninstall, "catalog-test", "retention-uninstall");
+        deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        while (coordinator.Get(removed.OperationId)!.State is DeploymentOperationState.Queued or DeploymentOperationState.Running && DateTimeOffset.UtcNow < deadline) await Task.Delay(10);
+        var retained = new ApplicationDeploymentCatalogStore(environment, options).Find(retention.Id)!;
+        Check(coordinator.Get(removed.OperationId)!.State == DeploymentOperationState.Succeeded
+            && retained.DesiredState == ApplicationDesiredState.Retained && retained.CurrentRevisionId == retainedRevision.Id
+            && retained.ContainerId is null && retained.ContainerName is null && secrets.Reveal(retention.Id, "TOKEN", 1) == "retained_secret",
+            "Uninstall clears the runtime binding but retains the original instance, revision, volume and secret version on disk.");
+        Check(coordinator.Start(uninstall, "catalog-test", "retention-uninstall").OperationId == removed.OperationId,
+            "Uninstall replay keeps its original operation after the retained state is committed.");
+        var reinstallRoute = ApplicationDeploymentApiRoutes.CatalogReinstall(retention.Id);
+        using (var unconfirmed = await http.PostAsJsonAsync(reinstallRoute, new ReinstallCatalogApplicationRequest(retainedRevision.Id), RelaxKonOSJsonOptions.Default))
+            Check(unconfirmed.StatusCode == HttpStatusCode.BadRequest, "Reinstall requires explicit confirmation.");
+        using (var stale = await http.PostAsJsonAsync(reinstallRoute, new ReinstallCatalogApplicationRequest(Guid.NewGuid(), true), RelaxKonOSJsonOptions.Default))
+            Check(stale.StatusCode == HttpStatusCode.Conflict, "Reinstall rejects any revision other than the retained instance revision.");
+        Expect(() => coordinator.Start(new(retention.Id, DeploymentOperationKind.Start), "catalog-test", "start-retained"),
+            ApplicationDeploymentProblemCodes.NotSupported);
+
+        var reinstall = new DeploymentRequest(retention.Id, DeploymentOperationKind.Reinstall, RevisionId: retainedRevision.Id);
+        var pending = operations.Create(retention.Id, retention.Name, reinstall.Kind, "catalog-test", "original-reinstall",
+            ApplicationDeploymentService.Fingerprint(reinstall), ApplicationDeploymentService.Resources(retention.Id), out _);
+        operations.Update(pending.Operation.OperationId, current => current with { State = DeploymentOperationState.Running,
+            Stage = DeploymentStage.Creating, StartedAt = DateTimeOffset.UtcNow }, "test-dispatched");
+        var callCount = controlled.Calls.Count;
+        await coordinator.StartAsync(default);
+        Check(coordinator.Start(reinstall, "catalog-test", "original-reinstall").OperationId == pending.Operation.OperationId
+            && coordinator.Get(pending.Operation.OperationId)!.RecoveryProblemCode == ApplicationDeploymentService.RetainedOutcomeUnknown
+            && controlled.Calls.Count == callCount,
+            "Recovery keeps the interrupted reinstall receipt without dispatching a new Engine command.");
+        Expect(() => coordinator.Start(reinstall, "catalog-test", "new-reinstall"), ApplicationDeploymentProblemCodes.ResourceConflict);
+
         await coordinator.StopAsync(default); await host.StopAsync();
-        Console.WriteLine("BP16 catalog preview, exact version, HTTP permissions, confirmation, replay, failure, activation and rollback checks passed.");
+        Console.WriteLine("Catalog checks passed, including exact predecessor and target digest, bypass refusal, retained records and original receipt fencing.");
+    }
+
+    private static void VerifyManifestDirectory(string root)
+    {
+        var directory = Directory.CreateDirectory(Path.Combine(root, "packages")).FullName;
+        var original = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Assets", "ApplicationCatalog", "personal-site.json"));
+        var source = Path.Combine(directory, "original.json");
+        var addition = Path.Combine(directory, "addition.json");
+        File.WriteAllText(source, original);
+        Check(ApplicationCatalog.Load(directory) is [{ Id: "personal-site", Version: "1.0.0" }], "The server must read packaged JSON.");
+        File.WriteAllText(addition, original.Replace("\"1.0.0\"", "\"1.1.0\"", StringComparison.Ordinal));
+        Check(ApplicationCatalog.Load(directory).Select(release => release.Version).ToHashSet().SetEquals(["1.0.0", "1.1.0"]),
+            "The same reader must admit two exact versions from package files.");
+
+        foreach (var invalid in new[]
+        {
+            original,
+            original.Replace("\"2\"", "\"1\"", StringComparison.Ordinal),
+            original.Replace("\"schemaVersion\": \"2\"", "\"schemaVersion\": \"2\", \"schemaVersion\": \"2\"", StringComparison.Ordinal),
+            original.Replace("\"healthPath\"", "\"privileged\": true, \"healthPath\"", StringComparison.Ordinal),
+            original.Replace("docker.io/library/nginx@sha256:", "nginx:latest", StringComparison.Ordinal),
+        })
+        {
+            File.WriteAllText(addition, invalid);
+            try { ApplicationCatalog.Load(directory); throw new Exception("Unsafe catalogue was admitted."); }
+            catch (InvalidDataException) { }
+        }
+    }
+
+    private static async Task VerifyEngineBoundariesAsync()
+    {
+        var engine = DispatchProxy.Create<IDockerEngineService, CatalogUpdateEngine>();
+        var fixture = (CatalogUpdateEngine)(object)engine;
+        var runtime = new ApplicationDeploymentRuntime(engine, new(), new FixtureHttpClientFactory([]), NullLogger<ApplicationDeploymentRuntime>.Instance);
+        var reference = ApplicationCatalog.Require("personal-site", "1.0.0").ImageReference;
+        fixture.Image = new("sha256:" + new string('a', 64), "linux", "amd64", [reference]);
+        Check((await runtime.ResolveImageIdentityAsync(reference, "linux/amd64", default)).ImageId == fixture.Image.Id,
+            "A pulled digest must bind the observed immutable Engine image ID.");
+        fixture.Image = fixture.Image with { RepositoryDigests = [] };
+        Check((await runtime.ResolveImageIdentityAsync(reference, "linux/amd64", default)).ImageId is null,
+            "An image without the declared digest cannot activate.");
+        fixture.Image = fixture.Image with { RepositoryDigests = [reference], Architecture = "arm64" };
+        Check((await runtime.ResolveImageIdentityAsync(reference, "linux/amd64", default)).ImageId is null,
+            "A mismatched image platform cannot activate.");
+
+        fixture.Volume = new("legacy-data", "local", "/private",
+            new Dictionary<string, string> { [ApplicationDeploymentValidation.OwnerLabel] = ApplicationDeploymentValidation.OwnerValue }, []);
+        var reserved = await DockerApplicationResourcePolicy.DeleteVolumeAsync(engine, "relaxkonos-ca-project_db", true, default);
+        var labelled = await DockerApplicationResourcePolicy.DeleteVolumeAsync(engine, fixture.Volume.Name, true, default);
+        Check(reserved.ProblemCode == DockerApplicationResourcePolicy.ManagedResource && labelled.ProblemCode == reserved.ProblemCode
+            && !fixture.Calls.Contains(nameof(IDockerEngineService.DeleteVolumeAsync)),
+            "Docker Manager must block deletion of both reserved and labelled volumes before dispatch.");
+        fixture.Volume = fixture.Volume with { Labels = new Dictionary<string, string>() };
+        Check((await DockerApplicationResourcePolicy.DeleteVolumeAsync(engine, fixture.Volume.Name, true, default)).Success,
+            "A user-managed volume continues through the existing Engine delete path.");
+
+        var owner = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var name = ApplicationDeploymentValidation.VolumeName(owner, "data");
+        fixture.Calls.Clear();
+        fixture.Volume = new(name, "local", "/private",
+            ApplicationDeploymentValidation.Labels(other, "other-instance", null, null, null, ApplicationDeploymentValidation.RoleVolume)
+                .Select(label => label.Split('=', 2)).ToDictionary(pair => pair[0], pair => pair[1]), []);
+        try
+        {
+            await runtime.RequireRetainedVolumesAsync(owner, [new("data", "/data", false)], default);
+            throw new Exception("A matching volume name must not substitute for ownership.");
+        }
+        catch (ApplicationDeploymentException error)
+        {
+            Check(error.ProblemCode == ApplicationDeploymentProblemCodes.DriftUnownedResource
+                && fixture.Calls.SequenceEqual([nameof(IDockerEngineService.GetVolumeAsync)]),
+                "Another instance's volume cannot be selected by name or lead to a Docker mutation.");
+        }
+
+        var managedLabel = new Dictionary<string, string> { [DockerStackValidation.ApplicationOwnerLabel] = DockerStackValidation.ApplicationOwnerValue };
+        var emptyLabels = new Dictionary<string, string>();
+        fixture.Container = new("immutable-container-id", "external-name", "", "", "running", "", "", "", "",
+            [], [], [], [], managedLabel);
+        var changedId = "";
+        Task<DockerOperationResult> Change(string id)
+        {
+            changedId = id;
+            return Task.FromResult(new DockerOperationResult(true, ""));
+        }
+        Check((await DockerApplicationResourcePolicy.ChangeContainerAsync(engine, "alias", null, Change, default)).ProblemCode == reserved.ProblemCode
+            && changedId == "", "A container alias cannot bypass its application owner label.");
+        fixture.Container = fixture.Container with { Labels = emptyLabels };
+        Check((await DockerApplicationResourcePolicy.ChangeContainerAsync(engine, "alias", "RELAXKONOS-CA-other", Change, default)).ProblemCode == reserved.ProblemCode
+            && changedId == "", "A Manager rename cannot create a reserved application name.");
+        Check((await DockerApplicationResourcePolicy.ChangeContainerAsync(engine, "alias", "ordinary", Change, default)).Success
+            && changedId == fixture.Container.Id, "An ordinary container mutation uses its inspected immutable ID.");
+
+        fixture.Network = new("immutable-network-id", "external-network", "bridge", "local", [], managedLabel);
+        Check((await DockerApplicationResourcePolicy.DeleteNetworkAsync(engine, "network-alias", true, default)).ProblemCode == reserved.ProblemCode
+            && !fixture.Calls.Contains(nameof(IDockerEngineService.DeleteNetworkAsync)),
+            "A network alias cannot bypass its application owner label.");
+        var create = new DockerContainerCreateRequest("ordinary", "nginx:1.0", []);
+        Check((await DockerApplicationResourcePolicy.CreateContainerAsync(engine, create with { Network = "network-alias" }, default)).ProblemCode == reserved.ProblemCode,
+            "A Manager container cannot join an application network by its ID or alias.");
+        Check((await DockerApplicationResourcePolicy.CreateContainerAsync(engine, create with { Mounts = ["relaxkonos-ca-instance-data:/data"] }, default)).ProblemCode == reserved.ProblemCode
+            && (await DockerApplicationResourcePolicy.CreateContainerAsync(engine, create with { Mounts = ["/var/lib/docker:/data"] }, default)).ProblemCode == "docker.validation_failed",
+            "A Manager container cannot mount managed data by name or bind the host filesystem.");
+        Check((await DockerApplicationResourcePolicy.CreateVolumeAsync(engine, new("ordinary", Labels: ["relaxkonos.owner=application-deployment"]), default)).ProblemCode == reserved.ProblemCode
+            && !fixture.Calls.Contains(nameof(IDockerEngineService.CreateContainerAsync))
+            && !fixture.Calls.Contains(nameof(IDockerEngineService.CreateVolumeAsync)), "Ownership labels cannot be supplied by Manager clients.");
+
+        fixture.Network = fixture.Network with { Labels = emptyLabels };
+        fixture.Volume = new("ordinary-data", "local", "/private", emptyLabels, []);
+        Check((await DockerApplicationResourcePolicy.CreateContainerAsync(engine,
+                create with { Network = "network-alias", Mounts = ["ordinary-data:/data"] }, default)).Success
+            && fixture.CreatedContainer?.Network == fixture.Network.Id,
+            "An ordinary container still accepts a named volume and an inspected user network.");
+        Console.WriteLine("Docker Manager ownership checks passed for container mutations, mounts, networks, and volume labels.");
     }
 
     private static void Expect(Action action, string problem) {
@@ -152,13 +347,31 @@ internal static class CatalogUpdateChecks
 
 public class CatalogUpdateEngine : DispatchProxy
 {
+    public DockerContainerDetailsDto? Container { get; set; }
+    public DockerNetworkDetailsDto? Network { get; set; }
+    public DockerContainerCreateRequest? CreatedContainer { get; set; }
+    public DockerStatusDto? ReportedStatus { get; set; }
+    public DockerImageIdentity? Image { get; set; }
+    public DockerVolumeDetailsDto? Volume { get; set; }
     public TaskCompletionSource<DockerStatusDto> Status { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public System.Collections.Concurrent.ConcurrentBag<string> Calls { get; } = [];
     protected override object? Invoke(MethodInfo? method, object?[]? args) {
         Calls.Add(method!.Name);
         if (method.Name == nameof(IDockerEngineService.ListContainersAsync)) return Task.FromResult<IReadOnlyList<DockerContainerDto>>([]);
-        if (method.Name == nameof(IDockerEngineService.GetStatusAsync)) { Started.TrySetResult(); return Status.Task; }
+        if (method.Name == nameof(IDockerEngineService.GetStatusAsync)) { Started.TrySetResult(); return ReportedStatus is { } status ? Task.FromResult(status) : Status.Task; }
+        if (method.Name == nameof(IDockerEngineService.InspectImageAsync)) return Task.FromResult(Image);
+        if (method.Name == nameof(IDockerEngineService.GetVolumeAsync)) return Task.FromResult(Volume);
+        if (method.Name == nameof(IDockerEngineService.GetContainerAsync)) return Task.FromResult(Container);
+        if (method.Name == nameof(IDockerEngineService.GetNetworkAsync)) return Task.FromResult(Network);
+        if (method.Name == nameof(IDockerEngineService.ListVolumesAsync)) return Task.FromResult<IReadOnlyList<DockerVolumeDto>>(
+            Volume is { } volume ? [new(volume.Name, volume.Driver, volume.Mountpoint)] : []);
+        if (method.Name == nameof(IDockerEngineService.CreateContainerAsync))
+        {
+            CreatedContainer = (DockerContainerCreateRequest)args![0]!;
+            return Task.FromResult(new DockerOperationResult(true, ""));
+        }
+        if (method.Name == nameof(IDockerEngineService.DeleteVolumeAsync)) return Task.FromResult(new DockerOperationResult(true, ""));
         throw new NotSupportedException("Docker writes are outside this fixture.");
     }
 }
