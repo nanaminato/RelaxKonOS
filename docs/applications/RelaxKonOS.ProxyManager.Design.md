@@ -4663,6 +4663,8 @@ TUN 恢复状态将 Helper 的当前观测与原发布 ID、配置身份比对�
 
 GEO 资源放置已派发后，Core 等待原 Helper 终帧或传输终止。应答丢失后可通过只读 GET 核对原活动修订及每个文件的状态和摘要。[断开恢复实测](../architecture/server-module-evidence/Proxy-Observation.md#活动-tun-的-geo-资源放置与应答丢失)
 
+Helper 在两个制品之间退出后，重启仍按原修订分别显示已验证和缺失文件。部分放置显示为尚未配置完成，原 TUN 状态继续由原发布裁决。[部分放置实测](../architecture/server-module-evidence/Proxy-Observation.md#活动-tun-的-geo-部分放置中断)
+
 显式直连设置补偿继续使用原操作和已登记的补偿 ID。待执行补偿需要当前 Proxy 工作租约，HTTP 响应和异步清理完成后才归还。已有终态按原回执返回。[实机证据](../architecture/server-module-evidence/Proxy-Publication.md#显式直连设置补偿的-http-工作租约)
 
 紧急停止和确认关账沿用 Core 的原事务入口。原生请求已派发后，客户端取消不会截断 Core 对 Helper 终帧的等待。关账应答丢失后，重新提交同一已确认的原操作 ID 可读回原关账终态。[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#core-应急停止与原关账回执)

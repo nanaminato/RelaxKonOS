@@ -2252,6 +2252,7 @@ def proof_full_http_shutdown(ipc, case):
     named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
     named_history_drift = named_recovery_cut and Path(sys.argv[3]).with_name('tun-named-history-drift.fixture').is_file()
     geo_drain = named_history_drift and Path(sys.argv[3]).with_name('tun-geo-drain.fixture').is_file()
+    geo_partial = geo_drain and Path(sys.argv[3]).with_name('tun-geo-partial.fixture').is_file()
     named_admission = case == 'ipc-http-named-start-admission'
     named_baseline = case == 'ipc-http-named-start-baseline'
     helper_profile = case == 'ipc-http-named-start-helper-profile'
@@ -3819,7 +3820,7 @@ exec {shlex.quote(str(systemctl))} "$@"
                     os.kill(disabled_pid, signal.SIGTERM)
                     assert worker.wait(timeout=12) == 0
                     print(f'PASS TUN NAMED HISTORY WITH ROUTE DRIFT: {started}; original receipt settled, current owner blocked until route restored')
-                    if geo_drain:
+                    if geo_drain and not geo_partial:
                         (root / 'full-geo-proof').touch()
                 worker = launch('restart')
                 restart_pid = int(marker('full-server-pid'))
@@ -3952,6 +3953,60 @@ exec {shlex.quote(str(systemctl))} "$@"
                 revision = uuid.UUID(inventory['activeRevisionId'])
                 digest_paths = [directory / file['name'] for directory in
                                 (archive / 'seed-data', archive / 'data' / revision.hex) for file in resources['files']]
+                if geo_partial:
+                    assert all(file['state'].lower() == 'missing' for file in resources['files'])
+                    asset_dir = Path(launcher).parent / 'Assets/Mihomo/GeoData'
+                    completed = {path for path in digest_paths if path.name == 'geoip.metadb'}
+                    assert len(completed) == 2 and not any(path.exists() for path in digest_paths)
+                    expected_digest = hashlib.sha256((asset_dir / 'geoip.metadb').read_bytes()).hexdigest()
+                    # A write lease on the second regular source blocks its first open. The real Helper
+                    # has already atomically renamed both copies of the first file at this boundary.
+                    interrupted = threading.Event()
+                    old_handler = signal.signal(signal.SIGIO, lambda *_: interrupted.set())
+                    fd = os.open(asset_dir / 'geoip.dat', os.O_RDWR | os.O_NOFOLLOW)
+                    replies = []
+                    client = threading.Thread(target=lambda: replies.append(request(geo_route, token, method='POST')))
+                    try:
+                        fcntl.fcntl(fd, fcntl.F_SETOWN, os.getpid())
+                        fcntl.fcntl(fd, fcntl.F_SETLEASE, fcntl.F_WRLCK)
+                        client.start()
+                        until(interrupted.is_set, 'Helper opening the second GEO source')
+                        assert client.is_alive() and {path for path in digest_paths if path.is_file()} == completed
+                        assert all(hashlib.sha256(path.read_bytes()).hexdigest() == expected_digest for path in completed)
+                        helper = ipc.helper
+                        ipc.stop_helper()
+                        assert helper.returncode == -signal.SIGKILL
+                    finally:
+                        os.close(fd)
+                        signal.signal(signal.SIGIO, old_handler)
+                        if client.ident is not None:
+                            client.join(timeout=6)
+                    assert not client.is_alive() and len(replies) == 1 and replies[0][0] == 503, replies
+                    snapshots = {path: path.stat().st_mtime_ns for path in completed}
+                    ipc.start_helper()
+                    status, partial = request(geo_route, token)
+                    assert status == 200 and uuid.UUID(partial['revisionId']) == revision and not partial.get('problemCode')
+                    verified = {file['name']: file['sha256'] for file in partial['files'] if file['state'].lower() == 'verified'}
+                    assert verified == {'geoip.metadb': expected_digest}
+                    assert len(partial['files']) == 5 and sum(file['state'].lower() == 'missing' for file in partial['files']) == 4
+                    verify_native('geo-partial-helper-restarted', confirmed=True)
+                    os.kill(restart_pid, signal.SIGTERM)
+                    assert worker.wait(timeout=12) == 0
+                    worker = launch('restart')
+                    restart_pid = int(marker('full-server-pid'))
+                    token = login()
+                    assert request(geo_route, token) == (200, partial)
+                    assert {path for path in digest_paths if path.is_file()} == completed
+                    assert all(path.stat().st_mtime_ns == snapshots[path] and
+                               hashlib.sha256(path.read_bytes()).hexdigest() == expected_digest for path in completed)
+                    assert read(started) == finished and (queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()) == saved
+                    assert 'operation=MihomoRuntimeResources ' not in ipc.log.read_text()
+                    verify_native('geo-partial-server-restarted', confirmed=True)
+                    os.kill(restart_pid, signal.SIGTERM)
+                    assert worker.wait(timeout=12) == 0
+                    print(f'PASS MIHOMO GEO PARTIAL EXIT: revision={revision}; publication={publication}; original={started}; '
+                          'one verified and four missing after Helper and Server restart, no placement replay', flush=True)
+                    return
                 prefix = root / 'full-server/full-geo'
                 Path(f'{prefix}-arm').touch()
                 (root / 'full-geo-armed').touch()
