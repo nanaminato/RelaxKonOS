@@ -19,6 +19,9 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
 
     internal static void RegisterSettings(string root) => Register(root, typeof(IProxySettingsWriter), "full-settings-cleanup");
     internal static void RegisterSquid(string root) => Register(root, typeof(SquidGatewayService), "full-squid-cleanup");
+
+    internal static void RegisterNamedRecovery(string root) =>
+        Register(root, typeof(MihomoNamedTunStartRecovery), "full-named-recovery-cleanup");
     internal static void RegisterController(string root) => Register(root, typeof(IMihomoControllerClient), "full-controller-cleanup");
     internal static void RegisterRetry(string root) => Register(root, typeof(MihomoRuntimeRecoveryService), "full-pam-retry-cleanup",
         services => services.AddSingleton<IStartupFilter>(new RetryResponseBarrier(root)));

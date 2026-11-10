@@ -264,6 +264,11 @@ internal static class MihomoTunFullServerAcceptance
             start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
             start.Environment["RELAXKONOS_TEST_SQUID_CLEANUP"] = start.WorkingDirectory;
         }
+        if (File.Exists(Path.Combine(root, "full-named-recovery-cleanup-proof")))
+        {
+            start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
+            start.Environment["RELAXKONOS_TEST_NAMED_RECOVERY_CLEANUP"] = start.WorkingDirectory;
+        }
         if (controllerCleanup)
         {
             start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;

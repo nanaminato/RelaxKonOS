@@ -4645,6 +4645,8 @@ Squid 发布恢复写回故障导致 Proxy 管理面隔离时，Core 系统代�
 
 停用准入用独立的只读回执端口按原发布 ID 核对 Helper。若当前网络归属、磁盘配置或原提交见证无法核验，继续保留停用门禁。恢复可信证据后按原发布重新核对。[只读回执验收](../architecture/server-module-evidence/Proxy-Safety.md#停用准入的独立-tun-回执读取)
 
+查询具名启动时，原队列先读取同一 Helper 回执。仍待恢复且归属相符时才继续原启动的恢复，恢复作用域清理结束后才确认原终态。恢复应答中断后，已持久化的原生终态可在重启后按原 ID 只读核对。[恢复作用域实测](../architecture/server-module-evidence/Proxy-Safety.md#具名启动的原队列恢复作用域)
+
 DNS 写入已生效但应答未确认时，重启可按原操作和原 resolver 身份只读确认效果。resolver 换代后相同设置及真实流量仍保留待核验，Helper 未重发写入或派发停止。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。
 
 Linux 私有网络通过真实 Mihomo 激活后的取消验收。设备和规则已生效时取消安全任务，原恢复标记由 Core 接手，激活和禁用各重载一次，管理路由和规则恢复。此路径使用直接 TUN 安全任务。见[模块边界台账](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-实际-tun-激活期间取消与同进程补偿)。

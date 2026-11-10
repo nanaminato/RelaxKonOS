@@ -23,7 +23,8 @@ internal static class MihomoRegistrationChecks
         // surface: the profile/subscription/configuration services moved there, so this fixture has to
         // register the same pair the Host does instead of the old single AddProxyServices call.
         builder.AddProxyRuntimeServices();
-        var coreOwnsTunDispatch = builder.Services.Any(item => item.ServiceType == typeof(MihomoManagedTunOperations));
+        var coreOwnsTunDispatch = builder.Services.Any(item => item.ServiceType == typeof(MihomoManagedTunOperations)
+            || item.ServiceType == typeof(MihomoNamedTunStartRecovery));
         ServerModules.CreateManaged(new HashSet<string> { ServerModules.ProxyId }).ConfigureServices(builder,
             ServerModuleContext.Create(builder.Configuration, builder.Environment, "sqlite"));
         var proxyHostedFactories = builder.Services.Where(item => item.ServiceType == typeof(IHostedService)
@@ -90,9 +91,12 @@ internal static class MihomoRegistrationChecks
             "Scoped acceptance uses the same singleton operation ledger registered once for shutdown drain");
         Check(!coreOwnsTunDispatch
             && builder.Services.Single(item => item.ServiceType == typeof(MihomoManagedTunOperations)).Lifetime == ServiceLifetime.Scoped
+            && builder.Services.Single(item => item.ServiceType == typeof(MihomoNamedTunStartRecovery)).Lifetime == ServiceLifetime.Scoped
             && ReferenceEquals(scope.ServiceProvider.GetRequiredService<MihomoManagedTunOperations>(),
-                scope.ServiceProvider.GetRequiredService<MihomoManagedTunOperations>()),
-            "Only Proxy registers the managed TUN dispatch executor and the original work scope owns it");
+                scope.ServiceProvider.GetRequiredService<MihomoManagedTunOperations>())
+            && ReferenceEquals(scope.ServiceProvider.GetRequiredService<MihomoNamedTunStartRecovery>(),
+                scope.ServiceProvider.GetRequiredService<MihomoNamedTunStartRecovery>()),
+            "Only Proxy registers the scoped managed TUN dispatch and named start recovery executors");
         Check(builder.Services.Single(item => item.ServiceType == typeof(RelaxKonOS.Server.ProxyServer.ProxyServerService)).Lifetime
                 == ServiceLifetime.Transient
             && builder.Services.Single(item => item.ServiceType == typeof(RelaxKonOS.Server.ProxyServer.IProxyServerExpiryExecutor)).Lifetime

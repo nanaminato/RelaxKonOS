@@ -2253,6 +2253,7 @@ def proof_full_http_shutdown(ipc, case):
     named_baseline = case == 'ipc-http-named-start-baseline'
     helper_profile = case == 'ipc-http-named-start-helper-profile'
     tun_status_scope = case == 'ipc-http-named-start-dns-settled' and Path(sys.argv[3]).with_name('tun-status-scope.fixture').is_file()
+    named_scope = case == 'ipc-http-named-start-dns-settled' and Path(sys.argv[3]).with_name('tun-named-recovery-scope.fixture').is_file()
     named_dns_settled = named_recovery_cut or named_admission or named_baseline or helper_profile or case == 'ipc-http-named-start-dns-settled'
     named_dns = named_dns_settled or case == 'ipc-http-named-start-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
@@ -3638,6 +3639,8 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert worker.wait(timeout=12) == 0
         if tun_status_scope:
             (root / 'full-tun-status-response-proof').touch()
+        if named_scope:
+            (root / 'full-named-recovery-cleanup-proof').touch()
         worker = launch('zero-dns-recover' if named_recovery_cut else 'admission-managed' if named_admission else 'restart')
         restart_pid = int(marker('full-server-pid'))
         token = login()
@@ -3687,8 +3690,30 @@ exec {shlex.quote(str(systemctl))} "$@"
                 restart_pid = int(marker('full-server-pid'))
                 token = login()
 
-            finished = until(lambda: (reply if (reply := read(started))['state'] == 'succeeded' else None),
-                             'original named start terminal receipt')
+            if named_scope:
+                prefix = root / 'full-server/full-named-recovery-cleanup'
+                Path(f'{prefix}-arm').touch()
+                before_cleanup = queue.read_bytes()
+                responses = []
+                reader = threading.Thread(target=lambda: responses.append(read(started)))
+                reader.start()
+                try:
+                    held = Path(f'{prefix}-held')
+                    until(lambda: held.exists() and held.read_text() == 'disposing', 'named recovery scope cleanup')
+                    assert reader.is_alive() and leases() >= 2 and queue.read_bytes() == before_cleanup
+                    assert ipc.log.read_text().count('operation=MihomoRuntimeRecover ') == 1
+                    verify_native('named-recovery-cleanup-held', confirmed=True)
+                finally:
+                    Path(f'{prefix}-release').touch()
+                    reader.join(timeout=8)
+                assert not reader.is_alive() and len(responses) == 1, responses
+                assert Path(f'{prefix}-complete').read_text() == 'disposed'
+                finished = responses[0]
+                assert finished['state'] == 'succeeded'
+                print(f'PASS TUN NAMED RECOVERY SCOPE: {started}; two leases through cleanup, one recovery and original receipt')
+            else:
+                finished = until(lambda: (reply if (reply := read(started))['state'] == 'succeeded' else None),
+                                 'original named start terminal receipt')
             assert finished['completedAt'] and submit('enable', key, body) == started and read(started) == finished
             observed = json.loads(checkpoint(record, f'observe-action:{started}'))
             action = observed['mihomoTunAction']

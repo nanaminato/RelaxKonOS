@@ -17,6 +17,8 @@ internal static class StartupHook
             MihomoTunCleanupBarrier.RegisterSettings(settingsRoot);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SQUID_CLEANUP") is { } squidRoot)
             MihomoTunCleanupBarrier.RegisterSquid(squidRoot);
+        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_NAMED_RECOVERY_CLEANUP") is { } namedRecoveryRoot)
+            MihomoTunCleanupBarrier.RegisterNamedRecovery(namedRecoveryRoot);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_CONTROLLER_CLEANUP") is { } controllerRoot)
             MihomoTunCleanupBarrier.RegisterController(controllerRoot);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_PAM_RETRY_CLEANUP") is { } retryRoot)

@@ -27,6 +27,8 @@
 
 2026-11-10（MB-04 / MR-03 原回执读取）。TUN 停用计划及禁用启动使用独立的 Helper 只读回执端口。端口仅依赖宿主模式和 Helper 传输，与变更服务共用原 IPC 快照及见证校验。原发布锁和所有权仍由原台账裁决。[验收证据](../architecture/server-module-evidence/Proxy-Safety.md#停用准入的独立-tun-回执读取)
 
+2026-11-10（MB-04 / MR-03 具名启动对账）。原队列只在原 Helper 回执表明同一启动仍待恢复时创建恢复作用域。Helper 接续沿用原启动 ID、原发布 ID 与原授权，原队列负责清理和终态。已完成的原启动由只读回执结案。[验收证据](../architecture/server-module-evidence/Proxy-Safety.md#具名启动的原队列恢复作用域)
+
 2026-11-10（MB-04 / MR-06 固定升级复验）。专属根中断原包应答及首次恢复查询后，Core 安装台账继续按原 ID 和原 Helper 回执结案。实测两次原查询和一次实际升级，同键返回原终态。整机掉电仍需独立环境。[现机原回执复验](../architecture/server-module-evidence/Proxy-Squid.md#固定升级的现机原回执复验)
 
 ## Windows 日常安装入口调整（2026-10-27，MR-03/04/05）

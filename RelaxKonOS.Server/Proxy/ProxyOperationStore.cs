@@ -5,6 +5,7 @@ using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.GatewayProxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Proxy;
 
@@ -16,7 +17,7 @@ public delegate Task ProxyOperationStageReporter(string stage);
 /// </summary>
 public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<ProxyOperationStore> logger,
     IProxyWorkLeaseSource workLeases, MihomoPublicationStore? publication = null,
-    IProxySubscriptionRepository? subscriptions = null, MihomoRuntimeService? mihomoRuntime = null,
+    IProxySubscriptionRepository? subscriptions = null, IMihomoRuntimeReceiptReader? mihomoReceipts = null,
     IServiceScopeFactory? scopes = null) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -259,16 +260,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                 { logger.LogWarning(error, "Original Squid operation could not be verified. OperationId={OperationId}", operation.OperationId); }
                 finally
                 {
-                    try { await scope.DisposeAsync(); }
-                    catch (Exception error)
-                    {
-                        _recoveryBlocked = true;
-                        workLeases.RetainFailedResource(work, scope);
-                        work.RequireRecovery();
-                        logger.LogError(error, "Original Squid recovery scope could not be cleaned up. OperationId={OperationId}", operation.OperationId);
-                        throw new RelaxKonOS.Server.Residency.ModuleUnavailableException("module-recovery-blocked", 30,
-                            "Proxy recovery could not clean up the original operation scope.", error);
-                    }
+                    await DisposeRecoveryScopeAsync(scope, work, operation.OperationId);
                 }
                 if (!verified) continue;
                 entries[index] = entry with { Operation = operation with
@@ -286,7 +278,7 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
 
             if (operation.Stage == MihomoManagedTunOperations.ActionQueueStage)
             {
-                if (!await HasConfirmedTunActionAsync(operation, ct)) continue;
+                if (!await HasConfirmedTunActionAsync(operation, work, ct)) continue;
                 entries[index] = entry with { Operation = operation with
                 {
                     State = ProxyOperationState.Succeeded,
@@ -369,9 +361,23 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         }
     }
 
-    private async Task<bool> HasConfirmedTunActionAsync(ProxyOperationDto operation, CancellationToken ct)
+    private async ValueTask DisposeRecoveryScopeAsync(AsyncServiceScope scope, IModuleWorkLease work, Guid operationId)
     {
-        if (mihomoRuntime is null) return false;
+        try { await scope.DisposeAsync(); }
+        catch (Exception error)
+        {
+            _recoveryBlocked = true;
+            workLeases.RetainFailedResource(work, scope);
+            work.RequireRecovery();
+            logger.LogError(error, "Original Proxy recovery scope could not be cleaned up. OperationId={OperationId}", operationId);
+            throw new ModuleUnavailableException("module-recovery-blocked", 30,
+                "Proxy recovery could not clean up the original operation scope.", error);
+        }
+    }
+
+    private async Task<bool> HasConfirmedTunActionAsync(ProxyOperationDto operation, IModuleWorkLease work, CancellationToken ct)
+    {
+        if (mihomoReceipts is null) return false;
         var expected = operation.Kind switch
         {
             "tun.enable" => MihomoTunActionKind.Start,
@@ -381,14 +387,20 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
         if (expected is null) return false;
         try
         {
-            var observed = await mihomoRuntime.QueryHelperAsync(ct, operation.OperationId);
+            var observed = await mihomoReceipts.QueryHelperAsync(ct, operation.OperationId);
             if (expected == MihomoTunActionKind.Start && observed.PendingOperationId == operation.OperationId
                 && observed.MihomoTunAction is { Action: MihomoTunActionKind.Start, Outcome: RuntimeSwitchOutcome.RecoveryRequired } pending
                 && pending.OperationId == operation.OperationId && pending.PublicationId != Guid.Empty)
             {
-                if (!await mihomoRuntime.TryRecoverNamedTunStartAsync(operation.OperationId, pending.PublicationId, ct))
-                    return false;
-                observed = await mihomoRuntime.QueryHelperAsync(CancellationToken.None, operation.OperationId);
+                if (scopes is null) return false;
+                var scope = scopes.CreateAsyncScope();
+                try
+                {
+                    var recovery = scope.ServiceProvider.GetRequiredService<MihomoNamedTunStartRecovery>();
+                    if (!await recovery.TryRecoverAsync(operation.OperationId, pending.PublicationId, ct)) return false;
+                }
+                finally { await DisposeRecoveryScopeAsync(scope, work, operation.OperationId); }
+                observed = await mihomoReceipts.QueryHelperAsync(CancellationToken.None, operation.OperationId);
                 if (observed.MihomoTunAction?.PublicationId != pending.PublicationId) return false;
             }
             return observed.MihomoTunAction is { Outcome: RuntimeSwitchOutcome.Succeeded } receipt

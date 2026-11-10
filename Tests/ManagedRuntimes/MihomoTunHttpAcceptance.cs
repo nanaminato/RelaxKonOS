@@ -51,10 +51,15 @@ internal static class MihomoTunHttpAcceptance
         builder.Services.AddSingleton(paths);
         builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(new MihomoRuntimeAuthorizationProvider(store, paths, secrets));
-        builder.Services.AddSingleton(services => new MihomoRuntimeService(
+        builder.Services.AddSingleton<IPrivilegedOperationTransport>(services =>
             new PublicationTransport(socket, paths.GetStateDirectory(), store, services.GetRequiredService<ModuleResidencyCoordinator>(),
-                firstRun, pending, quarantine || manual),
+                firstRun, pending, quarantine || manual));
+        builder.Services.AddSingleton(services => new MihomoRuntimeService(services.GetRequiredService<IPrivilegedOperationTransport>(),
             store, services.GetRequiredService<MihomoRuntimeAuthorizationProvider>(), mode, new DirectDownloads()));
+        builder.Services.AddSingleton<IMihomoRuntimeReceiptReader>(services =>
+            new MihomoRuntimeReceiptReader(services.GetRequiredService<IPrivilegedOperationTransport>(), mode));
+        builder.Services.AddScoped(services => new MihomoNamedTunStartRecovery(store,
+            services.GetRequiredService<IPrivilegedOperationTransport>(), mode, services.GetRequiredService<MihomoRuntimeAuthorizationProvider>()));
         builder.Services.AddSingleton<IProxyProfileRepository>(MihomoPublicationTransactionChecks.Stub<IProxyProfileRepository>(member =>
             member.Name == nameof(IProxyProfileRepository.GetActiveAsync)
                 ? Task.FromResult<ProxyProfileDto?>(new(ProfileId, "private", "mihomo", true, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow))

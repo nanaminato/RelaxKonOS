@@ -5,6 +5,7 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.Proxy.Mihomo;
 
 namespace RelaxKonOS.Server.ManagedRuntimes;
 
@@ -27,6 +28,17 @@ internal sealed class MihomoRuntimeReceiptReader(IPrivilegedOperationTransport h
 
 internal static class MihomoRuntimeHelperProtocol
 {
+    internal static async Task<RuntimeSwitchResult?> RecoverUnderGateAsync(IPrivilegedOperationTransport helper,
+        IServerModeResolver mode, MihomoRuntimeAuthorizationProvider authorization, Guid requestOperationId,
+        Guid recoveryOperationId, CancellationToken ct, Guid? tunPublicationId = null)
+    {
+        await using var callback = new RuntimeAuthorizationServer<MihomoCurrentAuthorization>(requestOperationId, authorization.ReadAsync);
+        // A null response still requires checking the original Helper receipt.
+        return await MihomoRuntimeHelperProtocol.CallAsync<RuntimeSwitchResult?>(helper, mode, new(PrivilegedOperationKind.MihomoRuntimeRecover,
+            OperationId: requestOperationId, RuntimeLifecycle: new(Authorization: callback.Channel,
+                RecoveryOperationId: recoveryOperationId, MihomoTunPublicationId: tunPublicationId)), ct, allowNull: true);
+    }
+
     internal static async Task<T> CallAsync<T>(IPrivilegedOperationTransport helper, IServerModeResolver mode,
         PrivilegedOperationRequest request, CancellationToken ct, bool allowNull = false)
     {
