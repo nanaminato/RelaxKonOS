@@ -11,8 +11,33 @@ public sealed record ManagedComposePlan(Guid InstanceId, string WebService, int 
     private const string Network = "private";
     private const string PreviewValue = "relaxkonos-preview";
 
-    public DockerStackDefinitionDto RenderPreview()
+    public DockerStackDefinitionDto RenderPreview() => Render((_, _) => PreviewValue);
+
+    public DockerStackDefinitionDto RenderDeployment(out Dictionary<string, string> processEnvironment,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment)
     {
+        var variables = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var service in Services)
+        {
+            if (!EnvironmentFor(environment, service.Id).Keys.ToHashSet(StringComparer.Ordinal).SetEquals(service.EnvironmentNames))
+                Refuse();
+        }
+        if (environment.Keys.Except(Services.Select(service => service.Id), StringComparer.Ordinal).Any()) Refuse();
+        var definition = Render((service, name) =>
+        {
+            var value = EnvironmentFor(environment, service)[name];
+            if (value is null || value.Contains('\0')) Refuse();
+            var variable = "RK_MANAGED_" + variables.Count.ToString(CultureInfo.InvariantCulture);
+            variables.Add(variable, value!);
+            return "${" + variable + "?missing managed input}";
+        });
+        processEnvironment = variables;
+        return definition;
+    }
+
+    private DockerStackDefinitionDto Render(Func<string, string, string> environmentValue)
+    {
+        if (InstanceId == Guid.Empty) Refuse();
         var volumes = Services.SelectMany(service => service.Volumes).ToDictionary(volume => volume.Name,
             volume => new { name = VolumeName(volume.Name), labels = OwnerLabels() }, StringComparer.Ordinal);
         var services = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -21,6 +46,7 @@ public sealed record ManagedComposePlan(Guid InstanceId, string WebService, int 
             var value = new Dictionary<string, object>
             {
                 ["image"] = service.ImageReference,
+                ["container_name"] = ContainerName(service.Id),
                 ["platform"] = "linux/amd64",
                 ["labels"] = OwnerLabels(),
                 ["networks"] = new[] { Network },
@@ -35,7 +61,7 @@ public sealed record ManagedComposePlan(Guid InstanceId, string WebService, int 
             if (service.Volumes.Count != 0)
                 value["volumes"] = service.Volumes.Select(volume => new { type = "volume", source = volume.Name, target = volume.Path, read_only = volume.ReadOnly }).ToArray();
             if (service.EnvironmentNames.Count != 0)
-                value["environment"] = service.EnvironmentNames.ToDictionary(name => name, _ => PreviewValue, StringComparer.Ordinal);
+                value["environment"] = service.EnvironmentNames.ToDictionary(name => name, name => environmentValue(service.Id, name), StringComparer.Ordinal);
             services.Add(service.Id, value);
         }
         return new(Project, JsonSerializer.Serialize(new
@@ -46,7 +72,9 @@ public sealed record ManagedComposePlan(Guid InstanceId, string WebService, int 
         }));
     }
 
-    public void RequireResolvedTopology(JsonElement root)
+    public void RequireResolvedTopology(JsonElement root) => RequireResolvedTopology(root, null);
+
+    public void RequireResolvedTopology(JsonElement root, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? values)
     {
         if (Text(root, "name") != Project) Refuse();
         var serviceMap = Map(root, "services");
@@ -64,6 +92,7 @@ public sealed record ManagedComposePlan(Guid InstanceId, string WebService, int 
         foreach (var service in Services)
         {
             if (!serviceMap.TryGetValue(service.Id, out var resolved) || Text(resolved, "image") != service.ImageReference
+                || Text(resolved, "container_name") != ContainerName(service.Id)
                 || Text(resolved, "platform") != "linux/amd64" || !HasOwner(resolved)
                 || !Map(resolved, "networks").Keys.SequenceEqual([Network])
                 || !Array(resolved, "expose").Select(value => value.ToString()).SequenceEqual([service.ContainerPort.ToString(CultureInfo.InvariantCulture)]))
@@ -74,7 +103,8 @@ public sealed record ManagedComposePlan(Guid InstanceId, string WebService, int 
                 Refuse();
             var environment = Map(resolved, "environment");
             if (!environment.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(service.EnvironmentNames)
-                || environment.Values.Any(value => value.GetString() != PreviewValue)) Refuse();
+                || environment.Any(variable => variable.Value.GetString() != (values is null ? PreviewValue
+                    : EnvironmentFor(values, service.Id)[variable.Key].Replace("$", "$$", StringComparison.Ordinal)))) Refuse();
             var ports = Array(resolved, "ports");
             if (service.Id == WebService
                 ? ports.Length != 1 || Text(ports[0], "host_ip") != "127.0.0.1" || Text(ports[0], "protocol") != "tcp"
@@ -91,7 +121,15 @@ public sealed record ManagedComposePlan(Guid InstanceId, string WebService, int 
         }
     }
 
-    private string VolumeName(string key) => Project + "_" + key;
+    public string VolumeName(string key) => Project + "_" + key;
+    public string NetworkName => Project + "_private";
+    public string ContainerName(string service) => Project + "-" + service + "-1";
+
+    private static IReadOnlyDictionary<string, string> EnvironmentFor(
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment, string service) =>
+        environment.TryGetValue(service, out var values) ? values : EmptyEnvironment;
+
+    private static readonly IReadOnlyDictionary<string, string> EmptyEnvironment = new Dictionary<string, string>();
     private Dictionary<string, string> OwnerLabels() => new(StringComparer.Ordinal)
     {
         ["relaxkonos.managed"] = "true",

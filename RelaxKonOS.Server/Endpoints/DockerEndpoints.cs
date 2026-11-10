@@ -17,7 +17,12 @@ public static class DockerEndpoints
         // container, so the request has to carry an explicit confirmation.
         group.MapPost("/engine/{action}", (string action, DockerEngineActionRequest request, RelaxKonOS.Server.Docker.IDockerEngineControlService service, CancellationToken ct) => service.ApplyAsync(action, request.Confirmed, ct));
         group.MapGet("/containers", (RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => ReadAsync(() => service.ListContainersAsync(ct)));
-        group.MapGet("/containers/{id}", async (string id, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await HandleAsync(async () => await service.GetContainerAsync(id, ct) is { } details ? Results.Ok(details) : Results.NotFound()));
+        group.MapGet("/containers/{id}", (string id, IDockerEngineService service, CancellationToken ct) => HandleAsync(async () =>
+        {
+            var details = await service.GetContainerAsync(id, ct);
+            if (details is null) return Results.NotFound();
+            return Results.Ok(DockerApplicationResourcePolicy.IsManagedContainer(details) ? details with { Environment = [] } : details);
+        }));
         group.MapPost("/containers", (DockerContainerCreateRequest request, IDockerEngineService service, CancellationToken ct) =>
             ReadAsync(() => DockerApplicationResourcePolicy.CreateContainerAsync(service, request, ct)));
         group.MapPut("/containers/{id}", (string id, DockerContainerUpdateRequest request, IDockerEngineService service, CancellationToken ct) =>
@@ -50,7 +55,14 @@ public static class DockerEndpoints
             ReadAsync(() => DockerApplicationResourcePolicy.DeleteNetworkAsync(service, id, confirmed, ct)));
         group.MapDelete("/volumes/{name}", (string name, bool confirmed, IDockerEngineService service, CancellationToken ct) =>
             ReadAsync(() => DockerApplicationResourcePolicy.DeleteVolumeAsync(service, name, confirmed, ct)));
-        group.MapGet("/containers/{id}/logs", async (string id, int? tail, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await service.GetContainerLogsAsync(id, tail ?? 200, ct) is { } logs ? Results.Ok(logs) : Results.NotFound());
+        group.MapGet("/containers/{id}/logs", (string id, int? tail, IDockerEngineService service, CancellationToken ct) => HandleAsync(async () =>
+        {
+            var details = await service.GetContainerAsync(id, ct);
+            if (details is null) return Results.NotFound();
+            if (DockerApplicationResourcePolicy.IsManagedContainer(details))
+                throw new DockerStackException(DockerStackProblem.ApplicationResourceManaged);
+            return await service.GetContainerLogsAsync(details.Id, tail ?? 200, ct) is { } logs ? Results.Ok(logs) : Results.NotFound();
+        }));
         group.MapGet("/containers/{id}/stats", async (string id, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await HandleAsync(async () => await service.GetContainerStatsAsync(id, ct) is { } stats ? Results.Ok(stats) : Results.NotFound()));
         group.MapPost("/images/build", (DockerBuildRequest request, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.BuildImageAsync(request, cancellationToken: ct));
         group.MapGet("/images/{id}/export", async (string id, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await service.ExportImageAsync(id, ct) is { } archive ? Results.Ok(archive) : Results.NotFound());

@@ -391,4 +391,6 @@ Linux 私有 Engine 已实测在 `docker stop` 仍运行时取消。CLI 退出�
 
 Compose 命令退出但进程或输出清理仍无法确认时，原操作保留活动回执和项目写入门禁。Server 重启后仍可按原键及原 ID 查看回执。即使此前未请求取消，原变更或原观察清理缺证据时也会继续保留门禁。Engine 的容器快照不足以证明原 CLI 和输出已排空。见[原观察输出中断实测](../architecture/server-module-evidence/Docker.md#原观察输出未排空时的-server-中断)。
 
+容器应用平台的受管 Compose 派发复用操作账本。受管回执按应用实例和原操作键查询，管理器禁止取消。受管容器的检查响应省略环境值，日志入口在读取前拦截，包括通过容器 ID 或别名访问。双服务目录安装及应用账本的关联恢复进度见[容器应用平台进度](../platform/RelaxKonOS.ContainerApplications.Progress.md#ca-02-受管-compose-派发)。
+
 恢复观察再次中断时，同一原回执与恢复租约跨第三代 Server 保持。同项目新写入继续被拒绝，直至可按原 ID 核对排空证明。见[恢复观察再次中断实测](../architecture/server-module-evidence/Docker.md#恢复观察输出在途时再次中断)。

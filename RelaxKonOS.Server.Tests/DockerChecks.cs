@@ -701,6 +701,35 @@ internal static async Task VerifyStackOperationsAsync(string root)
     TestAssert.Assert(replayedDeployment.OperationId == submitted.OperationId,
         "Replaying an idempotency key started a second deployment of the same project.");
 
+    var managedRelease = RelaxKonOS.Server.ApplicationDeployments.ApplicationCatalog.Require("fixture-web-db-plan", "1.0.0");
+    var managedPlan = managedRelease.CompileTopology(Guid.NewGuid(), 18083);
+    var appOperationId = Guid.NewGuid();
+    const string fixturePassword = "sensitive-compose-fixture";
+    var environment = new Dictionary<string, IReadOnlyDictionary<string, string>>
+    {
+        ["web"] = new Dictionary<string, string> { ["DB_PASSWORD"] = fixturePassword },
+        ["db"] = new Dictionary<string, string> { ["POSTGRES_PASSWORD"] = fixturePassword },
+    };
+    var child = await coordinator.DeployManagedAsync(managedPlan, environment, appOperationId, "secret-version-1");
+    var cancelManaged = CaptureStackFailure(() => coordinator.Cancel(child.OperationId, "cancel-managed"),
+        "The Docker Manager cancelled an application-owned Compose operation.");
+    var managedTerminal = await AwaitTerminalOperationAsync(coordinator, child.OperationId);
+    TestAssert.Assert(!child.Cancellable && cancelManaged.ProblemCode == DockerStackProblem.ApplicationResourceManaged
+        && managedTerminal.State == DockerStackOperationState.Succeeded && compose.ManagedDeployCalls == 1,
+        "The coordinator must dispatch the typed deployment and prevent generic cancellation.");
+    var managedReplay = await coordinator.DeployManagedAsync(managedPlan, environment, appOperationId, "secret-version-1");
+    var differentCredentials = await CaptureStackFailureAsync(
+        () => coordinator.DeployManagedAsync(managedPlan, environment, appOperationId, "secret-version-2"),
+        "A managed operation key was reused with a different credential revision.");
+    using (var reopenedManaged = NewStackCoordinator(coordinatorRoot, compose, new TestApplicationLifetime(), 16))
+        TestAssert.Assert(reopenedManaged.GetManagedByRequest(managedPlan.InstanceId, appOperationId)?.OperationId == child.OperationId
+            && reopenedManaged.GetByRequest(actor, appOperationId.ToString("N")) is null,
+            "Reopening the ledger must find the original child by application identity and request key only.");
+    TestAssert.Assert(managedReplay.OperationId == child.OperationId && compose.ManagedDeployCalls == 1
+        && differentCredentials.ProblemCode == DockerStackProblem.IdempotencyConflict
+        && Directory.EnumerateFiles(coordinatorRoot).All(path => !File.ReadAllText(path).Contains(fixturePassword, StringComparison.Ordinal)),
+        "Managed replays must preserve the child receipt, bind credential revision, and keep values out of storage.");
+
     // The command succeeded but a service is not in its desired state: that is a partial failure, and
     // the operator has to choose between retrying, stopping, or removing the project.
     const string portalYaml = "services:\n  web:\n    image: nginx:alpine\n  cache:\n    image: redis:7-alpine\n";
@@ -1552,6 +1581,14 @@ internal sealed class FakeComposeService : IDockerComposeService
     {
         ManagedPreview = plan;
         return Task.FromResult(new DockerStackPreviewDto(plan.Project, "fixture", [], [], []));
+    }
+
+    public int ManagedDeployCalls { get; private set; }
+    public Task<DockerStackMutationResult> DeployManagedAsync(ManagedComposePlan plan,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment, CancellationToken cancellationToken = default)
+    {
+        ManagedDeployCalls++;
+        return Task.FromResult(NextResult);
     }
 
     public async Task<IReadOnlyList<DockerStackServiceDto>> ListServicesAsync(string name, CancellationToken cancellationToken = default)

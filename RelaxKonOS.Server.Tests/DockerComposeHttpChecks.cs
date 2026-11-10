@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Reflection;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -22,7 +23,11 @@ internal static class DockerComposeHttpChecks
         builder.Services.AddAuthorization();
         builder.Services.AddSingleton<IServerModeResolver, ProgressTestMode>();
         builder.Services.AddSingleton<IResidentModuleWorkLeaseSource>(leases);
-        builder.Services.AddSingleton<IDockerEngineService>(_ => throw new NotSupportedException());
+        var engine = DispatchProxy.Create<IDockerEngineService, CatalogUpdateEngine>();
+        var engineFixture = (CatalogUpdateEngine)(object)engine;
+        engineFixture.Container = new("fixture-id", "relaxkonos-ca-fixture-db-1", "", "", "running", "", "", "", "",
+            [], [], [], ["POSTGRES_PASSWORD=managed-fixture-secret"], new Dictionary<string, string>());
+        builder.Services.AddSingleton(engine);
         builder.Services.AddSingleton<IDockerEngineControlService>(_ => throw new NotSupportedException());
         builder.Services.AddSingleton<IDockerImageMirrorResolver>(_ => throw new NotSupportedException());
         builder.Services.AddSingleton<DockerStackOperationCoordinator>(_ => throw new NotSupportedException());
@@ -52,6 +57,17 @@ internal static class DockerComposeHttpChecks
             TestAssert.Assert(anonymous.StatusCode == HttpStatusCode.Unauthorized && leases.Acquired == 0 && !fixture.Entered.Task.IsCompleted,
                 "An unauthorized Compose request must not admit CLI work.");
         http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
+
+        using (var response = await http.GetAsync("containers/alias", ct))
+        {
+            response.EnsureSuccessStatusCode();
+            var details = await response.Content.ReadFromJsonAsync<DockerContainerDetailsDto>(ct);
+            TestAssert.Assert(details is { Environment.Count: 0 }, "Managed container details must suppress environment values through aliases.");
+        }
+        using (var response = await http.GetAsync("containers/alias/logs", ct))
+            TestAssert.Assert(response.StatusCode == HttpStatusCode.Conflict
+                && !engineFixture.Calls.Contains(nameof(IDockerEngineService.GetContainerLogsAsync)),
+                "Managed logs can contain injected values and must be blocked before reading them.");
 
         foreach (var route in new[] { "stacks", "stacks/fixture/definition", "stacks/fixture/services", "stacks/preview" })
         {
@@ -101,6 +117,8 @@ internal static class DockerComposeHttpChecks
         public Task<IReadOnlyList<DockerStackDto>> ListAsync(CancellationToken ct) => ReadAsync<IReadOnlyList<DockerStackDto>>([]);
         public Task<DockerStackPreviewDto> PreviewAsync(DockerStackDefinitionDto definition, CancellationToken ct) => ReadAsync(new DockerStackPreviewDto(definition.Name, "fixture", [], [], []));
         public Task<DockerStackPreviewDto> PreviewManagedAsync(ManagedComposePlan plan, CancellationToken ct) => throw new NotSupportedException();
+        public Task<DockerStackMutationResult> DeployManagedAsync(ManagedComposePlan plan,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment, CancellationToken ct) => throw new NotSupportedException();
         public Task<DockerStackDefinitionDto?> GetDefinitionAsync(string name, CancellationToken ct) => ReadAsync<DockerStackDefinitionDto?>(new(name, "services: {}"));
         public Task<IReadOnlyList<DockerStackServiceDto>> ListServicesAsync(string name, CancellationToken ct) => ReadAsync<IReadOnlyList<DockerStackServiceDto>>([]);
         public Task<DockerStackMutationResult> DeployAsync(DockerStackDefinitionDto definition, CancellationToken ct) => throw new NotSupportedException();

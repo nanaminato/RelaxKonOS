@@ -15,6 +15,8 @@ internal static class DockerApplicationResourcePolicy
         if (IsReservedName(name)) throw new DockerStackException(ManagedResource);
     }
 
+    public static bool IsManagedContainer(DockerContainerDetailsDto container) => IsManaged(container.Name, container.Labels);
+
     public static async Task<DockerOperationResult> ChangeContainerAsync(IDockerEngineService engine, string id,
         string? newName, Func<string, Task<DockerOperationResult>> change, CancellationToken ct)
     {
@@ -22,7 +24,7 @@ internal static class DockerApplicationResourcePolicy
         var container = await engine.GetContainerAsync(id, ct);
         if (container is null || string.IsNullOrEmpty(container.Id) || string.IsNullOrEmpty(container.Name))
             return new(false, "docker.operation_failed");
-        if (IsManaged(container.Name, container.Labels)) return new(false, ManagedResource);
+        if (IsManagedContainer(container)) return new(false, ManagedResource);
         return await change(container.Id);
     }
 

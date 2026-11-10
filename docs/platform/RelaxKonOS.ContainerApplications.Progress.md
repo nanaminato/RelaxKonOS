@@ -76,3 +76,13 @@ Server 随附清单使用唯一当前磁盘契约 schema 3。所有发布均声�
 环境为 Windows x64、.NET SDK 10.0.300、Docker Compose v5.5.1。Server Tests 构建与 `--catalog-update-only`、`--docker-compose-config-only`、`--docker-compose-code-only`、`--deployment-definition-only` 复验日志位于隔离目录的 `ca02-topology-*.log`。下一步将计划交给受管执行端口，再连通 CA-03 的原操作关联和恢复门禁。
 
 Server Tests 与桌面 WindowPreviews Tests 均以 `-m:1 -p:UseSharedCompilation=false` 构建。四组 Server 专项和桌面 `--deployments-only` 均退出 0。首次真实 Compose 复验发现解析器补齐空 `command`、`entrypoint`，改为允许空默认值并继续拒绝覆盖后复验通过。受控 HTTP 测试核对匿名拒绝、读者可预检且零操作记录，以及执行端口未开放时管理者安装无持久副作用。真实解析用例证实 Web 端口发布且数据库端口未发布。Linux 实机 SSH 仍拒绝认证，第 7.1 节待验收。
+
+## CA-02 受管 Compose 派发
+
+Docker 操作协调器接受结构化计划和应用操作 ID。以实例隔离的请求键先持久化底层回执，再调用受管执行器。按应用身份和原键可以在账本重开后查到同一个 ID。Docker 管理器禁止取消该回执。终态受管回执保留，后续 CA-03 需以应用账本确认关联后再定义清理边界。
+
+执行器限 Linux x64 本地 Unix socket。固定项目、容器、网络和卷名称，在调用 Compose 前后核对已有同名资源和项目容器的实例及 Compose 标签。配置文件只含环境变量引用，具体值经子进程环境传入。解析结果在内存核验，命令原始输出不进入操作诊断。Docker 管理器隐藏受管容器的环境字段，并在读取容器日志前检查归属。
+
+环境为 Windows x64、.NET SDK 10.0.300 和 Docker Compose v5.5.1。执行 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，以及 Server 测试 DLL 的 `--stack-operations-only`、`--docker-compose-config-only`、`--docker-compose-code-only`、`--catalog-update-only`、`--deployment-definition-only` 和 `--module-boundary-milestones-only`，全部退出 0。证据位于隔离构建目录 `ca-build/ca02-managed-*.log`。真实 Compose 解析验证服务级秘密注入的美元符号与引号处理。受控执行验证原键重试不重派、同键不同秘密版本冲突、账本重开可查原 ID、持久化无明文，以及 HTTP 通过别名隐藏环境值并拦截日志。
+
+双服务安装仍受门禁保护。下一步是把应用意图、秘密版本和底层回执关联持久化，以原键覆盖强制中断窗口，再接入可核验的双服务业务探针。SSH 两个地址均通过同一主机密钥校验，但当前客户端没有可提交的密钥。Linux Engine 上的 Compose 写入、业务读写和第 7.1 节中断注入仍待实测。
