@@ -202,6 +202,8 @@ Server 与 Helper 分进程时，AF_UNIX 请求保留原发布或执行 ID，临
 
 认证停用计划经重启生效后，Proxy 管理路由和模块工作代次退出当前宿主，Core 仍调度系统代理 guard 和 sing-box 到期，Helper 继续拥有原受管 TUN。禁用态 Server 停机排空已派发的安全工作，正常重启保留原发布和回执。该边界属于配置及重启，动态驻留及资源收益依各自门槛验收。见[禁用态安全交接](server-module-evidence/Proxy-Safety.md#mb-04-禁用-proxy-管理入口后的安全交接)。
 
+Linux 系统模式中，停用及禁用启动在 Server 没有匹配的 TUN 发布时，只读查询原 Helper 归档责任。原活动发布或未决操作阻止停用，无法核对归属时保留原门禁。查询使用原归档实例锁，无需初始化安装台账。[实机证据](server-module-evidence/Proxy-Safety.md#server-发布投影缺失时的原-helper-责任)
+
 Proxy 管理代次隔离时，Core guard、入站到期调度和 Helper 持有的活动 TUN 各沿原所有权运行。已完成的原生修复与撤销由原状态和回执核验，管理代次故障继续阻止新的管理工作。见[三项职责联合实测](server-module-evidence/Proxy-Safety.md#proxy-代次隔离后的-guard-到期与-tun-联合接续)。
 
 ### 5.2 缓存、会话与存储

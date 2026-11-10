@@ -72,6 +72,7 @@ public sealed partial class RuntimeArchiveStateStore(string directory, Action<st
     private RuntimeArchiveState? ReadCore()
     {
         RuntimeSourceStore.RequireNoLinks(StatePath);
+        if (Directory.Exists(StatePath)) throw new RuntimePolicyException("runtime.transaction_state_invalid");
         if (!File.Exists(StatePath)) return null;
         try
         {

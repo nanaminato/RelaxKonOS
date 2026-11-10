@@ -234,6 +234,7 @@ public enum PrivilegedOperationKind
     MihomoProbeHostConfirmUndispatched,
     /// <summary>Reads the Mihomo installation inventory with the current Host prerequisite report.</summary>
     MihomoRuntimeInventoryQuery,
+    MihomoRuntimeResponsibilityQuery,
 }
 
 /// <summary>

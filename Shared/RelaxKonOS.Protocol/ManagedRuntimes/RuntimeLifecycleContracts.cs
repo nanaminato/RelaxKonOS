@@ -29,6 +29,11 @@ public enum MihomoTunActionKind { Start, Restart, Stop }
 public sealed record MihomoTunActionReceipt(Guid OperationId, Guid PublicationId, Guid TargetExecutionId,
     MihomoTunActionKind Action, RuntimeSwitchOutcome Outcome);
 
+/// <summary>Helper-owned work that must be reconciled with the Server before deactivation.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record MihomoRuntimeResponsibility([property: JsonRequired] Guid? PendingOperationId,
+    [property: JsonRequired] Guid? TunPublicationId);
+
 [JsonConverter(typeof(JsonStringEnumConverter<RuntimeSwitchOutcome>))]
 public enum RuntimeSwitchOutcome { Succeeded, Failed, Cancelled, Interrupted, RecoveryRequired }
 public sealed record RuntimeSwitchResult(Guid OperationId, RuntimeSwitchOutcome Outcome, string? ProblemCode,

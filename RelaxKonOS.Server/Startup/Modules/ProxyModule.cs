@@ -4,6 +4,7 @@ using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.GatewayProxy;
 using RelaxKonOS.Server.ManagedRuntimes;
+using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Proxy.Platform;
@@ -182,6 +183,9 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
                 ];
             if (state.Published?.NetworkTransitionRequired == true)
                 return await InspectManagedTunAsync(services, store, state, cancellationToken);
+            if (OperatingSystem.IsLinux() && services.GetService<IServerModeResolver>() is { Mode: ServerMode.System } mode
+                && mode.Supports(ServerHostFeature.PrivilegedOperations))
+                return await InspectNativeResponsibilityAsync(services, store, state.Revision, cancellationToken);
             return [];
         }
         catch (Exception exception) when (exception is RelaxKonOS.ManagedRuntimes.RuntimePolicyException
@@ -195,6 +199,31 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
                     + "an unknown authority is not the same as no work to do."),
             ];
         }
+    }
+
+    private async Task<IReadOnlyList<ServerModuleOrphanedWork>> InspectNativeResponsibilityAsync(IServiceProvider services,
+        MihomoPublicationStore store, long revision, CancellationToken ct)
+    {
+        var unverified = new ServerModuleOrphanedWork(Id,
+            "Mihomo Helper responsibility cannot be verified; retain the original owner.", RecoveryRequired: true);
+        if (!await store.Gate.WaitAsync(0, ct)) return [unverified];
+        try
+        {
+            if ((await store.ReadAsync(ct)).Revision != revision
+                || services.GetService<IMihomoRuntimeReceiptReader>() is not { } reader) return [unverified];
+            var native = await reader.QueryResponsibilityAsync(ct);
+            if (native.PendingOperationId is { } pending)
+                return [new(Id, $"Managed Mihomo operation {pending:D} is unresolved; original Helper ownership is retained.",
+                    RecoveryRequired: true)];
+            if (native.TunPublicationId is { } publication)
+                return [new(Id, $"Managed Mihomo TUN publication {publication:D} has no matching Server publication; original Helper ownership is retained.",
+                    RecoveryRequired: true)];
+            return [];
+        }
+        catch (Exception error) when (error is RuntimeLifecycleException or RelaxKonOS.ManagedRuntimes.RuntimePolicyException
+            or IOException or UnauthorizedAccessException)
+        { return [unverified]; }
+        finally { store.Gate.Release(); }
     }
 
     private async Task<IReadOnlyList<ServerModuleOrphanedWork>> InspectManagedTunAsync(IServiceProvider services,

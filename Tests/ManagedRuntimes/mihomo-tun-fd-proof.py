@@ -5029,6 +5029,19 @@ exec {shlex.quote(str(systemctl))} "$@"
         native_ledger = archive / 'state' / 'archive-state.json'
         before = (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes())
         alias = link()['ifalias']
+        server_publication = queue.with_name('mihomo-publication.protected')
+
+        @contextmanager
+        def hide_server_publication():
+            backup = server_publication.with_suffix('.admission-fixture')
+            assert not backup.exists()
+            server_publication.rename(backup)
+            try:
+                yield
+            finally:
+                absent = not server_publication.exists()
+                backup.replace(server_publication)
+                assert absent, 'Admission recreated the missing Server publication'
 
         def plan(blocked_by=None, managed=True):
             proxy, preview = preview_proxy_disable()
@@ -5038,7 +5051,7 @@ exec {shlex.quote(str(systemctl))} "$@"
                 assert 'module-recovery-blocked' in blockers and proxy['recoveryState'] == 'required', (blockers, proxy['recoveryState'])
                 assert any(str(uuid.UUID(blocked_by)) in item for item in proxy['orphanedWork']), proxy['orphanedWork']
             else:
-                assert not proxy['orphanedWork'] and not blockers, (proxy['orphanedWork'], blockers)
+                assert not proxy['orphanedWork'] and blockers == (set() if managed else {'module-configuration-read-only'}), (proxy['orphanedWork'], blockers)
             return preview['planId']
 
         def terminate(server_pid):
@@ -5067,8 +5080,18 @@ exec {shlex.quote(str(systemctl))} "$@"
         probe(record, 'admission-helper-outage')
         ipc.start_helper()
         plan()
+        with hide_server_publication():
+            plan(publication)
+            probe(record, 'admission-helper-owner-without-server-publication')
+            terminate(pid)
+            worker = launch('admission-disabled')
+            refused(publication)
+            assert (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes()) == before
+        pid = start('restart')
+        token = login()
+        plan(managed=False)
         ip('link', 'set', 'dev', device, 'alias', 'foreign-admission-owner')
-        plan(publication)
+        plan(publication, managed=False)
         probe(record, 'admission-native-drift')
         terminate(pid)
         worker = launch('admission-disabled')
@@ -5161,10 +5184,13 @@ exec {shlex.quote(str(systemctl))} "$@"
             held = native_ledger.read_bytes()
             plan(pending.hex, managed=False)
             assert queue.read_bytes() == before[0] and native_ledger.read_bytes() == held
-            terminate(pid)
-            worker = launch('admission-disabled')
-            refused(pending.hex)
+            with hide_server_publication():
+                plan(pending.hex, managed=False)
+                terminate(pid)
+                worker = launch('admission-disabled')
+                refused(pending.hex)
             assert native_ledger.read_bytes() == held and service_identity() == record['service']
+            print(f'PASS TUN MISSING SERVER PUBLICATION: active={publication}; pending={pending}; plan and disabled startup retained both original Helper IDs')
         finally:
             os.kill(native_pid, signal.SIGCONT)
         deadline = time.monotonic() + 8

@@ -13,12 +13,17 @@ namespace RelaxKonOS.Server.ManagedRuntimes;
 public interface IMihomoRuntimeReceiptReader
 {
     Task<RuntimeInstallationSnapshot> QueryHelperAsync(CancellationToken ct, Guid? receiptOperationId = null);
+    Task<MihomoRuntimeResponsibility> QueryResponsibilityAsync(CancellationToken ct);
 }
 
 internal sealed class MihomoRuntimeReceiptReader(IPrivilegedOperationTransport helper, IServerModeResolver mode) : IMihomoRuntimeReceiptReader
 {
     public Task<RuntimeInstallationSnapshot> QueryHelperAsync(CancellationToken ct, Guid? receiptOperationId = null) =>
         QueryAsync(helper, mode, ct, receiptOperationId);
+
+    public Task<MihomoRuntimeResponsibility> QueryResponsibilityAsync(CancellationToken ct) =>
+        MihomoRuntimeHelperProtocol.CallAsync<MihomoRuntimeResponsibility>(helper, mode,
+            new(PrivilegedOperationKind.MihomoRuntimeResponsibilityQuery), ct);
 
     internal static Task<RuntimeInstallationSnapshot> QueryAsync(IPrivilegedOperationTransport helper, IServerModeResolver mode,
         CancellationToken ct, Guid? receiptOperationId) =>
@@ -64,6 +69,8 @@ internal static class MihomoRuntimeHelperProtocol
                     || snapshot.Receipt is { } observed && (!ValidReceipt(observed) || observed.OperationId != request.OperationId)
                     || snapshot.MihomoTunAction is { } action && !ValidTunAction(action, snapshot.Receipt))
                 || value is RuntimeRecoverySnapshot recovery && !ValidRecovery(recovery)
+                || value is MihomoRuntimeResponsibility responsibility
+                    && (responsibility.PendingOperationId == Guid.Empty || responsibility.TunPublicationId == Guid.Empty)
                 || value is RuntimeResourceReport resources && !ValidResources(resources)
                 || value is RuntimeResourceSnapshot resourceSnapshot && !ValidResourceSnapshot(resourceSnapshot))
                 throw new RuntimeLifecycleException("runtime.helper_response_invalid");

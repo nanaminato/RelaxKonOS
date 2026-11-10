@@ -46,6 +46,7 @@ public static partial class PrivilegedOperationExecutor
             or PrivilegedOperationKind.SingBoxRuntimeRecoveryClose)
             return await SingBoxRuntimeOperations.ExecuteAsync(request, report: progress);
         if (request.Operation is PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.MihomoRuntimeInventoryQuery
+            or PrivilegedOperationKind.MihomoRuntimeResponsibilityQuery
             or PrivilegedOperationKind.MihomoRuntimePlan
             or PrivilegedOperationKind.MihomoRuntimeExecute or PrivilegedOperationKind.MihomoRuntimeRecover
             or PrivilegedOperationKind.MihomoRuntimeCancel or PrivilegedOperationKind.MihomoRuntimeRecoveryQuery

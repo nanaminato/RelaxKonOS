@@ -21,7 +21,8 @@ internal static class MihomoRuntimeOperations
             return new(false, 64, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: "runtime.request_invalid");
         var valid = request.Operation switch
         {
-            PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.MihomoRuntimeInventoryQuery => input is null,
+            PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.MihomoRuntimeInventoryQuery
+                or PrivilegedOperationKind.MihomoRuntimeResponsibilityQuery => input is null,
             PrivilegedOperationKind.MihomoRuntimeTunStop => input is { SourceId: null, Plan: null, Authorization: null,
                 FrozenPlan: null, Confirmed: false, RecoveryOperationId: null, CancelOperationId: null, MihomoTunPublicationId: { } owner }
                 && owner != Guid.Empty && owner != request.OperationId,
@@ -64,6 +65,7 @@ internal static class MihomoRuntimeOperations
             {
                 PrivilegedOperationKind.MihomoRuntimeQuery => Json(await lifecycle.QueryAsync(default, id)),
                 PrivilegedOperationKind.MihomoRuntimeInventoryQuery => Json(await lifecycle.QueryAsync(default, includeEnvironment: true)),
+                PrivilegedOperationKind.MihomoRuntimeResponsibilityQuery => Json(await lifecycle.QueryResponsibilityAsync(default)),
                 PrivilegedOperationKind.MihomoRuntimeTunStop => Json(await lifecycle.StopCommittedTunAsync(id, input!.MihomoTunPublicationId!.Value, default, progress)),
                 PrivilegedOperationKind.MihomoRuntimeTunStart or PrivilegedOperationKind.MihomoRuntimeTunRestart =>
                     Json(await lifecycle.StartCommittedTunAsync(id, input!.MihomoTunPublicationId!.Value,
@@ -84,7 +86,8 @@ internal static class MihomoRuntimeOperations
         }
         catch (RuntimePolicyException ex) { return new(false, 1, Error: ex.ProblemCode, ProblemCode: PrivilegedProblemCode.Conflict); }
         catch (TimeoutException) when (request.Operation is PrivilegedOperationKind.MihomoRuntimeQuery
-            or PrivilegedOperationKind.MihomoRuntimeInventoryQuery or PrivilegedOperationKind.MihomoRuntimeTunStop)
+            or PrivilegedOperationKind.MihomoRuntimeInventoryQuery or PrivilegedOperationKind.MihomoRuntimeResponsibilityQuery
+            or PrivilegedOperationKind.MihomoRuntimeTunStop)
         {
             // The original journal remains authoritative across a timed-out observation or stop.
             return new(false, 124, ProblemCode: PrivilegedProblemCode.TimedOut);

@@ -47,6 +47,35 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
     private static PrivilegedOperationResult DirectServiceConflict() =>
         new(false, 1, Error: "Mihomo fixed service ownership requires the original archive owner.", ProblemCode: PrivilegedProblemCode.Conflict);
 
+    internal async Task<MihomoRuntimeResponsibility> QueryResponsibilityAsync(CancellationToken ct)
+    {
+        // This admission check must not initialize an installation ledger or recover a transaction.
+        using var session = states.Acquire();
+        if (session.State is { } state)
+        {
+            if (state.Installation.HostId != HostIdentity() || state.Installation.RuntimeId != "mihomo")
+                throw new RuntimePolicyException("runtime.installation_mismatch");
+            var pending = state.Pending?.OperationId ?? state.Removal?.OperationId ?? state.Configuration?.OperationId
+                ?? state.PendingMihomoTunStart?.OperationId ?? state.PendingMihomoTunStop?.OperationId;
+            if (pending is not null || state.ActiveMihomoTun is { })
+                return new(pending, state.ActiveMihomoTun?.OperationId);
+            if (state.Installation.RecoveryRequired || state.Installation.Ownership == RuntimeOwnership.Unknown)
+                throw new RuntimePolicyException("runtime.state_unknown");
+            if (state.Active is not null)
+            {
+                var service = await host.ObserveAsync(ct);
+                if (!service.Exists || !service.Owned || service.TunOperation is not null)
+                    throw new RuntimePolicyException("runtime.state_unknown");
+                return new(null, null);
+            }
+        }
+        if (session.State?.ConfigurationIdentity is null && (Path.Exists(Path.Combine(root, "active.yaml"))
+            || Path.Exists(Path.Combine(root, "mihomo")) || Path.Exists(Path.Combine(root, "installed.json"))))
+            throw new RuntimePolicyException("runtime.state_unknown");
+        await LinuxMihomoArchiveHost.VerifyDirectServiceAsync();
+        return new(null, null);
+    }
+
     internal async Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct, Guid? receiptOperationId = null,
         bool includeEnvironment = false)
     {
