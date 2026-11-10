@@ -35,6 +35,8 @@
 
 2026-11-10（MB-04 / MR-03 只读 HTTP）。安装详情、恢复状态和 GEO 资源读取沿用原清单、恢复裁决和发布锁。认证重启实测三项原生查询分别执行一次，原队列、原生台账和配置保持。[实机证据](../architecture/server-module-evidence/Proxy-Observation.md#安装详情恢复状态和-geo-资源的只读入口)
 
+2026-11-10（MB-04 / MR-03 紧急恢复）。Core 在原发布锁内等待已派发的停止和关账终帧。操作员关账应答缺失时，同一原 ID 读回 Helper 已持久化的关账终态。[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#core-应急停止与原关账回执)
+
 2026-11-10（MB-04 / MR-06 固定升级复验）。专属根中断原包应答及首次恢复查询后，Core 安装台账继续按原 ID 和原 Helper 回执结案。实测两次原查询和一次实际升级，同键返回原终态。整机掉电仍需独立环境。[现机原回执复验](../architecture/server-module-evidence/Proxy-Squid.md#固定升级的现机原回执复验)
 
 基于 `ec58ea04` 的现机预检再次验证专属根、独立 APT/dpkg 和相同 Ubuntu 签名制品。包终态恢复继续采用既有固定升级、首次安装和保留数据卸载证据。[Squid 包验收台账](../architecture/server-module-evidence/Proxy-Squid.md#固定升级的现机原回执复验)

@@ -448,6 +448,29 @@ internal static class MihomoSystemdAcceptance
             Check(revokedBootstrap.Outcome == RuntimeSwitchOutcome.Failed && !(await host.ObserveAsync(default)).Exists
                 && !states.Read()!.Installation.RecoveryRequired && states.Read()!.ConfigurationIdentity is null,
                 "Revoked first-install candidate can still compensate to verified absence without restarting any revoked configuration");
+            if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_CLOSE_RECEIPT_HELPER") is { } closeHelper)
+            {
+                MihomoIpcStartupAcceptance.RequirePrivateHost();
+                revokeInstallationCandidate = false;
+                Check((await ExecuteAsync(Plan(RuntimeChange.Install, older, "systemd-close-reinstall"))).Outcome == RuntimeSwitchOutcome.Succeeded,
+                    "Emergency close fixture installs a dedicated runtime");
+                await host.SetBootAsync(true, default);
+                await host.StartAsync(default);
+                Check(await HealthyAsync(host, published) && await ProbeAsync(mixedPort), "Original dedicated runtime forwards before recovery");
+                configurationStage = stage =>
+                {
+                    if (stage == InstallationStage.HealthChecking) { denyCandidate = true; denyPrevious = true; }
+                };
+                var unresolved = await ConfigureAsync(published, candidate, "configuration-close-reply-loss");
+                configurationStage = null;
+                Check(unresolved.Outcome == RuntimeSwitchOutcome.RecoveryRequired && states.Read()!.Configuration?.OperationId == unresolved.OperationId,
+                    "Original native configuration is eligible for explicit emergency close");
+                await MihomoIpcStartupAcceptance.VerifyEmergencyCloseReceiptAsync(closeHelper, unresolved.OperationId,
+                    Path.Combine(root, "state", "archive-state.json"));
+                Check(states.Read()!.Configuration is null && states.Read()!.Receipts.Count(receipt => receipt.OperationId == unresolved.OperationId) == 1
+                    && (await host.ObserveRegistrationAsync(default)) is { Running: false, BootEnabled: false },
+                    "Original close leaves one terminal receipt and a stopped dedicated unit");
+            }
         }
         finally
         {

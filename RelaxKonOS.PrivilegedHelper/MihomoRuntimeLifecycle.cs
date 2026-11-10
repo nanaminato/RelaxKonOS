@@ -466,6 +466,12 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
     {
         await EnsureStateAsync(ct);
         using var session = states.Acquire();
+        // An acknowledged close may already have committed before its response was lost.
+        // Only the exact operator-close receipt authorizes a read without current service observation.
+        if (session.State?.Receipts.FirstOrDefault(receipt => receipt.OperationId == operationId
+            && receipt.Outcome == RuntimeSwitchOutcome.Failed
+            && receipt.ProblemCode == RuntimeArchiveRecovery.ClosedProblemCode) is { } closed)
+            return new(closed.OperationId, closed.Outcome, closed.ProblemCode);
         using var sender = OperatingSystem.IsLinux() && host is LinuxMihomoArchiveHost
             ? LinuxMihomoArchiveHost.AcquireRestoredStartSenderGate() : null;
         var observed = await host.ObserveRegistrationAsync(ct);

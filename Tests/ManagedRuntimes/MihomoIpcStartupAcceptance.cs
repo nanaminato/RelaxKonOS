@@ -24,6 +24,70 @@ using RelaxKonOS.Server.Proxy.Platform;
 
 internal static class MihomoIpcStartupAcceptance
 {
+    internal static async Task VerifyEmergencyCloseReceiptAsync(string helperAssembly, Guid operation, string archiveLedger)
+    {
+        RequirePrivateHost();
+        const string socket = "/run/rk-emergency-close/helper.sock";
+        const string config = "/run/rk-emergency-close.json";
+        await File.WriteAllTextAsync(config, JsonSerializer.Serialize(new LinuxPrivilegedHelperConfiguration(socket, 0, [0])));
+        UnixSocketPrivilegedOperationTransport Transport(string path) => new(new() { SocketPath = path },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+        var transport = Transport(socket);
+        var paths = new Paths("/run/rk-emergency-close-server");
+        MihomoRuntimeService Core(string path) => new(Transport(path), new(paths, new EphemeralDataProtectionProvider()),
+            null!, new SystemMode(), new DirectDownloads());
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(35));
+        var ct = budget.Token;
+        byte[] closedLedger;
+        var expected = new RuntimeSwitchResult(operation, RuntimeSwitchOutcome.Failed, RuntimeArchiveRecovery.ClosedProblemCode);
+        await using (var helper = await StartHelperAsync(helperAssembly, config, transport))
+        {
+            var pendingLedger = await File.ReadAllBytesAsync(archiveLedger, ct);
+            await using (var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-emergency-stop.sock", socket, ct,
+                (kind, _) => kind == nameof(PrivilegedOperationKind.MihomoRuntimeRecoveryStop)))
+            {
+                using var disconnect = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                var core = Core(relay.Path);
+                var stopped = core.StopRecoveryAsync(operation, disconnect.Token);
+                if (await Task.WhenAny(stopped, relay.Committed.Task).WaitAsync(ct) != relay.Committed.Task)
+                    throw new InvalidOperationException("Emergency stop did not reach the native reply barrier.");
+                await disconnect.CancelAsync();
+                await Task.Delay(150, ct);
+                var stoppedLedger = await File.ReadAllBytesAsync(archiveLedger, ct);
+                if (stopped.IsCompleted || !pendingLedger.SequenceEqual(stoppedLedger))
+                    throw new InvalidOperationException("The Core stop released responsibility or changed the original ledger before its response.");
+                relay.ReleaseHeldResponse();
+                var result = await stopped.WaitAsync(ct);
+                if (result.OperationId != operation || result.Service is not { Running: false, BootEnabled: false })
+                    throw new InvalidOperationException("The original Core stop failed to drain its native receipt.");
+            }
+            await using (var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-emergency-close.sock", socket, ct,
+                (kind, _) => kind == nameof(PrivilegedOperationKind.MihomoRuntimeRecoveryClose)))
+            {
+                var closing = Core(relay.Path).CloseRecoveryAsync(operation, true, ct);
+                if (await Task.WhenAny(closing, relay.Committed.Task).WaitAsync(ct) != relay.Committed.Task)
+                    throw new InvalidOperationException("Close did not persist its result before the reply barrier.");
+                closedLedger = await File.ReadAllBytesAsync(archiveLedger, ct);
+                if (pendingLedger.SequenceEqual(closedLedger)) throw new InvalidOperationException("Close left the original transaction pending.");
+                relay.DropHeldResponse();
+                try
+                {
+                    await closing.WaitAsync(ct);
+                    throw new InvalidOperationException("The original close response was unexpectedly delivered.");
+                }
+                catch (RuntimeLifecycleException error) when (error.ProblemCode is "runtime.helper_response_invalid" or "runtime.helper_unavailable") { }
+            }
+        }
+        await using (var helper = await StartHelperAsync(helperAssembly, config, transport))
+        {
+            var actual = await Core(socket).CloseRecoveryAsync(operation, true, ct);
+            var replayedLedger = await File.ReadAllBytesAsync(archiveLedger, ct);
+            if (actual != expected || !closedLedger.SequenceEqual(replayedLedger))
+                throw new InvalidOperationException("The fresh Helper did not return the original close receipt without rewriting the ledger.");
+        }
+        Console.WriteLine($"PASS MIHOMO CORE EMERGENCY CLOSE RECEIPT: original {operation}; stop drained after cancellation; close reply dropped and read after Helper restart");
+    }
+
     internal static void RequirePrivateHost(bool rootRequired = true)
     {
         if (!OperatingSystem.IsLinux() || rootRequired && !Environment.IsPrivilegedProcess)

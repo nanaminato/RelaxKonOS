@@ -1648,3 +1648,17 @@ Linux 私有 systemd 对原发布 `25c79eb1ee364ec8a77ad5c0c99f0a98`、`82607007
 复验入口为 `ipc-http-restored-job-cut` 和 `ipc-http-restored-dispatch-unknown`。后者可在测试程序集旁放置 `restored-start-reply-shape.fixture`，内容为 `duplicate-data`、`leading-zero` 或 `invalid-json`，每个变体使用独立私有单元。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-restored-start-reply-shape.log` SHA256 `d2077ccb7dd8ba673191a343bd20aa379a37f3833540d0f8f0c477e06b2d045d`，归档 SHA256 `670d09ffb333f916cc325e3fbd4f61ae9e47faaba21cfb85c741df78324fc467`。
 
 **仍待验收。** 本轮验证原进程连续性和专属进程退出。外部版本探测的生产独立退出见证、整模块对象释放、ALC 回收、隔离负载内存和生产收益仍分别开放。Proxy 保持 resident。
+
+### Core 应急停止与原关账回执
+
+**已实现且已验证。** 紧急停止和确认关账由 Core 持有原发布锁，Helper 使用原归档锁及原生发送端门禁。派发后原 Core 调用继续等待终帧，连接终止后由原归档台账裁决结果。Mihomo 的确认关账只读回匹配原 ID、失败终态及操作员关账原因的历史回执。其余关账继续核对待恢复事务和固定单元状态。
+
+既有 Linux 专属 systemd 的 187 项 Mihomo 验收使用真实服务和独立 Helper。原配置事务 `0c50f828-6535-48bc-b72b-a8c34c785ab7` 发生授权拒绝前，专属运行时真实转发。紧急停止的 Helper 终帧被截留后取消调用方，原 Core 调用仍在等待，归档台账逐字节保持。放行后返回同一原 ID，服务停止且开机启动关闭。原关账在写入终态后丢弃应答。重启独立 Helper，以同一已确认请求读回 `Failed / runtime.recovery_closed_by_operator`。原归档台账字节保持，同一 ID 仅有一条终态。另一事务 `e723ed17-3899-4b90-aa34-139ac60eed4b` 的固定单元仍有排队作业 `707`，关账维持停止门禁和原台账。
+
+Windows Release 的 61 项运行时 HTTP、26 项注册、113 项发布事务、Core 安全、38 项 TUN 边界和模块里程碑检查通过。专属进程及 cgroup 已清理，宿主共享服务和代理文件指纹一致。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-native-close-receipt-final.log` 的 SHA-256 为 `61227967a8b4c063e4425b3554f9dbbfb933e6a78db17652ace4eaf2d431056f`，归档为 `a48809c9e30d6a032392d190ddc3bac86926d6a3fb4fe61de6db3a8a468f57b2`。
+
+完整认证 Server 的 PAM 复验使用受管 TUN 原发布 `9d50081b-4034-41f1-9c76-f7516bb24164`。原 Proxy 代次隔离时，Core 仍能按原 ID 停止。错配 ID 与仍有 Server 待发布的关账继续拒绝。原队列、原配置和镜像、管理选路及 resolver 保持，宿主共享服务指纹和专属 cgroup 清理通过。日志 `.artifacts/mb04-tun-full-zero-dns/linux-native-close-core-emergency-final.log` 的 SHA-256 为 `deeb588206cd87e0e6d6b30a84b2cf7028b450d496949557e5cc646a7d76f4b7`，归档为 `ac4fc76d68f293700d42e37c63c342469c5c15d7871d92b273d4df153115e272`。
+
+**已实现但实机未验证。** 调用方取消由 Core 到独立 Helper 的 IPC 夹具核对。完整认证 HTTP 客户端在原停止终帧在途时断开，以及此窗口的宿主停机排空待单独注入。已记录专属进程退出。对象释放、ALC、隔离负载内存及生产收益分别待测。
+
+**未实现或仍受门禁保护。** 当前原生效果缺可信见证时保留待核验。整模块安全交接仍开放，Proxy 保持 resident。

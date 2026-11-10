@@ -44,7 +44,8 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
         // sent, the Helper owns the authoritative operation deadline; disconnecting cannot roll back
         // an already-started privileged mutation.
         var drainServiceAction = request.Operation is PrivilegedOperationKind.NginxSystemServiceAction
-            or PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle;
+            or PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle
+            or PrivilegedOperationKind.MihomoRuntimeRecoveryStop or PrivilegedOperationKind.MihomoRuntimeRecoveryClose;
         var nginxResultMayBeUnknown = false;
         var packageResultMayBeUnknown = false;
         using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -65,8 +66,8 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
                 return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
             }
 
-            // A fixed Nginx service job can continue under systemd after the caller cancels.
-            // Once dispatched, its terminal frame must drain before the WebServer owner can finish.
+            // Fixed native jobs and recovery commits can continue after caller cancellation.
+            // Once dispatched, keep the original caller waiting for the terminal frame.
             if (drainServiceAction) cancellationToken.ThrowIfCancellationRequested();
             nginxResultMayBeUnknown = request.Operation is PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle
                 || request.Operation == PrivilegedOperationKind.NginxSystemServiceAction
