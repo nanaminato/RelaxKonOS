@@ -83,3 +83,20 @@ python3 verify_live.py web-db --server http://127.0.0.1:8080 \
 ```
 
 两次记录的 Server 哈希与 Engine ID 应一致。另行保存桌面客户端安装前后的哈希及操作证据。脚本保留创建的夹具，供人工核对资源归属。强制终止窗口和原回执缺失注入须单独执行并记录。
+
+## 强制终止与原回执
+
+在隔离的 Linux x64 验收环境编译故障注入库。库拦截指定应用账本的原子替换，仅当临时文件新增一个 Compose 回执 ID 时暂停写入线程。Linux 上 .NET 的原子替换调用原生 `rename`。 [运行时实现](https://github.com/dotnet/runtime/blob/v10.0.0/src/native/libs/System.Native/pal_io.c#L1125-L1129)
+
+```sh
+cc -std=gnu17 -shared -fPIC -O2 -Wall -Wextra -Werror \
+  -o /absolute/path/hold-association.so hold_compose_association.c -ldl
+sh verify_handoff_crash.sh /absolute/path/RelaxKonOS.Server.Tests.dll /absolute/path/hold-association.so
+```
+
+上述命令在独立进程中运行真实的应用和 Docker 账本，使用受控执行器。完整 Server 验收另用该库启动待测 Server 进程，作用域仅限这一次启动。
+
+- 设置 `RK_CA_HOLD_LEDGER` 为隔离 Server 应用操作账本 `operations.json` 的绝对路径。设置 `RK_CA_HOLD_ARMED` 与 `RK_CA_HOLD_MARKER` 为同一私有控制目录下的两个新绝对路径。创建 armed 文件，再为 Server 进程单独设置 `LD_PRELOAD=/absolute/path/hold-association.so`。保留启动 PID。
+- 在没有其他安装并发运行时，从目录安装新双服务实例。将原请求、幂等键和返回的应用操作 ID 保存在该私有目录。出现 marker 后，核对其中的 PID 与启动 PID 一致。读取应用账本确认只有意图，尚无子回执关联。通过 Docker 项目操作读取并记录原 Docker 子回执 ID。让 Docker 操作达到已成功状态，随后向该 Server PID 发送 SIGKILL。确认退出码 137。
+- 清除故障注入环境变量，用相同二进制和原数据目录启动 Server。使用原键和原请求重试。按两个原 ID 查询，记录激活修订、业务标记、项目和秘密版本计数。业务读写及首次配置由目录操作完成。
+- 缺失回执用同一中断状态的独立数据目录副本验证。在 Server 停止时，将副本的 Docker 账本移出其配置目录。用副本启动一次，验证原应用操作处于待核验、同键可查、新键冲突，且项目和秘密版本计数不增加。保留原始证据目录。

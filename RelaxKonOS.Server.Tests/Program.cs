@@ -581,6 +581,12 @@ if (args.Contains("--performance-only"))
     Console.WriteLine("Performance sampler checks passed.");
     return;
 }
+if (args is ["--catalog-handoff-crash", var crashRoot, var crashPhase]
+    && crashPhase is "child" or "recover" or "recover-missing")
+{
+    await CatalogComposeCrashChecks.RunAsync(crashRoot, crashPhase);
+    return;
+}
 if (args is ["--catalog-fixtures-only", var fixtureCatalog])
 {
     CatalogUpdateChecks.VerifyGeneratedFixtures(fixtureCatalog);

@@ -136,3 +136,11 @@ Windows x64 / .NET SDK 10.0.300，使用 `dotnet build --no-restore -m:1 -p:UseS
 Windows x64 / Python 3.14.8，运行 `python -B verify_live.py --help`、Windows 平台拒绝用例和 Python AST／受控边界检查。复验确认拒绝远端 socket、错误的 Engine ID 及重定向，Windows 退出前未创建证据文件。记录见 `ca-build/ca-live-harness-checks.log`。现有 Docker Desktop 报告 Engine 29.8.0 Linux amd64，WSL 清单只有 Desktop 自管发行版，SSH agent 没有登录密钥。尚未在真实 Server 与专用 Engine 上运行这两阶段。
 
 下一步是专用 Linux 环境复验这两阶段、在完整 Server 上执行强制终止窗口和缺失回执注入，并记录相同桌面客户端二进制的实际新增包操作。见[夹具操作规程](../../RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md#server-api-验收与证据)。
+
+## CA-03 Linux 强制终止回归
+
+加入测试专用的原生注入库和进程夹具。该库仅拦截指定应用账本中新增 Compose 回执的原子替换，在持久化关联前暂停写入线程。测试等待独立的 Docker 账本写入成功后向原 .NET 进程发送 SIGKILL。用同一份原意图分别验证底层回执存在与缺失两种启动路径。
+
+以 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q` 构建，使用固定镜像的 GCC 编译 `hold_compose_association.c`（`-std=gnu17 -shared -fPIC -O2 -Wall -Wextra -Werror -ldl`）。在 Docker Desktop 的 Linux amd64、.NET 10.0.14 容器内运行 `sh verify_handoff_crash.sh <Tests DLL> <注入库>`，未挂 Docker socket。首次脚本运行发现续行拼接错误，改成独立子进程导出环境后复验退出 0。原进程退出 137，原应用 ID `41ff039b-d2cf-44ec-9681-52d164538b5d` 找回原 Docker ID `2fd02d4c-787a-4679-af9c-769e80753879`。缺失回执副本保持待核验，两个场景均拒绝冲突键且底层派发次数为零。Windows Server 测试 DLL 的 `--catalog-update-only` 复验也退出 0。证据位于 `ca-build/ca-handoff-crash-*.log`。
+
+本轮实际终止的是使用真实账本和受控 Compose 执行器的 .NET 测试进程。完整 Server、真实专用 Docker Engine 和实际业务数据仍需按[强制终止规程](../../RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md#强制终止与原回执)复验。
