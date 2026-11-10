@@ -144,3 +144,13 @@ Windows x64 / Python 3.14.8，运行 `python -B verify_live.py --help`、Windows
 以 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q` 构建，使用固定镜像的 GCC 编译 `hold_compose_association.c`（`-std=gnu17 -shared -fPIC -O2 -Wall -Wextra -Werror -ldl`）。在 Docker Desktop 的 Linux amd64、.NET 10.0.14 容器内运行 `sh verify_handoff_crash.sh <Tests DLL> <注入库>`，未挂 Docker socket。首次脚本运行发现续行拼接错误，改成独立子进程导出环境后复验退出 0。原进程退出 137，原应用 ID `41ff039b-d2cf-44ec-9681-52d164538b5d` 找回原 Docker ID `2fd02d4c-787a-4679-af9c-769e80753879`。缺失回执副本保持待核验，两个场景均拒绝冲突键且底层派发次数为零。Windows Server 测试 DLL 的 `--catalog-update-only` 复验也退出 0。证据位于 `ca-build/ca-handoff-crash-*.log`。
 
 本轮实际终止的是使用真实账本和受控 Compose 执行器的 .NET 测试进程。完整 Server、真实专用 Docker Engine 和实际业务数据仍需按[强制终止规程](../../RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md#强制终止与原回执)复验。
+
+## 第 7.1 节专用 Linux Engine 完整 Server API 验收
+
+从本机 Ubuntu 24.04 镜像导出根文件系统并用 `wsl --import … --version 2` 创建专用发行版。以 `apt-get install docker.io docker-compose-v2` 安装 Engine 和 Compose，使用 `unshare --net` 启动专用 dockerd。实际为 Linux x64、Engine 29.1.3、Compose 2.40.3、.NET 10.0.14，Engine ID `e1c57f45-8380-4299-ae77-71557c039ced`，独立数据根 `/opt/rk-ca/docker-data` 与本地 socket `/run/rk-ca/docker.sock`。Server 和 Registry 在该网络命名空间仅监听回环。完整 System Mode Server 通过独立 Unix socket Helper 和真实 PAM 登录。环境和启动记录见 `ca-build/ca-wsl-{packages,dockerd,helper,full-server-running}.log`。 [WSL 导入规程](https://learn.microsoft.com/en-us/windows/wsl/use-custom-distro)
+
+Server 制品来自 `5fad1752`，以 `dotnet publish RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -c Debug -p:UseAppHost=false` 发布。启动前配置独立审计路径和密钥，并为导入的发行版生成机器标识。私有 Engine 导入镜像后，Registry 按原摘要提供 PostgreSQL；清单生成器仅接受摘要完全相同的回环镜像。替换摘要的负例在生成文件前拒绝，正例通过。镜像与镜像校验记录见 `ca-build/ca-wsl-{fixture-retry,offline-mirror-check}.log`。
+
+`verify_live.py stateful` 与 `verify_live.py web-db` 均通过真实 API，退出 0。先安装两个 ntfy 实例并写入独立消息。实例 `f4189dd5-b378-4b39-99fe-e2482445abf2` 从 2.37.0 升级至 2.37.2，实际 Engine 镜像 ID 不同。保留卸载关闭端口，显式重装保留原修订与卷，两个实例的消息均可读回。另一实例的受管卷删除被 Docker 管理器拒绝。新增 Web＋数据库包后以同一 Server 哈希 `c7d555a270b2f14ccebf0adecadb27ba138edd281bb613c0fb1631db64706c79` 重启。读者安装返回 403，资源清单未变化。控制者完成目录安装、业务读写与同键回放。数据库未发布宿主端口，受管卷删除被拒绝。原应用操作为 `c58375c8-ac47-46b4-9a36-e03fcee13cfb`，原 Docker 子回执为 `3359f62b-8759-4625-b1f1-694bde07ac80`。脱敏证据为 `ca-build/wsl-ca-preview-efdc/{stateful,web-db}.jsonl`。
+
+该证据来自独立 WSL2 Linux Server 和专用 Engine。完整 Server 的强制终止及缺失回执验收尚待执行。新增包已复用同一 Server 二进制，固定桌面客户端二进制的新增包、动态表单和实际安装仍待记录。专用环境保留用于后续验收。

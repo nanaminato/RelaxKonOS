@@ -54,6 +54,8 @@ sha256sum "$server_publish/RelaxKonOS.Server.dll"
 # 启动 Server 时设置 ApplicationDeployments__EnableManagedComposePreview=true
 ```
 
+无外部网络的专用 Engine 可将同一 PostgreSQL 镜像导入回环 Registry，并为生成命令增加 `--db-image "$db_image"`。该引用必须使用 `127.0.0.1:<port>/relaxkonos-ca/postgres`，且镜像清单摘要必须与夹具锁定的 PostgreSQL 摘要一致。
+
 从目录安装 `fixture-web-db`，使用 Web 回环端口 `18083`。健康端点通过 PostgreSQL 连接执行查询，写入与读取均访问 PostgreSQL。停库时预期健康检查返回 503。恢复数据库并重建 Web 后，仅执行读请求复核原标记。
 
 桌面重新登录后读取双服务验收能力。选择 `fixture-web-db`、填写实例名与回环端口，并点击「预览服务和存储」。确认 Web 回环发布、数据库只在项目内可访问且使用受管卷，然后填写目录要求的秘密并安装。调整端口时重新预览。

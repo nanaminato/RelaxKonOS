@@ -7,7 +7,7 @@ import re
 
 
 POSTGRES = "docker.io/library/postgres@sha256:4717f90960a225c2d1c5dac50508c401230f693ff626e06e84e6db0a68ded508"
-FIXTURE_REFERENCE = re.compile(r"127\.0\.0\.1:([1-9][0-9]{0,4})/relaxkonos-ca/(web-db|ntfy)@sha256:[a-f0-9]{64}")
+FIXTURE_REFERENCE = re.compile(r"127\.0\.0\.1:([1-9][0-9]{0,4})/relaxkonos-ca/(web-db|ntfy|postgres)@sha256:[a-f0-9]{64}")
 
 
 def fixture_image(parser, image, repository):
@@ -17,14 +17,14 @@ def fixture_image(parser, image, repository):
     return image
 
 
-def web_db_manifest(web_image):
+def web_db_manifest(web_image, db_image):
     template = Path(__file__).resolve().parent.parent / "ApplicationCatalog" / "fixture-web-db-plan.json"
     manifest = json.loads(template.read_text(encoding="utf-8"))
     release = manifest["release"]
     release["id"] = "fixture-web-db"
     release["purpose"] = "Web and PostgreSQL acceptance fixture"
     release["description"] = "Isolated acceptance fixture with a database-backed readiness and marker API."
-    images = {"web": web_image, "db": POSTGRES}
+    images = {"web": web_image, "db": db_image}
     for service in release["services"]:
         service["imageReference"] = images[service["id"]]
     return "fixture-web-db.json", manifest
@@ -58,6 +58,7 @@ def main():
     subparsers = parser.add_subparsers(dest="fixture", required=True)
     web_db = subparsers.add_parser("web-db")
     web_db.add_argument("--image", required=True)
+    web_db.add_argument("--db-image", help="loopback mirror of the exact pinned PostgreSQL image for offline acceptance")
     ntfy = subparsers.add_parser("ntfy")
     ntfy.add_argument("--version", choices=("2.37.0", "2.37.2"), required=True)
     ntfy.add_argument("--image", required=True)
@@ -69,7 +70,10 @@ def main():
         parser.error("--server-publish must contain Assets/ApplicationCatalog")
     image = fixture_image(parser, args.image, args.fixture)
     if args.fixture == "web-db":
-        filename, manifest = web_db_manifest(image)
+        db_image = fixture_image(parser, args.db_image, "postgres") if args.db_image else POSTGRES
+        if db_image.split("@")[1] != POSTGRES.split("@")[1]:
+            parser.error("the PostgreSQL mirror must retain the pinned manifest digest")
+        filename, manifest = web_db_manifest(image, db_image)
     else:
         if bool(args.predecessor_image) != (args.version == "2.37.2"):
             parser.error("--predecessor-image is required for the 2.37.2 upgrade")
