@@ -43,7 +43,7 @@
 
 2026-11-10（MB-04 / MR-03 Linux 单元所有权）。Linux 安装入口仅接受冻结签名计划或软件包流程。固定单元直装 IPC 持原归档锁，在受管、在途、实例锁忙及原生归属无法核对时拒绝。已知直装单元还核对 systemd 和实际进程身份。[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#固定-mihomo-单元的直装所有权门禁)
 
-2026-11-10（MB-04 / MR-03 缺失发布投影）。Linux 停用和禁用启动可按 Helper 原归档责任查询识别活动发布及原未决 ID。查询沿用原实例锁，保留原生配置及回执。[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#server-发布投影缺失时的原-helper-责任)
+2026-11-10（MB-04 / MR-03 缺失发布投影）。Linux 停用和禁用启动可按 Helper 原归档责任查询识别活动发布及原未决 ID。查询沿用原实例锁，保留原生配置及回执。[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#server-发布投影缺失时的原-helper-责任) 空宿主按明确无责任回执准入。缺失或歧义回执保持待核验。[终帧丢失实测](../architecture/server-module-evidence/Proxy-Safety.md#空宿主与-helper-责任查询终帧丢失)
 
 2026-11-10（MB-04 / MR-03 只读 HTTP）。安装详情、恢复状态和 GEO 资源读取沿用原清单、恢复裁决和发布锁。认证重启实测三项原生查询分别执行一次，原队列、原生台账和配置保持。[实机证据](../architecture/server-module-evidence/Proxy-Observation.md#安装详情恢复状态和-geo-资源的只读入口)
 

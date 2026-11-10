@@ -310,6 +310,11 @@ if (args is ["runtime-mihomo-direct-service-gate", var directServiceRoot, var di
     await MihomoTunFullServerAcceptance.VerifyDirectServiceGateAsync(directServiceRoot, directServiceSocket);
     return;
 }
+if (args is ["runtime-mihomo-responsibility-relay", var responsibilityRoot, var responsibilitySocket] && OperatingSystem.IsLinux())
+{
+    await MihomoTunFullServerAcceptance.HoldResponsibilityReplyAsync(responsibilityRoot, responsibilitySocket);
+    return;
+}
 
 if (args is ["runtime-mihomo-probe-witness", var witnessRoot, var witnessSocket, var witnessId, var witnessMode]
     && OperatingSystem.IsLinux())

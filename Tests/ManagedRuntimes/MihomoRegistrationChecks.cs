@@ -205,7 +205,35 @@ internal static class MihomoRegistrationChecks
         Check(guardServices.GetRequiredService<IProxySystemProxyReconciler>() is MihomoSystemProxyReconciler,
             "Production guard constructs without the settings writer, TUN controller or direct controller client");
         await CheckOfficialInstallScopeAsync(builder, Check);
+        await CheckResponsibilityWireAsync(Check);
         return count;
+    }
+
+    private static async Task CheckResponsibilityWireAsync(Action<bool, string> check)
+    {
+        var response = """{"PendingOperationId":null,"TunPublicationId":null}""";
+        var transport = MihomoPublicationTransactionChecks.Stub<IPrivilegedOperationTransport>(_ =>
+            Task.FromResult(new PrivilegedOperationResult(true,
+                OutputBase64: Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(response)))));
+        var reader = new MihomoRuntimeReceiptReader(transport, new FixedMode());
+        check(await reader.QueryResponsibilityAsync(default) is { PendingOperationId: null, TunPublicationId: null },
+            "An explicit empty Helper responsibility is readable.");
+        foreach (var invalid in new[]
+        {
+            """{"PendingOperationId":null}""",
+            """{"PendingOperationId":"00000000-0000-0000-0000-000000000001","PendingOperationId":null,"TunPublicationId":null}""",
+            """{"PendingOperationId":null,"TunPublicationId":"00000000-0000-0000-0000-000000000000"}"""
+        })
+        {
+            response = invalid;
+            try
+            {
+                await reader.QueryResponsibilityAsync(default);
+                throw new InvalidOperationException("Malformed Helper responsibility was accepted as evidence.");
+            }
+            catch (RuntimeLifecycleException error) when (error.ProblemCode == "runtime.helper_response_invalid")
+            { check(true, "Missing, duplicate or empty ID evidence cannot authorize deactivation."); }
+        }
     }
 
     private static async Task CheckOfficialInstallScopeAsync(WebApplicationBuilder builder, Action<bool, string> check)

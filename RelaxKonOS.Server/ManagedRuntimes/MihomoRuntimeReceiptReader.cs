@@ -33,6 +33,7 @@ internal sealed class MihomoRuntimeReceiptReader(IPrivilegedOperationTransport h
 
 internal static class MihomoRuntimeHelperProtocol
 {
+    private static readonly JsonSerializerOptions ResponsibilityJson = new() { AllowDuplicateProperties = false };
     internal static async Task<RuntimeSwitchResult?> RecoverUnderGateAsync(IPrivilegedOperationTransport helper,
         IServerModeResolver mode, MihomoRuntimeAuthorizationProvider authorization, Guid requestOperationId,
         Guid recoveryOperationId, CancellationToken ct, Guid? tunPublicationId = null)
@@ -60,7 +61,7 @@ internal static class MihomoRuntimeHelperProtocol
         {
             using var document = JsonDocument.Parse(Convert.FromBase64String(result.OutputBase64 ?? ""));
             if (typeof(T) == typeof(RuntimeInstallationSnapshot)) RuntimeCommitWitnessRules.RequireWireMember(document.RootElement, nameof(RuntimeInstallationSnapshot.CommitWitness));
-            var value = document.RootElement.Deserialize<T>();
+            var value = document.RootElement.Deserialize<T>(typeof(T) == typeof(MihomoRuntimeResponsibility) ? ResponsibilityJson : null);
             if (value is RuntimeInstallationSnapshot witnessed && witnessed.CommitWitness is { } witness
                 && !RuntimeCommitWitnessRules.BoundToSnapshot(witness, witnessed))
                 throw new RuntimeLifecycleException("runtime.helper_response_invalid");

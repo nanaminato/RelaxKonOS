@@ -4663,7 +4663,7 @@ TUN 恢复状态将 Helper 的当前观测与原发布 ID、配置身份比对�
 
 概览和组件状态使用独立的官方运行时读取器。状态读取沿用原版本指针，控制器探测在当次调用结束后释放作用域。安装台账继续负责官方归档派发及终态。实际派发持有独立执行作用域，恢复按原安装 ID 只读原操作标记，已有中断终态沿用原键。 归档准备阶段取消或版本探测超时后，先等待原进程退出及输出排空，再完成原安装清理。 Linux 组件中心的 Mihomo 安装使用签名计划或冻结的软件包，官方版本和文件直装适用于 Windows。已有受管归档或原归属无法核对时，Linux Helper 拒绝直接安装、移除和控制固定单元。[门禁实测](../architecture/server-module-evidence/Proxy-Safety.md#固定-mihomo-单元的直装所有权门禁)[实机证据](../architecture/server-module-evidence/Proxy-Observation.md#官方归档版本探测的进程与输出排空)[实机证据](../architecture/server-module-evidence/Proxy-Observation.md#官方归档安装与运行时状态读取)
 
-Linux 停用 Proxy 或按禁用配置启动时，即使 Server 发布投影缺失，仍会核对原 Helper 台账。原活动发布或未决操作会以原 ID 显示在停用阻止项中，归属无法核验时继续待核验。[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#server-发布投影缺失时的原-helper-责任)
+Linux 停用 Proxy 或按禁用配置启动时，即使 Server 发布投影缺失，仍会核对原 Helper 台账。原活动发布或未决操作会以原 ID 显示在停用阻止项中，归属无法核验时继续待核验。 Helper 回执丢失时继续拒绝停用和禁用启动，后续可读回原归属。空宿主收到明确无责任回执后可按禁用配置启动。[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#server-发布投影缺失时的原-helper-责任)
 
 安装详情、恢复状态和 GEO 资源的 GET 使用同一只读端口。安装详情包含宿主环境报告，恢复状态继续显示原操作归属。存在待发布操作时，GEO 资源读取按原发布锁返回待核验。[实机核对](../architecture/server-module-evidence/Proxy-Observation.md#安装详情恢复状态和-geo-资源的只读入口)
 

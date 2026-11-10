@@ -5069,6 +5069,50 @@ exec {shlex.quote(str(systemctl))} "$@"
             worker = launch(phase)
             return int(marker('full-server-pid'))
 
+        def verify_lost_responsibility():
+            nonlocal worker, token
+            relay_socket = Path('/run/rk-mihomo-responsibility.sock')
+            armed = root / 'responsibility-armed'
+            dropped = root / 'responsibility-drop'
+            args = ['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-responsibility-relay', str(root), str(ipc.socket_path)]
+            relay = subprocess.Popen(args)
+            try:
+                deadline = time.monotonic() + 8
+                while not relay_socket.exists():
+                    assert relay.poll() is None and time.monotonic() < deadline, 'Responsibility reply relay did not bind'
+                    time.sleep(.05)
+                worker = launch('restart', relay_socket)
+                live_pid = int(marker('full-server-pid'))
+                token = login()
+                with hide_server_publication():
+                    armed.touch()
+                    results = []
+                    pending_plan = threading.Thread(target=lambda: results.append(preview_proxy_disable()))
+                    pending_plan.start()
+                    original_query = marker('responsibility-held')
+                    dropped.touch()
+                    pending_plan.join(timeout=12)
+                    assert not pending_plan.is_alive() and len(results) == 1
+                    detail, preview = results[0]
+                    assert detail['recoveryState'] == 'required' and any('Helper responsibility cannot be verified' in item
+                        for item in detail['orphanedWork']), detail
+                    assert any(item['problemCode'] == 'module-recovery-blocked' for item in preview['blockedBy']), preview
+                    assert f'operation=MihomoRuntimeResponsibilityQuery id={original_query} ' in ipc.log.read_text()
+                    probe(record, 'admission-responsibility-reply-lost')
+                    terminate(live_pid)
+                    worker = launch('admission-disabled', relay_socket)
+                    assert worker.wait(timeout=15) == 0
+                    assert 'Helper responsibility cannot be verified' in (root / 'full-startup-refused').read_text()
+                    armed.unlink()
+                    worker = launch('admission-disabled', relay_socket)
+                    refused(publication)
+                    assert (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes()) == before
+                print(f'PASS TUN RESPONSIBILITY REPLY LOSS: query={original_query}; owner={publication}; both entrances blocked without proof; original owner read after delivery', flush=True)
+            finally:
+                if relay.poll() is None:
+                    relay.terminate()
+                relay.wait(timeout=5)
+
         terminate(pid)
         pid = start('admission-managed')
         token = login()
@@ -5087,6 +5131,7 @@ exec {shlex.quote(str(systemctl))} "$@"
             worker = launch('admission-disabled')
             refused(publication)
             assert (queue.read_bytes(), native_ledger.read_bytes(), mirror.read_bytes()) == before
+        verify_lost_responsibility()
         pid = start('restart')
         token = login()
         plan(managed=False)
@@ -6704,6 +6749,43 @@ with sqlite3.connect(sys.argv[1]) as database:
             first_worker.wait(timeout=5)
 
 
+def verify_empty_responsibility_admission():
+    state = archive / 'state' / 'archive-state.json'
+    registration = archive / 'archive-service.json'
+    unit_file = Path('/etc/systemd/system') / unit
+    assert not any(path.exists() for path in (state, registration, unit_file))
+    ipc = IpcPublicationWorkers(sys.argv[3], pwd.getpwnam('nobody'))
+    ipc.start_helper()
+    marker = root / 'full-server-pid'
+    worker = subprocess.Popen(['/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-tun-full-server',
+                               str(root), str(ipc.socket_path), 'admission-empty'])
+    try:
+        deadline = time.monotonic() + 15
+        while True:
+            response = subprocess.run(['/usr/sbin/ip', 'netns', 'exec', 'rk-http-client', '/usr/bin/curl',
+                '--noproxy', '*', '--silent', '--output', '/dev/null', '--write-out', '%{http_code}',
+                '--max-time', '1', 'http://192.0.2.2:18970/api/v1.0/server/modules'], capture_output=True, text=True, timeout=3)
+            if response.stdout == '401':
+                break
+            assert worker.poll() is None and time.monotonic() < deadline, 'Empty disabled Server did not reach readiness'
+            time.sleep(.05)
+        assert not any(path.exists() for path in (state, registration, unit_file))
+        audit = ipc.log.read_text()
+        assert audit.count('operation=MihomoRuntimeResponsibilityQuery ') == 1
+        assert all(f'operation={name} ' not in audit for name in ('MihomoRuntimeExecute', 'MihomoRuntimeConfigure', 'MihomoRuntimeRecover'))
+        os.kill(int(marker.read_text()), signal.SIGTERM)
+        assert worker.wait(timeout=10) == 0
+        assert not any(path.exists() for path in (state, registration, unit_file))
+        print('PASS TUN EMPTY RESPONSIBILITY ADMISSION: disabled Server ready; one read, no archive installation ledger, registration or unit', flush=True)
+    finally:
+        if worker.poll() is None:
+            worker.terminate()
+            worker.wait(timeout=5)
+        marker.unlink(missing_ok=True)
+        ipc.stop_helper()
+        ipc.log.rename(root / 'empty-admission-helper.log')
+
+
 def proof():
     assert os.geteuid() == 0 and Path('/proc/1/comm').read_text().strip() == 'systemd'
     mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines() if ' - tmpfs ' in line}
@@ -6735,6 +6817,8 @@ def proof():
     if case in ('ipc-http-partial-dns', 'ipc-http-unknown-dns'):
         install_dns_ack_boundary(hold_method='SetLinkDomains', allow_release=case == 'ipc-http-partial-dns')
     service('start', 'systemd-resolved.service')
+    if case == 'ipc-http-admission':
+        verify_empty_responsibility_admission()
     seed_foreign_dns()
     baseline_dns = resolver_snapshot() if case in ('dns-exited', 'dns-exited-owner', 'dns-applied-exited',
                                                    'dns-partial-exited', 'dns-partial-inflight', 'dns-partial-live') else None

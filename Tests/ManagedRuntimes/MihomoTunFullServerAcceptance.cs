@@ -17,6 +17,22 @@ using RelaxKonOS.Server.Privileged;
 [SupportedOSPlatform("linux")]
 internal static class MihomoTunFullServerAcceptance
 {
+    internal static async Task HoldResponsibilityReplyAsync(string root, string socket)
+    {
+        RequirePrivateFixture(root);
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(35));
+        var ct = budget.Token;
+        var armed = Path.Combine(root, "responsibility-armed");
+        var drop = Path.Combine(root, "responsibility-drop");
+        await using var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-mihomo-responsibility.sock",
+            socket, ct, (operation, _) => operation == "MihomoRuntimeResponsibilityQuery" && File.Exists(armed));
+        var originalQuery = await relay.Committed.Task.WaitAsync(ct);
+        await WriteMarkerAsync(root, "responsibility-held", originalQuery.ToString("D"));
+        while (!File.Exists(drop)) await Task.Delay(25, ct);
+        relay.DropHeldResponse();
+        await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+    }
+
     internal static async Task VerifyDirectServiceGateAsync(string root, string socket)
     {
         RequirePrivateFixture(root);
@@ -214,7 +230,7 @@ internal static class MihomoTunFullServerAcceptance
     {
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "cleanup-drain" or "cleanup-cut" or "cleanup-fault" or "restart" or "joint-drain" or "joint-restart" or "admission"
-            or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart" or "inbound-cut" or "inbound-restart"
+            or "admission-managed" or "admission-disabled" or "admission-empty" or "handoff-disabled" or "handoff-restart" or "inbound-cut" or "inbound-restart"
             or "expiry-quarantine" or "expiry-quarantine-restart"
             or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover" or "zero-dns-pam-retry"
             or "named-start-cut" or "stop-reply-drop" or "start-reply-drop" or "baseline-on" or "baseline-off"))
@@ -238,7 +254,7 @@ internal static class MihomoTunFullServerAcceptance
         var recoveryWriteFault = dropStartReply && File.Exists(Path.Combine(root, "full-tun-query-write-fault"));
         var handoff = phase == "handoff-disabled";
         var inboundCut = phase == "inbound-cut";
-        var disabled = phase is "admission-disabled" or "baseline-off";
+        var disabled = phase is "admission-disabled" or "admission-empty" or "baseline-off";
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(handoff || inboundCut || expiryQuarantine ? 90 : joint ? 75
             : phase is "baseline-on" or "baseline-off" ? 65 : 45));
@@ -288,7 +304,7 @@ internal static class MihomoTunFullServerAcceptance
                     && File.Exists(Path.Combine(root, $"full-{coreDrain}-armed")));
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly,
             relay?.Path ?? expiryRelay?.Path ?? inboundRelay?.Path ?? squidRelay?.Path ?? removalRelay?.Path ?? recoveryRelay?.Path
-                ?? coreDrainRelay?.Path ?? socket, root,
+                ?? coreDrainRelay?.Path ?? socket, phase == "admission-empty" ? Path.Combine(root, "empty-admission") : root,
             reuse: !first && !dropStopReply && !inboundCut && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"),
             seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
