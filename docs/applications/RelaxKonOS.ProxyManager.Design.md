@@ -4425,6 +4425,8 @@ Squid 配置发布沿用原队列 ID 调用 Helper。请求响应或终态无法
 
 Squid 的启动、停止、重启、重载、启用和禁用使用原队列 ID 与动作调用 Helper。Helper 在派发前保存执行记录，命令成功并持久化原回执后才确认。查询和同键提交只按原记录核对，原回执缺失时阻止新变更及 Proxy 停用。软件包安装、更新和卸载统一由组件中心的安装台账执行。固定 Linux APT 升级已验证原应答丢失后按原 ID 恢复，同键返回同一终态。见[Squid 包回执证据](../architecture/server-module-evidence/Proxy-Squid.md#固定-squid-包升级的原回执)。 如果 dpkg 已完成升级而 Helper 未保存原终态，重启后同键仍指向原安装操作，Squid 状态继续显示待核验，阻止新的包变更。见[终态缺失证据](../architecture/server-module-evidence/Proxy-Squid.md#apt-在途且原终态缺失时的包门禁)。 保留数据卸载仅移除 Squid 软件包，保留配置和数据。原应答丢失后可按原卸载 ID 查询终态，同键重试返回同一回执。见[卸载实测](../architecture/server-module-evidence/Proxy-Squid.md#保留数据卸载的原回执)。 首次安装已验证固定签名包的单次下载、真实服务启动和原安装回执恢复。见[首次安装实测](../architecture/server-module-evidence/Proxy-Squid.md#首次安装的原回执)。Squid 升级及[首次安装与保留数据卸载](../architecture/server-module-evidence/Proxy-Squid.md#首次安装与保留数据卸载的恢复查询再次中断) 的首次恢复查询应答再次中断时，Core 安装台账保留原操作。下一次启动只读查询同一 Helper 原回执，再开放安装 HTTP。实测同键返回原终态，每个包变更只执行一次。见[恢复查询实测](../architecture/server-module-evidence/Proxy-Squid.md#软件包原回执查询在途时再次中断)。
 
+固定升级实测在两次重启后按原安装 ID 和同键返回同一终态，APT/dpkg 与 Helper 记录仅有一次实际包变更。测试机已再次核对专属可写根、独立包台账和同一签名制品。整机掉电验收需要独立断电环境。见[现机预检与原升级证据](../architecture/server-module-evidence/Proxy-Squid.md#固定升级的现机原回执复验)。
+
 Squid 账户变更将原队列 ID 与绑定操作者和请求的 HMAC 传给 Helper。原队列和原生回执不保存请求口令。Helper 只在账户文件及重载结果已确认后写入成功终态。相同操作者与相同请求可用原键取回原 ID，改换口令的同键请求返回冲突。认证签名密钥轮换后，原操作仍可通过原 ID 查询，台账不重绑旧请求键。见[账户原回执实机证据](../architecture/server-module-evidence/Proxy-Squid.md#账户口令变更的原回执)。
 
 Squid 配置、状态、账户读取、预览和原生校验使用当前 Proxy 管理代次。该代次故障隔离时，这些请求返回模块不可用。启用重启后可按原回执继续读取。[观察路由实测](../architecture/server-module-evidence/Proxy-Squid.md#squid-观察路由的管理租约)

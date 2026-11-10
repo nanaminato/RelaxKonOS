@@ -208,6 +208,8 @@ Windows Release Squid 与组件回归、Linux Release 构建及专属 systemd �
 | 第二次中断时的 Core 台账 | `384be8fda3915e0087a33f4a553ec388da24724661c8d5295a24d953e70feef0` |
 | dpkg 台账 | `6482a379028d5c057ec619fd67cdbdaa8050b923a555259556d097fbdabd7b91` |
 
+以 `ec58ea04a4031acb0e93b6139801b472f2007955` 为当前基线，再次在同一测试机核对专属挂载、PID 和网络命名空间。`/usr` 写入落在专属 overlay，APT 列表和 dpkg 状态文件与宿主的设备及 inode 标识不同，探针文件未出现在宿主路径。APT 模拟只选中 Squid，Ubuntu 存档签名和索引确认 `7.7-0ubuntu0.26.04.2` 制品的 SHA-256 为 `1f962274ff78f23bef1c908319c157c02fb7426a11dac2c4f91e847237e15bcb`。现机预检日志 `.artifacts/mb04-squid-package/isolation-recheck-current-head.log` 的 SHA-256 为 `83e3e06ea51eb36a8ed4644fbbd5065fdd8ae598cc79492d0dc773ed36ef7ff3`。原升级验收日志及原预检日志的摘要仍与上表及原记录一致。此次执行的是隔离预检和 APT 模拟，真实包终态及无重复派发沿用原验收。当前基线的 Windows Release 构建及 Squid、组件、模块里程碑回归均通过。测试机未发现可用于独立断电的 QEMU、libvirt、systemd-nspawn 或 KVM 设备。
+
 Windows Release Squid、组件和模块边界回归均通过。首次打包因本地工作盘空间不足而中止，尚未连接远端执行。归档转到有空间的临时盘后通过实机验收。专属进程退出，根和 cgroup 清理完成。共享服务、宿主 Squid 程序、dpkg 台账、配置和账户文件指纹一致。
 
 **已实现但实机未验证。** 整机掉电需专属可断电环境。本轮独立验证了进程退出。对象释放、ALC 回收、隔离负载内存差值和生产内存收益各自待测。

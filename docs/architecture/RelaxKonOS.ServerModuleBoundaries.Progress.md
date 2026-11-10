@@ -46,6 +46,8 @@ Squid 已补齐[原包回执查询在途时再次中断](server-module-evidence/
 
 2026-11-10 的 MB-04 Squid [现机原回执复验](server-module-evidence/Proxy-Squid.md#固定升级的现机原回执复验)通过可写根、独立包台账和签名制品预检。固定升级的原应答及首次恢复查询应答被截留，两次重启后以同一安装 ID 和同键取回相同终态。实测两次只读查询、一次派发、一次 dpkg 升级，专属资源清理及共享指纹核对通过。首次安装和保留数据卸载沿用[既有证据](server-module-evidence/Proxy-Squid.md#首次安装与保留数据卸载的恢复查询再次中断)。取得专属可断电环境后，首先按原安装 ID 核对掉电前后的 Helper 回执和 APT/dpkg 台账。
 
+基于 `ec58ea04` 的现机预检再次通过隔离根、独立包台账及原签名制品校验，原升级日志摘要核对通过。现机可继续提供进程中断夹具，独立断电环境仍缺。固定包的已验收矩阵继续使用原 ID 和原回执，Proxy 保持 resident。
+
 | 范围 | 原始记录 |
 | --- | --- |
 | MB-01 / RES | [MB-01A](RelaxKonOS.ServerModuleBaseline.20261105.md)、[MB-01B](RelaxKonOS.ServerModuleBaseline.20261106.md)、[资源与恢复权威清单](RelaxKonOS.ServerModuleResources.Inventory.md)、[驻留历史](server-module-evidence/Residency-History.md) |
