@@ -265,7 +265,9 @@ public sealed partial class ProxyOperationStore(IProxyPlatformPaths paths, ILogg
                         _recoveryBlocked = true;
                         workLeases.RetainFailedResource(work, scope);
                         work.RequireRecovery();
-                        throw;
+                        logger.LogError(error, "Original Squid recovery scope could not be cleaned up. OperationId={OperationId}", operation.OperationId);
+                        throw new RelaxKonOS.Server.Residency.ModuleUnavailableException("module-recovery-blocked", 30,
+                            "Proxy recovery could not clean up the original operation scope.", error);
                     }
                 }
                 if (!verified) continue;

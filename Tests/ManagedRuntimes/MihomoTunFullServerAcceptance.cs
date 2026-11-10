@@ -187,7 +187,8 @@ internal static class MihomoTunFullServerAcceptance
         var cleanupScope = cleanupDrain || phase is "cleanup-cut" or "cleanup-fault";
         var overviewCleanup = phase is ("squid-restart" or "inbound-restart")
             && File.Exists(Path.Combine(root, "full-overview-cleanup-proof"));
-        var squidCleanup = phase == "squid-restart" && File.Exists(Path.Combine(root, "full-squid-cleanup-proof"));
+        var squidRecoveryCleanup = phase == "squid-receipt-cut" && File.Exists(Path.Combine(root, "full-squid-receipt-cleanup-fault"));
+        var squidCleanup = squidRecoveryCleanup || phase == "squid-restart" && File.Exists(Path.Combine(root, "full-squid-cleanup-proof"));
         var expiryQuarantine = phase == "expiry-quarantine";
         var quarantineGuard = expiryQuarantine && File.Exists(Path.Combine(root, "full-quarantine-guard"));
         var controllerCleanup = expiryQuarantine || phase is ("inbound-restart" or "restart")
@@ -303,7 +304,8 @@ internal static class MihomoTunFullServerAcceptance
             Console.WriteLine(line);
             if (line.Contains("Application is shutting down", StringComparison.Ordinal)) stopping.TrySetResult();
             if (squidCleanup && line.Contains("Server module relaxkonos.proxy loaded on demand", StringComparison.Ordinal))
-                File.AppendAllText(Path.Combine(root, "full-squid-generation"), line.Trim() + Environment.NewLine);
+                File.AppendAllText(Path.Combine(root, squidRecoveryCleanup ? "full-squid-recovery-generation" : "full-squid-generation"),
+                    line.Trim() + Environment.NewLine);
         });
         try
         {
@@ -361,7 +363,7 @@ internal static class MihomoTunFullServerAcceptance
                     if (server.ExitCode == expectedExit) return;
                     throw new InvalidOperationException($"Expected the retry response owner to exit with {expectedExit}, got {server.ExitCode}.");
                 }
-                if (phase == "squid-receipt-cut" && File.Exists(Path.Combine(root, "full-squid-write-fault")))
+                if (squidRecoveryCleanup || phase == "squid-receipt-cut" && File.Exists(Path.Combine(root, "full-squid-write-fault")))
                 {
                     await WaitForMarkerAsync("full-squid-receipt-release");
                     committedReply.ReleaseHeldResponse();

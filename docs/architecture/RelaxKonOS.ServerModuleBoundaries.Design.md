@@ -102,6 +102,8 @@ Helper 在现有文件锁内先保存不可重派的原 ID，再处理配置和�
 
 Squid 发布投影可先于队列终态保存。队列故障隔离仍由原 Proxy 队列负责，Core 系统代理 guard 与 Helper 的 TUN 归属继续独立履行。[跨域故障实测](server-module-evidence/Proxy-Squid.md#squid-恢复写回故障与-core-tun-连续性)
 
+Squid 原回执恢复作用域的清理失败时，原队列保留操作准入，原 Proxy 代次保留失败资源，Core 安全职责继续独立运行。恢复查询以 `module-recovery-blocked` 返回，启用重启再按原 ID 核对 Helper 回执。[恢复查询清理实测](server-module-evidence/Proxy-Squid.md#squid-原回执查询的清理故障)
+
 Squid 配置、状态、账户读取、预览与原生校验由当前 Proxy 代次创建前台作用域。该代次持有 Helper 调用、响应与异步清理的工作租约。原配置投影写入锁和原操作队列保持各自所有权。[观察路由实测](server-module-evidence/Proxy-Squid.md#squid-观察路由的管理租约)
 
 平台能力适配器随概览作用域解析，订阅下载适配器随请求或后台工作作用域解析。两者均为管理执行对象。[作用域证据](server-module-evidence/Proxy-Observation.md#平台能力与订阅下载适配器作用域)

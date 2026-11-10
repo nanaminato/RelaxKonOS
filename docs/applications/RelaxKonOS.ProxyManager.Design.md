@@ -4431,6 +4431,8 @@ Squid 配置、状态、账户读取、预览和原生校验使用当前 Proxy �
 
 Squid 状态响应已送达时，原代次仍负责请求作用域清理。清理失败会隔离同一代次，原 Squid 发布回执继续由原队列核对。[状态响应后清理实测](../architecture/server-module-evidence/Proxy-Squid.md#squid-状态响应后的清理责任)
 
+Squid 原回执查询在清理恢复作用域失败时返回 `503 / module-recovery-blocked`。原代次保留失败作用域，原队列保持待核验及新变更门禁。启用 Proxy 重启后可按原 ID 核对 Helper 回执并完成原操作。[恢复查询清理实测](../architecture/server-module-evidence/Proxy-Squid.md#squid-原回执查询的清理故障)
+
 Squid 已在新端口转发、Helper 却在保存终态前退出时，重启后仍显示原配置发布待核验。同键返回原操作，新发布和禁用启动继续受阻。实际监听与配置摘要供只读核对。见[Helper 中断实机证据](../architecture/server-module-evidence/Proxy-Squid.md#helper-在原生效果生效后中断)。
 
 2026-11-04：排队 Proxy 工作在持久 queued 前取得真实驻留工作租约，覆盖审计、异步清理和终态确认；失败 owner 隔离，不丢失恢复责任。订阅转换迁入独立 bundled 程序集，仅共享文本 ABI；按调用创建 collectible ALC，未引入私有实现静态引用。Core guard/TUN/到期/补偿责任保留，Proxy 仍 resident。完整当前事实见[边界设计 §20](../architecture/server-module-evidence/Milestones.md#20-linux-modulehost-目标修复proxy-工作租约与订阅独立代码2026-11-04)。

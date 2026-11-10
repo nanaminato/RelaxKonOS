@@ -2221,7 +2221,8 @@ def proof_full_http_shutdown(ipc, case):
     removal_http = removal_admin or case == 'ipc-http-retained-installation'
     retained_removal = removal_http or case == 'ipc-http-retained'
     squid = case in ('ipc-http-squid', 'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account')
-    squid_tun = case == 'ipc-http-squid-tun-recovery-fault'
+    squid_receipt_cleanup = case == 'ipc-http-squid-tun-recovery-cleanup-fault'
+    squid_tun = squid_receipt_cleanup or case == 'ipc-http-squid-tun-recovery-fault'
     zero_dns = case == 'ipc-http-zero-dns'
     pam_retry = zero_dns and Path(sys.argv[3]).with_name('tun-pam-retry.fixture').is_file()
     pam_response = pam_retry and Path(sys.argv[3]).with_name('tun-pam-retry-response.fixture').is_file()
@@ -5433,11 +5434,16 @@ exec {shlex.quote(str(systemctl))} "$@"
             native_ledger = archive / 'state' / 'archive-state.json'
             execution = archive / 'operations' / tun_record['operation'] / 'tun-5.json'
             tun_witness = (native_ledger.read_bytes(), mirror.read_bytes(), execution.read_bytes())
-            (root / 'full-squid-write-fault').touch()
+            fault_marker = 'full-squid-receipt-cleanup-fault' if squid_receipt_cleanup else 'full-squid-write-fault'
+            (root / fault_marker).touch()
             ipc.start_helper()
             worker = launch('squid-receipt-cut')
             pid = int(marker('full-server-pid'))
             token = login()
+            healthy, _ = preview_proxy_disable()
+            prefix = root / 'full-server/full-squid-cleanup'
+            if squid_receipt_cleanup:
+                prefix.with_name(prefix.name + '-arm').touch()
             replies = []
 
             def read_receipt():
@@ -5448,17 +5454,36 @@ exec {shlex.quote(str(systemctl))} "$@"
             try:
                 assert uuid.UUID(marker('full-squid-receipt-held')) == uuid.UUID(operation)
                 assert reader.is_alive() and leases() >= 2 and queue.read_bytes() == persisted[2]
-                obstruction = queue.with_name(queue.name + '.new')
-                obstruction.mkdir()
+                if squid_receipt_cleanup:
+                    (root / 'full-squid-receipt-release').touch()
+                    held = prefix.with_name(prefix.name + '-held')
+                    until(lambda: held.exists() and held.read_text() == 'disposing', 'original Squid recovery scope cleanup')
+                    assert reader.is_alive() and leases() >= 2
+                    assert queue.read_bytes() == persisted[2] and receipt.read_bytes() == original_receipt
+                    recovery_generation = marker('full-squid-recovery-generation')
+                    assert len(recovery_generation.splitlines()) == 1
+                    prefix.with_name(prefix.name + '-fail').touch()
+                else:
+                    obstruction = queue.with_name(queue.name + '.new')
+                    obstruction.mkdir()
             finally:
                 (root / 'full-squid-receipt-release').touch()
+                if squid_receipt_cleanup:
+                    prefix.with_name(prefix.name + '-release').touch()
                 reader.join(timeout=7)
             assert not reader.is_alive() and len(replies) == 1, replies
             status, response = replies[0]
             assert status == 503 and response['problemCode'] == 'module-recovery-blocked', replies
-            obstruction.rmdir()
+            if squid_receipt_cleanup:
+                assert not prefix.with_name(prefix.name + '-complete').exists()
+                assert marker('full-squid-recovery-generation') == recovery_generation
+                for suffix in ('arm', 'held', 'fail', 'release'):
+                    prefix.with_name(prefix.name + '-' + suffix).unlink()
+            else:
+                obstruction.rmdir()
             proxy, plan = preview_proxy_disable()
             assert proxy['residency']['state'] == 'faulted' and proxy['residency']['activeLeases'] == 0
+            assert proxy['processGeneration'] == healthy['processGeneration']
             assert any(item['problemCode'] == 'module-recovery-blocked' for item in plan['blockedBy'])
             assert publish(18885, 'squid-fault-new', 400)['problemCode'] == 'proxy.operation_interrupted'
             until(guard_applied, 'Core system proxy baseline')
@@ -5667,13 +5692,16 @@ exec {shlex.quote(str(systemctl))} "$@"
             print(f'PASS PROXY FOREGROUND CONTROLLER: closed={connection}; four routes gated, original publication and traffic continuous', flush=True)
             audit = ''.join(path.read_text() for path in sorted(root.glob('ipc-helper-*.log')))
             assert audit.count(f'operation=SquidApplyConfiguration id={operation} ') == 1
+            if squid_receipt_cleanup:
+                assert audit.count(f'operation=SquidConfigurationReceipt id={operation} ') == 2
             assert audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(tun_record["operation"])} ') == 1
             assert all(f'operation={kind} ' not in audit for kind in ('MihomoRuntimeTunStop', 'MihomoRuntimeTunStart', 'MihomoRuntimeRecover'))
             os.kill(pid, signal.SIGTERM)
             assert worker.wait(timeout=12) == 0
             upstream.shutdown()
             upstream.server_close()
-            print(f'PASS SQUID FAULT CORE TUN CONTINUITY: original={operation}; publication={tun_record["operation"]}; '
+            outcome = 'RECOVERY CLEANUP FAULT' if squid_receipt_cleanup else 'FAULT'
+            print(f'PASS SQUID {outcome} CORE TUN CONTINUITY: original={operation}; publication={tun_record["operation"]}; '
                   f'Mihomo PID={tun_record["service"][0]}; configuration={tun_record["credential"]}; '
                   f'Squid PID={original_pid}; Core guard repaired, one reload, original receipts retained', flush=True)
             return
@@ -6361,7 +6389,7 @@ rules:
   - DST-PORT,53,fixture-dns
   - MATCH,fixture-upstream
 ''')
-    if case == 'ipc-http-squid-tun-recovery-fault':
+    if case in ('ipc-http-squid-tun-recovery-fault', 'ipc-http-squid-tun-recovery-cleanup-fault'):
         with candidate.open('a') as fixture:
             fixture.write('proxy-groups:\n  - name: fixture-choice\n    type: select\n    proxies: [fixture-upstream, DIRECT]\n')
     candidate.chmod(0o600)
@@ -6437,7 +6465,8 @@ rules:
                         'ipc-http-partial-dns', 'ipc-http-unknown-dns', 'ipc-http-joint',
                         'ipc-http-admission', 'ipc-http-handoff', 'ipc-http-inbound-tun', 'ipc-http-retained',
                         'ipc-http-retained-installation', 'ipc-http-retained-administrator', 'ipc-http-squid',
-                        'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account', 'ipc-http-squid-tun-recovery-fault'):
+                        'ipc-http-squid-lifecycle-unknown', 'ipc-http-squid-account', 'ipc-http-squid-tun-recovery-fault',
+                        'ipc-http-squid-tun-recovery-cleanup-fault'):
                 proof_full_http_shutdown(ipc, case)
                 return
             owner = subprocess.Popen([*ipc.server, 'http' if http_case else 'publish'], **ipc.identity,

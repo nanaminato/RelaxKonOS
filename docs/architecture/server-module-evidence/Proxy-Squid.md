@@ -273,6 +273,22 @@ Proxy 隔离时，在私有 `/etc/environment` 中引入漂移。同一 Server �
 
 Linux Release 构建和 Windows Release Squid、Proxy Core 安全及模块边界回归通过。两轮专属 cgroup 清理完成，宿主共享服务、代理、resolver、Squid 配置和账号指纹一致。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-squid-tun-recovery-fault.log` SHA-256 为 `628e1cbd58abad20e43074bb9d5dfe4aa3bc51015310a4c02cdb6ab7b4bcd04b`，归档为 `e6bc9e8dfc409fd28be4bed422d4a529292e7467ac3b732eb6ac8aedba6150d3`。
 
+### Squid 原回执查询的清理故障
+
+**已实现且已验证。** 2026-11-10 在既有 Linux 专属 systemd 中，以完整认证 Server 和真实 Squid 验证。Squid 原发布 `ef618c55-f2f3-4c43-98f8-7f9a722b5235` 生效后，原 Server 在应答未交付时退出。重启按原 ID 查询，Helper 回执截留期间观察到响应和恢复至少两项工作租约。放行回执后暂停原恢复作用域的异步清理，两项租约和原队列、Helper 回执仍保持。
+
+原版在异步清理失败后返回空的 HTTP 500。修正版保留失败作用域并隔离同一 Proxy 代次，返回 `503 / module-recovery-blocked`。恢复和响应租约收尾后，故障代次仍阻止新键及停用。已确认配置投影保留原发布 ID、修订和摘要，队列及 Helper 原生台账逐字节保持。禁用启动按原 ID 拒绝。启用重启后只读核对同一回执，按 ID 和同键读回同一成功终态。跨进程共两次原回执查询、一次配置派发和一次真实 Squid reload。
+
+Core guard 在隔离期间修复测试代理漂移。原受管 TUN 发布 `259af4f5-ce7c-4b03-ac11-379b02c7c5f4` 保持 PID `418`、配置摘要 `3e8c4fa7c623bd2e30ac52d0796ea7ce09017b0c83affb5a909e86ef0838a2f6`、管理选路和原生台账。隔离及重启前后真实上游 HTTP、分流 DNS 通过。Squid PID `730` 保持。专属进程及 cgroup 已清理，宿主共享服务、代理和 resolver 指纹一致。
+
+Windows Release Squid、Core 安全、订阅边界和模块里程碑均通过。修正版首次试跑混用了恢复查询和前台状态检查的代次日志，分开记录后通过。原版对照日志 `.artifacts/mb04-tun-full-zero-dns/linux-squid-recovery-cleanup-baseline.log` 的 SHA-256 为 `a72c4097f11b3fd941bbdddd8319e74c28a8fa2635f6869fd74bc3a6ddcdb802`。
+
+最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-squid-recovery-cleanup-final.log` 的 SHA-256 为 `670f2209c3c49da2d5ced16b1ddadc72f42ed53dbf44a75007d5165ec2848735`，归档为 `0d8d22380380af3c62576346da25f50a6e700c21bd83666770a414c18fcdf8cb`。同批写回故障对照 `e524cd5b-247f-4b8f-9b12-710c20036b6d` 也通过，保留原 Squid 回执及 Core TUN 连续性。
+
+**已实现但实机未验证。** 本轮核对失败作用域归属、原回执和实际进程退出。服务控制与账户回执共用此清理分支，实机故障注入覆盖配置发布。对象释放、ALC、隔离负载内存与生产收益分别待测。
+
+**未实现或仍受门禁保护。** 缺失可信原回执时维持原准入。整模块安全交接继续开放，Proxy 保持 resident。
+
 ### Squid 观察路由的管理租约
 
 **已实现且已验证。** 配置、状态、账户读取、预览和原生校验共用当前 Proxy 代次的前台作用域。Windows Release 截留原生校验回执时观察到一项租约，响应与作用域清理后归零，结构化校验诊断及原路由权限保持。Squid、Proxy Core 安全及模块里程碑回归通过。
