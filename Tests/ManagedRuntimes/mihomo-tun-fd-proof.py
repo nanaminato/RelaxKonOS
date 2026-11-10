@@ -3944,8 +3944,10 @@ exec {shlex.quote(str(systemctl))} "$@"
             if named_history_drift and Path(sys.argv[3]).with_name('tun-native-validator.fixture').is_file():
                 revision = uuid.UUID(inventory['activeRevisionId'])
                 executable = archive / 'versions' / revision.hex / 'mihomo'
-                validation = command('/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-native-validator', str(executable))
+                validation = subprocess.check_output(('/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-native-validator', str(executable)),
+                                                     text=True, timeout=30).strip()
                 assert 'PASS MIHOMO SCOPED NATIVE VALIDATOR:' in validation
+                assert 'PASS MIHOMO OFFICIAL VERSION PROBE DRAIN:' in validation
                 print(validation, flush=True)
                 registration = command('/usr/bin/dotnet', sys.argv[3], 'mihomo-registration-only')
                 assert 'PASS MIHOMO OFFICIAL INSTALL SCOPE:' in registration

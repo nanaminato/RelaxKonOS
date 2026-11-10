@@ -4,14 +4,17 @@ using RelaxKonOS.Server.Startup;
 using RelaxKonOS.Server.Startup.Modules;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
+using System.IO.Compression;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Proxy;
@@ -64,8 +67,99 @@ internal static class MihomoServerPublicationAcceptance
                 || await File.ReadAllTextAsync(official.PointerPath, ct) != pointer)
                 throw new InvalidOperationException("The original gate was released before the validation process exited or changed the official pointer.");
             Console.WriteLine($"PASS MIHOMO SCOPED NATIVE VALIDATOR: parsed real candidate; PID={pid} exited before official observation resumed");
+            await VerifyOfficialVersionProbeAsync(binary, fixture.FullName, paths, official, pointer);
         }
         finally { fixture.Delete(recursive: true); }
+    }
+
+    private static async Task VerifyOfficialVersionProbeAsync(string binary, string root, Paths paths,
+        MihomoOfficialRuntimeState official, string pointer)
+    {
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var ct = budget.Token;
+        var marker = Path.Combine(root, "version-probe.pid");
+        var executable = Path.Combine(root, "version-probe");
+        await File.WriteAllTextAsync(executable, $"""
+            #!/bin/sh
+            set -e
+            test "$1" = "-v"
+            /usr/bin/head -c 131072 /dev/zero
+            /usr/bin/head -c 131072 /dev/zero >&2
+            printf '%s' "$$" > '{marker}'
+            exec /usr/bin/sleep 30
+            """.ReplaceLineEndings("\n"), ct);
+        File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var archive = Path.Combine(root, "candidate.gz");
+        await using (var output = File.Create(archive))
+        await using (var gzip = new GZipStream(output, CompressionLevel.Fastest))
+        await using (var input = File.OpenRead(binary))
+            await input.CopyToAsync(gzip, ct);
+        using var source = new InstallationFileSource(File.OpenRead(archive), "candidate.gz", new FileInfo(archive).Length, null);
+        var progress = new ProbeInstallProgress();
+        var probe = new MihomoRuntimeProbe();
+        var installer = new MihomoRuntimeManager(paths, null!, null!, new BlockingOfficialVersionProbe(probe, executable), null!,
+            paths, new(), official);
+        const string version = "v1.19.34";
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var install = installer.InstallOfficialAsync(version, source, progress, cancel.Token);
+        var pid = await WaitForProbeAsync(install);
+        var observer = new MihomoRuntimeStatusReader(null!, official);
+        var observation = observer.GetObservedAsync(_ =>
+        {
+            if (Directory.Exists($"/proc/{pid}"))
+                throw new InvalidOperationException("Official status resumed before the original version process exited.");
+            return Task.FromResult(new ControllerResult<bool>(true, ""));
+        }, ct);
+        if (observation.IsCompleted || !Directory.Exists($"/proc/{pid}"))
+            throw new InvalidOperationException("The official install did not hold the original version gate during probing.");
+        await cancel.CancelAsync();
+        try { await install.WaitAsync(ct); throw new InvalidOperationException("The version probe swallowed caller cancellation."); }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested && !ct.IsCancellationRequested) { }
+        if ((await observation).Runtime.State != ProxyRuntimeState.Running
+            || await File.ReadAllTextAsync(official.PointerPath, ct) != pointer
+            || !File.Exists(official.InstallationOperationPath(progress.OperationId))
+            || Directory.Exists(official.VersionDirectory(version))
+            || Directory.EnumerateDirectories(paths.GetEngineVersionsDirectory(MihomoEngine.Id), ".staging-*").Any())
+            throw new InvalidOperationException("The cancelled original install changed the active version or retained staging.");
+
+        File.Delete(marker);
+        var timeout = probe.GetVersionAsync(executable, ct);
+        var timedOutPid = await WaitForProbeAsync(timeout);
+        if (await timeout is not null || Directory.Exists($"/proc/{timedOutPid}"))
+            throw new InvalidOperationException("The internal timeout returned before its original version process exited.");
+        Console.WriteLine($"PASS MIHOMO OFFICIAL VERSION PROBE DRAIN: original={progress.OperationId}; cancelled PID={pid}; timeout PID={timedOutPid}; both streams pumped and original gate retained");
+
+        async Task<int> WaitForProbeAsync(Task execution)
+        {
+            while (true)
+            {
+                if (File.Exists(marker) && int.TryParse(await File.ReadAllTextAsync(marker, ct), out var started))
+                    return started;
+                if (execution.IsCompleted)
+                {
+                    await execution;
+                    throw new InvalidOperationException("The version probe finished before reaching the fixture barrier.");
+                }
+                await Task.Delay(15, ct);
+            }
+        }
+    }
+
+    private sealed class ProbeInstallProgress : IInstallationProgress
+    {
+        public Guid OperationId { get; } = Guid.NewGuid();
+        public Task ReportAsync(InstallationProgress progress, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class BlockingOfficialVersionProbe(MihomoRuntimeProbe probe, string executable) : IMihomoRuntimeProbe
+    {
+        public async Task<string?> GetVersionAsync(string executablePath, CancellationToken cancellationToken)
+        {
+            if (await probe.GetVersionAsync(executablePath, cancellationToken) is not { } version
+                || !version.Contains("Mihomo", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The reviewed staged Mihomo binary did not report its version.");
+            return await probe.GetVersionAsync(executable, cancellationToken);
+        }
     }
 
     internal static async Task<int> RunAsync(MihomoRuntimeLifecycle lifecycle, MihomoPublishedRuntime original,
