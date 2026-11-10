@@ -136,6 +136,8 @@ Squid 配置、状态、账户读取、预览与原生校验由当前 Proxy 代�
 
 受管 TUN 的停用计划与禁用启动在原发布锁下使用独立的 Helper 回执读端口，验证原提交见证和当前配置及网络归属。该端口只构造宿主模式和 Helper 传输依赖。启用管理时和禁用启动时均由原 Helper 提供同一原发布的证据。[只读回执验收](server-module-evidence/Proxy-Safety.md#停用准入的独立-tun-回执读取)
 
+Mihomo 的原回执查询核对归属、配置及原生见证。安装清单查询单独获取宿主依赖报告，组件规划仍按原计划流程核验依赖。[查询成本实测](server-module-evidence/Proxy-Observation.md#原回执查询与安装环境探测)
+
 Proxy 原队列在具名 TUN 对账中只依赖回执读端口。确需继续同一启动时，原租约所属管理执行创建恢复作用域，沿用原队列门禁、发布锁和 Helper 原操作。读回持久终态后由原队列结案。[恢复作用域实测](server-module-evidence/Proxy-Safety.md#具名启动的原队列恢复作用域)
 
 首次受管 TUN 的执行器由 Proxy 排队作用域创建。管理派发和显式恢复在调用 Core 发布端口前取得相应租约。Core 发布端口保存同一冻结计划、台账和原 ID。[受管 TUN 管理执行作用域](server-module-evidence/Proxy-Safety.md#受管-tun-管理执行作用域)

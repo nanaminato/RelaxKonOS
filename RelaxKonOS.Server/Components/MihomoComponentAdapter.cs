@@ -9,7 +9,7 @@ namespace RelaxKonOS.Server.Components;
 /// </summary>
 public sealed class MihomoComponentAdapter(MihomoRuntimeService runtime, RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager native, RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport helper)
     : ArchiveComponentAdapter(RelaxKonOS.Protocol.ManagedRuntimes.ComponentIds.Mihomo,
-        runtime.QueryAsync, runtime.PlanAsync)
+        runtime.ObserveAsync, runtime.PlanAsync)
 {
     private readonly HostPackageComponentAdapter packages = new("mihomo", helper);
     public override IReadOnlyList<RelaxKonOS.Protocol.ManagedRuntimes.ComponentModeSupport> Modes => OperatingSystem.IsLinux()

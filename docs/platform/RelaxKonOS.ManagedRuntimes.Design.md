@@ -29,6 +29,8 @@
 
 2026-11-10（MB-04 / MR-03 具名启动对账）。原队列只在原 Helper 回执表明同一启动仍待恢复时创建恢复作用域。Helper 接续沿用原启动 ID、原发布 ID 与原授权，原队列负责清理和终态。已完成的原启动由只读回执结案。[验收证据](../architecture/server-module-evidence/Proxy-Safety.md#具名启动的原队列恢复作用域)
 
+2026-11-10（MB-04 / MR-03 查询成本）。Mihomo 的 `MihomoRuntimeQuery` 核对原回执及当前原生归属，安装 HTTP 使用 `MihomoRuntimeInventoryQuery` 额外生成安装环境报告。计划和执行仍由原领域流程核验依赖。[验收证据](../architecture/server-module-evidence/Proxy-Observation.md#原回执查询与安装环境探测)
+
 2026-11-10（MB-04 / MR-06 固定升级复验）。专属根中断原包应答及首次恢复查询后，Core 安装台账继续按原 ID 和原 Helper 回执结案。实测两次原查询和一次实际升级，同键返回原终态。整机掉电仍需独立环境。[现机原回执复验](../architecture/server-module-evidence/Proxy-Squid.md#固定升级的现机原回执复验)
 
 ## Windows 日常安装入口调整（2026-10-27，MR-03/04/05）

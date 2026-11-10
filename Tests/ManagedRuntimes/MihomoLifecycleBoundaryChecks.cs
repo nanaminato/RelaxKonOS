@@ -16,7 +16,8 @@ internal static class MihomoLifecycleBoundaryChecks
         void Protect(string path) => Directory.CreateDirectory(path);
         var states = new RuntimeArchiveStateStore(Path.Combine(root, "state"), Protect);
         var host = new Host();
-        var lifecycle = new MihomoRuntimeLifecycle(root, states, new(Path.Combine(root, "sources"), Protect), host, Protect);
+        var environment = new CountingEnvironment();
+        var lifecycle = new MihomoRuntimeLifecycle(root, states, new(Path.Combine(root, "sources"), Protect), host, Protect, environment);
         var created = 0;
         MihomoRuntimeLifecycle Create() { created++; return lifecycle; }
         var id = Guid.NewGuid();
@@ -46,8 +47,20 @@ internal static class MihomoLifecycleBoundaryChecks
             Check(created == 0 && !Directory.Exists(root), "Invalid requests never construct a lifecycle or touch runtime state");
             var result = await MihomoRuntimeOperations.ExecuteAsync(query, Create);
             var snapshot = JsonSerializer.Deserialize<RuntimeInstallationSnapshot>(Convert.FromBase64String(result.OutputBase64!))!;
-            Check(result.Success && snapshot.Installation.Ownership == RuntimeOwnership.Absent && created == 1,
-                "Valid query records a host-bound observed absent installation");
+            Check(result.Success && snapshot.Installation.Ownership == RuntimeOwnership.Absent && created == 1
+                && snapshot.Environment is null && environment.Probes == 0,
+                "Valid receipt query observes ownership without probing the installation environment");
+            var inventoryResult = await MihomoRuntimeOperations.ExecuteAsync(query with
+            {
+                Operation = PrivilegedOperationKind.MihomoRuntimeInventoryQuery
+            }, Create);
+            var inventory = JsonSerializer.Deserialize<RuntimeInstallationSnapshot>(Convert.FromBase64String(inventoryResult.OutputBase64!))!;
+            Check(inventoryResult.Success && inventory.Environment?.Observations.Count == 5 && environment.Probes == 3
+                && JsonSerializer.Serialize(inventory with { Environment = null }) == JsonSerializer.Serialize(snapshot),
+                "Inventory still probes disk, directory and IPv6 and preserves the same ownership snapshot");
+            Console.WriteLine($"PASS MIHOMO QUERY ENVIRONMENT SPLIT: receipt probes=0, inventory probes={environment.Probes}; "
+                + $"receipt bytes={Convert.FromBase64String(result.OutputBase64!).Length}, "
+                + $"inventory bytes={Convert.FromBase64String(inventoryResult.OutputBase64!).Length}");
             host.Unavailable = true;
             var unknownStates = new RuntimeArchiveStateStore(Path.Combine(root, "unknown", "state"), Protect);
             var unavailable = new MihomoRuntimeLifecycle(Path.Combine(root, "unknown"), unknownStates,
@@ -171,6 +184,17 @@ internal static class MihomoLifecycleBoundaryChecks
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
         return count;
+    }
+
+    private sealed class CountingEnvironment : IRuntimeDependencyEnvironment
+    {
+        private readonly HostDependencyEnvironment environment = new();
+        internal int Probes { get; private set; }
+        public string? Platform => environment.Platform;
+        public string? ServiceHost => environment.ServiceHost;
+        public long? FreeBytes(string path) { Probes++; return environment.FreeBytes(path); }
+        public bool? PrivateDirectory(string path) { Probes++; return environment.PrivateDirectory(path); }
+        public bool? KernelFeature(string identity) { Probes++; return environment.KernelFeature(identity); }
     }
 
     private sealed class Host : IMihomoArchiveHost

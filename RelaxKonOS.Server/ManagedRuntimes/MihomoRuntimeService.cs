@@ -14,9 +14,14 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
 {
     /// <summary>Public observation includes unresolved Server publication work, even after root commits.
     /// It never upgrades ownership from an encrypted file or reads controller credentials.</summary>
-    public async Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct)
+    public Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct) =>
+        ProjectAsync(CallAsync<RuntimeInstallationSnapshot>(new(PrivilegedOperationKind.MihomoRuntimeInventoryQuery), ct), ct);
+
+    internal Task<RuntimeInstallationSnapshot> ObserveAsync(CancellationToken ct) => ProjectAsync(QueryHelperAsync(ct), ct);
+
+    private async Task<RuntimeInstallationSnapshot> ProjectAsync(Task<RuntimeInstallationSnapshot> nativeObservation, CancellationToken ct)
     {
-        var observed = await QueryHelperAsync(ct);
+        var observed = await nativeObservation;
         try
         {
             var state = await store.ReadAsync(ct);

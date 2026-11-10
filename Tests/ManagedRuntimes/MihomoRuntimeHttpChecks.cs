@@ -184,10 +184,12 @@ internal static class MihomoRuntimeHttpChecks
                     "An unresolved Server publication blocks resource placement before the Helper is asked");
             client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
             fixture.Observation = new(fixture.Installation with { Ownership = RuntimeOwnership.Managed, StateRevision = 1, ActiveReleaseId = release.ReleaseId },
-                "1.19.30", Guid.NewGuid(), MihomoPublicationStore.Identity(material.Yaml), null, null, null);
+                "1.19.30", Guid.NewGuid(), MihomoPublicationStore.Identity(material.Yaml), null, null, null,
+                Environment: new([new(RuntimeDependencyKind.Platform, "linux/x64", RuntimeDependencyState.Satisfied)]));
             var pendingObservation = await client.GetFromJsonAsync<RuntimeInstallationSnapshot>(RuntimeRoutes.MihomoInstallation);
             Check(pendingObservation is { Installation.RecoveryRequired: true, MeasuredVersion: "1.19.30", PendingStage: null, ProblemCode: "runtime.publication_unconfirmed" }
-                && pendingObservation.PendingOperationId == pendingOperation && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeQuery,
+                && pendingObservation.PendingOperationId == pendingOperation && pendingObservation.Environment?.Observations.Count == 1
+                && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeInventoryQuery,
                 "Public observation reports unresolved Server work even after a healthy native commit");
             Check((await store.ReadAsync(default)).Pending?.OperationId == pendingOperation,
                 "Runtime observation never confirms or compensates a pending Server publication");
@@ -363,7 +365,8 @@ internal static class MihomoRuntimeHttpChecks
                     ProblemCode: PrivilegedProblemCode.Conflict));
             object value = request.Operation switch
             {
-                PrivilegedOperationKind.MihomoRuntimeQuery => Observation ?? new RuntimeInstallationSnapshot(Installation, null, null, null, null, null, "runtime.state_unknown"),
+                PrivilegedOperationKind.MihomoRuntimeQuery or PrivilegedOperationKind.MihomoRuntimeInventoryQuery =>
+                    Observation ?? new RuntimeInstallationSnapshot(Installation, null, null, null, null, null, "runtime.state_unknown"),
                 PrivilegedOperationKind.MihomoRuntimeRecoveryQuery => Recovery ?? new RuntimeRecoverySnapshot(false, null, null, null, false, null, null, null, null),
                 // The Host reports the unit it just stopped; the Server never infers a stop from a request.
                 PrivilegedOperationKind.MihomoRuntimeRecoveryStop => new RuntimeRecoverySnapshot(true,

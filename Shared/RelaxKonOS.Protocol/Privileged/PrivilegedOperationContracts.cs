@@ -43,6 +43,7 @@ public enum PrivilegedOperationKind
     SingBoxRuntimeRecoveryStop,
     /// <summary>Closes an unrecoverable transaction after the host proves nothing is running.</summary>
     SingBoxRuntimeRecoveryClose,
+    /// <summary>Reads Mihomo ownership and original operation evidence without probing installation prerequisites.</summary>
     MihomoRuntimeQuery,
     MihomoRuntimePlan,
     MihomoRuntimeExecute,
@@ -231,6 +232,8 @@ public enum PrivilegedOperationKind
     MihomoProbeHostStart,
     MihomoProbeHostComplete,
     MihomoProbeHostConfirmUndispatched,
+    /// <summary>Reads the Mihomo installation inventory with the current Host prerequisite report.</summary>
+    MihomoRuntimeInventoryQuery,
 }
 
 /// <summary>

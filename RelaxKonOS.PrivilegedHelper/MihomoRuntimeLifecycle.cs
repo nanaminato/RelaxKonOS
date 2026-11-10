@@ -23,7 +23,8 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             RuntimeSourceProtection.Store(), new LinuxMihomoArchiveHost(), RuntimeSourceProtection.Protect);
     }
 
-    internal async Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct, Guid? receiptOperationId = null)
+    internal async Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct, Guid? receiptOperationId = null,
+        bool includeEnvironment = false)
     {
         var state = await EnsureStateAsync(ct);
         var receipt = state.Receipts.FirstOrDefault(r => r.OperationId == receiptOperationId);
@@ -46,8 +47,7 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
                     action.Outcome == RuntimeSwitchOutcome.Succeeded ? null
                         : stop is null ? "runtime.network_start_unconfirmed" : "runtime.network_stop_unconfirmed"),
             state.Revisions.Select(r => new RuntimeInstalledRelease(r.RevisionId, r.Release.ReleaseId, r.MeasuredVersion)).ToArray(),
-            // Read-only environment facts, so a refusal can be explained before anyone presses install.
-            RuntimeDependencyProbe.Environment(environment, root), states.ReadCommittedWitness(state, receipt),
+            includeEnvironment ? RuntimeDependencyProbe.Environment(environment, root) : null, states.ReadCommittedWitness(state, receipt),
             verified && !HasPending(state) ? state.ActiveMihomoTun?.OperationId : null, observation.Item3, action);
     }
 

@@ -166,7 +166,7 @@ public sealed class MihomoRuntimeManager(
         if (managedRuntime is null)
             return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, null, null, false, false, ProxyProblemCodes.RuntimeNotInstalled);
         RuntimeInstallationSnapshot snapshot;
-        try { snapshot = await managedRuntime.QueryAsync(cancellationToken); }
+        try { snapshot = await managedRuntime.ObserveAsync(cancellationToken); }
         catch (Exception ex) when (ex is RuntimeLifecycleException or RuntimePolicyException or IOException or HttpRequestException
             or OperationCanceledException or System.Text.Json.JsonException)
         {

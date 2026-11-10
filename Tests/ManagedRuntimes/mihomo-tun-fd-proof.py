@@ -3706,6 +3706,12 @@ exec {shlex.quote(str(systemctl))} "$@"
                         historical = read(started)
                         assert historical['state'] == 'succeeded' and historical['completedAt']
                         assert submit('enable', key, body) == started and read(started) == historical
+                        assert unverified.get('environment') is None
+                        status, inventory = request('/api/v1.0/managed-runtimes/mihomo/installation', token)
+                        assert status == 200 and len(inventory['environment']['observations']) == 5, (status, inventory)
+                        assert inventory['configurationIdentity'] == confirmed['configurationIdentity']
+                        assert not inventory.get('mihomoTunPublicationId')
+                        assert ipc.log.read_text().count('operation=MihomoRuntimeInventoryQuery ') == 1
                         settled_queue = queue.read_bytes()
                         assert settled_queue != pending_queue
                         proxy, blocked = preview_proxy_disable()
