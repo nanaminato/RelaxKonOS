@@ -8,7 +8,7 @@ namespace RelaxKonOS.Server.Components;
 /// its installation/removal/configuration coordinators, which own publication and credentials.
 /// </summary>
 public sealed class MihomoComponentAdapter(MihomoRuntimePublicationReader runtime,
-    RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager native, RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport helper,
+    RelaxKonOS.Server.Proxy.IProxyRuntimeManager statusReader, RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport helper,
     Func<string?, RuntimePlanRequest, CancellationToken, Task<RuntimePlanResult>> planArchive)
     : ArchiveComponentAdapter(RelaxKonOS.Protocol.ManagedRuntimes.ComponentIds.Mihomo, runtime.ObserveAsync, planArchive)
 {
@@ -42,7 +42,7 @@ public sealed class MihomoComponentAdapter(MihomoRuntimePublicationReader runtim
             return await packages.StateAsync(ct);
         }
         if (!OperatingSystem.IsWindows()) return await base.StateAsync(ct);
-        var status = await native.GetAsync("mihomo", ct);
+        var status = await statusReader.GetAsync("mihomo", ct);
         var ownership = status.IntegrityVerified ? RelaxKonOS.Protocol.ManagedRuntimes.RuntimeOwnership.Managed
             : status.State == RelaxKonOS.Protocol.Proxy.ProxyRuntimeState.NotInstalled ? RelaxKonOS.Protocol.ManagedRuntimes.RuntimeOwnership.Absent
             : RelaxKonOS.Protocol.ManagedRuntimes.RuntimeOwnership.Unknown;
@@ -59,7 +59,7 @@ public sealed class MihomoComponentAdapter(MihomoRuntimePublicationReader runtim
     /// </summary>
     private async Task<RelaxKonOS.Protocol.ManagedRuntimes.ComponentStateView?> OfficialInstallationAsync(CancellationToken ct)
     {
-        var status = await native.GetAsync(ComponentId, ct);
+        var status = await statusReader.GetAsync(ComponentId, ct);
         if (status.Mode != RelaxKonOS.Protocol.Proxy.ProxyRuntimeMode.Managed || !status.IntegrityVerified
             || string.IsNullOrEmpty(status.Version)) return null;
         return new(ComponentId, new(ComponentId, Environment.MachineName,

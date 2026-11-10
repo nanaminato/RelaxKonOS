@@ -110,7 +110,7 @@ internal static class HostServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter>(services =>
             new RelaxKonOS.Server.Components.MihomoComponentAdapter(
                 services.GetRequiredService<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimePublicationReader>(),
-                services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>(),
+                services.GetRequiredService<RelaxKonOS.Server.Proxy.IProxyRuntimeManager>(),
                 services.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(),
                 (source, request, ct) => services.GetRequiredService<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>().PlanAsync(source, request, ct)));
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.TailscaleComponentAdapter>();

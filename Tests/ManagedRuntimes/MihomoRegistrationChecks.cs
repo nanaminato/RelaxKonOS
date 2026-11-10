@@ -124,6 +124,7 @@ internal static class MihomoRegistrationChecks
         builder.Services.AddTransient<MihomoInstallationBootstrapService>(_ => throw new Exception("The idle ledger constructed the installation bootstrap."));
         builder.Services.AddTransient<MihomoInstallationPublicationService>(_ => throw new Exception("The idle ledger constructed an installation publisher."));
         builder.Services.AddTransient<MihomoRemovalPublicationService>(_ => throw new Exception("The idle ledger constructed a removal publisher."));
+        builder.Services.AddSingleton<MihomoRuntimeManager>(_ => throw new Exception("Status resolved the official archive installer."));
         var paths = new ProbePaths(temporary.Path);
         builder.Services.AddSingleton<IProxyPlatformPaths>(paths);
         var handlers = System.Threading.Channels.Channel.CreateUnbounded<ControllerProbeHandler>();
@@ -156,9 +157,8 @@ internal static class MihomoRegistrationChecks
                     "Each completed TUN observation disposes its own controller scope");
             }
             var manager = tunServices.GetRequiredService<IProxyRuntimeManager>();
-            Check(manager is MihomoRuntimeManager
-                && tunServices.GetRequiredService<RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService>() is not null && handlerCount == 2,
-                "Core runtime and installation authority resolve without constructing a controller or publication executor.");
+            Check(ReferenceEquals(manager, tunServices.GetRequiredService<MihomoRuntimeStatusReader>()) && handlerCount == 2,
+                "Core status and the Proxy sampler share a reader without constructing the installer or controller.");
             await using (var first = tunServices.CreateAsyncScope())
             await using (var second = tunServices.CreateAsyncScope())
             {
@@ -182,7 +182,7 @@ internal static class MihomoRegistrationChecks
             Check((await status.WaitAsync(TimeSpan.FromSeconds(5))).State == ProxyRuntimeState.Running && statusHandler.Disposed,
                 "A listening controller still counts as running on HTTP 401, and its scope is released.");
             var unauthorized = ControllerResult<bool>.Failure(ProxyProblemCodes.ControllerAuthenticationFailed);
-            var runtimeFromObservation = await ((MihomoRuntimeManager)manager).GetObservedAsync(_ => Task.FromResult(unauthorized), default);
+            var runtimeFromObservation = await ((MihomoRuntimeStatusReader)manager).GetObservedAsync(_ => Task.FromResult(unauthorized), default);
             var recoveryHealth = await MihomoEngine.ProjectHealthAsync(null!, unauthorized, new(true, true, null), default);
             Check(runtimeFromObservation.Runtime.State == ProxyRuntimeState.Running && runtimeFromObservation.Controller == unauthorized && handlerCount == 3
                 && recoveryHealth is { ControllerReachable: false, State: ProxyHealthState.RecoveryRequired, TunState: ProxyTunState.Recovering },

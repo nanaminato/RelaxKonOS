@@ -389,7 +389,7 @@ internal static async Task VerifyProxyDiagnosticLogsAsync(string root)
 }
 
 // The fixed-manifest Mihomo installer was deleted when the MR-03 ledger took over installing
-// Mihomo (MihomoRuntimeManager now only observes, detects and validates). Redirect refusal,
+// Mihomo (Mihomo runtime status stays read-only). Redirect refusal,
 // archive traversal and controller readiness are covered on the ledger path, so those old
 // fixed-manifest assertions were removed rather than kept as permanently failing stubs.
 internal static async Task VerifyLinuxMihomoRuntimeLinkActivationAsync(string root)

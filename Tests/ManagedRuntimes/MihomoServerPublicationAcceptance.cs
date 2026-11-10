@@ -53,7 +53,7 @@ internal static class MihomoServerPublicationAcceptance
             int pid;
             while (!int.TryParse(await File.ReadAllTextAsync(configuration, ct), out pid))
                 await Task.Delay(15, ct);
-            var manager = new MihomoRuntimeManager(paths, null!, null!, null!, null!, paths, new(), new(), official);
+            var manager = new MihomoRuntimeStatusReader(null!, official);
             var observation = manager.GetObservedAsync(_ => Task.FromResult(new ControllerResult<bool>(true, "")), ct);
             if (observation.IsCompleted || official.Gate.CurrentCount != 0 || !Directory.Exists($"/proc/{pid}"))
                 throw new InvalidOperationException("Runtime observation escaped the original validation gate.");
@@ -225,8 +225,8 @@ internal static class MihomoServerPublicationAcceptance
             await File.WriteAllTextAsync(controllerSecret, protection.CreateProtector("RelaxKonOS.Proxy.ControllerSecret.v1").Protect(original.ControllerSecret));
             await using (var controllers = controllerServices.Services.BuildServiceProvider())
             {
-                var manager = new MihomoRuntimeManager(paths, null!, null!, null!, controllers.GetRequiredService<IServiceScopeFactory>(),
-                    paths, controllers.GetRequiredService<MihomoControllerOptions>(), new(), new(paths), managedRuntime: new(store, transport, paths));
+                var manager = new MihomoRuntimeStatusReader(controllers.GetRequiredService<IServiceScopeFactory>(),
+                    new(paths), new(store, transport, paths));
                 var beforeStatus = await lifecycle.QueryAsync(default);
                 var firstStatus = await manager.GetAsync(MihomoEngine.Id, default);
                 var nextStatus = await manager.GetAsync(MihomoEngine.Id, default);
