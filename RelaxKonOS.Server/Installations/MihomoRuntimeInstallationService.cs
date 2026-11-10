@@ -9,7 +9,7 @@ namespace RelaxKonOS.Server.Installations;
 /// <summary>One installation ledger entry: Linux uses publication-aware signed plans;
 /// Windows uses the selected official version or user-supplied archive and its independent service host.</summary>
 public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore store, MihomoRuntimeService runtime,
-    IServiceScopeFactory scopes, MihomoRuntimeManager native, InstallationFileReferenceStore files,
+    IServiceScopeFactory scopes, MihomoOfficialRuntimeState official, InstallationFileReferenceStore files,
     RelaxKonOS.Server.Components.ComponentLifecycleRegistry? components = null,
     RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport? helper = null) : InstallationService<MihomoInstallationRequest>
 {
@@ -79,7 +79,9 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
             try
             {
                 using var source = request.FileReferenceId is { } reference ? files.Open(Id, actor, reference) : null;
-                var result = await native.InstallOfficialAsync(version, source, progress, cancellation.Token);
+                await using var scope = scopes.CreateAsyncScope();
+                var installer = scope.ServiceProvider.GetRequiredService<MihomoRuntimeManager>();
+                var result = await installer.InstallOfficialAsync(version, source, progress, cancellation.Token);
                 Check(result.IntegrityVerified && string.IsNullOrEmpty(result.ProblemCode), result.ProblemCode);
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -141,7 +143,7 @@ public sealed class MihomoRuntimeInstallationService(MihomoPublicationStore stor
             if (packages.ComponentPackage is { } facts && (facts.CommittedOperationId == operation.OperationId || facts.PendingOperationId == operation.OperationId || facts.RecoveryReceipt?.OperationId == operation.OperationId))
                 return await ComponentPackageInstallations.RecoverAsync(ComponentIds.Mihomo, operation.OperationId, helper, ct, operation.Kind);
         }
-        return native is not null && native.OwnsInstallationOperation(operation.OperationId)
+        return File.Exists(official.InstallationOperationPath(operation.OperationId))
             ? new(InstallationOperationState.Interrupted, InstallationProblemCodes.Interrupted)
             : await RecoverCoreAsync(operation.OperationId, operation.Kind, ct);
     }

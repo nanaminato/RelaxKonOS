@@ -70,7 +70,7 @@ internal static class MihomoServerInstallationAcceptance
                 .AddTransient(_ => new MihomoRemovalPublicationService(store, restarted.Runtime, paths, MihomoRemovalHostFixture.Files(paths)))
                 .BuildServiceProvider();
             var domain = new MihomoRuntimeInstallationService(store, restarted.Runtime,
-                ledgerServices.GetRequiredService<IServiceScopeFactory>(), null!, null!);
+                ledgerServices.GetRequiredService<IServiceScopeFactory>(), new(paths), null!);
             var coordinator = new InstallationCoordinator(ledger, [domain], lifetime);
             await coordinator.StartAsync(default);
             Check(coordinator.Get(operationId)!.Operation.State == InstallationOperationState.Succeeded,

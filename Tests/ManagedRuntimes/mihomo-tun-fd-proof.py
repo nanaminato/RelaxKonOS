@@ -3947,6 +3947,9 @@ exec {shlex.quote(str(systemctl))} "$@"
                 validation = command('/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-native-validator', str(executable))
                 assert 'PASS MIHOMO SCOPED NATIVE VALIDATOR:' in validation
                 print(validation, flush=True)
+                registration = command('/usr/bin/dotnet', sys.argv[3], 'mihomo-registration-only')
+                assert 'PASS MIHOMO OFFICIAL INSTALL SCOPE:' in registration
+                print(registration, flush=True)
                 assert read(started) == finished and (queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()) == saved
                 verify_native('scoped-validator-cancelled', confirmed=True)
             if geo_drain:

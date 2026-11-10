@@ -39,7 +39,7 @@ internal static class ProxyRuntimeRegistration
         builder.Services.AddSingleton<RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.IMihomoRuntimeProbe, RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeProbe>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoOfficialRuntimeState>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>();
+        builder.Services.AddScoped<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeStatusReader>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyRuntimeManager>(services =>
             services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeStatusReader>());

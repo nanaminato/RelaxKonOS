@@ -3,7 +3,7 @@ using RelaxKonOS.Protocol.Proxy;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
-/// <summary>The shared official-archive pointer and its single serialization gate.</summary>
+/// <summary>Paths for original official-archive operations and the shared version pointer and gate.</summary>
 public sealed class MihomoOfficialRuntimeState(IProxyPlatformPaths paths)
 {
     internal SemaphoreSlim Gate { get; } = new(1, 1);
@@ -14,6 +14,9 @@ public sealed class MihomoOfficialRuntimeState(IProxyPlatformPaths paths)
         try { await using var input = File.OpenRead(path); return await JsonSerializer.DeserializeAsync<RuntimeState>(input, cancellationToken: cancellationToken); }
         catch (JsonException) { return null; }
     }
+
+    internal string InstallationOperationPath(Guid operationId) =>
+        Path.Combine(paths.GetStateDirectory(), "mihomo-installs", operationId.ToString("N") + ".json");
 
     internal string PointerPath => Path.Combine(paths.GetStateDirectory(), "mihomo-runtime.json");
     internal string VersionDirectory(string version) => Path.Combine(paths.GetEngineVersionsDirectory(MihomoEngine.Id), ReleaseDirectoryId(version));

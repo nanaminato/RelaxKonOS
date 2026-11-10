@@ -3,6 +3,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Server.Installations;
+using System.Text.Json;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.HostMode;
@@ -124,7 +127,7 @@ internal static class MihomoRegistrationChecks
         builder.Services.AddTransient<MihomoInstallationBootstrapService>(_ => throw new Exception("The idle ledger constructed the installation bootstrap."));
         builder.Services.AddTransient<MihomoInstallationPublicationService>(_ => throw new Exception("The idle ledger constructed an installation publisher."));
         builder.Services.AddTransient<MihomoRemovalPublicationService>(_ => throw new Exception("The idle ledger constructed a removal publisher."));
-        builder.Services.AddSingleton<MihomoRuntimeManager>(_ => throw new Exception("Status resolved the official archive installer."));
+        builder.Services.AddScoped<MihomoRuntimeManager>(_ => throw new Exception("Status resolved the official archive installer."));
         var paths = new ProbePaths(temporary.Path);
         builder.Services.AddSingleton<IProxyPlatformPaths>(paths);
         var handlers = System.Threading.Channels.Channel.CreateUnbounded<ControllerProbeHandler>();
@@ -201,8 +204,118 @@ internal static class MihomoRegistrationChecks
         using var guard = ActivatorUtilities.CreateInstance<SystemProxyGuardHostedService>(guardServices);
         Check(guardServices.GetRequiredService<IProxySystemProxyReconciler>() is MihomoSystemProxyReconciler,
             "Production guard constructs without the settings writer, TUN controller or direct controller client");
+        await CheckOfficialInstallScopeAsync(builder, Check);
         return count;
     }
+
+    private static async Task CheckOfficialInstallScopeAsync(WebApplicationBuilder builder, Action<bool, string> check)
+    {
+        var cleanup = new InstallScopeCleanup();
+        var helper = new OriginalInstallQuery();
+        var dispatches = 0;
+        builder.Services.AddSingleton<IPrivilegedOperationTransport>(helper);
+        builder.Services.AddScoped(_ => cleanup);
+        builder.Services.AddScoped(provider =>
+        {
+            Interlocked.Increment(ref dispatches);
+            _ = provider.GetRequiredService<InstallScopeCleanup>();
+            return ActivatorUtilities.CreateInstance<MihomoRuntimeManager>(provider);
+        });
+        await using var services = builder.Services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        using var lifetime = new ManagedRuntimeLedgerFixture.Lifetime();
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var ct = budget.Token;
+        var domain = services.GetRequiredService<MihomoRuntimeInstallationService>();
+        var official = services.GetRequiredService<MihomoOfficialRuntimeState>();
+        var store = services.GetRequiredService<InstallationOperationStore>();
+        var files = services.GetRequiredService<InstallationFileReferenceStore>();
+        const string actor = "official-install-scope";
+        const string version = "v1.19.31";
+        var source = Path.Combine(builder.Environment.ContentRootPath, "official-install.fixture");
+        await File.WriteAllTextAsync(source, "the fixture cancels before copying", ct);
+        var file = files.RegisterStaged(domain.Id, actor, source, "fixture", () => File.Delete(source));
+        var request = new MihomoInstallationRequest(true, Version: version, FileReferenceId: file.Id);
+        var options = JsonSerializer.SerializeToElement(request, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var entry = store.Create(domain.Id, InstallationOperationKind.Install, actor, actor,
+            InstallationOperationStore.Reference(JsonSerializer.Serialize(request)), domain.Resources, out _);
+        var operation = store.Update(entry.Operation.OperationId, value => value with
+        {
+            State = InstallationOperationState.Running,
+            Stage = InstallationStage.Copying,
+            StartedAt = DateTimeOffset.UtcNow
+        }, "started");
+        var marker = official.InstallationOperationPath(operation.OperationId);
+        var progress = new InstallCopyPause(operation.OperationId);
+        check(dispatches == 0, "The root installation ledger resolves without an official archive installer.");
+        using var interruption = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var running = domain.StartAsync(operation.Kind, request, actor, progress, interruption.Token);
+        byte[] original;
+        try
+        {
+            await progress.Entered.Task.WaitAsync(ct);
+            original = await File.ReadAllBytesAsync(marker, ct);
+            await domain.RequestCancelAsync(operation, ct);
+            await cleanup.Entered.Task.WaitAsync(ct);
+            check(dispatches == 1 && !running.IsCompleted && File.Exists(source),
+                "The dispatched install retains its operation and source through asynchronous scope cleanup.");
+        }
+        finally
+        {
+            interruption.Cancel();
+            cleanup.Release.TrySetResult();
+        }
+        try { await running.WaitAsync(ct); throw new Exception("Expected cancellation during archive preparation."); }
+        catch (InstallationCancelledException) { }
+
+        var coordinator = new InstallationCoordinator(store, [domain], lifetime);
+        await coordinator.StartAsync(ct);
+        var replay = coordinator.Start(domain.Id, operation.Kind, options, actor, actor);
+        var recoveredMarker = await File.ReadAllBytesAsync(marker, ct);
+        check(replay.OperationId == operation.OperationId && replay.State == InstallationOperationState.Interrupted
+            && coordinator.Get(operation.OperationId)?.Operation == replay && dispatches == 1
+            && (!OperatingSystem.IsLinux() || helper.OriginalQueries.SequenceEqual([operation.OperationId]))
+            && original.SequenceEqual(recoveredMarker)
+            && !File.Exists(source) && !Directory.Exists(official.VersionDirectory(version)),
+            "The original install marker and same key recover without resolving a second installer or activating a release.");
+        Console.WriteLine($"PASS MIHOMO OFFICIAL INSTALL SCOPE: original={operation.OperationId}; one installer scope; interrupted and recovered without redispatch");
+    }
+
+    private sealed class InstallCopyPause(Guid operationId) : IInstallationProgress
+    {
+        internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Guid OperationId => operationId;
+
+        public async Task ReportAsync(InstallationProgress progress, CancellationToken cancellationToken = default)
+        {
+            if (progress.Stage != InstallationStage.Copying) return;
+            Entered.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+    }
+
+    private sealed class InstallScopeCleanup : IAsyncDisposable
+    {
+        internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async ValueTask DisposeAsync()
+        {
+            Entered.TrySetResult();
+            await Release.Task;
+        }
+    }
+
+    private sealed class OriginalInstallQuery : IPrivilegedOperationTransport
+    {
+        internal readonly List<Guid> OriginalQueries = [];
+        public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
+        {
+            if (request is not { Operation: PrivilegedOperationKind.ComponentPackageQuery, OperationId: Guid id })
+                throw new InvalidOperationException("The original installation lookup attempted a different Helper operation.");
+            OriginalQueries.Add(id);
+            return Task.FromResult(new PrivilegedOperationResult(false));
+        }
+    }
+
     private sealed class ProbePaths(string root) : IProxyPlatformPaths
     {
         public string GetStateDirectory() => root;

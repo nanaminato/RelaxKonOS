@@ -26,7 +26,6 @@ public sealed class MihomoRuntimeManager(
     IServiceScopeFactory scopes,
     IProxyControllerSecretStore controllerSecrets,
     MihomoControllerOptions controllerOptions,
-    MihomoRuntimeManifest manifest,
     MihomoOfficialRuntimeState official,
     IProxyDiagnosticLogStore? diagnostics = null,
     MihomoPublicationStore? publication = null)
@@ -34,9 +33,6 @@ public sealed class MihomoRuntimeManager(
     private const string ServiceName = "relaxkonos-mihomo";
     private const string ServiceConfigurationId = "mihomo-default";
     private const int BootstrapMixedPort = 7890;
-
-    internal bool OwnsInstallationOperation(Guid operationId) => File.Exists(NativeOperationPath(operationId));
-    private string NativeOperationPath(Guid operationId) => Path.Combine(paths.GetStateDirectory(), "mihomo-installs", operationId.ToString("N") + ".json");
 
     public async Task<ProxyRuntimeDto> InstallOfficialAsync(string version, InstallationFileSource? source,
         IInstallationProgress progress, CancellationToken ct)
@@ -51,7 +47,7 @@ public sealed class MihomoRuntimeManager(
         try
         {
             if (await DirectReloadPendingAsync(ct)) return Failure(null, ProxyProblemCodes.RecoveryRequired);
-            var operationPath = NativeOperationPath(progress.OperationId);
+            var operationPath = official.InstallationOperationPath(progress.OperationId);
             Directory.CreateDirectory(Path.GetDirectoryName(operationPath)!);
             await File.WriteAllTextAsync(operationPath, JsonSerializer.Serialize(new { progress.OperationId, Version = version }), ct);
             var before = await official.ReadAsync(ct);

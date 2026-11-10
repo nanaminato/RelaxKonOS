@@ -37,6 +37,8 @@
 
 2026-11-10（MB-04 / MR-03 官方归档状态）。官方归档安装和状态读取由独立执行器承担，共用原 Core 指针和锁。安装台账保留原派发与恢复责任。[实机证据](../architecture/server-module-evidence/Proxy-Observation.md#官方归档安装与运行时状态读取)
 
+2026-11-10（MB-04 / MR-03 官方归档派发）。原安装台账仅在归档实际派发时创建执行作用域，并等待异步清理。恢复沿用原安装 ID 的标记及原同键台账。[验收证据](../architecture/server-module-evidence/Proxy-Observation.md#官方归档派发与原安装台账)
+
 2026-11-10（MB-04 / MR-03 只读 HTTP）。安装详情、恢复状态和 GEO 资源读取沿用原清单、恢复裁决和发布锁。认证重启实测三项原生查询分别执行一次，原队列、原生台账和配置保持。[实机证据](../architecture/server-module-evidence/Proxy-Observation.md#安装详情恢复状态和-geo-资源的只读入口)
 
 2026-11-10（MB-04 / MR-03 GEO 放置）。已派发的资源放置沿用 Core 发布锁等待原 Helper 应答，丢失应答后按原活动修订只读核对。[实机证据](../architecture/server-module-evidence/Proxy-Observation.md#活动-tun-的-geo-资源放置与应答丢失)
