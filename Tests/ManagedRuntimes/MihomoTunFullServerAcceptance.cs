@@ -264,7 +264,8 @@ internal static class MihomoTunFullServerAcceptance
             start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
             start.Environment["RELAXKONOS_TEST_SQUID_CLEANUP"] = start.WorkingDirectory;
         }
-        if (File.Exists(Path.Combine(root, "full-named-recovery-cleanup-proof")))
+        var namedRecoveryCleanup = File.Exists(Path.Combine(root, "full-named-recovery-cleanup-proof"));
+        if (namedRecoveryCleanup)
         {
             start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
             start.Environment["RELAXKONOS_TEST_NAMED_RECOVERY_CLEANUP"] = start.WorkingDirectory;
@@ -440,6 +441,7 @@ internal static class MihomoTunFullServerAcceptance
             }
             await exited;
             if ((recoveryWriteFault || overviewCleanup || squidCleanup || controllerCleanup || versionWorkerFault
+                || namedRecoveryCleanup && File.Exists(Path.Combine(start.WorkingDirectory, "full-named-recovery-cleanup-fail"))
                 || phase is ("zero-dns-publish" or "named-start-cut" or "cleanup-cut" or "cleanup-fault"))
                 && server.ExitCode == 137) return;
             if (disabled && server.ExitCode != 0 && startupRefusal.Task.IsCompletedSuccessfully)

@@ -2254,6 +2254,7 @@ def proof_full_http_shutdown(ipc, case):
     helper_profile = case == 'ipc-http-named-start-helper-profile'
     tun_status_scope = case == 'ipc-http-named-start-dns-settled' and Path(sys.argv[3]).with_name('tun-status-scope.fixture').is_file()
     named_scope = case == 'ipc-http-named-start-dns-settled' and Path(sys.argv[3]).with_name('tun-named-recovery-scope.fixture').is_file()
+    named_scope_fault = named_scope and Path(sys.argv[3]).with_name('tun-named-recovery-scope-fault.fixture').is_file()
     named_dns_settled = named_recovery_cut or named_admission or named_baseline or helper_profile or case == 'ipc-http-named-start-dns-settled'
     named_dns = named_dns_settled or case == 'ipc-http-named-start-dns'
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
@@ -3641,7 +3642,7 @@ exec {shlex.quote(str(systemctl))} "$@"
             (root / 'full-tun-status-response-proof').touch()
         if named_scope:
             (root / 'full-named-recovery-cleanup-proof').touch()
-        worker = launch('zero-dns-recover' if named_recovery_cut else 'admission-managed' if named_admission else 'restart')
+        worker = launch('zero-dns-recover' if named_recovery_cut else 'admission-managed' if named_admission or named_scope_fault else 'restart')
         restart_pid = int(marker('full-server-pid'))
         token = login()
         until(lambda: not sender.exists(), 'original DNS sender exit')
@@ -3695,7 +3696,11 @@ exec {shlex.quote(str(systemctl))} "$@"
                 Path(f'{prefix}-arm').touch()
                 before_cleanup = queue.read_bytes()
                 responses = []
-                reader = threading.Thread(target=lambda: responses.append(read(started)))
+                operation_path = f'{api}/operations/{uuid.UUID(started)}'
+                healthy, _ = preview_proxy_disable()
+                if named_scope_fault:
+                    assert healthy['configurationWritable']
+                reader = threading.Thread(target=lambda: responses.append(request(operation_path, token)))
                 reader.start()
                 try:
                     held = Path(f'{prefix}-held')
@@ -3703,14 +3708,53 @@ exec {shlex.quote(str(systemctl))} "$@"
                     assert reader.is_alive() and leases() >= 2 and queue.read_bytes() == before_cleanup
                     assert ipc.log.read_text().count('operation=MihomoRuntimeRecover ') == 1
                     verify_native('named-recovery-cleanup-held', confirmed=True)
+                    if named_scope_fault:
+                        Path(f'{prefix}-fail').touch()
                 finally:
                     Path(f'{prefix}-release').touch()
                     reader.join(timeout=8)
                 assert not reader.is_alive() and len(responses) == 1, responses
-                assert Path(f'{prefix}-complete').read_text() == 'disposed'
-                finished = responses[0]
-                assert finished['state'] == 'succeeded'
-                print(f'PASS TUN NAMED RECOVERY SCOPE: {started}; two leases through cleanup, one recovery and original receipt')
+                status, response = responses[0]
+                if named_scope_fault:
+                    assert status == 503 and response['problemCode'] == 'module-recovery-blocked', responses
+                    assert not Path(f'{prefix}-complete').exists()
+                    proxy, blocked = preview_proxy_disable()
+                    assert proxy['processGeneration'] == healthy['processGeneration']
+                    assert proxy['residency']['state'] == 'faulted' and proxy['residency']['activeLeases'] == 0
+                    assert proxy['residency']['blockedBy'] == 'module-recovery-blocked'
+                    assert any(item['problemCode'] == 'module-recovery-blocked' for item in blocked['blockedBy'])
+                    status, rejection = request(f'/api/v1.0/server/module-plans/{blocked["planId"]}/apply',
+                                                token, key='named-recovery-cleanup-fault-apply')
+                    assert status == 409 and rejection['problemCode'] == 'module-recovery-blocked', (status, rejection)
+                    assert request(operation_path, token)[0] == 503
+                    assert request(api + '/tun/enable', token, key, body)[0] == 503
+                    status, rejection = request(api + '/tun/enable', token, 'named-recovery-cleanup-fault-new', body)
+                    assert status == 400 and rejection['problemCode'] == 'proxy.operation_interrupted', (status, rejection)
+                    saved_native = native.read_bytes()
+                    assert queue.read_bytes() == before_cleanup
+                    verify_native('named-recovery-cleanup-fault', confirmed=True)
+                    os.kill(restart_pid, signal.SIGKILL)
+                    assert worker.wait(timeout=8) == 0
+                    (root / 'full-named-recovery-cleanup-proof').unlink()
+                    worker = launch('admission-disabled')
+                    assert worker.wait(timeout=15) == 0
+                    assert str(uuid.UUID(started)) in (root / 'full-startup-refused').read_text()
+                    assert queue.read_bytes() == before_cleanup and native.read_bytes() == saved_native
+                    verify_native('named-recovery-cleanup-disabled-refused', confirmed=True)
+                    worker = launch('restart')
+                    restart_pid = int(marker('full-server-pid'))
+                    token = login()
+                    query = f'operation=MihomoRuntimeQuery id={uuid.UUID(started)} '
+                    queries_before = ipc.log.read_text().count(query)
+                    finished = read(started)
+                    assert finished['state'] == 'succeeded' and queue.read_bytes() != before_cleanup
+                    assert native.read_bytes() == saved_native and ipc.log.read_text().count(query) == queries_before + 1
+                    print(f'PASS TUN NAMED RECOVERY CLEANUP FAULT: {started}; same generation isolated, one recovery and original receipt')
+                else:
+                    assert status == 200 and response['state'] == 'succeeded', responses
+                    assert Path(f'{prefix}-complete').read_text() == 'disposed'
+                    finished = response
+                    print(f'PASS TUN NAMED RECOVERY SCOPE: {started}; two leases through cleanup, one recovery and original receipt')
             else:
                 finished = until(lambda: (reply if (reply := read(started))['state'] == 'succeeded' else None),
                                  'original named start terminal receipt')

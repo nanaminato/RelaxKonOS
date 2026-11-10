@@ -582,6 +582,20 @@ Windows Release 注册 26 项、发布事务 113 项、运行时 HTTP 57 项、�
 
 **未实现或仍受门禁保护。** 原回执归属不明时保留原门禁。整模块安全交接继续开放，Proxy 保持 resident。
 
+### 具名启动恢复作用域的清理故障
+
+**已实现且已验证。** 2026-11-10 在既有 Linux 私有 systemd 中，原具名启动 `caa1bcf5-4f92-46fe-babb-063c03f2d817` 在启用重启后按原发布 `9f3f9638-4417-4330-a658-279d399fbdef` 完成 Helper 恢复。夹具在异步清理处暂停，实测响应和恢复两项工作租约、原队列字节保持及原生已提交。随后使清理抛错，查询返回 `503 / module-recovery-blocked`，原代次进入 Faulted，队列仍待核验。
+
+故障代次拒绝按 ID 和同键查询及新键执行，停用预览和实际计划应用均保留恢复门禁。强制退出 Server 后，禁用启动按原 ID 拒绝。启用重启时，仅按该 ID 读取一次原回执即可完成队列终态。同键仍返回原 ID。全程原恢复只派发一次，Helper 原生台账逐字节保持。
+
+隔离、拒绝启动及原回执结案期间，Mihomo PID `951`、专用路由表 `1178371829`、管理选路、原配置、原检查点、真实 HTTP 和分流 DNS 均通过。专属进程与 cgroup 清理完成，共享运行时服务、代理及 resolver 指纹一致。
+
+首轮夹具使用只读模块配置，停用计划应用先返回 `module-configuration-read-only`。改用专属可写配置后，实测应用返回 `409 / module-recovery-blocked`。首轮日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-named-cleanup-fault.log` 的 SHA-256 为 `bce9326c1b38024ada04b833508df44558f5f4ddb54e2283e2dc76e5fead57c1`。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-named-cleanup-fault-final.log` 的 SHA-256 为 `72780786048fcc58282d5575f2364c0709ed19cd4329e8941c4b4fea22cd6acb`，归档为 `92e9090391c81908117f509d35683ff1b74bc7f091379a3eff32372590bbd2ac`。Linux 夹具 Release 构建、同版 Windows Release Proxy Core、TUN 边界和模块里程碑回归通过。
+
+**已实现但实机未验证。** 本轮核对了故障隔离、队列持久化和实际进程退出。对象释放、ALC 回收、隔离内存差值和生产收益分别待测。
+
+**未实现或仍受门禁保护。** 归属证据不足时继续保留原门禁。整模块安全交接仍待验收，Proxy 保持 resident。
+
 ### 具名启动恢复应答再次中断
 
 **已实现且已验证。** Linux x64 私有 systemd 使用完整认证 Server、独立 Helper 和真实 resolver。原发布 `b729ad145c3748c6bdcfe318d79f336f` 经具名停止 `cfd6f89c0ce74da1bd3694748e72e12b` 后，以 `40a36bc710a344f3bab462dd59be1b1f` 再启动。三项 DNS 发送端全部确认后中断，重启后按原 ID 的 HTTP 查询触发一次限定范围的恢复。Helper 保存原启动终态及 `DnsApplied`，中继截留真实 AF_UNIX 成功应答。
