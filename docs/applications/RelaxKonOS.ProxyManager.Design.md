@@ -4657,6 +4657,8 @@ TUN 恢复状态将 Helper 的当前观测与原发布 ID、配置身份比对�
 
 具名 TUN 回执、运行时概览和组件状态使用原生归属查询。安装详情另行取得宿主环境报告，包含平台、服务宿主、可用空间、受保护目录和 IPv6。[查询成本实测](../architecture/server-module-evidence/Proxy-Observation.md#原回执查询与安装环境探测)
 
+运行时概览和组件状态通过独立只读投影合并原发布台账与 Helper 观察结果。存在未确认的发布时保留待核验，Helper 返回冲突的原操作时保留其 ID，台账不可读时撤回所有权和版本证明。组件归档计划沿用原计划入口。
+
 活跃 TUN 的四对隔离测量确认回执正文较小，CPU、延迟及驻留差值随窗口变化。[配对测量](../architecture/server-module-evidence/Proxy-Observation.md#活跃-tun-的回执与安装清单配对测量)
 
 DNS 写入已生效但应答未确认时，重启可按原操作和原 resolver 身份只读确认效果。resolver 换代后相同设置及真实流量仍保留待核验，Helper 未重发写入或派发停止。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。

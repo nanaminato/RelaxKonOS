@@ -15,36 +15,7 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
     /// <summary>Public observation includes unresolved Server publication work, even after root commits.
     /// It never upgrades ownership from an encrypted file or reads controller credentials.</summary>
     public Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct) =>
-        ProjectAsync(CallAsync<RuntimeInstallationSnapshot>(new(PrivilegedOperationKind.MihomoRuntimeInventoryQuery), ct), ct);
-
-    internal Task<RuntimeInstallationSnapshot> ObserveAsync(CancellationToken ct) => ProjectAsync(QueryHelperAsync(ct), ct);
-
-    private async Task<RuntimeInstallationSnapshot> ProjectAsync(Task<RuntimeInstallationSnapshot> nativeObservation, CancellationToken ct)
-    {
-        var observed = await nativeObservation;
-        try
-        {
-            var state = await store.ReadAsync(ct);
-            if ((state.Pending?.OperationId ?? state.DirectReload?.OperationId) is not { } operation) return observed;
-            var conflict = observed.PendingOperationId is { } rootOperation && rootOperation != operation;
-            return observed with
-            {
-                Installation = observed.Installation with { RecoveryRequired = true },
-                PendingOperationId = observed.PendingOperationId ?? operation,
-                PendingStage = observed.PendingStage,
-                ProblemCode = conflict ? "runtime.recovery_target_conflict"
-                    : state.DirectReload?.ProblemCode ?? "runtime.publication_unconfirmed"
-            };
-        }
-        catch (Exception ex) when (ex is RuntimePolicyException or IOException or UnauthorizedAccessException)
-        {
-            return observed with
-            {
-                Installation = observed.Installation with { Ownership = RuntimeOwnership.Unknown, ActiveReleaseId = null, RecoveryRequired = true },
-                MeasuredVersion = null, ActiveRevisionId = null, ProblemCode = "runtime.publication_state_invalid"
-            };
-        }
-    }
+        MihomoRuntimePublicationReader.ProjectAsync(store, CallAsync<RuntimeInstallationSnapshot>(new(PrivilegedOperationKind.MihomoRuntimeInventoryQuery), ct), ct);
 
     /// <summary>Coordinators already own the Server authority; only actual Helper facts can confirm it.</summary>
     internal Task<RuntimeInstallationSnapshot> QueryHelperAsync(CancellationToken ct, Guid? receiptOperationId = null) =>

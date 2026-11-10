@@ -140,6 +140,8 @@ Core TUN 安全服务通过同一只读端口取得受管状态，并将 Helper 
 
 Mihomo 的原回执查询核对归属、配置及原生见证。安装清单查询单独获取宿主依赖报告，组件规划仍按原计划流程核验依赖。[查询成本实测](server-module-evidence/Proxy-Observation.md#原回执查询与安装环境探测)
 
+Mihomo 概览和组件状态共用只读发布投影。它叠加原 Server 发布台账与 Helper 原生归属，保留冲突的原 ID，并在台账不可读时撤回所有权证明。组件归档规划在实际调用时进入原变更服务。
+
 Proxy 原队列在具名 TUN 对账中只依赖回执读端口。确需继续同一启动时，原租约所属管理执行创建恢复作用域，沿用原队列门禁、发布锁和 Helper 原操作。读回持久终态后由原队列结案。[恢复作用域实测](server-module-evidence/Proxy-Safety.md#具名启动的原队列恢复作用域)
 
 首次受管 TUN 的执行器由 Proxy 排队作用域创建。管理派发和显式恢复在调用 Core 发布端口前取得相应租约。Core 发布端口保存同一冻结计划、台账和原 ID。[受管 TUN 管理执行作用域](server-module-evidence/Proxy-Safety.md#受管-tun-管理执行作用域)

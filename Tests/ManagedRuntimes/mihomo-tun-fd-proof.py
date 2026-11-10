@@ -3718,6 +3718,14 @@ exec {shlex.quote(str(systemctl))} "$@"
                         assert ipc.log.read_text().count('operation=MihomoRuntimeInventoryQuery ') == 1
                         status, recovery = request(api + '/recovery', token)
                         assert status == 200 and recovery['recoveryRequired'], (status, recovery)
+                        query_count = ipc.log.read_text().count('operation=MihomoRuntimeQuery ')
+                        status, overview = request(api, token)
+                        assert status == 200 and overview['recovery']['recoveryRequired'], (status, overview)
+                        status, component = request('/api/v1.0/components/mihomo/state', token)
+                        assert status == 200 and component['componentId'] == 'mihomo', (status, component)
+                        assert component['state']['recoveryRequired'] == inventory['installation']['recoveryRequired']
+                        assert ipc.log.read_text().count('operation=MihomoRuntimeQuery ') >= query_count + 2
+                        assert ipc.log.read_text().count('operation=MihomoRuntimeInventoryQuery ') == 1
                         settled_queue = queue.read_bytes()
                         assert settled_queue != pending_queue
                         proxy, blocked = preview_proxy_disable()
@@ -3821,6 +3829,16 @@ exec {shlex.quote(str(systemctl))} "$@"
                 assert finished == historical and queue.read_bytes() == settled_queue
                 status, recovery = request(api + '/recovery', token)
                 assert status == 200 and not recovery['recoveryRequired'], (status, recovery)
+                before_observation = ipc.log.read_text()
+                query_count = before_observation.count('operation=MihomoRuntimeQuery ')
+                status, overview = request(api, token)
+                assert status == 200 and not overview['recovery']['recoveryRequired'], (status, overview)
+                status, component = request('/api/v1.0/components/mihomo/state', token)
+                assert status == 200 and not component['state']['recoveryRequired'], (status, component)
+                assert overview['runtime']['version'] == component['state']['activeVersion']
+                assert ipc.log.read_text().count('operation=MihomoRuntimeQuery ') >= query_count + 2
+                assert ipc.log.read_text().count('operation=MihomoRuntimeInventoryQuery ') == before_observation.count('operation=MihomoRuntimeInventoryQuery ')
+                print(f'PASS MIHOMO PUBLICATION OBSERVATION: original={started}; overview and component state read without inventory', flush=True)
             observed = json.loads(checkpoint(record, f'observe-action:{started}'))
             action = observed['mihomoTunAction']
             assert observed['pendingOperationId'] is None

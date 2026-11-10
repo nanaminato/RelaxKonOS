@@ -107,7 +107,12 @@ internal static class HostServiceRegistration
         // package) so callers never branch on the product.
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.SingBoxComponentAdapter>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.NginxComponentAdapter>();
-        builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.MihomoComponentAdapter>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter>(services =>
+            new RelaxKonOS.Server.Components.MihomoComponentAdapter(
+                services.GetRequiredService<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimePublicationReader>(),
+                services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>(),
+                services.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(),
+                (source, request, ct) => services.GetRequiredService<RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimeService>().PlanAsync(source, request, ct)));
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter, RelaxKonOS.Server.Components.TailscaleComponentAdapter>();
         foreach (var componentId in new[] { "squid", "samba", "docker", "git" })
             builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter>(services =>

@@ -748,3 +748,15 @@ Release 25 项注册、38 项 TUN 边界、48 项 Core 安全、37 项工作作�
 **已实现但实机未验证。** 本轮确认专属进程退出。故障对象释放、整模块 ALC 回收、隔离负载内存和生产收益分别待验。
 
 **未实现或仍受门禁保护。** 整模块安全交接仍开放，Proxy 保持 resident。
+
+### 运行时概览与组件状态的只读发布投影
+
+**已实现且已验证。** 概览和组件状态使用独立只读投影，叠加原 Server 发布台账与 Helper 的轻量原生归属查询。组件归档规划仅在实际规划时解析原变更服务。Windows Release 通过 26 项注册、113 项原发布、60 项运行时 HTTP，以及组件、Core 安全、TUN 边界和模块里程碑回归。专项保留 Server 待核验 ID、冲突的 Helper ID 及台账不可读时的未知所有权。
+
+Linux 专属 systemd 的完整 PAM/JWT Server 在具名启动 `03acd4a1-d431-446f-9f44-9fdc73058836` 原恢复应答丢失后重启。选路漂移期间，按原 ID 和同键读回同一成功终态，概览仍报告当前恢复门禁，组件状态与原安装投影一致。恢复选路后，概览和组件状态报告相同版本，当前恢复门禁解除。两组读取都发出轻量 Helper 查询，安装清单查询计数保持。原发布 `ed0d474e-f8b2-4b61-b9d0-7ac15d17bfcc` 保留原 Mihomo PID `945`、原选路、配置镜像、真实 HTTP 和分流 DNS。一次原对账，重启后未重派。独立禁用夹具继续核对 Core guard、受管 TUN 和授权到期责任，原 Mihomo PID `422` 跨 Server 重启保持。两轮均确认专属进程退出及 cgroup 清理，宿主共享服务、代理与 resolver 指纹一致。
+
+首轮夹具错误地要求复用的 Helper 日志从未出现安装清单查询。修正后按两条路由调用前后的计数差验收。首轮日志 SHA-256 为 `abdd8a417f9fbe7fc7a94ec864c81fbfdb22eff8b2d7eb48e7a7f6f7bf88c907`。最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-publication-observation-final.log` 的 SHA-256 为 `3d17d0827955e90bedf69931ddf777f10bcad85524528b52ab46796dec1ee4d8`，归档为 `d597ca186ecd4251a95620ad4b005ffe06190237d1ff02dae2927b24d1b5c3d8`。
+
+**已实现但实机未验证。** 原应答中断矩阵在 Linux 执行，Windows 的同类故障窗口待独立核验。已记录进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益分别待测。
+
+**未实现或仍受门禁保护。** 安装详情、恢复状态及 GEO 资源的只读 HTTP 入口仍解析变更服务。整模块安全交接继续开放，Proxy 保持 resident。

@@ -32,6 +32,7 @@ internal static class MihomoRuntimeHttpChecks
         Directory.CreateDirectory(root);
         var fixture = new Fixture(root);
         var store = new MihomoPublicationStore(fixture, new EphemeralDataProtectionProvider());
+        var publicationReader = new MihomoRuntimePublicationReader(store, new MihomoRuntimeReceiptReader(fixture, fixture));
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root, EnvironmentName = "Testing" });
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -191,6 +192,11 @@ internal static class MihomoRuntimeHttpChecks
                 && pendingObservation.PendingOperationId == pendingOperation && pendingObservation.Environment?.Observations.Count == 1
                 && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeInventoryQuery,
                 "Public observation reports unresolved Server work even after a healthy native commit");
+            var projected = await publicationReader.ObserveAsync(default);
+            Check(projected.PendingOperationId == pendingOperation && projected.Installation.RecoveryRequired
+                && projected.ProblemCode == pendingObservation!.ProblemCode
+                && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeQuery,
+                "The independent publication reader reports the same pending owner through the lightweight Helper query");
             Check((await store.ReadAsync(default)).Pending?.OperationId == pendingOperation,
                 "Runtime observation never confirms or compensates a pending Server publication");
             client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
@@ -236,6 +242,9 @@ internal static class MihomoRuntimeHttpChecks
             var conflicting = await client.GetFromJsonAsync<RuntimeInstallationSnapshot>(RuntimeRoutes.MihomoInstallation);
             Check(conflicting?.ProblemCode == "runtime.recovery_target_conflict" && conflicting.PendingOperationId == otherRootOperation,
                 "Public observation retains an actual conflicting Helper operation instead of relabeling it");
+            projected = await publicationReader.ObserveAsync(default);
+            Check(projected.PendingOperationId == otherRootOperation && projected.ProblemCode == conflicting!.ProblemCode,
+                "The independent publication reader retains the conflicting native operation");
             fixture.Recovery = recovery with { OperationId = otherRootOperation, ProblemCode = "runtime.recovery_required" };
             var recoveryConflict = await runtime.RecoveryAsync(default);
             Check(recoveryConflict.OperationId == otherRootOperation && recoveryConflict.ProblemCode == "runtime.recovery_target_conflict",
@@ -249,6 +258,10 @@ internal static class MihomoRuntimeHttpChecks
             Check(unknown is { Installation.Ownership: RuntimeOwnership.Unknown, Installation.RecoveryRequired: true,
                 Installation.ActiveReleaseId: null, MeasuredVersion: null, ActiveRevisionId: null, ProblemCode: "runtime.publication_state_invalid" },
                 "Unreadable Server authority withdraws ownership/version proof and never reports not installed");
+            projected = await publicationReader.ObserveAsync(default);
+            Check(projected is { Installation.Ownership: RuntimeOwnership.Unknown, Installation.RecoveryRequired: true,
+                Installation.ActiveReleaseId: null, MeasuredVersion: null, ActiveRevisionId: null, ProblemCode: "runtime.publication_state_invalid" },
+                "The independent publication reader withdraws proof when the Server ledger cannot be read");
             client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
             using var stopWithInvalidState = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryStop, new RuntimeRecoveryActionRequest(otherRootOperation));
             Check(stopWithInvalidState.IsSuccessStatusCode && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeRecoveryStop,

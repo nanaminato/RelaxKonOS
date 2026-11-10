@@ -7,9 +7,10 @@ namespace RelaxKonOS.Server.Components;
 /// Observes and plans through the mihomo publication-aware domain service. Execution stays with
 /// its installation/removal/configuration coordinators, which own publication and credentials.
 /// </summary>
-public sealed class MihomoComponentAdapter(MihomoRuntimeService runtime, RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager native, RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport helper)
-    : ArchiveComponentAdapter(RelaxKonOS.Protocol.ManagedRuntimes.ComponentIds.Mihomo,
-        runtime.ObserveAsync, runtime.PlanAsync)
+public sealed class MihomoComponentAdapter(MihomoRuntimePublicationReader runtime,
+    RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager native, RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport helper,
+    Func<string?, RuntimePlanRequest, CancellationToken, Task<RuntimePlanResult>> planArchive)
+    : ArchiveComponentAdapter(RelaxKonOS.Protocol.ManagedRuntimes.ComponentIds.Mihomo, runtime.ObserveAsync, planArchive)
 {
     private readonly HostPackageComponentAdapter packages = new("mihomo", helper);
     public override IReadOnlyList<RelaxKonOS.Protocol.ManagedRuntimes.ComponentModeSupport> Modes => OperatingSystem.IsLinux()
