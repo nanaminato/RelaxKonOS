@@ -5,18 +5,22 @@ using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.ManagedRuntimes;
+using RelaxKonOS.Server.Residency;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
 /// <summary>Explicit recovery of the previous direct settings under the existing publication authority.</summary>
 public sealed class MihomoDirectSettingsCompensationService(IProxyPlatformPaths paths, MihomoPublicationStore store,
-    MihomoSettingsPublicationFiles files, IMihomoControllerClient controller, IProxyControllerSecretStore secrets)
+    MihomoSettingsPublicationFiles files, IMihomoControllerClient controller, IProxyControllerSecretStore secrets,
+    IProxyWorkLeaseSource? workLeases = null)
 {
-    public async Task<RuntimeSwitchResult> CompensateAsync(Guid operationId, bool confirmed, CancellationToken ct)
+    public async Task<RuntimeSwitchResult> CompensateAsync(Guid operationId, bool confirmed, CancellationToken ct,
+        Action<IModuleWorkLease>? acceptLease = null)
     {
         if (operationId == Guid.Empty) throw new RuntimeLifecycleException("runtime.request_invalid");
         if (!confirmed) throw new RuntimeLifecycleException("runtime.recovery_confirmation_required");
         await store.Gate.WaitAsync(ct);
+        IModuleWorkLease? work = null;
         try
         {
             var state = await store.ReadAsync(ct);
@@ -25,6 +29,15 @@ public sealed class MihomoDirectSettingsCompensationService(IProxyPlatformPaths 
             if (direct.OperationId != operationId) throw new RuntimeLifecycleException("runtime.recovery_target_conflict");
             if (!direct.CanCompensate || !files.SupportsTrackedHostPolicy)
                 throw new RuntimeLifecycleException("runtime.direct_compensation_unavailable");
+            if (workLeases is not null || acceptLease is not null)
+            {
+                work = await (workLeases ?? throw new RuntimeLifecycleException("runtime.publication_work_unavailable")).AcquireAsync(ct);
+                if (acceptLease is not null)
+                {
+                    acceptLease(work);
+                    work = null;
+                }
+            }
             var intent = direct.ConfirmedSettings!;
             await files.VerifyAsync(intent, allowCandidate: false, ct);
             var previous = direct.PreviousYaml!;
@@ -79,9 +92,14 @@ public sealed class MihomoDirectSettingsCompensationService(IProxyPlatformPaths 
                 && (!observableDelta || await MihomoListenerProbe.ObserveAsync(intent.Candidate, token) == false);
         }
         catch (RuntimePolicyException ex) { throw new RuntimeLifecycleException(ex.ProblemCode); }
+        catch (ProxyOperationValidationException) { throw new RuntimeLifecycleException("runtime.publication_work_unavailable"); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or ProxyControllerSecretException)
         { throw new RuntimeLifecycleException("runtime.publication_recovery_failed"); }
-        finally { store.Gate.Release(); }
+        finally
+        {
+            store.Gate.Release();
+            work?.Dispose();
+        }
 
         RuntimeSwitchResult Pending(Guid id) => new(operationId, RuntimeSwitchOutcome.RecoveryRequired,
             MihomoPublicationStore.DirectCompensationPending, id);

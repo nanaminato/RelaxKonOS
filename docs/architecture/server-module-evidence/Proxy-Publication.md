@@ -564,3 +564,23 @@ Linux 日志 `.artifacts/mb04-tun-full-zero-dns/linux-inbound-export.log` 的 SH
 实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-public-subscription-fault.log` SHA256 `98109b2517ebdfd28842952bf47b4d77c794d28b574cc41c56f6f05ad224ce2c`。制品 SHA256 `25a726a44e2ef82a4d6ba827132b32cbb08f49ed0b8dbab599f7acb0c54e17ee`。
 
 **仍待验收。** 此场景确认 Server 进程退出。对象释放、ALC 回收、隔离负载内存和生产收益分别开放。Proxy 保持 resident。
+
+### 显式直连设置补偿的 HTTP 工作租约
+
+**已实现且已验证。** 受理显式直连设置补偿时，原发布锁核对原操作和补偿准入后，当前 Proxy 代次为尚未结案的补偿取得工作租约。HTTP 作用域持有同一租约直至响应及异步清理结束。已持久结案的回执按原 ID 读回。Windows Release 的 61 项运行时 HTTP、26 项注册、113 项原发布事务、系统代理、Core 安全和模块里程碑检查通过。缺少原管理工作 owner 时拒绝进入补偿，保留发布和 TUN 门禁。
+
+既有 Linux 专属 systemd 的联合验收使用真实 Mihomo、独立 Helper 和私有宿主代理设置。测试身份通过 Kestrel 原补偿路由发起原操作 `b00ac12f-6532-4a12-9b86-cf7b3f2d6d03`，持久补偿 ID 为 `65356eea-09f0-4c93-8d69-02932c46c14b`。Helper 已实际恢复原代理设置，暂扣原应答时持有一项工作租约。丢弃应答后，响应发送前仍持一项。客户端收到原 `RecoveryRequired / runtime.direct_compensation_pending` 后，异步清理阻塞期间仍持一项。清理完成后归零。
+
+新进程从保护台账读取同一补偿 ID，凭原 Helper 回执结案为 `Interrupted / runtime.direct_settings_compensated`。原操作和补偿 ID 均保持，随后按原操作重读同一终态。原控制器补偿 reload 一次，Helper 变更派发一次，新进程只读对账。原配置和旧监听实际转发通过，Mihomo PID 保持。补偿 reload 未到达与效果无法证明的对照仍保留待核验，均未派发宿主代理补偿。联合矩阵通过原认证流量及专属进程退出和 cgroup 清理，宿主共享服务、代理和 resolver 指纹一致。
+
+| 证据 | SHA-256 |
+| --- | --- |
+| `.artifacts/mb04-tun-full-zero-dns/linux-compensation-owner-final.log` | `162c211cb55844545dc1021840b3eac05d5fed058c9a4f5dc0a3aebd86c8ac65` |
+| 实机归档 | `d24047c2172237a000b42c13831c57ca7f6ebe65f01b3debf8dafe865228ff81` |
+| 已通过租约阶段但重启夹具误拒原查询的日志 | `def739c61a7c2e5d7964d9735ae4548cf10d5c0203568416cebafe8fd9f7d7c8` |
+
+早期夹具分别缺少专属制品路径遍历权限和当前 Linux 模块依赖，均在清理后修正。重启夹具原先只识别进程内见过的派发，改为按保护台账匹配原补偿 ID 后通过最终实测。
+
+**已实现但实机未验证。** 此路由的异步清理失败隔离沿用原代次机制，实机本轮验证清理阻塞及正常完成。已记录专属进程退出。对象释放、ALC 回收、隔离负载内存和生产收益分别待测。
+
+**未实现或仍受门禁保护。** 无法证明原生效果归属时保留原补偿和准入门禁。应急停止及关闭按原事务继续核对。整模块安全交接开放，Proxy 保持 resident。

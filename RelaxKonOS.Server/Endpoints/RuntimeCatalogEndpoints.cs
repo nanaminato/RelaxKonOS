@@ -65,11 +65,13 @@ public static class RuntimeCatalogEndpoints
                 ProxyRequestScopeOwner.RetainFailedScope);
         }).RequireAuthorization(ManagePolicy);
         group.MapPost(RuntimeRoutes.MihomoRecoveryCompensate, async (RuntimeRecoveryActionRequest request, HttpContext http,
-            [FromServices] RelaxKonOS.Server.Proxy.Mihomo.MihomoDirectSettingsCompensationService service,
-            [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
+            [FromServices] IHostElevationSessionStore elevations) =>
         {
-            if (!MihomoHostTarget(http, elevations)) return ElevationRequired();
-            return await RespondAsync(async () => Results.Ok(await service.CompensateAsync(request.OperationId, request.Confirmed, ct)));
+            if (!MihomoHostTarget(http, elevations)) { await ElevationRequired().ExecuteAsync(http); return; }
+            await ResidentScopedResponse.ExecuteDeferredAsync(http, (services, acceptLease, cancellation) => RespondAsync(async () =>
+                Results.Ok(await services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoDirectSettingsCompensationService>()
+                    .CompensateAsync(request.OperationId, request.Confirmed, cancellation, acceptLease))),
+                ProxyRequestScopeOwner.RetainFailedScope);
         }).RequireAuthorization(ManagePolicy);
         group.MapPost(RuntimeRoutes.MihomoRecoveryStop, async (RuntimeRecoveryActionRequest request, HttpContext http,
             [FromServices] MihomoRuntimeService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>

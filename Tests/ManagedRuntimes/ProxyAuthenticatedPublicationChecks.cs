@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading.Channels;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -24,12 +25,16 @@ using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Server.Certificate;
+using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.ManagedRuntimes;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Proxy.Platform;
 using RelaxKonOS.Server.ProxyServer;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 internal static class ProxyAuthenticatedPublicationChecks
 {
@@ -643,14 +648,12 @@ internal static class ProxyAuthenticatedPublicationChecks
                     if (unapplied) Volatile.Write(ref dropAfterDispatch, false);
                     try
                     {
-                        var compensate = service.CompensateAsync(id, true, ct);
                         if (fault == "-helper-loss")
                         {
-                            if (await Task.WhenAny(compensate, compensationRelay.Committed.Task).WaitAsync(ct) != compensationRelay.Committed.Task)
-                                throw new InvalidOperationException("Compensation ended before the Helper reply barrier.");
-                            compensationRelay.DropHeldResponse();
+                            restored = await VerifyDirectCompensationHttpAsync(settingsPaths, reopened, compensationFiles, controller,
+                                secrets, compensationRelay, id, ct);
                         }
-                        restored = await compensate;
+                        else restored = await service.CompensateAsync(id, true, ct);
                     }
                     finally
                     {
@@ -661,7 +664,7 @@ internal static class ProxyAuthenticatedPublicationChecks
                         || restored.OperationId != id || restored.Outcome != (fault == "" ? RuntimeSwitchOutcome.Interrupted : RuntimeSwitchOutcome.RecoveryRequired))
                         throw new InvalidOperationException("Compensation did not return a separate operation identity and the expected original state.");
                     CompensationRecovery recovery;
-                    if (fault is "-reload-loss" or "-reload-unapplied" or "-reload-unobservable")
+                    if (fault is "-reload-loss" or "-reload-unapplied" or "-reload-unobservable" or "-helper-loss")
                     {
                         var recover = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardOutput = true };
                         foreach (var argument in new[] { typeof(ProxyAuthenticatedPublicationChecks).Assembly.Location,
@@ -674,7 +677,11 @@ internal static class ProxyAuthenticatedPublicationChecks
                             await restarted.WaitForExitAsync(ct);
                             if (restarted.ExitCode != 0 || JsonSerializer.Deserialize<CompensationRecovery>(output) is not { } observed)
                                 throw new InvalidOperationException("The fresh compensation reader did not return its original receipt.");
-                            recovery = observed;
+                            if (fault == "-helper-loss" && observed.Applies != 0)
+                                throw new InvalidOperationException("The restarted reader dispatched the original Helper compensation again.");
+                            recovery = fault == "-helper-loss"
+                                ? new(observed.Result, compensationTransport.Applies, compensationTransport.AppliedId)
+                                : observed;
                         }
                         finally { await StopAsync(restarted); }
                     }
@@ -766,6 +773,108 @@ internal static class ProxyAuthenticatedPublicationChecks
 
     internal sealed record CompensationRecovery(RuntimeSwitchResult Result, int Applies, Guid? AppliedId);
 
+    private static async Task<RuntimeSwitchResult> VerifyDirectCompensationHttpAsync(IProxyPlatformPaths paths,
+        MihomoPublicationStore store, MihomoSettingsPublicationFiles files, IMihomoControllerClient controller,
+        IProxyControllerSecretStore secrets, ReplyRelay relay, Guid operation, CancellationToken ct)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddAuthentication("fixture")
+            .AddScheme<AuthenticationSchemeOptions, MihomoRuntimeHttpChecks.Authentication>("fixture", _ => { });
+        builder.Services.AddAuthorization(options =>
+        {
+            options.AddPolicy(RuntimeCatalogEndpoints.ReadPolicy, policy => policy.RequireAuthenticatedUser());
+            options.AddPolicy(RuntimeCatalogEndpoints.ManagePolicy, policy => policy.RequireClaim("permission", "manage"));
+        });
+        builder.Services.AddSingleton<IServerModeResolver, CompensationHostMode>();
+        builder.Services.AddSingleton<IHostElevationSessionStore, MihomoRuntimeHttpChecks.Elevations>();
+        builder.Services.AddSingleton<RuntimeCatalogService>(_ => throw new InvalidOperationException("Unexpected catalog resolution."));
+        var ids = new HashSet<string> { ServerModules.ProxyId };
+        builder.Services.AddSingleton(services => new ModuleResidencyCoordinator([new ProxyWorkRuntimeFactory()],
+            ModuleResidencyOptions.Parse(builder.Configuration, ids, ids), services,
+            ServerModuleContext.Create(builder.Configuration, builder.Environment, "private-compensation"),
+            NullLogger<ModuleResidencyCoordinator>.Instance, residentWorkModuleIds: ids));
+        builder.Services.AddSingleton<IProxyWorkLeaseSource, ProxyWorkLeaseSource>();
+        var sending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var send = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanup = new CompensationScopeBarrier();
+        builder.Services.AddScoped(_ => cleanup);
+        builder.Services.AddTransient(services =>
+        {
+            services.GetRequiredService<CompensationScopeBarrier>();
+            return new MihomoDirectSettingsCompensationService(paths, store, files, controller, secrets,
+                services.GetRequiredService<IProxyWorkLeaseSource>());
+        });
+        await using var app = builder.Build();
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.Use(async (context, next) =>
+        {
+            context.Response.OnStarting(async () =>
+            {
+                sending.TrySetResult();
+                await send.Task.WaitAsync(ct);
+            });
+            await next(context);
+        });
+        app.MapRuntimeCatalogEndpoints();
+        await app.StartAsync(ct);
+        using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { BaseAddress = new(app.Urls.Single()) };
+        client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
+        var coordinator = app.Services.GetRequiredService<ModuleResidencyCoordinator>();
+        var response = client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryCompensate,
+            new RuntimeRecoveryActionRequest(operation, Confirmed: true), ct);
+        try
+        {
+            if (await Task.WhenAny(response, relay.Committed.Task, sending.Task).WaitAsync(ct) != relay.Committed.Task
+                || await relay.Committed.Task != (await store.ReadAsync(ct)).DirectReload?.Compensation?.Id
+                || coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 1)
+                throw new InvalidOperationException("The original compensation did not own its live Helper response.");
+            var id = await relay.Committed.Task;
+            relay.DropHeldResponse();
+            await sending.Task.WaitAsync(ct);
+            if (response.IsCompleted || coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 1)
+                throw new InvalidOperationException("The compensation lost its lease before sending the HTTP response.");
+            send.TrySetResult();
+            await cleanup.Entered.Task.WaitAsync(ct);
+            using var reply = await response.WaitAsync(ct);
+            reply.EnsureSuccessStatusCode();
+            var result = await reply.Content.ReadFromJsonAsync<RuntimeSwitchResult>(ct);
+            if (result is not { Outcome: RuntimeSwitchOutcome.RecoveryRequired } || result.OperationId != operation
+                || result.CompensationOperationId != id || coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 1)
+                throw new InvalidOperationException("The original HTTP receipt or its cleanup lease was lost.");
+            cleanup.Release.TrySetResult();
+            while (coordinator.Describe(ServerModules.ProxyId)?.ActiveLeases != 0) await Task.Delay(10, ct);
+            Console.WriteLine($"PASS MIHOMO COMPENSATION HTTP LEASE: original {operation}, compensation {id}, one lease through Helper, response and asynchronous cleanup");
+            return result;
+        }
+        finally
+        {
+            relay.DropHeldResponse();
+            send.TrySetResult();
+            cleanup.Release.TrySetResult();
+        }
+    }
+
+    private sealed class CompensationHostMode : IServerModeResolver
+    {
+        public ServerMode Mode => ServerMode.System;
+        public bool Supports(ServerHostFeature feature) => feature == ServerHostFeature.PrivilegedOperations;
+        public ServerCapabilitiesDto Describe() => throw new NotSupportedException();
+    }
+
+    private sealed class CompensationScopeBarrier : IAsyncDisposable
+    {
+        internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async ValueTask DisposeAsync()
+        {
+            Entered.TrySetResult();
+            await Release.Task;
+        }
+    }
+
     internal static async Task<CompensationRecovery> RecoverDirectCompensationFixtureAsync(string root, string state, string relay,
         string socket, Guid operationId, CancellationToken ct)
     {
@@ -776,9 +885,11 @@ internal static class ProxyAuthenticatedPublicationChecks
             new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { ContentRootPath = Path.Combine(root, "full-server") }, protection);
         using var controller = new MihomoControllerClient(new HttpClient(new SocketsHttpHandler { UseProxy = false }), secrets,
             new() { Endpoint = new(relay + "/") });
-        var transport = new CompensationTransport(new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
-            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance), operationId);
         var store = new MihomoPublicationStore(paths, protection);
+        var checkpoint = (await store.ReadAsync(ct)).DirectReload;
+        var transport = new CompensationTransport(new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance), operationId,
+            checkpoint?.OperationId == operationId ? checkpoint.Compensation?.Id : null);
         var files = new MihomoSettingsPublicationFiles(paths, new HostSystemProxyService(transport));
         var result = await new MihomoDirectSettingsCompensationService(paths, store, files, controller, secrets)
             .CompensateAsync(operationId, true, ct);
@@ -885,7 +996,8 @@ internal static class ProxyAuthenticatedPublicationChecks
         }
     }
 
-    private sealed class CompensationTransport(IPrivilegedOperationTransport inner, Guid original) : IPrivilegedOperationTransport
+    private sealed class CompensationTransport(IPrivilegedOperationTransport inner, Guid original, Guid? expectedCompensation = null)
+        : IPrivilegedOperationTransport
     {
         internal Guid? AppliedId { get; private set; }
         internal int Applies { get; private set; }
@@ -893,8 +1005,10 @@ internal static class ProxyAuthenticatedPublicationChecks
         {
             if (request.OperationId is not { } id || id == original)
                 throw new InvalidOperationException("Compensation reused the original ID.");
+            if (expectedCompensation is { } expected && id != expected)
+                throw new InvalidOperationException("Compensation changed the persisted Helper operation ID.");
             if (request.Operation == PrivilegedOperationKind.LinuxSystemProxyApplyTracked) { Applies++; AppliedId = id; }
-            else if (request.Operation != PrivilegedOperationKind.LinuxSystemProxyReceipt || id != AppliedId)
+            else if (request.Operation != PrivilegedOperationKind.LinuxSystemProxyReceipt || id != (AppliedId ?? expectedCompensation))
                 throw new InvalidOperationException("Compensation used an unrelated Helper operation.");
             return inner.ExecuteAsync(request, ct);
         }

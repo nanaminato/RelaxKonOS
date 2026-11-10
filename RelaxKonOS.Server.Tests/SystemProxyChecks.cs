@@ -194,6 +194,13 @@ internal static class SystemProxyChecks
                 new(fixture.Paths, fixture.Host), new HealthyMihomoController(), new StaticProxySecretStore());
             try
             {
+                await compensation.CompensateAsync(pending.OperationId, true, default,
+                    _ => throw new Exception("Compensation accepted a lease from a missing owner."));
+                throw new Exception("Compensation bypassed the original management owner.");
+            }
+            catch (RelaxKonOS.Server.ManagedRuntimes.RuntimeLifecycleException ex) when (ex.ProblemCode == "runtime.publication_work_unavailable") { }
+            try
+            {
                 await compensation.CompensateAsync(pending.OperationId, true, default);
                 throw new Exception("Compensation accepted an unresolved TUN marker.");
             }
