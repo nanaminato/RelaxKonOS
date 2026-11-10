@@ -2249,6 +2249,7 @@ def proof_full_http_shutdown(ipc, case):
     cleanup_recover = cleanup_cut or quarantine
     cleanup_scope = cleanup_drain or cleanup_recover
     named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
+    named_history_drift = named_recovery_cut and Path(sys.argv[3]).with_name('tun-named-history-drift.fixture').is_file()
     named_admission = case == 'ipc-http-named-start-admission'
     named_baseline = case == 'ipc-http-named-start-baseline'
     helper_profile = case == 'ipc-http-named-start-helper-profile'
@@ -3687,6 +3688,51 @@ exec {shlex.quote(str(systemctl))} "$@"
                 verify_native('recovery-reply-lost', confirmed=True)
                 ipc.stop_helper()
                 ipc.start_helper()
+                if named_history_drift:
+                    action_query = f'observe-action:{started}'
+                    confirmed = json.loads(checkpoint(record, action_query))
+                    assert confirmed['mihomoTunAction']['outcome'] == 'Succeeded' and confirmed['mihomoTunRunning']
+                    saved_config = config.read_bytes(), mirror.read_bytes(), (directory / 'tun-5.json').read_bytes()
+                    with management_route_drift(current['routing_table']) as drift:
+                        unverified = json.loads(checkpoint(record, action_query))
+                        assert unverified['receipt'] == confirmed['receipt']
+                        assert unverified['mihomoTunAction'] == confirmed['mihomoTunAction']
+                        assert unverified['configurationIdentity'] == confirmed['configurationIdentity']
+                        assert not unverified['mihomoTunPublicationId']
+                        worker = launch('admission-managed')
+                        restart_pid = int(marker('full-server-pid'))
+                        token = login()
+                        assert queue.read_bytes() == pending_queue
+                        historical = read(started)
+                        assert historical['state'] == 'succeeded' and historical['completedAt']
+                        assert submit('enable', key, body) == started and read(started) == historical
+                        settled_queue = queue.read_bytes()
+                        assert settled_queue != pending_queue
+                        proxy, blocked = preview_proxy_disable()
+                        assert proxy['configurationWritable'] and proxy['recoveryState'] == 'required'
+                        assert any(str(uuid.UUID(publication)) in item for item in proxy['orphanedWork'])
+                        assert any(item['problemCode'] == 'module-recovery-blocked' for item in blocked['blockedBy'])
+                        status, rejected = request(f'/api/v1.0/server/module-plans/{blocked["planId"]}/apply',
+                                                   token, key='named-history-drift-apply')
+                        assert status == 409 and rejected['problemCode'] == 'module-recovery-blocked', (status, rejected)
+                        probe(dict(current, baseline=drift), 'named-history-route-drift')
+                        os.kill(restart_pid, signal.SIGTERM)
+                        assert worker.wait(timeout=12) == 0
+                        worker = launch('admission-disabled')
+                        assert worker.wait(timeout=15) == 0
+                        assert str(uuid.UUID(publication)) in (root / 'full-startup-refused').read_text()
+                        assert queue.read_bytes() == settled_queue and native.read_bytes() == saved_native
+                        assert (config.read_bytes(), mirror.read_bytes(), (directory / 'tun-5.json').read_bytes()) == saved_config
+                        probe(dict(current, baseline=drift), 'named-history-disabled-refused')
+                    worker = launch('admission-disabled')
+                    disabled_pid = int(marker('full-server-pid'))
+                    token = login(disabled=True)
+                    assert request(api + '/tun', token)[0] == 404
+                    assert queue.read_bytes() == settled_queue and native.read_bytes() == saved_native
+                    verify_native('named-history-disabled-verified', confirmed=True)
+                    os.kill(disabled_pid, signal.SIGTERM)
+                    assert worker.wait(timeout=12) == 0
+                    print(f'PASS TUN NAMED HISTORY WITH ROUTE DRIFT: {started}; original receipt settled, current owner blocked until route restored')
                 worker = launch('restart')
                 restart_pid = int(marker('full-server-pid'))
                 token = login()
@@ -3759,6 +3805,8 @@ exec {shlex.quote(str(systemctl))} "$@"
                 finished = until(lambda: (reply if (reply := read(started))['state'] == 'succeeded' else None),
                                  'original named start terminal receipt')
             assert finished['completedAt'] and submit('enable', key, body) == started and read(started) == finished
+            if named_history_drift:
+                assert finished == historical and queue.read_bytes() == settled_queue
             observed = json.loads(checkpoint(record, f'observe-action:{started}'))
             action = observed['mihomoTunAction']
             assert observed['pendingOperationId'] is None

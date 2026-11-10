@@ -596,6 +596,18 @@ Windows Release 注册 26 项、发布事务 113 项、运行时 HTTP 57 项、�
 
 **未实现或仍受门禁保护。** 归属证据不足时继续保留原门禁。整模块安全交接仍待验收，Proxy 保持 resident。
 
+### 具名启动历史回执与当前管理选路漂移
+
+**已实现且已验证。** 2026-11-10 在既有 Linux 专属 systemd 中，原具名启动 `b99bbd14-eef6-420c-b96d-46c28f66c686` 的恢复已由 Helper 提交，Server 在收到应答前被强制退出。原队列仍待核验。启用重启前在专属网络命名空间改变管理目的地址的源选路。Helper 保留原成功回执、原动作及原配置身份，同时不再报告当前发布已核验。
+
+漂移期间，启用 Server 按原 ID 只读保存历史成功终态，同键返回同一原 ID。停用预览按发布 `99015bfd-336b-47d3-b4a0-32b3e56f9d24` 报归属待核验，计划应用返回 `409 / module-recovery-blocked`。终止 Server 后，禁用启动仍因该原发布拒绝。恢复原选路后，禁用启动通过，重新启用查询返回同一历史终态。
+
+原 Mihomo PID `946`、专用路由表 `1966507796`、磁盘和运行配置、Helper 台账与原检查点持续一致。漂移及禁用启动拒绝期间真实上游 HTTP 与分流 DNS 通过，专属管理选路在夹具退出漂移窗口时恢复。全程一次原恢复调用，重启阶段只读查询，专属进程和 cgroup 清理完成，宿主共享服务、代理及 resolver 指纹一致。
+
+同版 Windows Release Proxy Core、TUN 边界和模块里程碑回归通过。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-named-history-drift.log` 的 SHA-256 为 `ba50d900cafd7dac2f9d0e24f0a24fae1d6987eb597450075939f6c36cab6c3e`，归档为 `bc20d11b8b3a48c1bd2d74c87bc947809c7404a5356b2c2806e97ca09ff804b7`。
+
+**仍待验收。** 本轮单独核对实际进程退出。对象释放、ALC 回收、隔离内存差值、生产收益和整模块安全交接分别待验，Proxy 保持 resident。
+
 ### 具名启动恢复应答再次中断
 
 **已实现且已验证。** Linux x64 私有 systemd 使用完整认证 Server、独立 Helper 和真实 resolver。原发布 `b729ad145c3748c6bdcfe318d79f336f` 经具名停止 `cfd6f89c0ce74da1bd3694748e72e12b` 后，以 `40a36bc710a344f3bab462dd59be1b1f` 再启动。三项 DNS 发送端全部确认后中断，重启后按原 ID 的 HTTP 查询触发一次限定范围的恢复。Helper 保存原启动终态及 `DnsApplied`，中继截留真实 AF_UNIX 成功应答。
