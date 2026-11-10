@@ -1704,3 +1704,17 @@ Windows Release 通过 61 项运行时 HTTP、26 项注册、113 项发布事务
 **已实现但实机未验证。** 该关账窗口记录了 Server、Helper 和专属 cgroup 退出。对象释放、ALC、隔离负载内存、生产收益及整机掉电分别待测。
 
 **未实现或仍受门禁保护。** 原 TUN 发布或发送端归属仍未知时保持待核验和准入门禁。整模块安全交接开放，Proxy 保持 resident。
+
+### 固定 Mihomo 单元的直装所有权门禁
+
+**已实现且已验证。** Linux Mihomo 安装按原签名计划或冻结软件包受理。关闭 Linux 组件中心的官方版本与文件直装，因为直装与受管归档共享固定 systemd 单元和 Server 活动配置镜像。Windows 官方直装继续受理。Linux 已有原安装标记仍可由安装台账按原 ID 恢复和查询。Linux Release 安装协调器夹具确认新官方直装请求在受理时拒绝，无新安装派发。Windows Release 验证 Windows 同键返回原中断记录。
+
+Linux Helper 的固定直装安装、移除和服务控制先取得原归档实例锁。受管、待恢复、未知、实例锁忙或单元归属无法核对时返回 Conflict。已有直装单元须核对精确单元文本、systemd 状态和实际直装进程。固定单元的通用服务名和省略扩展名的形式由专用运行时入口裁决。
+
+专属 systemd 使用实际 AF_UNIX Helper，对同一活动 TUN 分别尝试直装、移除、停止和重启。在原受管归属存在时四次均返回 Conflict，另持原归档锁期间四次均返回 Conflict。原发布 `804f5b0a27334ea080b64a8f7b99ee3d`、具名启动 `f0f79a0bf58e41348a112ef154e51565`、单元和注册文件，以及 Server 队列、Helper 原生台账和配置镜像逐字节保持。原 Mihomo PID `943`、配置身份、管理选路、真实上游 HTTP 与分流 DNS 通过核验。具名启动应答中断后只对账一次，无重复派发。独立禁用态用例保留原 TUN 发布 `6ebbc00e691641688bc507818a498b79` 和 PID `422`，原 Core guard 与 sing-box 到期各自完成。两次专属 cgroup 已清理，共享运行时、代理及 resolver 指纹一致。
+
+最终日志 `.artifacts/mb04-tun-full-zero-dns/linux-direct-service-gate-final.log` 的 SHA-256 为 `eb57522a7b49917f736579a03e5488cf44e14470fb5b27eb8cd79b73f80124f8`，归档为 `3f67c0939aafc78963de83e220ae7765443d428eecd9c8da5317c1470852d978`。Windows Release 注册 31 项、运行时 HTTP 61 项、发布 113 项、生命周期与 TUN 作用域 37 项、TUN 边界 38 项、Core 安全、组件及模块里程碑通过。组件首跑仍断言 Linux 展示官方直装，按新准入更新断言后复跑通过。
+
+**已实现但实机未验证。** 实机覆盖原归属存在及原锁无法取得两种拒绝。无受管归属时固定直装单元的正向 Helper 操作、实际 Windows SCM 安装、对象释放、ALC 回收、隔离内存和生产收益分别待验收。
+
+**未实现或仍受门禁保护。** 下一项核对 Server 缺失发布投影时，停用与禁用启动如何只读取得 Helper 原归属。整模块安全交接继续开放，Proxy 保持 resident。

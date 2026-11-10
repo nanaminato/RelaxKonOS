@@ -20,7 +20,14 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
 {
     internal const string Root = "/var/lib/relaxkonos/managed-mihomo";
     internal const string Unit = "relaxkonos-mihomo.service";
-    private const string UnitPath = "/etc/systemd/system/" + Unit;
+    internal const string UnitPath = "/etc/systemd/system/" + Unit;
+    private const string DirectVersions = "/var/lib/relaxkonos/proxy/engines/mihomo/versions/";
+    private const string DirectBinary = DirectVersions + "current/mihomo";
+    private const string DirectData = "/var/lib/relaxkonos/proxy/engines/mihomo/data";
+    private const string DirectConfiguration = "/etc/relaxkonos/proxy/active.yaml";
+    internal const string DirectUnit = "[Unit]\nDescription=RelaxKonOS managed Mihomo\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\n"
+        + "ExecStart=" + DirectBinary + " -d " + DirectData + " -f " + DirectConfiguration
+        + "\nRestart=on-failure\nRestartSec=3\nNoNewPrivileges=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\n";
     private const string Credential = "/run/credentials/" + Unit + "/active.yaml";
     private const string RegistrationPath = Root + "/archive-service.json";
     internal const string TunLauncher = "/usr/local/lib/relaxkonos/privileged-helper/RelaxKonOS.PrivilegedHelper";
@@ -29,6 +36,33 @@ internal sealed partial class LinuxMihomoArchiveHost : IMihomoArchiveHost
     private sealed record Registration(string Binary, string Data, string BinaryHash, string ConfigurationHash, string Version,
         Guid? TunOperation = null);
     private sealed record Verified(int Pid, DateTime StartedAt, string Identity);
+
+    internal static async Task VerifyDirectServiceAsync()
+    {
+        RuntimeSourceStore.RequireNoLinks(RegistrationPath);
+        RuntimeSourceStore.RequireNoLinks(UnitPath);
+        if (Path.Exists(RegistrationPath)) Fail("state_unknown");
+        if (!Path.Exists(UnitPath))
+        {
+            await ObserveAbsentAsync();
+            return;
+        }
+        RequireProtected(UnitPath);
+        if (new FileInfo(UnitPath).Length != DirectUnit.Length || await File.ReadAllTextAsync(UnitPath) != DirectUnit)
+            Fail("state_unknown");
+        var state = await StateAsync(CancellationToken.None);
+        if (state.GetValueOrDefault("Job") != "") Fail("state_unknown");
+        if (state.GetValueOrDefault("ActiveState") is "inactive" or "failed" && state.GetValueOrDefault("MainPID") == "0")
+            return;
+        if (state.GetValueOrDefault("ActiveState") != "active" || state.GetValueOrDefault("SubState") != "running"
+            || !int.TryParse(state.GetValueOrDefault("MainPID"), out var pid) || pid <= 1) Fail("state_unknown");
+        var proc = $"/proc/{state["MainPID"]}";
+        var binary = new FileInfo(proc + "/exe").LinkTarget;
+        if (binary is null || !binary.StartsWith(DirectVersions, StringComparison.Ordinal)
+            || !Encoding.UTF8.GetString(await File.ReadAllBytesAsync(proc + "/cmdline")).Split('\0')
+                .SequenceEqual(new[] { DirectBinary, "-d", DirectData, "-f", DirectConfiguration, "" }))
+            Fail("state_unknown");
+    }
 
     internal static void ValidatePaths(string binary, string data, string configuration, string identity)
     {

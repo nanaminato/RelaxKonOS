@@ -3926,6 +3926,19 @@ exec {shlex.quote(str(systemctl))} "$@"
                 assert after_reads.count('operation=MihomoRuntimeResources ') == before_reads.count('operation=MihomoRuntimeResources ')
                 assert (queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()) == saved
                 print(f'PASS MIHOMO READ-ONLY HTTP: original={started}; three reads preserved native and Server ledgers', flush=True)
+                unit_file = Path('/etc/systemd/system') / unit
+                registration = archive / 'archive-service.json'
+                unit_evidence = unit_file.read_bytes(), registration.read_bytes()
+                direct_gate = ('/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-direct-service-gate', str(root), str(ipc.socket_path))
+                command(*direct_gate)
+                with native.with_name('instance.lock').open('rb') as original_owner:
+                    fcntl.flock(original_owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    command(*direct_gate)
+                assert (unit_file.read_bytes(), registration.read_bytes()) == unit_evidence
+                assert (queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()) == saved
+                assert read(started) == finished
+                verify_native('direct-service-gated', confirmed=True)
+                print(f'PASS MIHOMO DIRECT SERVICE OWNERSHIP GATE: original={started}; four refused commands with active owner and four with original lock held', flush=True)
             observed = json.loads(checkpoint(record, f'observe-action:{started}'))
             action = observed['mihomoTunAction']
             assert observed['pendingOperationId'] is None

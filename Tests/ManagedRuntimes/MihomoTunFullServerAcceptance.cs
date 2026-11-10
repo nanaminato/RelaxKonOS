@@ -17,6 +17,27 @@ using RelaxKonOS.Server.Privileged;
 [SupportedOSPlatform("linux")]
 internal static class MihomoTunFullServerAcceptance
 {
+    internal static async Task VerifyDirectServiceGateAsync(string root, string socket)
+    {
+        RequirePrivateFixture(root);
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+        PrivilegedOperationRequest[] requests =
+        [
+            new(PrivilegedOperationKind.ProxyMihomoInstallSystemService),
+            new(PrivilegedOperationKind.ProxyMihomoRemoveSystemService),
+            new(PrivilegedOperationKind.ProxyMihomoServiceAction, ProxyMihomoServiceAction: ProxyMihomoServiceAction.Stop),
+            new(PrivilegedOperationKind.ProxyMihomoServiceAction, ProxyMihomoServiceAction: ProxyMihomoServiceAction.Restart)
+        ];
+        foreach (var request in requests)
+        {
+            var result = await transport.ExecuteAsync(request, budget.Token);
+            if (result.Success || result.ProblemCode != PrivilegedProblemCode.Conflict)
+                throw new InvalidOperationException($"The direct Mihomo operation {request.Operation} was not fenced: {result.ProblemCode}");
+        }
+    }
+
     internal static async Task VerifyRestoredSenderGateAsync(string root, string socket, Guid operation)
     {
         RequirePrivateFixture(root);

@@ -238,7 +238,8 @@ public sealed class NativeMihomoPrivilegedOperations(
         };
         var result = await transport.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.ProxyMihomoServiceAction,
             ProxyMihomoServiceAction: action), cancellationToken);
-        return result.Success ? Success() : Unavailable();
+        return result.Success ? Success() : result.ProblemCode == PrivilegedProblemCode.Conflict
+            ? new(false, ProxyProblemCodes.RecoveryRequired) : Unavailable();
     }
     private async Task WriteDiagnosticAsync(string level, string message, CancellationToken cancellationToken)
     {

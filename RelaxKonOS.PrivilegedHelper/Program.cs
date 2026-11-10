@@ -441,6 +441,9 @@ static async Task<PrivilegedOperationResult> ApplyNativeServiceActionAsync(strin
     if (string.IsNullOrWhiteSpace(serviceId) || action is null || !IsServiceId(serviceId) || !allowedServiceIds.Contains(serviceId, StringComparer.OrdinalIgnoreCase))
         return Fail(64, PrivilegedProblemCode.ResourceNotAllowed, "service action is not allowed");
     if (OperatingSystem.IsWindows()) return await WindowsNativeServiceActions.ApplyAsync(serviceId, action.Value);
+    if (serviceId.Equals(LinuxMihomoArchiveHost.Unit, StringComparison.OrdinalIgnoreCase)
+        || serviceId.Equals("relaxkonos-mihomo", StringComparison.OrdinalIgnoreCase))
+        return Fail(64, PrivilegedProblemCode.ResourceNotAllowed, "Mihomo requires its runtime service operation");
     var command = action.Value switch
     {
         PrivilegedServiceAction.Start => "start",
@@ -510,38 +513,32 @@ static async Task<PrivilegedOperationResult> ApplyProxyMihomoServiceActionAsync(
         ProxyMihomoServiceAction.TryRestart => new[] { "try-restart", "relaxkonos-mihomo.service" },
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
-    return await RunFixedCommandAsync("/usr/bin/systemctl", arguments, TimeSpan.FromSeconds(30), "proxy service operation failed");
+    return await MihomoRuntimeLifecycle.Create().RunDirectServiceAsync(() =>
+        RunFixedCommandAsync("/usr/bin/systemctl", arguments, Timeout.InfiniteTimeSpan, "proxy service operation failed"));
 }
 
 static async Task<PrivilegedOperationResult> InstallProxyMihomoSystemServiceAsync()
 {
     if (OperatingSystem.IsWindows()) return await WindowsMihomoServiceManager.InstallAsync();
     if (!OperatingSystem.IsLinux()) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "proxy system service operation is unavailable");
-    const string unitPath = "/etc/systemd/system/relaxkonos-mihomo.service";
-    const string unit = "[Unit]\nDescription=RelaxKonOS managed Mihomo\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=/var/lib/relaxkonos/proxy/engines/mihomo/versions/current/mihomo -d /var/lib/relaxkonos/proxy/engines/mihomo/data -f /etc/relaxkonos/proxy/active.yaml\nRestart=on-failure\nRestartSec=3\nNoNewPrivileges=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\n";
-    try
+    return await MihomoRuntimeLifecycle.Create().RunDirectServiceAsync(async () =>
     {
-        var staging = unitPath + ".new";
-        await File.WriteAllTextAsync(staging, unit);
-        File.Move(staging, unitPath, overwrite: true);
+        var staging = LinuxMihomoArchiveHost.UnitPath + ".new";
+        await File.WriteAllTextAsync(staging, LinuxMihomoArchiveHost.DirectUnit);
+        File.Move(staging, LinuxMihomoArchiveHost.UnitPath, overwrite: true);
         return new(true);
-    }
-    catch (IOException) { return Fail(1, PrivilegedProblemCode.InternalError, "proxy service configuration failed"); }
-    catch (UnauthorizedAccessException) { return Fail(77, PrivilegedProblemCode.AccessDenied, "proxy service configuration was denied"); }
+    });
 }
 
-static PrivilegedOperationResult RemoveProxyMihomoSystemService()
+static async Task<PrivilegedOperationResult> RemoveProxyMihomoSystemServiceAsync()
 {
-    if (OperatingSystem.IsWindows()) return WindowsMihomoServiceManager.RemoveAsync().GetAwaiter().GetResult();
+    if (OperatingSystem.IsWindows()) return await WindowsMihomoServiceManager.RemoveAsync();
     if (!OperatingSystem.IsLinux()) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "proxy system service operation is unavailable");
-    try
+    return await MihomoRuntimeLifecycle.Create().RunDirectServiceAsync(() =>
     {
-        const string unitPath = "/etc/systemd/system/relaxkonos-mihomo.service";
-        if (File.Exists(unitPath)) File.Delete(unitPath);
-        return new(true);
-    }
-    catch (IOException) { return Fail(1, PrivilegedProblemCode.InternalError, "proxy service removal failed"); }
-    catch (UnauthorizedAccessException) { return Fail(77, PrivilegedProblemCode.AccessDenied, "proxy service removal was denied"); }
+        File.Delete(LinuxMihomoArchiveHost.UnitPath);
+        return Task.FromResult(new PrivilegedOperationResult(true));
+    });
 }
 
 static async Task<PrivilegedOperationResult> InstallNginxPackageAsync(string? version)

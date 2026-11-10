@@ -3,6 +3,7 @@ using System.Text;
 using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -22,6 +23,29 @@ internal sealed class MihomoRuntimeLifecycle(string root, RuntimeArchiveStateSto
             new(Path.Combine(LinuxMihomoArchiveHost.Root, "state"), RuntimeSourceProtection.Protect),
             RuntimeSourceProtection.Store(), new LinuxMihomoArchiveHost(), RuntimeSourceProtection.Protect);
     }
+
+    internal async Task<PrivilegedOperationResult> RunDirectServiceAsync(Func<Task<PrivilegedOperationResult>> execute)
+    {
+        RuntimeArchiveStateStore.Session session;
+        try { session = states.Acquire(); }
+        catch (Exception error) when (error is RuntimePolicyException or IOException or UnauthorizedAccessException)
+        { return DirectServiceConflict(); }
+        using (session)
+        {
+            if (session.State is { } state && (state.Installation.HostId != HostIdentity()
+                || state.Installation.RuntimeId != "mihomo" || HasPending(state) || state.Active is not null
+                || state.ActiveMihomoTun is not null || state.PendingMihomoTunStart is not null || state.PendingMihomoTunStop is not null
+                || state.Installation.Ownership is RuntimeOwnership.Managed or RuntimeOwnership.Unknown))
+                return DirectServiceConflict();
+            try { await LinuxMihomoArchiveHost.VerifyDirectServiceAsync(); }
+            catch (Exception error) when (error is RuntimePolicyException or IOException or UnauthorizedAccessException)
+            { return DirectServiceConflict(); }
+            return await execute();
+        }
+    }
+
+    private static PrivilegedOperationResult DirectServiceConflict() =>
+        new(false, 1, Error: "Mihomo fixed service ownership requires the original archive owner.", ProblemCode: PrivilegedProblemCode.Conflict);
 
     internal async Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct, Guid? receiptOperationId = null,
         bool includeEnvironment = false)

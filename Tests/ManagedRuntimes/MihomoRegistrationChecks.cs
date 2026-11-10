@@ -269,14 +269,26 @@ internal static class MihomoRegistrationChecks
 
         var coordinator = new InstallationCoordinator(store, [domain], lifetime);
         await coordinator.StartAsync(ct);
-        var replay = coordinator.Start(domain.Id, operation.Kind, options, actor, actor);
+        var recovered = coordinator.Get(operation.OperationId)?.Operation;
+        if (OperatingSystem.IsWindows())
+            check(coordinator.Start(domain.Id, operation.Kind, options, actor, actor) == recovered,
+                "The Windows official install key returns the original interrupted result.");
+        else
+        {
+            try
+            {
+                coordinator.Start(domain.Id, operation.Kind, options, actor, "new-official-install");
+                throw new InvalidOperationException("Linux accepted an official archive without a signed plan.");
+            }
+            catch (InstallationException error) when (error.ProblemCode == InstallationProblemCodes.InvalidRequest) { }
+        }
         var recoveredMarker = await File.ReadAllBytesAsync(marker, ct);
-        check(replay.OperationId == operation.OperationId && replay.State == InstallationOperationState.Interrupted
-            && coordinator.Get(operation.OperationId)?.Operation == replay && dispatches == 1
+        check(recovered?.OperationId == operation.OperationId && recovered.State == InstallationOperationState.Interrupted
+            && dispatches == 1
             && (!OperatingSystem.IsLinux() || helper.OriginalQueries.SequenceEqual([operation.OperationId]))
             && original.SequenceEqual(recoveredMarker)
             && !File.Exists(source) && !Directory.Exists(official.VersionDirectory(version)),
-            "The original install marker and same key recover without resolving a second installer or activating a release.");
+            "The original install marker recovers without resolving a second installer or activating a release.");
         Console.WriteLine($"PASS MIHOMO OFFICIAL INSTALL SCOPE: original={operation.OperationId}; one installer scope; interrupted and recovered without redispatch");
     }
 

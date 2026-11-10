@@ -14,7 +14,10 @@ internal static class ComponentCatalogChecks
         var mihomo = catalog.Components.Single(component => component.Id == "mihomo");
         Check(CompatibilityResolver.Resolve(nginx, "linux", "x64", target => target.Installer.Type == "apt").Status == ComponentCompatibility.Supported, "Linux nginx selects APT");
         Check(CompatibilityResolver.Resolve(nginx, "windows", "arm64", target => target.Installer.Type == "archive").Target?.Installer.Type == "archive", "Windows nginx selects archive");
-        Check(CompatibilityResolver.Resolve(mihomo, "linux", "arm64", _ => true).Target?.OfficialDownloads == true, "Mihomo retains official Linux archive entry");
+        Check(CompatibilityResolver.Resolve(mihomo, "linux", "arm64", _ => true).Target is
+            { OfficialDownloads: false, Installer: { Type: "archive", Available: true } }, "Linux Mihomo keeps signed archive plans with official direct install closed");
+        Check(CompatibilityResolver.Resolve(mihomo, "windows", "arm64", _ => true).Target?.OfficialDownloads == true,
+            "Windows Mihomo retains official archive downloads");
         Check(CompatibilityResolver.Resolve(nginx, "linux", "x86", _ => true).Status == ComponentCompatibility.UnsupportedPlatform, "architecture mismatch refuses");
         Check(CompatibilityResolver.Resolve(nginx, "macos", "x64", _ => true).Status == ComponentCompatibility.UnsupportedPlatform, "OS mismatch refuses");
         Check(CompatibilityResolver.Resolve(nginx, "linux", null, _ => true).Status == ComponentCompatibility.Unknown, "missing host facts remain unknown");

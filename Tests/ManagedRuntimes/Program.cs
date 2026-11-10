@@ -305,6 +305,11 @@ if (args is ["runtime-mihomo-restored-sender-gate", var senderRoot, var senderSo
     await MihomoTunFullServerAcceptance.VerifyRestoredSenderGateAsync(senderRoot, senderSocket, Guid.Parse(senderId));
     return;
 }
+if (args is ["runtime-mihomo-direct-service-gate", var directServiceRoot, var directServiceSocket] && OperatingSystem.IsLinux())
+{
+    await MihomoTunFullServerAcceptance.VerifyDirectServiceGateAsync(directServiceRoot, directServiceSocket);
+    return;
+}
 
 if (args is ["runtime-mihomo-probe-witness", var witnessRoot, var witnessSocket, var witnessId, var witnessMode]
     && OperatingSystem.IsLinux())

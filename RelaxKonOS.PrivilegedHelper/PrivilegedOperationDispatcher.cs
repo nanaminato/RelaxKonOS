@@ -383,7 +383,7 @@ public static partial class PrivilegedOperationExecutor
                     : await GrantNginxStaticSiteReadAccessAsync(request.Path),
                 PrivilegedOperationKind.ProxyMihomoServiceAction => await ApplyProxyMihomoServiceActionAsync(request.ProxyMihomoServiceAction),
                 PrivilegedOperationKind.ProxyMihomoInstallSystemService => await InstallProxyMihomoSystemServiceAsync(),
-                PrivilegedOperationKind.ProxyMihomoRemoveSystemService => RemoveProxyMihomoSystemService(),
+                PrivilegedOperationKind.ProxyMihomoRemoveSystemService => await RemoveProxyMihomoSystemServiceAsync(),
                 PrivilegedOperationKind.GitPackageInstall => await InstallGitPackageAsync(),
                 PrivilegedOperationKind.DockerEngineInstall => await InstallDockerEngineAsync(),
                 PrivilegedOperationKind.DockerEngineConfigureProxy => await ConfigureDockerEngineProxyAsync(request.DockerProxy),
