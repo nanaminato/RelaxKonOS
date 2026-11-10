@@ -180,6 +180,62 @@ public sealed class ProxySubscriptionDownloader(
 
 }
 
+/// <summary>Owns subscription connections for one request or queued operation.</summary>
+internal sealed class ProxySubscriptionHttpClientFactory : IHttpClientFactory, IDisposable
+{
+    private readonly Dictionary<string, SocketsHttpHandler> handlers = new(StringComparer.Ordinal);
+    private bool disposed;
+
+    public HttpClient CreateClient(string name)
+    {
+        lock (handlers)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (!handlers.TryGetValue(name, out var handler))
+            {
+                handler = CreateHandler(name);
+                handlers.Add(name, handler);
+            }
+            return new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(30) };
+        }
+    }
+
+    private static SocketsHttpHandler CreateHandler(string name)
+    {
+        var (useProxy, insecure) = name switch
+        {
+            "ProxySubscriptionDirect" => (false, false),
+            "ProxySubscriptionDirectInsecureTls" => (false, true),
+            "ProxySubscriptionSystemProxy" => (true, false),
+            "ProxySubscriptionSystemProxyInsecureTls" => (true, true),
+            _ => throw new ArgumentException("Unknown subscription HTTP client.", nameof(name)),
+        };
+        var systemProxy = useProxy ? HttpClient.DefaultProxy : null;
+        var handler = new SocketsHttpHandler
+        {
+            UseProxy = useProxy,
+            Proxy = systemProxy,
+            AllowAutoRedirect = false,
+            ConnectCallback = systemProxy is null ? ProxySubscriptionNetworkPolicy.ConnectAsync
+                : (context, ct) => ProxySubscriptionNetworkPolicy.ConnectUsingSystemProxyAsync(systemProxy, context, ct),
+        };
+        if (insecure)
+            handler.SslOptions.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
+        return handler;
+    }
+
+    public void Dispose()
+    {
+        lock (handlers)
+        {
+            if (disposed) return;
+            disposed = true;
+            foreach (var handler in handlers.Values) handler.Dispose();
+            handlers.Clear();
+        }
+    }
+}
+
 internal static class ProxySubscriptionNetworkPolicy
 {
     public static bool HasSystemProxy() =>

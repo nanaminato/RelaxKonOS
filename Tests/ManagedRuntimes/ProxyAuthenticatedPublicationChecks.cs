@@ -1010,8 +1010,7 @@ internal static class ProxyAuthenticatedPublicationChecks
         new RelaxKonOS.Server.Startup.Modules.ProxyModule().ConfigureServices(manager,
             RelaxKonOS.Server.Startup.ServerModuleContext.Create(manager.Configuration, manager.Environment, "memory"));
         manager.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsReader, SubscriptionProbeSettings>();
-        await using var services = manager.Services.BuildServiceProvider();
-        var downloader = services.GetRequiredService<RelaxKonOS.Server.Proxy.IProxySubscriptionDownloader>();
+        await using var services = manager.Services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         var loaded = Channel.CreateUnbounded<TaskCompletionSource>();
         AssemblyLoadEventHandler observe = (_, args) =>
         {
@@ -1027,14 +1026,19 @@ internal static class ProxyAuthenticatedPublicationChecks
         {
             await guard.VerifyTrafficAsync(async (_, ct) =>
             {
-                var body = downloader.DownloadAsync(endpoint + "/feed", ProxySubscriptionDownloadRoute.Direct, ct);
+                await using var first = services.CreateAsyncScope();
+                var body = first.ServiceProvider.GetRequiredService<RelaxKonOS.Server.Proxy.IProxySubscriptionDownloader>()
+                    .DownloadAsync(endpoint + "/feed", ProxySubscriptionDownloadRoute.Direct, ct);
                 var generation = await loaded.Reader.ReadAsync(ct);
                 if (body.IsCompleted || generation.Task.IsCompleted)
                     throw new InvalidOperationException("The subscription generation did not own the live response body.");
                 release.TrySetResult();
                 var output = await body;
                 await generation.Task.WaitAsync(ct);
-                var next = await downloader.DownloadAsync(endpoint + "/feed", ProxySubscriptionDownloadRoute.Direct, ct);
+                await first.DisposeAsync();
+                await using var second = services.CreateAsyncScope();
+                var next = await second.ServiceProvider.GetRequiredService<RelaxKonOS.Server.Proxy.IProxySubscriptionDownloader>()
+                    .DownloadAsync(endpoint + "/feed", ProxySubscriptionDownloadRoute.Direct, ct);
                 var awakened = await loaded.Reader.ReadAsync(ct);
                 await awakened.Task.WaitAsync(ct);
                 if (ReferenceEquals(awakened, generation) || next.Content != output.Content

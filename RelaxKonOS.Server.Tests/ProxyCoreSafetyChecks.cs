@@ -96,6 +96,20 @@ internal static class ProxyCoreSafetyChecks
                         && ReferenceEquals(first.ServiceProvider.GetRequiredService<ProxyServerStore>(),
                             next.ServiceProvider.GetRequiredService<ProxyServerStore>()),
                         "Inbound request scopes share one Core publication authority and have independent acceptance facades");
+                    var pool = first.ServiceProvider.GetRequiredService<ProxySubscriptionHttpClientFactory>();
+                    using var retainedClient = pool.CreateClient("ProxySubscriptionDirect");
+                    Check(!ReferenceEquals(pool, next.ServiceProvider.GetRequiredService<ProxySubscriptionHttpClientFactory>()),
+                        "Subscription connection pools are scoped to the execution owner");
+                    await first.DisposeAsync();
+                    try
+                    {
+                        await retainedClient.GetAsync("http://127.0.0.1:1");
+                        throw new InvalidOperationException("The disposed subscription scope left an active handler.");
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        Check(true, "Disposing the original subscription scope closes the handler even while a client wrapper is retained");
+                    }
                 }
                 foreach (var type in new[] { typeof(ProxyRecoveryHostedService), typeof(SystemProxyGuardHostedService), typeof(ProxyServerExpiryService) })
                     Check(builder.Services.Count(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == type) == 1,

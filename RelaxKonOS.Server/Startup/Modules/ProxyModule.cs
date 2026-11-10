@@ -82,60 +82,11 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
 
         // Core provides the one shared TUN safety owner to both routes and engine recovery hooks.
 
-        // Subscriptions: four clients, because "direct" vs "through the saved system proxy" and
-        // "verify TLS" vs "accept the mirror certificate" are independent operator choices.
-        builder.Services.AddHttpClient("ProxySubscriptionDirect", client => client.Timeout = TimeSpan.FromSeconds(30))
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            {
-                UseProxy = false,
-                AllowAutoRedirect = false,
-                ConnectCallback = ProxySubscriptionNetworkPolicy.ConnectAsync,
-            });
-        builder.Services.AddHttpClient("ProxySubscriptionDirectInsecureTls", client => client.Timeout = TimeSpan.FromSeconds(30))
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            {
-                UseProxy = false,
-                AllowAutoRedirect = false,
-                ConnectCallback = ProxySubscriptionNetworkPolicy.ConnectAsync,
-                SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-                {
-                    RemoteCertificateValidationCallback = static (_, _, _, _) => true,
-                },
-            });
-        builder.Services.AddHttpClient("ProxySubscriptionSystemProxy", client => client.Timeout = TimeSpan.FromSeconds(30))
-            .ConfigurePrimaryHttpMessageHandler(() =>
-            {
-                // Keep the handler and the connection policy on the exact same IWebProxy instance.
-                // HttpClient's proxy source is deliberately used here; WebRequest.DefaultWebProxy is
-                // a different (and obsolete) proxy pipeline which can choose a different endpoint.
-                var systemProxy = HttpClient.DefaultProxy;
-                return new SocketsHttpHandler
-                {
-                    UseProxy = true,
-                    Proxy = systemProxy,
-                    AllowAutoRedirect = false,
-                    ConnectCallback = (context, cancellationToken) =>
-                        ProxySubscriptionNetworkPolicy.ConnectUsingSystemProxyAsync(systemProxy, context, cancellationToken),
-                };
-            });
-        builder.Services.AddHttpClient("ProxySubscriptionSystemProxyInsecureTls", client => client.Timeout = TimeSpan.FromSeconds(30))
-            .ConfigurePrimaryHttpMessageHandler(() =>
-            {
-                var systemProxy = HttpClient.DefaultProxy;
-                return new SocketsHttpHandler
-                {
-                    UseProxy = true,
-                    Proxy = systemProxy,
-                    AllowAutoRedirect = false,
-                    ConnectCallback = (context, cancellationToken) =>
-                        ProxySubscriptionNetworkPolicy.ConnectUsingSystemProxyAsync(systemProxy, context, cancellationToken),
-                    SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-                    {
-                        RemoteCertificateValidationCallback = static (_, _, _, _) => true,
-                    },
-                };
-            });
-        builder.Services.AddScoped<IProxySubscriptionDownloader, ProxySubscriptionDownloader>();
+        // The operation scope owns its HTTP connection pools as well as the downloader.
+        builder.Services.AddScoped<ProxySubscriptionHttpClientFactory>();
+        builder.Services.AddScoped<IProxySubscriptionDownloader>(services => new ProxySubscriptionDownloader(
+            services.GetRequiredService<ProxySubscriptionHttpClientFactory>(),
+            services.GetRequiredService<IProxySettingsReader>(), services.GetService<ILogger<ProxySubscriptionDownloader>>()));
 
         // Core owns system-proxy/TUN recovery and expiry independently of this management surface.
 

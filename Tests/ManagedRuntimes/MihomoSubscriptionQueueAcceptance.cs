@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -51,12 +52,20 @@ internal static class MihomoSubscriptionQueueAcceptance
         {
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
-            builder.WebHost.UseUrls("http://93.184.216.34:0");
+            var closedConnections = Channel.CreateUnbounded<string>();
+            builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Parse("93.184.216.34"), 0, listener =>
+                listener.Use(next => async connection =>
+                {
+                    try { await next(connection); }
+                    finally { closedConnections.Writer.TryWrite(connection.ConnectionId); }
+                })));
             await using var origin = builder.Build();
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var bodyStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var importStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var releaseImport = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var importConnection = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var refreshConnection = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             var requests = 0;
             origin.MapGet("/feed", async (HttpContext context) =>
             {
@@ -69,12 +78,14 @@ internal static class MihomoSubscriptionQueueAcceptance
                 await context.Response.WriteAsync("vless://550e8400-e29b-41d4-a716-446655440000@", context.RequestAborted);
                 if (request == 1)
                 {
+                    importConnection.SetResult(context.Connection.Id);
                     await context.Response.Body.FlushAsync(context.RequestAborted);
                     importStarted.TrySetResult();
                     await releaseImport.Task.WaitAsync(context.RequestAborted);
                 }
                 if (request == 2)
                 {
+                    refreshConnection.SetResult(context.Connection.Id);
                     await context.Response.Body.FlushAsync(context.RequestAborted);
                     bodyStarted.TrySetResult();
                     await release.Task.WaitAsync(context.RequestAborted);
@@ -136,6 +147,9 @@ internal static class MihomoSubscriptionQueueAcceptance
                     if (listed?.Any(item => item.Id == subscriptionId) != true || !options.IsSuccessStatusCode || Volatile.Read(ref requests) != 1)
                         throw new InvalidOperationException("Subscription reads did not return the original draft and download options without a second download.");
                     while (await ReadLeasesAsync(client) != 0) await Task.Delay(25, ct);
+                    if (await closedConnections.Reader.ReadAsync(ct).AsTask().WaitAsync(TimeSpan.FromSeconds(5), ct)
+                        != await importConnection.Task.WaitAsync(ct))
+                        throw new InvalidOperationException("The foreground scope did not close its original origin connection.");
                     Console.WriteLine($"PASS MANAGED MIHOMO FOREGROUND SUBSCRIPTION: draft {subscriptionId}; import, original content, list and download options drained");
 
                     operation = await SubmitAsync(client, refreshRoute, key);
@@ -160,6 +174,11 @@ internal static class MihomoSubscriptionQueueAcceptance
                         || !updated.Content.Contains("origin-2.example.test", StringComparison.Ordinal))
                         throw new InvalidOperationException($"The original refresh did not persist its converted draft: {terminal.ProblemCode}.");
                     while (await ReadLeasesAsync(client) != 0) await Task.Delay(25, ct);
+                    var refreshSocket = await refreshConnection.Task.WaitAsync(ct);
+                    if (refreshSocket == await importConnection.Task.WaitAsync(ct)
+                        || await closedConnections.Reader.ReadAsync(ct).AsTask().WaitAsync(TimeSpan.FromSeconds(5), ct) != refreshSocket)
+                        throw new InvalidOperationException("The queued refresh did not close its own origin connection.");
+                    Console.WriteLine($"PASS MANAGED MIHOMO SUBSCRIPTION CONNECTION OWNERS: draft {subscriptionId}; refresh {operation}; both origin connections closed before shutdown");
                     await ProxyAuthenticatedPublicationChecks.SignalShutdownAsync(server, client, stopping.Task, ct);
                     await server.WaitForExitAsync(ct);
                     if (server.ExitCode != 0) throw new InvalidOperationException("The subscription Server did not exit cleanly.");
