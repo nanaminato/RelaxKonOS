@@ -43,9 +43,10 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
         // Cancellation stays meaningful while connecting and handshaking. Once the request frame is
         // sent, the Helper owns the authoritative operation deadline; disconnecting cannot roll back
         // an already-started privileged mutation.
-        var drainServiceAction = request.Operation is PrivilegedOperationKind.NginxSystemServiceAction
+        var drainAfterDispatch = request.Operation is PrivilegedOperationKind.NginxSystemServiceAction
             or PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle
-            or PrivilegedOperationKind.MihomoRuntimeRecoveryStop or PrivilegedOperationKind.MihomoRuntimeRecoveryClose;
+            or PrivilegedOperationKind.MihomoRuntimeRecoveryStop or PrivilegedOperationKind.MihomoRuntimeRecoveryClose
+            or PrivilegedOperationKind.MihomoRuntimeResources;
         var nginxResultMayBeUnknown = false;
         var packageResultMayBeUnknown = false;
         using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -68,14 +69,14 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
 
             // Fixed native jobs and recovery commits can continue after caller cancellation.
             // Once dispatched, keep the original caller waiting for the terminal frame.
-            if (drainServiceAction) cancellationToken.ThrowIfCancellationRequested();
+            if (drainAfterDispatch) cancellationToken.ThrowIfCancellationRequested();
             nginxResultMayBeUnknown = request.Operation is PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle
                 || request.Operation == PrivilegedOperationKind.NginxSystemServiceAction
                     && request.NginxServiceAction == NginxSystemServiceAction.Reload;
             packageResultMayBeUnknown = request.Operation is PrivilegedOperationKind.ComponentPackageInstall
                 or PrivilegedOperationKind.ComponentPackageChange;
             await PrivilegedHelperSocketFraming.WriteAsync(stream, JsonSerializer.SerializeToUtf8Bytes(request), CancellationToken.None);
-            using var responseTimeout = drainServiceAction
+            using var responseTimeout = drainAfterDispatch
                 ? new CancellationTokenSource()
                 : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             if (ResponseTimeout(request.Operation) is { } timeout) responseTimeout.CancelAfter(timeout);

@@ -35,6 +35,8 @@
 
 2026-11-10（MB-04 / MR-03 只读 HTTP）。安装详情、恢复状态和 GEO 资源读取沿用原清单、恢复裁决和发布锁。认证重启实测三项原生查询分别执行一次，原队列、原生台账和配置保持。[实机证据](../architecture/server-module-evidence/Proxy-Observation.md#安装详情恢复状态和-geo-资源的只读入口)
 
+2026-11-10（MB-04 / MR-03 GEO 放置）。已派发的资源放置沿用 Core 发布锁等待原 Helper 应答，丢失应答后按原活动修订只读核对。[实机证据](../architecture/server-module-evidence/Proxy-Observation.md#活动-tun-的-geo-资源放置与应答丢失)
+
 2026-11-10（MB-04 / MR-03 紧急恢复）。Core 在原发布锁内等待已派发的停止和关账终帧。操作员关账应答缺失时，同一原 ID 读回 Helper 已持久化的关账终态。[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#core-应急停止与原关账回执)
 
 2026-11-10（MB-04 / MR-03 认证关账复验）。完整 PAM 路径确认关账终帧丢失后返回 503。Server 和 Helper 重启后，原 ID 经重新提权读回同一终态，原归档保持。受管 TUN 原 Server 发布未决时，关账门禁仍生效。[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#core-关账的认证-http-原终态)

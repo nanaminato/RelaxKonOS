@@ -26,7 +26,9 @@ internal static class StartupHook
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_TUN_STATUS_RESPONSE") is { } statusRoot)
             MihomoTunCleanupBarrier.RegisterStatusResponse(statusRoot);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_CORE_STOP_DRAIN") is { } stopRoot)
-            MihomoTunCleanupBarrier.RegisterCoreStopDrain(stopRoot);
+            MihomoTunCleanupBarrier.RegisterCoreRequestDrain(stopRoot, RelaxKonOS.Protocol.ManagedRuntimes.RuntimeRoutes.MihomoRecoveryStop, "full-core-stop");
+        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_GEO_DRAIN") is { } geoRoot)
+            MihomoTunCleanupBarrier.RegisterCoreRequestDrain(geoRoot, RelaxKonOS.Protocol.ManagedRuntimes.RuntimeRoutes.MihomoResources, "full-geo");
 
         AppDomain.CurrentDomain.AssemblyLoad += static (_, args) =>
         {

@@ -2251,6 +2251,7 @@ def proof_full_http_shutdown(ipc, case):
     cleanup_scope = cleanup_drain or cleanup_recover
     named_recovery_cut = case == 'ipc-http-named-start-recovery-cut'
     named_history_drift = named_recovery_cut and Path(sys.argv[3]).with_name('tun-named-history-drift.fixture').is_file()
+    geo_drain = named_history_drift and Path(sys.argv[3]).with_name('tun-geo-drain.fixture').is_file()
     named_admission = case == 'ipc-http-named-start-admission'
     named_baseline = case == 'ipc-http-named-start-baseline'
     helper_profile = case == 'ipc-http-named-start-helper-profile'
@@ -2263,9 +2264,9 @@ def proof_full_http_shutdown(ipc, case):
     mounts = {line.split()[4]: line.split(' - ', 1)[1].split()[0]
               for line in Path('/proc/self/mountinfo').read_text().splitlines()}
     assert mounts['/etc'] == 'overlay'
-    if removal_admin or pam_retry or core_emergency:
+    if removal_admin or pam_retry or core_emergency or geo_drain:
         assert all(mounts.get(path) == 'tmpfs' for path in ('/var/lib', '/run', '/etc/relaxkonos', '/etc/systemd/system'))
-    administrator = json.loads(sys.stdin.readline()) if removal_admin or pam_retry or core_emergency else None
+    administrator = json.loads(sys.stdin.readline()) if removal_admin or pam_retry or core_emergency or geo_drain else None
     base = 'http://192.0.2.2:18970'
     api = '/api/v1.0/proxy'
     queue = Path('/var/lib/relaxkonos/proxy/state/proxy-operations.json')
@@ -3818,6 +3819,8 @@ exec {shlex.quote(str(systemctl))} "$@"
                     os.kill(disabled_pid, signal.SIGTERM)
                     assert worker.wait(timeout=12) == 0
                     print(f'PASS TUN NAMED HISTORY WITH ROUTE DRIFT: {started}; original receipt settled, current owner blocked until route restored')
+                    if geo_drain:
+                        (root / 'full-geo-proof').touch()
                 worker = launch('restart')
                 restart_pid = int(marker('full-server-pid'))
                 token = login()
@@ -3937,6 +3940,64 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert read(publication)['state'] == read(stopped)['state'] == 'succeeded'
             verify_native('recovered', confirmed=True)
             until(lambda: leases() == 0, 'confirmed reconciliation work leases')
+            if geo_drain:
+                geo_route = catalog + '/resources'
+                status, denied = request(geo_route, token, method='POST')
+                assert status == 403 and denied['code'] == 'elevation-required'
+                status, _ = request('/api/v1.0/privileged/elevation', token, data={
+                    'capability': 'MihomoInstall', 'target': 'mihomo',
+                    'administratorUsername': administrator['identifier'], 'password': administrator['password']})
+                assert status == 200
+                assert any(file['state'].lower() == 'missing' for file in resources['files'])
+                revision = uuid.UUID(inventory['activeRevisionId'])
+                digest_paths = [directory / file['name'] for directory in
+                                (archive / 'seed-data', archive / 'data' / revision.hex) for file in resources['files']]
+                prefix = root / 'full-server/full-geo'
+                Path(f'{prefix}-arm').touch()
+                (root / 'full-geo-armed').touch()
+                with subprocess.Popen(['ip', 'netns', 'exec', 'rk-http-client', '/usr/bin/curl',
+                                       '--noproxy', '*', '--silent', '--max-time', '20', '--config', '-', '-X', 'POST', base + geo_route],
+                                      stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True) as client:
+                    client.stdin.write(f'header = "Authorization: Bearer {token}"\n')
+                    client.stdin.close()
+                    marker('full-geo-response-held')
+                    assert client.poll() is None and all(path.is_file() for path in digest_paths)
+                    resource_hashes = [(hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mtime_ns) for path in digest_paths]
+                    client.terminate()
+                    assert client.wait(timeout=3) != 0
+                assert marker('full-server/full-geo-aborted') == '0'
+                assert not Path(f'{prefix}-handler-finished').exists()
+                verify_native('geo-effect-held', confirmed=True)
+                (root / 'full-server-stopping').unlink(missing_ok=True)
+                os.kill(restart_pid, signal.SIGTERM)
+                assert marker('full-server-stopping') == 'geo'
+                time.sleep(.25)
+                assert worker.poll() is None and not Path(f'{prefix}-handler-finished').exists()
+                (root / 'full-geo-response-release').touch()
+                assert marker('full-server/full-geo-handler-finished') == '1'
+                assert marker('full-server/full-geo-held') == 'disposing'
+                assert worker.poll() is None
+                Path(f'{prefix}-release').touch()
+                assert worker.wait(timeout=12) == 0 and Path(f'{prefix}-complete').read_text() == 'disposed'
+                (root / 'full-geo-proof').unlink()
+                worker = launch('restart')
+                restart_pid = int(marker('full-server-pid'))
+                token = login()
+                status, restored_resources = request(geo_route, token)
+                assert status == 200 and uuid.UUID(restored_resources['revisionId']) == revision
+                verified = {file['name']: file['sha256'] for file in restored_resources['files'] if file['state'].lower() == 'verified'}
+                assert len(verified) == 5
+                assert all(verified[path.name] == original[0] and
+                           (hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mtime_ns) == original
+                           for path, original in zip(digest_paths, resource_hashes))
+                assert read(started) == finished and (queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()) == saved
+                assert ipc.log.read_text().count('operation=MihomoRuntimeResources ') == 1
+                verify_native('geo-read-only-restarted', confirmed=True)
+                os.kill(restart_pid, signal.SIGTERM)
+                assert worker.wait(timeout=12) == 0
+                print(f'PASS MIHOMO GEO HTTP DRAIN: revision={revision}; publication={publication}; original={started}; '
+                      'one placement, dropped reply, five verified resources after restart, active TUN retained', flush=True)
+                return
             if tun_status_scope:
                 prefixes = ('full-server/full-tun-status-response', 'full-server/full-tun-recovery-response')
                 saved = queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()

@@ -32,10 +32,10 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
             services.AddSingleton<IStartupFilter>(new StatusResponseBarrier(root));
     });
 
-    internal static void RegisterCoreStopDrain(string root) => RegisterHost(services =>
+    internal static void RegisterCoreRequestDrain(string root, string route, string prefix) => RegisterHost(services =>
     {
         if (services.Any(service => service.ServiceType == typeof(MihomoPublicationStore)))
-            services.AddSingleton<IStartupFilter>(new CoreStopDrain(root));
+            services.AddSingleton<IStartupFilter>(new CoreRequestDrain(root, route, prefix));
     });
 
     private static void Register(string root, Type serviceType, string prefix, Action<IServiceCollection>? configure = null)
@@ -120,14 +120,13 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
         };
     }
 
-    private sealed class CoreStopDrain(string root) : IStartupFilter
+    private sealed class CoreRequestDrain(string root, string route, string prefix) : IStartupFilter
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
         {
             app.Use(async (context, resume) =>
             {
-                const string prefix = "full-core-stop";
-                if (context.Request.Path != RuntimeRoutes.MihomoRecoveryStop || !File.Exists(Path.Combine(root, prefix + "-arm")))
+                if (context.Request.Method != "POST" || context.Request.Path != route || !File.Exists(Path.Combine(root, prefix + "-arm")))
                 {
                     await resume(context);
                     return;

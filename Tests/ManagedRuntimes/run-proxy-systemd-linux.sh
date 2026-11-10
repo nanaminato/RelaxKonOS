@@ -14,7 +14,8 @@ if [[ ( $# == 3 || $# == 4 ) && $1 == --tun-fd ]]; then
     helper=$(realpath -e -- "$3")
     tun_script=$(realpath -e -- "$(dirname -- "$0")/mihomo-tun-fd-proof.py")
     if [[ $tun_case == ipc-http-zero-dns && -f $(dirname -- "$fixture")/tun-pam-retry.fixture ]] ||
-        [[ $tun_case == ipc-http-restored-dispatch-unknown && -f $(dirname -- "$fixture")/tun-core-emergency.fixture ]]; then
+        [[ $tun_case == ipc-http-restored-dispatch-unknown && -f $(dirname -- "$fixture")/tun-core-emergency.fixture ]] ||
+        [[ $tun_case == ipc-http-named-start-recovery-cut && -f $(dirname -- "$fixture")/tun-geo-drain.fixture ]]; then
         fixture_pam=1
     fi
     run_seconds=60
@@ -131,6 +132,9 @@ run_checks() {
         install -d -m 0755 "\$helper_dir" || return
         install -m 0755 "$helper" "\$helper_dir/RelaxKonOS.PrivilegedHelper" || return
         cp -- "$(dirname "$helper")"/*.dll "$(dirname "$helper")"/RelaxKonOS.PrivilegedHelper.{deps,runtimeconfig}.json "\$helper_dir/" || return
+        if [[ $tun_case == ipc-http-named-start-recovery-cut && -f $(dirname -- "$fixture")/tun-geo-drain.fixture ]]; then
+            cp -a -- "$(dirname "$helper")/Assets" "\$helper_dir/" || return
+        fi
         if [[ $tun_case == ipc-http-retained-administrator || $fixture_pam == 1 ]]; then
             /usr/bin/python3 -I "$work/mihomo-tun-fd-proof.py" proof "$work" "$fixture" "$tun_case" < "$work/credentials"
         else
