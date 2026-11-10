@@ -101,8 +101,13 @@ internal static class CatalogUpdateChecks
             ApplicationDeploymentProblemCodes.DefinitionConflict);
 
         var logs = new ApplicationDeploymentLiveLogs();
-        var service = new ApplicationDeploymentService(catalog, secrets, new(environment, options, NullLogger<ApplicationDeploymentStagingStore>.Instance), runtime, null!, options, environment, logs, null!, NullLogger<ApplicationDeploymentService>.Instance);
-        var coordinator = new ApplicationDeploymentCoordinator(operations, catalog, service, options, logs, new TestApplicationLifetime(), new CatalogUpdateEventPublisher(), NullLogger<ApplicationDeploymentCoordinator>.Instance, new(operations));
+        var compose = new FakeComposeService();
+        using var docker = DockerChecks.NewStackCoordinator(Path.Combine(root, "compose-install"), compose, new TestApplicationLifetime(), 4);
+        await docker.StartAsync(default);
+        var dispatch = new ApplicationManagedComposeDispatch(operations, docker);
+        var install = new ApplicationManagedComposeInstall(catalog, secrets, runtime, dispatch, options);
+        var service = new ApplicationDeploymentService(catalog, secrets, new(environment, options, NullLogger<ApplicationDeploymentStagingStore>.Instance), runtime, null!, options, environment, logs, null!, NullLogger<ApplicationDeploymentService>.Instance, install);
+        var coordinator = new ApplicationDeploymentCoordinator(operations, catalog, service, options, logs, new TestApplicationLifetime(), new CatalogUpdateEventPublisher(), NullLogger<ApplicationDeploymentCoordinator>.Instance, dispatch);
         await coordinator.StartAsync(default);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
         builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -113,9 +118,9 @@ internal static class CatalogUpdateChecks
         });
         builder.Services.AddSingleton<IServerModeResolver, ProgressTestMode>();
         builder.Services.AddSingleton(options); builder.Services.AddSingleton(manager); builder.Services.AddSingleton(coordinator);
+        builder.Services.AddSingleton(dispatch);
         builder.Services.AddSingleton<ApplicationDeploymentDefinitionMutationStore>(); builder.Services.AddSingleton<ApplicationDeploymentStagingStore>();
         builder.Services.AddSingleton<IFileService>(_ => throw new NotSupportedException());
-        var compose = new FakeComposeService();
         var composeLeases = new TestResidentBackgroundLeases();
         builder.Services.AddSingleton<IDockerComposeService>(compose);
         builder.Services.AddSingleton<IResidentModuleWorkLeaseSource>(composeLeases);
@@ -247,8 +252,88 @@ internal static class CatalogUpdateChecks
             "Recovery keeps the interrupted reinstall receipt without dispatching a new Engine command.");
         Expect(() => coordinator.Start(reinstall, "catalog-test", "new-reinstall"), ApplicationDeploymentProblemCodes.ResourceConflict);
 
-        await coordinator.StopAsync(default); await host.StopAsync();
+        await VerifyManagedInstallAsync(http, coordinator, options, compose, controlled, clients, catalog, operations, secrets,
+            Path.Combine(root, options.RootDirectory, "definition-mutations.json"));
+        await coordinator.StopAsync(default); await host.StopAsync(); await docker.StopAsync(default);
         Console.WriteLine("Catalog checks passed, including exact predecessor and target digest, bypass refusal, retained records and original receipt fencing.");
+    }
+
+    private static async Task VerifyManagedInstallAsync(HttpClient http, ApplicationDeploymentCoordinator coordinator,
+        ApplicationDeploymentOptions options, FakeComposeService compose, CatalogUpdateEngine engine, FixtureHttpClientFactory clients,
+        ApplicationDeploymentCatalogStore catalog, ApplicationDeploymentOperationStore operations, ApplicationDeploymentSecretStore secrets,
+        string installReceipts)
+    {
+        var release = ApplicationCatalog.Require("fixture-web-db-plan", "1.0.0");
+        using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        const string password = "compose-install-only-secret";
+        var request = new InstallCatalogApplicationRequest(release.Id, release.Version, "managed-web-db", port, [new("password", password)], true);
+        options.EnableManagedComposePreview = true;
+        engine.LocalCompose = true;
+        engine.Images = release.Services.ToDictionary(service => service.ImageReference,
+            service => new DockerImageIdentity("sha256:" + service.ImageReference[^64..], "linux", "amd64", [service.ImageReference]));
+        var sameSecret = false;
+        var receiptPrecededDispatch = false;
+        compose.OnManagedDeploy = (plan, environment) =>
+        {
+            receiptPrecededDispatch = File.ReadAllText(installReceipts).Contains("managed-web-db", StringComparison.Ordinal);
+            Dictionary<string, string> Labels(string kind, string value) => new()
+            {
+                [ApplicationDeploymentValidation.ManagedLabel] = "true",
+                [ApplicationDeploymentValidation.OwnerLabel] = ApplicationDeploymentValidation.OwnerValue,
+                [ApplicationDeploymentValidation.ApplicationIdLabel] = plan.InstanceId.ToString("D"),
+                [DockerStackValidation.ComposeProjectLabel] = plan.Project,
+                ["com.docker.compose." + kind] = value,
+            };
+            sameSecret = environment["web"]["DB_PASSWORD"] == password && environment["db"]["POSTGRES_PASSWORD"] == password;
+            var details = plan.Services.Select(service => new DockerContainerDetailsDto(
+                plan.ContainerName(service.Id), plan.ContainerName(service.Id), service.ImageReference, "", "running", "", "", "", "",
+                [service.Id == plan.WebService ? $"{service.ContainerPort}/tcp → 127.0.0.1:{port}" : $"{service.ContainerPort}/tcp → "],
+                [], [plan.NetworkName], [],
+                Labels("service", service.Id), engine.Images[service.ImageReference].Id)).ToArray();
+            engine.Containers = details.ToDictionary(container => container.Name);
+            engine.Network = new(plan.NetworkName, plan.NetworkName, "bridge", "local", [.. engine.Containers.Keys], Labels("network", "private"));
+            engine.Volume = new(plan.VolumeName("db-data"), "local", "/fixture", Labels("volume", "db-data"), [plan.ContainerName("db")]);
+            compose.Observed = [.. plan.Services.Select(service => new DockerStackServiceDto(service.Id, plan.ContainerName(service.Id),
+                service.ImageReference, "running", "running"))];
+        };
+        http.DefaultRequestHeaders.Remove("Idempotency-Key");
+        http.DefaultRequestHeaders.Add("Idempotency-Key", "managed-compose-install");
+        http.DefaultRequestHeaders.Remove("X-Test-Role");
+        http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
+        using (var denied = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.CatalogInstall, request, RelaxKonOSJsonOptions.Default))
+            Check(denied.StatusCode == HttpStatusCode.Forbidden && catalog.FindByName(request.Name) is null,
+                "Managed Compose preview remains restricted to the controller.");
+        http.DefaultRequestHeaders.Remove("X-Test-Role");
+        http.DefaultRequestHeaders.Add("X-Test-Role", "controller");
+        using var response = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.CatalogInstall, request, RelaxKonOSJsonOptions.Default);
+        if (response.StatusCode != HttpStatusCode.Accepted)
+            throw new InvalidOperationException($"Managed catalog install returned {(int)response.StatusCode}. {await response.Content.ReadAsStringAsync()}");
+        var accepted = (await response.Content.ReadFromJsonAsync<CatalogApplicationInstallDto>(RelaxKonOSJsonOptions.Default))!;
+        using (var budget = new CancellationTokenSource(TimeSpan.FromSeconds(12)))
+            while (coordinator.Get(accepted.Operation.OperationId)?.State is DeploymentOperationState.Queued or DeploymentOperationState.Running)
+                await Task.Delay(20, budget.Token);
+        var original = operations.Get(accepted.Operation.OperationId)!;
+        var application = catalog.Find(accepted.Application.Id)!;
+        Check(original.Operation.State == DeploymentOperationState.Succeeded && original.Compose?.ReceiptId is not null
+            && application.CurrentRevisionId == original.Operation.TargetRevisionId && application.ContainerName?.EndsWith("-web-1") == true
+            && catalog.FindRevision(application.CurrentRevisionId!.Value)?.ManagedImages is { Length: 2 }
+            && sameSecret && receiptPrecededDispatch && application.Configuration is [{ IsSecret: true, SecretVersion: 1, Value: null }]
+            && clients.LastClientName == ApplicationDeploymentRuntime.HealthClientName && accepted.Application.Configuration.All(field => field.Value is null),
+            $"Activation must bind both verified images and the healthy Web service while retaining one protected secret. State={original.Operation.State}, recovery={original.Operation.RecoveryProblemCode}.");
+
+        catalog.Update(application.Id, item => item with { CurrentRevisionId = null, ContainerName = null, ContainerId = null, DesiredState = ApplicationDesiredState.Stopped });
+        operations.Update(original.Operation.OperationId, prior => prior with { State = DeploymentOperationState.Running, Stage = DeploymentStage.Activating, CompletedAt = null }, "test-before-activation");
+        await coordinator.StartAsync(default);
+        using var replay = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.CatalogInstall, request, RelaxKonOSJsonOptions.Default);
+        var repeated = (await replay.Content.ReadFromJsonAsync<CatalogApplicationInstallDto>(RelaxKonOSJsonOptions.Default))!;
+        Check(repeated.Operation.OperationId == original.Operation.OperationId && compose.ManagedDeployCalls == 1
+            && operations.Get(original.Operation.OperationId)?.Operation.State == DeploymentOperationState.Succeeded
+            && catalog.Find(application.Id)?.CurrentRevisionId == application.CurrentRevisionId && !secrets.Has(application.Id, "password", 2),
+            "Reconciliation must restore the original activation without another project or secret version.");
+        Console.WriteLine($"Managed catalog install activated and recovered original app {original.Operation.OperationId} and Compose {original.Compose!.ReceiptId}.");
     }
 
     private static async Task VerifyManagedComposeRecoveryAsync(string root)
@@ -316,7 +401,9 @@ internal static class CatalogUpdateChecks
         using var reopenedDocker = DockerChecks.NewStackCoordinator(dockerRoot, compose, lifetime, 4);
         var reopened = new ApplicationDeploymentOperationStore(environment, options);
         var recovery = new ApplicationManagedComposeDispatch(reopened, reopenedDocker);
-        var coordinator = new ApplicationDeploymentCoordinator(reopened, null!, null!, options, new(), lifetime,
+        var noActivation = new ApplicationDeploymentService(null!, null!, null!, null!, null!, options, environment,
+            new(), null!, NullLogger<ApplicationDeploymentService>.Instance);
+        var coordinator = new ApplicationDeploymentCoordinator(reopened, null!, noActivation, options, new(), lifetime,
             new CatalogUpdateEventPublisher(), NullLogger<ApplicationDeploymentCoordinator>.Instance, recovery);
         await coordinator.StartAsync(default);
 
@@ -495,6 +582,9 @@ public class CatalogUpdateEngine : DispatchProxy
     public DockerContainerCreateRequest? CreatedContainer { get; set; }
     public DockerStatusDto? ReportedStatus { get; set; }
     public DockerImageIdentity? Image { get; set; }
+    public Dictionary<string, DockerImageIdentity> Images { get; set; } = [];
+    public Dictionary<string, DockerContainerDetailsDto> Containers { get; set; } = [];
+    public bool LocalCompose { get; set; }
     public DockerVolumeDetailsDto? Volume { get; set; }
     public TaskCompletionSource<DockerStatusDto> Status { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -503,9 +593,10 @@ public class CatalogUpdateEngine : DispatchProxy
         Calls.Add(method!.Name);
         if (method.Name == nameof(IDockerEngineService.ListContainersAsync)) return Task.FromResult<IReadOnlyList<DockerContainerDto>>([]);
         if (method.Name == nameof(IDockerEngineService.GetStatusAsync)) { Started.TrySetResult(); return ReportedStatus is { } status ? Task.FromResult(status) : Status.Task; }
-        if (method.Name == nameof(IDockerEngineService.InspectImageAsync)) return Task.FromResult(Image);
+        if (method.Name == nameof(IDockerEngineService.UsesLocalComposeEndpointAsync)) return Task.FromResult(LocalCompose);
+        if (method.Name == nameof(IDockerEngineService.InspectImageAsync)) return Task.FromResult(Images.GetValueOrDefault((string)args![0]!) ?? Image);
         if (method.Name == nameof(IDockerEngineService.GetVolumeAsync)) return Task.FromResult(Volume);
-        if (method.Name == nameof(IDockerEngineService.GetContainerAsync)) return Task.FromResult(Container);
+        if (method.Name == nameof(IDockerEngineService.GetContainerAsync)) return Task.FromResult(Containers.GetValueOrDefault((string)args![0]!) ?? Container);
         if (method.Name == nameof(IDockerEngineService.GetNetworkAsync)) return Task.FromResult(Network);
         if (method.Name == nameof(IDockerEngineService.ListVolumesAsync)) return Task.FromResult<IReadOnlyList<DockerVolumeDto>>(
             Volume is { } volume ? [new(volume.Name, volume.Driver, volume.Mountpoint)] : []);

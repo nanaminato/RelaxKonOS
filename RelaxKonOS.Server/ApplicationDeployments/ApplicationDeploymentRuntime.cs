@@ -98,6 +98,41 @@ internal sealed class ApplicationDeploymentRuntime(
     public async Task<DockerContainerDetailsDto?> InspectAsync(string containerId, CancellationToken cancellationToken)
         => await engine.GetContainerAsync(containerId, cancellationToken);
 
+    internal async Task<string> PreflightManagedComposeAsync(CancellationToken cancellationToken)
+    {
+        if (!await engine.UsesLocalComposeEndpointAsync(cancellationToken))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.EngineUnavailable, 503);
+        var platform = await PreflightEngineAsync(cancellationToken);
+        if (platform != "linux/amd64")
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.PlatformUnsupported, 409);
+        return platform;
+    }
+
+    internal async Task<bool> VerifyManagedComposeResourcesAsync(ManagedComposePlan plan, CancellationToken ct)
+    {
+        var network = await engine.GetNetworkAsync(plan.NetworkName, ct);
+        if (network is null || network.Name != plan.NetworkName || network.Driver != "bridge"
+            || !Owned(network.Labels, "network", "private")
+            || network.Containers.Count != plan.Services.Count
+            || !network.Containers.ToHashSet(StringComparer.Ordinal).SetEquals(plan.Services.Select(service => plan.ContainerName(service.Id))))
+            return false;
+        foreach (var service in plan.Services)
+            foreach (var mount in service.Volumes)
+            {
+                var name = plan.VolumeName(mount.Name);
+                var volume = await engine.GetVolumeAsync(name, ct);
+                if (volume is null || volume.Name != name || volume.Driver != "local" || !Owned(volume.Labels, "volume", mount.Name)
+                    || !volume.UsedBy.SequenceEqual([plan.ContainerName(service.Id)]))
+                    return false;
+            }
+        return true;
+
+        bool Owned(IReadOnlyDictionary<string, string> labels, string kind, string key) =>
+            ApplicationDeploymentValidation.IsOwnedBy(labels, plan.InstanceId)
+            && labels.GetValueOrDefault(DockerStackValidation.ComposeProjectLabel) == plan.Project
+            && labels.GetValueOrDefault("com.docker.compose." + kind) == key;
+    }
+
     /// <summary>Lists only containers whose ownership labels identify this application, including an
     /// interrupted candidate. Name-prefix matches are merely candidates for inspection.</summary>
     public async Task<IReadOnlyList<DockerContainerDto>> FindApplicationContainersAsync(Guid applicationId, CancellationToken cancellationToken)
@@ -278,7 +313,8 @@ internal sealed class ApplicationDeploymentRuntime(
     /// Works out whether the started container is ready. A process-level check is explicitly weaker
     /// and is what a worker workload must select; an HTTP check probes the loopback publish.
     /// </summary>
-    public async Task<bool> IsReadyAsync(ApplicationRecord application, string containerId, CancellationToken cancellationToken)
+    public async Task<bool> IsReadyAsync(ApplicationRecord application, string containerId, CancellationToken cancellationToken,
+        bool requireSuccessStatus = false)
     {
         var details = await engine.GetContainerAsync(containerId, cancellationToken);
         if (details is null) return false;
@@ -291,7 +327,7 @@ internal sealed class ApplicationDeploymentRuntime(
         try
         {
             using var response = await client.GetAsync($"http://127.0.0.1:{hostPort}{path}", cancellationToken);
-            return (int)response.StatusCode is >= 200 and < 400;
+            return requireSuccessStatus ? response.IsSuccessStatusCode : (int)response.StatusCode is >= 200 and < 400;
         }
         catch (HttpRequestException) { return false; }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested) { return false; }

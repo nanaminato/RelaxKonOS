@@ -334,6 +334,8 @@ interface IApplicationTemplate
 | `Running` | 交给 `RecoverAsync`：删除候选容器、释放中断修订的机密物化文件；规范容器仍在则按期望状态重启并重新绑定，否则清空绑定并报 `orphaned_resources`。 |
 | 有受管 Compose 派发意图 | 以原应用实例 ID、原应用操作 ID、计划摘要和秘密版本引用查 Docker 账本。若找到底层回执，保存原 Docker 操作 ID。业务结果待核验期间，应用回执保留 `managed_compose_outcome_unknown` 并阻止写入。缺失回执也保留门禁，恢复不重派，也不执行单容器清理。 |
 
+底层回执已成功时，恢复用原目标修订核对所有服务的 Engine 镜像 ID、归属、网络、数据卷、端口及 Web 就绪，再提交原修订。验收开关默认关闭，只有已保存目录安装回执的工作者才可派发双服务安装。当前实现与实机证据见[容器应用平台进度](../platform/RelaxKonOS.ContainerApplications.Progress.md)。
+
 **半途的部署永不重放。** 结论不确定即标为 `Interrupted`，禁止盲目重复发布。
 
 确定性拒绝（域/策略不允许）映射为 `Failed` 而非 `Unknown`；只有**结果丢失**才是 `Unknown` 且禁止重放。

@@ -106,7 +106,7 @@ internal static class ApplicationCatalog
             new(1, 512L * 1024 * 1024, 512), [.. Fields.Select(x => x.Describe())], Volumes, ContainerPort, HealthPath,
             "Updates and removal retain managed data volumes. Installed instances are never changed by a catalogue refresh.");
 
-        internal ManagedComposePlan CompileTopology(Guid instanceId, int hostPort)
+        internal ManagedComposePlan CompileTopology(Guid instanceId, int hostPort, IReadOnlySet<string>? suppliedFields = null)
         {
             if (!IsMultiService || instanceId == Guid.Empty || !ApplicationDeploymentValidation.IsValidPort(hostPort))
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.CatalogFieldInvalid, 400);
@@ -114,12 +114,14 @@ internal static class ApplicationCatalog
                 service.Id, service.ImageReference, service.ContainerPort,
                 [.. service.Volumes.Select(volume => new ManagedComposeVolume(volume.Name, volume.ContainerPath, volume.ReadOnly))],
                 service.DependsOn,
-                [.. Fields.SelectMany(field => field.Bindings).Where(binding => binding.Service == service.Id).Select(binding => binding.EnvironmentName)]))]);
+                [.. Fields.Where(field => suppliedFields is null || suppliedFields.Contains(field.Id))
+                    .SelectMany(field => field.Bindings).Where(binding => binding.Service == service.Id).Select(binding => binding.EnvironmentName)]))]);
         }
 
-        public (CreateApplicationRequest Definition, DeploymentSourceInputDto Source) Bind(InstallCatalogApplicationRequest request)
+        public (CreateApplicationRequest Definition, DeploymentSourceInputDto Source) Bind(InstallCatalogApplicationRequest request,
+            bool enableManagedCompose = false)
         {
-            if (IsMultiService) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 409);
+            if (IsMultiService && !enableManagedCompose) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 409);
             var name = request.Name?.Trim();
             if (!ApplicationDeploymentValidation.IsValidName(name) || request.HostPort is < 1 or > 65535)
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.CatalogFieldInvalid, 400);
@@ -135,7 +137,7 @@ internal static class ApplicationCatalog
                 if (field.Required && string.IsNullOrWhiteSpace(value) || value is not null && !field.Accepts(value))
                     throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.CatalogFieldInvalid, 400);
                 if (value is not null)
-                    configuration.Add(new(field.Bindings.Single().EnvironmentName, value, field.Type == "secret"));
+                    configuration.Add(new(IsMultiService ? field.Id : field.Bindings.Single().EnvironmentName, value, field.Type == "secret"));
             }
             return (new(name!, ApplicationSourceKind.Image, ApplicationWorkloadKind.Web, ApplicationReadinessLevel.Http,
                 HealthPath, ContainerPort, request.HostPort, "127.0.0.1", Describe().MinimumResources, Volumes, configuration),
@@ -175,6 +177,7 @@ internal static class ApplicationCatalog
             && Type is "text" or "secret"
             && (DefaultValue is null || Type == "text" && Accepts(DefaultValue))
             && Labels is not null && IsText(Labels.English, 120) && IsText(Labels.Chinese, 120) && IsText(Labels.Japanese, 120);
-        public bool Accepts(string value) => Type is "text" or "secret" && value.Length is <= 4096 && !value.Any(char.IsControl);
+        public bool Accepts(string value) => Type is "text" or "secret" && value.Length is <= 4096
+            && (Type != "secret" || value.Length > 0) && !value.Any(char.IsControl);
     }
 }

@@ -16,7 +16,8 @@ internal sealed record DeploymentRequest(
     bool Force = false,
     bool DeleteVolumes = false,
     UpdateCatalogApplicationRequest? CatalogUpdate = null,
-    DateTimeOffset? ExpectedUpdatedAt = null);
+    DateTimeOffset? ExpectedUpdatedAt = null,
+    bool ManagedComposeInstall = false);
 
 /// <summary>
 /// Executes one deployment operation against the local Docker Engine. It owns the stage sequence,
@@ -33,7 +34,8 @@ internal sealed class ApplicationDeploymentService(
     IHostEnvironment environment,
     ApplicationDeploymentLiveLogs liveLogs,
     IDeploymentImageBuildSource imageBuilds,
-    ILogger<ApplicationDeploymentService> logger)
+    ILogger<ApplicationDeploymentService> logger,
+    ApplicationManagedComposeInstall? managedCompose = null)
 {
     /// <summary>Read-only secret delivery path inside the workload container.</summary>
     public const string SecretsMountPath = "/run/relaxkonos/secrets";
@@ -59,6 +61,7 @@ internal sealed class ApplicationDeploymentService(
         if (request.Source is { } source) parts.Add(Canonical(source));
         parts.Add(request.ExpectedUpdatedAt?.ToString("O") ?? "-");
         if (request.CatalogUpdate is { } update) parts.Add(System.Text.Json.JsonSerializer.Serialize(update));
+        if (request.ManagedComposeInstall) parts.Add("managed-compose-install");
         return ApplicationDeploymentValidation.Reference(string.Join('\u001e', parts));
     }
 
@@ -67,6 +70,9 @@ internal sealed class ApplicationDeploymentService(
 
     internal static void ValidateCatalogLifecycle(ApplicationRecord application, DeploymentRequest request)
     {
+        if (application.ManagedCompose != request.ManagedComposeInstall
+            || application.ManagedCompose && (request.Kind != DeploymentOperationKind.Deploy || request.CatalogUpdate is not null))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 409);
         if (request.Kind == DeploymentOperationKind.Reinstall)
         {
             if (application.CatalogTemplateId is null || application.DesiredState != ApplicationDesiredState.Retained
@@ -97,6 +103,13 @@ internal sealed class ApplicationDeploymentService(
         if (request.ExpectedUpdatedAt is { } expected && application.UpdatedAt != expected)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DefinitionConflict);
         ValidateCatalogLifecycle(application, request);
+        if (application.ManagedCompose)
+        {
+            if (managedCompose is null || !options.EnableManagedComposePreview)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 409);
+            await managedCompose.DeployAsync(application, operationId, actor, progress, cancellationToken);
+            return;
+        }
         if (request.CatalogUpdate is { } update)
         {
             var target = ApplicationCatalogUpdates.Validate(application, application.CurrentRevisionId is { } id ? catalog.FindRevision(id) : null, update);
@@ -124,6 +137,9 @@ internal sealed class ApplicationDeploymentService(
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 400);
         }
     }
+
+    internal Task<bool> RecoverManagedComposeAsync(DeploymentEntry entry, DockerStackOperationDto receipt, CancellationToken ct) =>
+        managedCompose?.RecoverAsync(entry, receipt, ct) ?? Task.FromResult(false);
 
     /// <summary>
     /// Startup reconciliation. An operation that was running when the process stopped is never

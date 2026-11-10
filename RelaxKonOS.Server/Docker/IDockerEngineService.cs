@@ -14,6 +14,7 @@ public sealed record DockerImageIdentity(string Id, string OperatingSystem, stri
 public interface IDockerEngineService
 {
     Task<DockerStatusDto> GetStatusAsync(CancellationToken cancellationToken = default);
+    Task<bool> UsesLocalComposeEndpointAsync(CancellationToken cancellationToken = default);
     /// <summary>Returns null when the daemon is unreachable or does not report proxy information.</summary>
     Task<DockerEngineProxyState?> GetProxyStateAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken = default);

@@ -61,24 +61,38 @@ public static class ApplicationDeploymentEndpoints
 
         group.MapPost(ApplicationDeploymentApiRoutes.CatalogInstallPattern,
             (InstallCatalogApplicationRequest request, HttpContext http, ApplicationDeploymentManager manager,
-                ApplicationDeploymentCoordinator coordinator, ApplicationDeploymentDefinitionMutationStore mutations, CancellationToken ct) =>
+                ApplicationDeploymentCoordinator coordinator, ApplicationDeploymentDefinitionMutationStore mutations,
+                ApplicationDeploymentOptions options, ApplicationManagedComposeDispatch dispatch, CancellationToken ct) =>
                 HandleAsync(async () =>
                 {
                     if (!request.Confirmed) return Problem(ApplicationDeploymentProblemCodes.ConfirmationRequired, 400);
                     var actor = Actor(http.User);
-                    var installed = await mutations.ExecuteAsync(actor, Key(http), "install", RequestReference(request), async () =>
+                    Guid? waitingForReceipt = null;
+                    CatalogApplicationInstallDto installed;
+                    try
                     {
-                        var template = ApplicationCatalog.Require(request.TemplateId, request.TemplateVersion);
-                        var bound = template.Bind(request);
-                        await manager.PreflightCatalogInstallAsync(bound.Definition, ct);
-                        var application = await manager.CreateAsync(bound.Definition, actor, ct, template);
-                        var operation = coordinator.Start(new DeploymentRequest(application.Id, DeploymentOperationKind.Deploy, bound.Source, ExpectedUpdatedAt: application.UpdatedAt), actor, Key(http));
-                        var visible = application with
+                        installed = await mutations.ExecuteAsync(actor, Key(http), "install", RequestReference(request), async () =>
                         {
-                            Configuration = [.. application.Configuration.Select(field => field.IsSecret ? field with { Value = null } : field)],
-                        };
-                        return new CatalogApplicationInstallDto(visible, operation, template.Id, template.Version);
-                    }, receipt => receipt);
+                            var template = ApplicationCatalog.Require(request.TemplateId, request.TemplateVersion);
+                            var bound = template.Bind(request, options.EnableManagedComposePreview && dispatch.Available);
+                            await manager.PreflightCatalogInstallAsync(bound.Definition, ct, template.IsMultiService);
+                            var application = await manager.CreateAsync(bound.Definition, actor, ct, template);
+                            var operation = coordinator.Start(new DeploymentRequest(application.Id, DeploymentOperationKind.Deploy,
+                                bound.Source, ExpectedUpdatedAt: application.UpdatedAt, ManagedComposeInstall: template.IsMultiService), actor, Key(http));
+                            if (template.IsMultiService) waitingForReceipt = operation.OperationId;
+                            var visible = application with
+                            {
+                                Configuration = [.. application.Configuration.Select(field => field.IsSecret ? field with { Value = null } : field)],
+                            };
+                            return new CatalogApplicationInstallDto(visible, operation, template.Id, template.Version);
+                        }, receipt => receipt);
+                    }
+                    catch
+                    {
+                        if (waitingForReceipt is { } id) coordinator.AbortCatalogInstall(id);
+                        throw;
+                    }
+                    coordinator.ReleaseCatalogInstall(installed.Operation.OperationId);
                     return Results.Accepted(ApplicationDeploymentApiRoutes.Operation(installed.Operation.OperationId), installed);
                 }))
             .RequireAuthorization(ManagePolicy);

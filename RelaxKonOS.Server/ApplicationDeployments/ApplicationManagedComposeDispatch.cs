@@ -9,6 +9,7 @@ internal sealed class ApplicationManagedComposeDispatch(ApplicationDeploymentOpe
     DockerStackOperationCoordinator? docker = null)
 {
     internal const string OutcomeUnknown = "application-deployment.managed_compose_outcome_unknown";
+    internal bool Available => docker is not null;
 
     internal async Task<DockerStackOperationDto> DispatchAsync(Guid operationId, Guid revisionId, ManagedComposePlan plan,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment, string credentialRevision,
@@ -43,4 +44,7 @@ internal sealed class ApplicationManagedComposeDispatch(ApplicationDeploymentOpe
         operations.BindComposeReceipt(operation.OperationId, receipt.OperationId);
         return receipt;
     }
+
+    internal DockerStackOperationDto? ObserveOriginal(Guid operationId) =>
+        operations.Get(operationId) is { } entry ? ObserveOriginal(entry) : null;
 }

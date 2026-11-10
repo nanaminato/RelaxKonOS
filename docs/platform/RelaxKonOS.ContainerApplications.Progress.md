@@ -96,3 +96,15 @@ Docker 操作协调器接受结构化计划和应用操作 ID。以实例隔离�
 环境为 Windows x64、.NET SDK 10.0.300、Docker Compose v5.5.1。运行 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，并执行 Server 测试 DLL 的 `--catalog-update-only`、`--deployment-definition-only`、`--deployment-progress-only`、`--stack-operations-only`、`--docker-compose-config-only`。证据位于 `ca-build/ca03-handoff-*.log`。早期运行分别发现夹具子目录未创建及请求摘要未使用 64 字符十六进制值，修正夹具后目录专项退出 0。日志保存了复验中的一对原应用和 Docker 操作 ID。
 
 最终构建和五组专项均退出 0。重开账本后原键、原应用 ID 和原 Docker ID 一致，缺失回执保持待核验，两个场景都拒绝冲突写入且未增加底层派发次数。此切片使用受控执行器重建中断时的持久状态。
+
+## CA-02 / CA-03 双服务安装与活动修订
+
+现有目录安装路由增加默认关闭的 `ApplicationDeployments:EnableManagedComposePreview` 验收开关。控制者提交后，Server 检查 Linux x64 本地 Unix Engine。目录安装回执落盘后才解除工作者等待，确保底层受理窗口内可以按同一安装键查到原应用操作。
+
+按目录字段只保存一个受保护秘密版本，再按服务注入。活动修订记录每个服务的摘要引用和 Engine 镜像 ID。激活前核对容器身份、项目归属、专属网络的连接集合、卷归属和使用方、Web 回环端口以及数据库未发布。Web 就绪须返回 HTTP 2xx。若 Server 在底层成功后中断，启动恢复通过原回执和同一组只读检查提交原活动修订。证据不足时原回执保持待核验。
+
+Windows x64 / .NET SDK 10.0.300 环境构建 Server Tests（`--no-restore -m:1 -p:UseSharedCompilation=false -v:q`）。`--catalog-update-only` 使用真实回环 HTTP 和受控 Engine、Compose 及健康响应，验证默认关闭、读者拒绝、安装回执先落盘、单秘密版本注入、活动修订提交，以及重建中断状态后按原 ID 激活。首次启用测试撞到重复的宿主平台检查，将宿主和本地 socket 判定集中到实际 Engine 端口，应用运行层仍独立核对 Engine 平台。复验退出 0，证据见 `ca-build/ca03-install-catalog-update.log`。
+
+最终构建及 `--deployment-definition-only`、`--deployment-progress-only`、`--stack-operations-only`、`--docker-compose-config-only`、`--module-boundary-milestones-only` 均退出 0。桌面 WindowPreviews Tests 构建及 `--deployments-only` 退出 0。对应记录见 `ca-build/ca03-install-*.log`。
+
+下一步是用真实 Web＋数据库镜像夹具、Linux 专用 Engine 和真实业务探针替换受控响应，验证强制终止 Server、兼容升级及重装证据，并接入通过验收后开放的客户端能力。当前没有实机写入、业务数据或同二进制新增包证据。

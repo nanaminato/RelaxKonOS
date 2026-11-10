@@ -1589,10 +1589,12 @@ internal sealed class FakeComposeService : IDockerComposeService
     }
 
     public int ManagedDeployCalls { get; private set; }
+    internal Action<ManagedComposePlan, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>>? OnManagedDeploy { get; set; }
     public Task<DockerStackMutationResult> DeployManagedAsync(ManagedComposePlan plan,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment, CancellationToken cancellationToken = default)
     {
         ManagedDeployCalls++;
+        OnManagedDeploy?.Invoke(plan, environment);
         return Task.FromResult(NextResult);
     }
 

@@ -12,6 +12,17 @@ namespace RelaxKonOS.Server.Docker;
 /// </summary>
 public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDockerProxyResolver proxyResolver, ILogger<DockerCliEngineService> logger) : IDockerEngineService
 {
+    public async Task<bool> UsesLocalComposeEndpointAsync(CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsLinux() || System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+            != System.Runtime.InteropServices.Architecture.X64 || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOCKER_CONTEXT")))
+            return false;
+        var host = Environment.GetEnvironmentVariable("DOCKER_HOST");
+        if (!string.IsNullOrEmpty(host)) return host.StartsWith("unix:///", StringComparison.Ordinal) && host.Length > "unix:///".Length;
+        var context = await RunAsync(["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], cancellationToken);
+        return context.Success && context.Output.Trim() == "unix:///var/run/docker.sock";
+    }
+
     private const int MaxArchiveBytes = 64 * 1024 * 1024;
     /// <summary>Command output is kept as a bounded tail: enough to explain a failure, never a stream.</summary>
     private const int MaximumLogLines = 100;
@@ -106,7 +117,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
             return new DockerContainerDetailsDto(
                 Read(root, "Id"), Read(root, "Name").TrimStart('/'), Read(config, "Image"), Read(root, "Created"),
                 Read(state, "Status"), Read(state, "Status"), Join(root, "Path", "Args"), Read(config, "WorkingDir"), Read(restart, "Name"),
-                ports, mounts, networks, environment, labels);
+                ports, mounts, networks, environment, labels, Read(root, "Image"));
         }
         catch (JsonException) { return null; }
     }

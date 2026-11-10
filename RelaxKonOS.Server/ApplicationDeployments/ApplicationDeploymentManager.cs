@@ -44,7 +44,7 @@ internal sealed class ApplicationDeploymentManager(
         return [.. catalog.ReadApplications().Select(application => ApplicationDeploymentMapper.Describe(
             application,
             application.CurrentRevisionId is { } currentId && revisions.TryGetValue(currentId, out var current) ? current : null,
-            containers is null ? null : Match(containers, application.Id),
+            containers is null ? null : Match(containers, application),
             containers is not null,
             // The list matches by the deterministic name only. The detail view inspects the container
             // and verifies the ownership labels, which is where a name collision surfaces.
@@ -87,7 +87,7 @@ internal sealed class ApplicationDeploymentManager(
     {
         var application = Require(applicationId);
         var view = await ObserveAsync(application, cancellationToken);
-        if (view.Container is null)
+        if (view.Container is null || application.ManagedCompose)
             return new(applicationId, null, application.CurrentRevisionId, [], false);
 
         var logs = await runtime.LogsAsync(view.Container.Id, tail, cancellationToken);
@@ -139,7 +139,7 @@ internal sealed class ApplicationDeploymentManager(
                 ApplicationDesiredState.Stopped, definition.ReadinessLevel, definition.HealthCheckPath,
                 definition.ContainerPort, definition.HostPort, definition.BindAddress, definition.Limits,
                 volumes, configuration, null, null, null, null, definition.SiteId, null, now, now, null,
-                catalogTemplate?.Id, catalogTemplate?.Version);
+                catalogTemplate?.Id, catalogTemplate?.Version, catalogTemplate?.IsMultiService == true);
             catalog.Create(application);
             return await DescribeOneAsync(application, cancellationToken);
         }
@@ -150,9 +150,11 @@ internal sealed class ApplicationDeploymentManager(
         }
     }
 
-    internal async Task PreflightCatalogInstallAsync(CreateApplicationRequest definition, CancellationToken cancellationToken)
+    internal async Task PreflightCatalogInstallAsync(CreateApplicationRequest definition, CancellationToken cancellationToken,
+        bool managedCompose = false)
     {
-        ApplicationDeploymentRuntime.RequireCatalogPlatform(await runtime.PreflightEngineAsync(cancellationToken));
+        if (managedCompose) await runtime.PreflightManagedComposeAsync(cancellationToken);
+        else ApplicationDeploymentRuntime.RequireCatalogPlatform(await runtime.PreflightEngineAsync(cancellationToken));
         if (runtime.ProbeBindAddress(definition.BindAddress ?? "127.0.0.1", definition.HostPort) is { } conflict)
             throw conflict;
     }
@@ -164,7 +166,7 @@ internal sealed class ApplicationDeploymentManager(
     public async Task<ApplicationDto> UpdateAsync(Guid applicationId, UpdateApplicationRequest request, CancellationToken cancellationToken)
     {
         var baseline = Require(applicationId);
-        if (baseline.DesiredState == ApplicationDesiredState.Retained)
+        if (baseline.DesiredState == ApplicationDesiredState.Retained || baseline.ManagedCompose)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.NotSupported, 409);
         if (request.ExpectedUpdatedAt == default)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
@@ -231,7 +233,7 @@ internal sealed class ApplicationDeploymentManager(
         try { containers = await runtime.ListContainersAsync(cancellationToken); }
         catch (ApplicationDeploymentException) { return new(null, false, true); }
 
-        var container = Match(containers, application.Id);
+        var container = Match(containers, application);
         if (container is null) return new(null, true, true);
         try
         {
@@ -241,9 +243,9 @@ internal sealed class ApplicationDeploymentManager(
         catch (ApplicationDeploymentException) { return new(container, true, true); }
     }
 
-    private static DockerContainerDto? Match(IReadOnlyList<DockerContainerDto> containers, Guid applicationId)
+    private static DockerContainerDto? Match(IReadOnlyList<DockerContainerDto> containers, ApplicationRecord application)
     {
-        var name = ApplicationDeploymentValidation.ContainerName(applicationId);
+        var name = application.ManagedCompose ? application.ContainerName : ApplicationDeploymentValidation.ContainerName(application.Id);
         return containers.FirstOrDefault(container => container.Names
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Any(candidate => string.Equals(candidate, name, StringComparison.Ordinal)));

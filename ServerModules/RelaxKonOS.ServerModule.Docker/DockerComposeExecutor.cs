@@ -44,7 +44,7 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
             using (var resolved = JsonDocument.Parse(config.Output))
                 plan.RequireResolvedTopology(resolved.RootElement, environment);
             await RequireManagedResourcesAsync(plan, cancellationToken);
-            var result = await RunManagedAsync([.. prefix, "up", "--detach", "--no-build"], cancellationToken, variables);
+            var result = await RunManagedAsync([.. prefix, "up", "--detach", "--no-build", "--pull", "never"], cancellationToken, variables);
             await RequireManagedResourcesAsync(plan, cancellationToken);
             return new(result.Success, result.Success ? string.Empty : DockerStackProblem.ComposeFailed, []);
         }

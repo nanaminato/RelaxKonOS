@@ -47,6 +47,7 @@ public sealed class ApplicationDeploymentOptions
     public int HealthCheckIntervalSeconds { get; set; } = 2;
     public int StopTimeoutSeconds { get; set; } = 20;
     public int MaximumConcurrentOperations { get; set; } = 4;
+    public bool EnableManagedComposePreview { get; set; }
     public double DefaultCpuCores { get; set; } = 1;
     public long DefaultMemoryBytes { get; set; } = 512L * 1024 * 1024;
     public int DefaultPidsLimit { get; set; } = 512;
@@ -95,7 +96,8 @@ internal sealed record ApplicationRecord(
     DateTimeOffset UpdatedAt,
     DateTimeOffset? LastDeployedAt,
     string? CatalogTemplateId = null,
-    string? CatalogTemplateVersion = null);
+    string? CatalogTemplateVersion = null,
+    bool ManagedCompose = false);
 
 /// <summary>
 /// An immutable published version. It binds the observed image identity, the start definition, and
@@ -133,7 +135,10 @@ internal sealed record RevisionRecord(
     string? GitReference = null,
     string? GitCommitSha = null,
     string? GitContextDirectory = null,
-    string? GitDockerfile = null);
+    string? GitDockerfile = null,
+    ManagedServiceImage[]? ManagedImages = null);
+
+internal sealed record ManagedServiceImage(string Service, string ImageReference, string ImageId);
 
 /// <summary>
 /// The validated, typed deployment input produced by a template. It is never a raw client payload:
