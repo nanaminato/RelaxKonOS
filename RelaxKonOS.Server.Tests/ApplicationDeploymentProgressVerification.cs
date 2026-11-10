@@ -52,6 +52,7 @@ internal static class ApplicationDeploymentProgressVerification
         builder.Services.AddHostedService<ApplicationDeploymentLogBroadcastService>();
         // Map the production routes, but do not execute any Docker operation.
         builder.Services.AddSingleton<ApplicationDeploymentManager>();
+        builder.Services.AddSingleton<ApplicationManagedComposeDispatch>();
         builder.Services.AddSingleton<ApplicationDeploymentCoordinator>();
         builder.Services.AddSingleton<ApplicationDeploymentDefinitionMutationStore>();
         // The production file-reference route reads a user-selected source through IFileService and

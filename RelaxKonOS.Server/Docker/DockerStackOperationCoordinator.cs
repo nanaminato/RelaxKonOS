@@ -64,12 +64,16 @@ internal sealed class DockerStackOperationCoordinator(
         var definition = plan.RenderDeployment(out _, values);
         var version = DockerStackValidation.DefinitionVersion(definition.Name, definition.ComposeYaml);
         return StartOperationAsync(DockerStackOperationKind.Deploy, definition.Name, null, ManagedActor(plan.InstanceId),
-            applicationOperationId.ToString("N"), DockerStackValidation.Reference($"managed-deploy|{version}|{credentialRevision}"),
+            applicationOperationId.ToString("N"), ManagedRequestReference(version, DockerStackValidation.Reference(credentialRevision)),
             ct, new ManagedDeployment(plan, values));
     }
 
-    internal DockerStackOperationDto? GetManagedByRequest(Guid instanceId, Guid applicationOperationId) =>
-        GetByRequest(ManagedActor(instanceId), applicationOperationId.ToString("N"));
+    internal DockerStackOperationDto? GetManagedByRequest(Guid instanceId, Guid applicationOperationId, string planReference,
+        string credentialReference) => operations.FindIdempotent(DockerStackOperationKind.Deploy, ManagedActor(instanceId),
+            applicationOperationId.ToString("N"), ManagedRequestReference(planReference, credentialReference))?.Operation;
+
+    private static string ManagedRequestReference(string planReference, string credentialReference) =>
+        DockerStackValidation.Reference($"managed-deploy|{planReference}|{credentialReference}");
 
     private static string ManagedActor(Guid instanceId) => $"container-application:{instanceId:N}";
 

@@ -32,6 +32,7 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentSecretStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentStagingStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOperationStore>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationManagedComposeDispatch>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentDefinitionMutationStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentImageTagCatalog>();
         builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime>();

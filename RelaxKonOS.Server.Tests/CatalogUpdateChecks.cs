@@ -26,6 +26,7 @@ internal static class CatalogUpdateChecks
         VerifyManifestDirectory(root);
         VerifyTopologyManifest();
         await VerifyEngineBoundariesAsync();
+        await VerifyManagedComposeRecoveryAsync(Path.Combine(root, "compose-recovery"));
         var environment = new TestHostEnvironment(root);
         var options = new ApplicationDeploymentOptions();
         var catalog = new ApplicationDeploymentCatalogStore(environment, options);
@@ -101,7 +102,7 @@ internal static class CatalogUpdateChecks
 
         var logs = new ApplicationDeploymentLiveLogs();
         var service = new ApplicationDeploymentService(catalog, secrets, new(environment, options, NullLogger<ApplicationDeploymentStagingStore>.Instance), runtime, null!, options, environment, logs, null!, NullLogger<ApplicationDeploymentService>.Instance);
-        var coordinator = new ApplicationDeploymentCoordinator(operations, catalog, service, options, logs, new TestApplicationLifetime(), new CatalogUpdateEventPublisher(), NullLogger<ApplicationDeploymentCoordinator>.Instance);
+        var coordinator = new ApplicationDeploymentCoordinator(operations, catalog, service, options, logs, new TestApplicationLifetime(), new CatalogUpdateEventPublisher(), NullLogger<ApplicationDeploymentCoordinator>.Instance, new(operations));
         await coordinator.StartAsync(default);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
         builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -248,6 +249,103 @@ internal static class CatalogUpdateChecks
 
         await coordinator.StopAsync(default); await host.StopAsync();
         Console.WriteLine("Catalog checks passed, including exact predecessor and target digest, bypass refusal, retained records and original receipt fencing.");
+    }
+
+    private static async Task VerifyManagedComposeRecoveryAsync(string root)
+    {
+        Directory.CreateDirectory(root);
+        var environment = new TestHostEnvironment(root);
+        var options = new ApplicationDeploymentOptions();
+        var store = new ApplicationDeploymentOperationStore(environment, options);
+        var lifetime = new TestApplicationLifetime();
+        var compose = new FakeComposeService();
+        var dockerRoot = Path.Combine(root, "docker");
+        using var docker = DockerChecks.NewStackCoordinator(dockerRoot, compose, lifetime, 4);
+        await docker.StartAsync(default);
+        var dispatcher = new ApplicationManagedComposeDispatch(store, docker);
+        var release = ApplicationCatalog.Require("fixture-web-db-plan", "1.0.0");
+        const string actor = "compose-recovery-actor";
+        const string revision = "credential-version-reference";
+        const string secret = "synthetic-value-for-compose-recovery";
+        var fingerprint = ApplicationDeploymentOperationStore.Reference("fixture-request");
+        var inputs = new Dictionary<string, IReadOnlyDictionary<string, string>>
+        {
+            ["web"] = new Dictionary<string, string> { ["DB_PASSWORD"] = secret },
+            ["db"] = new Dictionary<string, string> { ["POSTGRES_PASSWORD"] = secret },
+        };
+
+        (DeploymentOperationDto Operation, Guid RevisionId, ManagedComposePlan Plan, string Key) Prepare(string key, int port)
+        {
+            var applicationId = Guid.NewGuid();
+            var entry = store.Create(applicationId, "compose-fixture", DeploymentOperationKind.Deploy, actor, key, fingerprint,
+                ApplicationDeploymentService.Resources(applicationId), out _);
+            var operation = store.Update(entry.Operation.OperationId, prior => prior with
+            {
+                State = DeploymentOperationState.Running,
+                Stage = DeploymentStage.Creating,
+                Cancellable = false,
+            }, "test-dispatch-stage");
+            return (operation, Guid.NewGuid(), release.CompileTopology(applicationId, port), key);
+        }
+
+        var normal = Prepare("normal", 18083);
+        var receipt = await dispatcher.DispatchAsync(normal.Operation.OperationId, normal.RevisionId, normal.Plan, inputs, revision, default);
+        Check(store.Get(normal.Operation.OperationId)?.Compose?.ReceiptId == receipt.OperationId,
+            "Normal acceptance must persist the child ID.");
+
+        var accepted = Prepare("accepted-before-association", 18084);
+        var missing = Prepare("intent-without-receipt", 18085);
+        foreach (var pending in new[] { accepted, missing })
+        {
+            var definition = pending.Plan.RenderDeployment(out _, inputs);
+            Check(store.PrepareComposeDispatch(pending.Operation.OperationId, pending.Plan.InstanceId, pending.RevisionId,
+                new(DockerStackValidation.DefinitionVersion(definition.Name, definition.ComposeYaml),
+                    DockerStackValidation.Reference(revision))), "The app intent must precede any Docker admission.");
+        }
+        // Persist only the child receipt to reproduce the durable boundary of a process exit.
+        var lostResponse = await docker.DeployManagedAsync(accepted.Plan, inputs, accepted.Operation.OperationId, revision, default);
+        Check(store.Get(accepted.Operation.OperationId)?.Compose?.ReceiptId is null, "The acceptance-response window must start unassociated.");
+        using (var budget = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+        {
+            while (new[] { receipt.OperationId, lostResponse.OperationId }.Any(id =>
+                docker.Get(id)?.State is DockerStackOperationState.Queued or DockerStackOperationState.Running))
+                await Task.Delay(20, budget.Token);
+        }
+        await docker.StopAsync(default);
+        var calls = compose.ManagedDeployCalls;
+        using var reopenedDocker = DockerChecks.NewStackCoordinator(dockerRoot, compose, lifetime, 4);
+        var reopened = new ApplicationDeploymentOperationStore(environment, options);
+        var recovery = new ApplicationManagedComposeDispatch(reopened, reopenedDocker);
+        var coordinator = new ApplicationDeploymentCoordinator(reopened, null!, null!, options, new(), lifetime,
+            new CatalogUpdateEventPublisher(), NullLogger<ApplicationDeploymentCoordinator>.Instance, recovery);
+        await coordinator.StartAsync(default);
+
+        foreach (var pending in new[] { accepted, missing })
+        {
+            var operationId = pending.Operation.OperationId;
+            var id = pending.Operation.ApplicationId;
+            var same = reopened.FindIdempotent(id, DeploymentOperationKind.Deploy, actor, pending.Key, fingerprint);
+            Check(same?.Operation.OperationId == operationId
+                && same.Operation.RecoveryProblemCode == ApplicationManagedComposeDispatch.OutcomeUnknown
+                && reopened.HasUnresolvedOutcome(id), "Unverified Compose intent must keep its original ID and mutation fence.");
+            Expect(() => reopened.Create(id, "compose-fixture", DeploymentOperationKind.Deploy, actor, "conflicting-" + pending.Key, fingerprint,
+                ApplicationDeploymentService.Resources(id), out _), ApplicationDeploymentProblemCodes.ResourceConflict);
+        }
+        Check(reopened.Get(accepted.Operation.OperationId)?.Compose?.ReceiptId == lostResponse.OperationId
+            && reopened.Get(missing.Operation.OperationId)?.Compose?.ReceiptId is null,
+            "Startup must associate an existing child by its original key and retain the missing case.");
+        Check((await recovery.DispatchAsync(accepted.Operation.OperationId, accepted.RevisionId, accepted.Plan, inputs, revision, default)).OperationId
+            == lostResponse.OperationId, "The handoff retry must return the original child.");
+        try
+        {
+            await recovery.DispatchAsync(missing.Operation.OperationId, missing.RevisionId, missing.Plan, inputs, revision, default);
+            throw new Exception("A missing receipt must block replay.");
+        }
+        catch (ApplicationDeploymentException error) when (error.ProblemCode == ApplicationManagedComposeDispatch.OutcomeUnknown) { }
+        Check(compose.ManagedDeployCalls == calls && calls == 2
+            && !File.ReadAllText(Path.Combine(root, options.RootDirectory, "operations.json")).Contains(secret, StringComparison.Ordinal),
+            "Recovery must not dispatch a third child or persist the plaintext credential.");
+        Console.WriteLine($"Managed Compose handoff preserved parent {accepted.Operation.OperationId} and child {lostResponse.OperationId}; missing receipt kept fenced.");
     }
 
     private static void VerifyTopologyManifest()

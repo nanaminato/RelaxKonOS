@@ -179,14 +179,4 @@ flowchart TD
 
 第 7.1 节通过后开放限范围预览。CA-01 至 CA-03 的完整实机证据齐备后正式开放受管多服务安装。正式目录按实际发布包记录受支持的版本、平台、真实业务健康、持久化及各项已开放的生命周期验证结果。
 
-### 2026-11-10 切片进度
-
-CA-01 已将官方单服务目录改为精确版本 JSON，校验摘要和镜像身份。下一步为表单、升级及保留数据重装。CA-02 已加直接卷删除和保留名称门禁，待接入双服务执行及其他资源保护。CA-03 待接通两个账本和原 ID 对账。
-
-Windows x64 / SDK 10.0.300 隔离构建通过。测试 DLL 的 --catalog-update-only、--deployment-definition-only、--docker-compose-code-only 均退出 0。日志见本次会话 ca-build/*-escalated.log。Linux SSH 两个地址均通过同一主机密钥，登录认证被拒。第 7.1 节未执行。
-
-CA-01 桌面目录表单补丁已在 C 盘隔离副本编译，证据见 ca-build/catalog-client-build.log。D 盘空间为零，CA-01-client.patch 待同步；SSH 复验仍在认证阶段被拒。
-
-CA-01 保留卸载与重装见 ca-build/CA-01-client-and-retention.patch，待同步与 Linux 验收。
-
-`CA-01-through-upgrade.patch`
+实现切片、当前门禁与验收证据在[容器应用平台进度](RelaxKonOS.ContainerApplications.Progress.md)更新。

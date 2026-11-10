@@ -722,9 +722,14 @@ internal static async Task VerifyStackOperationsAsync(string root)
         () => coordinator.DeployManagedAsync(managedPlan, environment, appOperationId, "secret-version-2"),
         "A managed operation key was reused with a different credential revision.");
     using (var reopenedManaged = NewStackCoordinator(coordinatorRoot, compose, new TestApplicationLifetime(), 16))
-        TestAssert.Assert(reopenedManaged.GetManagedByRequest(managedPlan.InstanceId, appOperationId)?.OperationId == child.OperationId
+    {
+        var definition = managedPlan.RenderDeployment(out _, environment);
+        TestAssert.Assert(reopenedManaged.GetManagedByRequest(managedPlan.InstanceId, appOperationId,
+                DockerStackValidation.DefinitionVersion(definition.Name, definition.ComposeYaml),
+                DockerStackValidation.Reference("secret-version-1"))?.OperationId == child.OperationId
             && reopenedManaged.GetByRequest(actor, appOperationId.ToString("N")) is null,
             "Reopening the ledger must find the original child by application identity and request key only.");
+    }
     TestAssert.Assert(managedReplay.OperationId == child.OperationId && compose.ManagedDeployCalls == 1
         && differentCredentials.ProblemCode == DockerStackProblem.IdempotencyConflict
         && Directory.EnumerateFiles(coordinatorRoot).All(path => !File.ReadAllText(path).Contains(fixturePassword, StringComparison.Ordinal)),

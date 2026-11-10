@@ -86,3 +86,13 @@ Docker 操作协调器接受结构化计划和应用操作 ID。以实例隔离�
 环境为 Windows x64、.NET SDK 10.0.300 和 Docker Compose v5.5.1。执行 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，以及 Server 测试 DLL 的 `--stack-operations-only`、`--docker-compose-config-only`、`--docker-compose-code-only`、`--catalog-update-only`、`--deployment-definition-only` 和 `--module-boundary-milestones-only`，全部退出 0。证据位于隔离构建目录 `ca-build/ca02-managed-*.log`。真实 Compose 解析验证服务级秘密注入的美元符号与引号处理。受控执行验证原键重试不重派、同键不同秘密版本冲突、账本重开可查原 ID、持久化无明文，以及 HTTP 通过别名隐藏环境值并拦截日志。
 
 双服务安装仍受门禁保护。下一步是把应用意图、秘密版本和底层回执关联持久化，以原键覆盖强制中断窗口，再接入可核验的双服务业务探针。SSH 两个地址均通过同一主机密钥校验，但当前客户端没有可提交的密钥。Linux Engine 上的 Compose 写入、业务读写和第 7.1 节中断注入仍待实测。
+
+## CA-03 两个账本的派发意图与关联
+
+应用操作在不可取消的 Creating 阶段持久化目标修订、计划摘要与秘密版本引用摘要，再派发到底层。底层受理后保存原 Docker 操作 ID。重启扫描活动和待核验的应用回执，按原实例、原应用操作 ID、计划和秘密版本引用在 Docker 账本查找。查到的底层回执关联到原应用操作。未确认业务结果时保留原回执和写入门禁。缺失回执时也保持待核验，同键重试仅查询。恢复路径不会调用单容器补偿。
+
+受控测试覆盖正常派发、仅底层已持久化以及完全缺失底层回执三种落盘状态。尚需将此内部派发接入目录安装、核对实际镜像及业务就绪、提交活动修订，并在 Linux 专用 Engine 上以强制终止 Server 复验第 7.1 节。
+
+环境为 Windows x64、.NET SDK 10.0.300、Docker Compose v5.5.1。运行 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，并执行 Server 测试 DLL 的 `--catalog-update-only`、`--deployment-definition-only`、`--deployment-progress-only`、`--stack-operations-only`、`--docker-compose-config-only`。证据位于 `ca-build/ca03-handoff-*.log`。早期运行分别发现夹具子目录未创建及请求摘要未使用 64 字符十六进制值，修正夹具后目录专项退出 0。日志保存了复验中的一对原应用和 Docker 操作 ID。
+
+最终构建和五组专项均退出 0。重开账本后原键、原应用 ID 和原 Docker ID 一致，缺失回执保持待核验，两个场景都拒绝冲突写入且未增加底层派发次数。此切片使用受控执行器重建中断时的持久状态。

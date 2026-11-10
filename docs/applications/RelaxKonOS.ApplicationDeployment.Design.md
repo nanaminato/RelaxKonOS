@@ -332,6 +332,7 @@ interface IApplicationTemplate
 | --- | --- |
 | `Queued` | 进程在工作者启动前即终止 → **无副作用**，记为 `Interrupted`，无恢复码。 |
 | `Running` | 交给 `RecoverAsync`：删除候选容器、释放中断修订的机密物化文件；规范容器仍在则按期望状态重启并重新绑定，否则清空绑定并报 `orphaned_resources`。 |
+| 有受管 Compose 派发意图 | 以原应用实例 ID、原应用操作 ID、计划摘要和秘密版本引用查 Docker 账本。若找到底层回执，保存原 Docker 操作 ID。业务结果待核验期间，应用回执保留 `managed_compose_outcome_unknown` 并阻止写入。缺失回执也保留门禁，恢复不重派，也不执行单容器清理。 |
 
 **半途的部署永不重放。** 结论不确定即标为 `Interrupted`，禁止盲目重复发布。
 

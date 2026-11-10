@@ -18,7 +18,8 @@ internal sealed class ApplicationDeploymentCoordinator(
     ApplicationDeploymentLiveLogs logs,
     IHostApplicationLifetime lifetime,
     IOperationalEventPublisher eventPublisher,
-    ILogger<ApplicationDeploymentCoordinator> logger) : IHostedService
+    ILogger<ApplicationDeploymentCoordinator> logger,
+    ApplicationManagedComposeDispatch managedCompose) : IHostedService
 {
     private readonly object gate = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> cancellations = new();
@@ -110,6 +111,7 @@ internal sealed class ApplicationDeploymentCoordinator(
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
+            if (CompleteUnresolvedCompose(id)) return;
             // A process that is stopping has not failed: it leaves the operation interrupted so the
             // next startup reconciles it instead of reporting a phantom failure.
             var stopping = lifetime.ApplicationStopping.IsCancellationRequested;
@@ -123,16 +125,19 @@ internal sealed class ApplicationDeploymentCoordinator(
         }
         catch (DeploymentFailure failure)
         {
+            if (CompleteUnresolvedCompose(id)) return;
             Complete(id, DeploymentOperationState.Failed, failure.ProblemCode, failure.RecoveryProblemCode,
                 failure.Diagnostics, failure.DiagnosticsTruncated);
         }
         catch (ApplicationDeploymentException exception)
         {
+            if (CompleteUnresolvedCompose(id)) return;
             Complete(id, DeploymentOperationState.Failed, exception.ProblemCode, null,
                 exception.Diagnostics, exception.DiagnosticsTruncated);
         }
         catch
         {
+            if (CompleteUnresolvedCompose(id)) return;
             Complete(id, DeploymentOperationState.Failed, ApplicationDeploymentProblemCodes.Failed, null);
         }
         finally
@@ -140,6 +145,33 @@ internal sealed class ApplicationDeploymentCoordinator(
             lock (gate) { cancellations.TryRemove(id, out _); cancellation.Dispose(); }
             running.TryRemove(id, out _);
         }
+    }
+
+    private bool CompleteUnresolvedCompose(Guid id)
+    {
+        try
+        {
+            if (operations.Get(id) is not { Compose: not null } entry) return false;
+            ReconcileCompose(entry);
+            return true;
+        }
+        catch (ApplicationDeploymentException exception) when (exception.ProblemCode == ApplicationDeploymentProblemCodes.StoreUnavailable)
+        {
+            return true;
+        }
+    }
+
+    private void ReconcileCompose(DeploymentEntry entry)
+    {
+        try { managedCompose.ObserveOriginal(entry); }
+        catch (Exception error) when (error is ApplicationDeploymentException or Docker.DockerStackException)
+        {
+            logger.LogWarning("Unable to verify the original Compose receipt for application operation {OperationId}.",
+                entry.Operation.OperationId);
+        }
+        if (ApplicationDeploymentOperationStore.Active(entry.Operation))
+            Complete(entry.Operation.OperationId, DeploymentOperationState.Interrupted, ApplicationDeploymentProblemCodes.Interrupted,
+                ApplicationManagedComposeDispatch.OutcomeUnknown);
     }
 
     /// <param name="diagnostics">Output of the step that produced this outcome. The store sanitizes and
@@ -232,8 +264,15 @@ internal sealed class ApplicationDeploymentCoordinator(
         try { entries = operations.Read(); }
         catch (ApplicationDeploymentException) { return; }
 
-        foreach (var entry in entries.Where(x => ApplicationDeploymentOperationStore.Active(x.Operation)))
+        foreach (var entry in entries.Where(x => ApplicationDeploymentOperationStore.Active(x.Operation)
+            || x.Operation.RecoveryProblemCode == ApplicationManagedComposeDispatch.OutcomeUnknown))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (entry.Compose is not null)
+            {
+                ReconcileCompose(entry);
+                continue;
+            }
             // A queued record means the process stopped before its worker was ever launched, so no
             // side effect exists and there is nothing to recover.
             var recovery = new ApplicationDeploymentRecovery(DeploymentOperationState.Interrupted,

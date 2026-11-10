@@ -170,7 +170,7 @@ internal sealed class ApplicationDeploymentManager(
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
         if (baseline.UpdatedAt != request.ExpectedUpdatedAt)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DefinitionConflict, 409);
-        if (operations.GetActive(applicationId) is not null || operations.HasUnresolvedRetention(applicationId))
+        if (operations.GetActive(applicationId) is not null || operations.HasUnresolvedOutcome(applicationId))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
         var volumes = Volumes(request.Volumes);
         // The secret store reads retained catalog references during rotation. Resolve outside the
@@ -184,7 +184,7 @@ internal sealed class ApplicationDeploymentManager(
             // Checking again under the write lock closes the gap between validation and commit.
             if (application.UpdatedAt != request.ExpectedUpdatedAt)
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DefinitionConflict, 409);
-            if (operations.GetActive(applicationId) is not null || operations.HasUnresolvedRetention(applicationId))
+            if (operations.GetActive(applicationId) is not null || operations.HasUnresolvedOutcome(applicationId))
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
             var now = DateTimeOffset.UtcNow;
             return application with
