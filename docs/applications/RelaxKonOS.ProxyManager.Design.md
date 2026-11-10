@@ -4651,6 +4651,8 @@ Squid 发布恢复写回故障导致 Proxy 管理面隔离时，Core 系统代�
 
 历史启动回执描述原操作的结果。停用准入另行核对当前管理选路及原生归属。选路漂移时仍可按原 ID 读取已持久化的成功回执，停用计划和禁用启动须等当前归属恢复可核验。[历史回执与当前选路实测](../architecture/server-module-evidence/Proxy-Safety.md#具名启动历史回执与当前管理选路漂移)
 
+TUN 恢复状态将 Helper 的当前观测与原发布 ID、配置身份比对。证据不齐或不相符时显示待核验，原操作回执仍按原 ID 查询。[Core 状态读取实测](../architecture/server-module-evidence/Proxy-Safety.md#core-tun-安全状态的独立回执读取)
+
 具名 TUN 回执、运行时概览和组件状态使用原生归属查询。安装详情另行取得宿主环境报告，包含平台、服务宿主、可用空间、受保护目录和 IPv6。[查询成本实测](../architecture/server-module-evidence/Proxy-Observation.md#原回执查询与安装环境探测)
 
 活跃 TUN 的四对隔离测量确认回执正文较小，CPU、延迟及驻留差值随窗口变化。[配对测量](../architecture/server-module-evidence/Proxy-Observation.md#活跃-tun-的回执与安装清单配对测量)

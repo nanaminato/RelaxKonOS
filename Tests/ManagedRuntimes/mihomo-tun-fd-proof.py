@@ -3716,6 +3716,8 @@ exec {shlex.quote(str(systemctl))} "$@"
                         assert inventory['configurationIdentity'] == confirmed['configurationIdentity']
                         assert not inventory.get('mihomoTunPublicationId')
                         assert ipc.log.read_text().count('operation=MihomoRuntimeInventoryQuery ') == 1
+                        status, recovery = request(api + '/recovery', token)
+                        assert status == 200 and recovery['recoveryRequired'], (status, recovery)
                         settled_queue = queue.read_bytes()
                         assert settled_queue != pending_queue
                         proxy, blocked = preview_proxy_disable()
@@ -3817,6 +3819,8 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert finished['completedAt'] and submit('enable', key, body) == started and read(started) == finished
             if named_history_drift:
                 assert finished == historical and queue.read_bytes() == settled_queue
+                status, recovery = request(api + '/recovery', token)
+                assert status == 200 and not recovery['recoveryRequired'], (status, recovery)
             observed = json.loads(checkpoint(record, f'observe-action:{started}'))
             action = observed['mihomoTunAction']
             assert observed['pendingOperationId'] is None

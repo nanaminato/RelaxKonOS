@@ -1289,6 +1289,18 @@ Linux 和 Windows Release 构建及 31 项 Proxy 驻留、38 项 TUN 边界和�
 
 归属漂移及 Helper 失联分别使禁用启动在监听前拒绝，诊断包含原发布 ID。恢复 Helper 和原标签后，禁用启动成功，管理 TUN 路由返回 404，原进程及实际流量继续，Server 队列、Helper 台账及配置镜像字节一致。随后独立 root 操作在具名停用信号已派发时中断，Server 队列没有这笔操作。停用计划及禁用启动均报告原停止 ID，读取后原台账字节不变。恢复该进程后，原 Helper 路径用同一停止 ID 确认清理，规则删除一次，Server 未派发停止。已确认的停止态再次通过禁用启动。
 
+### Core TUN 安全状态的独立回执读取
+
+**已实现且已验证。** Core 安全服务只依赖 `IMihomoRuntimeReceiptReader` 取得受管状态。已发布 TUN 的状态须核对原发布 ID、配置身份和 Helper 当前证据。读端口缺失或观测不匹配时报告待核验。Windows Release 通过禁用及启用 Proxy 的两种 Core 注册验证，配置为拒绝构造变更服务后，原状态读取与安全职责仍可解析。受控查询确认匹配证据可以返回健康状态，替换发布 ID 或配置身份均报告待核验。
+
+2026-11-10 在既有 Linux 专属 systemd 中，原启动 `0f50fae9-6da2-4411-93b8-55a39228d8cc` 的 Helper 恢复应答在 Server 退出前被截留。启用重启时注入管理选路漂移，真实认证 `/proxy/recovery` 返回待核验，原启动成功终态仍可读取。原发布 `56b5121e-2ffc-46be-b000-526a379fde97` 继续阻止停用和禁用启动。恢复管理选路后禁用启动通过，重新启用时状态读取恢复正常。Mihomo PID `951`、专用路由表 `1256965353`、原配置、原台账、真实 HTTP 和分流 DNS 保持。全程一次原恢复。
+
+禁用态接续对照的原发布为 `0776366b-0185-475c-b693-f88355f3cd80`。认证停用计划 `b06097c4-f9c0-498e-b59e-01290334bd1d` 生效后，原 Mihomo PID `419` 和原配置继续转发。Core guard `3c1cda12-f55b-4747-b14e-751464b277a4` 与 sing-box 到期 `9ba39585-e7a1-43be-81cd-ecebede8aacc` 各按原回执排空并跨禁用态重启核验。两轮专属进程及 cgroup 清理通过，宿主运行时、代理和 resolver 指纹一致。
+
+Windows Release Core 安全 56 项、TUN 边界 38 项、注册 26 项及模块里程碑通过。实机日志 `.artifacts/mb04-tun-full-zero-dns/linux-core-tun-receipts.log` 的 SHA-256 为 `120bddaff92e700dbb33b3522dcf2a3872369d9cf0eb5c24c20ca049b6ce8805`，归档为 `ff7df0c67aeb22fd3837d5c6cf5cce34c07c82ac3c12ef63e757ea3a3e90689f`。
+
+**仍待验收。** 本轮单列实际进程退出。对象释放、ALC、隔离负载内存和生产收益分别待测。整模块安全交接仍开放，Proxy 保持 resident。
+
 ### 停用准入的独立 TUN 回执读取
 
 **已实现且已验证。** 停用预览、计划应用及禁用启动使用独立的 `IMihomoRuntimeReceiptReader` 实现。在原发布锁内按原 ID 查询 Helper，继续核对当前配置、安装及进程网络归属、原提交见证。只读读取器以宿主模式和 Helper 传输独立构造，与原变更服务复用同一快照及回执校验。Windows Release 用生产注册描述在仅提供这两项依赖的容器中解析读取器。注册 26 项、发布事务 113 项、运行时 HTTP 57 项、安装发布 88 项、移除发布 92 项通过，Proxy Core 安全、TUN 边界和模块边界回归通过。

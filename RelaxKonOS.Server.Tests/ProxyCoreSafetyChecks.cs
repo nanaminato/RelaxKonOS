@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Builder;
+using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.ProxyServer;
 using RelaxKonOS.Server.ProxyServer;
 using RelaxKonOS.Server.Startup;
@@ -62,6 +63,7 @@ internal static class ProxyCoreSafetyChecks
             builder.Services.AddSingleton<IProxyEngineRegistry>(_ => throw new Exception("Safety constructed management engines"));
             builder.Services.AddSingleton<ProxyServerService>(_ => throw new Exception("Expiry constructed the inbound management facade"));
             builder.Services.AddSingleton<MihomoSettingsService>(_ => throw new Exception("Safety constructed the settings writer"));
+            builder.Services.AddSingleton<MihomoRuntimeService>(_ => throw new Exception("Safety constructed the runtime mutation service"));
             var expiryActivations = 0;
             builder.Services.RemoveAll<IProxyServerExpiryExecutor>();
             builder.Services.AddTransient<IProxyServerExpiryExecutor>(services =>
@@ -227,6 +229,30 @@ internal static class ProxyCoreSafetyChecks
                 Check(await guardScope.ServiceProvider.GetRequiredService<IProxySystemProxyReconciler>().ReconcileSystemProxyAsync(true, default) is null
                     && host.Calls == hostCalls + 1 && (await mihomo.ReadAsync(default)).DirectReload == direct,
                     "Core guard can still reconcile the prior settings without settling the direct checkpoint");
+
+                var managedPaths = new TestProxyPaths(Path.Combine(root, "managed-status"));
+                var authority = new MihomoPublicationStore(managedPaths, protection);
+                var publishedId = Guid.NewGuid();
+                var material = new MihomoPublishedRuntime("tun: {enable: true}\n", [], 9090, new string('s', 32),
+                    [new("127.0.0.1", 7890)], NetworkTransitionRequired: true);
+                var identity = MihomoPublicationStore.Identity(material.Yaml);
+                await authority.BeginAsync(publishedId, 0, material, default);
+                await authority.ConfirmAsync(publishedId, identity, default);
+                var observation = new RuntimeInstallationSnapshot(
+                    new(Guid.NewGuid(), "host", "mihomo", 1, RuntimeOwnership.Managed,
+                        new("linux", "x64", null, null, RuntimeInstallMode.Archive, "systemd"), "release", false),
+                    "1.19.33", Guid.NewGuid(), identity, null, null, null, MihomoTunPublicationId: publishedId, MihomoTunRunning: true);
+                helper.ManagedTun = observation;
+                var managedSafety = new ProxyTunSafetyService(managedPaths, network, publication: authority,
+                    managedReceipts: services.GetRequiredService<IMihomoRuntimeReceiptReader>());
+                Check(!(await managedSafety.GetStatusAsync(default)).RecoveryRequired,
+                    "Core TUN status reads the matching managed publication without constructing the mutation service");
+                helper.ManagedTun = observation with { MihomoTunPublicationId = Guid.NewGuid() };
+                Check((await managedSafety.GetStatusAsync(default)).RecoveryRequired,
+                    "Core TUN status fails closed on a different published operation");
+                helper.ManagedTun = observation with { ConfigurationIdentity = new string('A', 64) };
+                Check((await managedSafety.GetStatusAsync(default)).RecoveryRequired,
+                    "Core TUN status fails closed on a different configuration identity");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         }
@@ -276,10 +302,13 @@ internal static class ProxyCoreSafetyChecks
         public string? Hash;
         public int ApplyCalls;
         public bool LoseReply;
+        public RuntimeInstallationSnapshot? ManagedTun;
         private ProxyServerPublicationReceipt? receipt;
         public TaskCompletionSource Applied = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken ct = default)
         {
+            if (request.Operation == PrivilegedOperationKind.MihomoRuntimeQuery && ManagedTun is { } managed)
+                return Task.FromResult(new PrivilegedOperationResult(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(managed))));
             if (request.Operation == PrivilegedOperationKind.ProxyServerApply)
             {
                 var previous = Hash!;
