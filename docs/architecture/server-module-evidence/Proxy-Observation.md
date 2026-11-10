@@ -759,4 +759,16 @@ Linux 专属 systemd 的完整 PAM/JWT Server 在具名启动 `03acd4a1-d431-446
 
 **已实现但实机未验证。** 原应答中断矩阵在 Linux 执行，Windows 的同类故障窗口待独立核验。已记录进程退出，对象释放、ALC 回收、隔离负载内存和生产内存收益分别待测。
 
-**未实现或仍受门禁保护。** 安装详情、恢复状态及 GEO 资源的只读 HTTP 入口仍解析变更服务。整模块安全交接继续开放，Proxy 保持 resident。
+**未实现或仍受门禁保护。** 安装详情、恢复状态及 GEO 资源的后续拆分见下一节。整模块安全交接继续开放，Proxy 保持 resident。
+
+### 安装详情、恢复状态和 GEO 资源的只读入口
+
+**已实现且已验证。** 三个 GET 由只读投影提供。安装详情沿用完整宿主环境探测，恢复状态保留原台账及原 Helper 的裁决优先级，GEO 资源读取继续在原发布锁内处理待核验。Windows Release 通过 61 项运行时 HTTP、26 项注册、113 项发布事务，以及组件、Core 安全和模块里程碑检查。HTTP 夹具在三条读取期间拒绝解析变更服务，核对冲突原 ID、损坏台账和待发布时零资源查询。
+
+Linux 专属 systemd 的认证 Server 丢失具名启动 `8b840d6f-eb1b-482c-9c88-14a8fe41c86d` 的恢复应答后，按原 ID 和同键确认同一终态。选路恢复后，三条 GET 分别只派发一次 `MihomoRuntimeInventoryQuery`、`MihomoRuntimeRecoveryQuery` 和 `MihomoRuntimeResourceQuery`。原配置身份、当前归属和五项宿主环境数据可查。GEO 资源返回同一活动修订的五项观察，无制品放置派发。原 Server 队列、Helper 台账和配置镜像字节保持。原具名执行只对账一次，重启后没有再次派发。测试进程及专属 cgroup 已清理，宿主共享服务、代理及 resolver 指纹一致。
+
+日志 `.artifacts/mb04-tun-full-zero-dns/linux-read-http.log` 的 SHA-256 为 `2d2e8caaccbb36277b905888c637878455a006e706dcdb60cad6de9ef4468306`，归档为 `f778223420d0a53550de1e9077cb2cb9f728950f71a853bcc74514db0748c7fb`。
+
+**已实现但实机未验证。** 资源读取遇到 Server 待发布及损坏台账的门禁由 Windows HTTP 夹具核对。Linux 本轮实测覆盖已恢复的活动修订。记录了进程退出。对象释放、ALC 回收、隔离负载内存及生产内存收益分别待测。
+
+**未实现或仍受门禁保护。** 变更入口按原工作责任逐条验收。整模块安全交接继续开放，Proxy 保持 resident。

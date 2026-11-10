@@ -3839,6 +3839,24 @@ exec {shlex.quote(str(systemctl))} "$@"
                 assert ipc.log.read_text().count('operation=MihomoRuntimeQuery ') >= query_count + 2
                 assert ipc.log.read_text().count('operation=MihomoRuntimeInventoryQuery ') == before_observation.count('operation=MihomoRuntimeInventoryQuery ')
                 print(f'PASS MIHOMO PUBLICATION OBSERVATION: original={started}; overview and component state read without inventory', flush=True)
+                catalog = '/api/v1.0/managed-runtimes/mihomo'
+                before_reads = ipc.log.read_text()
+                saved = queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()
+                status, inventory = request(catalog + '/installation', token)
+                assert status == 200 and inventory['configurationIdentity'] == confirmed['configurationIdentity'], (status, inventory)
+                assert len(inventory['environment']['observations']) == 5 and inventory['mihomoTunPublicationId']
+                status, managed_recovery = request(catalog + '/recovery', token)
+                assert status == 200 and not managed_recovery['required'], (status, managed_recovery)
+                status, resources = request(catalog + '/resources', token)
+                assert status == 200 and resources['revisionId'] == inventory['activeRevisionId'], (status, resources)
+                assert len(resources['files']) == 5 and not resources.get('problemCode')
+                after_reads = ipc.log.read_text()
+                for verb in ('InventoryQuery', 'RecoveryQuery', 'ResourceQuery'):
+                    label = f'operation=MihomoRuntime{verb} '
+                    assert after_reads.count(label) == before_reads.count(label) + 1
+                assert after_reads.count('operation=MihomoRuntimeResources ') == before_reads.count('operation=MihomoRuntimeResources ')
+                assert (queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()) == saved
+                print(f'PASS MIHOMO READ-ONLY HTTP: original={started}; three reads preserved native and Server ledgers', flush=True)
             observed = json.loads(checkpoint(record, f'observe-action:{started}'))
             action = observed['mihomoTunAction']
             assert observed['pendingOperationId'] is None

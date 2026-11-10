@@ -253,7 +253,7 @@ internal static class ProxyAuthenticatedPublicationChecks
             // privileged transport and must not reinterpret the live candidate as a success.
             var runtime = new MihomoRuntimeService(null!, afterCrash, null!, null!, null!);
             var directRecovery = new MihomoRuntimeRecoveryService(afterCrash, runtime, null!, null!, null!);
-            var pending = await runtime.RecoveryAsync(ct);
+            var pending = await new MihomoRuntimePublicationReader(afterCrash, null!, null!).RecoveryAsync(ct);
             var receipt = await directRecovery.RetryAsync(operation, ct);
             if (!pending.Required || pending.OperationId != operation || pending.Service is not null
                 || receipt != new RuntimeSwitchResult(operation, RuntimeSwitchOutcome.RecoveryRequired, "runtime.direct_reload_unverified")

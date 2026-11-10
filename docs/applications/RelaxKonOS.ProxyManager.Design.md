@@ -4659,6 +4659,8 @@ TUN 恢复状态将 Helper 的当前观测与原发布 ID、配置身份比对�
 
 运行时概览和组件状态通过独立只读投影合并原发布台账与 Helper 观察结果。存在未确认的发布时保留待核验，Helper 返回冲突的原操作时保留其 ID，台账不可读时撤回所有权和版本证明。组件归档计划沿用原计划入口。
 
+安装详情、恢复状态和 GEO 资源的 GET 使用同一只读端口。安装详情包含宿主环境报告，恢复状态继续显示原操作归属。存在待发布操作时，GEO 资源读取按原发布锁返回待核验。[实机核对](../architecture/server-module-evidence/Proxy-Observation.md#安装详情恢复状态和-geo-资源的只读入口)
+
 活跃 TUN 的四对隔离测量确认回执正文较小，CPU、延迟及驻留差值随窗口变化。[配对测量](../architecture/server-module-evidence/Proxy-Observation.md#活跃-tun-的回执与安装清单配对测量)
 
 DNS 写入已生效但应答未确认时，重启可按原操作和原 resolver 身份只读确认效果。resolver 换代后相同设置及真实流量仍保留待核验，Helper 未重发写入或派发停止。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。

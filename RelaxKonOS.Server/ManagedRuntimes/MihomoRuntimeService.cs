@@ -12,11 +12,6 @@ namespace RelaxKonOS.Server.ManagedRuntimes;
 public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, MihomoPublicationStore store,
     MihomoRuntimeAuthorizationProvider authorization, IServerModeResolver mode, IRuntimeDownloadProxyProvider downloadProxy)
 {
-    /// <summary>Public observation includes unresolved Server publication work, even after root commits.
-    /// It never upgrades ownership from an encrypted file or reads controller credentials.</summary>
-    public Task<RuntimeInstallationSnapshot> QueryAsync(CancellationToken ct) =>
-        MihomoRuntimePublicationReader.ProjectAsync(store, CallAsync<RuntimeInstallationSnapshot>(new(PrivilegedOperationKind.MihomoRuntimeInventoryQuery), ct), ct);
-
     /// <summary>Coordinators already own the Server authority; only actual Helper facts can confirm it.</summary>
     internal Task<RuntimeInstallationSnapshot> QueryHelperAsync(CancellationToken ct, Guid? receiptOperationId = null) =>
         MihomoRuntimeReceiptReader.QueryAsync(helper, mode, ct, receiptOperationId);
@@ -169,37 +164,6 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
         return result;
     }
 
-    /// <summary>Read-only recovery facts. It observes the service but changes neither the ledger nor the service.</summary>
-    public async Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct)
-    {
-        MihomoPublicationState state;
-        try
-        {
-            state = await store.ReadAsync(ct);
-        }
-        catch (Exception ex) when (ex is RuntimePolicyException or IOException or UnauthorizedAccessException)
-        {
-            var unknown = await CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery), ct);
-            return unknown with { Required = true, ProblemCode = "runtime.publication_state_invalid" };
-        }
-        if (state.DirectReload is { } direct)
-            return new(true, direct.OperationId, null, null, false, direct.ProblemCode, null, null, null,
-                CanCompensateDirectSettings: OperatingSystem.IsLinux() && direct.CanCompensate,
-                CompensationOperationId: direct.Compensation?.Id);
-
-        var observed = await CallAsync<RuntimeRecoverySnapshot>(new(PrivilegedOperationKind.MihomoRuntimeRecoveryQuery), ct);
-        if (state.Pending is not { } pending) return observed;
-        if (observed.OperationId is { } actual && actual != pending.OperationId)
-            return observed with { Required = true, ProblemCode = "runtime.recovery_target_conflict" };
-        // Server commit work can outlive the native transaction.
-        return observed with
-        {
-            Required = true, OperationId = pending.OperationId,
-            Change = pending.InstallationPlan?.Request.Change ?? pending.RemovalPlan?.Request.Change ?? observed.Change,
-            ProblemCode = "runtime.publication_unconfirmed"
-        };
-    }
-
     /// <summary>
     /// Records a cancellation request for one running transaction. It takes no shared gate on purpose: the
     /// running transaction holds it for its whole life, and the request must reach the Host anyway. The
@@ -269,18 +233,6 @@ public sealed class MihomoRuntimeService(IPrivilegedOperationTransport helper, M
     /// Places the Host-owned GEO resource set for the active revision. It downloads nothing and accepts no
     /// path: the Helper verifies its own compiled digests against the package installed beside it.
     /// </summary>
-    public async Task<RuntimeResourceSnapshot> QueryResourcesAsync(CancellationToken ct)
-    {
-        await store.Gate.WaitAsync(ct);
-        try
-        {
-            if ((await store.ReadAsync(ct)).Pending is not null) return new(null, [], "runtime.publication_unconfirmed");
-            return await CallAsync<RuntimeResourceSnapshot>(new(PrivilegedOperationKind.MihomoRuntimeResourceQuery), ct);
-        }
-        catch (RuntimePolicyException ex) { throw new RuntimeLifecycleException(ex.ProblemCode); }
-        finally { store.Gate.Release(); }
-    }
-
     public async Task<RuntimeResourceReport> PrepareResourcesAsync(CancellationToken ct)
     {
         await store.Gate.WaitAsync(ct);

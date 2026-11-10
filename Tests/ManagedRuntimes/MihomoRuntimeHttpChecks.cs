@@ -32,7 +32,7 @@ internal static class MihomoRuntimeHttpChecks
         Directory.CreateDirectory(root);
         var fixture = new Fixture(root);
         var store = new MihomoPublicationStore(fixture, new EphemeralDataProtectionProvider());
-        var publicationReader = new MihomoRuntimePublicationReader(store, new MihomoRuntimeReceiptReader(fixture, fixture));
+        var publicationReader = new MihomoRuntimePublicationReader(store, fixture, fixture);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root, EnvironmentName = "Testing" });
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -46,7 +46,10 @@ internal static class MihomoRuntimeHttpChecks
         builder.Services.AddSingleton(new RuntimeCatalogService(fixture, new DirectDownloads()));
         var authorization = new MihomoRuntimeAuthorizationProvider(store, fixture, fixture);
         var runtimeService = new MihomoRuntimeService(fixture, store, authorization, fixture, new DirectDownloads());
-        builder.Services.AddSingleton(runtimeService);
+        var blockWriter = false;
+        builder.Services.AddTransient(_ => blockWriter
+            ? throw new InvalidOperationException("A read route resolved the runtime writer.") : runtimeService);
+        builder.Services.AddSingleton(publicationReader);
         builder.Services.AddSingleton(new MihomoDirectSettingsCompensationService(fixture, store, MihomoRemovalHostFixture.Files(fixture),
             MihomoPublicationTransactionChecks.Stub<IMihomoControllerClient>(_ => throw new InvalidOperationException("Compensation touched the controller.")), fixture));
         builder.Services.AddSingleton(new MihomoRuntimeRecoveryService(store, runtimeService,
@@ -63,7 +66,9 @@ internal static class MihomoRuntimeHttpChecks
             using (var unauthorized = await client.GetAsync(RuntimeRoutes.MihomoInstallation))
                 Check(unauthorized.StatusCode == HttpStatusCode.Unauthorized && fixture.Calls == 0, "Anonymous runtime reads cannot contact Helper");
             client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
+            blockWriter = true;
             var observed = await client.GetFromJsonAsync<RuntimeInstallationSnapshot>(RuntimeRoutes.MihomoInstallation);
+            blockWriter = false;
             Check(observed is { Installation.Ownership: RuntimeOwnership.Unknown, ProblemCode: "runtime.state_unknown" },
                 "HTTP preserves an unknown Helper observation instead of reporting not installed");
             var request = new RuntimePlanRequest(fixture.Installation.InstallationId, fixture.Installation.HostId, RuntimeChange.Install,
@@ -152,6 +157,7 @@ internal static class MihomoRuntimeHttpChecks
                 Check(wrongDigest.StatusCode == HttpStatusCode.ServiceUnavailable, "Resource identities must match the Server compiled digest table");
             fixture.WrongResourceDigest = false;
             client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
+            blockWriter = true;
             var resourceObservation = await client.GetFromJsonAsync<RuntimeResourceSnapshot>(RuntimeRoutes.MihomoResources);
             Check(resourceObservation is { Files.Count: 5, ProblemCode: null }
                 && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeResourceQuery,
@@ -159,6 +165,7 @@ internal static class MihomoRuntimeHttpChecks
             fixture.InvalidResourceSnapshot = true;
             using (var unknownResources = await client.GetAsync(RuntimeRoutes.MihomoResources))
                 Check(unknownResources.StatusCode == HttpStatusCode.ServiceUnavailable, "An unknown observation cannot carry a verified digest identity");
+            blockWriter = false;
             fixture.InvalidResourceSnapshot = false;
             using (var oldRoute = await client.PutAsJsonAsync("/api/v1.0/proxy/geodata", new { filePath = "/tmp/geoip.metadb" }))
                 Check(oldRoute.StatusCode == HttpStatusCode.NotFound, "The removed arbitrary server-path resource route has no fallback");
@@ -199,6 +206,11 @@ internal static class MihomoRuntimeHttpChecks
                 "The independent publication reader reports the same pending owner through the lightweight Helper query");
             Check((await store.ReadAsync(default)).Pending?.OperationId == pendingOperation,
                 "Runtime observation never confirms or compensates a pending Server publication");
+            var beforePendingResourceRead = fixture.Calls;
+            var pendingResourceRead = await client.GetFromJsonAsync<RuntimeResourceSnapshot>(RuntimeRoutes.MihomoResources);
+            Check(pendingResourceRead is { RevisionId: null, Files.Count: 0, ProblemCode: "runtime.publication_unconfirmed" }
+                && fixture.Calls == beforePendingResourceRead,
+                "Resource observation leaves a pending publication in charge without calling Helper");
             client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
             var beforePendingStop = fixture.Calls;
             using (var pendingStop = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryStop,
@@ -212,7 +224,6 @@ internal static class MihomoRuntimeHttpChecks
                     && (await store.ReadAsync(default)).Pending?.OperationId == pendingOperation,
                     "Closing cannot abandon an unresolved Server commit for the same transaction");
             client.DefaultRequestHeaders.Authorization = new("Bearer", "read");
-            var runtime = app.Services.GetRequiredService<MihomoRuntimeService>();
             var recovery = (await client.GetFromJsonAsync<RuntimeRecoverySnapshot>(RuntimeRoutes.MihomoRecovery))!;
             Check(recovery is { Required: true, Change: RuntimeChange.Install, Stage: null,
                     RecoveryProblemCode: null, ProblemCode: "runtime.publication_unconfirmed" }
@@ -246,11 +257,12 @@ internal static class MihomoRuntimeHttpChecks
             Check(projected.PendingOperationId == otherRootOperation && projected.ProblemCode == conflicting!.ProblemCode,
                 "The independent publication reader retains the conflicting native operation");
             fixture.Recovery = recovery with { OperationId = otherRootOperation, ProblemCode = "runtime.recovery_required" };
-            var recoveryConflict = await runtime.RecoveryAsync(default);
+            blockWriter = true;
+            var recoveryConflict = (await client.GetFromJsonAsync<RuntimeRecoverySnapshot>(RuntimeRoutes.MihomoRecovery))!;
             Check(recoveryConflict.OperationId == otherRootOperation && recoveryConflict.ProblemCode == "runtime.recovery_target_conflict",
                 "Recovery observation preserves conflicting native operation identity");
             await File.WriteAllTextAsync(Path.Combine(fixture.GetStateDirectory(), "mihomo-publication.protected"), "corrupt");
-            var invalidRecovery = await runtime.RecoveryAsync(default);
+            var invalidRecovery = (await client.GetFromJsonAsync<RuntimeRecoverySnapshot>(RuntimeRoutes.MihomoRecovery))!;
             Check(invalidRecovery.Required && invalidRecovery.ProblemCode == "runtime.publication_state_invalid"
                 && invalidRecovery.OperationId == otherRootOperation,
                 "Corrupt Server authority cannot clear a native recovery operation");
@@ -263,6 +275,7 @@ internal static class MihomoRuntimeHttpChecks
                 Installation.ActiveReleaseId: null, MeasuredVersion: null, ActiveRevisionId: null, ProblemCode: "runtime.publication_state_invalid" },
                 "The independent publication reader withdraws proof when the Server ledger cannot be read");
             client.DefaultRequestHeaders.Authorization = new("Bearer", "elevated-installer");
+            blockWriter = false;
             using var stopWithInvalidState = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryStop, new RuntimeRecoveryActionRequest(otherRootOperation));
             Check(stopWithInvalidState.IsSuccessStatusCode && fixture.Last?.Operation == PrivilegedOperationKind.MihomoRuntimeRecoveryStop,
                 "Unreadable Server publication state does not block a real native emergency stop");

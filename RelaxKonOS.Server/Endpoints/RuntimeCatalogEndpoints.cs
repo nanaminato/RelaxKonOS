@@ -40,7 +40,7 @@ public static class RuntimeCatalogEndpoints
                 : !RuntimeValidation.Identifier(request.SourceId)) return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.PlanAsync(request.SourceId, request.Request, ct)));
         }).RequireAuthorization(ManagePolicy);
-        group.MapGet(RuntimeRoutes.MihomoInstallation, async ([FromServices] MihomoRuntimeService service, CancellationToken ct) =>
+        group.MapGet(RuntimeRoutes.MihomoInstallation, async ([FromServices] MihomoRuntimePublicationReader service, CancellationToken ct) =>
             await RespondAsync(async () => Results.Ok(await service.QueryAsync(ct))))
             .RequireAuthorization(ReadPolicy);
         group.MapPost(RuntimeRoutes.MihomoPlan, async (RuntimePlanSelection request, HttpContext http,
@@ -52,7 +52,7 @@ public static class RuntimeCatalogEndpoints
                 return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.PlanAsync(request.SourceId, request.Request, ct)));
         }).RequireAuthorization(ManagePolicy);
-        group.MapGet(RuntimeRoutes.MihomoRecovery, async ([FromServices] MihomoRuntimeService service, CancellationToken ct) =>
+        group.MapGet(RuntimeRoutes.MihomoRecovery, async ([FromServices] MihomoRuntimePublicationReader service, CancellationToken ct) =>
             await RespondAsync(async () => Results.Ok(await service.RecoveryAsync(ct))))
             .RequireAuthorization(ReadPolicy);
         group.MapPost(RuntimeRoutes.MihomoRecoveryRetry, async (RuntimeRecoveryActionRequest request, HttpContext http,
@@ -85,7 +85,7 @@ public static class RuntimeCatalogEndpoints
             if (request.OperationId == Guid.Empty) return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.CloseRecoveryAsync(request.OperationId, request.Confirmed, ct)));
         }).RequireAuthorization(ManagePolicy);
-        group.MapGet(RuntimeRoutes.MihomoResources, async ([FromServices] MihomoRuntimeService service, CancellationToken ct) =>
+        group.MapGet(RuntimeRoutes.MihomoResources, async ([FromServices] MihomoRuntimePublicationReader service, CancellationToken ct) =>
             await RespondAsync(async () => Results.Ok(await service.QueryResourcesAsync(ct))))
             .RequireAuthorization(ReadPolicy);
         group.MapPost(RuntimeRoutes.MihomoResources, async (HttpContext http,

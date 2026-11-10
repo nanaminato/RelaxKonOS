@@ -180,7 +180,7 @@ internal static class MihomoServerPublicationAcceptance
             await using (var controllers = controllerServices.Services.BuildServiceProvider())
             {
                 var manager = new MihomoRuntimeManager(paths, null!, null!, null!, controllers.GetRequiredService<IServiceScopeFactory>(),
-                    paths, controllers.GetRequiredService<MihomoControllerOptions>(), new(), managedRuntime: new(store, receiptReader));
+                    paths, controllers.GetRequiredService<MihomoControllerOptions>(), new(), managedRuntime: new(store, transport, paths));
                 var beforeStatus = await lifecycle.QueryAsync(default);
                 var firstStatus = await manager.GetAsync(MihomoEngine.Id, default);
                 var nextStatus = await manager.GetAsync(MihomoEngine.Id, default);
