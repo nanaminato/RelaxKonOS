@@ -379,6 +379,8 @@ Linux 私有 systemd 的联合验收同时启用系统代理。独立 Helper 中
 
 完整非 root Server 已在隔离 Linux 验证 SIGTERM。真实 Helper 撤销到期授权后，Server 停止监听并等待原回执，持久化后正常退出。重启保留原回执及原生修订，过期授权仍被拒绝，保留授权继续转发。见[完整 Server 排空](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-完整-server-的入站授权到期停机排空)。
 
+Proxy 管理代次故障隔离时，Core 继续撤销到期的入站授权。原生撤销已生效而 Server 尚未确认时中断，重启按原 Helper 回执结案。过期授权仍被拒绝，保留授权和原 Mihomo TUN 均继续真实转发。见[隔离代次的入站到期实测](../architecture/server-module-evidence/Proxy-Safety.md#proxy-代次隔离后的入站到期与活动-tun)。
+
 受管 sing-box 的入站发布按原 Helper 操作 ID 和候选、旧配置摘要恢复。已提交候选按原回执确认。已补偿或明确拒绝还需核实旧配置。单凭旧配置仍存在，恢复会保留原候选并显示待核验。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-入站发布按原-helper-回执恢复)。
 
 存在可核实的在途证据时，显式恢复可以按原 ID 补偿。已核实仍在运行的原配置继续服务。需要还原的服务保持停止并解除开机启动，后续通过正常启动入口重新校验授权。同一原 ID 重试返回原补偿回执。见[模块边界台账](../architecture/server-module-evidence/Proxy-Publication.md#mb-04-在途入站发布的原-id-补偿)。

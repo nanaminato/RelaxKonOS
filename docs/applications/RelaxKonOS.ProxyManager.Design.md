@@ -4768,3 +4768,5 @@ Core 调度器按原 ID 恢复已受理的受管 TUN 发布。管理队列仍按
 TUN 和恢复状态的管理 GET 各持当前 Proxy 代次的一项工作租约，覆盖 Core 安全状态读取、响应和作用域清理。代次故障隔离时返回 HTTP 503，宿主安全调度继续由 Core 负责。[状态响应实测](../architecture/server-module-evidence/Proxy-Observation.md#tun-与恢复状态的管理响应租约)
 
 Proxy 管理代次故障时，组件中心的 Core 恢复查询及授权紧急停止仍按原受管操作核验。紧急停止确认原服务状态，原发布未决时关账仍受门禁保护。[授权恢复实测](../architecture/server-module-evidence/Proxy-Safety.md#proxy-隔离后的-core-授权紧急恢复)
+
+Core 入站授权到期处理与活动 TUN 已在同一故障代次联验。入站撤销原应答被中断并在重启后确认期间，原 TUN 进程、配置、管理选路和真实 HTTP/DNS 转发保持。见[联合实测](../architecture/server-module-evidence/Proxy-Safety.md#proxy-代次隔离后的入站到期与活动-tun)。

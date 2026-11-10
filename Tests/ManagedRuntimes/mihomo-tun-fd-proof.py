@@ -2214,6 +2214,7 @@ def proof_full_http_shutdown(ipc, case):
     joint = case == 'ipc-http-joint'
     admission = case == 'ipc-http-admission'
     handoff = case == 'ipc-http-handoff'
+    expiry_quarantine = handoff and Path(sys.argv[3]).with_name('tun-expiry-quarantine.fixture').is_file()
     inbound_tun = case == 'ipc-http-inbound-tun'
     removal_admin = case == 'ipc-http-retained-administrator'
     removal_http = removal_admin or case == 'ipc-http-retained-installation'
@@ -4527,6 +4528,51 @@ exec {shlex.quote(str(systemctl))} "$@"
 
         original_tun = tun_evidence()
         terminate(pid)
+        if expiry_quarantine:
+            worker = launch('expiry-quarantine')
+            first_worker = worker
+            pid = int(marker('full-server-pid'))
+            token = login()
+            (root / 'full-expiry-quarantine-live').touch()
+            assert marker('full-expiry-live') == 'forwarded'
+            prefix = root / 'full-server/full-controller-cleanup'
+            Path(f'{prefix}-arm').touch()
+            Path(f'{prefix}-fail').touch()
+            try:
+                assert request(api + '/controller-config', token)[0] == 200
+                assert marker('full-server/full-controller-cleanup-held') == 'disposing' and leases() == 1
+            finally:
+                Path(f'{prefix}-release').touch()
+            module_path = f'{modules}/{module}'
+            until(lambda: request(module_path, token)[1]['residency']['state'] == 'faulted', 'Proxy quarantine before expiry')
+            assert request(api + '/tun', token)[0] == 503 and leases() == 1
+            probe(record, 'quarantined-before-expiry')
+            expiry = marker('full-expiry-response-held', 42)
+            pending_expiry = expiry_ledger.read_bytes()
+            assert request(module_path, token)[1]['residency']['state'] == 'faulted' and leases() == 1
+            probe(record, 'quarantined-native-expiry')
+            assert tun_evidence() == original_tun
+            os.kill(pid, signal.SIGKILL)
+            until(lambda: not Path(f'/proc/{pid}').exists(), 'faulted Server process exit')
+            assert expiry_ledger.read_bytes() == pending_expiry and tun_evidence() == original_tun
+            worker = launch('expiry-quarantine-restart')
+            restart_pid = int(marker('full-server-pid'))
+            token = login()
+            until(lambda: expiry_ledger.read_bytes() != pending_expiry, 'original expiry confirmation after restart')
+            assert request(api + '/tun', token)[0] == 200
+            probe(record, 'quarantined-expiry-restarted')
+            assert tun_evidence() == original_tun
+            helper_audit = ipc.log.read_text()
+            assert helper_audit.count(f'operation=ProxyServerApply id={uuid.UUID(expiry)} ') == 1
+            assert helper_audit.count('operation=ProxyServerApply ') == 1
+            assert helper_audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
+            assert 'operation=MihomoRuntimeTunStop ' not in helper_audit and 'operation=MihomoRuntimeRecover ' not in helper_audit
+            (root / 'full-joint-finish').touch()
+            assert first_worker.wait(timeout=12) == 0
+            terminate(restart_pid)
+            print(f'PASS TUN EXPIRY WITH QUARANTINED PROXY: publication={publication}; expiry={expiry}; '
+                  f'original Mihomo PID={record["service"][0]}; one expiry apply, original TUN and receipt retained', flush=True)
+            return
         worker = launch('admission-managed')
         pid = int(marker('full-server-pid'))
         token = login()

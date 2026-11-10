@@ -177,6 +177,7 @@ internal static class MihomoTunFullServerAcceptance
         RequirePrivateFixture(root);
         if (phase is not ("drain" or "cleanup-drain" or "cleanup-cut" or "cleanup-fault" or "restart" or "joint-drain" or "joint-restart" or "admission"
             or "admission-managed" or "admission-disabled" or "handoff-disabled" or "handoff-restart" or "inbound-cut" or "inbound-restart"
+            or "expiry-quarantine" or "expiry-quarantine-restart"
             or "squid-new" or "squid-cut" or "squid-restart" or "squid-receipt-cut" or "squid-lifecycle-cut" or "squid-account-cut" or "removal-cut" or "zero-dns-publish" or "zero-dns-recover" or "zero-dns-pam-retry"
             or "named-start-cut" or "stop-reply-drop" or "start-reply-drop" or "baseline-on" or "baseline-off"))
             throw new ArgumentException("Unknown TUN shutdown phase.");
@@ -187,7 +188,9 @@ internal static class MihomoTunFullServerAcceptance
         var overviewCleanup = phase is ("squid-restart" or "inbound-restart")
             && File.Exists(Path.Combine(root, "full-overview-cleanup-proof"));
         var squidCleanup = phase == "squid-restart" && File.Exists(Path.Combine(root, "full-squid-cleanup-proof"));
-        var controllerCleanup = phase is ("inbound-restart" or "restart") && File.Exists(Path.Combine(root, "full-controller-cleanup-proof"));
+        var expiryQuarantine = phase == "expiry-quarantine";
+        var controllerCleanup = expiryQuarantine || phase is ("inbound-restart" or "restart")
+            && File.Exists(Path.Combine(root, "full-controller-cleanup-proof"));
         var retryCleanup = phase == "zero-dns-pam-retry" && File.Exists(Path.Combine(root, "full-pam-retry-cleanup-proof"));
         var versionWorkerFault = phase == "inbound-restart" && File.Exists(Path.Combine(root, "full-version-worker-fault-proof"));
         var dropStopReply = phase == "stop-reply-drop";
@@ -197,21 +200,21 @@ internal static class MihomoTunFullServerAcceptance
         var inboundCut = phase == "inbound-cut";
         var disabled = phase is "admission-disabled" or "baseline-off";
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
-        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(handoff || inboundCut ? 90 : joint ? 75
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(handoff || inboundCut || expiryQuarantine ? 90 : joint ? 75
             : phase is "baseline-on" or "baseline-off" ? 65 : 45));
         var ct = budget.Token;
-        using var expiry = handoff || joint && first ? new ProxyJointShutdownExpiry(root, socket) : null;
-        if (expiry is not null) await expiry.PrepareAsync(ct, handoff ? TimeSpan.FromSeconds(18) : null);
+        using var expiry = handoff || expiryQuarantine || joint && first ? new ProxyJointShutdownExpiry(root, socket) : null;
+        if (expiry is not null) await expiry.PrepareAsync(ct, expiryQuarantine ? TimeSpan.FromSeconds(25) : handoff ? TimeSpan.FromSeconds(18) : null);
         using var inbound = inboundCut ? new ProxyJointShutdownExpiry(root, socket) : null;
         if (inbound is not null) await inbound.PreparePublicationAsync(ct);
         await using var inboundRelay = inboundCut ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-inbound-reply.sock", socket, ct, (operation, _) => operation == "ProxyServerApply") : null;
-        await using var guard = expiry is not null ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-guard-reply.sock", socket, ct,
+        await using var guard = expiry is not null && !expiryQuarantine ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-guard-reply.sock", socket, ct,
             (operation, _) => operation == "LinuxSystemProxyApply"
                 && File.ReadLines("/etc/environment").Any(line => line == "http_proxy=http://127.0.0.1:14444"
                     || line == "http_proxy=\"http://127.0.0.1:14444\"")) : null;
         await using var expiryRelay = expiry is not null ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-expiry-reply.sock",
-            guard!.Path, ct, (operation, _) => operation == "ProxyServerApply") : null;
+            guard?.Path ?? socket, ct, (operation, _) => operation == "ProxyServerApply") : null;
         var originalStart = new TaskCompletionSource<Guid>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var queryRelay = dropStartReply ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-tun-query.sock", socket, ct, (operation, id) => operation == "MihomoRuntimeQuery"
@@ -242,7 +245,7 @@ internal static class MihomoTunFullServerAcceptance
             reuse: !first && !dropStopReply && !inboundCut && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"),
             seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
-        if (phase is "squid-restart" or "inbound-restart")
+        if (phase is "squid-restart" or "inbound-restart" or "expiry-quarantine")
             start.Environment["Proxy__Mihomo__Controller__Endpoint"] = "http://127.0.0.1:18882/";
         if (cleanupScope)
         {
@@ -282,7 +285,7 @@ internal static class MihomoTunFullServerAcceptance
             start.Environment["ModuleManagement__Authority"] = "managed";
         }
         start.Environment["Identity__LinuxPamTransport"] = "helper";
-        if (joint || handoff || inboundCut || phase is "handoff-restart" or "inbound-restart")
+        if (joint || handoff || inboundCut || expiryQuarantine || phase is "handoff-restart" or "inbound-restart" or "expiry-quarantine-restart")
             start.Environment["Certificate__StorageRoot"] = Path.Combine(start.WorkingDirectory, "certificate-fixture");
         start.Environment["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "Information";
         start.Environment["Logging__LogLevel__Microsoft.AspNetCore"] = "Warning";
@@ -305,6 +308,20 @@ internal static class MihomoTunFullServerAcceptance
         {
             await WriteMarkerAsync(root, "full-server-pid", server.Id.ToString());
             var exited = server.WaitForExitAsync(ct);
+            if (expiryQuarantine)
+            {
+                await WaitForMarkerAsync("full-expiry-quarantine-live");
+                await expiry!.VerifyLiveBeforeExpiryAsync(ct);
+                await WriteMarkerAsync(root, "full-expiry-live", "forwarded");
+                var original = await expiryRelay!.Committed.Task.WaitAsync(ct);
+                var (receipt, pid) = await expiry.ObserveAsync(original, ct);
+                await WriteMarkerAsync(root, "full-expiry-response-held", original.ToString("N"));
+                await exited;
+                if (server.ExitCode != 137) throw new InvalidOperationException("Expected SIGKILL with the original expiry reply held.");
+                await WaitForMarkerAsync("full-joint-finish");
+                await expiry.VerifyTerminalAsync(receipt, pid, ct);
+                return;
+            }
             if (inboundRelay is not null)
             {
                 if (await Task.WhenAny(inboundRelay.Committed.Task, exited) == exited)

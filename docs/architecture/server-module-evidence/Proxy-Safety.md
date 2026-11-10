@@ -1062,6 +1062,18 @@ Linux Release 构建、25 项注册检查及 Windows Release TUN 和 Core 安全
 
 **未实现或仍受门禁保护。** 证据不足的原发布继续待核验。整模块安全交接仍开放，Proxy 保持 resident。
 
+### Proxy 代次隔离后的入站到期与活动 TUN
+
+**已实现且已验证。** Linux 私有 systemd 的完整认证 Server 在活动受管发布 `b0ca0ab10bbc45dd9f98798399c75df9` 下，先确认即将到期的 sing-box 凭据可真实转发，再注入控制器请求的异步清理故障。Proxy 原代次保留一项租约，TUN 管理 GET 返回 503。Core 仍按原到期操作 `d1e927dfbd6d4f7e953ec9b2939e32af` 发布撤销。真实 Helper 提交后暂扣原应答，旧连接关闭，到期凭据被拒绝，有效凭据仍可转发。原 Server 在待确认台账仍保留时被强制终止。
+
+启用重启后，Core 按原 Helper 回执确认撤销。原回执、单次原生修订和 sing-box PID `1031` 保持，Helper 只收到一次到期 apply。旧授权仍被拒绝，保留授权继续转发。隔离、原应答中断和重启前后，Mihomo PID `413`、受管程序与配置身份、原管理选路、TUN 路由、队列、Helper 台账、镜像和原网络检查点保持。真实 HTTP 与分流 DNS 在各阶段通过，TUN 停止和补偿均零派发。
+
+Linux Release 构建及 Windows Release TUN、Core 安全与驻留回归通过。专属进程和 cgroup 已清理，宿主共享服务、代理和 resolver 指纹一致。日志 `.artifacts/mb04-tun-full-zero-dns/linux-tun-expiry-quarantine-final.log` SHA-256 为 `04a22ec7eb65a522ee84c622261fa7b0a8184435943dfda108b95a238ef8a5aa`，归档为 `62c4e2d8398a2947fe838637219407c319f2fac4d30be2d4b45a7cdba1031d27`。首轮实机通过场景断言，外层汇总夹具的重复案例键引用了旧通过标记，修正后复验完整退出与归档通过。
+
+**已实现但实机未验证。** 本场景确认进程退出。故障对象释放、ALC 回收、隔离负载内存、生产收益及整机掉电分别待验。
+
+**未实现或仍受门禁保护。** 整模块安全交接仍开放，Proxy 保持 resident。
+
 ## MB-04 受管 TUN 认证 HTTP 补偿
 
 **已实现且已验证。** 在同一 Linux x64 专属 systemd 和实际认证 HTTP 队列中，客户端丢失 202 后同键得到原 ID。真实分流 DNS 写入后、Helper 尚无终态时，核对至少两个在途工作租约，随后杀掉非 root Server 和独立 root Helper。重启 Helper 前后的归档台账字节一致，候选进程和配置凭据身份、真实上游 HTTP、分流 DNS 与管理选路相符。
