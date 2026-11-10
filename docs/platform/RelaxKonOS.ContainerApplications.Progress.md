@@ -128,3 +128,11 @@ Linux x64 Server 仅在应用部署和 Docker 模块可用、且显式打开验�
 Windows x64 / .NET SDK 10.0.300，使用 `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -v:q` 分别构建 Server Tests 与桌面 WindowPreviews Tests。Server 测试 DLL 的 `--catalog-update-only`、`--deployment-definition-only`、`--docker-compose-config-only` 和桌面测试 DLL 的 `--deployments-only` 均退出 0。受控 HTTP 测试确认 Compose 解析拒绝不留下定义和派发记录。无头桌面测试确认同一客户端按能力开关决定可用性、遮蔽秘密、显示数据库卷、使过期端口预览失效，并使用原目录字段提交。日志见 `ca-build/ca-client-preview-*.log`。
 
 实机验收仍需使用完整 Server、专用 Linux Engine 和固定客户端二进制执行。登录描述符表示验收入口已配置，实际安装仍由本地 Engine、解析器和权限检查决定。
+
+## 第 7.1 节完整 Server API 验收入口
+
+加入 `verify_live.py`。两阶段分别调用真实目录、应用操作和 Docker API，记录专用 Engine ID、版本、Server 二进制哈希、原实例及操作 ID，以及卷、镜像和双服务子回执。状态应用阶段验证业务读写、兼容升级、原卷重装及另一实例的卷删除被拒；双服务阶段验证读者拒绝时资源无变化、数据库无宿主绑定、业务标记及同键原回执。脚本只接受 Linux x64 和本地 Unix socket，要求 Engine ID 与事先选定的专用 Engine 一致。令牌由环境传入，HTTP 禁止重定向，证据文件禁止覆盖。
+
+Windows x64 / Python 3.14.8，运行 `python -B verify_live.py --help`、Windows 平台拒绝用例和 Python AST／受控边界检查。复验确认拒绝远端 socket、错误的 Engine ID 及重定向，Windows 退出前未创建证据文件。记录见 `ca-build/ca-live-harness-checks.log`。现有 Docker Desktop 报告 Engine 29.8.0 Linux amd64，WSL 清单只有 Desktop 自管发行版，SSH agent 没有登录密钥。尚未在真实 Server 与专用 Engine 上运行这两阶段。
+
+下一步是专用 Linux 环境复验这两阶段、在完整 Server 上执行强制终止窗口和缺失回执注入，并记录相同桌面客户端二进制的实际新增包操作。见[夹具操作规程](../../RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md#server-api-验收与证据)。

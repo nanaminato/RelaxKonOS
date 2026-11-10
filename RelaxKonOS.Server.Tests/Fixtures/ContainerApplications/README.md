@@ -67,3 +67,19 @@ test "$(curl -fsS "$web_url/marker")" = "$marker"
 ```
 
 结束后先保存脱敏证据，再按验收环境的资源清单清理专用 Engine 上的夹具、目录清单及 Registry。
+
+## Server API 验收与证据
+
+在专用 Linux x64 主机上运行 `verify_live.py`，它调用完整 Server 的目录与 Docker 路由。通过环境变量 `RK_CA_CONTROLLER_TOKEN` 和 `RK_CA_READER_TOKEN` 提供各自的短期会话令牌。将 `engine_id` 设置为预先核对的专用 Engine ID。运行前确保回环端口 18081 至 18084 空闲，证据文件必须为新文件。
+
+```sh
+python3 verify_live.py stateful --server http://127.0.0.1:8080 \
+  --engine-id "$engine_id" --server-binary "$server_publish/RelaxKonOS.Server.dll" \
+  --evidence stateful.jsonl
+# 按上文添加 Web＋数据库清单，使用相同 Server 和客户端二进制重启并重连。
+python3 verify_live.py web-db --server http://127.0.0.1:8080 \
+  --engine-id "$engine_id" --server-binary "$server_publish/RelaxKonOS.Server.dll" \
+  --evidence web-db.jsonl
+```
+
+两次记录的 Server 哈希与 Engine ID 应一致。另行保存桌面客户端安装前后的哈希及操作证据。脚本保留创建的夹具，供人工核对资源归属。强制终止窗口和原回执缺失注入须单独执行并记录。
