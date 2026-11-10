@@ -259,8 +259,12 @@ internal static class MihomoTunFullServerAcceptance
         await using var recoveryRelay = phase is "zero-dns-recover" or "zero-dns-pam-retry" ? new ProxyAuthenticatedPublicationChecks.ReplyRelay(
             "/run/rk-zero-dns-reply.sock", socket, ct, (operation, _) => operation == "MihomoRuntimeRecover"
                 && (phase == "zero-dns-recover" || File.Exists(Path.Combine(root, "full-pam-retry-armed")))) : null;
+        await using var emergencyStopRelay = phase == "restart" && File.Exists(Path.Combine(root, "full-core-stop-proof"))
+            ? new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-core-stop-reply.sock", socket, ct,
+                (operation, _) => operation == "MihomoRuntimeRecoveryStop" && File.Exists(Path.Combine(root, "full-core-stop-armed"))) : null;
         var start = await ManagedServiceChecks.PrepareFullServerAsync(assembly,
-            relay?.Path ?? expiryRelay?.Path ?? inboundRelay?.Path ?? squidRelay?.Path ?? removalRelay?.Path ?? recoveryRelay?.Path ?? socket, root,
+            relay?.Path ?? expiryRelay?.Path ?? inboundRelay?.Path ?? squidRelay?.Path ?? removalRelay?.Path ?? recoveryRelay?.Path
+                ?? emergencyStopRelay?.Path ?? socket, root,
             reuse: !first && !dropStopReply && !inboundCut && phase is not ("admission" or "squid-new" or "removal-cut" or "zero-dns-publish"),
             seedProxyServer: false);
         start.Environment["ASPNETCORE_URLS"] = "http://192.0.2.2:18970";
@@ -303,6 +307,11 @@ internal static class MihomoTunFullServerAcceptance
             start.Environment["RELAXKONOS_TEST_TUN_STATUS_RESPONSE"] = start.WorkingDirectory;
         }
         start.Environment["Modules__Proxy__Enabled"] = disabled ? "false" : "true";
+        if (emergencyStopRelay is not null)
+        {
+            start.Environment["DOTNET_STARTUP_HOOKS"] = typeof(StartupHook).Assembly.Location;
+            start.Environment["RELAXKONOS_TEST_CORE_STOP_DRAIN"] = start.WorkingDirectory;
+        }
         if (recoveryWriteFault || phase is "admission-managed" or "handoff-disabled" or "handoff-restart" or "cleanup-fault")
         {
             foreach (var key in start.Environment.Keys.Where(key => key.StartsWith("Modules__", StringComparison.Ordinal)).ToArray())
@@ -334,6 +343,17 @@ internal static class MihomoTunFullServerAcceptance
         {
             await WriteMarkerAsync(root, "full-server-pid", server.Id.ToString());
             var exited = server.WaitForExitAsync(ct);
+            if (emergencyStopRelay is not null)
+            {
+                var drain = DrainAsync(emergencyStopRelay, "core-stop");
+                if (await Task.WhenAny(stopping.Task, exited) == exited)
+                    throw new InvalidOperationException("Core stopped before the fixture requested graceful shutdown.");
+                await WriteMarkerAsync(root, "full-server-stopping", "core-stop");
+                await drain;
+                await exited;
+                if (server.ExitCode != 0) throw new InvalidOperationException($"Expected clean Core shutdown, got {server.ExitCode}.");
+                return;
+            }
             if (expiryQuarantine)
             {
                 await WaitForMarkerAsync("full-expiry-quarantine-live");

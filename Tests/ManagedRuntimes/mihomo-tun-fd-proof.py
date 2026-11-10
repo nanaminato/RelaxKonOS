@@ -2233,6 +2233,7 @@ def proof_full_http_shutdown(ipc, case):
     job_replaced = case == 'ipc-http-restored-job-replaced'
     dispatch_unknown = case == 'ipc-http-restored-dispatch-unknown'
     core_emergency = dispatch_unknown and Path(sys.argv[3]).with_name('tun-core-emergency.fixture').is_file()
+    core_stop_drain = core_emergency and Path(sys.argv[3]).with_name('tun-core-stop-drain.fixture').is_file()
     job_cut = dispatch_unknown or case == 'ipc-http-restored-job-cut'
     initial_stop = replaced_stop or restored_replaced or job_replaced or job_cut or case == 'ipc-http-initial-stop'
     unknown_dns = case == 'ipc-http-unknown-dns'
@@ -2708,7 +2709,9 @@ def proof_full_http_shutdown(ipc, case):
             assert worker.wait(timeout=12) == 0
             ipc.stop_helper()
             ipc.start_helper()
-            if core_emergency:
+            if core_stop_drain:
+                (root / 'full-core-stop-proof').touch()
+            elif core_emergency:
                 (root / 'full-controller-cleanup-proof').touch()
             worker = launch('restart')
             pid = int(marker('full-server-pid'))
@@ -2733,18 +2736,19 @@ def proof_full_http_shutdown(ipc, case):
                 assert uuid.UUID(baseline_reply[1]['operationId']).hex == publication
                 files = (queue, state_file, owner, initial_stop, config, mirror)
                 saved = tuple(path.read_bytes() for path in files)
-                prefix = root / 'full-server/full-controller-cleanup'
-                Path(f'{prefix}-arm').touch()
-                Path(f'{prefix}-fail').touch()
-                try:
-                    assert request(api + '/controller-config', token)[0] == 200
-                    assert marker('full-server/full-controller-cleanup-held') == 'disposing' and leases() == 1
-                finally:
-                    Path(f'{prefix}-release').touch()
-                module_path = '/api/v1.0/server/modules/relaxkonos.proxy'
-                until(lambda: request(module_path, token)[1]['residency']['state'] == 'faulted', 'original Proxy scope quarantine')
-                assert all(request(api + path, token)[0] == 503 for path in ('/tun', '/recovery'))
-                assert request(recovery_api, token) == baseline_reply and leases() == 1
+                if not core_stop_drain:
+                    prefix = root / 'full-server/full-controller-cleanup'
+                    Path(f'{prefix}-arm').touch()
+                    Path(f'{prefix}-fail').touch()
+                    try:
+                        assert request(api + '/controller-config', token)[0] == 200
+                        assert marker('full-server/full-controller-cleanup-held') == 'disposing' and leases() == 1
+                    finally:
+                        Path(f'{prefix}-release').touch()
+                    module_path = '/api/v1.0/server/modules/relaxkonos.proxy'
+                    until(lambda: request(module_path, token)[1]['residency']['state'] == 'faulted', 'original Proxy scope quarantine')
+                    assert all(request(api + path, token)[0] == 503 for path in ('/tun', '/recovery'))
+                    assert request(recovery_api, token) == baseline_reply and leases() == 1
                 for endpoint, payload in ((stop_api, body), (close_api, close)):
                     assert request(endpoint, data=payload)[0] == 401
                     status, denied = request(endpoint, token, data=payload)
@@ -2756,6 +2760,67 @@ def proof_full_http_shutdown(ipc, case):
                 assert status == 200
                 status, rejected = request(stop_api, token, data={'operationId': str(uuid.uuid4())})
                 assert status == 409 and rejected['code'] == 'runtime.recovery_target_conflict'
+                if core_stop_drain:
+                    status, rejected = request(close_api, token, data=close)
+                    assert status == 409 and rejected['code'] == 'runtime.publication_unconfirmed'
+                    assert leases() == 0
+                    prefix = root / 'full-server/full-core-stop'
+                    Path(f'{prefix}-arm').touch()
+                    (root / 'full-core-stop-armed').touch()
+                    with subprocess.Popen(['ip', 'netns', 'exec', 'rk-http-client', '/usr/bin/curl',
+                                           '--noproxy', '*', '--silent', '--max-time', '20', '--config', '-', base + stop_api],
+                                          stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True) as client:
+                        client.stdin.write(f'header = "Authorization: Bearer {token}"\n'
+                                           'header = "Content-Type: application/json"\n'
+                                           'data = ' + json.dumps(json.dumps(body)) + '\n')
+                        client.stdin.close()
+                        marker('full-core-stop-response-held')
+                        assert client.poll() is None
+                        client.terminate()
+                        assert client.wait(timeout=3) != 0
+                    assert marker('full-server/full-core-stop-aborted') == '0'
+                    assert not Path(f'{prefix}-handler-finished').exists() and not Path(f'{prefix}-held').exists()
+                    assert tuple(path.read_bytes() for path in files) == saved
+                    os.kill(pid, signal.SIGTERM)
+                    assert marker('full-server-stopping') == 'core-stop'
+                    time.sleep(.25)
+                    assert worker.poll() is None and not Path(f'{prefix}-handler-finished').exists()
+                    (root / 'full-core-stop-response-release').touch()
+                    assert marker('full-server/full-core-stop-handler-finished') == '1'
+                    assert marker('full-server/full-core-stop-held') == 'disposing'
+                    assert worker.poll() is None and not Path(f'{prefix}-complete').exists()
+                    Path(f'{prefix}-release').touch()
+                    assert worker.wait(timeout=12) == 0 and Path(f'{prefix}-complete').read_text() == 'disposed'
+                    log = ipc.log.read_text()
+                    assert log.count('operation=MihomoRuntimeRecoveryStop ') == 2
+                    assert 'operation=MihomoRuntimeRecoveryClose ' not in log
+                    assert tuple(path.read_bytes() for path in files) == saved and not starts.exists()
+                    assert network_baseline() == baseline and resolver_snapshot() == original_resolver
+                    recoveries = log.count('operation=MihomoRuntimeRecover ')
+                    (root / 'full-core-stop-proof').unlink()
+                    worker = launch('restart')
+                    token = login()
+                    until(lambda: ipc.log.read_text().count('operation=MihomoRuntimeRecover ') == recoveries + 1,
+                          'one original startup recovery attempt')
+                    assert request(recovery_api, token) == baseline_reply
+                    for path, previous in zip(files, saved):
+                        current = path.read_bytes()
+                        if path == state_file:
+                            before, after = json.loads(previous), json.loads(current)
+                            # The original startup recovery enters RollingBack and returns to Interrupted.
+                            revision = before['installation']['stateRevision']
+                            assert after['installation']['stateRevision'] == revision + 2
+                            after['installation']['stateRevision'] = revision
+                            assert after == before, path.name
+                        else:
+                            assert current == previous, path.name
+                    assert not starts.exists() and network_baseline() == baseline and resolver_snapshot() == original_resolver
+                    assert ipc.log.read_text().count('operation=MihomoRuntimeRecoveryStop ') == 2
+                    os.kill(int(marker('full-server-pid')), signal.SIGTERM)
+                    assert worker.wait(timeout=12) == 0
+                    print(f'PASS TUN CORE EMERGENCY HTTP DRAIN: original={publication}; '
+                          'client disconnected; Core gate, native reply and request cleanup drained; original gate retained', flush=True)
+                    return
                 status, stopped = request(stop_api, token, data=body)
                 assert status == 200 and stopped['required'] and uuid.UUID(stopped['operationId']).hex == publication
                 assert stopped['service']['running'] is False and stopped['service']['bootEnabled'] is False

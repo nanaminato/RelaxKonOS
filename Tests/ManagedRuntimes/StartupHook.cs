@@ -25,6 +25,8 @@ internal static class StartupHook
             MihomoTunCleanupBarrier.RegisterRetry(retryRoot);
         if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_TUN_STATUS_RESPONSE") is { } statusRoot)
             MihomoTunCleanupBarrier.RegisterStatusResponse(statusRoot);
+        if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_CORE_STOP_DRAIN") is { } stopRoot)
+            MihomoTunCleanupBarrier.RegisterCoreStopDrain(stopRoot);
 
         AppDomain.CurrentDomain.AssemblyLoad += static (_, args) =>
         {

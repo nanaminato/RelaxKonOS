@@ -32,6 +32,12 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
             services.AddSingleton<IStartupFilter>(new StatusResponseBarrier(root));
     });
 
+    internal static void RegisterCoreStopDrain(string root) => RegisterHost(services =>
+    {
+        if (services.Any(service => service.ServiceType == typeof(MihomoPublicationStore)))
+            services.AddSingleton<IStartupFilter>(new CoreStopDrain(root));
+    });
+
     private static void Register(string root, Type serviceType, string prefix, Action<IServiceCollection>? configure = null)
         => RegisterHost(services => AddBarrier(services, root, serviceType, prefix, configure));
 
@@ -109,6 +115,29 @@ internal sealed class MihomoTunCleanupBarrier(string root, string prefix) : IAsy
                 if (prefix is not null)
                     context.Response.OnStarting(() => HoldAsync(root, prefix, "sending", "released"));
                 return resume(context);
+            });
+            next(app);
+        };
+    }
+
+    private sealed class CoreStopDrain(string root) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, resume) =>
+            {
+                const string prefix = "full-core-stop";
+                if (context.Request.Path != RuntimeRoutes.MihomoRecoveryStop || !File.Exists(Path.Combine(root, prefix + "-arm")))
+                {
+                    await resume(context);
+                    return;
+                }
+                var gate = context.RequestServices.GetRequiredService<MihomoPublicationStore>().Gate;
+                using var aborted = context.RequestAborted.Register(() =>
+                    File.WriteAllText(Path.Combine(root, prefix + "-aborted"), gate.CurrentCount.ToString()));
+                context.Response.RegisterForDisposeAsync(new MihomoTunCleanupBarrier(root, prefix));
+                try { await resume(context); }
+                finally { await File.WriteAllTextAsync(Path.Combine(root, prefix + "-handler-finished"), gate.CurrentCount.ToString()); }
             });
             next(app);
         };

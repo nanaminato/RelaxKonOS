@@ -4665,6 +4665,8 @@ TUN 恢复状态将 Helper 的当前观测与原发布 ID、配置身份比对�
 
 紧急停止和确认关账沿用 Core 的原事务入口。原生请求已派发后，客户端取消不会截断 Core 对 Helper 终帧的等待。关账应答丢失后，重新提交同一已确认的原操作 ID 可读回原关账终态。[实机证据](../architecture/server-module-evidence/Proxy-Safety.md#core-应急停止与原关账回执)
 
+完整认证 HTTP 实测中，客户端断开后，Server 停机仍等待原紧急停止终帧和请求异步清理。启用重启继续展示原待核验事务，原归属门禁保持。[停机实测](../architecture/server-module-evidence/Proxy-Safety.md#core-应急停止的-http-断开与停机排空)
+
 活跃 TUN 的四对隔离测量确认回执正文较小，CPU、延迟及驻留差值随窗口变化。[配对测量](../architecture/server-module-evidence/Proxy-Observation.md#活跃-tun-的回执与安装清单配对测量)
 
 DNS 写入已生效但应答未确认时，重启可按原操作和原 resolver 身份只读确认效果。resolver 换代后相同设置及真实流量仍保留待核验，Helper 未重发写入或派发停止。见[应答中断与换代证据](../architecture/server-module-evidence/Proxy-Safety.md#mb-04-tun-dns-应答中断与-resolver-换代)。

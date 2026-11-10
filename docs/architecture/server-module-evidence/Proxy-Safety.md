@@ -1659,6 +1659,27 @@ Windows Release 的 61 项运行时 HTTP、26 项注册、113 项发布事务、
 
 完整认证 Server 的 PAM 复验使用受管 TUN 原发布 `9d50081b-4034-41f1-9c76-f7516bb24164`。原 Proxy 代次隔离时，Core 仍能按原 ID 停止。错配 ID 与仍有 Server 待发布的关账继续拒绝。原队列、原配置和镜像、管理选路及 resolver 保持，宿主共享服务指纹和专属 cgroup 清理通过。日志 `.artifacts/mb04-tun-full-zero-dns/linux-native-close-core-emergency-final.log` 的 SHA-256 为 `deeb588206cd87e0e6d6b30a84b2cf7028b450d496949557e5cc646a7d76f4b7`，归档为 `ac4fc76d68f293700d42e37c63c342469c5c15d7871d92b273d4df153115e272`。
 
-**已实现但实机未验证。** 调用方取消由 Core 到独立 Helper 的 IPC 夹具核对。完整认证 HTTP 客户端在原停止终帧在途时断开，以及此窗口的宿主停机排空待单独注入。已记录专属进程退出。对象释放、ALC、隔离负载内存及生产收益分别待测。
+**已实现但实机未验证。** 调用方取消由 Core 到独立 Helper 的 IPC 夹具核对。完整认证 HTTP 的断开及宿主停机排空见下一节。已记录专属进程退出。对象释放、ALC、隔离负载内存及生产收益分别待测。
 
 **未实现或仍受门禁保护。** 当前原生效果缺可信见证时保留待核验。整模块安全交接仍开放，Proxy 保持 resident。
+
+### Core 应急停止的 HTTP 断开与停机排空
+
+**已实现且已验证。** Linux 专属 systemd 的完整非 root Server 使用真实 PAM 提权和独立 Helper。原受管 TUN 发布 `767bbd2a-c719-4157-94eb-bf302b05afce` 的发送端归属仍待核验。原紧急停止的成功终帧暂扣期间，关闭真实 HTTP 客户端。Server 观察到请求取消时，Core 发布锁仍在原调用内，请求清理尚未开始，Proxy 租约为零。
+
+向 Server 发送 SIGTERM 后，原 Handler 继续等待终帧。放行后，生产 Server 按同一 Helper 调用记录成功终帧，释放原发布锁。测试暂扣请求异步清理，原 Server 继续运行，放行清理后退出码为 0。原归档、Server 队列、网络归属、首次停止记录、配置与镜像在排空前后逐字节保持。宿主的原管理选路和 resolver 保持。Helper 日志中仅有一次错配 ID 拒绝及一次原停止，关账派发和补偿启动均为零。
+
+重启后，Core 按同一原 ID 进行一次原补偿核对，归档经过回滚和中断两个阶段，`stateRevision` 增加 2。除该计数外归档字段全部一致，其余文件继续逐字节相同。原恢复状态和准入门禁保持。最初的夹具将重启时的这两次阶段修订也要求逐字节相同。定位差异后，修正版同时检查确切修订差、原 ID、其余完整状态和派发计数。
+
+Windows Release 通过 61 项运行时 HTTP、26 项注册、113 项发布事务、Core 安全、38 项 TUN 边界和模块里程碑检查。专属进程和 cgroup 已清理，宿主共享运行时、代理和 resolver 指纹一致。
+
+| 证据 | SHA-256 |
+| --- | --- |
+| `.artifacts/mb04-tun-full-zero-dns/linux-core-stop-drain-final.log` | `559bb44b5d87a787c4b24c3ba8340561eebb90204456d72d28c5d67e6cf8243f` |
+| 实机归档 | `feb41da51f3dca86155da1fa99fa89d53c768f48eb56f2c2dfabcffbbbe7ed36` |
+| 首轮逐字节断言日志 | `f7f8a9ab6ee347bcbf2f4df49de99055d9fb1dffe05ac0b02e7954f6337dc6f4` |
+| 字段定位日志 | `e5cb27f1ca27d761fffd2684b5170532eb2163d50e8eb711fd790b983ebda2d8` |
+
+**已实现但实机未验证。** 完整认证 HTTP 的成功关账响应丢失及同原 ID 终态待单独注入。此轮已记录实际进程退出。对象释放、ALC、隔离负载内存和生产收益分别待测。
+
+**未实现或仍受门禁保护。** 原发送端归属缺可信见证时，保持原事务与准入门禁。整模块安全交接仍开放，Proxy 保持 resident。
