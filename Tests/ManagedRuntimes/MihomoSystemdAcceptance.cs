@@ -465,8 +465,11 @@ internal static class MihomoSystemdAcceptance
                 configurationStage = null;
                 Check(unresolved.Outcome == RuntimeSwitchOutcome.RecoveryRequired && states.Read()!.Configuration?.OperationId == unresolved.OperationId,
                     "Original native configuration is eligible for explicit emergency close");
-                await MihomoIpcStartupAcceptance.VerifyEmergencyCloseReceiptAsync(closeHelper, unresolved.OperationId,
-                    Path.Combine(root, "state", "archive-state.json"));
+                var archiveLedger = Path.Combine(root, "state", "archive-state.json");
+                if (Environment.GetEnvironmentVariable("RELAXKONOS_TEST_MIHOMO_CLOSE_RECEIPT_SERVER") is { } closeServer)
+                    await MihomoIpcStartupAcceptance.VerifyEmergencyCloseHttpAsync(closeHelper, closeServer, unresolved.OperationId, archiveLedger);
+                else
+                    await MihomoIpcStartupAcceptance.VerifyEmergencyCloseReceiptAsync(closeHelper, unresolved.OperationId, archiveLedger);
                 Check(states.Read()!.Configuration is null && states.Read()!.Receipts.Count(receipt => receipt.OperationId == unresolved.OperationId) == 1
                     && (await host.ObserveRegistrationAsync(default)) is { Running: false, BootEnabled: false },
                     "Original close leaves one terminal receipt and a stopped dedicated unit");

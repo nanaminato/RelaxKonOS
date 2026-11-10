@@ -1680,6 +1680,27 @@ Windows Release 通过 61 项运行时 HTTP、26 项注册、113 项发布事务
 | 首轮逐字节断言日志 | `f7f8a9ab6ee347bcbf2f4df49de99055d9fb1dffe05ac0b02e7954f6337dc6f4` |
 | 字段定位日志 | `e5cb27f1ca27d761fffd2684b5170532eb2163d50e8eb711fd790b983ebda2d8` |
 
-**已实现但实机未验证。** 完整认证 HTTP 的成功关账响应丢失及同原 ID 终态待单独注入。此轮已记录实际进程退出。对象释放、ALC、隔离负载内存和生产收益分别待测。
+**已实现但实机未验证。** 完整认证 HTTP 的成功关账应答丢失及同原 ID 终态见下一节。此轮已记录实际进程退出。对象释放、ALC、隔离负载内存和生产收益分别待测。
 
 **未实现或仍受门禁保护。** 原发送端归属缺可信见证时，保持原事务与准入门禁。整模块安全交接仍开放，Proxy 保持 resident。
+
+### Core 关账的认证 HTTP 原终态
+
+**已实现且已验证。** Linux 专属 systemd 使用完整非 root Server、真实 PAM 和独立 Helper。先验证受管 Mihomo 真实转发，再让配置事务因旧授权不可用进入待恢复。原操作 `0a1ebdf0-503e-4568-9bcb-64568cf0149a` 的匿名关账返回 401。专属普通账号登录后，缺少宿主提权返回 403，未确认请求返回 400。合法停止返回原 ID，真实单元已停且开机启动关闭。
+
+明确确认后，Helper 为原操作持久化 `Failed / runtime.recovery_closed_by_operator`。截留并丢弃 Helper 终帧后，原 HTTP 返回 503。Server 正常退出并重启 Helper。新 Server 上普通账号重新登录，提权前同 ID 查询仍拒绝，提权后同一确认请求返回 200 和原终态。两个 Helper 进程各收到一次关账请求，第二次只读，归档逐字节相同，原 ID 仅一条终态。
+
+受管 TUN 对照使用原发布 `7eaed6db-7de9-4480-ae6d-4779aa9d4998`。Proxy 代次因夹具异步清理故障隔离后，原 ID 的 Core 紧急停止仍可执行。Server 发布未决时确认关账返回 `409 / runtime.publication_unconfirmed`，Helper 关账派发为零，原队列、归档、选路、配置和镜像保持。Linux 187 项 Mihomo 验收和 Windows Release HTTP、注册、发布事务、Core 安全、TUN 边界及模块里程碑回归通过。两轮专属进程及 cgroup 已清理，宿主共享服务和受核对文件的指纹一致。
+
+| 证据 | SHA-256 |
+| --- | --- |
+| `.artifacts/mb04-tun-full-zero-dns/linux-native-close-http-final.log` | `01366841cd4036c2981a622b9e3a1f077564946563de3941dcc7cbd72cacb2a4` |
+| HTTP 原终态归档 | `52b7af6c8e3ae9c65b85ac765eda8c6d6cac5166c72e98d3eee329a0b3162571` |
+| `.artifacts/mb04-tun-full-zero-dns/linux-native-close-http-tun-gate-final.log` | `efed03e4e458faf0d0a834f501fc5b6b7b46d9a8b11f3f7ed861c5faa94cfd1b` |
+| TUN 门禁归档 | `1416de87d3b718df00c2b53ba065b6c31647ba1ee2fecb0b7bae056c924e0641` |
+
+首轮夹具用宿主管理员直接登录，产品自动授权使未提权对照提前进入关账。修正版在专属 `/etc` overlay 使用普通 PAM 账号登录，管理员凭据仅用于提权，并在正式关账前才启用终帧截留。首轮日志摘要为 `01fa78755bd94e471215b2cf2302324591475d628d66f94f0cda5fbd65d57ce9`。
+
+**已实现但实机未验证。** 该关账窗口记录了 Server、Helper 和专属 cgroup 退出。对象释放、ALC、隔离负载内存、生产收益及整机掉电分别待测。
+
+**未实现或仍受门禁保护。** 原 TUN 发布或发送端归属仍未知时保持待核验和准入门禁。整模块安全交接开放，Proxy 保持 resident。

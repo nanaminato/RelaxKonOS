@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting.Internal;
@@ -24,6 +25,137 @@ using RelaxKonOS.Server.Proxy.Platform;
 
 internal static class MihomoIpcStartupAcceptance
 {
+    internal static async Task VerifyEmergencyCloseHttpAsync(string helperAssembly, string serverAssembly, Guid operation, string archiveLedger)
+    {
+        RequirePrivateHost();
+        var work = Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SYSTEMD_WORK")
+            ?? throw new InvalidOperationException("The dedicated runner directory is required.");
+        var root = Directory.CreateDirectory(Path.Combine(work, "mihomo-close-http")).FullName;
+        ManagedServiceChecks.OpenProtection(root);
+        const string socket = "/run/rk-emergency-close-http/helper.sock";
+        const string config = "/run/rk-emergency-close-http.json";
+        var uid = uint.Parse(Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_UID")!);
+        var gid = uint.Parse(Environment.GetEnvironmentVariable("RELAXKONOS_TEST_SERVER_GID")!);
+        if (uid == 0) throw new InvalidOperationException("The HTTP fixture requires an unprivileged Server.");
+        await File.WriteAllTextAsync(config, JsonSerializer.Serialize(new LinuxPrivilegedHelperConfiguration(socket, gid, [0, uid])));
+        var transport = new UnixSocketPrivilegedOperationTransport(new() { SocketPath = socket },
+            NullLogger<UnixSocketPrivilegedOperationTransport>.Instance);
+        var administrator = ProxyAuthenticatedPublicationChecks.ReadLogin();
+        if (!File.ReadLines("/proc/self/mountinfo").Any(line => line.Split(' ')[4] == "/etc"
+            && line.Contains(" - overlay ", StringComparison.Ordinal)))
+            throw new InvalidOperationException("The ordinary PAM account requires a private /etc overlay.");
+        var identifier = "rk-close-" + Guid.NewGuid().ToString("N")[..10];
+        var password = RandomNumberGenerator.GetHexString(32);
+        await NativeRuntimeProcess.RunAsync("/usr/sbin/useradd", ["-M", "-s", "/bin/bash", identifier], 256);
+        using (var passwordWriter = Process.Start(new ProcessStartInfo("/usr/sbin/chpasswd") { UseShellExecute = false, RedirectStandardInput = true })
+            ?? throw new InvalidOperationException("Could not set the private PAM account password."))
+        {
+            await passwordWriter.StandardInput.WriteLineAsync($"{identifier}:{password}");
+            passwordWriter.StandardInput.Close();
+            await passwordWriter.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(8));
+            if (passwordWriter.ExitCode != 0) throw new InvalidOperationException("Could not initialize the private PAM account.");
+        }
+        var login = administrator with { Identifier = identifier, Password = password };
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(65));
+        var ct = budget.Token;
+        var close = new RuntimeRecoveryActionRequest(operation, Confirmed: true);
+        var expected = new RuntimeSwitchResult(operation, RuntimeSwitchOutcome.Failed, RuntimeArchiveRecovery.ClosedProblemCode);
+        byte[] closedLedger;
+        var armed = false;
+        await using (var helper = await StartHelperAsync(helperAssembly, config, transport))
+        await using (var relay = new ProxyAuthenticatedPublicationChecks.ReplyRelay("/run/rk-emergency-close-http.sock", socket, ct,
+            (kind, _) => Volatile.Read(ref armed) && kind == nameof(PrivilegedOperationKind.MihomoRuntimeRecoveryClose)))
+        {
+            var start = await PrepareAsync(relay.Path, reuse: false);
+            using var server = ProxyAuthenticatedPublicationChecks.Start(start);
+            try
+            {
+                using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, ct);
+                using var anonymous = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { BaseAddress = client.BaseAddress };
+                using var anonymousClose = await anonymous.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryClose, close, ct);
+                using var denied = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryClose, close, ct);
+                if (anonymousClose.StatusCode != HttpStatusCode.Unauthorized || denied.StatusCode != HttpStatusCode.Forbidden)
+                    throw new InvalidOperationException($"Unexpected anonymous/elevation responses: {(int)anonymousClose.StatusCode}/{(int)denied.StatusCode}.");
+                await ElevateAsync(client);
+                using var missingConfirmation = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryClose, close with { Confirmed = false }, ct);
+                if (missingConfirmation.StatusCode != HttpStatusCode.BadRequest)
+                    throw new InvalidOperationException("Close accepted an unconfirmed request.");
+                using var stop = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryStop, new RuntimeRecoveryActionRequest(operation), ct);
+                stop.EnsureSuccessStatusCode();
+                var stopped = await stop.Content.ReadFromJsonAsync<RuntimeRecoverySnapshot>(RelaxKonOSJsonOptions.Default, ct);
+                if (stopped?.OperationId != operation || stopped.Service is not { Running: false, BootEnabled: false })
+                    throw new InvalidOperationException("The HTTP stop did not return the original stopped service.");
+                Volatile.Write(ref armed, true);
+                var closing = client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryClose, close, ct);
+                if (await Task.WhenAny(closing, relay.Committed.Task).WaitAsync(ct) != relay.Committed.Task)
+                    throw new InvalidOperationException("HTTP close did not reach the committed Helper reply barrier.");
+                closedLedger = await File.ReadAllBytesAsync(archiveLedger, ct);
+                relay.DropHeldResponse();
+                using var lost = await closing.WaitAsync(ct);
+                if (lost.StatusCode != HttpStatusCode.ServiceUnavailable)
+                    throw new InvalidOperationException($"The lost Helper reply produced HTTP {(int)lost.StatusCode}.");
+                await StopServerAsync(server);
+                await RequireSingleCloseAsync(helper);
+            }
+            finally { await ProxyAuthenticatedPublicationChecks.StopAsync(server); }
+        }
+        await using (var helper = await StartHelperAsync(helperAssembly, config, transport))
+        {
+            var start = await PrepareAsync(socket, reuse: true);
+            using var server = ProxyAuthenticatedPublicationChecks.Start(start);
+            try
+            {
+                using var client = await ProxyAuthenticatedPublicationChecks.ConnectAsync(server, login, ct);
+                using var denied = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryClose, close, ct);
+                if (denied.StatusCode != HttpStatusCode.Forbidden)
+                    throw new InvalidOperationException("A restarted session read the close receipt without elevation.");
+                await ElevateAsync(client);
+                using var replay = await client.PostAsJsonAsync(RuntimeRoutes.MihomoRecoveryClose, close, ct);
+                replay.EnsureSuccessStatusCode();
+                var actual = await replay.Content.ReadFromJsonAsync<RuntimeSwitchResult>(RelaxKonOSJsonOptions.Default, ct);
+                var reopened = await File.ReadAllBytesAsync(archiveLedger, ct);
+                if (actual != expected || !closedLedger.SequenceEqual(reopened))
+                    throw new InvalidOperationException("Restarted HTTP close did not read the original receipt without rewriting the ledger.");
+                await StopServerAsync(server);
+                await RequireSingleCloseAsync(helper);
+            }
+            finally { await ProxyAuthenticatedPublicationChecks.StopAsync(server); }
+        }
+        Console.WriteLine($"PASS MIHOMO CORE EMERGENCY CLOSE HTTP RECEIPT: original {operation}; PAM authorized, dropped terminal, same receipt after Server and Helper restart");
+
+        async Task<ProcessStartInfo> PrepareAsync(string helperSocket, bool reuse)
+        {
+            var start = await ManagedServiceChecks.PrepareFullServerAsync(serverAssembly, helperSocket, root, reuse, seedProxyServer: false);
+            start.Environment["Modules__Proxy__Enabled"] = "true";
+            start.Environment["Identity__LinuxPamTransport"] = "helper";
+            return start;
+        }
+
+        async Task ElevateAsync(HttpClient client)
+        {
+            using var elevation = await client.PostAsJsonAsync("/api/v1.0/privileged/elevation", new
+            {
+                capability = "MihomoInstall", target = "mihomo", administratorUsername = administrator.Identifier, password = administrator.Password
+            }, ct);
+            if (!elevation.IsSuccessStatusCode)
+                throw new InvalidOperationException($"Production Mihomo PAM elevation returned HTTP {(int)elevation.StatusCode}.");
+        }
+
+        async Task StopServerAsync(Process server)
+        {
+            await NativeRuntimeProcess.RunAsync("/usr/bin/kill", ["-TERM", server.Id.ToString()], 256);
+            await server.WaitForExitAsync(ct);
+            if (server.ExitCode != 0) throw new InvalidOperationException($"Server shutdown returned {server.ExitCode}.");
+        }
+
+        static async Task RequireSingleCloseAsync(HelperProcess helper)
+        {
+            var log = await helper.StopAsync(drainCompletedRequests: true);
+            if (log.Split("operation=MihomoRuntimeRecoveryClose ", StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException("The Helper did not receive exactly one close request in this generation.");
+        }
+    }
+
     internal static async Task VerifyEmergencyCloseReceiptAsync(string helperAssembly, Guid operation, string archiveLedger)
     {
         RequirePrivateHost();
