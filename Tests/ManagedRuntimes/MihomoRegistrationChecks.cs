@@ -23,6 +23,7 @@ internal static class MihomoRegistrationChecks
         // surface: the profile/subscription/configuration services moved there, so this fixture has to
         // register the same pair the Host does instead of the old single AddProxyServices call.
         builder.AddProxyRuntimeServices();
+        var coreOwnsValidator = builder.Services.Any(item => item.ServiceType == typeof(IMihomoConfigurationValidator));
         var coreOwnsTunDispatch = builder.Services.Any(item => item.ServiceType == typeof(MihomoManagedTunOperations)
             || item.ServiceType == typeof(MihomoNamedTunStartRecovery));
         ServerModules.CreateManaged(new HashSet<string> { ServerModules.ProxyId }).ConfigureServices(builder,
@@ -155,9 +156,19 @@ internal static class MihomoRegistrationChecks
                     "Each completed TUN observation disposes its own controller scope");
             }
             var manager = tunServices.GetRequiredService<IProxyRuntimeManager>();
-            Check(manager is MihomoRuntimeManager && ReferenceEquals(manager, tunServices.GetRequiredService<IMihomoConfigurationValidator>())
+            Check(manager is MihomoRuntimeManager
                 && tunServices.GetRequiredService<RelaxKonOS.Server.Installations.MihomoRuntimeInstallationService>() is not null && handlerCount == 2,
                 "Core runtime and installation authority resolve without constructing a controller or publication executor.");
+            await using (var first = tunServices.CreateAsyncScope())
+            await using (var second = tunServices.CreateAsyncScope())
+            {
+                var validator = first.ServiceProvider.GetRequiredService<IMihomoConfigurationValidator>();
+                Check(!coreOwnsValidator && validator is MihomoConfigurationValidator
+                    && !ReferenceEquals(validator, second.ServiceProvider.GetRequiredService<IMihomoConfigurationValidator>())
+                    && ReferenceEquals(first.ServiceProvider.GetRequiredService<MihomoOfficialRuntimeState>(),
+                        second.ServiceProvider.GetRequiredService<MihomoOfficialRuntimeState>()),
+                    "Proxy owns the scoped validator while Core keeps the one shared official runtime state.");
+            }
             const string version = "v1.19.30";
             var release = Directory.CreateDirectory(System.IO.Path.Combine(paths.GetEngineVersionsDirectory(MihomoEngine.Id), version + "-" + MihomoRuntimeManifest.CurrentRid()));
             File.WriteAllText(System.IO.Path.Combine(release.FullName, OperatingSystem.IsWindows() ? "mihomo.exe" : "mihomo"), "");

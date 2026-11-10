@@ -54,6 +54,7 @@ internal sealed class ProxyModule : IServerModule, IServerModuleDeactivationGuar
     {
         // Management engine graphs are owned by request or independent operation scopes.
         builder.Services.AddScoped<IProxyEngine, MihomoEngine>();
+        builder.Services.AddScoped<IMihomoConfigurationValidator, MihomoConfigurationValidator>();
         builder.Services.AddScoped<IProxyEngineRegistry, ProxyEngineRegistry>();
         builder.Services.AddScoped<IProxyPlatformService, ProxyPlatformService>();
         builder.Services.AddScoped<MihomoExternalVersionProbe>();

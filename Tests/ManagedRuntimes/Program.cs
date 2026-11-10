@@ -1,6 +1,12 @@
 using System.Text.Json;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
+if (args is ["runtime-mihomo-native-validator", var validationBinary] && OperatingSystem.IsLinux())
+{
+    await MihomoServerPublicationAcceptance.VerifyNativeValidatorAsync(validationBinary);
+    return;
+}
+
 if (args is ["-v"] && OperatingSystem.IsLinux())
 {
     var fixtureDirectory = new[] { Environment.CurrentDirectory, "/var/lib/relaxkonos/proxy/state" }

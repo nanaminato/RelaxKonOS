@@ -3941,6 +3941,14 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert read(publication)['state'] == read(stopped)['state'] == 'succeeded'
             verify_native('recovered', confirmed=True)
             until(lambda: leases() == 0, 'confirmed reconciliation work leases')
+            if named_history_drift and Path(sys.argv[3]).with_name('tun-native-validator.fixture').is_file():
+                revision = uuid.UUID(inventory['activeRevisionId'])
+                executable = archive / 'versions' / revision.hex / 'mihomo'
+                validation = command('/usr/bin/dotnet', sys.argv[3], 'runtime-mihomo-native-validator', str(executable))
+                assert 'PASS MIHOMO SCOPED NATIVE VALIDATOR:' in validation
+                print(validation, flush=True)
+                assert read(started) == finished and (queue.read_bytes(), native.read_bytes(), config.read_bytes(), mirror.read_bytes()) == saved
+                verify_native('scoped-validator-cancelled', confirmed=True)
             if geo_drain:
                 geo_route = catalog + '/resources'
                 status, denied = request(geo_route, token, method='POST')

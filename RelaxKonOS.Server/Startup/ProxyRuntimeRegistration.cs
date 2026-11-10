@@ -38,9 +38,9 @@ internal static class ProxyRuntimeRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyDiagnosticLogStore, RelaxKonOS.Server.Proxy.ProxyDiagnosticLogStore>();
         builder.Services.AddSingleton<RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.IMihomoRuntimeProbe, RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeProbe>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoOfficialRuntimeState>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyRuntimeManager>(services => services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>());
-        builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.IMihomoConfigurationValidator>(services => services.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>());
 
         // ------------------------------------------------------- mihomo publication (durable ledger)
         // The installation ledger publishes configuration through this chain, so it is not a UI

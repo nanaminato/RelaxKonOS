@@ -12,6 +12,7 @@ using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Server.Proxy.Platform;
 using RelaxKonOS.Server.Docker;
+using static RelaxKonOS.Server.Proxy.Mihomo.MihomoOfficialRuntimeState;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
@@ -30,14 +31,14 @@ public sealed class MihomoRuntimeManager(
     IProxyControllerSecretStore controllerSecrets,
     MihomoControllerOptions controllerOptions,
     MihomoRuntimeManifest manifest,
+    MihomoOfficialRuntimeState official,
     IProxyDiagnosticLogStore? diagnostics = null,
     RelaxKonOS.Server.ManagedRuntimes.MihomoRuntimePublicationReader? managedRuntime = null,
-    MihomoPublicationStore? publication = null) : IProxyRuntimeManager, IMihomoConfigurationValidator
+    MihomoPublicationStore? publication = null) : IProxyRuntimeManager
 {
     private const string ServiceName = "relaxkonos-mihomo";
     private const string ServiceConfigurationId = "mihomo-default";
     private const int BootstrapMixedPort = 7890;
-    private readonly SemaphoreSlim _gate = new(1, 1);
 
     internal bool OwnsInstallationOperation(Guid operationId) => File.Exists(NativeOperationPath(operationId));
     private string NativeOperationPath(Guid operationId) => Path.Combine(paths.GetStateDirectory(), "mihomo-installs", operationId.ToString("N") + ".json");
@@ -51,19 +52,19 @@ public sealed class MihomoRuntimeManager(
         // selection of that archive used to be Windows-only.
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) return Unsupported(MihomoEngine.Id);
         var described = RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases.Describe("mihomo", MihomoRuntimeManifest.CurrentRid(), version);
-        await _gate.WaitAsync(ct);
+        await official.Gate.WaitAsync(ct);
         try
         {
             if (await DirectReloadPendingAsync(ct)) return Failure(null, ProxyProblemCodes.RecoveryRequired);
             var operationPath = NativeOperationPath(progress.OperationId);
             Directory.CreateDirectory(Path.GetDirectoryName(operationPath)!);
             await File.WriteAllTextAsync(operationPath, JsonSerializer.Serialize(new { progress.OperationId, Version = version }), ct);
-            var before = await ReadStateAsync(ct);
+            var before = await official.ReadAsync(ct);
             var release = source is null
                 ? await new RelaxKonOS.ManagedRuntimes.ComponentPackages.OfficialComponentReleases().ResolveAsync("mihomo", described.Rid, version, ct)
                 : described;
             var nativeRelease = new MihomoRuntimeRelease(version, release.Rid, release.FileName, release.Format, release.Sha256 ?? "");
-            var final = VersionDirectory(version);
+            var final = official.VersionDirectory(version);
             if (!Directory.Exists(final))
             {
                 await StageAndInstallReleaseAsync(nativeRelease, final, async (_, destination, token) =>
@@ -104,7 +105,7 @@ public sealed class MihomoRuntimeManager(
             }
             finally { publication?.Gate.Release(); }
         }
-        finally { _gate.Release(); }
+        finally { official.Gate.Release(); }
     }
 
     private async Task<bool> DirectReloadPendingAsync(CancellationToken ct)
@@ -133,10 +134,10 @@ public sealed class MihomoRuntimeManager(
         Func<CancellationToken, Task<ControllerResult<bool>>> observeController, CancellationToken cancellationToken)
     {
         if (engineId != MihomoEngine.Id) return Unsupported(engineId);
-        await _gate.WaitAsync(cancellationToken);
+        await official.Gate.WaitAsync(cancellationToken);
         try
         {
-            var state = await ReadStateAsync(cancellationToken);
+            var state = await official.ReadAsync(cancellationToken);
             // Installation, updates and removal belong to the managed-runtime ledger, so the
             // installed bytes are described by the Host's own observation rather than by a local
             // state file this writer could fabricate. Only an answer the Helper actually produced
@@ -145,7 +146,7 @@ public sealed class MihomoRuntimeManager(
                 return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, null, null, false, false, ProxyProblemCodes.RuntimeNotInstalled);
             if (state?.ActiveVersion is not { Length: > 0 })
                 return await ManagedProjectionAsync(state, observeController, cancellationToken);
-            if (!File.Exists(ExecutablePath(state.ActiveVersion)))
+            if (!File.Exists(official.ExecutablePath(state.ActiveVersion)))
                 return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.NotInstalled, state.ActiveVersion, state.PreviousVersion, false, false, ProxyProblemCodes.RuntimeNotInstalled);
 
             // Runtime status is intentionally read-only. Opening Proxy Manager or pressing its
@@ -156,7 +157,7 @@ public sealed class MihomoRuntimeManager(
             var runtimeState = RunningState(await observeController(cancellationToken));
             return new(MihomoEngine.Id, ProxyRuntimeMode.Managed, runtimeState, state.ActiveVersion, state.PreviousVersion, true, false);
         }
-        finally { _gate.Release(); }
+        finally { official.Gate.Release(); }
     }
 
     /// <summary>Maps the managed ledger's own installation facts onto the legacy proxy projection.</summary>
@@ -207,76 +208,6 @@ public sealed class MihomoRuntimeManager(
 
     /// <summary>Keeps the public code in the proxy namespace the clients already localize.</summary>
     private static string ProblemCode(string? code) => string.IsNullOrEmpty(code) ? "" : ProxyProblemCodes.RuntimeStateUnknown;
-
-    /// <summary>
-    /// Validates a candidate profile with the active, verified managed binary. This deliberately
-    /// does not depend on the controller or service being running: importing a subscription must
-    /// be possible before the profile is activated.
-    /// </summary>
-    public async Task<string?> ValidateAsync(string configurationPath, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(configurationPath) || !Path.IsPathFullyQualified(configurationPath) || !File.Exists(configurationPath))
-            return ProxyProblemCodes.ConfigInvalid;
-
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var state = await ReadStateAsync(cancellationToken);
-            var executable = state?.ActiveVersion is { Length: > 0 } active ? ExecutablePath(active) : null;
-            if (executable is null || !File.Exists(executable)) return ProxyProblemCodes.RuntimeNotInstalled;
-
-            using var process = new Process
-            {
-                StartInfo = new ProcessStartInfo(executable)
-                {
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                },
-            };
-            // The executable, arguments, and profile path are all Server-derived; no API input
-            // is executed as a command.
-            process.StartInfo.ArgumentList.Add("-t");
-            process.StartInfo.ArgumentList.Add("-d");
-            process.StartInfo.ArgumentList.Add(paths.GetEngineDataDirectory(MihomoEngine.Id));
-            process.StartInfo.ArgumentList.Add("-f");
-            process.StartInfo.ArgumentList.Add(configurationPath);
-            try
-            {
-                if (!process.Start()) return ProxyProblemCodes.RuntimeHealthCheckFailed;
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(10));
-                // Keep draining output after the deadline so a timed-out validation still leaves
-                // a safe diagnostic category. Passing the timeout token to ReadToEndAsync used
-                // to discard the only useful Mihomo error before it could be classified.
-                var standardOut = process.StandardOutput.ReadToEndAsync();
-                var standardError = process.StandardError.ReadToEndAsync();
-                try { await process.WaitForExitAsync(timeout.Token); }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-                {
-                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
-                    catch (InvalidOperationException) { /* The validation process won the exit race. */ }
-                    await Task.WhenAll(standardOut, standardError);
-                    var problem = ClassifyConfigurationValidationFailure((await standardOut) + "\n" + (await standardError), timedOut: true);
-                    await WriteDiagnosticAsync("warning", ConfigurationValidationDiagnostic(problem, timedOut: true), cancellationToken);
-                    return problem;
-                }
-
-                await Task.WhenAll(standardOut, standardError);
-                if (process.ExitCode == 0) return null;
-                var failure = ClassifyConfigurationValidationFailure((await standardOut) + "\n" + (await standardError), timedOut: false);
-                await WriteDiagnosticAsync("warning", ConfigurationValidationDiagnostic(failure, timedOut: false), cancellationToken);
-                return failure;
-            }
-            catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
-            {
-                await WriteDiagnosticAsync("warning", "Mihomo configuration validation could not be started: " + exception.GetType().Name, cancellationToken);
-                return ProxyProblemCodes.RuntimeHealthCheckFailed;
-            }
-        }
-        finally { _gate.Release(); }
-    }
 
     private async Task StageAndInstallReleaseAsync(MihomoRuntimeRelease release, string finalDirectory, Func<MihomoRuntimeRelease, string, CancellationToken, Task> stageArchiveAsync, Func<string, Task>? stageReporter, CancellationToken cancellationToken)
     {
@@ -417,7 +348,7 @@ public sealed class MihomoRuntimeManager(
     private async Task<ProxyRuntimeDto> RestorePreviousAsync(RuntimeState? before, string attemptedVersion, string problemCode, bool serviceInstalled, CancellationToken cancellationToken)
     {
         await WriteDiagnosticAsync("warning", "Managed Mihomo installation is rolling back after: " + problemCode, cancellationToken);
-        if (before?.ActiveVersion is { Length: > 0 } previous && File.Exists(ExecutablePath(previous)))
+        if (before?.ActiveVersion is { Length: > 0 } previous && File.Exists(official.ExecutablePath(previous)))
         {
             var replacement = await privileged.ReplaceRuntimeAsync(new ReplaceProxyRuntimeOperation(MihomoEngine.Id, previous, ReleaseDirectoryId(previous)), cancellationToken);
             if (!replacement.Succeeded)
@@ -540,43 +471,17 @@ public sealed class MihomoRuntimeManager(
         return result;
     }
 
-    private async Task<RuntimeState?> ReadStateAsync(CancellationToken cancellationToken)
-    {
-        var path = StatePath(); if (!File.Exists(path)) return null;
-        try { await using var input = File.OpenRead(path); return await JsonSerializer.DeserializeAsync<RuntimeState>(input, cancellationToken: cancellationToken); }
-        catch (JsonException) { return null; }
-    }
     private async Task WriteStateAsync(RuntimeState value, CancellationToken cancellationToken)
     {
         var directory = paths.GetStateDirectory(); Directory.CreateDirectory(directory); MakePrivateDirectory(directory);
         var temporary = Path.Combine(directory, ".mihomo-state-" + Guid.NewGuid().ToString("N"));
         await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             await JsonSerializer.SerializeAsync(output, value, cancellationToken: cancellationToken);
-        MakePrivateFile(temporary); File.Move(temporary, StatePath(), overwrite: true); MakePrivateFile(StatePath());
+        MakePrivateFile(temporary); File.Move(temporary, official.PointerPath, overwrite: true); MakePrivateFile(official.PointerPath);
     }
-    private void DeleteState() { if (File.Exists(StatePath())) File.Delete(StatePath()); }
-    private string StatePath() => Path.Combine(paths.GetStateDirectory(), "mihomo-runtime.json");
-    private string VersionDirectory(string version) => Path.Combine(paths.GetEngineVersionsDirectory(MihomoEngine.Id), ReleaseDirectoryId(version));
-    private string ExecutablePath(string version) => Path.Combine(VersionDirectory(version), BinaryName());
-    private static string ReleaseDirectoryId(string version) => version + "-" + MihomoRuntimeManifest.CurrentRid();
-    private static string BinaryName() => OperatingSystem.IsWindows() ? "mihomo.exe" : "mihomo";
+    private void DeleteState() { if (File.Exists(official.PointerPath)) File.Delete(official.PointerPath); }
     private static ProxyRuntimeDto Unsupported(string engineId) => new(engineId, ProxyRuntimeMode.None, ProxyRuntimeState.Failed, null, null, false, false, ProxyProblemCodes.NotSupported);
     private static ProxyRuntimeDto Failure(RuntimeState? state, string problemCode, string? version = null) => new(MihomoEngine.Id, ProxyRuntimeMode.Managed, ProxyRuntimeState.Failed, version ?? state?.ActiveVersion, state?.PreviousVersion, false, false, string.IsNullOrEmpty(problemCode) ? ProxyProblemCodes.RuntimeHealthCheckFailed : problemCode);
-    private static string ClassifyConfigurationValidationFailure(string output, bool timedOut)
-    {
-        var normalized = output.ToLowerInvariant();
-        return normalized.Contains("can't initial geoip", StringComparison.Ordinal)
-               || normalized.Contains("can't download mmdb", StringComparison.Ordinal)
-               || normalized.Contains("geoip.metadb", StringComparison.Ordinal)
-               || (normalized.Contains("geoip", StringComparison.Ordinal) && normalized.Contains("dns resolve failed", StringComparison.Ordinal))
-            ? ProxyProblemCodes.GeodataUnavailable
-            : timedOut ? ProxyProblemCodes.RuntimeHealthCheckFailed : ProxyProblemCodes.ConfigInvalid;
-    }
-    private static string ConfigurationValidationDiagnostic(string problemCode, bool timedOut) => problemCode == ProxyProblemCodes.GeodataUnavailable
-        ? "Mihomo could not initialize GEO data. Check bundled/local database staging, integrity and read permissions in the managed data directory; this code does not establish a download failure."
-        : timedOut
-            ? "Mihomo configuration validation exceeded its 10-second limit."
-            : "Mihomo rejected the downloaded subscription configuration.";
     private static void EnsureSafeArchiveEntry(string name, long length)
     {
         var normal = name.Replace('\\', '/');
@@ -610,7 +515,7 @@ public sealed class MihomoRuntimeManager(
     private static void MakePrivateDirectory(string path) { if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); }
     private static void MakePrivateFile(string path) { if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite); }
     private static void MakePrivateExecutable(string path) { if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); }
-    private sealed record RuntimeState(string ActiveVersion, string? PreviousVersion, DateTimeOffset ActivatedAt);
+
 }
 
 public sealed class RuntimeInstallException(string problemCode) : Exception(problemCode)

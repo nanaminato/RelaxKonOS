@@ -22,6 +22,52 @@ using RelaxKonOS.Server.Proxy.Platform;
 /// systemd service. This does not exercise installed Helper IPC, HTTP routes or application DI.</summary>
 internal static class MihomoServerPublicationAcceptance
 {
+    internal static async Task VerifyNativeValidatorAsync(string binary)
+    {
+        MihomoIpcStartupAcceptance.RequirePrivateHost();
+        var fixture = Directory.CreateTempSubdirectory("mihomo-validator-");
+        try
+        {
+            using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var ct = budget.Token;
+            var paths = new Paths(fixture.FullName, "");
+            var official = new MihomoOfficialRuntimeState(paths);
+            var validator = new MihomoConfigurationValidator(paths, official, new ProxyDiagnosticLogStore(paths));
+            const string version = "v1.19.33";
+            Directory.CreateDirectory(official.VersionDirectory(version));
+            Directory.CreateDirectory(paths.GetEngineDataDirectory(MihomoEngine.Id));
+            Directory.CreateDirectory(paths.GetStateDirectory());
+            var pointer = System.Text.Json.JsonSerializer.Serialize(new MihomoOfficialRuntimeState.RuntimeState(version, null, DateTimeOffset.UtcNow));
+            await File.WriteAllTextAsync(official.PointerPath, pointer, ct);
+            var executable = official.ExecutablePath(version);
+            File.Copy(binary, executable);
+            File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var configuration = Path.Combine(fixture.FullName, "candidate.yaml");
+            await File.WriteAllTextAsync(configuration, "mixed-port: 7890\nmode: rule\nrules:\n  - MATCH,DIRECT\n", ct);
+            if (await validator.ValidateAsync(configuration, ct) is not null)
+                throw new InvalidOperationException("The scoped validator did not run the real Mihomo configuration checker.");
+            await File.WriteAllTextAsync(configuration, "", ct);
+            await File.WriteAllTextAsync(executable, "#!/bin/sh\nprintf '%s' \"$$\" > \"$5\"\nexec /usr/bin/sleep 30\n", ct);
+            using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var validation = validator.ValidateAsync(configuration, cancelled.Token);
+            int pid;
+            while (!int.TryParse(await File.ReadAllTextAsync(configuration, ct), out pid))
+                await Task.Delay(15, ct);
+            var manager = new MihomoRuntimeManager(paths, null!, null!, null!, null!, paths, new(), new(), official);
+            var observation = manager.GetObservedAsync(_ => Task.FromResult(new ControllerResult<bool>(true, "")), ct);
+            if (observation.IsCompleted || official.Gate.CurrentCount != 0 || !Directory.Exists($"/proc/{pid}"))
+                throw new InvalidOperationException("Runtime observation escaped the original validation gate.");
+            await cancelled.CancelAsync();
+            try { await validation; throw new InvalidOperationException("The native validation was not cancelled."); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
+            if ((await observation).Runtime.State != ProxyRuntimeState.Running || Directory.Exists($"/proc/{pid}")
+                || await File.ReadAllTextAsync(official.PointerPath, ct) != pointer)
+                throw new InvalidOperationException("The original gate was released before the validation process exited or changed the official pointer.");
+            Console.WriteLine($"PASS MIHOMO SCOPED NATIVE VALIDATOR: parsed real candidate; PID={pid} exited before official observation resumed");
+        }
+        finally { fixture.Delete(recursive: true); }
+    }
+
     internal static async Task<int> RunAsync(MihomoRuntimeLifecycle lifecycle, MihomoPublishedRuntime original,
         int originalPort, Func<int, Task<bool>> probe, Func<int, Func<Task>, Task<bool>> probeWithConnection)
     {
@@ -180,7 +226,7 @@ internal static class MihomoServerPublicationAcceptance
             await using (var controllers = controllerServices.Services.BuildServiceProvider())
             {
                 var manager = new MihomoRuntimeManager(paths, null!, null!, null!, controllers.GetRequiredService<IServiceScopeFactory>(),
-                    paths, controllers.GetRequiredService<MihomoControllerOptions>(), new(), managedRuntime: new(store, transport, paths));
+                    paths, controllers.GetRequiredService<MihomoControllerOptions>(), new(), new(paths), managedRuntime: new(store, transport, paths));
                 var beforeStatus = await lifecycle.QueryAsync(default);
                 var firstStatus = await manager.GetAsync(MihomoEngine.Id, default);
                 var nextStatus = await manager.GetAsync(MihomoEngine.Id, default);

@@ -4659,6 +4659,8 @@ TUN 恢复状态将 Helper 的当前观测与原发布 ID、配置身份比对�
 
 运行时概览和组件状态通过独立只读投影合并原发布台账与 Helper 观察结果。存在未确认的发布时保留待核验，Helper 返回冲突的原操作时保留其 ID，台账不可读时撤回所有权和版本证明。组件归档计划沿用原计划入口。
 
+官方归档的原生配置校验在 Proxy 请求作用域内执行，与状态和安装共用原版本锁。取消校验后，原进程和输出排空，再允许读取或安装继续。[校验实测](../architecture/server-module-evidence/Proxy-Observation.md#官方归档的原生校验作用域)
+
 安装详情、恢复状态和 GEO 资源的 GET 使用同一只读端口。安装详情包含宿主环境报告，恢复状态继续显示原操作归属。存在待发布操作时，GEO 资源读取按原发布锁返回待核验。[实机核对](../architecture/server-module-evidence/Proxy-Observation.md#安装详情恢复状态和-geo-资源的只读入口)
 
 GEO 资源放置已派发后，Core 等待原 Helper 终帧或传输终止。应答丢失后可通过只读 GET 核对原活动修订及每个文件的状态和摘要。[断开恢复实测](../architecture/server-module-evidence/Proxy-Observation.md#活动-tun-的-geo-资源放置与应答丢失)
