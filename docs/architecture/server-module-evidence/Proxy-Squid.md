@@ -194,6 +194,26 @@ Windows Release Squid 与组件回归、Linux Release 构建及专属 systemd �
 
 **未实现或仍受门禁保护。** 原生终态缺失时，沿用原包待核验和准入门禁。人工确证需要可信原生终态与原 ID 绑定。整模块交接仍待验收，Proxy 保持 resident。
 
+#### 固定升级的现机原回执复验
+
+**已实现且已验证。** 2026-11-10 以 `0669c10128fa99f0e137165aea19051943eff493` 工作区的 Release 制品复验。该制品含在途的订阅传输作用域改动，Squid 执行器及夹具源码与该提交一致。既有 Ubuntu 26.04 amd64 主机的专属可写根、独立 APT/dpkg 和固定签名包通过预检。APT 模拟只选中 Squid，制品摘要与[原升级](#固定-squid-包升级的原回执)一致。预检日志 `.artifacts/mb04-squid-package/isolation-recheck-owner-request.log` 的 SHA-256 为 `da71906a723b5b7454b08a5d4a9138f927248d1fe8cac780028dde00c882bf7f`。
+
+原安装 ID `659a51be-432f-4a55-874c-cdd1b1700cd0` 绑定从 `7.2-2ubuntu2.2` 升到 `7.7-0ubuntu0.26.04.2` 的原 Helper 提交与包身份。原生升级后首次应答被截留，原 ID 和同键仍返回 Running。第二代按原 ID 查询，Helper 已返回原提交和相同包身份。应答再次被截留时，Core 安装台账字节保持且 HTTP 尚未开放。第三代只读查询原回执，写入唯一一条 `recovered` 事件，按原 ID 和同键均返回同一个 `succeeded` 终态。跨三代合计两次原回执查询、一次 Helper 变更派发和一次实际 dpkg 升级。Helper 原回执及 APT/dpkg 台账逐字节保持。Proxy 管理入口在受理前和恢复后可读，驻留策略保持。
+
+| 证据 | SHA-256 |
+| --- | --- |
+| `.artifacts/mb04-squid-package/linux-query-cut-owner-request-final.log` | `077c1a0c829cc3d4d826bd842a24bf51e17493ce029b3b64485210c8fa87549f` |
+| 实机归档 | `4f5bd47dbea358437ee832e7098c2186ec148136ccb71ae607b1f125ba98f7f1` |
+| Helper 原回执 | `7b6409abe6546a16a98824bc80dca20c4819ccee98c3b774dd4c8e801ac0feb4` |
+| 第二次中断时的 Core 台账 | `384be8fda3915e0087a33f4a553ec388da24724661c8d5295a24d953e70feef0` |
+| dpkg 台账 | `6482a379028d5c057ec619fd67cdbdaa8050b923a555259556d097fbdabd7b91` |
+
+Windows Release Squid、组件和模块边界回归均通过。首次打包因本地工作盘空间不足而中止，尚未连接远端执行。归档转到有空间的临时盘后通过实机验收。专属进程退出，根和 cgroup 清理完成。共享服务、宿主 Squid 程序、dpkg 台账、配置和账户文件指纹一致。
+
+**已实现但实机未验证。** 整机掉电需专属可断电环境。本轮独立验证了进程退出。对象释放、ALC 回收、隔离负载内存差值和生产内存收益各自待测。
+
+**未实现或仍受门禁保护。** 缺失可信原终态时保留包准入门禁。人工确证和整模块安全交接继续开放。
+
 #### 首次安装与保留数据卸载的恢复查询再次中断
 
 **已实现且已验证。** 2026-11-10 在既有 Ubuntu 26.04 amd64 测试机重新验证专属可写 overlay、独立 APT/dpkg 台账和固定 Ubuntu 签名制品。专属 `/usr` 写入没有进入宿主，APT 模拟只变更 Squid。预检日志 `.artifacts/mb04-squid-package/isolation-recheck-current.log` 的 SHA-256 为 `4b77772e311d0403518bfff80a89e4a5b87bfa6624452822a7adbccf1e440312`。

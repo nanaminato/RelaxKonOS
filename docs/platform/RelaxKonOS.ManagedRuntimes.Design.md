@@ -25,6 +25,8 @@
 
 2026-11-10（MB-04 / MR-03 显式恢复作用域）。受管 TUN 显式重试沿用原发布锁、原操作及原 Helper 回执。实际响应与异步清理由同一 Proxy 工作租约保护。清理失败隔离原代次，重启按既有原终态核对。 [验收证据](../architecture/server-module-evidence/Proxy-Safety.md#显式-tun-重试的响应与异步清理)
 
+2026-11-10（MB-04 / MR-06 固定升级复验）。专属根中断原包应答及首次恢复查询后，Core 安装台账继续按原 ID 和原 Helper 回执结案。实测两次原查询和一次实际升级，同键返回原终态。整机掉电仍需独立环境。[现机原回执复验](../architecture/server-module-evidence/Proxy-Squid.md#固定升级的现机原回执复验)
+
 ## Windows 日常安装入口调整（2026-10-27，MR-03/04/05）
 
 按产品要求，Windows Nginx、Mihomo、frpc/frps 的日常安装采用官方版本列表和文件安装，不再要求管理员先部署签名目录、录入摘要或确认发布源。Nginx 解析 nginx.org 下载页，Mihomo/FRP 解析固定官方 GitHub 仓库的 Releases API（最多三页、每页 5 条，取得首批匹配当前宿主架构的稳定版即返回；启用 HTTP 压缩，排除 draft/prerelease），选择具体版本后走既有安装台账。sing-box 的组件及来源平台配置仅声明 Linux，不支持 Windows；组件中心按通用平台配置过滤，不为 sing-box 编写隐藏特例。此配置描述 RelaxKonOS 的组件支持范围，不表示上游没有 Windows 二进制。
