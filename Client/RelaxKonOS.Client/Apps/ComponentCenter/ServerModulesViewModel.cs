@@ -246,7 +246,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
 
     public bool HasPackagePlan => PackagePlan is not null;
     public bool CanApplyPackagePlan => PackagePlan is not null && !Busy && CanManage;
-    public bool CanRollbackPackage => !Busy && CanManage && SelectedPackageVersion is { Active: false };
+    public bool CanRollbackPackage => !Busy && CanManage && SelectedPackageVersion is { Active: false } version
+        && !Modules.Any(module => module.Id == version.ModuleId && module.EffectiveEnabled && module.ResourceReleaseLevel == "process");
     public bool CanInstallStoreItem => !Busy && CanManage
         && SelectedStoreItem is { Revoked: false, RidCompatible: true, HostApiCompatible: true };
     private int _versionRequest;
@@ -424,6 +425,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     public bool CanDisable => CanPreview(ServerModuleAction.Disable) && Targets.Any(module => module.DesiredEnabled);
     public bool CanWake => CanPreview(ServerModuleAction.Wake);
     public bool CanSleep => CanPreview(ServerModuleAction.TrySleep);
+    public bool CanStop => Targets.Count == 1 && CanPreview(ServerModuleAction.Stop);
+    public bool CanRestart => Targets.Count == 1 && CanPreview(ServerModuleAction.Restart);
     private bool CanPreview(ServerModuleAction action) => !Busy && client.IsCurrent && Targets.Count > 0
         && Targets.All(module => module.AllowedActions?.Any(item => item.Action == action && item.Allowed) == true);
 
@@ -461,6 +464,15 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             new(ServerModuleAction.Wake, ActionText(ServerModuleAction.Wake), ActionHint(ServerModuleAction.Wake, CanWake, targets), CanWake, WakeCommand),
             new(ServerModuleAction.TrySleep, ActionText(ServerModuleAction.TrySleep), ActionHint(ServerModuleAction.TrySleep, CanSleep, targets), CanSleep, SleepCommand),
         ];
+        if (targets.Any(module => module.ResourceReleaseLevel == "process"))
+            ActionRows =
+            [
+                .. ActionRows,
+                new(ServerModuleAction.Stop, ActionText(ServerModuleAction.Stop), ActionHint(ServerModuleAction.Stop, CanStop, targets), CanStop, StopCommand),
+                new(ServerModuleAction.Restart, ActionText(ServerModuleAction.Restart), ActionHint(ServerModuleAction.Restart, CanRestart, targets), CanRestart, RestartCommand),
+            ];
+        StopCommand.NotifyCanExecuteChanged();
+        RestartCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(ActionRows));
     }
     private LocalizedStatus ActionHint(ServerModuleAction action, bool allowed, IReadOnlyList<ServerModuleDto> targets)
@@ -730,9 +742,16 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         var result = await client.ApplyPackagePlanAsync(plan.PlanId);
         PackagePlan = null;
         await RefreshPackageFactsAsync();
-        OperationText = LocalizedText.Get("server_modules.package_action.install")
+        var operation = PackageOperations.FirstOrDefault(item => item.OperationId == result.OperationId);
+        OperationText = PackageActionText(operation?.Action ?? "install").Resolve()
             + $" · {result.OperationId} · {result.Record.ModuleId} {result.Record.Version}";
-        PackageStatus = LocalizedText.Get("server_modules.package_installed_restart");
+        PackageStatus = operation?.State switch
+        {
+            "Succeeded" => "server_modules.package_activated",
+            "Failed" => operation.ProblemCode ?? "module-host-update-failed",
+            "AwaitingRestart" => "server_modules.package_installed_restart",
+            _ => PackageStatus,
+        };
     });
 
     [RelayCommand(CanExecute = nameof(CanRollbackPackage))]
@@ -809,6 +828,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [RelayCommand(CanExecute = nameof(CanDisable))] private Task DisableAsync() => PreviewAsync(false);
     [RelayCommand(CanExecute = nameof(CanWake))] private Task WakeAsync() => PreviewRuntimeAsync(ServerModuleAction.Wake);
     [RelayCommand(CanExecute = nameof(CanSleep))] private Task SleepAsync() => PreviewRuntimeAsync(ServerModuleAction.TrySleep);
+    [RelayCommand(CanExecute = nameof(CanStop))] private Task StopAsync() => PreviewRuntimeAsync(ServerModuleAction.Stop);
+    [RelayCommand(CanExecute = nameof(CanRestart))] private Task RestartAsync() => PreviewRuntimeAsync(ServerModuleAction.Restart);
     [RelayCommand(CanExecute = nameof(CanSetPolicy))] private Task SetPolicyAsync() => Run(async () =>
     {
         var targets = Targets;
@@ -957,7 +978,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             + (result.ProblemCode is null ? "" : " · " + ExplainProblem(result.ProblemCode).Resolve())) ?? []);
     private bool MatchesTarget(ServerModulePlanDto original, ServerModuleOperationDto operation)
     {
-        if (original.Target.Action is ServerModuleAction.Wake or ServerModuleAction.TrySleep) return true;
+        if (original.Target.Action is ServerModuleAction.Wake or ServerModuleAction.TrySleep or ServerModuleAction.Stop or ServerModuleAction.Restart) return true;
         if (!operation.EnabledModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(Modules.Where(x => x.EffectiveEnabled).Select(x => x.Id))) return false;
         return original.Target.Action != ServerModuleAction.SetResidencyPolicy || original.Target.ModuleIds.All(id =>
             Modules.SingleOrDefault(x => x.Id == id)?.EffectiveResidencyPolicy == new ServerModuleResidencyPolicyDto(original.Target.Strategy!, original.Target.IdleGraceSeconds!.Value));
@@ -1171,6 +1192,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     internal static LocalizedStatus PackageActionText(string action) => action switch
     {
         "install" => LocalizedStatus.Key("server_modules.package_action.install"),
+        "update" => LocalizedStatus.Key("server_modules.package_action.update"),
         "rollback" => LocalizedStatus.Key("server_modules.package_action.rollback"),
         _ => LocalizedStatus.Literal(action),
     };
@@ -1195,6 +1217,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     internal static LocalizedStatus ReleaseLevelText(string value) => value switch
     {
         "objects" => LocalizedStatus.Key("server_modules.release.objects"),
+        "process" => LocalizedStatus.Key("server_modules.release.process"),
         "none" => LocalizedStatus.Key("server_modules.release.none"),
         _ => LocalizedStatus.Literal(value),
     };
@@ -1226,6 +1249,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             "module-configuration-read-only" => LocalizedStatus.Key("server_modules.problem.module_configuration_read_only"),
             "module-recovery-mode" => LocalizedStatus.Key("server_modules.problem.module_recovery_mode"),
             "module-recovery-blocked" => LocalizedStatus.Key("server_modules.problem.module_recovery_blocked"),
+            "module-host-update-rolled-back" => LocalizedStatus.Key("server_modules.problem.module_host_update_rolled_back"),
+            "module-host-rollback-start-failed" => LocalizedStatus.Key("server_modules.problem.module_host_rollback_start_failed"),
+            "module-host-cleanup-unconfirmed" => LocalizedStatus.Key("server_modules.problem.module_host_cleanup_unconfirmed"),
             "module-active-work" => LocalizedStatus.Key("server_modules.problem.module_active_work"),
             "module-policy-keeps-loaded" => LocalizedStatus.Key("server_modules.problem.module_policy_keeps_loaded"),
             "module-resident-work-owner" => LocalizedStatus.Key("server_modules.problem.module_resident_work_owner"),

@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace RelaxKonOS.Protocol.Common;
 
 [JsonConverter(typeof(ServerModuleEnumConverter<ServerModuleAction>))]
-public enum ServerModuleAction { Enable, Disable, SetResidencyPolicy, Wake, TrySleep, Install, Update, Repair, Rollback, Remove }
+public enum ServerModuleAction { Enable, Disable, SetResidencyPolicy, Wake, TrySleep, Install, Update, Repair, Rollback, Remove, Stop, Restart }
 [JsonConverter(typeof(ServerModuleEnumConverter<ServerModuleOperationState>))]
 public enum ServerModuleOperationState { Prepared, Applying, AwaitingRestart, Verifying, Succeeded, Failed, RecoveryRequired }
 

@@ -14,24 +14,29 @@ internal static class ModuleTrustStore
     internal static Consent? Read(string root, InstalledModuleRecord module)
     {
         lock (Gate)
-            return ReadAll(root).SingleOrDefault(c => c.ModuleId == module.ModuleId && c.Version == module.Version
-                && c.PublisherId == module.PublisherId && c.ArtifactSha256 == module.ArtifactSha256 && c.ManifestSha256 == module.ManifestSha256);
+            return ReadAll(root).SingleOrDefault(c => Matches(c, module));
     }
+    private static bool Matches(Consent consent, InstalledModuleRecord module) =>
+        consent.ModuleId == module.ModuleId && consent.Version == module.Version && consent.PublisherId == module.PublisherId
+        && consent.ArtifactSha256 == module.ArtifactSha256 && consent.ManifestSha256 == module.ManifestSha256;
+
     private static Consent[] ReadAll(string root)
     {
         var path = PathFor(root);
         if (!File.Exists(path)) return [];
         var document = ModulePackageJson.Read<Document>(File.ReadAllBytes(path));
         if (document.SchemaVersion != 2 || document.Consents.Length > 1000
-            || document.Consents.Select(c => c.ModuleId).Distinct().Count() != document.Consents.Length)
+            || document.Consents.Select(c => (c.ModuleId, c.Version, c.PublisherId, c.ArtifactSha256, c.ManifestSha256)).Distinct().Count() != document.Consents.Length)
             throw new ModulePackageException("module-package-trust-invalid");
         return document.Consents;
     }
-    internal static Consent Set(string root, InstalledModuleRecord module, string actor, bool trusted)
+    internal static Consent Set(string root, InstalledModuleRecord module, string actor, bool trusted, InstalledModuleRecord? preserve = null)
     {
         lock (Gate)
         {
-            var consents = ReadAll(root).Where(c => c.ModuleId != module.ModuleId).ToList();
+            var consents = ReadAll(root).Where(c => c.ModuleId != module.ModuleId
+                || preserve is not null && Matches(c, preserve) && !Matches(c, module)).ToList();
+            if (consents.Count >= 1000) throw new ModulePackageException("module-package-trust-capacity");
             var consent = new Consent(module.ModuleId, module.Version, module.PublisherId, module.ArtifactSha256,
                 module.ManifestSha256, actor, Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, trusted);
             consents.Add(consent);

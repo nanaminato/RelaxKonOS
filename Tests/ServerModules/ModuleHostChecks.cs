@@ -148,12 +148,60 @@ internal static class ModuleHostChecks
             connection.Dispose();
             await supervisor.StopAsync(CancellationToken.None);
             await VerifyProductionScopesAsync(root, configuration, connection.ServiceToken, connection.GenerationId, check);
+            var sibling = Path.Combine(root, "sibling");
+            var siblingAssembly = Path.Combine(sibling, relative.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(siblingAssembly)!);
+            File.Copy(path, siblingAssembly);
+            await File.WriteAllTextAsync(Path.Combine(sibling, "manifest.json"), JsonSerializer.Serialize(manifest)
+                .Replace("fixture-host", "fixture-http", StringComparison.Ordinal)
+                .Replace("HostFixture.FixtureHostEntry", "HostFixture.FixtureHttpHostEntry", StringComparison.Ordinal));
+            configuration["ModuleHosts:Entries:1:ModuleId"] = "fixture-http";
+            configuration["ModuleHosts:Entries:1:PackageRoot"] = sibling;
+            configuration["ModuleHosts:Entries:1:DataPath"] = Path.Combine(root, "sibling-data");
+            await VerifyProcessControlAsync(root, configuration, check);
         }
         finally
         {
             try { Directory.Delete(root, recursive: true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    private static async Task VerifyProcessControlAsync(string root, IConfiguration configuration, Action<bool, string> check)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root, EnvironmentName = Environments.Development });
+        builder.Configuration.AddConfiguration(configuration);
+        var modules = ServerModules.CreateManaged(new HashSet<string>());
+        modules.ConfigureServices(builder, ServerModuleContext.Create(builder.Configuration, builder.Environment, "memory"));
+        await using var app = builder.Build();
+        using var supervisor = new ModuleHostSupervisor(new TestEnvironment(root), configuration,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ModuleHostSupervisor>.Instance,
+            app.Services.GetRequiredService<IResidentModuleWorkLeaseSource>(), modules);
+        await supervisor.StartAsync(CancellationToken.None);
+        await WaitForAsync(() => supervisor.Snapshot().Count(host => host.Status == "running") == 2);
+
+        using var target = supervisor.AcquireConnection("fixture-host")!;
+        using var sibling = supervisor.AcquireConnection("fixture-http")!;
+        var stopping = supervisor.ControlAsync("fixture-host", restart: false, CancellationToken.None);
+        await WaitForAsync(() => supervisor.Snapshot().Single(host => host.ModuleId == "fixture-host").Status == "draining");
+        using var rejected = supervisor.AcquireConnection("fixture-host");
+        check(rejected is null && !stopping.IsCompleted && !target.Stopping.IsCancellationRequested,
+            "ModuleHost stop closes admission while in-flight work drains");
+        target.Dispose();
+        await stopping;
+        check(supervisor.Snapshot().Single(host => host.ModuleId == "fixture-host").Status == "stopped",
+            "ModuleHost stop confirms the old generation has exited");
+        await supervisor.ControlAsync("fixture-host", restart: true, CancellationToken.None);
+        using var restarted = supervisor.AcquireConnection("fixture-host");
+        using var oldIdentity = supervisor.AcquireAuthenticated(target.ServiceToken);
+        using var currentSibling = supervisor.AcquireConnection("fixture-http");
+        check(restarted is not null && restarted.GenerationId != target.GenerationId && oldIdentity is null
+            && currentSibling?.GenerationId == sibling.GenerationId,
+            "ModuleHost restart issues a fresh generation and leaves the sibling running");
+        restarted?.Dispose();
+        currentSibling?.Dispose();
+        sibling.Dispose();
+        await supervisor.StopAsync(CancellationToken.None);
     }
 
     private static async Task VerifyProductionScopesAsync(string root, IConfiguration configuration, string oldToken, Guid oldGeneration, Action<bool, string> check)

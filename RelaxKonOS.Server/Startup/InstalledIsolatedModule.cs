@@ -30,7 +30,7 @@ internal sealed class InstalledIsolatedModule(InstalledModuleRecord record, stri
         var host = _supervisor?.Snapshot().SingleOrDefault(item => item.ModuleId == Id);
         var status = record.Quarantined ? "quarantined" : !enabled ? "disabled"
             : host?.Status == "running" ? "healthy" : host?.Status ?? "starting";
-        return ValueTask.FromResult(new ServerModuleHealthModuleDto(Id, enabled, true, record.Version,
+        return ValueTask.FromResult(new ServerModuleHealthModuleDto(Id, enabled, true, host is { Status: "running" } ? host.Version : null,
             record.SourceId, status, host?.ProblemCode));
     }
 }

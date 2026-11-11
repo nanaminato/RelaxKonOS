@@ -37,14 +37,18 @@ internal sealed class ModuleManagementExecutor(ModuleManagementStore store, ISer
                 try
                 {
                     store.UpdateRuntime(work.Operation.OperationId, ServerModuleOperationState.Applying);
-                    var residency = services.GetRequiredService<ModuleResidencyCoordinator>();
+                    var processAction = ModuleManagementStore.IsProcessAction(work.Plan.Target.Action);
+                    var residency = processAction ? null : services.GetRequiredService<ModuleResidencyCoordinator>();
                     foreach (var id in work.Plan.Target.ModuleIds)
                     {
                         currentModule = id;
                         stoppingToken.ThrowIfCancellationRequested();
-                        if (work.Plan.Target.Action == ServerModuleAction.Wake)
-                            leases.Add(await residency.AcquireAsync(id, stoppingToken).ConfigureAwait(false));
-                        else if (await residency.TrySleepAsync(id, stoppingToken).ConfigureAwait(false) is { } problem)
+                        if (processAction)
+                            await services.GetRequiredService<ModuleHostSupervisor>().ControlAsync(id,
+                                work.Plan.Target.Action == ServerModuleAction.Restart, stoppingToken);
+                        else if (work.Plan.Target.Action == ServerModuleAction.Wake)
+                            leases.Add(await residency!.AcquireAsync(id, stoppingToken).ConfigureAwait(false));
+                        else if (await residency!.TrySleepAsync(id, stoppingToken).ConfigureAwait(false) is { } problem)
                             throw new ModuleManagementException(problem);
                         results.Add(new(id, true));
                         store.UpdateRuntime(work.Operation.OperationId, ServerModuleOperationState.Applying, results: results);
@@ -59,6 +63,7 @@ internal sealed class ModuleManagementExecutor(ModuleManagementStore store, ISer
                         OperationCanceledException => "module-host-stopping",
                         ModuleUnavailableException unavailable => unavailable.Code,
                         ModuleManagementException management => management.Code,
+                        RelaxKonOS.ModulePackaging.ModulePackageException package => package.ProblemCode,
                         _ => "module-runtime-operation-failed"
                     };
                     if (currentModule is not null && !results.Any(x => x.ModuleId == currentModule)) results.Add(new(currentModule, false, code));

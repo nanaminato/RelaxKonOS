@@ -6,6 +6,7 @@ namespace RelaxKonOS.Server.Startup;
 
 internal static class ModulePackageOperationState
 {
+    internal const string Applying = "Applying";
     internal const string AwaitingRestart = "AwaitingRestart";
     internal const string Succeeded = "Succeeded";
     internal const string Failed = "Failed";
@@ -37,22 +38,22 @@ internal static class ModulePackageOperationStore
         if (document is null || document.SchemaVersion != 1 || document.Operations is not { Length: <= Maximum }
             || document.Operations.Select(operation => operation.OperationId).Distinct().Count() != document.Operations.Length
             || document.Operations.Any(operation => operation is null || operation.OperationId == Guid.Empty
-                || operation.Action is not ("install" or "rollback") || !Identifier(operation.ModuleId)
+                || operation.Action is not ("install" or "rollback" or "update") || !Identifier(operation.ModuleId)
                 || !Version(operation.Version) || !Identifier(operation.ReleaseId) || !Digest(operation.ArtifactSha256)
                 || operation.PreviousVersion is not null && !Version(operation.PreviousVersion)
                 || operation.State is not (ModulePackageOperationState.AwaitingRestart
-                    or ModulePackageOperationState.Succeeded or ModulePackageOperationState.Failed)
+                    or ModulePackageOperationState.Applying or ModulePackageOperationState.Succeeded or ModulePackageOperationState.Failed)
                 || operation.CreatedAt == default || operation.UpdatedAt < operation.CreatedAt))
             throw Invalid();
         return document.Operations;
     }
 
     internal static ModulePackageOperation Record(string contentRoot, string action, InstalledModuleRecord target,
-        string? previousVersion, DateTimeOffset now)
+        string? previousVersion, DateTimeOffset now, bool online = false)
     {
         var operations = Read(contentRoot).ToList();
         var operation = new ModulePackageOperation(Guid.NewGuid(), action, target.ModuleId, target.Version,
-            target.ReleaseId, target.ArtifactSha256, previousVersion, ModulePackageOperationState.AwaitingRestart,
+            target.ReleaseId, target.ArtifactSha256, previousVersion, online ? ModulePackageOperationState.Applying : ModulePackageOperationState.AwaitingRestart,
             null, now, now, null);
         if (operations.Count >= Maximum) throw new ModulePackageException("module-package-operation-capacity");
         operations.Add(operation);
@@ -85,14 +86,15 @@ internal static class ModulePackageOperationStore
         for (var i = 0; i < operations.Count; i++)
         {
             var operation = operations[i];
-            if (operation.State != ModulePackageOperationState.AwaitingRestart) continue;
+            if (operation.State is not (ModulePackageOperationState.AwaitingRestart or ModulePackageOperationState.Applying)) continue;
             var matched = byModule.TryGetValue(operation.ModuleId, out var current)
                 && current.Version == operation.Version && current.ReleaseId == operation.ReleaseId
                 && current.ArtifactSha256 == operation.ArtifactSha256;
             var updated = operation with
             {
                 State = matched ? ModulePackageOperationState.Succeeded : ModulePackageOperationState.Failed,
-                ProblemCode = matched ? null : "module-package-operation-target-mismatch",
+                ProblemCode = matched ? null : operation.State == ModulePackageOperationState.Applying
+                    ? "module-host-update-interrupted" : "module-package-operation-target-mismatch",
                 ProcessGeneration = processGeneration,
                 UpdatedAt = now,
             };

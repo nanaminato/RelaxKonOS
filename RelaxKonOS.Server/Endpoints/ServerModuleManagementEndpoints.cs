@@ -11,6 +11,7 @@ namespace RelaxKonOS.Server.Endpoints;
 
 internal static class ServerModuleManagementEndpoints
 {
+    private static readonly SemaphoreSlim PackageMutation = new(1, 1);
     internal const string ManagePolicy = "ServerModulesManage";
     internal static IEndpointRouteBuilder MapServerModuleManagementEndpoints(this IEndpointRouteBuilder app)
     {
@@ -33,6 +34,7 @@ internal static class ServerModuleManagementEndpoints
             ModuleManagementExecutor executor, ServerModules modules, ServerModuleContext context, CancellationToken ct) =>
             await Respond(async () => Results.Ok(executor.Apply(Actor(http.User), planId,
                 await modules.DescribeAsync(http.RequestServices, context, ct)))))
+            .AddEndpointFilter(SerializePackageMutationAsync)
             .RequireAuthorization(ManagePolicy);
         group.MapGet(ServerModuleManagementRoutes.Operation, (Guid operationId, HttpContext http, ModuleManagementStore store) =>
             Respond(() => Task.FromResult<IResult>(Results.Ok(store.Operation(Actor(http.User), operationId)))))
@@ -219,7 +221,7 @@ internal static class ServerModuleManagementEndpoints
                 previous?.Version, DateTimeOffset.UtcNow);
             try { File.Delete(path); } catch (IOException) { }
             return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(record, record)));
-        })).RequireAuthorization(ManagePolicy);
+        })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.PackagePlans, async (ServerModulePackageInstallRequest request,
             HttpContext http, ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
         {
@@ -236,7 +238,7 @@ internal static class ServerModuleManagementEndpoints
             var plan = ModulePackagePlanStore.Create(context.ContentRootPath, Actor(http.User), request.UploadId,
                 candidate, DateTimeOffset.UtcNow);
             return Results.Ok(PlanDto(plan));
-        })).RequireAuthorization(ManagePolicy);
+        })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.PackageAutoPlan, async (ServerModulePackageAutoPlanRequest request,
             HttpContext http, ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
         {
@@ -280,7 +282,7 @@ internal static class ServerModuleManagementEndpoints
             var plan = ModulePackagePlanStore.Create(context.ContentRootPath, Actor(http.User), request.UploadId,
                 selected, DateTimeOffset.UtcNow);
             return Results.Ok(PlanDto(plan));
-        })).RequireAuthorization(ManagePolicy);
+        })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.PackagePlanApply, async (Guid planId, HttpContext http,
             ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
         {
@@ -289,11 +291,11 @@ internal static class ServerModuleManagementEndpoints
             var plan = ModulePackagePlanStore.Get(context.ContentRootPath, planId, actor, now);
             if (plan.AppliedOperationId is { } applied)
             {
-                var current = InstalledModuleStore.Read(context.ContentRootPath)
-                    .SingleOrDefault(module => module.ModuleId == plan.ModuleId && module.Version == plan.Version
-                        && module.ArtifactSha256 == plan.ArtifactSha256);
-                return current is null ? Problem("module-package-plan-target-missing", 409)
-                    : Results.Ok(new ServerModulePackageInstallResultDto(applied, InstalledDto(current, current)));
+                var target = InstalledModuleStore.ReadVersions(context.ContentRootPath, plan.ModuleId)
+                    .SingleOrDefault(module => module.Version == plan.Version && module.ArtifactSha256 == plan.ArtifactSha256);
+                var current = InstalledModuleStore.Read(context.ContentRootPath).SingleOrDefault(module => module.ModuleId == plan.ModuleId);
+                return target is null ? Problem("module-package-plan-target-missing", 409)
+                    : Results.Ok(new ServerModulePackageInstallResultDto(applied, InstalledDto(target, current)));
             }
             var path = Path.Combine(context.ContentRootPath, "data", "module-management", "staging", "uploads",
                 plan.UploadId + ".rkmodule");
@@ -306,28 +308,90 @@ internal static class ServerModuleManagementEndpoints
                 return Problem("module-package-plan-target-changed", 409);
             var previous = InstalledModuleStore.Read(context.ContentRootPath)
                 .SingleOrDefault(module => module.ModuleId == plan.ModuleId);
+            var hosts = http.RequestServices.GetService<ModuleHostSupervisor>();
+            var modules = http.RequestServices.GetService<ServerModules>();
+            if (previous is not null && previous.Runtime != candidate.Manifest.Runtime)
+                return Problem("module-package-runtime-changed", 409);
+            var live = previous is { Runtime: "module-host" } && modules?.IsEnabled(plan.ModuleId) == true;
+            if (live && (hosts?.Exists(plan.ModuleId) != true || previous!.Quarantined))
+                return Problem("module-host-not-available-for-update", 409);
+            if (live && previous!.ArtifactSha256 != candidate.ArchiveSha256)
+            {
+                var inventory = await modules!.DescribeAsync(http.RequestServices, context, cancellationToken);
+                var target = inventory.Single(module => module.Id == plan.ModuleId);
+                if (!target.DesiredEnabled || target.RecoveryState != "none")
+                    return Problem("module-host-not-available-for-update", 409);
+                if (target.RequiredBy.Count > 0 || !previous.Requires.ToHashSet(StringComparer.Ordinal)
+                    .SetEquals(candidate.Manifest.Dependencies.Select(dependency => dependency.ModuleId)))
+                    return Problem("module-dependency-blocked", 409);
+                var staged = await InstalledModuleInstaller.InstallFromAcceptedCatalogAsync(context.ContentRootPath,
+                    context.Configuration, context.Environment, plan.SourceId, path, plan.ReleaseId, now, cancellationToken,
+                    activate: false);
+                if (staged.ArtifactSha256 != plan.ArtifactSha256 || staged.ManifestSha256 != plan.ManifestSha256)
+                    return Problem("module-package-plan-target-changed", 409);
+                var update = ModulePackageOperationStore.Record(context.ContentRootPath, "update", staged, previous.Version, now, online: true);
+                string? problem;
+                try
+                {
+                    ModulePackagePlanStore.MarkApplied(context.ContentRootPath, plan.PlanId, update.OperationId, now);
+                    ModuleTrustStore.Set(context.ContentRootPath, staged, actor, trusted: true, preserve: previous);
+                    problem = await hosts!.ReplaceAsync(previous, staged,
+                        () =>
+                        {
+                            var serviceId = ModuleManagementStore.ReadRecoveryReport(context.ContentRootPath).ServiceId;
+                            var catalogs = ModulePackageCatalogStore.Read(context.ContentRootPath, serviceId);
+                            ModulePackageCatalogStore.EnsureNotRevoked(catalogs, staged.ReleaseId, staged.ArtifactSha256);
+                            InstalledModuleInstaller.Activate(context.ContentRootPath, staged);
+                        }, CancellationToken.None);
+                }
+                catch (Exception error) when (error is ModulePackageException or IOException or UnauthorizedAccessException)
+                {
+                    problem = error is ModulePackageException package ? package.ProblemCode : "module-host-update-failed";
+                }
+                var management = http.RequestServices.GetService<ModuleManagementStore>();
+                ModulePackageOperationStore.Update(context.ContentRootPath, update.OperationId,
+                    problem is null ? ModulePackageOperationState.Succeeded : ModulePackageOperationState.Failed,
+                    problem, management?.ProcessGeneration, DateTimeOffset.UtcNow);
+                try { File.Delete(path); } catch (IOException) { }
+                var current = InstalledModuleStore.Read(context.ContentRootPath).SingleOrDefault(module => module.ModuleId == staged.ModuleId);
+                return Results.Ok(new ServerModulePackageInstallResultDto(update.OperationId, InstalledDto(staged, current)));
+            }
             var record = await InstalledModuleInstaller.InstallFromAcceptedCatalogAsync(context.ContentRootPath,
                 context.Configuration, context.Environment, plan.SourceId, path, plan.ReleaseId, now, cancellationToken);
-            if (record.Runtime == "module-host") ModuleTrustStore.Set(context.ContentRootPath, record, actor, trusted: true);
-            var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "install", record, previous?.Version, now);
+            if (record.Runtime == "module-host" && (!live || ModuleTrustStore.Read(context.ContentRootPath, record)?.Trusted != true))
+                ModuleTrustStore.Set(context.ContentRootPath, record, actor, trusted: true);
+            var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "install", record, previous?.Version, now, online: live);
+            if (live)
+                ModulePackageOperationStore.Update(context.ContentRootPath, operation.OperationId, ModulePackageOperationState.Succeeded,
+                    null, http.RequestServices.GetService<ModuleManagementStore>()?.ProcessGeneration, DateTimeOffset.UtcNow);
             ModulePackagePlanStore.MarkApplied(context.ContentRootPath, plan.PlanId, operation.OperationId, now);
             try { File.Delete(path); } catch (IOException) { }
             return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(record, record)));
-        })).RequireAuthorization(ManagePolicy);
+        })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.PackageRollback, async (ServerModulePackageRollbackRequest request,
-            ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
+            ServerModuleContext context, HttpContext http, CancellationToken cancellationToken) => await Respond(async () =>
         {
             if (!ModulePackageHostConfiguration.Identifier(request.ModuleId) || !Version(request.Version))
                 return Problem("module-package-rollback-request-invalid", 400);
             var current = InstalledModuleStore.Read(context.ContentRootPath).SingleOrDefault(module => module.ModuleId == request.ModuleId);
             if (current is null) return Problem("module-package-installed-module-not-found", 404);
+            if (current.Runtime == "module-host" && http.RequestServices.GetService<ServerModules>()?.IsEnabled(request.ModuleId) == true)
+                return Problem("module-host-rollback-plan-required", 409);
             var record = await InstalledModuleInstaller.RollbackAsync(context.ContentRootPath, request.ModuleId,
                 request.Version, cancellationToken);
             var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "rollback", record,
                 current.Version, DateTimeOffset.UtcNow);
             return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(record, record)));
-        })).RequireAuthorization(ManagePolicy);
+        })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         return app;
+    }
+
+    internal static async ValueTask<object?> SerializePackageMutationAsync(EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next)
+    {
+        await PackageMutation.WaitAsync(context.HttpContext.RequestAborted);
+        try { return await next(context); }
+        finally { PackageMutation.Release(); }
     }
 
     private static bool Version(string? value) => System.Version.TryParse(value, out var parsed)

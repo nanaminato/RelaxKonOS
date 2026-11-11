@@ -123,7 +123,8 @@ internal sealed partial class ModuleManagementStore : IDisposable
         catch { _hostLock.Dispose(); throw; }
     }
 
-    internal IReadOnlyList<ServerModuleActionAdmission> Admissions(bool runtimeSupported = false, ServerModuleResidencyDto? residency = null, bool desiredEnabled = true, bool recoveryRequired = false) =>
+    internal IReadOnlyList<ServerModuleActionAdmission> Admissions(bool runtimeSupported = false, ServerModuleResidencyDto? residency = null, bool desiredEnabled = true, bool recoveryRequired = false,
+        bool moduleHost = false, bool hasDependents = false) =>
         Enum.GetValues<ServerModuleAction>().Select(action =>
         {
             var reason = action switch
@@ -138,6 +139,11 @@ internal sealed partial class ModuleManagementStore : IDisposable
                 ServerModuleAction.Wake or ServerModuleAction.TrySleep when !desiredEnabled => "module-pending-disable",
                 ServerModuleAction.TrySleep when !residency!.Releasable => residency.BlockedBy ?? "module-policy-keeps-loaded",
                 ServerModuleAction.Wake or ServerModuleAction.TrySleep => null,
+                ServerModuleAction.Stop or ServerModuleAction.Restart when !moduleHost => "module-action-unsupported",
+                ServerModuleAction.Stop or ServerModuleAction.Restart when recoveryRequired => "module-recovery-blocked",
+                ServerModuleAction.Stop or ServerModuleAction.Restart when !desiredEnabled => "module-pending-disable",
+                ServerModuleAction.Stop or ServerModuleAction.Restart when hasDependents => "module-dependency-blocked",
+                ServerModuleAction.Stop or ServerModuleAction.Restart => null,
                 _ => "module-action-unsupported"
             };
             return new ServerModuleActionAdmission(action, reason is null, reason is null ? [] : [new(reason)]);
@@ -214,13 +220,18 @@ internal sealed partial class ModuleManagementStore : IDisposable
             blockers.Add(new("module-operation-in-progress"));
         if (IsRuntimeAction(request.Action))
         {
+            if (IsProcessAction(request.Action) && request.ModuleIds.Count != 1)
+                blockers.Add(new("module-request-invalid"));
             foreach (var id in request.ModuleIds)
             {
                 var module = inventory.SingleOrDefault(x => x.Id == id);
                 if (module is null) blockers.Add(new("module-not-found", id));
                 else if (!module.EffectiveEnabled) blockers.Add(new("module-disabled", id));
                 else if (!desired.Contains(id)) blockers.Add(new("module-pending-disable", id));
-                else if (module.ResourceReleaseLevel != "objects") blockers.Add(new("module-action-unsupported", id));
+                else if (module.ResourceReleaseLevel != (IsProcessAction(request.Action) ? "process" : "objects"))
+                    blockers.Add(new("module-action-unsupported", id));
+                else if (IsProcessAction(request.Action) && module.RequiredBy.Count > 0)
+                    blockers.Add(new("module-dependency-blocked", id));
                 else if (module.RecoveryState == "required") blockers.Add(new("module-recovery-blocked", id));
                 else if (request.Action == ServerModuleAction.TrySleep && module.Residency?.Releasable != true)
                     blockers.Add(new(module.Residency?.BlockedBy ?? "module-policy-keeps-loaded", id));

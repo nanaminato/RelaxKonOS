@@ -11,6 +11,8 @@ public interface IModuleHostEntry
 {
     string Id { get; }
 
+    /// <summary>Initializes a candidate before its routes are published. Shared data must remain
+    /// readable by the previous release if this startup or the following health check fails.</summary>
     ValueTask StartAsync(IModuleHostContext context, CancellationToken cancellationToken);
 
     ValueTask StopAsync(CancellationToken cancellationToken);

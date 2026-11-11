@@ -214,9 +214,9 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
         var page = await SendAsync<ServerPackageOperationPageDto>(HttpMethod.Get, ServerModuleManagementRoutes.PackageOperations);
         Require(page.Items is { Count: <= 128 }
             && page.Items.All(operation => operation is not null && operation.OperationId != Guid.Empty
-                && operation.Action is "install" or "rollback" && ValidIds([operation.ModuleId])
+                && operation.Action is "install" or "rollback" or "update" && ValidIds([operation.ModuleId])
                 && operation.Version is { Length: > 0 and <= 32 } && ValidDigest(operation.ArtifactSha256)
-                && operation.State is "AwaitingRestart" or "Succeeded" or "Failed"
+                && operation.State is "AwaitingRestart" or "Applying" or "Succeeded" or "Failed"
                 && operation.CreatedAt != default && operation.UpdatedAt >= operation.CreatedAt));
         return page;
     }

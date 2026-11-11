@@ -26,7 +26,7 @@ public class FixtureHostEntry : IModuleHostEntry, IModuleHostHealth, IModuleHost
         context.Logger.LogInformation("Fixture module storage initialized.");
     }
     public ValueTask StopAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
-    public ValueTask<ModuleHostHealth> CheckHealthAsync(CancellationToken cancellationToken) =>
+    public virtual ValueTask<ModuleHostHealth> CheckHealthAsync(CancellationToken cancellationToken) =>
         ValueTask.FromResult(new ModuleHostHealth(_healthy));
     public void MapEndpoints(IEndpointRouteBuilder endpoints, IModuleHostContext context)
     {
@@ -125,4 +125,11 @@ public sealed class FixtureHttpHostEntry : FixtureHostEntry
 public sealed class FixtureBrokerHostEntry : FixtureHostEntry
 {
     public override string Id => "fixture-broker";
+}
+
+
+public sealed class FixtureUnhealthyHostEntry : FixtureHostEntry
+{
+    public override ValueTask<ModuleHostHealth> CheckHealthAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new ModuleHostHealth(false, "fixture-unhealthy"));
 }

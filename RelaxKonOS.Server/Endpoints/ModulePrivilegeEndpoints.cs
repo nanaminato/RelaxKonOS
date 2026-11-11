@@ -25,7 +25,8 @@ internal static class ModulePrivilegeEndpoints
                 InstalledModuleStore.VerifyPackage(context.ContentRootPath, installed);
                 return Task.FromResult<IResult>(Results.Ok(ModuleTrustStore.Set(context.ContentRootPath, installed,
                     http.User.FindFirstValue("sub") ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "", request.Trusted)));
-            })).RequireAuthorization(ServerModuleManagementEndpoints.ManagePolicy);
+            })).AddEndpointFilter(ServerModuleManagementEndpoints.SerializePackageMutationAsync)
+            .RequireAuthorization(ServerModuleManagementEndpoints.ManagePolicy);
         app.MapGet(Root + "/{id:guid}", (Guid id, HttpContext http, CoreModulePrivilegeBroker broker) =>
             CoreModulePrivilegeBroker.Respond(async () => Results.Ok(await broker.Plans.ReadForUserAsync(id,
                 CoreModulePrivilegeBroker.Session(http.User))))).RequireAuthorization();

@@ -25,20 +25,20 @@ internal static class InstalledModuleInstaller
     /// installed.json at startup, so a new immutable version directory can be staged while it runs.</summary>
     internal static async Task<InstalledModuleRecord> InstallFromAcceptedCatalogAsync(string contentRoot,
         IConfiguration configuration, IHostEnvironment environment, string sourceId, string archivePath,
-        string releaseId, DateTimeOffset now, CancellationToken cancellationToken = default) =>
+        string releaseId, DateTimeOffset now, CancellationToken cancellationToken = default, bool activate = true) =>
         await InstallCoreAsync(contentRoot, configuration, environment, sourceId, archivePath, releaseId, now,
-            takeHostLock: false, cancellationToken);
+            takeHostLock: false, cancellationToken, activate);
 
     private static async Task<InstalledModuleRecord> InstallCoreAsync(string contentRoot, IConfiguration configuration,
         IHostEnvironment environment, string sourceId, string archivePath, string releaseId, DateTimeOffset now,
-        bool takeHostLock, CancellationToken cancellationToken)
+        bool takeHostLock, CancellationToken cancellationToken, bool activate = true)
     {
         var candidate = await InspectAsync(contentRoot, configuration, environment, sourceId, archivePath, releaseId,
             now, takeHostLock, cancellationToken);
         await using var archive = new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.Read,
             65536, FileOptions.Asynchronous | FileOptions.SequentialScan);
         return await InstallVerifiedAsync(contentRoot, sourceId, candidate.Manifest, candidate.ManifestSha256,
-            candidate.ArchiveSha256, archive, now, cancellationToken);
+            candidate.ArchiveSha256, archive, now, cancellationToken, activate);
     }
 
     internal static async Task<AcceptedModulePackageCandidate> InspectAsync(string contentRoot, IConfiguration configuration,
@@ -106,7 +106,7 @@ internal static class InstalledModuleInstaller
 
     internal static async Task<InstalledModuleRecord> InstallVerifiedAsync(string contentRoot, string sourceId,
         ModulePackageManifest manifest, string manifestSha256, string artifactSha256, Stream archive,
-        DateTimeOffset now, CancellationToken cancellationToken = default)
+        DateTimeOffset now, CancellationToken cancellationToken = default, bool activate = true)
     {
         var management = Path.GetFullPath(Path.Combine(contentRoot, "data", "module-management"));
         var packagePath = "packages/" + manifest.ModuleId + "/" + manifest.Version;
@@ -118,6 +118,16 @@ internal static class InstalledModuleInstaller
         {
             if (current is not null && current.Version == manifest.Version && current.ArtifactSha256 == artifactSha256)
                 return current;
+            if (!activate)
+            {
+                var staged = InstalledModuleStore.ReadInstallMetadata(contentRoot, packagePath);
+                if (staged.ArtifactSha256 == artifactSha256 && staged.ManifestSha256 == manifestSha256
+                    && staged.SourceId == sourceId)
+                {
+                    InstalledModuleStore.VerifyPackage(contentRoot, staged);
+                    return staged;
+                }
+            }
             throw new ModulePackageException("module-package-version-conflict");
         }
 
@@ -174,15 +184,20 @@ internal static class InstalledModuleInstaller
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             Directory.Move(staging, destination);
             staging = string.Empty;
-            var modules = InstalledModuleStore.Read(contentRoot).Where(module => module.ModuleId != manifest.ModuleId).ToList();
-            modules.Add(record);
-            InstalledModuleStore.Write(contentRoot, modules);
+            if (activate) Activate(contentRoot, record);
             return record;
         }
         finally
         {
             if (!string.IsNullOrWhiteSpace(staging) && Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
         }
+    }
+
+    internal static void Activate(string contentRoot, InstalledModuleRecord record)
+    {
+        var modules = InstalledModuleStore.Read(contentRoot).Where(module => module.ModuleId != record.ModuleId).ToList();
+        modules.Add(record);
+        InstalledModuleStore.Write(contentRoot, modules);
     }
 
     internal static Task<InstalledModuleRecord> RollbackAsync(string contentRoot, string moduleId, string version,

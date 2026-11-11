@@ -17,6 +17,7 @@ internal sealed class ModuleHostGeneration(string moduleId, string serviceToken,
     private Task? _runner;
     private Uri? _endpoint;
     private int _pending;
+    private TaskCompletionSource? _idle;
     private bool _closing;
     private Exception? _notificationFailure;
 
@@ -30,8 +31,16 @@ internal sealed class ModuleHostGeneration(string moduleId, string serviceToken,
         _registration = _token.Register(RequestClose);
         _runner = CloseCoreAsync();
     }
-    internal bool PublishReady(Uri endpoint)
-    { lock (_gate) { if (_closing) return false; _endpoint = endpoint; return true; } }
+    internal bool PublishReady(Uri endpoint, Action? beforePublish = null)
+    {
+        lock (_gate)
+        {
+            if (_closing) return false;
+            beforePublish?.Invoke();
+            _endpoint = endpoint;
+            return true;
+        }
+    }
     internal void StartupFinished() => _startup.TrySetResult();
     internal ModuleHostConnection? TryAcquire()
     {
@@ -56,9 +65,21 @@ internal sealed class ModuleHostGeneration(string moduleId, string serviceToken,
         catch (Exception error) { _notificationFailure ??= error; }
         finally { _close.TrySetResult(); }
     }
+    internal Task WaitForIdleAsync()
+    {
+        lock (_gate)
+            return _pending == 0 ? Task.CompletedTask : (_idle ??= new(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+    }
+
     internal void Release()
     {
-        lock (_gate) if (--_pending == 0 && _closing) _drained.TrySetResult();
+        lock (_gate)
+        {
+            if (--_pending != 0) return;
+            _idle?.TrySetResult();
+            _idle = null;
+            if (_closing) _drained.TrySetResult();
+        }
     }
     private async Task CloseCoreAsync()
     {

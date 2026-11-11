@@ -117,7 +117,7 @@ sequenceDiagram
 | GET `/server/module-operations/{operationId}` | 跨断线/重启查询原操作 |
 | GET `/server/module-operations?moduleId=…` | 有界分页操作记录，按权限过滤 |
 
-计划动作定义为 enable、disable、setResidencyPolicy、wake、trySleep、install、update、repair、rollback、remove。wake/trySleep 只作用于已启用且支持驻留的模块；仍经统一计划权限和幂等检查。单模块可同步完成，多模块/重启操作异步查询同一操作模型。
+计划动作包括 enable、disable、setResidencyPolicy、wake、trySleep、stop 和 restart。wake/trySleep 作用于支持驻留的已启用模块；stop/restart 每次只作用于一个已启用且由监督器管理的 ModuleHost。动作共用计划权限和幂等检查。独立包的安装与更新走包计划接口。在线更新的准入、进程切换和回退条件见 [ModuleHost 在线生命周期](RelaxKonOS.ServerModuleDistribution.Design.md#modulehost-在线生命周期)。
 
 预览输入至少绑定 serviceId、moduleId 集合、action、明确 releaseId/策略参数、expectedRevision、idempotencyKey。返回计划绑定操作者、目标、修订、制品摘要、来源/信任修订、依赖闭包、差异、重启影响、expiresAt、blockedBy。服务端在锁内复核；相同 key 相同内容返回原记录，相同 key 不同内容冲突。授权不可由客户端布尔值表示。
 

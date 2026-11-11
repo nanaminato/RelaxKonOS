@@ -1214,6 +1214,7 @@ sealed class NoDockerEngine : RelaxKonOS.Server.Docker.IDockerEngineService
 {
     private static NotSupportedException Missing() => new("The module checks never reach the Docker engine.");
 
+    public Task<bool> UsesLocalComposeEndpointAsync(CancellationToken ct = default) => throw Missing();
     public Task<RelaxKonOS.Protocol.Docker.DockerStatusDto> GetStatusAsync(CancellationToken ct = default) => throw Missing();
     public Task<RelaxKonOS.Server.Docker.DockerEngineProxyState?> GetProxyStateAsync(CancellationToken ct = default) => throw Missing();
     public Task<IReadOnlyList<RelaxKonOS.Protocol.Docker.DockerContainerDto>> ListContainersAsync(CancellationToken ct = default) => throw Missing();

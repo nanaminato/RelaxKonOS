@@ -31,6 +31,10 @@ internal sealed partial class ServerModules
         var observedAt = DateTimeOffset.UtcNow;
         var version = typeof(ServerModules).Assembly.GetName().Version?.ToString();
         var inventory = new List<ServerModuleDto>(all.Length);
+        var hosts = services.GetService<ModuleHostSupervisor>();
+        var hostStatuses = hosts?.Snapshot().ToDictionary(host => host.ModuleId, StringComparer.Ordinal);
+        var currentPackages = hosts is null || !all.Any(module => module is InstalledIsolatedModule) ? null : InstalledModuleStore.Read(context.ContentRootPath)
+            .ToDictionary(record => record.ModuleId, StringComparer.Ordinal);
         foreach (var module in all)
         {
             var isEnabled = enabled.Contains(module);
@@ -61,14 +65,19 @@ internal sealed partial class ServerModules
             var effectivePolicy = management?.EffectivePolicies.GetValueOrDefault(module.Id);
             var recoveryRequired = runtime?.BlockedBy == "module-recovery-blocked" || work.Any(item => item.RecoveryRequired);
             var installed = module as IInstalledModuleInfo;
-            var moduleVersion = installed?.InstalledVersion ?? version;
+            var host = hostStatuses?.GetValueOrDefault(module.Id);
+            var package = module is InstalledIsolatedModule ? currentPackages?.GetValueOrDefault(module.Id) : null;
+            var moduleVersion = package?.Version ?? installed?.InstalledVersion ?? version;
+            var effectiveVersion = module is InstalledIsolatedModule
+                ? host is { Status: "running" } ? host.Version : null
+                : isEnabled ? moduleVersion : null;
             inventory.Add(new ServerModuleDto(module.Id, isEnabled, module.Capabilities, module.Requires,
                 requiredBy, work.Select(item => item.Description).ToArray(),
                 runtime,
                 DesiredEnabled: desired.Contains(module.Id), Packaging: installed is null ? "bundled" : "independent",
-                InstalledVersion: moduleVersion, DesiredVersion: moduleVersion, EffectiveVersion: isEnabled ? moduleVersion : null,
-                ArtifactDigest: installed?.ArtifactDigest ?? HostDigest.Value,
-                SourceId: installed?.SourceId ?? "server-release", TrustState: installed?.TrustState ?? "host",
+                InstalledVersion: moduleVersion, DesiredVersion: moduleVersion, EffectiveVersion: effectiveVersion,
+                ArtifactDigest: package?.ArtifactSha256 ?? installed?.ArtifactDigest ?? HostDigest.Value,
+                SourceId: package?.SourceId ?? installed?.SourceId ?? "server-release", TrustState: installed?.TrustState ?? "host",
                 ServiceId: management?.ServiceId, ProcessGeneration: management?.ProcessGeneration,
                 DesiredRevision: managementState?.Revision, EffectiveRevision: management?.EffectiveRevision,
                 RestartRequired: desired.Contains(module.Id) != isEnabled || desiredPolicy != effectivePolicy, ObservedAt: observedAt,
@@ -76,10 +85,11 @@ internal sealed partial class ServerModules
                 RecoveryState: management?.RecoveryMode == true ? "host-recovery" : recoveryRequired ? "required" : "none",
                 ConfigurationOwner: management?.Writable == true ? "managed" : "deployment",
                 ConfigurationWritable: management?.Writable == true,
-                AllowedActions: management?.Admissions(module is IServerModuleResidency, runtime, desired.Contains(module.Id), recoveryRequired), Name: ConfigurationName(module.Id),
+                AllowedActions: management?.Admissions(module is IServerModuleResidency, runtime, desired.Contains(module.Id), recoveryRequired,
+                    host is not null, requiredBy.Length > 0), Name: ConfigurationName(module.Id),
                 Rid: RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid,
                 HostApiRequirement: version,
-                ResourceReleaseLevel: module is IServerModuleResidency ? "objects" : "none",
+                ResourceReleaseLevel: host is not null ? "process" : module is IServerModuleResidency ? "objects" : "none",
                 DesiredResidencyPolicy: desiredPolicy, EffectiveResidencyPolicy: effectivePolicy));
         }
         return inventory;

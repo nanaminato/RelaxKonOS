@@ -59,7 +59,7 @@ object ServerModulesWire {
         require(service.isNotBlank() && target.getString("expectedRevision").isNotBlank()
             && value.getString("expectedRevision") == target.getString("expectedRevision")
             && target.getString("idempotencyKey").length in 1..128)
-        require(target.getString("action") in setOf("Enable", "Disable", "SetResidencyPolicy", "Wake", "TrySleep", "Install", "Update", "Repair", "Rollback", "Remove"))
+        require(target.getString("action") in setOf("Enable", "Disable", "SetResidencyPolicy", "Wake", "TrySleep", "Install", "Update", "Repair", "Rollback", "Remove", "Stop", "Restart"))
         require(strings(target.getJSONArray("moduleIds")).isNotEmpty())
         require(strings(target.getJSONArray("enabledModuleIds")).distinct().size == target.getJSONArray("enabledModuleIds").length())
         java.time.OffsetDateTime.parse(value.getString("expiresAt"))

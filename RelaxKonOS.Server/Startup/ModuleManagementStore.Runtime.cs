@@ -4,7 +4,11 @@ namespace RelaxKonOS.Server.Startup;
 
 internal sealed partial class ModuleManagementStore
 {
-    internal static bool IsRuntimeAction(ServerModuleAction action) => action is ServerModuleAction.Wake or ServerModuleAction.TrySleep;
+    internal static bool IsRuntimeAction(ServerModuleAction action) => action is ServerModuleAction.Wake or ServerModuleAction.TrySleep
+        || IsProcessAction(action);
+
+    internal static bool IsProcessAction(ServerModuleAction action) =>
+        action is ServerModuleAction.Stop or ServerModuleAction.Restart;
     internal (ServerModuleOperationDto Operation, ServerModulePlanDto Plan, bool Created) BeginRuntime(
         string actor, Guid planId, IReadOnlyList<ServerModuleDto> inventory)
     {

@@ -108,6 +108,13 @@ internal sealed class WindowsModuleHostPipeServer(WindowsHelperPipeConfiguration
         if (!_active.TryAdd(launch.ModuleId, 0)) throw new InvalidOperationException("ModuleHost is already active.");
         var processResponsibility = false;
         var treeConfirmed = false;
+        var admissionReleased = false;
+        void ReleaseAdmission()
+        {
+            if (admissionReleased) return;
+            _active.TryRemove(launch.ModuleId, out _);
+            admissionReleased = true;
+        }
         try
         {
             var prepared = Prepare(pipe, launch, setup.Token);
@@ -125,6 +132,8 @@ internal sealed class WindowsModuleHostPipeServer(WindowsHelperPipeConfiguration
                 await child.ConfirmTreeExitAsync(cancellationToken);
                 treeConfirmed = true;
                 await errors.WaitAsync(TimeSpan.FromSeconds(12), cancellationToken);
+                // The Server can request a new generation as soon as it receives this frame.
+                ReleaseAdmission();
                 await Send("tree-exit", child.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
             async Task Relay(TimeSpan timeout)
@@ -191,12 +200,24 @@ internal sealed class WindowsModuleHostPipeServer(WindowsHelperPipeConfiguration
         }
         catch (Exception)
         {
-            if (!stopping.IsCancellationRequested) try { await Send("faulted", "module-host-isolation-failed"); } catch (IOException) { }
+            if (!stopping.IsCancellationRequested)
+            {
+                try
+                {
+                    if (!processResponsibility)
+                    {
+                        ReleaseAdmission();
+                        await Send("tree-exit", "1");
+                    }
+                    else if (!admissionReleased) await Send("faulted", "module-host-isolation-failed");
+                }
+                catch (IOException) { }
+            }
             throw;
         }
         finally
         {
-            if (!processResponsibility || treeConfirmed) _active.TryRemove(launch.ModuleId, out _);
+            if (!processResponsibility || treeConfirmed) ReleaseAdmission();
             CryptographicOperations.ZeroMemory(secret);
         }
     }

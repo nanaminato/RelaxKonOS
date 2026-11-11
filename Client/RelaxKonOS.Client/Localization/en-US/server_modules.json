@@ -324,5 +324,15 @@
     "server_modules.problem.module_release_blocked": "Module release is blocked.",
     "server_modules.problem.module_stream_cleanup_failed": "Stream cleanup failed, so the module stays loaded.",
     "server_modules.problem.module_background_work_failed": "Background work failed; the module needs recovery."
-  }
+  },
+    "server_modules.action.stop": "Stop module",
+    "server_modules.action.stop_hint": "Drain current requests and stop the module process.",
+    "server_modules.action.restart": "Restart module",
+    "server_modules.action.restart_hint": "Restart the current version of this module.",
+    "server_modules.release.process": "Module process",
+    "server_modules.package_action.update": "Update",
+    "server_modules.package_activated": "The module version is active.",
+    "server_modules.problem.module_host_update_rolled_back": "The new version failed to start. The previous version is running.",
+    "server_modules.problem.module_host_rollback_start_failed": "The new and previous versions both failed to start.",
+    "server_modules.problem.module_host_cleanup_unconfirmed": "Module process cleanup could not be confirmed."
 }

@@ -324,5 +324,15 @@
     "server_modules.problem.module_release_blocked": "モジュールの解放がブロックされています。",
     "server_modules.problem.module_stream_cleanup_failed": "ストリームの後処理に失敗したため、モジュールは読み込まれたままです。",
     "server_modules.problem.module_background_work_failed": "バックグラウンド作業に失敗し、モジュールの復旧が必要です。"
-  }
+  },
+    "server_modules.action.stop": "モジュールを停止",
+    "server_modules.action.stop_hint": "処理中の要求の完了を待ち、モジュールプロセスを停止します。",
+    "server_modules.action.restart": "モジュールを再起動",
+    "server_modules.action.restart_hint": "このモジュールの現在のバージョンを再起動します。",
+    "server_modules.release.process": "モジュールプロセス",
+    "server_modules.package_action.update": "更新",
+    "server_modules.package_activated": "モジュールのバージョンが有効になりました。",
+    "server_modules.problem.module_host_update_rolled_back": "新バージョンの起動に失敗し、旧バージョンを復元しました。",
+    "server_modules.problem.module_host_rollback_start_failed": "新旧いずれのバージョンも起動できませんでした。",
+    "server_modules.problem.module_host_cleanup_unconfirmed": "モジュールプロセスの終了を確認できませんでした。"
 }
