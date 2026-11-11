@@ -169,6 +169,37 @@ internal sealed partial class NginxWebServerManager
         finally { IntegrationGate.Release(); }
     }
 
+    internal sealed record SiteInspection(string ConfigurationPath, bool? OwnershipMarkerMatches, WebServerSiteDto? RegisteredSite);
+
+    // For a quiescent isolated instance selected by the caller. A file on disk does not
+    // establish that the current Nginx workers have loaded it.
+    internal async Task<SiteInspection> InspectSiteAsync(WebServerDto instance, string siteId, CancellationToken cancellationToken)
+    {
+        if (instance.ProviderId != ProviderKey
+            || instance.ManagementMode is not (WebServerManagementMode.Managed or WebServerManagementMode.Integrated)
+            || !SiteIdPattern().IsMatch(siteId) || GetSitesDirectory(instance) is not { } directory)
+            throw new InvalidOperationException("A manageable Nginx instance and a valid site ID are required.");
+
+        await IntegrationGate.WaitAsync(cancellationToken);
+        try
+        {
+            var sites = await ReadSitesAsync(instance, cancellationToken);
+            var path = Path.Combine(directory, $"{siteId}.conf");
+            bool? markerMatches;
+            try
+            {
+                if (File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint))
+                    throw new IOException("Nginx site configuration path is unsafe.");
+                using var reader = File.OpenText(path);
+                markerMatches = await reader.ReadLineAsync(cancellationToken) == SiteOwnershipMarker + siteId;
+            }
+            catch (FileNotFoundException) { markerMatches = null; }
+            catch (DirectoryNotFoundException) { markerMatches = null; }
+            return new(path, markerMatches, sites.SingleOrDefault(site => site.Id == siteId));
+        }
+        finally { IntegrationGate.Release(); }
+    }
+
     private async Task<IReadOnlyList<WebServerSiteDto>> ReadSitesAsync(WebServerDto instance, CancellationToken cancellationToken)
     {
         var directory = GetSitesDirectory(instance);
@@ -176,7 +207,6 @@ internal sealed partial class NginxWebServerManager
         if (IsSymbolicLink(directory)) throw new IOException("Web site metadata directory is unsafe.");
         var path = Path.Combine(directory, "sites.json");
         if (IsSymbolicLink(path)) throw new IOException("Web site metadata file is unsafe.");
-        if (!File.Exists(path)) return [];
         try
         {
             await using var stream = File.OpenRead(path);
@@ -188,6 +218,8 @@ internal sealed partial class NginxWebServerManager
                 throw new IOException("Web site metadata is invalid.");
             return sites;
         }
+        catch (FileNotFoundException) { return []; }
+        catch (DirectoryNotFoundException) { return []; }
         catch (JsonException exception) { throw new IOException("Web site metadata is invalid.", exception); }
         catch (UnauthorizedAccessException exception) { throw new IOException("Web site metadata is inaccessible.", exception); }
     }

@@ -206,7 +206,7 @@ internal static class NginxProcessRecoveryChecks
             using var managedClient = CreatePinnedClient(managedCertificate);
             await ObserveAsync(managedClient, new Uri("https://127.0.0.1/"), "production TLS site", nginx);
             TestAssert.Assert(CountReloads(root) == 2, "The managed certificate binding must add exactly one reload.");
-            await VerifyPublicationCrashAsync(root, nginx, configuring, budget.Token);
+            await VerifyPublicationCrashAsync(root, nginx, provider, instance, configuring, budget.Token);
             Console.WriteLine($"PASS NGINX LIVE SITE TLS: local and managed certificate bindings applied, certificate={certificateId}; binding reloads=2");
         }
         finally
@@ -220,7 +220,8 @@ internal static class NginxProcessRecoveryChecks
     private const string PublicationDomain = "localhost";
     private const int UpstreamPort = 18080;
 
-    private static async Task VerifyPublicationCrashAsync(string root, Process nginx, bool configuring, CancellationToken cancellationToken)
+    private static async Task VerifyPublicationCrashAsync(string root, Process nginx, NginxWebServerManager provider,
+        WebServerDto instance, bool configuring, CancellationToken cancellationToken)
     {
         // Give the new publication a separate SNI name and a real loopback upstream.
         using var upstream = new HttpListener();
@@ -234,7 +235,7 @@ internal static class NginxProcessRecoveryChecks
             TestAssert.Assert(Guid.TryParse(line, out var operationId), $"Missing publication receipt: {line}");
             var stage = configuring ? WebsitePublicationStage.Configuring : WebsitePublicationStage.Verifying;
             TestAssert.Assert(await worker.StandardOutput.ReadLineAsync(cancellationToken) == stage.ToString(),
-                "The publication must finish site application and association before interruption.");
+                "The publication must reach the selected crash boundary.");
             var environment = new TestHostEnvironment(root);
             var options = new ApplicationDeploymentOptions();
             var catalog = new ApplicationDeploymentCatalogStore(environment, options);
@@ -243,7 +244,7 @@ internal static class NginxProcessRecoveryChecks
             var running = store.Get(operationId);
             TestAssert.Assert(running is not null && running.Stage == stage && WebsitePublicationStore.Active(running)
                 && app.SiteId == (configuring ? null : running.SiteId) && running.CertificateId is not null,
-                "The original Verifying receipt and committed association must be durable.");
+                "The running receipt and persisted association must match the selected crash boundary.");
 
             const string metadataPath = "/etc/nginx/conf.d/relaxkonos.d/sites.json";
             var siteMetadata = await File.ReadAllTextAsync(metadataPath, cancellationToken);
@@ -262,35 +263,68 @@ internal static class NginxProcessRecoveryChecks
             await worker.WaitForExitAsync(cancellationToken);
             TestAssert.Assert(worker.ExitCode != 0, "The publication worker must exit abnormally.");
 
+            catalog = new ApplicationDeploymentCatalogStore(environment, options);
             var recoveredStore = new WebsitePublicationStore(environment);
             var recoveryExecutions = 0;
             using var restarted = WebsitePublicationTestScopes.Create(recoveredStore, null!, catalog, null!, null!, null!, null!,
                 new TestApplicationLifetime(), NullLogger<WebsitePublicationCoordinator>.Instance, new TestResidentBackgroundLeases(),
                 executionCreated: () => Interlocked.Increment(ref recoveryExecutions));
             await restarted.StartAsync(cancellationToken);
-            var restored = restarted.Get(operationId);
+            var restored = restarted.Get(operationId)
+                ?? throw new InvalidOperationException("The original publication receipt is missing.");
+            var ledgerPath = Path.Combine(root, "data", "website-publications.json");
+            var ledgerBefore = await File.ReadAllBytesAsync(ledgerPath, cancellationToken);
+            var catalogPath = Path.Combine(root, options.RootDirectory, "catalog.json");
+            var catalogBefore = await File.ReadAllBytesAsync(catalogPath, cancellationToken);
+            var configurationPath = Path.Combine(Path.GetDirectoryName(metadataPath)!, $"{running.SiteId}.conf");
+            var configurationBefore = await File.ReadAllBytesAsync(configurationPath, cancellationToken);
+            var diskOnly = await WebsitePublicationInspection.InspectAsync(operationId, recoveredStore, catalog,
+                provider, instance, null, cancellationToken);
+            TestAssert.Assert(diskOnly.ConfigurationPath == configurationPath && diskOnly.OwnershipMarkerMatches == true
+                && diskOnly.Findings.Contains("live_route_unverified") && !diskOnly.Findings.Contains("live_site_unregistered"),
+                "The generated configuration alone must not be reported as live.");
+
+            responseTask = ReplyOnceAsync();
+            using var afterClient = CreatePinnedClient(certificate);
+            TestAssert.Assert(await afterClient.GetStringAsync(address, cancellationToken) == "published upstream",
+                "The isolated Nginx master must still proxy HTTPS to the fixture upstream.");
+            await responseTask;
+            var observation = new WebsitePublicationInspection.HttpsObservation(address.Host, running.CertificateId!.Value, certificate.Thumbprint);
+            var inspection = await WebsitePublicationInspection.InspectAsync(operationId, recoveredStore, catalog,
+                provider, instance, observation, cancellationToken);
+            var expectedFindings = configuring
+                ? new[] { "publication_outcome_unverified", "live_site_unregistered", "application_association_mismatch" }
+                : new[] { "publication_outcome_unverified" };
+            TestAssert.Assert(inspection.Receipt == restored && inspection.LiveRoute == observation
+                && inspection.OwnershipMarkerMatches == true && (inspection.RegisteredSite is null) == configuring
+                && inspection.AssociatedSiteId == app.SiteId && inspection.AssociatedInstanceId == app.SiteInstanceId
+                && inspection.Findings.SequenceEqual(expectedFindings),
+                $"Unexpected inspection evidence for {operationId}: {string.Join(", ", inspection.Findings)}");
+            Console.WriteLine(JsonSerializer.Serialize(new { nginxPid = nginx.Id, inspection }, RelaxKonOSJsonOptions.Default));
             var publication = new PublishWebsiteRequest(app.Id, running!.WebServerId, PublicationDomain, running.CertificateId, Confirmed: true);
             var replay = await ReplayOverHttpAsync<WebsitePublicationOperationDto>(services => services.AddSingleton(restarted),
                 app => app.MapWebsitePublicationEndpoints(), WebsitePublicationApiRoutes.Root, PublicationKey,
                 HostElevationCapability.NginxConfigurationWrite, publication.WebServerId,
                 () => JsonContent.Create(publication, options: RelaxKonOSJsonOptions.Default), cancellationToken);
-            TestAssert.Assert(restored is { State: WebsitePublicationState.Interrupted }
+            TestAssert.Assert(restored.State == WebsitePublicationState.Interrupted
                 && restored.RecoveryProblemCode == (configuring ? WebsitePublicationProblems.SiteApplicationUnverified : "website.recheck_required")
-                && replay.RecoveryProblemCode == restored.RecoveryProblemCode && replay.OperationId == operationId && replay.State == restored.State && replay.ProblemCode == restored.ProblemCode
-                && new WebsitePublicationStore(environment).Get(operationId)?.State == restored.State,
+                && JsonSerializer.Serialize(replay, RelaxKonOSJsonOptions.Default) == JsonSerializer.Serialize(restored, RelaxKonOSJsonOptions.Default),
                 "Startup and same-key retry must preserve the original interrupted publication.");
 
-            responseTask = ReplyOnceAsync();
-            using var afterClient = CreatePinnedClient(certificate);
-            TestAssert.Assert(await afterClient.GetStringAsync(address, cancellationToken) == "published upstream"
-                && CountReloads(root) == before && !nginx.HasExited
+            TestAssert.Assert(CountReloads(root) == before && !nginx.HasExited
                 && catalog.ReadApplications().Single().SiteId == app.SiteId
-                && await File.ReadAllTextAsync(metadataPath, cancellationToken) == siteMetadata,
-                "Publication recovery must preserve live TLS, the association and the original reload count.");
+                && await File.ReadAllTextAsync(metadataPath, cancellationToken) == siteMetadata
+                && (await File.ReadAllBytesAsync(configurationPath, cancellationToken)).SequenceEqual(configurationBefore)
+                && (await File.ReadAllBytesAsync(catalogPath, cancellationToken)).SequenceEqual(catalogBefore)
+                && (await File.ReadAllBytesAsync(ledgerPath, cancellationToken)).SequenceEqual(ledgerBefore),
+                "Inspection and replay must preserve the configuration, metadata, catalog, receipt and reload count.");
+            responseTask = ReplyOnceAsync();
+            TestAssert.Assert(await afterClient.GetStringAsync(address, cancellationToken) == "published upstream",
+                "The isolated Nginx route must remain live after inspection and replay.");
             await responseTask;
             await restarted.StopAsync(cancellationToken);
             TestAssert.Assert(recoveryExecutions == 0, "Recovery and HTTP replay must leave the native execution graph absent.");
-            Console.WriteLine($"PASS NGINX LIVE PUBLICATION CRASH: operation={operationId}; stage={stage}; recovery={restored!.RecoveryProblemCode}; publication reloads=1; recovery scopes=0; HTTP response drained after disconnect");
+            Console.WriteLine($"PASS NGINX LIVE PUBLICATION CRASH: operation={operationId}; stage={stage}; recovery={restored.RecoveryProblemCode}; publication reloads=1; recovery scopes=0; HTTP response drained after disconnect");
         }
         finally
         {

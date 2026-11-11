@@ -200,6 +200,14 @@ Linux 完整 PAM/JWT Server 使用专属 Nginx、Docker 上游和 Pebble。在�
 
 Linux 证据包含真实工作中的保活、闲时卸载事件及按需唤醒。真实 HTTPS 任务后的 GC 收集由 Windows Release 检查覆盖。直接重载的后续边界见下节。WebServer 整体动态休眠和生产资源测量继续开放。
 
+### 隔离环境中的发布诊断
+
+发布工作进程停止后，Host 内部诊断按原操作 ID 读取发布回执，并核对专属 Nginx 的配置所有权标记、站点登记和应用关联。夹具使用指定证书及预期上游响应验证回环 HTTPS，再把观测交给诊断。只有磁盘配置时，报告 `live_route_unverified`。TLS 路由已验证但站点未登记时，报告 `live_site_unregistered`。诊断无公开 HTTP 入口。
+
+`run-nginx-site-live.sh` 的 `configuring` 路径验证路由仍在线、站点未登记且应用尚未关联。 `verifying` 路径验证路由、站点登记和应用关联均存在。两条路径都检查原中断回执、同键 HTTP 重放、配置与台账字节、真实 HTTPS 响应、重载次数和恢复执行作用域数量。
+
+2026-11-11 在 WSL2 Ubuntu 24.04 x64 的私有挂载和网络命名空间，使用 Nginx 1.24.0 和 .NET 10 通过两条路径。原操作分别为 `40021d66-bfe2-4a25-9ba7-d77502f3daa7` 和 `496d0f69-64e7-400d-b5d9-a6a80df7ad9c`。每条路径均保留一次发布重载及零个恢复执行作用域。Windows WebServer 和站点专项回归也通过。
+
 ## MB-05 直接 Nginx 重载独立执行程序集
 
 直接重载与网站发布复用 WebServer 的可回收执行代次和 30 秒闲时窗口。仅获准并进入原实例锁的新重载创建执行器。Helper 调用、原 operationId 和回执由 Host 提供，原 WebServer 台账独占检查点、对账和终态写入。执行代次由原后台工作持有，覆盖实际命令、异步作用域清理、终态持久化和 Helper 回执压缩确认。启动恢复只对账原 Helper 回执，同键查询读取原台账。

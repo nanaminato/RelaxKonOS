@@ -184,6 +184,8 @@ internal sealed partial class NginxWebServerManager
         return "webserver.site_reload_failed";
     }
 
+    private const string SiteOwnershipMarker = "# Managed by RelaxKonOS. Site: ";
+
     private static string RenderSiteConfiguration(WebServerSiteDto site, (string FullChainPath, string PrivateKeyPath)? certificatePaths)
         => RenderSiteConfiguration(site, certificatePaths, null);
 
@@ -199,11 +201,11 @@ internal sealed partial class NginxWebServerManager
         if (site.RedirectHttpToHttps)
         {
             var redirect = httpListens.Count == 0 ? "" : $"server {{\n    {string.Join("\n    ", httpListens)}\n    server_name {serverNames};{acmeLocation}\n    location / {{ return 301 https://$host$request_uri; }}\n}}\n\n";
-            return $"# Managed by RelaxKonOS. Site: {site.Id}\n{redirect}server {{\n    {tlsListener}\n    server_name {serverNames};\n    {RenderSiteBody(site)}\n}}\n";
+            return $"{SiteOwnershipMarker}{site.Id}\n{redirect}server {{\n    {tlsListener}\n    server_name {serverNames};\n    {RenderSiteBody(site)}\n}}\n";
         }
         var listens = httpListens;
         if (!string.IsNullOrWhiteSpace(tlsListener)) listens.Add(tlsListener);
-        return $"# Managed by RelaxKonOS. Site: {site.Id}\nserver {{\n    {string.Join("\n    ", listens)}\n    server_name {serverNames};{acmeLocation}\n    {RenderSiteBody(site)}\n}}\n";
+        return $"{SiteOwnershipMarker}{site.Id}\nserver {{\n    {string.Join("\n    ", listens)}\n    server_name {serverNames};{acmeLocation}\n    {RenderSiteBody(site)}\n}}\n";
     }
 
     private static string RenderSiteBody(WebServerSiteDto site)
@@ -278,7 +280,7 @@ internal sealed partial class NginxWebServerManager
 
     private static bool IsRelaxKonOSSiteConfig(string path)
     {
-        try { return File.Exists(path) && !IsSymbolicLink(path) && File.ReadLines(path).FirstOrDefault()?.StartsWith("# Managed by RelaxKonOS. Site: ", StringComparison.Ordinal) == true; }
+        try { return File.Exists(path) && !IsSymbolicLink(path) && File.ReadLines(path).FirstOrDefault()?.StartsWith(SiteOwnershipMarker, StringComparison.Ordinal) == true; }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
     }
