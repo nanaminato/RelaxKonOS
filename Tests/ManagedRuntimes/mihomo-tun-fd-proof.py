@@ -2214,6 +2214,7 @@ def proof_full_http_shutdown(ipc, case):
     joint = case == 'ipc-http-joint'
     admission = case == 'ipc-http-admission'
     handoff = case == 'ipc-http-handoff'
+    handoff_crash = handoff and Path(sys.argv[3]).with_name('tun-handoff-crash.fixture').is_file()
     expiry_quarantine = handoff and Path(sys.argv[3]).with_name('tun-expiry-quarantine.fixture').is_file()
     quarantine_guard = expiry_quarantine and Path(sys.argv[3]).with_name('tun-quarantine-guard.fixture').is_file()
     inbound_tun = case == 'ipc-http-inbound-tun'
@@ -4217,6 +4218,12 @@ exec {shlex.quote(str(systemctl))} "$@"
         assert guard_applied()
         return guard, guard_evidence()
 
+    def query_tun_publication(publication):
+        query = {'version': '1.1', 'operation': 'MihomoRuntimeQuery', 'operationId': str(uuid.UUID(publication)),
+                 'correlation': {'correlationId': str(uuid.uuid4())}}
+        process = subprocess.run([launcher], input=json.dumps(query), capture_output=True, text=True, timeout=12, check=True)
+        return json.loads(base64.b64decode(helper_result(process)['outputBase64']))
+
     def verify_inbound_tun(pid, record, publication):
         nonlocal worker, token
         inbound = '/api/v1.0/proxy-server'
@@ -4972,8 +4979,16 @@ exec {shlex.quote(str(systemctl))} "$@"
         worker = launch('admission-managed')
         pid = int(marker('full-server-pid'))
         token = login()
+        assert request(api + '/tun', token)[0] == 200
+        status, detail = request(f'{modules}/{module}', token)
+        assert status == 200 and detail['residency']['lastUsedAt'] is not None
+        committed_tun = query_tun_publication(publication)
+        assert committed_tun['Receipt'] is not None and committed_tun['CommitWitness'] is not None
+        assert uuid.UUID(committed_tun['MihomoTunPublicationId']).hex == publication
         disable_id = until(submit_disable_plan, 'applied management disable plan')
         terminate(pid)
+        if handoff_crash:
+            (root / 'full-handoff-crash').touch()
         worker = launch('handoff-disabled')
         first_worker = worker
         pid = int(marker('full-server-pid'))
@@ -4982,37 +4997,58 @@ exec {shlex.quote(str(systemctl))} "$@"
         (root / 'full-handoff-ready').touch()
         assert marker('full-expiry-live') == 'forwarded'
         guard, guarded = hold_guard_repair()
+        verify_guard_traffic('handoff-guard-repaired')
         probe(record, 'handoff-before-expiry')
         expiry = marker('full-expiry-response-held', 40)
         pending_expiry = expiry_ledger.read_bytes()
         probe(record, 'handoff-after-native-expiry')
-        os.kill(pid, signal.SIGTERM)
-        assert marker('full-server-stopping') == 'stopping'
-        assert expiry_ledger.read_bytes() == pending_expiry and tun_evidence() == original_tun
-        (root / 'full-expiry-response-release').touch()
-        confirmed = until(lambda: (data := expiry_ledger.read_bytes()) != pending_expiry and data,
-                          'original expiry confirmation')
-        assert Path(f'/proc/{pid}').exists() and guard_evidence() == guarded
-        probe(record, 'handoff-expiry-drained')
-        (root / 'full-guard-response-release').touch()
-        assert marker('full-server-exited') == '0' and not Path(f'/proc/{pid}').exists()
+        if handoff_crash:
+            read_disabled()
+            guard_requests = ipc.log.read_text().count('operation=LinuxSystemProxyApply ')
+            os.kill(pid, signal.SIGKILL)
+            until(lambda: not Path(f'/proc/{pid}').exists(), 'disabled Server process exit')
+            assert expiry_ledger.read_bytes() == pending_expiry
+            assert guard_evidence() == guarded and tun_evidence() == original_tun
+            probe(record, 'handoff-server-absent')
+        else:
+            os.kill(pid, signal.SIGTERM)
+            assert marker('full-server-stopping') == 'stopping'
+            assert expiry_ledger.read_bytes() == pending_expiry and tun_evidence() == original_tun
+            (root / 'full-expiry-response-release').touch()
+            confirmed = until(lambda: (data := expiry_ledger.read_bytes()) != pending_expiry and data,
+                              'original expiry confirmation')
+            assert Path(f'/proc/{pid}').exists() and guard_evidence() == guarded
+            probe(record, 'handoff-expiry-drained')
+            (root / 'full-guard-response-release').touch()
+            assert marker('full-server-exited') == '0' and not Path(f'/proc/{pid}').exists()
         worker = launch('handoff-restart')
         restart_pid = int(marker('full-server-pid'))
         token = login(disabled=True)
         read_disabled()
         status, receipt = request(f'/api/v1.0/server/module-operations/{disable_id}', token)
-        assert status == 200 and receipt['state'] == 'Succeeded', (status, receipt)
+        assert status == 200 and receipt['operationId'] == disable_id and receipt['state'] == 'Succeeded', (status, receipt)
+        if handoff_crash:
+            confirmed = until(lambda: (data := expiry_ledger.read_bytes()) != pending_expiry and data,
+                              'original expiry confirmation after disabled restart')
+            until(lambda: ipc.log.read_text().count('operation=LinuxSystemProxyApply ') > guard_requests,
+                  'replacement disabled Core guard reconciliation')
+            verify_guard_traffic('handoff-guard-restarted')
         probe(record, 'handoff-restarted-disabled')
+        observed_tun = query_tun_publication(publication)
+        for field in ('MihomoTunPublicationId', 'Receipt', 'CommitWitness', 'ConfigurationIdentity'):
+            assert observed_tun[field] == committed_tun[field], (field, observed_tun)
         assert tun_evidence() == original_tun and guard_evidence() == guarded and expiry_ledger.read_bytes() == confirmed
         helper_audit = ipc.log.read_text()
         assert helper_audit.count(f'operation=MihomoRuntimeConfigure id={uuid.UUID(publication)} ') == 1
         assert helper_audit.count(f'operation=LinuxSystemProxyApply id={uuid.UUID(guard)} ') == 1
+        assert helper_audit.count(f'operation=ProxyServerApply id={uuid.UUID(expiry)} ') == 1
         assert helper_audit.count('operation=ProxyServerApply ') == 1
         assert 'operation=MihomoRuntimeTunStop ' not in helper_audit and 'operation=MihomoRuntimeRecover ' not in helper_audit
         (root / 'full-joint-finish').touch()
         assert first_worker.wait(timeout=12) == 0
         terminate(restart_pid)
-        print(f'PASS TUN DISABLED SAFETY HANDOFF: publication={publication}; disable={disable_id}; guard={guard}; '
+        outcome = 'CRASH RECOVERY' if handoff_crash else 'HANDOFF'
+        print(f'PASS TUN DISABLED SAFETY {outcome}: publication={publication}; disable={disable_id}; guard={guard}; '
               f'expiry={expiry}; Server PID {pid}->{restart_pid}; original Mihomo PID={record["service"][0]}; '
               f'configuration={record["credential"]}')
 
@@ -5146,12 +5182,6 @@ exec {shlex.quote(str(systemctl))} "$@"
         checkpoint_path = archive / 'operations' / publication / 'tun-5.json'
         witness = checkpoint_path.read_bytes()
 
-        def query_publication():
-            query = {'version': '1.1', 'operation': 'MihomoRuntimeQuery', 'operationId': str(uuid.UUID(publication)),
-                     'correlation': {'correlationId': str(uuid.uuid4())}}
-            process = subprocess.run([launcher], input=json.dumps(query), capture_output=True, text=True, timeout=12, check=True)
-            return json.loads(base64.b64decode(helper_result(process)['outputBase64']))
-
         def verify_blocked_publication(phase):
             nonlocal worker, token
             blocked_pid = start('restart')
@@ -5167,7 +5197,7 @@ exec {shlex.quote(str(systemctl))} "$@"
             assert all(f'operation={mutation} ' not in log for mutation in
                        ('MihomoRuntimeConfigure', 'MihomoRuntimeRecover', 'MihomoRuntimeTunStop'))
 
-        committed = query_publication()
+        committed = query_tun_publication(publication)
         foreign = json.loads(witness)
         foreign['Process']['StartTicks'] += 1
         assert witness.count(b'"StartTicks":') == 1 and witness.endswith(b'}')
@@ -5180,7 +5210,7 @@ exec {shlex.quote(str(systemctl))} "$@"
         for name, damaged in damaged_records:
             checkpoint_path.write_bytes(damaged)
             try:
-                observed = query_publication()
+                observed = query_tun_publication(publication)
                 assert observed['Installation']['Ownership'] == 'Unknown'
                 assert observed['ProblemCode'] == 'runtime.network_checkpoint_conflict'
                 assert observed['Receipt'] == committed['Receipt'] and observed['CommitWitness'] == committed['CommitWitness']
@@ -5190,18 +5220,18 @@ exec {shlex.quote(str(systemctl))} "$@"
                 checkpoint_path.write_bytes(witness)
 
         with commit_witness_fault(publication, mismatched=False):
-            observed = query_publication()
+            observed = query_tun_publication(publication)
             assert observed['Installation']['Ownership'] == 'Managed' and observed['Receipt'] == committed['Receipt']
             assert observed['MihomoTunPublicationId'] == committed['MihomoTunPublicationId'] and observed['CommitWitness'] is None
             verify_blocked_publication('admission-missing-commit-witness')
 
         with commit_witness_fault(publication, mismatched=True):
-            observed = query_publication()
+            observed = query_tun_publication(publication)
             assert observed['Receipt'] == committed['Receipt'] and observed['ConfigurationIdentity'] == committed['ConfigurationIdentity']
             assert observed['CommitWitness']['ConfigurationIdentity'] != observed['ConfigurationIdentity']
             verify_blocked_publication('admission-mismatched-commit-witness')
 
-        restored = query_publication()
+        restored = query_tun_publication(publication)
         assert restored['MihomoTunPublicationId'] == committed['MihomoTunPublicationId']
         assert restored['Receipt'] == committed['Receipt'] and restored['CommitWitness'] == committed['CommitWitness']
 

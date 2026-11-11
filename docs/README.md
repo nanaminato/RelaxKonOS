@@ -463,6 +463,7 @@ RelaxKonOS.Server     = Cloud Backend
 | [`ServerCenter Goal`](./platform/RelaxKonOS.ServerCenter.Goal.md) | 桌面与 Android 的服务器中心、内置 SSH 部署及生命周期验收 |
 | [`UserModeServer Goal`](./services/RelaxKonOS.UserModeServer.Goal.md) | 无 sudo 的 Linux 用户模式服务端、SSH 隧道与能力边界 |
 | [`Storage`](./platform/RelaxKonOS.Storage.md) | EF Core + SQLite、持久化范围与表结构 |
+| [容器应用平台设计](./platform/RelaxKonOS.ContainerApplications.Design.md) | 应用包目录、受管多服务实例、Docker 执行边界与验收示例（待实施） |
 
 ### 桌面体验
 

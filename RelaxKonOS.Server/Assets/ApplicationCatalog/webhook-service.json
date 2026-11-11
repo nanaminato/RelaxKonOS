@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "2",
+  "release": {
+    "id": "webhook-service",
+    "version": "1.0.0",
+    "purpose": "Webhook service",
+    "description": "A managed webhook listener.",
+    "imageReference": "docker.io/tarampampam/webhook-tester@sha256:df4030560ff4e054a7ad4892cfb974553655d1f6a0486a9e5227e17b68563af2",
+    "containerPort": 8080,
+    "healthPath": "/healthz",
+    "volumes": [],
+    "fields": []
+  }
+}

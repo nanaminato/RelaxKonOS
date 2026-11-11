@@ -37,8 +37,8 @@ public static class ApplicationDeploymentEndpoints
             .RequireAuthorization(ReadPolicy);
 
         group.MapGet(ApplicationDeploymentApiRoutes.CatalogTemplatePattern,
-            (string templateId) => Handle(() => ApplicationCatalog.Describe(templateId) is { } template
-                ? Results.Ok(template) : Problem(ApplicationDeploymentProblemCodes.CatalogTemplateNotFound, 404)))
+            (string templateId, string templateVersion) =>
+                Handle(() => Results.Ok(ApplicationCatalog.Require(templateId, templateVersion).Describe())))
             .RequireAuthorization(ReadPolicy);
 
         group.MapPost(ApplicationDeploymentApiRoutes.CatalogInstallPattern,
@@ -52,10 +52,15 @@ public static class ApplicationDeploymentEndpoints
                     {
                         var template = ApplicationCatalog.Require(request.TemplateId, request.TemplateVersion);
                         var bound = template.Bind(request);
+                        await manager.PreflightCatalogInstallAsync(bound.Definition, ct);
                         var application = await manager.CreateAsync(bound.Definition, actor, ct, template);
                         var operation = coordinator.Start(new DeploymentRequest(application.Id, DeploymentOperationKind.Deploy, bound.Source, ExpectedUpdatedAt: application.UpdatedAt), actor, Key(http));
-                        return new CatalogApplicationInstallDto(application, operation, template.Id, template.Version);
-                    }, receipt => receipt with { Application = manager.ReadReceipt(receipt.Application) });
+                        var visible = application with
+                        {
+                            Configuration = [.. application.Configuration.Select(field => field.IsSecret ? field with { Value = null } : field)],
+                        };
+                        return new CatalogApplicationInstallDto(visible, operation, template.Id, template.Version);
+                    }, receipt => receipt);
                     return Results.Accepted(ApplicationDeploymentApiRoutes.Operation(installed.Operation.OperationId), installed);
                 }))
             .RequireAuthorization(ManagePolicy);

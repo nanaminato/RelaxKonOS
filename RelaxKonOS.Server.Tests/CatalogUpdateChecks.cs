@@ -22,6 +22,7 @@ internal static class CatalogUpdateChecks
 
     private static async Task VerifyAsync(string root)
     {
+        VerifyManifestDirectory(root);
         var environment = new TestHostEnvironment(root);
         var options = new ApplicationDeploymentOptions();
         var catalog = new ApplicationDeploymentCatalogStore(environment, options);
@@ -102,6 +103,16 @@ internal static class CatalogUpdateChecks
         var route = ApplicationDeploymentApiRoutes.CatalogUpdate(app.Id);
         using (var denied = await http.GetAsync(route + "?templateVersion=1.0.0")) Check(denied.StatusCode == HttpStatusCode.Unauthorized, "Preview requires authentication.");
         http.DefaultRequestHeaders.Add("X-Test-Role", "reader");
+        var detail = $"{ApplicationDeploymentApiRoutes.Catalog}/{target.Id}/{target.Version}";
+        using (var release = await http.GetAsync(detail))
+            Check((await release.Content.ReadFromJsonAsync<ApplicationCatalogTemplateDto>(RelaxKonOSJsonOptions.Default))?.Version == target.Version,
+                "Catalogue detail must select the exact published release.");
+        using (var missingVersion = await http.GetAsync($"{ApplicationDeploymentApiRoutes.Catalog}/{target.Id}"))
+            Check(missingVersion.StatusCode == HttpStatusCode.NotFound, "The versionless catalogue route must not remain registered.");
+        using (var denied = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.Catalog + "/install",
+            new InstallCatalogApplicationRequest(target.Id, target.Version, "denied-site", 8088, [], true), RelaxKonOSJsonOptions.Default))
+            Check(denied.StatusCode == HttpStatusCode.Forbidden && catalog.FindByName("denied-site") is null && operations.Read().Length == 0,
+                "A read-only caller cannot allocate an application or an operation through catalogue install.");
         using (var read = await http.GetAsync(route + "?templateVersion=1.0.0")) {
             var receipt = await read.Content.ReadFromJsonAsync<CatalogApplicationUpdatePreviewDto>(RelaxKonOSJsonOptions.Default);
             Check(read.IsSuccessStatusCode && receipt!.ExpectedUpdatedAt == before.UpdatedAt && receipt.CurrentTemplateVersion == "0.9.0", "Production GET must preserve complete baseline precision.");
@@ -141,6 +152,33 @@ internal static class CatalogUpdateChecks
         Check(secrets.Reveal(app.Id, "TOKEN", 1) == "hidden_value" && controlled.Calls.All(x => x is nameof(IDockerEngineService.ListContainersAsync) or nameof(IDockerEngineService.GetStatusAsync)), "Update verification must retain secrets and execute no Docker write.");
         await coordinator.StopAsync(default); await host.StopAsync();
         Console.WriteLine("BP16 catalog preview, exact version, HTTP permissions, confirmation, replay, failure, activation and rollback checks passed.");
+    }
+
+    private static void VerifyManifestDirectory(string root)
+    {
+        var directory = Directory.CreateDirectory(Path.Combine(root, "packages")).FullName;
+        var original = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Assets", "ApplicationCatalog", "personal-site.json"));
+        var source = Path.Combine(directory, "original.json");
+        var addition = Path.Combine(directory, "addition.json");
+        File.WriteAllText(source, original);
+        Check(ApplicationCatalog.Load(directory) is [{ Id: "personal-site", Version: "1.0.0" }], "The server must read packaged JSON.");
+        File.WriteAllText(addition, original.Replace("\"1.0.0\"", "\"1.1.0\"", StringComparison.Ordinal));
+        Check(ApplicationCatalog.Load(directory).Select(release => release.Version).ToHashSet().SetEquals(["1.0.0", "1.1.0"]),
+            "The same reader must admit two exact versions from package files.");
+
+        foreach (var invalid in new[]
+        {
+            original,
+            original.Replace("\"2\"", "\"1\"", StringComparison.Ordinal),
+            original.Replace("\"schemaVersion\": \"2\"", "\"schemaVersion\": \"2\", \"schemaVersion\": \"2\"", StringComparison.Ordinal),
+            original.Replace("\"healthPath\"", "\"privileged\": true, \"healthPath\"", StringComparison.Ordinal),
+            original.Replace("docker.io/library/nginx@sha256:", "nginx:latest", StringComparison.Ordinal),
+        })
+        {
+            File.WriteAllText(addition, invalid);
+            try { ApplicationCatalog.Load(directory); throw new Exception("Unsafe catalogue was admitted."); }
+            catch (InvalidDataException) { }
+        }
     }
 
     private static void Expect(Action action, string problem) {

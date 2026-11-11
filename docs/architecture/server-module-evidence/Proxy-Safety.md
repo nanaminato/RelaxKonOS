@@ -1381,6 +1381,22 @@ Windows Release TUN 与模块边界聚合回归通过。两场 Linux 实机含�
 
 **未实现或仍受门禁保护。** 动态驻留仍受整模块安全交接与资源收益验收门槛保护，Proxy 继续 resident。已验证专属 Server 退出和 cgroup 清理。对象释放、ALC 回收、隔离内存与生产收益未测量。
 
+### 管理代次退出后的双回执中断与禁用态接续
+
+**已实现且已验证。** 以 `020dc9c0` 上的 Release 构建和本次夹具，在 Linux x64 私有 systemd 中运行完整 PAM/JWT Server 与独立 root Helper。先使用 Proxy 管理代次读取 TUN，再经认证模块计划提交停用。原启用进程退出后，两次禁用态 Server 启动的模块清单都没有 Proxy 驻留记录，TUN 管理路由均返回 404。原停用操作 `3199eed5-d084-4993-be2c-7e2ed66b1d43` 可按原 ID 读回 `Succeeded`。
+
+禁用态下，Core guard 纠正专属 `/etc/environment` 漂移并恢复真实 HTTP 代理转发。Core 到期执行器撤销 sing-box 的到期凭据，旧连接关闭，到期凭据重连被拒，保留凭据继续转发。夹具扣留两份真实 AF_UNIX 成功回执，在 Server 到期台账仍待确认时发送 SIGKILL。原 Server PID 925 退出后，Mihomo 仍以原 PID 414 转发，真实上游 HTTP 与分流 DNS 在 Server 缺席期间通过。
+
+禁用态 Server PID 1379 启动后，Core 按原到期 ID `0ec9f8f120de43cea27366ce7b3116cd` 读回 Helper 终态，确认原发布并清除待确认记录。Helper 只有一次原到期 apply，sing-box PID 1221 和配置身份保持，过期及保留凭据再次通过流量验证。Core guard 再次巡检时，原纠偏关联 ID `9a571ea524054143bd7ee4c20a9311a7` 仍仅有一次派发，环境文件与归属台账的字节和修改时间保持。Helper 按原 TUN 发布 ID `9007b7a193fc4aba91948891cbe209d7` 返回相同回执、提交见证及配置身份。原路由、队列、镜像和原生检查点保持，Helper 只有一次原配置发布，TUN 停止和补偿均零派发。
+
+专属进程及 cgroup 清理通过，宿主共享服务、代理、resolver 和账户文件指纹保持。实测日志 `.artifacts/mb04-tun-full-zero-dns/mb04-handoff-crash.log` SHA-256 为 `36175f15e81fbebd6acfb7f9c015d0e15ad4886b690080738d1501390f39fa50`，执行归档 SHA-256 为 `b04e3e1d6332b73c23dbc5e36bb11838f522cf6800192d1f3f004e2d94265253`。用法为在隔离制品目录中与 `RelaxKonOS.ManagedRuntimes.Tests.dll` 并放空文件 `tun-handoff-crash.fixture`，运行 `run-proxy-systemd-linux.sh --tun-fd <tests.dll> <Helper-apphost> ipc-http-handoff`。
+
+同构建的正常停机对照也通过。先释放原入站到期回执时，Server 持续等待 guard 回执，放行后正常退出。重启后按原 ID 读回停用与到期结果，原 TUN 发布及见证一致。对照日志 `.artifacts/mb04-tun-full-zero-dns/mb04-handoff-graceful.log` SHA-256 为 `7018ba82a18730ce1d51e4543a7d3e924e86d2b09bb1bf38d4bbb46b2dc54f6b`。Windows Release 的 35 项注册、61 项运行时 HTTP、113 项发布事务回归通过。
+
+同构建另复验[具名启动待核验的停用门禁](#具名启动的模块停用门禁与禁用接续)。未决执行 `995cca605e3a4a3c889b34b0f98e60d7` 阻止禁用启动和停用应用。启用重启后按原 ID 对账，才提交停用并再次以禁用配置启动。原 Mihomo PID 949、路由表 `1425511520` 和真实流量保持，禁用启动零原生变更派发。日志 `.artifacts/mb04-tun-full-zero-dns/mb04-handoff-named.log` SHA-256 为 `b2b113092b0373ef49c51c18157ed571238aa5c7ebb6f8f01fe54692f0b019ba`，执行归档 SHA-256 为 `f0ee65e6ceffeaa6231a16cc4c2c464bb6a6d42ee48ba828baba1bca228b1345`。
+
+**仍待验收。** 此次管理代次通过配置停用和 Server 重启退出。启用态同进程的代次排空、对象和程序集回收、真实负载内存收益及整机掉电仍待验收。Proxy 继续 resident。
+
 ## MB-04 受管 TUN 保留数据移除与禁用启动
 
 **已实现且已验证。** Linux 私有 systemd 用完整 PAM/JWT Server 发布 `58679d35-a38e-4845-a60e-ad83223e44`。真实 Mihomo PID `396` 通过 TUN 向专属上游转发，DNS 得到真实应答。认证具名停止 `0c94d37a-3476-4f76-b61d-dc7c896f6649` 确认原 PID 退出、设备缺席和管理网络恢复。随后非 root 夹具经 AF_UNIX 调用生产移除协调器，独立 Helper 持久提交 `40904d10-810a-4a96-99b0-36b513837b11`，夹具暂扣成功应答并被强制终止。服务注册和版本制品已移除，配置、可变数据与来源记录保留，宿主代理仍由原 guard 持有。

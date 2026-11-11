@@ -253,6 +253,7 @@ internal static class MihomoTunFullServerAcceptance
         var dropStartReply = phase == "start-reply-drop";
         var recoveryWriteFault = dropStartReply && File.Exists(Path.Combine(root, "full-tun-query-write-fault"));
         var handoff = phase == "handoff-disabled";
+        var handoffCrash = handoff && File.Exists(Path.Combine(root, "full-handoff-crash"));
         var inboundCut = phase == "inbound-cut";
         var disabled = phase is "admission-disabled" or "admission-empty" or "baseline-off";
         var assembly = Path.Combine(AppContext.BaseDirectory, "RelaxKonOS.Server.dll");
@@ -394,19 +395,16 @@ internal static class MihomoTunFullServerAcceptance
                 if (server.ExitCode != 0) throw new InvalidOperationException($"Expected clean Core shutdown, got {server.ExitCode}.");
                 return;
             }
-            if (expiryQuarantine)
+            if (expiryQuarantine || handoffCrash)
             {
-                await WaitForMarkerAsync("full-expiry-quarantine-live");
+                var guardHeld = guard is null ? Task.CompletedTask : MarkHeldAsync(guard, "guard");
+                await WaitForMarkerAsync(handoffCrash ? "full-handoff-ready" : "full-expiry-quarantine-live");
                 await expiry!.VerifyLiveBeforeExpiryAsync(ct);
                 await WriteMarkerAsync(root, "full-expiry-live", "forwarded");
                 var original = await expiryRelay!.Committed.Task.WaitAsync(ct);
                 var (receipt, pid) = await expiry.ObserveAsync(original, ct);
                 await WriteMarkerAsync(root, "full-expiry-response-held", original.ToString("N"));
-                if (quarantineGuard)
-                {
-                    var guardOperation = await guard!.Committed.Task.WaitAsync(ct);
-                    await WriteMarkerAsync(root, "full-guard-response-held", guardOperation.ToString("N"));
-                }
+                await guardHeld;
                 await exited;
                 if (server.ExitCode != 137) throw new InvalidOperationException("Expected SIGKILL with the original expiry reply held.");
                 await WaitForMarkerAsync("full-joint-finish");
@@ -532,11 +530,16 @@ internal static class MihomoTunFullServerAcceptance
 
         async Task DrainAsync(ProxyAuthenticatedPublicationChecks.ReplyRelay barrier, string domain, bool drop = false)
         {
-            var original = await barrier.Committed.Task.WaitAsync(ct);
-            await WriteMarkerAsync(root, $"full-{domain}-response-held", original.ToString("N"));
+            await MarkHeldAsync(barrier, domain);
             await WaitForMarkerAsync($"full-{domain}-response-release");
             if (drop) barrier.DropHeldResponse();
             else barrier.ReleaseHeldResponse();
+        }
+
+        async Task MarkHeldAsync(ProxyAuthenticatedPublicationChecks.ReplyRelay barrier, string domain)
+        {
+            var original = await barrier.Committed.Task.WaitAsync(ct);
+            await WriteMarkerAsync(root, $"full-{domain}-response-held", original.ToString("N"));
         }
 
         async Task<(ProxyServerPublicationReceipt Receipt, string Pid)> DrainExpiryAsync(

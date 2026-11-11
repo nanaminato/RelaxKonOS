@@ -56,6 +56,22 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
         => (await RunTableAsync(["image", "ls", "--no-trunc", "--format", "{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"], cancellationToken, 5))
             .Select(row => new DockerImageDto(row[0], row[1], row[2], row[3], row[4])).ToArray();
 
+    public async Task<DockerImageIdentity?> InspectImageAsync(string imageReference, CancellationToken cancellationToken = default)
+    {
+        if (!IsImageReference(imageReference)) return null;
+        var result = await RunAsync(["image", "inspect", "--format", "{{json .}}", imageReference], cancellationToken);
+        if (!result.Success) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(result.Output);
+            var image = document.RootElement;
+            var digests = image.TryGetProperty("RepoDigests", out var values) && values.ValueKind == JsonValueKind.Array
+                ? values.EnumerateArray().Select(value => value.GetString() ?? string.Empty).ToArray() : [];
+            return new(Read(image, "Id"), Read(image, "Os"), Read(image, "Architecture"), digests);
+        }
+        catch (JsonException) { return null; }
+    }
+
     public async Task<IReadOnlyList<DockerNetworkDto>> ListNetworksAsync(CancellationToken cancellationToken = default)
         => (await RunTableAsync(["network", "ls", "--format", "{{.ID}}\t{{.Name}}\t{{.Driver}}\t{{.Scope}}"], cancellationToken, 4))
             .Select(row => new DockerNetworkDto(row[0], row[1], row[2], row[3])).ToArray();
@@ -452,7 +468,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
         return labels.ValueKind == JsonValueKind.Null ? new Dictionary<string, string>() : labels.EnumerateObject().ToDictionary(label => label.Name,
             label => label.Value.ValueKind == JsonValueKind.String ? label.Value.GetString()! : throw new DockerReadException("docker.api_incompatible"), StringComparer.Ordinal);
     }
-    private static bool IsImageReference(string value) => value.Length is >= 1 and <= 255 && !value.StartsWith('-') && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '/' or ':' or '.' or '_' or '-');
+    private static bool IsImageReference(string value) => DockerImageReference.IsValid(value);
     private static bool IsOptionValue(string value) => value.Length is >= 1 and <= 4096 && !value.Contains('\0') && !value.Any(char.IsControl);
     /// <summary>A label is a bounded <c>key=value</c> pair; it is never treated as shell text.</summary>
     private static bool IsLabel(string value) => value.Length is >= 3 and <= 256 && value.Contains('=')

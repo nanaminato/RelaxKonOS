@@ -1,6 +1,7 @@
 # RelaxKonOS 容器化应用部署设计
 
 > 本文统一维护应用部署的设计、当前实现、测试矩阵与验证记录。
+> 应用包目录与受管多服务实例的后续架构见[容器应用平台设计](../platform/RelaxKonOS.ContainerApplications.Design.md)。
 >
 > 冻结日期：2026-09-19。
 >
@@ -86,7 +87,7 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 | --- | --- | --- | --- |
 | GET | `/templates` | 四个模板的能力描述 | Read |
 | GET | `/catalog` | 可信、版本化的应用用途模板目录（不含可执行脚本） | Read |
-| GET | `/catalog/{templateId}` | 一个用途模板的受限字段与维护说明 | Read |
+| GET | `/catalog/{templateId}/{templateVersion}` | 一个精确发布的受限字段与维护说明 | Read |
 | POST | `/catalog/install` | 用精确模板版本和显式宿主端口创建定义并排队首次部署 → `202` | Manage |
 | GET | `/applications/{id}/catalog-update?templateVersion=…` | 精确模板版本与当前定义/修订的只读更新预览 | Read |
 | POST | `/applications/{id}/catalog-update` | 明确确认精确版本，保留定义/秘密引用/卷并排队更新 → `202` | Manage |

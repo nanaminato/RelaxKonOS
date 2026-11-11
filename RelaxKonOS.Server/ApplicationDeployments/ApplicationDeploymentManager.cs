@@ -150,6 +150,13 @@ internal sealed class ApplicationDeploymentManager(
         }
     }
 
+    internal async Task PreflightCatalogInstallAsync(CreateApplicationRequest definition, CancellationToken cancellationToken)
+    {
+        ApplicationDeploymentRuntime.RequireCatalogPlatform(await runtime.PreflightEngineAsync(cancellationToken));
+        if (runtime.ProbeBindAddress(definition.BindAddress ?? "127.0.0.1", definition.HostPort) is { } conflict)
+            throw conflict;
+    }
+
     /// <summary>
     /// Replaces the stored definition. Runtime-bound fields such as ports, limits, and mounts only take
     /// effect on the next deployment, because applying them means replacing the container instance.

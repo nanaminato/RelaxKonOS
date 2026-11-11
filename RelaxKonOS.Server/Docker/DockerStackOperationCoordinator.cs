@@ -42,6 +42,7 @@ internal sealed class DockerStackOperationCoordinator(
     {
         var definition = request.Definition;
         Preflight(definition);
+        DockerApplicationResourcePolicy.RequireUnmanagedProject(definition.Name);
         // The approval the operator gave is bound to one exact document. A submission whose source no
         // longer matches the preview it carries is refused instead of being applied silently.
         if (!string.Equals(request.DefinitionVersion, DockerStackValidation.DefinitionVersion(definition.Name, definition.ComposeYaml), StringComparison.Ordinal))
@@ -56,6 +57,7 @@ internal sealed class DockerStackOperationCoordinator(
     {
         if (!DockerStackValidation.IsValidProjectName(name))
             throw new DockerStackException(DockerStackProblem.InvalidName, 400);
+        DockerApplicationResourcePolicy.RequireUnmanagedProject(name);
         if (kind == DockerStackOperationKind.Delete && !confirmed)
             throw new DockerStackException(DockerStackProblem.ConfirmationRequired, 400);
         // The confirmation flag is part of the request identity: a key that was first used for an

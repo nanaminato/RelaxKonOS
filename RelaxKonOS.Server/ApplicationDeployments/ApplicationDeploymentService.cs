@@ -161,11 +161,16 @@ internal sealed class ApplicationDeploymentService(
     {
         await progress.ReportAsync(new(DeploymentStage.Preflight, null, true), cancellationToken);
         var platform = await runtime.PreflightEngineAsync(cancellationToken);
+        if (application.CatalogTemplateId is not null) ApplicationDeploymentRuntime.RequireCatalogPlatform(platform);
         EnsureExecutableDefinition(application);
 
         if (request.Source is not { } source)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
-        if (runtime.ProbeBindAddress(application.BindAddress, application.HostPort) is { } conflict) throw conflict;
+        if (runtime.ProbeBindAddress(application.BindAddress, application.HostPort) is { } conflict
+            && !(application.CurrentRevisionId is { } currentId && catalog.FindRevision(currentId) is { } current
+                && current.BindAddress == application.BindAddress && current.HostPort == application.HostPort
+                && await runtime.FindOwnedContainerAsync(application.Id, ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken) is { State: "running" }))
+            throw conflict;
         CleanupExpiredBuildContexts();
 
         var inputReference = ApplicationDeploymentValidation.Reference(Canonical(source));
@@ -214,7 +219,7 @@ internal sealed class ApplicationDeploymentService(
         if (gitImageReference is null)
             await ProduceImageAsync(template, plan, contextDirectory, operationId, cancellationToken);
 
-        var identity = await runtime.ResolveImageIdentityAsync(plan.ImageReference, cancellationToken);
+        var identity = await runtime.ResolveImageIdentityAsync(plan.ImageReference, platform, cancellationToken);
         if (identity.ImageId is null)
             throw new ApplicationDeploymentException(
                 template is ImageTemplate ? ApplicationDeploymentProblemCodes.ImageNotFound : ApplicationDeploymentProblemCodes.BuildFailed, 409);
