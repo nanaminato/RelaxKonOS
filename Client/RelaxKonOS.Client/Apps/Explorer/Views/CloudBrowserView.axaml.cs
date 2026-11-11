@@ -288,7 +288,8 @@ public partial class CloudBrowserView : UserControl
         _confirmRevoke = false;
         _editing = source?.Id;
         ConnectionName.Text = source?.Name;
-        Protocol.SelectedIndex = source?.Protocol == "s3" ? 1 : 0;
+        Protocol.SelectedIndex = source?.Protocol switch { "s3" => 1, "google-drive" => 2, "baidu-netdisk" => 3, _ => 0 };
+        UpdateConnectionFields();
         EnableWrites.IsChecked = source?.CanWrite == true;
         ConnectionForm.IsVisible = true;
         ConnectionName.Focus();
@@ -299,23 +300,32 @@ public partial class CloudBrowserView : UserControl
         ConnectionForm.IsVisible = false;
         _editing = null;
         ConnectionName.Text = Endpoint.Text = UserName.Text = Secret.Text = null;
-        Region.Text = Bucket.Text = Prefix.Text = SessionToken.Text = null;
+        Region.Text = Bucket.Text = Prefix.Text = SessionToken.Text = RefreshToken.Text = null;
         PrivateDav.IsChecked = EnableWrites.IsChecked = false;
     }
 
-    private void Protocol_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private void Protocol_SelectionChanged(object? sender, SelectionChangedEventArgs e) => UpdateConnectionFields();
+
+    private void UpdateConnectionFields()
     {
-        if (S3Fields is null || PrivateDav is null) return;
+        if (S3Fields is null || PrivateDav is null || OAuthHelp is null) return;
+        var oauth = Protocol.SelectedIndex >= 2;
         S3Fields.IsVisible = Protocol.SelectedIndex == 1;
         PrivateDav.IsVisible = Protocol.SelectedIndex == 0;
+        Endpoint.IsVisible = !oauth;
+        RefreshToken.IsVisible = OAuthHelp.IsVisible = oauth;
+        UserName.Watermark = Text(oauth ? "oauth_client_id" : "user");
+        Secret.Watermark = Text(oauth ? "oauth_client_secret" : "secret");
     }
 
     private async void Save_Click(object? sender, RoutedEventArgs e)
     {
-        var isS3 = Protocol.SelectedIndex == 1;
-        var request = new CloudConnectionRequest(ConnectionName.Text ?? "", isS3 ? "s3" : "webdav", Endpoint.Text ?? "",
-            Region.Text, Bucket.Text, Prefix.Text, UserName.Text ?? "", Secret.Text ?? "", SessionToken.Text,
-            !isS3 && PrivateDav.IsChecked == true, EnableWrites.IsChecked == true);
+        var protocol = Protocol.SelectedIndex switch { 1 => "s3", 2 => "google-drive", 3 => "baidu-netdisk", _ => "webdav" };
+        var oauth = Protocol.SelectedIndex >= 2;
+        var request = new CloudConnectionRequest(ConnectionName.Text ?? "", protocol, Endpoint.Text ?? "",
+            Region.Text, Bucket.Text, Prefix.Text, UserName.Text ?? "", Secret.Text ?? "",
+            oauth ? RefreshToken.Text : SessionToken.Text,
+            protocol == "webdav" && PrivateDav.IsChecked == true, EnableWrites.IsChecked == true);
         await RunAsync(async ct =>
         {
             var saved = await _client!.SaveCloudConnectionAsync(_editing, request, ct);

@@ -324,5 +324,10 @@
     "explorer.cloud.upload": "Upload",
     "explorer.cloud.new_folder": "Folder name",
     "explorer.cloud.create_folder": "Create folder",
-    "explorer.cloud.enable_writes": "Allow uploads and folder creation"
+    "explorer.cloud.enable_writes": "Allow uploads and folder creation",
+    "explorer.cloud.baidu": "Baidu Netdisk",
+    "explorer.cloud.oauth_client_id": "OAuth client ID",
+    "explorer.cloud.oauth_client_secret": "OAuth client secret",
+    "explorer.cloud.refresh_token": "OAuth refresh token",
+    "explorer.cloud.oauth_help": "Use a refresh token issued to your registered app. Enable writing only if the grant permits file creation."
 }

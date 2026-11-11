@@ -324,5 +324,10 @@
     "explorer.cloud.upload": "アップロード",
     "explorer.cloud.new_folder": "フォルダー名",
     "explorer.cloud.create_folder": "フォルダーを作成",
-    "explorer.cloud.enable_writes": "アップロードとフォルダー作成を許可"
+    "explorer.cloud.enable_writes": "アップロードとフォルダー作成を許可",
+    "explorer.cloud.baidu": "Baidu Netdisk",
+    "explorer.cloud.oauth_client_id": "OAuth クライアント ID",
+    "explorer.cloud.oauth_client_secret": "OAuth クライアントシークレット",
+    "explorer.cloud.refresh_token": "OAuth リフレッシュトークン",
+    "explorer.cloud.oauth_help": "登録済みアプリに発行されたリフレッシュトークンを使います。ファイルの作成権限がある場合に書き込みを有効にできます。"
 }

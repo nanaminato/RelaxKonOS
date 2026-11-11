@@ -97,6 +97,44 @@ internal static class CloudStorageChecks
                 await VerifyLargeUploadAsync(client, s3Route, check);
             }
 
+            foreach (var protocol in new[] { "google-drive", "baidu-netdisk" })
+            {
+                var oauth = await CreateAsync(client, new(protocol, protocol, "https://untrusted.example", null,
+                    null, null, "client-id", "client-secret", "refresh-test"));
+                var oauthRoute = $"/cloud/connections/{oauth.Id:D}";
+                check(!oauth.CanWrite, $"{protocol} imports a read-only connection");
+                var page = (await client.GetFromJsonAsync<CloudDirectoryDto>(oauthRoute + "/entries"))!;
+                check(page.Entries.Count == 1 && page.Entries[0].Name == "test.txt", $"{protocol} lists a file via its API");
+                var entry = page.Entries.Single();
+                var metadata = await client.GetFromJsonAsync<CloudEntryDto>(oauthRoute + "/info?reference=" + entry.Reference);
+                check(metadata?.Name == entry.Name, $"{protocol} retrieves file metadata");
+                check(await client.GetStringAsync(oauthRoute + "/download?reference=" + entry.Reference) == "oauth-content",
+                    $"{protocol} streams a file using its provider download API");
+                if (protocol == "google-drive")
+                {
+                    var native = CloudTransport.Reference("document-id");
+                    var exported = await client.GetFromJsonAsync<CloudEntryDto>(oauthRoute + "/info?reference=" + native);
+                    check(exported?.Name == "Native.docx" && await client.GetStringAsync(
+                            oauthRoute + "/download?reference=" + native) == "exported",
+                        "Google Docs uses a named Office export instead of blob download");
+                }
+                using var denied = await client.PostAsJsonAsync(oauthRoute + "/uploads?key=denied", new CreateUploadRequest("", "no.txt", 0));
+                check(denied.StatusCode == HttpStatusCode.Forbidden, $"{protocol} rejects upload sessions");
+                var writer = await CreateAsync(client, new("Writer", protocol, "", null, null, null,
+                    "client-id", "client-secret", "refresh-test", EnableWrites: true));
+                var writerRoute = $"/cloud/connections/{writer.Id:D}";
+                check(writer.CanWrite, $"{protocol} can explicitly enable writes");
+                using (var folder = await client.PostAsync(writerRoute + "/folders?name=folder", null))
+                    check(folder.StatusCode == HttpStatusCode.NoContent, $"{protocol} creates a folder");
+                using (var uploaded = await UploadAsync(client, writerRoute, "new.txt", check))
+                    check(uploaded.StatusCode == HttpStatusCode.OK, $"{protocol} publishes a staged file");
+                using (var conflict = await UploadAsync(client, writerRoute, "new.txt", check))
+                    check(conflict.StatusCode == HttpStatusCode.Conflict, $"{protocol} rejects an existing destination");
+            }
+            check(!OAuthDriveConnector.AllowedBaiduDownload(new Uri("https://baidupcs.com.attacker.invalid/file"))
+                && !OAuthDriveConnector.AllowedBaiduDownload(new Uri("http://d.pcs.baidu.com/file")),
+                "Baidu downloads reject arbitrary domains and insecure redirect targets");
+
             using (var revoked = await client.DeleteAsync(route)) revoked.EnsureSuccessStatusCode();
             using (var missing = await client.GetAsync(route + "/entries"))
                 check(missing.StatusCode == HttpStatusCode.NotFound, "revocation stops new requests");
@@ -234,6 +272,8 @@ internal static class CloudStorageChecks
     private sealed class Upstream(Action<bool, string> check) : HttpMessageHandler
     {
         private bool _davUploaded;
+        private bool _googleUploaded;
+        private bool _baiduUploaded;
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -281,6 +321,113 @@ internal static class CloudStorageChecks
                     return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(LargePayload()) };
                 check(uri.AbsolutePath == "/root/space%20name.txt", "WebDAV download preserves the confined encoded path");
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("file-content") };
+            }
+
+            if (uri.Host is "oauth2.googleapis.com" or "openapi.baidu.com")
+            {
+                var google = uri.Host == "oauth2.googleapis.com";
+                var fields = QueryHelpers.ParseQuery(google ? await request.Content!.ReadAsStringAsync(ct) : uri.Query);
+                check(request.Method == (google ? HttpMethod.Post : HttpMethod.Get)
+                    && fields["grant_type"] == "refresh_token" && fields["refresh_token"] == "refresh-test",
+                    "OAuth refresh uses the provider token endpoint and imported grant");
+                return Json("""
+                    {"access_token":"access-test","refresh_token":"refresh-rotated","expires_in":3600}
+                    """);
+            }
+            if (uri.Host == "www.googleapis.com")
+            {
+                check(request.Headers.Authorization?.Parameter == "access-test", "Google Drive uses Bearer authorization");
+                if (uri.AbsolutePath == "/upload/drive/v3/files")
+                {
+                    if (request.Method == HttpMethod.Post)
+                    {
+                        check(request.Headers.GetValues("X-Upload-Content-Length").Single() == "3",
+                            "Google resumable initiation declares file length");
+                        return new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Headers = { Location = new Uri("https://www.googleapis.com/upload/drive/v3/files?upload_id=test") },
+                        };
+                    }
+                    check(request.Method == HttpMethod.Put && request.Content!.Headers.ContentRange?.ToString() == "bytes 0-2/3"
+                        && await request.Content.ReadAsStringAsync(ct) == "new", "Google resumable PUT publishes the correct range");
+                    _googleUploaded = true;
+                    return Json("""{"id":"uploaded-file"}""");
+                }
+                if (request.Method == HttpMethod.Post)
+                {
+                    var body = await request.Content!.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
+                    check(body.GetProperty("name").GetString() == "folder"
+                        && body.GetProperty("mimeType").GetString() == "application/vnd.google-apps.folder",
+                        "Google creates a folder by MIME type");
+                    return Json("""{"id":"folder-id"}""");
+                }
+                var googleQuery = QueryHelpers.ParseQuery(uri.Query);
+                if (googleQuery.TryGetValue("q", out var search) && search.ToString().Contains("name = ", StringComparison.Ordinal))
+                    return Json(_googleUploaded ? """{"files":[{"id":"uploaded-file"}]}""" : """{"files":[]}""");
+                const string file = """
+                    {"id":"file-id","name":"test.txt","size":"13","mimeType":"text/plain","capabilities":{"canDownload":true}}
+                    """;
+                if (uri.AbsolutePath.EndsWith("/document-id/export", StringComparison.Ordinal))
+                {
+                    check(QueryHelpers.ParseQuery(uri.Query)["mimeType"] ==
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "Google native documents export using the documented MIME type");
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("exported") };
+                }
+                if (uri.AbsolutePath.EndsWith("/document-id", StringComparison.Ordinal))
+                    return Json("""
+                        {"id":"document-id","name":"Native","mimeType":"application/vnd.google-apps.document","capabilities":{"canDownload":true}}
+                        """);
+                if (uri.Query.Contains("alt=media", StringComparison.Ordinal))
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("oauth-content") };
+                return Json(uri.AbsolutePath.EndsWith("/file-id", StringComparison.Ordinal) ? file : "{\"files\":[" + file + "]}");
+            }
+            if (uri.Host == "pan.baidu.com")
+            {
+                var fields = QueryHelpers.ParseQuery(uri.Query);
+                check(fields["access_token"] == "access-test", "Baidu API receives the current access token");
+                if (request.Method == HttpMethod.Post)
+                {
+                    var form = QueryHelpers.ParseQuery(await request.Content!.ReadAsStringAsync(ct));
+                    check(form["rtype"] == "0", "Baidu create and precreate request conflict rejection");
+                    if (form["isdir"] == "1")
+                    {
+                        check(form["path"] == "/folder", "Baidu creates the requested directory");
+                        return Json("""{"errno":0,"path":"/folder"}""");
+                    }
+                    if (fields["method"] == "precreate")
+                        return _baiduUploaded ? Json("""{"errno":-8}""")
+                            : Json("""{"errno":0,"return_type":1,"uploadid":"test-upload","block_list":[0]}""");
+                    check(form["uploadid"] == "test-upload" && form["path"] == "/new.txt",
+                        "Baidu completes the precreated upload at its intended destination");
+                    _baiduUploaded = true;
+                    return Json("""{"errno":0,"path":"/new.txt"}""");
+                }
+                return Json("""
+                    {"errno":0,"list":[{"fs_id":123,"path":"/test.txt","server_filename":"test.txt","size":13,"isdir":0,"dlink":"https://d.pcs.baidu.com/file"}]}
+                    """);
+            }
+            if (uri.Host == "d.pcs.baidu.com")
+            {
+                if (request.Method == HttpMethod.Post)
+                {
+                    var form = (MultipartFormDataContent)request.Content!;
+                    check(QueryHelpers.ParseQuery(uri.Query)["partseq"] == "0"
+                        && await form.Single().ReadAsStringAsync(ct) == "new", "Baidu uploads the expected multipart bytes");
+                    return Json("""{"errno":0,"md5":"22af645d1859cb5ca6da0c484f1f37ea"}""");
+                }
+                check(QueryHelpers.ParseQuery(uri.Query)["access_token"] == "access-test"
+                    && request.Headers.UserAgent.ToString() == "pan.baidu.com", "Baidu dlink uses its required download identity");
+                return new HttpResponseMessage(HttpStatusCode.Found)
+                {
+                    Headers = { Location = new Uri("https://cdn.baidupcs.com/signed") },
+                };
+            }
+            if (uri.Host == "cdn.baidupcs.com")
+            {
+                check(uri.Query.Length == 0 && request.Headers.Authorization is null,
+                    "Baidu follows only trusted CDN redirects and does not add the token again");
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("oauth-content") };
             }
 
             var region = uri.Host.Contains("r2.", StringComparison.Ordinal) ? "auto" : "us-west-2";
@@ -338,6 +485,9 @@ internal static class CloudStorageChecks
             $"<response><href>{href}</href><propstat><status>HTTP/1.1 200 OK</status><prop>"
             + $"<resourcetype>{(folder ? "<collection/>" : "")}</resourcetype><getcontentlength>12</getcontentlength>"
             + "</prop></propstat></response>";
+
+        private static HttpResponseMessage Json(string body) =>
+            new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
         private static HttpResponseMessage Xml(HttpStatusCode status, string body) =>
             new(status) { Content = new StringContent(body, Encoding.UTF8, "application/xml") };

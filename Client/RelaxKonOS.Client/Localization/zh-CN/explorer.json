@@ -324,5 +324,10 @@
     "explorer.cloud.upload": "上传",
     "explorer.cloud.new_folder": "文件夹名称",
     "explorer.cloud.create_folder": "新建文件夹",
-    "explorer.cloud.enable_writes": "允许上传和新建文件夹"
+    "explorer.cloud.enable_writes": "允许上传和新建文件夹",
+    "explorer.cloud.baidu": "百度网盘",
+    "explorer.cloud.oauth_client_id": "OAuth 客户端 ID",
+    "explorer.cloud.oauth_client_secret": "OAuth 客户端密钥",
+    "explorer.cloud.refresh_token": "OAuth 刷新令牌",
+    "explorer.cloud.oauth_help": "请使用服务商签发给已注册应用的刷新令牌。只有授权允许创建文件时才启用写入。"
 }

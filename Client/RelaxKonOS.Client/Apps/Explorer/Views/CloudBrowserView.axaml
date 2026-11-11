@@ -44,12 +44,16 @@
                     <ComboBox x:Name="Protocol" SelectedIndex="0" SelectionChanged="Protocol_SelectionChanged">
                         <ComboBoxItem Content="WebDAV" />
                         <ComboBoxItem Content="S3" />
+                        <ComboBoxItem Content="Google Drive" />
+                        <ComboBoxItem Content="{loc:Loc explorer.cloud.baidu}" />
                     </ComboBox>
                     <TextBox x:Name="Endpoint" Watermark="{loc:Loc explorer.cloud.endpoint}" />
                     <TextBox x:Name="UserName" Watermark="{loc:Loc explorer.cloud.user}" />
                     <TextBox x:Name="Secret" PasswordChar="●" Watermark="{loc:Loc explorer.cloud.secret}" />
                     <CheckBox x:Name="EnableWrites" Content="{loc:Loc explorer.cloud.enable_writes}" />
                     <CheckBox x:Name="PrivateDav" Content="{loc:Loc explorer.cloud.private}" />
+                    <TextBox x:Name="RefreshToken" IsVisible="False" PasswordChar="●" Watermark="{loc:Loc explorer.cloud.refresh_token}" />
+                    <TextBlock x:Name="OAuthHelp" IsVisible="False" TextWrapping="Wrap" Text="{loc:Loc explorer.cloud.oauth_help}" />
                     <StackPanel x:Name="S3Fields" Spacing="8" IsVisible="False">
                         <TextBox x:Name="Region" Watermark="{loc:Loc explorer.cloud.region}" />
                         <TextBox x:Name="Bucket" Watermark="{loc:Loc explorer.cloud.bucket}" />
