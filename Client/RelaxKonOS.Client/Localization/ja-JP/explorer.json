@@ -324,6 +324,5 @@
     "explorer.cloud.upload": "アップロード",
     "explorer.cloud.new_folder": "フォルダー名",
     "explorer.cloud.create_folder": "フォルダーを作成",
-    "explorer.cloud.enable_writes": "アップロードとフォルダー作成を許可",
-    "explorer.cloud.upload_size": "16 MiB 以下のローカルファイルを選択してください。"
+    "explorer.cloud.enable_writes": "アップロードとフォルダー作成を許可"
 }

@@ -20,7 +20,7 @@ public sealed class CloudStorageModule : IModuleHostEntry, IModuleHostHttp
     private const int EnvelopeSize = 1 + NonceSize + TagSize;
     private const int MaxStoreBytes = 1024 * 1024;
     private readonly SemaphoreSlim _write = new(1, 1);
-    private readonly SemaphoreSlim _uploads = new(4, 4);
+    private CloudUploadSessions _uploads = null!;
     private readonly Func<Uri, bool, HttpClient> _transport;
 
     public CloudStorageModule() : this(CloudTransport.Create) { }
@@ -33,6 +33,8 @@ public sealed class CloudStorageModule : IModuleHostEntry, IModuleHostHttp
 
     public async ValueTask StartAsync(IModuleHostContext context, CancellationToken ct)
     {
+        _uploads = new CloudUploadSessions(context.ModuleDataPath);
+        _uploads.StartSweep();
         var bytes = await context.Storage.ReadAsync(Store, MaxStoreBytes, ct);
         var key = await context.Storage.ReadAsync(KeyPath, 32, ct);
         if (key is null && bytes is null)
@@ -53,7 +55,7 @@ public sealed class CloudStorageModule : IModuleHostEntry, IModuleHostHttp
         finally { CryptographicOperations.ZeroMemory(plaintext); }
     }
 
-    public ValueTask StopAsync(CancellationToken ct) => ValueTask.CompletedTask;
+    public ValueTask StopAsync(CancellationToken ct) => new(_uploads.StopAsync(ct));
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, IModuleHostContext context)
     {
@@ -125,43 +127,20 @@ public sealed class CloudStorageModule : IModuleHostEntry, IModuleHostHttp
                 }
                 return Results.NoContent();
             }));
-        group.MapPost("/connections/{id:guid}/upload", (Guid id, string? reference, string name, long length, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, client, parent, ct) =>
-            {
-                if (!settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
-                if (length is < 0 or > CloudStorageApi.MaximumUploadBytes)
-                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-                var path = ChildPath(parent, name);
-                if (!await _uploads.WaitAsync(0, ct)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
-                try
-                {
-                    var temporary = Path.Combine(context.ModuleDataPath, Guid.NewGuid().ToString("N") + ".upload");
-                    await using var staged = new FileStream(temporary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None,
-                        65536, FileOptions.Asynchronous | FileOptions.DeleteOnClose);
-                    var buffer = new byte[65536];
-                    long written = 0;
-                    int read;
-                    while ((read = await http.Request.Body.ReadAsync(buffer, ct)) != 0)
-                    {
-                        written += read;
-                        if (written > length) throw new ArgumentException("length");
-                        await staged.WriteAsync(buffer.AsMemory(0, read), ct);
-                    }
-                    if (written != length) throw new ArgumentException("length");
-                    if (!Volatile.Read(ref _connections).Any(item => item.Id == id && ReferenceEquals(item.Settings, settings)))
-                        return Results.NotFound();
-                    staged.Position = 0;
-                    if (settings.Protocol == "webdav")
-                        await new WebDavConnector(settings, client).UploadAsync(path, staged, ct);
-                    else
-                    {
-                        using var connector = new S3Connector(settings, client);
-                        await connector.UploadAsync(path, staged, ct);
-                    }
-                    return Results.NoContent();
-                }
-                finally { _uploads.Release(); }
-            }));
+        const string uploads = "/connections/{id:guid}/uploads";
+        group.MapPost(uploads, (Guid id, string key, CreateUploadRequest request, HttpContext http) =>
+            WithUpload(http, id, (item, revision) => _uploads.CreateAsync(item.Owner, id, revision, key,
+                ChildPath(CloudTransport.PathFrom(request.TargetDirectoryPath), request.FileName), request.Length,
+                request.LastModifiedUtc, http.RequestAborted)));
+        group.MapGet(uploads + "/{uploadId}", (Guid id, string uploadId, HttpContext http) =>
+            UploadOperation(http, id, uploadId, "get"));
+        group.MapMethods(uploads + "/{uploadId}", ["PATCH"],
+            (Guid id, string uploadId, long offset, long length, HttpContext http) =>
+                UploadOperation(http, id, uploadId, "append", offset, length));
+        group.MapDelete(uploads + "/{uploadId}", (Guid id, string uploadId, HttpContext http) =>
+            UploadOperation(http, id, uploadId, "abort"));
+        group.MapPost(uploads + "/{uploadId}/commit", (Guid id, string uploadId, CommitUploadRequest? request, HttpContext http) =>
+            UploadOperation(http, id, uploadId, "commit", contentHash: request?.ContentHash));
         group.MapGet("/connections/{id:guid}/download", (Guid id, string? reference, HttpContext http) =>
             WithConnection(http, id, reference, async (settings, client, path, ct) =>
             {
@@ -182,6 +161,37 @@ public sealed class CloudStorageModule : IModuleHostEntry, IModuleHostHttp
                 return Results.Empty;
             }));
     }
+
+    private Task<IResult> WithUpload(HttpContext http, Guid id, Func<StoredConnection, string, Task<IResult>> action) =>
+        WithUser(http, async user =>
+        {
+            var item = Volatile.Read(ref _connections).FirstOrDefault(connection => connection.Id == id && connection.Owner == user);
+            if (item is null) return Results.NotFound();
+            if (!item.Settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            var revision = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(item.Settings)));
+            return await action(item, revision);
+        });
+
+    private Task<IResult> UploadOperation(HttpContext http, Guid id, string uploadId, string action,
+        long? offset = null, long? length = null, string? contentHash = null) =>
+        WithUpload(http, id, (item, revision) => _uploads.HandleAsync(http, item.Owner, id, revision, uploadId,
+            action, offset, length, contentHash, async (path, stream, stopping) =>
+            {
+                if (!Volatile.Read(ref _connections).Contains(item))
+                    throw new InvalidOperationException("cloud-storage-connection-changed");
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stopping);
+                deadline.CancelAfter(TimeSpan.FromHours(2));
+                var settings = item.Settings;
+                using var client = _transport(new Uri(settings.Endpoint), settings.AllowPrivateWebDav);
+                client.Timeout = Timeout.InfiniteTimeSpan;
+                if (settings.Protocol == "webdav")
+                    await new WebDavConnector(settings, client).UploadAsync(path, stream, deadline.Token);
+                else
+                {
+                    using var connector = new S3Connector(settings, client);
+                    await connector.UploadAsync(path, stream, deadline.Token);
+                }
+            }));
 
     private Task<IResult> WithConnection(HttpContext http, Guid id, string? reference,
         Func<CloudConnectionRequest, HttpClient, string, CancellationToken, Task<IResult>> action) =>

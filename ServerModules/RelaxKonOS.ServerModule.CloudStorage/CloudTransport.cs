@@ -38,7 +38,10 @@ internal static class CloudTransport
         var addresses = await Dns.GetHostAddressesAsync(endpoint.Host, ct);
         var local = NetworkInterface.GetAllNetworkInterfaces().SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
             .Select(item => Normalize(item.Address)).ToHashSet();
-        foreach (var address in addresses.Where(address => Allowed(address, allowPrivate) && !local.Contains(Normalize(address))))
+        var explicitLocal = allowPrivate && IPAddress.TryParse(endpoint.Host, out var literal)
+            && literal.AddressFamily == AddressFamily.InterNetwork && !Allowed(literal, false) ? literal : null;
+        foreach (var address in addresses.Where(address => Allowed(address, allowPrivate)
+                     && (!local.Contains(Normalize(address)) || Normalize(address).Equals(explicitLocal))))
         {
             var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
             try

@@ -4,7 +4,6 @@ namespace RelaxKonOS.Protocol.Files;
 
 public static class CloudStorageApi
 {
-    public const int MaximumUploadBytes = 16 * 1024 * 1024;
     public const string ModuleId = "cloud-storage";
     public const string Route = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-hosts/" + ModuleId + "/cloud";
 }

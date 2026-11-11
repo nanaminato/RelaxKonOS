@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Apps.Explorer.Uploads;
 using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer.Views;
@@ -28,6 +29,8 @@ public partial class CloudBrowserView : UserControl
         DetachedFromVisualTree += (_, _) => Reset();
         UpdateButtons();
     }
+
+    internal Func<Guid, string?, ILargeFileUploader>? CreateUploader { get; set; }
 
     internal event EventHandler? CloseRequested;
     internal event Action<IReadOnlyList<CloudConnectionDto>>? ConnectionsChanged;
@@ -132,7 +135,7 @@ public partial class CloudBrowserView : UserControl
         try { await operation(ct); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception error) when (error is HttpRequestException or IOException or InvalidOperationException or UnauthorizedAccessException
-            or System.Text.Json.JsonException or OperationCanceledException
+            or System.Text.Json.JsonException or OperationCanceledException or UploadChannelException
             or RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException)
         { if (!ct.IsCancellationRequested) Status.Text = Text("error"); }
         finally
@@ -155,7 +158,8 @@ public partial class CloudBrowserView : UserControl
         RevokeButton.IsEnabled = selected;
         UpButton.IsEnabled = selected && _folders.Count > 0;
         MoreButton.IsEnabled = selected && _cursor is not null;
-        UploadButton.IsVisible = FolderName.IsVisible = CreateFolderButton.IsVisible = Current?.CanWrite == true;
+        FolderName.IsVisible = CreateFolderButton.IsVisible = Current?.CanWrite == true;
+        UploadButton.IsVisible = Current?.CanWrite == true && CreateUploader is not null;
         OpenButton.IsEnabled = selected && CloudEntries.SelectedItem is CloudEntryDto { IsDirectory: true };
         DownloadButton.IsEnabled = selected && CloudEntries.SelectedItem is CloudEntryDto { IsDirectory: false };
     }
@@ -235,13 +239,17 @@ public partial class CloudBrowserView : UserControl
             var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions());
             if (files.FirstOrDefault() is not { } file) return;
             ct.ThrowIfCancellationRequested();
-            await using var stream = await file.OpenReadAsync();
-            if (!stream.CanSeek || stream.Length > CloudStorageApi.MaximumUploadBytes)
+            var path = file.TryGetLocalPath() ?? throw new InvalidOperationException("cloud-storage-local-file");
+            var info = new FileInfo(path);
+            var reference = _folders.LastOrDefault()?.Reference;
+            var uploader = CreateUploader?.Invoke(source.Id, reference) ?? throw new InvalidOperationException("cloud-storage-upload");
+            var progress = new Progress<LargeFileUploadProgress>(value =>
             {
-                Status.Text = Text("upload_size");
-                return;
-            }
-            await _client!.UploadCloudEntryAsync(source.Id, _folders.LastOrDefault()?.Reference, file.Name, stream, ct);
+                if (!ct.IsCancellationRequested)
+                    Status.Text = $"{value.ConfirmedBytes:N0} / {info.Length:N0}";
+            });
+            await uploader.UploadAsync(new(path, reference ?? "", file.Name, info.Length, info.LastWriteTimeUtc),
+                (_, _) => Task.FromResult(false), ((IProgress<LargeFileUploadProgress>)progress).Report, ct);
             await LoadAsync(source.Id, _folders.ToArray(), null, ct);
         });
     }

@@ -40,20 +40,6 @@ public sealed partial class ExplorerClient
         await EnsureSuccessAsync(response, ct);
     }
 
-    internal async Task UploadCloudEntryAsync(Guid id, string? reference, string name, Stream stream, CancellationToken ct)
-    {
-        if (!stream.CanSeek || stream.Length > CloudStorageApi.MaximumUploadBytes)
-            throw new InvalidOperationException("cloud-storage-upload-size");
-        var route = CloudEntryRoute(id, "upload", reference, null) + "&name=" + Uri.EscapeDataString(name)
-            + "&length=" + stream.Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        using var request = new HttpRequestMessage(HttpMethod.Post, BuildUri(RequireSession(), route));
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _session.Tokens!.AccessToken);
-        request.Content = new StreamContent(stream);
-        request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-        using var response = await _http.SendAsync(request, ct);
-        await EnsureSuccessAsync(response, ct);
-    }
-
     private static string CloudRoute(Guid id) => CloudStorageApi.Route + "/connections/" + id.ToString("D");
 
     private static string CloudEntryRoute(Guid id, string action, string? reference, string? cursor) =>

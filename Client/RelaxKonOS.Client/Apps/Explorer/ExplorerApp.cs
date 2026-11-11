@@ -121,6 +121,14 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
             _ = operations.RestoreAsync();
         }
         var view = new ExplorerMainView { DataContext = viewModel };
+        if (context.Services.GetService(typeof(Uploads.IExplorerUploadChannel)) is Uploads.ExplorerUploadChannel uploadChannel
+            && context.Services.GetService(typeof(Uploads.UploadResumeJournal)) is Uploads.UploadResumeJournal uploadJournal)
+        {
+            view.CloudUploader = (id, reference) => new Uploads.LargeFileUploader(uploadChannel.ForCloud(id), uploadJournal,
+                () => session.State == AuthSessionState.Authenticated
+                    ? $"{session.ServiceId}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}/cloud/{id:D}/{reference}"
+                    : null);
+        }
         var cloudDiscovery = new CancellationTokenSource();
         void DiscoverCloudStorage()
         {

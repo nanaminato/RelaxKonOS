@@ -47,11 +47,31 @@ internal sealed class WebDavConnector(CloudConnectionRequest connection, HttpCli
 
     internal async Task UploadAsync(string path, Stream stream, CancellationToken ct)
     {
-        using var request = CreateRequest(HttpMethod.Put, path);
-        request.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Any);
-        request.Content = new StreamContent(stream);
-        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
+        var staging = path[..(path.LastIndexOf('/') + 1)] + ".relaxkonos-upload-" + Guid.NewGuid().ToString("N");
+        using var put = CreateRequest(HttpMethod.Put, staging);
+        put.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Any);
+        put.Content = new StreamContent(stream);
+        using var uploaded = await http.SendAsync(put, HttpCompletionOption.ResponseHeadersRead, ct);
+        uploaded.EnsureSuccessStatusCode();
+        var published = false;
+        try
+        {
+            using var move = CreateRequest(new HttpMethod("MOVE"), staging);
+            move.Headers.Add("Destination", new Uri(_root.AbsoluteUri + CloudTransport.EscapePath(path)).AbsoluteUri);
+            move.Headers.Add("Overwrite", "F");
+            using var response = await http.SendAsync(move, HttpCompletionOption.ResponseHeadersRead, ct);
+            response.EnsureSuccessStatusCode();
+            published = true;
+        }
+        finally
+        {
+            if (!published)
+            {
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                try { using var cleanup = await SendAsync(HttpMethod.Delete, staging, null, deadline.Token); }
+                catch (Exception error) when (error is HttpRequestException or OperationCanceledException) { }
+            }
+        }
     }
 
     private async Task<(string Path, CloudEntryDto Value)[]> PropertiesAsync(string path, string depth, CancellationToken ct)

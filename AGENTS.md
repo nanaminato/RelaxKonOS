@@ -51,3 +51,7 @@ the installed host supports the module's current contracts.
 
 See [ModuleHost online lifecycle](docs/architecture/RelaxKonOS.ServerModuleDistribution.Design.md#modulehost-在线生命周期)
 and [module package build and management](docs/architecture/RelaxKonOS.ServerModulePackage.Format.md).
+
+When working on authorized Ubuntu or WebDAV acceptance, look for local connection
+details in `.codex-scratch/remote-acceptance/connections.local.md`. Git ignores
+this file. Keep its credentials out of commits, logs, and replies.

@@ -58,7 +58,7 @@ internal static class CloudStorageChecks
             var file = next!.Entries.Single(entry => entry.Name == "space name.txt");
             var downloaded = await client.GetStringAsync(route + "/download?reference=" + file.Reference);
             check(downloaded == "file-content", "the module streams the authorized WebDAV file");
-            using (var denied = await client.PostAsync(route + "/upload?name=new.txt&length=0", new ByteArrayContent([])))
+            using (var denied = await client.PostAsJsonAsync(route + "/uploads?key=denied", new CreateUploadRequest("", "new.txt", 0)))
                 check(denied.StatusCode == HttpStatusCode.Forbidden, "a read-only connection rejects uploads");
             SetOwner(client, Guid.NewGuid());
             using (var denied = await client.GetAsync(route + "/entries"))
@@ -68,10 +68,12 @@ internal static class CloudStorageChecks
                 updated.EnsureSuccessStatusCode();
             using (var created = await client.PostAsync(route + "/folders?name=new-folder", null))
                 check(created.StatusCode == HttpStatusCode.NoContent, "WebDAV creates a folder when write access is enabled");
-            using (var uploaded = await client.PostAsync(route + "/upload?name=new.txt&length=3", new StringContent("new")))
-                check(uploaded.StatusCode == HttpStatusCode.NoContent, "WebDAV uses a conditional create-only upload");
-            using (var conflict = await client.PostAsync(route + "/upload?name=new.txt&length=3", new StringContent("new")))
+            using (var uploaded = await UploadAsync(client, route, "new.txt", check))
+                check(uploaded.StatusCode == HttpStatusCode.OK, "WebDAV uses a conditional create-only upload");
+            using (var conflict = await UploadAsync(client, route, "new.txt", check))
                 check(conflict.StatusCode == HttpStatusCode.Conflict, "overwrite conflicts have a stable response");
+
+            await VerifyLargeUploadAsync(client, route, check);
 
             foreach (var (hostname, region) in new[]
                      {
@@ -90,8 +92,9 @@ internal static class CloudStorageChecks
                 var item = page!.Entries.Single(entry => !entry.IsDirectory);
                 check(await client.GetStringAsync(s3Route + "/download?reference=" + item.Reference) == "object",
                     $"{hostname} streams the scoped S3 object");
-                using var uploaded = await client.PostAsync(s3Route + "/upload?name=new.txt&length=3", new StringContent("new"));
-                check(uploaded.StatusCode == HttpStatusCode.NoContent, $"{hostname} signs a create-only S3 upload");
+                using var uploaded = await UploadAsync(client, s3Route, "new.txt", check);
+                check(uploaded.StatusCode == HttpStatusCode.OK, $"{hostname} signs a create-only S3 upload");
+                await VerifyLargeUploadAsync(client, s3Route, check);
             }
 
             using (var revoked = await client.DeleteAsync(route)) revoked.EnsureSuccessStatusCode();
@@ -102,10 +105,117 @@ internal static class CloudStorageChecks
             await reloaded.StartAsync(context, default);
             check(stored[0] == 1 && context.Files["connections.key"].Length == 32, "connection storage has a versioned envelope");
             check(!Encoding.UTF8.GetString(stored).Contains("test-secret", StringComparison.Ordinal)
-                && !Directory.EnumerateFiles(root).Any(), "credentials are encrypted and upload staging is cleaned up");
+                && !Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).Any(), "credentials are encrypted and upload staging is cleaned up");
             await app.StopAsync();
+            await reloaded.StopAsync(default);
+            await module.StopAsync(default);
         }
         finally { Directory.Delete(root, recursive: true); }
+    }
+
+    private static async Task VerifyLargeUploadAsync(HttpClient client, string route, Action<bool, string> check)
+    {
+        var payload = LargePayload();
+        const string key = "large-file-resume";
+        var request = new CreateUploadRequest("", "large.bin", payload.Length);
+        using var created = await client.PostAsJsonAsync(route + "/uploads?key=" + key, request);
+        created.EnsureSuccessStatusCode();
+        var session = (await created.Content.ReadFromJsonAsync<UploadSessionDto>())!;
+        var endpoint = route + "/uploads/" + session.UploadId;
+        var firstLength = session.ChunkSize;
+        using (var first = await client.PatchAsync(endpoint + $"?offset=0&length={firstLength}",
+            new ByteArrayContent(payload, 0, firstLength)))
+            first.EnsureSuccessStatusCode();
+        await InterruptChunkAsync(client, endpoint, firstLength, payload);
+        var afterDisconnect = (await client.GetFromJsonAsync<UploadSessionDto>(endpoint))!;
+        check(afterDisconnect.Offset == firstLength, "a TCP disconnect during a chunk leaves the confirmed offset unchanged");
+        using (var partial = await client.PatchAsync(endpoint + $"?offset={firstLength}&length={firstLength}",
+            new ByteArrayContent(payload, firstLength, 1024)))
+            check(partial.StatusCode == HttpStatusCode.BadRequest, "partial chunk is rejected");
+        using (var reopened = await client.PostAsJsonAsync(route + "/uploads?key=" + key, request))
+        {
+            var resumed = (await reopened.Content.ReadFromJsonAsync<UploadSessionDto>())!;
+            check(resumed.UploadId == session.UploadId && resumed.Offset == firstLength,
+                "reopening a large upload after an interrupted chunk preserves the last complete offset");
+        }
+        for (var offset = firstLength; offset < payload.Length; offset += firstLength)
+        {
+            var size = Math.Min(firstLength, payload.Length - offset);
+            using var response = await client.PatchAsync(endpoint + $"?offset={offset}&length={size}",
+                new ByteArrayContent(payload, offset, size));
+            response.EnsureSuccessStatusCode();
+        }
+        var digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(payload));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        while (true)
+        {
+            using var response = await client.PostAsJsonAsync(endpoint + "/commit", new CommitUploadRequest(digest), timeout.Token);
+            if (response.StatusCode != HttpStatusCode.Accepted)
+            {
+                response.EnsureSuccessStatusCode();
+                break;
+            }
+            await Task.Delay(20, timeout.Token);
+        }
+        var downloaded = await client.GetByteArrayAsync(route + "/download?reference=" + CloudTransport.Reference("large.bin"), timeout.Token);
+        check(downloaded.AsSpan().SequenceEqual(payload), "a resumed file larger than 16 MiB downloads byte-for-byte");
+        using var cleanup = await client.DeleteAsync(endpoint);
+        cleanup.EnsureSuccessStatusCode();
+    }
+
+    private static async Task InterruptChunkAsync(HttpClient client, string endpoint, int offset, byte[] payload)
+    {
+        using var tcp = new System.Net.Sockets.TcpClient();
+        var address = client.BaseAddress!;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await tcp.ConnectAsync(address.Host, address.Port, timeout.Token);
+        var owner = client.DefaultRequestHeaders.GetValues("X-RelaxKonOS-Module-User").Single();
+        var headers = $"PATCH {endpoint}?offset={offset}&length=8192 HTTP/1.1\r\nHost: {address.Authority}\r\n"
+            + $"X-RelaxKonOS-Module-User: {owner}\r\nContent-Length: 8192\r\nConnection: close\r\n\r\n";
+        await using var stream = tcp.GetStream();
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(headers), timeout.Token);
+        await stream.WriteAsync(payload.AsMemory(offset, 1024), timeout.Token);
+        tcp.Client.Shutdown(System.Net.Sockets.SocketShutdown.Send);
+        try { await stream.CopyToAsync(Stream.Null, timeout.Token); }
+        catch (IOException) { }
+    }
+
+    private static byte[] LargePayload()
+    {
+        var bytes = new byte[20 * 1024 * 1024 + 17];
+        new Random(42).NextBytes(bytes);
+        return bytes;
+    }
+
+    private static async Task<HttpResponseMessage> UploadAsync(HttpClient client, string route, string name, Action<bool, string> check)
+    {
+        using var created = await client.PostAsJsonAsync(route + "/uploads?key=" + Guid.NewGuid().ToString("N"),
+            new CreateUploadRequest("", name, 3));
+        created.EnsureSuccessStatusCode();
+        var session = (await created.Content.ReadFromJsonAsync<UploadSessionDto>())!;
+        var endpoint = route + "/uploads/" + session.UploadId;
+        using (var first = await client.PatchAsync(endpoint + "?offset=0&length=1", new StringContent("n")))
+            first.EnsureSuccessStatusCode();
+        using (var duplicate = await client.PatchAsync(endpoint + "?offset=0&length=1", new StringContent("n")))
+            check(duplicate.StatusCode == HttpStatusCode.Conflict
+                && duplicate.Headers.GetValues(FileUploadProtocol.OffsetHeader).Single() == "1",
+                "a lost chunk reply can be reconciled from the authoritative offset");
+        var resumed = (await client.GetFromJsonAsync<UploadSessionDto>(endpoint))!;
+        check(resumed.Offset == 1, "session GET resumes from confirmed bytes");
+        using (var second = await client.PatchAsync(endpoint + "?offset=1&length=2", new StringContent("ew")))
+            second.EnsureSuccessStatusCode();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            var response = await client.PostAsJsonAsync(endpoint + "/commit", new CommitUploadRequest(), timeout.Token);
+            if (response.StatusCode != HttpStatusCode.Accepted)
+            {
+                using var abort = await client.DeleteAsync(endpoint);
+                return response;
+            }
+            response.Dispose();
+            await Task.Delay(20, timeout.Token);
+        }
     }
 
     private static void SetOwner(HttpClient client, Guid owner)
@@ -142,12 +252,33 @@ internal static class CloudStorageChecks
                     return new HttpResponseMessage(HttpStatusCode.Created);
                 if (request.Method == HttpMethod.Put)
                 {
-                    check(request.Headers.IfNoneMatch.Single().Tag == "*" && await request.Content!.ReadAsStringAsync(ct) == "new",
-                        "WebDAV PUT sends the complete staging body and If-None-Match");
+                    var stagedBytes = await request.Content!.ReadAsByteArrayAsync(ct);
+                    check(uri.AbsolutePath.StartsWith("/root/.relaxkonos-upload-", StringComparison.Ordinal)
+                        && request.Headers.IfNoneMatch.Single().Tag == "*"
+                        && (stagedBytes.AsSpan().SequenceEqual("new"u8) || stagedBytes.AsSpan().SequenceEqual(LargePayload())),
+                        "WebDAV PUT writes the complete payload only to a random staging path");
+                    return new HttpResponseMessage(HttpStatusCode.Created);
+                }
+                if (request.Method.Method == "MOVE")
+                {
+                    var destination = request.Headers.GetValues("Destination").Single();
+                    check(request.Headers.GetValues("Overwrite").Single() == "F"
+                        && destination is "https://dav.example/root/new.txt" or "https://dav.example/root/large.bin",
+                        "WebDAV MOVE publishes at the requested path without overwriting");
+                    if (destination.EndsWith("/large.bin", StringComparison.Ordinal))
+                        return new HttpResponseMessage(HttpStatusCode.Created);
                     if (_davUploaded) return new HttpResponseMessage(HttpStatusCode.PreconditionFailed);
                     _davUploaded = true;
                     return new HttpResponseMessage(HttpStatusCode.Created);
                 }
+                if (request.Method == HttpMethod.Delete)
+                {
+                    check(uri.AbsolutePath.StartsWith("/root/.relaxkonos-upload-", StringComparison.Ordinal),
+                        "WebDAV conflict cleanup deletes only staging");
+                    return new HttpResponseMessage(HttpStatusCode.NoContent);
+                }
+                if (uri.AbsolutePath == "/root/large.bin")
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(LargePayload()) };
                 check(uri.AbsolutePath == "/root/space%20name.txt", "WebDAV download preserves the confined encoded path");
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("file-content") };
             }
@@ -158,6 +289,29 @@ internal static class CloudStorageChecks
             check(signature.StartsWith("AWS4-HMAC-SHA256 ", StringComparison.Ordinal)
                 && signature.Contains($"/{region}/s3/aws4_request", StringComparison.Ordinal),
                 $"S3 connector signs with region {region} (observed {scope ?? "none"})");
+            var query = QueryHelpers.ParseQuery(uri.Query);
+            if (uri.AbsolutePath.EndsWith("/large.bin", StringComparison.Ordinal))
+            {
+                if (request.Method == HttpMethod.Get)
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(LargePayload()) };
+                if (request.Method == HttpMethod.Post && query.ContainsKey("uploads"))
+                    return Xml(HttpStatusCode.OK, "<InitiateMultipartUploadResult><UploadId>test-parts</UploadId></InitiateMultipartUploadResult>");
+                if (request.Method == HttpMethod.Put && query.TryGetValue("partNumber", out var number))
+                {
+                    const int partSize = 16 * 1024 * 1024;
+                    var bytes = LargePayload();
+                    var offset = number == "1" ? 0 : partSize;
+                    check(query["uploadId"] == "test-parts" && (await request.Content!.ReadAsByteArrayAsync(ct))
+                        .AsSpan().SequenceEqual(bytes.AsSpan(offset, Math.Min(partSize, bytes.Length - offset))),
+                        "S3 multipart sends exactly the expected byte range");
+                    var response = new HttpResponseMessage(HttpStatusCode.OK);
+                    response.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"etag-" + number + "\"");
+                    return response;
+                }
+                check(request.Method == HttpMethod.Post && query["uploadId"] == "test-parts"
+                    && request.Headers.IfNoneMatch.Single().Tag == "*", "S3 multipart completion is create-only");
+                return Xml(HttpStatusCode.OK, "<CompleteMultipartUploadResult><ETag>\"complete\"</ETag></CompleteMultipartUploadResult>");
+            }
             if (request.Method == HttpMethod.Put)
             {
                 check(uri.AbsolutePath == "/test-bucket/scope/new.txt" && request.Headers.IfNoneMatch.Single().Tag == "*"
@@ -169,7 +323,6 @@ internal static class CloudStorageChecks
                 check(uri.AbsolutePath == "/test-bucket/scope/report.txt", "S3 download keeps the configured bucket prefix");
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("object") };
             }
-            var query = QueryHelpers.ParseQuery(uri.Query);
             check(uri.AbsolutePath.TrimEnd('/') == "/test-bucket" && query["prefix"] == "scope/"
                 && query["list-type"] == "2",
                 "ListObjectsV2 confines requests to the configured prefix");

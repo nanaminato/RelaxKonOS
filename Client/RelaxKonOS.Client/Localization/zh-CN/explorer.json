@@ -324,6 +324,5 @@
     "explorer.cloud.upload": "上传",
     "explorer.cloud.new_folder": "文件夹名称",
     "explorer.cloud.create_folder": "新建文件夹",
-    "explorer.cloud.enable_writes": "允许上传和新建文件夹",
-    "explorer.cloud.upload_size": "请选择不超过 16 MiB 的本地文件。"
+    "explorer.cloud.enable_writes": "允许上传和新建文件夹"
 }

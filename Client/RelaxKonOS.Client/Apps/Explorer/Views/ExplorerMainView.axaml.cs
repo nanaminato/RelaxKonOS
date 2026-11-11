@@ -66,6 +66,11 @@ public partial class ExplorerMainView : UserControl
 
     private ExplorerClient? _cloudClient;
     private bool _hasCloudStorage;
+    internal Func<Guid, string?, Uploads.ILargeFileUploader>? CloudUploader
+    {
+        set => CloudBrowser.CreateUploader = value;
+    }
+
     internal bool IsCloudStorageOpen => CloudBrowser.IsVisible;
 
     private void UpdateCloudStorageEntry()

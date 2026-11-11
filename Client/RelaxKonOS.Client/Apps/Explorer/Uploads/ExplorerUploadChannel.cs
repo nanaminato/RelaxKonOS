@@ -23,10 +23,18 @@ namespace RelaxKonOS.Client.Apps.Explorer.Uploads;
 /// </remarks>
 public sealed class ExplorerUploadChannel(HttpClient http, IAuthSession session) : IExplorerUploadChannel
 {
+    private string UploadsRoute { get; init; } = FileApiRoutes.Uploads;
+    private bool IsCloud => UploadsRoute != FileApiRoutes.Uploads;
+
+    internal ExplorerUploadChannel ForCloud(Guid connection) => new(http, session)
+    {
+        UploadsRoute = $"{CloudStorageApi.Route}/connections/{connection:D}/uploads",
+    };
+
     public async Task<UploadSessionDto> CreateSessionAsync(CreateUploadRequest request, string idempotencyKey,
         CancellationToken ct = default)
     {
-        using var message = new HttpRequestMessage(HttpMethod.Post, BuildUri(FileApiRoutes.Uploads))
+        using var message = new HttpRequestMessage(HttpMethod.Post, BuildUri(IsCloud ? UploadsRoute + "?key=" + Uri.EscapeDataString(idempotencyKey) : UploadsRoute))
         {
             Content = JsonContent.Create(request, options: RelaxKonOSJsonOptions.Default),
         };
@@ -49,7 +57,9 @@ public sealed class ExplorerUploadChannel(HttpClient http, IAuthSession session)
         // a form reader or a byte buffer.
         using var content = new ChunkContent(source, offset, length, onInFlight);
         content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        using var message = new HttpRequestMessage(HttpMethod.Patch, BuildUri(SessionRoute(uploadId))) { Content = content };
+        var route = SessionRoute(uploadId);
+        if (IsCloud) route += FormattableString.Invariant($"?offset={offset}&length={length}");
+        using var message = new HttpRequestMessage(HttpMethod.Patch, BuildUri(route)) { Content = content };
         message.Headers.TryAddWithoutValidation(FileUploadProtocol.OffsetHeader,
             offset.ToString(CultureInfo.InvariantCulture));
         using var response = await http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
@@ -61,12 +71,17 @@ public sealed class ExplorerUploadChannel(HttpClient http, IAuthSession session)
 
     public async Task<FileEntryDto> CommitAsync(string uploadId, string? contentHash, CancellationToken ct = default)
     {
-        using var message = new HttpRequestMessage(HttpMethod.Post, BuildUri($"{SessionRoute(uploadId)}/commit"))
+        while (true)
         {
-            Content = JsonContent.Create(new CommitUploadRequest(contentHash), options: RelaxKonOSJsonOptions.Default),
-        };
-        using var response = await http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-        return await ReadAsync<FileEntryDto>(response, ct).ConfigureAwait(false);
+            using var message = new HttpRequestMessage(HttpMethod.Post, BuildUri($"{SessionRoute(uploadId)}/commit"))
+            {
+                Content = JsonContent.Create(new CommitUploadRequest(contentHash), options: RelaxKonOSJsonOptions.Default),
+            };
+            using var response = await http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            if (!IsCloud || response.StatusCode != HttpStatusCode.Accepted)
+                return await ReadAsync<FileEntryDto>(response, ct).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(1), ct).ConfigureAwait(false);
+        }
     }
 
     public async Task AbortAsync(string uploadId, CancellationToken ct = default)
@@ -89,7 +104,7 @@ public sealed class ExplorerUploadChannel(HttpClient http, IAuthSession session)
         catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException) { return false; }
     }
 
-    private static string SessionRoute(string uploadId) => $"{FileApiRoutes.Uploads}/{Uri.EscapeDataString(uploadId)}";
+    private string SessionRoute(string uploadId) => $"{UploadsRoute}/{Uri.EscapeDataString(uploadId)}";
 
     private Uri BuildUri(string route)
     {

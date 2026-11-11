@@ -65,6 +65,12 @@ internal sealed class S3Connector : IDisposable
 
     internal async Task UploadAsync(string path, Stream stream, CancellationToken ct)
     {
+        const long partSize = 16 * 1024 * 1024;
+        if (stream is FileStream file && file.Length > partSize)
+        {
+            await UploadPartsAsync(_root + path, file, partSize, ct);
+            return;
+        }
         await _client.PutObjectAsync(new PutObjectRequest
         {
             BucketName = _bucket,
@@ -74,6 +80,44 @@ internal sealed class S3Connector : IDisposable
             IfNoneMatch = "*",
             UseChunkEncoding = false,
         }, ct);
+    }
+
+    private async Task UploadPartsAsync(string key, FileStream file, long partSize, CancellationToken ct)
+    {
+        var started = await _client.InitiateMultipartUploadAsync(new InitiateMultipartUploadRequest
+        {
+            BucketName = _bucket, Key = key,
+        }, ct);
+        var committed = false;
+        try
+        {
+            var parts = new List<PartETag>();
+            for (long offset = 0; offset < file.Length; offset += partSize)
+            {
+                var number = parts.Count + 1;
+                var uploaded = await _client.UploadPartAsync(new UploadPartRequest
+                {
+                    BucketName = _bucket, Key = key, UploadId = started.UploadId, PartNumber = number,
+                    FilePath = file.Name, FilePosition = offset, PartSize = Math.Min(partSize, file.Length - offset),
+                    UseChunkEncoding = false,
+                }, ct);
+                parts.Add(new(number, uploaded.ETag));
+            }
+            await _client.CompleteMultipartUploadAsync(new CompleteMultipartUploadRequest
+            {
+                BucketName = _bucket, Key = key, UploadId = started.UploadId, PartETags = parts, IfNoneMatch = "*",
+            }, ct);
+            committed = true;
+        }
+        finally
+        {
+            if (!committed)
+            {
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                try { await _client.AbortMultipartUploadAsync(_bucket, key, started.UploadId, deadline.Token); }
+                catch (Exception error) when (error is AmazonServiceException or HttpRequestException or OperationCanceledException) { }
+            }
+        }
     }
 
     public void Dispose() => _client.Dispose();

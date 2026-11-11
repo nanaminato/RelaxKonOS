@@ -324,6 +324,5 @@
     "explorer.cloud.upload": "Upload",
     "explorer.cloud.new_folder": "Folder name",
     "explorer.cloud.create_folder": "Create folder",
-    "explorer.cloud.enable_writes": "Allow uploads and folder creation",
-    "explorer.cloud.upload_size": "Select a local file of 16 MiB or less."
+    "explorer.cloud.enable_writes": "Allow uploads and folder creation"
 }
