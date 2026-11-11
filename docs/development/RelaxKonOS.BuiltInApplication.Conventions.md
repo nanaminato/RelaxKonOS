@@ -9,7 +9,7 @@
 3. Client/Server 通信必须在 `Shared/RelaxKonOS.Protocol` 定义 DTO、枚举、路由/Hub 常量和序列化约定。业务代码禁止硬编码 API 字符串或复制 DTO；Protocol 保持零业务依赖。
 4. Server 的系统能力先定义接口，再实现 Ubuntu/Linux 与 Windows Provider。`Program.cs` 只做运行时选择；Endpoint、Client、ViewModel 和共享 DTO 不出现 `OperatingSystem.Is...`、P/Invoke、`/proc` 路径、PowerShell 或 shell 命令。
 5. 使用构造函数注入与 `Microsoft.Extensions.DependencyInjection`。不引入 Service Locator、反射扫描、全局可变单例或由 UI 直接创建服务器客户端。
-6. 先在 `Windows Server Test` 验证所需 Windows 原生 API，再进入 Server Provider；同一能力必须在 Ubuntu 上拥有等价实现、明确降级或明确“不支持”状态。
+6. 先通过对应领域的测试或专项探针验证所需 Windows 原生 API，再进入 Server Provider；同一能力必须在 Ubuntu 上拥有等价实现、明确降级或明确“不支持”状态。
 
 ## 2. 设计文档先行
 

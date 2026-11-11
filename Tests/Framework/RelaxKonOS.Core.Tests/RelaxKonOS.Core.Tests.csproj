@@ -6,10 +6,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../RelaxKonOS.Core/RelaxKonOS.Core.csproj" />
-    <ProjectReference Include="../RelaxKonOS.Shell/RelaxKonOS.Shell.csproj" />
+    <ProjectReference Include="../../../Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj" />
+    <ProjectReference Include="../../../Framework/RelaxKonOS.Shell/RelaxKonOS.Shell.csproj" />
     <!-- Keep the storage-boundary test dependency-free while the local desktop SDK is incomplete. -->
-    <Compile Include="../../Client/RelaxKonOS.Client/Services/VirtualSystemDrive/VirtualSystemDrive.cs"
+    <Compile Include="../../../Client/RelaxKonOS.Client/Services/VirtualSystemDrive/VirtualSystemDrive.cs"
              Link="VirtualSystemDrive.cs" />
   </ItemGroup>
 </Project>

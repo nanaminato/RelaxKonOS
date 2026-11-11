@@ -7,6 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../../RelaxKonOS.Server/RelaxKonOS.Server.csproj" />
-    <Compile Include="../../../RelaxKonOS.Server.Tests/TextEditorChecks.cs" Link="TextEditorChecks.cs" />
+    <Compile Include="../RelaxKonOS.Server.Tests/TextEditorChecks.cs" Link="TextEditorChecks.cs" />
   </ItemGroup>
 </Project>

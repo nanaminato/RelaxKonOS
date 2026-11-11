@@ -307,7 +307,7 @@ Docker daemon 的控制权相当于宿主机高权限。故默认原则是“只
 ## 5. 实施顺序与验收
 
 1. 定义 Protocol DTO/路由、权限和 `IDockerEngineService`，实现只读 status/containers/images/networks/volumes。
-2. 实现 Unix socket 与 named pipe Provider、API 版本协商和 Ubuntu/Windows 探测；在 `Windows Server Test` 做 native transport 验证。
+2. 实现 Unix socket 与 named pipe Provider、API 版本协商和 Ubuntu/Windows 探测；在对应宿主上验证 Unix socket 与 named pipe 传输。
 3. 交付容器详情、日志、统计、生命周期和审计，再交付镜像/网络/卷。
 4. 增加 Compose 校验、Stack 部署与任务流；先支持本地文本/上传，再支持经过凭据引用的 Git 来源。**已完成**：定义预览（`stacks/preview`）、持久操作账本与协调器、项目级动作、取消、诊断、卷引用检查与 `delete` 保留命名卷；桌面与 Android 都消费同一持久契约。
 5. 最后增加 Ubuntu 安装器和 Windows 引导安装器；安装、升级和回滚均须在干净 VM 中验证。

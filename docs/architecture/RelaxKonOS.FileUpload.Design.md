@@ -74,7 +74,7 @@ var dto = await fs.UploadAsync(path, file.FileName, stream, ctx.RequestAborted);
 
 1. `ReadFormAsync` 在 `UploadAsync` 见到任何字节之前，已把整个正文缓冲完（超出内存阈值即落到框架临时文件），**同一份数据被完整写了两次**（框架临时文件 → 目标目录暂存文件）。
 2. `FormOptions.MultipartBodyLengthLimit` 未配置，取默认 128 MiB，异常类型不属本端点已捕获的分支。
-3. 该路由**从未声明请求体上限**：Kestrel 默认 30 MB 先生效（这一点在本仓库内也有旁证——`RelaxKonOS.Server.Tests/ApplicationDeploymentProgressVerification.cs:68` 明确称默认值为 30 MB）。应用部署路由则显式抬高（`ApplicationDeploymentEndpoints.cs:179-183`，先取 `IHttpMaxRequestBodySizeFeature` 再赋值），说明"声明式上限"在本仓库已是既定做法，只是文件路由漏了。
+3. 该路由**从未声明请求体上限**：Kestrel 默认 30 MB 先生效（这一点在本仓库内也有旁证——`Tests/Server/RelaxKonOS.Server.Tests/ApplicationDeploymentProgressVerification.cs:68` 明确称默认值为 30 MB）。应用部署路由则显式抬高（`ApplicationDeploymentEndpoints.cs:179-183`，先取 `IHttpMaxRequestBodySizeFeature` 再赋值），说明"声明式上限"在本仓库已是既定做法，只是文件路由漏了。
 
 因此现场观察到的失败点会随文件大小与网络条件在 30 MB / 128 MiB / 100 s 之间跳变，表现各不相同——这本身就是设计缺陷的症状。
 
@@ -413,8 +413,8 @@ D:\Work\big.iso                     ← 提交后才有；只由一次原子改�
 | `RelaxKonOS.Server/Privileged/PrivilegedFileService.cs` | 新增 `AppendChunkAsync` / `CommitAsync`；`UploadAsync` 保留给单发快路径 |
 | `RelaxKonOS.PrivilegedHelper/Program.cs` | 新增两个操作的分发与形状校验 |
 | `RelaxKonOS.Server/Program.cs` | 注册 `UploadSessionStore`（单例）、`UploadSessionService`（单例）、`UploadSessionSweeper`（托管服务） |
-| `RelaxKonOS.Server.Tests/UploadSessionChecks.cs`（新） | 会话校验（§9.1，91 条）：净化、幂等、偏移、长度、并发、提交、清理、重启恢复、提权路径 |
-| `RelaxKonOS.Server.Tests/Program.cs` | 新增 `--uploads-only` 窄口径开关（与既有开关并列） |
+| `Tests/Server/RelaxKonOS.Server.Tests/UploadSessionChecks.cs`（新） | 会话校验（§9.1，91 条）：净化、幂等、偏移、长度、并发、提交、清理、重启恢复、提权路径 |
+| `Tests/Server/RelaxKonOS.Server.Tests/Program.cs` | 新增 `--uploads-only` 窄口径开关（与既有开关并列） |
 
 ---
 

@@ -46,7 +46,7 @@ curl -fsS "$ntfy_url/$topic/json?poll=1&since=all" |
   python3 -c 'import json,sys; assert any(json.loads(line).get("message") == sys.argv[1] for line in sys.stdin)' "$marker"
 ```
 
-在新增包前记录目录中没有 `fixture-web-db`。停止隔离 Server，添加 Web＋数据库清单，再以相同二进制和启用的验收开关启动。重连同一个客户端并再次核对二进制哈希。使用目录字段设置独立的数据库密码。连接 Server 和客户端的完整验收按照平台设计第 7.1 节执行。 [第 7.1 节](../../../docs/platform/RelaxKonOS.ContainerApplications.Design.md#71-首版实机门槛)
+在新增包前记录目录中没有 `fixture-web-db`。停止隔离 Server，添加 Web＋数据库清单，再以相同二进制和启用的验收开关启动。重连同一个客户端并再次核对二进制哈希。使用目录字段设置独立的数据库密码。连接 Server 和客户端的完整验收按照平台设计第 7.1 节执行。 [第 7.1 节](../../../../../docs/platform/RelaxKonOS.ContainerApplications.Design.md#71-首版实机门槛)
 
 ```sh
 python3 generate_catalog.py --server-publish "$server_publish" web-db --image "$web_image"

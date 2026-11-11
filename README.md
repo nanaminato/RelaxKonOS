@@ -388,7 +388,7 @@ dotnet run
 
 | 文档 | 说明 |
 |------|------|
-| [docs/README.md](./docs/README.md) | 项目结构、代码地图、当前进度 |
+| [docs/README.md](./docs/README.md) | 代码地图、开发入口与领域文档 |
 | [docs/services](./docs/services) | 用户模式服务端、安装服务与独立组件服务的进度记录 |
 | [docs/testing](./docs/testing) | 验收用例与已跳过测试的说明 |
 

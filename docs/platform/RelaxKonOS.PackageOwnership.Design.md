@@ -43,7 +43,7 @@
 **自动化证据（本机 Windows，2026-10-30）。**
 
 - `dotnet build RelaxKonOS.sln --no-restore -m:1`：0 错误。
-- `dotnet run --project RelaxKonOS.Server.Tests -- --components-only`：253 项通过，覆盖身份策略、受管外部变化、外部更新/卸载冻结、恢复与包身份校验、登记台账校验、Tailscale 包事务阻塞。
+- `dotnet run --project Tests/Server/RelaxKonOS.Server.Tests -- --components-only`：253 项通过，覆盖身份策略、受管外部变化、外部更新/卸载冻结、恢复与包身份校验、登记台账校验、Tailscale 包事务阻塞。
 - `dotnet run --project Tests/Tailscale/RelaxKonOS.Tailscale.Tests`：全部通过；新增外部卸载 `Target=null`、缺少安装身份和缺少更新候选的 pending 判定。
 - `dotnet run --project Tests/Client/RelaxKonOS.Installation.Tests -- --component-refresh-only`：12 项通过；新增外部包登记入口与外部变化提示检查。
 - 同一工程 `--component-lifecycle-only`：17 项通过；新增状态身份/外部变化与仅身份卸载冻结的线协议检查。

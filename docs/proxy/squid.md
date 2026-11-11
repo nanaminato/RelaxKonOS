@@ -150,7 +150,7 @@ GET `/configuration` 返回 `state`、实时 `status` 和 `matchesPublishedConfi
 ```powershell
 dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore
 dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj --no-restore
-dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -- --squid-only
+dotnet run --project Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -- --squid-only
 ```
 
 专项测试覆盖注入输入、空/非法集合、远程监听 opt-in、无约束 CIDR、ACL 顺序、IPv6、上游不直连、协议 round trip、服务到 Helper 的结构化边界和原生诊断传播。它不执行 Linux 原生命令。端点检查同时验证 200 结构化校验结果、必需请求键、重复提交只执行一次、操作终态及发布回读。

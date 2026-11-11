@@ -61,14 +61,14 @@ rebase 中 ours 是目标分支及已重放内容，theirs 是正在重放的提
 - 服务端：`LocalGitRepositoryService.Conflicts.cs` 独立 partial 实现；原服务修正冲突路径和操作结果，`GitEndpoints.cs` 注册路由。
 - 客户端：`GitClientViewModel.Conflicts.cs`、`GitConflictBlock.cs`、`GitConflictResolutionView.axaml`、`GitConflictResolutionDialog.axaml`；RemoteGitClient 连接新接口。冲突文件列表与三栏编辑器由同一个模态窗口承载，可逐文件保存、继续或中止。
 - 本地化：zh-CN、en-US、ja-JP 同步新增文案。
-- 集成检查：`RelaxKonOS.Server.Tests/GitConflictChecks.cs`，使用真实临时 Git 仓库与 SQLite，不操作开发仓库。
+- 集成检查：`Tests/Server/RelaxKonOS.Server.Tests/GitConflictChecks.cs`，使用真实临时 Git 仓库与 SQLite，不操作开发仓库。
 
 ## 验证方式
 
 ```powershell
 dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -p:UsedAvaloniaProducts= -v quiet
-dotnet build RelaxKonOS.Server.Tests --no-restore -p:UseAppHost=false -v quiet
-dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --git-conflicts-only
+dotnet build Tests/Server/RelaxKonOS.Server.Tests --no-restore -p:UseAppHost=false -v quiet
+dotnet Tests/Server/RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --git-conflicts-only
 ```
 
 `UsedAvaloniaProducts=` 仅用于此受限构建环境跳过 Avalonia 构建遥测的用户目录写入，不改变产品构建配置。

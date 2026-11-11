@@ -6,8 +6,18 @@ VerifyDescriptorValidation();
 VerifyRelativePathValidation();
 VerifyShortcutValidation();
 VerifyAutomationValidation();
-    VerifyShellIdResolution();
-await VerifyStorageBoundaryAsync();
+VerifyShellIdResolution();
+
+var testRoot = Directory.CreateTempSubdirectory("relaxkonos-vsd-");
+try
+{
+    await VerifyStorageBoundaryAsync(testRoot.FullName);
+}
+finally
+{
+    testRoot.Delete(recursive: true);
+}
+
 Console.WriteLine("RelaxKonOS.Core VSD contract verification passed.");
 
 static void VerifyDescriptorValidation()
@@ -83,14 +93,14 @@ static void VerifyAutomationValidation()
 
 static void VerifyShellIdResolution()
 {
-    Assert(ShellApi.Version == "1.1", "Shell API exposes the current pre-release contract.");
+    Assert(ShellApi.Version == "1.3", "Shell API exposes the current pre-release contract.");
     Assert(ShellApi.ResolveId("com.example.neon") == "com.example.neon", "Explicit external Shell id was unexpectedly changed.");
     Assert(ShellApi.ResolveId(null) == ShellApi.DefaultShellId, "Missing Shell id did not use the safe default.");
 }
 
-static async Task VerifyStorageBoundaryAsync()
+static async Task VerifyStorageBoundaryAsync(string root)
 {
-    var drive = new VirtualSystemDrive();
+    var drive = new VirtualSystemDrive(root);
     drive.EnsureCreated();
     Assert(Directory.Exists(drive.BuiltInProgramsDirectory), "VSD did not create BuiltIn programs directory.");
     Assert(Directory.Exists(drive.ExternalProgramsDirectory), "VSD did not create External programs directory.");

@@ -114,7 +114,7 @@
 ```bash
 dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false -v minimal
 dotnet run --project Tests/Client/RelaxKonOS.Explorer.Tests -p:MSBuildEnableWorkloadResolver=false -m:1 --verbosity quiet
-dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug -o <独立输出目录>
+dotnet build Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug -o <独立输出目录>
 <独立输出目录>/RelaxKonOS.Server.Tests.exe --uploads-only
 git diff --check
 ```

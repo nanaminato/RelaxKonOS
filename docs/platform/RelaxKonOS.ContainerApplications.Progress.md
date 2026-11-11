@@ -12,12 +12,12 @@
 
 | 环境 | 命令或步骤 | 结果与证据 |
 | --- | --- | --- |
-| Windows x64，.NET SDK 10.0.300 | `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false` | D 盘产物复制失败（MSB3021/3027）。在 C 盘隔离源码副本复验通过，3 条既有警告，0 错误。日志位于会话的 `ca-build/server-tests-build.log`。 |
+| Windows x64，.NET SDK 10.0.300 | `dotnet build Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false` | D 盘产物复制失败（MSB3021/3027）。在 C 盘隔离源码副本复验通过，3 条既有警告，0 错误。日志位于会话的 `ca-build/server-tests-build.log`。 |
 | 同一隔离构建，TEMP/TMP 指向隔离目录 | 运行测试 DLL，依次使用 `--catalog-update-only`、`--deployment-definition-only`、`--docker-compose-code-only` | 三个命令均退出 0。前两个在沙箱内首次运行因密钥文件重命名被拒，获准独立执行后通过。日志为 `ca-build/*-escalated.log`。目录契约、受限身份 HTTP 拒绝、回执重放和 Compose 代码驻留属于受控验证。 |
 | Docker Hub Registry | 用仓库作用域匿名令牌查询并提取 Linux amd64 清单摘要 | Nginx 1.27.3-alpine、Uptime Kuma 1.23.16/1.23.17 和 File Browser v2.31.2 取得摘要。Webhook Tester 原 2.8.2 返回 404，改用上游 2 系列清单的固定摘要。四个随附发布见 `RelaxKonOS.Server/Assets/ApplicationCatalog/`。 |
 | Linux x64 实机 | 用已知主机密钥执行既有 SSH 主机的 OS、Engine、Compose 只读预检 | 主机密钥通过，当前 SSH 认证被拒。Windows Docker Desktop Engine 29.8.0 和 Compose v5.5.1 可读，只有 Docker Desktop 的 WSL 发行版。第 7.1 节的业务、归属、对账和同一组二进制复用证据待补。 |
 
-桌面 Client 和 ServerModules 测试项目也在同一隔离副本构建通过，日志为 `client-build.log` 和 `server-modules-build.log`。追加的受控 Engine 镜像身份与卷归属用例位于隔离副本的 `RelaxKonOS.Server.Tests/CatalogUpdateChecks.cs`，三个专项退出码均为 0。D 盘无可用空间，追加用例与本详细记录待同步。仓库设计文档第 8 节已追加简要进度。
+桌面 Client 和 ServerModules 测试项目也在同一隔离副本构建通过，日志为 `client-build.log` 和 `server-modules-build.log`。追加的受控 Engine 镜像身份与卷归属用例位于隔离副本的 `Tests/Server/RelaxKonOS.Server.Tests/CatalogUpdateChecks.cs`，三个专项退出码均为 0。D 盘无可用空间，追加用例与本详细记录待同步。仓库设计文档第 8 节已追加简要进度。
 
 局域网和 Tailscale 地址使用同一个已固定的主机密钥均通过主机验证。当前 SSH agent 没有身份，非交互登录 `nanami` 在两个地址都返回 `Permission denied (publickey,password)`。
 
@@ -83,7 +83,7 @@ Docker 操作协调器接受结构化计划和应用操作 ID。以实例隔离�
 
 执行器限 Linux x64 本地 Unix socket。固定项目、容器、网络和卷名称，在调用 Compose 前后核对已有同名资源和项目容器的实例及 Compose 标签。配置文件只含环境变量引用，具体值经子进程环境传入。解析结果在内存核验，命令原始输出不进入操作诊断。Docker 管理器隐藏受管容器的环境字段，并在读取容器日志前检查归属。
 
-环境为 Windows x64、.NET SDK 10.0.300 和 Docker Compose v5.5.1。执行 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，以及 Server 测试 DLL 的 `--stack-operations-only`、`--docker-compose-config-only`、`--docker-compose-code-only`、`--catalog-update-only`、`--deployment-definition-only` 和 `--module-boundary-milestones-only`，全部退出 0。证据位于隔离构建目录 `ca-build/ca02-managed-*.log`。真实 Compose 解析验证服务级秘密注入的美元符号与引号处理。受控执行验证原键重试不重派、同键不同秘密版本冲突、账本重开可查原 ID、持久化无明文，以及 HTTP 通过别名隐藏环境值并拦截日志。
+环境为 Windows x64、.NET SDK 10.0.300 和 Docker Compose v5.5.1。执行 `dotnet build Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，以及 Server 测试 DLL 的 `--stack-operations-only`、`--docker-compose-config-only`、`--docker-compose-code-only`、`--catalog-update-only`、`--deployment-definition-only` 和 `--module-boundary-milestones-only`，全部退出 0。证据位于隔离构建目录 `ca-build/ca02-managed-*.log`。真实 Compose 解析验证服务级秘密注入的美元符号与引号处理。受控执行验证原键重试不重派、同键不同秘密版本冲突、账本重开可查原 ID、持久化无明文，以及 HTTP 通过别名隐藏环境值并拦截日志。
 
 双服务安装仍受门禁保护。下一步是把应用意图、秘密版本和底层回执关联持久化，以原键覆盖强制中断窗口，再接入可核验的双服务业务探针。SSH 两个地址均通过同一主机密钥校验，但当前客户端没有可提交的密钥。Linux Engine 上的 Compose 写入、业务读写和第 7.1 节中断注入仍待实测。
 
@@ -93,7 +93,7 @@ Docker 操作协调器接受结构化计划和应用操作 ID。以实例隔离�
 
 受控测试覆盖正常派发、仅底层已持久化以及完全缺失底层回执三种落盘状态。尚需将此内部派发接入目录安装、核对实际镜像及业务就绪、提交活动修订，并在 Linux 专用 Engine 上以强制终止 Server 复验第 7.1 节。
 
-环境为 Windows x64、.NET SDK 10.0.300、Docker Compose v5.5.1。运行 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，并执行 Server 测试 DLL 的 `--catalog-update-only`、`--deployment-definition-only`、`--deployment-progress-only`、`--stack-operations-only`、`--docker-compose-config-only`。证据位于 `ca-build/ca03-handoff-*.log`。早期运行分别发现夹具子目录未创建及请求摘要未使用 64 字符十六进制值，修正夹具后目录专项退出 0。日志保存了复验中的一对原应用和 Docker 操作 ID。
+环境为 Windows x64、.NET SDK 10.0.300、Docker Compose v5.5.1。运行 `dotnet build Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，并执行 Server 测试 DLL 的 `--catalog-update-only`、`--deployment-definition-only`、`--deployment-progress-only`、`--stack-operations-only`、`--docker-compose-config-only`。证据位于 `ca-build/ca03-handoff-*.log`。早期运行分别发现夹具子目录未创建及请求摘要未使用 64 字符十六进制值，修正夹具后目录专项退出 0。日志保存了复验中的一对原应用和 Docker 操作 ID。
 
 最终构建和五组专项均退出 0。重开账本后原键、原应用 ID 和原 Docker ID 一致，缺失回执保持待核验，两个场景都拒绝冲突写入且未增加底层派发次数。此切片使用受控执行器重建中断时的持久状态。
 
@@ -111,13 +111,13 @@ Windows x64 / .NET SDK 10.0.300 环境构建 Server Tests（`--no-restore -m:1 -
 
 ## 第 7.1 节业务夹具与镜像证据
 
-加入可重复构建的 Web＋PostgreSQL 和上游 ntfy 双版本夹具。Web 就绪、写入和读取均访问 PostgreSQL。ntfy 2.37.0 和 2.37.2 使用同一个 SQLite 消息缓存路径。清单生成器只接受本机回环 Registry 的固定摘要，拒绝外部镜像引用与覆盖已有清单。测试资产留在测试目录，生成清单时显式选择隔离 Server 发布目录。见[夹具操作规程](../../RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md)。
+加入可重复构建的 Web＋PostgreSQL 和上游 ntfy 双版本夹具。Web 就绪、写入和读取均访问 PostgreSQL。ntfy 2.37.0 和 2.37.2 使用同一个 SQLite 消息缓存路径。清单生成器只接受本机回环 Registry 的固定摘要，拒绝外部镜像引用与覆盖已有清单。测试资产留在测试目录，生成清单时显式选择隔离 Server 发布目录。见[夹具操作规程](../../Tests/Server/RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md)。
 
 Windows x64、Docker Desktop Linux amd64 Engine、Compose v5.5.1、Python 3.14.8、.NET SDK 10.0.300。以 `docker build --platform linux/amd64` 构建镜像，在临时 Compose 项目中执行 `up`、`stop db`、`start db` 和 `up --no-deps --force-recreate web`，并用 `curl` 复验。数据库无宿主端口绑定，停库后 Web 返回 503，恢复数据库并重建 Web 后读回同一随机标记。以 `docker run` 对两个 ntfy 版本复用独立测试卷，升级和同版重建后均通过业务 API 读回原消息。证据见 `ca-build/ca-fixture-web-db-{build,smoke}.log` 和 `ca-build/ca-fixture-ntfy-smoke.log`。
 
 在 Docker Desktop 的 Linux 守护进程网络中使用临时回环 Registry，执行 `docker push` 和按摘要 `docker pull`，三份镜像均确认 Linux amd64。先写入两个 ntfy 清单，再添加 Web＋数据库包。用 `--catalog-fixtures-only <目录>` 调用正式目录加载器复验三份清单及精确升级边，Server 构建产物哈希未变。第一次使用 Windows 端口映射时，Docker 守护进程自己的回环无法连接。改在 Linux 守护进程网络内监听后复验退出 0。证据见 `ca-build/ca-fixture-daemon-registry*.log`。容器、网络、卷和测试 Registry 均已清理。
 
-本次 Server Tests 构建命令为 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，并复跑 `--catalog-update-only`。两项均退出 0，证据见 `ca-build/ca-fixture-server-build.log` 与 `ca-build/ca-fixture-catalog-regression.log`。
+本次 Server Tests 构建命令为 `dotnet build Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q`，并复跑 `--catalog-update-only`。两项均退出 0，证据见 `ca-build/ca-fixture-server-build.log` 与 `ca-build/ca-fixture-catalog-regression.log`。
 
 上述镜像和业务证据来自 Docker Desktop 隔离测试项目。待在专用 Linux Engine 上通过完整 Server 与客户端目录流程复验安装、兼容升级、保留卸载重装、归属和越权、强制终止原 ID 对账，以及同一组 Server 和客户端二进制新增包。当前 Windows SSH agent 仍无密钥，两个实机地址此前均通过同一主机密钥校验。
 
@@ -135,15 +135,15 @@ Windows x64 / .NET SDK 10.0.300，使用 `dotnet build --no-restore -m:1 -p:UseS
 
 Windows x64 / Python 3.14.8，运行 `python -B verify_live.py --help`、Windows 平台拒绝用例和 Python AST／受控边界检查。复验确认拒绝远端 socket、错误的 Engine ID 及重定向，Windows 退出前未创建证据文件。记录见 `ca-build/ca-live-harness-checks.log`。现有 Docker Desktop 报告 Engine 29.8.0 Linux amd64，WSL 清单只有 Desktop 自管发行版，SSH agent 没有登录密钥。尚未在真实 Server 与专用 Engine 上运行这两阶段。
 
-下一步是专用 Linux 环境复验这两阶段、在完整 Server 上执行强制终止窗口和缺失回执注入，并记录相同桌面客户端二进制的实际新增包操作。见[夹具操作规程](../../RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md#server-api-验收与证据)。
+下一步是专用 Linux 环境复验这两阶段、在完整 Server 上执行强制终止窗口和缺失回执注入，并记录相同桌面客户端二进制的实际新增包操作。见[夹具操作规程](../../Tests/Server/RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md#server-api-验收与证据)。
 
 ## CA-03 Linux 强制终止回归
 
 加入测试专用的原生注入库和进程夹具。该库仅拦截指定应用账本中新增 Compose 回执的原子替换，在持久化关联前暂停写入线程。测试等待独立的 Docker 账本写入成功后向原 .NET 进程发送 SIGKILL。用同一份原意图分别验证底层回执存在与缺失两种启动路径。
 
-以 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q` 构建，使用固定镜像的 GCC 编译 `hold_compose_association.c`（`-std=gnu17 -shared -fPIC -O2 -Wall -Wextra -Werror -ldl`）。在 Docker Desktop 的 Linux amd64、.NET 10.0.14 容器内运行 `sh verify_handoff_crash.sh <Tests DLL> <注入库>`，未挂 Docker socket。首次脚本运行发现续行拼接错误，改成独立子进程导出环境后复验退出 0。原进程退出 137，原应用 ID `41ff039b-d2cf-44ec-9681-52d164538b5d` 找回原 Docker ID `2fd02d4c-787a-4679-af9c-769e80753879`。缺失回执副本保持待核验，两个场景均拒绝冲突键且底层派发次数为零。Windows Server 测试 DLL 的 `--catalog-update-only` 复验也退出 0。证据位于 `ca-build/ca-handoff-crash-*.log`。
+以 `dotnet build Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v:q` 构建，使用固定镜像的 GCC 编译 `hold_compose_association.c`（`-std=gnu17 -shared -fPIC -O2 -Wall -Wextra -Werror -ldl`）。在 Docker Desktop 的 Linux amd64、.NET 10.0.14 容器内运行 `sh verify_handoff_crash.sh <Tests DLL> <注入库>`，未挂 Docker socket。首次脚本运行发现续行拼接错误，改成独立子进程导出环境后复验退出 0。原进程退出 137，原应用 ID `41ff039b-d2cf-44ec-9681-52d164538b5d` 找回原 Docker ID `2fd02d4c-787a-4679-af9c-769e80753879`。缺失回执副本保持待核验，两个场景均拒绝冲突键且底层派发次数为零。Windows Server 测试 DLL 的 `--catalog-update-only` 复验也退出 0。证据位于 `ca-build/ca-handoff-crash-*.log`。
 
-本轮实际终止的是使用真实账本和受控 Compose 执行器的 .NET 测试进程。完整 Server、真实专用 Docker Engine 和实际业务数据仍需按[强制终止规程](../../RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md#强制终止与原回执)复验。
+本轮实际终止的是使用真实账本和受控 Compose 执行器的 .NET 测试进程。完整 Server、真实专用 Docker Engine 和实际业务数据仍需按[强制终止规程](../../Tests/Server/RelaxKonOS.Server.Tests/Fixtures/ContainerApplications/README.md#强制终止与原回执)复验。
 
 ## 第 7.1 节专用 Linux Engine 完整 Server API 验收
 

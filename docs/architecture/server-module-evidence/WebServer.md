@@ -120,13 +120,13 @@ Windows Release WebServer 和模块边界专项通过，覆盖取消期间的真
 
 ## MB-05 完整认证 Server 的 Nginx 重载与重启
 
-仓内 `RelaxKonOS.Server.Tests/run-authenticated-nginx-live.sh` 和同名 Python 驱动在独立挂载、网络和 PID 命名空间运行。私有状态、发现入口、配置和证书只供专属 Nginx。完整 Linux x64 Release Server 使用生产 PAM 登录和管理员授权路径，未认证重载被拒绝。专属命令实际向 Nginx 提交一次 reload，客户端验证原证书和新站点响应。命令返回前保留测试屏障，通过生产 API 确认操作仍 Running 后终止整个 Server。重启重新认证，同键和原 ID 查询均返回 `3eb76997-4b04-4849-ad72-a34423de592a` Failed / webserver.operation_interrupted。相同 Nginx master 持续提供 HTTPS，reload 计数保持一次。宿主 Docker 和 Nginx PID 及 Nginx 配置指纹一致。
+仓内 `Tests/Server/RelaxKonOS.Server.Tests/run-authenticated-nginx-live.sh` 和同名 Python 驱动在独立挂载、网络和 PID 命名空间运行。私有状态、发现入口、配置和证书只供专属 Nginx。完整 Linux x64 Release Server 使用生产 PAM 登录和管理员授权路径，未认证重载被拒绝。专属命令实际向 Nginx 提交一次 reload，客户端验证原证书和新站点响应。命令返回前保留测试屏障，通过生产 API 确认操作仍 Running 后终止整个 Server。重启重新认证，同键和原 ID 查询均返回 `3eb76997-4b04-4849-ad72-a34423de592a` Failed / webserver.operation_interrupted。相同 Nginx master 持续提供 HTTPS，reload 计数保持一次。宿主 Docker 和 Nginx PID 及 Nginx 配置指纹一致。
 
 日志为 .artifacts/mb05-auth-nginx-admin-live.log，Release 归档 SHA-256 为 e0666d40f74d1058d6ca6d940a33903c9eff280cdef33b06a72c6bb9ecfba6b8。前几轮暴露私有状态挂载、专属 Nginx 初始化和测试身份选择问题，修正后通过。测试命令包装器仅限专属集成实例，生产提供者、授权、台账及重启入口均参与。系统包 Nginx 的 Helper/systemd 故障见下文，其他直接动作仍待验收，完整认证的网站发布见文末。WebServer 保持 resident。
 
 ## MB-05 系统包 Nginx 经生产 Helper 中断与恢复
 
-仓内 `RelaxKonOS.Server.Tests/run-authenticated-nginx-systemd-live.sh` 启动专属 systemd 委派 cgroup，隔离挂载、PID、网络、systemd 单元、PAM 配置和状态。完整 Linux x64 Release Server 走真实 PAM 和生产 Helper Unix socket，调用固定 `nginx.service` 重载。专属单元执行实际 Nginx reload，并在重载后暂缓结束。客户端核验更新后的 HTTPS，生产 API 同时报告原操作 Running。强制终止 Server 和独立生产 Helper 后，原 Helper socket 不可达，原 Nginx master 仍以同一证书提供 HTTPS。释放专属 systemd 重载并重启两进程后，同键与原 ID 均返回 `53b6405f-7cda-41c0-9c46-0e9994f65df6` Failed / webserver.operation_interrupted。原 master PID 保持，实际 reload 一次，专属 cgroup 清理完成。宿主 Nginx、Docker 的服务 PID 和配置指纹一致。
+仓内 `Tests/Server/RelaxKonOS.Server.Tests/run-authenticated-nginx-systemd-live.sh` 启动专属 systemd 委派 cgroup，隔离挂载、PID、网络、systemd 单元、PAM 配置和状态。完整 Linux x64 Release Server 走真实 PAM 和生产 Helper Unix socket，调用固定 `nginx.service` 重载。专属单元执行实际 Nginx reload，并在重载后暂缓结束。客户端核验更新后的 HTTPS，生产 API 同时报告原操作 Running。强制终止 Server 和独立生产 Helper 后，原 Helper socket 不可达，原 Nginx master 仍以同一证书提供 HTTPS。释放专属 systemd 重载并重启两进程后，同键与原 ID 均返回 `53b6405f-7cda-41c0-9c46-0e9994f65df6` Failed / webserver.operation_interrupted。原 master PID 保持，实际 reload 一次，专属 cgroup 清理完成。宿主 Nginx、Docker 的服务 PID 和配置指纹一致。
 
 系统包路径日志为 .artifacts/mb05-auth-nginx-systemd-final.log，归档 SHA-256 为 1e837ca6a8a4fa02c1b967d37906ee05e183f5cac44a47dfcb102f714e091a19。原集成路径独立复测保留 `0ddd5092-68a4-476a-aad1-d6345f7c150d` 和一次重载，日志为 .artifacts/mb05-auth-nginx-integrated-final.log。系统包的自然停机和取消联合排空见下文。Helper 自身等待超时后的原 systemd 作业对账仍开放。
 

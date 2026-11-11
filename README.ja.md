@@ -388,7 +388,7 @@ dotnet run
 
 | ドキュメント | 説明 |
 |-------------|------|
-| [docs/README.md](./docs/README.md) | プロジェクト構造、コードマップ、現在の進捗 |
+| [docs/README.md](./docs/README.md) | コードマップ、開発の入口、分野別ドキュメント |
 | [docs/services](./docs/services) | ユーザーモードサーバー、インストールサービス、独立コンポーネントサービスの進捗 |
 | [docs/testing](./docs/testing) | 受け入れケースとスキップされたテストの説明 |
 

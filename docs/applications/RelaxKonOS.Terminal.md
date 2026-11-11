@@ -32,7 +32,7 @@ Helper 只为同一个已验证本地管理员账号保留完整 S4U token，并
 
 Helper 在签名的启动结果之后转发原始终端输出，输入、resize 和 close 使用 `UserTerminalStreamProtocol` 控制帧。每个会话拥有独立管道，支持并发终端及文件请求；Hub 网络断开保留会话，关闭会话或 Server 管道断开则释放 Helper PTY。
 
-启动失败通过 `terminal.start_failed` 返回具体运行原因，无需启用全局 SignalR 详细异常。可运行 `dotnet run --project RelaxKonOS.Server.Tests -- --terminal-windows-only` 验证真实 Windows PTY，或使用 `--installed-windows-terminal <https-url> <username>` 验证已安装服务器（密码从标准输入读取）。
+启动失败通过 `terminal.start_failed` 返回具体运行原因，无需启用全局 SignalR 详细异常。可运行 `dotnet run --project Tests/Server/RelaxKonOS.Server.Tests -- --terminal-windows-only` 验证真实 Windows PTY，或使用 `--installed-windows-terminal <https-url> <username>` 验证已安装服务器（密码从标准输入读取）。
 
 若终端报 `sudo: The "no new privileges" flag is set`，可用 `grep '^NoNewPrivs:' /proc/$$/status` 检查 shell：正常交互终端应为 `0`。旧版 Helper 创建的会话需要关闭后新建，重新附加旧会话不会移除标志。
 

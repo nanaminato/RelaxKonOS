@@ -560,7 +560,7 @@ WorkspacePreferencesDto
 | 客户端 · 删 | `Services/Theming/ThemeService.cs` |
 | 客户端 · 改 | `Services/ShellSettings.cs`（`Appearance` + `SystemStyleId`，`IsDarkTheme` 取自 `Appearance.Mode`，`HasUnavailableSystemStyle` / `AppliedSystemStyleId`）、`Services/Bootstrapper.cs`、`App.axaml.cs`、`Apps/Settings/**` |
 | Server | `Settings/WorkspacePreferencesValidator.cs` |
-| 测试 | `Tests/Client/RelaxKonOS.Settings.Tests/SystemStyleChecks.cs`（新增）、`RelaxKonOS.Server.Tests/Program.cs`、`RelaxKonOS.Server.Tests/SettingsSystemVerification.cs` |
+| 测试 | `Tests/Client/RelaxKonOS.Settings.Tests/SystemStyleChecks.cs`（新增）、`Tests/Server/RelaxKonOS.Server.Tests/Program.cs`、`Tests/Server/RelaxKonOS.Server.Tests/SettingsSystemVerification.cs` |
 
 ### 10.1 测试覆盖（`SystemStyleChecks`）
 
@@ -599,7 +599,7 @@ WorkspacePreferencesDto
 
 ```bash
 dotnet run --project Tests/Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false
-dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --settings-only
+dotnet Tests/Server/RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --settings-only
 ```
 
 > 注意：`Tests/Client/RelaxKonOS.Settings.Tests` **不在** `RelaxKonOS.sln` 中，

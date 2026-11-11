@@ -388,7 +388,7 @@ The client will open a login dialog. Enter your host system username and passwor
 
 | Document | Description |
 |----------|-------------|
-| [docs/README.md](./docs/README.md) | Project structure, code map, current progress |
+| [docs/README.md](./docs/README.md) | Code map, development entry points, and documentation by area |
 | [docs/services](./docs/services) | Progress records for the User Mode server, installation services and independent component services |
 | [docs/testing](./docs/testing) | Acceptance cases and notes on skipped tests |
 

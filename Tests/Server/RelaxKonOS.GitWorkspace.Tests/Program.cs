@@ -108,7 +108,11 @@ await Reject(async () => { await service.CreateWorktreeAsync(id, user, new(Path.
 await Reject(async () => { await service.CreateWorktreeAsync(id, user, new(Path.Combine(path, ".GIT", "bad"))); }, "Git metadata path protection is case-insensitive");
 var clonePath = Path.Combine(root, "clone");
 var clone = await service.CloneAsync(new(path, clonePath), user);
-Check(clone.Result.Success && Directory.Exists(Path.Combine(clonePath, ".git")) && (await service.ListRepositoriesAsync(user)).Any(repo => repo.Id == clone.Repository!.Id), "Clone creates repository and registers it for its owner");
+if (!clone.Result.Success)
+    throw new InvalidOperationException($"Local Git clone failed: {clone.Result.Message}");
+Check(Directory.Exists(Path.Combine(clonePath, ".git")) && clone.Repository is { } clonedRepository
+    && (await service.ListRepositoriesAsync(user)).Any(repo => repo.Id == clonedRepository.Id),
+    "Clone creates repository and registers it for its owner");
 await Reject(async () => { await service.CloneAsync(new("ext::anything", Path.Combine(root, "unsafe")), user); }, "Clone rejects external command transports");
 Check(!(await service.CloneAsync(new(path, clonePath), user)).Result.Success, "Clone refuses a nonempty destination");
 var (integrate, integrateId) = await Setup("integrate");

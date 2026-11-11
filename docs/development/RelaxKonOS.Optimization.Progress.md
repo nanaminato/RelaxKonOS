@@ -44,7 +44,7 @@
 
 依据：[ObservabilitySanitizer.cs](../../RelaxKonOS.Server/Observability/ObservabilitySanitizer.cs) 的 `SensitiveAssignment` 要求键名后直接出现空白和 `:`/`=`；`{"password":"example-secret"}` 中键名后的引号不满足规则，普通赋值值匹配也止于空白。
 
-现有 [ObservabilityChecks.cs](../../RelaxKonOS.Server.Tests/ObservabilityChecks.cs) 覆盖普通赋值、Bearer 和 URL 凭证，尚未覆盖上述输入。
+现有 [ObservabilityChecks.cs](../../Tests/Server/RelaxKonOS.Server.Tests/ObservabilityChecks.cs) 覆盖普通赋值、Bearer 和 URL 凭证，尚未覆盖上述输入。
 
 建议：补充可复现用例后修复净化边界，明确 JSON、带引号值、空格、转义和大小写语义；核对所有调用该摘要净化器的日志与审计出口。
 
@@ -82,7 +82,7 @@
 
 ### OPT-006：文档状态与仓库策略对齐
 
-当前状态（2026-10-31）：任务管理器重复的重写方案已清理，现行采样、协议、进程实例终止与权限边界统一见[任务管理器](../applications/RelaxKonOS.TaskManager.md)。不再将旧兼容期要求作为待办。后端可观测性设计中的历史测试失败与当前状态仍需分别阅读；`TestAssert.Equal/True` 已存在于 [TestAssert.cs](../../RelaxKonOS.Server.Tests/TestAssert.cs)。
+当前状态（2026-10-31）：任务管理器重复的重写方案已清理，现行采样、协议、进程实例终止与权限边界统一见[任务管理器](../applications/RelaxKonOS.TaskManager.md)。不再将旧兼容期要求作为待办。后端可观测性设计中的历史测试失败与当前状态仍需分别阅读；`TestAssert.Equal/True` 已存在于 [TestAssert.cs](../../Tests/Server/RelaxKonOS.Server.Tests/TestAssert.cs)。
 
 后续：继续按各领域实现核对文档状态；仍未覆盖的日志净化问题见 OPT-002。
 
@@ -104,7 +104,7 @@
 - 已检查浏览器端点及两类仓储、SSH transport、事件告警存储、摘要净化器及相关测试、专项设计和文档索引。
 - SDK：`dotnet --version` 为 `10.0.300`。
 - 初次常规构建未成功；普通日志显示编译服务器命名管道 `UnauthorizedAccessException`。这属于本地执行限制，不能据此判断源码无法编译。
-- 关闭共享编译并串行构建后成功：`dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v minimal`，0 错误、3 个 CA1416 警告。
+- 关闭共享编译并串行构建后成功：`dotnet build Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v minimal`，0 错误、3 个 CA1416 警告。
 - 尚未运行测试可执行程序、完整 solution 构建、Android 验证、性能基准或真实 SSH 验收。上述未执行项不计为通过。
 
 首轮建议顺序为 OPT-001 → OPT-002 → OPT-003，随后文档/平台边界与容量测量；现均已进入实施与验收记录。
@@ -128,8 +128,8 @@
 
 | 验证 | 命令/入口 | 结果 |
 |---|---|---|
-| 服务端测试项目编译 | `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` | 0 警告、0 错误 |
-| 优化与 HTTP 专项 | `dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --optimization-only` | 通过；包含 JWT/分页/跨用户删除、净化、并发索引、WAL 快照、首次初始化、取消、保留与游标遍历 |
+| 服务端测试项目编译 | `dotnet build Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` | 0 警告、0 错误 |
+| 优化与 HTTP 专项 | `dotnet Tests/Server/RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --optimization-only` | 通过；包含 JWT/分页/跨用户删除、净化、并发索引、WAL 快照、首次初始化、取消、保留与游标遍历 |
 | 布局测试项目编译 | `dotnet build Tests/Client/RelaxKonOS.ApplicationLayout.Tests/RelaxKonOS.ApplicationLayout.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` | 成功；客户端仍有 5 个其他模块警告（CS8604、MVVMTK0034、3 个 AVLN3001） |
 | 完整布局套件 | `dotnet Tests/Client/RelaxKonOS.ApplicationLayout.Tests/bin/Debug/net10.0/RelaxKonOS.ApplicationLayout.Tests.dll` | 105 个原页面布局检查通过，额外 18 个浏览器组合通过 |
 | 浏览器专项入口 | 同一布局程序添加 `--browser-only` | 标签/分页/布局、菜单命令绑定与地址栏焦点通过，生成截图 |

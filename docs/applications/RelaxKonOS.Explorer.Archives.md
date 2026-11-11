@@ -46,8 +46,8 @@ System Mode 普通用户解压在 Helper 永久降权（Linux）或 S4U 模拟�
 2026-10-24 本地验证：146 项归档检查（60 基础/身份任务、39 provider、27 加密、20 TAR）和 420 项 Explorer 检查通过，5037 个三语键一致，Server 与 Helper 编译通过。独立入口引用相同归档测试源码，覆盖 100 个小文件加多块大文件只发一次解压请求、抽样进度与最终计数、缺失/重复终止帧和超大帧拒绝、运行中取消及暂存清理，以及现有 ZIP/TAR/CLI/密码验证。真实 Linux sudo/UID 转换和耗时仍需部署验收，不能用模拟 transport 的耗时推断实机提速。完整 Server.Tests 工程仍有既有 Mihomo 旧 API 引用问题。
 
 ```text
-dotnet build RelaxKonOS.Server.Tests -m:1
-dotnet run --project RelaxKonOS.Server.Tests --no-build -- --archives-only
+dotnet build Tests/Server/RelaxKonOS.Server.Tests -m:1
+dotnet run --project Tests/Server/RelaxKonOS.Server.Tests --no-build -- --archives-only
 dotnet run --project Tests/Client/RelaxKonOS.Explorer.Tests
 dotnet build Client/RelaxKonOS.Client.Desktop -m:1
 python Tools/verify-localization.py

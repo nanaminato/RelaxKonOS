@@ -51,10 +51,10 @@
 | `Client/RelaxKonOS.Client/Views/Shell/LauncherDesktopShells.cs` | 1556 | 4 个 shell 类 + 3 个 helper（含画笔转换器）同文件 |
 | `Client/RelaxKonOS.Client/ViewModels/ServerCenter/ServerCenterViewModel.cs` | 1500 | 48 个方法、12 处 `catch`；已有一个 partial |
 | `Client/RelaxKonOS.Client/Apps/ServerCenter/Views/SshFileBrowserView.axaml.cs` | 1488 | 128 个方法、22 个 `async void`，没有 ViewModel |
-| `RelaxKonOS.Server.Tests/ServerCoreChecks.cs` | 1467 | 21 个互不相关的检查（用户执行、XDG、SMB、主题、性能采样、壁纸…） |
+| `Tests/Server/RelaxKonOS.Server.Tests/ServerCoreChecks.cs` | 1467 | 21 个互不相关的检查（用户执行、XDG、SMB、主题、性能采样、壁纸…） |
 | `RelaxKonOS.PrivilegedHelper/LinuxUserFileOperations.cs` | 1325 | 10 个类型、88 个方法 |
 | `RelaxKonOS.PrivilegedHelper/Program.cs` | 1055 | 命令分派与实现同文件 |
-| `RelaxKonOS.Server.Tests/DockerChecks.cs` | 1017 | 容器/镜像/网络/卷/栈检查混在一起 |
+| `Tests/Server/RelaxKonOS.Server.Tests/DockerChecks.cs` | 1017 | 容器/镜像/网络/卷/栈检查混在一起 |
 | `Tests/ServerModules/Program.cs` | 约 950 | 10 个测试宿主；本轮新增的驻留检查也堆在这里 |
 | `RelaxKonOS.Server/Startup/ServerModules.cs` | 320 | 目录、配置、排序、清单、门禁五种职责 |
 

@@ -60,7 +60,7 @@ SSH 桌面右键的文件管理器入口打开 SSH 文件浏览器；依赖服�
 
 开发服务端未配置 `Observability:LogDirectory` 时默认写入输出目录 `data/logs/runtime-YYYYMMDD.jsonl`；安装版使用配置的运行日志目录。所有 HTTP 4xx/5xx 请求均记录完成事件，不受成功请求采样率影响。客户端和服务端日志可按 correlation ID 对照。历史上未开启文件日志的开发请求无法追溯；这些默认值仅对重启后的开发服务端生效。
 
-回归验证：`dotnet run --project Tests/Client/RelaxKonOS.WorkspacePreferences.Tests` 覆盖令牌刷新后连续保存、旧登录/其他服务响应隔离、HTTP 错误分类、草稿保留、取消请求不能覆盖重试及客户端日志不含令牌/正文；`dotnet run --project RelaxKonOS.Server.Tests -- --settings-only` 覆盖完整调色板导入和 HTTP 保存、失败请求零采样仍记录关联日志及原有并发/持久化检查。
+回归验证：`dotnet run --project Tests/Client/RelaxKonOS.WorkspacePreferences.Tests` 覆盖令牌刷新后连续保存、旧登录/其他服务响应隔离、HTTP 错误分类、草稿保留、取消请求不能覆盖重试及客户端日志不含令牌/正文；`dotnet run --project Tests/Server/RelaxKonOS.Server.Tests -- --settings-only` 覆盖完整调色板导入和 HTTP 保存、失败请求零采样仍记录关联日志及原有并发/持久化检查。
 
 内置桌面布局的 Workspace 与设备本地选择均只保存 `shellId`；描述器的内置实现版本不属于外部包信息。Settings 与桌面快捷切换共用 `ShellSettings.SelectShell`，外部桌面继续携带包 ID 和版本。服务端拒绝无效偏好时返回 `invalidField`，并记录同一 correlation ID 的 `input.rejected` 事件，只包含固定字段路径，不包含字段值。回归覆盖真实个性化页切换三种内置布局，再修改颜色/壁纸，以及外部包元数据保留。
 

@@ -193,7 +193,7 @@ IIdentityProvider
 - **平台选择**：`Program.cs` 按 `OperatingSystem.IsWindows/IsLinux` 注册对应 Provider，其他服务端宿主平台在启动时明确拒绝。
 - **服务器不存储密码**：认证仍完全委托宿主 OS（Authentication.md §17）；客户端仅在用户勾选自动登录后，才将密码交给操作系统安全存储。
 
-`WindowsLogonProvider` 从 `Windows Server Test/Categories/Authentication/WindowsCredentialVerifier.cs` 迁移而来（已验证 LogonUser 可行）；`Windows Server Test` 项目改为引用 Server 调 `IIdentityProvider`，单一数据来源。
+Windows 原生账号验证由服务端的 [WindowsLogonProvider](../../RelaxKonOS.Server/Identity/WindowsLogonProvider.cs) 实现。
 
 ### 4.3 JWT 签发
 

@@ -491,7 +491,7 @@ V1 Alias 发布至少完成 Windows 本地账户的只读存在性/禁用/账号
 
 ## 24. Testing Strategy / 测试策略
 
-采用仓库现有可执行验证项目风格：[RelaxKonOS.Server.Tests.csproj](../../RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj)、[Tests/Client/RelaxKonOS.Settings.Tests](../../Tests/Client/RelaxKonOS.Settings.Tests/Program.cs)。
+采用仓库现有可执行验证项目风格：[RelaxKonOS.Server.Tests.csproj](../../Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj)、[Tests/Client/RelaxKonOS.Settings.Tests](../../Tests/Client/RelaxKonOS.Settings.Tests/Program.cs)。
 
 后续可添加 `AliasLoginVerification`、身份迁移及 Session 验证组；不能仅靠 mock 声称验证了 PAM、域账号或 Windows Service。
 
@@ -502,7 +502,7 @@ V1 Alias 发布至少完成 Windows 本地账户的只读存在性/禁用/账号
 - **客户端**：创建/修改/删除对话框、三语言、键盘/屏幕阅读器、密码清理；记住的 Alias 密码不会换成系统名；切服务器时旧响应丢弃；No-store；Network Inspector、异常和导出无秘密。
 - **运维**：全新库、真实旧库副本、重复 User 阻止升级、数据库只读/损坏、进程被杀、重启、恢复命令拒绝非管理员；确认不修改 OS 账号；生产 HTTPS 和证书正常。
 
-实施后的常规命令使用 `dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj` 与 `dotnet run --project Tests/Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj`，并构建 Server/Client/Protocol；平台集成单列运行结果，不把跳过当通过。本次文档交付只做路径、链接、内容覆盖和 diff 检查，不声称上述测试已运行。
+实施后的常规命令使用 `dotnet run --project Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj` 与 `dotnet run --project Tests/Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj`，并构建 Server/Client/Protocol；平台集成单列运行结果，不把跳过当通过。本次文档交付只做路径、链接、内容覆盖和 diff 检查，不声称上述测试已运行。
 
 ## 25. Acceptance Criteria / 验收标准
 

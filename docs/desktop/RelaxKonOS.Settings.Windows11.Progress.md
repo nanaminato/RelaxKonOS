@@ -53,7 +53,7 @@
 | `dotnet run --project Tests/Client/RelaxKonOS.WorkspacePreferences.Tests --no-restore -p:UsedAvaloniaProducts= -v quiet` | 恢复依赖并在允许写入客户端测试日志的环境中通过；包含新详情路由允许列表与共享编辑保存检查 |
 | `dotnet run --project Tests/Client/RelaxKonOS.WindowPreviews.Tests --no-restore -p:UsedAvaloniaProducts= -v quiet -- --settings-interaction-only` | 通过；真实时间语言页面及完整根窗口导航、快捷键、搜索/返回/位置恢复、保存失败/重试/持久化、来源清理和三语言检查 |
 | 时间语言页面 headless 截图与缩放模拟 | 生成 640×480、1024×768、1440×900 截图及 320×240 逻辑视口配合 2x 位图密度的截图；放大视口检查无横向滚动和输入控件横向裁切。已查看普通与放大截图；不等同于原生系统 200% 验收 |
-| `dotnet run --project RelaxKonOS.Server.Tests --no-restore -v quiet -- --settings-only` | 通过；增加服务端目录当前标识/详情路由检查，保留授权、幂等、冲突、同步和偏好 HTTP 回归 |
+| `dotnet run --project Tests/Server/RelaxKonOS.Server.Tests --no-restore -v quiet -- --settings-only` | 通过；增加服务端目录当前标识/详情路由检查，保留授权、幂等、冲突、同步和偏好 HTTP 回归 |
 | 人工运行完整设置窗口、屏幕阅读器、原生 200% 缩放 | 未执行，不能视为已验收 |
 
 本机旧测试依赖缓存曾使用 Avalonia 12.1.2，与仓库当前 12.1.3 不一致；执行 restore 后解决，没有修改仓库版本。restore 的漏洞数据查询出现 SSL 警告，不能视为完成依赖安全扫描。构建命令只在本次验证中跳过 Avalonia BuildServices 统计任务，避免受限环境中的用户目录日志写入，不修改产品构建配置。

@@ -1,8 +1,7 @@
-# TODO
-1. 排名不分先后
-2. 文件上传，解压，以及进度可视化
-3. 程序安装器（服务器）
-4. task 抽象脚本化便于自动化执行（Agent）
-5. 定时任务
-6. 拖动文件夹/文件到桌面
+# 待办与进度入口
+
+- 文件上传、解压与进度展示见[文件管理器进度](docs/applications/RelaxKonOS.Explorer.Progress.md)与[归档操作](docs/applications/RelaxKonOS.Explorer.Archives.md)。
+- 服务器程序安装见[组件中心进度](docs/platform/RelaxKonOS.ComponentCenter.Progress.md)与[安装服务进度](docs/services/RelaxKonOS.InstallationServices.Progress.md)。
+- Agent 自动化执行与定时任务见[任务编排设计](docs/platform/RelaxKonOS.TaskOrchestration.Design.md)。
+- 桌面交互待办：把文件和文件夹拖到桌面。
 

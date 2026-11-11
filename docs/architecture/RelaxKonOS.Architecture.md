@@ -206,7 +206,7 @@ Client ←── Protocol ──→ Server
 
 - **定位**：RelaxKonOS Cloud Backend，跨平台运行于 Ubuntu / Windows Server。
 - **提供**：Authentication、Workspace、Storage、Sync、Remote Runtime、Compute API、Security Integration。
-- **架构**：单一代码库 + OS 抽象层。平台差异封装在 Provider 抽象接口族之后，Linux/Windows 各自提供实现；所有原生 OS API 先在 `Windows Server Test` 测试床验证，再迁移进抽象层实现。
+- **架构**：单一代码库 + OS 抽象层。平台差异封装在 Provider 抽象接口族之后，Linux/Windows 各自提供实现；原生 OS API 通过对应领域的测试或专项探针验证，再集成到 Provider。
   - 身份：`IIdentityProvider`（`WindowsLogonProvider` / `LinuxPamProvider`，占位）
   - 系统指标：`ISystemMetricsProvider`（`WindowsMetricsProvider` / `LinuxMetricsProvider`）
   - 防火墙：`IFirewallProvider`（`LinuxUfwFirewallProvider` / Windows 暂禁用）
@@ -300,7 +300,7 @@ RelaxKonOS 应用分为两类。
 - **原则 6 — 持久化双域隔离**。
   - User/Workspace 域：业务库（EF Core + 增量补齐），每用户隔离。
   - HostGlobal 域：证书/WebServer 等宿主级资源走 `HostGlobalMigrationRunner` 独立版本化迁移，不纳入业务 DbContext，确保证书签发/WebServer 操作的可恢复性独立于业务 schema 演进。
-- **原则 7 — OS 抽象先探测后集成**。任何原生 OS API（Win32、/proc、PAM、UFW、Nginx 控制、systemd/SCM）先在「Windows Server Test」测试床验证，再进入 `*Provider` 实现，确保 Ubuntu/Windows Server 两种路径都有设计位。
+- **原则 7 — OS 抽象先探测后集成**。任何原生 OS API（Win32、/proc、PAM、UFW、Nginx 控制、systemd/SCM）先在对应宿主上通过领域测试或专项探针验证，再进入 `*Provider` 实现，确保 Ubuntu/Windows Server 两种路径都有设计位。
 
 ---
 

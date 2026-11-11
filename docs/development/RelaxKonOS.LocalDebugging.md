@@ -262,7 +262,7 @@ dotnet run --project RelaxKonOS.Server
 | `RelaxKonOS.PrivilegedHelper/WindowsPrivilegedHelperService.cs` | 同上 |
 | `RelaxKonOS.Server/Properties/launchSettings.json` | `http` / `https` 两个开发 profile 设为 `local-identity` |
 | `deployment/windows/Install-RelaxKonOSServices.ps1` | 由 bool 开关改为写 `UserExecutionBackend`：开关**开启**写 `helper`，**省略**写 `disabled`（与今天的 Helper 侧能力门一一对应，永不写 `local-identity`） |
-| `RelaxKonOS.Server.Tests/{ServerCoreChecks,Program,GitConflictChecks,AliasLoginVerification}.cs` | 见第 6 节 |
+| `Tests/Server/RelaxKonOS.Server.Tests/{ServerCoreChecks,Program,GitConflictChecks,AliasLoginVerification}.cs` | 见第 6 节 |
 
 按仓库 API 演进政策：**不保留** `EnableWindowsUserExecution` 的兼容别名，同一变更内更新全部调用方、安装器、测试与文档。
 

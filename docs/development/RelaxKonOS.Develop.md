@@ -17,6 +17,20 @@ ASP.NET Core OpenAPI 10.0.x 要求 Microsoft.OpenApi 小于 3；SkiaSharp 固定
 
 ---
 
+## 专项验证
+
+在仓库根目录执行以下命令。默认套件及其参数维护在 [Tools/tests.json](../../Tools/tests.json)。
+
+```powershell
+powershell -NoProfile -File Tools/verify.ps1 -List
+powershell -NoProfile -File Tools/verify.ps1
+powershell -NoProfile -File Tools/verify.ps1 -Suite core-storage-boundaries
+```
+
+核心与虚拟系统盘套件位于 [Tests/Framework](../../Tests/Framework/)。该套件会创建符号链接，Windows 上运行时需使用具备创建符号链接权限的会话。
+
+服务端综合验证和夹具位于 [Tests/Server/RelaxKonOS.Server.Tests](../../Tests/Server/RelaxKonOS.Server.Tests/)。运行单项时可用 `powershell -NoProfile -File Tools/verify.ps1 -Suite server-terminal-contract`，其他套件 ID 通过 `-List` 查看。
+
 ## 常规桌面系统（Windows 10/11）
 
 ### Windows 10/11：先选择互斥的开发模型
