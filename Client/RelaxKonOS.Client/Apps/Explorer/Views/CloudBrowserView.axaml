@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.Explorer.Views.CloudBrowserView"
+             x:CompileBindings="False"
+             Background="{DynamicResource SurfaceBrush}">
+    <Grid Margin="12" RowDefinitions="Auto,*,Auto" RowSpacing="8" x:Name="Browser">
+        <StackPanel Grid.Row="0" Spacing="6">
+            <WrapPanel ItemSpacing="5" LineSpacing="5">
+                <Button Content="{loc:Loc explorer.cloud.host_files}" Click="Close_Click" />
+                <Button Content="{loc:Loc common.refresh}" Click="Refresh_Click" />
+                <Button Content="{loc:Loc explorer.cloud.add}" Click="Add_Click" x:Name="AddButton" />
+                <Button Content="{loc:Loc explorer.cloud.replace}" Click="Replace_Click" x:Name="ReplaceButton" />
+                <Button Content="{loc:Loc explorer.cloud.revoke}" Click="Revoke_Click" x:Name="RevokeButton" />
+            </WrapPanel>
+            <ComboBox x:Name="Connections" HorizontalAlignment="Stretch" SelectionChanged="Connections_SelectionChanged">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <WrapPanel ItemSpacing="5" LineSpacing="5">
+                <Button x:Name="UpButton" Content="{loc:Loc explorer.cloud.up}" Click="Up_Click" />
+                <Button x:Name="OpenButton" Content="{loc:Loc explorer.cloud.open}" Click="Open_Click" />
+                <Button x:Name="DownloadButton" Content="{loc:Loc explorer.cloud.download}" Click="Download_Click" />
+                <Button x:Name="UploadButton" Content="{loc:Loc explorer.cloud.upload}" Click="Upload_Click" />
+                <TextBox x:Name="FolderName" Width="140" Watermark="{loc:Loc explorer.cloud.new_folder}" />
+                <Button x:Name="CreateFolderButton" Content="{loc:Loc explorer.cloud.create_folder}" Click="CreateFolder_Click" />
+                <Button x:Name="MoreButton" Content="{loc:Loc explorer.cloud.more}" Click="More_Click" />
+            </WrapPanel>
+            <TextBlock x:Name="Location" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <Grid Grid.Row="1">
+            <DataGrid x:Name="CloudEntries" AutoGenerateColumns="False" IsReadOnly="True"
+                      SelectionMode="Single" SelectionChanged="Entries_SelectionChanged" DoubleTapped="Open_Click">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="{loc:Loc explorer.cloud.name}" Binding="{Binding Name}" Width="*" />
+                    <DataGridTextColumn Header="{loc:Loc explorer.cloud.size}" Binding="{Binding Size}" Width="Auto" />
+                    <DataGridTextColumn Header="{loc:Loc explorer.cloud.modified}" Binding="{Binding ModifiedAt}" Width="Auto" />
+                </DataGrid.Columns>
+            </DataGrid>
+            <ScrollViewer x:Name="ConnectionForm" IsVisible="False" Background="{DynamicResource SurfaceBrush}">
+                <StackPanel Spacing="8">
+                    <TextBox x:Name="ConnectionName" Watermark="{loc:Loc explorer.cloud.name}" />
+                    <ComboBox x:Name="Protocol" SelectedIndex="0" SelectionChanged="Protocol_SelectionChanged">
+                        <ComboBoxItem Content="WebDAV" />
+                        <ComboBoxItem Content="S3" />
+                    </ComboBox>
+                    <TextBox x:Name="Endpoint" Watermark="{loc:Loc explorer.cloud.endpoint}" />
+                    <TextBox x:Name="UserName" Watermark="{loc:Loc explorer.cloud.user}" />
+                    <TextBox x:Name="Secret" PasswordChar="●" Watermark="{loc:Loc explorer.cloud.secret}" />
+                    <CheckBox x:Name="EnableWrites" Content="{loc:Loc explorer.cloud.enable_writes}" />
+                    <CheckBox x:Name="PrivateDav" Content="{loc:Loc explorer.cloud.private}" />
+                    <StackPanel x:Name="S3Fields" Spacing="8" IsVisible="False">
+                        <TextBox x:Name="Region" Watermark="{loc:Loc explorer.cloud.region}" />
+                        <TextBox x:Name="Bucket" Watermark="{loc:Loc explorer.cloud.bucket}" />
+                        <TextBox x:Name="Prefix" Watermark="{loc:Loc explorer.cloud.prefix}" />
+                        <TextBox x:Name="SessionToken" PasswordChar="●" Watermark="{loc:Loc explorer.cloud.token}" />
+                    </StackPanel>
+                    <WrapPanel ItemSpacing="5">
+                        <Button Content="{loc:Loc explorer.cloud.save}" Click="Save_Click" />
+                        <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
+                    </WrapPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+        <TextBlock Grid.Row="2" x:Name="Status" TextWrapping="Wrap" />
+    </Grid>
+</UserControl>

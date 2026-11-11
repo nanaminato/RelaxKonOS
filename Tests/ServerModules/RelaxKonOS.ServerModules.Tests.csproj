@@ -24,6 +24,7 @@
     <EmbeddedResource Remove="HostFixture/**" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../ServerModules/RelaxKonOS.ServerModule.CloudStorage/RelaxKonOS.ServerModule.CloudStorage.csproj" />
     <ProjectReference Include="../../ServerModules/RelaxKonOS.ServerModule.Git/RelaxKonOS.ServerModule.Git.csproj" />
   </ItemGroup>
 </Project>

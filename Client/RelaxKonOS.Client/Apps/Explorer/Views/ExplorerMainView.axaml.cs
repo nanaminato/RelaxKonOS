@@ -64,9 +64,87 @@ public partial class ExplorerMainView : UserControl
         private set => SetValue(EntriesTableWidthProperty, value);
     }
 
+    private ExplorerClient? _cloudClient;
+    private bool _hasCloudStorage;
+    internal bool IsCloudStorageOpen => CloudBrowser.IsVisible;
+
+    private void UpdateCloudStorageEntry()
+    {
+        var compact = FileContentGrid.Bounds.Width < 620;
+        CloudStorageButton.IsVisible = _hasCloudStorage && !compact;
+        CloudRootScroll.IsVisible = CloudStorageButton.IsVisible && CloudRoots.Items.Count > 0;
+        CloudStorageCompactButton.IsVisible = _hasCloudStorage && compact;
+    }
+
+    internal async Task DiscoverCloudStorageAsync(ExplorerClient client, CancellationToken ct)
+    {
+        _cloudClient = client;
+        try
+        {
+            var sources = await client.CloudConnectionsAsync(ct);
+            if (!ct.IsCancellationRequested)
+            {
+                _hasCloudStorage = sources is not null;
+                CloudRoots.ItemsSource = sources;
+                UpdateCloudStorageEntry();
+            }
+        }
+        catch (Exception error) when (error is HttpRequestException or IOException or InvalidOperationException
+            or Services.Auth.RelaxKonOSAuthException or System.Text.Json.JsonException or OperationCanceledException)
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                _hasCloudStorage = false;
+                UpdateCloudStorageEntry();
+            }
+        }
+    }
+
+    internal void ResetCloudStorage()
+    {
+        CloudBrowser.Reset();
+        _cloudClient = null;
+        _hasCloudStorage = false;
+        CloudRoots.ItemsSource = null;
+        UpdateCloudStorageEntry();
+        CloseCloudStorage();
+    }
+
+    private async void CloudStorage_Click(object? sender, RoutedEventArgs e) => await OpenCloudStorageAsync(null);
+
+    private async void CloudRoot_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: CloudConnectionDto connection }) await OpenCloudStorageAsync(connection.Id);
+    }
+
+    private async Task OpenCloudStorageAsync(Guid? connection)
+    {
+        if (_cloudClient is not { } client) return;
+        CloudBrowser.IsVisible = true;
+        EntriesScrollViewer.IsVisible = false;
+        NavigationTree.IsHitTestVisible = false;
+        HeaderHost.IsEnabled = false;
+        await CloudBrowser.OpenAsync(client, connection);
+    }
+
+    private void CloseCloudStorage()
+    {
+        CloudBrowser.IsVisible = false;
+        EntriesScrollViewer.IsVisible = true;
+        NavigationTree.IsHitTestVisible = true;
+        HeaderHost.IsEnabled = true;
+    }
+
     public ExplorerMainView()
     {
         InitializeComponent();
+        CloudBrowser.CloseRequested += (_, _) => CloseCloudStorage();
+        CloudBrowser.ConnectionsChanged += sources =>
+        {
+            CloudRoots.ItemsSource = sources;
+            UpdateCloudStorageEntry();
+        };
+        FileContentGrid.SizeChanged += (_, _) => UpdateCloudStorageEntry();
         TabScroller.ScrollChanged += (_, _) => UpdateTabScrollMarks();
         BreadcrumbScroll.SizeChanged += (_, _) => ScrollBreadcrumbsToLocation();
         // The strip is exactly as wide as its tabs now, so the width the tabs divide between them

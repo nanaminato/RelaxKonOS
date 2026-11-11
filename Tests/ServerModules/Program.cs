@@ -81,6 +81,16 @@ if (args is ["--module-authorization-checks"])
     return;
 }
 
+if (args is ["--cloud-storage-checks"])
+{
+    await CloudStorageChecks.RunAsync((passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
 if (args is ["--module-host-checks"])
 {
     void VerifyHost(bool passed, string message)
@@ -300,6 +310,7 @@ await GitDeactivationChecks.RunAsync(Check);
 await ModulePackageChecks.RunAsync(Check);
 await ModulePackageBuilderChecks.RunAsync(Check);
 await ModuleHostChecks.RunAsync(Check);
+await CloudStorageChecks.RunAsync(Check);
 await ModuleHostLifetimeChecks.RunAsync(Check);
 await ModulePrivilegeChecks.RunAsync(Check);
 await ModuleResourceTransactionChecks.RunAsync(Check);

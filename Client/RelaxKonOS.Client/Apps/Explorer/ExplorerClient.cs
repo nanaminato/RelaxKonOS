@@ -13,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 /// 不 mutate HttpClient.BaseAddress，每个请求用 <see cref="IAuthSession.EffectiveBaseUrl"/> 构造绝对 URI（避免共享实例并发竞态）。
 /// Authorization 头从 <see cref="IAuthSession.Tokens"/> 取；未登录抛 <see cref="InvalidOperationException"/>。
 /// 失败读 ProblemDetails 抛 <see cref="RelaxKonOSAuthException"/>（与 <see cref="RelaxKonOSClient"/> 同源）。</summary>
-public sealed class ExplorerClient : IExplorerClient, IArchiveClient, IEditorFileWriter
+public sealed partial class ExplorerClient : IExplorerClient, IArchiveClient, IEditorFileWriter
 {
     private readonly HttpClient _http;
     private readonly IAuthSession _session;

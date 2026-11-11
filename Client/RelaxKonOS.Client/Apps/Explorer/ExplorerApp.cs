@@ -121,6 +121,24 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
             _ = operations.RestoreAsync();
         }
         var view = new ExplorerMainView { DataContext = viewModel };
+        var cloudDiscovery = new CancellationTokenSource();
+        void DiscoverCloudStorage()
+        {
+            if (client is ExplorerClient explorerClient && session.State == AuthSessionState.Authenticated)
+                _ = view.DiscoverCloudStorageAsync(explorerClient, cloudDiscovery.Token);
+        }
+        void RefreshCloudSession(object? sender, AuthSessionStateChangedEventArgs change) =>
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (cloudDiscovery.IsCancellationRequested) return;
+                cloudDiscovery.Cancel();
+                cloudDiscovery.Dispose();
+                cloudDiscovery = new CancellationTokenSource();
+                view.ResetCloudStorage();
+                DiscoverCloudStorage();
+            });
+        session.StateChanged += RefreshCloudSession;
+        DiscoverCloudStorage();
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.explorer.display_name"), view,
             bounds: new Rect(80, 60, 960, 640),
             iconGlyph: Manifest.IconGlyph);
@@ -138,6 +156,9 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
             context.WindowManager.WindowClosed -= closed;
             if (operations is not null) operations.Completed -= RefreshAfterOperation;
             session.StateChanged -= InvalidateSessionCache;
+            session.StateChanged -= RefreshCloudSession;
+            cloudDiscovery.Cancel();
+            cloudDiscovery.Dispose();
             viewModel.Dispose();
             _windows.Remove(window);
             _initializations.Remove(window);
@@ -146,6 +167,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
         viewModel.CloseAction = () => Dispatcher.UIThread.Post(() => context.WindowManager.Close(window));
         window.KeyDown += (_, e) =>
         {
+            if (view.IsCloudStorageOpen) return;
             if (!e.Handled && !e.IsRepeat)
             {
                 if (WindowShortcut.TryExecute(e, RemoteKey.Letter('T'), RemoteKeyModifiers.Control, viewModel.NewTabCommand)

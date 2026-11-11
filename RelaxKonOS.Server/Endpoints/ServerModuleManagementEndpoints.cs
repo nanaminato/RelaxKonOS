@@ -1,8 +1,11 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Server.Files;
 using RelaxKonOS.Server.Startup;
 using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModulePackaging;
@@ -93,6 +96,14 @@ internal static class ServerModuleManagementEndpoints
             if (!hosts.Exists(moduleId)) return Results.NotFound();
             if (!hosts.CanAccess(moduleId, http.User))
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (moduleId == CloudStorageApi.ModuleId)
+            {
+                var authorization = http.RequestServices.GetRequiredService<IAuthorizationService>();
+                var policy = HttpMethods.IsGet(http.Request.Method) || HttpMethods.IsHead(http.Request.Method)
+                    ? FileAuthorizationPolicies.Read : FileAuthorizationPolicies.Write;
+                if (!(await authorization.AuthorizeAsync(http.User, null, policy)).Succeeded)
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
             if (path is not null && path.Split('/').Any(part => part is ".." or ".")) return Results.BadRequest();
             using var connection = hosts.AcquireConnection(moduleId);
             if (connection is null) return Results.NotFound();

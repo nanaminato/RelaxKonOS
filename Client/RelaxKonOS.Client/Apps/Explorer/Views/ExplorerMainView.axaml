@@ -5,6 +5,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:c="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Converters"
              xmlns:controls="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
+             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Views"
              xmlns:models="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Models"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Explorer.ViewModels"
              xmlns:d="clr-namespace:RelaxKonOS.Protocol.Files;assembly=RelaxKonOS.Protocol"
@@ -291,10 +292,29 @@
             </Grid>
         </Border>
 
+        <Button DockPanel.Dock="Top" x:Name="CloudStorageCompactButton" IsVisible="False"
+                HorizontalAlignment="Left" Margin="4" Click="CloudStorage_Click"
+                Content="{loc:Loc explorer.cloud.title}" />
+
         <!-- 主体：左导航树 | 分隔 | 右条目列表 -->
         <Grid x:Name="FileContentGrid" ColumnDefinitions="210,Auto,*">
             <!-- 导航树 -->
-            <TreeView Grid.Column="0"
+            <DockPanel Grid.Column="0">
+            <Button DockPanel.Dock="Top" x:Name="CloudStorageButton" IsVisible="False"
+                    HorizontalAlignment="Stretch" Margin="4" Click="CloudStorage_Click"
+                    Content="{loc:Loc explorer.cloud.title}" />
+            <ScrollViewer DockPanel.Dock="Top" x:Name="CloudRootScroll" IsVisible="False" MaxHeight="152">
+                <ItemsControl x:Name="CloudRoots">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="d:CloudConnectionDto">
+                            <Button Tag="{Binding}" Click="CloudRoot_Click" HorizontalAlignment="Stretch" Margin="12,0,4,2">
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+            <TreeView
                       x:Name="NavigationTree"
                       IsEnabled="{Binding !IsBusy}"
                       ItemsSource="{Binding Nodes}"
@@ -327,6 +347,7 @@
                     </TreeDataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>
+            </DockPanel>
 
             <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource SurfaceBrush}" ResizeDirection="Columns" />
 
@@ -512,6 +533,7 @@
                 <TextBlock Text="{loc:Loc explorer.empty_view}" IsVisible="{Binding IsEmpty}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Opacity="0.6" />
             </Grid>
+            <views:CloudBrowserView Grid.Column="2" x:Name="CloudBrowser" IsVisible="False" />
         </Grid>
     </DockPanel>
 </UserControl>
