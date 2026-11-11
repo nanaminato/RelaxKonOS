@@ -145,7 +145,7 @@ fun CatalogTemplate.compatibility(
     runtime: DeploymentRuntime?,
 ): CatalogInstallCompatibility {
     val blockers = buildSet {
-        if (schemaVersion != "1") add(CatalogInstallBlocker.UnsupportedSchema)
+        if (schemaVersion != "2") add(CatalogInstallBlocker.UnsupportedSchema)
         if (!trusted) add(CatalogInstallBlocker.UntrustedSource)
         if (withdrawn) add(CatalogInstallBlocker.Withdrawn)
         if (!requiredCapabilities.all(capabilities::contains)) add(CatalogInstallBlocker.MissingCapability)

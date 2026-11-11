@@ -18,6 +18,8 @@
 
 ## 1. 目标、范围与非目标
 
+受管应用容器、网络和卷由应用部署负责变更。Docker 管理器按实际资源名称和归属标签拒绝直接变更，通过别名提交的容器及网络操作先解析到 Engine ID。管理器创建容器支持命名卷和匿名卷，应用网络、应用卷和宿主绑定挂载由服务端准入拒绝。Compose 预览和部署核对解析后的有效资源名、标签及挂载，部署执行通过校验的解析结果，并单独保留提交源。见[容器应用平台设计](../platform/RelaxKonOS.ContainerApplications.Design.md)。
+
 `RemoteDockerManager`（应用 ID：`relaxkonos.docker`）面向单台 RelaxKonOS Server，覆盖 Docker Engine 的完整日常运维闭环：发现或安装运行时、验证、镜像和容器生命周期、Compose Stack、网络与卷、日志/终端、资源统计、备份与审计。
 
 设计参考了 Portainer 的环境、Stack、模板、镜像仓库与按角色授权的组织方式，以及 Docker Engine 的版本化 API；但 v1 **只管理本机单一 Engine**，不实现 Swarm/Kubernetes、多节点代理或远程 TCP Docker API。
@@ -388,5 +390,7 @@ Compose CLI 执行、文件处理和输出解析使用按需加载的程序集�
 Linux 私有 Engine 已实测在 `docker stop` 仍运行时取消。CLI 退出后，Engine 若暂时无法观察，原操作继续占用项目写入门禁和工作租约。恢复后原 ID 只读结案，同键仍返回原回执。见[变更 CLI 在途取消](../architecture/server-module-evidence/Docker.md#mb-05-docker-变更-cli-在途取消与-engine-观察中断)。
 
 Compose 命令退出但进程或输出清理仍无法确认时，原操作保留活动回执和项目写入门禁。Server 重启后仍可按原键及原 ID 查看回执。即使此前未请求取消，原变更或原观察清理缺证据时也会继续保留门禁。Engine 的容器快照不足以证明原 CLI 和输出已排空。见[原观察输出中断实测](../architecture/server-module-evidence/Docker.md#原观察输出未排空时的-server-中断)。
+
+容器应用平台的受管 Compose 派发复用操作账本。受管回执按应用实例和原操作键查询，管理器禁止取消。受管容器的检查响应省略环境值，日志入口在读取前拦截，包括通过容器 ID 或别名访问。双服务目录安装及应用账本的关联恢复进度见[容器应用平台进度](../platform/RelaxKonOS.ContainerApplications.Progress.md#ca-02-受管-compose-派发)。
 
 恢复观察再次中断时，同一原回执与恢复租约跨第三代 Server 保持。同项目新写入继续被拒绝，直至可按原 ID 核对排空证明。见[恢复观察再次中断实测](../architecture/server-module-evidence/Docker.md#恢复观察输出在途时再次中断)。

@@ -1,6 +1,7 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "docker.problem.application_resource_managed": "请在应用部署中变更此受管资源。",
     "docker.login_required": "Docker 管理器需要先登录并连接到 RelaxKonOS Server。",
     "docker.status.loading": "正在检查服务器本机 Docker Engine…",
     "docker.status.available": "Docker Engine {0} 可用（{1}）。",

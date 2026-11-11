@@ -26,7 +26,7 @@ class CatalogUpdateFlowTest {
     private val baseline = DeploymentApplication("11111111-1111-1111-1111-111111111111", "review-app", "image", "web", "running", "running", "http", 1,
         "review-container", 8080, 9080, "127.0.0.1", null, null, null, "personal-site", "1.0.0", "/ready", DeploymentLimits(1.0, 16777217, 512),
         emptyList(), emptyList(), "2026-10-01T00:00:00.1234567+00:00")
-    private val target = CatalogTemplate("1", "personal-site", "2.0.0", "RelaxKonOS", "built-in", true,
+    private val target = CatalogTemplate("2", "personal-site", "2.0.0", "RelaxKonOS", "built-in", true,
         "website", "review", listOf("linux/amd64"), emptyList(), CatalogResources(null, null, null), emptyList(), emptyList(), 80, "/", "retain data", false)
     private fun change(version: String) = CatalogApplicationUpdatePreview(baseline.id, baseline.updatedAt, null, "1.0.0",
         target.copy(version = version), "image:1", "image:2", "review-notes", emptyList())

@@ -137,9 +137,14 @@
                             <TextBlock Classes="section-title" Text="{loc:Loc application_deployments.applications}" />
                             <TextBlock Classes="section-hint" Text="{Binding ApplicationCountText}" />
                         </StackPanel>
-                        <Button x:Name="NewDeploymentButton" Grid.Column="1" Classes="primary" VerticalAlignment="Center"
-                                Content="{loc:Loc application_deployments.new_deployment}"
-                                Command="{Binding NewDeploymentCommand}" IsEnabled="{Binding CanAct}" />
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <Button x:Name="OpenCatalogButton" Classes="primary" HorizontalAlignment="Stretch"
+                                    Content="{loc:Loc application_deployments.catalog.title}"
+                                    Command="{Binding OpenCatalogCommand}" IsEnabled="{Binding CanAct}" />
+                            <Button x:Name="NewDeploymentButton" HorizontalAlignment="Stretch"
+                                    Content="{loc:Loc application_deployments.new_deployment}"
+                                    Command="{Binding NewDeploymentCommand}" IsEnabled="{Binding CanAct}" />
+                        </StackPanel>
                     </Grid>
 
                     <!-- A list row states the same facts as the detail header, in the same order: the
@@ -337,7 +342,11 @@
                         <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="6"
                                    VerticalAlignment="Center">
                             <Button Classes="primary" Content="{loc:Loc application_deployments.deploy_revision}"
+                                    IsVisible="{Binding ShowManualDeployAction}"
                                     Command="{Binding DeployRevisionCommand}" IsEnabled="{Binding CanActOnSelection}" />
+                            <Button Classes="primary" Content="{loc:Loc application_deployments.catalog.upgrade}"
+                                    IsVisible="{Binding ShowCatalogUpgradeAction}"
+                                    Command="{Binding UpgradeCatalogCommand}" IsEnabled="{Binding CanAct}" />
                             <Button Classes="card-action" Content="{loc:Loc application_deployments.edit_definition}"
                                     Command="{Binding EditDefinitionCommand}" IsEnabled="{Binding CanActOnSelection}" />
                             <Button Classes="card-action" Content="{loc:Loc application_deployments.restart}"
@@ -352,6 +361,9 @@
                                     IsVisible="{Binding ShowStartAction}"
                                     Command="{Binding StartApplicationCommand}"
                                     IsEnabled="{Binding CanAct}" />
+                            <Button Classes="primary" Content="{loc:Loc application_deployments.catalog.reinstall}"
+                                    IsVisible="{Binding ShowReinstallAction}"
+                                    Command="{Binding ReinstallCatalogCommand}" IsEnabled="{Binding CanAct}" />
                         </WrapPanel>
 
                         <Button Grid.Column="1" Classes="inline-action overflow" VerticalAlignment="Center"
@@ -359,7 +371,7 @@
                                 ToolTip.Tip="{loc:Loc application_deployments.more_actions}">
                             <Button.Flyout>
                                 <MenuFlyout>
-                                    <MenuItem Header="{loc:Loc application_deployments.delete}"
+                                    <MenuItem Header="{Binding RemoveActionText}"
                                               Command="{Binding DeleteApplicationCommand}"
                                               IsEnabled="{Binding CanActOnSelection}" />
                                 </MenuFlyout>

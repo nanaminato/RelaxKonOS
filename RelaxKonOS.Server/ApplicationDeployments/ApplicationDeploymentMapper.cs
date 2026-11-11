@@ -28,8 +28,8 @@ internal static class ApplicationDeploymentMapper
             application.ContainerPort,
             application.HostPort,
             application.BindAddress,
-            // A worker workload publishes no endpoint, so an endpoint object would be a lie.
             application.HostPort is { } hostPort && application.WorkloadKind == ApplicationWorkloadKind.Web
+                && application.DesiredState != ApplicationDesiredState.Retained
                 ? new ApplicationEndpointDto("http", application.ContainerPort, hostPort, application.BindAddress)
                 : null,
             application.Limits,

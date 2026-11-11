@@ -17,6 +17,7 @@ internal fun dockerProblem(code: String): UiMessage = when (code) {
     "docker.stack_invalid_name" -> UiMessage(R.string.docker_problem_invalid_name)
     "docker.stack_invalid_compose" -> UiMessage(R.string.docker_problem_invalid_compose)
     "docker.compose_feature_unsupported" -> UiMessage(R.string.docker_problem_feature_unsupported)
+    "docker.application_resource_managed" -> UiMessage(R.string.docker_problem_application_resource_managed)
     "docker.compose_variable_unresolved" -> UiMessage(R.string.docker_problem_variable_unresolved)
     "docker.stack_definition_changed" -> UiMessage(R.string.docker_problem_definition_changed)
     "docker.confirmation_required" -> UiMessage(R.string.docker_problem_confirmation_required)

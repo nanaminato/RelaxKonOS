@@ -17,8 +17,10 @@ public static class ApplicationDeploymentApiRoutes
 
     /// <summary>Purpose-oriented, versioned application templates (distinct from runtime templates).</summary>
     public const string Catalog = Root + "/catalog";
+    public const string CatalogInstall = Catalog + "/install";
     public const string CatalogPattern = "/catalog";
     public const string CatalogTemplatePattern = "/catalog/{templateId}/{templateVersion}";
+    public const string CatalogTopologyPattern = "/catalog/{templateId}/{templateVersion}/topology";
     public const string CatalogInstallPattern = "/catalog/install";
 
     /// <summary>Recent selectable tags for a public image repository.</summary>
@@ -39,6 +41,7 @@ public static class ApplicationDeploymentApiRoutes
     public const string DeployPattern = "/applications/{applicationId:guid}/deploy";
     public const string CatalogUpdatePattern = "/applications/{applicationId:guid}/catalog-update";
     public const string RollbackPattern = "/applications/{applicationId:guid}/rollback";
+    public const string CatalogReinstallPattern = "/applications/{applicationId:guid}/catalog-reinstall";
     public const string StartPattern = "/applications/{applicationId:guid}/start";
     public const string StopPattern = "/applications/{applicationId:guid}/stop";
     public const string RestartPattern = "/applications/{applicationId:guid}/restart";
@@ -63,7 +66,10 @@ public static class ApplicationDeploymentApiRoutes
     public static string Logs(Guid applicationId) => $"{Applications}/{applicationId:D}/logs";
     public static string Deploy(Guid applicationId) => $"{Applications}/{applicationId:D}/deploy";
     public static string CatalogUpdate(Guid applicationId) => $"{Applications}/{applicationId:D}/catalog-update";
+    public static string CatalogTopology(string templateId, string templateVersion, int hostPort) =>
+        $"{Catalog}/{Uri.EscapeDataString(templateId)}/{Uri.EscapeDataString(templateVersion)}/topology?hostPort={hostPort.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
     public static string Rollback(Guid applicationId) => $"{Applications}/{applicationId:D}/rollback";
+    public static string CatalogReinstall(Guid applicationId) => $"{Applications}/{applicationId:D}/catalog-reinstall";
     public static string Start(Guid applicationId) => $"{Applications}/{applicationId:D}/start";
     public static string Stop(Guid applicationId) => $"{Applications}/{applicationId:D}/stop";
     public static string Restart(Guid applicationId) => $"{Applications}/{applicationId:D}/restart";

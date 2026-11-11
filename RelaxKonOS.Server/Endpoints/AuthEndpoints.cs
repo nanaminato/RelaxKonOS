@@ -275,7 +275,9 @@ public static class AuthEndpoints
                 serverMode,
                 http.RequestServices.GetRequiredService<RelaxKonOS.Server.EventAlerts.EventAlertsOptions>(),
                 http.RequestServices.GetRequiredService<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider>(),
-                http.RequestServices.GetRequiredService<RelaxKonOS.Server.Startup.ServerModules>().Capabilities),
+                http.RequestServices.GetRequiredService<RelaxKonOS.Server.Startup.ServerModules>().Capabilities,
+                RuntimeInformation.ProcessArchitecture == Architecture.X64
+                    && http.RequestServices.GetService<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOptions>()?.EnableManagedComposePreview == true),
             new ServerExecutionEligibilityDto(!recovery && login.ExecutionEligibility.Available,
                 recovery ? "module-recovery-mode" : login.ExecutionEligibility.ReasonCode, !recovery && serverMode.Mode == ServerMode.System && login.Method == "system"
                 && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));

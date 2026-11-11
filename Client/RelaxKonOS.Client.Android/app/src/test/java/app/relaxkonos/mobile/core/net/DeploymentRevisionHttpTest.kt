@@ -33,7 +33,7 @@ class DeploymentRevisionHttpTest {
         } finally { server.stop(0) }
     }
     @Test fun `catalog HTTP submits only reviewed exact version baseline and confirmation`() = runTest {
-        val target = CatalogTemplate("1", "personal-site", "2.0.0", "RelaxKonOS", "built-in", true, "website", "test", listOf("linux/amd64"), emptyList(), CatalogResources(null, null, null), emptyList(), emptyList(), 80, "/", "retain data", false)
+        val target = CatalogTemplate("2", "personal-site", "2.0.0", "RelaxKonOS", "built-in", true, "website", "test", listOf("linux/amd64"), emptyList(), CatalogResources(null, null, null), emptyList(), emptyList(), 80, "/", "retain data", false)
         val preview = CatalogApplicationUpdatePreview(baseline.id, baseline.updatedAt, null, "1.0.0", target, "nginx:1.26", "nginx:1.27", "notes", emptyList())
         var payload = ""; var route = ""
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -47,12 +47,13 @@ class DeploymentRevisionHttpTest {
             assertEquals("POST ${ApplicationDeploymentRoutes.application(baseline.id)}/catalog-update", route)
             val body = JSONObject(payload); assertEquals("personal-site", body.getString("templateId")); assertEquals("2.0.0", body.getString("templateVersion"))
             assertEquals(baseline.updatedAt, body.getString("expectedUpdatedAt")); assertEquals("1.0.0", body.getString("currentTemplateVersion"))
-            assertTrue(body.has("expectedRevisionId") && body.isNull("expectedRevisionId")); assertTrue(body.getBoolean("confirmed")); assertEquals(6, body.length())
+            assertEquals(preview.targetImageReference, body.getString("expectedTargetImageReference"))
+            assertTrue(body.has("expectedRevisionId") && body.isNull("expectedRevisionId")); assertTrue(body.getBoolean("confirmed")); assertEquals(7, body.length())
             assertFalse(body.has("imageReference")); assertFalse(body.has("fields")); assertFalse(body.has("configuration"))
         } finally { server.stop(0) }
     }
     @Test fun `catalog installation sends explicit host port for HTTP readiness`() = runTest {
-        val target = CatalogTemplate("1", "personal-site", "1.0.0", "RelaxKonOS", "built-in", true, "website", "test", listOf("linux/amd64"), emptyList(), CatalogResources(null, null, null), emptyList(), emptyList(), 80, "/", "retain data", false)
+        val target = CatalogTemplate("2", "personal-site", "1.0.0", "RelaxKonOS", "built-in", true, "website", "test", listOf("linux/amd64"), emptyList(), CatalogResources(null, null, null), emptyList(), emptyList(), 80, "/", "retain data", false)
         var payload = ""
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { exchange ->

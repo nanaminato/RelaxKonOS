@@ -22,4 +22,5 @@ public sealed record UpdateCatalogApplicationRequest(
     [property: JsonRequired, JsonPropertyName("expectedUpdatedAt")] DateTimeOffset ExpectedUpdatedAt,
     [property: JsonRequired, JsonPropertyName("expectedRevisionId")] Guid? ExpectedRevisionId,
     [property: JsonPropertyName("currentTemplateVersion")] string CurrentTemplateVersion,
+    [property: JsonRequired, JsonPropertyName("expectedTargetImageReference")] string ExpectedTargetImageReference,
     [property: JsonPropertyName("confirmed")] bool Confirmed = false);

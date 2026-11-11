@@ -63,6 +63,34 @@ internal static class DockerChecks
                 && problem == DockerStackProblem.VariableUnresolved,
                 "The Android Compose subset accepted a variable reference the server has no value for.");
         }
+
+        using var ordinary = System.Text.Json.JsonDocument.Parse("""
+            {"name":"ordinary","services":{"web":{"image":"nginx:alpine","volumes":[{"type":"volume","source":"data","target":"/data"}]}},
+             "volumes":{"data":{"name":"ordinary_data"}},"networks":{"default":{"name":"ordinary_default"}}}
+            """);
+        DockerComposeSubsetValidation.RequireUnmanagedConfiguration(ordinary.RootElement);
+        foreach (var (configuration, problem) in new[]
+        {
+            ("""{"services":{"web":{"container_name":"relaxkonos-ca-id-web"}}}""", DockerStackProblem.ApplicationResourceManaged),
+            ("""{"volumes":{"alias":{"name":"relaxkonos-ad-id-data"}}}""", DockerStackProblem.ApplicationResourceManaged),
+            ("""{"networks":{"alias":{"name":"relaxkonos-ca-id_default"}}}""", DockerStackProblem.ApplicationResourceManaged),
+            ("""{"services":{"web":{"labels":{"relaxkonos.owner":"application-deployment"}}}}""", DockerStackProblem.ApplicationResourceManaged),
+            ("""{"services":{"web":{"volumes":[{"type":"bind","source":"/var/lib/docker","target":"/data"}]}}}""", DockerStackProblem.FeatureUnsupported),
+            ("""{"volumes":{"alias":{"driver_opts":{"device":"/var/lib/docker"}}}}""", DockerStackProblem.FeatureUnsupported),
+        })
+        {
+            using var resolved = System.Text.Json.JsonDocument.Parse(configuration);
+            try
+            {
+                DockerComposeSubsetValidation.RequireUnmanagedConfiguration(resolved.RootElement);
+                throw new InvalidOperationException("Resolved Compose configuration crossed the application resource boundary.");
+            }
+            catch (DockerStackException failure)
+            {
+                TestAssert.Assert(failure.ProblemCode == problem, "Resolved Compose configuration returned the wrong refusal.");
+            }
+        }
+        Console.WriteLine("Resolved Compose checks passed for resource names, owner labels, host binds, and volume driver options.");
     }
 
 internal static async Task VerifyDockerProxyAsync(string root)
@@ -672,6 +700,40 @@ internal static async Task VerifyStackOperationsAsync(string root)
     var replayedDeployment = (await coordinator.DeployAsync(Deploy("shop", shopYaml), actor, deployKey));
     TestAssert.Assert(replayedDeployment.OperationId == submitted.OperationId,
         "Replaying an idempotency key started a second deployment of the same project.");
+
+    var managedRelease = RelaxKonOS.Server.ApplicationDeployments.ApplicationCatalog.Require("fixture-web-db-plan", "1.0.0");
+    var managedPlan = managedRelease.CompileTopology(Guid.NewGuid(), 18083);
+    var appOperationId = Guid.NewGuid();
+    const string fixturePassword = "sensitive-compose-fixture";
+    var environment = new Dictionary<string, IReadOnlyDictionary<string, string>>
+    {
+        ["web"] = new Dictionary<string, string> { ["DB_PASSWORD"] = fixturePassword },
+        ["db"] = new Dictionary<string, string> { ["POSTGRES_PASSWORD"] = fixturePassword },
+    };
+    var child = await coordinator.DeployManagedAsync(managedPlan, environment, appOperationId, "secret-version-1");
+    var cancelManaged = CaptureStackFailure(() => coordinator.Cancel(child.OperationId, "cancel-managed"),
+        "The Docker Manager cancelled an application-owned Compose operation.");
+    var managedTerminal = await AwaitTerminalOperationAsync(coordinator, child.OperationId);
+    TestAssert.Assert(!child.Cancellable && cancelManaged.ProblemCode == DockerStackProblem.ApplicationResourceManaged
+        && managedTerminal.State == DockerStackOperationState.Succeeded && compose.ManagedDeployCalls == 1,
+        "The coordinator must dispatch the typed deployment and prevent generic cancellation.");
+    var managedReplay = await coordinator.DeployManagedAsync(managedPlan, environment, appOperationId, "secret-version-1");
+    var differentCredentials = await CaptureStackFailureAsync(
+        () => coordinator.DeployManagedAsync(managedPlan, environment, appOperationId, "secret-version-2"),
+        "A managed operation key was reused with a different credential revision.");
+    using (var reopenedManaged = NewStackCoordinator(coordinatorRoot, compose, new TestApplicationLifetime(), 16))
+    {
+        var definition = managedPlan.RenderDeployment(out _, environment);
+        TestAssert.Assert(reopenedManaged.GetManagedByRequest(managedPlan.InstanceId, appOperationId,
+                DockerStackValidation.DefinitionVersion(definition.Name, definition.ComposeYaml),
+                DockerStackValidation.Reference("secret-version-1"))?.OperationId == child.OperationId
+            && reopenedManaged.GetByRequest(actor, appOperationId.ToString("N")) is null,
+            "Reopening the ledger must find the original child by application identity and request key only.");
+    }
+    TestAssert.Assert(managedReplay.OperationId == child.OperationId && compose.ManagedDeployCalls == 1
+        && differentCredentials.ProblemCode == DockerStackProblem.IdempotencyConflict
+        && Directory.EnumerateFiles(coordinatorRoot).All(path => !File.ReadAllText(path).Contains(fixturePassword, StringComparison.Ordinal)),
+        "Managed replays must preserve the child receipt, bind credential revision, and keep values out of storage.");
 
     // The command succeeded but a service is not in its desired state: that is a partial failure, and
     // the operator has to choose between retrying, stopping, or removing the project.
@@ -1493,6 +1555,7 @@ internal sealed class FakeComposeService : IDockerComposeService
     public IReadOnlyList<DockerStackServiceDto> Observed { get; set; } = [];
     public List<DockerStackOperationKind> AppliedActions { get; } = [];
     public int DeployCalls { get; private set; }
+    public ManagedComposePlan? ManagedPreview { get; private set; }
     public int ListServicesCalls { get; private set; }
     public volatile bool ObservationUnavailable;
     private TaskCompletionSource? observationGate;
@@ -1518,6 +1581,24 @@ internal sealed class FakeComposeService : IDockerComposeService
 
     public Task<DockerStackDefinitionDto?> GetDefinitionAsync(string name, CancellationToken cancellationToken = default) =>
         Task.FromResult<DockerStackDefinitionDto?>(null);
+
+    public Task<DockerStackPreviewDto> PreviewManagedAsync(ManagedComposePlan plan, CancellationToken cancellationToken = default)
+    {
+        ManagedPreview = plan;
+        if (ManagedPreviewProblem is { } problem) throw new DockerStackException(problem);
+        return Task.FromResult(new DockerStackPreviewDto(plan.Project, "fixture", [], [], []));
+    }
+
+    public string? ManagedPreviewProblem { get; set; }
+    public int ManagedDeployCalls { get; private set; }
+    internal Action<ManagedComposePlan, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>>? OnManagedDeploy { get; set; }
+    public Task<DockerStackMutationResult> DeployManagedAsync(ManagedComposePlan plan,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment, CancellationToken cancellationToken = default)
+    {
+        ManagedDeployCalls++;
+        OnManagedDeploy?.Invoke(plan, environment);
+        return Task.FromResult(NextResult);
+    }
 
     public async Task<IReadOnlyList<DockerStackServiceDto>> ListServicesAsync(string name, CancellationToken cancellationToken = default)
     {

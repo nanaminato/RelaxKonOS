@@ -9,6 +9,8 @@ namespace RelaxKonOS.Server.Docker;
 public sealed class DockerComposeExecutor(string dataDirectory) : IDockerComposeService
 {
     private const int MaximumComposeBytes = 1024 * 1024;
+    private const string ResolvedFile = "compose.resolved.yaml";
+    private const string SourceFile = "compose.source.yaml";
     /// <summary>
     /// Parses the definition with the Docker CLI itself. The result is the contract an operator approves,
     /// so it is produced by the same parser that will later apply it — never by a second, disagreeing
@@ -17,6 +19,97 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
     public async Task<DockerStackPreviewDto> PreviewAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default)
     {
         Validate(definition);
+        return await PreviewConfigurationAsync(definition, DockerComposeSubsetValidation.RequireUnmanagedConfiguration, cancellationToken);
+    }
+
+    public Task<DockerStackPreviewDto> PreviewManagedAsync(ManagedComposePlan plan, CancellationToken cancellationToken = default) =>
+        PreviewConfigurationAsync(plan.RenderPreview(), plan.RequireResolvedTopology, cancellationToken);
+
+    public async Task<DockerStackMutationResult> DeployManagedAsync(ManagedComposePlan plan,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsLinux() || System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+            != System.Runtime.InteropServices.Architecture.X64)
+            throw new DockerStackException(DockerStackProblem.EngineUnavailable, 503);
+        var definition = plan.RenderDeployment(out var variables, environment);
+        var directory = Path.Combine(dataDirectory, "managed", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        try
+        {
+            var path = Path.Combine(directory, "compose.json");
+            await File.WriteAllTextAsync(path, definition.ComposeYaml, cancellationToken);
+            string[] prefix = ["compose", "--env-file", "/dev/null", "--project-name", definition.Name, "--file", path];
+            var config = await RunManagedAsync([.. prefix, "config", "--format", "json"], cancellationToken, variables);
+            if (!config.Success) return new(false, DockerStackProblem.ComposeFailed, []);
+            using (var resolved = JsonDocument.Parse(config.Output))
+                plan.RequireResolvedTopology(resolved.RootElement, environment);
+            await RequireManagedResourcesAsync(plan, cancellationToken);
+            var result = await RunManagedAsync([.. prefix, "up", "--detach", "--no-build", "--pull", "never"], cancellationToken, variables);
+            await RequireManagedResourcesAsync(plan, cancellationToken);
+            return new(result.Success, result.Success ? string.Empty : DockerStackProblem.ComposeFailed, []);
+        }
+        catch (JsonException) { throw new DockerStackException(DockerStackProblem.ComposeFailed); }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); }
+            catch (DirectoryNotFoundException) { }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { throw new DockerComposeCleanupException(); }
+        }
+    }
+
+    private async Task RequireManagedResourcesAsync(ManagedComposePlan plan, CancellationToken ct)
+    {
+        const string projectLabel = "com.docker.compose.project";
+        const string serviceLabel = "com.docker.compose.service";
+        var expected = plan.Services.ToDictionary(service => plan.ContainerName(service.Id), service => service.Id, StringComparer.Ordinal);
+        var rows = await ReadManagedRowsAsync(["ps", "--all", "--format",
+            "{{.Names}}\t{{.Label \"com.docker.compose.project\"}}"], ct);
+        foreach (var row in rows)
+        {
+            var fields = row.Split('\t');
+            if (fields.Length != 2) throw new DockerStackException(DockerStackProblem.EngineUnavailable, 503);
+            if (fields[1] != plan.Project && !expected.ContainsKey(fields[0])) continue;
+            if (!expected.TryGetValue(fields[0], out var service))
+                throw new DockerStackException(DockerStackProblem.ApplicationResourceManaged);
+            await RequireLabelsAsync("container", fields[0], "{{json .Config.Labels}}", serviceLabel, service);
+        }
+
+        await RequireNamedResourceAsync("network", plan.NetworkName, "private");
+        foreach (var volume in plan.Services.SelectMany(service => service.Volumes))
+            await RequireNamedResourceAsync("volume", plan.VolumeName(volume.Name), volume.Name);
+
+        async Task RequireNamedResourceAsync(string kind, string name, string key)
+        {
+            var names = await ReadManagedRowsAsync([kind, "ls", "--filter", "name=" + name, "--format", "{{.Name}}"], ct);
+            if (names.Count(candidate => candidate == name) > 1)
+                throw new DockerStackException(DockerStackProblem.ApplicationResourceManaged);
+            if (names.Contains(name, StringComparer.Ordinal))
+                await RequireLabelsAsync(kind, name, "{{json .Labels}}", "com.docker.compose." + kind, key);
+        }
+
+        async Task RequireLabelsAsync(string kind, string name, string format, string kindLabel, string key)
+        {
+            var result = await RunManagedAsync([kind, "inspect", "--format", format, name], ct);
+            if (!result.Success) throw new DockerStackException(DockerStackProblem.EngineUnavailable, 503);
+            var labels = JsonSerializer.Deserialize<Dictionary<string, string>>(result.Output);
+            if (labels is null || labels.GetValueOrDefault("relaxkonos.managed") != "true"
+                || labels.GetValueOrDefault(DockerStackValidation.ApplicationOwnerLabel) != DockerStackValidation.ApplicationOwnerValue
+                || labels.GetValueOrDefault(DockerStackValidation.ApplicationIdLabel) != plan.InstanceId.ToString("D")
+                || labels.GetValueOrDefault(projectLabel) != plan.Project || labels.GetValueOrDefault(kindLabel) != key)
+                throw new DockerStackException(DockerStackProblem.ApplicationResourceManaged);
+        }
+    }
+
+    private async Task<string[]> ReadManagedRowsAsync(IReadOnlyList<string> args, CancellationToken ct)
+    {
+        var result = await RunManagedAsync(args, ct);
+        if (!result.Success) throw new DockerStackException(DockerStackProblem.EngineUnavailable, 503);
+        return result.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    private async Task<DockerStackPreviewDto> PreviewConfigurationAsync(DockerStackDefinitionDto definition,
+        Action<JsonElement> requireConfiguration, CancellationToken cancellationToken)
+    {
         var directory = Path.Combine(dataDirectory, "preview", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var composePath = Path.Combine(directory, "compose.yaml");
@@ -25,7 +118,7 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
             await File.WriteAllTextAsync(composePath, definition.ComposeYaml, cancellationToken);
             var result = await RunAsync(["compose", "--project-name", definition.Name, "--file", composePath, "config", "--format", "json"], cancellationToken);
             if (!result.Success) throw new DockerStackException(ToProblemCode(result.Error), 409);
-            return ParsePreview(definition, result.Output);
+            return ParsePreview(definition, result.Output, requireConfiguration);
         }
         finally
         {
@@ -37,7 +130,7 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
 
     /// <summary>Reads the Compose parser's own JSON. Only the members an operator can act on are kept;
     /// anything unrecognised is ignored rather than guessed at.</summary>
-    private static DockerStackPreviewDto ParsePreview(DockerStackDefinitionDto definition, string json)
+    private static DockerStackPreviewDto ParsePreview(DockerStackDefinitionDto definition, string json, Action<JsonElement> requireConfiguration)
     {
         var services = new List<DockerStackPreviewServiceDto>();
         var volumes = new List<string>();
@@ -46,6 +139,7 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
         {
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
+            requireConfiguration(root);
             if (root.TryGetProperty("services", out var serviceMap) && serviceMap.ValueKind == JsonValueKind.Object)
             {
                 foreach (var service in serviceMap.EnumerateObject())
@@ -101,8 +195,33 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
         Validate(definition);
         var directory = Path.Combine(dataDirectory, definition.Name);
         Directory.CreateDirectory(directory);
-        var composePath = Path.Combine(directory, "compose.yaml");
-        await File.WriteAllTextAsync(composePath, definition.ComposeYaml, cancellationToken);
+        var pending = Path.Combine(directory, $"compose.pending-{Guid.NewGuid():N}.yaml");
+        var composePath = Path.Combine(directory, ResolvedFile);
+        try
+        {
+            await File.WriteAllTextAsync(pending, definition.ComposeYaml, cancellationToken);
+            var config = await RunAsync(["compose", "--project-name", definition.Name, "--file", pending, "config", "--format", "json"], cancellationToken);
+            if (!config.Success) return new DockerStackMutationResult(false, ToProblemCode(config.Error), []);
+
+            using var resolved = JsonDocument.Parse(config.Output);
+            DockerComposeSubsetValidation.RequireUnmanagedConfiguration(resolved.RootElement);
+            await File.WriteAllTextAsync(pending, config.Output, cancellationToken);
+            // The parser escapes Compose interpolation in its own output. A different CLI
+            // may emit a document that reparses differently, so prove stability before up.
+            var checkedConfig = await RunAsync(["compose", "--project-name", definition.Name, "--file", pending, "config", "--format", "json"], cancellationToken);
+            if (!checkedConfig.Success) return new DockerStackMutationResult(false, ToProblemCode(checkedConfig.Error), []);
+            using var roundTrip = JsonDocument.Parse(checkedConfig.Output);
+            if (!JsonElement.DeepEquals(resolved.RootElement, roundTrip.RootElement))
+                throw new DockerStackException(DockerStackProblem.DefinitionChanged);
+            File.Move(pending, composePath, overwrite: true);
+            await File.WriteAllTextAsync(Path.Combine(directory, SourceFile), definition.ComposeYaml, cancellationToken);
+        }
+        catch (JsonException) { throw new DockerStackException(DockerStackProblem.ComposeFailed); }
+        finally
+        {
+            try { File.Delete(pending); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { throw new DockerComposeCleanupException(); }
+        }
         var result = await RunAsync(["compose", "--project-name", definition.Name, "--file", composePath, "up", "--detach", "--remove-orphans"], cancellationToken);
         // Compose errors can echo substituted environment values. Clients receive only a stable problem
         // code plus the bounded progress lines; raw daemon diagnostics stay on the host.
@@ -119,7 +238,10 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
         // The label name is quoted for the Go template, not for a shell: this argument goes straight into
         // the process argument list, and a backslash-escaped quote makes Docker fail with "unexpected \\ in
         // operand", which would leave every observation empty and misreport a working project as partial.
-        var result = await RunAsync(["ps", "--all", "--filter", $"label=com.docker.compose.project={name}", "--format", "{{.Label \"com.docker.compose.service\"}}\\t{{.Names}}\\t{{.Image}}\\t{{.State}}\\t{{.Status}}"], cancellationToken);
+        string[] args = ["ps", "--all", "--filter", $"label=com.docker.compose.project={name}", "--format", "{{.Label \"com.docker.compose.service\"}}\\t{{.Names}}\\t{{.Image}}\\t{{.State}}\\t{{.Status}}"];
+        var result = name.StartsWith(DockerStackValidation.ApplicationComposeProjectPrefix, StringComparison.Ordinal)
+            ? await RunManagedAsync(args, cancellationToken)
+            : await RunAsync(args, cancellationToken);
         if (!result.Success) throw new DockerStackException(DockerStackProblem.EngineUnavailable, 503);
         return result.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(line => line.Split('\t'))
@@ -246,6 +368,10 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
         if (composePath is null || !File.Exists(composePath)) return null;
         try
         {
+            var resolvedPath = Path.Combine(dataDirectory, name, ResolvedFile);
+            var original = Path.Combine(dataDirectory, name, SourceFile);
+            if (Path.GetFullPath(composePath).Equals(Path.GetFullPath(resolvedPath), StringComparison.Ordinal) && File.Exists(original))
+                composePath = original;
             var yaml = await File.ReadAllTextAsync(composePath, cancellationToken);
             return yaml.Length <= MaximumComposeBytes ? new DockerStackDefinitionDto(stack!.Name, yaml) : null;
         }
@@ -263,7 +389,18 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
             throw new DockerStackException(problem, 400);
     }
 
-    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private Task<CommandResult> RunManagedAsync(IReadOnlyList<string> arguments, CancellationToken ct,
+        IReadOnlyDictionary<string, string>? variables = null)
+    {
+        var host = Environment.GetEnvironmentVariable("DOCKER_HOST");
+        if (string.IsNullOrEmpty(host)) host = "unix:///var/run/docker.sock";
+        if (!host.StartsWith("unix:///", StringComparison.Ordinal) || host.Length == "unix:///".Length)
+            throw new DockerStackException(DockerStackProblem.EngineUnavailable, 503);
+        return RunAsync(["--host", host, .. arguments], ct, managed: true, variables);
+    }
+
+    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken,
+        bool managed = false, IReadOnlyDictionary<string, string>? variables = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         try
@@ -277,6 +414,15 @@ public sealed class DockerComposeExecutor(string dataDirectory) : IDockerCompose
             // the Compose file.
             // See docs/applications/RelaxKonOS.DockerManager.md §3.5.
             foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+            if (managed)
+            {
+                var environment = process.StartInfo.Environment;
+                foreach (var name in environment.Keys.Where(name => name.StartsWith("COMPOSE_", StringComparison.Ordinal)
+                    || name is "DOCKER_CONTEXT" or "DOCKER_HOST" or "DOCKER_TLS" or "DOCKER_TLS_VERIFY" or "DOCKER_CERT_PATH").ToArray())
+                    environment.Remove(name);
+                if (variables is not null)
+                    foreach (var variable in variables) environment[variable.Key] = variable.Value;
+            }
             if (!process.Start()) return new CommandResult(false, string.Empty, "start_failed");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(TimeSpan.FromMinutes(2));
             var outputTask = process.StandardOutput.ReadToEndAsync();

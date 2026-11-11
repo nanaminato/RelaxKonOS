@@ -94,7 +94,7 @@ class DeploymentRevisionRepositoryTest {
         assertEquals(1, sends)
     }
     private fun preview() = CatalogApplicationUpdatePreview(baseline.id, baseline.updatedAt, "revision-id", "1.0.0",
-        CatalogTemplate("1", "personal-site", "2.0.0", "RelaxKonOS", "built-in", true, "website", "test", listOf("linux/amd64"), emptyList(), CatalogResources(1.0, 536870912, 512), emptyList(), emptyList(), 8080, "/", "retain data", false),
+        CatalogTemplate("2", "personal-site", "2.0.0", "RelaxKonOS", "built-in", true, "website", "test", listOf("linux/amd64"), emptyList(), CatalogResources(1.0, 536870912, 512), emptyList(), emptyList(), 8080, "/", "retain data", false),
         "nginx:1.26", "nginx:1.27", "review migration", emptyList())
     @Test fun `catalog update submits reviewed exact version and discards changed preview`() = runTest {
         val owner = login(); val reviewed = preview()

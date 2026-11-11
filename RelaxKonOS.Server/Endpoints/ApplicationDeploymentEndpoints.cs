@@ -6,6 +6,9 @@ using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Files;
+using RelaxKonOS.Server.Docker;
+using RelaxKonOS.Server.Residency;
+using RelaxKonOS.Server.Startup;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -41,26 +44,60 @@ public static class ApplicationDeploymentEndpoints
                 Handle(() => Results.Ok(ApplicationCatalog.Require(templateId, templateVersion).Describe())))
             .RequireAuthorization(ReadPolicy);
 
+        group.MapGet(ApplicationDeploymentApiRoutes.CatalogTopologyPattern,
+            (string templateId, string templateVersion, int hostPort, HttpContext http) =>
+                ResidentScopedResponse.ExecuteAsync(http, http.RequestServices.GetRequiredService<IResidentModuleWorkLeaseSource>(),
+                    ServerModules.DockerId, (services, ct) => HandleAsync(async () =>
+                    {
+                        var release = ApplicationCatalog.Require(templateId, templateVersion);
+                        var plan = release.CompileTopology(Guid.NewGuid(), hostPort);
+                        try { await services.GetRequiredService<IDockerComposeService>().PreviewManagedAsync(plan, ct); }
+                        catch (DockerStackException error) { return Problem(error.ProblemCode, error.StatusCode); }
+                        return Results.Ok(new CatalogApplicationTopologyDto(release.Id, release.Version, "127.0.0.1", hostPort,
+                            release.WebService, release.HealthPath, [.. release.Services.Select(service => new CatalogApplicationServiceDto(
+                                service.Id, service.ImageReference, service.ContainerPort, service.DependsOn, service.Volumes))]));
+                    }), static error => error is DockerComposeCleanupException))
+            .RequireAuthorization(ReadPolicy);
+
         group.MapPost(ApplicationDeploymentApiRoutes.CatalogInstallPattern,
             (InstallCatalogApplicationRequest request, HttpContext http, ApplicationDeploymentManager manager,
-                ApplicationDeploymentCoordinator coordinator, ApplicationDeploymentDefinitionMutationStore mutations, CancellationToken ct) =>
+                ApplicationDeploymentCoordinator coordinator, ApplicationDeploymentDefinitionMutationStore mutations,
+                ApplicationDeploymentOptions options, ApplicationManagedComposeDispatch dispatch, CancellationToken ct) =>
                 HandleAsync(async () =>
                 {
                     if (!request.Confirmed) return Problem(ApplicationDeploymentProblemCodes.ConfirmationRequired, 400);
                     var actor = Actor(http.User);
-                    var installed = await mutations.ExecuteAsync(actor, Key(http), "install", RequestReference(request), async () =>
+                    Guid? waitingForReceipt = null;
+                    CatalogApplicationInstallDto installed;
+                    try
                     {
-                        var template = ApplicationCatalog.Require(request.TemplateId, request.TemplateVersion);
-                        var bound = template.Bind(request);
-                        await manager.PreflightCatalogInstallAsync(bound.Definition, ct);
-                        var application = await manager.CreateAsync(bound.Definition, actor, ct, template);
-                        var operation = coordinator.Start(new DeploymentRequest(application.Id, DeploymentOperationKind.Deploy, bound.Source, ExpectedUpdatedAt: application.UpdatedAt), actor, Key(http));
-                        var visible = application with
+                        installed = await mutations.ExecuteAsync(actor, Key(http), "install", RequestReference(request), async () =>
                         {
-                            Configuration = [.. application.Configuration.Select(field => field.IsSecret ? field with { Value = null } : field)],
-                        };
-                        return new CatalogApplicationInstallDto(visible, operation, template.Id, template.Version);
-                    }, receipt => receipt);
+                            var template = ApplicationCatalog.Require(request.TemplateId, request.TemplateVersion);
+                            var bound = template.Bind(request, options.EnableManagedComposePreview && dispatch.Available);
+                            await manager.PreflightCatalogInstallAsync(bound.Definition, ct, template.IsMultiService);
+                            if (template.IsMultiService)
+                            {
+                                var fields = (bound.Definition.Configuration ?? []).Select(field => field.Name).ToHashSet(StringComparer.Ordinal);
+                                await dispatch.PreflightAsync(template.CompileTopology(Guid.NewGuid(), request.HostPort, fields), ct);
+                            }
+                            var application = await manager.CreateAsync(bound.Definition, actor, ct, template);
+                            var operation = coordinator.Start(new DeploymentRequest(application.Id, DeploymentOperationKind.Deploy,
+                                bound.Source, ExpectedUpdatedAt: application.UpdatedAt, ManagedComposeInstall: template.IsMultiService), actor, Key(http));
+                            if (template.IsMultiService) waitingForReceipt = operation.OperationId;
+                            var visible = application with
+                            {
+                                Configuration = [.. application.Configuration.Select(field => field.IsSecret ? field with { Value = null } : field)],
+                            };
+                            return new CatalogApplicationInstallDto(visible, operation, template.Id, template.Version);
+                        }, receipt => receipt);
+                    }
+                    catch
+                    {
+                        if (waitingForReceipt is { } id) coordinator.AbortCatalogInstall(id);
+                        throw;
+                    }
+                    coordinator.ReleaseCatalogInstall(installed.Operation.OperationId);
                     return Results.Accepted(ApplicationDeploymentApiRoutes.Operation(installed.Operation.OperationId), installed);
                 }))
             .RequireAuthorization(ManagePolicy);
@@ -191,6 +228,16 @@ public static class ApplicationDeploymentEndpoints
             }))
             .RequireAuthorization(ManagePolicy);
 
+        group.MapPost(ApplicationDeploymentApiRoutes.CatalogReinstallPattern,
+            (Guid applicationId, ReinstallCatalogApplicationRequest request, HttpContext http,
+                ApplicationDeploymentCoordinator coordinator) => Handle(() =>
+            {
+                if (!request.Confirmed) return Problem(ApplicationDeploymentProblemCodes.ConfirmationRequired, 400);
+                return Accepted(coordinator.Start(new DeploymentRequest(applicationId, DeploymentOperationKind.Reinstall,
+                    RevisionId: request.RevisionId), Actor(http.User), Key(http)));
+            }))
+            .RequireAuthorization(ManagePolicy);
+
         // A DELETE request does not infer a complex parameter as a body, so the binding is explicit.
         group.MapDelete(ApplicationDeploymentApiRoutes.ApplicationPattern,
             (Guid applicationId, [Microsoft.AspNetCore.Mvc.FromBody] DeleteApplicationRequest request, HttpContext http,
@@ -198,7 +245,9 @@ public static class ApplicationDeploymentEndpoints
             {
                 if (request.DeleteVolumes && !request.Confirmed)
                     return Problem(ApplicationDeploymentProblemCodes.ConfirmationRequired, 400);
-                _ = manager.Require(applicationId);
+                var application = manager.Require(applicationId);
+                if (application.CatalogTemplateId is not null && !request.Confirmed)
+                    return Problem(ApplicationDeploymentProblemCodes.ConfirmationRequired, 400);
                 var operation = coordinator.Start(
                     new DeploymentRequest(applicationId, DeploymentOperationKind.Delete, DeleteVolumes: request.DeleteVolumes),
                     Actor(http.User), Key(http));

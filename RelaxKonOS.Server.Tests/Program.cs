@@ -139,7 +139,13 @@ if (args.Contains("--acme-code-only"))
 }
 if (args.Contains("--docker-compose-code-only"))
 {
+    DockerChecks.VerifyComposeSubsetValidation();
     await DockerComposeExecutionChecks.RunAsync();
+    return;
+}
+if (args.Contains("--docker-compose-config-only"))
+{
+    await DockerComposeExecutionChecks.VerifyRealParserAsync();
     return;
 }
 if (args.Contains("--module-boundary-milestones-only"))
@@ -573,6 +579,17 @@ if (args.Contains("--performance-only"))
     await ProcessIconCacheChecks.RunAsync();
     await ServerCoreChecks.VerifyPerformanceSamplerAsync();
     Console.WriteLine("Performance sampler checks passed.");
+    return;
+}
+if (args is ["--catalog-handoff-crash", var crashRoot, var crashPhase]
+    && crashPhase is "child" or "recover" or "recover-missing")
+{
+    await CatalogComposeCrashChecks.RunAsync(crashRoot, crashPhase);
+    return;
+}
+if (args is ["--catalog-fixtures-only", var fixtureCatalog])
+{
+    CatalogUpdateChecks.VerifyGeneratedFixtures(fixtureCatalog);
     return;
 }
 if (args.Contains("--catalog-update-only"))

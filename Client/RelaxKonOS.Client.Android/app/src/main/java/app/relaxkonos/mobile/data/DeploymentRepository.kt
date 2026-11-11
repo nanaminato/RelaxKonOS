@@ -121,7 +121,7 @@ class DeploymentRepository(
         preview: CatalogApplicationUpdatePreview, key: String): DeploymentRevisionSubmission {
         if (preview.applicationId != baseline.id || preview.expectedUpdatedAt != baseline.updatedAt || preview.target.id != baseline.catalogTemplateId ||
             preview.currentTemplateVersion != baseline.catalogTemplateVersion || preview.blockers.isNotEmpty() || !preview.target.trusted ||
-            preview.target.withdrawn || preview.target.schemaVersion != "1" || !preview.target.requiredCapabilities.all(owner.capabilities::contains))
+            preview.target.withdrawn || preview.target.schemaVersion != "2" || !preview.target.requiredCapabilities.all(owner.capabilities::contains))
             return DeploymentRevisionSubmission(ApiResult.Problem(409, "application-deployment.definition_conflict", null), false)
         return submitRevision(owner, baseline) { url, token, dispatch ->
             when (val current = gateway.previewCatalogUpdate(url, token, baseline.id, preview.target.version)) {

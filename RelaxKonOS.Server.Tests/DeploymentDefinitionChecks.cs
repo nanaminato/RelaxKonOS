@@ -74,6 +74,7 @@ internal static class DeploymentDefinitionChecks
         builder.Services.AddSingleton<IServerModeResolver, ProgressTestMode>();
         builder.Services.AddSingleton(options); builder.Services.AddSingleton(manager);
         builder.Services.AddSingleton<ApplicationDeploymentDefinitionMutationStore>();
+        builder.Services.AddSingleton<ApplicationManagedComposeDispatch>();
         builder.Services.AddSingleton<ApplicationDeploymentCoordinator>();
         builder.Services.AddSingleton<ApplicationDeploymentStagingStore>();
         builder.Services.AddSingleton<IFileService>(_ => throw new NotSupportedException("File operations are outside this test."));

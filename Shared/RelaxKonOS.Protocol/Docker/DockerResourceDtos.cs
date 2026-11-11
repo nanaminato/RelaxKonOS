@@ -16,7 +16,8 @@ public sealed record DockerContainerDetailsDto(
     IReadOnlyList<string> Mounts,
     IReadOnlyList<string> Networks,
     IReadOnlyList<string> Environment,
-    IReadOnlyDictionary<string, string> Labels);
+    IReadOnlyDictionary<string, string> Labels,
+    string? ImageId = null);
 public sealed record DockerImageDto(string Id, string Repository, string Tag, string Size, string CreatedSince);
 public sealed record DockerNetworkDto(string Id, string Name, string Driver, string Scope);
 public sealed record DockerVolumeDto(string Name, string Driver, string Mountpoint);

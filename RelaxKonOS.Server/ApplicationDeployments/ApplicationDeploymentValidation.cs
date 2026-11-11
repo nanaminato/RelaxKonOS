@@ -14,9 +14,9 @@ internal static class ApplicationDeploymentValidation
     /// <summary>Label prefix that marks every managed Docker resource and its owner.</summary>
     public const string LabelPrefix = "relaxkonos.";
     public const string ManagedLabel = "relaxkonos.managed";
-    public const string OwnerLabel = "relaxkonos.owner";
-    public const string OwnerValue = "application-deployment";
-    public const string ApplicationIdLabel = "relaxkonos.application-id";
+    public const string OwnerLabel = DockerStackValidation.ApplicationOwnerLabel;
+    public const string OwnerValue = DockerStackValidation.ApplicationOwnerValue;
+    public const string ApplicationIdLabel = DockerStackValidation.ApplicationIdLabel;
     public const string ApplicationLabel = "relaxkonos.application";
     public const string RevisionIdLabel = "relaxkonos.revision-id";
     public const string RevisionLabel = "relaxkonos.revision";
@@ -25,7 +25,7 @@ internal static class ApplicationDeploymentValidation
     public const string RoleWorkload = "workload";
     public const string RoleCandidate = "candidate";
     public const string RoleVolume = "volume";
-    public const string ResourcePrefix = "relaxkonos-ad-";
+    public const string ResourcePrefix = DockerStackValidation.ApplicationResourcePrefix;
 
     public static readonly IReadOnlyList<string> SupportedBindAddresses = ["127.0.0.1", "0.0.0.0", "::1"];
     public static readonly IReadOnlyList<string> SupportedPlatforms = ["linux/amd64", "linux/arm64", "linux/arm"];

@@ -10,6 +10,10 @@ namespace RelaxKonOS.Client.Apps.ApplicationDeployments;
 public interface IRemoteApplicationDeploymentClient
 {
     Task<IReadOnlyList<ApplicationDeploymentTemplateDto>> ListTemplatesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ApplicationCatalogTemplateDto>> ListCatalogAsync(CancellationToken cancellationToken = default);
+    Task<CatalogApplicationTopologyDto> PreviewCatalogTopologyAsync(string templateId, string templateVersion, int hostPort,
+        CancellationToken cancellationToken = default);
+    Task<CatalogApplicationInstallDto> InstallCatalogAsync(InstallCatalogApplicationRequest request, string key, CancellationToken cancellationToken = default);
     Task<ApplicationImageTagsDto> ListImageTagsAsync(string repository, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ApplicationDto>> ListApplicationsAsync(CancellationToken cancellationToken = default);
     Task<ApplicationDeploymentSnapshotDto?> GetSnapshotAsync(Guid applicationId, CancellationToken cancellationToken = default);
@@ -26,6 +30,7 @@ public interface IRemoteApplicationDeploymentClient
     Task<CatalogApplicationUpdatePreviewDto> PreviewCatalogUpdateAsync(Guid applicationId, string templateVersion, CancellationToken cancellationToken = default);
     Task<DeploymentOperationDto> UpdateCatalogAsync(Guid applicationId, UpdateCatalogApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
     Task<DeploymentOperationDto> RollbackAsync(Guid applicationId, RollbackApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
+    Task<DeploymentOperationDto> ReinstallCatalogAsync(Guid applicationId, ReinstallCatalogApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
     Task<DeploymentOperationDto> LifecycleAsync(Guid applicationId, string action, ApplicationLifecycleRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
     Task<DeploymentOperationDto> DeleteAsync(Guid applicationId, DeleteApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
 

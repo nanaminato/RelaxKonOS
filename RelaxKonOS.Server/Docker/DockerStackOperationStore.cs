@@ -158,7 +158,8 @@ internal sealed class DockerStackOperationStore
 
             var entry = new StackOperationEntry(
                 new(Guid.NewGuid(), project, kind, DockerStackOperationState.Queued, DockerStackOperationStage.Queued,
-                    null, null, DockerStackValidation.Reference(actor), DateTimeOffset.UtcNow, null, null, true, []),
+                    null, null, DockerStackValidation.Reference(actor), DateTimeOffset.UtcNow, null, null,
+                    !IsManagedProject(project), []),
                 DockerStackValidation.Reference(actor),
                 DockerStackValidation.Reference(DockerStackValidation.Reference(actor) + "\n" + key),
                 requestReference, projectReference, ExecutionPending: false);
@@ -259,9 +260,12 @@ internal sealed class DockerStackOperationStore
             var active = entries.Where(x => Active(x.Operation)).ToArray();
             var retired = entries.Where(x => !Active(x.Operation))
                 .OrderByDescending(x => x.Operation.CreatedAt)
+                .Where(x => !IsManagedProject(x.Operation.ProjectName))
                 .Take(Math.Max(0, RetainedOperations - active.Length))
                 .ToArray();
-            entries = [.. active.Concat(retired).OrderBy(x => x.Operation.CreatedAt)];
+            // Application reconciliation may still need a terminal child receipt by its original key.
+            var managed = entries.Where(x => !Active(x.Operation) && IsManagedProject(x.Operation.ProjectName));
+            entries = [.. active.Concat(retired).Concat(managed).OrderBy(x => x.Operation.CreatedAt)];
         }
 
         var identifiers = entries.Select(x => x.Operation.OperationId).ToHashSet();
@@ -270,6 +274,9 @@ internal sealed class DockerStackOperationStore
             audit = [.. audit.OrderByDescending(x => x.At).Take(RetainedAuditRecords).OrderBy(x => x.At)];
         return new(entries, audit);
     }
+
+    private static bool IsManagedProject(string project) =>
+        project.StartsWith(DockerStackValidation.ApplicationComposeProjectPrefix, StringComparison.Ordinal);
 
     private void EnsureAvailable()
     {

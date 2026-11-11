@@ -16,7 +16,7 @@ class CatalogUpdateEditorTest {
     private val session = AuthSession(gateway)
     private val repository = DeploymentRepository(gateway, session)
     private val baseline = deploymentFixture()
-    private fun template(version: String) = CatalogTemplate("1", baseline.catalogTemplateId!!, version, "RelaxKonOS", "built-in", true,
+    private fun template(version: String) = CatalogTemplate("2", baseline.catalogTemplateId!!, version, "RelaxKonOS", "built-in", true,
         "website", "test", listOf("linux/amd64"), emptyList(), CatalogResources(null, null, null), emptyList(), emptyList(), 80, "/", "retain data", false)
     private fun change(target: CatalogTemplate) = CatalogApplicationUpdatePreview(baseline.id, baseline.updatedAt, null, baseline.catalogTemplateVersion!!,
         target, "image:1", "image:2", "review", emptyList())
@@ -54,7 +54,7 @@ class CatalogUpdateEditorTest {
 
     @Test fun `preview exception becomes safe feedback instead of indefinite loading`() = runTest {
         val owner = login()
-        val target = CatalogTemplate("1", baseline.catalogTemplateId!!, "2.0.0", "RelaxKonOS", "built-in", true,
+        val target = CatalogTemplate("2", baseline.catalogTemplateId!!, "2.0.0", "RelaxKonOS", "built-in", true,
             "website", "test", listOf("linux/amd64"), emptyList(), CatalogResources(null, null, null),
             emptyList(), emptyList(), 80, "/", "retain data", false)
         gateway.onPreviewCatalogUpdate = { _, _ -> throw IllegalStateException("private detail") }

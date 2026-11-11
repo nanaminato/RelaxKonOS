@@ -167,7 +167,8 @@ internal sealed class ApplicationDeploymentCatalogStore
     }
 
     /// <summary>Marks a published revision as the running version after a successful activation.</summary>
-    public ApplicationRecord Activate(Guid applicationId, Guid revisionId, DateTimeOffset deployedAt)
+    public ApplicationRecord Activate(Guid applicationId, Guid revisionId, DateTimeOffset deployedAt,
+        (string Name, string Id)? managedWeb = null)
     {
         lock (gate)
         {
@@ -180,6 +181,8 @@ internal sealed class ApplicationDeploymentCatalogStore
                 CurrentRevisionId = revisionId,
                 CatalogTemplateId = revision.CatalogTemplateId,
                 CatalogTemplateVersion = revision.CatalogTemplateVersion,
+                ContainerName = managedWeb?.Name ?? application.ContainerName,
+                ContainerId = managedWeb?.Id ?? application.ContainerId,
                 DesiredState = ApplicationDesiredState.Running,
                 LastDeployedAt = deployedAt,
                 UpdatedAt = deployedAt,
@@ -196,6 +199,14 @@ internal sealed class ApplicationDeploymentCatalogStore
             DesiredState = desiredState ?? application.DesiredState,
             UpdatedAt = DateTimeOffset.UtcNow,
         });
+
+    internal ApplicationRecord MarkRetained(Guid applicationId) => Update(applicationId, application => application with
+    {
+        ContainerName = null,
+        ContainerId = null,
+        DesiredState = ApplicationDesiredState.Retained,
+        UpdatedAt = DateTimeOffset.UtcNow,
+    });
 
     /// <summary>Records the optional reverse-proxy association resolved by the server.</summary>
     public ApplicationRecord BindSite(Guid applicationId, string? siteInstanceId, string? siteId, string? domain)
@@ -247,6 +258,8 @@ internal sealed class ApplicationDeploymentCatalogStore
         && ApplicationDeploymentValidation.IsValidVolumes(application.Volumes)
         && ApplicationDeploymentValidation.IsValidConfiguration(application.Configuration)
         && ValidCatalogReference(application.CatalogTemplateId, application.CatalogTemplateVersion)
+        && (!application.ManagedCompose || application.CatalogTemplateId is not null && application.SourceKind == ApplicationSourceKind.Image
+            && application.BindAddress == "127.0.0.1" && application.HostPort is not null)
         && (application.SiteId is null || application.SiteId.Length <= 128 && application.SiteId.All(char.IsAsciiLetterOrDigit))
         && (application.SiteInstanceId is null || application.SiteInstanceId.Length <= 128 && application.SiteInstanceId.All(char.IsAsciiLetterOrDigit))
         && (application.Domain is null || application.Domain.Length is >= 1 and <= 253 && !application.Domain.Any(char.IsControl))
@@ -275,6 +288,14 @@ internal sealed class ApplicationDeploymentCatalogStore
         && ApplicationDeploymentValidation.IsValidVolumes(revision.Volumes)
         && ApplicationDeploymentValidation.IsValidConfiguration(revision.Configuration)
         && ValidCatalogReference(revision.CatalogTemplateId, revision.CatalogTemplateVersion)
+        && applications.Any(application => application.Id == revision.ApplicationId
+            && application.ManagedCompose == (revision.ManagedImages is not null))
+        && (revision.ManagedImages is null || revision.ManagedImages is { Length: >= 2 and <= 8 }
+            && revision.ManagedImages.All(image => image is not null && ApplicationDeploymentValidation.IsValidVolumeName(image.Service)
+                && ApplicationDeploymentValidation.IsPinnedImageReference(image.ImageReference)
+                && image.ImageId is { Length: 71 } && image.ImageId.StartsWith("sha256:", StringComparison.Ordinal)
+                && image.ImageId[7..].All(char.IsAsciiHexDigitLower))
+            && revision.ManagedImages.Select(image => image.Service).Distinct(StringComparer.Ordinal).Count() == revision.ManagedImages.Length)
         && (revision.SiteId is null || revision.SiteId.Length <= 128 && revision.SiteId.All(char.IsAsciiLetterOrDigit))
         && ApplicationDeploymentValidation.IsValidReference(revision.CreatedByReference, 64)
         && revision.CreatedAt != default;

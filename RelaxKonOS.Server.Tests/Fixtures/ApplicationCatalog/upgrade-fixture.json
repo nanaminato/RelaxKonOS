@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "3",
+  "release": {
+    "id": "upgrade-fixture",
+    "version": "1.0.0",
+    "purpose": "Upgrade contract fixture",
+    "description": "Controlled test metadata, never shipped in the server catalogue.",
+    "healthPath": "/",
+    "fields": [],
+    "upgradeFrom": [
+      {
+        "version": "0.9.0",
+        "imageReference": "registry.example/fixture@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ],
+    "webService": "web",
+    "services": [
+      {
+        "id": "web",
+        "imageReference": "registry.example/fixture@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "containerPort": 80,
+        "volumes": [
+          {
+            "name": "content",
+            "containerPath": "/usr/share/nginx/html"
+          }
+        ],
+        "dependsOn": []
+      }
+    ]
+  }
+}

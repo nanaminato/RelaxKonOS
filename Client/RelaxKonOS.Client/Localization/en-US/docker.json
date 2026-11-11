@@ -1,6 +1,7 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "docker.problem.application_resource_managed": "Use Application Deployments to change this managed resource.",
     "docker.login_required": "Docker Manager requires sign-in. Connect to a RelaxKonOS Server before starting this app.",
     "docker.status.loading": "Checking the server's local Docker Engine…",
     "docker.status.available": "Docker Engine {0} is available ({1}).",

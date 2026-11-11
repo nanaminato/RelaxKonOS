@@ -11,7 +11,10 @@ internal sealed record DeploymentEntry(
     string RequestReference,
     string[] Resources,
     string[]? Diagnostics = null,
-    bool DiagnosticsTruncated = false);
+    bool DiagnosticsTruncated = false,
+    ManagedComposeIntent? Compose = null);
+
+internal sealed record ManagedComposeIntent(string PlanReference, string CredentialReference, Guid? ReceiptId = null);
 
 internal sealed record DeploymentAudit(
     Guid OperationId,
@@ -133,7 +136,7 @@ internal sealed class ApplicationDeploymentOperationStore
             }
 
             var locks = resources.Select(Reference).Distinct().Order(StringComparer.Ordinal).ToArray();
-            if (ledger.Entries.Any(x => Active(x.Operation) && x.Resources.Intersect(locks, StringComparer.Ordinal).Any()))
+            if (ledger.Entries.Any(x => BlocksMutation(x.Operation) && x.Resources.Intersect(locks, StringComparer.Ordinal).Any()))
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
 
             var entry = new DeploymentEntry(
@@ -173,6 +176,60 @@ internal sealed class ApplicationDeploymentOperationStore
                 audit ? [.. ledger.Audit, Audit(after, eventName)] : ledger.Audit));
             return after.Operation;
         }
+    }
+
+    internal bool PrepareComposeDispatch(Guid operationId, Guid applicationId, Guid revisionId, ManagedComposeIntent intent)
+    {
+        lock (gate)
+        {
+            EnsureAvailable();
+            var entry = RequireEntry(operationId);
+            if (entry.Operation.ApplicationId != applicationId || entry.Operation.Kind != DeploymentOperationKind.Deploy
+                || revisionId == Guid.Empty || intent.ReceiptId is not null)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 500);
+            if (entry.Compose is { } prior)
+            {
+                if (entry.Operation.TargetRevisionId != revisionId || prior.PlanReference != intent.PlanReference
+                    || prior.CredentialReference != intent.CredentialReference)
+                    throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.IdempotencyConflict);
+                return false;
+            }
+            if (entry.Operation.State != DeploymentOperationState.Running || entry.Operation.Cancellable
+                || entry.Operation.Stage != DeploymentStage.Creating)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
+            SaveComposeEntry(entry with
+            {
+                Compose = intent,
+                Operation = entry.Operation with { TargetRevisionId = revisionId },
+            }, "compose-dispatch-intent");
+            return true;
+        }
+    }
+
+    internal void BindComposeReceipt(Guid operationId, Guid receiptId)
+    {
+        lock (gate)
+        {
+            EnsureAvailable();
+            var entry = RequireEntry(operationId);
+            if (entry.Compose is not { } intent || receiptId == Guid.Empty)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 500);
+            if (intent.ReceiptId == receiptId) return;
+            if (intent.ReceiptId is not null)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.IdempotencyConflict);
+            SaveComposeEntry(entry with { Compose = intent with { ReceiptId = receiptId } }, "compose-receipt-bound");
+        }
+    }
+
+    private DeploymentEntry RequireEntry(Guid operationId) =>
+        ledger.Entries.FirstOrDefault(entry => entry.Operation.OperationId == operationId)
+        ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.OperationNotFound, 404);
+
+    private void SaveComposeEntry(DeploymentEntry entry, string eventName)
+    {
+        if (!Valid(entry)) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 500);
+        Commit(new([.. ledger.Entries.Select(prior => prior.Operation.OperationId == entry.Operation.OperationId ? entry : prior)],
+            [.. ledger.Audit, Audit(entry, eventName)]));
     }
 
     /// <summary>
@@ -224,8 +281,8 @@ internal sealed class ApplicationDeploymentOperationStore
         var entries = next.Entries;
         if (entries.Length > RetainedOperations)
         {
-            var active = entries.Where(x => Active(x.Operation)).ToArray();
-            var retired = entries.Where(x => !Active(x.Operation))
+            var active = entries.Where(x => BlocksMutation(x.Operation)).ToArray();
+            var retired = entries.Where(x => !BlocksMutation(x.Operation))
                 .OrderByDescending(x => x.Operation.CreatedAt)
                 .Take(Math.Max(0, RetainedOperations - active.Length))
                 .ToArray();
@@ -238,6 +295,15 @@ internal sealed class ApplicationDeploymentOperationStore
             audit = [.. audit.OrderByDescending(x => x.At).Take(RetainedAuditRecords).OrderBy(x => x.At)];
         return new(entries, audit);
     }
+
+    internal bool HasUnresolvedOutcome(Guid applicationId) => Read().Any(x =>
+        x.Operation.ApplicationId == applicationId && HasUnresolvedOutcome(x.Operation));
+
+    private static bool BlocksMutation(DeploymentOperationDto operation) => Active(operation)
+        || HasUnresolvedOutcome(operation);
+
+    private static bool HasUnresolvedOutcome(DeploymentOperationDto operation) => operation.RecoveryProblemCode
+        is ApplicationDeploymentService.RetainedOutcomeUnknown or ApplicationManagedComposeDispatch.OutcomeUnknown;
 
     private void EnsureAvailable()
     {
@@ -262,7 +328,12 @@ internal sealed class ApplicationDeploymentOperationStore
         && entry.RequestReference?.Length == 64
         && entry.Resources is { Length: > 0 } && entry.Resources.All(x => x?.Length == 64)
         && entry.Diagnostics is null or { Length: > 0 and <= MaximumDiagnosticsLines }
-        && (entry.Diagnostics is not null || !entry.DiagnosticsTruncated);
+        && (entry.Diagnostics is not null || !entry.DiagnosticsTruncated)
+        && (entry.Compose is null || operation.Kind == DeploymentOperationKind.Deploy
+            && operation.TargetRevisionId is not null && !operation.Cancellable
+            && ApplicationDeploymentValidation.IsValidReference(entry.Compose.PlanReference, 64)
+            && ApplicationDeploymentValidation.IsValidReference(entry.Compose.CredentialReference, 64)
+            && entry.Compose.ReceiptId != Guid.Empty);
 
     private static bool Valid(DeploymentAudit audit, IReadOnlyCollection<DeploymentEntry> entries) => audit.OperationId != Guid.Empty
         && entries.Any(x => x.Operation.OperationId == audit.OperationId)

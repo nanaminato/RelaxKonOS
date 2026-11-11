@@ -663,7 +663,9 @@ class RelaxKonApi(
             ApplicationDeploymentRoutes.catalogUpdate(preview.applicationId), accessToken,
             JsonBody().string("templateId", preview.target.id).string("templateVersion", preview.target.version)
                 .string("expectedUpdatedAt", preview.expectedUpdatedAt).raw("expectedRevisionId", preview.expectedRevisionId?.let(JSONObject::quote) ?: "null")
-                .string("currentTemplateVersion", preview.currentTemplateVersion).bool("confirmed", true), idempotencyKey, ApplicationDeploymentWire::acceptedOperation)
+                .string("currentTemplateVersion", preview.currentTemplateVersion)
+                .string("expectedTargetImageReference", preview.targetImageReference).bool("confirmed", true),
+            idempotencyKey, ApplicationDeploymentWire::acceptedOperation)
 
     override suspend fun installCatalogApplication(serverUrl: String, accessToken: String, template: CatalogTemplate, name: String, hostPort: Int,
         fields: List<CatalogFieldValue>, idempotencyKey: String): ApiResult<DeploymentOperation> {
@@ -860,7 +862,7 @@ class RelaxKonApi(
         idempotencyKey: String,
     ): ApiResult<DeploymentOperation> = deploymentMutation(
         "DELETE", serverUrl, ApplicationDeploymentRoutes.delete(applicationId), accessToken,
-        JsonBody().bool("deleteVolumes", false).bool("confirmed", false), idempotencyKey,
+        JsonBody().bool("deleteVolumes", false).bool("confirmed", true), idempotencyKey,
         ApplicationDeploymentWire::acceptedOperation,
     )
 

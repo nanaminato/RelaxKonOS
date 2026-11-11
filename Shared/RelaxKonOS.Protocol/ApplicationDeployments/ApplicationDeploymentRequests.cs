@@ -71,6 +71,12 @@ public sealed record RollbackApplicationRequest(
     [property: JsonPropertyName("revisionId")] Guid RevisionId,
     [property: JsonPropertyName("confirmed")] bool Confirmed = false);
 
+/// <summary>Reinstalls the specified revision on its original retained data.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record ReinstallCatalogApplicationRequest(
+    [property: JsonRequired, JsonPropertyName("revisionId")] Guid RevisionId,
+    [property: JsonPropertyName("confirmed")] bool Confirmed = false);
+
 /// <summary>Shared start/stop/restart input. A forced stop is the only destructive variant.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record ApplicationLifecycleRequest(

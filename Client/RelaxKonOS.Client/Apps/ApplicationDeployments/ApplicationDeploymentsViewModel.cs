@@ -73,6 +73,8 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     public Func<LocalizedStatus, Task<bool>>? ConfirmAsync { get; set; }
     /// <summary>Assigned by the app shell to run the wizard and resolve when it closes.</summary>
     public Func<DeploymentWizardViewModel, Task>? ShowWizardAsync { get; set; }
+    public Func<IReadOnlyList<ApplicationCatalogTemplateDto>, Task<CatalogApplicationInstallDto?>>? ShowCatalogAsync { get; set; }
+    public Func<ApplicationDto, IReadOnlyList<ApplicationCatalogTemplateDto>, Task<DeploymentOperationDto?>>? ShowCatalogUpgradeAsync { get; set; }
     /// <summary>Assigned by the app shell to pick a server-side archive path for the wizard.</summary>
     public Func<Task<string?>>? PickServerArchiveAsync { get; set; }
     /// <summary>Assigned by the app shell to pick a local archive path for upload.</summary>
@@ -96,7 +98,13 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     /// first is still building.
     /// </summary>
     public bool CanAct => CanManage && !IsBusy && !IsLoading && !IsOperationRunning;
-    public bool CanActOnSelection => CanAct && SelectedApplication is not null;
+    public bool CanActOnSelection => CanAct && SelectedApplication is not null && !ShowReinstallAction;
+    public bool ShowReinstallAction => SelectedApplication?.Model.DesiredState == ApplicationDesiredState.Retained;
+    public bool ShowCatalogUpgradeAction => SelectedApplication?.Model is { CatalogTemplateId: not null, CurrentRevisionId: not null }
+        && !ShowReinstallAction;
+    public bool ShowManualDeployAction => SelectedApplication?.Model.CatalogTemplateId is null;
+    public string RemoveActionText => LocalizedText.Get(DeploymentText.Prefix +
+        (SelectedApplication?.Model.CatalogTemplateId is null ? ".delete" : ".catalog.uninstall"));
     public bool IsWorking => IsBusy || IsLoading;
 
     /// <summary>The bar stays visible after an operation finishes, so "is it running" is asked of the
@@ -123,8 +131,8 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     public bool CanCancelActiveOperation => CanManage && !IsLoading && ActiveOperation is { CanCancel: true };
 
     /// <summary>Start, stop, and restart only make sense once a revision has been published.</summary>
-    public bool CanControlLifecycle => CanManage && SelectedApplication?.Model.CurrentRevisionId is not null;
-    public bool CanRollback => CanAct && SelectedRevision is not null
+    public bool CanControlLifecycle => CanManage && SelectedApplication?.Model.CurrentRevisionId is not null && !ShowReinstallAction;
+    public bool CanRollback => CanActOnSelection && ShowManualDeployAction && SelectedRevision is not null
         && SelectedApplication is not null && SelectedRevision.Id != SelectedApplication.Model.CurrentRevisionId;
 
     public string CurrentRevisionText => SelectedApplication?.Model.CurrentRevisionNumber is { } number
@@ -226,9 +234,9 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     /// while the instance is up. A missing permission still leaves the button in place but disabled,
     /// so it reads as "not allowed" rather than "missing".
     /// </summary>
-    public bool ShowStartAction => HasPublishedRevision && !IsUpOrStarting;
-    public bool ShowStopAction => HasPublishedRevision && IsUpOrStarting;
-    public bool ShowRestartAction => HasPublishedRevision && IsUpOrStarting;
+    public bool ShowStartAction => HasPublishedRevision && !ShowReinstallAction && !IsUpOrStarting;
+    public bool ShowStopAction => HasPublishedRevision && !ShowReinstallAction && IsUpOrStarting;
+    public bool ShowRestartAction => HasPublishedRevision && !ShowReinstallAction && IsUpOrStarting;
 
     /// <summary>
     /// 0.0.0.0 and :: mean "every interface", which is not an address anyone can dial, so the
@@ -256,7 +264,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     [RelayCommand]
     private async Task RefreshAsync() => await LoadAsync();
 
-    private async Task LoadAsync()
+    private async Task LoadAsync(Guid? queuedApplicationId = null)
     {
         if (IsLoading) return;
         IsLoading = true;
@@ -267,11 +275,11 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
             var templatesTask = client.ListTemplatesAsync();
             var applicationsTask = client.ListApplicationsAsync();
             Templates = await templatesTask;
-            Replace(await applicationsTask, SelectedApplication?.Id);
+            Replace(await applicationsTask, queuedApplicationId ?? SelectedApplication?.Id);
 
             // Reattaching to an operation that is still running is what makes the window safe to reopen
             // in the middle of a deployment.
-            if (SelectedApplication is { } selected) await LoadSnapshotAsync(selected.Id);
+            if (SelectedApplication is { } selected) await LoadSnapshotAsync(selected.Id, observeOperation: queuedApplicationId is null);
 
             StatusText = LocalizedStatus.Format(DeploymentText.Prefix + ".status.loaded", Applications.Count);
         }
@@ -288,7 +296,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         }
     }
 
-    private async Task LoadSnapshotAsync(Guid applicationId)
+    private async Task LoadSnapshotAsync(Guid applicationId, bool observeOperation = true)
     {
         var snapshot = await client.GetSnapshotAsync(applicationId);
         if (snapshot is null) return;
@@ -302,7 +310,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         if (snapshot.ActiveOperation is { } active)
         {
             ActiveOperation = new OperationRowViewModel(active);
-            _ = PollAsync(applicationId, active);
+            if (observeOperation) _ = PollAsync(applicationId, active);
         }
         else
         {
@@ -315,10 +323,57 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     private async Task NewDeploymentAsync() => await RunWizardAsync(DeploymentWizardIntent.Create, null);
 
     [RelayCommand]
+    private async Task OpenCatalogAsync()
+    {
+        if (!CanAct || ShowCatalogAsync is null) return;
+        IsBusy = true;
+        ErrorText = LocalizedStatus.Literal(string.Empty);
+        try
+        {
+            var receipt = await ShowCatalogAsync(await client.ListCatalogAsync());
+            if (receipt is null) return;
+
+            await LoadAsync(receipt.Application.Id);
+            ActiveOperation = Row(receipt.Operation);
+            await PollAsync(receipt.Application.Id, receipt.Operation);
+        }
+        catch (Exception exception) when (IsExpected(exception))
+        {
+            ErrorText = Describe(exception);
+        }
+        finally { IsBusy = false; }
+    }
+
+    [RelayCommand]
+    private async Task UpgradeCatalogAsync()
+    {
+        if (!CanAct || !ShowCatalogUpgradeAction || ShowCatalogUpgradeAsync is null || SelectedApplication is not { } application) return;
+        IsBusy = true;
+        ErrorText = LocalizedStatus.Literal(string.Empty);
+        try
+        {
+            var releases = await client.ListCatalogAsync();
+            var candidates = releases.Where(release => release is { Trusted: true, Withdrawn: false, SchemaVersion: "2", Source: "built-in" }
+                && release.Id == application.Model.CatalogTemplateId && release.Version != application.Model.CatalogTemplateVersion).ToArray();
+            if (await ShowCatalogUpgradeAsync(application.Model, candidates) is { } operation)
+                await PollAsync(application.Id, operation);
+        }
+        catch (Exception exception) when (IsExpected(exception))
+        {
+            ErrorText = Describe(exception);
+        }
+        finally { IsBusy = false; }
+    }
+
+    [RelayCommand]
     private async Task EditDefinitionAsync() => await RunWizardAsync(DeploymentWizardIntent.EditDefinition, SelectedApplication?.Model);
 
     [RelayCommand]
-    private async Task DeployRevisionAsync() => await RunWizardAsync(DeploymentWizardIntent.DeployNewRevision, SelectedApplication?.Model);
+    private async Task DeployRevisionAsync()
+    {
+        if (ShowManualDeployAction)
+            await RunWizardAsync(DeploymentWizardIntent.DeployNewRevision, SelectedApplication?.Model);
+    }
 
     private async Task RunWizardAsync(DeploymentWizardIntent intent, ApplicationDto? existing)
     {
@@ -390,12 +445,24 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     [RelayCommand]
     private async Task DeleteApplicationAsync()
     {
-        if (!CanManage || ConfirmAsync is null || SelectedApplication is not { } application) return;
-        if (!await ConfirmAsync(LocalizedStatus.Format(DeploymentText.Prefix + ".confirm_delete", application.Name))) return;
+        if (!CanActOnSelection || ConfirmAsync is null || SelectedApplication is not { } application) return;
+        var retained = application.Model.CatalogTemplateId is not null && application.Model.CurrentRevisionId is not null;
+        if (!await ConfirmAsync(LocalizedStatus.Format(DeploymentText.Prefix +
+                (retained ? ".catalog.confirm_uninstall" : ".confirm_delete"), application.Name))) return;
 
         await QueueAsync(application.Id,
             key => client.DeleteAsync(application.Id, new DeleteApplicationRequest(DeleteVolumes: false, Confirmed: true), key),
-            deleting: true);
+            deleting: !retained);
+    }
+
+    [RelayCommand]
+    private async Task ReinstallCatalogAsync()
+    {
+        if (!CanAct || !ShowReinstallAction || ConfirmAsync is null || SelectedApplication is not { } application
+            || application.Model.CurrentRevisionId is not { } revisionId) return;
+        if (!await ConfirmAsync(LocalizedStatus.Format(DeploymentText.Prefix + ".catalog.confirm_reinstall", application.Name))) return;
+        await QueueAsync(application.Id, key => client.ReinstallCatalogAsync(application.Id,
+            new ReinstallCatalogApplicationRequest(revisionId, Confirmed: true), key));
     }
 
     /// <summary>Queues one long action and immediately starts observing its durable record.</summary>
@@ -670,6 +737,10 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         OnPropertyChanged(nameof(CanOpenEndpoint));
         OnPropertyChanged(nameof(ContainerPortText));
         OnPropertyChanged(nameof(ShowStartAction));
+        OnPropertyChanged(nameof(ShowReinstallAction));
+        OnPropertyChanged(nameof(ShowCatalogUpgradeAction));
+        OnPropertyChanged(nameof(ShowManualDeployAction));
+        OnPropertyChanged(nameof(RemoveActionText));
         OnPropertyChanged(nameof(ShowStopAction));
         OnPropertyChanged(nameof(ShowRestartAction));
         OnPropertyChanged(nameof(CanAct));

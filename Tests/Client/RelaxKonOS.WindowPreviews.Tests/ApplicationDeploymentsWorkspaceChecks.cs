@@ -2,6 +2,7 @@ using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -11,7 +12,9 @@ using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.ApplicationDeployments;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Desktop;
+using RelaxKonOS.WindowManager;
 using AppContext = System.AppContext;
 
 internal static class ApplicationDeploymentsWorkspaceChecks
@@ -32,6 +35,10 @@ internal static class ApplicationDeploymentsWorkspaceChecks
             }
             Narrow(settings, output);
             EmptyState(settings, output);
+            CatalogReceipt();
+            ManagedCatalogForm();
+            CatalogUpgradeOptions();
+            RetainedActions();
             BusyState(settings, output);
             RefusedState(settings, output);
             DarkAppearance(settings, output);
@@ -43,6 +50,128 @@ internal static class ApplicationDeploymentsWorkspaceChecks
             Dispatcher.UIThread.RunJobs();
         }
         Console.WriteLine("Application deployment workspace checks passed (" + output + ").");
+    }
+
+    private static void ManagedCatalogForm()
+    {
+        var client = DispatchProxy.Create<IRemoteApplicationDeploymentClient, DeploymentHostStub>();
+        var host = (DeploymentHostStub)(object)client;
+        host.Seed();
+        var requirements = new[] { ServerCapabilities.ApplicationDeployments, ServerCapabilities.Docker, ServerCapabilities.ApplicationDeploymentsCompose };
+        var release = new ApplicationCatalogTemplateDto("2", "added-from-catalog", "1.2.3", "RelaxKonOS", "built-in", true,
+            "Managed test release", "A release supplied after the client was built.", ["linux/amd64"], requirements, new(),
+            [new("databaseToken", "secret", true, null, [], new("Token", "令牌", "トークン"))], [], 8080, "/healthz", "Maintenance");
+        var descriptor = new ServerDescriptorDto(HostPlatformKind.Linux, requirements);
+        Check(!ApplicationCatalogView.CanInstall(release, descriptor with { Capabilities = requirements[..2] })
+            && !ApplicationCatalogView.CanInstall(release, descriptor with { Platform = HostPlatformKind.Windows })
+            && ApplicationCatalogView.CanInstall(release, descriptor), "The same desktop client gates a multi-service release by authenticated Server capabilities.");
+        var application = host.Applications[0];
+        host.InstallReceipt = new(application, host.Snapshots[application.Id].Operations[0], release.Id, release.Version);
+        host.Topology = new(release.Id, release.Version, "127.0.0.1", 18083, "web", "/healthz",
+            [new("web", "image", 8080, ["db"], []), new("db", "image", 5432, [], [new("db-data", "/db-data")])]);
+        var manager = new RelaxKonOS.WindowManager.WindowManager();
+        manager.Attach(new Canvas { Width = 1000, Height = 800 });
+        var owner = manager.Create(new WindowCreateOptions(new("test.catalog"), "Owner", new TextBlock(),
+            new RelaxKonOS.Core.Primitives.Rect(0, 0, 800, 600)));
+        ApplicationCatalogView? view = null;
+        ModalDialog<CatalogApplicationInstallDto?>? handle = null;
+        _ = manager.ShowDialogAsync<CatalogApplicationInstallDto?>(owner, "Catalog", dialog =>
+        {
+            handle = dialog;
+            return view = new ApplicationCatalogView(client, [release], descriptor, dialog);
+        });
+        var form = (StackPanel)((ScrollViewer)view!.Content!).Content!;
+        var port = form.Children.OfType<TextBox>().Single(text => text.Name == "CatalogHostPort");
+        form.Children.OfType<TextBox>().Single(text => text.Name == "CatalogInstanceName").Text = "managed-test";
+        var secret = form.Children.OfType<StackPanel>().First().Children.OfType<TextBox>().Single();
+        secret.Text = "synthetic-password";
+        var preview = form.Children.OfType<Button>().Single(button => button.Name == "CatalogPreviewTopology");
+        var install = form.Children.OfType<StackPanel>().Last().Children.OfType<Button>().Single(button => button.Name == "CatalogInstall");
+        var topology = form.Children.OfType<TextBlock>().Single(text => text.Name == "CatalogTopology");
+        port.Text = "18083";
+        Dispatcher.UIThread.RunJobs();
+        Check(secret.PasswordChar != '\0' && preview.IsVisible && !install.IsEnabled, "The package field is masked and installation waits for a topology preview.");
+        preview.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Check(host.PreviewRequest == (release.Id, release.Version, 18083) && install.IsEnabled
+            && topology.Text?.Contains("127.0.0.1:18083", StringComparison.Ordinal) == true
+            && topology.Text.Contains("/db-data", StringComparison.Ordinal),
+            "The preview binds the exact release and port and displays the internal database volume.");
+        port.Text = "18084";
+        Dispatcher.UIThread.RunJobs();
+        Check(!install.IsEnabled && string.IsNullOrEmpty(topology.Text), "Changing the requested port invalidates the previous approval.");
+        port.Text = "18083";
+        Dispatcher.UIThread.RunJobs();
+        preview.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Check(handle!.Result.IsCompletedSuccessfully && host.InstallRequest is { Confirmed: true, HostPort: 18083,
+            Fields: [{ Id: "databaseToken", Value: "synthetic-password" }] }
+            && host.InstallRequest.TemplateId == release.Id && host.InstallRequest.TemplateVersion == release.Version,
+            "The desktop submits the approved release with the server-defined field and receives the original install receipt.");
+    }
+
+    private static void CatalogReceipt()
+    {
+        var model = Model(out var host);
+        var view = ApplicationDeploymentsWorkspace.Create(model);
+        var application = host.Applications[1];
+        var operation = host.Snapshots[host.Applications[0].Id].Operations[0] with { ApplicationId = application.Id };
+        var release = new ApplicationCatalogTemplateDto("2", "added-by-data", "4.3.2", "RelaxKonOS", "built-in", true,
+            "New package", "A release returned by the test host.", ["linux/amd64"], [], new(),
+            [new("serviceToken", "secret", true, null, [], new("Token", "令牌", "トークン"))],
+            [], 8080, "/healthz", "Maintenance");
+        host.Catalog = [release];
+        model.ShowCatalogAsync = releases =>
+        {
+            Check(releases.Count == 1 && releases[0] == release, "Catalog command forwards arbitrary release and field metadata to the dialog.");
+            return Task.FromResult<CatalogApplicationInstallDto?>(new(application, operation, release.Id, release.Version));
+        };
+        Dispatcher.UIThread.RunJobs();
+        Check(view.FindControl<Button>("OpenCatalogButton")?.Command == model.OpenCatalogCommand, "Workspace binds its official catalog action.");
+        var submitted = model.OpenCatalogCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        Check(submitted.IsCompletedSuccessfully && model.SelectedApplication?.Id == application.Id,
+            "Catalog install receipt selects its instance instead of the previous selection.");
+    }
+
+    private static void CatalogUpgradeOptions()
+    {
+        var model = Model(out var host);
+        var application = host.Applications[0] with { CatalogTemplateId = "data-app", CatalogTemplateVersion = "1.0.0" };
+        host.Applications[0] = application;
+        host.Snapshots[application.Id] = host.Snapshots[application.Id] with { Application = application };
+        var candidate = new ApplicationCatalogTemplateDto("2", "data-app", "2.0.0", "RelaxKonOS", "built-in", true,
+            "New version", "Target release", ["linux/amd64"], [], new(), [], [], 8080, "/healthz", "Maintenance");
+        host.Catalog = [candidate, candidate with { Version = "1.0.0" }, candidate with { Id = "other-app" },
+            candidate with { Version = "3.0.0", Withdrawn = true }];
+        model.StartAsync().GetAwaiter().GetResult();
+        Check(model.ShowCatalogUpgradeAction && !model.ShowManualDeployAction, "Catalog instances expose the catalog upgrade entry point.");
+        var showedPreview = false;
+        model.ShowCatalogUpgradeAsync = (current, releases) =>
+        {
+            Check(current.Id == application.Id && releases.SequenceEqual([candidate]),
+                "Upgrade picker excludes the installed release, other packages and withdrawn releases.");
+            showedPreview = true;
+            return Task.FromResult<DeploymentOperationDto?>(null);
+        };
+        model.UpgradeCatalogCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(showedPreview, "The catalog upgrade command loads targets from the server.");
+    }
+
+    private static void RetainedActions()
+    {
+        var model = Model(out var host);
+        var application = host.Applications[0] with
+        {
+            DesiredState = ApplicationDesiredState.Retained,
+            ActualState = ApplicationActualState.Stopped,
+            CatalogTemplateId = "added-by-data",
+            Endpoint = null,
+        };
+        host.Applications[0] = application;
+        host.Snapshots[application.Id] = host.Snapshots[application.Id] with { Application = application };
+        model.StartAsync().GetAwaiter().GetResult();
+        Check(model.ShowReinstallAction && !model.ShowStartAction && !model.CanActOnSelection && !model.HasEndpointAddress,
+            "A retained catalog instance offers reinstall without advertising a live endpoint or ordinary lifecycle actions.");
     }
 
     /// <summary>The two-pane workspace: the list, the facts, and the actions that apply to the observed state.</summary>
@@ -324,10 +453,15 @@ internal static class ApplicationDeploymentsWorkspaceChecks
 /// operation, and an optional running operation for the busy state.</summary>
 public class DeploymentHostStub : DispatchProxy
 {
+    public IReadOnlyList<ApplicationCatalogTemplateDto> Catalog { get; set; } = [];
     public List<ApplicationDto> Applications { get; } = [];
     public Dictionary<Guid, ApplicationDeploymentSnapshotDto> Snapshots { get; } = [];
     public DeploymentOperationDto? ActiveOperation { get; set; }
     public bool FailSnapshots { get; set; }
+    public CatalogApplicationTopologyDto? Topology { get; set; }
+    public CatalogApplicationInstallDto? InstallReceipt { get; set; }
+    public (string Id, string Version, int Port)? PreviewRequest { get; private set; }
+    public InstallCatalogApplicationRequest? InstallRequest { get; private set; }
 
     public void Seed(bool empty = false, bool busy = false)
     {
@@ -401,6 +535,9 @@ public class DeploymentHostStub : DispatchProxy
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
     {
         "ListTemplatesAsync" => Task.FromResult<IReadOnlyList<ApplicationDeploymentTemplateDto>>([]),
+        "ListCatalogAsync" => Task.FromResult(Catalog),
+        "PreviewCatalogTopologyAsync" => PreviewTopology((string)args![0]!, (string)args[1]!, (int)args[2]!),
+        "InstallCatalogAsync" => Install((InstallCatalogApplicationRequest)args![0]!),
         "ListApplicationsAsync" => Task.FromResult<IReadOnlyList<ApplicationDto>>([.. Applications]),
         "GetSnapshotAsync" => Snapshot((Guid)args![0]!),
         "GetOperationAsync" => Task.FromResult(ActiveOperation),
@@ -409,6 +546,18 @@ public class DeploymentHostStub : DispatchProxy
         "GetActiveOperationAsync" => Task.FromResult(ActiveOperation),
         _ => throw new InvalidOperationException(method.Name),
     };
+
+    private Task<CatalogApplicationTopologyDto> PreviewTopology(string id, string version, int port)
+    {
+        PreviewRequest = (id, version, port);
+        return Task.FromResult(Topology!);
+    }
+
+    private Task<CatalogApplicationInstallDto> Install(InstallCatalogApplicationRequest request)
+    {
+        InstallRequest = request;
+        return Task.FromResult(InstallReceipt!);
+    }
 
     private Task<ApplicationDeploymentSnapshotDto?> Snapshot(Guid applicationId)
     {

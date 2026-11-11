@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using RelaxKonOS.Protocol.ApplicationDeployments;
+using RelaxKonOS.Protocol.Docker;
 using RelaxKonOS.Server.EventAlerts;
 
 namespace RelaxKonOS.Server.ApplicationDeployments;
@@ -18,11 +19,13 @@ internal sealed class ApplicationDeploymentCoordinator(
     ApplicationDeploymentLiveLogs logs,
     IHostApplicationLifetime lifetime,
     IOperationalEventPublisher eventPublisher,
-    ILogger<ApplicationDeploymentCoordinator> logger) : IHostedService
+    ILogger<ApplicationDeploymentCoordinator> logger,
+    ApplicationManagedComposeDispatch managedCompose) : IHostedService
 {
     private readonly object gate = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> cancellations = new();
     private readonly ConcurrentDictionary<Guid, Task> running = new();
+    private readonly ConcurrentDictionary<Guid, TaskCompletionSource> pendingInstallReceipts = new();
     private bool ready;
 
     /// <summary>
@@ -43,8 +46,11 @@ internal sealed class ApplicationDeploymentCoordinator(
             {
                 var replay = operations.FindIdempotent(application.Id, request.Kind, actor, key, fingerprint);
                 if (replay is not null) return replay.Operation;
+                if (operations.HasUnresolvedOutcome(application.Id))
+                    throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
                 if (request.ExpectedUpdatedAt is { } expected && (expected == default || application.UpdatedAt != expected))
                     throw new ApplicationDeploymentException(expected == default ? ApplicationDeploymentProblemCodes.InvalidRequest : ApplicationDeploymentProblemCodes.DefinitionConflict, expected == default ? 400 : 409);
+                ApplicationDeploymentService.ValidateCatalogLifecycle(application, request);
                 if (request.CatalogUpdate is { } update)
                     ApplicationCatalogUpdates.Validate(application, application.CurrentRevisionId is { } revisionId ? catalog.FindRevision(revisionId) : null, update);
                 // The concurrency ceiling is decided before the record is written, so a rejected request
@@ -56,14 +62,32 @@ internal sealed class ApplicationDeploymentCoordinator(
                     ApplicationDeploymentService.Resources(application.Id), out var created);
                 if (created)
                 {
+                    var retainedLifecycle = request.Kind == DeploymentOperationKind.Reinstall
+                        || request.Kind == DeploymentOperationKind.Delete && application.CatalogTemplateId is not null;
                     var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
+                    TaskCompletionSource? receipt = null;
+                    if (request.ManagedComposeInstall)
+                    {
+                        receipt = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                        pendingInstallReceipts[entry.Operation.OperationId] = receipt;
+                    }
                     cancellations[entry.Operation.OperationId] = cancellation;
                     running[entry.Operation.OperationId] = Task.Run(
-                        () => RunAsync(entry.Operation, request, actor, cancellation), CancellationToken.None);
+                        () => RunAsync(entry.Operation, request, actor, cancellation, retainedLifecycle, receipt?.Task), CancellationToken.None);
                 }
                 return entry.Operation;
             });
         }
+    }
+
+    internal void ReleaseCatalogInstall(Guid operationId) =>
+        pendingInstallReceipts.GetValueOrDefault(operationId)?.TrySetResult();
+
+    internal void AbortCatalogInstall(Guid operationId)
+    {
+        lock (gate)
+            if (pendingInstallReceipts.ContainsKey(operationId) && cancellations.TryGetValue(operationId, out var cancellation))
+                cancellation.Cancel();
     }
 
     public DeploymentOperationDto? Get(Guid operationId) => operations.Get(operationId)?.Operation;
@@ -88,11 +112,13 @@ internal sealed class ApplicationDeploymentCoordinator(
         }
     }
 
-    private async Task RunAsync(DeploymentOperationDto operation, DeploymentRequest request, string actor, CancellationTokenSource cancellation)
+    private async Task RunAsync(DeploymentOperationDto operation, DeploymentRequest request, string actor,
+        CancellationTokenSource cancellation, bool retainedLifecycle, Task? installReceipt)
     {
         var id = operation.OperationId;
         try
         {
+            if (installReceipt is not null) await installReceipt.WaitAsync(cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             operations.Update(id, current => current with
             {
@@ -106,31 +132,83 @@ internal sealed class ApplicationDeploymentCoordinator(
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
+            if (CompleteUnresolvedCompose(id)) return;
             // A process that is stopping has not failed: it leaves the operation interrupted so the
             // next startup reconciles it instead of reporting a phantom failure.
             var stopping = lifetime.ApplicationStopping.IsCancellationRequested;
-            Complete(id, stopping ? DeploymentOperationState.Interrupted : DeploymentOperationState.Cancelled, null,
-                stopping ? ApplicationDeploymentProblemCodes.Interrupted : ApplicationDeploymentProblemCodes.Cancelled);
+            var stage = retainedLifecycle && stopping ? operations.Get(id)?.Operation.Stage : null;
+            var unresolved = stage is DeploymentStage.Creating or DeploymentStage.HealthChecking or DeploymentStage.Activating
+                or DeploymentStage.Deactivating or DeploymentStage.CleaningUp or DeploymentStage.Completed;
+            Complete(id, stopping ? DeploymentOperationState.Interrupted : DeploymentOperationState.Cancelled,
+                unresolved ? ApplicationDeploymentProblemCodes.Interrupted : null,
+                unresolved ? ApplicationDeploymentService.RetainedOutcomeUnknown
+                    : stopping ? ApplicationDeploymentProblemCodes.Interrupted : ApplicationDeploymentProblemCodes.Cancelled);
         }
         catch (DeploymentFailure failure)
         {
+            if (CompleteUnresolvedCompose(id)) return;
             Complete(id, DeploymentOperationState.Failed, failure.ProblemCode, failure.RecoveryProblemCode,
                 failure.Diagnostics, failure.DiagnosticsTruncated);
         }
         catch (ApplicationDeploymentException exception)
         {
+            if (CompleteUnresolvedCompose(id)) return;
             Complete(id, DeploymentOperationState.Failed, exception.ProblemCode, null,
                 exception.Diagnostics, exception.DiagnosticsTruncated);
         }
         catch
         {
+            if (CompleteUnresolvedCompose(id)) return;
             Complete(id, DeploymentOperationState.Failed, ApplicationDeploymentProblemCodes.Failed, null);
         }
         finally
         {
-            lock (gate) { cancellations.TryRemove(id, out _); cancellation.Dispose(); }
+            lock (gate)
+            {
+                pendingInstallReceipts.TryRemove(id, out _);
+                cancellations.TryRemove(id, out _);
+                cancellation.Dispose();
+            }
             running.TryRemove(id, out _);
         }
+    }
+
+    private bool CompleteUnresolvedCompose(Guid id)
+    {
+        try
+        {
+            if (operations.Get(id) is not { Compose: not null } entry) return false;
+            ReconcileCompose(entry);
+            return true;
+        }
+        catch (ApplicationDeploymentException exception) when (exception.ProblemCode == ApplicationDeploymentProblemCodes.StoreUnavailable)
+        {
+            return true;
+        }
+    }
+
+    private DockerStackOperationDto? ObserveCompose(DeploymentEntry entry)
+    {
+        try { return managedCompose.ObserveOriginal(entry); }
+        catch (Exception error) when (error is ApplicationDeploymentException or Docker.DockerStackException)
+        {
+            logger.LogWarning("Unable to verify the original Compose receipt for application operation {OperationId}.",
+                entry.Operation.OperationId);
+            return null;
+        }
+    }
+
+    private void ReconcileCompose(DeploymentEntry entry)
+    {
+        ObserveCompose(entry);
+        KeepComposeFenced(entry);
+    }
+
+    private void KeepComposeFenced(DeploymentEntry entry)
+    {
+        if (ApplicationDeploymentOperationStore.Active(entry.Operation))
+            Complete(entry.Operation.OperationId, DeploymentOperationState.Interrupted, ApplicationDeploymentProblemCodes.Interrupted,
+                ApplicationManagedComposeDispatch.OutcomeUnknown);
     }
 
     /// <param name="diagnostics">Output of the step that produced this outcome. The store sanitizes and
@@ -223,8 +301,29 @@ internal sealed class ApplicationDeploymentCoordinator(
         try { entries = operations.Read(); }
         catch (ApplicationDeploymentException) { return; }
 
-        foreach (var entry in entries.Where(x => ApplicationDeploymentOperationStore.Active(x.Operation)))
+        foreach (var entry in entries.Where(x => ApplicationDeploymentOperationStore.Active(x.Operation)
+            || x.Operation.RecoveryProblemCode == ApplicationManagedComposeDispatch.OutcomeUnknown))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (entry.Compose is not null)
+            {
+                var receipt = ObserveCompose(entry);
+                try
+                {
+                    if (receipt is not null && await service.RecoverManagedComposeAsync(entry, receipt, cancellationToken))
+                    {
+                        Complete(entry.Operation.OperationId, DeploymentOperationState.Succeeded, null, null);
+                        continue;
+                    }
+                }
+                catch (Exception error) when (error is ApplicationDeploymentException or Docker.DockerStackException or Docker.DockerReadException)
+                {
+                    logger.LogWarning("Managed Compose resources could not be verified for application operation {OperationId}.",
+                        entry.Operation.OperationId);
+                }
+                KeepComposeFenced(entry);
+                continue;
+            }
             // A queued record means the process stopped before its worker was ever launched, so no
             // side effect exists and there is nothing to recover.
             var recovery = new ApplicationDeploymentRecovery(DeploymentOperationState.Interrupted,

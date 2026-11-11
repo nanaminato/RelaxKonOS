@@ -52,6 +52,50 @@ internal sealed class DockerStackOperationCoordinator(
             DockerStackValidation.Reference($"{DockerStackOperationKind.Deploy}|{definition.Name}|{request.DefinitionVersion}"), ct);
     }
 
+    internal async Task PreflightManagedAsync(ManagedComposePlan plan, CancellationToken ct)
+    {
+        using var work = await workOwner.AdmitAsync(ct);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, work.Token);
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<IDockerComposeService>().PreviewManagedAsync(plan, cancellation.Token);
+        }
+        catch (DockerComposeCleanupException error)
+        {
+            work.Fail(error);
+            throw;
+        }
+    }
+
+    internal Task<DockerStackOperationDto> DeployManagedAsync(ManagedComposePlan plan,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> environment,
+        Guid applicationOperationId, string credentialRevision, CancellationToken ct = default)
+    {
+        if (applicationOperationId == Guid.Empty || string.IsNullOrWhiteSpace(credentialRevision))
+            throw new DockerStackException(DockerStackProblem.IdempotencyRequired, 400);
+        var values = environment.ToDictionary(service => service.Key,
+            service => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(service.Value, StringComparer.Ordinal),
+            StringComparer.Ordinal);
+        var definition = plan.RenderDeployment(out _, values);
+        var version = DockerStackValidation.DefinitionVersion(definition.Name, definition.ComposeYaml);
+        return StartOperationAsync(DockerStackOperationKind.Deploy, definition.Name, null, ManagedActor(plan.InstanceId),
+            applicationOperationId.ToString("N"), ManagedRequestReference(version, DockerStackValidation.Reference(credentialRevision)),
+            ct, new ManagedDeployment(plan, values));
+    }
+
+    internal DockerStackOperationDto? GetManagedByRequest(Guid instanceId, Guid applicationOperationId, string planReference,
+        string credentialReference) => operations.FindIdempotent(DockerStackOperationKind.Deploy, ManagedActor(instanceId),
+            applicationOperationId.ToString("N"), ManagedRequestReference(planReference, credentialReference))?.Operation;
+
+    private static string ManagedRequestReference(string planReference, string credentialReference) =>
+        DockerStackValidation.Reference($"managed-deploy|{planReference}|{credentialReference}");
+
+    private static string ManagedActor(Guid instanceId) => $"container-application:{instanceId:N}";
+
+    private sealed record ManagedDeployment(ManagedComposePlan Plan,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Environment);
+
     /// <summary>Queues a whole-project lifecycle action.</summary>
     public async Task<DockerStackOperationDto> ApplyActionAsync(string name, DockerStackOperationKind kind, bool confirmed, string actor, string key, CancellationToken ct = default)
     {
@@ -94,6 +138,7 @@ internal sealed class DockerStackOperationCoordinator(
         lock (gate)
         {
             var entry = operations.Get(operationId) ?? throw new DockerStackException(DockerStackProblem.OperationNotFound, 404);
+            DockerApplicationResourcePolicy.RequireUnmanagedProject(entry.Operation.ProjectName);
             if (!DockerStackOperationStore.Active(entry.Operation)) return entry.Operation;
             if (!entry.Operation.Cancellable || !cancellations.TryGetValue(operationId, out var source))
                 throw new DockerStackException(DockerStackProblem.NotCancellable);
@@ -105,7 +150,7 @@ internal sealed class DockerStackOperationCoordinator(
     }
 
     private async Task<DockerStackOperationDto> StartOperationAsync(DockerStackOperationKind kind, string project, DockerStackDefinitionDto? definition,
-        string actor, string key, string requestReference, CancellationToken ct)
+        string actor, string key, string requestReference, CancellationToken ct, ManagedDeployment? managed = null)
     {
         ValidateKey(key);
         ct.ThrowIfCancellationRequested();
@@ -134,14 +179,14 @@ internal sealed class DockerStackOperationCoordinator(
                 var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping, work.Token);
                 cancellations[entry.Operation.OperationId] = cancellation;
                 running[entry.Operation.OperationId] = work.Completion;
-                work.Run(stopping => RunAsync(entry.Operation, kind, project, definition, cancellation, stopping));
+                work.Run(stopping => RunAsync(entry.Operation, kind, project, definition, managed, cancellation, stopping));
             }
             return entry.Operation;
         }
     }
 
     private async Task RunAsync(DockerStackOperationDto operation, DockerStackOperationKind kind, string project,
-        DockerStackDefinitionDto? definition, CancellationTokenSource cancellation, CancellationToken workStopping)
+        DockerStackDefinitionDto? definition, ManagedDeployment? managed, CancellationTokenSource cancellation, CancellationToken workStopping)
     {
         var id = operation.OperationId;
         try
@@ -150,7 +195,7 @@ internal sealed class DockerStackOperationCoordinator(
             await using (var scope = scopes.CreateAsyncScope())
             {
                 var compose = scope.ServiceProvider.GetRequiredService<IDockerComposeService>();
-                outcome = await ExecuteAsync(compose, id, kind, project, definition, cancellation, workStopping);
+                outcome = await ExecuteAsync(compose, id, kind, project, definition, managed, cancellation, workStopping);
             }
             if (cancellation.IsCancellationRequested)
                 operations.Update(id, current => current.Stage == DockerStackOperationStage.Applying
@@ -197,7 +242,7 @@ internal sealed class DockerStackOperationCoordinator(
         IReadOnlyList<string> Messages, IReadOnlyList<DockerStackServiceDto>? Observed = null, bool AwaitingObservation = false);
 
     private async Task<Outcome?> ExecuteAsync(IDockerComposeService compose, Guid id, DockerStackOperationKind kind, string project,
-        DockerStackDefinitionDto? definition, CancellationTokenSource cancellation, CancellationToken workStopping)
+        DockerStackDefinitionDto? definition, ManagedDeployment? managed, CancellationTokenSource cancellation, CancellationToken workStopping)
     {
         var messages = new List<string>();
         var mutationMayHaveStarted = false;
@@ -216,7 +261,9 @@ internal sealed class DockerStackOperationCoordinator(
             catch (Exception error) { throw new ResidentWorkCompletionException(error); }
 
             IReadOnlyList<string> desired = [];
-            if (kind == DockerStackOperationKind.Deploy)
+            if (managed is not null)
+                desired = [.. managed.Plan.Services.Select(service => service.Id)];
+            else if (kind == DockerStackOperationKind.Deploy)
             {
                 operations.Update(id, current => current with { Stage = DockerStackOperationStage.Parsing }, "stage");
                 var preview = await compose.PreviewAsync(definition!, cancellation.Token);
@@ -227,7 +274,9 @@ internal sealed class DockerStackOperationCoordinator(
             operations.Update(id, current => current with { Stage = DockerStackOperationStage.Applying }, "stage");
             cancellation.Token.ThrowIfCancellationRequested();
             mutationMayHaveStarted = true;
-            var result = kind == DockerStackOperationKind.Deploy
+            var result = managed is not null
+                ? await compose.DeployManagedAsync(managed.Plan, managed.Environment, cancellation.Token)
+                : kind == DockerStackOperationKind.Deploy
                 ? await compose.DeployAsync(definition!, cancellation.Token)
                 : await compose.ApplyActionAsync(project, kind, confirmed: true, cancellation.Token);
             messages.AddRange(result.Messages);

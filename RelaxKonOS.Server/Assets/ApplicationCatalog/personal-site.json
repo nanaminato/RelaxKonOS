@@ -1,19 +1,26 @@
 {
-  "schemaVersion": "2",
+  "schemaVersion": "3",
   "release": {
     "id": "personal-site",
     "version": "1.0.0",
     "purpose": "Personal website",
     "description": "A small private website served by Nginx.",
-    "imageReference": "docker.io/library/nginx@sha256:679a5fd058f6ca754a561846fe27927e408074431d63556e8fc588fc38be6901",
-    "containerPort": 80,
     "healthPath": "/",
-    "volumes": [
+    "fields": [],
+    "webService": "web",
+    "services": [
       {
-        "name": "content",
-        "containerPath": "/usr/share/nginx/html"
+        "id": "web",
+        "imageReference": "docker.io/library/nginx@sha256:679a5fd058f6ca754a561846fe27927e408074431d63556e8fc588fc38be6901",
+        "containerPort": 80,
+        "volumes": [
+          {
+            "name": "content",
+            "containerPath": "/usr/share/nginx/html"
+          }
+        ],
+        "dependsOn": []
       }
-    ],
-    "fields": []
+    ]
   }
 }
