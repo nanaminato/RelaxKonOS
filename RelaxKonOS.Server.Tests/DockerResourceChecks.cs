@@ -63,7 +63,9 @@ internal static class DockerResourceChecks
                     "Failed resource reads must return 503, never a successful empty collection.");
             }
             using var deletedVolume = await client.DeleteAsync("/api/v1.0/docker/volumes/data?confirmed=true");
-            TestAssert.Assert(deletedVolume.StatusCode == HttpStatusCode.ServiceUnavailable, "Failed volume reference read must block removal.");
+            TestAssert.Assert(deletedVolume.StatusCode == HttpStatusCode.ServiceUnavailable
+                && (await deletedVolume.Content.ReadAsStringAsync()).Contains("docker.not_installed"),
+                "Failed volume inspection must block removal and preserve the Docker read problem.");
             using var imageRequest = new HttpRequestMessage(HttpMethod.Delete, "/api/v1.0/docker/images/" + Uri.EscapeDataString(imageId)) {
                 Content = JsonContent.Create(new DockerImageOperationRequest(imageId, true)) };
             using var deletedImage = await client.SendAsync(imageRequest);

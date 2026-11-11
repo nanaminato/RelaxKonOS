@@ -218,7 +218,13 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
     {
         if (!IsContainerId(name)) return null;
         var result = await RunAsync(["volume", "inspect", name, "--format", "{{json .}}"], cancellationToken);
-        if (!result.Success) return null;
+        if (!result.Success)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!result.TimedOut && string.Equals(result.Error.Trim(), $"Error response from daemon: get {name}: no such volume", StringComparison.Ordinal))
+                return null;
+            throw new DockerReadException(ToProblemCode(result));
+        }
         try
         {
             using var document = JsonDocument.Parse(result.Output); var root = document.RootElement;
@@ -226,7 +232,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
             return new DockerVolumeDetailsDto(Read(root, "Name"), Read(root, "Driver"), Read(root, "Mountpoint"), labels,
                 await ReferencingContainersAsync(name, cancellationToken));
         }
-        catch (JsonException) { return null; }
+        catch (JsonException) { throw new DockerReadException("docker.api_incompatible"); }
     }
 
     /// <summary>
