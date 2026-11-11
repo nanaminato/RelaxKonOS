@@ -8,7 +8,7 @@ import java.io.FileOutputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-enum class DeploymentControlKind { Rollback, Delete, Start, Stop, Restart, Cancel }
+enum class DeploymentControlKind { Rollback, Delete, Start, Stop, Restart, Cancel, Reinstall }
 data class PendingDeploymentControl(val serviceId: String, val account: String, val applicationId: String,
     val kind: DeploymentControlKind, val argument: String, val key: String)
 
@@ -72,7 +72,7 @@ class DeploymentControlJournal(private val storage: DeploymentControlStorage) {
         require(request.serviceId.length in 1..128 && request.account.length in 1..256 && request.applicationId.length in 1..128 &&
             request.argument.length <= 128 && request.key.length in 1..128 && request.key.all { it.code in 33..126 })
         require(when (request.kind) {
-            DeploymentControlKind.Rollback, DeploymentControlKind.Cancel -> request.argument.isNotBlank()
+            DeploymentControlKind.Rollback, DeploymentControlKind.Cancel, DeploymentControlKind.Reinstall -> request.argument.isNotBlank()
             else -> request.argument.isEmpty()
         })
     }

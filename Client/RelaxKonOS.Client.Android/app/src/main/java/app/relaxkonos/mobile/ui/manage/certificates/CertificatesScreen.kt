@@ -50,8 +50,8 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
     val canManage = available && owner?.privilegedOperations == true
     var confirm by remember(owner, epoch, section, state.busy, state.detail, state.operation, state.operationVerified) { mutableStateOf<Pair<Int, () -> Unit>?>(null) }
     val cancellation = model.cancellation?.takeIf { it.owner === owner }
-    WithdrawCertificateConfirmationOnPause(active) { confirm = null; model.dismissCancellation() }
-    DisposableEffect(owner, epoch, section) { onDispose { model.dismissCancellation() } }
+    WithdrawCertificateConfirmationOnPause(active) { confirm = null; model.dismissCancellation(); model.dismissOrderEvidence() }
+    DisposableEffect(owner, epoch, section, active) { onDispose { model.dismissCancellation(); model.dismissOrderEvidence() } }
     var recovery by remember(owner, epoch) { mutableStateOf(false) }
     var recoverPending by remember(owner, epoch) { mutableStateOf<PendingCertificateRequest?>(null) }
     var recoverId by remember(owner, epoch) { mutableStateOf("") }
@@ -128,6 +128,33 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
             PageActionRow(refresh = {
                 TextButton(onClick = model::poll, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
             })
+            if (active && state.operationVerified && !operation.state.active &&
+                operation.kind in setOf(CertificateAction.Issue, CertificateAction.Renew)) {
+                val canRead = !state.busy && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+                TextButton(enabled = canRead, onClick = { model.readOrder(owner, operation, CertificateRecoveryRead.Observe) }) {
+                    Text(stringResource(R.string.certificates_observe_order))
+                }
+                TextButton(enabled = canRead, onClick = { model.readOrder(owner, operation, CertificateRecoveryRead.Verify) }) {
+                    Text(stringResource(R.string.certificates_verify_order))
+                }
+                if (canManage && operation.kind == CertificateAction.Renew && operation.certificateId != null &&
+                    operation.problemCode == "certificate.operation_interrupted") {
+                    TextButton(enabled = canRead, onClick = { model.readOrder(owner, operation, CertificateRecoveryRead.Plan) }) {
+                        Text(stringResource(R.string.certificates_plan_recovery))
+                    }
+                }
+                model.orderEvidence?.takeIf { it.operation.operationId == operation.operationId }?.let { evidence ->
+                    Text(stringResource(R.string.certificates_recovery_status, evidence.status))
+                    evidence.activeVersion?.let { Text(stringResource(R.string.certificates_recovery_active_version, it)) }
+                    evidence.activeFingerprint?.let { Text(stringResource(R.string.certificates_recovery_active_fingerprint, it)) }
+                    evidence.fingerprint?.let { Text(stringResource(R.string.certificates_recovery_fingerprint, it)) }
+                    if (canManage && evidence.status == "ready" && evidence.target == "kestrel" && !evidence.planToken.isNullOrBlank()) {
+                        TextButton(enabled = canRead, onClick = {
+                            confirm = R.string.certificates_apply_recovery_confirm to { model.applyOrderRecovery(owner, evidence) }
+                        }) { Text(stringResource(R.string.certificates_apply_recovery)) }
+                    }
+                }
+            }
             if (canManage && state.operationVerified && operation.state.active) TextButton(enabled = !state.busy && !state.uncertain, onClick = {
                 model.requestCancellation(owner, operation)
             }) { Text(stringResource(R.string.common_cancel)) }

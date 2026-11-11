@@ -272,6 +272,11 @@ internal class NginxViewModel(private val session: AuthSession, private val gate
         if (failed != null) { failure(requireNotNull(failed)); state = state.copy(uncertain = true) }
         else if (completed) load(active)
     }
+    fun compensate(expectedOwner: SessionState.Active, original: WebServerOperation) {
+        if (activeSession !== expectedOwner || owner !== expectedOwner || !expectedOwner.privilegedOperations ||
+            !state.operationVerified || state.operation != original || original.compensationRoute() == null) return
+        webMutation { active -> webServers.compensate(active, original, elevationAnswers) }
+    }
     fun pollWeb() = webMutation { active -> webServers.operation(active, requireNotNull(state.operation).operationId) }
     fun pollInstallation() = work { active ->
         state = state.copy(installationVerified = false)

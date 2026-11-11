@@ -302,11 +302,20 @@ class DeploymentBrowser(
         }
     }
 
+    suspend fun previewCatalogTopology(owner: SessionState.Active, template: CatalogTemplate, hostPort: Int): ApiResult<CatalogTopology> {
+        val runtime = (mutableState.value.runtime as? ApiResult.Success)?.value
+        if (!current(owner) || !template.requiresTopology || hostPort !in 1..65535 ||
+            !template.compatibility(owner.capabilities, runtime).canInstall) return ApiResult.Transport(null)
+        return repository.previewCatalogTopology(owner, template, hostPort)
+    }
+
     /** Installs the exact server catalogue version. Field values live only in this request path. */
-    fun installCatalog(template: CatalogTemplate, name: String, hostPort: Int, fields: List<CatalogFieldValue>) {
+    fun installCatalog(owner: SessionState.Active, template: CatalogTemplate, name: String, hostPort: Int,
+        fields: List<CatalogFieldValue>, topology: CatalogTopology?) {
         if (mutableState.value.submitting) return
-        val owner = mutableState.value.owner ?: return
-        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities || template.schemaVersion != "2" || template.withdrawn) return
+        val runtime = (mutableState.value.runtime as? ApiResult.Success)?.value
+        if (!current(owner) || !template.compatibility(owner.capabilities, runtime).canInstall ||
+            (template.requiresTopology && topology?.matches(template, hostPort) != true)) return
         listJob?.cancel()
         val generation = ++listGeneration
         mutableState.update { it.copy(submitting = true, submission = null) }
@@ -332,17 +341,32 @@ class DeploymentBrowser(
         observeOperation(owner, operation)
     }
 
+    fun reinstallCatalog(owner: SessionState.Active, applicationId: String, revisionId: String) {
+        val state = mutableState.value
+        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
+        val snapshot = (state.detail as? ApiResult.Success)?.value ?: return
+        if (!current(owner) || state.submitting || state.controlBlocked || state.selectedId != applicationId ||
+            snapshot.application.id != applicationId || snapshot.application.desiredState != "retained" ||
+            snapshot.application.catalogTemplateId == null || snapshot.activeOperation != null ||
+            snapshot.revisions.none { it.id == revisionId && it.isCurrent }) return
+        submitControl(owner) { repository.reinstallCatalog(owner, applicationId, revisionId, UUID.randomUUID().toString()) }
+    }
+
     fun lifecycle(action: DeploymentLifecycleAction) {
         if (mutableState.value.submitting || mutableState.value.controlBlocked) return
         val owner = mutableState.value.owner ?: return
         val applicationId = mutableState.value.selectedId ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
+        submitControl(owner) { repository.lifecycle(owner, applicationId, action, UUID.randomUUID().toString()) }
+    }
+
+    private fun submitControl(owner: SessionState.Active, send: suspend () -> ApiResult<DeploymentOperation>) {
         listJob?.cancel()
         val generation = ++listGeneration
         beginControl()
         listJob = scope.launch {
             try {
-                val result = repository.lifecycle(owner, applicationId, action, UUID.randomUUID().toString())
+                val result = send()
                 if (current(owner)) syncControlPending(owner)
                 if (current(owner) && generation == listGeneration) {
                     mutableState.update { it.copy(submitting = false, submission = result) }

@@ -53,9 +53,10 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
     var state by mutableStateOf(CertificatesState())
         private set
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== owner) { dismissCancellation(); owner = next as? SessionState.Active; state = CertificatesState(); sessionEpoch++ }
+        if (next !== owner) { dismissCancellation(); dismissOrderEvidence(); owner = next as? SessionState.Active; state = CertificatesState(); sessionEpoch++ }
     } } }
     fun refresh() = work { active ->
+        dismissOrderEvidence()
         state = state.copy(list = null, detail = null, deployments = emptyMap(), operationVerified = false)
         val list = repository.list(active); verify(active)
         state = state.copy(list = list, pending = repository.pending(active))
@@ -176,7 +177,56 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
             observe(active, result, writeResult = true)
         }
     }
+    var orderEvidence by mutableStateOf<CertificateRecoveryEvidence?>(null)
+        private set
+    private var orderReadGeneration = 0L
+    private var orderOriginal: CertificateOperation? = null
+
+    fun dismissOrderEvidence() {
+        orderReadGeneration++
+        orderOriginal = null
+        orderEvidence = null
+    }
+
+    fun readOrder(expectedOwner: SessionState.Active, original: CertificateOperation, action: CertificateRecoveryRead) {
+        if (owner !== expectedOwner || activeSession !== expectedOwner || !state.operationVerified ||
+            state.operation != original || original.state.active || original.kind !in setOf(CertificateAction.Issue, CertificateAction.Renew) ||
+            (action == CertificateRecoveryRead.Plan && (!expectedOwner.privilegedOperations || original.certificateId == null ||
+                original.kind != CertificateAction.Renew || original.problemCode != "certificate.operation_interrupted"))) return
+        dismissOrderEvidence()
+        val generation = orderReadGeneration
+        work { active ->
+            val result = repository.recovery(active, original, action, elevationAnswers)
+            verify(active)
+            if (generation != orderReadGeneration || state.operation != original) return@work
+            failure(result)
+            orderOriginal = original
+            orderEvidence = (result as? ApiResult.Success)?.value
+        }
+    }
+
+    fun applyOrderRecovery(expectedOwner: SessionState.Active, plan: CertificateRecoveryEvidence) {
+        if (owner !== expectedOwner || activeSession !== expectedOwner || !expectedOwner.privilegedOperations ||
+            !state.operationVerified || state.operation != orderOriginal || orderEvidence !== plan ||
+            plan.status != "ready" || plan.target != "kestrel" || plan.planToken.isNullOrBlank() || state.busy) return
+        dismissOrderEvidence()
+        work { active ->
+            writing = true
+            val result = repository.applyRecovery(active, plan, elevationAnswers)
+            verify(active)
+            writing = false
+            failure(result, writeResult = true)
+            state = state.copy(operationVerified = result is ApiResult.Success)
+            orderEvidence = (result as? ApiResult.Success)?.value
+            if (result is ApiResult.Success) {
+                state = state.copy(operation = result.value.operation)
+                plan.operation.certificateId?.let { deployment(active, it) }
+            }
+        }
+    }
+
     fun poll() = work { active ->
+        dismissOrderEvidence()
         val current = state.operation ?: return@work
         state = state.copy(operationVerified = false)
         val result = repository.operation(active, current.operationId); observe(active, result)

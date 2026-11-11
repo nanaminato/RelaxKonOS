@@ -14,6 +14,7 @@ import app.relaxkonos.mobile.ui.manage.certificates.*
 
 import app.relaxkonos.mobile.core.net.usageProblem
 import app.relaxkonos.mobile.core.net.ApiResult
+import app.relaxkonos.mobile.core.net.BootstrapRecovery
 import app.relaxkonos.mobile.core.net.DeploymentApplication
 import app.relaxkonos.mobile.core.net.ManagedCertificate
 import app.relaxkonos.mobile.core.net.ServerCapabilities
@@ -225,6 +226,29 @@ internal class WebsitesViewModel(private val session: AuthSession, private val w
                     state = state.copy(publishing = false)
                     refreshPendingPublication(owner, state.publicationStorageFailed)
                 }
+            }
+        }
+    }
+
+    fun recoverBootstrap(owner: SessionState.Active, original: WebsitePublicationOperation, action: BootstrapRecovery) {
+        if (session.state.value !== owner || !owner.privilegedOperations || state.publishing || state.publicationLoading ||
+            (state.publication as? ApiResult.Success)?.value != original ||
+            (if (action == BootstrapRecovery.Resume) !original.canResumeBootstrap else !original.canCleanupBootstrap)) return
+        val request = ++publicationReadGeneration
+        state = state.copy(publishing = true, publicationLookupId = original.operationId)
+        viewModelScope.launch {
+            fun current() = session.state.value === owner && publicationReadGeneration == request
+            try {
+                val result = webPublishing.recoverBootstrap(owner, original, action, elevationAnswers)
+                if (current()) state = state.copy(publication = result)
+                if (current() && result is ApiResult.Success) loadHistory(original.applicationId)
+            } catch (cancelled: CancellationException) {
+                if (current()) state = state.copy(publication = ApiResult.Transport(null))
+                throw cancelled
+            } catch (_: Exception) {
+                if (current()) state = state.copy(publication = ApiResult.Transport(null))
+            } finally {
+                if (session.state.value === owner) state = state.copy(publishing = false, publicationObservation = state.publicationObservation + 1)
             }
         }
     }

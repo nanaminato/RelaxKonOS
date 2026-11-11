@@ -473,6 +473,17 @@ class RelaxKonApi(
     override suspend fun certificateMutation(serverUrl: String, accessToken: String, action: CertificateAction, id: String?, body: JsonBody,
         idempotencyKey: String): ApiResult<CertificateOperation> = deploymentMutation(if (action == CertificateAction.Delete) "DELETE" else "POST",
             serverUrl, CertificateRoutes.mutation(action, id), accessToken, body, idempotencyKey, CertificateWire::operation)
+    override suspend fun certificateRecovery(serverUrl: String, accessToken: String, operationId: String,
+        action: CertificateRecoveryRead): ApiResult<CertificateRecoveryEvidence> =
+        webPublishingRead(serverUrl, accessToken, CertificateRoutes.order(operationId) + action.path) {
+            CertificateWire.recovery(it, action.statusField)
+        }
+
+    override suspend fun applyCertificateRecovery(serverUrl: String, accessToken: String, operationId: String,
+        planToken: String): ApiResult<CertificateRecoveryEvidence> =
+        webPublishingCall("POST", serverUrl, CertificateRoutes.order(operationId) + "/certificate/kestrel-recovery",
+            accessToken, JsonBody().string("planToken", planToken).bool("confirmed", true), CertificateWire::recoveryResult)
+
     override suspend fun certificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation> =
         webPublishingCall("GET", serverUrl, CertificateRoutes.operation(id), accessToken, null, CertificateWire::operation)
     override suspend fun cancelCertificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation> =
@@ -538,6 +549,13 @@ class RelaxKonApi(
 
     override suspend fun websitePublicationHistory(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<WebsitePublicationOperation>> =
         webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.publicationHistory(applicationId), WebPublishingWire::publicationHistory)
+
+    override suspend fun recoverWebsiteBootstrap(serverUrl: String, accessToken: String, id: String, action: BootstrapRecovery): ApiResult<WebsitePublicationOperation> =
+        webPublishingCall("POST", serverUrl, WebPublishingRoutes.recoverBootstrap(id, action), accessToken, JsonBody(), WebPublishingWire::publication)
+
+    override suspend fun compensateWebServer(serverUrl: String, accessToken: String, operation: WebServerOperation): ApiResult<WebServerOperation> =
+        webPublishingCall("POST", serverUrl, "${WebPublishingRoutes.operation(operation.operationId)}/${requireNotNull(operation.compensationRoute())}",
+            accessToken, JsonBody().bool("confirmed", true), WebPublishingWire::operation)
 
     override suspend fun websitePublication(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebsitePublicationOperation> =
         webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.publication(operationId), WebPublishingWire::publication)
@@ -666,6 +684,17 @@ class RelaxKonApi(
                 .string("currentTemplateVersion", preview.currentTemplateVersion)
                 .string("expectedTargetImageReference", preview.targetImageReference).bool("confirmed", true),
             idempotencyKey, ApplicationDeploymentWire::acceptedOperation)
+
+    override suspend fun previewCatalogTopology(serverUrl: String, accessToken: String, template: CatalogTemplate,
+        hostPort: Int): ApiResult<CatalogTopology> = deploymentRead(serverUrl, accessToken,
+        "${ApplicationDeploymentRoutes.CATALOG}/${encode(template.id)}/${encode(template.version)}/topology?hostPort=$hostPort",
+        ApplicationDeploymentWire::topology)
+
+    override suspend fun reinstallCatalogApplication(serverUrl: String, accessToken: String, applicationId: String, revisionId: String,
+        idempotencyKey: String): ApiResult<DeploymentOperation> = deploymentMutation("POST", serverUrl,
+        ApplicationDeploymentRoutes.catalogReinstall(applicationId), accessToken,
+        JsonBody().string("revisionId", revisionId).bool("confirmed", true), idempotencyKey,
+        ApplicationDeploymentWire::acceptedOperation)
 
     override suspend fun installCatalogApplication(serverUrl: String, accessToken: String, template: CatalogTemplate, name: String, hostPort: Int,
         fields: List<CatalogFieldValue>, idempotencyKey: String): ApiResult<DeploymentOperation> {

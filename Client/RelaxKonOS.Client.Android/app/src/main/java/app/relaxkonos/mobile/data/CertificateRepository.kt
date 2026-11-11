@@ -66,6 +66,45 @@ class CertificateRepository(private val gateway: RelaxKonGateway, private val se
         } else if (result is ApiResult.Problem && !pending.attempted && result.status in setOf(400, 401, 403, 409)) journal.complete(pending)
         result
     }
+    suspend fun recovery(owner: SessionState.Active, original: CertificateOperation, action: CertificateRecoveryRead,
+        provider: ElevationAnswerProvider): ApiResult<CertificateRecoveryEvidence> {
+        val result = if (action == CertificateRecoveryRead.Plan) {
+            withRecoveryElevation(owner, original, provider) { url, token ->
+                gateway.certificateRecovery(url, token, original.operationId, action)
+            }
+        } else read(owner) { url, token -> gateway.certificateRecovery(url, token, original.operationId, action) }
+        return verifyRecovery(original, result)
+    }
+
+    suspend fun applyRecovery(owner: SessionState.Active, plan: CertificateRecoveryEvidence,
+        provider: ElevationAnswerProvider): ApiResult<CertificateRecoveryEvidence> = mutations.withLock {
+        val token = plan.planToken?.takeIf { it.isNotBlank() && plan.status == "ready" } ?: return@withLock ApiResult.Transport(null)
+        val result = withRecoveryElevation(owner, plan.operation, provider) { url, accessToken ->
+            gateway.applyCertificateRecovery(url, accessToken, plan.operation.operationId, token)
+        }
+        verifyRecovery(plan.operation, result)
+    }
+
+    private suspend fun withRecoveryElevation(owner: SessionState.Active, original: CertificateOperation,
+        provider: ElevationAnswerProvider, call: suspend (String, String) -> ApiResult<CertificateRecoveryEvidence>): ApiResult<CertificateRecoveryEvidence> {
+        verify(owner)
+        require(owner.privilegedOperations && ServerCapabilities.CERTIFICATES in owner.capabilities)
+        val target = "certificates/${requireNotNull(original.certificateId)}/server-https"
+        return elevations.withElevation("certificateReplaceServerHttps", target, provider) { url, token ->
+            verify(owner)
+            call(url, token)
+        }.also { verify(owner) }
+    }
+
+    private fun verifyRecovery(original: CertificateOperation, result: ApiResult<CertificateRecoveryEvidence>): ApiResult<CertificateRecoveryEvidence> {
+        if (result is ApiResult.Success) {
+            val receipt = result.value.operation
+            if (receipt.operationId != original.operationId || receipt.certificateId != original.certificateId ||
+                receipt.kind != original.kind) return ApiResult.Transport(null)
+        }
+        return result
+    }
+
     suspend fun operation(owner: SessionState.Active, id: String): ApiResult<CertificateOperation> =
         read(owner) { url, token -> gateway.certificateOperation(url, token, id) }.let { result ->
             if (result is ApiResult.Success) {

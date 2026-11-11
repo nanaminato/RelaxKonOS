@@ -87,3 +87,6 @@ ACME 证书可续期和撤销，已撤销证书不提供续期；自签名不提
 源码入口：`Certificates.kt`、Gateway/API、`CertificateRepository.kt`、`CertificateRequestJournal.kt`、`CertificateDraft.kt`、`CertificatesViewModel.kt`、`CertificatesScreen.kt`、`CertificateLabels.kt`、`CertificateUsage.kt`、`CertificateBinding.kt`、OperationIndex/OperationCenter、导航与管理入口。
 
 自签名创建通过 `certificateCreateSelfSigned` / `certificates/self-signed` 会话授权，服务器 HTTPS 换证通过 `certificateReplaceServerHttps` / `certificates/{规范化证书 UUID}/server-https` 精确目标授权。服务端返回标准 `elevation-required` 时打开统一管理员认证弹窗；成功后用相同请求键重试一次，取消或拒绝保留表单，不把 Server 普通服务账户当作权限失败。
+
+
+证书操作记录可只读查询原 ACME 订单和核实签发证书指纹。中断的续期可在原证书的服务器 HTTPS 授权下获取 Kestrel 恢复计划，核对活动版本和原订单签发指纹后再确认应用。计划令牌仅保留在当前会话的确认流程中；暂停、切换栏目或刷新撤销旧计划，写入失去响应时按原操作刷新。

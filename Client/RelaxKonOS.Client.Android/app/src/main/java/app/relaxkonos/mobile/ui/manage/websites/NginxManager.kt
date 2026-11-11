@@ -154,10 +154,15 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
             if (state.operationVerified) {
                 if (operation.problemCode.isNotBlank()) Text(nginxProblemLabel(operation.problemCode), color = MaterialTheme.colorScheme.error)
                 operation.snapshotId?.let { Text(stringResource(R.string.nginx_snapshot, it), style = MaterialTheme.typography.bodySmall) }
+                operation.compensationOperationId?.let { Text(stringResource(R.string.nginx_operation, it, stringResource(R.string.nginx_compensate))) }
             }
             PageActionRow(refresh = {
                 TextButton(enabled = !state.busy, onClick = model::pollWeb) { ActionLabel(R.string.common_refresh) }
             })
+            if (state.operationVerified && canManage && operation.compensationRoute() != null) TextButton(
+                enabled = !state.busy && !state.loading,
+                onClick = { confirmation = R.string.nginx_compensate_confirm to { model.compensate(requireNotNull(owner), operation) } },
+            ) { Text(stringResource(R.string.nginx_compensate)) }
             if (state.operationVerified && operation.state.active && canManage) TextButton(enabled = !state.busy, onClick = {
                 model.requestCancellation(NginxCancellation.Web(requireNotNull(owner), operation))
             }) { Text(stringResource(R.string.operations_request_cancel)) }

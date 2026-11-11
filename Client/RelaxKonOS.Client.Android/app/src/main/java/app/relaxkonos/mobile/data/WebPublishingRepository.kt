@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.data
 
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.core.net.BootstrapRecovery
 import app.relaxkonos.mobile.core.net.WebsitePublishRequest
 import app.relaxkonos.mobile.core.net.WebsitePublicationOperation
 import app.relaxkonos.mobile.core.net.ApiResult
@@ -34,6 +35,22 @@ class WebPublishingRepository(
                 ApiResult.Transport(null)
             } else result
         }
+
+    suspend fun recoverBootstrap(owner: SessionState.Active, original: WebsitePublicationOperation, action: BootstrapRecovery,
+        provider: ElevationAnswerProvider): ApiResult<WebsitePublicationOperation> {
+        if (session.state.value !== owner) throw CancellationException("Website publication session changed")
+        val result = elevations.withElevation("nginxConfigurationWrite", original.webServerId, provider) { url, token ->
+            if (session.state.value !== owner) throw CancellationException("Website publication session changed")
+            gateway.recoverWebsiteBootstrap(url, token, original.operationId, action)
+        }
+        if (session.state.value !== owner) throw CancellationException("Website publication session changed")
+        if (result is ApiResult.Success) {
+            if (result.value.operationId != original.operationId || result.value.applicationId != original.applicationId ||
+                result.value.webServerId != original.webServerId) return ApiResult.Transport(null)
+            remember(owner, result.value)
+        }
+        return result
+    }
 
     suspend fun publish(owner: SessionState.Active, request: WebsitePublishRequest, idempotencyKey: String, provider: ElevationAnswerProvider): ApiResult<WebsitePublicationOperation> {
         require(request.confirmed) { "Website publication must be confirmed." }

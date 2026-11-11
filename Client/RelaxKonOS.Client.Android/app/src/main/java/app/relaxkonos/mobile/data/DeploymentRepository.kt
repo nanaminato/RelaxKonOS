@@ -52,6 +52,15 @@ class DeploymentRepository(
         gateway.applicationCatalog(url, token)
     }
 
+    suspend fun previewCatalogTopology(owner: SessionState.Active, template: CatalogTemplate, hostPort: Int): ApiResult<CatalogTopology> =
+        read(owner) { url, token ->
+            when (val result = gateway.previewCatalogTopology(url, token, template, hostPort)) {
+                is ApiResult.Success -> if (result.value.matches(template, hostPort)) result else ApiResult.Transport(null)
+                is ApiResult.Problem -> result
+                is ApiResult.Transport -> result
+            }
+        }
+
     suspend fun installCatalog(owner: SessionState.Active, template: CatalogTemplate, name: String, hostPort: Int, fields: List<CatalogFieldValue>, key: String): ApiResult<DeploymentOperation> =
         read(owner) { url, token -> gateway.installCatalogApplication(url, token, template, name, hostPort, fields, key) }
 
@@ -230,6 +239,9 @@ class DeploymentRepository(
         }
     }
 
+    suspend fun reinstallCatalog(owner: SessionState.Active, applicationId: String, revisionId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
+        control(owner, applicationId, DeploymentControlKind.Reinstall, revisionId, idempotencyKey)
+
     suspend fun rollback(owner: SessionState.Active, applicationId: String, revisionId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
         control(owner, applicationId, DeploymentControlKind.Rollback, revisionId, idempotencyKey)
 
@@ -269,6 +281,7 @@ class DeploymentRepository(
     private suspend fun sendControl(owner: SessionState.Active, request: PendingDeploymentControl, retry: Boolean): ApiResult<DeploymentOperation> {
         val result = read(owner) { url, token ->
             val response = when (request.kind) {
+                DeploymentControlKind.Reinstall -> gateway.reinstallCatalogApplication(url, token, request.applicationId, request.argument, request.key)
                 DeploymentControlKind.Rollback -> gateway.rollbackDeployment(url, token, request.applicationId, request.argument, request.key)
                 DeploymentControlKind.Delete -> gateway.deleteDeployment(url, token, request.applicationId, request.key)
                 DeploymentControlKind.Cancel -> gateway.cancelDeploymentOperation(url, token, request.argument, request.key)

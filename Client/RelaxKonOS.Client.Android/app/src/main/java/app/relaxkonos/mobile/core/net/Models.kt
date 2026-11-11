@@ -241,6 +241,7 @@ object ServerCapabilities {
     const val POSIX_PERMISSIONS = "server.posix.permissions"
     const val GUARDIAN = "server.guardian"
     const val DOCKER = "server.docker"
+    const val APPLICATION_DEPLOYMENTS_COMPOSE = "server.application-deployments.compose"
     const val APPLICATION_DEPLOYMENTS = "server.application-deployments"
     const val WEB_SERVER = "server.web-server"
     const val CERTIFICATES = "server.certificates"

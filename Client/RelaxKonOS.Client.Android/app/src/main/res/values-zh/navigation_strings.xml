@@ -108,4 +108,23 @@
     <string name="more_sign_out_message">退出此服务器的登录？已保存的连接及其密码会保留在本机。</string>
     <string name="more_switch_login">切换登录</string>
     <string name="more_title">更多</string>
+    <string name="catalog_preview_topology">预览服务拓扑</string>
+    <string name="catalog_preview_failed">无法核实拓扑。请重新预览后再安装。</string>
+    <string name="catalog_topology_dependencies">依赖 %1$s</string>
+    <string name="catalog_reinstall">使用保留数据重装</string>
+    <string name="catalog_reinstall_confirm">使用原保留卷重装修订 %1$s？</string>
+    <string name="nginx_compensate">补偿原操作</string>
+    <string name="nginx_compensate_confirm">对原 Nginx 操作执行补偿？</string>
+    <string name="websites_resume_bootstrap">继续配置 HTTPS</string>
+    <string name="websites_cleanup_bootstrap">清理临时 HTTP 路由</string>
+    <string name="websites_confirm_bootstrap">确认对原操作 %1$s 执行此动作？</string>
+    <string name="certificates_observe_order">查询原 ACME 订单</string>
+    <string name="certificates_verify_order">核实签发的证书</string>
+    <string name="certificates_plan_recovery">查看 Kestrel 恢复计划</string>
+    <string name="certificates_recovery_status">恢复状态：%1$s</string>
+    <string name="certificates_recovery_active_version">当前版本：%1$s</string>
+    <string name="certificates_recovery_active_fingerprint">当前 SHA-256：%1$s</string>
+    <string name="certificates_recovery_fingerprint">签发证书 SHA-256：%1$s</string>
+    <string name="certificates_apply_recovery">应用 Kestrel 恢复</string>
+    <string name="certificates_apply_recovery_confirm">将原订单签发的证书应用到 Kestrel HTTPS？</string>
 </resources>

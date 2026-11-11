@@ -26,6 +26,16 @@ data class CertificateRenewalInfo(val automaticEnabled: Boolean, val consecutive
     val retryExhausted: Boolean, val attempts: List<CertificateRenewalAttempt>)
 data class CertificateOperation(val operationId: String, val certificateId: String?, val kind: CertificateAction,
     val state: CertificateOperationState, val stage: String, val problemCode: String, val startedAtMillis: Long?, val completedAtMillis: Long?)
+enum class CertificateRecoveryRead(val path: String, val statusField: String = "status") {
+    Observe("", "remoteStatus"), Verify("/certificate"), Plan("/certificate/kestrel-plan"),
+}
+
+class CertificateRecoveryEvidence(
+    val operation: CertificateOperation, val status: String, val fingerprint: String?,
+    val target: String?, val activeVersion: String?, val activeFingerprint: String?,
+    internal val planToken: String?,
+)
+
 data class CertificateDomainPreflight(val domain: String, val ipv4: List<String>, val ipv6: List<String>, val problemCode: String)
 data class CertificatePreflight(val canProceed: Boolean, val port80Available: Boolean?, val requiresAdministrator: Boolean,
     val domains: List<CertificateDomainPreflight>, val problemCode: String, val requiresPublicReachabilityConfirmation: Boolean)
@@ -50,6 +60,7 @@ object CertificateRoutes {
     }
     fun kestrel(id: String) = mutation(CertificateAction.DeployKestrel, id)
     fun operation(id: String) = "$ROOT/operations/${InstallationRoutes.canonicalId(id)}"
+    fun order(id: String) = operation(id) + "/acme-order"
     fun cancel(id: String) = operation(id) + "/cancel"
 }
 object CertificateWire {
@@ -79,6 +90,12 @@ object CertificateWire {
         CertificateOperation(id("operationId"), if (isNull("certificateId")) null else id("certificateId"),
             CertificateAction.entries.single { it.kind == getString("kind") }, enum(getString("state"), CertificateOperationState::wire),
             getString("stage"), getString("problemCode"), time("startedAt"), time("completedAt"))
+    }
+    fun recoveryResult(payload: String) = recovery(payload)
+    fun recovery(payload: String, statusField: String = "status") = with(JSONObject(payload)) {
+        CertificateRecoveryEvidence(operation(getJSONObject("operation").toString()), getString(statusField),
+            text("issuedFingerprintSha256") ?: text("fingerprintSha256"), text("target"), text("expectedActiveVersion"),
+            text("expectedActiveFingerprintSha256"), text("planToken"))
     }
     fun kestrel(payload: String) = with(JSONObject(payload)) {
         KestrelCertificateDeployment(id("certificateId"), getBoolean("certificateExists"), getBoolean("httpsConfigured"),

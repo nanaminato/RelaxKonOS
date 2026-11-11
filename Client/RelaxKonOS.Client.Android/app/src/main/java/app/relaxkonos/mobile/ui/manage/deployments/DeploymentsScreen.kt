@@ -1,6 +1,9 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
 
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -121,14 +124,19 @@ fun DeploymentsScreen(
             onArchiveSubmit = browser::createArchive,
         )
     }
-    if (showCatalog) {
+    val catalogOwner = state.owner
+    if (showCatalog && catalogOwner != null) {
         CatalogInstallDialog(
             templates = (state.catalog as? ApiResult.Success)?.value.orEmpty(),
             capabilities = state.owner?.capabilities.orEmpty(),
             runtime = (state.runtime as? ApiResult.Success)?.value,
             submitting = state.submitting,
             onDismiss = { if (!state.submitting) showCatalog = false },
-            onInstall = { template, name, port, fields -> browser.installCatalog(template, name, port, fields); showCatalog = false },
+            onPreview = { template, port -> browser.previewCatalogTopology(catalogOwner, template, port) },
+            onInstall = { template, name, port, fields, topology ->
+                browser.installCatalog(catalogOwner, template, name, port, fields, topology)
+                showCatalog = false
+            },
         )
     }
 }
@@ -137,14 +145,27 @@ fun DeploymentsScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 private fun CatalogInstallDialog(
     templates: List<CatalogTemplate>, capabilities: Set<String>, runtime: DeploymentRuntime?, submitting: Boolean, onDismiss: () -> Unit,
-    onInstall: (CatalogTemplate, String, Int, List<CatalogFieldValue>) -> Unit,
+    onPreview: suspend (CatalogTemplate, Int) -> ApiResult<CatalogTopology>,
+    onInstall: (CatalogTemplate, String, Int, List<CatalogFieldValue>, CatalogTopology?) -> Unit,
 ) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
+    val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     var selectedId by remember(templates) { mutableStateOf(templates.firstOrNull()?.id) }
     val template = templates.firstOrNull { it.id == selectedId }
     var name by remember(template) { mutableStateOf("") }
     var hostPort by remember(template) { mutableStateOf("") }
     val parsedHostPort = hostPort.toIntOrNull()?.takeIf { it in 1..65535 }
     var values by remember(template) { mutableStateOf(template?.fields?.associate { it.id to (it.defaultValue ?: "") }.orEmpty()) }
+    var previewRequested by remember(template, parsedHostPort, capabilities, runtime, resumed) { mutableStateOf(false) }
+    var preview by remember(template, parsedHostPort, capabilities, runtime, resumed) { mutableStateOf<ApiResult<CatalogTopology>?>(null) }
+    LaunchedEffect(template, parsedHostPort, capabilities, runtime, resumed, previewRequested) {
+        if (resumed && previewRequested && template != null && parsedHostPort != null) {
+            preview = onPreview(template, parsedHostPort)
+            previewRequested = false
+        }
+    }
+    val topology = (preview as? ApiResult.Success)?.value
     val compatibility = template?.compatibility(capabilities, runtime)
     val supported = compatibility?.canInstall == true
     val complete = template?.fields?.all { !it.required || values[it.id].isNullOrBlank().not() } == true
@@ -188,6 +209,24 @@ private fun CatalogInstallDialog(
                 OutlinedTextField(hostPort, { hostPort = it }, label = { Text(stringResource(R.string.deployments_host_port)) }, singleLine = true,
                     supportingText = { Text(stringResource(R.string.deployments_host_port_note)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth())
+                if (selected.requiresTopology) {
+                    OutlinedButton(
+                        onClick = { preview = null; previewRequested = true },
+                        enabled = resumed && supported && parsedHostPort != null && !previewRequested && !submitting,
+                    ) { Text(stringResource(R.string.catalog_preview_topology)) }
+                    if (previewRequested) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (preview != null && topology == null) {
+                        Text(stringResource(R.string.catalog_preview_failed), color = MaterialTheme.colorScheme.error)
+                    }
+                    topology?.let { plan ->
+                        Text("${plan.bindAddress}:${plan.hostPort}${plan.healthPath} → ${plan.webService}")
+                        plan.services.forEach { service ->
+                            Text("${service.id} · ${service.imageReference} · ${service.containerPort}")
+                            if (service.dependsOn.isNotEmpty()) Text(stringResource(R.string.catalog_topology_dependencies, service.dependsOn.joinToString()))
+                            service.volumes.forEach { volume -> Text("${volume.name} → ${volume.containerPath}") }
+                        }
+                    }
+                }
                 selected.fields.forEach { field ->
                     if (field.type == "enum") {
                         Text(field.label(), style = MaterialTheme.typography.labelLarge)
@@ -202,7 +241,8 @@ private fun CatalogInstallDialog(
                             label = { Text(field.label()) }, supportingText = field.help?.let { { Text(it) } }, singleLine = true,
                             isError = field.type == "number" && values[field.id].isNullOrBlank().not() && values[field.id]?.toDoubleOrNull() == null,
                             keyboardOptions = if (field.type == "number") KeyboardOptions(keyboardType = KeyboardType.Decimal) else KeyboardOptions.Default,
-                            visualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
+                            visualTransformation = if (field.type == "secret") androidx.compose.ui.text.input.PasswordVisualTransformation()
+                                else androidx.compose.ui.text.input.VisualTransformation.None,
                             modifier = Modifier.fillMaxWidth())
                     }
                 }
@@ -217,8 +257,14 @@ private fun CatalogInstallDialog(
                 ) {
                     TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
                     template?.let { selected ->
-                        Button(onClick = { onInstall(selected, name, parsedHostPort!!, selected.fields.mapNotNull { field -> values[field.id]?.let { CatalogFieldValue(field.id, it) } }) },
-                            enabled = supported && complete && validValues && name.isNotBlank() && parsedHostPort != null && !submitting) { Text(stringResource(R.string.catalog_install)) }
+                        Button(onClick = {
+                            val port = parsedHostPort ?: return@Button
+                            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                                val fields = selected.fields.mapNotNull { field -> values[field.id]?.let { CatalogFieldValue(field.id, it) } }
+                                onInstall(selected, name, port, fields, topology)
+                            }
+                        }, enabled = resumed && supported && complete && validValues && name.isNotBlank() && parsedHostPort != null && !submitting &&
+                                (!selected.requiresTopology || topology?.matches(selected, parsedHostPort) == true)) { Text(stringResource(R.string.catalog_install)) }
                     }
                 }
             }
@@ -589,6 +635,10 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
     var actionToConfirm by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentLifecycleAction?>(null) }
     var rollbackRevision by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentRevision?>(null) }
     var deleteConfirmation by remember(ownerKey, state.selectedId) { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
+    val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    var reinstallConfirmation by remember(ownerKey, state.selectedId, resumed) { mutableStateOf<Pair<String, String>?>(null) }
     var updateTemplate by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentApplication?>(null) }
     var newRevision by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentSnapshot?>(null) }
     var editDefinition by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentApplication?>(null) }
@@ -648,6 +698,13 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                                                         Text(stringResource(R.string.deployment_start))
                                                     }
                                                 }
+                                            }
+                                            val retainedRevision = snapshot.revisions.singleOrNull { it.isCurrent }
+                                            if (retained && app.catalogTemplateId != null && retainedRevision != null) {
+                                                TextButton(
+                                                    onClick = { reinstallConfirmation = app.id to retainedRevision.id },
+                                                    enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null,
+                                                ) { Text(stringResource(R.string.catalog_reinstall)) }
                                             }
                                             if (!retained) TextButton(onClick = { deleteConfirmation = true }, enabled = !state.submitting && !state.controlBlocked) {
                                                 Text(stringResource(R.string.deployment_delete), color = MaterialTheme.colorScheme.error)
@@ -741,6 +798,22 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                 }
             },
             dismissButton = { TextButton(onClick = { rollbackRevision = null }, enabled = !state.submitting) { Text(stringResource(R.string.common_cancel)) } },
+        )
+    }
+    val reinstallOwner = state.owner
+    if (resumed && reinstallOwner != null) reinstallConfirmation?.let { (applicationId, revisionId) ->
+        AlertDialog(
+            onDismissRequest = { reinstallConfirmation = null },
+            title = { Text(stringResource(R.string.catalog_reinstall)) },
+            text = { Text(stringResource(R.string.catalog_reinstall_confirm, revisionId)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    reinstallConfirmation = null
+                    if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+                        browser.reinstallCatalog(reinstallOwner, applicationId, revisionId)
+                }, enabled = !state.submitting && !state.controlBlocked) { Text(stringResource(R.string.deployments_confirm)) }
+            },
+            dismissButton = { TextButton(onClick = { reinstallConfirmation = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     if (deleteConfirmation) {

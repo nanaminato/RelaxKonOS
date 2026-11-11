@@ -120,6 +120,22 @@ data class CatalogField(
     fun label(): String = labels[Locale.getDefault().language] ?: labels["en"] ?: id
 }
 data class CatalogVolume(val name: String, val containerPath: String)
+data class CatalogTopology(
+    val templateId: String, val templateVersion: String, val bindAddress: String, val hostPort: Int,
+    val webService: String, val healthPath: String, val services: List<CatalogTopologyService>,
+) {
+    fun matches(template: CatalogTemplate, port: Int): Boolean =
+        template.id == templateId && template.version == templateVersion && port == hostPort
+}
+
+data class CatalogTopologyService(
+    val id: String, val imageReference: String, val containerPort: Int,
+    val dependsOn: List<String>, val volumes: List<CatalogVolume>,
+)
+
+val CatalogTemplate.requiresTopology: Boolean
+    get() = ServerCapabilities.APPLICATION_DEPLOYMENTS_COMPOSE in requiredCapabilities
+
 data class CatalogFieldValue(val id: String, val value: String)
 
 /**
@@ -237,6 +253,7 @@ object ApplicationDeploymentRoutes {
     const val FILE_REFERENCES = "/api/v1.0/application-deployments/file-references"
     fun application(id: String): String = "$APPLICATIONS/${UUID.fromString(id)}"
     fun deploy(id: String): String = "${application(id)}/deploy"
+    fun catalogReinstall(id: String): String = "${application(id)}/catalog-reinstall"
     fun catalogUpdate(id: String): String = "${application(id)}/catalog-update"
     fun rollback(id: String): String = "${application(id)}/rollback"
     fun delete(id: String): String = application(id)
@@ -249,6 +266,22 @@ object ApplicationDeploymentRoutes {
 
 /** Required fields fail closed; unfamiliar enum strings stay unknown in the presentation layer. */
 internal object ApplicationDeploymentWire {
+    fun topology(payload: String): CatalogTopology = JSONObject(payload).let { json ->
+        val services = json.getJSONArray("services")
+        CatalogTopology(json.getString("templateId"), json.getString("templateVersion"), json.getString("bindAddress"),
+            json.getInt("hostPort"), json.getString("webService"), json.getString("healthPath"),
+            List(services.length()) { index ->
+                val service = services.getJSONObject(index)
+                val dependencies = service.getJSONArray("dependsOn")
+                val volumes = service.getJSONArray("volumes")
+                CatalogTopologyService(service.getString("id"), service.getString("imageReference"), service.getInt("containerPort"),
+                    List(dependencies.length()) { dependencies.getString(it) },
+                    List(volumes.length()) { volumeIndex ->
+                        volumes.getJSONObject(volumeIndex).let { CatalogVolume(it.getString("name"), it.getString("containerPath")) }
+                    })
+            })
+    }
+
     fun applications(payload: String): List<DeploymentApplication> = JSONArray(payload).objects(::application)
 
     fun snapshot(payload: String): DeploymentSnapshot = JSONObject(payload).let { json ->

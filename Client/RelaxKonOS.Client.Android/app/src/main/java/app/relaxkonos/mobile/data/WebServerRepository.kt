@@ -93,6 +93,23 @@ class WebServerRepository(private val gateway: RelaxKonGateway, private val sess
         if (result is ApiResult.Problem && !pending.attempted && result.status in setOf(400, 401, 403, 404)) journal.complete(pending)
         result
     }
+    suspend fun compensate(owner: SessionState.Active, original: WebServerOperation, provider: ElevationAnswerProvider): ApiResult<WebServerOperation> =
+        mutations.withLock {
+            verifyManagement(owner)
+            if (original.compensationRoute() == null) return@withLock ApiResult.Transport(null)
+            val result = elevations.withElevation("nginxConfigurationWrite", original.instanceId, provider) { url, token ->
+                verify(owner)
+                gateway.compensateWebServer(url, token, original)
+            }
+            verify(owner)
+            if (result is ApiResult.Success) {
+                if (result.value.operationId != original.operationId || result.value.instanceId != original.instanceId ||
+                    result.value.kind != original.kind) return@withLock ApiResult.Transport(null)
+                record(owner, result.value)
+            }
+            result
+        }
+
     suspend fun operation(owner: SessionState.Active, id: String): ApiResult<WebServerOperation> =
         read(owner) { url, token -> gateway.webServerOperation(url, token, id) }.let { result ->
             if (result is ApiResult.Success) {

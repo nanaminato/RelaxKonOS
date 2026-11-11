@@ -110,4 +110,23 @@
     <string name="more_switch_login">Switch login</string>
     <!-- More -->
     <string name="more_title">More</string>
+    <string name="catalog_preview_topology">Preview service topology</string>
+    <string name="catalog_preview_failed">Could not verify the topology. Preview again to install.</string>
+    <string name="catalog_topology_dependencies">Depends on %1$s</string>
+    <string name="catalog_reinstall">Reinstall with retained data</string>
+    <string name="catalog_reinstall_confirm">Reinstall revision %1$s using its retained volumes?</string>
+    <string name="nginx_compensate">Compensate original operation</string>
+    <string name="nginx_compensate_confirm">Apply compensation to the original Nginx operation?</string>
+    <string name="websites_resume_bootstrap">Resume HTTPS setup</string>
+    <string name="websites_cleanup_bootstrap">Remove temporary HTTP route</string>
+    <string name="websites_confirm_bootstrap">Continue with original operation %1$s?</string>
+    <string name="certificates_observe_order">Check original ACME order</string>
+    <string name="certificates_verify_order">Verify the issued certificate</string>
+    <string name="certificates_plan_recovery">Review Kestrel recovery plan</string>
+    <string name="certificates_recovery_status">Recovery status: %1$s</string>
+    <string name="certificates_recovery_active_version">Current version: %1$s</string>
+    <string name="certificates_recovery_active_fingerprint">Current SHA-256: %1$s</string>
+    <string name="certificates_recovery_fingerprint">Issued SHA-256: %1$s</string>
+    <string name="certificates_apply_recovery">Apply Kestrel recovery</string>
+    <string name="certificates_apply_recovery_confirm">Use the certificate from this original order for Kestrel HTTPS?</string>
 </resources>

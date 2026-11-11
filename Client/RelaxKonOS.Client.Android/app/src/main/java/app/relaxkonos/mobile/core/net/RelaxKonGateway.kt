@@ -234,10 +234,18 @@ interface RelaxKonGateway {
     suspend fun kestrelCertificateDeployment(serverUrl: String, accessToken: String, id: String): ApiResult<KestrelCertificateDeployment>
     suspend fun certificatePreflight(serverUrl: String, accessToken: String, domains: List<String>, challenge: CertificateChallenge): ApiResult<CertificatePreflight>
     suspend fun certificateMutation(serverUrl: String, accessToken: String, action: CertificateAction, id: String?, body: JsonBody, idempotencyKey: String): ApiResult<CertificateOperation>
+    suspend fun certificateRecovery(serverUrl: String, accessToken: String, operationId: String,
+        action: CertificateRecoveryRead): ApiResult<CertificateRecoveryEvidence> = ApiResult.Transport(null)
+    suspend fun applyCertificateRecovery(serverUrl: String, accessToken: String, operationId: String,
+        planToken: String): ApiResult<CertificateRecoveryEvidence> = ApiResult.Transport(null)
     suspend fun certificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation>
     suspend fun cancelCertificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation>
     suspend fun publishWebsite(serverUrl: String, accessToken: String, request: WebsitePublishRequest, idempotencyKey: String): ApiResult<WebsitePublicationOperation> = ApiResult.Transport("Website publishing is unavailable.")
     suspend fun websitePublicationHistory(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<WebsitePublicationOperation>> = ApiResult.Transport("Website publishing history is unavailable.")
+    suspend fun recoverWebsiteBootstrap(serverUrl: String, accessToken: String, id: String, action: BootstrapRecovery): ApiResult<WebsitePublicationOperation> =
+        ApiResult.Transport(null)
+    suspend fun compensateWebServer(serverUrl: String, accessToken: String, operation: WebServerOperation): ApiResult<WebServerOperation> =
+        ApiResult.Transport(null)
     suspend fun websitePublication(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebsitePublicationOperation> = ApiResult.Transport("Website publishing operation is unavailable.")
 
     suspend fun outboundProxyStatus(serverUrl: String, accessToken: String): ApiResult<OutboundProxyStatus>
@@ -290,6 +298,11 @@ interface RelaxKonGateway {
         ApiResult.Transport("Template update preview is unavailable.")
     suspend fun updateCatalogApplication(serverUrl: String, accessToken: String, preview: CatalogApplicationUpdatePreview,
         idempotencyKey: String): ApiResult<DeploymentOperation> = ApiResult.Transport("Template update submission is unavailable.")
+
+    suspend fun previewCatalogTopology(serverUrl: String, accessToken: String, template: CatalogTemplate, hostPort: Int): ApiResult<CatalogTopology> =
+        ApiResult.Transport(null)
+    suspend fun reinstallCatalogApplication(serverUrl: String, accessToken: String, applicationId: String, revisionId: String,
+        idempotencyKey: String): ApiResult<DeploymentOperation> = ApiResult.Transport(null)
 
     suspend fun installCatalogApplication(serverUrl: String, accessToken: String, template: CatalogTemplate, name: String, hostPort: Int,
         fields: List<CatalogFieldValue>, idempotencyKey: String): ApiResult<DeploymentOperation> =

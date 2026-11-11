@@ -7,6 +7,7 @@ import app.relaxkonos.mobile.ui.manage.components.ComponentDependencyAction
 import app.relaxkonos.mobile.ui.nav.Routes
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -26,7 +27,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import app.relaxkonos.mobile.ui.manage.certificates.*
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
+import app.relaxkonos.mobile.core.net.BootstrapRecovery
 import app.relaxkonos.mobile.core.net.DeploymentApplication
 import app.relaxkonos.mobile.core.net.ManagedCertificate
 import app.relaxkonos.mobile.core.net.ServerCapabilities
@@ -68,7 +71,7 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
         RefreshProgressIndicator(visible = state.loading)
         WorkspaceSection(section != "publish") { NginxManager(onChanged = viewModel::refresh, section = section, onRecords = { section = "records" }) }
         WorkspaceSection(section == "publish") { androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) { section = "records" } } }
-        WorkspaceSection(section == "records") { WebsitePublicationRecords(state, viewModel, active = section == "records") }
+        WorkspaceSection(section == "records") { WebsitePublicationRecords(state, viewModel, active = section == "records", owner = container.activeSession) }
     }
 }
 
@@ -143,7 +146,7 @@ internal fun websitePublicationPrerequisite(state: WebsitesState): Int? = when {
 }
 
 @Composable
-internal fun WebsitePublicationRecords(state: WebsitesState, viewModel: WebsitesViewModel, active: Boolean) {
+internal fun WebsitePublicationRecords(state: WebsitesState, viewModel: WebsitesViewModel, active: Boolean, owner: SessionState.Active? = null) {
     SectionCard(stringResource(R.string.websites_publication_records)) {
         Text(stringResource(R.string.websites_publish_application), style = MaterialTheme.typography.labelLarge)
         val applications = state.applications
@@ -161,12 +164,12 @@ internal fun WebsitePublicationRecords(state: WebsitesState, viewModel: Websites
         TextButton(enabled = !state.loading && !state.publishing, onClick = viewModel::refresh) {
             ActionLabel(R.string.common_refresh)
         }
-        PublicationResult(state, viewModel, active)
+        PublicationResult(state, viewModel, active, owner)
     }
 }
 
 @Composable
-internal fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewModel, active: Boolean) {
+internal fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewModel, active: Boolean, owner: SessionState.Active? = null) {
     if (state.publicationStorageFailed) {
         Text(stringResource(R.string.websites_publication_storage_failed), color = MaterialTheme.colorScheme.error)
     }
@@ -194,7 +197,30 @@ internal fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewMode
         }
         Text(stringResource(R.string.websites_operation, operation.state, operation.stage), style = MaterialTheme.typography.bodyMedium)
         if (operation.problemCode.isNotBlank()) Text(operation.problemCode, color = MaterialTheme.colorScheme.error)
+        operation.recoveryProblemCode?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         operation.checks.forEach { check -> Text(stringResource(R.string.websites_check, check.name, check.observer, check.state, check.problemCode.ifBlank { "—" }), style = MaterialTheme.typography.bodySmall) }
+        if (active && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && owner?.privilegedOperations == true) {
+            var recovery by remember(viewModel.sessionEpoch, operation, state.publicationObservation) { mutableStateOf<BootstrapRecovery?>(null) }
+            val enabled = !state.publicationLoading && !state.publishing
+            if (operation.canResumeBootstrap) TextButton(enabled = enabled, onClick = { recovery = BootstrapRecovery.Resume }) {
+                Text(stringResource(R.string.websites_resume_bootstrap))
+            }
+            if (operation.canCleanupBootstrap) TextButton(enabled = enabled, onClick = { recovery = BootstrapRecovery.Cleanup }) {
+                Text(stringResource(R.string.websites_cleanup_bootstrap))
+            }
+            recovery?.let { action ->
+                AlertDialog(
+                    onDismissRequest = { recovery = null },
+                    title = { Text(stringResource(if (action == BootstrapRecovery.Resume) R.string.websites_resume_bootstrap else R.string.websites_cleanup_bootstrap)) },
+                    text = { Text(stringResource(R.string.websites_confirm_bootstrap, operation.operationId)) },
+                    confirmButton = { TextButton(enabled = enabled, onClick = {
+                        recovery = null
+                        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) viewModel.recoverBootstrap(owner, operation, action)
+                    }) { Text(stringResource(R.string.deployments_confirm)) } },
+                    dismissButton = { TextButton(onClick = { recovery = null }) { Text(stringResource(R.string.common_cancel)) } },
+                )
+            }
+        }
         androidx.compose.runtime.LaunchedEffect(operation, state.publicationLoading, state.publicationObservation, state.publishing, active, lifecycleState) {
             if (active && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && !state.publicationLoading) viewModel.observePublication(operation) {
                 active && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)

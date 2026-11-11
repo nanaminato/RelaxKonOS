@@ -34,6 +34,7 @@ internal fun DeploymentControlRecovery(state: DeploymentBrowserState, onRetry: (
 
 @Composable
 internal fun controlActionLabel(kind: DeploymentControlKind): String = stringResource(when (kind) {
+    DeploymentControlKind.Reinstall -> R.string.catalog_reinstall
     DeploymentControlKind.Rollback -> R.string.deployment_rollback
     DeploymentControlKind.Delete -> R.string.deployment_delete
     DeploymentControlKind.Start -> R.string.deployment_start

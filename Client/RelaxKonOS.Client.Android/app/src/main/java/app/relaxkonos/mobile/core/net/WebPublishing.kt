@@ -85,7 +85,32 @@ data class WebsitePublicationOperation(
     val createdAtMillis: Long?,
     val startedAtMillis: Long?,
     val completedAtMillis: Long?,
-)
+    val bootstrapCleanupOperationId: String? = null,
+    val bootstrapCleanedAt: Long? = null,
+    val interruptedFromStage: String? = null,
+    val bootstrapResumeStartedAt: Long? = null,
+    val bootstrapResumedAt: Long? = null,
+    val bootstrapBindingOperationId: String? = null,
+) {
+    private val bootstrapUnverified get() = recoveryProblemCode == "website.site_application_unverified"
+    val canCleanupBootstrap get() = bootstrapUnverified && state !in setOf("queued", "running") &&
+        bootstrapCleanedAt == null && bootstrapResumeStartedAt == null && bootstrapBindingOperationId == null
+    val canResumeBootstrap get() = bootstrapUnverified && state in setOf("failed", "interrupted") &&
+        bootstrapCleanupOperationId == null && bootstrapResumedAt == null && certificateId != null &&
+        certificateOperationId != null && siteId != null && (bootstrapBindingOperationId != null ||
+            (state == "interrupted" && interruptedFromStage == "certificate" && bootstrapResumeStartedAt == null))
+}
+
+enum class BootstrapRecovery(val route: String) { Cleanup("cleanup-bootstrap"), Resume("resume-bootstrap") }
+
+fun WebServerOperation.compensationRoute(): String? {
+    if (state != WebServerOperationState.Running || problemCode != "webserver.native_recovery_required" || compensationOperationId != null) return null
+    return when (kind) {
+        "integrate" -> "compensate-integration"
+        "enable-acme-http01" -> "compensate-webroot"
+        else -> null
+    }
+}
 
 /** Mirrors Protocol route ownership; dynamic segments are encoded as one path segment. */
 object WebPublishingRoutes {
@@ -93,6 +118,7 @@ object WebPublishingRoutes {
     private const val PUBLICATIONS = "/api/v1.0/website-publications"
     fun publish(): String = PUBLICATIONS
     fun publicationHistory(applicationId: String): String = "$PUBLICATIONS/applications/${segment(applicationId)}"
+    fun recoverBootstrap(id: String, action: BootstrapRecovery): String = "${publication(InstallationRoutes.canonicalId(id))}/${action.route}"
     fun publication(operationId: String): String = "$PUBLICATIONS/operations/${segment(operationId)}"
     fun servers(): String = WEBSERVERS
     fun status(id: String): String = "${server(id)}/status"
@@ -184,6 +210,8 @@ internal object WebPublishingWire {
             check.getString("problemCode"), check.nullableInstant("observedAt"),
         ) },
         nullableInstant("createdAt"), nullableInstant("startedAt"), nullableInstant("completedAt"),
+        nullableText("bootstrapCleanupOperationId"), nullableInstant("bootstrapCleanedAt"), nullableText("interruptedFromStage"),
+        nullableInstant("bootstrapResumeStartedAt"), nullableInstant("bootstrapResumedAt"), nullableText("bootstrapBindingOperationId"),
     )
 
     private fun JSONObject.nullableText(key: String): String? = if (isNull(key)) null else getString(key).takeIf { it.isNotBlank() }

@@ -8,6 +8,8 @@ Tailscale 首次登录可用性验证须包含：已登录并连接、已登录�
 
 Tailscale 完整偏好与退出登录验证须包含：偏好未变不生成计划、完整偏好字段与出口节点候选一致、具体出口节点仍由服务端核对、退出登录计划无配置/偏好、退出后控制快照只读且重新登录前拒绝新变更、未知退出登录从稳定观察核对关账。`TailscaleWireTest`、`TailscaleViewModelTest` 与 `TailscaleControlTest` 覆盖这些状态；真实宿主还须验证 `tailscale set`/`logout` 的实际回读。
 
+容器目录与原操作恢复的 JVM 验证使用 MobileRecoveryHttpTest，核对拓扑预览绑定模板版本与宿主端口、重装携带原修订和请求键、网站与 Nginx 的恢复沿用原操作，以及 Kestrel 恢复仅提交已确认的计划令牌。界面验证检查切换模板或端口后需要重新预览、保留实例重装须确认，以及切换账户或退到后台时撤销旧恢复确认。
+
 ## 设备与发布
 
 终端工作区外观设置的 `TerminalSettingsControllerTest` 检查取消读取撤销旧保存资格、取消保存显示待核实且不重放、意外异常脱敏反馈，以及新登录读取期间旧响应不能覆盖设置或提前结束忙碌。`TerminalSettingsRecoveryTest` 使用生产设置对话框，实际点击保存与刷新，验证禁用门禁及成功重读后的恢复；隔离读写函数不替代真实工作区设置 GET/PUT 和跨客户端冲突验收。
