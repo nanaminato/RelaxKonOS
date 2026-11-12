@@ -1,0 +1,15 @@
+# Cloud authorization
+
+The Files screen offers **Cloud connections**. It lists server-managed connections and creates a named Google Drive or Baidu Netdisk connection. File browsing, upload and download from these connections are not integrated into the Android file browser; host-file operations retain their existing behavior.
+
+The server administrator must configure the provider application first. Provider application secrets and refresh tokens stay on the server. The Android client does not accept or store these credentials.
+
+Google Drive uses Google Play services `AuthorizationClient` with `requestOfflineAccess(clientId, true)` and the server-configured Web OAuth client ID. The Android OAuth client must be registered with the app package and signing certificate. Each newly added connection explicitly requests consent again so Google can issue a refresh token even after previous authorization. The pinned Google Play services auth 21.4.0 supports this boolean overload; it does not expose the newer `setPrompt(CONSENT)` API. Existing connections are neither overwritten nor used as a source of tokens for another connection. If Google returns no refresh token, the new attempt fails without changing existing connections. The resulting one-time server authorization code is sent through the authenticated RelaxKonOS API for server-side exchange. The Google consent UI runs on the Android device. Devices without compatible Google Play services must use another supported client; there is no embedded WebView fallback.
+
+Baidu Netdisk uses a server-side device-code session. Android displays the user code and opens the official HTTPS verification page in the device browser. Return to the dialog after approval; status polling completes the connection. The device code and provider secret never reach Android.
+
+Write access is off by default and must be explicitly selected. Pending sessions expose cancellation and expiry, and connection creation is reported only by the server. Leaving the screen, switching server/login identity, or losing the process stops local work; uncompleted sessions expire on the server. Screen disposal does not send a cancellation using a different login. Late Google activity results are bound to the original dialog lifetime, login identity and authorization session ID, and are ignored after that lifetime ends. In-flight provider-start responses are discarded after an identity switch. Challenges are memory-only and excluded from their debug representation. Provider responses and exception text are not displayed as diagnostics.
+
+Validation requires Google Play services on a real device or compatible emulator, registered OAuth clients and a configured test server. Unit coverage checks URL host restrictions, session routing, and challenge redaction; it does not prove provider-account authorization works.
+
+Provider contract: [AuthorizationRequest.Builder](https://developers.google.com/android/reference/com/google/android/gms/auth/api/identity/AuthorizationRequest.Builder). The current reference recommends the newer consent prompt API; retain the compatible overload while pinned to auth 21.4.0.

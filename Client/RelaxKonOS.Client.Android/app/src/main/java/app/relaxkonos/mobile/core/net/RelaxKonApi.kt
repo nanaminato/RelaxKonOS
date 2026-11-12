@@ -26,6 +26,13 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun cloudProviders(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, CloudAuthorizationWire.ROOT + "/authorization/providers", CloudAuthorizationWire::providers)
+    override suspend fun cloudConnections(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, CloudAuthorizationWire.ROOT + "/connections", CloudAuthorizationWire::connections)
+    override suspend fun cloudStart(serverUrl: String, accessToken: String, protocol: String, name: String, flow: String, writes: Boolean) = webPublishingCall("POST", serverUrl, CloudAuthorizationWire.ROOT + "/authorization/sessions", accessToken, JsonBody().string("protocol", protocol).string("name", name).string("flow", flow).bool("enableWrites", writes), CloudAuthorizationWire::session)
+    override suspend fun cloudStatus(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl, accessToken, CloudAuthorizationWire.sessionRoute(id), CloudAuthorizationWire::session)
+    override suspend fun cloudCode(serverUrl: String, accessToken: String, id: String, code: String) = webPublishingCall("POST", serverUrl, CloudAuthorizationWire.sessionRoute(id) + "/code", accessToken, JsonBody().secret("code", code.toCharArray()), CloudAuthorizationWire::session)
+    override suspend fun cloudCancel(serverUrl: String, accessToken: String, id: String) = webPublishingCall("DELETE", serverUrl, CloudAuthorizationWire.sessionRoute(id), accessToken, null) { Unit }
+
     override suspend fun serverModules(serverUrl: String, accessToken: String): ApiResult<List<ServerModuleFact>> =
         webPublishingRead(serverUrl, accessToken, ServerModulesWire.ROOT, ServerModulesWire::facts)
     override suspend fun serverModulePlan(serverUrl: String, accessToken: String, body: JsonBody): ApiResult<ServerModulePlan> =

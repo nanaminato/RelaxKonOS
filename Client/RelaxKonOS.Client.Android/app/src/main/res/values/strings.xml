@@ -93,4 +93,14 @@
     <string name="server_configuration_mode_unknown">Current installation mode: unknown</string>
     <string name="server_configuration_auto_start_system">Start automatically at boot</string>
     <string name="server_configuration_auto_start_user">Start automatically at sign-in</string>
+    <string name="cloud_authorization">Cloud connections</string>
+    <string name="cloud_android_boundary">Authorize and view cloud connections here. Cloud file browsing and transfers are not yet integrated into the Android file browser.</string>
+    <string name="cloud_auth_failed">Authorization could not be completed. Check provider configuration, network and Google Play services, then cancel and retry.</string>
+    <string name="cloud_connection_name">Connection name</string>
+    <string name="cloud_enable_writes">Allow writing files</string>
+    <string name="cloud_expired">Authorization expired. Cancel and start again.</string>
+    <string name="cloud_open_browser">Open Baidu authorization in browser</string>
+    <string name="cloud_waiting">Waiting for authorization. Return here after approving.</string>
+    <string name="cloud_cancel">Cancel authorization</string>
+    <string name="cloud_close">Close</string>
 </resources>

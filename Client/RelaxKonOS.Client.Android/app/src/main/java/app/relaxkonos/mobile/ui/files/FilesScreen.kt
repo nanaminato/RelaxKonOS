@@ -107,6 +107,8 @@ fun FilesScreen(
     onOpenDetail: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var cloudOpen by remember { mutableStateOf(false) }
+    if (cloudOpen) CloudAuthorizationDialog(appContainer(), onDismiss = { cloudOpen = false })
     val pickUpload = rememberLauncherForActivityResult(rememberUsageOpenDocument("FilesScreen.upload")) { uri ->
         uri?.let(viewModel::upload)
     }
@@ -143,6 +145,7 @@ fun FilesScreen(
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
         ScreenHeader(title = stringResource(R.string.nav_files))
+        TextButton(onClick = { cloudOpen = true }) { Text(stringResource(R.string.cloud_authorization)) }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,

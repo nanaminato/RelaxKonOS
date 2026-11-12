@@ -89,4 +89,14 @@
     <string name="server_configuration_mode_unknown">当前安装模式：未知</string>
     <string name="server_configuration_auto_start_system">开机自动启动</string>
     <string name="server_configuration_auto_start_user">登录后自动启动</string>
+    <string name="cloud_authorization">云存储连接</string>
+    <string name="cloud_android_boundary">可在此授权并查看云存储连接。Android 文件浏览器尚未接入云文件浏览和传输。</string>
+    <string name="cloud_auth_failed">授权未完成，请检查服务端配置、网络及 Google Play 服务，取消后重试。</string>
+    <string name="cloud_connection_name">连接名称</string>
+    <string name="cloud_enable_writes">允许写入文件</string>
+    <string name="cloud_expired">授权已过期，请取消后重试。</string>
+    <string name="cloud_open_browser">在浏览器中打开百度授权</string>
+    <string name="cloud_waiting">等待授权，请批准后返回此处。</string>
+    <string name="cloud_cancel">取消授权</string>
+    <string name="cloud_close">关闭</string>
 </resources>

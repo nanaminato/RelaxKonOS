@@ -13,6 +13,7 @@ internal static class CloudStorageChecks
 {
     internal static async Task RunAsync(Action<bool, string> check)
     {
+        await BaiduDeviceAuthorizationChecks.RunAsync(check);
         check(!CloudTransport.Allowed(IPAddress.Loopback, true)
             && !CloudTransport.Allowed(IPAddress.Parse("169.254.169.254"), true)
             && !CloudTransport.Allowed(IPAddress.Parse("::ffff:127.0.0.1"), true)

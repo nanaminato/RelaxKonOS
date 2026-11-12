@@ -11,7 +11,7 @@ using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.ServerModule.CloudStorage;
 
-public sealed class CloudStorageModule : IModuleHostEntry, IModuleHostHttp
+public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHttp
 {
     private const string Store = "connections.bin";
     private const string KeyPath = "connections.key";
@@ -47,6 +47,7 @@ public sealed class CloudStorageModule : IModuleHostEntry, IModuleHostHttp
             await context.Storage.WriteAsync(KeyPath, key, ct);
         }
         _key = key is { Length: 32 } ? key : throw new InvalidDataException(KeyPath);
+        await LoadAuthorizationAsync(ct);
         if (bytes is null) return;
         if (bytes.Length <= EnvelopeSize || bytes[0] != 1) throw new InvalidDataException(Store);
         var plaintext = new byte[bytes.Length - EnvelopeSize];
@@ -64,6 +65,7 @@ public sealed class CloudStorageModule : IModuleHostEntry, IModuleHostHttp
     public void MapEndpoints(IEndpointRouteBuilder endpoints, IModuleHostContext context)
     {
         var group = endpoints.MapGroup("/cloud");
+        MapAuthorizationEndpoints(group);
         group.MapGet("/connections", (Delegate)((HttpContext http) => WithUser(http, user =>
             Task.FromResult<IResult>(Results.Ok(Volatile.Read(ref _connections)
                 .Where(item => item.Owner == user).Select(Describe).ToArray())))));

@@ -66,3 +66,5 @@
 设计文档描述当前规则，功能文档描述实际入口、交互、授权和错误恢复，支持范围明确当前边界，开发文档描述构建、发布及验证方法。不维护目标表、阶段编号、推进顺序、完成率或测试执行流水账。功能变化时同步修改对应说明，历史由 Git 保存。共享 Protocol/Server 语义链接仓库领域文档，不复制 Android 详细文档到仓库级目录。
 
 - [文件列表缓存](features/FileListCache.md)
+
+- [Cloud authorization](features/CloudAuthorization.md)

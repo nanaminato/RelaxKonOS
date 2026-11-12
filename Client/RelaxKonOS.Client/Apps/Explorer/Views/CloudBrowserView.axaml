@@ -4,7 +4,7 @@
              x:Class="RelaxKonOS.Client.Apps.Explorer.Views.CloudBrowserView"
              x:CompileBindings="False"
              Background="{DynamicResource SurfaceBrush}">
-    <Grid Margin="12" RowDefinitions="Auto,*,Auto" RowSpacing="8" x:Name="Browser">
+    <Grid Margin="12" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="8" x:Name="Browser">
         <StackPanel Grid.Row="0" Spacing="6">
             <WrapPanel ItemSpacing="5" LineSpacing="5">
                 <Button Content="{loc:Loc explorer.cloud.host_files}" Click="Close_Click" />
@@ -53,7 +53,18 @@
                     <CheckBox x:Name="EnableWrites" Content="{loc:Loc explorer.cloud.enable_writes}" />
                     <CheckBox x:Name="PrivateDav" Content="{loc:Loc explorer.cloud.private}" />
                     <TextBox x:Name="RefreshToken" IsVisible="False" PasswordChar="●" Watermark="{loc:Loc explorer.cloud.refresh_token}" />
-                    <TextBlock x:Name="OAuthHelp" IsVisible="False" TextWrapping="Wrap" Text="{loc:Loc explorer.cloud.oauth_help}" />
+                    <CheckBox x:Name="ManualAuthorization" IsVisible="False" Content="{loc:Loc explorer.cloud.auth_manual}" IsCheckedChanged="ManualAuthorization_Changed" />
+                    <Button x:Name="AuthorizeButton" IsVisible="False" Content="{loc:Loc explorer.cloud.auth_connect}" Click="Authorize_Click" />
+                    <Expander x:Name="ProviderConfiguration" IsVisible="False" Header="{loc:Loc explorer.cloud.auth_configure}">
+          <StackPanel Spacing="6">
+            <TextBlock Text="{loc:Loc explorer.cloud.auth_configure_help}" TextWrapping="Wrap" />
+            <TextBox x:Name="ProviderClientId" Watermark="Client ID / AppKey" />
+            <TextBox x:Name="ProviderClientSecret" PasswordChar="●" Watermark="Client Secret / SecretKey" />
+            <TextBox x:Name="ProviderRedirectUri" Watermark="https://server.example/api/cloud-storage/oauth/google/callback" />
+            <Button Content="{loc:Loc common.save}" Click="ConfigureProvider_Click" />
+          </StackPanel>
+        </Expander>
+        <TextBlock x:Name="OAuthHelp" IsVisible="False" TextWrapping="Wrap" Text="{loc:Loc explorer.cloud.oauth_help}" />
                     <StackPanel x:Name="S3Fields" Spacing="8" IsVisible="False">
                         <TextBox x:Name="Region" Watermark="{loc:Loc explorer.cloud.region}" />
                         <TextBox x:Name="Bucket" Watermark="{loc:Loc explorer.cloud.bucket}" />
@@ -61,12 +72,21 @@
                         <TextBox x:Name="SessionToken" PasswordChar="●" Watermark="{loc:Loc explorer.cloud.token}" />
                     </StackPanel>
                     <WrapPanel ItemSpacing="5">
-                        <Button Content="{loc:Loc explorer.cloud.save}" Click="Save_Click" />
+                        <Button x:Name="SaveButton" Content="{loc:Loc explorer.cloud.save}" Click="Save_Click" />
                         <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
                     </WrapPanel>
                 </StackPanel>
             </ScrollViewer>
         </Grid>
-        <TextBlock Grid.Row="2" x:Name="Status" TextWrapping="Wrap" />
+        <StackPanel Grid.Row="2" x:Name="AuthorizationPanel" IsVisible="False" Spacing="6">
+            <TextBlock Text="{loc:Loc explorer.cloud.auth_explanation}" TextWrapping="Wrap" />
+            <TextBlock x:Name="AuthorizationStatus" TextWrapping="Wrap" />
+            <TextBox x:Name="AuthorizationCode" IsReadOnly="True" />
+            <WrapPanel ItemSpacing="5">
+                <Button Content="{loc:Loc explorer.cloud.auth_open}" Click="AuthorizationOpen_Click" />
+                <Button Content="{loc:Loc common.cancel}" Click="AuthorizationCancel_Click" />
+            </WrapPanel>
+        </StackPanel>
+        <TextBlock Grid.Row="3" x:Name="Status" TextWrapping="Wrap" />
     </Grid>
 </UserControl>

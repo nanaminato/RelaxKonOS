@@ -16,3 +16,11 @@ public sealed record CloudConnectionDto(Guid Id, string Name, string Protocol, b
 public sealed record CloudEntryDto(string Reference, string Name, bool IsDirectory, long? Size, DateTimeOffset? ModifiedAt);
 
 public sealed record CloudDirectoryDto(IReadOnlyList<CloudEntryDto> Entries, string? NextCursor);
+
+// Provider secrets are write-only administrator configuration, never returned to clients.
+public sealed record CloudAuthorizationConfigurationRequest(string ClientId, string ClientSecret, string? RedirectUri = null);
+public sealed record CloudAuthorizationProviderDto(string Protocol, bool Configured, string? ClientId = null);
+public sealed record CloudAuthorizationStartRequest(string Protocol, string Name, bool EnableWrites = false, string Flow = "browser");
+public sealed record CloudAuthorizationSessionDto(Guid Id, string Status, string? AuthorizationUrl,
+    string? UserCode, DateTimeOffset ExpiresAt, int PollIntervalSeconds, Guid? ConnectionId = null, string? QrCodeUrl = null);
+public sealed record CloudAuthorizationCodeRequest(string Code);

@@ -19,6 +19,11 @@ void Check(bool condition, string label)
     if (!condition) throw new Exception(label);
     Console.WriteLine($"PASS {++passed}: {label}");
 }
+Check(CloudAuthorizationNavigation.TryGetBrowserUri("google-drive", "https://accounts.google.com/o/oauth2/v2/auth?state=test", out _), "Google authorization uses official HTTPS origin");
+Check(CloudAuthorizationNavigation.TryGetBrowserUri("baidu-netdisk", "https://openapi.baidu.com/device", out _), "Baidu device authorization uses official HTTPS origin");
+foreach (var address in new[] { "http://accounts.google.com/", "https://accounts.google.com.evil.test/", "https://evil.test/", "https://user@accounts.google.com/", "https://accounts.google.com:8443/", "file:///etc/passwd", "javascript:alert(1)" })
+    Check(!CloudAuthorizationNavigation.TryGetBrowserUri("google-drive", address, out _), "Reject unsafe authorization navigation: " + address);
+Check(!CloudAuthorizationNavigation.TryGetBrowserUri("webdav", "https://accounts.google.com/", out _), "Reject unsupported authorization protocol");
 await PickerMemoryChecks.RunAsync(Check);
 await OwnershipDialogChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
