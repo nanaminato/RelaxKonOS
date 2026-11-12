@@ -88,11 +88,9 @@ public static class FileEndpoints
             if (!OperatingSystem.IsLinux() || !authorizations.IsRoot(http.User)) return Results.Ok(drives);
 
             // A root session can be restricted to selected Helper roots even though the host has a
-            // POSIX '/' drive. Confirm its actual list capability before advertising that drive to
+            // POSIX '/' drive. Confirm each volume's actual list capability before advertising it to
             // the client; a denied probe reveals no directory entries and avoids a dead-end row.
-            return Results.Ok(drives.Select(drive => string.Equals(drive.Path, "/", StringComparison.Ordinal)
-                ? drive with { IsBrowsable = CanListRootDirectory(fs) }
-                : drive));
+            return Results.Ok(drives.Select(drive => drive with { IsBrowsable = CanListDriveDirectory(fs, drive.Path) }));
         })
            .RequireAuthorization(FileAuthorizationPolicies.List)
            .WithTags("Files");
@@ -485,17 +483,19 @@ public static class FileEndpoints
         catch (IOException) { return Problem(503, "text-file-unavailable", "Refresh to verify the file before trying again."); }
     }
 
-    private static bool CanListRootDirectory(IFileService files)
+    private static bool CanListDriveDirectory(IFileService files, string path)
     {
         try
         {
-            _ = files.GetDirectory("/");
+            _ = files.GetDirectory(path);
             return true;
         }
-        catch (HostFileExecutionException error) when (error.ProblemCode == "access-denied")
+        catch (HostFileExecutionException error) when (error.ProblemCode is "access-denied" or "not-found" or "io-error")
         {
             return false;
         }
+        catch (IOException) { return false; } // A removable volume can disappear during refresh.
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     /// <summary>

@@ -7,6 +7,7 @@
   </PropertyGroup>
   <!-- Exercise the production view model without bootstrapping the desktop or a server. -->
   <ItemGroup>
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Views/ComputerOverviewView.cs" Link="ComputerOverviewView.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/CloudAuthorizationNavigation.cs" Link="CloudAuthorizationNavigation.cs" />
     <PackageReference Include="Avalonia.Controls.DataGrid" />
     <PackageReference Include="Avalonia.Headless" />

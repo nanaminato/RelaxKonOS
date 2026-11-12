@@ -582,8 +582,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             }
             Nodes.Add(thisPc);
 
-            // (3) 网络占位节点（当前不实现浏览）
-            Nodes.Add(new TreeNodeModel(LocalizedText.Get("explorer.network"), null, iconKind: TreeNodeIconKind.Network));
 
             if (homeGroup is not null) homeGroup.IsExpanded = true;
             thisPc.IsExpanded = true;
@@ -920,17 +918,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     private static bool PathEquals(string? a, string? b)
         => ExplorerPath.Equal(a, b);
 
-    /// <summary>
-    /// Linux 的 DriveInfo 会把每个挂载点（包括 /dev/shm 与 /dev/pts）都作为一个驱动器返回。
-    /// 导航窗格应只有一个 POSIX 根；其余挂载点会在展开相应父目录时以正常目录层级呈现。
-    /// 保留没有 POSIX 根的结果，以兼容 Windows 盘符列表和其他服务端实现。
-    /// </summary>
+    // The server filters pseudo mounts and evaluates access for the current session.
+    // Preserve independently browsable mounted disks rather than collapsing Linux to '/'.
     private static IReadOnlyList<DriveDto> GetNavigationDrives(IReadOnlyList<DriveDto> drives)
-    {
-        var readyDrives = drives.Where(d => d.IsReady && d.IsBrowsable).ToArray();
-        var posixRoot = readyDrives.FirstOrDefault(d => string.Equals(d.Path, "/", StringComparison.Ordinal));
-        return posixRoot is null ? readyDrives : [posixRoot];
-    }
+        => drives.Where(d => d.IsReady && d.IsBrowsable).ToArray();
 
     private static FileSystemEntryDto ToDriveEntry(DriveDto drive)
         => new(drive.Path, drive.Name, drive.TotalSize, FileSystemEntryType.Drive, null, null, null, false, false, null)

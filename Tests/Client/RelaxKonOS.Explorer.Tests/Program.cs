@@ -49,11 +49,29 @@ Check(accountNavigation.Get(googleTwo).Length == 0 && accountNavigation.Get(baid
 await PickerMemoryChecks.RunAsync(Check);
 await OwnershipDialogChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
+ComputerOverviewChecks.Run(Check);
+var capacityEntry = new FileSystemEntryDto("/data", "Data", 100, FileSystemEntryType.Drive, null, null, null, false, false, null) { AvailableFreeSpace = 25 };
+Check(ComputerDriveCard.Local(capacityEntry).UsedPercent == 75, "Drive card reports measured utilization");
+Check(ComputerDriveCard.Local(capacityEntry with { AvailableFreeSpace = 0 }).UsedPercent == 100, "Full disk preserves zero free capacity");
+Check(ComputerDriveCard.Local(capacityEntry with { Size = null }).UsedPercent is null, "Unknown capacity has no fabricated progress");
+Check(ComputerDriveCard.Local(capacityEntry with { AvailableFreeSpace = 101 }).UsedPercent is null, "Invalid capacity is not displayed as a misleading gauge");
+var cloudCard1 = ComputerDriveCard.Cloud(new CloudConnectionDto(googleOne, "Personal", "google-drive", true));
+var cloudCard2 = ComputerDriveCard.Cloud(new CloudConnectionDto(googleTwo, "Personal", "google-drive", true));
+Check(cloudCard1.ConnectionId != cloudCard2.ConnectionId && cloudCard1.Detail != cloudCard2.Detail, "Same-name cloud accounts retain separate identity and labels");
+Check(cloudCard1.Path is null && cloudCard1.UsedPercent is null, "Cloud accounts never become local paths or fabricated capacity");
+var navigationDrives = typeof(ExplorerViewModel).GetMethod("GetNavigationDrives", BindingFlags.NonPublic | BindingFlags.Static)!;
+var filteredDrives = (IReadOnlyList<DriveDto>)navigationDrives.Invoke(null, new object[] { new DriveDto[] {
+    new("Root", "/", 100, 20, true, true), new("External", "/media/disk", 200, 40, true, true),
+    new("Denied", "/secret", 200, 40, true, false), new("Offline", "/offline", null, null, false, true) } })!;
+Check(filteredDrives.Count == 2 && filteredDrives[1].Path == "/media/disk", "Computer keeps browsable mounted disks alongside Linux root and excludes unavailable/denied drives");
+
 var driveClient = DispatchProxy.Create<IExplorerClient, ExplorerFake>();
 var driveFake = (ExplorerFake)(object)driveClient;
 driveFake.Drive = driveFake.Drive with { TotalSize = 4096, AvailableFreeSpace = 1024 };
 using (var driveView = new ExplorerViewModel(driveClient) { FileListCacheEnabled = true })
 {
+    await driveView.LoadRootAsync();
+    Check(driveView.Nodes.All(n => !n.IsNetwork), "Explorer omits nonfunctional Network navigation");
     await driveView.NavigateToAsync(null);
     Check(driveView.Entries.Single() is { Size: 4096, AvailableFreeSpace: 1024 },
         "Computer keeps both capacity fields from the drive listing");

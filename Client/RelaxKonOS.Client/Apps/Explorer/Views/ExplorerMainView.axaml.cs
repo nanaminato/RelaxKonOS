@@ -64,6 +64,24 @@ public partial class ExplorerMainView : UserControl
         private set => SetValue(EntriesTableWidthProperty, value);
     }
 
+    private readonly ComputerOverviewView _computerOverview = new();
+    private IReadOnlyList<CloudConnectionDto> _cloudAccounts = [];
+
+    private void UpdateComputerOverview()
+    {
+        var show = ViewModel is { AddressbarPath: null, IsPickerMode: false } && !CloudBrowser.IsVisible;
+        _computerOverview.IsVisible = show;
+        EntriesScrollViewer.IsVisible = !show && !CloudBrowser.IsVisible;
+        if (show) _computerOverview.Update(ViewModel!.Entries, _cloudAccounts);
+    }
+
+    private void ComputerEntriesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        // A folder load populates entries before committing its path. Wait for its final
+        // IsBusy notification rather than rebuilding root cards for every incoming file.
+        if (ViewModel is { IsBusy: false }) UpdateComputerOverview();
+    }
+
     private ExplorerClient? _cloudClient;
     private bool _hasCloudStorage;
     internal Func<Guid, string?, Uploads.ILargeFileUploader>? CloudUploader
@@ -91,6 +109,8 @@ public partial class ExplorerMainView : UserControl
             {
                 _hasCloudStorage = sources is not null;
                 CloudRoots.ItemsSource = sources;
+                _cloudAccounts = sources?.ToArray() ?? [];
+                UpdateComputerOverview();
                 UpdateCloudStorageEntry();
             }
         }
@@ -100,6 +120,9 @@ public partial class ExplorerMainView : UserControl
             if (!ct.IsCancellationRequested)
             {
                 _hasCloudStorage = false;
+                _cloudAccounts = [];
+                CloudRoots.ItemsSource = null;
+                UpdateComputerOverview();
                 UpdateCloudStorageEntry();
             }
         }
@@ -111,6 +134,7 @@ public partial class ExplorerMainView : UserControl
         _cloudClient = null;
         _hasCloudStorage = false;
         CloudRoots.ItemsSource = null;
+        _cloudAccounts = [];
         UpdateCloudStorageEntry();
         CloseCloudStorage();
     }
@@ -127,6 +151,7 @@ public partial class ExplorerMainView : UserControl
         if (_cloudClient is not { } client) return;
         CloudBrowser.IsVisible = true;
         EntriesScrollViewer.IsVisible = false;
+        _computerOverview.IsVisible = false;
         NavigationTree.IsHitTestVisible = false;
         HeaderHost.IsEnabled = false;
         await CloudBrowser.OpenAsync(client, connection);
@@ -135,7 +160,7 @@ public partial class ExplorerMainView : UserControl
     private void CloseCloudStorage()
     {
         CloudBrowser.IsVisible = false;
-        EntriesScrollViewer.IsVisible = true;
+        UpdateComputerOverview();
         NavigationTree.IsHitTestVisible = true;
         HeaderHost.IsEnabled = true;
     }
@@ -143,10 +168,20 @@ public partial class ExplorerMainView : UserControl
     public ExplorerMainView()
     {
         InitializeComponent();
+        Grid.SetColumn(_computerOverview, 2);
+        FileContentGrid.Children.Add(_computerOverview);
+        _computerOverview.OpenRequested += async card =>
+        {
+            if (ViewModel is not { IsBusy: false } vm) return;
+            if (card.ConnectionId is { } id) await OpenCloudStorageAsync(id);
+            else if (card.Path is { } path) await vm.NavigateToAsync(path);
+        };
         CloudBrowser.CloseRequested += (_, _) => CloseCloudStorage();
         CloudBrowser.ConnectionsChanged += sources =>
         {
             CloudRoots.ItemsSource = sources;
+            _cloudAccounts = sources?.ToArray() ?? [];
+            UpdateComputerOverview();
             UpdateCloudStorageEntry();
         };
         FileContentGrid.SizeChanged += (_, _) => UpdateCloudStorageEntry();
@@ -311,6 +346,7 @@ public partial class ExplorerMainView : UserControl
             _attachedViewModel.RequestRenameFocus = null;
             _attachedViewModel.PropertyChanged -= ViewModel_PropertyChanged;
             _attachedViewModel.Tabs.CollectionChanged -= TabsChanged;
+            _attachedViewModel.Entries.CollectionChanged -= ComputerEntriesChanged;
         }
         _attachedViewModel = ViewModel;
         CompactSearchBox.DataContext = DataContext;
@@ -321,6 +357,8 @@ public partial class ExplorerMainView : UserControl
             // Every tab that arrives or leaves re-divides the row, so the share is recomputed from
             // the tab count rather than from the strip's own size.
             _attachedViewModel.Tabs.CollectionChanged += TabsChanged;
+            _attachedViewModel.Entries.CollectionChanged += ComputerEntriesChanged;
+            UpdateComputerOverview();
             _presentation.SetMode(_attachedViewModel.ViewMode);
             UpdateTabLayout(TabScroller.Bounds.Width);
         }
@@ -346,8 +384,13 @@ public partial class ExplorerMainView : UserControl
                 var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
                 if (focused is not Control control || control is TopLevel or RemoteWindow || TopLevel.GetTopLevel(control) is null
                     || !control.IsEffectivelyVisible || !control.IsEffectivelyEnabled)
-                    _presentation.Focus();
+                {
+                    if (_computerOverview.IsVisible)
+                        _computerOverview.GetVisualDescendants().OfType<Button>().FirstOrDefault()?.Focus();
+                    else _presentation.Focus();
+                }
             }, DispatcherPriority.Loaded);
+        if (e.PropertyName is nameof(ExplorerViewModel.AddressbarPath) or nameof(ExplorerViewModel.IsBusy)) UpdateComputerOverview();
         if (e.PropertyName == nameof(ExplorerViewModel.AddressbarPath)) ScrollBreadcrumbsToLocation();
         if (e.PropertyName == nameof(ExplorerViewModel.ViewMode) && ViewModel is { } vm)
             _presentation.SetMode(vm.ViewMode);
@@ -362,7 +405,9 @@ public partial class ExplorerMainView : UserControl
     /// <summary>Moves keyboard focus to the current-folder address field.</summary>
     public void FocusAddressBox()
     {
-        if (ViewModel is { } vm)
+        if (ViewModel is not { IsBusy: false } vm || IsCloudStorageOpen) return;
+        // Repeated shortcuts must not overwrite a path the user is already typing.
+        if (!vm.IsEditingAddress)
         {
             vm.AddressInput = vm.AddressbarPath;
             vm.IsEditingAddress = true;
@@ -380,6 +425,18 @@ public partial class ExplorerMainView : UserControl
         if (_compactSearch) _searchFlyout.ShowAt(CompactSearchButton);
         ActiveSearchBox.Focus();
         ActiveSearchBox.SelectAll();
+    }
+
+    private void AddressBarFrame_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(AddressBarFrame).Properties.IsLeftButtonPressed) return;
+        // Breadcrumbs and the edit button retain their own click actions. All remaining
+        // space (including the scroll viewport and padding) behaves like Windows Explorer.
+        for (var visual = e.Source as Visual; visual is not null && visual != AddressBarFrame;
+             visual = visual.GetVisualParent())
+            if (visual is Button or Avalonia.Controls.Primitives.ScrollBar) return;
+        FocusAddressBox();
+        e.Handled = true;
     }
 
     private void EditAddress_Click(object? sender, RoutedEventArgs e) => FocusAddressBox();

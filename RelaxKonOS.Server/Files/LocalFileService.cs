@@ -13,7 +13,7 @@ namespace RelaxKonOS.Server.Files;
 
 /// <summary>宿主 OS 本地文件系统服务。移植自 Jaya <c>FileSystemService.GetDirectoryAsync</c> 的枚举逻辑，
 /// 扩展 create/delete/rename/move/copy/upload/download 操作。以宿主 OS 进程身份运行，复用宿主用户/权限。
-/// 平台感知：Windows 列盘符；Linux 返回单条 "/" 根。目录本身无法列举时会保留
+/// 平台感知：Windows 列盘符；Linux 返回根及可见的本地数据卷。目录本身无法列举时会保留
 /// <see cref="UnauthorizedAccessException"/>，由端点要求短期管理员授权后重试；不能把受保护目录伪装成空目录。</summary>
 public sealed class LocalFileService(IServerModeResolver mode) : IFileService
 {
@@ -47,15 +47,23 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
             var home = UserRoot;
             return [DescribeDrive(new DriveInfo(home), Path.GetFileName(home), home)];
         }
-        // DriveInfo.GetDrives() 在 Linux 上会枚举每一个挂载点，其中包含 /dev、
-        // /dev/pts、/dev/shm 等嵌套的伪文件系统。把它们全部作为“此电脑”的
-        // 直接子项会丢失目录层级，也会让挂载点看起来像并列磁盘。Linux 的
-        // 文件系统只有一个可浏览的根，因此仅将 / 作为导航树根；其余挂载点
-        // 会在按目录展开 /dev、/sys 等时显示在各自正确的父目录下。
         if (IsLinux)
         {
-            var root = new DriveInfo(Path.DirectorySeparatorChar.ToString());
-            return [DescribeDrive(root, root.Name, root.RootDirectory.FullName)];
+            var drives = new List<DriveDto>();
+            foreach (var path in LinuxDriveMounts.ReadPaths())
+            {
+                // File binds are not volumes. Mounts may disappear while refreshing.
+                if (!Directory.Exists(path)) continue;
+                try
+                {
+                    var name = path == "/" ? "/" : Path.GetFileName(path);
+                    drives.Add(DescribeDrive(new DriveInfo(path), name, path));
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+                catch (ArgumentException) { }
+            }
+            return drives;
         }
 
         return DriveInfo.GetDrives()

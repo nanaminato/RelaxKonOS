@@ -23,8 +23,11 @@ using RelaxKonOS.Protocol.Docker;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Protocol.Workspace.SystemStyles;
 
-AppBuilder.Configure<LayoutApp>().UseSkia()
-    .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+var appBuilder = AppBuilder.Configure<LayoutApp>().UseSkia();
+// The focused interaction fixture can run in Linux containers without the desktop Inter font.
+if (args.Contains("--explorer-address-only") && OperatingSystem.IsLinux())
+    appBuilder.With(new Avalonia.Media.FontManagerOptions { DefaultFamilyName = "DejaVu Sans" });
+appBuilder.UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
 using var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());
 var settings = new ShellSettings(appearance);
 var localization = new LocalizationService(settings, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
@@ -76,6 +79,12 @@ if (args.Contains("--registry-only"))
     }
     if (!checks.IsCompleted) throw new TimeoutException("Registry checks did not finish.");
     checks.GetAwaiter().GetResult();
+    host.Close();
+    return;
+}
+if (args.Contains("--explorer-address-only"))
+{
+    ExplorerAddressChecks.Run(host);
     host.Close();
     return;
 }
@@ -354,6 +363,7 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
     }
     cases++;
 }
+ExplorerAddressChecks.Run(host);
 BrowserChecks.Run(host, settings, appearance, output);
 ProxyTrafficPollingChecks.Run(host);
 host.Close();

@@ -127,8 +127,9 @@
                 <Grid Grid.Column="1" MinWidth="0">
                     <TextBox x:Name="AddressBox" Text="{Binding AddressInput, Mode=TwoWay}"
                              IsVisible="{Binding IsEditingAddress}" PlaceholderText="{loc:Loc explorer.computer}"
-                             KeyDown="AddressBox_KeyDown" LostFocus="AddressBox_LostFocus" />
-                    <Border x:Name="AddressBarFrame" IsVisible="{Binding !IsEditingAddress}" Height="32"
+                             KeyDown="AddressBox_KeyDown" LostFocus="AddressBox_LostFocus"
+                             AutomationProperties.Name="{loc:Loc explorer.edit_address}" />
+                    <Border x:Name="AddressBarFrame" PointerPressed="AddressBarFrame_PointerPressed" IsVisible="{Binding !IsEditingAddress}" Height="32"
                             CornerRadius="{DynamicResource ControlCornerRadius}" BorderThickness="1"
                             BorderBrush="{DynamicResource BorderDefaultBrush}" Background="{DynamicResource SurfaceSunkenBrush}" Padding="2,0">
                         <Grid ColumnDefinitions="*,Auto">
