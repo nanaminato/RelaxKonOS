@@ -57,6 +57,29 @@ internal static class FileOperationProgressChecks
             throw new Exception("Conflict actions must be visible without scrolling.");
         using (var bitmap = new RenderTargetBitmap(new PixelSize(580, 490)))
         { bitmap.Render(view); bitmap.Save(Path.Combine(output, "FileProgress-conflict.png"), PngBitmapEncoderOptions.Default); }
-        Console.WriteLine("PASS: Windows-style file progress renders in three languages, collapses details and keeps conflict actions accessible.");
+
+        // A second transfer must not compete with the first: one band states the total, each card
+        // keeps its own percentage and its own decision.
+        var second = new ExplorerOperationCard(center, snapshot with
+        {
+            Id = Guid.NewGuid(),
+            CurrentPath = "/home/alice/Desktop/Scenes.mp4",
+            CurrentBytes = 20L * 1024 * 1024,
+        })
+        { IsUpload = true, DetailsExpanded = false };
+        center.Jobs.Add(second);
+        center.RefreshAggregate();
+        Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+        if (!center.HasAggregate) throw new Exception("Two transfers must show the aggregate band.");
+        if (Math.Round(center.AggregateProgress) != 34)
+            throw new Exception($"Aggregate progress must be the average of both cards, saw {center.AggregateProgress:0.#}.");
+        if (!view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == center.AggregateHeadline))
+            throw new Exception("The aggregate band's headline is not rendered.");
+        if (view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("[missing:") == true))
+            throw new Exception("Aggregate band has missing translations.");
+        using (var bitmap = new RenderTargetBitmap(new PixelSize(580, 490)))
+        { bitmap.Render(view); bitmap.Save(Path.Combine(output, "FileProgress-multi.png"), PngBitmapEncoderOptions.Default); }
+
+        Console.WriteLine("PASS: Windows-style file progress renders in three languages, collapses details, keeps conflict actions accessible and totals several transfers.");
     }
 }

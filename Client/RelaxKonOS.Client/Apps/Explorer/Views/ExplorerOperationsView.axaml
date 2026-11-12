@@ -6,72 +6,131 @@
     <UserControl.Styles>
         <Style Selector="Border.operation.attention ProgressBar"><Setter Property="Foreground" Value="{DynamicResource WarningBrush}" /></Style>
         <Style Selector="Border.operation.attention TextBlock.progress-title"><Setter Property="Foreground" Value="{DynamicResource WarningBrush}" /></Style>
-        <Style Selector="Button.transfer-cancel"><Setter Property="MinWidth" Value="36" /><Setter Property="Height" Value="34" /><Setter Property="Padding" Value="8,4" /></Style>
-        <Style Selector="Button.transfer-details"><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="0,6" /></Style>
+        <Style Selector="Button.transfer-cancel">
+            <Setter Property="MinWidth" Value="30" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        </Style>
+        <Style Selector="Button.transfer-details">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0,4" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <!-- One metric line states size, speed and time together; the labels are only in the
+             expanded grid, so the collapsed card still answers "how far" in one glance. -->
+        <Style Selector="TextBlock.metric">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
     </UserControl.Styles>
-    <Grid RowDefinitions="Auto,*,Auto" Margin="24,14" RowSpacing="12">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="20,16" RowSpacing="10">
         <Border IsVisible="{Binding HasError}" Background="{DynamicResource SurfaceRaisedBrush}" Padding="12" CornerRadius="4">
             <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
         </Border>
-        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+
+        <!-- Several transfers at once need one answer at the top: how many, how far, how fast. -->
+        <Border Grid.Row="1" IsVisible="{Binding HasAggregate}" Classes="app-panel" Padding="14,10">
+            <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding AggregateHeadline}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding AggregateDetail}" Classes="metric" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding AggregatePercent}" FontSize="20" FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
+                </Grid>
+                <ProgressBar Value="{Binding AggregateProgress}" Minimum="0" Maximum="100" Height="4"
+                             Foreground="{DynamicResource SuccessBrush}" />
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
             <ItemsControl ItemsSource="{Binding Jobs}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="m:ExplorerOperationCard">
-                        <Border Classes="operation" Classes.attention="{Binding NeedsAttention}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="0,0,0,1" Padding="0,0,0,6" Margin="0,0,0,6">
+                        <Border Classes="operation" Classes.attention="{Binding NeedsAttention}"
+                                Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}"
+                                BorderThickness="1" CornerRadius="{DynamicResource OverlayCornerRadius}"
+                                Padding="14,12" Margin="0,0,0,10">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="{Binding Summary}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                                    <StackPanel Spacing="3">
-                                        <TextBlock Classes="progress-title" Text="{Binding ProgressText}" FontSize="26" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
-                                        <TextBlock Text="{Binding ProgressScope}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <!-- The title row carries the task's identity and its only escape hatch. -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Summary}" Classes="metric" />
                                     </StackPanel>
                                     <Button Grid.Column="1" Classes="transfer-cancel" Content="&#x2715;" Command="{Binding CancelCommand}"
                                             IsVisible="{Binding CanCancel}" VerticalAlignment="Top" ToolTip.Tip="{loc:Loc common.cancel}"
                                             AutomationProperties.Name="{loc:Loc common.cancel}" />
                                 </Grid>
-                                <Grid IsVisible="{Binding ShowSpeedGraph}" Height="92" ClipToBounds="True">
+
+                                <TextBlock Classes="progress-title" Text="{Binding ProgressText}" FontSize="26" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+
+                                <ProgressBar Value="{Binding Progress}" IsIndeterminate="{Binding Indeterminate}" Minimum="0" Maximum="100"
+                                             Height="5" Foreground="{DynamicResource SuccessBrush}" AutomationProperties.Name="{Binding ProgressScope}" />
+
+                                <!-- Size, speed and remaining time stay visible with the details collapsed. -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                    <TextBlock Text="{Binding TransferSize}" Classes="metric" />
+                                    <TextBlock Grid.Column="1" Text="{Binding QuickMetrics}" Classes="metric"
+                                               IsVisible="{Binding ShowQuickMetrics}" />
+                                </Grid>
+
+                                <!-- The metric line above already states the rate, so the graph stays a
+                                     shape and never repeats the number. -->
+                                <Grid IsVisible="{Binding ShowSpeedGraph}" Height="84" ClipToBounds="True">
                                     <c:TransferSpeedGraph Values="{Binding SpeedHistory}" Foreground="{DynamicResource SuccessBrush}" />
-                                    <Border Background="{DynamicResource SurfaceBrush}" Opacity="0.92" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="6,2">
-                                        <TextBlock Text="{Binding SpeedText}" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    </Border>
                                 </Grid>
-                                <ProgressBar Value="{Binding Progress}" IsIndeterminate="{Binding Indeterminate}" Minimum="0" Maximum="100" Height="5"
-                                             Foreground="{DynamicResource SuccessBrush}" AutomationProperties.Name="{Binding ProgressScope}" />
-                                <Grid IsVisible="{Binding ShowTransferDetails}" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="6">
-                                    <TextBlock Text="{loc:Loc explorer.operations.name_label}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding CurrentFileName}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Snapshot.CurrentPath}" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <TextBlock Grid.Row="1" Text="{loc:Loc explorer.operations.from_label}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SourceLocation}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Locations}" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <TextBlock Grid.Row="2" Text="{loc:Loc explorer.operations.to_label}" IsVisible="{Binding HasDestination}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DestinationLocation}" IsVisible="{Binding HasDestination}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Locations}" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <TextBlock Grid.Row="3" Text="{loc:Loc explorer.operations.time_label}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RemainingTime}" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <TextBlock Grid.Row="4" Text="{loc:Loc explorer.operations.size_label}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding TransferSize}" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <TextBlock Grid.Row="5" Grid.ColumnSpan="2" Text="{Binding Counts}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
+
+                                <Grid IsVisible="{Binding ShowTransferDetails}" ColumnDefinitions="Auto,*"
+                                      RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="5">
+                                    <TextBlock Text="{loc:Loc explorer.operations.name_label}" Classes="metric" />
+                                    <TextBlock Grid.Column="1" Text="{Binding CurrentFileName}" Classes="metric"
+                                               ToolTip.Tip="{Binding Snapshot.CurrentPath}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Grid.Row="1" Text="{loc:Loc explorer.operations.from_label}" Classes="metric" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SourceLocation}" Classes="metric"
+                                               ToolTip.Tip="{Binding Locations}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Grid.Row="2" Text="{loc:Loc explorer.operations.to_label}" IsVisible="{Binding HasDestination}" Classes="metric" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DestinationLocation}" IsVisible="{Binding HasDestination}"
+                                               Classes="metric" ToolTip.Tip="{Binding Locations}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding Counts}" Classes="metric" TextWrapping="Wrap" Margin="0,4,0,0" />
                                 </Grid>
+
                                 <Border IsVisible="{Binding HasIssue}" Background="{DynamicResource WarningMutedBrush}" Padding="12" CornerRadius="4">
                                     <StackPanel Spacing="8">
                                         <TextBlock Text="{Binding IssueText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                        <CheckBox Content="{loc:Loc explorer.operations.apply_all}" IsChecked="{Binding ApplyToAll}" IsVisible="{Binding CanApplyToAll}" />
+                                        <CheckBox Content="{loc:Loc explorer.operations.apply_all}" IsChecked="{Binding ApplyToAll}"
+                                                  IsVisible="{Binding CanApplyToAll}" />
                                         <WrapPanel>
-                                            <Button Content="{Binding RetryLabel}" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,8,6" />
-                                            <Button Content="{loc:Loc explorer.operations.replace}" Command="{Binding ReplaceCommand}" IsVisible="{Binding CanReplace}" Margin="0,0,8,6" />
-                                            <Button Content="{loc:Loc explorer.operations.keep_both}" Command="{Binding KeepBothCommand}" IsVisible="{Binding CanKeepBoth}" Margin="0,0,8,6" />
-                                            <Button Content="{loc:Loc explorer.operations.skip}" Command="{Binding SkipCommand}" Margin="0,0,8,6" />
+                                            <Button Content="{Binding RetryLabel}" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,8,6" Height="32" />
+                                            <Button Content="{loc:Loc explorer.operations.replace}" Command="{Binding ReplaceCommand}" IsVisible="{Binding CanReplace}" Margin="0,0,8,6" Height="32" />
+                                            <Button Content="{loc:Loc explorer.operations.keep_both}" Command="{Binding KeepBothCommand}" IsVisible="{Binding CanKeepBoth}" Margin="0,0,8,6" Height="32" />
+                                            <Button Content="{loc:Loc explorer.operations.skip}" Command="{Binding SkipCommand}" Margin="0,0,8,6" Height="32" />
                                         </WrapPanel>
                                     </StackPanel>
                                 </Border>
                                 <TextBlock IsVisible="{Binding HasError}" Text="{Binding Error}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
-                                <Button Classes="transfer-details" IsVisible="{Binding !HasIssue}" Content="{Binding DetailsToggleLabel}" Command="{Binding ToggleDetailsCommand}" HorizontalAlignment="Left" />
+                                <Button Classes="transfer-details" IsVisible="{Binding !HasIssue}" Content="{Binding DetailsToggleLabel}"
+                                        Command="{Binding ToggleDetailsCommand}" HorizontalAlignment="Left" />
                             </StackPanel>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
-        <TextBlock Grid.Row="2" Text="{loc:Loc explorer.operations.close_hint}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <TextBlock Text="{loc:Loc explorer.operations.close_hint}" TextWrapping="Wrap" FontSize="11"
+                       VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <Button Grid.Column="1" Height="30" Content="{loc:Loc explorer.operations.stop_all}"
+                    Command="{Binding CancelAllCommand}" IsVisible="{Binding AnyActive}" />
+        </Grid>
     </Grid>
 </UserControl>

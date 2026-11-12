@@ -62,6 +62,18 @@ if (args.Contains("--file-progress-only"))
     host.Close();
     return;
 }
+if (args.Contains("--cloud-browser-only"))
+{
+    CloudBrowserLayoutChecks.Run(host, settings, output, appearance);
+    host.Close();
+    return;
+}
+if (args.Contains("--explorer-cloud-only"))
+{
+    ExplorerCloudEntryChecks.Run(host, settings, output, appearance);
+    host.Close();
+    return;
+}
 if (args.Contains("--task-manager-only"))
 {
     TaskManagerSortingChecks.Run(host);

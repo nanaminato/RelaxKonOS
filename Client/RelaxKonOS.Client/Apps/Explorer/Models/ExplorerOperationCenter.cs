@@ -28,6 +28,26 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
     private string _error = string.Empty;
     public bool HasError => !string.IsNullOrWhiteSpace(Error);
 
+    /// <summary>The aggregate band only earns its space once more than one task is in flight.</summary>
+    public bool HasAggregate => Jobs.Count > 1;
+    public bool AnyActive => Jobs.Any(job => !job.Snapshot.IsTerminal && !job.Missing);
+    public string AggregateHeadline => LocalizedText.Format("explorer.operations.summary_active", Jobs.Count);
+    private double AggregateSpeed => Jobs.Sum(job => job.BytesPerSecond);
+    public string AggregateDetail => AggregateSpeed > 0
+        ? LocalizedText.Format("explorer.operations.summary_speed", FileTransferMetrics.FormatBytes(AggregateSpeed))
+        : LocalizedText.Get("explorer.operations.calculating");
+    /// <summary>Every card reports its current file; the average is the least misleading total.</summary>
+    public double AggregateProgress => Jobs.Count == 0 ? 0 : Jobs.Average(job => job.Progress);
+    public string AggregatePercent => LocalizedText.Format("explorer.operations.percent_complete", (int)Math.Round(AggregateProgress));
+
+    /// <summary>Called by the window's measurement timer so the band follows live throughput.</summary>
+    public void RefreshAggregate()
+    {
+        foreach (var name in new[] { nameof(HasAggregate), nameof(AnyActive), nameof(AggregateHeadline),
+            nameof(AggregateDetail), nameof(AggregateProgress), nameof(AggregatePercent) })
+            OnPropertyChanged(name);
+    }
+
     private string? CurrentSession => SessionKey?.Invoke() ?? (SessionKey is null ? "test" : null);
     private bool IsCurrent(string? session) => session is not null && session == CurrentSession;
     private void BindSession()
@@ -187,6 +207,15 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
             _callbacks.Remove(job.Snapshot.RequestId);
             Jobs.Remove(job);
         }
+        RefreshAggregate();
+    }
+
+    /// <summary>Stops every task the window is currently reporting, one decision per task.</summary>
+    [RelayCommand]
+    private async Task CancelAllAsync()
+    {
+        foreach (var card in Jobs.Where(job => !job.Snapshot.IsTerminal && !job.Missing).ToArray())
+            await ActAsync(card, null);
     }
     private void Update(FileOperationDto dto)
     {
@@ -205,6 +234,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
             Jobs.Remove(card);
             CloseIfFinished();
         }
+        RefreshAggregate();
     }
     private void EnsurePolling()
     {
@@ -314,7 +344,8 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
             : "explorer.operations.current_file_percent", (int)Math.Floor(Progress)) : StateText;
     public string ProgressScope => !HasMeasuredProgress ? string.Empty : LocalizedText.Get(IsLocalTransfer || Snapshot.Kind == FileOperationKind.Extract
         ? "explorer.operations.entire_operation" : "explorer.operations.current_file_short");
-    public string Summary => LocalizedText.Format("explorer.operations.processing_items", Title, Snapshot.Items.Count);
+    /// <summary>The card's title already names the operation; the subtitle counts what it covers.</summary>
+    public string Summary => LocalizedText.Format("explorer.operations.items_selected", Snapshot.Items.Count);
     public string CurrentFileName => string.IsNullOrWhiteSpace(Snapshot.CurrentPath)
         ? StateText : FileName(Snapshot.CurrentPath);
     public string SourceLocation => LocationsFor(false);
@@ -323,6 +354,15 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     private bool CanShowSpeed => _metrics.IsReady && Snapshot.State == FileOperationState.Running && !Missing && !HasError;
     public string SpeedText => CanShowSpeed ? FileTransferMetrics.FormatBytes(_metrics.BytesPerSecond) + "/s"
         : LocalizedText.Get("explorer.operations.calculating");
+    /// <summary>Observed throughput; the center sums it for the aggregate band.</summary>
+    public double BytesPerSecond => CanShowSpeed ? _metrics.BytesPerSecond : 0;
+    private bool HasRemaining => IsLocalTransfer && CanShowSpeed && _metrics.BytesPerSecond > 0 && HasMeasuredProgress;
+    /// <summary>Speed and remaining time on one line, so a collapsed card still reads as progress.</summary>
+    public string QuickMetrics => !CanShowSpeed
+        ? LocalizedText.Get("explorer.operations.calculating")
+        : HasRemaining ? SpeedText + " · " + RemainingTime : SpeedText;
+    /// <summary>A card that needs a decision states the issue and nothing else on that line.</summary>
+    public bool ShowQuickMetrics => !NeedsAttention && HasMeasuredProgress;
     public string TransferSize => HasMeasuredProgress
         ? LocalizedText.Format("explorer.operations.transferred_size", FileTransferMetrics.FormatBytes(Snapshot.CurrentBytes), FileTransferMetrics.FormatBytes(Snapshot.CurrentTotalBytes))
         : LocalizedText.Get("explorer.operations.calculating");
@@ -331,7 +371,7 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
         get
         {
             // Server tasks report a current-file counter, not a recursively measured job total.
-            if (!IsLocalTransfer || !CanShowSpeed || _metrics.BytesPerSecond <= 0 || !HasMeasuredProgress)
+            if (!HasRemaining)
                 return LocalizedText.Get("explorer.operations.calculating");
             var seconds = Math.Max(0, Snapshot.CurrentTotalBytes - Snapshot.CurrentBytes) / _metrics.BytesPerSecond;
             if (seconds >= 3600) return LocalizedText.Format("explorer.operations.remaining_hours", Math.Ceiling(seconds / 3600));
@@ -395,7 +435,7 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
         foreach (var name in new[] { nameof(Title), nameof(StateText), nameof(Locations), nameof(Counts), nameof(Bytes),
             nameof(DetailsToggleLabel), nameof(ShowTransferDetails), nameof(ShowSpeedGraph), nameof(HasError), nameof(NeedsAttention), nameof(HasDestination), nameof(HasMeasuredProgress), nameof(ProgressText), nameof(ProgressScope),
             nameof(Summary), nameof(CurrentFileName), nameof(SourceLocation), nameof(DestinationLocation), nameof(SpeedHistory), nameof(SpeedText),
-            nameof(TransferSize), nameof(RemainingTime), nameof(Progress), nameof(Indeterminate), nameof(CanCancel), nameof(HasIssue), nameof(CanReplace), nameof(CanKeepBoth), nameof(CanRetry), nameof(CanApplyToAll), nameof(IssueText), nameof(RetryLabel), nameof(Details) })
+            nameof(TransferSize), nameof(RemainingTime), nameof(BytesPerSecond), nameof(QuickMetrics), nameof(ShowQuickMetrics), nameof(Progress), nameof(Indeterminate), nameof(CanCancel), nameof(HasIssue), nameof(CanReplace), nameof(CanKeepBoth), nameof(CanRetry), nameof(CanApplyToAll), nameof(IssueText), nameof(RetryLabel), nameof(Details) })
             OnPropertyChanged(name);
     }
     [RelayCommand] private void ToggleDetails() => DetailsExpanded = !DetailsExpanded;

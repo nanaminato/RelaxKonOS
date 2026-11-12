@@ -1,120 +1,433 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:c="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
              x:Class="RelaxKonOS.Client.Apps.Explorer.Views.CloudBrowserView"
              x:CompileBindings="False"
              Background="{DynamicResource SurfaceBrush}">
-    <Grid Margin="12" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="8" x:Name="Browser">
-        <StackPanel Grid.Row="0" Spacing="10">
-            <WrapPanel ItemSpacing="8" LineSpacing="6">
-                <TextBlock Text="{loc:Loc explorer.cloud.title}" FontSize="22" FontWeight="SemiBold"
-                           VerticalAlignment="Center" Margin="0,0,12,0" />
-                <Button Content="{loc:Loc explorer.cloud.host_files}" Click="Close_Click" />
-                <Button Content="{loc:Loc common.refresh}" Click="Refresh_Click" />
-                <Button Content="{loc:Loc explorer.cloud.add}" Click="Add_Click" x:Name="AddButton" Classes="primary" />
-            </WrapPanel>
-            <StackPanel x:Name="ConnectionTools" Spacing="8" IsVisible="False">
-                <WrapPanel ItemSpacing="6" LineSpacing="6">
-                    <ComboBox x:Name="Connections" MinWidth="170" MaxWidth="320"
-                              AutomationProperties.Name="{loc:Loc explorer.cloud.connection_name}"
-                              SelectionChanged="Connections_SelectionChanged">
-                        <ComboBox.ItemTemplate>
+
+    <!-- Cloud storage is a workspace, not a dialog: it borrows the Explorer's own command
+         vocabulary (32-high targets, one accent action, sunken field surfaces) and states the
+         account, the path and the traffic in three separate bands. -->
+    <UserControl.Resources>
+        <StreamGeometry x:Key="CloudBackIcon">M19 12 H5 M11 6 L5 12 L11 18</StreamGeometry>
+        <StreamGeometry x:Key="CloudRefreshIcon">M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14</StreamGeometry>
+        <StreamGeometry x:Key="CloudUpIcon">M12 20 V4 M6 10 L12 4 L18 10</StreamGeometry>
+        <StreamGeometry x:Key="CloudMoreIcon">M6 10 C4.9 10 4 10.9 4 12 C4 13.1 4.9 14 6 14 C7.1 14 8 13.1 8 12 C8 10.9 7.1 10 6 10 Z M18 10 C16.9 10 16 10.9 16 12 C16 13.1 16.9 14 18 14 C19.1 14 20 13.1 20 12 C20 10.9 19.1 10 18 10 Z M12 10 C10.9 10 10 10.9 10 12 C10 13.1 10.9 14 12 14 C13.1 14 14 13.1 14 12 C14 10.9 13.1 10 12 10 Z</StreamGeometry>
+        <StreamGeometry x:Key="CloudChevronIcon">M10 6 L8.59 7.41 L13.17 12 L8.59 16.59 L10 18 L16 12 Z</StreamGeometry>
+        <StreamGeometry x:Key="CloudGlyphIcon">M7.4 19 H17.2 A4.3 4.3 0 0 0 17.7 10.4 A6.1 6.1 0 0 0 5.8 10.9 A4.1 4.1 0 0 0 7.4 19 Z</StreamGeometry>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <Style Selector="Button.cloud-command">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        </Style>
+        <Style Selector="Button.cloud-command.icon">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="MinWidth" Value="34" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Border.cloud-divider">
+            <Setter Property="Width" Value="1" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Margin" Value="6,0" />
+            <Setter Property="Background" Value="{DynamicResource BorderSubtleBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!-- One selected account is stated by the rail's accent track alone; no second frame. -->
+        <Style Selector="ListBox.account-rail">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="6,0" />
+        </Style>
+        <Style Selector="ListBox.account-rail ListBoxItem">
+            <Setter Property="MinHeight" Value="{DynamicResource MinimumHitTarget}" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        </Style>
+        <Style Selector="TextBlock.field-label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+        <Style Selector="TextBlock.section-title">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="TextBlock.field-hint">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="Button.crumb">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- Band 1: where this page is and what can be done to the connection. -->
+        <Border x:Name="BrowserToolbar" Grid.Row="0" Classes="app-toolbar">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                    <Button x:Name="HostFilesButton" Classes="cloud-command" Click="Close_Click"
+                            ToolTip.Tip="{loc:Loc explorer.cloud.host_files}" AutomationProperties.Name="{loc:Loc explorer.cloud.host_files}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round"
+                                  StrokeJoin="Round" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center"
+                                  Data="{StaticResource CloudBackIcon}" />
+                            <TextBlock Text="{loc:Loc explorer.cloud.host_files}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Border Classes="cloud-divider" />
+                    <Button x:Name="RefreshButton" Classes="cloud-command icon" Click="Refresh_Click"
+                            ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}">
+                        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round"
+                              StrokeJoin="Round" Stretch="Uniform" Width="15" Height="15" Data="{StaticResource CloudRefreshIcon}" />
+                    </Button>
+                </StackPanel>
+                <TextBlock Grid.Column="1" x:Name="TitleSummary" VerticalAlignment="Center" HorizontalAlignment="Center"
+                           FontSize="12" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button x:Name="AddButton" Classes="primary" Height="32" Content="{loc:Loc explorer.cloud.add}" Click="Add_Click" />
+                    <Button x:Name="ManageButton" Classes="cloud-command icon"
+                            ToolTip.Tip="{loc:Loc explorer.cloud.more}" AutomationProperties.Name="{loc:Loc explorer.cloud.more}">
+                        <PathIcon Width="15" Height="15" Data="{StaticResource CloudMoreIcon}" />
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem x:Name="ReplaceButton" Header="{loc:Loc explorer.cloud.replace}" Click="Replace_Click" />
+                                <MenuItem x:Name="RevokeButton" Header="{loc:Loc explorer.cloud.revoke}" Click="Revoke_Click" />
+                                <Separator />
+                                <MenuItem Header="{loc:Loc explorer.cloud.host_files}" Click="Close_Click" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Band 3: one status sentence plus the only live transfer, side by side. -->
+        <Border Grid.Row="2" Classes="app-statusbar">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <!-- The band never sits empty: an idle page states what it can do, and any message
+                     replaces that sentence instead of stacking a second line. -->
+                <Grid VerticalAlignment="Center">
+                    <TextBlock x:Name="StatusHint" Text="{loc:Loc explorer.cloud.status_hint}" FontSize="12"
+                               TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    <TextBlock x:Name="Status" FontSize="12" TextTrimming="CharacterEllipsis" IsVisible="False"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </Grid>
+                <StackPanel x:Name="TransferStrip" Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                            VerticalAlignment="Center" IsVisible="False">
+                    <TextBlock x:Name="TransferText" FontSize="12" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <ProgressBar x:Name="TransferProgress" Width="104" Height="4" Minimum="0" Maximum="100"
+                                 VerticalAlignment="Center" />
+                    <Button x:Name="TransferCancelButton" Classes="cloud-command icon" Height="24" Width="24" MinWidth="24"
+                            Padding="0" Click="TransferCancel_Click"
+                            ToolTip.Tip="{loc:Loc common.cancel}" AutomationProperties.Name="{loc:Loc common.cancel}">
+                        <PathIcon Width="10" Height="10" Data="M19 6.41 L17.59 5 L12 10.59 L6.41 5 L5 6.41 L10.59 12 L5 17.59 L6.41 19 L12 13.41 L17.59 19 L19 17.59 L13.41 12 Z" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Band 2: accounts, then the folder they are pointed at. -->
+        <Grid x:Name="BrowserContent" Grid.Row="1" ColumnDefinitions="232,Auto,*">
+            <Border Grid.Column="0" Classes="app-sidebar">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="{loc:Loc explorer.cloud.accounts}" Margin="16,12,12,4"
+                               FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock DockPanel.Dock="Bottom" Margin="16,8,12,12" Classes="field-hint"
+                               Text="{loc:Loc explorer.cloud.accounts_hint}" />
+                    <ListBox x:Name="Accounts" Classes="account-rail" SelectionChanged="Accounts_SelectionChanged"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel ToolTip.Tip="{Binding Id}">
-                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                    <StackPanel Orientation="Horizontal" Spacing="8" Opacity="0.7">
-                                        <TextBlock Text="{Binding Protocol}" FontSize="11" />
-                                        <TextBlock Text="{Binding Id}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                    <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.2" StrokeLineCap="Round"
+                                          StrokeJoin="Round" VerticalAlignment="Center" Data="{StaticResource CloudGlyphIcon}"
+                                          Stroke="{Binding $parent[ListBoxItem].Foreground}" />
+                                    <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="{Binding KindText}" FontSize="11"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                            <TextBlock Text="·" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+                                            <TextBlock Text="{Binding AccessText}" FontSize="11"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+            <Border Grid.Column="1" Width="1" Background="{DynamicResource BorderSubtleBrush}" />
+
+            <Grid Grid.Column="2" RowDefinitions="Auto,*">
+                <!-- The path is a set of stops, not a sentence: every crumb navigates back to its folder. -->
+                <Border Grid.Row="0" x:Name="LocationBar" IsVisible="False" Padding="12,6">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                        <Button x:Name="UpButton" Classes="cloud-command icon" Click="Up_Click"
+                                ToolTip.Tip="{loc:Loc explorer.cloud.up}" AutomationProperties.Name="{loc:Loc explorer.cloud.up}">
+                            <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round"
+                                  StrokeJoin="Round" Stretch="Uniform" Width="14" Height="14" Data="{StaticResource CloudUpIcon}" />
+                        </Button>
+                        <ScrollViewer Grid.Column="1" x:Name="CrumbScroll" Margin="2,0"
+                                      HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                            <ItemsControl x:Name="Breadcrumbs">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Classes="crumb" Content="{Binding Label}" Tag="{Binding Depth}"
+                                                    Click="Breadcrumb_Click" ToolTip.Tip="{Binding Label}" />
+                                            <PathIcon Width="9" Height="9" VerticalAlignment="Center"
+                                                      IsVisible="{Binding !IsLast}"
+                                                      Foreground="{DynamicResource TextTertiaryBrush}"
+                                                      Data="{StaticResource CloudChevronIcon}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                        <TextBlock Grid.Column="2" x:Name="EntryCount" VerticalAlignment="Center" FontSize="11"
+                                   Foreground="{DynamicResource TextTertiaryBrush}" Margin="4,0" />
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Row="1">
+                    <StackPanel x:Name="EmptyState" IsVisible="False" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" MaxWidth="380" Margin="24" Spacing="12">
+                        <Path Width="46" Height="46" Stretch="Uniform" HorizontalAlignment="Center" StrokeThickness="1.1"
+                              StrokeLineCap="Round" StrokeJoin="Round" Data="{StaticResource CloudGlyphIcon}"
+                              Stroke="{DynamicResource TextTertiaryBrush}" />
+                        <TextBlock Text="{loc:Loc explorer.cloud.empty_title}" FontSize="17" FontWeight="SemiBold"
+                                   TextAlignment="Center" TextWrapping="Wrap" />
+                        <TextBlock Text="{loc:Loc explorer.cloud.empty}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" />
+                        <Button Classes="primary" Height="32" Content="{loc:Loc explorer.cloud.add}"
+                                HorizontalAlignment="Center" Click="Add_Click" />
+                    </StackPanel>
+
+                    <Grid x:Name="EntriesHost" IsVisible="False" RowDefinitions="*,Auto">
+                        <DataGrid x:Name="CloudEntries" Classes="resource-table" AutoGenerateColumns="False" IsReadOnly="True"
+                                  SelectionMode="Single" SelectionChanged="Entries_SelectionChanged" DoubleTapped="Open_Click"
+                                  CanUserSortColumns="False" BorderThickness="0" RowHeight="34" ColumnHeaderHeight="34"
+                                  Background="{DynamicResource SurfaceBrush}">
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Header="{loc:Loc explorer.cloud.name}" Width="*" MinWidth="200">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="6,0">
+                                                <c:ExplorerIcon EntryType="{Binding EntryType}" FileName="{Binding Name}"
+                                                               Width="18" Height="18" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" MaxLines="1" ToolTip.Tip="{Binding Name}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="{loc:Loc explorer.cloud.kind}" Binding="{Binding KindText}" Width="96" />
+                                <DataGridTextColumn Header="{loc:Loc explorer.cloud.size}" Binding="{Binding SizeText}" Width="110" />
+                                <!-- A provider may omit the time; the column still reserves its own width so
+                                     rows never reflow when one entry reports it and the next does not. -->
+                                <DataGridTemplateColumn Header="{loc:Loc explorer.cloud.modified}" Width="168">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding ModifiedText}" VerticalAlignment="Center"
+                                                       FontSize="12" TextTrimming="CharacterEllipsis"
+                                                       ToolTip.Tip="{Binding ModifiedText}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <!-- An empty folder states its own fact above the actions that can fill it. -->
+                        <TextBlock x:Name="FolderEmpty" IsVisible="False" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" IsHitTestVisible="False"
+                                   Text="{loc:Loc explorer.cloud.folder_empty}"
+                                   FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <!-- Actions that act on the selected entry and the current folder sit under the
+                             list, where the reader already is when they pick a row. -->
+                        <Border Grid.Row="1" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0"
+                                Padding="12,8">
+                            <WrapPanel ItemSpacing="6" LineSpacing="6">
+                                <Button x:Name="OpenButton" Classes="cloud-command" Click="Open_Click"
+                                        Content="{loc:Loc explorer.cloud.open}" />
+                                <Button x:Name="DownloadButton" Classes="cloud-command" Click="Download_Click"
+                                        Content="{loc:Loc explorer.cloud.download}" />
+                                <Border Classes="cloud-divider" />
+                                <TextBox x:Name="FolderName" Width="168" Height="32"
+                                         PlaceholderText="{loc:Loc explorer.cloud.new_folder}" />
+                                <Button x:Name="CreateFolderButton" Classes="cloud-command" Click="CreateFolder_Click"
+                                        Content="{loc:Loc explorer.cloud.create_folder}" />
+                                <Button x:Name="UploadButton" Classes="cloud-command" Click="Upload_Click"
+                                        Content="{loc:Loc explorer.cloud.upload}" />
+                                <Button x:Name="MoreButton" Classes="cloud-command" Click="More_Click"
+                                        Content="{loc:Loc explorer.cloud.more}" />
+                            </WrapPanel>
+                        </Border>
+                    </Grid>
+
+                    <DockPanel x:Name="ConnectionForm" IsVisible="False">
+                        <!-- The title stays put and the footer keeps the decision in reach: the form
+                             focuses its first field when it opens, and a title inside the scroller
+                             would be pushed out of view by that very focus. -->
+                        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="16,18,16,10">
+                            <TextBlock x:Name="FormTitle" FontSize="20" FontWeight="SemiBold" />
+                            <TextBlock x:Name="FormSubtitle" Classes="field-hint" />
+                        </StackPanel>
+                        <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource BorderSubtleBrush}"
+                                BorderThickness="0,1,0,0" Padding="16,10">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                <Button x:Name="SaveButton" Classes="primary" Height="32"
+                                        Content="{loc:Loc explorer.cloud.save}" Click="Save_Click" />
+                                <TextBlock Grid.Column="1" x:Name="FooterHint" Classes="field-hint"
+                                           IsVisible="False" VerticalAlignment="Center" Margin="4,0" />
+                                <Button Grid.Column="2" Height="32" Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
+                            </Grid>
+                        </Border>
+                        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Spacing="12" Margin="16,0,16,16" MaxWidth="600" HorizontalAlignment="Left">
+
+                            <Border Classes="app-panel" Padding="14">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Classes="section-title" Text="{loc:Loc explorer.cloud.section_connection}" />
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.connection_name}" />
+                                        <TextBox x:Name="ConnectionName" Height="32"
+                                                 AutomationProperties.Name="{loc:Loc explorer.cloud.connection_name}" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.connection_type}" />
+                                        <ComboBox x:Name="Protocol" HorizontalAlignment="Stretch" SelectedIndex="0"
+                                                  AutomationProperties.Name="{loc:Loc explorer.cloud.connection_type}"
+                                                  SelectionChanged="Protocol_SelectionChanged">
+                                            <ComboBoxItem Content="WebDAV" />
+                                            <ComboBoxItem Content="S3" />
+                                            <ComboBoxItem Content="{loc:Loc explorer.cloud.baidu}" />
+                                        </ComboBox>
+                                        <TextBlock x:Name="ProtocolHint" Classes="field-hint" />
+                                    </StackPanel>
+                                    <!-- Write access belongs to the connection, not to the credentials
+                                         group: the authorization flow needs it before any key is typed. -->
+                                    <CheckBox x:Name="EnableWrites" Content="{loc:Loc explorer.cloud.enable_writes}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border x:Name="ServerSection" Classes="app-panel" Padding="14">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Classes="section-title" x:Name="EndpointSectionTitle"
+                                               Text="{loc:Loc explorer.cloud.section_server}" />
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Classes="field-label" x:Name="EndpointLabel" Text="{loc:Loc explorer.cloud.endpoint}" />
+                                        <TextBox x:Name="Endpoint" Height="32" PlaceholderText="{loc:Loc explorer.cloud.endpoint}" />
+                                    </StackPanel>
+                                    <StackPanel x:Name="S3Fields" Spacing="10" IsVisible="False">
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.region}" />
+                                            <TextBox x:Name="Region" Height="32" PlaceholderText="{loc:Loc explorer.cloud.region}" />
+                                        </StackPanel>
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.bucket}" />
+                                            <TextBox x:Name="Bucket" Height="32" PlaceholderText="{loc:Loc explorer.cloud.bucket}" />
+                                        </StackPanel>
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.prefix}" />
+                                            <TextBox x:Name="Prefix" Height="32" PlaceholderText="{loc:Loc explorer.cloud.prefix}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <CheckBox x:Name="PrivateDav" IsVisible="False" Content="{loc:Loc explorer.cloud.private}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Classes="app-panel" x:Name="CredentialSection" Padding="14">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Classes="section-title" Text="{loc:Loc explorer.cloud.section_credentials}" />
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Classes="field-label" x:Name="UserNameLabel" />
+                                        <TextBox x:Name="UserName" Height="32" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Classes="field-label" x:Name="SecretLabel" />
+                                        <TextBox x:Name="Secret" Height="32" PasswordChar="●" />
+                                    </StackPanel>
+                                    <StackPanel x:Name="SessionTokenField" Spacing="6">
+                                        <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.token}" />
+                                        <TextBox x:Name="SessionToken" Height="32" PasswordChar="●"
+                                                 PlaceholderText="{loc:Loc explorer.cloud.token}" />
+                                    </StackPanel>
+                                    <StackPanel x:Name="RefreshTokenField" Spacing="6" IsVisible="False">
+                                        <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.refresh_token}" />
+                                        <TextBox x:Name="RefreshToken" Height="32" PasswordChar="●"
+                                                 PlaceholderText="{loc:Loc explorer.cloud.refresh_token}" />
                                     </StackPanel>
                                 </StackPanel>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <Button Content="{loc:Loc explorer.cloud.replace}" Click="Replace_Click" x:Name="ReplaceButton" />
-                    <Button Content="{loc:Loc explorer.cloud.revoke}" Click="Revoke_Click" x:Name="RevokeButton" />
-                </WrapPanel>
-                <TextBlock x:Name="Location" TextTrimming="CharacterEllipsis" />
-                <WrapPanel ItemSpacing="5" LineSpacing="5">
-                    <Button x:Name="UpButton" Content="{loc:Loc explorer.cloud.up}" Click="Up_Click" />
-                    <Button x:Name="OpenButton" Content="{loc:Loc explorer.cloud.open}" Click="Open_Click" />
-                    <Button x:Name="DownloadButton" Content="{loc:Loc explorer.cloud.download}" Click="Download_Click" />
-                    <Button x:Name="UploadButton" Content="{loc:Loc explorer.cloud.upload}" Click="Upload_Click" />
-                    <TextBox x:Name="FolderName" Width="140" PlaceholderText="{loc:Loc explorer.cloud.new_folder}" />
-                    <Button x:Name="CreateFolderButton" Content="{loc:Loc explorer.cloud.create_folder}" Click="CreateFolder_Click" />
-                    <Button x:Name="MoreButton" Content="{loc:Loc explorer.cloud.more}" Click="More_Click" />
-                </WrapPanel>
-            </StackPanel>
-        </StackPanel>
-        <Grid Grid.Row="1">
-            <StackPanel x:Name="EmptyState" IsVisible="False" HorizontalAlignment="Center"
-                        VerticalAlignment="Center" MaxWidth="360" Margin="16" Spacing="10">
-                <TextBlock Text="{loc:Loc explorer.cloud.empty_title}" FontSize="18" FontWeight="SemiBold"
-                           TextAlignment="Center" TextWrapping="Wrap" />
-                <TextBlock Text="{loc:Loc explorer.cloud.empty}" Opacity="0.75"
-                           TextAlignment="Center" TextWrapping="Wrap" />
-                <Button Classes="primary" Content="{loc:Loc explorer.cloud.add}"
-                        HorizontalAlignment="Center" Click="Add_Click" />
-            </StackPanel>
-            <DataGrid x:Name="CloudEntries" IsVisible="False" AutoGenerateColumns="False" IsReadOnly="True"
-                      SelectionMode="Single" SelectionChanged="Entries_SelectionChanged" DoubleTapped="Open_Click">
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:Loc explorer.cloud.name}" Binding="{Binding Name}" Width="*" />
-                    <DataGridTextColumn Header="{loc:Loc explorer.cloud.size}" Binding="{Binding Size}" Width="Auto" />
-                    <DataGridTextColumn Header="{loc:Loc explorer.cloud.modified}" Binding="{Binding ModifiedAt}" Width="Auto" />
-                </DataGrid.Columns>
-            </DataGrid>
-            <ScrollViewer x:Name="ConnectionForm" IsVisible="False" Background="{DynamicResource SurfaceBrush}">
-                <StackPanel Spacing="8" MaxWidth="540" Margin="0,6,0,12">
-                    <TextBlock x:Name="FormTitle" FontSize="18" FontWeight="SemiBold" />
-                    <TextBlock Text="{loc:Loc explorer.cloud.connection_name}" />
-                    <TextBox x:Name="ConnectionName" AutomationProperties.Name="{loc:Loc explorer.cloud.connection_name}" />
-                    <TextBlock Text="{loc:Loc explorer.cloud.connection_type}" />
-                    <ComboBox x:Name="Protocol" SelectedIndex="0"
-                              AutomationProperties.Name="{loc:Loc explorer.cloud.connection_type}" SelectionChanged="Protocol_SelectionChanged">
-                        <ComboBoxItem Content="WebDAV" />
-                        <ComboBoxItem Content="S3" />
-                        <ComboBoxItem Content="{loc:Loc explorer.cloud.baidu}" />
-                    </ComboBox>
-                    <TextBox x:Name="Endpoint" PlaceholderText="{loc:Loc explorer.cloud.endpoint}" />
-                    <TextBox x:Name="UserName" PlaceholderText="{loc:Loc explorer.cloud.user}" />
-                    <TextBox x:Name="Secret" PasswordChar="●" PlaceholderText="{loc:Loc explorer.cloud.secret}" />
-                    <CheckBox x:Name="EnableWrites" Content="{loc:Loc explorer.cloud.enable_writes}" />
-                    <CheckBox x:Name="PrivateDav" Content="{loc:Loc explorer.cloud.private}" />
-                    <TextBox x:Name="RefreshToken" IsVisible="False" PasswordChar="●" PlaceholderText="{loc:Loc explorer.cloud.refresh_token}" />
-                    <CheckBox x:Name="ManualAuthorization" IsVisible="False" Content="{loc:Loc explorer.cloud.auth_manual}" IsCheckedChanged="ManualAuthorization_Changed" />
-                    <Button x:Name="AuthorizeButton" Classes="primary" IsVisible="False" Content="{loc:Loc explorer.cloud.auth_connect}" Click="Authorize_Click" />
-                    <Expander x:Name="ProviderConfiguration" IsVisible="False" Header="{loc:Loc explorer.cloud.auth_configure}">
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="{loc:Loc explorer.cloud.auth_configure_help}" TextWrapping="Wrap" />
-                            <TextBox x:Name="ProviderClientId" PlaceholderText="AppKey" AutomationProperties.Name="AppKey" />
-                            <TextBox x:Name="ProviderClientSecret" PasswordChar="●" PlaceholderText="SecretKey" AutomationProperties.Name="SecretKey" />
-                            <Button Content="{loc:Loc common.save}" Click="ConfigureProvider_Click" />
+                            </Border>
+
+                            <Border Classes="app-panel" x:Name="AuthorizationSection" Padding="14" IsVisible="False">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Classes="section-title" Text="{loc:Loc explorer.cloud.section_authorization}" />
+                                    <TextBlock x:Name="OAuthHelp" IsVisible="False" Classes="field-hint" />
+                                    <CheckBox x:Name="ManualAuthorization" IsVisible="False"
+                                              Content="{loc:Loc explorer.cloud.auth_manual}" IsCheckedChanged="ManualAuthorization_Changed" />
+                                    <Button x:Name="AuthorizeButton" Classes="primary" Height="32" HorizontalAlignment="Left"
+                                            IsVisible="False" Click="Authorize_Click" />
+                                    <Expander x:Name="ProviderConfiguration" IsVisible="False"
+                                              Header="{loc:Loc explorer.cloud.auth_configure}">
+                                        <StackPanel Spacing="8" Margin="0,6,0,2">
+                                            <TextBlock Text="{loc:Loc explorer.cloud.auth_configure_help}" Classes="field-hint" />
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Classes="field-label" Text="AppKey" />
+                                                <TextBox x:Name="ProviderClientId" Height="32" PlaceholderText="AppKey"
+                                                         AutomationProperties.Name="AppKey" />
+                                            </StackPanel>
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Classes="field-label" Text="SecretKey" />
+                                                <TextBox x:Name="ProviderClientSecret" Height="32" PasswordChar="●"
+                                                         PlaceholderText="SecretKey" AutomationProperties.Name="SecretKey" />
+                                            </StackPanel>
+                                            <Button Content="{loc:Loc common.save}" Height="32" HorizontalAlignment="Left"
+                                                    Click="ConfigureProvider_Click" />
+                                        </StackPanel>
+                                    </Expander>
+                                </StackPanel>
+                            </Border>
+
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+
+                    <!-- Authorization runs beside the form, not inside it: the form is disabled while a
+                         device code waits, and a disabled panel could never be cancelled. -->
+                    <Border x:Name="AuthorizationPanel" IsVisible="False" VerticalAlignment="Bottom"
+                            HorizontalAlignment="Left" Margin="16" MaxWidth="600" Classes="app-panel" Padding="14">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="section-title" Text="{loc:Loc explorer.cloud.section_authorization_status}" />
+                            <TextBlock Text="{loc:Loc explorer.cloud.auth_explanation}" Classes="field-hint" />
+                            <TextBlock x:Name="AuthorizationStatus" TextWrapping="Wrap" />
+                            <TextBox x:Name="AuthorizationCode" IsReadOnly="True" FontFamily="Consolas,monospace"
+                                     HorizontalAlignment="Left" MinWidth="220" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Height="32" Content="{loc:Loc explorer.cloud.auth_open}" Click="AuthorizationOpen_Click" />
+                                <Button Height="32" Content="{loc:Loc common.cancel}" Click="AuthorizationCancel_Click" />
+                            </StackPanel>
                         </StackPanel>
-                    </Expander>
-                    <TextBlock x:Name="OAuthHelp" IsVisible="False" TextWrapping="Wrap"
-                               Text="{loc:Loc explorer.cloud.oauth_help}" />
-                    <StackPanel x:Name="S3Fields" Spacing="8" IsVisible="False">
-                        <TextBox x:Name="Region" PlaceholderText="{loc:Loc explorer.cloud.region}" />
-                        <TextBox x:Name="Bucket" PlaceholderText="{loc:Loc explorer.cloud.bucket}" />
-                        <TextBox x:Name="Prefix" PlaceholderText="{loc:Loc explorer.cloud.prefix}" />
-                        <TextBox x:Name="SessionToken" PasswordChar="●" PlaceholderText="{loc:Loc explorer.cloud.token}" />
-                    </StackPanel>
-                    <WrapPanel ItemSpacing="5">
-                        <Button x:Name="SaveButton" Classes="primary" Content="{loc:Loc explorer.cloud.save}" Click="Save_Click" />
-                        <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
-                    </WrapPanel>
-                </StackPanel>
-            </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Grid>
         </Grid>
-        <StackPanel Grid.Row="2" x:Name="AuthorizationPanel" IsVisible="False" Spacing="6">
-            <TextBlock Text="{loc:Loc explorer.cloud.auth_explanation}" TextWrapping="Wrap" />
-            <TextBlock x:Name="AuthorizationStatus" TextWrapping="Wrap" />
-            <TextBox x:Name="AuthorizationCode" IsReadOnly="True" />
-            <WrapPanel ItemSpacing="5">
-                <Button Content="{loc:Loc explorer.cloud.auth_open}" Click="AuthorizationOpen_Click" />
-                <Button Content="{loc:Loc common.cancel}" Click="AuthorizationCancel_Click" />
-            </WrapPanel>
-        </StackPanel>
-        <TextBlock Grid.Row="3" x:Name="Status" TextWrapping="Wrap" />
     </Grid>
 </UserControl>

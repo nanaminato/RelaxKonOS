@@ -19,8 +19,10 @@ public partial class ExplorerOperationsView : UserControl
     }
     private void RefreshMeasurements()
     {
-        if (DataContext is ExplorerOperationCenter center)
-            foreach (var card in center.Jobs) card.RefreshMeasurements();
+        if (DataContext is not ExplorerOperationCenter center) return;
+        foreach (var card in center.Jobs) card.RefreshMeasurements();
+        // The band's total follows the same samples as the cards, not a second timer.
+        center.RefreshAggregate();
     }
     private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs e) => RefreshMeasurements();
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

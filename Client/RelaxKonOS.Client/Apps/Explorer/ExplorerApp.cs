@@ -347,7 +347,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
             }
             progressWindow = windows.Create(new WindowCreateOptions(new AppId("relaxkonos.explorer"),
                 LocalizedText.Get("explorer.operations.title"), new ExplorerOperationsView { DataContext = center },
-                Bounds: new Rect(180, 90, 580, 520), IconGlyph: "📁"));
+                Bounds: new Rect(180, 90, 620, 560), IconGlyph: "📁"));
         };
     }
 

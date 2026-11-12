@@ -99,32 +99,35 @@ public partial class ExplorerMainView : UserControl
         CloudStorageCompactButton.IsVisible = _hasCloudStorage && compact;
     }
 
+    /// <summary>
+    /// One projection for every surface that lists cloud accounts: the rail, the overview cards
+    /// and the group header's count all read the same rebuilt rows.
+    /// </summary>
+    private void ApplyCloudAccounts(IReadOnlyList<CloudConnectionDto>? sources)
+    {
+        CloudRoots.ItemsSource = sources?.Select(item => new CloudAccountRow(item)).ToArray();
+        CloudRootCount.Text = sources is { Count: > 0 } ? sources.Count.ToString() : "";
+        _cloudAccounts = sources?.ToArray() ?? [];
+        UpdateComputerOverview();
+        UpdateCloudStorageEntry();
+    }
+
     internal async Task DiscoverCloudStorageAsync(ExplorerClient client, CancellationToken ct)
     {
         _cloudClient = client;
         try
         {
             var sources = await client.CloudConnectionsAsync(ct);
-            if (!ct.IsCancellationRequested)
-            {
-                _hasCloudStorage = sources is not null;
-                CloudRoots.ItemsSource = sources;
-                _cloudAccounts = sources?.ToArray() ?? [];
-                UpdateComputerOverview();
-                UpdateCloudStorageEntry();
-            }
+            if (ct.IsCancellationRequested) return;
+            _hasCloudStorage = sources is not null;
+            ApplyCloudAccounts(sources);
         }
         catch (Exception error) when (error is HttpRequestException or IOException or InvalidOperationException
             or Services.Auth.RelaxKonOSAuthException or System.Text.Json.JsonException or OperationCanceledException)
         {
-            if (!ct.IsCancellationRequested)
-            {
-                _hasCloudStorage = false;
-                _cloudAccounts = [];
-                CloudRoots.ItemsSource = null;
-                UpdateComputerOverview();
-                UpdateCloudStorageEntry();
-            }
+            if (ct.IsCancellationRequested) return;
+            _hasCloudStorage = false;
+            ApplyCloudAccounts(null);
         }
     }
 
@@ -133,9 +136,7 @@ public partial class ExplorerMainView : UserControl
         CloudBrowser.Reset();
         _cloudClient = null;
         _hasCloudStorage = false;
-        CloudRoots.ItemsSource = null;
-        _cloudAccounts = [];
-        UpdateCloudStorageEntry();
+        ApplyCloudAccounts(null);
         CloseCloudStorage();
     }
 
@@ -143,7 +144,7 @@ public partial class ExplorerMainView : UserControl
 
     private async void CloudRoot_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: CloudConnectionDto connection }) await OpenCloudStorageAsync(connection.Id);
+        if (sender is Button { Tag: CloudAccountRow account }) await OpenCloudStorageAsync(account.Id);
     }
 
     private async Task OpenCloudStorageAsync(Guid? connection)
@@ -179,13 +180,7 @@ public partial class ExplorerMainView : UserControl
             else if (card.Path is { } path) await vm.NavigateToAsync(path);
         };
         CloudBrowser.CloseRequested += (_, _) => CloseCloudStorage();
-        CloudBrowser.ConnectionsChanged += sources =>
-        {
-            CloudRoots.ItemsSource = sources;
-            _cloudAccounts = sources?.ToArray() ?? [];
-            UpdateComputerOverview();
-            UpdateCloudStorageEntry();
-        };
+        CloudBrowser.ConnectionsChanged += ApplyCloudAccounts;
         FileContentGrid.SizeChanged += (_, _) => UpdateCloudStorageEntry();
         TabScroller.ScrollChanged += (_, _) => UpdateTabScrollMarks();
         BreadcrumbScroll.SizeChanged += (_, _) => ScrollBreadcrumbsToLocation();

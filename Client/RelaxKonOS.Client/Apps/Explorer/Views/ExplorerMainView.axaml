@@ -27,6 +27,24 @@
 
     <UserControl.Styles>
         <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Explorer/Controls/FileBrowserToolbarStyles.axaml" />
+        <!-- Cloud accounts read as a navigation group, not as a second command bar: one row opens
+             the workspace, one row per saved account opens that account's own last folder. -->
+        <Style Selector="Button.cloud-root-entry">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="MinHeight" Value="{DynamicResource MinimumHitTarget}" />
+            <Setter Property="Margin" Value="6,0" />
+        </Style>
+        <Style Selector="TextBlock.cloud-root-name">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style Selector="TextBlock.cloud-root-detail">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
     </UserControl.Styles>
 
     <DockPanel LastChildFill="True">
@@ -264,8 +282,18 @@
                 <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="10" Margin="12,0">
                     <TextBlock Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" TextTrimming="CharacterEllipsis" FontSize="12" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="1" Text="{Binding SelectionSummary}" IsVisible="{Binding !HasTransferProgress}" MaxWidth="220" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="12" />
-                    <TextBlock Grid.Column="1" Text="{Binding TransferText}" ToolTip.Tip="{Binding TransferText}" IsVisible="{Binding HasTransferProgress}" MaxWidth="220" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="12" />
-                    <ProgressBar Grid.Column="2" Width="36" MinWidth="0" Height="3" Minimum="0" Maximum="100" Value="{Binding TransferProgress}" IsVisible="{Binding HasTransferProgress}" VerticalAlignment="Center" />
+                    <!-- A transfer in the status bar opens its own window: the strip states how far
+                         it has come, and one click shows the rest. -->
+                    <Button Grid.Column="1" Grid.ColumnSpan="2" Classes="command-action" Height="24" Padding="8,0"
+                            Command="{Binding ShowOperationsCommand}" IsVisible="{Binding HasTransferProgress}"
+                            ToolTip.Tip="{loc:Loc explorer.operations.title}" AutomationProperties.Name="{loc:Loc explorer.operations.title}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding TransferText}" MaxWidth="200" TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" FontSize="12" />
+                            <ProgressBar Width="48" MinWidth="0" Height="4" Minimum="0" Maximum="100"
+                                         Value="{Binding TransferProgress}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                     <ToggleButton Grid.Column="3" x:Name="OperationDetailsToggle" Content="{loc:Loc explorer.batch.details}" IsVisible="{Binding HasOperationDetails}" Padding="8,2" Height="28" />
                     <Button Grid.Column="4" Content="{loc:Loc explorer.batch.stop}" Command="{Binding StopBatchCommand}" IsVisible="{Binding IsBatchActive}" Padding="8,2" Height="28" />
                 </Grid>
@@ -294,31 +322,61 @@
             </Grid>
         </Border>
 
-        <Button DockPanel.Dock="Top" x:Name="CloudStorageCompactButton" IsVisible="False"
-                HorizontalAlignment="Left" Margin="4" Click="CloudStorage_Click"
-                Content="{loc:Loc explorer.cloud.title}" />
+        <!-- Below 620 px the navigation column collapses, so the workspace keeps one reachable
+             entry above the list instead of hiding cloud storage entirely. -->
+        <Button DockPanel.Dock="Top" x:Name="CloudStorageCompactButton" Classes="command-action"
+                IsVisible="False" HorizontalAlignment="Left" Margin="8,4" Click="CloudStorage_Click"
+                ToolTip.Tip="{loc:Loc explorer.cloud.title}" AutomationProperties.Name="{loc:Loc explorer.cloud.title}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Path Width="16" Height="16" Stretch="Uniform" StrokeThickness="1.2" StrokeLineCap="Round"
+                      StrokeJoin="Round" Stroke="{Binding $parent[Button].Foreground}"
+                      Data="M7.4 19 H17.2 A4.3 4.3 0 0 0 17.7 10.4 A6.1 6.1 0 0 0 5.8 10.9 A4.1 4.1 0 0 0 7.4 19 Z" />
+                <TextBlock Text="{loc:Loc explorer.cloud.title}" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
 
         <!-- 主体：左导航树 | 分隔 | 右条目列表 -->
         <Grid x:Name="FileContentGrid" ColumnDefinitions="210,Auto,*">
             <!-- 导航树 -->
             <DockPanel Grid.Column="0">
-            <Button DockPanel.Dock="Top" x:Name="CloudStorageButton" IsVisible="False"
-                    HorizontalAlignment="Stretch" Margin="4" Click="CloudStorage_Click"
-                    Content="{loc:Loc explorer.cloud.title}" />
-            <ScrollViewer DockPanel.Dock="Top" x:Name="CloudRootScroll" IsVisible="False" MaxHeight="152">
+            <StackPanel DockPanel.Dock="Top" Margin="0,4,0,4">
+            <Button x:Name="CloudStorageButton" Classes="command-action cloud-root-entry" IsVisible="False"
+                    Click="CloudStorage_Click" ToolTip.Tip="{loc:Loc explorer.cloud.title}"
+                    AutomationProperties.Name="{loc:Loc explorer.cloud.title}">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <Path Width="16" Height="16" Stretch="Uniform" StrokeThickness="1.2" StrokeLineCap="Round"
+                          StrokeJoin="Round" VerticalAlignment="Center" Stroke="{Binding $parent[Button].Foreground}"
+                          Data="M7.4 19 H17.2 A4.3 4.3 0 0 0 17.7 10.4 A6.1 6.1 0 0 0 5.8 10.9 A4.1 4.1 0 0 0 7.4 19 Z" />
+                    <TextBlock Grid.Column="1" Text="{loc:Loc explorer.cloud.title}" VerticalAlignment="Center"
+                               FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" x:Name="CloudRootCount" Classes="cloud-root-detail" VerticalAlignment="Center" />
+                </Grid>
+            </Button>
+            <ScrollViewer x:Name="CloudRootScroll" IsVisible="False" MaxHeight="220" Margin="0,2,0,2">
                 <ItemsControl x:Name="CloudRoots">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="d:CloudConnectionDto">
-                            <Button Tag="{Binding}" Click="CloudRoot_Click" HorizontalAlignment="Stretch" Margin="12,0,4,2">
-                                <StackPanel ToolTip.Tip="{Binding Id}">
-                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Protocol}" FontSize="11" Opacity="0.7" />
-                                </StackPanel>
+                        <DataTemplate x:DataType="models:CloudAccountRow">
+                            <Button Classes="command-action cloud-root-entry" Tag="{Binding}" Click="CloudRoot_Click"
+                                    Margin="16,0,6,0" ToolTip.Tip="{Binding Name}">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <Path Width="14" Height="14" Stretch="Uniform" StrokeThickness="1.2" StrokeLineCap="Round"
+                                          StrokeJoin="Round" VerticalAlignment="Center" Stroke="{Binding $parent[Button].Foreground}"
+                                          Data="M7.4 19 H17.2 A4.3 4.3 0 0 0 17.7 10.4 A6.1 6.1 0 0 0 5.8 10.9 A4.1 4.1 0 0 0 7.4 19 Z" />
+                                    <StackPanel Grid.Column="1" Spacing="1">
+                                        <TextBlock Classes="cloud-root-name" Text="{Binding Name}" />
+                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <TextBlock Classes="cloud-root-detail" Text="{Binding KindText}" />
+                                            <TextBlock Classes="cloud-root-detail" Text="·" />
+                                            <TextBlock Classes="cloud-root-detail" Text="{Binding AccessText}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
                             </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
+            </StackPanel>
             <TreeView
                       x:Name="NavigationTree"
                       IsEnabled="{Binding !IsBusy}"
@@ -538,7 +596,9 @@
                 <TextBlock Text="{loc:Loc explorer.empty_view}" IsVisible="{Binding IsEmpty}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Opacity="0.6" />
             </Grid>
-            <views:CloudBrowserView Grid.Column="2" x:Name="CloudBrowser" IsVisible="False" />
+            <!-- The cloud workspace replaces the whole content band, navigation included, so a
+                 disabled grey tree can never sit beside it looking like a second answer. -->
+            <views:CloudBrowserView Grid.Column="0" Grid.ColumnSpan="3" x:Name="CloudBrowser" IsVisible="False" />
         </Grid>
     </DockPanel>
 </UserControl>

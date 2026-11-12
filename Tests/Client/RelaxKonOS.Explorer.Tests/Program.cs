@@ -42,6 +42,7 @@ Check(accountNavigation.Get(baiduTwo).Length == 0, "Disconnect clears every acco
 await PickerMemoryChecks.RunAsync(Check);
 await OwnershipDialogChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
+CloudBrowserChecks.Run(Check);
 ComputerOverviewChecks.Run(Check);
 var capacityEntry = new FileSystemEntryDto("/data", "Data", 100, FileSystemEntryType.Drive, null, null, null, false, false, null) { AvailableFreeSpace = 25 };
 Check(ComputerDriveCard.Local(capacityEntry).UsedPercent == 75, "Drive card reports measured utilization");

@@ -18,8 +18,10 @@ public sealed class TransferSpeedGraph : Control
     {
         var rect = new Rect(Bounds.Size).Deflate(0.5);
         if (rect.Width <= 0 || rect.Height <= 0 || Foreground is not { } brush) return;
-        using (context.PushOpacity(0.08)) context.DrawRectangle(brush, null, rect);
-        using (context.PushOpacity(0.16))
+        // Kept low: the graph sits on a raised card in both appearances, and an area fill that
+        // reads as a solid block would outweigh the single number it illustrates.
+        using (context.PushOpacity(0.05)) context.DrawRectangle(brush, null, rect);
+        using (context.PushOpacity(0.12))
         {
             var pen = new Pen(brush, 1);
             for (var i = 1; i < 5; i++) context.DrawLine(pen, new(rect.Left, rect.Top + rect.Height * i / 5), new(rect.Right, rect.Top + rect.Height * i / 5));
@@ -36,7 +38,7 @@ public sealed class TransferSpeedGraph : Control
             foreach (var point in points) drawing.LineTo(point);
             drawing.LineTo(new(rect.Right, rect.Bottom)); drawing.EndFigure(true);
         }
-        using (context.PushOpacity(0.28)) context.DrawGeometry(brush, null, shape);
+        using (context.PushOpacity(0.20)) context.DrawGeometry(brush, null, shape);
         var line = new Pen(brush, 1.5);
         for (var i = 1; i < points.Length; i++) context.DrawLine(line, points[i - 1], points[i]);
     }
