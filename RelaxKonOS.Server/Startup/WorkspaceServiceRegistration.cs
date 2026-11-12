@@ -37,6 +37,7 @@ internal static class WorkspaceServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionService,
             RelaxKonOS.Server.UserExecution.DirectUserExecutionService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Files.FileOperationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Files.ICloudFileOperationModule, RelaxKonOS.Server.Files.CloudFileOperationModule>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Files.MediaLeaseStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Files.MediaLeaseFileReader>();
         // 大文件分块上传：会话索引是唯一可重启恢复的偏移来源，扫描器只从索引出发（绝不全盘扫描暂存文件）。

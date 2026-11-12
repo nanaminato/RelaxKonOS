@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Server.Files;
 using RelaxKonOS.Server.UserExecution;
@@ -10,8 +11,15 @@ public static class FileOperationEndpoints
     public static void MapFileOperationEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup(FileApiRoutes.Operations).RequireAuthorization(FileAuthorizationPolicies.Manage).WithTags("Files");
-        group.MapPost("", (StartFileOperationRequest request, HttpContext http, FileOperationService jobs) =>
-            Execute(http.User, owner => Results.Ok(jobs.Start(owner, http.User, request))));
+        group.MapPost("", async (StartFileOperationRequest request, HttpContext http, FileOperationService jobs,
+            IAuthorizationService authorization) =>
+        {
+            if (request.Kind is FileOperationKind.CloudUpload or FileOperationKind.CloudDownload
+                && (!(await authorization.AuthorizeAsync(http.User, FileAuthorizationPolicies.Read)).Succeeded
+                    || !(await authorization.AuthorizeAsync(http.User, FileAuthorizationPolicies.Write)).Succeeded))
+                return Results.Forbid();
+            return Execute(http.User, owner => Results.Ok(jobs.Start(owner, http.User, request)));
+        });
         group.MapGet("", (HttpContext http, FileOperationService jobs) =>
             Execute(http.User, owner => Results.Ok(jobs.List(owner))));
         group.MapGet("/{id:guid}", (Guid id, HttpContext http, FileOperationService jobs) =>

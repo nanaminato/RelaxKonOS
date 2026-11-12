@@ -49,7 +49,9 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
         var fingerprint = request.Credentials is null ? [] : HMACSHA256.HashData(_credentialKey, Encoding.UTF8.GetBytes(request.Credentials.Password));
         if (request.Kind == FileOperationKind.Extract && request.Items.Count != 1)
             throw new ArgumentException("Extraction requires one archive.");
-        var items = request.Items.Select(item =>
+        var cloud = request.Kind is FileOperationKind.CloudUpload or FileOperationKind.CloudDownload;
+        if (cloud != (request.Cloud is not null)) throw new ArgumentException("Invalid cloud transfer options.");
+        var items = cloud ? NormalizeCloudItems(request) : request.Items.Select(item =>
         {
             var source = Normalize(item.SourcePath);
             if (Path.GetPathRoot(source) == source) throw new ArgumentException("A filesystem root cannot be operated on.");
@@ -60,13 +62,13 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
                 throw new ArgumentException("Cannot move or copy an item into itself or its descendants.");
             return new FileOperationItem(source, destination);
         }).ToArray();
-        if (items.Any(item => items.Any(other => other != item && PathSafety.IsWithin(other.SourcePath, item.SourcePath))))
+        if (!cloud && items.Any(item => items.Any(other => other != item && PathSafety.IsWithin(other.SourcePath, item.SourcePath))))
             throw new ArgumentException("Overlapping source selections must be normalized before submission.");
         if (items.Select(x => x.SourcePath).Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).Count() != items.Length)
             throw new ArgumentException("Duplicate sources.");
         if (request.Kind == FileOperationKind.Compress && items.Select(i => i.DestinationPath).Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).Count() != 1)
             throw new ArgumentException("Compression requires one shared destination.");
-        if (!archive && items.Any(item => item.DestinationPath is { } destination && items.Any(other => other != item
+        if (!cloud && !archive && items.Any(item => item.DestinationPath is { } destination && items.Any(other => other != item
             && (PathSafety.IsWithin(other.SourcePath, destination) || PathSafety.IsWithin(destination, other.SourcePath)
                 || other.DestinationPath is { } d && (PathSafety.IsWithin(d, destination) || PathSafety.IsWithin(destination, d))))))
             throw new ArgumentException("Overlapping source and destination selections.");
@@ -79,7 +81,7 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
             var existing = _jobs.Values.FirstOrDefault(j => j.Owner == owner && j.Request.RequestId == request.RequestId);
             if (existing is not null)
             {
-                if (existing.Request.Kind != request.Kind || !existing.Request.Items.SequenceEqual(items)
+                if (existing.Request.Kind != request.Kind || existing.Request.Cloud != request.Cloud || !existing.Request.Items.SequenceEqual(items)
                     || !CryptographicOperations.FixedTimeEquals(existing.CredentialFingerprint, fingerprint))
                     throw new ArgumentException("Request ID was already used for a different operation.");
                 return existing.Snapshot();
@@ -175,6 +177,8 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
             job.SetState(FileOperationState.Running);
             if (job.Request.Kind is FileOperationKind.Compress or FileOperationKind.Extract)
                 await ProcessArchiveAsync(job);
+            else if (job.Request.Cloud is not null)
+                await ProcessCloudAsync(job);
             else
             {
                 foreach (var item in job.Request.Items)
@@ -203,7 +207,9 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
             lock (_gate) _active.Remove(job);
         }
     }
-    private static IEnumerable<string> Paths(Job job) => job.Request.Items.SelectMany(i =>
+    private static IEnumerable<string> Paths(Job job) => job.Request.Kind == FileOperationKind.CloudDownload
+        ? [Path.GetDirectoryName(job.Request.Items[0].DestinationPath!)!]
+        : job.Request.Items.SelectMany(i =>
         // Reserve the parent for generated same-directory copies as their final name is not known yet.
         i.DestinationPath is { } d ? new[] { i.SourcePath, string.Equals(d, i.SourcePath, Comparison) ? Path.GetDirectoryName(d)! : d }
             : new[] { i.SourcePath });

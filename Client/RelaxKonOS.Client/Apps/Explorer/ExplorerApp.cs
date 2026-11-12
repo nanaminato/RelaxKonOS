@@ -121,14 +121,6 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
             _ = operations.RestoreAsync();
         }
         var view = new ExplorerMainView { DataContext = viewModel };
-        if (context.Services.GetService(typeof(Uploads.IExplorerUploadChannel)) is Uploads.ExplorerUploadChannel uploadChannel
-            && context.Services.GetService(typeof(Uploads.UploadResumeJournal)) is Uploads.UploadResumeJournal uploadJournal)
-        {
-            view.CloudUploader = (id, reference) => new Uploads.LargeFileUploader(uploadChannel.ForCloud(id), uploadJournal,
-                () => session.State == AuthSessionState.Authenticated
-                    ? $"{session.ServiceId}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}/cloud/{id:D}/{reference}"
-                    : null);
-        }
         var cloudDiscovery = new CancellationTokenSource();
         void DiscoverCloudStorage()
         {
@@ -150,6 +142,19 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.explorer.display_name"), view,
             bounds: new Rect(80, 60, 960, 640),
             iconGlyph: Manifest.IconGlyph);
+        if (operations is not null)
+            view.ConfigureCloudTransfers(options => context.ShowDialogAsync<string[]>(window,
+                LocalizedText.Get(options.Mode == ExplorerPickerMode.SaveFile
+                    ? "explorer.cloud.save_on_server" : "explorer.cloud.select_server_files"), dialog =>
+                {
+                    var picker = new ExplorerViewModel(client, options, paths => dialog.Close(paths.ToArray()),
+                        usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "Explorer.cloud-transfer")
+                    {
+                        CancelAction = dialog.Cancel,
+                    };
+                    _ = picker.LoadRootAsync();
+                    return new ExplorerMainView { DataContext = picker };
+                }, new Size(740, 490)), operations.SubmitAsync);
         view.AttachWindowHeader(window);
         _windows[window] = viewModel;
         void RefreshAfterOperation(FileOperationDto result)

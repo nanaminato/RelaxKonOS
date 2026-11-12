@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Apps.Explorer.Views;
 using RelaxKonOS.Client.Localization;
@@ -74,24 +75,6 @@ internal static class CloudBrowserLayoutChecks
         var count = view.FindControl<TextBlock>("EntryCount")!;
         Check(count.Text == LocalizedText.Format("explorer.cloud.item_count", 4), "The path band counts the loaded entries");
 
-        using (var transfer = new CancellationTokenSource())
-        {
-            Set(view, "_operation", transfer);
-            Set(view, "_busy", true);
-            Invoke(view, "UpdateButtons");
-            Invoke(view, "ShowTransfer", "Downloading", 25d);
-            Pump(host);
-            var cancel = view.FindControl<Button>("TransferCancelButton")!;
-            Check(cancel.IsEffectivelyVisible && cancel.IsEffectivelyEnabled && !list.IsEffectivelyEnabled,
-                "A transfer locks the browser while leaving its cancel button available");
-            cancel.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            Check(transfer.IsCancellationRequested, "The transfer cancel button cancels the active request");
-            Set(view, "_operation", null);
-            Set(view, "_busy", false);
-            Invoke(view, "HideTransfer");
-            Invoke(view, "UpdateButtons");
-        }
-
         // The read-only account must not offer the actions that would fail on it.
         list.SelectedItem = accounts[1];
         Pump(host);
@@ -102,8 +85,38 @@ internal static class CloudBrowserLayoutChecks
         list.SelectedItem = accounts[0];
         Pump(host);
         Check(view.FindControl<Button>("UploadButton")!.IsVisible == false,
-            "Upload stays hidden until an uploader is available to the window");
+            "Upload stays hidden until the host picker and file task center are available");
         Fill();
+        using var http = new HttpClient();
+        Set(view, "_client", new ExplorerClient(http, null!, null!));
+        ExplorerPickerOptions? picked = null;
+        StartFileOperationRequest? submitted = null;
+        SetProperty(view, "PickHostFiles", (Func<ExplorerPickerOptions, Task<string[]?>>)(options =>
+        {
+            picked = options;
+            return Task.FromResult<string[]?>(options.Mode == ExplorerPickerMode.SaveFile
+                ? ["/server/downloads/annual-report.pdf"] : ["/server/docs/a.txt", "/server/docs/b.txt"]);
+        }));
+        SetProperty(view, "SubmitTransfer", (Func<StartFileOperationRequest, Action<FileOperationDto>, Task>)((request, _) =>
+        {
+            submitted = request;
+            return Task.CompletedTask;
+        }));
+        Invoke(view, "UpdateButtons");
+        view.FindControl<Button>("UploadButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Check(picked is { Mode: ExplorerPickerMode.OpenFile, AllowMultiple: true }
+            && submitted is { Kind: FileOperationKind.CloudUpload, Cloud: { Reference: "ref-2026" } }
+            && submitted.Cloud.ConnectionId == accounts[0].Id
+            && submitted.Items.Select(item => item.SourcePath).SequenceEqual(["/server/docs/a.txt", "/server/docs/b.txt"]),
+            "Cloud upload submits host-picker paths and the current cloud directory");
+        view.FindControl<DataGrid>("CloudEntries")!.SelectedItem = entries[2];
+        view.FindControl<Button>("DownloadButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Check(picked is { Mode: ExplorerPickerMode.SaveFile, DefaultFileName: "annual-report.pdf" }
+            && submitted is { Kind: FileOperationKind.CloudDownload, Cloud: { Reference: "ref-report" } }
+            && submitted.Cloud.ConnectionId == accounts[0].Id
+            && submitted.Items.Single().DestinationPath == "/server/downloads/annual-report.pdf",
+            "Cloud download submits a cloud object reference and the selected host destination");
+        Set(view, "_client", null);
         Pump(host);
 
         // Every language must render the composed strings, not just the bound ones.
@@ -180,6 +193,9 @@ internal static class CloudBrowserLayoutChecks
 
     private static void Set(object target, string field, object? value) => target.GetType()
         .GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(target, value);
+
+    private static void SetProperty(object target, string property, object value) => target.GetType()
+        .GetProperty(property, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(target, value);
 
     private static void Invoke(object target, string method, params object?[] arguments) => target.GetType()
         .GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, arguments);

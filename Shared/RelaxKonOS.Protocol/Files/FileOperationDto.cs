@@ -1,11 +1,12 @@
 namespace RelaxKonOS.Protocol.Files;
 
-public enum FileOperationKind { Copy, Move, Delete, Compress, Extract }
+public enum FileOperationKind { Copy, Move, Delete, Compress, Extract, CloudUpload, CloudDownload }
 public enum FileOperationState { Queued, Running, WaitingForDecision, Cancelling, Completed, CompletedWithIssues, Cancelled, Failed }
 public enum FileOperationDecision { Retry, Skip, Replace, KeepBoth }
 public sealed record FileOperationItem(string SourcePath, string? DestinationPath = null);
+public sealed record CloudFileTransfer(Guid ConnectionId, string? Reference);
 public sealed record StartFileOperationRequest(Guid RequestId, FileOperationKind Kind, IReadOnlyList<FileOperationItem> Items,
-    ArchiveCredentials? Credentials = null);
+    ArchiveCredentials? Credentials = null, CloudFileTransfer? Cloud = null);
 public sealed record FileOperationDecisionRequest(Guid IssueId, FileOperationDecision Action, bool ApplyToAll = false,
     ArchiveCredentials? Credentials = null);
 public sealed record FileOperationIssue(Guid Id, string Code, string SourcePath, string? DestinationPath,

@@ -13,7 +13,7 @@ internal sealed class CloudUploadSessions(string dataPath)
     private readonly string _root = Path.Combine(dataPath, "uploads");
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _stopping = new();
-    private readonly Dictionary<string, Task> _publishing = [];
+    private readonly Dictionary<string, (Task Task, CancellationTokenSource Cancellation)> _publishing = [];
     private Task? _sweeper;
 
     internal void StartSweep() => _sweeper = SweepAsync();
@@ -84,7 +84,11 @@ internal sealed class CloudUploadSessions(string dataPath)
             if (action == "get") return Results.Ok(Describe(session));
             if (action == "abort")
             {
-                if (_publishing.ContainsKey(id)) return Problem(409, "cloud-upload-publishing");
+                if (_publishing.TryGetValue(id, out var publication))
+                {
+                    publication.Cancellation.Cancel();
+                    return Results.Accepted();
+                }
                 Remove(session);
                 return Results.NoContent();
             }
@@ -123,25 +127,27 @@ internal sealed class CloudUploadSessions(string dataPath)
             if (_publishing.Count >= 4) return Problem(429, FileUploadProblemCodes.TooManyUploads);
             session = session with { State = "publishing", ExpiresAt = DateTimeOffset.UtcNow + Lifetime };
             await SaveAsync(session, ct);
-            _publishing.Add(id, PublishAsync(session, contentHash, publish));
+            var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+            _publishing.Add(id, (PublishAsync(session, contentHash, publish, cancellation), cancellation));
             return Results.Accepted();
         }
         finally { _gate.Release(); }
     }
 
-    private async Task PublishAsync(Session session, string? contentHash, Func<string, Stream, CancellationToken, Task> publish)
+    private async Task PublishAsync(Session session, string? contentHash, Func<string, Stream, CancellationToken, Task> publish,
+        CancellationTokenSource cancellation)
     {
         var status = 0;
         try
         {
             await using var file = File.OpenRead(Data(session.Id));
             if (contentHash is not null && !Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(file,
-                _stopping.Token)).Equals(contentHash, StringComparison.OrdinalIgnoreCase))
+                cancellation.Token)).Equals(contentHash, StringComparison.OrdinalIgnoreCase))
                 status = 422;
             else
             {
                 file.Position = 0;
-                await publish(session.Path, file, _stopping.Token);
+                await publish(session.Path, file, cancellation.Token);
             }
         }
         catch (Exception error)
@@ -158,12 +164,16 @@ internal sealed class CloudUploadSessions(string dataPath)
         await _gate.WaitAsync();
         try
         {
-            await SaveAsync(session with { State = status == 0 ? "complete" : "failed", FailureStatus = status }, default);
-            File.Delete(Data(session.Id));
+            if (cancellation.IsCancellationRequested && !_stopping.IsCancellationRequested) Remove(session);
+            else
+            {
+                await SaveAsync(session with { State = status == 0 ? "complete" : "failed", FailureStatus = status }, default);
+                File.Delete(Data(session.Id));
+            }
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
-        finally { _publishing.Remove(session.Id); _gate.Release(); }
+        finally { _publishing.Remove(session.Id); cancellation.Dispose(); _gate.Release(); }
     }
 
     internal async Task StopAsync(CancellationToken ct)
@@ -172,7 +182,7 @@ internal sealed class CloudUploadSessions(string dataPath)
         if (_sweeper is not null) await _sweeper.WaitAsync(ct);
         await _gate.WaitAsync(ct);
         Task[] jobs;
-        try { jobs = _publishing.Values.ToArray(); }
+        try { jobs = _publishing.Values.Select(publication => publication.Task).ToArray(); }
         finally { _gate.Release(); }
         await Task.WhenAll(jobs).WaitAsync(ct);
     }

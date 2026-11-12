@@ -75,6 +75,8 @@ internal static class CloudStorageChecks
                 check(conflict.StatusCode == HttpStatusCode.Conflict, "overwrite conflicts have a stable response");
 
             await VerifyLargeUploadAsync(client, route, check);
+            await CloudFileJobChecks.RunAsync(client, owner, connection.Id, file.Reference, root, check);
+            await VerifyPublishCancellationAsync(client, route, upstream, check);
 
             foreach (var (hostname, region) in new[]
                      {
@@ -136,7 +138,7 @@ internal static class CloudStorageChecks
             await reloaded.StartAsync(context, default);
             check(stored[0] == 1 && context.Files["connections.key"].Length == 32, "connection storage has a versioned envelope");
             check(!Encoding.UTF8.GetString(stored).Contains("test-secret", StringComparison.Ordinal)
-                && !Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).Any(), "credentials are encrypted and upload staging is cleaned up");
+                && !Directory.EnumerateFiles(Path.Combine(root, "uploads")).Any(), "credentials are encrypted and upload staging is cleaned up");
             await app.StopAsync();
             await reloaded.StopAsync(default);
             await module.StopAsync(default);
@@ -218,6 +220,36 @@ internal static class CloudStorageChecks
         return bytes;
     }
 
+    private static async Task VerifyPublishCancellationAsync(HttpClient client, string route, Upstream upstream,
+        Action<bool, string> check)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var ct = timeout.Token;
+        using var created = await client.PostAsJsonAsync(route + "/uploads?key=cancel-publish",
+            new CreateUploadRequest("", "cancel.txt", 3), ct);
+        created.EnsureSuccessStatusCode();
+        var session = (await created.Content.ReadFromJsonAsync<UploadSessionDto>(cancellationToken: ct))!;
+        var endpoint = route + "/uploads/" + session.UploadId;
+        using (var patch = await client.PatchAsync(endpoint + "?offset=0&length=3", new StringContent("new"), ct))
+            patch.EnsureSuccessStatusCode();
+        upstream.PauseNextDavUpload = true;
+        using (var commit = await client.PostAsJsonAsync(endpoint + "/commit", new CommitUploadRequest(), ct))
+            check(commit.StatusCode == HttpStatusCode.Accepted, "Cloud upload starts publishing before cancellation");
+        await upstream.DavUploadStarted.Task.WaitAsync(ct);
+        using (var abort = await client.DeleteAsync(endpoint, ct))
+            check(abort.StatusCode == HttpStatusCode.Accepted, "Aborting an active cloud upload signals publication cancellation");
+        await upstream.DavUploadCancelled.Task.WaitAsync(ct);
+        check(true, "Cloud upload cancellation reaches the provider request");
+        while (true)
+        {
+            using var result = await client.GetAsync(endpoint, ct);
+            if (result.StatusCode == HttpStatusCode.NotFound) break;
+            result.EnsureSuccessStatusCode();
+            await Task.Delay(20, ct);
+        }
+        check(true, "Cancelled cloud publication releases its upload session");
+    }
+
     private static async Task<HttpResponseMessage> UploadAsync(HttpClient client, string route, string name, Action<bool, string> check)
     {
         using var created = await client.PostAsJsonAsync(route + "/uploads?key=" + Guid.NewGuid().ToString("N"),
@@ -266,6 +298,9 @@ internal static class CloudStorageChecks
     {
         private bool _davUploaded;
         private bool _baiduUploaded;
+        internal bool PauseNextDavUpload { get; set; }
+        internal TaskCompletionSource DavUploadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource DavUploadCancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -284,6 +319,13 @@ internal static class CloudStorageChecks
                     return new HttpResponseMessage(HttpStatusCode.Created);
                 if (request.Method == HttpMethod.Put)
                 {
+                    if (PauseNextDavUpload)
+                    {
+                        PauseNextDavUpload = false;
+                        DavUploadStarted.TrySetResult();
+                        try { await Task.Delay(Timeout.InfiniteTimeSpan, ct); }
+                        finally { if (ct.IsCancellationRequested) DavUploadCancelled.TrySetResult(); }
+                    }
                     var stagedBytes = await request.Content!.ReadAsByteArrayAsync(ct);
                     check(uri.AbsolutePath.StartsWith("/root/.relaxkonos-upload-", StringComparison.Ordinal)
                         && request.Headers.IfNoneMatch.Single().Tag == "*"
@@ -293,11 +335,13 @@ internal static class CloudStorageChecks
                 }
                 if (request.Method.Method == "MOVE")
                 {
-                    var destination = request.Headers.GetValues("Destination").Single();
+                    var destination = Uri.UnescapeDataString(request.Headers.GetValues("Destination").Single());
                     check(request.Headers.GetValues("Overwrite").Single() == "F"
-                        && destination is "https://dav.example/root/new.txt" or "https://dav.example/root/large.bin",
+                        && destination is "https://dav.example/root/new.txt" or "https://dav.example/root/large.bin"
+                            or "https://dav.example/root/new (2).txt",
                         "WebDAV MOVE publishes at the requested path without overwriting");
-                    if (destination.EndsWith("/large.bin", StringComparison.Ordinal))
+                    if (destination.EndsWith("/large.bin", StringComparison.Ordinal)
+                        || destination.EndsWith("/new (2).txt", StringComparison.Ordinal))
                         return new HttpResponseMessage(HttpStatusCode.Created);
                     if (_davUploaded) return new HttpResponseMessage(HttpStatusCode.PreconditionFailed);
                     _davUploaded = true;

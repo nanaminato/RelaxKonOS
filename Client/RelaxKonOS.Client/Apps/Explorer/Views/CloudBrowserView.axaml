@@ -113,9 +113,9 @@
             </Grid>
         </Border>
 
-        <!-- Band 3: one status sentence plus the only live transfer, side by side. -->
+        <!-- Band 3: connection and directory status. -->
         <Border Grid.Row="2" Classes="app-statusbar">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <Grid>
                 <!-- The band never sits empty: an idle page states what it can do, and any message
                      replaces that sentence instead of stacking a second line. -->
                 <Grid VerticalAlignment="Center">
@@ -124,18 +124,6 @@
                     <TextBlock x:Name="Status" FontSize="12" TextTrimming="CharacterEllipsis" IsVisible="False"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                 </Grid>
-                <StackPanel x:Name="TransferStrip" Grid.Column="1" Orientation="Horizontal" Spacing="8"
-                            VerticalAlignment="Center" IsVisible="False">
-                    <TextBlock x:Name="TransferText" FontSize="12" VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                    <ProgressBar x:Name="TransferProgress" Width="104" Height="4" Minimum="0" Maximum="100"
-                                 VerticalAlignment="Center" />
-                    <Button x:Name="TransferCancelButton" Classes="cloud-command icon" Height="24" Width="24" MinWidth="24"
-                            Padding="0" Click="TransferCancel_Click"
-                            ToolTip.Tip="{loc:Loc common.cancel}" AutomationProperties.Name="{loc:Loc common.cancel}">
-                        <PathIcon Width="10" Height="10" Data="M19 6.41 L17.59 5 L12 10.59 L6.41 5 L5 6.41 L10.59 12 L5 17.59 L6.41 19 L12 13.41 L17.59 19 L19 17.59 L13.41 12 Z" />
-                    </Button>
-                </StackPanel>
             </Grid>
         </Border>
 
@@ -267,14 +255,14 @@
                                 <Button x:Name="OpenButton" Classes="cloud-command" Click="Open_Click"
                                         Content="{loc:Loc explorer.cloud.open}" />
                                 <Button x:Name="DownloadButton" Classes="cloud-command" Click="Download_Click"
-                                        Content="{loc:Loc explorer.cloud.download}" />
+                                        Content="{loc:Loc explorer.operations.kind.CloudDownload}" />
                                 <Border Classes="cloud-divider" />
                                 <TextBox x:Name="FolderName" Width="168" Height="32"
                                          PlaceholderText="{loc:Loc explorer.cloud.new_folder}" />
                                 <Button x:Name="CreateFolderButton" Classes="cloud-command" Click="CreateFolder_Click"
                                         Content="{loc:Loc explorer.cloud.create_folder}" />
                                 <Button x:Name="UploadButton" Classes="cloud-command" Click="Upload_Click"
-                                        Content="{loc:Loc explorer.cloud.upload}" />
+                                        Content="{loc:Loc explorer.operations.kind.CloudUpload}" />
                                 <Button x:Name="MoreButton" Classes="cloud-command" Click="More_Click"
                                         Content="{loc:Loc explorer.cloud.more}" />
                             </WrapPanel>

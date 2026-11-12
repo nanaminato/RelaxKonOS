@@ -277,7 +277,7 @@ public static partial class FileArchiveService
         }
     }
 
-    private static async Task RejectLinksAsync(ArchiveFileSystem fs, string path, CancellationToken ct)
+    internal static async Task RejectLinksAsync(ArchiveFileSystem fs, string path, CancellationToken ct)
     {
         for (var current = path; current is not null; current = Path.GetDirectoryName(current))
         {
@@ -288,9 +288,9 @@ public static partial class FileArchiveService
             catch (FileNotFoundException) { continue; }
             catch (DirectoryNotFoundException) { continue; }
             if (properties is null) continue;
-            if (!Enum.TryParse<FileAttributes>(properties.Attributes, out var attributes)) throw new IOException("Invalid archive path metadata.");
+            if (!Enum.TryParse<FileAttributes>(properties.Attributes, out var attributes)) throw new IOException("Invalid file path metadata.");
             if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Device)) != 0)
-                throw new NotSupportedException("Links and special files are not supported by archive jobs.");
+                throw new NotSupportedException("Links and special files are not supported for this operation.");
         }
     }
 

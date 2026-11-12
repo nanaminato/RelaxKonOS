@@ -61,7 +61,7 @@ internal sealed partial class OAuthDriveConnector(string token, Func<Uri, bool, 
         return item is { } entry ? BaiduEntry(entry) : null;
     }
 
-    internal async Task DownloadAsync(string reference, Func<string, Stream, Task> send, CancellationToken ct)
+    internal async Task DownloadAsync(string reference, Func<string, Stream, long?, Task> send, CancellationToken ct)
     {
         var item = await BaiduInfoAsync(reference, download: true, ct)
             ?? throw new HttpRequestException("cloud-file-missing", null, HttpStatusCode.NotFound);
@@ -86,7 +86,7 @@ internal sealed partial class OAuthDriveConnector(string token, Func<Uri, bool, 
             }
             response.EnsureSuccessStatusCode();
             await using var body = await response.Content.ReadAsStreamAsync(ct);
-            await send(name, body);
+            await send(name, body, response.Content.Headers.ContentLength);
             return;
         }
         throw new InvalidDataException("cloud-download-redirect-limit");

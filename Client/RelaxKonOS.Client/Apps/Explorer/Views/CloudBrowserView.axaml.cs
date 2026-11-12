@@ -2,10 +2,8 @@ using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Platform.Storage;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Apps.Explorer.Models;
-using RelaxKonOS.Client.Apps.Explorer.Uploads;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Protocol.Files;
@@ -14,8 +12,7 @@ namespace RelaxKonOS.Client.Apps.Explorer.Views;
 
 /// <summary>
 /// Cloud storage workspace. One rail lists the accounts this session can reach, the path band
-/// states where in the provider the list currently points, and the status band carries the only
-/// live transfer — so a long download never replaces the folder the user is reading.
+/// states where in the provider the list currently points, and the status band reports directory and connection errors.
 /// </summary>
 public partial class CloudBrowserView : UserControl
 {
@@ -33,8 +30,6 @@ public partial class CloudBrowserView : UserControl
     private bool _available;
     private bool _confirmRevoke;
 
-    /// <summary>Scoped to one request so the status band can cancel it without ending the page.</summary>
-    private CancellationTokenSource? _operation;
     private LocalizationService? _localization;
 
     public CloudBrowserView()
@@ -95,7 +90,8 @@ public partial class CloudBrowserView : UserControl
         UpdateButtons();
     }
 
-    internal Func<Guid, string?, ILargeFileUploader>? CreateUploader { get; set; }
+    internal Func<ExplorerPickerOptions, Task<string[]?>>? PickHostFiles { get; set; }
+    internal Func<StartFileOperationRequest, Action<FileOperationDto>, Task>? SubmitTransfer { get; set; }
 
     internal event EventHandler? CloseRequested;
     internal event Action<IReadOnlyList<CloudConnectionDto>>? ConnectionsChanged;
@@ -112,9 +108,6 @@ public partial class CloudBrowserView : UserControl
     internal void Reset()
     {
         CancelAuthorization();
-        var operation = _operation;
-        _operation = null;
-        operation?.Cancel();
         _lifetime.Cancel();
         _lifetime.Dispose();
         _lifetime = new();
@@ -140,7 +133,6 @@ public partial class CloudBrowserView : UserControl
         EntriesHost.IsVisible = false;
         FolderEmpty.IsVisible = false;
         Status.Text = "";
-        HideTransfer();
         ClearForm();
         UpdateButtons();
     }
@@ -235,24 +227,22 @@ public partial class CloudBrowserView : UserControl
     private async Task RunAsync(Func<CancellationToken, Task> operation)
     {
         if (_busy || _client is null) return;
-        using var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        _operation = source;
+        var lifetime = _lifetime;
+        var ct = lifetime.Token;
         _busy = true;
         UpdateButtons();
         Status.Text = "";
-        try { await operation(source.Token); }
-        catch (OperationCanceledException) when (source.IsCancellationRequested) { }
+        try { await operation(ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception error) when (error is HttpRequestException or IOException or InvalidOperationException or UnauthorizedAccessException
-            or System.Text.Json.JsonException or OperationCanceledException or UploadChannelException
+            or System.Text.Json.JsonException or OperationCanceledException
             or RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException)
-        { if (!source.IsCancellationRequested) Status.Text = Text("error"); }
+        { if (!ct.IsCancellationRequested) Status.Text = Text("error"); }
         finally
         {
-            if (ReferenceEquals(_operation, source))
+            if (ReferenceEquals(_lifetime, lifetime))
             {
-                _operation = null;
                 _busy = false;
-                HideTransfer();
                 UpdateButtons();
             }
         }
@@ -280,30 +270,12 @@ public partial class CloudBrowserView : UserControl
         MoreButton.IsEnabled = selected && _cursor is not null;
         var writable = CurrentConnection?.CanWrite == true && !_busy;
         FolderName.IsVisible = CreateFolderButton.IsVisible = writable;
-        UploadButton.IsVisible = writable && CreateUploader is not null;
+        UploadButton.IsVisible = writable && PickHostFiles is not null && SubmitTransfer is not null;
         OpenButton.IsEnabled = selected && CloudEntries.SelectedItem is CloudEntryRow { IsDirectory: true };
-        DownloadButton.IsEnabled = selected && CloudEntries.SelectedItem is CloudEntryRow { IsDirectory: false };
+        DownloadButton.IsEnabled = selected && PickHostFiles is not null && SubmitTransfer is not null
+            && CloudEntries.SelectedItem is CloudEntryRow { IsDirectory: false };
         FolderEmpty.IsVisible = browsing && _entries.Count == 0;
     }
-
-    /// <summary>Replaces the status band's sentence with a bounded transfer and its own cancel.</summary>
-    private void ShowTransfer(string label, double? percent)
-    {
-        TransferStrip.IsVisible = true;
-        TransferText.Text = label;
-        TransferProgress.IsIndeterminate = percent is null;
-        if (percent is { } value) TransferProgress.Value = Math.Clamp(value, 0, 100);
-    }
-
-    private void HideTransfer()
-    {
-        TransferStrip.IsVisible = false;
-        TransferProgress.IsIndeterminate = false;
-        TransferProgress.Value = 0;
-        TransferText.Text = "";
-    }
-
-    private void TransferCancel_Click(object? sender, RoutedEventArgs e) => _operation?.Cancel();
 
     private void Close_Click(object? sender, RoutedEventArgs e)
     {
@@ -361,68 +333,40 @@ public partial class CloudBrowserView : UserControl
     private async void Download_Click(object? sender, RoutedEventArgs e)
     {
         if (CurrentConnection is not { } source || CloudEntries.SelectedItem is not CloudEntryRow { IsDirectory: false } entry
-            || TopLevel.GetTopLevel(this)?.StorageProvider is not { CanSave: true } storage) return;
+            || PickHostFiles is not { } pick || SubmitTransfer is not { } submit) return;
         await RunAsync(async ct =>
         {
-            var target = await storage.SaveFilePickerAsync(new FilePickerSaveOptions { SuggestedFileName = entry.Name });
-            if (target is null) return;
+            var paths = await pick(new ExplorerPickerOptions(ExplorerPickerMode.SaveFile, DefaultFileName: entry.Name));
+            if (paths is not { Length: 1 }) return;
             ct.ThrowIfCancellationRequested();
-            var path = target.TryGetLocalPath() ?? throw new InvalidOperationException("cloud-storage-local-file");
-            var staging = path + "." + Guid.NewGuid().ToString("N") + ".download";
-            var total = entry.Entry.Size;
-            ShowTransfer(Text("transfer_download_preparing"), null);
-            try
-            {
-                await using (var stream = new FileStream(staging, FileMode.CreateNew, FileAccess.Write,
-                    FileShare.None, 65536, FileOptions.Asynchronous))
-                    await _client!.DownloadCloudEntryAsync(source.Id, entry.Reference, stream, (copied, length) =>
-                    {
-                        // The provider may omit a length; the listing's own size is the fallback.
-                        var expected = length ?? total ?? 0;
-                        ShowTransfer(ProgressLabel(entry.Name, copied, expected), Percent(copied, expected));
-                    }, ct);
-                ct.ThrowIfCancellationRequested();
-                File.Move(staging, path, overwrite: true);
-            }
-            finally { File.Delete(staging); }
-            Status.Text = Text("downloaded");
+            await submit(new(Guid.NewGuid(), FileOperationKind.CloudDownload, [new(entry.Name, paths[0])],
+                Cloud: new(source.Id, entry.Reference)), _ => { });
         });
     }
 
     private async void Upload_Click(object? sender, RoutedEventArgs e)
     {
-        if (CurrentConnection is not { CanWrite: true } source
-            || TopLevel.GetTopLevel(this)?.StorageProvider is not { CanOpen: true } storage) return;
+        if (CurrentConnection is not { CanWrite: true } source || PickHostFiles is not { } pick
+            || SubmitTransfer is not { } submit) return;
         await RunAsync(async ct =>
         {
-            var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { AllowMultiple = true });
-            if (files.Count == 0) return;
+            var folders = _folders.ToArray();
+            var reference = folders.LastOrDefault()?.Reference;
+            var paths = await pick(new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, AllowMultiple: true));
+            if (paths is not { Length: > 0 }) return;
             ct.ThrowIfCancellationRequested();
-            var reference = _folders.LastOrDefault()?.Reference;
-            var uploader = CreateUploader?.Invoke(source.Id, reference) ?? throw new InvalidOperationException("cloud-storage-upload");
-            var index = 0;
-            foreach (var file in files)
+            var lifetime = _lifetime.Token;
+            await submit(new(Guid.NewGuid(), FileOperationKind.CloudUpload, paths.Select(path => new FileOperationItem(path)).ToArray(),
+                Cloud: new(source.Id, reference)), result =>
             {
-                index++;
-                var path = file.TryGetLocalPath() ?? throw new InvalidOperationException("cloud-storage-local-file");
-                var info = new FileInfo(path);
-                var name = file.Name;
-                ShowTransfer(ProgressLabel(name, 0, info.Length), 0);
-                var uploading = true;
-                var progress = new Progress<LargeFileUploadProgress>(value =>
-                {
-                    if (uploading && !ct.IsCancellationRequested)
-                        ShowTransfer(ProgressLabel(name, value.ConfirmedBytes, info.Length), Percent(value.ConfirmedBytes, info.Length));
-                });
-                try
-                {
-                    await uploader.UploadAsync(new(path, reference ?? "", name, info.Length, info.LastWriteTimeUtc),
-                        (_, _) => Task.FromResult(false), ((IProgress<LargeFileUploadProgress>)progress).Report, ct);
-                }
-                finally { uploading = false; }
-            }
-            Status.Text = LocalizedText.Format("explorer.cloud.uploaded", index);
-            await LoadAsync(source.Id, _folders.ToArray(), null, ct);
+                if (result.CompletedSources.Count > 0)
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        if (!lifetime.IsCancellationRequested && IsVisible && CurrentConnection?.Id == source.Id
+                            && _folders.LastOrDefault()?.Reference == reference)
+                            _ = RunAsync(token => LoadAsync(source.Id, folders, null, token));
+                    });
+            });
         });
     }
 
@@ -542,13 +486,6 @@ public partial class CloudBrowserView : UserControl
             await RefreshAsync(true, ct, saved.Id);
         });
     }
-
-    private static double? Percent(long done, long total) => total > 0 ? 100d * Math.Clamp(done, 0, total) / total : null;
-
-    private static string ProgressLabel(string name, long done, long total) => total > 0
-        ? LocalizedText.Format("explorer.cloud.transfer_progress", name, FileTransferMetrics.FormatBytes(done),
-            FileTransferMetrics.FormatBytes(total))
-        : LocalizedText.Format("explorer.cloud.transfer_started", name);
 
     private static string Text(string key) => LocalizedText.Get("explorer.cloud." + key);
 }

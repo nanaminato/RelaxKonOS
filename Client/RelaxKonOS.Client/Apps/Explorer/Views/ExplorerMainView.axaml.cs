@@ -84,9 +84,11 @@ public partial class ExplorerMainView : UserControl
 
     private ExplorerClient? _cloudClient;
     private bool _hasCloudStorage;
-    internal Func<Guid, string?, Uploads.ILargeFileUploader>? CloudUploader
+    internal void ConfigureCloudTransfers(Func<ExplorerPickerOptions, Task<string[]?>> pickHostFiles,
+        Func<StartFileOperationRequest, Action<FileOperationDto>, Task> submit)
     {
-        set => CloudBrowser.CreateUploader = value;
+        CloudBrowser.PickHostFiles = pickHostFiles;
+        CloudBrowser.SubmitTransfer = submit;
     }
 
     internal bool IsCloudStorageOpen => CloudBrowser.IsVisible;

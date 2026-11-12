@@ -51,21 +51,22 @@ internal sealed class WebDavConnector(CloudConnectionRequest connection, HttpCli
         using var put = CreateRequest(HttpMethod.Put, staging);
         put.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Any);
         put.Content = new StreamContent(stream);
-        using var uploaded = await http.SendAsync(put, HttpCompletionOption.ResponseHeadersRead, ct);
-        uploaded.EnsureSuccessStatusCode();
-        var published = false;
+        var cleanupNeeded = true;
         try
         {
+            using var uploaded = await http.SendAsync(put, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (uploaded.StatusCode == HttpStatusCode.PreconditionFailed) cleanupNeeded = false;
+            uploaded.EnsureSuccessStatusCode();
             using var move = CreateRequest(new HttpMethod("MOVE"), staging);
             move.Headers.Add("Destination", new Uri(_root.AbsoluteUri + CloudTransport.EscapePath(path)).AbsoluteUri);
             move.Headers.Add("Overwrite", "F");
             using var response = await http.SendAsync(move, HttpCompletionOption.ResponseHeadersRead, ct);
             response.EnsureSuccessStatusCode();
-            published = true;
+            cleanupNeeded = false;
         }
         finally
         {
-            if (!published)
+            if (cleanupNeeded)
             {
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 try { using var cleanup = await SendAsync(HttpMethod.Delete, staging, null, deadline.Token); }

@@ -163,8 +163,11 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             {
                 if (oauth is not null)
                 {
-                    await oauth.DownloadAsync(path, (fileName, content) =>
-                        Results.Stream(content, "application/octet-stream", fileName).ExecuteAsync(http), ct);
+                    await oauth.DownloadAsync(path, (fileName, content, length) =>
+                    {
+                        http.Response.ContentLength = length;
+                        return Results.Stream(content, "application/octet-stream", fileName).ExecuteAsync(http);
+                    }, ct);
                     return Results.Empty;
                 }
                 var name = path.Split('/')[^1];
@@ -173,12 +176,14 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                     using var response = await new WebDavConnector(settings, client).DownloadAsync(path, ct);
                     response.EnsureSuccessStatusCode();
                     await using var stream = await response.Content.ReadAsStreamAsync(ct);
+                    http.Response.ContentLength = response.Content.Headers.ContentLength;
                     await Results.Stream(stream, "application/octet-stream", name).ExecuteAsync(http);
                 }
                 else
                 {
                     using var connector = new S3Connector(settings, client);
                     using var response = await connector.DownloadAsync(path, ct);
+                    http.Response.ContentLength = response.ContentLength;
                     await Results.Stream(response.ResponseStream, "application/octet-stream", name).ExecuteAsync(http);
                 }
                 return Results.Empty;

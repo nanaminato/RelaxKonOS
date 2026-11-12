@@ -413,11 +413,13 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
     public void RefreshAfterOperation(FileOperationDto result)
     {
+        if (result.Kind == FileOperationKind.CloudUpload) return;
         _listingGeneration++; _listingCache.Clear();
         // Navigation may still be loading a different directory: refresh its committed result too.
         if (!_isNavigating && !result.Items.Any(item =>
-            ExplorerPath.IsAncestorOrEqual(item.SourcePath, AddressbarPath ?? string.Empty)
-            || ExplorerPath.Equal(ExplorerPath.Parent(item.SourcePath), AddressbarPath)
+            (result.Kind != FileOperationKind.CloudDownload
+             && (ExplorerPath.IsAncestorOrEqual(item.SourcePath, AddressbarPath ?? string.Empty)
+                 || ExplorerPath.Equal(ExplorerPath.Parent(item.SourcePath), AddressbarPath)))
             || item.DestinationPath is { } destination &&
                 (ExplorerPath.IsAncestorOrEqual(destination, AddressbarPath ?? string.Empty)
                  || ExplorerPath.Equal(ExplorerPath.Parent(destination), AddressbarPath)))) return;
