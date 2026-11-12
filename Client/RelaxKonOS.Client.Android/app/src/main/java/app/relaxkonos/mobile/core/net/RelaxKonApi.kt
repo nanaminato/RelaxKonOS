@@ -26,6 +26,69 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun cloudEntries(serverUrl: String, accessToken: String, id: String, reference: String, cursor: String?) =
+        webPublishingRead(serverUrl, accessToken, CloudBrowserWire.entries(id, reference, cursor), CloudBrowserWire::directory)
+    override suspend fun cloudDownload(serverUrl: String, accessToken: String, id: String, reference: String, sink: DownloadSink) =
+        streamInto(serverUrl, accessToken, CloudBrowserWire.download(id, reference), "", sink, null)
+
+    // A staged immutable source makes chunk lengths reliable even for remote Android document providers.
+    // Only initial authentication rejection is retryable; once a session exists, never replay the workflow.
+    override suspend fun cloudUpload(serverUrl: String, accessToken: String, id: String, reference: String, name: String, source: java.io.File): ApiResult<Unit> = withContext(Dispatchers.IO) {
+        val root = CloudBrowserWire.connection(id) + "/uploads"
+        val created = execute("POST", serverUrl, root + "?key=" + UUID.randomUUID(), accessToken,
+            JsonBody().string("targetDirectoryPath", reference).string("fileName", name).raw("length", source.length().toString()))
+        if (created !is ApiResult.Success) return@withContext created.asUnit()
+        var route: String? = null
+        var commitStarted = false
+        try {
+            val session = JSONObject(created.value)
+            val uploadId = session.getString("uploadId")
+            require(uploadId.matches(Regex("[a-f0-9]{32}")))
+            route = "$root/$uploadId"
+            val chunkSize = session.getInt("chunkSize").also { require(it in 1..(16 * 1024 * 1024)) }
+            source.inputStream().use { input ->
+                var offset = 0L
+                val buffer = ByteArray(64 * 1024)
+                while (offset < source.length()) {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    val length = minOf(chunkSize.toLong(), source.length() - offset)
+                    val connection = openConnection(serverUrl, "$route?offset=$offset&length=$length", "PATCH", accessToken)
+                    try {
+                        connection.doOutput = true
+                        connection.setRequestProperty("Content-Type", "application/octet-stream")
+                        connection.setFixedLengthStreamingMode(length)
+                        connection.outputStream.use { output ->
+                            var remaining = length
+                            while (remaining > 0) {
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                val count = input.read(buffer, 0, minOf(remaining, buffer.size.toLong()).toInt())
+                                check(count > 0)
+                                output.write(buffer, 0, count)
+                                remaining -= count
+                            }
+                        }
+                        if (connection.responseCode == 401) return@withContext ApiResult.Transport(null)
+                        if (connection.responseCode !in 200..299) return@withContext readProblem(connection, connection.responseCode)
+                    } finally { connection.disconnect() }
+                    offset += length
+                }
+            }
+            commitStarted = true
+            // 202 means queued at the server, not that the provider has finished publishing.
+            val committed = execute("POST", serverUrl, "$route/commit", accessToken, JsonBody()).asUnit()
+            if (committed is ApiResult.Problem && committed.status == 401) {
+                commitStarted = false
+                ApiResult.Transport(null) // Never replay a partially uploaded workflow through AuthSession.
+            } else committed
+        } catch (error: CancellationException) { throw error
+        } catch (error: Exception) { ApiResult.Transport(null)
+        } finally {
+            if (!commitStarted && route != null) withContext(kotlinx.coroutines.NonCancellable) {
+                execute("DELETE", serverUrl, requireNotNull(route), accessToken, null)
+            }
+        }
+    }
+
     override suspend fun cloudProviders(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, CloudAuthorizationWire.ROOT + "/authorization/providers", CloudAuthorizationWire::providers)
     override suspend fun cloudConnections(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, CloudAuthorizationWire.ROOT + "/connections", CloudAuthorizationWire::connections)
     override suspend fun cloudStart(serverUrl: String, accessToken: String, protocol: String, name: String, flow: String, writes: Boolean) = webPublishingCall("POST", serverUrl, CloudAuthorizationWire.ROOT + "/authorization/sessions", accessToken, JsonBody().string("protocol", protocol).string("name", name).string("flow", flow).bool("enableWrites", writes), CloudAuthorizationWire::session)
@@ -1587,7 +1650,8 @@ class RelaxKonApi(
                     copied
                 }
             }
-            ApiResult.Success(written)
+            if (total != null && written != total) ApiResult.Transport("Incomplete download.")
+            else ApiResult.Success(written)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {

@@ -13,7 +13,7 @@ internal sealed class GoogleDriveAuthorization(Func<Uri, bool, HttpClient> trans
         var values = new Dictionary<string, string> {
             ["client_id"] = clientId, ["redirect_uri"] = redirectUri, ["response_type"] = "code",
             ["scope"] = writes ? "https://www.googleapis.com/auth/drive" : "https://www.googleapis.com/auth/drive.readonly",
-            ["access_type"] = "offline", ["prompt"] = "consent", ["state"] = state,
+            ["access_type"] = "offline", ["prompt"] = "consent select_account", ["state"] = state,
             ["code_challenge"] = Challenge(verifier), ["code_challenge_method"] = "S256"
         };
         return "https://accounts.google.com/o/oauth2/v2/auth?" + string.Join("&", values.Select(p => Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));

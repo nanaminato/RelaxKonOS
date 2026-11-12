@@ -24,6 +24,28 @@ Check(CloudAuthorizationNavigation.TryGetBrowserUri("baidu-netdisk", "https://op
 foreach (var address in new[] { "http://accounts.google.com/", "https://accounts.google.com.evil.test/", "https://evil.test/", "https://user@accounts.google.com/", "https://accounts.google.com:8443/", "file:///etc/passwd", "javascript:alert(1)" })
     Check(!CloudAuthorizationNavigation.TryGetBrowserUri("google-drive", address, out _), "Reject unsafe authorization navigation: " + address);
 Check(!CloudAuthorizationNavigation.TryGetBrowserUri("webdav", "https://accounts.google.com/", out _), "Reject unsupported authorization protocol");
+var accountNavigation = new CloudAccountNavigation();
+var googleOne = Guid.NewGuid();
+var googleTwo = Guid.NewGuid();
+var baiduOne = Guid.NewGuid();
+var baiduTwo = Guid.NewGuid();
+var folderOne = new CloudEntryDto("account-one-reference", "Shared name", true, null, null);
+var folderTwo = new CloudEntryDto("account-two-reference", "Shared name", true, null, null);
+accountNavigation.Save(googleOne, [folderOne]);
+accountNavigation.Save(googleTwo, [folderTwo]);
+accountNavigation.Save(baiduOne, [folderOne]);
+accountNavigation.Save(baiduTwo, [folderTwo]);
+Check(accountNavigation.Get(googleOne).Single().Reference == folderOne.Reference, "First Google navigation retained independently");
+Check(accountNavigation.Get(googleTwo).Single().Reference == folderTwo.Reference, "Second Google navigation isolated despite same folder name");
+Check(accountNavigation.Get(baiduOne).Single().Reference == folderOne.Reference && accountNavigation.Get(baiduTwo).Single().Reference == folderTwo.Reference, "Multiple Baidu navigation states isolated");
+Check(accountNavigation.Get(Guid.NewGuid()).Length == 0, "New account starts at its own root");
+var navigationCopy = accountNavigation.Get(googleOne);
+navigationCopy[0] = folderTwo;
+Check(accountNavigation.Get(googleOne).Single() == folderOne, "Navigation caller cannot modify another snapshot");
+accountNavigation.Retain([googleTwo, baiduOne, baiduTwo]);
+Check(accountNavigation.Get(googleOne).Length == 0 && accountNavigation.Get(googleTwo).Length == 1, "Revocation drops only revoked account navigation");
+accountNavigation.Clear();
+Check(accountNavigation.Get(googleTwo).Length == 0 && accountNavigation.Get(baiduOne).Length == 0, "Disconnect clears every account reference");
 await PickerMemoryChecks.RunAsync(Check);
 await OwnershipDialogChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);

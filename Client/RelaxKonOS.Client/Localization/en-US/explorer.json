@@ -315,6 +315,8 @@
     },
     "explorer.cloud.title": "Cloud storage",
     "explorer.cloud.host_files": "Host files",
+    "explorer.cloud.multiaccount_help": "Add multiple Google Drive or Baidu accounts with distinct names. Browser authorization always creates a separate connection; only saving manual credentials replaces the selected connection. Switching accounts keeps others connected.",
+    "explorer.cloud.auth_connect_new": "Authorize and add separate account",
     "explorer.cloud.add": "Add connection",
     "explorer.cloud.replace": "Replace settings",
     "explorer.cloud.revoke": "Revoke",

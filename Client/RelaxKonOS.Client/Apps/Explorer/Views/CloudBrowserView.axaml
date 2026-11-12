@@ -15,7 +15,15 @@
             </WrapPanel>
             <ComboBox x:Name="Connections" HorizontalAlignment="Stretch" SelectionChanged="Connections_SelectionChanged">
                 <ComboBox.ItemTemplate>
-                    <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+                    <DataTemplate>
+                        <StackPanel ToolTip.Tip="{Binding Id}">
+                            <TextBlock Text="{Binding Name}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" Opacity="0.7">
+                                <TextBlock Text="{Binding Protocol}" FontSize="11" />
+                                <TextBlock Text="{Binding Id}" FontSize="11" />
+                            </StackPanel>
+                        </StackPanel>
+                    </DataTemplate>
                 </ComboBox.ItemTemplate>
             </ComboBox>
             <WrapPanel ItemSpacing="5" LineSpacing="5">
@@ -40,6 +48,7 @@
             </DataGrid>
             <ScrollViewer x:Name="ConnectionForm" IsVisible="False" Background="{DynamicResource SurfaceBrush}">
                 <StackPanel Spacing="8">
+                    <TextBlock Text="{loc:Loc explorer.cloud.multiaccount_help}" TextWrapping="Wrap" />
                     <TextBox x:Name="ConnectionName" Watermark="{loc:Loc explorer.cloud.name}" />
                     <ComboBox x:Name="Protocol" SelectedIndex="0" SelectionChanged="Protocol_SelectionChanged">
                         <ComboBoxItem Content="WebDAV" />

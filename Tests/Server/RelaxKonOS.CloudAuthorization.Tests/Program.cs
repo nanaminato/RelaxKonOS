@@ -114,6 +114,22 @@ Check(await client.GetStringAsync("/cloud/connections") == connections, "existin
 var exchangeCount = upstream.Calls;
 using var androidReplay = await client.PostAsJsonAsync($"/cloud/authorization/sessions/{androidSession.Id}/code", new CloudAuthorizationCodeRequest("fake-android-code"));
 Check(androidReplay.StatusCode == HttpStatusCode.Conflict && upstream.Calls == exchangeCount, "failed Android code cannot be replayed");
+// Two browser authorizations with the same visible name must never replace each other.
+upstream.ExpectPkce = true;
+var accountOne = await Start();
+var accountTwo = await Start();
+Check(State(accountOne) != State(accountTwo), "parallel account sessions have distinct state");
+Check(QueryHelpers.ParseQuery(new Uri(accountOne.AuthorizationUrl!).Query)["prompt"].ToString().Contains("select_account"), "Google explicitly offers account selection");
+upstream.Body = "{\"refresh_token\":\"account-one-refresh\"}";
+using (var response = await Callback(State(accountOne))) response.EnsureSuccessStatusCode();
+upstream.Body = "{\"refresh_token\":\"account-two-refresh\"}";
+using (var response = await Callback(State(accountTwo))) response.EnsureSuccessStatusCode();
+var firstAccount = await Poll(accountOne.Id);
+var secondAccount = await Poll(accountTwo.Id);
+Check(firstAccount.ConnectionId.HasValue && secondAccount.ConnectionId.HasValue && firstAccount.ConnectionId != secondAccount.ConnectionId,
+    "same-provider same-name authorizations create independent connections");
+var accountList = (await client.GetFromJsonAsync<CloudConnectionDto[]>("/cloud/connections"))!;
+Check(accountList.Length == 3 && accountList.Any(x => x.Id == result.ConnectionId), "new authorizations preserve original account");
 await module.StopAsync(default);
 await app.StopAsync();
 Console.WriteLine($"PASS: {count} cloud authorization session integration checks (mocked provider; no real authorization).");

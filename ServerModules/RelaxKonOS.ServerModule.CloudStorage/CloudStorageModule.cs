@@ -1,4 +1,5 @@
 using System.Net;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -21,8 +22,9 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
     private const int MaxStoreBytes = 1024 * 1024;
     private readonly SemaphoreSlim _write = new(1, 1);
     private readonly SemaphoreSlim[] _oauthWrites = Enumerable.Range(0, 32).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
-    private readonly SemaphoreSlim _oauthGate = new(1, 1);
-    private readonly Dictionary<Guid, (CloudConnectionRequest Settings, string Token, DateTimeOffset Expires)> _oauthTokens = [];
+    // Serialize refreshes per connection stripe, not per provider or user.
+    private readonly SemaphoreSlim[] _oauthGates = Enumerable.Range(0, 32).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+    private readonly ConcurrentDictionary<Guid, (CloudConnectionRequest Settings, string Token, DateTimeOffset Expires)> _oauthTokens = new();
     private CloudUploadSessions _uploads = null!;
     private readonly Func<Uri, bool, HttpClient> _transport;
 
@@ -257,12 +259,13 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
 
     private async Task<string> GetOAuthTokenAsync(Guid id, Guid owner, string protocol, Guid revision, CancellationToken ct)
     {
-        await _oauthGate.WaitAsync(ct);
+        var gate = _oauthGates[(uint)id.GetHashCode() % (uint)_oauthGates.Length];
+        await gate.WaitAsync(ct);
         try
         {
             var connections = Volatile.Read(ref _connections);
             foreach (var stale in _oauthTokens.Keys.Where(key => !connections.Any(item => item.Id == key)).ToArray())
-                _oauthTokens.Remove(stale);
+                _oauthTokens.TryRemove(stale, out _);
             var item = connections.FirstOrDefault(connection => connection.Id == id && connection.Owner == owner)
                 ?? throw new KeyNotFoundException();
             var settings = item.Settings;
@@ -286,7 +289,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             _oauthTokens[id] = (settings, token, expires);
             return token;
         }
-        finally { _oauthGate.Release(); }
+        finally { gate.Release(); }
     }
 
     private static async Task<IResult> WithUser(HttpContext http, Func<Guid, Task<IResult>> action)

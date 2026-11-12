@@ -28,6 +28,9 @@ private val ProxyServerUnavailable: ApiResult<Nothing> = ApiResult.Transport("Pr
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun cloudEntries(serverUrl: String, accessToken: String, id: String, reference: String, cursor: String?): ApiResult<CloudDirectory> = ApiResult.Transport(null)
+    suspend fun cloudDownload(serverUrl: String, accessToken: String, id: String, reference: String, sink: DownloadSink): ApiResult<Long> = ApiResult.Transport(null)
+    suspend fun cloudUpload(serverUrl: String, accessToken: String, id: String, reference: String, name: String, source: java.io.File): ApiResult<Unit> = ApiResult.Transport(null)
     suspend fun cloudProviders(serverUrl: String, accessToken: String): ApiResult<List<CloudAuthorizationProvider>> = ApiResult.Transport(null)
     suspend fun cloudConnections(serverUrl: String, accessToken: String): ApiResult<List<CloudConnection>> = ApiResult.Transport(null)
     suspend fun cloudStart(serverUrl: String, accessToken: String, protocol: String, name: String, flow: String, writes: Boolean): ApiResult<CloudAuthorizationSession> = ApiResult.Transport(null)

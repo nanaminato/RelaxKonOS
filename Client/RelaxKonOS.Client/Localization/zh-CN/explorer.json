@@ -315,6 +315,8 @@
     },
     "explorer.cloud.title": "云存储",
     "explorer.cloud.host_files": "宿主文件",
+    "explorer.cloud.multiaccount_help": "可添加多个 Google Drive 或百度网盘账号，请使用不同名称。浏览器授权始终创建独立连接；仅“手动授权”保存会替换所选连接。切换账号不会退出其他账号。",
+    "explorer.cloud.auth_connect_new": "授权并添加独立账号",
     "explorer.cloud.add": "添加连接",
     "explorer.cloud.replace": "替换设置",
     "explorer.cloud.revoke": "撤销连接",

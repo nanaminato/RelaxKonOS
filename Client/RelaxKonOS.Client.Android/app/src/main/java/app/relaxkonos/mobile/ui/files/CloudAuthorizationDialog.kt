@@ -30,6 +30,10 @@ fun CloudAuthorizationDialog(container: AppContainer, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val identity by container.session.state.collectAsState()
+    var browsing by remember(identity) { mutableStateOf<CloudConnection?>(null) }
+    browsing?.let { selected ->
+        CloudBrowserDialog(container, selected) { browsing = null }
+    }
     var providers by remember(identity) { mutableStateOf(emptyList<CloudAuthorizationProvider>()) }
     var connections by remember(identity) { mutableStateOf(emptyList<CloudConnection>()) }
     var challenge by remember(identity) { mutableStateOf<CloudAuthorizationSession?>(null) }
@@ -107,7 +111,11 @@ fun CloudAuthorizationDialog(container: AppContainer, onDismiss: () -> Unit) {
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.cloud_android_boundary))
-                connections.forEach { Text("${it.name} (${it.protocol})") }
+                connections.forEach { connection ->
+                    TextButton(enabled = !busy && challenge?.pending != true, onClick = { browsing = connection }) {
+                        Text("${connection.name} (${connection.protocol}) · ${connection.id.take(8)}")
+                    }
+                }
                 if (failed) Text(stringResource(R.string.cloud_auth_failed), color = MaterialTheme.colorScheme.error)
                 if (challenge == null) {
                     OutlinedTextField(value = name, onValueChange = { name = it.take(100) }, label = { Text(stringResource(R.string.cloud_connection_name)) })

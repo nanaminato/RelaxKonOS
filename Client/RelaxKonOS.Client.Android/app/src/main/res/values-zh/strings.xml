@@ -90,7 +90,7 @@
     <string name="server_configuration_auto_start_system">开机自动启动</string>
     <string name="server_configuration_auto_start_user">登录后自动启动</string>
     <string name="cloud_authorization">云存储连接</string>
-    <string name="cloud_android_boundary">可在此授权并查看云存储连接。Android 文件浏览器尚未接入云文件浏览和传输。</string>
+    <string name="cloud_android_boundary">选择账号连接浏览，可分别添加多个 Google Drive 或百度网盘账号。</string>
     <string name="cloud_auth_failed">授权未完成，请检查服务端配置、网络及 Google Play 服务，取消后重试。</string>
     <string name="cloud_connection_name">连接名称</string>
     <string name="cloud_enable_writes">允许写入文件</string>
@@ -99,4 +99,12 @@
     <string name="cloud_waiting">等待授权，请批准后返回此处。</string>
     <string name="cloud_cancel">取消授权</string>
     <string name="cloud_close">关闭</string>
+    <string name="cloud_files_bound">所有请求仅使用当前账号连接。点击文件保存到设备。</string>
+    <string name="cloud_files_failed">操作失败或结果未确认。请刷新后再重试；下载目标可能保留不完整文件。</string>
+    <string name="cloud_download_done">下载完成。</string>
+    <string name="cloud_upload_queued">上传已由服务器接收，请稍后刷新确认网盘发布结果。</string>
+    <string name="cloud_parent">上一级</string>
+    <string name="cloud_refresh">刷新</string>
+    <string name="cloud_upload">上传</string>
+    <string name="cloud_next_page">下一页</string>
 </resources>

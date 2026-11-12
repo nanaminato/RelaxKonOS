@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Apps.Explorer.Uploads;
 using RelaxKonOS.Protocol.Files;
 
@@ -12,6 +13,7 @@ public partial class CloudBrowserView : UserControl
 {
     private readonly ObservableCollection<CloudEntryDto> _entries = [];
     private readonly List<CloudEntryDto> _folders = [];
+    private readonly CloudAccountNavigation _navigation = new();
     private CancellationTokenSource _lifetime = new();
     private ExplorerClient? _client;
     private Guid? _activeConnection;
@@ -54,6 +56,7 @@ public partial class CloudBrowserView : UserControl
         _available = false;
         _confirmRevoke = false;
         _client = null;
+        _navigation.Clear();
         _activeConnection = null;
         _editing = null;
         _cursor = null;
@@ -78,7 +81,11 @@ public partial class CloudBrowserView : UserControl
         var sources = await _client!.CloudConnectionsAsync(ct);
         ct.ThrowIfCancellationRequested();
         _available = sources is not null;
-        if (sources is not null) ConnectionsChanged?.Invoke(sources);
+        if (sources is not null)
+        {
+            _navigation.Retain(sources.Select(item => item.Id));
+            ConnectionsChanged?.Invoke(sources);
+        }
         _changing = true;
         Connections.ItemsSource = sources;
         var source = sources?.FirstOrDefault(item => item.Id == selected) ?? sources?.FirstOrDefault();
@@ -102,6 +109,7 @@ public partial class CloudBrowserView : UserControl
             if (openRoot || source.Id != _activeConnection)
             {
                 _folders.Clear();
+                if (!openRoot) _folders.AddRange(_navigation.Get(source.Id));
                 _entries.Clear();
                 _cursor = null;
                 Location.Text = source.Name;
@@ -122,6 +130,7 @@ public partial class CloudBrowserView : UserControl
             _folders.AddRange(folders);
         }
         foreach (var item in page.Entries) _entries.Add(item);
+        _navigation.Save(id, _folders);
         _cursor = page.NextCursor;
         Location.Text = string.Join(" / ", new[] { Current?.Name ?? "" }.Concat(_folders.Select(folder => folder.Name)));
     }
@@ -181,14 +190,16 @@ public partial class CloudBrowserView : UserControl
 
     private async void Connections_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_changing || Current is not { } source) return;
+        if (_changing || _busy || Current is not { } source) return;
         _activeConnection = source.Id;
         _confirmRevoke = false;
         _entries.Clear();
         _folders.Clear();
         _cursor = null;
         ClearForm();
-        await RunAsync(ct => LoadAsync(source.Id, [], null, ct));
+        Location.Text = source.Name;
+        FolderName.Text = null;
+        await RunAsync(ct => LoadAsync(source.Id, _navigation.Get(source.Id), null, ct));
     }
 
     private async void Up_Click(object? sender, RoutedEventArgs e)
@@ -326,6 +337,7 @@ public partial class CloudBrowserView : UserControl
         UserName.IsVisible = Secret.IsVisible = !oauth || manual;
         ManualAuthorization.IsVisible = OAuthHelp.IsVisible = oauth;
         AuthorizeButton.IsVisible = oauth && !manual;
+        AuthorizeButton.Content = Text("auth_connect_new");
         SaveButton.IsVisible = !oauth || manual;
         UserName.Watermark = Text(oauth ? "oauth_client_id" : "user");
         Secret.Watermark = Text(oauth ? "oauth_client_secret" : "secret");

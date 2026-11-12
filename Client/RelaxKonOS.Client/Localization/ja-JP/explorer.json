@@ -315,6 +315,8 @@
     },
     "explorer.cloud.title": "クラウドストレージ",
     "explorer.cloud.host_files": "ホストのファイル",
+    "explorer.cloud.multiaccount_help": "Google Drive・百度網盤は複数アカウントを追加できます。区別できる名前を付けてください。ブラウザー認証は常に別の接続を作成し、手動認証の保存のみ選択した接続を置換します。切り替えても他の接続は維持されます。",
+    "explorer.cloud.auth_connect_new": "認証して別アカウントを追加",
     "explorer.cloud.add": "接続を追加",
     "explorer.cloud.replace": "設定を置き換える",
     "explorer.cloud.revoke": "接続を解除",
