@@ -13,7 +13,7 @@ internal static class ComputerOverviewChecks
         var view = new ComputerOverviewView();
         var window = new Window { Width = 640, Height = 400, Content = view };
         view.Update([new("/media/disk", "External", 100, FileSystemEntryType.Drive, null, null, null, false, false, null) { AvailableFreeSpace = 0 }],
-            [new(first, "Same name", "google-drive", true), new(second, "Same name", "google-drive", false)]);
+            [new(first, "Same name", "baidu-netdisk", true), new(second, "Same name", "baidu-netdisk", false)]);
         window.Show();
         window.UpdateLayout();
         var buttons = view.GetVisualDescendants().OfType<Button>().ToArray();

@@ -12,7 +12,7 @@ class CloudAuthorizationSession(val id: String, val status: String, val authoriz
     val pending get() = status == "pending"
     override fun toString() = "CloudAuthorizationSession(status=$status)"
 }
-data class CloudAuthorizationProvider(val protocol: String, val configured: Boolean, val clientId: String?)
+data class CloudAuthorizationProvider(val protocol: String, val configured: Boolean)
 data class CloudConnection(val id: String, val name: String, val protocol: String, val canWrite: Boolean)
 object CloudAuthorizationWire {
     const val ROOT = "/api/v1.0/server/module-hosts/cloud-storage/cloud"
@@ -24,7 +24,7 @@ object CloudAuthorizationWire {
             it.getInt("pollIntervalSeconds").coerceIn(1, 60), it.optional("connectionId"))
     }
     fun providers(text: String): List<CloudAuthorizationProvider> = JSONArray(text).let { a ->
-        (0 until a.length()).map { a.getJSONObject(it).let { p -> CloudAuthorizationProvider(p.getString("protocol"), p.getBoolean("configured"), p.optional("clientId")) } }
+        (0 until a.length()).map { a.getJSONObject(it).let { p -> CloudAuthorizationProvider(p.getString("protocol"), p.getBoolean("configured")) } }
     }
     fun connections(text: String): List<CloudConnection> = JSONArray(text).let { a ->
         (0 until a.length()).map { a.getJSONObject(it).let { p -> CloudConnection(p.getString("id"), p.getString("name"), p.getString("protocol"), p.getBoolean("canWrite")) } }

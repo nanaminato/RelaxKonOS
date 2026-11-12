@@ -256,7 +256,8 @@
         </Border>
 
         <!-- Compact operation status; details open upwards only on request. -->
-        <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0">
+        <Border DockPanel.Dock="Bottom" x:Name="HostStatusBar"
+                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0">
             <Grid RowDefinitions="Auto,38">
                 <TextBox Text="{Binding LastOperationDetails, Mode=OneWay}" IsVisible="{Binding #OperationDetailsToggle.IsChecked}"
                          IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Height="140" Margin="12,8,12,4" ScrollViewer.VerticalScrollBarVisibility="Auto" />

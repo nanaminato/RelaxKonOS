@@ -1,18 +1,12 @@
 # Cloud authorization
 
-The Files screen offers **Cloud connections**. It lists server-managed connections and creates a named Google Drive or Baidu Netdisk connection. Selecting a connection opens its cloud directory browser with foreground upload and download; host-file operations retain their existing behavior.
+The Files screen offers **Cloud connections**. It lists server-managed connections and creates a named Baidu Netdisk connection. Selecting a connection opens its cloud directory browser with foreground upload and download; host-file operations retain their existing behavior.
 
 The server administrator must configure the provider application first. Provider application secrets and refresh tokens stay on the server. The Android client does not accept or store these credentials.
 
-Google Drive uses Google Play services `AuthorizationClient` with `requestOfflineAccess(clientId, true)` and the server-configured Web OAuth client ID. The Android OAuth client must be registered with the app package and signing certificate. Each newly added connection explicitly requests consent again so Google can issue a refresh token even after previous authorization. The pinned Google Play services auth 21.4.0 supports this boolean overload; it does not expose the newer `setPrompt(CONSENT)` API. Existing connections are neither overwritten nor used as a source of tokens for another connection. If Google returns no refresh token, the new attempt fails without changing existing connections. The resulting one-time server authorization code is sent through the authenticated RelaxKonOS API for server-side exchange. The Google consent UI runs on the Android device. Devices without compatible Google Play services must use another supported client; there is no embedded WebView fallback.
-
 Baidu Netdisk uses a server-side device-code session. Android displays the user code and opens the official HTTPS verification page in the device browser. Return to the dialog after approval; status polling completes the connection. The device code and provider secret never reach Android.
 
-Write access is off by default and must be explicitly selected. Pending sessions expose cancellation and expiry, and connection creation is reported only by the server. Leaving the screen, switching server/login identity, or losing the process stops local work; uncompleted sessions expire on the server. Screen disposal does not send a cancellation using a different login. Late Google activity results are bound to the original dialog lifetime, login identity and authorization session ID, and are ignored after that lifetime ends. In-flight provider-start responses are discarded after an identity switch. Challenges are memory-only and excluded from their debug representation. Provider responses and exception text are not displayed as diagnostics.
-
-Validation requires Google Play services on a real device or compatible emulator, registered OAuth clients and a configured test server. Unit coverage checks URL host restrictions, session routing, and challenge redaction; it does not prove provider-account authorization works.
-
-Provider contract: [AuthorizationRequest.Builder](https://developers.google.com/android/reference/com/google/android/gms/auth/api/identity/AuthorizationRequest.Builder). The current reference recommends the newer consent prompt API; retain the compatible overload while pinned to auth 21.4.0.
+Write access is off by default and must be explicitly selected. Pending sessions expose cancellation and expiry, and connection creation is reported only by the server. Leaving the screen, switching server/login identity, or losing the process stops local work; uncompleted sessions expire on the server. Screen disposal does not send a cancellation using a different login. In-flight provider-start responses are discarded after an identity switch. Challenges are memory-only and excluded from their debug representation. Provider responses and exception text are not displayed as diagnostics.
 
 ## 多账号文件浏览与传输
 
@@ -22,4 +16,4 @@ Provider contract: [AuthorizationRequest.Builder](https://developers.google.com/
 
 每个浏览器实例绑定登录身份与完整连接 ID；文档选择器回调和传输使用打开时的连接和目录，不读取后来选择的账号。关闭浏览器取消其协程；身份变化后忽略旧回调和旧响应。未进入提交阶段的上传尝试清理服务器暂存会话，网络失败时仍由服务端到期回收。已提交的远端发布不能通过关闭窗口撤回。
 
-当前传输属于前台浏览窗口，不支持进程重启续传、后台任务或跨账号复制。下载失败或关闭时，系统文档提供者中可能留下不完整目标文件，应删除后重新下载。发布结果不确定时先刷新核实，避免重复上传。真实 Google/百度授权及设备上的文档提供者行为需要真机验收。
+当前传输属于前台浏览窗口，不支持进程重启续传、后台任务或跨账号复制。下载失败或关闭时，系统文档提供者中可能留下不完整目标文件，应删除后重新下载。发布结果不确定时先刷新核实，避免重复上传。真实百度授权及设备上的文档提供者行为需要真机验收。

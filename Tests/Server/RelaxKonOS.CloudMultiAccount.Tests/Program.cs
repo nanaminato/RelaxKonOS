@@ -25,8 +25,8 @@ using var client = new HttpClient { BaseAddress = new Uri(app.Services.GetRequir
 var owner = Guid.NewGuid().ToString();
 void Identity(string id) { client.DefaultRequestHeaders.Remove("X-RelaxKonOS-Module-User"); client.DefaultRequestHeaders.Add("X-RelaxKonOS-Module-User", id); }
 Identity(owner);
-foreach (var protocol in new[] { "google-drive", "baidu-netdisk" })
 {
+    const string protocol = "baidu-netdisk";
     async Task<CloudConnectionDto> Add(string token) {
         using var response = await client.PostAsJsonAsync("/cloud/connections", new CloudConnectionRequest("Same name", protocol, "", null, null, null, "fake-client", "fake-secret", token));
         response.EnsureSuccessStatusCode();
@@ -70,22 +70,21 @@ sealed class AccountUpstream : HttpMessageHandler
 {
     public int Refreshes;
     public System.Collections.Concurrent.ConcurrentDictionary<string, bool> Used = new();
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         var uri = request.RequestUri!;
         string json;
         if (uri.AbsolutePath.EndsWith("/token")) {
             var query = QueryHelpers.ParseQuery(uri.Query);
-            if (request.Content != null) query = QueryHelpers.ParseQuery(await request.Content.ReadAsStringAsync(ct));
             var refresh = query["refresh_token"].ToString();
             Interlocked.Increment(ref Refreshes);
             json = System.Text.Json.JsonSerializer.Serialize(new { access_token = refresh, refresh_token = refresh + "-rotated", expires_in = 3600 });
         } else {
-            var token = request.Headers.Authorization?.Parameter ?? QueryHelpers.ParseQuery(uri.Query)["access_token"].ToString();
+            var token = QueryHelpers.ParseQuery(uri.Query)["access_token"].ToString();
             Used[token] = true;
-            json = uri.Host.Contains("google") ? "{\"files\":[]}" : "{\"errno\":0,\"list\":[]}";
+            json = "{\"errno\":0,\"list\":[]}";
         }
-        return new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") });
     }
 }
 sealed class TestContext : IModuleHostContext, IModuleHostStorage

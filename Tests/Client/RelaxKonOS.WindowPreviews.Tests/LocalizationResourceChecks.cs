@@ -64,10 +64,11 @@ internal static class LocalizationResourceChecks
                 Dispatcher.UIThread.RunJobs();
                 if (LocalizedText.Get("code_editor.context.newfile") != expected)
                     throw new Exception("The live localization loader did not resolve the expected menu text for " + culture);
-                var keys = tables["en-US"].Keys.Where(key => key.StartsWith("code_editor.context.")).ToArray();
+                var keys = tables["en-US"].Keys.Where(key => key.StartsWith("code_editor.context.")
+                    || key.StartsWith("explorer.cloud.")).ToArray();
                 foreach (var key in keys)
                     if (!tables[culture].TryGetValue(key, out var expectedValue) || LocalizedText.Get(key) != expectedValue)
-                        throw new Exception("Missing or incorrectly loaded context translation " + culture + ": " + key);
+                        throw new Exception("Missing or incorrectly loaded translation " + culture + ": " + key);
                 _ = LocalizedText.Format("code_editor.context.delete_confirm", "/work/example");
                 _ = LocalizedText.Format("code_editor.context.operation_failed", "failure");
             }
@@ -75,6 +76,6 @@ internal static class LocalizationResourceChecks
         finally { settings.Language = previous; Dispatcher.UIThread.RunJobs(); }
         Console.WriteLine("PASS LOCALIZATION: shipped resource schema, duplicate keys, "
             + englishTable.Count + " keys present in all three languages, format arguments "
-            + "and all 20 live context translations.");
+            + "and live editor and cloud storage translations.");
     }
 }

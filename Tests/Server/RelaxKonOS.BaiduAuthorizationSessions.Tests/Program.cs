@@ -30,7 +30,7 @@ void Identity(string user, bool admin = false)
     client.DefaultRequestHeaders.Add("X-RelaxKonOS-Module-User", user);
     client.DefaultRequestHeaders.Add("X-RelaxKonOS-Module-Role", admin ? "admin" : "user");
 }
-var config = new CloudAuthorizationConfigurationRequest("fake-client", "fake-client-secret", null);
+var config = new CloudAuthorizationConfigurationRequest("fake-client", "fake-client-secret");
 async Task Configure()
 {
     Identity(owner, true);

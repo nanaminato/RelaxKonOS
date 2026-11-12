@@ -16,16 +16,7 @@
 
 ## OAuth 网盘和后续候选
 
-Google Drive 和百度网盘已接入目录浏览、下载、新建目录和上传。连接默认只读，只有在应用和用户授权允许写入时才启用上传与新建目录。首轮使用注册应用的客户端 ID、客户端密钥和已签发的刷新令牌，由 ModuleHost 自动刷新访问令牌，并将轮换后的刷新令牌写入加密连接记录。浏览器授权回调、供应商账户验收和 OneDrive 接入仍待完成。Explorer 中的撤销移除本地连接，应用授权也可在供应商账户设置中撤销。
-
-### Google Drive
-
-- **接入**　使用 Google Drive API v3，通过文件 ID 列举和读取条目。普通文件流式下载，Google Docs、Sheets 和 Slides 按支持的格式导出。共享云端硬盘需要单独处理。
-- **授权**　注册 Google OAuth 应用并用用户委托授权签发刷新令牌。整盘只读浏览使用 `drive.readonly`。启用写入时，需要授权允许在目标目录创建文件。可在应用有权访问的位置使用 `drive.file`，全盘读写用受限范围 `drive`。受限范围需评估适用的应用验证和安全评估。
-- **写入**　通过 Drive API v3 创建文件夹，上传通过 resumable 会话按范围发送。创建前在目标目录查询同名条目。同一连接的同名操作在模块内串行执行。Google Drive 允许重名，外部应用并发创建时仍可能出现重名条目，上传始终创建新文件 ID。
-- **限制**　授权范围决定可见文件集合。`files.export` 的响应内容上限为 10 MB，导出格式取决于文件类型。共享云端硬盘和外部共享文件需要分别核验组织策略及下载权限。
-
-参考 [Drive API 授权范围](https://developers.google.com/workspace/drive/api/guides/api-specific-auth) 和 [下载与导出](https://developers.google.com/workspace/drive/api/guides/manage-downloads)。
+百度网盘已接入目录浏览、下载、新建目录和上传。连接默认只读，只有在应用和用户授权允许写入时才启用上传与新建目录。首轮使用注册应用的客户端 ID、客户端密钥和已签发的刷新令牌，由 ModuleHost 自动刷新访问令牌，并将轮换后的刷新令牌写入加密连接记录。百度设备码授权已实现，供应商账户验收和 OneDrive 接入仍待完成。Explorer 中的撤销移除本地连接，应用授权也可在供应商账户设置中撤销。
 
 ### 百度网盘
 
@@ -81,7 +72,7 @@ WebDAV 使用 HTTPS Basic 认证，S3 使用 AWS SDK 签名，支持静态访问
 
 目标 Server 首次部署需包含云存储代理的读写权限检查，桌面客户端需包含 Explorer 面板。之后优先走模块包在线更新。连接者需要现有 ModuleHost 访问权限及对应的文件读写权限。真机测试沿用目标机器已接纳的测试来源和预配置连接，测试证据仅记录目标、版本、操作和结果。
 
-本地回归入口为 `Tests/ServerModules` 的 `--cloud-storage-checks`。已通过 147 项检查，覆盖块内 TCP 断开、偏移续传、S3/R2 分片完成时的不覆盖条件，以及模拟 Google Drive 和百度网盘的令牌刷新、目录读取、下载、新建目录、上传和同名冲突。宿主文件上传的 98 项检查也通过。Windows 本地使用临时签名包验证 ModuleHost 加载。
+本地回归入口为 `Tests/ServerModules` 的 `--cloud-storage-checks`。覆盖块内 TCP 断开、偏移续传、S3/R2 分片完成时的不覆盖条件，以及模拟 百度网盘的令牌刷新、目录读取、下载、新建目录、上传和同名冲突。宿主文件上传的 98 项检查也通过。Windows 本地使用临时签名包验证 ModuleHost 加载。
 
 ## 验收
 

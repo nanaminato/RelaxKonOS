@@ -323,8 +323,7 @@
     "server_modules.problem.module_host_stopping": "服务器正在停止，模块暂不可用。",
     "server_modules.problem.module_release_blocked": "模块释放被阻止。",
     "server_modules.problem.module_stream_cleanup_failed": "流清理失败，模块保持加载。",
-    "server_modules.problem.module_background_work_failed": "后台工作失败，模块需要恢复。"
-  },
+    "server_modules.problem.module_background_work_failed": "后台工作失败，模块需要恢复。",
     "server_modules.action.stop": "停止模块",
     "server_modules.action.stop_hint": "等待当前请求结束并停止模块进程。",
     "server_modules.action.restart": "重启模块",
@@ -335,4 +334,5 @@
     "server_modules.problem.module_host_update_rolled_back": "新版启动失败，旧版已恢复。",
     "server_modules.problem.module_host_rollback_start_failed": "新版启动失败，旧版也未能启动。",
     "server_modules.problem.module_host_cleanup_unconfirmed": "模块进程清理未确认。"
+  }
 }

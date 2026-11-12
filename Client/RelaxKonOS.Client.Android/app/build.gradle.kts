@@ -108,7 +108,6 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
 }
 
 dependencies {
-    implementation("com.google.android.gms:play-services-auth:21.4.0")
     implementation(platform("androidx.compose:compose-bom:2025.12.01"))
     implementation("androidx.activity:activity-compose:1.12.2")
     implementation("androidx.appcompat:appcompat:1.7.1")

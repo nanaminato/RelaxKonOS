@@ -19,33 +19,26 @@ void Check(bool condition, string label)
     if (!condition) throw new Exception(label);
     Console.WriteLine($"PASS {++passed}: {label}");
 }
-Check(CloudAuthorizationNavigation.TryGetBrowserUri("google-drive", "https://accounts.google.com/o/oauth2/v2/auth?state=test", out _), "Google authorization uses official HTTPS origin");
 Check(CloudAuthorizationNavigation.TryGetBrowserUri("baidu-netdisk", "https://openapi.baidu.com/device", out _), "Baidu device authorization uses official HTTPS origin");
-foreach (var address in new[] { "http://accounts.google.com/", "https://accounts.google.com.evil.test/", "https://evil.test/", "https://user@accounts.google.com/", "https://accounts.google.com:8443/", "file:///etc/passwd", "javascript:alert(1)" })
-    Check(!CloudAuthorizationNavigation.TryGetBrowserUri("google-drive", address, out _), "Reject unsafe authorization navigation: " + address);
-Check(!CloudAuthorizationNavigation.TryGetBrowserUri("webdav", "https://accounts.google.com/", out _), "Reject unsupported authorization protocol");
+foreach (var address in new[] { "http://openapi.baidu.com/", "https://openapi.baidu.com.evil.test/", "https://evil.test/", "https://user@openapi.baidu.com/", "https://openapi.baidu.com:8443/", "file:///etc/passwd", "javascript:alert(1)" })
+    Check(!CloudAuthorizationNavigation.TryGetBrowserUri("baidu-netdisk", address, out _), "Reject unsafe authorization navigation: " + address);
+Check(!CloudAuthorizationNavigation.TryGetBrowserUri("webdav", "https://openapi.baidu.com/", out _), "Reject unsupported authorization protocol");
 var accountNavigation = new CloudAccountNavigation();
-var googleOne = Guid.NewGuid();
-var googleTwo = Guid.NewGuid();
 var baiduOne = Guid.NewGuid();
 var baiduTwo = Guid.NewGuid();
 var folderOne = new CloudEntryDto("account-one-reference", "Shared name", true, null, null);
 var folderTwo = new CloudEntryDto("account-two-reference", "Shared name", true, null, null);
-accountNavigation.Save(googleOne, [folderOne]);
-accountNavigation.Save(googleTwo, [folderTwo]);
 accountNavigation.Save(baiduOne, [folderOne]);
 accountNavigation.Save(baiduTwo, [folderTwo]);
-Check(accountNavigation.Get(googleOne).Single().Reference == folderOne.Reference, "First Google navigation retained independently");
-Check(accountNavigation.Get(googleTwo).Single().Reference == folderTwo.Reference, "Second Google navigation isolated despite same folder name");
 Check(accountNavigation.Get(baiduOne).Single().Reference == folderOne.Reference && accountNavigation.Get(baiduTwo).Single().Reference == folderTwo.Reference, "Multiple Baidu navigation states isolated");
 Check(accountNavigation.Get(Guid.NewGuid()).Length == 0, "New account starts at its own root");
-var navigationCopy = accountNavigation.Get(googleOne);
+var navigationCopy = accountNavigation.Get(baiduOne);
 navigationCopy[0] = folderTwo;
-Check(accountNavigation.Get(googleOne).Single() == folderOne, "Navigation caller cannot modify another snapshot");
-accountNavigation.Retain([googleTwo, baiduOne, baiduTwo]);
-Check(accountNavigation.Get(googleOne).Length == 0 && accountNavigation.Get(googleTwo).Length == 1, "Revocation drops only revoked account navigation");
+Check(accountNavigation.Get(baiduOne).Single() == folderOne, "Navigation caller cannot modify another snapshot");
+accountNavigation.Retain([baiduTwo]);
+Check(accountNavigation.Get(baiduOne).Length == 0 && accountNavigation.Get(baiduTwo).Length == 1, "Revocation drops only revoked account navigation");
 accountNavigation.Clear();
-Check(accountNavigation.Get(googleTwo).Length == 0 && accountNavigation.Get(baiduOne).Length == 0, "Disconnect clears every account reference");
+Check(accountNavigation.Get(baiduTwo).Length == 0, "Disconnect clears every account reference");
 await PickerMemoryChecks.RunAsync(Check);
 await OwnershipDialogChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
@@ -55,8 +48,8 @@ Check(ComputerDriveCard.Local(capacityEntry).UsedPercent == 75, "Drive card repo
 Check(ComputerDriveCard.Local(capacityEntry with { AvailableFreeSpace = 0 }).UsedPercent == 100, "Full disk preserves zero free capacity");
 Check(ComputerDriveCard.Local(capacityEntry with { Size = null }).UsedPercent is null, "Unknown capacity has no fabricated progress");
 Check(ComputerDriveCard.Local(capacityEntry with { AvailableFreeSpace = 101 }).UsedPercent is null, "Invalid capacity is not displayed as a misleading gauge");
-var cloudCard1 = ComputerDriveCard.Cloud(new CloudConnectionDto(googleOne, "Personal", "google-drive", true));
-var cloudCard2 = ComputerDriveCard.Cloud(new CloudConnectionDto(googleTwo, "Personal", "google-drive", true));
+var cloudCard1 = ComputerDriveCard.Cloud(new CloudConnectionDto(baiduOne, "Personal", "baidu-netdisk", true));
+var cloudCard2 = ComputerDriveCard.Cloud(new CloudConnectionDto(baiduTwo, "Personal", "baidu-netdisk", true));
 Check(cloudCard1.ConnectionId != cloudCard2.ConnectionId && cloudCard1.Detail != cloudCard2.Detail, "Same-name cloud accounts retain separate identity and labels");
 Check(cloudCard1.Path is null && cloudCard1.UsedPercent is null, "Cloud accounts never become local paths or fabricated capacity");
 var navigationDrives = typeof(ExplorerViewModel).GetMethod("GetNavigationDrives", BindingFlags.NonPublic | BindingFlags.Static)!;

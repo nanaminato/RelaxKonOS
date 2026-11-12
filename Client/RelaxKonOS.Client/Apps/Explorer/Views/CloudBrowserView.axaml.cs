@@ -102,7 +102,7 @@ public partial class CloudBrowserView : UserControl
                 _cursor = null;
                 Location.Text = "";
             }
-            Status.Text = Text(sources is null ? "unavailable" : "empty");
+            Status.Text = sources is null ? Text("unavailable") : "";
         }
         else if (loadEntries)
         {
@@ -162,7 +162,12 @@ public partial class CloudBrowserView : UserControl
     private void UpdateButtons()
     {
         if (AddButton is null || MoreButton is null) return;
-        var selected = !_busy && Current is not null;
+        var browsing = Current is not null && !ConnectionForm.IsVisible;
+        var empty = _available && Current is null && !ConnectionForm.IsVisible;
+        var selected = !_busy && browsing;
+        ConnectionTools.IsVisible = CloudEntries.IsVisible = browsing;
+        EmptyState.IsVisible = empty;
+        AddButton.IsVisible = _available && browsing;
         Connections.IsEnabled = CloudEntries.IsEnabled = !_busy;
         AddButton.IsEnabled = !_busy && _available;
         ReplaceButton.IsEnabled = selected;
@@ -302,10 +307,12 @@ public partial class CloudBrowserView : UserControl
         _confirmRevoke = false;
         _editing = source?.Id;
         ConnectionName.Text = source?.Name;
-        Protocol.SelectedIndex = source?.Protocol switch { "s3" => 1, "google-drive" => 2, "baidu-netdisk" => 3, _ => 0 };
+        Protocol.SelectedIndex = source?.Protocol switch { "s3" => 1, "baidu-netdisk" => 2, _ => 0 };
         UpdateConnectionFields();
         EnableWrites.IsChecked = source?.CanWrite == true;
+        FormTitle.Text = Text(source is null ? "add" : "edit");
         ConnectionForm.IsVisible = true;
+        UpdateButtons();
         ConnectionName.Focus();
     }
 
@@ -313,39 +320,40 @@ public partial class CloudBrowserView : UserControl
     {
         ConnectionForm.IsVisible = false;
         ManualAuthorization.IsChecked = false;
-        ProviderClientId.Text = ProviderClientSecret.Text = ProviderRedirectUri.Text = null;
+        ProviderClientId.Text = ProviderClientSecret.Text = null;
         ProviderConfiguration.IsExpanded = false;
         _editing = null;
         ConnectionName.Text = Endpoint.Text = UserName.Text = Secret.Text = null;
         Region.Text = Bucket.Text = Prefix.Text = SessionToken.Text = RefreshToken.Text = null;
         PrivateDav.IsChecked = EnableWrites.IsChecked = false;
+        UpdateButtons();
     }
 
     private void Protocol_SelectionChanged(object? sender, SelectionChangedEventArgs e) => UpdateConnectionFields();
 
     private void UpdateConnectionFields()
     {
-        if (S3Fields is null || PrivateDav is null || OAuthHelp is null || ManualAuthorization is null || AuthorizeButton is null || SaveButton is null || ProviderConfiguration is null || ProviderRedirectUri is null) return;
+        if (S3Fields is null || PrivateDav is null || OAuthHelp is null || ManualAuthorization is null || AuthorizeButton is null || SaveButton is null || ProviderConfiguration is null) return;
         var oauth = Protocol.SelectedIndex >= 2;
         S3Fields.IsVisible = Protocol.SelectedIndex == 1;
         PrivateDav.IsVisible = Protocol.SelectedIndex == 0;
         Endpoint.IsVisible = !oauth;
         ProviderConfiguration.IsVisible = oauth;
-        ProviderRedirectUri.IsVisible = Protocol.SelectedIndex == 2;
         var manual = ManualAuthorization.IsChecked == true;
         RefreshToken.IsVisible = oauth && manual;
         UserName.IsVisible = Secret.IsVisible = !oauth || manual;
-        ManualAuthorization.IsVisible = OAuthHelp.IsVisible = oauth;
+        ManualAuthorization.IsVisible = oauth;
+        OAuthHelp.IsVisible = oauth && manual;
         AuthorizeButton.IsVisible = oauth && !manual;
         AuthorizeButton.Content = Text("auth_connect_new");
         SaveButton.IsVisible = !oauth || manual;
-        UserName.Watermark = Text(oauth ? "oauth_client_id" : "user");
-        Secret.Watermark = Text(oauth ? "oauth_client_secret" : "secret");
+        UserName.PlaceholderText = Text(oauth ? "oauth_client_id" : "user");
+        Secret.PlaceholderText = Text(oauth ? "oauth_client_secret" : "secret");
     }
 
     private async void Save_Click(object? sender, RoutedEventArgs e)
     {
-        var protocol = Protocol.SelectedIndex switch { 1 => "s3", 2 => "google-drive", 3 => "baidu-netdisk", _ => "webdav" };
+        var protocol = Protocol.SelectedIndex switch { 1 => "s3", 2 => "baidu-netdisk", _ => "webdav" };
         var oauth = Protocol.SelectedIndex >= 2;
         var request = new CloudConnectionRequest(ConnectionName.Text ?? "", protocol, Endpoint.Text ?? "",
             Region.Text, Bucket.Text, Prefix.Text, UserName.Text ?? "", Secret.Text ?? "",

@@ -94,7 +94,7 @@
     <string name="server_configuration_auto_start_system">Start automatically at boot</string>
     <string name="server_configuration_auto_start_user">Start automatically at sign-in</string>
     <string name="cloud_authorization">Cloud connections</string>
-    <string name="cloud_android_boundary">Select an account connection to browse. Add Google Drive or Baidu accounts independently.</string>
+    <string name="cloud_android_boundary">Select an account connection to browse. Add Baidu Netdisk accounts independently.</string>
     <string name="cloud_auth_failed">Authorization could not be completed. Check provider configuration, network and Google Play services, then cancel and retry.</string>
     <string name="cloud_connection_name">Connection name</string>
     <string name="cloud_enable_writes">Allow writing files</string>

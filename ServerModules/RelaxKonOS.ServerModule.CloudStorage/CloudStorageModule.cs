@@ -57,7 +57,8 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
         {
             using var cipher = new AesGcm(_key, TagSize);
             cipher.Decrypt(bytes.AsSpan(1, NonceSize), bytes.AsSpan(EnvelopeSize), bytes.AsSpan(1 + NonceSize, TagSize), plaintext);
-            _connections = JsonSerializer.Deserialize<StoredConnection[]>(plaintext) ?? throw new InvalidDataException(Store);
+            _connections = (JsonSerializer.Deserialize<StoredConnection[]>(plaintext) ?? throw new InvalidDataException(Store))
+                .Where(item => item.Settings.Protocol is "webdav" or "s3" || OAuthDriveConnector.Supports(item.Settings.Protocol)).ToArray();
         }
         finally { CryptographicOperations.ZeroMemory(plaintext); }
     }
@@ -211,7 +212,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                     await WithOAuthWriteAsync(id, path, async () =>
                     {
                         var token = await GetOAuthTokenAsync(id, item.Owner, settings.Protocol, item.Revision, deadline.Token);
-                        await new OAuthDriveConnector(settings.Protocol, token, _transport).UploadAsync(path, stream, deadline.Token);
+                        await new OAuthDriveConnector(token, _transport).UploadAsync(path, stream, deadline.Token);
                     }, deadline.Token);
                     return;
                 }
@@ -241,7 +242,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             if (OAuthDriveConnector.Supports(item.Settings.Protocol) && (HttpMethods.IsGet(http.Request.Method) || item.Settings.EnableWrites))
             {
                 var token = await GetOAuthTokenAsync(id, user, item.Settings.Protocol, item.Revision, deadline.Token);
-                oauth = new OAuthDriveConnector(item.Settings.Protocol, token, _transport);
+                oauth = new OAuthDriveConnector(token, _transport);
             }
             return await action(item.Settings, client, path, deadline.Token, oauth);
         });
@@ -374,7 +375,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             return input with
             {
                 Name = input.Name.Trim(),
-                Endpoint = input.Protocol == "google-drive" ? "https://www.googleapis.com" : "https://pan.baidu.com",
+                Endpoint = "https://pan.baidu.com",
                 Region = null, Bucket = null, Prefix = null,
             };
         }

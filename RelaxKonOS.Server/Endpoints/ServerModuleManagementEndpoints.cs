@@ -18,7 +18,6 @@ internal static class ServerModuleManagementEndpoints
     internal const string ManagePolicy = "ServerModulesManage";
     internal static IEndpointRouteBuilder MapServerModuleManagementEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapCloudOAuthCallback();
         var group = app.MapGroup("").RequireAuthorization().WithTags("Server modules");
         group.MapGet(ServerModuleManagementRoutes.Detail, async (string moduleId, HttpContext http,
             ServerModules modules, ServerModuleContext context, CancellationToken ct) => await Respond(async () =>

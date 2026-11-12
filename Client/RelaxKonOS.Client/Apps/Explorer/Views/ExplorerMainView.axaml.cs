@@ -154,6 +154,7 @@ public partial class ExplorerMainView : UserControl
         _computerOverview.IsVisible = false;
         NavigationTree.IsHitTestVisible = false;
         HeaderHost.IsEnabled = false;
+        NavigationToolbar.IsVisible = CommandToolbar.IsVisible = HostStatusBar.IsVisible = false;
         await CloudBrowser.OpenAsync(client, connection);
     }
 
@@ -163,6 +164,7 @@ public partial class ExplorerMainView : UserControl
         UpdateComputerOverview();
         NavigationTree.IsHitTestVisible = true;
         HeaderHost.IsEnabled = true;
+        NavigationToolbar.IsVisible = CommandToolbar.IsVisible = HostStatusBar.IsVisible = true;
     }
 
     public ExplorerMainView()

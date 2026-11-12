@@ -33,9 +33,8 @@ interface RelaxKonGateway {
     suspend fun cloudUpload(serverUrl: String, accessToken: String, id: String, reference: String, name: String, source: java.io.File): ApiResult<Unit> = ApiResult.Transport(null)
     suspend fun cloudProviders(serverUrl: String, accessToken: String): ApiResult<List<CloudAuthorizationProvider>> = ApiResult.Transport(null)
     suspend fun cloudConnections(serverUrl: String, accessToken: String): ApiResult<List<CloudConnection>> = ApiResult.Transport(null)
-    suspend fun cloudStart(serverUrl: String, accessToken: String, protocol: String, name: String, flow: String, writes: Boolean): ApiResult<CloudAuthorizationSession> = ApiResult.Transport(null)
+    suspend fun cloudStart(serverUrl: String, accessToken: String, protocol: String, name: String, writes: Boolean): ApiResult<CloudAuthorizationSession> = ApiResult.Transport(null)
     suspend fun cloudStatus(serverUrl: String, accessToken: String, id: String): ApiResult<CloudAuthorizationSession> = ApiResult.Transport(null)
-    suspend fun cloudCode(serverUrl: String, accessToken: String, id: String, code: String): ApiResult<CloudAuthorizationSession> = ApiResult.Transport(null)
     suspend fun cloudCancel(serverUrl: String, accessToken: String, id: String): ApiResult<Unit> = ApiResult.Transport(null)
 
     suspend fun serverModules(serverUrl: String, accessToken: String): ApiResult<List<ServerModuleFact>> =

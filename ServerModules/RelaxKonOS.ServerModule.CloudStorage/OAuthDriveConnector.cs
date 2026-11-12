@@ -1,34 +1,28 @@
 using System.Globalization;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.ServerModule.CloudStorage;
 
-internal sealed partial class OAuthDriveConnector(string protocol, string token, Func<Uri, bool, HttpClient> transport)
+internal sealed partial class OAuthDriveConnector(string token, Func<Uri, bool, HttpClient> transport)
 {
-    private const string Google = "https://www.googleapis.com/drive/v3/files";
     private const string Baidu = "https://pan.baidu.com/rest/2.0/xpan/";
-    private const string GoogleFields = "id,name,mimeType,size,modifiedTime,capabilities(canDownload)";
     private const int PageSize = 200;
 
-    internal static bool Supports(string protocol) => protocol is "google-drive" or "baidu-netdisk";
+    internal static bool Supports(string protocol) => protocol == "baidu-netdisk";
 
     internal static async Task<(string Access, string Refresh, DateTimeOffset Expires)> RefreshAsync(
         CloudConnectionRequest settings, Func<Uri, bool, HttpClient> transport, CancellationToken ct)
     {
-        var google = settings.Protocol == "google-drive";
-        var endpoint = google ? "https://oauth2.googleapis.com/token" : "https://openapi.baidu.com/oauth/2.0/token";
         var form = new Dictionary<string, string>
         {
             ["grant_type"] = "refresh_token", ["refresh_token"] = settings.SessionToken!,
             ["client_id"] = settings.UserName, ["client_secret"] = settings.Secret,
         };
-        var uri = google ? new Uri(endpoint) : Query(endpoint, form);
+        var uri = Query("https://openapi.baidu.com/oauth/2.0/token", form);
         using var client = transport(uri, false);
-        using var request = new HttpRequestMessage(google ? HttpMethod.Post : HttpMethod.Get, uri);
-        if (google) request.Content = new FormUrlEncodedContent(form);
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         var root = await JsonAsync(response, ct);
         var access = Read(root, "access_token");
@@ -43,19 +37,6 @@ internal sealed partial class OAuthDriveConnector(string protocol, string token,
 
     internal async Task<CloudDirectoryDto> ListAsync(string reference, string? cursor, CancellationToken ct)
     {
-        if (protocol == "google-drive")
-        {
-            var id = reference.Length == 0 ? "root" : GoogleId(reference.TrimEnd('/'));
-            var page = await FetchAsync(Query(Google, new()
-            {
-                ["q"] = $"'{id}' in parents and trashed = false",
-                ["pageSize"] = PageSize.ToString(CultureInfo.InvariantCulture),
-                ["fields"] = "nextPageToken,files(" + GoogleFields + ")",
-                ["pageToken"] = cursor ?? "",
-            }), ct);
-            return new(Items(page, "files").Select(GoogleEntry).ToArray(), Read(page, "nextPageToken"));
-        }
-
         if (reference.StartsWith("id:", StringComparison.Ordinal)) throw new ArgumentException("directory");
         var offset = 0;
         if (cursor is not null && (!int.TryParse(cursor, NumberStyles.None, CultureInfo.InvariantCulture, out offset)
@@ -74,8 +55,6 @@ internal sealed partial class OAuthDriveConnector(string protocol, string token,
 
     internal async Task<CloudEntryDto?> InfoAsync(string path, CancellationToken ct)
     {
-        if (protocol == "google-drive")
-            return GoogleEntry(await GoogleInfoAsync(path, ct));
         if (path.Length == 0 || path.EndsWith('/'))
             return new(CloudTransport.Reference(path), path.TrimEnd('/').Split('/')[^1], true, null, null);
         var item = await BaiduInfoAsync(path, download: false, ct);
@@ -84,54 +63,20 @@ internal sealed partial class OAuthDriveConnector(string protocol, string token,
 
     internal async Task DownloadAsync(string reference, Func<string, Stream, Task> send, CancellationToken ct)
     {
-        Uri uri;
-        string name;
-        if (protocol == "google-drive")
-        {
-            var item = await GoogleInfoAsync(reference, ct);
-            var entry = GoogleEntry(item);
-            if (entry.IsDirectory || !item.TryGetProperty("capabilities", out var capabilities)
-                || capabilities.ValueKind != JsonValueKind.Object
-                || !capabilities.TryGetProperty("canDownload", out var allowed) || allowed.ValueKind != JsonValueKind.True)
-                throw new HttpRequestException("cloud-download-denied", null, HttpStatusCode.Forbidden);
-            name = entry.Name;
-            var file = Google + "/" + GoogleId(reference);
-            var export = ExportExtension(Read(item, "mimeType"));
-            if (export is not null)
-            {
-                var mime = export switch
-                {
-                    ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    _ => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                };
-                uri = Query(file + "/export", new() { ["mimeType"] = mime });
-            }
-            else
-            {
-                if (Read(item, "mimeType")?.StartsWith("application/vnd.google-apps.", StringComparison.Ordinal) == true)
-                    throw new HttpRequestException("cloud-export-unsupported", null, HttpStatusCode.Forbidden);
-                uri = Query(file, new() { ["alt"] = "media" });
-            }
-        }
-        else
-        {
-            var item = await BaiduInfoAsync(reference, download: true, ct)
-                ?? throw new HttpRequestException("cloud-file-missing", null, HttpStatusCode.NotFound);
-            name = BaiduEntry(item).Name;
-            if (!Uri.TryCreate(Read(item, "dlink"), UriKind.Absolute, out var link) || !AllowedBaiduDownload(link))
-                throw new InvalidDataException("cloud-baidu-download-origin");
-            uri = new Uri(Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(link.AbsoluteUri, "access_token", token));
-        }
+        var item = await BaiduInfoAsync(reference, download: true, ct)
+            ?? throw new HttpRequestException("cloud-file-missing", null, HttpStatusCode.NotFound);
+        var name = BaiduEntry(item).Name;
+        if (!Uri.TryCreate(Read(item, "dlink"), UriKind.Absolute, out var link) || !AllowedBaiduDownload(link))
+            throw new InvalidDataException("cloud-baidu-download-origin");
+        var uri = new Uri(Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(link.AbsoluteUri, "access_token", token));
 
         for (var redirects = 0; redirects <= 5; redirects++)
         {
             using var client = transport(uri, false);
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            if (protocol == "google-drive") request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            else request.Headers.UserAgent.ParseAdd("pan.baidu.com");
+            request.Headers.UserAgent.ParseAdd("pan.baidu.com");
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (protocol == "baidu-netdisk" && (int)response.StatusCode is 301 or 302 or 303 or 307 or 308
+            if ((int)response.StatusCode is 301 or 302 or 303 or 307 or 308
                 && response.Headers.Location is { } location)
             {
                 var next = new Uri(uri, location);
@@ -151,9 +96,6 @@ internal sealed partial class OAuthDriveConnector(string protocol, string token,
         && (uri.IdnHost is "pan.baidu.com" or "pcs.baidu.com" or "baidupcs.com"
             || uri.IdnHost.EndsWith(".pcs.baidu.com", StringComparison.Ordinal)
             || uri.IdnHost.EndsWith(".baidupcs.com", StringComparison.Ordinal));
-
-    private Task<JsonElement> GoogleInfoAsync(string path, CancellationToken ct) =>
-        FetchAsync(Query(Google + "/" + (path.Length == 0 ? "root" : GoogleId(path.TrimEnd('/'))), new() { ["fields"] = GoogleFields }), ct);
 
     private async Task<JsonElement?> BaiduInfoAsync(string path, bool download, CancellationToken ct)
     {
@@ -179,10 +121,9 @@ internal sealed partial class OAuthDriveConnector(string protocol, string token,
     {
         using var client = transport(uri, false);
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        if (protocol == "google-drive") request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         var root = await JsonAsync(response, ct);
-        if (protocol == "baidu-netdisk" && Number(root, "errno") != 0)
+        if (Number(root, "errno") != 0)
             throw new InvalidDataException("cloud-baidu-api");
         return root;
     }
@@ -203,22 +144,6 @@ internal sealed partial class OAuthDriveConnector(string protocol, string token,
         return document.RootElement.Clone();
     }
 
-    private static CloudEntryDto GoogleEntry(JsonElement item)
-    {
-        var directory = Read(item, "mimeType") == "application/vnd.google-apps.folder";
-        var id = GoogleId(Read(item, "id") ?? "");
-        return new(CloudTransport.Reference(directory ? id + "/" : id), (Read(item, "name") ?? id) + ExportExtension(Read(item, "mimeType")), directory,
-            directory ? null : Number(item, "size"), CloudTransport.Date(Read(item, "modifiedTime")));
-    }
-
-    private static string? ExportExtension(string? mimeType) => mimeType switch
-    {
-        "application/vnd.google-apps.document" => ".docx",
-        "application/vnd.google-apps.spreadsheet" => ".xlsx",
-        "application/vnd.google-apps.presentation" => ".pptx",
-        _ => null,
-    };
-
     private static CloudEntryDto BaiduEntry(JsonElement item)
     {
         var path = Read(item, "path") ?? throw new InvalidDataException("cloud-baidu-path");
@@ -232,9 +157,6 @@ internal sealed partial class OAuthDriveConnector(string protocol, string token,
             directory, directory ? null : Number(item, "size"),
             seconds is >= 0 and <= 253402300799 ? DateTimeOffset.FromUnixTimeSeconds(seconds.Value) : null);
     }
-
-    private static string GoogleId(string id) => id.Length is > 0 and <= 256
-        && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_') ? id : throw new ArgumentException("file ID");
 
     private static Uri Query(string url, Dictionary<string, string> parameters) => new(
         Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(url,

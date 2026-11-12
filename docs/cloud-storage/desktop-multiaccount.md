@@ -1,7 +1,7 @@
 # Desktop cloud accounts
 
 The built-in Explorer cloud entry and sidebar expose every connection owned by
-the signed-in RelaxKonOS user. Multiple Google Drive and Baidu Netdisk accounts
+the signed-in RelaxKonOS user. Multiple Baidu Netdisk accounts
 can remain connected at the same time. No provider-wide “active account” is used
 for file requests: listing, pagination, download, upload and folder creation all
 carry the selected connection ID.
@@ -31,7 +31,7 @@ account's entries.
 
 ## Verification
 
-The Explorer executable test suite exercises two Google and two Baidu navigation
+The Explorer executable test suite exercises two Baidu navigation
 snapshots, duplicate folder names, snapshot isolation, revocation and disconnect.
 Desktop compilation validates the XAML bindings. These checks do not replace a
 live provider sign-in/upload/download acceptance test; no real account credentials

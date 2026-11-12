@@ -14,11 +14,10 @@ public partial class CloudBrowserView
     private async void ConfigureProvider_Click(object? sender, RoutedEventArgs e)
     {
         if (_busy || _client is null) return;
-        var protocol = Protocol.SelectedIndex == 2 ? "google-drive" : "baidu-netdisk";
+        const string protocol = "baidu-netdisk";
         if (string.IsNullOrWhiteSpace(ProviderClientId.Text) || string.IsNullOrWhiteSpace(ProviderClientSecret.Text))
         { Status.Text = Text("auth_configuration_required"); return; }
-        var request = new CloudAuthorizationConfigurationRequest(ProviderClientId.Text.Trim(), ProviderClientSecret.Text,
-            protocol == "google-drive" ? ProviderRedirectUri.Text?.Trim() : null);
+        var request = new CloudAuthorizationConfigurationRequest(ProviderClientId.Text.Trim(), ProviderClientSecret.Text);
         ProviderClientSecret.Text = null;
         await RunAsync(async ct =>
         {
@@ -34,7 +33,7 @@ public partial class CloudBrowserView
         if (_busy || _client is null || _authorization is not null) return;
         var name = ConnectionName.Text?.Trim();
         if (string.IsNullOrEmpty(name)) { Status.Text = Text("auth_name_required"); return; }
-        var protocol = Protocol.SelectedIndex == 2 ? "google-drive" : "baidu-netdisk";
+        const string protocol = "baidu-netdisk";
         var client = _client;
         using var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         Guid? sessionId = null;
