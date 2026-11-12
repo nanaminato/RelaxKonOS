@@ -392,6 +392,25 @@ SSH 文件浏览器也在“更多”提供独立的窗口级缓存开关，默�
 
 Android 的授权和云文件功能边界以 [Android 云授权文档](../../Client/RelaxKonOS.Client.Android/docs/features/CloudAuthorization.md) 为准；桌面云浏览能力不代表 Android 已具备相同的浏览和传输实现。
 
+### 添加 Cloudflare R2 连接
+
+在 Cloudflare 控制台打开 R2 对象存储，记下目标桶名，并在「管理 API 令牌」中为该桶创建凭据。仅浏览和下载时选择「对象只读」。需要上传或新建文件夹时选择「对象读写」，并在 Explorer 中勾选「允许上传和新建文件夹」。[Cloudflare R2 认证与权限](https://developers.cloudflare.com/r2/api/tokens/)
+
+在桌面 Explorer 中打开「云存储」→「添加连接」，将协议选为「S3 兼容存储」，然后填写以下字段。
+
+| 字段 | 填写内容 |
+| --- | --- |
+| 名称 | 自定显示名称，例如 `R2 备份`。 |
+| HTTPS 端点 | 复制 Cloudflare 为该桶所在管辖区域提供的 S3 API 端点。默认端点格式为 `https://<账户 ID>.r2.cloudflarestorage.com`。桶名单独填在「存储桶」。 |
+| 签名区域 | `auto`。 |
+| 存储桶 | 填写 R2 控制台显示的实际桶名，例如 `my-backup-bucket`。 |
+| 键前缀（可选） | 留空从桶根目录浏览。填写 `backups/` 可将连接的浏览根目录限定到该前缀。 |
+| 用户名或访问密钥 ID | 填写 Cloudflare 提供的「访问密钥 ID」。 |
+| 密码或访问密钥 | 填写 Cloudflare 提供的「机密访问密钥」。 |
+| 会话令牌（可选） | 使用常规 R2 S3 凭据时留空。只有单独签发了临时 S3 凭据时，才填写随临时密钥一起签发的 Session Token。Cloudflare 的 API「令牌值」无需填入此表单。 |
+
+保存后，选择新连接即可浏览。若连接失败，检查端点的管辖区域、桶名及令牌授权范围是否一致。[Cloudflare R2 S3 配置](https://developers.cloudflare.com/r2/get-started/s3/)
+
 ### 授权部署与断开连接
 
 客户端取消只终止当前授权会话；从 RelaxKonOS 断开/删除连接只移除本地保存的连接凭据，不等同于撤销 百度账号端授予应用的权限。需要彻底撤销时，用户应进入相应提供商账号的应用授权管理页面手动移除该应用。
