@@ -31,6 +31,11 @@ internal fun ServerModulesPanel(owner: SessionState.Active, onBack: () -> Unit, 
     val container = appContainer()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
+    var packages by remember(owner) { mutableStateOf(false) }
+    if (packages) {
+        ServerModulePackagesPanel(owner, onBack = { packages = false }, modifier)
+        return
+    }
     var facts by remember(owner) { mutableStateOf<List<ServerModuleFact>?>(null) }
     var status by remember(owner) { mutableStateOf("") }
     var operations by remember(owner) { mutableStateOf("") }
@@ -75,7 +80,7 @@ internal fun ServerModulesPanel(owner: SessionState.Active, onBack: () -> Unit, 
                                 if (recovered.isNotEmpty()) operations = recovered.joinToString("\n") { original ->
                                     original.operation?.let { operation ->
                                         val policyMatches = original.plan.policy == null || original.plan.moduleIds.all { id -> result.value.singleOrNull { it.id == id }?.effectivePolicy == original.plan.policy }
-                                        val matches = original.plan.action in setOf("Wake", "TrySleep") || policyMatches && result.value.filter { it.effectiveEnabled }.map { it.id }.toSet() == operation.enabledIds.toSet()
+                                        val matches = original.plan.action in setOf("Wake", "TrySleep", "Stop", "Restart") || policyMatches && result.value.filter { it.effectiveEnabled }.map { it.id }.toSet() == operation.enabledIds.toSet()
                                         "${operation.id} · ${if (operation.state == "Succeeded" && !matches) "module-effective-target-mismatch" else operation.state} · ${operation.problemCode ?: ""}\n" +
                                             operation.moduleResults.joinToString("\n") { "${it.moduleId} · ${it.succeeded} · ${it.problemCode ?: ""}" }
                                     } ?: "${original.plan.id} · module-not-submitted"
@@ -129,6 +134,7 @@ internal fun ServerModulesPanel(owner: SessionState.Active, onBack: () -> Unit, 
             text = { Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(review.serviceId)
                 Text("${review.action}: ${review.moduleIds.joinToString()} · restart=${review.restartRequired}")
+                if (review.action == "Remove") Text(stringResource(R.string.module_packages_remove_note))
                 review.policy?.let { Text("${it.strategy} · ${it.idleGraceSeconds}s") }
                 Text("+ ${review.added.joinToString()}\n− ${review.removed.joinToString()}")
                 Text(stringResource(R.string.server_modules_restart_note))
@@ -155,6 +161,7 @@ internal fun ServerModulesPanel(owner: SessionState.Active, onBack: () -> Unit, 
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(stringResource(R.string.server_modules_title), onBack = { if (detail != null) detail = null else onBack() })
         Text(stringResource(R.string.server_modules_restart_note))
+        if (owner.controller) OutlinedButton(enabled = !busy, onClick = { packages = true }) { Text(stringResource(R.string.module_packages_title)) }
         OutlinedButton(enabled = !busy, onClick = { plan = null; revision++ }) { Text(stringResource(R.string.common_refresh)) }
         if (status.isNotEmpty()) { Text(stringResource(if (status == "module-not-found") R.string.server_modules_not_found else R.string.server_modules_unknown)); Text(status) }
         if (operations.isNotEmpty()) Text(operations, Modifier.heightIn(max = 120.dp).verticalScroll(rememberScrollState()))
@@ -207,6 +214,9 @@ internal fun ServerModulesPanel(owner: SessionState.Active, onBack: () -> Unit, 
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 OutlinedButton(enabled = !busy && targets.isNotEmpty() && targets.all { "Enable" in it.allowedActions } && targets.any { !it.desiredEnabled }, onClick = { preview("Enable") }) { Text(stringResource(R.string.server_modules_enable)) }
                 OutlinedButton(enabled = !busy && targets.isNotEmpty() && targets.all { "Disable" in it.allowedActions } && targets.any { it.desiredEnabled }, onClick = { preview("Disable") }) { Text(stringResource(R.string.server_modules_disable)) }
+                listOf("Stop" to R.string.module_packages_stop, "Restart" to R.string.module_packages_restart, "Remove" to R.string.module_packages_remove).forEach { (action, label) ->
+                    OutlinedButton(enabled = !busy && targets.isNotEmpty() && targets.all { action in it.allowedActions }, onClick = { preview(action) }) { Text(stringResource(label)) }
+                }
                 OutlinedButton(enabled = !busy && targets.isNotEmpty() && targets.all { "Wake" in it.allowedActions }, onClick = { preview("Wake") }) { Text(stringResource(R.string.server_modules_wake)) }
                 OutlinedButton(enabled = !busy && targets.isNotEmpty() && targets.all { "TrySleep" in it.allowedActions }, onClick = { preview("TrySleep") }) { Text(stringResource(R.string.server_modules_sleep)) }
                 OutlinedButton(enabled = !busy && targets.isNotEmpty() && targets.all { "SetResidencyPolicy" in it.allowedActions }, onClick = {

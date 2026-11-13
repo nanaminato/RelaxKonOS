@@ -33,10 +33,12 @@ internal sealed partial class ServerModules
         var inventory = new List<ServerModuleDto>(all.Length);
         var hosts = services.GetService<ModuleHostSupervisor>();
         var hostStatuses = hosts?.Snapshot().ToDictionary(host => host.ModuleId, StringComparer.Ordinal);
-        var currentPackages = hosts is null || !all.Any(module => module is InstalledIsolatedModule) ? null : InstalledModuleStore.Read(context.ContentRootPath)
+        var currentPackages = !all.Any(module => module is IInstalledModuleInfo) ? null : InstalledModuleStore.Read(context.ContentRootPath)
             .ToDictionary(record => record.ModuleId, StringComparer.Ordinal);
+        all = all.Where(module => module is not IInstalledModuleInfo || currentPackages?.ContainsKey(module.Id) == true).ToArray();
         foreach (var module in all)
         {
+            if (module is IInstalledModuleInfo && currentPackages?.ContainsKey(module.Id) != true) continue;
             var isEnabled = enabled.Contains(module);
             // A disabled module cannot be holding live work: that would have failed the startup gate.
             IReadOnlyList<ServerModuleOrphanedWork> work;
@@ -86,7 +88,8 @@ internal sealed partial class ServerModules
                 ConfigurationOwner: management?.Writable == true ? "managed" : "deployment",
                 ConfigurationWritable: management?.Writable == true,
                 AllowedActions: management?.Admissions(module is IServerModuleResidency, runtime, desired.Contains(module.Id), recoveryRequired,
-                    host is not null, requiredBy.Length > 0), Name: ConfigurationName(module.Id),
+                    host is not null, requiredBy.Length > 0,
+                    installed is not null, isEnabled, all.Any(other => other.Id != module.Id && other.Requires.Contains(module.Id))), Name: ConfigurationName(module.Id),
                 Rid: RelaxKonOS.ModulePackaging.ModulePackagePlatform.CurrentRid,
                 HostApiRequirement: version,
                 ResourceReleaseLevel: host is not null ? "process" : module is IServerModuleResidency ? "objects" : "none",

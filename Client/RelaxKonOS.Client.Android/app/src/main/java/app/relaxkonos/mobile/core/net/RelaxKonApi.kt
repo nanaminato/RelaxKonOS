@@ -95,6 +95,43 @@ class RelaxKonApi(
     override suspend fun cloudStatus(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl, accessToken, CloudAuthorizationWire.sessionRoute(id), CloudAuthorizationWire::session)
     override suspend fun cloudCancel(serverUrl: String, accessToken: String, id: String) = webPublishingCall("DELETE", serverUrl, CloudAuthorizationWire.sessionRoute(id), accessToken, null) { Unit }
 
+    override suspend fun modulePackagePlan(serverUrl: String, accessToken: String, uploadId: String) =
+        webPublishingCall("POST", serverUrl, ModulePackagesWire.ROOT + "/plans/auto", accessToken, JsonBody().string("uploadId", uploadId), ModulePackagesWire::plan)
+    override suspend fun modulePackageOperations(serverUrl: String, accessToken: String) =
+        webPublishingRead(serverUrl, accessToken, "/api/v1.0/server/module-package-operations", ModulePackagesWire::operations)
+    override suspend fun modulePackagePlanStatus(serverUrl: String, accessToken: String, id: String) =
+        webPublishingRead(serverUrl, accessToken, ModulePackagesWire.planRoute(id), ModulePackagesWire::plan)
+    override suspend fun applyModulePackage(serverUrl: String, accessToken: String, id: String) =
+        webPublishingCall("POST", serverUrl, ModulePackagesWire.planRoute(id) + "/apply", accessToken, JsonBody(), ModulePackagesWire::receipt)
+    override suspend fun moduleStore(serverUrl: String, accessToken: String, query: String, offset: Int) =
+        webPublishingRead(serverUrl, accessToken, ModulePackagesWire.STORE + "/search?q=" + URLEncoder.encode(query, "UTF-8") + "&offset=$offset&limit=25", ModulePackagesWire::store)
+    override suspend fun downloadModulePackage(serverUrl: String, accessToken: String, item: ModuleStoreItem) =
+        webPublishingCall("POST", serverUrl, ModulePackagesWire.STORE + "/download", accessToken,
+            JsonBody().string("sourceId", item.sourceId).string("releaseId", item.releaseId), ModulePackagesWire::upload)
+    override suspend fun uploadModulePackage(serverUrl: String, accessToken: String, source: java.io.File): ApiResult<ModulePackageUpload> = withContext(Dispatchers.IO) {
+        require(source.length() in 1..(1L shl 30))
+        val connection = openConnection(serverUrl, ModulePackagesWire.ROOT + "/upload", "POST", accessToken, CHUNK_READ_TIMEOUT_MILLIS)
+        try {
+            connection.instanceFollowRedirects = false
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/octet-stream")
+            connection.setFixedLengthStreamingMode(source.length())
+            connection.outputStream.use { output -> source.inputStream().use { input ->
+                val buffer = ByteArray(65536)
+                while (true) {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    val count = input.read(buffer); if (count < 0) break
+                    output.write(buffer, 0, count)
+                }
+            } }
+            val code = connection.responseCode
+            if (code !in 200..299) readProblem(connection, code)
+            else ApiResult.Success(ModulePackagesWire.upload(connection.inputStream.bufferedReader().use { it.readText() }))
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { ApiResult.Transport(null) }
+        finally { connection.disconnect() }
+    }
+
     override suspend fun serverModules(serverUrl: String, accessToken: String): ApiResult<List<ServerModuleFact>> =
         webPublishingRead(serverUrl, accessToken, ServerModulesWire.ROOT, ServerModulesWire::facts)
     override suspend fun serverModulePlan(serverUrl: String, accessToken: String, body: JsonBody): ApiResult<ServerModulePlan> =

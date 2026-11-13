@@ -17,6 +17,39 @@ class ServerModuleReferences(private val directory: File) {
         val digest = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).joinToString("") { "%02x".format(it) }
         return File(directory, "$digest.json")
     }
+    private fun packageFile(owner: SessionState.Active) = File(directory, scope(owner).name + ".packages")
+    @Synchronized fun readPackages(owner: SessionState.Active): List<ModulePackagePlan> {
+        val file = packageFile(owner)
+        if (!file.exists()) return emptyList()
+        require(file.length() <= 524288)
+        val values = JSONArray(file.readText()); require(values.length() <= 64)
+        return (0 until values.length()).map { ModulePackagesWire.plan(values.getJSONObject(it).toString()) }
+    }
+    @Synchronized fun resolvePackage(owner: SessionState.Active, id: String) {
+        val items = readPackages(owner).filterNot { it.id == id }
+        val file = packageFile(owner)
+        val temp = File(directory, file.name + "." + UUID.randomUUID() + ".tmp")
+        try {
+            val text = JSONArray().apply { items.forEach { put(org.json.JSONObject(it.raw)) } }.toString()
+            java.io.FileOutputStream(temp).use { it.write(text.toByteArray()); it.fd.sync() }
+            java.nio.file.Files.move(temp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } finally { temp.delete() }
+    }
+    @Synchronized fun savePackage(owner: SessionState.Active, plan: ModulePackagePlan) {
+        val items = readPackages(owner)
+        require(items.none { it.id == plan.id } || items.single { it.id == plan.id }.raw == plan.raw)
+        if (items.any { it.id == plan.id }) return
+        require(items.size < 64)
+        require(directory.isDirectory || directory.mkdirs())
+        val text = JSONArray().apply { (items + plan).forEach { put(org.json.JSONObject(it.raw)) } }.toString()
+        require(text.toByteArray().size <= 524288)
+        val target = packageFile(owner)
+        val temp = File(directory, target.name + "." + UUID.randomUUID() + ".tmp")
+        try {
+            java.io.FileOutputStream(temp).use { it.write(text.toByteArray()); it.fd.sync() }
+            java.nio.file.Files.move(temp.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } finally { temp.delete() }
+    }
     @Synchronized fun read(owner: SessionState.Active): List<ServerModulePlan> {
         val file = scope(owner)
         if (!file.exists()) return emptyList()
@@ -83,7 +116,7 @@ class ServerModuleRepository(private val session: AuthSession, private val gatew
     suspend fun previewAction(owner: SessionState.Active, facts: List<ServerModuleFact>, ids: Set<String>, action: String,
         strategy: String? = null, idleGraceSeconds: Int? = null): ApiResult<ServerModulePlan> {
         verify(owner)
-        require(action in setOf("Enable", "Disable", "Wake", "TrySleep", "SetResidencyPolicy"))
+        require(action in setOf("Enable", "Disable", "Wake", "TrySleep", "SetResidencyPolicy", "Stop", "Restart", "Remove"))
         if (action == "SetResidencyPolicy") require(strategy in setOf("KeepLoaded", "IdleDelayed", "ReleaseOnLogout") && idleGraceSeconds != null && idleGraceSeconds in 0..604800)
         else require(strategy == null && idleGraceSeconds == null)
         require(ids.isNotEmpty() && facts.isNotEmpty() && facts.map { it.id }.containsAll(ids))
@@ -92,7 +125,7 @@ class ServerModuleRepository(private val session: AuthSession, private val gatew
         require(facts.filter { it.id in ids }.all { action in it.allowedActions })
         require(facts.map { it.desiredRevision }.distinct().size == 1 && facts.all { it.serviceId == host })
         val desired = facts.filter { it.desiredEnabled }.map { it.id }.toMutableSet()
-        if (action == "Enable") desired.addAll(ids) else if (action == "Disable") desired.removeAll(ids)
+        if (action == "Enable") desired.addAll(ids) else if (action in setOf("Disable", "Remove")) desired.removeAll(ids)
         val body = JsonBody().string("serviceId", host).string("action", action)
             .raw("moduleIds", JSONArray(ids.sorted()).toString()).raw("enabledModuleIds", JSONArray(desired.sorted()).toString())
             .string("expectedRevision", facts.first().desiredRevision).string("idempotencyKey", UUID.randomUUID().toString())
@@ -107,6 +140,73 @@ class ServerModuleRepository(private val session: AuthSession, private val gatew
             if (action != "SetResidencyPolicy") require(actual.isNull("strategy") && actual.isNull("idleGraceSeconds"))
         }
         return result
+    }
+    private fun packageOwner(owner: SessionState.Active) {
+        verify(owner); require(owner.controller)
+        check(synchronized(pins) { pins[owner.sessionInstanceId] } != null)
+    }
+    suspend fun uploadPackage(owner: SessionState.Active, source: File): ApiResult<ModulePackagePlan> {
+        packageOwner(owner)
+        return when (val upload = call(owner) { url, token -> gateway.uploadModulePackage(url, token, source) }) {
+            is ApiResult.Success -> {
+                require(upload.value.bytes == source.length())
+                when (val plan = call(owner) { url, token -> gateway.modulePackagePlan(url, token, upload.value.id) }) {
+                    is ApiResult.Success -> { require(plan.value.sha256 == upload.value.sha256); plan }
+                    else -> plan
+                }
+            }
+            is ApiResult.Problem -> upload
+            is ApiResult.Transport -> upload
+        }
+    }
+    suspend fun store(owner: SessionState.Active, query: String, offset: Int): ApiResult<ModuleStorePage> {
+        packageOwner(owner); require(offset >= 0)
+        return call(owner) { url, token -> gateway.moduleStore(url, token, query, offset) }
+    }
+    suspend fun downloadPackage(owner: SessionState.Active, item: ModuleStoreItem): ApiResult<ModulePackagePlan> {
+        packageOwner(owner); require(item.blockers.isEmpty())
+        return when (val upload = call(owner) { url, token -> gateway.downloadModulePackage(url, token, item) }) {
+            is ApiResult.Success -> when (val plan = call(owner) { url, token -> gateway.modulePackagePlan(url, token, upload.value.id) }) {
+                is ApiResult.Success -> { require(plan.value.moduleId == item.moduleId && plan.value.version == item.version && plan.value.sha256 == upload.value.sha256); plan }
+                else -> plan
+            }
+            is ApiResult.Problem -> upload
+            is ApiResult.Transport -> upload
+        }
+    }
+    suspend fun applyPackage(owner: SessionState.Active, plan: ModulePackagePlan): ApiResult<ModulePackageReceipt> {
+        packageOwner(owner)
+        require(plan.operationId == null && java.time.OffsetDateTime.parse(plan.expiresAt).toInstant().isAfter(java.time.Instant.now()))
+        withContext(Dispatchers.IO) { references.savePackage(owner, plan) }
+        return when (val receipt = call(owner) { url, token -> gateway.applyModulePackage(url, token, plan.id) }) {
+            is ApiResult.Success -> { require(receipt.value.moduleId == plan.moduleId && receipt.value.version == plan.version); receipt }
+            else -> receipt
+        }
+    }
+    suspend fun recoverPackages(owner: SessionState.Active): List<ModulePackageRecovery> {
+        packageOwner(owner)
+        val recovered = mutableListOf<ModulePackageRecovery>()
+        val operations = when (val result = call(owner) { url, token -> gateway.modulePackageOperations(url, token) }) {
+            is ApiResult.Success -> result.value
+            is ApiResult.Problem -> error(result.code)
+            is ApiResult.Transport -> error("module-state-unavailable")
+        }
+        for (original in withContext(Dispatchers.IO) { references.readPackages(owner) }) {
+            when (val result = call(owner) { url, token -> gateway.modulePackagePlanStatus(url, token, original.id) }) {
+                is ApiResult.Success -> {
+                    val current = result.value
+                    require(current.id == original.id && current.moduleId == original.moduleId && current.version == original.version
+                        && current.sha256 == original.sha256 && current.sourceId == original.sourceId && current.publisherId == original.publisherId)
+                    val operation = operations.singleOrNull { it.id == current.operationId }
+                    require(operation == null || operation.moduleId == current.moduleId && operation.version == current.version)
+                    recovered += ModulePackageRecovery(current, operation)
+                    if (operation?.state in setOf("Succeeded", "Failed") || current.operationId == null && !java.time.OffsetDateTime.parse(current.expiresAt).toInstant().isAfter(java.time.Instant.now())) withContext(Dispatchers.IO) { references.resolvePackage(owner, original.id) }
+                }
+                is ApiResult.Problem -> recovered += ModulePackageRecovery(original, null, result.code)
+                is ApiResult.Transport -> recovered += ModulePackageRecovery(original, null, "module-state-unavailable")
+            }
+        }
+        return recovered
     }
     suspend fun apply(owner: SessionState.Active, plan: ServerModulePlan): ApiResult<ServerModuleOperation> {
         verify(owner)
@@ -143,7 +243,7 @@ class ServerModuleRepository(private val session: AuthSession, private val gatew
                         require(operation.enabledIds.toSet() == (0 until target.length()).map { target.getString(it) }.toSet())
                     }
                     val policyMatches = plan.policy == null || plan.moduleIds.all { id -> facts.singleOrNull { it.id == id }?.effectivePolicy == plan.policy }
-                    if (operation?.terminal == true && (plan.action in setOf("Wake", "TrySleep") || operation.state == "Failed"
+                    if (operation?.terminal == true && (plan.action in setOf("Wake", "TrySleep", "Stop", "Restart") || operation.state == "Failed"
                         || policyMatches && facts.filter { it.effectiveEnabled }.map { it.id }.toSet() == operation.enabledIds.toSet()))
                         withContext(Dispatchers.IO) { references.resolve(owner, plan.id) }
                 }

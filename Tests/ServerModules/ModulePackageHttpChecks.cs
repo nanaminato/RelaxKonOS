@@ -129,6 +129,30 @@ internal static class ModulePackageHttpChecks
                 && plan.ManifestSha256 == built.ManifestSha256,
                 "HTTP package plan binds the exact module release and archive identity");
 
+            var planStatusRoute = ServerModuleManagementRoutes.PackagePlan.Replace("{planId:guid}", plan.PlanId.ToString());
+            var statusBefore = await client.GetFromJsonAsync<ServerModulePackagePlanDto>(planStatusRoute, RelaxKonOSJsonOptions.Default);
+            check(statusBefore?.PlanId == plan.PlanId && statusBefore.AppliedOperationId is null,
+                "HTTP package plan status reads the original frozen plan without applying it");
+            var otherPlanRoute = ServerModuleManagementRoutes.PackagePlan.Replace("{planId:guid}", autoPlan.PlanId.ToString());
+            var storedPlans = ModulePackagePlanStore.Read(root).ToArray();
+            var otherPlans = storedPlans.Select(item => item.PlanId == autoPlan.PlanId ? item with { Actor = "another-controller" } : item).ToArray();
+            await File.WriteAllBytesAsync(ModulePackagePlanStore.PathFor(root),
+                JsonSerializer.SerializeToUtf8Bytes(new ModulePackagePlanDocument(3, otherPlans), RelaxKonOSJsonOptions.Default));
+            using (var forbidden = await client.GetAsync(otherPlanRoute))
+                check(forbidden.StatusCode == System.Net.HttpStatusCode.Forbidden,
+                    "HTTP package plan status refuses a different controller actor");
+            var expiredPlans = storedPlans.Select(item => item.PlanId == autoPlan.PlanId
+                ? item with { CreatedAt = now.AddMinutes(-20), ExpiresAt = now.AddMinutes(-10) } : item).ToArray();
+            await File.WriteAllBytesAsync(ModulePackagePlanStore.PathFor(root),
+                JsonSerializer.SerializeToUtf8Bytes(new ModulePackagePlanDocument(3, expiredPlans), RelaxKonOSJsonOptions.Default));
+            var expiredStatus = await client.GetFromJsonAsync<ServerModulePackagePlanDto>(otherPlanRoute, RelaxKonOSJsonOptions.Default);
+            check(expiredStatus?.PlanId == autoPlan.PlanId && expiredStatus.AppliedOperationId is null,
+                "HTTP expired package plan remains readable without executing it");
+            using (var expiredApply = await client.PostAsync(
+                ServerModuleManagementRoutes.PackagePlanApply.Replace("{planId:guid}", autoPlan.PlanId.ToString()), null))
+                check(expiredApply.StatusCode == System.Net.HttpStatusCode.Conflict,
+                    "HTTP expired unapplied package plan cannot be executed");
+
             if (isolated)
             {
                 check(plan.Runtime == "module-host" && plan.Privileges.Single().Kind == ModuleCapabilityCatalog.ServiceManage
@@ -177,6 +201,29 @@ internal static class ModulePackageHttpChecks
             var replay = (await replayResponse.Content.ReadFromJsonAsync<ServerModulePackageInstallResultDto>(RelaxKonOSJsonOptions.Default))!;
             check(replay.OperationId == applied.OperationId && replay.Record.Version == "1.0.0",
                 "HTTP package plan apply is idempotent after the upload has been consumed");
+            var statusAfter = await client.GetFromJsonAsync<ServerModulePackagePlanDto>(planStatusRoute, RelaxKonOSJsonOptions.Default);
+            check(statusAfter?.AppliedOperationId == applied.OperationId,
+                "HTTP package plan status resolves the original receipt after a lost response");
+            check(ModulePackagePlanStore.MarkApplied(root, plan.PlanId, applied.OperationId, now.AddHours(3)).AppliedOperationId == applied.OperationId,
+                "accepted package completion can persist its receipt after the preview expiry");
+            var retainedPlans = ModulePackagePlanStore.Read(root).Select(item => item with
+                { CreatedAt = now.AddHours(-3), ExpiresAt = now.AddHours(-2) }).ToArray();
+            await File.WriteAllBytesAsync(ModulePackagePlanStore.PathFor(root),
+                JsonSerializer.SerializeToUtf8Bytes(new ModulePackagePlanDocument(3, retainedPlans), RelaxKonOSJsonOptions.Default));
+            var expiredApplied = await client.GetFromJsonAsync<ServerModulePackagePlanDto>(planStatusRoute, RelaxKonOSJsonOptions.Default);
+            check(expiredApplied?.AppliedOperationId == applied.OperationId,
+                "HTTP expired applied plan retains the original operation reference");
+            using var uploadAgain = await client.PostAsync(ServerModuleManagementRoutes.PackageUpload,
+                new ByteArrayContent(await File.ReadAllBytesAsync(built.ArchivePath)));
+            uploadAgain.EnsureSuccessStatusCode();
+            var uploadedAgain = (await uploadAgain.Content.ReadFromJsonAsync<ServerModulePackageUploadDto>(RelaxKonOSJsonOptions.Default))!;
+            using var createAgain = await client.PostAsJsonAsync(ServerModuleManagementRoutes.PackageAutoPlan,
+                new ServerModulePackageAutoPlanRequest(uploadedAgain.UploadId), RelaxKonOSJsonOptions.Default);
+            createAgain.EnsureSuccessStatusCode();
+            var afterPrune = ModulePackagePlanStore.Read(root);
+            check(afterPrune.Any(item => item.PlanId == plan.PlanId && item.AppliedOperationId == applied.OperationId)
+                && afterPrune.All(item => item.PlanId != autoPlan.PlanId),
+                "new plan creation prunes expired unexecuted plans but retains applied receipt references");
             await app.StopAsync();
             management.Dispose();
         }

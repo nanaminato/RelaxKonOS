@@ -517,6 +517,9 @@
        <TextBlock Text="{Binding PlanExpiresText}" FontSize="11" VerticalAlignment="Center"
                   Foreground="{DynamicResource TextTertiaryBrush}" />
       </WrapPanel>
+      <Border Classes="notice" IsVisible="{Binding PlanIsRemoval}">
+       <TextBlock Text="{loc:Loc server_modules.plan.remove_data}" TextWrapping="Wrap" FontSize="12" />
+      </Border>
       <Border Classes="notice bad" IsVisible="{Binding HasPlanBlockers}">
        <StackPanel Spacing="4">
         <TextBlock Classes="field-label" Text="{loc:Loc server_modules.plan.blocked}" />
@@ -715,6 +718,7 @@
      </StackPanel>
      <WrapPanel ItemSpacing="8" LineSpacing="8">
       <Button Classes="primary" Content="{loc:Loc server_modules.apply_package}" Command="{Binding ApplyPackagePlanCommand}" />
+      <Button Classes="ghost-action" Content="{loc:Loc server_modules.plan.discard}" Command="{Binding DiscardPackagePlanCommand}" />
      </WrapPanel>
     </StackPanel>
    </Border>

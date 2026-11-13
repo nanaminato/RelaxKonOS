@@ -42,7 +42,7 @@ internal static class ModulePackageReleaseDirectory
                     d.MinimumVersion, d.MaximumVersionExclusive)).ToArray(), m.Capabilities, revoked ? "revoked" : "catalog-verified",
                 rid, api, false, blockers);
         }).ToArray();
-        var reason = modules.IsInstalled(moduleId) ? "module-package-actions-unsupported"
+        var reason = modules.IsInstalled(host.ContentRootPath, moduleId) ? "module-package-actions-unsupported"
             : modules.KnownModuleIds.Contains(moduleId) ? "module-packaging-bundled"
             : "module-package-installer-api-unavailable";
         return new(context.ServiceId, moduleId, sourceId, document.Revision, verified.Catalog.Sequence, verified.PayloadSha256,

@@ -1,0 +1,13 @@
+<resources>
+    <string name="module_packages_title">モジュールパッケージ</string>
+    <string name="module_packages_upload">.rkmodule をアップロード</string>
+    <string name="module_packages_search">信頼済みソースを検索</string>
+    <string name="module_packages_preview">ダウンロードして確認</string>
+    <string name="module_packages_more">次のページ</string>
+    <string name="module_packages_receipts">送信済み操作を確認</string>
+    <string name="module_packages_install_note">発行者、ハッシュ、要求権限を確認してから、選択したバージョンをインストールまたは更新します。既存データは保持されます。サーバーの再起動が必要になる場合があります。</string>
+    <string name="module_packages_remove_note">データとクラウドアカウントを保持してパッケージを削除します。先に無効化してください。依存関係と再起動の要否はサーバーが確認します。</string>
+    <string name="module_packages_stop">停止</string>
+    <string name="module_packages_restart">再起動</string>
+    <string name="module_packages_remove">アンインストール</string>
+</resources>

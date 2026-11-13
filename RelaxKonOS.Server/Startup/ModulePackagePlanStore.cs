@@ -25,7 +25,7 @@ internal static class ModulePackagePlanStore
     internal static ModulePackagePlan Create(string contentRoot, string actor, string uploadId,
         AcceptedModulePackageCandidate candidate, DateTimeOffset now)
     {
-        var plans = Read(contentRoot).Where(plan => plan.ExpiresAt > now.AddHours(-1)).ToList();
+        var plans = Read(contentRoot).Where(plan => plan.AppliedOperationId is not null || plan.ExpiresAt > now.AddHours(-1)).ToList();
         if (plans.Count >= Maximum) throw new ModulePackageException("module-package-plan-capacity");
         var plan = new ModulePackagePlan(Guid.NewGuid(), actor, candidate.SourceId, candidate.ReleaseId, uploadId,
             candidate.Manifest.ModuleId, candidate.Manifest.Version, candidate.Manifest.PublisherId,
@@ -35,13 +35,13 @@ internal static class ModulePackagePlanStore
         return plan;
     }
 
-    internal static ModulePackagePlan Get(string contentRoot, Guid planId, string actor, DateTimeOffset now)
+    internal static ModulePackagePlan Get(string contentRoot, Guid planId, string actor, DateTimeOffset now, bool allowExpired = false)
     {
         var plan = Read(contentRoot).SingleOrDefault(item => item.PlanId == planId)
             ?? throw new ModulePackageException("module-package-plan-not-found");
         if (!string.Equals(plan.Actor, actor, StringComparison.Ordinal))
             throw new ModulePackageException("module-package-plan-forbidden");
-        if (plan.ExpiresAt <= now) throw new ModulePackageException("module-package-plan-expired");
+        if (!allowExpired && plan.AppliedOperationId is null && plan.ExpiresAt <= now) throw new ModulePackageException("module-package-plan-expired");
         return plan;
     }
 
@@ -50,7 +50,8 @@ internal static class ModulePackagePlanStore
         var plans = Read(contentRoot).ToList();
         var index = plans.FindIndex(plan => plan.PlanId == planId);
         if (index < 0) throw new ModulePackageException("module-package-plan-not-found");
-        if (plans[index].ExpiresAt <= now) throw new ModulePackageException("module-package-plan-expired");
+        // Apply validated expiry before dispatch. Completion can cross that deadline; retain
+        // the receipt rather than losing evidence after the package has already changed.
         if (plans[index].AppliedOperationId is { } existing && existing != operationId)
             throw new ModulePackageException("module-package-plan-already-applied");
         plans[index] = plans[index] with { AppliedOperationId = operationId };

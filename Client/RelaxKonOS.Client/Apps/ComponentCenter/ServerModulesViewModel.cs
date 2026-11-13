@@ -245,7 +245,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     private bool _storeSearched;
 
     public bool HasPackagePlan => PackagePlan is not null;
-    public bool CanApplyPackagePlan => PackagePlan is not null && !Busy && CanManage;
+    public bool CanApplyPackagePlan => PackagePlan is { } plan && plan.ExpiresAt > DateTimeOffset.UtcNow && !Busy && CanManage;
     public bool CanRollbackPackage => !Busy && CanManage && SelectedPackageVersion is { Active: false } version
         && !Modules.Any(module => module.Id == version.ModuleId && module.EffectiveEnabled && module.ResourceReleaseLevel == "process");
     public bool CanInstallStoreItem => !Busy && CanManage
@@ -423,6 +423,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
 
     public bool CanEnable => CanPreview(ServerModuleAction.Enable) && Targets.Any(module => !module.DesiredEnabled);
     public bool CanDisable => CanPreview(ServerModuleAction.Disable) && Targets.Any(module => module.DesiredEnabled);
+    public bool CanRemove => Targets.Count == 1 && CanPreview(ServerModuleAction.Remove);
     public bool CanWake => CanPreview(ServerModuleAction.Wake);
     public bool CanSleep => CanPreview(ServerModuleAction.TrySleep);
     public bool CanStop => Targets.Count == 1 && CanPreview(ServerModuleAction.Stop);
@@ -434,6 +435,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     public bool IsReadOnly => Modules.Count > 0 && Modules.All(IsOnlyForbidden);
 
     public bool HasPlan => Plan is not null;
+    public bool PlanIsRemoval => Plan?.Target.Action == ServerModuleAction.Remove;
     public bool PlanRequiresRestart => Plan?.RestartRequired == true;
     public LocalizedStatus PlanActionText => Plan is { } plan ? ActionText(plan.Target.Action) : LocalizedStatus.Literal("");
     public LocalizedStatus PlanTargetText => Plan is { } plan ? ModuleNames(plan.Target.ModuleIds) : LocalizedStatus.Literal("");
@@ -452,7 +454,10 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         && Plan is { BlockedBy.Count: 0 } plan && plan.ExpiresAt > DateTimeOffset.UtcNow;
     public bool HasOperation => !string.IsNullOrWhiteSpace(OperationText);
 
-    [RelayCommand] private void DiscardPlan() => Plan = null;
+    public bool CanDiscardPlan => !Busy && HasPlan;
+    public bool CanDiscardPackagePlan => !Busy && HasPackagePlan;
+    [RelayCommand(CanExecute = nameof(CanDiscardPlan))] private void DiscardPlan() => Plan = null;
+    [RelayCommand(CanExecute = nameof(CanDiscardPackagePlan))] private void DiscardPackagePlan() => PackagePlan = null;
 
     private void RebuildActionRows()
     {
@@ -461,6 +466,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         [
             new(ServerModuleAction.Enable, ActionText(ServerModuleAction.Enable), ActionHint(ServerModuleAction.Enable, CanEnable, targets), CanEnable, EnableCommand),
             new(ServerModuleAction.Disable, ActionText(ServerModuleAction.Disable), ActionHint(ServerModuleAction.Disable, CanDisable, targets), CanDisable, DisableCommand),
+            new(ServerModuleAction.Remove, ActionText(ServerModuleAction.Remove), ActionHint(ServerModuleAction.Remove, CanRemove, targets), CanRemove, RemoveCommand),
             new(ServerModuleAction.Wake, ActionText(ServerModuleAction.Wake), ActionHint(ServerModuleAction.Wake, CanWake, targets), CanWake, WakeCommand),
             new(ServerModuleAction.TrySleep, ActionText(ServerModuleAction.TrySleep), ActionHint(ServerModuleAction.TrySleep, CanSleep, targets), CanSleep, SleepCommand),
         ];
@@ -484,6 +490,8 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         // action rows would turn the explanation back into the wall of identical lines this page
         // is meant to replace; the disabled commands and the notice carry the fact.
         if (IsReadOnly) return LocalizedStatus.Literal("");
+        if (action == ServerModuleAction.Remove && targets.Count != 1)
+            return LocalizedStatus.Key("server_modules.action.remove_single");
         if (action == ServerModuleAction.Enable && targets.All(module => module.DesiredEnabled))
             return LocalizedStatus.Key("server_modules.action.already_enabled");
         if (action == ServerModuleAction.Disable && targets.All(module => !module.DesiredEnabled))
@@ -591,6 +599,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(SelectionText));
         OnPropertyChanged(nameof(HasPlan));
         OnPropertyChanged(nameof(PlanRequiresRestart));
+        OnPropertyChanged(nameof(PlanIsRemoval));
         OnPropertyChanged(nameof(PlanActionText));
         OnPropertyChanged(nameof(PlanTargetText));
         OnPropertyChanged(nameof(PlanAddedText));
@@ -604,11 +613,14 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(CanApply));
         OnPropertyChanged(nameof(CanEnable));
         OnPropertyChanged(nameof(CanDisable));
+        OnPropertyChanged(nameof(CanRemove));
         OnPropertyChanged(nameof(CanWake));
         OnPropertyChanged(nameof(CanSleep));
         OnPropertyChanged(nameof(CanSetPolicy));
         OnPropertyChanged(nameof(CanEditPolicy));
         OnPropertyChanged(nameof(CanApplyPackagePlan));
+        OnPropertyChanged(nameof(CanDiscardPlan));
+        OnPropertyChanged(nameof(CanDiscardPackagePlan));
         OnPropertyChanged(nameof(CanRollbackPackage));
         OnPropertyChanged(nameof(CanInstallStoreItem));
         OnPropertyChanged(nameof(CanRestoreAll));
@@ -620,8 +632,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(CanRevokeConsent));
         RebuildActionRows();
         EnableCommand.NotifyCanExecuteChanged(); DisableCommand.NotifyCanExecuteChanged(); ApplyCommand.NotifyCanExecuteChanged();
-        WakeCommand.NotifyCanExecuteChanged(); SleepCommand.NotifyCanExecuteChanged();
+        WakeCommand.NotifyCanExecuteChanged(); SleepCommand.NotifyCanExecuteChanged(); RemoveCommand.NotifyCanExecuteChanged();
         SetPolicyCommand.NotifyCanExecuteChanged(); ApplyPackagePlanCommand.NotifyCanExecuteChanged();
+        DiscardPlanCommand.NotifyCanExecuteChanged(); DiscardPackagePlanCommand.NotifyCanExecuteChanged();
         RollbackPackageCommand.NotifyCanExecuteChanged(); InstallStoreItemCommand.NotifyCanExecuteChanged();
         RestoreAllCommand.NotifyCanExecuteChanged();
         LoadPrivilegeCommand.NotifyCanExecuteChanged();
@@ -739,6 +752,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     private async Task ApplyPackagePlanAsync() => await Run(async () =>
     {
         if (PackagePlan is not { } plan) return;
+        if (plan.ExpiresAt <= DateTimeOffset.UtcNow) throw new InvalidOperationException("module-plan-expired");
         var result = await client.ApplyPackagePlanAsync(plan.PlanId);
         PackagePlan = null;
         await RefreshPackageFactsAsync();
@@ -826,6 +840,14 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
 
     [RelayCommand(CanExecute = nameof(CanEnable))] private Task EnableAsync() => PreviewAsync(true);
     [RelayCommand(CanExecute = nameof(CanDisable))] private Task DisableAsync() => PreviewAsync(false);
+    [RelayCommand(CanExecute = nameof(CanRemove))] private Task RemoveAsync() => Run(async () =>
+    {
+        var targets = Targets;
+        if (targets.Count != 1 || targets[0] is not { ServiceId: { } service, DesiredRevision: { } revision } target) return;
+        Plan = await client.PreviewAsync(new(service, ServerModuleAction.Remove, [target.Id],
+            Modules.Where(module => module.DesiredEnabled && module.Id != target.Id).Select(module => module.Id).Order(StringComparer.Ordinal).ToArray(),
+            revision, Guid.NewGuid().ToString("N")));
+    });
     [RelayCommand(CanExecute = nameof(CanWake))] private Task WakeAsync() => PreviewRuntimeAsync(ServerModuleAction.Wake);
     [RelayCommand(CanExecute = nameof(CanSleep))] private Task SleepAsync() => PreviewRuntimeAsync(ServerModuleAction.TrySleep);
     [RelayCommand(CanExecute = nameof(CanStop))] private Task StopAsync() => PreviewRuntimeAsync(ServerModuleAction.Stop);
@@ -879,6 +901,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         Plan = null;
         var selectedId = Selected?.Id;
         Modules = await client.ReadAsync(); Selected = Modules.FirstOrDefault(x => x.Id == selectedId);
+        if (plan.Target.Action == ServerModuleAction.Remove) await RefreshPackageFactsAsync();
         Notify();
     });
     private async Task Run(Func<Task> action)
@@ -1245,6 +1268,11 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         if (string.IsNullOrWhiteSpace(code)) return LocalizedStatus.Literal("");
         var text = code switch
         {
+            "module-bundled-not-removable" => LocalizedStatus.Key("server_modules.problem.module_bundled_not_removable"),
+            "module-remove-disable-first" => LocalizedStatus.Key("server_modules.problem.module_remove_disable_first"),
+            "module-remove-restart-required" => LocalizedStatus.Key("server_modules.problem.module_remove_restart_required"),
+            "module-remove-recovery-required" => LocalizedStatus.Key("server_modules.problem.module_remove_recovery_required"),
+            "module-package-plan-target-changed" => LocalizedStatus.Key("server_modules.problem.module_package_plan_target_changed"),
             "module-forbidden" => LocalizedStatus.Key("server_modules.problem.module_forbidden"),
             "module-configuration-read-only" => LocalizedStatus.Key("server_modules.problem.module_configuration_read_only"),
             "module-recovery-mode" => LocalizedStatus.Key("server_modules.problem.module_recovery_mode"),

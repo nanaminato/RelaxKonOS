@@ -143,7 +143,7 @@ internal static class ServerModuleCatalogChecks
     {
         var (session, control) = NewSession(); control.SignIn("connection-a", "https://alpha.test");
         var actor = Guid.NewGuid();
-        var admissions = new[] { new ServerModuleActionAdmission(ServerModuleAction.Enable, true, []), new ServerModuleActionAdmission(ServerModuleAction.Disable, true, []) };
+        var admissions = new[] { new ServerModuleActionAdmission(ServerModuleAction.Enable, true, []), new ServerModuleActionAdmission(ServerModuleAction.Disable, true, []), new ServerModuleActionAdmission(ServerModuleAction.Remove, true, []) };
         // One dormant module and one disabled module: the page has to keep installation, effective
         // enablement and residency as three separate facts, and the batch preview still spans both.
         var now = DateTimeOffset.UtcNow;
@@ -199,7 +199,7 @@ internal static class ServerModuleCatalogChecks
             var model = new ServerModulesViewModel(client, references, "connection-a", actor);
             await model.RefreshCommand.ExecuteAsync(null);
             Check(model.Modules.Count == 2, "Management reads fresh facts for the current login.");
-            Check(model.HasSelectedModule && model.ActionRows.Count == 4 && model.IsModulesTab,
+            Check(model.HasSelectedModule && model.ActionRows.Count == 5 && model.IsModulesTab,
                 "The module page selects the first module and exposes one row per previewable action.");
             Check(model.ActionRows.All(row => !string.IsNullOrWhiteSpace(row.Label.Resolve())
                     && !row.Hint.Resolve().Contains("server_modules.", StringComparison.Ordinal))
@@ -249,6 +249,22 @@ internal static class ServerModuleCatalogChecks
             Check(model.HasSelectedModule && model.SelectedTitle.Resolve() == "Git"
                     && model.SelectedResidencyStateText.Resolve().Length > 0,
                 "The selected module exposes identity and residency facts without raw server enum names.");
+
+            await model.RemoveCommand.ExecuteAsync(null);
+            Check(captured is { Action: ServerModuleAction.Remove, ModuleIds.Count: 1 }
+                    && captured.ModuleIds[0] == "relaxkonos.git" && !captured.EnabledModuleIds.Contains("relaxkonos.git")
+                    && model.PlanIsRemoval && applies == 0,
+                "Uninstall previews an exact single target with retained data; it does not apply without confirmation.");
+            model.DiscardPlanCommand.Execute(null);
+            Check(!model.HasPlan && !model.PlanIsRemoval && applies == 0, "Canceling uninstall leaves the server unchanged.");
+
+            model.PackagePlan = new(Guid.NewGuid(), "official", "release", "relaxkonos.git", "1.5.0", "publisher",
+                new string('a', 64), new string('b', 64), DateTimeOffset.UtcNow.AddMinutes(-1), null, "module-host", [], "Git", "Update");
+            Check(!model.CanApplyPackagePlan, "Expired package plans cannot be applied from the desktop UI.");
+            model.PackagePlan = model.PackagePlan with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5) };
+            Check(model.CanApplyPackagePlan, "A valid package plan can be reviewed and confirmed.");
+            model.DiscardPackagePlanCommand.Execute(null);
+            Check(!model.HasPackagePlan, "Canceling package preview leaves no stale plan to apply.");
 
             // Render each shipped language: the page must not leak resource keys or unresolved text.
             // New views are created because static {loc:Loc} labels resolve when the XAML loads.
@@ -315,7 +331,7 @@ internal static class ServerModuleCatalogChecks
             Check(forbiddenModel.IsReadOnly && forbiddenModel.SelectedReadOnly && !forbiddenModel.CanManage
                     && forbiddenModel.VisibleTabs.Count == 1,
                 "A server that refuses every management action produces one read-only boundary.");
-            Check(forbiddenModel.ActionRows.Count == 4 && forbiddenModel.ActionRows.All(row => !row.Allowed)
+            Check(forbiddenModel.ActionRows.Count == 5 && forbiddenModel.ActionRows.All(row => !row.Allowed)
                 && forbiddenModel.ActionRows.All(row => !row.HasHint),
                 "Refused actions stay visible but the page states the boundary once instead of repeating it per row.");
             settings.Language = "zh-CN";
@@ -328,7 +344,7 @@ internal static class ServerModuleCatalogChecks
                 "A fully read-only module page renders one management-boundary sentence.");
             var readonlyLabels = forbiddenView.GetVisualDescendants().OfType<TextBlock>()
                 .Where(block => block.IsEffectivelyVisible).Select(block => block.Text).ToHashSet();
-            Check(new[] { "enable", "disable", "wake", "sleep" }.All(action =>
+            Check(new[] { "enable", "disable", "remove", "wake", "sleep" }.All(action =>
                     readonlyLabels.Contains(LocalizedText.Get("server_modules.action." + action))),
                 "The read-only page keeps every action name visible even though none can be submitted.");
             using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(1000, 900)))

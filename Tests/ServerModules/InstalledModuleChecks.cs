@@ -255,7 +255,7 @@ internal static class InstalledModuleChecks
                 .OfType<RouteEndpoint>().Select(endpoint => endpoint.RoutePattern.RawText).ToArray();
             check(routes.Contains("/api/v1.0/fixture-module/ping", StringComparer.Ordinal),
                 "installed module maps endpoints through the Host ABI");
-            var health = await fixtureModules.CheckHealthAsync(CancellationToken.None);
+            var health = await fixtureModules.CheckHealthAsync(root, CancellationToken.None);
             check(health.Healthy && health.Modules.Single(module => module.ModuleId == "fixture-module").Status == "healthy",
                 "installed module health probe reports its module-owned healthy result");
             check(ModuleHealthMonitor.ShouldStop(new("enabled-bad", true, true, "1.0.0", "official", "unhealthy", null))

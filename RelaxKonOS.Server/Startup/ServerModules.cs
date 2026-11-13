@@ -180,15 +180,17 @@ internal sealed partial class ServerModules
     internal bool IsEnabled(string moduleId) => EnabledIds.Contains(moduleId);
 
     /// <summary>True when the module was discovered from the installed-module store rather than compiled into the Host.</summary>
-    internal bool IsInstalled(string moduleId) => _enabled.Concat(_disabled)
-        .Any(module => module.Id == moduleId && module is IInstalledModuleInfo);
+    internal bool IsInstalled(string contentRoot, string moduleId) => InstalledModuleStore.Read(contentRoot)
+        .Any(module => module.ModuleId == moduleId);
 
-    internal async Task<ServerModuleHealthPageDto> CheckHealthAsync(CancellationToken cancellationToken)
+    internal async Task<ServerModuleHealthPageDto> CheckHealthAsync(string contentRoot, CancellationToken cancellationToken)
     {
         var enabled = _enabled.Select(module => module.Id).ToHashSet(StringComparer.Ordinal);
         var modules = new List<ServerModuleHealthModuleDto>();
+        var installedIds = InstalledModuleStore.Read(contentRoot).Select(module => module.ModuleId).ToHashSet(StringComparer.Ordinal);
         foreach (var module in _enabled.Concat(_disabled).OrderBy(module => module.Id, StringComparer.Ordinal))
         {
+            if (module is IInstalledModuleInfo && !installedIds.Contains(module.Id)) continue;
             if (module is IServerModuleHealthProbe probe)
                 modules.Add(await probe.CheckHealthAsync(enabled.Contains(module.Id), cancellationToken));
             else

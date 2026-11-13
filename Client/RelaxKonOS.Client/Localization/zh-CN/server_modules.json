@@ -165,7 +165,7 @@
     "server_modules.action.update": "更新",
     "server_modules.action.repair": "修复",
     "server_modules.action.rollback": "回退",
-    "server_modules.action.remove": "移除",
+    "server_modules.action.remove": "预览卸载",
     "server_modules.action.preview": "预览",
     "server_modules.action.unavailable": "不可用",
     "server_modules.action.admission_unknown": "服务端没有返回此动作的准入信息。",
@@ -333,6 +333,14 @@
     "server_modules.package_activated": "模块版本已生效。",
     "server_modules.problem.module_host_update_rolled_back": "新版启动失败，旧版已恢复。",
     "server_modules.problem.module_host_rollback_start_failed": "新版启动失败，旧版也未能启动。",
-    "server_modules.problem.module_host_cleanup_unconfirmed": "模块进程清理未确认。"
+    "server_modules.problem.module_host_cleanup_unconfirmed": "模块进程清理未确认。",
+    "server_modules.action.remove_hint": "卸载选中的独立模块，保留业务数据、网盘账号及远端文件。请先检查计划再确认。",
+    "server_modules.action.remove_single": "请一次选择一个模块卸载。",
+    "server_modules.plan.remove_data": "这将卸载模块包，不是仅禁用模块或释放内存。保留业务数据、网盘账号配置及远端文件；存在依赖模块或运行中的任务时可能无法卸载。",
+    "server_modules.problem.module_bundled_not_removable": "内置捆绑模块不能单独卸载。",
+    "server_modules.problem.module_remove_disable_first": "请先禁用模块，再进行卸载。",
+    "server_modules.problem.module_remove_restart_required": "请先重启服务器，使模块禁用生效，再进行卸载。",
+    "server_modules.problem.module_remove_recovery_required": "模块卸载需要恢复处理，暂时不能进行其他变更。",
+    "server_modules.problem.module_package_plan_target_changed": "模块包目标已改变，请丢弃当前计划并重新预览。"
   }
 }

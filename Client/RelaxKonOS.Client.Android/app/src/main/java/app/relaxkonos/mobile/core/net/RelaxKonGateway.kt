@@ -37,6 +37,13 @@ interface RelaxKonGateway {
     suspend fun cloudStatus(serverUrl: String, accessToken: String, id: String): ApiResult<CloudAuthorizationSession> = ApiResult.Transport(null)
     suspend fun cloudCancel(serverUrl: String, accessToken: String, id: String): ApiResult<Unit> = ApiResult.Transport(null)
 
+    suspend fun uploadModulePackage(serverUrl: String, accessToken: String, source: java.io.File): ApiResult<ModulePackageUpload> = ApiResult.Transport(null)
+    suspend fun modulePackagePlan(serverUrl: String, accessToken: String, uploadId: String): ApiResult<ModulePackagePlan> = ApiResult.Transport(null)
+    suspend fun modulePackageOperations(serverUrl: String, accessToken: String): ApiResult<List<ModulePackageOperation>> = ApiResult.Transport(null)
+    suspend fun modulePackagePlanStatus(serverUrl: String, accessToken: String, id: String): ApiResult<ModulePackagePlan> = ApiResult.Transport(null)
+    suspend fun applyModulePackage(serverUrl: String, accessToken: String, id: String): ApiResult<ModulePackageReceipt> = ApiResult.Transport(null)
+    suspend fun moduleStore(serverUrl: String, accessToken: String, query: String, offset: Int): ApiResult<ModuleStorePage> = ApiResult.Transport(null)
+    suspend fun downloadModulePackage(serverUrl: String, accessToken: String, item: ModuleStoreItem): ApiResult<ModulePackageUpload> = ApiResult.Transport(null)
     suspend fun serverModules(serverUrl: String, accessToken: String): ApiResult<List<ServerModuleFact>> =
         ApiResult.Transport("Server modules unavailable.")
     suspend fun serverModulePlan(serverUrl: String, accessToken: String, body: JsonBody): ApiResult<ServerModulePlan> = ApiResult.Transport(null)

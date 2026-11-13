@@ -19,7 +19,7 @@ internal sealed class ModuleManagementException(string code, int status = 409) :
 /// A process-lifetime file lock excludes another host; the revision also detects external edits.</summary>
 internal sealed partial class ModuleManagementStore : IDisposable
 {
-    internal sealed record SavedPlan(string Actor, string Fingerprint, ServerModulePlanDto Plan, Guid? OperationId);
+    internal sealed record SavedPlan(string Actor, string Fingerprint, ServerModulePlanDto Plan, Guid? OperationId, InstalledModuleRecord? RemovalTarget = null);
     internal sealed record Document(string ServiceId, string Revision, string[] EnabledIds,
         [property: JsonRequired] Dictionary<string, ServerModuleResidencyPolicyDto> Policies,
         List<SavedPlan> Plans, List<ServerModuleOperationDto> Operations);
@@ -27,6 +27,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
         IReadOnlyDictionary<string, ServerModuleResidencyPolicyDto> Policies);
     private readonly object _gate = new();
     private readonly string _path;
+    private readonly string _contentRoot;
     private readonly FileStream _hostLock;
     private readonly bool _preserveUnixOwner;
     private Document _document;
@@ -61,6 +62,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
     private ModuleManagementStore(IConfiguration configuration, string contentRoot, bool initializePermissions,
         string? expectedServiceId = null, string? expectedRevision = null, IReadOnlyList<IServerModule>? installedModules = null)
     {
+        _contentRoot = contentRoot;
         var authority = configuration["ModuleManagement:Authority"] ?? "deployment";
         _preserveUnixOwner = !initializePermissions && OperatingSystem.IsLinux();
         if (authority is not ("managed" or "deployment"))
@@ -110,7 +112,9 @@ internal sealed partial class ModuleManagementStore : IDisposable
             if (expectedRevision is not null && _document.Revision != expectedRevision) throw new ModuleManagementException("module-revision-conflict");
             _document = _document with { Operations = _document.Operations.Select(operation =>
                 operation.State is ServerModuleOperationState.Prepared or ServerModuleOperationState.Applying or ServerModuleOperationState.Verifying
-                    ? operation with { State = ServerModuleOperationState.Failed, ProblemCode = "module-operation-interrupted", UpdatedAt = DateTimeOffset.UtcNow }
+                    ? operation with { State = _document.Plans.Single(plan => plan.OperationId == operation.OperationId).Plan.Target.Action == ServerModuleAction.Remove
+                        ? ServerModuleOperationState.RecoveryRequired : ServerModuleOperationState.Failed,
+                        ProblemCode = "module-operation-interrupted", UpdatedAt = DateTimeOffset.UtcNow }
                     : operation).ToList() };
             if (!Writable) _document = _document with { EnabledIds = configured, Policies = policies,
                 Revision = Hash(JsonSerializer.Serialize(new { configured, policies }, RelaxKonOSJsonOptions.Default)) };
@@ -124,7 +128,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
     }
 
     internal IReadOnlyList<ServerModuleActionAdmission> Admissions(bool runtimeSupported = false, ServerModuleResidencyDto? residency = null, bool desiredEnabled = true, bool recoveryRequired = false,
-        bool moduleHost = false, bool hasDependents = false) =>
+        bool moduleHost = false, bool hasDependents = false, bool independent = false, bool effectiveEnabled = false, bool removeHasDependents = false) =>
         Enum.GetValues<ServerModuleAction>().Select(action =>
         {
             var reason = action switch
@@ -144,6 +148,13 @@ internal sealed partial class ModuleManagementStore : IDisposable
                 ServerModuleAction.Stop or ServerModuleAction.Restart when !desiredEnabled => "module-pending-disable",
                 ServerModuleAction.Stop or ServerModuleAction.Restart when hasDependents => "module-dependency-blocked",
                 ServerModuleAction.Stop or ServerModuleAction.Restart => null,
+                ServerModuleAction.Remove when !Writable => "module-configuration-read-only",
+                ServerModuleAction.Remove when !independent => "module-bundled-not-removable",
+                ServerModuleAction.Remove when desiredEnabled => "module-remove-disable-first",
+                ServerModuleAction.Remove when effectiveEnabled => "module-remove-restart-required",
+                ServerModuleAction.Remove when recoveryRequired => "module-recovery-blocked",
+                ServerModuleAction.Remove when removeHasDependents => "module-dependency-blocked",
+                ServerModuleAction.Remove => null,
                 _ => "module-action-unsupported"
             };
             return new ServerModuleActionAdmission(action, reason is null, reason is null ? [] : [new(reason)]);
@@ -180,7 +191,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
             var added = desired.Except(_document.EnabledIds).Order(StringComparer.Ordinal).ToArray();
             var removed = _document.EnabledIds.Except(desired).Order(StringComparer.Ordinal).ToArray();
             var blockers = Validate(request, inventory);
-            if ((IsRuntimeAction(request.Action) || request.Action == ServerModuleAction.SetResidencyPolicy)
+            if ((IsRuntimeAction(request.Action) || request.Action is ServerModuleAction.SetResidencyPolicy or ServerModuleAction.Remove)
                 && (added.Length != 0 || removed.Length != 0)) blockers.Add(new("module-request-invalid"));
             // The action and named members must describe the entire difference. Dependency changes
             // must be included explicitly in ModuleIds and the exact enabled set by the caller.
@@ -188,12 +199,13 @@ internal sealed partial class ModuleManagementStore : IDisposable
                 || request.Action == ServerModuleAction.Disable && (added.Length != 0 || request.ModuleIds.Any(desired.Contains))
                 || added.Concat(removed).Any(id => !request.ModuleIds.Contains(id)))
                 blockers.Add(new("module-request-invalid"));
-            var restart = !IsRuntimeAction(request.Action) && !desired.SetEquals(inventory.Where(x => x.EffectiveEnabled).Select(x => x.Id));
+            var restart = request.Action != ServerModuleAction.Remove && !IsRuntimeAction(request.Action) && !desired.SetEquals(inventory.Where(x => x.EffectiveEnabled).Select(x => x.Id));
             var plan = new ServerModulePlanDto(Guid.NewGuid(), ServiceId, request, _document.Revision,
                 DateTimeOffset.UtcNow.AddMinutes(10), restart || request.Action == ServerModuleAction.SetResidencyPolicy
                     && request.ModuleIds.Any(id => !EffectivePolicies.TryGetValue(id, out var policy)
                         || policy != new ServerModuleResidencyPolicyDto(request.Strategy ?? "", request.IdleGraceSeconds ?? -1)), blockers, added, removed);
-            Commit(_document with { Plans = [.. _document.Plans, new(actor, fingerprint, plan, null)] });
+            Commit(_document with { Plans = [.. _document.Plans, new(actor, fingerprint, plan, null, request.Action == ServerModuleAction.Remove
+                ? InstalledModuleStore.Read(_contentRoot).FirstOrDefault(module => request.ModuleIds.Contains(module.ModuleId)) : null)] });
             return plan;
         }
     }
@@ -205,7 +217,7 @@ internal sealed partial class ModuleManagementStore : IDisposable
             || !request.EnabledModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(inventory.Select(module => module.Id))))
             blockers.Add(new("module-recovery-mode"));
         if (!Writable && !IsRuntimeAction(request.Action)) blockers.Add(new("module-configuration-read-only"));
-        if (request.Action is not (ServerModuleAction.Enable or ServerModuleAction.Disable or ServerModuleAction.SetResidencyPolicy) && !IsRuntimeAction(request.Action)) blockers.Add(new("module-action-unsupported"));
+        if (request.Action is not (ServerModuleAction.Enable or ServerModuleAction.Disable or ServerModuleAction.SetResidencyPolicy or ServerModuleAction.Remove) && !IsRuntimeAction(request.Action)) blockers.Add(new("module-action-unsupported"));
         if (request.ReleaseId is not null || request.Action != ServerModuleAction.SetResidencyPolicy && (request.Strategy is not null || request.IdleGraceSeconds is not null))
             blockers.Add(new("module-action-unsupported"));
         if (request.Action == ServerModuleAction.SetResidencyPolicy)
@@ -216,6 +228,27 @@ internal sealed partial class ModuleManagementStore : IDisposable
                 if (!_document.Policies.ContainsKey(id)) blockers.Add(new("module-action-unsupported", id));
         }
         var desired = request.EnabledModuleIds.ToHashSet(StringComparer.Ordinal);
+        if (request.Action == ServerModuleAction.Remove)
+        {
+            if (request.ModuleIds.Count != 1) blockers.Add(new("module-request-invalid"));
+            var installed = InstalledModuleStore.Read(_contentRoot);
+            foreach (var id in request.ModuleIds)
+            {
+                var module = inventory.SingleOrDefault(item => item.Id == id);
+                if (module?.Packaging != "independent" || !installed.Any(item => item.ModuleId == id))
+                    blockers.Add(new("module-bundled-not-removable", id));
+                if (desired.Contains(id) || _document.EnabledIds.Contains(id)) blockers.Add(new("module-remove-disable-first", id));
+                if (module?.EffectiveEnabled == true) blockers.Add(new("module-remove-restart-required", id));
+                if (module is { RecoveryState: not "none" } || module?.OrphanedWork.Count > 0)
+                    blockers.Add(new("module-recovery-blocked", id));
+                if (inventory.Any(item => item.Id != id && item.Requires.Contains(id))
+                    || installed.Any(item => item.ModuleId != id && item.Requires.Contains(id)))
+                    blockers.Add(new("module-dependency-blocked", id));
+            }
+        }
+        if (_document.Operations.Any(operation => operation.State == ServerModuleOperationState.RecoveryRequired
+            && _document.Plans.Single(plan => plan.OperationId == operation.OperationId).Plan.Target.ModuleIds.Intersect(request.ModuleIds).Any()))
+            blockers.Add(new("module-recovery-blocked"));
         if (_document.Operations.Any(x => x.State is ServerModuleOperationState.Prepared or ServerModuleOperationState.Applying or ServerModuleOperationState.Verifying))
             blockers.Add(new("module-operation-in-progress"));
         if (IsRuntimeAction(request.Action))
@@ -262,6 +295,8 @@ internal sealed partial class ModuleManagementStore : IDisposable
             if (plan.ExpectedRevision != _document.Revision) throw new ModuleManagementException("module-revision-conflict");
             var blockers = plan.BlockedBy.Concat(Validate(plan.Target, inventory)).ToArray();
             if (blockers.Length > 0) throw new ModuleManagementException(blockers[0].ProblemCode);
+            if (plan.Target.Action == ServerModuleAction.Remove)
+                return ApplyRemoval(saved);
             var revision = Guid.NewGuid().ToString("N");
             var now = DateTimeOffset.UtcNow;
             var operation = new ServerModuleOperationDto(Guid.NewGuid(), planId, ServiceId,

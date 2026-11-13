@@ -1,0 +1,13 @@
+<resources>
+    <string name="module_packages_title">Module packages</string>
+    <string name="module_packages_upload">Upload .rkmodule</string>
+    <string name="module_packages_search">Search trusted sources</string>
+    <string name="module_packages_preview">Download and preview</string>
+    <string name="module_packages_more">Next page</string>
+    <string name="module_packages_receipts">Check submitted operations</string>
+    <string name="module_packages_install_note">Install or update the selected version only after reviewing its publisher, digest and requested privileges. Existing data is retained. A server restart may be needed.</string>
+    <string name="module_packages_remove_note">Uninstall the module package while retaining its data and cloud accounts. Disable it first; dependencies and restart requirements are checked by the server.</string>
+    <string name="module_packages_stop">Stop</string>
+    <string name="module_packages_restart">Restart</string>
+    <string name="module_packages_remove">Uninstall</string>
+</resources>

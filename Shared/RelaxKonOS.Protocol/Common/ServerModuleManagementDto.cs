@@ -121,6 +121,7 @@ public static class ServerModuleManagementRoutes
     public const string PackageUpload = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/upload";
     public const string PackageInstall = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/install";
     public const string PackagePlans = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/plans";
+    public const string PackagePlan = PackagePlans + "/{planId:guid}";
     public const string PackagePlanApply = PackagePlans + "/{planId:guid}/apply";
     public const string PackageAutoPlan = PackagePlans + "/auto";
     public const string PackageRollback = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/rollback";

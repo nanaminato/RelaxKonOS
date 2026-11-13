@@ -165,7 +165,7 @@
     "server_modules.action.update": "更新",
     "server_modules.action.repair": "修復",
     "server_modules.action.rollback": "ロールバック",
-    "server_modules.action.remove": "削除",
+    "server_modules.action.remove": "アンインストールを確認",
     "server_modules.action.preview": "プレビュー",
     "server_modules.action.unavailable": "利用不可",
     "server_modules.action.admission_unknown": "サーバーはこの操作の許可情報を返していません。",
@@ -333,6 +333,14 @@
     "server_modules.package_activated": "モジュールのバージョンが有効になりました。",
     "server_modules.problem.module_host_update_rolled_back": "新バージョンの起動に失敗し、旧バージョンを復元しました。",
     "server_modules.problem.module_host_rollback_start_failed": "新旧いずれのバージョンも起動できませんでした。",
-    "server_modules.problem.module_host_cleanup_unconfirmed": "モジュールプロセスの終了を確認できませんでした。"
+    "server_modules.problem.module_host_cleanup_unconfirmed": "モジュールプロセスの終了を確認できませんでした。",
+    "server_modules.action.remove_hint": "選択した独立モジュールをアンインストールします。業務データ、クラウドアカウント、リモートファイルは保持されます。計画を確認してください。",
+    "server_modules.action.remove_single": "アンインストールするモジュールを一つ選択してください。",
+    "server_modules.plan.remove_data": "モジュールの無効化やメモリ解放ではなく、パッケージをアンインストールします。業務データ、クラウドアカウント設定、リモートファイルは保持されます。依存モジュールや実行中の処理がある場合、操作が拒否されることがあります。",
+    "server_modules.problem.module_bundled_not_removable": "同梱モジュールは個別にアンインストールできません。",
+    "server_modules.problem.module_remove_disable_first": "先にモジュールを無効にしてからアンインストールしてください。",
+    "server_modules.problem.module_remove_restart_required": "サーバーを再起動して無効化を反映してから、アンインストールしてください。",
+    "server_modules.problem.module_remove_recovery_required": "モジュールの削除を復旧するまで、他の変更はできません。",
+    "server_modules.problem.module_package_plan_target_changed": "パッケージの対象が変更されました。この計画を破棄して再度確認してください。"
   }
 }

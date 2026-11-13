@@ -85,8 +85,8 @@ internal static class ServerModuleManagementEndpoints
                 context.Environment, request.SourceId, request.ReleaseId, DateTimeOffset.UtcNow,
                 cancellationToken: cancellationToken))))
             .RequireAuthorization(ManagePolicy);
-        group.MapGet(ServerModuleManagementRoutes.ModuleHealth, async (ServerModules modules,
-            CancellationToken cancellationToken) => Results.Ok(await modules.CheckHealthAsync(cancellationToken)))
+        group.MapGet(ServerModuleManagementRoutes.ModuleHealth, async (ServerModules modules, ServerModuleContext context,
+            CancellationToken cancellationToken) => Results.Ok(await modules.CheckHealthAsync(context.ContentRootPath, cancellationToken)))
             .RequireAuthorization(ManagePolicy);
         group.MapGet(ServerModuleManagementRoutes.ModuleHosts, ([FromServices] ModuleHostSupervisor hosts) =>
             Results.Ok(new ServerModuleHostPageDto(hosts.Snapshot()))).RequireAuthorization(ManagePolicy);
@@ -210,7 +210,7 @@ internal static class ServerModuleManagementEndpoints
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         })).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.PackageInstall, async (ServerModulePackageInstallRequest request,
-            ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
+            ModuleManagementStore management, ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
         {
             if (!ModulePackageHostConfiguration.Identifier(request.SourceId)
                 || !ModulePackageHostConfiguration.Identifier(request.ReleaseId)
@@ -221,6 +221,7 @@ internal static class ServerModuleManagementEndpoints
             if (!File.Exists(path)) return Problem("module-package-upload-not-found", 404);
             var inspected = await InstalledModuleInstaller.InspectAsync(context.ContentRootPath, context.Configuration,
                 context.Environment, request.SourceId, path, request.ReleaseId, DateTimeOffset.UtcNow, false, cancellationToken);
+            EnsurePackageMutationAllowed(management, inspected.Manifest.ModuleId);
             if (inspected.Manifest.Runtime == "module-host") return Problem("module-package-trust-plan-required", 409);
             var record = await InstalledModuleInstaller.InstallFromAcceptedCatalogAsync(context.ContentRootPath,
                 context.Configuration, context.Environment, request.SourceId, path, request.ReleaseId,
@@ -294,6 +295,10 @@ internal static class ServerModuleManagementEndpoints
                 selected, DateTimeOffset.UtcNow);
             return Results.Ok(PlanDto(plan));
         })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
+        group.MapGet(ServerModuleManagementRoutes.PackagePlan, (Guid planId, HttpContext http,
+            ServerModuleContext context) => Respond(() => Task.FromResult<IResult>(Results.Ok(PlanDto(
+                ModulePackagePlanStore.Get(context.ContentRootPath, planId, Actor(http.User), DateTimeOffset.UtcNow, allowExpired: true))))))
+            .AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.PackagePlanApply, async (Guid planId, HttpContext http,
             ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
         {
@@ -308,6 +313,7 @@ internal static class ServerModuleManagementEndpoints
                 return target is null ? Problem("module-package-plan-target-missing", 409)
                     : Results.Ok(new ServerModulePackageInstallResultDto(applied, InstalledDto(target, current)));
             }
+            EnsurePackageMutationAllowed(http.RequestServices.GetRequiredService<ModuleManagementStore>(), plan.ModuleId);
             var path = Path.Combine(context.ContentRootPath, "data", "module-management", "staging", "uploads",
                 plan.UploadId + ".rkmodule");
             if (!File.Exists(path)) return Problem("module-package-upload-not-found", 404);
@@ -384,6 +390,7 @@ internal static class ServerModuleManagementEndpoints
         {
             if (!ModulePackageHostConfiguration.Identifier(request.ModuleId) || !Version(request.Version))
                 return Problem("module-package-rollback-request-invalid", 400);
+            EnsurePackageMutationAllowed(http.RequestServices.GetRequiredService<ModuleManagementStore>(), request.ModuleId);
             var current = InstalledModuleStore.Read(context.ContentRootPath).SingleOrDefault(module => module.ModuleId == request.ModuleId);
             if (current is null) return Problem("module-package-installed-module-not-found", 404);
             if (current.Runtime == "module-host" && http.RequestServices.GetService<ServerModules>()?.IsEnabled(request.ModuleId) == true)
@@ -395,6 +402,12 @@ internal static class ServerModuleManagementEndpoints
             return Results.Ok(new ServerModulePackageInstallResultDto(operation.OperationId, InstalledDto(record, record)));
         })).AddEndpointFilter(SerializePackageMutationAsync).RequireAuthorization(ManagePolicy);
         return app;
+    }
+
+    internal static void EnsurePackageMutationAllowed(ModuleManagementStore management, string moduleId)
+    {
+        if (management.CaptureInventory().PendingOperations.ContainsKey(moduleId))
+            throw new ModuleManagementException("module-operation-in-progress");
     }
 
     internal static async ValueTask<object?> SerializePackageMutationAsync(EndpointFilterInvocationContext context,
@@ -442,7 +455,10 @@ internal static class ServerModuleManagementEndpoints
         try { return await action(); }
         catch (ModuleManagementException exception) { return Problem(exception.Code, exception.Status); }
         catch (ModulePackageException exception) { return Problem(exception.ProblemCode,
-            exception.ProblemCode is "module-package-source-invalid" ? 400
+            exception.ProblemCode is "module-package-plan-forbidden" ? 403
+                : exception.ProblemCode is "module-package-plan-not-found" ? 404
+                : exception.ProblemCode is "module-package-plan-expired" or "module-package-plan-already-applied" ? 409
+                : exception.ProblemCode is "module-package-source-invalid" ? 400
                 : exception.ProblemCode is "module-package-source-unconfigured" or "module-package-source-not-accepted" ? 404 : 503); }
         catch (Exception exception) when (exception is IOException or System.UnauthorizedAccessException)
         { return Problem("module-state-unavailable", 503); }

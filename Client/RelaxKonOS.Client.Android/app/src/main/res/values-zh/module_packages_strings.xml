@@ -1,0 +1,13 @@
+<resources>
+    <string name="module_packages_title">模块安装与更新</string>
+    <string name="module_packages_upload">上传 .rkmodule</string>
+    <string name="module_packages_search">搜索可信来源</string>
+    <string name="module_packages_preview">下载并预览</string>
+    <string name="module_packages_more">下一页</string>
+    <string name="module_packages_receipts">查询已提交操作</string>
+    <string name="module_packages_install_note">核对发布者、摘要及请求权限后，才安装或更新到所选版本。保留已有数据，可能需要重启服务器。</string>
+    <string name="module_packages_remove_note">卸载模块包并保留数据和网盘账号。请先禁用模块；服务端会检查依赖及重启要求。</string>
+    <string name="module_packages_stop">停止</string>
+    <string name="module_packages_restart">重启</string>
+    <string name="module_packages_remove">卸载</string>
+</resources>

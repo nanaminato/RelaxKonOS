@@ -84,4 +84,54 @@ class ServerModuleRepositoryTest {
             assertTrue(runCatching { references.read(owner) }.isFailure)
         } finally { directory.deleteRecursively() }
     }
+    @Test fun `remove previews omit target from desired set without applying`() = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("module-remove").toFile()
+        try {
+            val login = FakeGateway().apply { onLogin = { _, _, _ -> ApiResult.Success(loginSession()) } }
+            val removable = fact.copy(effectiveEnabled = false, desiredEnabled = false, allowedActions = setOf("Remove"))
+            var previews = 0
+            val gateway = object : RelaxKonGateway by login {
+                override suspend fun serverModules(serverUrl: String, accessToken: String) = ApiResult.Success(listOf(removable))
+                override suspend fun serverModulePlan(serverUrl: String, accessToken: String, body: JsonBody): ApiResult<ServerModulePlan> {
+                    val target = JSONObject(body.toByteArray().toString(Charsets.UTF_8))
+                    assertEquals("Remove", target.getString("action"))
+                    assertEquals(0, target.getJSONArray("enabledModuleIds").length())
+                    previews++
+                    return ApiResult.Success(ServerModulesWire.plan(JSONObject(plan.raw).put("target", target).toString()))
+                }
+            }
+            val session = AuthSession(gateway)
+            session.login(ServerConnectionIdentityRules.direct("https://example.test"), "alice", "pw".toCharArray()) {}
+            val owner = session.state.value as SessionState.Active
+            val repository = ServerModuleRepository(session, gateway, ServerModuleReferences(directory))
+            repository.read(owner)
+            assertTrue(repository.previewAction(owner, listOf(removable), setOf(removable.id), "Remove") is ApiResult.Success)
+            assertEquals(1, previews)
+            assertTrue(runCatching { repository.previewAction(owner, listOf(fact), setOf(fact.id), "Remove") }.isFailure)
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun `package references isolate owner and terminal cleanup frees capacity`() = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("package-references").toFile()
+        try {
+            val gateway = FakeGateway().apply { onLogin = { _, _, _ -> ApiResult.Success(loginSession()) } }
+            val session = AuthSession(gateway)
+            session.login(ServerConnectionIdentityRules.direct("https://example.test"), "alice", "pw".toCharArray()) {}
+            val owner = session.state.value as SessionState.Active
+            val references = ServerModuleReferences(directory)
+            repeat(70) { index ->
+                val id = java.util.UUID.randomUUID().toString()
+                val raw = JSONObject().put("planId", id).put("moduleId", "cloud-storage").put("version", "0.2.$index")
+                    .put("sourceId", "official").put("publisherId", "relaxkonos").put("artifactSha256", "a".repeat(64))
+                    .put("expiresAt", "2099-01-01T00:00:00Z").put("runtime", "module-host")
+                    .put("privileges", org.json.JSONArray()).put("appliedOperationId", JSONObject.NULL).toString()
+                references.savePackage(owner, ModulePackagesWire.plan(raw))
+                assertEquals(id, references.readPackages(owner).single().id)
+                assertTrue(references.readPackages(owner.copy(userName = "other")).isEmpty())
+                references.resolvePackage(owner, id)
+            }
+            assertTrue(references.readPackages(owner).isEmpty())
+        } finally { directory.deleteRecursively() }
+    }
+
 }

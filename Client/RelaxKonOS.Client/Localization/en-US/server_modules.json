@@ -165,7 +165,7 @@
     "server_modules.action.update": "Update",
     "server_modules.action.repair": "Repair",
     "server_modules.action.rollback": "Roll back",
-    "server_modules.action.remove": "Remove",
+    "server_modules.action.remove": "Preview uninstall",
     "server_modules.action.preview": "Preview",
     "server_modules.action.unavailable": "Unavailable",
     "server_modules.action.admission_unknown": "The server did not return admission for this action.",
@@ -333,6 +333,14 @@
     "server_modules.package_activated": "The module version is active.",
     "server_modules.problem.module_host_update_rolled_back": "The new version failed to start. The previous version is running.",
     "server_modules.problem.module_host_rollback_start_failed": "The new and previous versions both failed to start.",
-    "server_modules.problem.module_host_cleanup_unconfirmed": "Module process cleanup could not be confirmed."
+    "server_modules.problem.module_host_cleanup_unconfirmed": "Module process cleanup could not be confirmed.",
+    "server_modules.action.remove_hint": "Uninstall the selected independent module. Business data, cloud accounts and remote files are retained. Review the plan before confirming.",
+    "server_modules.action.remove_single": "Select one module to uninstall.",
+    "server_modules.plan.remove_data": "This uninstalls the module package, not just disabling it or releasing memory. Business data, cloud account settings and remote files are retained. Dependent modules or active work may block uninstall.",
+    "server_modules.problem.module_bundled_not_removable": "Bundled modules cannot be uninstalled independently.",
+    "server_modules.problem.module_remove_disable_first": "Disable the module before uninstalling it.",
+    "server_modules.problem.module_remove_restart_required": "Restart the server to finish disabling this module before uninstalling it.",
+    "server_modules.problem.module_remove_recovery_required": "Module removal needs recovery before another change can proceed.",
+    "server_modules.problem.module_package_plan_target_changed": "The package target changed. Discard this plan and prepare a new one."
   }
 }

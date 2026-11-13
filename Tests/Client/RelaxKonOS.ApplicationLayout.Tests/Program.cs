@@ -25,7 +25,7 @@ using RelaxKonOS.Protocol.Workspace.SystemStyles;
 
 var appBuilder = AppBuilder.Configure<LayoutApp>().UseSkia();
 // The focused interaction fixture can run in Linux containers without the desktop Inter font.
-if (args.Contains("--explorer-address-only") && OperatingSystem.IsLinux())
+if ((args.Contains("--explorer-address-only") || args.Contains("--modules-only")) && OperatingSystem.IsLinux())
     appBuilder.With(new Avalonia.Media.FontManagerOptions { DefaultFamilyName = "DejaVu Sans" });
 appBuilder.UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
 using var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());

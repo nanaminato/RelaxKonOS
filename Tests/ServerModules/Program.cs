@@ -103,6 +103,31 @@ if (args is ["--module-host-checks"])
     return;
 }
 
+if (args is ["--module-lifecycle-checks"])
+{
+    void VerifyLifecycle(bool passed, string message)
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    }
+    ModuleManagementChecks.Run(VerifyLifecycle);
+    ModuleRemovalChecks.Run(VerifyLifecycle);
+    await ModuleManagementHttpChecks.RunAsync(VerifyLifecycle);
+    await ModulePackageHttpChecks.RunAsync(VerifyLifecycle);
+    await ModulePackageHttpChecks.RunAsync(VerifyLifecycle, isolated: true);
+    return;
+}
+
+if (args is ["--module-removal-checks"])
+{
+    ModuleRemovalChecks.Run((passed, message) =>
+    {
+        Console.WriteLine($"{(passed ? "PASS" : "FAIL")}: {message}");
+        if (!passed) throw new InvalidOperationException(message);
+    });
+    return;
+}
+
 if (args is ["--module-package-checks"])
 {
     void Verify(bool passed, string message)
@@ -296,6 +321,7 @@ static IConfiguration Config(params (string Key, string? Value)[] values) =>
 var empty = new ConfigurationBuilder().Build();
 var defaults = ServerModules.Create(empty);
 ModuleManagementChecks.Run(Check);
+ModuleRemovalChecks.Run(Check);
 ModulePolicyManagementChecks.Run(Check);
 await ModuleRecoveryChecks.RunAsync(Check);
 await ModuleRecoveryHostChecks.RunAsync(Check);

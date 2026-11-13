@@ -26,7 +26,7 @@ internal sealed class ModuleHealthMonitor(ServerModules modules, IHostApplicatio
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             ServerModuleHealthPageDto report;
-            try { report = await modules.CheckHealthAsync(stoppingToken); }
+            try { report = await modules.CheckHealthAsync(environment.ContentRootPath, stoppingToken); }
             catch (Exception error) when (error is not OperationCanceledException)
             {
                 logger.LogWarning(error, "Module health probe was unavailable.");
