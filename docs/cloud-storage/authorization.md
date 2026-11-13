@@ -12,13 +12,13 @@
 
 - `GET /authorization/providers`：配置是否就绪。
 - `PUT /authorization/configuration/{protocol}`：仅管理员，写入应用配置。密钥只写不读。
-- `POST /authorization/sessions`：名称、provider、是否写入。
+- `POST /authorization/sessions`：名称、provider、是否写入，以及可选的 `connectionId`。传入时只允许更新当前用户同 provider 的既有连接，保存时检查连接版本。
 - `GET /authorization/sessions/{id}`：仅会话拥有者，查询/轮询。
 - `DELETE /authorization/sessions/{id}`：仅拥有者取消尚未完成会话。
 
 会话默认 10 分钟，设备码可更早到期；每用户最多 4 个进行中会话，全模块最多 256 条保留记录。状态为 `pending/completed/denied/expired/failed/cancelled`。配置更新令进行中会话失效，旧连接继续使用其原凭据。取消已完成会话不会删除刚创建的连接；删除连接与上游撤销授权是不同操作。
 
-应用配置和连接刷新令牌使用模块现有 AES-GCM 密钥加密，存于模块数据目录；必须保护整个数据目录及备份。加密文件和解密密钥在同一主机，不抵御服务器管理员或主机失陷。授权会话仅保存在进程内，模块重启需重新授权；已保存的连接可继续刷新令牌。错误响应不包含上游 token 响应正文。
+应用配置和连接刷新令牌使用模块现有 AES-GCM 密钥加密，存于模块数据目录；必须保护整个数据目录及备份。加密文件和解密密钥在同一主机，不抵御服务器管理员或主机失陷。授权会话仅保存在进程内，模块重启需重新授权；已保存的连接可继续刷新令牌。上游明确拒绝连接凭证时，模块返回 HTTP 422 和问题类型 `https://relaxkonos.app/problems/cloud-storage-credentials-rejected`。错误响应不包含上游 token 响应正文。
 
 ### 权限与运维边界
 

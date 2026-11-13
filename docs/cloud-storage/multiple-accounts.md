@@ -2,7 +2,7 @@
 
 A user may add several Baidu Netdisk connections. Authorize each account separately and give each connection a recognizable name. For Baidu, select the intended Baidu account on the provider's verification page before approving each device code.
 
-Every successful authorization creates a new connection. It does not replace an existing connection, even when the provider and display name are identical. Reauthorizing the same provider account also creates a separate connection; the application does not claim to verify account uniqueness or infer an email address from a display name.
+Authorization from **Add connection** creates a new connection even when the provider and display name are identical. Authorization from **Replace credentials** updates the explicitly selected connection by ID. The provider account is chosen on the verification page.
 
 ## Identity and isolation
 

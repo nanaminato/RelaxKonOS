@@ -321,6 +321,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                 AmazonServiceException aws => aws.StatusCode,
                 _ => null,
             };
+            if (CredentialsRejected(error)) return CredentialProblem();
             return status switch
             {
                 HttpStatusCode.NotFound => Results.NotFound(),
@@ -331,6 +332,17 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             };
         }
     }
+
+    internal static bool CredentialsRejected(Exception error) => error switch
+    {
+        HttpRequestException { StatusCode: HttpStatusCode.Unauthorized } => true,
+        AmazonServiceException aws => aws.StatusCode == HttpStatusCode.Unauthorized
+            || aws.ErrorCode is "ExpiredToken" or "InvalidToken" or "InvalidAccessKeyId" or "SignatureDoesNotMatch",
+        _ => false,
+    };
+
+    internal static IResult CredentialProblem() => Results.Problem(statusCode: 422,
+        type: CloudStorageApi.CredentialsRejectedProblem, title: CloudStorageApi.CredentialsRejected);
 
     private async Task ChangeAsync(IModuleHostContext context, Func<StoredConnection[], StoredConnection[]> change, CancellationToken ct)
     {

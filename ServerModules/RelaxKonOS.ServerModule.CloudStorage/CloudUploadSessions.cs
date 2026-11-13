@@ -20,7 +20,7 @@ internal sealed class CloudUploadSessions(string dataPath)
 
     private sealed record Session(string Id, Guid Owner, Guid Connection, string Revision, string Key, string Path,
         long Length, DateTimeOffset? LastModifiedUtc, long Offset, DateTimeOffset ExpiresAt,
-        string State = "receiving", int FailureStatus = 0);
+        string State = "receiving", int FailureStatus = 0, bool CredentialsRejected = false);
 
     internal async Task<IResult> CreateAsync(Guid owner, Guid connection, string revision, string key, string path,
         long length, DateTimeOffset? lastModifiedUtc, CancellationToken ct)
@@ -118,7 +118,9 @@ internal sealed class CloudUploadSessions(string dataPath)
             }
 
             if (session.State == "complete") return Results.Ok(Entry(session));
-            if (session.State == "failed") return Problem(session.FailureStatus, "cloud-upload-publish-failed");
+            if (session.State == "failed") return session.CredentialsRejected
+                ? CloudStorageModule.CredentialProblem()
+                : Problem(session.FailureStatus, "cloud-upload-publish-failed");
             if (session.State == "publishing")
                 return _publishing.ContainsKey(id) ? Results.Accepted() : Problem(409, "cloud-upload-publish-unconfirmed");
             if (session.Offset != session.Length) return Problem(409, FileUploadProblemCodes.Incomplete);
@@ -138,6 +140,7 @@ internal sealed class CloudUploadSessions(string dataPath)
         CancellationTokenSource cancellation)
     {
         var status = 0;
+        var credentialsRejected = false;
         try
         {
             await using var file = File.OpenRead(Data(session.Id));
@@ -152,6 +155,7 @@ internal sealed class CloudUploadSessions(string dataPath)
         }
         catch (Exception error)
         {
+            credentialsRejected = CloudStorageModule.CredentialsRejected(error);
             var upstream = error switch
             {
                 HttpRequestException http => http.StatusCode,
@@ -167,7 +171,7 @@ internal sealed class CloudUploadSessions(string dataPath)
             if (cancellation.IsCancellationRequested && !_stopping.IsCancellationRequested) Remove(session);
             else
             {
-                await SaveAsync(session with { State = status == 0 ? "complete" : "failed", FailureStatus = status }, default);
+                await SaveAsync(session with { State = status == 0 ? "complete" : "failed", FailureStatus = status, CredentialsRejected = credentialsRejected }, default);
                 File.Delete(Data(session.Id));
             }
         }

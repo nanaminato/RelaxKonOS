@@ -24,7 +24,7 @@ public sealed partial class CloudStorageModule
         internal string? Url, UserCode, DeviceCode, QrCodeUrl;
         internal int Interval = 5;
         internal DateTimeOffset NextPoll;
-        internal Guid? ConnectionId;
+        internal Guid? ConnectionId, ReplaceConnectionId, ReplaceRevision;
         internal CloudAuthorizationSessionDto Describe() => new(Id, Status, Url, UserCode, Expires, Interval, ConnectionId, QrCodeUrl);
     }
 
@@ -84,8 +84,14 @@ public sealed partial class CloudStorageModule
                 SweepAuthorization();
                 if (!_authorizationConfigurations.TryGetValue(request.Protocol, out var config)) return Results.Conflict();
                 if (_authorizationSessions.Count >= 256 || _authorizationSessions.Values.Count(s => s.Owner == user && s.Status == "pending") >= 4) return Results.StatusCode(429);
+                var replacement = request.ConnectionId is { } id
+                    ? Volatile.Read(ref _connections).FirstOrDefault(item =>
+                        item.Id == id && item.Owner == user && item.Settings.Protocol == request.Protocol)
+                    : null;
+                if (request.ConnectionId is not null && replacement is null) return Results.NotFound();
                 var session = new AuthorizationSession { Id = Guid.NewGuid(), Owner = user, Revision = config.Revision,
                     Protocol = request.Protocol, Name = request.Name.Trim(), Writes = request.EnableWrites,
+                    ReplaceConnectionId = replacement?.Id, ReplaceRevision = replacement?.Revision,
                     Expires = DateTimeOffset.UtcNow.AddMinutes(10) };
                 await StartBaiduAuthorizationAsync(session, config, http.RequestAborted);
                 _authorizationSessions.Add(session.Id, session);
@@ -124,8 +130,15 @@ public sealed partial class CloudStorageModule
     {
         var settings = Validate(new CloudConnectionRequest(s.Name, s.Protocol, "", null, null, null,
             config.ClientId, config.Secret, refresh, EnableWrites: s.Writes), false);
-        var connection = new StoredConnection(Guid.NewGuid(), s.Owner, settings, Guid.NewGuid());
-        await ChangeAsync(_context, items => items.Length >= 128 ? throw new ArgumentException("connection limit") : [..items, connection], ct);
+        var connection = new StoredConnection(s.ReplaceConnectionId ?? Guid.NewGuid(), s.Owner, settings, Guid.NewGuid());
+        await ChangeAsync(_context, items =>
+        {
+            if (s.ReplaceConnectionId is null)
+                return items.Length >= 128 ? throw new ArgumentException("connection limit") : [.. items, connection];
+            if (!items.Any(item => item.Id == connection.Id && item.Owner == s.Owner && item.Revision == s.ReplaceRevision))
+                throw new InvalidOperationException("cloud-storage-connection-changed");
+            return items.Select(item => item.Id == connection.Id ? connection : item).ToArray();
+        }, ct);
         s.ConnectionId = connection.Id; s.Status = "completed";
     }
 }

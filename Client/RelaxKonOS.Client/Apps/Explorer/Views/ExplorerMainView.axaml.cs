@@ -85,10 +85,24 @@ public partial class ExplorerMainView : UserControl
     private ExplorerClient? _cloudClient;
     private bool _hasCloudStorage;
     internal void ConfigureCloudTransfers(Func<ExplorerPickerOptions, Task<string[]?>> pickHostFiles,
-        Func<StartFileOperationRequest, Action<FileOperationDto>, Task> submit)
+        Func<StartFileOperationRequest, Action<FileOperationDto>, Action?, Task> submit)
     {
         CloudBrowser.PickHostFiles = pickHostFiles;
         CloudBrowser.SubmitTransfer = submit;
+    }
+
+    internal event Action<ExplorerClient, CloudConnectionDto?, bool>? CloudConfigurationRequested;
+    internal event Action? CloudSessionReset;
+
+    internal void CloudConnectionSaved(Guid id, CancellationToken ct)
+    {
+        if (_cloudClient is not { } client) return;
+        if (CloudBrowser.IsVisible) _ = CloudBrowser.ConnectionSavedAsync(id);
+        else
+        {
+            CloudBrowser.InvalidateConnection(id);
+            _ = DiscoverCloudStorageAsync(client, ct);
+        }
     }
 
     internal bool IsCloudStorageOpen => CloudBrowser.IsVisible;
@@ -135,6 +149,7 @@ public partial class ExplorerMainView : UserControl
 
     internal void ResetCloudStorage()
     {
+        CloudSessionReset?.Invoke();
         CloudBrowser.Reset();
         _cloudClient = null;
         _hasCloudStorage = false;
@@ -180,6 +195,10 @@ public partial class ExplorerMainView : UserControl
             if (ViewModel is not { IsBusy: false } vm) return;
             if (card.ConnectionId is { } id) await OpenCloudStorageAsync(id);
             else if (card.Path is { } path) await vm.NavigateToAsync(path);
+        };
+        CloudBrowser.ConfigurationRequested += (source, rejected) =>
+        {
+            if (_cloudClient is { } client) CloudConfigurationRequested?.Invoke(client, source, rejected);
         };
         CloudBrowser.CloseRequested += (_, _) => CloseCloudStorage();
         CloudBrowser.ConnectionsChanged += ApplyCloudAccounts;

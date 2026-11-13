@@ -24,7 +24,17 @@ internal sealed partial class OAuthDriveConnector(string token, Func<Uri, bool, 
         using var client = transport(uri, false);
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (response.StatusCode == HttpStatusCode.BadRequest)
+        {
+            try
+            {
+                var failure = await ReadJsonAsync(response, ct);
+                ThrowIfRefreshRejected(failure);
+            }
+            catch (JsonException) { }
+        }
         var root = await JsonAsync(response, ct);
+        ThrowIfRefreshRejected(root);
         var access = Read(root, "access_token");
         if (string.IsNullOrEmpty(access) || access.Length > 8192 || access.Any(char.IsControl)
             || Number(root, "expires_in") is not > 0)
@@ -33,6 +43,12 @@ internal sealed partial class OAuthDriveConnector(string token, Func<Uri, bool, 
         if (refresh.Length is 0 or > 8192 || refresh.Any(char.IsControl))
             throw new InvalidDataException("cloud-oauth-refresh");
         return (access, refresh, DateTimeOffset.UtcNow.AddSeconds(Math.Min(Number(root, "expires_in")!.Value, 86400)));
+    }
+
+    private static void ThrowIfRefreshRejected(JsonElement result)
+    {
+        if (Read(result, "error") is "invalid_grant" or "invalid_client" or "invalid_refresh_token")
+            throw new HttpRequestException("cloud-oauth-refresh-rejected", null, HttpStatusCode.Unauthorized);
     }
 
     internal async Task<CloudDirectoryDto> ListAsync(string reference, string? cursor, CancellationToken ct)
@@ -128,9 +144,14 @@ internal sealed partial class OAuthDriveConnector(string token, Func<Uri, bool, 
         return root;
     }
 
-    private static async Task<JsonElement> JsonAsync(HttpResponseMessage response, CancellationToken ct)
+    private static Task<JsonElement> JsonAsync(HttpResponseMessage response, CancellationToken ct)
     {
         response.EnsureSuccessStatusCode();
+        return ReadJsonAsync(response, ct);
+    }
+
+    private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response, CancellationToken ct)
+    {
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var buffer = new MemoryStream();
         var bytes = new byte[16384];

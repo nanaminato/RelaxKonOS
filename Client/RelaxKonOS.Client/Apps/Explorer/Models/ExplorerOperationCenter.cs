@@ -19,6 +19,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
     private readonly Dictionary<Guid, CancellationTokenSource> _localTransfers = [];
     public event Action<FileOperationDto>? Completed;
     private readonly Dictionary<Guid, Action<FileOperationDto>> _callbacks = [];
+    private readonly Dictionary<Guid, Action> _cloudCredentialCallbacks = [];
     private readonly HashSet<Guid> _dismissed = [];
     private string? _session;
     private bool _polling;
@@ -58,6 +59,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         _sessionCancellation = new();
         Jobs.Clear();
         _callbacks.Clear();
+        _cloudCredentialCallbacks.Clear();
         _dismissed.Clear();
         _session = current;
         Error = string.Empty;
@@ -145,7 +147,10 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         }
     }
 
-    public async Task SubmitAsync(StartFileOperationRequest request, Action<FileOperationDto> completed)
+    public Task SubmitAsync(StartFileOperationRequest request, Action<FileOperationDto> completed) =>
+        SubmitAsync(request, completed, null);
+
+    internal async Task SubmitAsync(StartFileOperationRequest request, Action<FileOperationDto> completed, Action? credentialsRejected)
     {
         BindSession();
         var session = _session;
@@ -153,6 +158,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         ShowRequested?.Invoke();
         _pendingRequests++;
         _callbacks[request.RequestId] = completed;
+        if (credentialsRejected is not null) _cloudCredentialCallbacks[request.RequestId] = credentialsRejected;
         try
         {
             var dto = await client.StartOperationAsync(request, _sessionCancellation.Token);
@@ -164,6 +170,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         catch (RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException ex) when (ex.Status is >= 400 and < 500)
         {
             _callbacks.Remove(request.RequestId);
+            _cloudCredentialCallbacks.Remove(request.RequestId);
             Error = ex.Message;
             throw;
         }
@@ -205,6 +212,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         {
             _dismissed.Add(job.Snapshot.Id);
             _callbacks.Remove(job.Snapshot.RequestId);
+            _cloudCredentialCallbacks.Remove(job.Snapshot.RequestId);
             Jobs.Remove(job);
         }
         RefreshAggregate();
@@ -223,11 +231,16 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         var card = Jobs.FirstOrDefault(j => j.Snapshot.Id == dto.Id);
         if (card is not null && dto.Revision < card.Snapshot.Revision) return;
         var wasTerminal = card?.Snapshot.IsTerminal == true;
+        var previousIssue = card?.Snapshot.Issue?.Id;
         if (card is null) { card = new(this, dto); Jobs.Add(card); }
         else card.Snapshot = dto;
         card.Error = string.Empty;
+        if (dto.Issue is { Code: CloudStorageApi.CredentialsRejected } issue && issue.Id != previousIssue
+            && _cloudCredentialCallbacks.TryGetValue(dto.RequestId, out var rejected))
+            rejected();
         if (dto.IsTerminal)
         {
+            _cloudCredentialCallbacks.Remove(dto.RequestId);
             if (_callbacks.Remove(dto.RequestId, out var callback)) callback(dto);
             if (!wasTerminal) Completed?.Invoke(dto);
             _dismissed.Add(dto.Id);
@@ -268,6 +281,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
                         {
                             job.Missing = true;
                             _callbacks.Remove(job.Snapshot.RequestId);
+                            _cloudCredentialCallbacks.Remove(job.Snapshot.RequestId);
                         }
                     }
                 }
@@ -415,7 +429,8 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     public bool CanReplace => Snapshot.Issue?.Choices.Contains(FileOperationDecision.Replace) == true;
     public bool CanKeepBoth => Snapshot.Issue?.Choices.Contains(FileOperationDecision.KeepBoth) == true;
     public bool CanRetry => Snapshot.Issue?.Choices.Contains(FileOperationDecision.Retry) == true;
-    public bool CanApplyToAll => Snapshot.Issue?.Code is not ("archive-password-required" or "archive-password-invalid");
+    public bool CanApplyToAll => Snapshot.Issue?.Code is not
+        ("archive-password-required" or "archive-password-invalid" or CloudStorageApi.CredentialsRejected);
     public string RetryLabel => LocalizedText.Get(Snapshot.Issue?.Code is "archive-password-required" or "archive-password-invalid"
         ? "explorer.archive.password_retry" : Snapshot.Issue?.Code == "access-denied" && Snapshot.Kind is not (FileOperationKind.Compress or FileOperationKind.Extract)
         ? "explorer.operations.retry_access" : "explorer.operations.retry");

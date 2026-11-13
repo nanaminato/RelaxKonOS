@@ -50,6 +50,19 @@ internal static class CloudStorageChecks
             var listed = await client.GetStringAsync("/cloud/connections");
             check(listed.Contains("DAV", StringComparison.Ordinal) && !listed.Contains("password", StringComparison.Ordinal),
                 "connection discovery never returns the credential");
+            upstream.DavListingError = HttpStatusCode.Unauthorized;
+            using (var rejected = await client.GetAsync(route + "/entries"))
+            {
+                var problem = await rejected.Content.ReadFromJsonAsync<RelaxKonOS.Protocol.Common.ProblemDetails>();
+                check(rejected.StatusCode == HttpStatusCode.UnprocessableEntity
+                    && problem?.Type == CloudStorageApi.CredentialsRejectedProblem,
+                    "WebDAV credential rejection is distinguishable from RelaxKonOS authentication");
+            }
+            upstream.DavListingError = HttpStatusCode.Forbidden;
+            using (var forbidden = await client.GetAsync(route + "/entries"))
+                check(forbidden.StatusCode == HttpStatusCode.Forbidden,
+                    "ordinary upstream permission failures are not treated as expired credentials");
+            upstream.DavListingError = null;
             var first = await client.GetFromJsonAsync<CloudDirectoryDto>(route + "/entries");
             var next = await client.GetFromJsonAsync<CloudDirectoryDto>(route + "/entries?cursor=" + first!.NextCursor);
             check(first.Entries.Count == 200 && next?.Entries.Count == 6 && next.NextCursor is null
@@ -75,7 +88,7 @@ internal static class CloudStorageChecks
                 check(conflict.StatusCode == HttpStatusCode.Conflict, "overwrite conflicts have a stable response");
 
             await VerifyLargeUploadAsync(client, route, check);
-            await CloudFileJobChecks.RunAsync(client, owner, connection.Id, file.Reference, root, check);
+            await CloudFileJobChecks.RunAsync(client, owner, connection.Id, file.Reference, root, check, rejected => upstream.RejectDavDownload = rejected);
             await VerifyPublishCancellationAsync(client, route, upstream, check);
 
             foreach (var (hostname, region) in new[]
@@ -126,6 +139,16 @@ internal static class CloudStorageChecks
                 using (var conflict = await UploadAsync(client, writerRoute, "new.txt", check))
                     check(conflict.StatusCode == HttpStatusCode.Conflict, $"{protocol} rejects an existing destination");
             }
+            var davWriter = await CreateAsync(client, dav with { EnableWrites = true });
+            upstream.RejectDavUpload = true;
+            using (var rejected = await UploadAsync(client, $"/cloud/connections/{davWriter.Id:D}", "new.txt", check))
+            {
+                var problem = await rejected.Content.ReadFromJsonAsync<RelaxKonOS.Protocol.Common.ProblemDetails>();
+                check(rejected.StatusCode == HttpStatusCode.UnprocessableEntity
+                    && problem?.Type == CloudStorageApi.CredentialsRejectedProblem,
+                    "a staged upload preserves provider credential rejection through commit polling");
+            }
+            upstream.RejectDavUpload = false;
             check(!OAuthDriveConnector.AllowedBaiduDownload(new Uri("https://baidupcs.com.attacker.invalid/file"))
                 && !OAuthDriveConnector.AllowedBaiduDownload(new Uri("http://d.pcs.baidu.com/file")),
                 "Baidu downloads reject arbitrary domains and insecure redirect targets");
@@ -298,6 +321,9 @@ internal static class CloudStorageChecks
     {
         private bool _davUploaded;
         private bool _baiduUploaded;
+        internal HttpStatusCode? DavListingError { get; set; }
+        internal bool RejectDavDownload { get; set; }
+        internal bool RejectDavUpload { get; set; }
         internal bool PauseNextDavUpload { get; set; }
         internal TaskCompletionSource DavUploadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource DavUploadCancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -309,6 +335,7 @@ internal static class CloudStorageChecks
             {
                 if (request.Method.Method == "PROPFIND")
                 {
+                    if (DavListingError is { } status) return new HttpResponseMessage(status);
                     var files = Enumerable.Range(0, 205).Select(index => DavItem($"/root/file-{index:D3}", false));
                     var responses = string.Concat(files.Append(DavItem("/root/space%20name.txt", false))
                         .Append(DavItem("/outside.txt", false)).Append(DavItem("/root/", true))
@@ -319,6 +346,7 @@ internal static class CloudStorageChecks
                     return new HttpResponseMessage(HttpStatusCode.Created);
                 if (request.Method == HttpMethod.Put)
                 {
+                    if (RejectDavUpload) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
                     if (PauseNextDavUpload)
                     {
                         PauseNextDavUpload = false;
@@ -353,6 +381,8 @@ internal static class CloudStorageChecks
                         "WebDAV conflict cleanup deletes only staging");
                     return new HttpResponseMessage(HttpStatusCode.NoContent);
                 }
+                if (request.Method == HttpMethod.Get && RejectDavDownload)
+                    return new HttpResponseMessage(HttpStatusCode.Unauthorized);
                 if (uri.AbsolutePath == "/root/large.bin")
                     return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(LargePayload()) };
                 check(uri.AbsolutePath == "/root/space%20name.txt", "WebDAV download preserves the confined encoded path");

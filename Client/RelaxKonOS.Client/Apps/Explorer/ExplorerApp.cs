@@ -142,6 +142,44 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.explorer.display_name"), view,
             bounds: new Rect(80, 60, 960, 640),
             iconGlyph: Manifest.IconGlyph);
+        var cloudConfigurations = new Dictionary<Guid, (ManagedWindow Window, CloudConnectionView Form)>();
+        void CloseCloudConfigurations()
+        {
+            foreach (var configuration in cloudConfigurations.Values.ToArray())
+                context.WindowManager.ForceClose(configuration.Window);
+        }
+        view.CloudSessionReset += CloseCloudConfigurations;
+        view.CloudConfigurationRequested += (cloudClient, source, rejected) =>
+        {
+            var key = source?.Id ?? Guid.Empty;
+            if (cloudConfigurations.TryGetValue(key, out var existing))
+            {
+                if (rejected) existing.Form.ShowCredentialWarning();
+                else context.WindowManager.Focus(existing.Window);
+                return;
+            }
+            var form = new CloudConnectionView();
+            form.Initialize(cloudClient, source, rejected);
+            var title = source is null ? LocalizedText.Get("explorer.cloud.add")
+                : LocalizedText.Format("explorer.cloud.edit_named", source.Name);
+            var configuration = context.ShowWindow(title,
+                form, bounds: new Rect(0, 0, 560, 620), canMaximize: false);
+            cloudConfigurations.Add(key, (configuration, form));
+            form.CloseRequested += () => context.WindowManager.Close(configuration);
+            form.Saved += id =>
+            {
+                context.WindowManager.Close(configuration);
+                view.CloudConnectionSaved(id, cloudDiscovery.Token);
+            };
+            void ConfigurationClosed(object? sender, ManagedWindow closedWindow)
+            {
+                if (!ReferenceEquals(closedWindow, configuration)) return;
+                context.WindowManager.WindowClosed -= ConfigurationClosed;
+                cloudConfigurations.Remove(key);
+                form.Stop();
+            }
+            context.WindowManager.WindowClosed += ConfigurationClosed;
+        };
         if (operations is not null)
             view.ConfigureCloudTransfers(options => context.ShowDialogAsync<string[]>(window,
                 LocalizedText.Get(options.Mode == ExplorerPickerMode.SaveFile
@@ -170,6 +208,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
             if (operations is not null) operations.Completed -= RefreshAfterOperation;
             session.StateChanged -= InvalidateSessionCache;
             session.StateChanged -= RefreshCloudSession;
+            CloseCloudConfigurations();
             cloudDiscovery.Cancel();
             cloudDiscovery.Dispose();
             viewModel.Dispose();

@@ -47,6 +47,7 @@ internal static class CloudBrowserLayoutChecks
         // selection moves; the entries themselves are the account's answer, not the view's cache.
         void Fill()
         {
+            Set(view, "_hasDirectory", true);
             entries.Clear();
             entries.Add(new(new("ref-photos", "Photos", true, null, null)));
             entries.Add(new(new("ref-2026", "2026", true, null, null)));
@@ -97,12 +98,15 @@ internal static class CloudBrowserLayoutChecks
             return Task.FromResult<string[]?>(options.Mode == ExplorerPickerMode.SaveFile
                 ? ["/server/downloads/annual-report.pdf"] : ["/server/docs/a.txt", "/server/docs/b.txt"]);
         }));
-        SetProperty(view, "SubmitTransfer", (Func<StartFileOperationRequest, Action<FileOperationDto>, Task>)((request, _) =>
+        SetProperty(view, "SubmitTransfer", (Func<StartFileOperationRequest, Action<FileOperationDto>, Action?, Task>)((request, _, _) =>
         {
             submitted = request;
             return Task.CompletedTask;
         }));
         Invoke(view, "UpdateButtons");
+        Check(Equals(view.FindControl<Button>("UploadButton")!.Content, LocalizedText.Get("common.upload"))
+            && Equals(view.FindControl<Button>("DownloadButton")!.Content, LocalizedText.Get("common.download")),
+            "Cloud transfer buttons use concise labels");
         view.FindControl<Button>("UploadButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         Check(picked is { Mode: ExplorerPickerMode.OpenFile, AllowMultiple: true }
             && submitted is { Kind: FileOperationKind.CloudUpload, Cloud: { Reference: "ref-2026" } }
@@ -116,6 +120,23 @@ internal static class CloudBrowserLayoutChecks
             && submitted.Cloud.ConnectionId == accounts[0].Id
             && submitted.Items.Single().DestinationPath == "/server/downloads/annual-report.pdf",
             "Cloud download submits a cloud object reference and the selected host destination");
+        var grid = view.FindControl<DataGrid>("CloudEntries")!;
+        grid.SelectedItem = entries[3];
+        Pump(host);
+        var reportRow = grid.GetVisualDescendants().OfType<DataGridRow>()
+            .Single(row => ReferenceEquals(row.DataContext, entries[2]));
+        reportRow.RaiseEvent(new Avalonia.Input.ContextRequestedEventArgs
+        {
+            RoutedEvent = Avalonia.Input.InputElement.ContextRequestedEvent,
+        });
+        var menu = grid.ContextMenu!;
+        submitted = null;
+        Check(menu.IsOpen && ReferenceEquals(grid.SelectedItem, entries[2])
+            && Equals(((MenuItem)menu.Items[0]!).Header, LocalizedText.Get("common.download")),
+            "Cloud row context menu selects the requested file and offers download");
+        ((MenuItem)menu.Items[0]!).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+        Check(submitted?.Cloud?.Reference == "ref-report", "Cloud context download uses the requested row");
+        menu.Close();
         Set(view, "_client", null);
         Pump(host);
 
@@ -145,38 +166,34 @@ internal static class CloudBrowserLayoutChecks
         appearance.Apply(ThemeKind.Light, AppearancePreferencesDto.Default, RelaxKonOS.Protocol.Workspace.SystemStyles.SystemStyleIds.WindowsLike);
         Pump(host);
 
-        // The connection form is the other half of the workspace; it must fit its own window.
-        Invoke(view, "ShowForm", new object?[] { null });
+        var form = new CloudConnectionView();
+        Invoke(form, "Initialize", new ExplorerClient(http, null!, null!), null, false);
+        host.Content = form;
         Pump(host);
-        var form = view.FindControl<Control>("ConnectionForm")!;
-        Check(form.IsVisible && form.Bounds.Width > 300, "The connection form opens beside the list");
-        var title = view.FindControl<TextBlock>("FormTitle")!;
-        var titleTop = title.TranslatePoint(default, form)!.Value.Y;
-        Check(titleTop >= 10 && title.Bounds.Height >= 24,
-            $"The form title keeps its own space above the fields, saw top {titleTop:0.#} height {title.Bounds.Height:0.#}");
-        Check(view.FindControl<TextBlock>("ProtocolHint")!.Text?.Length > 0, "The form states what the chosen provider needs");
+        Check(form.Bounds.Width > 300 && form.Bounds.Height > 200, "The cloud connection form measures independently");
+        Check(form.FindControl<TextBlock>("ProtocolHint")!.Text?.Length > 0, "The form states what the chosen provider needs");
         using (var bitmap = new RenderTargetBitmap(new PixelSize(980, 640)))
         {
-            bitmap.Render(view);
+            bitmap.Render(form);
             bitmap.Save(Path.Combine(output, "CloudBrowser-form.png"), PngBitmapEncoderOptions.Default);
         }
 
         // An OAuth provider states authorization instead of an endpoint, and keeps the write switch
         // reachable — the authorization request already carries it.
-        var protocol = view.FindControl<ComboBox>("Protocol")!;
+        var protocol = form.FindControl<ComboBox>("Protocol")!;
         protocol.SelectedIndex = 2;
         Pump(host);
-        Check(view.FindControl<Border>("ServerSection")!.IsVisible == false,
+        Check(form.FindControl<Border>("ServerSection")!.IsVisible == false,
             "An OAuth provider removes the endpoint group instead of leaving an empty frame");
-        Check(view.FindControl<CheckBox>("EnableWrites")!.IsVisible,
+        Check(form.FindControl<CheckBox>("EnableWrites")!.IsVisible,
             "Write access stays reachable outside the credentials group");
-        Check(view.FindControl<Button>("AuthorizeButton")!.IsVisible,
+        Check(form.FindControl<Button>("AuthorizeButton")!.IsVisible,
             "An OAuth provider offers authorization instead of a stored password");
-        Check(view.FindControl<TextBlock>("FooterHint")!.IsVisible,
+        Check(form.FindControl<TextBlock>("FooterHint")!.IsVisible,
             "The footer states where the connection comes from while authorization owns the action");
         using (var bitmap = new RenderTargetBitmap(new PixelSize(980, 640)))
         {
-            bitmap.Render(view);
+            bitmap.Render(form);
             bitmap.Save(Path.Combine(output, "CloudBrowser-form-baidu.png"), PngBitmapEncoderOptions.Default);
         }
         host.Content = null;

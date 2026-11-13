@@ -12,7 +12,7 @@ using RelaxKonOS.Server.UserExecution;
 internal static class CloudFileJobChecks
 {
     internal static async Task RunAsync(HttpClient client, Guid owner, Guid connection, string reference, string root,
-        Action<bool, string> check)
+        Action<bool, string> check, Action<bool> rejectDownload)
     {
         using var services = new ServiceCollection()
             .AddSingleton<IHostFileAuthorizationService, NoElevation>()
@@ -44,6 +44,19 @@ internal static class CloudFileJobChecks
             && await File.ReadAllTextAsync(destination, timeout.Token) == "file-content"
             && downloaded.CurrentBytes == "file-content".Length && downloaded.CurrentTotalBytes == "file-content".Length,
             $"Cloud file job writes provider bytes to the Server and reports measured progress ({downloaded.State}: {downloaded.Issue?.Message})");
+
+        var retryDestination = Path.Combine(serverDirectory, "retry.txt");
+        rejectDownload(true);
+        var retry = jobs.Start(key, principal, new(Guid.NewGuid(), FileOperationKind.CloudDownload,
+            [new("space name.txt", retryDestination)], Cloud: new(connection, reference)));
+        var credentials = (await Wait(retry.Id, result => result.Issue is not null)).Issue
+            ?? throw new InvalidOperationException("Missing cloud credential issue.");
+        check(credentials.Code == CloudStorageApi.CredentialsRejected && !File.Exists(retryDestination),
+            "cloud job waits for credential recovery before writing the destination");
+        rejectDownload(false);
+        jobs.Decide(key, retry.Id, new(credentials.Id, FileOperationDecision.Retry));
+        check((await Finish(retry.Id)).State == FileOperationState.Completed && File.ReadAllText(retryDestination) == "file-content",
+            "cloud job retries the same connection after credential recovery");
 
         await File.WriteAllTextAsync(destination, "existing", timeout.Token);
         var replace = jobs.Start(key, principal, new(Guid.NewGuid(), FileOperationKind.CloudDownload,

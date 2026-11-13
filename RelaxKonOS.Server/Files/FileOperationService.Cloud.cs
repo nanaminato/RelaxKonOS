@@ -80,6 +80,14 @@ public sealed partial class FileOperationService
                     name = ReserveArchiveName(originalName, false, reserved);
                     if (destination is not null) destination = Path.Combine(Path.GetDirectoryName(destination)!, name);
                 }
+                catch (CloudTransferCredentialsException)
+                {
+                    if (await AskAsync(job, CloudStorageApi.CredentialsRejected, item.SourcePath, destination ?? name, "",
+                        [FileOperationDecision.Retry, FileOperationDecision.Skip]) == FileOperationDecision.Retry)
+                        continue;
+                    Skip(job, item.SourcePath, CloudStorageApi.CredentialsRejected);
+                    break;
+                }
                 catch (Exception error) when (error is IOException or HttpRequestException or UnauthorizedAccessException
                     or NotSupportedException or TimeoutException)
                 {
@@ -144,7 +152,7 @@ public sealed partial class FileOperationService
                     var problem = await response.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ProblemDetails>(cancellationToken: ct);
                     if (problem?.Title == "cloud-upload-publish-failed") throw new CloudTransferConflictException();
                 }
-                response.EnsureSuccessStatusCode();
+                await EnsureCloudTransferSuccessAsync(response, ct);
                 lock (job.Gate) job.TotalBytes = length;
                 return;
             }
@@ -170,7 +178,7 @@ public sealed partial class FileOperationService
             throw new CloudTransferConflictException(existing.Type == FileSystemEntryType.File);
         using var response = await client.GetAsync($"{route}/download?reference={Uri.EscapeDataString(reference)}",
             HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureCloudTransferSuccessAsync(response, ct);
         var expected = response.Content.Headers.ContentLength;
         lock (job.Gate) job.TotalBytes = expected ?? 0;
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
@@ -222,6 +230,24 @@ public sealed partial class FileOperationService
             }
         }
     }
+
+    private static async Task EnsureCloudTransferSuccessAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
+        {
+            try
+            {
+                var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(RelaxKonOSJsonOptions.Default, ct);
+                if (problem?.Type == CloudStorageApi.CredentialsRejectedProblem)
+                    throw new CloudTransferCredentialsException();
+            }
+            catch (System.Text.Json.JsonException) { }
+            catch (NotSupportedException) { }
+        }
+        response.EnsureSuccessStatusCode();
+    }
+
+    private sealed class CloudTransferCredentialsException : IOException;
 
     private sealed class CloudTransferConflictException(bool canReplace = false) : IOException
     {

@@ -26,5 +26,13 @@ internal sealed class DirectoryListingCache<T>(Func<DateTimeOffset>? clock = nul
         while (_entries.Count > MaximumDirectories || _entries.Values.Sum(item => item.Weight) > MaximumEntries)
             _entries.Remove(_entries.MinBy(item => item.Value.Access).Key);
     }
+    public void Remove(string path) => _entries.Remove(path);
+
+    public void Retain(Func<string, bool> keep)
+    {
+        foreach (var path in _entries.Keys.Where(path => !keep(path)).ToArray())
+            _entries.Remove(path);
+    }
+
     public void Clear() => _entries.Clear();
 }

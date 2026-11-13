@@ -74,7 +74,7 @@
 
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- Band 1: where this page is and what can be done to the connection. -->
-        <Border x:Name="BrowserToolbar" Grid.Row="0" Classes="app-toolbar">
+        <Border Grid.Row="0" Classes="app-toolbar">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                 <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                     <Button x:Name="HostFilesButton" Classes="cloud-command" Click="Close_Click"
@@ -118,17 +118,20 @@
             <Grid>
                 <!-- The band never sits empty: an idle page states what it can do, and any message
                      replaces that sentence instead of stacking a second line. -->
-                <Grid VerticalAlignment="Center">
+                <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                     <TextBlock x:Name="StatusHint" Text="{loc:Loc explorer.cloud.status_hint}" FontSize="12"
                                TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextTertiaryBrush}" />
                     <TextBlock x:Name="Status" FontSize="12" TextTrimming="CharacterEllipsis" IsVisible="False"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Button Grid.Column="1" x:Name="StopLoadingButton" IsVisible="False"
+                            Click="StopLoading_Click" Content="{loc:Loc common.cancel}"
+                            Padding="8,2" MinHeight="24" />
                 </Grid>
             </Grid>
         </Border>
 
         <!-- Band 2: accounts, then the folder they are pointed at. -->
-        <Grid x:Name="BrowserContent" Grid.Row="1" ColumnDefinitions="232,Auto,*">
+        <Grid Grid.Row="1" ColumnDefinitions="232,Auto,*">
             <Border Grid.Column="0" Classes="app-sidebar">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="{loc:Loc explorer.cloud.accounts}" Margin="16,12,12,4"
@@ -211,7 +214,7 @@
 
                     <Grid x:Name="EntriesHost" IsVisible="False" RowDefinitions="*,Auto">
                         <DataGrid x:Name="CloudEntries" Classes="resource-table" AutoGenerateColumns="False" IsReadOnly="True"
-                                  SelectionMode="Single" SelectionChanged="Entries_SelectionChanged" DoubleTapped="Open_Click"
+                                  SelectionMode="Single" SelectionChanged="Entries_SelectionChanged" DoubleTapped="Open_Click" ContextRequested="Entries_ContextRequested"
                                   CanUserSortColumns="False" BorderThickness="0" RowHeight="34" ColumnHeaderHeight="34"
                                   Background="{DynamicResource SurfaceBrush}">
                             <DataGrid.Columns>
@@ -255,165 +258,20 @@
                                 <Button x:Name="OpenButton" Classes="cloud-command" Click="Open_Click"
                                         Content="{loc:Loc explorer.cloud.open}" />
                                 <Button x:Name="DownloadButton" Classes="cloud-command" Click="Download_Click"
-                                        Content="{loc:Loc explorer.operations.kind.CloudDownload}" />
+                                        Content="{loc:Loc common.download}" />
                                 <Border Classes="cloud-divider" />
                                 <TextBox x:Name="FolderName" Width="168" Height="32"
                                          PlaceholderText="{loc:Loc explorer.cloud.new_folder}" />
                                 <Button x:Name="CreateFolderButton" Classes="cloud-command" Click="CreateFolder_Click"
                                         Content="{loc:Loc explorer.cloud.create_folder}" />
                                 <Button x:Name="UploadButton" Classes="cloud-command" Click="Upload_Click"
-                                        Content="{loc:Loc explorer.operations.kind.CloudUpload}" />
+                                        Content="{loc:Loc common.upload}" />
                                 <Button x:Name="MoreButton" Classes="cloud-command" Click="More_Click"
                                         Content="{loc:Loc explorer.cloud.more}" />
                             </WrapPanel>
                         </Border>
                     </Grid>
 
-                    <DockPanel x:Name="ConnectionForm" IsVisible="False">
-                        <!-- The title stays put and the footer keeps the decision in reach: the form
-                             focuses its first field when it opens, and a title inside the scroller
-                             would be pushed out of view by that very focus. -->
-                        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="16,18,16,10">
-                            <TextBlock x:Name="FormTitle" FontSize="20" FontWeight="SemiBold" />
-                            <TextBlock x:Name="FormSubtitle" Classes="field-hint" />
-                        </StackPanel>
-                        <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource BorderSubtleBrush}"
-                                BorderThickness="0,1,0,0" Padding="16,10">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                                <Button x:Name="SaveButton" Classes="primary" Height="32"
-                                        Content="{loc:Loc explorer.cloud.save}" Click="Save_Click" />
-                                <TextBlock Grid.Column="1" x:Name="FooterHint" Classes="field-hint"
-                                           IsVisible="False" VerticalAlignment="Center" Margin="4,0" />
-                                <Button Grid.Column="2" Height="32" Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
-                            </Grid>
-                        </Border>
-                        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Spacing="12" Margin="16,0,16,16" MaxWidth="600" HorizontalAlignment="Left">
-
-                            <Border Classes="app-panel" Padding="14">
-                                <StackPanel Spacing="10">
-                                    <TextBlock Classes="section-title" Text="{loc:Loc explorer.cloud.section_connection}" />
-                                    <StackPanel Spacing="6">
-                                        <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.connection_name}" />
-                                        <TextBox x:Name="ConnectionName" Height="32"
-                                                 AutomationProperties.Name="{loc:Loc explorer.cloud.connection_name}" />
-                                    </StackPanel>
-                                    <StackPanel Spacing="6">
-                                        <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.connection_type}" />
-                                        <ComboBox x:Name="Protocol" HorizontalAlignment="Stretch" SelectedIndex="0"
-                                                  AutomationProperties.Name="{loc:Loc explorer.cloud.connection_type}"
-                                                  SelectionChanged="Protocol_SelectionChanged">
-                                            <ComboBoxItem Content="WebDAV" />
-                                            <ComboBoxItem Content="S3" />
-                                            <ComboBoxItem Content="{loc:Loc explorer.cloud.baidu}" />
-                                        </ComboBox>
-                                        <TextBlock x:Name="ProtocolHint" Classes="field-hint" />
-                                    </StackPanel>
-                                    <!-- Write access belongs to the connection, not to the credentials
-                                         group: the authorization flow needs it before any key is typed. -->
-                                    <CheckBox x:Name="EnableWrites" Content="{loc:Loc explorer.cloud.enable_writes}" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border x:Name="ServerSection" Classes="app-panel" Padding="14">
-                                <StackPanel Spacing="10">
-                                    <TextBlock Classes="section-title" x:Name="EndpointSectionTitle"
-                                               Text="{loc:Loc explorer.cloud.section_server}" />
-                                    <StackPanel Spacing="6">
-                                        <TextBlock Classes="field-label" x:Name="EndpointLabel" Text="{loc:Loc explorer.cloud.endpoint}" />
-                                        <TextBox x:Name="Endpoint" Height="32" PlaceholderText="{loc:Loc explorer.cloud.endpoint}" />
-                                    </StackPanel>
-                                    <StackPanel x:Name="S3Fields" Spacing="10" IsVisible="False">
-                                        <StackPanel Spacing="6">
-                                            <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.region}" />
-                                            <TextBox x:Name="Region" Height="32" PlaceholderText="{loc:Loc explorer.cloud.region}" />
-                                        </StackPanel>
-                                        <StackPanel Spacing="6">
-                                            <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.bucket}" />
-                                            <TextBox x:Name="Bucket" Height="32" PlaceholderText="{loc:Loc explorer.cloud.bucket}" />
-                                        </StackPanel>
-                                        <StackPanel Spacing="6">
-                                            <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.prefix}" />
-                                            <TextBox x:Name="Prefix" Height="32" PlaceholderText="{loc:Loc explorer.cloud.prefix}" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                    <CheckBox x:Name="PrivateDav" IsVisible="False" Content="{loc:Loc explorer.cloud.private}" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border Classes="app-panel" x:Name="CredentialSection" Padding="14">
-                                <StackPanel Spacing="10">
-                                    <TextBlock Classes="section-title" Text="{loc:Loc explorer.cloud.section_credentials}" />
-                                    <StackPanel Spacing="6">
-                                        <TextBlock Classes="field-label" x:Name="UserNameLabel" />
-                                        <TextBox x:Name="UserName" Height="32" />
-                                    </StackPanel>
-                                    <StackPanel Spacing="6">
-                                        <TextBlock Classes="field-label" x:Name="SecretLabel" />
-                                        <TextBox x:Name="Secret" Height="32" PasswordChar="●" />
-                                    </StackPanel>
-                                    <StackPanel x:Name="SessionTokenField" Spacing="6">
-                                        <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.token}" />
-                                        <TextBox x:Name="SessionToken" Height="32" PasswordChar="●"
-                                                 PlaceholderText="{loc:Loc explorer.cloud.token}" />
-                                    </StackPanel>
-                                    <StackPanel x:Name="RefreshTokenField" Spacing="6" IsVisible="False">
-                                        <TextBlock Classes="field-label" Text="{loc:Loc explorer.cloud.refresh_token}" />
-                                        <TextBox x:Name="RefreshToken" Height="32" PasswordChar="●"
-                                                 PlaceholderText="{loc:Loc explorer.cloud.refresh_token}" />
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Classes="app-panel" x:Name="AuthorizationSection" Padding="14" IsVisible="False">
-                                <StackPanel Spacing="10">
-                                    <TextBlock Classes="section-title" Text="{loc:Loc explorer.cloud.section_authorization}" />
-                                    <TextBlock x:Name="OAuthHelp" IsVisible="False" Classes="field-hint" />
-                                    <CheckBox x:Name="ManualAuthorization" IsVisible="False"
-                                              Content="{loc:Loc explorer.cloud.auth_manual}" IsCheckedChanged="ManualAuthorization_Changed" />
-                                    <Button x:Name="AuthorizeButton" Classes="primary" Height="32" HorizontalAlignment="Left"
-                                            IsVisible="False" Click="Authorize_Click" />
-                                    <Expander x:Name="ProviderConfiguration" IsVisible="False"
-                                              Header="{loc:Loc explorer.cloud.auth_configure}">
-                                        <StackPanel Spacing="8" Margin="0,6,0,2">
-                                            <TextBlock Text="{loc:Loc explorer.cloud.auth_configure_help}" Classes="field-hint" />
-                                            <StackPanel Spacing="6">
-                                                <TextBlock Classes="field-label" Text="AppKey" />
-                                                <TextBox x:Name="ProviderClientId" Height="32" PlaceholderText="AppKey"
-                                                         AutomationProperties.Name="AppKey" />
-                                            </StackPanel>
-                                            <StackPanel Spacing="6">
-                                                <TextBlock Classes="field-label" Text="SecretKey" />
-                                                <TextBox x:Name="ProviderClientSecret" Height="32" PasswordChar="●"
-                                                         PlaceholderText="SecretKey" AutomationProperties.Name="SecretKey" />
-                                            </StackPanel>
-                                            <Button Content="{loc:Loc common.save}" Height="32" HorizontalAlignment="Left"
-                                                    Click="ConfigureProvider_Click" />
-                                        </StackPanel>
-                                    </Expander>
-                                </StackPanel>
-                            </Border>
-
-                            </StackPanel>
-                        </ScrollViewer>
-                    </DockPanel>
-
-                    <!-- Authorization runs beside the form, not inside it: the form is disabled while a
-                         device code waits, and a disabled panel could never be cancelled. -->
-                    <Border x:Name="AuthorizationPanel" IsVisible="False" VerticalAlignment="Bottom"
-                            HorizontalAlignment="Left" Margin="16" MaxWidth="600" Classes="app-panel" Padding="14">
-                        <StackPanel Spacing="8">
-                            <TextBlock Classes="section-title" Text="{loc:Loc explorer.cloud.section_authorization_status}" />
-                            <TextBlock Text="{loc:Loc explorer.cloud.auth_explanation}" Classes="field-hint" />
-                            <TextBlock x:Name="AuthorizationStatus" TextWrapping="Wrap" />
-                            <TextBox x:Name="AuthorizationCode" IsReadOnly="True" FontFamily="Consolas,monospace"
-                                     HorizontalAlignment="Left" MinWidth="220" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Height="32" Content="{loc:Loc explorer.cloud.auth_open}" Click="AuthorizationOpen_Click" />
-                                <Button Height="32" Content="{loc:Loc common.cancel}" Click="AuthorizationCancel_Click" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
                 </Grid>
             </Grid>
         </Grid>

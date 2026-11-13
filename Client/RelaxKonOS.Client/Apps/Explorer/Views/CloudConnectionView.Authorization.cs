@@ -4,7 +4,7 @@ using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer.Views;
 
-public partial class CloudBrowserView
+public partial class CloudConnectionView
 {
     private CancellationTokenSource? _authorization;
     private Uri? _authorizationUri;
@@ -32,6 +32,7 @@ public partial class CloudBrowserView
     {
         if (_busy || _client is null || _authorization is not null) return;
         var name = ConnectionName.Text?.Trim();
+        AuthorizationPanel.IsVisible = false;
         if (string.IsNullOrEmpty(name)) { Status.Text = Text("auth_name_required"); return; }
         const string protocol = "baidu-netdisk";
         var client = _client;
@@ -39,13 +40,14 @@ public partial class CloudBrowserView
         Guid? sessionId = null;
         _authorization = source;
         _busy = true;
-        ConnectionForm.IsEnabled = false;
         UpdateButtons();
         AuthorizationPanel.IsVisible = true;
         AuthorizationStatus.Text = Text("auth_starting");
         try
         {
-            var providers = await client.CloudAuthorizationProvidersAsync(source.Token);
+            using var providerTimeout = CancellationTokenSource.CreateLinkedTokenSource(source.Token);
+            providerTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+            var providers = await client.CloudAuthorizationProvidersAsync(providerTimeout.Token);
             source.Token.ThrowIfCancellationRequested();
             if (!providers.Any(p => p.Protocol == protocol && p.Configured))
             {
@@ -54,7 +56,7 @@ public partial class CloudBrowserView
             }
             // Finish a bounded start even if the view closes, so the resulting session can be cancelled.
             using var startTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var session = await client.StartCloudAuthorizationAsync(new(protocol, name, EnableWrites.IsChecked == true), startTimeout.Token);
+            var session = await client.StartCloudAuthorizationAsync(new(protocol, name, EnableWrites.IsChecked == true, _editing), startTimeout.Token);
             if (source.IsCancellationRequested)
             {
                 await CancelSessionQuietlyAsync(client, session.Id);
@@ -66,6 +68,7 @@ public partial class CloudBrowserView
             AuthorizationCode.Text = session.UserCode ?? "";
             AuthorizationCode.IsVisible = !string.IsNullOrEmpty(session.UserCode);
             await OpenAuthorizationBrowserAsync();
+            source.Token.ThrowIfCancellationRequested();
             while (session.Status == "pending")
             {
                 if (DateTimeOffset.UtcNow >= session.ExpiresAt)
@@ -75,18 +78,20 @@ public partial class CloudBrowserView
                 }
                 AuthorizationStatus.Text = Text("auth_pending") + " " + session.ExpiresAt.ToLocalTime().ToString("t");
                 await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(session.PollIntervalSeconds, 1, 60)), source.Token);
-                session = await client.CloudAuthorizationAsync(session.Id, source.Token);
+                using var pollTimeout = CancellationTokenSource.CreateLinkedTokenSource(source.Token);
+                pollTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+                session = await client.CloudAuthorizationAsync(session.Id, pollTimeout.Token);
                 source.Token.ThrowIfCancellationRequested();
             }
             AuthorizationStatus.Text = Text("auth_" + (session.Status is "completed" or "denied" or "expired" or "cancelled" ? session.Status : "failed"));
             if (session.Status == "completed" && session.ConnectionId is { } id)
             {
                 sessionId = null;
-                ClearForm();
-                await RefreshAsync(true, source.Token, id, openRoot: true);
+                Saved?.Invoke(id);
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) when (source.IsCancellationRequested) { }
+        catch (OperationCanceledException) { AuthorizationStatus.Text = Text("timeout"); }
         catch (Exception)
         {
             // Provider responses and redirect URLs can contain credentials; never show/log raw exceptions.
@@ -94,7 +99,6 @@ public partial class CloudBrowserView
         }
         finally
         {
-            if (sessionId is { } pendingId) await CancelSessionQuietlyAsync(client, pendingId);
             if (ReferenceEquals(_authorization, source))
             {
                 _authorizationUri = null;
@@ -102,9 +106,9 @@ public partial class CloudBrowserView
                 AuthorizationCode.IsVisible = false;
                 _authorization = null;
                 _busy = false;
-                ConnectionForm.IsEnabled = true;
                 UpdateButtons();
             }
+            if (sessionId is { } pendingId) await CancelSessionQuietlyAsync(client, pendingId);
         }
     }
 
@@ -131,7 +135,6 @@ public partial class CloudBrowserView
         _authorization?.Cancel();
         _authorization = null;
         _busy = false;
-        ConnectionForm.IsEnabled = true;
         _authorizationUri = null;
         AuthorizationCode.Text = "";
         AuthorizationPanel.IsVisible = false;

@@ -43,6 +43,27 @@ internal static class CloudBrowserChecks
         check(account.KindText == CloudProtocolText.Name("baidu-netdisk"),
             "The account rail and the connection form name a provider the same way");
 
+        var now = DateTimeOffset.UtcNow;
+        var cache = new CloudDirectoryCache(() => now);
+        var page = new CloudDirectoryDto([file.Entry], "next-page");
+        cache.Put(account.Id, null, page);
+        cache.Put(account.Id, folder.Reference, page);
+        cache.Put(readonlyAccount.Id, null, new([], null));
+        check(cache.TryGet(account.Id, null, out var root) && root == page
+            && cache.TryGet(readonlyAccount.Id, null, out var archive) && archive.Entries.Count == 0,
+            "Cloud directory cache isolates account roots and retains pagination");
+        cache.Remove(account.Id, null);
+        check(!cache.TryGet(account.Id, null, out _) && cache.TryGet(account.Id, folder.Reference, out _),
+            "Invalidating a cloud directory preserves other directories");
+        cache.RemoveConnection(account.Id);
+        check(!cache.TryGet(account.Id, folder.Reference, out _) && cache.TryGet(readonlyAccount.Id, null, out _),
+            "Credential changes invalidate only the affected cloud connection");
+        cache.Put(account.Id, null, page);
+        cache.RetainConnections([account.Id]);
+        check(!cache.TryGet(readonlyAccount.Id, null, out _), "Removed accounts leave no cached directory listings");
+        now += TimeSpan.FromMinutes(5);
+        check(!cache.TryGet(account.Id, null, out _), "Cloud listings expire after five minutes");
+
         var crumbs = new CloudBreadcrumb[]
         {
             new("Personal", 0), new("Photos", 1), new("2026", 2),

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.ModuleHost.Sdk;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.ServerModule.CloudStorage;
 
@@ -38,9 +39,9 @@ async Task Configure()
     Check(result.IsSuccessStatusCode, "admin configuration saved");
     Identity(owner);
 }
-async Task<CloudAuthorizationSessionDto> Start()
+async Task<CloudAuthorizationSessionDto> Start(Guid? replace = null)
 {
-    using var result = await client.PostAsJsonAsync("/cloud/authorization/sessions", new CloudAuthorizationStartRequest("baidu-netdisk", "My Baidu drive"));
+    using var result = await client.PostAsJsonAsync("/cloud/authorization/sessions", new CloudAuthorizationStartRequest("baidu-netdisk", "My Baidu drive", ConnectionId: replace));
     result.EnsureSuccessStatusCode();
     return (await result.Content.ReadFromJsonAsync<CloudAuthorizationSessionDto>())!;
 }
@@ -145,6 +146,36 @@ for (var i = 0; i < 4; i++) held.Add(await Start());
 using (var limited = await client.PostAsJsonAsync("/cloud/authorization/sessions", new CloudAuthorizationStartRequest("baidu-netdisk", "quota")))
     Check(limited.StatusCode == HttpStatusCode.TooManyRequests, "per-user pending session cap enforced");
 foreach (var pending in held) await Cancel(pending.Id);
+var originalId = completed.ConnectionId!.Value;
+var entriesRoute = $"/cloud/connections/{originalId:D}/entries";
+using (var rejected = await client.GetAsync(entriesRoute))
+{
+    var problem = await rejected.Content.ReadFromJsonAsync<ProblemDetails>();
+    Check(rejected.StatusCode == HttpStatusCode.UnprocessableEntity
+        && problem?.Type == CloudStorageApi.CredentialsRejectedProblem && problem.Detail is null,
+        "invalid OAuth refresh grants return a sanitized credential problem");
+}
+Identity(Guid.NewGuid().ToString());
+using (var foreign = await client.PostAsJsonAsync("/cloud/authorization/sessions",
+    new CloudAuthorizationStartRequest("baidu-netdisk", "Foreign", ConnectionId: originalId)))
+    Check(foreign.StatusCode == HttpStatusCode.NotFound, "foreign user cannot reauthorize a connection");
+Identity(owner);
+var retry = await Start(originalId);
+Due(retry.Id);
+var recovered = await Poll(retry.Id);
+Check(recovered.Status == "completed" && recovered.ConnectionId == originalId
+    && (await client.GetFromJsonAsync<CloudConnectionDto[]>("/cloud/connections"))!.Length == 2,
+    "reauthorization retains the original connection ID and sibling account");
+upstream.RejectRefresh = false;
+Check((await client.GetFromJsonAsync<CloudDirectoryDto>(entriesRoute))?.Entries.Count == 0,
+    "updated credentials can list the same connection");
+var stale = await Start(originalId);
+using (var deleted = await client.DeleteAsync($"/cloud/connections/{originalId:D}"))
+    deleted.EnsureSuccessStatusCode();
+Due(stale.Id);
+Check((await Poll(stale.Id)).Status == "failed"
+    && (await client.GetFromJsonAsync<CloudConnectionDto[]>("/cloud/connections"))!.Length == 1,
+    "reauthorization cannot restore a deleted connection");
 await module.StopAsync(default);
 await app.StopAsync();
 Console.WriteLine($"PASS: {count} Baidu authorization session integration checks (mocked provider; no real authorization).");
@@ -152,16 +183,26 @@ Console.WriteLine($"PASS: {count} Baidu authorization session integration checks
 sealed class Upstream : HttpMessageHandler
 {
     public int Polls;
+    public bool RejectRefresh = true;
     public string Response = "authorization_pending";
     public TaskCompletionSource? Entered, Release;
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         var uri = request.RequestUri!;
+        if (uri.Host == "pan.baidu.com" && uri.AbsolutePath == "/rest/2.0/xpan/file")
+            return Json("""{"errno":0,"list":[]}""");
         if (uri.Host != "openapi.baidu.com" || request.Method != HttpMethod.Get) throw new Exception("Unexpected provider request");
         if (uri.AbsolutePath == "/oauth/2.0/device/code")
             return Json("""{"device_code":"private-device","user_code":"USER-CODE","verification_url":"https://openapi.baidu.com/device","qrcode_url":"https://openapi.baidu.com/device/qrcode/test","expires_in":300,"interval":5}""");
         if (uri.AbsolutePath != "/oauth/2.0/token") throw new Exception("Unexpected endpoint");
         var q = QueryHelpers.ParseQuery(uri.Query);
+        if (q["grant_type"] == "refresh_token")
+            return !RejectRefresh ? Json("""{"access_token":"renewed","expires_in":300}""")
+                : new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("""{"error":"invalid_grant","error_description":"private provider text"}""",
+                    Encoding.UTF8, "application/json"),
+            };
         if (q["grant_type"] != "device_token" || q["code"] != "private-device" || q["client_secret"] != "fake-client-secret")
             throw new Exception("Unexpected token parameters");
         Polls++;
