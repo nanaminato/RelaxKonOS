@@ -185,6 +185,32 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             }
             finally { taskDialog = null; taskDialogOpen = false; }
         };
+        // Every server-module decision is a modal surface owned by this window: the page states
+        // facts, the dialog holds the one irreversible step. Closing a review keeps the frozen plan
+        // (a validated package upload is expensive to redo) and the page states it as a pending row
+        // that reopens this dialog; only the row's explicit discard drops it.
+        if (model.ServerModules is { } modules)
+        {
+            var planSize = new Size(620, 460);
+            modules.PlanReviewRequested = async () => await ShowOwnedAsync<bool>(
+                LocalizedText.Get("server_modules.plan.title"),
+                dialog => new ServerModulePlanReviewView(dialog) { DataContext = modules }, planSize);
+            modules.PackagePlanReviewRequested = async () => await ShowOwnedAsync<bool>(
+                LocalizedText.Get("server_modules.package_plan.title"),
+                dialog => new ServerModulePlanReviewView(dialog) { DataContext = modules }, planSize);
+            modules.PolicyEditorRequested = async () =>
+            {
+                var requested = await ShowOwnedAsync<bool>(LocalizedText.Get("server_modules.policy"),
+                    dialog => new ServerModulePolicyEditorView(dialog) { DataContext = modules }, new Size(560, 470));
+                if (requested == true) await modules.SetPolicyCommand.ExecuteAsync(null);
+            };
+            modules.PrivilegeReviewRequested = async () => await ShowOwnedAsync<bool>(
+                LocalizedText.Get("server_modules.privilege_title"),
+                dialog => new ServerModulePrivilegeView(dialog) { DataContext = modules }, new Size(600, 560));
+            modules.ConsentEditorRequested = async () => await ShowOwnedAsync<bool>(
+                LocalizedText.Get("server_modules.consent_title"),
+                dialog => new ServerModuleConsentView(dialog) { DataContext = modules }, new Size(700, 660));
+        }
         if (model.NginxSelection is { } nginxSelection)
             nginxSelection.RequestIntegrationConfirmationAsync = () => ConfirmAsync(
                 LocalizedText.Get("webservers.integration.confirmation.title"), LocalizedText.Get("webservers.integration.confirmation.message"));
@@ -321,6 +347,13 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             }
             model.PropertyChanged -= selectedDomainChanged;
             model.ShowTasksDialogAsync = null;
+            // Review surfaces belong to this window; a closed window must not keep them reachable.
+            if (model.ServerModules is { } closedModules)
+            {
+                closedModules.PlanReviewRequested = null; closedModules.PackagePlanReviewRequested = null;
+                closedModules.PolicyEditorRequested = null; closedModules.PrivilegeReviewRequested = null;
+                closedModules.ConsentEditorRequested = null;
+            }
             model.Dispose();
             runtime.Dispose();
         };

@@ -1,12 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter" xmlns:p="using:RelaxKonOS.Protocol.Common"
  xmlns:loc="using:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ServerModulesView"
- xmlns:mp="using:RelaxKonOS.ModuleHost.Protocol"
- xmlns:conv="using:Avalonia.Data.Converters"
  x:DataType="vm:ServerModulesViewModel">
  <!-- One page, three jobs: inspect the module catalog, manage module packages, and review the
-      security surfaces. The catalog is a master-detail view instead of a text dump, and each
-      management action is a named row with the reason it is unavailable. -->
+      security surfaces. The catalog is a master-detail view, each management action is a named row
+      with the reason it is unavailable, and every frozen decision is confirmed in its own dialog
+      instead of a card appended below a long column the user then has to scroll to find. -->
  <UserControl.Styles>
   <StyleInclude Source="avares://RelaxKonOS.Client/Apps/ComponentCenter/ComponentCenterStyles.axaml" />
  </UserControl.Styles>
@@ -186,6 +185,21 @@
    </Border>
 
    <StackPanel x:Name="ModuleDetail" Grid.Column="1" Spacing="16">
+    <!-- A plan that survived a dismissed dialog is still a pending decision: state it once at the
+         top of the detail, and let the row reopen or discard it. -->
+    <Border Classes="plan-card" Padding="14,12" IsVisible="{Binding HasPlan}">
+     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+      <Path Width="16" Height="16" Stretch="Uniform" VerticalAlignment="Center"
+            Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5" StrokeLineCap="Round" StrokeJoin="Round"
+            Data="M12 2 L21 7 V17 L12 22 L3 17 V7 Z M3 7 L12 12 L21 7 M12 12 V22" />
+      <TextBlock Grid.Column="1" Text="{Binding PlanPendingText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" />
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+       <Button Classes="ghost-action" Content="{loc:Loc server_modules.plan.review}" Command="{Binding ReviewPlanCommand}" />
+       <Button Classes="ghost-action" Content="{loc:Loc server_modules.plan.discard}" Command="{Binding DiscardPlanCommand}" />
+      </StackPanel>
+     </Grid>
+    </Border>
+
     <!-- Nothing selected: the detail pane explains the two ways to pick a module. -->
     <Border Classes="panel-card" IsVisible="{Binding !HasSelectedModule}" Padding="40,48">
      <StackPanel Spacing="12" MaxWidth="380" HorizontalAlignment="Center">
@@ -204,7 +218,7 @@
      </StackPanel>
     </Border>
 
-    <!-- Identity and installation facts. -->
+    <!-- Identity, the version facts a decision needs, and one disclosure for reference data. -->
     <Border Classes="panel-card" IsVisible="{Binding HasSelectedModule}">
      <StackPanel Spacing="16">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
@@ -234,7 +248,8 @@
        </Grid>
       </Border>
 
-      <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="20" RowSpacing="12">
+      <!-- Six facts answer "what is installed and can it change"; the rest is reference data. -->
+      <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="20" RowSpacing="12">
        <StackPanel Spacing="2">
         <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.installed_version}" />
         <TextBlock Classes="field-value" Text="{Binding SelectedInstalledVersionText}" />
@@ -259,70 +274,6 @@
         <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.trust}" />
         <TextBlock Classes="field-value" Text="{Binding SelectedTrustText}" />
        </StackPanel>
-       <StackPanel Grid.Row="2" Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.configuration}" />
-        <TextBlock Classes="field-value" Text="{Binding SelectedOwnerText}" />
-       </StackPanel>
-       <StackPanel Grid.Row="2" Grid.Column="1" Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.generation}" />
-        <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedGenerationText}" />
-       </StackPanel>
-       <StackPanel Grid.Row="2" Grid.Column="2" Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.release_level}" />
-        <TextBlock Classes="field-value" Text="{Binding SelectedReleaseLevelText}" />
-       </StackPanel>
-       <StackPanel Grid.Row="3" Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.rid}" />
-        <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedRidText}" TextWrapping="Wrap" />
-       </StackPanel>
-       <StackPanel Grid.Row="3" Grid.Column="1" Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.host_api}" />
-        <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedHostApiText}" />
-       </StackPanel>
-      </Grid>
-
-      <Border Classes="rule" />
-
-      <Grid ColumnDefinitions="*,*,*" ColumnSpacing="20">
-       <StackPanel Spacing="6">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.capabilities}" />
-        <ItemsControl ItemsSource="{Binding SelectedCapabilities}" IsVisible="{Binding HasSelectedCapabilities}">
-         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-         <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="x:String">
-           <Border Classes="pill"><TextBlock Text="{Binding}" Classes="mono" FontSize="10" /></Border>
-          </DataTemplate>
-         </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <TextBlock Text="{loc:Loc server_modules.field.none}" FontSize="12" IsVisible="{Binding !HasSelectedCapabilities}"
-                   Foreground="{DynamicResource TextTertiaryBrush}" />
-       </StackPanel>
-       <StackPanel Grid.Column="1" Spacing="6">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.requires}" />
-        <ItemsControl ItemsSource="{Binding SelectedRequires}" IsVisible="{Binding HasSelectedRequires}">
-         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-         <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="x:String">
-           <Border Classes="pill"><TextBlock Text="{Binding}" Classes="mono" FontSize="10" /></Border>
-          </DataTemplate>
-         </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <TextBlock Text="{loc:Loc server_modules.field.none}" FontSize="12" IsVisible="{Binding !HasSelectedRequires}"
-                   Foreground="{DynamicResource TextTertiaryBrush}" />
-       </StackPanel>
-       <StackPanel Grid.Column="2" Spacing="6">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.required_by}" />
-        <ItemsControl ItemsSource="{Binding SelectedRequiredBy}" IsVisible="{Binding HasSelectedRequiredBy}">
-         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-         <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="x:String">
-           <Border Classes="pill"><TextBlock Text="{Binding}" Classes="mono" FontSize="10" /></Border>
-          </DataTemplate>
-         </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <TextBlock Text="{loc:Loc server_modules.field.none}" FontSize="12" IsVisible="{Binding !HasSelectedRequiredBy}"
-                   Foreground="{DynamicResource TextTertiaryBrush}" />
-       </StackPanel>
       </Grid>
 
       <Border Classes="notice warn" IsVisible="{Binding HasSelectedOrphanedWork}">
@@ -338,10 +289,82 @@
         </ItemsControl>
        </StackPanel>
       </Border>
+
+      <Expander>
+       <Expander.Header>
+        <TextBlock Classes="section-title" FontSize="13" Text="{loc:Loc server_modules.detail.more_facts}" />
+       </Expander.Header>
+       <StackPanel Spacing="14">
+        <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="20" RowSpacing="10">
+         <StackPanel Spacing="2">
+          <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.configuration}" />
+          <TextBlock Classes="field-value" Text="{Binding SelectedOwnerText}" />
+         </StackPanel>
+         <StackPanel Grid.Column="1" Spacing="2">
+          <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.generation}" />
+          <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedGenerationText}" />
+         </StackPanel>
+         <StackPanel Grid.Column="2" Spacing="2">
+          <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.release_level}" />
+          <TextBlock Classes="field-value" Text="{Binding SelectedReleaseLevelText}" />
+         </StackPanel>
+         <StackPanel Grid.Row="1" Spacing="2">
+          <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.rid}" />
+          <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedRidText}" TextWrapping="Wrap" />
+         </StackPanel>
+         <StackPanel Grid.Row="1" Grid.Column="1" Spacing="2">
+          <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.host_api}" />
+          <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding SelectedHostApiText}" />
+         </StackPanel>
+        </Grid>
+        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="20">
+         <StackPanel Spacing="6">
+          <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.capabilities}" />
+          <ItemsControl ItemsSource="{Binding SelectedCapabilities}" IsVisible="{Binding HasSelectedCapabilities}">
+           <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+           <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+             <Border Classes="pill"><TextBlock Text="{Binding}" Classes="mono" FontSize="10" /></Border>
+            </DataTemplate>
+           </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="{loc:Loc server_modules.field.none}" FontSize="12" IsVisible="{Binding !HasSelectedCapabilities}"
+                     Foreground="{DynamicResource TextTertiaryBrush}" />
+         </StackPanel>
+         <StackPanel Grid.Column="1" Spacing="6">
+          <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.requires}" />
+          <ItemsControl ItemsSource="{Binding SelectedRequires}" IsVisible="{Binding HasSelectedRequires}">
+           <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+           <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+             <Border Classes="pill"><TextBlock Text="{Binding}" Classes="mono" FontSize="10" /></Border>
+            </DataTemplate>
+           </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="{loc:Loc server_modules.field.none}" FontSize="12" IsVisible="{Binding !HasSelectedRequires}"
+                     Foreground="{DynamicResource TextTertiaryBrush}" />
+         </StackPanel>
+         <StackPanel Grid.Column="2" Spacing="6">
+          <TextBlock Classes="field-label" Text="{loc:Loc server_modules.field.required_by}" />
+          <ItemsControl ItemsSource="{Binding SelectedRequiredBy}" IsVisible="{Binding HasSelectedRequiredBy}">
+           <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="6" LineSpacing="6" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+           <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+             <Border Classes="pill"><TextBlock Text="{Binding}" Classes="mono" FontSize="10" /></Border>
+            </DataTemplate>
+           </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="{loc:Loc server_modules.field.none}" FontSize="12" IsVisible="{Binding !HasSelectedRequiredBy}"
+                     Foreground="{DynamicResource TextTertiaryBrush}" />
+         </StackPanel>
+        </Grid>
+       </StackPanel>
+      </Expander>
      </StackPanel>
     </Border>
 
-    <!-- Residency is a separate fact from enablement: dormant modules still serve requests. -->
+    <!-- Residency is a separate fact from enablement: dormant modules still serve requests.
+         The policy itself is read here and edited in its own dialog. -->
     <Border Classes="panel-card" IsVisible="{Binding HasSelectedModule}">
      <StackPanel Spacing="12">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
@@ -394,7 +417,7 @@
                  TextWrapping="Wrap" Foreground="{DynamicResource TextTertiaryBrush}" />
 
       <Border Classes="rule" />
-      <Grid ColumnDefinitions="*,*" ColumnSpacing="20">
+      <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="20">
        <StackPanel Spacing="2">
         <TextBlock Classes="field-label" Text="{loc:Loc server_modules.residency.desired_policy}" />
         <TextBlock Classes="field-value" Text="{Binding SelectedDesiredPolicyText}" />
@@ -403,7 +426,11 @@
         <TextBlock Classes="field-label" Text="{loc:Loc server_modules.residency.effective_policy}" />
         <TextBlock Classes="field-value" Text="{Binding SelectedEffectivePolicyText}" />
        </StackPanel>
+       <Button Grid.Column="2" Classes="ghost-action" VerticalAlignment="Bottom"
+               Content="{loc:Loc server_modules.action.policy}" Command="{Binding OpenPolicyCommand}" />
       </Grid>
+      <TextBlock Text="{Binding PolicyHint}" TextWrapping="Wrap" FontSize="11"
+                 Foreground="{DynamicResource TextTertiaryBrush}" IsVisible="{Binding !CanEditPolicy}" />
      </StackPanel>
     </Border>
 
@@ -438,102 +465,6 @@
      </StackPanel>
     </Border>
 
-    <!-- Residency policy is its own sub-operation: it also lands in a frozen plan. -->
-    <Border Classes="panel-card" IsVisible="{Binding HasSelectedModule}">
-     <StackPanel Spacing="12">
-      <StackPanel Spacing="3">
-       <TextBlock Classes="section-title" Text="{loc:Loc server_modules.policy}" />
-       <TextBlock Classes="section-hint" Text="{loc:Loc server_modules.policy_hint}" />
-      </StackPanel>
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-       <ComboBox ItemsSource="{Binding PolicyChoices}" SelectedItem="{Binding PolicyChoice}"
-                 IsEnabled="{Binding CanEditPolicy}" HorizontalAlignment="Stretch">
-        <ComboBox.ItemTemplate>
-         <DataTemplate x:DataType="vm:ServerModulePolicyChoice"><TextBlock Text="{Binding Label}" /></DataTemplate>
-        </ComboBox.ItemTemplate>
-       </ComboBox>
-       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-        <TextBlock Text="{loc:Loc server_modules.grace}" VerticalAlignment="Center" FontSize="11"
-                   Foreground="{DynamicResource TextTertiaryBrush}" />
-        <NumericUpDown Value="{Binding IdleGraceSeconds}" Minimum="0" Maximum="604800" Increment="30"
-                       FormatString="0" Width="130" IsEnabled="{Binding CanEditPolicy}" />
-       </StackPanel>
-      </Grid>
-      <Grid ColumnDefinitions="*,*" ColumnSpacing="20">
-       <StackPanel Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.residency.desired_policy}" />
-        <TextBlock Classes="field-value" Text="{Binding SelectedDesiredPolicyText}" />
-       </StackPanel>
-       <StackPanel Grid.Column="1" Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.residency.effective_policy}" />
-        <TextBlock Classes="field-value" Text="{Binding SelectedEffectivePolicyText}" />
-       </StackPanel>
-      </Grid>
-      <WrapPanel ItemSpacing="8" LineSpacing="8">
-       <Button Classes="ghost-action" Content="{loc:Loc server_modules.policy_preview}"
-               Command="{Binding SetPolicyCommand}" />
-      </WrapPanel>
-      <TextBlock Text="{Binding PolicyHint}" TextWrapping="Wrap" FontSize="11"
-                 Foreground="{DynamicResource TextTertiaryBrush}" IsVisible="{Binding !CanSetPolicy}" />
-     </StackPanel>
-    </Border>
-
-    <!-- A plan is a frozen object: show exactly what will be submitted, then confirm it. -->
-    <Border x:Name="PlanCard" Classes="plan-card" IsVisible="{Binding HasPlan}">
-     <StackPanel Spacing="12">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-       <StackPanel Spacing="3">
-        <TextBlock Classes="section-title" Text="{loc:Loc server_modules.plan.title}" />
-        <TextBlock Classes="section-hint" Text="{loc:Loc server_modules.plan.hint}" />
-       </StackPanel>
-       <Border Grid.Column="1" Classes="pill accent" VerticalAlignment="Top">
-        <TextBlock Text="{Binding PlanActionText}" FontSize="11" />
-       </Border>
-      </Grid>
-      <Grid ColumnDefinitions="*,*" ColumnSpacing="20">
-       <StackPanel Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.plan.targets}" />
-        <TextBlock Classes="field-value" Text="{Binding PlanTargetText}" TextWrapping="Wrap" />
-       </StackPanel>
-       <StackPanel Grid.Column="1" Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.plan.service}" />
-        <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding PlanServiceText}" TextWrapping="Wrap" />
-       </StackPanel>
-      </Grid>
-      <Grid ColumnDefinitions="*,*" ColumnSpacing="20">
-       <StackPanel Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.plan.added}" />
-        <TextBlock Classes="field-value" Text="{Binding PlanAddedText}" TextWrapping="Wrap" />
-       </StackPanel>
-       <StackPanel Grid.Column="1" Spacing="2">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.plan.removed}" />
-        <TextBlock Classes="field-value" Text="{Binding PlanRemovedText}" TextWrapping="Wrap" />
-       </StackPanel>
-      </Grid>
-      <WrapPanel ItemSpacing="10" LineSpacing="8">
-       <Border Classes="pill" Classes.warn="{Binding PlanRequiresRestart}">
-        <TextBlock Text="{Binding PlanRestartText}" FontSize="11" />
-       </Border>
-       <TextBlock Text="{Binding PlanExpiresText}" FontSize="11" VerticalAlignment="Center"
-                  Foreground="{DynamicResource TextTertiaryBrush}" />
-      </WrapPanel>
-      <Border Classes="notice" IsVisible="{Binding PlanIsRemoval}">
-       <TextBlock Text="{loc:Loc server_modules.plan.remove_data}" TextWrapping="Wrap" FontSize="12" />
-      </Border>
-      <Border Classes="notice bad" IsVisible="{Binding HasPlanBlockers}">
-       <StackPanel Spacing="4">
-        <TextBlock Classes="field-label" Text="{loc:Loc server_modules.plan.blocked}" />
-        <TextBlock Text="{Binding PlanBlockedText}" TextWrapping="Wrap" FontSize="12"
-                   Foreground="{DynamicResource TextSecondaryBrush}" />
-       </StackPanel>
-      </Border>
-      <WrapPanel ItemSpacing="8" LineSpacing="8">
-       <Button Classes="primary" Content="{loc:Loc server_modules.apply}" Command="{Binding ApplyCommand}" />
-       <Button Classes="ghost-action" Content="{loc:Loc server_modules.plan.discard}" Command="{Binding DiscardPlanCommand}" />
-      </WrapPanel>
-     </StackPanel>
-    </Border>
-
     <Border Classes="panel-card" IsVisible="{Binding HasOperation}">
      <Expander IsExpanded="False">
       <Expander.Header><TextBlock Classes="section-title" FontSize="13" Text="{loc:Loc server_modules.operation.title}" /></Expander.Header>
@@ -546,12 +477,34 @@
 
   <!-- ── Packages and releases ── -->
   <StackPanel Spacing="16" IsVisible="{Binding IsPackagesTab}">
+   <!-- A validated upload is not installed until its plan is confirmed; closing the review keeps
+        the plan (and the uploaded artifact), so this row is how it is found again. -->
+   <Border Classes="plan-card" Padding="14,12" IsVisible="{Binding HasPackagePlan}">
+    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+     <Path Width="16" Height="16" Stretch="Uniform" VerticalAlignment="Center"
+           Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5" StrokeLineCap="Round" StrokeJoin="Round"
+           Data="M12 2 L21 7 V17 L12 22 L3 17 V7 Z M3 7 L12 12 L21 7 M12 12 V22" />
+     <TextBlock Grid.Column="1" Text="{Binding PackagePlanPendingText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" />
+     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+      <Button Classes="ghost-action" Content="{loc:Loc server_modules.plan.review}" Command="{Binding ReopenPackagePlanCommand}" />
+      <Button Classes="ghost-action" Content="{loc:Loc server_modules.plan.discard}" Command="{Binding DiscardPackagePlanCommand}" />
+     </StackPanel>
+    </Grid>
+   </Border>
+
    <Border Classes="panel-card">
     <StackPanel Spacing="12">
-     <StackPanel Spacing="3">
-      <TextBlock Classes="section-title" Text="{loc:Loc server_modules.packages}" />
-      <TextBlock Classes="section-hint" Text="{loc:Loc server_modules.packages_hint}" />
-     </StackPanel>
+     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <StackPanel Spacing="3">
+       <TextBlock Classes="section-title" Text="{loc:Loc server_modules.packages}" />
+       <TextBlock Classes="section-hint" Text="{loc:Loc server_modules.packages_hint}" />
+      </StackPanel>
+      <!-- Installing a package is the primary act of this tab, so it sits in the tab's first
+           heading instead of below the operation history. -->
+      <Button Grid.Column="1" Classes="ghost-action" VerticalAlignment="Center"
+              Content="{loc:Loc server_modules.install_package}" Click="InstallPackage_Click"
+              IsEnabled="{Binding CanManage}" />
+     </Grid>
      <TextBlock Text="{Binding PackageStatusText}" TextWrapping="Wrap" FontSize="12" IsVisible="{Binding HasPackageStatus}"
                 Foreground="{DynamicResource TextSecondaryBrush}" />
      <ItemsControl ItemsSource="{Binding InstalledPackages}" IsVisible="{Binding HasInstalledPackages}">
@@ -665,61 +618,6 @@
      </ItemsControl>
      <TextBlock Text="{loc:Loc server_modules.package_no_operations}" FontSize="12" IsVisible="{Binding !HasPackageOperations}"
                 Foreground="{DynamicResource TextTertiaryBrush}" />
-     <WrapPanel ItemSpacing="8" LineSpacing="8">
-      <Button Classes="ghost-action" Content="{loc:Loc server_modules.install_package}" Click="InstallPackage_Click"
-              IsEnabled="{Binding CanManage}" />
-     </WrapPanel>
-    </StackPanel>
-   </Border>
-
-   <Border x:Name="PackagePlanCard" Classes="plan-card" IsVisible="{Binding HasPackagePlan}">
-    <StackPanel Spacing="12">
-     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-      <StackPanel Spacing="3">
-       <TextBlock Classes="section-title" Text="{loc:Loc server_modules.package_plan.title}" />
-       <TextBlock Classes="section-hint" Text="{loc:Loc server_modules.package_plan.hint}" />
-      </StackPanel>
-      <Border Grid.Column="1" Classes="pill accent" VerticalAlignment="Top">
-       <TextBlock Text="{Binding PackagePlanModuleText}" Classes="mono" FontSize="11" />
-      </Border>
-     </Grid>
-     <TextBlock Text="{Binding PackagePlanTitle}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
-     <TextBlock Text="{Binding PackagePlanSummary}" TextWrapping="Wrap" FontSize="12"
-                Foreground="{DynamicResource TextSecondaryBrush}" />
-     <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="20" RowSpacing="12">
-      <StackPanel Spacing="2">
-       <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_plan.version}" />
-       <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding PackagePlanVersionText}" />
-      </StackPanel>
-      <StackPanel Grid.Column="1" Spacing="2">
-       <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_plan.publisher}" />
-       <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding PackagePlanPublisherText}" TextWrapping="Wrap" />
-      </StackPanel>
-      <StackPanel Grid.Column="2" Spacing="2">
-       <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_plan.runtime}" />
-       <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding PackagePlanRuntimeText}" />
-      </StackPanel>
-      <StackPanel Grid.Row="1" Spacing="2">
-       <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_plan.release}" />
-       <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding PackagePlanReleaseText}" TextWrapping="Wrap" />
-      </StackPanel>
-      <StackPanel Grid.Row="1" Grid.Column="1" Spacing="2">
-       <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_plan.digest}" />
-       <TextBlock Classes="field-value mono" FontSize="12" Text="{Binding PackagePlanDigestText}" />
-      </StackPanel>
-      <StackPanel Grid.Row="1" Grid.Column="2" Spacing="2">
-       <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_plan.expires}" />
-       <TextBlock Classes="field-value" FontSize="12" Text="{Binding PackagePlanExpiresText}" />
-      </StackPanel>
-     </Grid>
-     <StackPanel Spacing="2" IsVisible="{Binding HasPackagePlanPrivileges}">
-      <TextBlock Classes="field-label" Text="{loc:Loc server_modules.package_plan.privileges}" />
-      <TextBlock Text="{Binding PackagePlanPrivilegesText}" TextWrapping="Wrap" FontSize="12" Classes="mono" />
-     </StackPanel>
-     <WrapPanel ItemSpacing="8" LineSpacing="8">
-      <Button Classes="primary" Content="{loc:Loc server_modules.apply_package}" Command="{Binding ApplyPackagePlanCommand}" />
-      <Button Classes="ghost-action" Content="{loc:Loc server_modules.plan.discard}" Command="{Binding DiscardPackagePlanCommand}" />
-     </WrapPanel>
     </StackPanel>
    </Border>
 
@@ -760,7 +658,7 @@
                 Foreground="{DynamicResource TextTertiaryBrush}" />
 
      <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
-      <TextBox Text="{Binding StoreQuery}" PlaceholderText="{loc:Loc server_modules.store_query}" />
+      <TextBox Text="{Binding StoreQuery, Mode=TwoWay}" PlaceholderText="{loc:Loc server_modules.store_query}" />
       <Button Grid.Column="1" Classes="ghost-action" Content="{loc:Loc server_modules.store_search}"
               Command="{Binding SearchStoreCommand}" IsEnabled="{Binding CanManage}" />
       <Button Grid.Column="2" Classes="ghost-action" Content="{loc:Loc server_modules.store_refresh}"
@@ -865,7 +763,10 @@
    </Border>
   </StackPanel>
 
-  <!-- ── Security and diagnostics ── -->
+  <!-- ── Security and diagnostics ──
+       Reading health stays on the page because it is a read. Approving a frozen privilege plan and
+       granting standing permission are single tasks, so each opens its own dialog and the page
+       only states the current fact. -->
   <StackPanel Spacing="16" IsVisible="{Binding IsSecurityTab}">
    <Border Classes="panel-card">
     <StackPanel Spacing="12">
@@ -909,95 +810,24 @@
    </Border>
 
    <Border Classes="panel-card">
-    <StackPanel Spacing="12">
-     <StackPanel Spacing="3">
-      <TextBlock Classes="section-title" Text="{loc:Loc server_modules.credentials.title}" />
-      <TextBlock Classes="section-hint" Text="{loc:Loc server_modules.credentials.hint}" />
-     </StackPanel>
-     <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-      <TextBox Text="{Binding PrivilegeAdministrator}" PlaceholderText="{loc:Loc server_modules.privilege_administrator}" />
-      <TextBox Grid.Column="1" Text="{Binding PrivilegePassword}" PasswordChar="●"
-               PlaceholderText="{loc:Loc server_modules.privilege_password}" />
-     </Grid>
-    </StackPanel>
-   </Border>
-
-   <Border Classes="panel-card">
-    <StackPanel Spacing="12">
-     <StackPanel Spacing="3">
-      <TextBlock Classes="section-title" Text="{loc:Loc server_modules.privilege_title}" />
-      <TextBlock Classes="section-hint" Text="{loc:Loc server_modules.privilege_hint}" />
-     </StackPanel>
-     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-      <TextBox Text="{Binding PrivilegePlanId}" PlaceholderText="{loc:Loc server_modules.privilege_plan_id}" />
-      <Button Grid.Column="1" Classes="ghost-action" Content="{loc:Loc server_modules.privilege_load}"
-              Command="{Binding LoadPrivilegeCommand}" VerticalAlignment="Center" />
-     </Grid>
-     <Border Classes="inset-block" IsVisible="{Binding HasPrivilegePlan}">
-      <TextBlock Text="{Binding PrivilegeText}" TextWrapping="Wrap" FontSize="11" Classes="mono"
-                 LineHeight="17" Foreground="{DynamicResource TextSecondaryBrush}" />
-     </Border>
-     <TextBlock Text="{loc:Loc server_modules.privilege_none}" FontSize="12" IsVisible="{Binding !HasPrivilegePlan}"
-                Foreground="{DynamicResource TextTertiaryBrush}" />
-     <WrapPanel ItemSpacing="8" LineSpacing="8">
-      <Button Classes="ghost-action" Content="{loc:Loc server_modules.privilege_approve}"
-              Command="{Binding ApprovePrivilegeCommand}" />
-      <Button Classes="ghost-action" Content="{loc:Loc server_modules.privilege_cancel}"
-              Command="{Binding CancelPrivilegeCommand}" />
-     </WrapPanel>
-    </StackPanel>
-   </Border>
-
-   <Border Classes="panel-card">
-    <StackPanel Spacing="12">
-     <StackPanel Spacing="3">
-      <TextBlock Classes="section-title" Text="{loc:Loc server_modules.consent_title}" />
-      <TextBlock Classes="section-hint" Text="{loc:Loc server_modules.consent_summary}" />
-     </StackPanel>
-     <Border Classes="inset-block">
-      <StackPanel Spacing="2">
-       <TextBlock Classes="field-label" Text="{loc:Loc server_modules.consent.module}" />
-       <TextBlock Text="{Binding ConsentModuleText}" FontSize="12" TextWrapping="Wrap" />
-      </StackPanel>
-     </Border>
+    <StackPanel Spacing="14">
      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-      <ComboBox ItemsSource="{Binding ConsentKinds}" SelectedItem="{Binding ConsentKind}" HorizontalAlignment="Stretch">
-       <ComboBox.ItemTemplate>
-        <DataTemplate x:DataType="vm:ServerModuleConsentKindChoice"><TextBlock Text="{Binding Label}" /></DataTemplate>
-       </ComboBox.ItemTemplate>
-      </ComboBox>
-      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-       <TextBlock Text="{loc:Loc server_modules.consent_hours}" VerticalAlignment="Center" FontSize="11"
-                  Foreground="{DynamicResource TextTertiaryBrush}" />
-       <NumericUpDown Value="{Binding ConsentHours}" Minimum="0.01" Maximum="720" Increment="1" Width="110" />
+      <StackPanel Spacing="2">
+       <TextBlock Classes="section-title" FontSize="13" Text="{loc:Loc server_modules.privilege_title}" />
+       <TextBlock Classes="section-hint" Text="{Binding PrivilegeStateText}" />
       </StackPanel>
+      <Button Grid.Column="1" Classes="ghost-action" VerticalAlignment="Center"
+              Content="{loc:Loc server_modules.privilege_open}" Command="{Binding OpenPrivilegeReviewCommand}" />
      </Grid>
-     <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-      <TextBox Text="{Binding ConsentTarget}" PlaceholderText="{loc:Loc server_modules.consent_target}" />
-      <TextBox Grid.Column="1" Text="{Binding ConsentReason}" PlaceholderText="{loc:Loc server_modules.consent_reason}" />
+     <Border Classes="rule" />
+     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <StackPanel Spacing="2">
+       <TextBlock Classes="section-title" FontSize="13" Text="{loc:Loc server_modules.consent_title}" />
+       <TextBlock Classes="section-hint" Text="{Binding ConsentCountText}" />
+      </StackPanel>
+      <Button Grid.Column="1" Classes="ghost-action" VerticalAlignment="Center"
+              Content="{loc:Loc server_modules.consent_open}" Command="{Binding OpenConsentEditorCommand}" />
      </Grid>
-     <TextBox x:Name="ConsentContentDigest" Text="{Binding ConsentContentSha256}" PlaceholderText="{loc:Loc server_modules.consent_content_sha256}" IsVisible="{Binding ShowConsentContentSha256}" />
-     <WrapPanel ItemSpacing="8" LineSpacing="8">
-      <Button Classes="ghost-action" Content="{loc:Loc server_modules.consent_prepare}" Command="{Binding PrepareConsentCommand}" />
-      <Button Classes="ghost-action" Content="{loc:Loc server_modules.consent_approve}" Command="{Binding ApproveConsentCommand}" />
-      <Button Classes="ghost-action" Content="{loc:Loc server_modules.consent_refresh}" Command="{Binding RefreshConsentsCommand}"
-              IsEnabled="{Binding CanManage}" />
-      <Button Classes="ghost-action" Content="{loc:Loc server_modules.consent_revoke}" Command="{Binding RevokeConsentCommand}" />
-     </WrapPanel>
-     <Border Classes="inset-block" IsVisible="{Binding ConsentText, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}">
-      <TextBlock Text="{Binding ConsentText}" TextWrapping="Wrap" FontSize="11" Classes="mono" LineHeight="17" />
-     </Border>
-     <ListBox Classes="compact-list" ItemsSource="{Binding Consents}" SelectedItem="{Binding SelectedConsent, Mode=TwoWay}" MaxHeight="200">
-      <ListBox.ItemTemplate>
-       <DataTemplate x:DataType="mp:ModulePrivilegeConsent">
-        <StackPanel Spacing="2">
-         <TextBlock Text="{Binding ModuleId}" FontSize="12" FontWeight="SemiBold" />
-         <TextBlock Text="{Binding Target}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
-         <TextBlock Text="{Binding State}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
-        </StackPanel>
-       </DataTemplate>
-      </ListBox.ItemTemplate>
-     </ListBox>
     </StackPanel>
    </Border>
   </StackPanel>

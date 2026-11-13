@@ -1,9 +1,7 @@
-using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Localization;
 
@@ -13,54 +11,8 @@ public partial class ServerModulesView : UserControl
 {
     private bool _compact;
     private bool _layoutApplied;
-    private ServerModulesViewModel? _observed;
 
     public ServerModulesView() => InitializeComponent();
-
-    protected override void OnDataContextChanged(EventArgs e)
-    {
-        base.OnDataContextChanged(e);
-        if (_observed is not null) _observed.PropertyChanged -= ModelChanged;
-        _observed = DataContext as ServerModulesViewModel;
-        if (_observed is not null) _observed.PropertyChanged += ModelChanged;
-    }
-
-    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnAttachedToVisualTree(e);
-        if (_observed is null && DataContext is ServerModulesViewModel model)
-        {
-            _observed = model;
-            model.PropertyChanged += ModelChanged;
-        }
-    }
-
-    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnDetachedFromVisualTree(e);
-        if (_observed is not null) _observed.PropertyChanged -= ModelChanged;
-        _observed = null;
-    }
-
-    /// <summary>
-    /// A frozen plan appears below the long module cards. Selecting an action at the top of the
-    /// detail would otherwise create a plan that the user has to find by scrolling; bring the
-    /// decision surface into view once it exists, after layout has made it visible.
-    /// </summary>
-    private void ModelChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (_observed is null) return;
-        if (e.PropertyName == nameof(ServerModulesViewModel.HasPlan) && _observed.HasPlan)
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (PlanCard is { IsEffectivelyVisible: true }) PlanCard.BringIntoView();
-            }, DispatcherPriority.Loaded);
-        else if (e.PropertyName == nameof(ServerModulesViewModel.HasPackagePlan) && _observed.HasPackagePlan)
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (PackagePlanCard is { IsEffectivelyVisible: true }) PackagePlanCard.BringIntoView();
-            }, DispatcherPriority.Loaded);
-    }
 
     /// <summary>
     /// A module rail beside a detail pane needs roughly 900 px. Below that the two panes would each

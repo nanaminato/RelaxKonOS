@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:vm="using:RelaxKonOS.Client.Apps.ComponentCenter" xmlns:loc="using:RelaxKonOS.Client.Localization"
+ x:Class="RelaxKonOS.Client.Apps.ComponentCenter.ServerModulePolicyEditorView" x:DataType="vm:ServerModulesViewModel"
+ Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
+ <!-- Residency policy is a setting, not a fact to read on every visit: the page keeps the two
+      measured policy values, and this dialog owns the draft. Nothing is submitted until the
+      generated plan is reviewed, which is why the footer says "preview", not "apply". -->
+ <UserControl.Styles>
+  <StyleInclude Source="avares://RelaxKonOS.Client/Apps/ComponentCenter/ComponentCenterStyles.axaml" />
+ </UserControl.Styles>
+ <Grid RowDefinitions="*,Auto">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" Padding="20,18">
+   <StackPanel Spacing="14">
+    <TextBlock Classes="section-hint" Text="{loc:Loc server_modules.policy_hint}" />
+
+    <Border Classes="inset-block">
+     <StackPanel Spacing="2">
+      <TextBlock Classes="field-label" Text="{loc:Loc server_modules.plan.targets}" />
+      <TextBlock Text="{Binding ActionTargetText}" FontSize="13" TextWrapping="Wrap" />
+     </StackPanel>
+    </Border>
+
+    <StackPanel Spacing="6">
+     <TextBlock Classes="field-label" Text="{loc:Loc server_modules.policy}" />
+     <ComboBox ItemsSource="{Binding PolicyChoices}" SelectedItem="{Binding PolicyChoice, Mode=TwoWay}"
+               HorizontalAlignment="Stretch" IsEnabled="{Binding CanEditPolicy}">
+      <ComboBox.ItemTemplate>
+       <DataTemplate x:DataType="vm:ServerModulePolicyChoice"><TextBlock Text="{Binding Label}" /></DataTemplate>
+      </ComboBox.ItemTemplate>
+     </ComboBox>
+    </StackPanel>
+
+    <StackPanel Spacing="6">
+     <TextBlock Classes="field-label" Text="{loc:Loc server_modules.grace}" />
+     <NumericUpDown Value="{Binding IdleGraceSeconds, Mode=TwoWay}" Minimum="0" Maximum="604800" Increment="30"
+                    FormatString="0" Width="160" HorizontalAlignment="Left" IsEnabled="{Binding CanEditPolicy}" />
+    </StackPanel>
+
+    <Grid ColumnDefinitions="*,*" ColumnSpacing="20">
+     <StackPanel Spacing="2">
+      <TextBlock Classes="field-label" Text="{loc:Loc server_modules.residency.desired_policy}" />
+      <TextBlock Classes="field-value" Text="{Binding SelectedDesiredPolicyText}" />
+     </StackPanel>
+     <StackPanel Grid.Column="1" Spacing="2">
+      <TextBlock Classes="field-label" Text="{loc:Loc server_modules.residency.effective_policy}" />
+      <TextBlock Classes="field-value" Text="{Binding SelectedEffectivePolicyText}" />
+     </StackPanel>
+    </Grid>
+
+    <Border Classes="notice warn" IsVisible="{Binding !CanSetPolicy}">
+     <TextBlock Text="{Binding PolicyHint}" TextWrapping="Wrap" FontSize="12" />
+    </Border>
+    <Border Classes="notice bad" IsVisible="{Binding HasStatus}">
+     <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="12" />
+    </Border>
+   </StackPanel>
+  </ScrollViewer>
+
+  <Border Grid.Row="1" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderSubtleBrush}" Padding="20,14,20,16">
+   <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+    <Button Classes="ghost-action" Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
+    <Button Classes="primary" Content="{loc:Loc server_modules.policy_preview}" Click="Preview_Click"
+            IsEnabled="{Binding CanSetPolicy}" />
+   </StackPanel>
+  </Border>
+ </Grid>
+</UserControl>

@@ -222,16 +222,30 @@ internal static class ServerModuleCatalogChecks
             Check(model.IsPackagesTab, "The tab strip switches to installation and update surfaces.");
             tabs.SelectedIndex = 2; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
             Check(model.IsSecurityTab, "The tab strip switches to security and diagnostics surfaces.");
+            // Approving a privilege plan and granting standing permission are single tasks, so each
+            // is one row that opens its own dialog; the page no longer stacks the forms.
+            var securityLabels = view.GetVisualDescendants().OfType<TextBlock>().Where(block => block.IsEffectivelyVisible)
+                .Select(block => block.Text).ToHashSet();
+            Check(securityLabels.Contains(LocalizedText.Get("server_modules.privilege_open"))
+                    && securityLabels.Contains(LocalizedText.Get("server_modules.consent_open")),
+                "The security tab states privilege approval and standing permission as one entry each.");
+            Check(!view.GetVisualDescendants().OfType<TextBox>().Any(box => box.IsEffectivelyVisible && box.PasswordChar != '\0'),
+                "No administrator password field sits permanently on the security page.");
+            // The content digest belongs to the file-write scope and lives inside the consent dialog.
+            var consentView = new ServerModuleConsentView { DataContext = model };
+            var consentWindow = new Window { Content = consentView, Width = 720, Height = 760 };
+            consentWindow.Show(); Dispatcher.UIThread.RunJobs(); consentView.UpdateLayout();
             model.ConsentKind = model.ConsentKinds.Single(choice => choice.Kind == ModuleCapabilityCatalog.FileManage);
-            Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
-            var digestInput = view.FindControl<TextBox>("ConsentContentDigest")!;
+            Dispatcher.UIThread.RunJobs(); consentView.UpdateLayout();
+            var digestInput = consentView.FindControl<TextBox>("ConsentContentDigest")!;
             Check(digestInput.IsEffectivelyVisible,
-                "The redesigned security tab exposes the required content digest for standing file permission.");
+                "The standing-permission surface exposes the required content digest for file permission.");
             model.ConsentContentSha256 = new string('a', 64);
             model.ConsentKind = model.ConsentKinds.Single(choice => choice.Kind == ModuleCapabilityCatalog.ApplicationManage);
-            Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            Dispatcher.UIThread.RunJobs(); consentView.UpdateLayout();
             Check(!digestInput.IsEffectivelyVisible && model.ConsentContentSha256.Length == 0,
                 "Switching to database permission hides and clears the file-specific content digest.");
+            consentWindow.Close(); Dispatcher.UIThread.RunJobs();
             tabs.SelectedIndex = 0; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
             window.Width = 1000; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
             Check(Grid.GetColumn(detail) == 1 && Grid.GetRow(detail) == 0,
@@ -250,6 +264,22 @@ internal static class ServerModuleCatalogChecks
                     && model.SelectedResidencyStateText.Resolve().Length > 0,
                 "The selected module exposes identity and residency facts without raw server enum names.");
 
+            // Policy is a draft dialog: the page keeps the two measured values, the dialog offers
+            // strategy and grace, and its only forward action is "preview".
+            var policyView = new ServerModulePolicyEditorView { DataContext = model };
+            var policyWindow = new Window { Content = policyView, Width = 560, Height = 470 };
+            policyWindow.Show(); Dispatcher.UIThread.RunJobs(); policyView.UpdateLayout();
+            Check(policyView.GetVisualDescendants().OfType<ComboBox>().Any(box => box.IsEffectivelyVisible)
+                    && policyView.GetVisualDescendants().OfType<Button>().Any(button => button.IsEffectivelyVisible
+                        && Equals(button.Content, LocalizedText.Get("server_modules.policy_preview"))),
+                "Residency policy is edited in its own dialog and only previewed, never applied from the page.");
+            using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(560, 470)))
+            {
+                var shots = Path.Combine(AppContext.BaseDirectory, "layout-qa"); Directory.CreateDirectory(shots);
+                bitmap.Render(policyWindow); bitmap.Save(Path.Combine(shots, "server-module-policy.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+            policyWindow.Close(); Dispatcher.UIThread.RunJobs();
+
             await model.RemoveCommand.ExecuteAsync(null);
             Check(captured is { Action: ServerModuleAction.Remove, ModuleIds.Count: 1 }
                     && captured.ModuleIds[0] == "relaxkonos.git" && !captured.EnabledModuleIds.Contains("relaxkonos.git")
@@ -263,6 +293,22 @@ internal static class ServerModuleCatalogChecks
             Check(!model.CanApplyPackagePlan, "Expired package plans cannot be applied from the desktop UI.");
             model.PackagePlan = model.PackagePlan with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5) };
             Check(model.CanApplyPackagePlan, "A valid package plan can be reviewed and confirmed.");
+            // The same decision surface carries a package plan; the uploaded artifact survives a
+            // closed dialog and is reachable again from the packages page.
+            settings.Language = "zh-CN";
+            var packageReview = new ServerModulePlanReviewView { DataContext = model };
+            var packageWindow = new Window { Content = packageReview, Width = 620, Height = 460 };
+            packageWindow.Show(); Dispatcher.UIThread.RunJobs(); packageReview.UpdateLayout();
+            Check(packageReview.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsEffectivelyVisible
+                    && block.Text == LocalizedText.Get("server_modules.package_plan.version")),
+                "A validated package plan is reviewed in the same frozen-plan surface.");
+            using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(620, 460)))
+            {
+                var shots = Path.Combine(AppContext.BaseDirectory, "layout-qa"); Directory.CreateDirectory(shots);
+                bitmap.Render(packageWindow); bitmap.Save(Path.Combine(shots, "server-module-package-plan.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+            packageWindow.Close(); Dispatcher.UIThread.RunJobs();
+            settings.Language = languageBefore;
             model.DiscardPackagePlanCommand.Execute(null);
             Check(!model.HasPackagePlan, "Canceling package preview leaves no stale plan to apply.");
 
@@ -305,12 +351,16 @@ internal static class ServerModuleCatalogChecks
                     Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
                     Check(localized.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsEffectivelyVisible
                             && block.Text == LocalizedText.Get("server_modules.health.title")),
-                        "The security tab renders module health and its later permission surfaces.");
+                        "The security tab renders module health and the two permission entries.");
                     using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
                     { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-security.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
-                    localizedScroll.Offset = new Avalonia.Vector(0, 760); Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
-                    using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
-                    { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-consents.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+                    // The standing-permission form is a dialog, so its screenshot is that surface.
+                    var consentShot = new ServerModuleConsentView { DataContext = model };
+                    var consentShotWindow = new Window { Content = consentShot, Width = 720, Height = 760 };
+                    consentShotWindow.Show(); Dispatcher.UIThread.RunJobs(); consentShot.UpdateLayout();
+                    using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(720, 760)))
+                    { bitmap.Render(consentShotWindow); bitmap.Save(Path.Combine(output, "server-module-consents.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+                    consentShotWindow.Close(); Dispatcher.UIThread.RunJobs();
                 }
                 localizedWindow.Close(); Dispatcher.UIThread.RunJobs();
             }
@@ -365,14 +415,29 @@ internal static class ServerModuleCatalogChecks
             var planScroll = new ScrollViewer { Content = planView, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
             var planWindow = new Window { Content = planScroll, Width = 1000, Height = 900 };
             planWindow.Show(); Dispatcher.UIThread.RunJobs(); planView.UpdateLayout();
-            Check(planView.FindControl<Border>("PlanCard") is { IsVisible: true }
-                    && planView.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsEffectivelyVisible
-                        && block.Text == LocalizedText.Get("server_modules.plan.title")),
-                "A frozen plan renders as a decision card instead of raw plan text.");
-            planScroll.Offset = new Avalonia.Vector(0, 1050); Dispatcher.UIThread.RunJobs(); planView.UpdateLayout();
+            Check(planView.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsEffectivelyVisible
+                    && block.Text?.Contains(LocalizedText.Get("server_modules.plan.pending_label"), StringComparison.Ordinal) == true),
+                "A frozen plan without an open review dialog stays stated as one pending row.");
             using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(1000, 900)))
-            { bitmap.Render(planWindow); bitmap.Save(Path.Combine(output, "server-module-plan.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+            { bitmap.Render(planWindow); bitmap.Save(Path.Combine(output, "server-module-pending.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
             planWindow.Close(); Dispatcher.UIThread.RunJobs();
+
+            // The decision is its own modal surface: exact frozen targets, one commit action, and
+            // the discard path in the same row. A plan card appended to the page is gone.
+            var reviewView = new ServerModulePlanReviewView { DataContext = model };
+            var reviewWindow = new Window { Content = reviewView, Width = 620, Height = 460 };
+            reviewWindow.Show(); Dispatcher.UIThread.RunJobs(); reviewView.UpdateLayout();
+            var reviewLabels = reviewView.GetVisualDescendants().OfType<TextBlock>()
+                .Where(block => block.IsEffectivelyVisible).Select(block => block.Text).ToHashSet();
+            var commit = reviewView.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.IsEffectivelyVisible && button.Classes.Contains("primary"));
+            Check(reviewLabels.Contains(LocalizedText.Get("server_modules.plan.targets"))
+                    && reviewLabels.Any(text => text?.Contains("Git", StringComparison.Ordinal) == true)
+                    && commit.IsEnabled,
+                "A frozen plan is reviewed in its own dialog with its exact targets and one commit action.");
+            using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(620, 460)))
+            { bitmap.Render(reviewWindow); bitmap.Save(Path.Combine(output, "server-module-plan.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+            reviewWindow.Close(); Dispatcher.UIThread.RunJobs();
             settings.Language = languageBefore;
             await model.EnableCommand.ExecuteAsync(null);
             Check(captured?.ModuleIds.Count == 2 && captured.EnabledModuleIds.Count == 2 && applies == 0,

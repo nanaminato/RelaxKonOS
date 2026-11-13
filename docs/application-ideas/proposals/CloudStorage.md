@@ -65,6 +65,8 @@ WebDAV 使用 HTTPS Basic 认证，S3 使用 AWS SDK 签名，支持静态访问
 
 发布 `ServerModules/RelaxKonOS.ServerModule.CloudStorage/RelaxKonOS.ServerModule.CloudStorage.csproj`，指定目标 RID 并使用框架依赖发布。按[模块打包说明](../../architecture/RelaxKonOS.ServerModulePackage.Format.md#离线打包命令)打包发布目录，使用下列参数。模块不声明宿主提权能力。
 
+发布者工作台可通过项目目录内的 `module-release.json` 自动发现 CloudStorage，按所选 RID 批量构建并签发统一目录。
+
 | 参数 | 值 |
 | --- | --- |
 | `--module-id` | `cloud-storage` |

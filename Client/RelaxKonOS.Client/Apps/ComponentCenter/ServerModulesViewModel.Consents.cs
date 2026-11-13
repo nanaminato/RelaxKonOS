@@ -35,6 +35,19 @@ public sealed partial class ServerModulesViewModel
     [ObservableProperty] private ModulePrivilegeConsent? selectedConsent;
     [ObservableProperty] private ModulePrivilegeConsent? consentPlan;
     public bool ShowConsentContentSha256 => ConsentKind.Kind == ModuleCapabilityCatalog.FileManage;
+
+    /// <summary>Summary shown on the security page: the dialog owns the form, the page states count
+    /// and whether a prepared consent is waiting for review.</summary>
+    public LocalizedStatus ConsentCountText => LocalizedStatus.Format("server_modules.consent_count", Consents.Count);
+    public LocalizedStatus PrivilegeStateText => PrivilegePlan is { } plan
+        ? LocalizedStatus.Format("server_modules.privilege_loaded", plan.PlanId)
+        : LocalizedStatus.Key("server_modules.privilege_none");
+    partial void OnConsentsChanged(IReadOnlyList<ModulePrivilegeConsent> value)
+    {
+        OnPropertyChanged(nameof(ConsentCountText));
+        OnPropertyChanged(nameof(HasConsents));
+    }
+    public bool HasConsents => Consents.Count > 0;
     partial void OnConsentKindChanged(ServerModuleConsentKindChoice value)
     {
         if (value.Kind != ModuleCapabilityCatalog.FileManage) ConsentContentSha256 = "";

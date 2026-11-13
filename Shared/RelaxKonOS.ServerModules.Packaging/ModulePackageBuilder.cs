@@ -43,16 +43,34 @@ public static class ModulePackageBuilder
     public static async Task<ModulePackageBuildResult> BuildAsync(ModulePackageBuildOptions options,
         DateTimeOffset now, CancellationToken cancellationToken = default)
     {
+        if (!ModulePackageRules.Id(options.SourceId) || !ModulePackageRules.Id(options.KeyId)
+            || options.ValiditySeconds is <= 0 or > 2678400 || options.Sequence <= 0)
+            throw new ModulePackageException("module-package-build-options-invalid");
+        var release = await BuildArchiveAsync(options, cancellationToken);
+        var catalog = new ModulePackageCatalog(1, options.SourceId, options.Sequence, now, now.AddSeconds(options.ValiditySeconds),
+            [release], [], []);
+        var (envelope, spki) = await SignCatalogAsync(catalog, options.KeyId, options.PrivateKeyPemPath, cancellationToken);
+        var output = Path.GetFullPath(options.OutputDirectory);
+        var archivePath = Path.Combine(output, new Uri(release.DownloadUri).Segments[^1]);
+        var catalogPath = Path.Combine(output, "catalog.json");
+        await File.WriteAllBytesAsync(catalogPath, envelope, cancellationToken);
+        await File.WriteAllBytesAsync(Path.Combine(output, "manifest.json"),
+            JsonSerializer.SerializeToUtf8Bytes(release.Manifest, ModulePackageJson.Options), cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(output, "public-key.spki"), spki, cancellationToken);
+        return new(release.Manifest, release.ManifestSha256, archivePath, release.ArchiveSha256, release.ArchiveBytes, catalogPath, spki);
+    }
+
+    public static async Task<ModulePackageRelease> BuildArchiveAsync(ModulePackageBuildOptions options,
+        CancellationToken cancellationToken = default)
+    {
         var publish = Path.GetFullPath(options.PublishDirectory);
         var output = Path.GetFullPath(options.OutputDirectory);
         if (!Directory.Exists(publish)) throw new ModulePackageException("module-package-build-path-invalid");
         Directory.CreateDirectory(output);
         if (!ModulePackageRules.Id(options.ModuleId) || !ModulePackageRules.Id(options.ReleaseId)
-            || !ModulePackageRules.Id(options.PublisherId) || !ModulePackageRules.Id(options.SourceId)
-            || !ModulePackageRules.Id(options.KeyId) || !ModulePackageRules.Id(options.BuildId)
+            || !ModulePackageRules.Id(options.PublisherId) || !ModulePackageRules.Id(options.BuildId)
             || options.Purpose is not ("official" or "development" or "third-party")
             || options.Rid is not ("linux-x64" or "linux-arm64" or "win-x64" or "win-arm64" or "osx-x64" or "osx-arm64")
-            || options.ValiditySeconds is <= 0 or > 2678400 || options.Sequence <= 0
             || options.SourceCommit is not { Length: 40 or 64 } || !options.SourceCommit.All(char.IsAsciiHexDigitLower))
             throw new ModulePackageException("module-package-build-options-invalid");
         _ = ModulePackageRules.Version(options.Version);
@@ -89,18 +107,23 @@ public static class ModulePackageBuilder
         ModulePackageRules.Manifest(manifest);
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ModulePackageJson.Options);
         var archivePath = Path.Combine(output, options.ModuleId + "-" + options.Version + "-" + options.Rid + ".rkmodule");
-        if (!archivePath.StartsWith(output + Path.DirectorySeparatorChar, PathComparison))
+        if (!archivePath.StartsWith(Path.TrimEndingDirectorySeparator(output) + Path.DirectorySeparatorChar, PathComparison))
             throw new ModulePackageException("module-package-build-path-invalid");
         await BuildArchiveAsync(archivePath, manifestBytes, publish, options.Rid, manifest.Files, cancellationToken);
         var archiveBytes = new FileInfo(archivePath).Length;
         var archiveSha = await HashAsync(archivePath, cancellationToken);
         var release = new ModulePackageRelease(manifest, Sha256(manifestBytes), archiveSha, archiveBytes,
             origin + Path.GetFileName(archivePath));
-        var catalog = new ModulePackageCatalog(1, options.SourceId, options.Sequence, now, now.AddSeconds(options.ValiditySeconds),
-            [release], [], []);
+        return release;
+    }
+
+
+    public static async Task<(byte[] Envelope, string PublicKeySpki)> SignCatalogAsync(ModulePackageCatalog catalog,
+        string keyId, string privateKeyPemPath, CancellationToken cancellationToken = default)
+    {
         var payload = JsonSerializer.SerializeToUtf8Bytes(catalog, ModulePackageJson.Options);
         using var key = ECDsa.Create();
-        try { key.ImportFromPem(await File.ReadAllTextAsync(options.PrivateKeyPemPath, cancellationToken)); }
+        try { key.ImportFromPem(await File.ReadAllTextAsync(privateKeyPemPath, cancellationToken)); }
         catch (Exception error) when (error is ArgumentException or CryptographicException)
         { throw new ModulePackageException("module-package-build-key-invalid"); }
         if (key.ExportParameters(false).Curve.Oid.Value != "1.2.840.10045.3.1.7")
@@ -109,13 +132,9 @@ public static class ModulePackageBuilder
         var signed = new byte[domain.Length + payload.Length];
         domain.CopyTo(signed, 0); payload.CopyTo(signed, domain.Length);
         var signature = key.SignData(signed, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
-        var envelope = new SignedModulePackageCatalog(1, options.KeyId, Convert.ToBase64String(payload), Convert.ToBase64String(signature));
-        var catalogPath = Path.Combine(output, "catalog.json");
-        await File.WriteAllBytesAsync(catalogPath, JsonSerializer.SerializeToUtf8Bytes(envelope, ModulePackageJson.Options), cancellationToken);
-        await File.WriteAllBytesAsync(Path.Combine(output, "manifest.json"), manifestBytes, cancellationToken);
-        var spki = key.ExportSubjectPublicKeyInfo();
-        await File.WriteAllTextAsync(Path.Combine(output, "public-key.spki"), Convert.ToBase64String(spki), cancellationToken);
-        return new(manifest, Sha256(manifestBytes), archivePath, archiveSha, archiveBytes, catalogPath, Convert.ToBase64String(spki));
+        var envelope = new SignedModulePackageCatalog(1, keyId, Convert.ToBase64String(payload), Convert.ToBase64String(signature));
+        return (JsonSerializer.SerializeToUtf8Bytes(envelope, ModulePackageJson.Options),
+            Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()));
     }
 
     private static async Task BuildArchiveAsync(string path, byte[] manifest, string publish, string rid,

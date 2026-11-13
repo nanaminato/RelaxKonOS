@@ -12,6 +12,8 @@ internal static class ModulePackageStore
         if (query is { Length: > 128 } || sourceId is not null && !ModulePackageHostConfiguration.Identifier(sourceId)
             || offset is < 0 or > 2048 || limit is < 1 or > 50)
             throw new ModulePackageException("module-store-request-invalid");
+        query = query?.Trim();
+        var moduleIdQuery = query?.Replace("-", "");
         var serviceId = ModuleManagementStore.ReadRecoveryReport(contentRoot).ServiceId;
         var document = ModulePackageCatalogStore.Read(contentRoot, serviceId);
         var context = ModulePackageHostConfiguration.Context(serviceId, configuration, environment);
@@ -28,7 +30,7 @@ internal static class ModulePackageStore
                 foreach (var release in verified.Catalog.Releases)
                 {
                     var manifest = release.Manifest;
-                    if (!Matches(manifest, query)) continue;
+                    if (!Matches(manifest, query, moduleIdQuery)) continue;
                     var revoked = revokedIds.Contains(manifest.ReleaseId) || revokedDigests.Contains(release.ArchiveSha256);
                     var rid = string.Equals(manifest.Rid, context.Rid, StringComparison.Ordinal);
                     var hostApi = manifest.Runtime == "module-host" ? "2.0.0" : context.HostApiVersion;
@@ -95,9 +97,11 @@ internal static class ModulePackageStore
         return new(document.Revision, sources);
     }
 
-    private static bool Matches(ModulePackageManifest manifest, string? query) =>
+    private static bool Matches(ModulePackageManifest manifest, string? query, string? moduleIdQuery) =>
         string.IsNullOrWhiteSpace(query)
         || manifest.ModuleId.Contains(query, StringComparison.OrdinalIgnoreCase)
+        || manifest.Ui.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+        || (moduleIdQuery is { Length: > 0 } && manifest.ModuleId.Replace("-", "").Contains(moduleIdQuery, StringComparison.OrdinalIgnoreCase))
         || manifest.Version.Contains(query, StringComparison.OrdinalIgnoreCase)
         || manifest.ReleaseId.Contains(query, StringComparison.OrdinalIgnoreCase)
         || manifest.PublisherId.Contains(query, StringComparison.OrdinalIgnoreCase);

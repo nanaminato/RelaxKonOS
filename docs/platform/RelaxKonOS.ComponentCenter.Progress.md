@@ -440,3 +440,15 @@ Mihomo/FRP GitHub Releases 元数据启用 HTTP 压缩，每页由 30 条缩为 
 处理：`AptPackageResolution` 的两处 `.deb` 文件名白名单（`TryBuildTarget` 的依赖循环、`SafeFileName`）加入 `~`，并用真实 apt 输出加回归（`Tests/ManagedRuntimes -- component-package-resolution-only`，5 项：policy 解析、5 行 URI 计划解析、候选冻结、仓库/池路径/依赖闭包核对、含 `;` 的文件名仍拒绝）。反向验证：去掉白名单里的 `~` 后该组第 3 项立即变红。
 
 未验证：未在宿主重新冻结候选或执行真实更新；`Candidate` 变可用后，更新仍受 `DockerPackagePolicyReady`（受授权仓库 + 访问用户）与冻结/执行流程约束。
+
+## 服务端模块页：冻结计划与许可改为弹窗决策面（2026-11-13）
+
+2026-11-01 的信息架构把六块内容纵向堆进详情栏，但「待确认计划」仍是页面底部的一张卡：点动作在上、做决定在下，代码要靠 `BringIntoView` 把用户滚过去，自动化检查也要滚到 1050 px 才能截到它。页面同时常驻三份互不相关的表单（驻留策略、管理员凭据、提权/许可），真实使用中读状态和做决定混在同一列里。
+
+- **计划变成模态决策面。** 启停、卸载、唤醒、休眠、停止、重启、恢复全部、策略变更、上传/商店安装生成冻结计划后，直接打开 `ServerModulePlanReviewView`：目标模块、新增/移除集合、重启要求、有效期、卸载的数据保留说明与结构化阻断项，底部只有「放弃计划 / 确认」；包计划在同一视图的第二段（模块、版本、发布者、发布 ID、摘要、运行时、声明权限）。提交仍在同一 `ApplyCommand`/`ApplyPackagePlanCommand` 上，失败时计划保留、原因显示在弹窗内。
+- **关掉弹窗不等于做决定。** 计划与已上传制品都保留，页面顶部分别在「模块」页和「安装与更新」页显示一行 `待确认计划 · 动作 · 目标`（包为 `· 模块 · 版本`），带「查看计划 / 放弃计划」。只有显式放弃才丢弃计划。
+- **策略、提权、常设许可各自一个弹窗。** 详情页只保留期望/生效两条策略事实和一个入口按钮，策略编辑是草稿（关掉即从所选模块恢复，按钮是「预览策略变更」而不是「应用」）。管理员凭据只出现在提权/许可弹窗里，安全页不再有常驻密码框。
+- **详情收敛为六条事实 + 一个展开区。** 配置所有者、进程代次、运行时标识、Host API、释放级别、能力/依赖/被依赖收进默认折叠的「更多技术细节」；未收尾工作仍作为可见警告。
+- 视图模型通过 `PlanReviewRequested`／`PackagePlanReviewRequested`／`PolicyEditorRequested`／`PrivilegeReviewRequested`／`ConsentEditorRequested` 暴露这些界面，由 `ComponentCenterApp` 用本窗口的模态宿主实现；无宿主的用例仍走同一预览/提交协议。新增 7 个本地化键（中英日同步）。
+
+验证：桌面客户端与 `RelaxKonOS.Client.Desktop` 构建 0 错误；ApplicationLayout `--modules-only` 通过，断言改为「无弹窗时计划以单行呈现」「评审面显示精确目标与唯一提交按钮」「安全页只有两个入口且没有常驻密码框」「常设许可摘要出现在弹窗」。截图更新为 `server-module-pending.png`、`server-module-plan.png`、`server-module-package-plan.png`、`server-module-consents.png`，其余页面截图沿用。Headless 渲染不代替真实窗口的弹窗层级、Escape 取消与 150%/200% DPI 人工验收。

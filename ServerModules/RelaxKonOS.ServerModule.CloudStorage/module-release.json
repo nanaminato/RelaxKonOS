@@ -1,0 +1,11 @@
+{
+  "moduleId": "cloud-storage",
+  "name": "CloudStorage",
+  "project": "RelaxKonOS.ServerModule.CloudStorage.csproj",
+  "entryAssembly": "RelaxKonOS.ServerModule.CloudStorage.dll",
+  "entryType": "RelaxKonOS.ServerModule.CloudStorage.CloudStorageModule",
+  "runtime": "module-host",
+  "rids": ["win-x64", "win-arm64", "linux-x64", "linux-arm64"],
+  "hostApiMinimum": "2.0.0",
+  "hostApiMaximumExclusive": "3.0.0"
+}

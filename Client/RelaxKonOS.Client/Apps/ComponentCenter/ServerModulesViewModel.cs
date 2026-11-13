@@ -148,6 +148,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     partial void OnPrivilegePlanChanged(ModulePrivilegePlan? value)
     {
         OnPropertyChanged(nameof(HasPrivilegePlan));
+        OnPropertyChanged(nameof(PrivilegeStateText));
         OnPropertyChanged(nameof(CanApprovePrivilege));
         OnPropertyChanged(nameof(CanCancelPrivilege));
         ApprovePrivilegeCommand.NotifyCanExecuteChanged();
@@ -459,6 +460,49 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [RelayCommand(CanExecute = nameof(CanDiscardPlan))] private void DiscardPlan() => Plan = null;
     [RelayCommand(CanExecute = nameof(CanDiscardPackagePlan))] private void DiscardPackagePlan() => PackagePlan = null;
 
+    // ── Review surfaces ─────────────────────────────────────────────────────────────────────
+    // The page owns the frozen decision; the application owns windows. A plan is reviewed in a
+    // modal dialog instead of a card appended below a long detail column, where the user had to
+    // scroll to find the decision they had just asked for. Hooks stay null in headless checks, in
+    // which case the plan simply stays pending and the page offers the same decision as a row.
+    public Func<Task>? PlanReviewRequested { get; set; }
+    public Func<Task>? PackagePlanReviewRequested { get; set; }
+    public Func<Task>? PolicyEditorRequested { get; set; }
+    public Func<Task>? PrivilegeReviewRequested { get; set; }
+    public Func<Task>? ConsentEditorRequested { get; set; }
+
+    /// <summary>One line stating that a frozen plan is waiting, so closing a dialog never silently
+    /// loses the fact that an unsubmitted plan exists.</summary>
+    public LocalizedStatus PlanPendingText => LocalizedStatus.Join(" · ",
+        [LocalizedStatus.Key("server_modules.plan.pending_label"), PlanActionText, PlanTargetText]);
+    /// <summary>A validated package waits for the same kind of decision as a module change, and its
+    /// uploaded artifact must not be thrown away just because the review dialog was closed.</summary>
+    public LocalizedStatus PackagePlanPendingText => LocalizedStatus.Join(" · ",
+        [LocalizedStatus.Key("server_modules.plan.pending_label"),
+         LocalizedStatus.Literal(PackagePlan?.ModuleId ?? "—"),
+         LocalizedStatus.Literal(PackagePlan?.Version ?? "—")]);
+
+    [RelayCommand(CanExecute = nameof(HasPlan))] private Task ReviewPlanAsync() =>
+        PlanReviewRequested?.Invoke() ?? Task.CompletedTask;
+    [RelayCommand(CanExecute = nameof(HasPackagePlan))] private Task ReopenPackagePlanAsync() =>
+        PackagePlanReviewRequested?.Invoke() ?? Task.CompletedTask;
+    [RelayCommand(CanExecute = nameof(CanReviewPolicy))] private Task OpenPolicyAsync() =>
+        PolicyEditorRequested?.Invoke() ?? Task.CompletedTask;
+    [RelayCommand] private Task OpenPrivilegeReviewAsync() =>
+        PrivilegeReviewRequested?.Invoke() ?? Task.CompletedTask;
+    [RelayCommand] private Task OpenConsentEditorAsync() =>
+        ConsentEditorRequested?.Invoke() ?? Task.CompletedTask;
+
+    /// <summary>The policy editor is a draft: leaving it without a preview must not leave edited
+    /// values behind in the read-only policy facts.</summary>
+    public bool CanReviewPolicy => CanManage && Selected is not null;
+    public void ResetPolicyFromSelection()
+    {
+        if (Selected?.DesiredResidencyPolicy is not { } policy) return;
+        PolicyChoice = PolicyChoices.FirstOrDefault(choice => choice.Value == policy.Strategy) ?? PolicyChoices[1];
+        IdleGraceSeconds = policy.IdleGraceSeconds;
+    }
+
     private void RebuildActionRows()
     {
         var targets = Targets;
@@ -609,6 +653,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(HasPlanBlockers));
         OnPropertyChanged(nameof(PlanBlockedText));
         OnPropertyChanged(nameof(PlanServiceText));
+        OnPropertyChanged(nameof(PlanPendingText));
+        OnPropertyChanged(nameof(PackagePlanPendingText));
+        OnPropertyChanged(nameof(CanReviewPolicy));
         OnPropertyChanged(nameof(HasOperation));
         OnPropertyChanged(nameof(CanApply));
         OnPropertyChanged(nameof(CanEnable));
@@ -637,6 +684,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         DiscardPlanCommand.NotifyCanExecuteChanged(); DiscardPackagePlanCommand.NotifyCanExecuteChanged();
         RollbackPackageCommand.NotifyCanExecuteChanged(); InstallStoreItemCommand.NotifyCanExecuteChanged();
         RestoreAllCommand.NotifyCanExecuteChanged();
+        ReviewPlanCommand.NotifyCanExecuteChanged();
+        ReopenPackagePlanCommand.NotifyCanExecuteChanged();
+        OpenPolicyCommand.NotifyCanExecuteChanged();
         LoadPrivilegeCommand.NotifyCanExecuteChanged();
         ApprovePrivilegeCommand.NotifyCanExecuteChanged();
         CancelPrivilegeCommand.NotifyCanExecuteChanged();
@@ -740,13 +790,22 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         }
     }
 
-    public async Task InstallPackageAsync(Stream content, long length) => await Run(async () =>
+    public async Task InstallPackageAsync(Stream content, long length)
     {
-        PackageStatus = LocalizedText.Get("server_modules.package_uploading");
-        var upload = await client.UploadPackageAsync(content, length);
-        PackagePlan = await client.AutoPlanPackageAsync(upload.UploadId);
-        PackageStatus = LocalizedText.Get("server_modules.package_plan_ready");
-    });
+        await Run(async () =>
+        {
+            PackageStatus = LocalizedText.Get("server_modules.package_uploading");
+            var upload = await client.UploadPackageAsync(content, length);
+            PackagePlan = await client.AutoPlanPackageAsync(upload.UploadId);
+            PackageStatus = LocalizedText.Get("server_modules.package_plan_ready");
+        });
+        await ReviewPackagePlanAsync();
+    }
+    /// <summary>A validated package is not installed until its frozen plan is confirmed.</summary>
+    private async Task ReviewPackagePlanAsync()
+    {
+        if (PackagePlan is not null && PackagePlanReviewRequested is not null) await PackagePlanReviewRequested();
+    }
 
     [RelayCommand(CanExecute = nameof(CanApplyPackagePlan))]
     private async Task ApplyPackagePlanAsync() => await Run(async () =>
@@ -823,14 +882,18 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     });
 
     [RelayCommand(CanExecute = nameof(CanInstallStoreItem))]
-    private async Task InstallStoreItemAsync() => await Run(async () =>
+    private async Task InstallStoreItemAsync()
     {
-        if (SelectedStoreItem is not { } item) return;
-        StoreStatus = LocalizedText.Get("server_modules.store_downloading");
-        var upload = await client.DownloadStorePackageAsync(item.SourceId, item.ReleaseId);
-        PackagePlan = await client.AutoPlanPackageAsync(upload.UploadId);
-        PackageStatus = LocalizedText.Get("server_modules.package_plan_ready");
-    });
+        await Run(async () =>
+        {
+            if (SelectedStoreItem is not { } item) return;
+            StoreStatus = LocalizedText.Get("server_modules.store_downloading");
+            var upload = await client.DownloadStorePackageAsync(item.SourceId, item.ReleaseId);
+            PackagePlan = await client.AutoPlanPackageAsync(upload.UploadId);
+            PackageStatus = LocalizedText.Get("server_modules.package_plan_ready");
+        });
+        await ReviewPackagePlanAsync();
+    }
 
     [RelayCommand] private async Task CheckHealthAsync() => await Run(async () =>
     {
@@ -840,7 +903,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
 
     [RelayCommand(CanExecute = nameof(CanEnable))] private Task EnableAsync() => PreviewAsync(true);
     [RelayCommand(CanExecute = nameof(CanDisable))] private Task DisableAsync() => PreviewAsync(false);
-    [RelayCommand(CanExecute = nameof(CanRemove))] private Task RemoveAsync() => Run(async () =>
+    [RelayCommand(CanExecute = nameof(CanRemove))] private Task RemoveAsync() => ReviewPreviewAsync(async () =>
     {
         var targets = Targets;
         if (targets.Count != 1 || targets[0] is not { ServiceId: { } service, DesiredRevision: { } revision } target) return;
@@ -852,7 +915,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [RelayCommand(CanExecute = nameof(CanSleep))] private Task SleepAsync() => PreviewRuntimeAsync(ServerModuleAction.TrySleep);
     [RelayCommand(CanExecute = nameof(CanStop))] private Task StopAsync() => PreviewRuntimeAsync(ServerModuleAction.Stop);
     [RelayCommand(CanExecute = nameof(CanRestart))] private Task RestartAsync() => PreviewRuntimeAsync(ServerModuleAction.Restart);
-    [RelayCommand(CanExecute = nameof(CanSetPolicy))] private Task SetPolicyAsync() => Run(async () =>
+    [RelayCommand(CanExecute = nameof(CanSetPolicy))] private Task SetPolicyAsync() => ReviewPreviewAsync(async () =>
     {
         var targets = Targets;
         if (targets.FirstOrDefault() is not { ServiceId: { } service, DesiredRevision: { } revision }) return;
@@ -861,20 +924,20 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
             Modules.Where(x => x.DesiredEnabled).Select(x => x.Id).Order(StringComparer.Ordinal).ToArray(), revision, Guid.NewGuid().ToString("N"),
             Strategy: PolicyChoice.Value, IdleGraceSeconds: decimal.ToInt32(IdleGraceSeconds)));
     });
-    private Task PreviewRuntimeAsync(ServerModuleAction action) => Run(async () =>
+    private Task PreviewRuntimeAsync(ServerModuleAction action) => ReviewPreviewAsync(async () =>
     {
         var targets = Targets;
         if (targets.FirstOrDefault() is not { ServiceId: { } service, DesiredRevision: { } revision }) return;
         Plan = await client.PreviewAsync(new(service, action, targets.Select(x => x.Id).Order(StringComparer.Ordinal).ToArray(),
             Modules.Where(x => x.DesiredEnabled).Select(x => x.Id).Order(StringComparer.Ordinal).ToArray(), revision, Guid.NewGuid().ToString("N")));
     });
-    [RelayCommand(CanExecute = nameof(CanRestoreAll))] private Task RestoreAllAsync() => Run(async () =>
+    [RelayCommand(CanExecute = nameof(CanRestoreAll))] private Task RestoreAllAsync() => ReviewPreviewAsync(async () =>
     {
         var first = Modules[0];
         var ids = Modules.Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
         Plan = await client.PreviewAsync(new(first.ServiceId!, ServerModuleAction.Enable, ids, ids, first.DesiredRevision!, Guid.NewGuid().ToString("N")));
     });
-    private async Task PreviewAsync(bool enabled) => await Run(async () =>
+    private Task PreviewAsync(bool enabled) => ReviewPreviewAsync(async () =>
     {
         // The target set is the checked rows when any exist, so a batch change must not depend on
         // whichever row happens to be open in the detail pane.
@@ -885,6 +948,16 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         Plan = await client.PreviewAsync(new(service, enabled ? ServerModuleAction.Enable : ServerModuleAction.Disable,
             targets.Select(x => x.Id).Order(StringComparer.Ordinal).ToArray(), desired.Order(StringComparer.Ordinal).ToArray(), revision, Guid.NewGuid().ToString("N")));
     });
+    /// <summary>
+    /// A preview is not a decision: the frozen plan is submitted only from the review surface
+    /// that was opened for it. Running the review after <see cref="Run"/> has released
+    /// <see cref="Busy"/> is what makes the dialog's own commit command eligible.
+    /// </summary>
+    private async Task ReviewPreviewAsync(Func<Task> preview)
+    {
+        await Run(preview);
+        if (Plan is not null && PlanReviewRequested is not null) await PlanReviewRequested();
+    }
     [RelayCommand(CanExecute = nameof(CanApply))] private async Task ApplyAsync() => await Run(async () =>
     {
         if (Plan is not { } plan) return;
@@ -1107,6 +1180,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(PackagePlanExpiresText));
         OnPropertyChanged(nameof(PackagePlanPrivilegesText));
         OnPropertyChanged(nameof(HasPackagePlanPrivileges));
+        OnPropertyChanged(nameof(PackagePlanPendingText));
         Notify();
     }
     partial void OnSelectedStoreItemChanged(ServerModuleStoreItemDto? value)

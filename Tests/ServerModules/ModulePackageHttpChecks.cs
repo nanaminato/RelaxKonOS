@@ -45,7 +45,8 @@ internal static class ModulePackageHttpChecks
                 "https://modules.example/", keyPath, "builder-key", 3600,
                 HostApiMinimum: isolated ? "2.0.0" : "1.0.0", HostApiMaximumExclusive: isolated ? "3.0.0" : "2.0.0",
                 Runtime: isolated ? "module-host" : "in-process",
-                Privileges: isolated ? [ModuleCapabilityFixtures.Service("fixture.service", "restart")] : []), now);
+                Privileges: isolated ? [ModuleCapabilityFixtures.Service("fixture.service", "restart")] : [],
+                Ui: new("Sample Module", "", "", null, "UNLICENSED")), now);
             var policy = new ModulePackageTrustPolicy(1, "official", 1, true, "fixture", purpose,
                 "https://modules.example/", ["fixture-http"],
                 new Dictionary<string, string> { ["builder-key"] = built.PublicKeySpkiBase64 }, 3600);
@@ -89,11 +90,14 @@ internal static class ModulePackageHttpChecks
             using var client = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
 
-            var store = await client.GetFromJsonAsync<ServerModuleStorePageDto>(
-                ServerModuleManagementRoutes.ModuleStoreSearch + "?q=fixture-http", RelaxKonOSJsonOptions.Default);
-            check(store?.Items.Count == 1 && store.Items[0].SourceId == "official"
-                && store.Items[0].ModuleId == "fixture-http" && store.Items[0].ArtifactSha256 == built.ArchiveSha256,
-                "module store search finds the accepted signed release without downloading it");
+            foreach (var query in new[] { "fixture-http", "FixtureHttp", " sample module " })
+            {
+                var store = await client.GetFromJsonAsync<ServerModuleStorePageDto>(
+                    ServerModuleManagementRoutes.ModuleStoreSearch + "?q=" + Uri.EscapeDataString(query), RelaxKonOSJsonOptions.Default);
+                check(store?.Items.Count == 1 && store.Items[0].SourceId == "official"
+                    && store.Items[0].ModuleId == "fixture-http" && store.Items[0].ArtifactSha256 == built.ArchiveSha256,
+                    $"module store search finds the accepted signed release for '{query}'");
+            }
             var sources = await client.GetFromJsonAsync<ServerModuleStoreSourcePageDto>(
                 ServerModuleManagementRoutes.ModuleStoreSources, RelaxKonOSJsonOptions.Default);
             check(sources?.Sources.Count == 1 && sources.Sources[0].SourceId == "official"
