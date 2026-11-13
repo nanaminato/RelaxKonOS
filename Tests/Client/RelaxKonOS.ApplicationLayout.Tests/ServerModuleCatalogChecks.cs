@@ -220,7 +220,15 @@ internal static class ServerModuleCatalogChecks
             var tabs = view.FindControl<ListBox>("SectionTabs")!;
             tabs.SelectedIndex = 1; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
             Check(model.IsPackagesTab, "The tab strip switches to installation and update surfaces.");
-            tabs.SelectedIndex = 2; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            model.OpenStorePageCommand.Execute(null); Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            Check(model.IsStoreTab && tabs.SelectedIndex == 2,
+                "The store is its own page, reachable from the packages tab, not a card at its bottom.");
+            await model.LoadStoreSourcesCommand.ExecuteAsync(null);
+            Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
+            Check(view.GetVisualDescendants().OfType<TextBox>().Any(box => box.IsEffectivelyVisible
+                    && box.PlaceholderText == LocalizedText.Get("server_modules.store_query")),
+                "The store page exposes its own search field.");
+            tabs.SelectedIndex = 3; Dispatcher.UIThread.RunJobs(); view.UpdateLayout();
             Check(model.IsSecurityTab, "The tab strip switches to security and diagnostics surfaces.");
             // Approving a privilege plan and granting standing permission are single tasks, so each
             // is one row that opens its own dialog; the page no longer stacks the forms.
@@ -348,6 +356,25 @@ internal static class ServerModuleCatalogChecks
                     using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
                     { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-packages.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
                     localized.FindControl<ListBox>("SectionTabs")!.SelectedIndex = 2;
+                    // Populate the store so its list and detail templates are rendered in a real
+                    // window; a view-model-only check would not catch a broken binding there.
+                    model.StoreStatus = "";
+                    model.StoreSources = [new ServerModuleStoreSourceDto("official", "modules", "current", 3, 3, 1, 0, true, null)];
+                    model.StoreItems = [new ServerModuleStoreItemDto("official", "relaxkonos.git", "1.5.0",
+                        "relaxkonos.git-1.5.0-linux-x64", "linux-x64", "relaxkonos", "server-module", "host",
+                        new string('a', 64), new string('b', 64), 4_194_304, "2.0", "3.0", [], ["git.repository"], true, true, false, [])];
+                    model.SelectedStoreItem = model.StoreItems[0];
+                    Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
+                    Check(localized.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsEffectivelyVisible
+                            && block.Text == "relaxkonos.git")
+                            && localized.GetVisualDescendants().OfType<TextBox>().Any(box => box.IsEffectivelyVisible
+                                && box.PlaceholderText == LocalizedText.Get("server_modules.store_query"))
+                            && !localized.GetVisualDescendants().OfType<TextBlock>().Any(block =>
+                                block.Text?.Contains("[missing:", StringComparison.Ordinal) == true),
+                        "The store page renders an accepted release, its details and its search field.");
+                    using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(680, 1100)))
+                    { bitmap.Render(localizedWindow); bitmap.Save(Path.Combine(output, "server-module-store.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+                    localized.FindControl<ListBox>("SectionTabs")!.SelectedIndex = 3;
                     Dispatcher.UIThread.RunJobs(); localized.UpdateLayout();
                     Check(localized.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsEffectivelyVisible
                             && block.Text == LocalizedText.Get("server_modules.health.title")),

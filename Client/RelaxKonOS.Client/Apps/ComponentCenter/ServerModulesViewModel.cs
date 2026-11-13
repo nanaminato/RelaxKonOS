@@ -37,7 +37,7 @@ public enum ServerModuleFilter { All, Enabled, Disabled, PendingRestart }
 
 public sealed record ServerModuleFilterChoice(ServerModuleFilter Filter, LocalizedStatus Label);
 
-public enum ServerModulesTab { Modules, Packages, Security }
+public enum ServerModulesTab { Modules, Packages, Store, Security }
 
 public sealed record ServerModulesTabItem(ServerModulesTab Tab, LocalizedStatus Label);
 
@@ -105,6 +105,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [
         new(ServerModulesTab.Modules, LocalizedStatus.Key("server_modules.tab.modules")),
         new(ServerModulesTab.Packages, LocalizedStatus.Key("server_modules.tab.packages")),
+        new(ServerModulesTab.Store, LocalizedStatus.Key("server_modules.tab.store")),
         new(ServerModulesTab.Security, LocalizedStatus.Key("server_modules.tab.security")),
     ];
 
@@ -128,11 +129,41 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     {
         OnPropertyChanged(nameof(IsModulesTab));
         OnPropertyChanged(nameof(IsPackagesTab));
+        OnPropertyChanged(nameof(IsStoreTab));
         OnPropertyChanged(nameof(IsSecurityTab));
+        // The store page is useful only with its sources named, so the first visit reads them.
+        // Releases stay behind an explicit search: a catalog can be large.
+        if (value?.Tab == ServerModulesTab.Store && !_sourcesLoaded && !Busy && CanManage)
+            _ = LoadStoreSourcesCommand.ExecuteAsync(null);
     }
     public bool IsModulesTab => SelectedTab?.Tab == ServerModulesTab.Modules;
     public bool IsPackagesTab => SelectedTab?.Tab == ServerModulesTab.Packages;
+    public bool IsStoreTab => SelectedTab?.Tab == ServerModulesTab.Store;
     public bool IsSecurityTab => SelectedTab?.Tab == ServerModulesTab.Security;
+    /// <summary>The store is a browse surface of its own; the packages page only needs a way in.</summary>
+    [RelayCommand] private void OpenStorePage() =>
+        SelectedTab = TabItems.First(item => item.Tab == ServerModulesTab.Store);
+    [RelayCommand] private async Task LoadStoreSourcesAsync()
+    {
+        if (_sourcesLoaded || Busy) return;
+        // A failed preload is store news, not a page-level failure: opening a tab must not paint
+        // the whole module page as unreadable.
+        try
+        {
+            var sources = await client.StoreSourcesAsync();
+            StoreSources = sources.Sources;
+            CatalogRevision = sources.CatalogRevision;
+            _sourcesLoaded = true;
+        }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException
+            or System.Text.Json.JsonException or TaskCanceledException or IOException or UnauthorizedAccessException)
+        {
+            StoreStatus = "server_modules.store_unavailable";
+        }
+        OnPropertyChanged(nameof(ShowStoreFirstRun));
+        OnPropertyChanged(nameof(ShowStoreSearchHint));
+        OnPropertyChanged(nameof(ShowStoreSourcesEmpty));
+    }
 
     [ObservableProperty] private string privilegePlanId = "";
     [ObservableProperty] private string privilegeAdministrator = "";
@@ -244,6 +275,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     [ObservableProperty] private ServerModuleHealthPageDto? healthReport;
     [ObservableProperty] private IReadOnlyList<ServerModuleHealthRow> healthRows = [];
     private bool _storeSearched;
+    private bool _sourcesLoaded;
 
     public bool HasPackagePlan => PackagePlan is not null;
     public bool CanApplyPackagePlan => PackagePlan is { } plan && plan.ExpiresAt > DateTimeOffset.UtcNow && !Busy && CanManage;
@@ -656,6 +688,9 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(PlanPendingText));
         OnPropertyChanged(nameof(PackagePlanPendingText));
         OnPropertyChanged(nameof(CanReviewPolicy));
+        OnPropertyChanged(nameof(ShowStoreFirstRun));
+        OnPropertyChanged(nameof(ShowStoreSearchHint));
+        OnPropertyChanged(nameof(ShowStoreSourcesEmpty));
         OnPropertyChanged(nameof(HasOperation));
         OnPropertyChanged(nameof(CanApply));
         OnPropertyChanged(nameof(CanEnable));
@@ -702,6 +737,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         Modules = []; Selected = null; Plan = null; OperationText = ""; InstalledPackages = []; SelectedVersions = [];
         SelectedPackageVersion = null; PackageOperations = []; PackageOperationRows = []; PackagePlan = null;
         StoreItems = []; StoreSources = []; CatalogRevision = "uninitialized"; SelectedStoreItem = null; StoreStatus = "";
+        _storeSearched = false; _sourcesLoaded = false;
         HealthReport = null; HealthRows = []; PackageStatus = "module-session-changed";
         Status = "module-session-changed";
         Notify();
@@ -847,8 +883,11 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         StoreItems = (await client.SearchStoreAsync(StoreQuery)).Items;
         SelectedStoreItem = StoreItems.FirstOrDefault();
         _storeSearched = true;
+        _sourcesLoaded = true;
         OnPropertyChanged(nameof(ShowStoreEmpty));
         OnPropertyChanged(nameof(ShowStoreSourcesEmpty));
+        OnPropertyChanged(nameof(ShowStoreFirstRun));
+        OnPropertyChanged(nameof(ShowStoreSearchHint));
         StoreStatus = StoreItems.Count == 0 ? LocalizedText.Get("server_modules.store_empty") : "";
     });
 
@@ -874,8 +913,11 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         StoreItems = (await client.SearchStoreAsync(StoreQuery)).Items;
         SelectedStoreItem = StoreItems.FirstOrDefault();
         _storeSearched = true;
+        _sourcesLoaded = true;
         OnPropertyChanged(nameof(ShowStoreEmpty));
         OnPropertyChanged(nameof(ShowStoreSourcesEmpty));
+        OnPropertyChanged(nameof(ShowStoreFirstRun));
+        OnPropertyChanged(nameof(ShowStoreSearchHint));
         StoreStatus = refreshed == 0
             ? LocalizedText.Get("server_modules.store_refresh_none")
             : LocalizedText.Get("server_modules.store_refreshed");
@@ -1017,7 +1059,13 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
 
     public IReadOnlyList<ServerModuleStoreSourceRow> StoreSourceRows => StoreSources.Select(source => new ServerModuleStoreSourceRow(source)).ToArray();
     public bool HasStoreSources => StoreSources.Count > 0;
-    public bool ShowStoreSourcesEmpty => _storeSearched && StoreSources.Count == 0;
+    /// <summary>Sources are read when the store page is first opened, so "none accepted" is a fact
+    /// rather than a blank area; releases stay behind an explicit search.</summary>
+    public bool ShowStoreSourcesEmpty => _sourcesLoaded && StoreSources.Count == 0;
+    public bool ShowStoreFirstRun => !_sourcesLoaded && StoreSources.Count == 0;
+    /// <summary>Guidance before the first search. A failed source read states its own reason, so
+    /// the two lines never appear together.</summary>
+    public bool ShowStoreSearchHint => !_storeSearched && string.IsNullOrWhiteSpace(StoreStatus);
     public bool HasCatalogRevision => CatalogRevision is not ("" or "uninitialized");
     public bool HasStoreItems => StoreItems.Count > 0;
     public bool ShowStoreEmpty => _storeSearched && StoreItems.Count == 0;
@@ -1206,6 +1254,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
         OnPropertyChanged(nameof(StoreSourceRows));
         OnPropertyChanged(nameof(HasStoreSources));
         OnPropertyChanged(nameof(ShowStoreSourcesEmpty));
+        OnPropertyChanged(nameof(ShowStoreFirstRun));
     }
     partial void OnStoreItemsChanged(IReadOnlyList<ServerModuleStoreItemDto> value)
     {
@@ -1231,6 +1280,7 @@ public sealed partial class ServerModulesViewModel(ServerModuleManagementClient 
     {
         OnPropertyChanged(nameof(StoreStatusText));
         OnPropertyChanged(nameof(HasStoreStatus));
+        OnPropertyChanged(nameof(ShowStoreSearchHint));
     }
 
     // ── Formatting helpers (shared with row records) ────────────────────────────────────────
