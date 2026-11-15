@@ -157,8 +157,17 @@
                 <TextBlock x:Name="AuthorizationStatus" TextWrapping="Wrap" />
                 <TextBox x:Name="AuthorizationCode" IsReadOnly="True" FontFamily="Consolas,monospace"
                          HorizontalAlignment="Left" MinWidth="220" />
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Height="32" Content="{loc:Loc explorer.cloud.auth_open}" Click="AuthorizationOpen_Click" />
+                <StackPanel x:Name="AuthorizationLinkActions" IsVisible="False" Spacing="6">
+                    <TextBlock Text="{loc:Loc explorer.cloud.auth_manual_link}" Classes="field-hint" />
+                    <TextBox x:Name="AuthorizationLink" IsReadOnly="True"
+                             AutomationProperties.Name="{loc:Loc explorer.cloud.auth_manual_link}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Height="32" Content="{loc:Loc explorer.cloud.auth_open}" Click="AuthorizationOpen_Click" />
+                        <Button Height="32" Content="{loc:Loc explorer.cloud.auth_copy_link}" Click="AuthorizationCopy_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="AuthorizationLinkStatus" Classes="field-hint" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
                     <Button Height="32" Content="{loc:Loc common.cancel}" Click="AuthorizationCancel_Click" />
                 </StackPanel>
             </StackPanel>

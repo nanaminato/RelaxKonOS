@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Input.Platform;
 using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer.Views;
@@ -63,12 +64,12 @@ public partial class CloudConnectionView
                 return;
             }
             sessionId = session.Id;
-            if (!CloudAuthorizationNavigation.TryGetBrowserUri(protocol, session.AuthorizationUrl, out _authorizationUri))
+            if (!CloudAuthorizationNavigation.TryGetBrowserUri(protocol, session.AuthorizationUrl, out var uri))
                 throw new InvalidOperationException("Unsupported authorization address");
             AuthorizationCode.Text = session.UserCode ?? "";
             AuthorizationCode.IsVisible = !string.IsNullOrEmpty(session.UserCode);
-            await OpenAuthorizationBrowserAsync();
-            source.Token.ThrowIfCancellationRequested();
+            SetAuthorizationLink(uri);
+            _ = OpenAuthorizationBrowserAsync();
             while (session.Status == "pending")
             {
                 if (DateTimeOffset.UtcNow >= session.ExpiresAt)
@@ -101,7 +102,7 @@ public partial class CloudConnectionView
         {
             if (ReferenceEquals(_authorization, source))
             {
-                _authorizationUri = null;
+                SetAuthorizationLink(null);
                 AuthorizationCode.Text = "";
                 AuthorizationCode.IsVisible = false;
                 _authorization = null;
@@ -114,14 +115,42 @@ public partial class CloudConnectionView
 
     private async Task OpenAuthorizationBrowserAsync()
     {
-        if (_authorizationUri is { } uri && TopLevel.GetTopLevel(this) is { } top)
-            if (!await top.Launcher.LaunchUriAsync(uri)) Status.Text = Text("auth_browser_failed");
+        if (_authorizationUri is not { } uri || _authorization is not { } authorization) return;
+        var opened = false;
+        try
+        {
+            if (TopLevel.GetTopLevel(this) is { } top)
+                opened = await top.Launcher.LaunchUriAsync(uri);
+        }
+        catch (Exception) { /* The launcher's exception may include the authorization URL. */ }
+        if (ReferenceEquals(_authorization, authorization))
+            AuthorizationLinkStatus.Text = opened ? "" : Text("auth_browser_failed");
     }
 
-    private async void AuthorizationOpen_Click(object? sender, RoutedEventArgs e)
+    private async void AuthorizationOpen_Click(object? sender, RoutedEventArgs e) => await OpenAuthorizationBrowserAsync();
+
+    private async void AuthorizationCopy_Click(object? sender, RoutedEventArgs e)
     {
-        try { await OpenAuthorizationBrowserAsync(); }
-        catch (Exception) { AuthorizationStatus.Text = Text("auth_browser_failed"); }
+        if (_authorizationUri is not { } uri || _authorization is not { } authorization) return;
+        var message = "auth_link_copy_failed";
+        try
+        {
+            if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+            {
+                await clipboard.SetTextAsync(uri.AbsoluteUri);
+                message = "auth_link_copied";
+            }
+        }
+        catch (Exception) { /* The clipboard exception may include the authorization URL. */ }
+        if (ReferenceEquals(_authorization, authorization)) AuthorizationLinkStatus.Text = Text(message);
+    }
+
+    private void SetAuthorizationLink(Uri? uri)
+    {
+        _authorizationUri = uri;
+        AuthorizationLink.Text = uri?.AbsoluteUri;
+        AuthorizationLinkActions.IsVisible = uri is not null;
+        AuthorizationLinkStatus.Text = "";
     }
 
     private void AuthorizationCancel_Click(object? sender, RoutedEventArgs e)
@@ -135,7 +164,7 @@ public partial class CloudConnectionView
         _authorization?.Cancel();
         _authorization = null;
         _busy = false;
-        _authorizationUri = null;
+        SetAuthorizationLink(null);
         AuthorizationCode.Text = "";
         AuthorizationPanel.IsVisible = false;
         UpdateButtons();
