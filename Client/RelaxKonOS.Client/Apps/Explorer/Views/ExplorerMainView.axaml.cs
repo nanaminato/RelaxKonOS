@@ -202,6 +202,8 @@ public partial class ExplorerMainView : UserControl
         };
         CloudBrowser.CloseRequested += (_, _) => CloseCloudStorage();
         CloudBrowser.ConnectionsChanged += ApplyCloudAccounts;
+        CloudBrowser.ConfirmRevokeAsync = (title, message, label) =>
+            ViewModel?.RequestConfirmAsync?.Invoke(title, message, label) ?? Task.FromResult(false);
         FileContentGrid.SizeChanged += (_, _) => UpdateCloudStorageEntry();
         TabScroller.ScrollChanged += (_, _) => UpdateTabScrollMarks();
         BreadcrumbScroll.SizeChanged += (_, _) => ScrollBreadcrumbsToLocation();

@@ -349,7 +349,7 @@
         "explorer.cloud.working": "正在处理…",
         "explorer.cloud.error": "云存储操作失败，请检查连接和权限。",
         "explorer.cloud.downloaded": "下载完成。",
-        "explorer.cloud.confirm_revoke": "再次选择撤销以移除此连接。",
+        "explorer.cloud.confirm_revoke": "撤销连接「{0}」？此操作会从 RelaxKonOS 移除该连接及其保存的凭据。",
         "explorer.cloud.cut_entry": "已剪切，打开目标目录后粘贴",
         "explorer.cloud.confirm_delete_entry": "再次点击删除以确认删除文件",
         "explorer.cloud.confirm_delete_tree": "再次点击删除以确认删除目录及其全部内容",

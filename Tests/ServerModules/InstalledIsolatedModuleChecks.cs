@@ -46,7 +46,7 @@ internal static class InstalledIsolatedModuleChecks
                 && ModuleTrustStore.Read(root, record with { ArtifactSha256 = new string('c', 64) }) is null,
                 "code trust binds to the exact package and cannot survive changed bytes");
             var nextManifest = manifest with { Version = "2.0.0", ReleaseId = "fixture-host-next" };
-            var next = await StageAsync(root, nextManifest, bytes);
+            var next = await StageAsync(root, nextManifest, bytes, "fixture-next-source");
             ModuleTrustStore.Set(root, next, "test-administrator", trusted: true, preserve: record);
             check(InstalledModuleStore.Read(root).Single().Version == record.Version
                 && InstalledModuleStore.ReadVersions(root, record.ModuleId).Count == 2
@@ -83,12 +83,17 @@ internal static class InstalledIsolatedModuleChecks
                     check(failed == "module-host-update-rolled-back" && supervisor.Snapshot().Single().Version == record.Version
                         && supervisor.Snapshot().Single().Status == "running" && InstalledModuleStore.Read(root).Single().Version == record.Version,
                         "a real unhealthy candidate exits and the previous package is restarted without committing the candidate");
+                    check(supervisor.SnapshotInstalledHealth(record.ModuleId, enabled: true)?.SourceId == record.SourceId,
+                        "health reports the restored source after a failed replacement");
                     ModuleTrustStore.Set(root, next, "test-administrator", trusted: true, preserve: record);
                     var updated = await supervisor.ReplaceAsync(record, next,
                         () => InstalledModuleInstaller.Activate(root, next), timeout.Token);
                     check(updated is null && supervisor.Snapshot().Single().Version == next.Version
                         && supervisor.Snapshot().Single().Status == "running" && InstalledModuleStore.Read(root).Single().Version == next.Version,
                         "a healthy real candidate becomes the active package without restarting Core");
+                    var health = supervisor.SnapshotInstalledHealth(record.ModuleId, enabled: true);
+                    check(health is { Status: "healthy" } && health.Version == next.Version && health.SourceId == next.SourceId,
+                        "health reports the running version and new source together after hot replacement");
                 }
                 finally { await supervisor.StopAsync(CancellationToken.None); }
             }
@@ -108,7 +113,8 @@ internal static class InstalledIsolatedModuleChecks
         }
         finally { Directory.Delete(root, recursive: true); }
     }
-    private static async Task<InstalledModuleRecord> StageAsync(string root, ModulePackageManifest manifest, byte[] bytes)
+    private static async Task<InstalledModuleRecord> StageAsync(string root, ModulePackageManifest manifest, byte[] bytes,
+        string sourceId = "fixture")
     {
         var metadata = JsonSerializer.SerializeToUtf8Bytes(manifest, ModulePackageJson.Options);
         using var archive = new MemoryStream();
@@ -117,7 +123,7 @@ internal static class InstalledIsolatedModuleChecks
             using (var file = zip.CreateEntry("manifest.json").Open()) file.Write(metadata);
             using (var file = zip.CreateEntry(manifest.EntryAssembly).Open()) file.Write(bytes);
         }
-        return await InstalledModuleInstaller.InstallVerifiedAsync(root, "fixture", manifest, Hash(metadata),
+        return await InstalledModuleInstaller.InstallVerifiedAsync(root, sourceId, manifest, Hash(metadata),
             Hash(archive.ToArray()), archive, DateTimeOffset.UtcNow, activate: false);
     }
 

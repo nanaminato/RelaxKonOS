@@ -349,7 +349,7 @@
         "explorer.cloud.working": "Working…",
         "explorer.cloud.error": "Cloud storage operation failed. Check the connection and its permissions.",
         "explorer.cloud.downloaded": "Download complete.",
-        "explorer.cloud.confirm_revoke": "Select Revoke again to remove this connection.",
+        "explorer.cloud.confirm_revoke": "Revoke the connection “{0}”? This removes the connection and its saved credentials from RelaxKonOS.",
         "explorer.cloud.cut_entry": "Cut. Open the destination folder and paste",
         "explorer.cloud.confirm_delete_entry": "Click Delete again to confirm file deletion",
         "explorer.cloud.confirm_delete_tree": "Click Delete again to confirm deletion of the folder and all its contents",

@@ -35,7 +35,6 @@ public partial class CloudBrowserView : UserControl
     private Guid? _savedConnection;
     private bool _available;
     private bool _hasDirectory;
-    private bool _confirmRevoke;
     private CloudEntryRow? _pendingDelete;
     private (Guid Connection, CloudEntryDto Entry)? _cutEntry;
 
@@ -100,6 +99,7 @@ public partial class CloudBrowserView : UserControl
 
     internal Func<ExplorerPickerOptions, Task<string[]?>>? PickHostFiles { get; set; }
     internal Func<StartFileOperationRequest, Action<FileOperationDto>, Action?, Task>? SubmitTransfer { get; set; }
+    internal Func<string, string, string, Task<bool>>? ConfirmRevokeAsync { get; set; }
 
     internal event EventHandler? CloseRequested;
     internal event Action<CloudConnectionDto?, bool>? ConfigurationRequested;
@@ -108,7 +108,6 @@ public partial class CloudBrowserView : UserControl
     internal Task OpenAsync(ExplorerClient client, Guid? connection)
     {
         _client = client;
-        _confirmRevoke = false;
         return RunAsync(ct => RefreshAsync(ct, connection, openRoot: connection is not null), loading: true);
     }
 
@@ -141,7 +140,6 @@ public partial class CloudBrowserView : UserControl
         _savedConnection = null;
         _available = false;
         _hasDirectory = false;
-        _confirmRevoke = false;
         _client = null;
         _navigation.Clear();
         _directoryCache.Clear();
@@ -386,7 +384,6 @@ public partial class CloudBrowserView : UserControl
     private void Close_Click(object? sender, RoutedEventArgs e)
     {
         StopLoading();
-        _confirmRevoke = false;
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }
     private async void Refresh_Click(object? sender, RoutedEventArgs e) =>
@@ -445,7 +442,6 @@ public partial class CloudBrowserView : UserControl
     private Task SelectAccountAsync(CloudConnectionDto source)
     {
         _activeConnection = source.Id;
-        _confirmRevoke = false;
         _hasDirectory = false;
         _entries.Clear();
         _folders.Clear();
@@ -599,15 +595,13 @@ public partial class CloudBrowserView : UserControl
     private async void Revoke_Click(object? sender, RoutedEventArgs e)
     {
         if (CurrentConnection is not { } source) return;
-        if (!_confirmRevoke)
-        {
-            _confirmRevoke = true;
-            Status.Text = Text("confirm_revoke");
-            return;
-        }
-        _confirmRevoke = false;
         await RunAsync(async ct =>
         {
+            var title = Text("revoke");
+            if (ConfirmRevokeAsync is not { } confirm
+                || !await confirm(title, LocalizedText.Format("explorer.cloud.confirm_revoke", source.Name), title))
+                return;
+            ct.ThrowIfCancellationRequested();
             await _client!.RevokeCloudConnectionAsync(source.Id, ct);
             InvalidateConnection(source.Id);
             await RefreshAsync(ct);

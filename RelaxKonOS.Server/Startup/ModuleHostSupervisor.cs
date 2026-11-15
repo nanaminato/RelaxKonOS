@@ -32,6 +32,19 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
                 entry.Version, entry.HostApiVersion, entry.ProblemCode)).ToArray();
     }
 
+    internal ServerModuleHealthModuleDto? SnapshotInstalledHealth(string moduleId, bool enabled)
+    {
+        lock (_gate)
+        {
+            var entry = _entries.Find(item => item.ModuleId == moduleId);
+            if (entry?.Installed is not { } package) return null;
+            var status = package.Quarantined ? "quarantined" : !enabled ? "disabled"
+                : entry.Status == "running" ? "healthy" : entry.Status;
+            return new(moduleId, enabled, true, entry.Status == "running" ? entry.Version : null,
+                package.SourceId, status, entry.ProblemCode);
+        }
+    }
+
     internal ModuleHostConnection? AcquireConnection(string moduleId)
     {
         lock (_gate)

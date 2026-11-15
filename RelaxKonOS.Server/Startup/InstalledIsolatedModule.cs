@@ -27,10 +27,8 @@ internal sealed class InstalledIsolatedModule(InstalledModuleRecord record, stri
 
     public ValueTask<ServerModuleHealthModuleDto> CheckHealthAsync(bool enabled, CancellationToken cancellationToken)
     {
-        var host = _supervisor?.Snapshot().SingleOrDefault(item => item.ModuleId == Id);
-        var status = record.Quarantined ? "quarantined" : !enabled ? "disabled"
-            : host?.Status == "running" ? "healthy" : host?.Status ?? "starting";
-        return ValueTask.FromResult(new ServerModuleHealthModuleDto(Id, enabled, true, host is { Status: "running" } ? host.Version : null,
-            record.SourceId, status, host?.ProblemCode));
+        var status = record.Quarantined ? "quarantined" : !enabled ? "disabled" : "starting";
+        return ValueTask.FromResult(_supervisor?.SnapshotInstalledHealth(Id, enabled)
+            ?? new ServerModuleHealthModuleDto(Id, enabled, true, null, record.SourceId, status, null));
     }
 }
