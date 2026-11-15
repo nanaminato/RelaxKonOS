@@ -139,6 +139,11 @@ if (args.Contains("--tabstrip-preview"))
     TabStripPreviewCapture.Run(Path.Combine(AppContext.BaseDirectory, "preview-qa"));
     return;
 }
+if (args.Contains("--file-operations-window-only"))
+{
+    FileOperationWindowChecks.Run(settings);
+    return;
+}
 if (args.Contains("--fused-apps-only"))
 {
     FusedWindowHeaderChecks.Run(settings);

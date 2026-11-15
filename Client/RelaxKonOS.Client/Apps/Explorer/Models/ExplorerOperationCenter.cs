@@ -29,24 +29,15 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
     private string _error = string.Empty;
     public bool HasError => !string.IsNullOrWhiteSpace(Error);
 
-    /// <summary>The aggregate band only earns its space once more than one task is in flight.</summary>
-    public bool HasAggregate => Jobs.Count > 1;
-    public bool AnyActive => Jobs.Any(job => !job.Snapshot.IsTerminal && !job.Missing);
-    public string AggregateHeadline => LocalizedText.Format("explorer.operations.summary_active", Jobs.Count);
-    private double AggregateSpeed => Jobs.Sum(job => job.BytesPerSecond);
-    public string AggregateDetail => AggregateSpeed > 0
-        ? LocalizedText.Format("explorer.operations.summary_speed", FileTransferMetrics.FormatBytes(AggregateSpeed))
-        : LocalizedText.Get("explorer.operations.calculating");
-    /// <summary>Every card reports its current file; the average is the least misleading total.</summary>
-    public double AggregateProgress => Jobs.Count == 0 ? 0 : Jobs.Average(job => job.Progress);
-    public string AggregatePercent => LocalizedText.Format("explorer.operations.percent_complete", (int)Math.Round(AggregateProgress));
+    /// <summary>One task keeps the full card; several become Windows' compact action rows.</summary>
+    public bool HasMultiple => Jobs.Count > 1;
 
-    /// <summary>Called by the window's measurement timer so the band follows live throughput.</summary>
-    public void RefreshAggregate()
+    /// <summary>Called whenever the task list changes and by the window's measurement timer.</summary>
+    public void RefreshLayout()
     {
-        foreach (var name in new[] { nameof(HasAggregate), nameof(AnyActive), nameof(AggregateHeadline),
-            nameof(AggregateDetail), nameof(AggregateProgress), nameof(AggregatePercent) })
-            OnPropertyChanged(name);
+        var multiple = HasMultiple;
+        foreach (var job in Jobs) job.Compact = multiple;
+        OnPropertyChanged(nameof(HasMultiple));
     }
 
     private string? CurrentSession => SessionKey?.Invoke() ?? (SessionKey is null ? "test" : null);
@@ -215,16 +206,9 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
             _cloudCredentialCallbacks.Remove(job.Snapshot.RequestId);
             Jobs.Remove(job);
         }
-        RefreshAggregate();
+        RefreshLayout();
     }
 
-    /// <summary>Stops every task the window is currently reporting, one decision per task.</summary>
-    [RelayCommand]
-    private async Task CancelAllAsync()
-    {
-        foreach (var card in Jobs.Where(job => !job.Snapshot.IsTerminal && !job.Missing).ToArray())
-            await ActAsync(card, null);
-    }
     private void Update(FileOperationDto dto)
     {
         if (_dismissed.Contains(dto.Id)) return;
@@ -247,7 +231,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
             Jobs.Remove(card);
             CloseIfFinished();
         }
-        RefreshAggregate();
+        RefreshLayout();
     }
     private void EnsurePolling()
     {
@@ -346,11 +330,22 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     [ObservableProperty] private bool _missing;
     private readonly FileTransferMetrics _metrics = new();
     [ObservableProperty] private bool _detailsExpanded = true;
+    /// <summary>Several tasks in one window: the row keeps only what is needed to tell them apart.</summary>
+    [ObservableProperty] private bool _compact;
     public bool HasError => !string.IsNullOrWhiteSpace(Error);
     public bool NeedsAttention => HasIssue || Missing || HasError;
-    public bool ShowTransferDetails => DetailsExpanded && !HasIssue;
-    public bool ShowSpeedGraph => ShowTransferDetails && HasMeasuredProgress && !NeedsAttention && Snapshot.State == FileOperationState.Running;
+    public bool ShowTransferDetails => DetailsExpanded && !HasIssue && !Compact;
+    public bool ShowDetailsToggle => !HasIssue && !Compact;
+    /// <summary>The single-task card keeps the speed line; a compact row states the percentage once.</summary>
+    public bool ShowMetrics => !HasIssue && !Compact;
+    public string CompactProgress => HasMeasuredProgress && Snapshot.State == FileOperationState.Running
+        ? LocalizedText.Format("explorer.operations.percent_short", (int)Math.Floor(Progress)) : ProgressText;
+    /// <summary>A compact row states the route instead of three labelled detail rows.</summary>
+    public string CompactRoute => HasDestination ? $"{SourceLocation}  →  {DestinationLocation}" : SourceLocation;
+    public bool ShowCompactRoute => Compact && !HasIssue && !string.IsNullOrWhiteSpace(CompactRoute);
     public bool HasDestination => !string.IsNullOrWhiteSpace(DestinationLocation);
+    /// <summary>A queued task has no current file yet; the name row simply is not there.</summary>
+    public bool HasCurrentFile => !Missing && !string.IsNullOrWhiteSpace(Snapshot.CurrentPath);
     public bool HasMeasuredProgress => Snapshot.CurrentTotalBytes > 0 && !Missing;
     public string ProgressText => Snapshot.Kind == FileOperationKind.Extract && Snapshot.State == FileOperationState.Running && !HasMeasuredProgress
         ? LocalizedText.Get("explorer.operations.extracting") : HasMeasuredProgress && Snapshot.State == FileOperationState.Running
@@ -364,19 +359,18 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
         ? StateText : FileName(Snapshot.CurrentPath);
     public string SourceLocation => LocationsFor(false);
     public string DestinationLocation => LocationsFor(true);
-    public IReadOnlyList<double> SpeedHistory => _metrics.History;
     private bool CanShowSpeed => _metrics.IsReady && Snapshot.State == FileOperationState.Running && !Missing && !HasError;
     public string SpeedText => CanShowSpeed ? FileTransferMetrics.FormatBytes(_metrics.BytesPerSecond) + "/s"
         : LocalizedText.Get("explorer.operations.calculating");
-    /// <summary>Observed throughput; the center sums it for the aggregate band.</summary>
+    /// <summary>Observed throughput for the card's own speed line.</summary>
     public double BytesPerSecond => CanShowSpeed ? _metrics.BytesPerSecond : 0;
     private bool HasRemaining => IsLocalTransfer && CanShowSpeed && _metrics.BytesPerSecond > 0 && HasMeasuredProgress;
     /// <summary>Speed and remaining time on one line, so a collapsed card still reads as progress.</summary>
     public string QuickMetrics => !CanShowSpeed
         ? LocalizedText.Get("explorer.operations.calculating")
         : HasRemaining ? SpeedText + " · " + RemainingTime : SpeedText;
-    /// <summary>A card that needs a decision states the issue and nothing else on that line.</summary>
-    public bool ShowQuickMetrics => !NeedsAttention && HasMeasuredProgress;
+    /// <summary>An unmeasured rate is already stated once by the size line; never repeat it here.</summary>
+    public bool ShowQuickMetrics => !NeedsAttention && HasMeasuredProgress && CanShowSpeed;
     public string TransferSize => HasMeasuredProgress
         ? LocalizedText.Format("explorer.operations.transferred_size", FileTransferMetrics.FormatBytes(Snapshot.CurrentBytes), FileTransferMetrics.FormatBytes(Snapshot.CurrentTotalBytes))
         : LocalizedText.Get("explorer.operations.calculating");
@@ -408,13 +402,15 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
             .Distinct(StringComparer.Ordinal).ToArray();
         return paths.Length switch { 0 => string.Empty, 1 => paths[0], _ => LocalizedText.Get("explorer.operations.multiple_locations") };
     }
-    partial void OnDetailsExpandedChanged(bool value) { OnPropertyChanged(nameof(DetailsToggleLabel)); OnPropertyChanged(nameof(ShowTransferDetails)); OnPropertyChanged(nameof(ShowSpeedGraph)); }
+    partial void OnDetailsExpandedChanged(bool value) { OnPropertyChanged(nameof(DetailsToggleLabel)); OnPropertyChanged(nameof(ShowTransferDetails)); }
+    partial void OnCompactChanged(bool value) => RefreshPresentation();
     partial void OnMissingChanged(bool value) => RefreshPresentation();
     partial void OnErrorChanged(string value) => RefreshPresentation();
     public bool IsUpload { get; init; }
     public bool IsDownload { get; init; }
     public bool IsLocalTransfer => IsUpload || IsDownload;
-    public string Title => LocalizedText.Get($"explorer.operations.kind.{Snapshot.Kind}");
+    /// <summary>A host upload is its own kind of task, even though it moves bytes as a copy.</summary>
+    public string Title => LocalizedText.Get(IsUpload ? "explorer.operations.upload" : $"explorer.operations.kind.{Snapshot.Kind}");
     public string StateText => Missing ? LocalizedText.Get("explorer.operations.missing") : LocalizedText.Get($"explorer.operations.state.{Snapshot.State}");
     public string Locations => string.Join(Environment.NewLine, Snapshot.Items.Take(3).Select(i =>
         i.DestinationPath is null ? i.SourcePath : $"{i.SourcePath} → {i.DestinationPath}"))
@@ -434,7 +430,15 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     public string RetryLabel => LocalizedText.Get(Snapshot.Issue?.Code is "archive-password-required" or "archive-password-invalid"
         ? "explorer.archive.password_retry" : Snapshot.Issue?.Code == "access-denied" && Snapshot.Kind is not (FileOperationKind.Compress or FileOperationKind.Extract)
         ? "explorer.operations.retry_access" : "explorer.operations.retry");
-    public string IssueText => Snapshot.Issue is { } issue ? $"{LocalizedText.Get("explorer.operations.issue." + issue.Code)}\n{issue.SourcePath}\n{issue.DestinationPath}\n{issue.Message}" : string.Empty;
+    /// <summary>The issue gets its own hierarchy - a title, the paths it concerns, then detail.</summary>
+    public string IssueTitle => Snapshot.Issue is { } issue ? LocalizedText.Get("explorer.operations.issue." + issue.Code) : string.Empty;
+    /// <summary>One line states both sides of the collision; the full card already showed them.</summary>
+    public string IssueRoute => Snapshot.Issue is not { } issue ? string.Empty
+        : string.IsNullOrWhiteSpace(issue.DestinationPath) ? issue.SourcePath
+        : issue.SourcePath + "  →  " + issue.DestinationPath;
+    public string IssueMessage => Snapshot.Issue?.Message ?? string.Empty;
+    public bool HasIssueRoute => !string.IsNullOrWhiteSpace(IssueRoute);
+    public bool HasIssueMessage => !string.IsNullOrWhiteSpace(IssueMessage);
     public string Details => string.Join(Environment.NewLine, Snapshot.Details.Select(d => $"{d.Path}: {LocalizedText.Get("explorer.operations.outcome." + d.Outcome)} {d.Message}"))
         + (Snapshot.DetailsTruncated ? Environment.NewLine + LocalizedText.Get("explorer.operations.truncated") : string.Empty);
     partial void OnSnapshotChanged(FileOperationDto value) => RefreshMeasurements();
@@ -448,9 +452,10 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     private void RefreshPresentation()
     {
         foreach (var name in new[] { nameof(Title), nameof(StateText), nameof(Locations), nameof(Counts), nameof(Bytes),
-            nameof(DetailsToggleLabel), nameof(ShowTransferDetails), nameof(ShowSpeedGraph), nameof(HasError), nameof(NeedsAttention), nameof(HasDestination), nameof(HasMeasuredProgress), nameof(ProgressText), nameof(ProgressScope),
-            nameof(Summary), nameof(CurrentFileName), nameof(SourceLocation), nameof(DestinationLocation), nameof(SpeedHistory), nameof(SpeedText),
-            nameof(TransferSize), nameof(RemainingTime), nameof(BytesPerSecond), nameof(QuickMetrics), nameof(ShowQuickMetrics), nameof(Progress), nameof(Indeterminate), nameof(CanCancel), nameof(HasIssue), nameof(CanReplace), nameof(CanKeepBoth), nameof(CanRetry), nameof(CanApplyToAll), nameof(IssueText), nameof(RetryLabel), nameof(Details) })
+            nameof(DetailsToggleLabel), nameof(ShowTransferDetails), nameof(ShowDetailsToggle), nameof(ShowMetrics), nameof(HasError), nameof(NeedsAttention), nameof(HasDestination), nameof(HasCurrentFile), nameof(HasMeasuredProgress), nameof(ProgressText), nameof(ProgressScope),
+            nameof(Summary), nameof(CurrentFileName), nameof(SourceLocation), nameof(DestinationLocation), nameof(SpeedText),
+            nameof(CompactProgress), nameof(CompactRoute), nameof(ShowCompactRoute),
+            nameof(TransferSize), nameof(RemainingTime), nameof(BytesPerSecond), nameof(QuickMetrics), nameof(ShowQuickMetrics), nameof(Progress), nameof(Indeterminate), nameof(CanCancel), nameof(HasIssue), nameof(CanReplace), nameof(CanKeepBoth), nameof(CanRetry), nameof(CanApplyToAll), nameof(IssueTitle), nameof(IssueRoute), nameof(IssueMessage), nameof(HasIssueRoute), nameof(HasIssueMessage), nameof(RetryLabel), nameof(Details) })
             OnPropertyChanged(name);
     }
     [RelayCommand] private void ToggleDetails() => DetailsExpanded = !DetailsExpanded;

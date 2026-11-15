@@ -24,8 +24,11 @@ internal static class FileOperationProgressChecks
         int[] samples = [0, 3, 7, 11, 13, 15, 19, 23, 26, 30, 34, 39, 48];
         for (var i = 0; i < samples.Length; i++) metrics.Observe((long)samples[i] * 1024 * 1024, null, true, now - 6 + i * .5);
         center.Jobs.Add(card);
+        center.RefreshLayout();
         var view = new ExplorerOperationsView { DataContext = center };
-        host.Width = 580; host.Height = 490; host.Content = view;
+        // The real window opens at 520x400; rendering at that size keeps the checks honest about
+        // what a single-card dialog actually shows.
+        host.Width = 520; host.Height = 400; host.Content = view;
         foreach (var language in new[] { "zh-CN", "en-US", "ja-JP" })
         {
             settings.Language = language;
@@ -33,19 +36,22 @@ internal static class FileOperationProgressChecks
             Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
             if (view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("[missing:") == true))
                 throw new Exception("Progress UI has missing translations: " + language);
-            using var bitmap = new RenderTargetBitmap(new PixelSize(580, 490));
+            using var bitmap = new RenderTargetBitmap(new PixelSize(520, 400));
             bitmap.Render(view); bitmap.Save(Path.Combine(output, "FileProgress-" + language + ".png"), PngBitmapEncoderOptions.Default);
         }
         settings.Language = "zh-CN";
         appearance.Apply(RelaxKonOS.Protocol.Desktop.ThemeKind.Dark, RelaxKonOS.Protocol.Workspace.AppearancePreferencesDto.Default, RelaxKonOS.Protocol.Workspace.SystemStyles.SystemStyleIds.WindowsLike);
         Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
-        using (var bitmap = new RenderTargetBitmap(new PixelSize(580, 490)))
+        using (var bitmap = new RenderTargetBitmap(new PixelSize(520, 400)))
         { bitmap.Render(view); bitmap.Save(Path.Combine(output, "FileProgress-dark.png"), PngBitmapEncoderOptions.Default); }
         appearance.Apply(RelaxKonOS.Protocol.Desktop.ThemeKind.Light, RelaxKonOS.Protocol.Workspace.AppearancePreferencesDto.Default, RelaxKonOS.Protocol.Workspace.SystemStyles.SystemStyleIds.WindowsLike);
+        if (card.Compact) throw new Exception("A single task must keep the full card, not a compact row.");
+        if (!view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.IsEffectivelyVisible && text.Text == card.ProgressText && Math.Abs(text.FontSize - 20) < .01))
+            throw new Exception("The single task must show its 20px phase heading.");
         card.DetailsExpanded = false;
         Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
-        if (view.GetVisualDescendants().OfType<RelaxKonOS.Client.Apps.Explorer.Controls.TransferSpeedGraph>().Single().IsEffectivelyVisible)
-            throw new Exception("Collapsing details must hide the speed graph.");
+        if (view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.IsEffectivelyVisible && text.Text == card.SourceLocation))
+            throw new Exception("Collapsing details must hide the source/destination rows.");
         card.DetailsExpanded = true;
         card.Snapshot = snapshot with { State = FileOperationState.WaitingForDecision,
             Issue = new(Guid.NewGuid(), "conflict", snapshot.CurrentPath!, snapshot.Items[0].DestinationPath,
@@ -55,31 +61,37 @@ internal static class FileOperationProgressChecks
         var replace = view.GetVisualDescendants().OfType<Button>().Single(button => ReferenceEquals(button.Command, card.ReplaceCommand));
         if (replace.TranslatePoint(default, view) is not { } point || point.Y + replace.Bounds.Height > view.Bounds.Height)
             throw new Exception("Conflict actions must be visible without scrolling.");
-        using (var bitmap = new RenderTargetBitmap(new PixelSize(580, 490)))
+        if (Math.Abs(replace.HorizontalContentAlignment - Avalonia.Layout.HorizontalAlignment.Center) > 0.01)
+            throw new Exception("Conflict actions must centre their labels.");
+        using (var bitmap = new RenderTargetBitmap(new PixelSize(520, 400)))
         { bitmap.Render(view); bitmap.Save(Path.Combine(output, "FileProgress-conflict.png"), PngBitmapEncoderOptions.Default); }
 
-        // A second transfer must not compete with the first: one band states the total, each card
-        // keeps its own percentage and its own decision.
+        // A second transfer turns the window into Windows' action list: one compact row per task,
+        // each keeping its own percentage, route and decision.
+        card.Snapshot = snapshot;
         var second = new ExplorerOperationCard(center, snapshot with
         {
             Id = Guid.NewGuid(),
-            CurrentPath = "/home/alice/Desktop/Scenes.mp4",
+            Kind = FileOperationKind.Move,
+            Items = [new("/home/alice/Documents/Notes.txt", "/home/alice/Desktop/Notes.txt")],
+            CurrentPath = "/home/alice/Documents/Notes.txt",
             CurrentBytes = 20L * 1024 * 1024,
-        })
-        { IsUpload = true, DetailsExpanded = false };
+            ProcessedItems = 2,
+        });
         center.Jobs.Add(second);
-        center.RefreshAggregate();
+        center.RefreshLayout();
         Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
-        if (!center.HasAggregate) throw new Exception("Two transfers must show the aggregate band.");
-        if (Math.Round(center.AggregateProgress) != 34)
-            throw new Exception($"Aggregate progress must be the average of both cards, saw {center.AggregateProgress:0.#}.");
-        if (!view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == center.AggregateHeadline))
-            throw new Exception("The aggregate band's headline is not rendered.");
+        if (!center.HasMultiple) throw new Exception("Two transfers must switch the window to the action list.");
+        if (!card.Compact || !second.Compact) throw new Exception("Every task must become a compact row when several run.");
+        if (!view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.IsEffectivelyVisible && text.Text == card.CompactProgress))
+            throw new Exception("A compact row must state its percentage.");
+        if (view.GetVisualDescendants().OfType<Button>().Any(button => button.IsEffectivelyVisible && ReferenceEquals(button.Command, card.ToggleDetailsCommand)))
+            throw new Exception("Compact rows must not offer per-row details.");
         if (view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("[missing:") == true))
-            throw new Exception("Aggregate band has missing translations.");
-        using (var bitmap = new RenderTargetBitmap(new PixelSize(580, 490)))
+            throw new Exception("The action list has missing translations.");
+        using (var bitmap = new RenderTargetBitmap(new PixelSize(520, 400)))
         { bitmap.Render(view); bitmap.Save(Path.Combine(output, "FileProgress-multi.png"), PngBitmapEncoderOptions.Default); }
 
-        Console.WriteLine("PASS: Windows-style file progress renders in three languages, collapses details, keeps conflict actions accessible and totals several transfers.");
+        Console.WriteLine("PASS: Windows-style file progress renders as a single card and as a compact action list, keeps conflict actions reachable and centres their labels.");
     }
 }

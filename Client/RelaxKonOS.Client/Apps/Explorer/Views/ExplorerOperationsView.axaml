@@ -1,136 +1,266 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:m="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Models"
-             xmlns:c="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
              x:Class="RelaxKonOS.Client.Apps.Explorer.Views.ExplorerOperationsView" x:DataType="m:ExplorerOperationCenter"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <UserControl.Styles>
-        <Style Selector="Border.operation.attention ProgressBar"><Setter Property="Foreground" Value="{DynamicResource WarningBrush}" /></Style>
-        <Style Selector="Border.operation.attention TextBlock.progress-title"><Setter Property="Foreground" Value="{DynamicResource WarningBrush}" /></Style>
-        <Style Selector="Button.transfer-cancel">
-            <Setter Property="MinWidth" Value="30" />
-            <Setter Property="Width" Value="30" />
-            <Setter Property="Height" Value="28" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        <!-- One card, one calm information ladder: what the task is, how far it has come, then
+             the optional detail. A single task keeps the full card; several tasks collapse into
+             Windows' compact action rows so the list stays readable. -->
+        <Style Selector="Border.operation-card">
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{DynamicResource OverlayCornerRadius}" />
+            <Setter Property="Padding" Value="18,16" />
         </Style>
-        <Style Selector="Button.transfer-details">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0,4" />
-            <Setter Property="MinHeight" Value="24" />
-            <Setter Property="FontSize" Value="12" />
+        <!-- The action list trades padding for density so several rows stay readable together. -->
+        <Style Selector="Border.operation-card.compact">
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="Margin" Value="0,0,0,6" />
         </Style>
-        <!-- One metric line states size, speed and time together; the labels are only in the
-             expanded grid, so the collapsed card still answers "how far" in one glance. -->
-        <Style Selector="TextBlock.metric">
+        <Style Selector="TextBlock.operation-title">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style Selector="TextBlock.operation-subtitle">
             <Setter Property="FontSize" Value="12" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         </Style>
+        <Style Selector="TextBlock.operation-heading">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style Selector="TextBlock.operation-metric">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style Selector="TextBlock.detail-label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <!-- Windows keeps the label column compact; a wider minimum is only needed by the
+                 longest translation ("コピー元"), so the column grows with it instead of
+                 reserving that width in every language. -->
+            <Setter Property="MinWidth" Value="56" />
+        </Style>
+        <Style Selector="TextBlock.detail-value">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <!-- Every button in this window centres its label; a row of actions must read as a row
+             regardless of how wide each label is. -->
+        <Style Selector="Button">
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Windows 11 draws a 4px track with rounded caps. The fill is written directly rather
+             than transitioned: the value already arrives every sampling tick, and a transition
+             would make the bar lag behind the number it illustrates. -->
+        <Style Selector="ProgressBar.operation-progress">
+            <Setter Property="Height" Value="4" />
+            <Setter Property="MinHeight" Value="4" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="CornerRadius" Value="2" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource SurfacePressedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- The card's only own escape hatch, quiet until hovered. -->
+        <Style Selector="Button.operation-close">
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="MinWidth" Value="30" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+        <Style Selector="Button.operation-close:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Button.operation-close:pressed">
+            <Setter Property="Background" Value="{DynamicResource SurfacePressedBrush}" />
+        </Style>
+        <Style Selector="Button.details-toggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+        <Style Selector="Button.details-toggle:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <!-- Standard dialog buttons stay neutral; only a conflict's decision row uses them. -->
+        <Style Selector="Button.dialog-action">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.dialog-action:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+        </Style>
+
+        <!-- A blocked task is the one place that raises its voice. -->
+        <Style Selector="Border.operation-card.attention TextBlock.operation-heading">
+            <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+        </Style>
+        <Style Selector="Border.operation-card.attention TextBlock.compact-progress">
+            <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+        </Style>
+        <Style Selector="Border.operation-card.attention ProgressBar.operation-progress">
+            <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+        </Style>
+        <Style Selector="TextBlock.compact-progress">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="20,16" RowSpacing="10">
-        <Border IsVisible="{Binding HasError}" Background="{DynamicResource SurfaceRaisedBrush}" Padding="12" CornerRadius="4">
-            <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
+    <Grid RowDefinitions="Auto,*" Margin="20,16">
+        <Border IsVisible="{Binding HasError}" Background="{DynamicResource SurfaceRaisedBrush}"
+                BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" Padding="12" CornerRadius="6"
+                Margin="0,0,0,10">
+            <TextBlock Text="{Binding Error}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource DangerBrush}" />
         </Border>
 
-        <!-- Several transfers at once need one answer at the top: how many, how far, how fast. -->
-        <Border Grid.Row="1" IsVisible="{Binding HasAggregate}" Classes="app-panel" Padding="14,10">
-            <StackPanel Spacing="8">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                    <StackPanel Spacing="2">
-                        <TextBlock Text="{Binding AggregateHeadline}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding AggregateDetail}" Classes="metric" />
-                    </StackPanel>
-                    <TextBlock Grid.Column="1" Text="{Binding AggregatePercent}" FontSize="20" FontWeight="SemiBold"
-                               VerticalAlignment="Center" />
-                </Grid>
-                <ProgressBar Value="{Binding AggregateProgress}" Minimum="0" Maximum="100" Height="4"
-                             Foreground="{DynamicResource SuccessBrush}" />
-            </StackPanel>
-        </Border>
-
-        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
             <ItemsControl ItemsSource="{Binding Jobs}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="m:ExplorerOperationCard">
-                        <Border Classes="operation" Classes.attention="{Binding NeedsAttention}"
-                                Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}"
-                                BorderThickness="1" CornerRadius="{DynamicResource OverlayCornerRadius}"
-                                Padding="14,12" Margin="0,0,0,10">
-                            <StackPanel Spacing="8">
-                                <!-- The title row carries the task's identity and its only escape hatch. -->
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                    <StackPanel Spacing="2">
-                                        <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding Summary}" Classes="metric" />
+                        <Border Classes="operation-card" Classes.attention="{Binding NeedsAttention}"
+                                Classes.compact="{Binding Compact}" Margin="0,0,0,8">
+                            <StackPanel Spacing="10">
+                                <!-- Identity first: what this task is, and how much it covers. -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <StackPanel Spacing="2" IsVisible="{Binding !Compact}">
+                                        <TextBlock Text="{Binding Title}" Classes="operation-title" />
+                                        <TextBlock Text="{Binding Summary}" Classes="operation-subtitle" />
                                     </StackPanel>
-                                    <Button Grid.Column="1" Classes="transfer-cancel" Content="&#x2715;" Command="{Binding CancelCommand}"
-                                            IsVisible="{Binding CanCancel}" VerticalAlignment="Top" ToolTip.Tip="{loc:Loc common.cancel}"
-                                            AutomationProperties.Name="{loc:Loc common.cancel}" />
+                                    <!-- Several tasks: one action per line, the way Windows lists them. -->
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" IsVisible="{Binding Compact}"
+                                          VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Summary}" Classes="operation-subtitle"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
+                                        <TextBlock Text="{Binding CompactProgress}" Classes="compact-progress"
+                                                   IsVisible="{Binding Compact}" VerticalAlignment="Center" Margin="0,1,2,0" />
+                                        <Button Classes="operation-close" Command="{Binding CancelCommand}"
+                                                IsVisible="{Binding CanCancel}" ToolTip.Tip="{loc:Loc common.cancel}"
+                                                AutomationProperties.Name="{loc:Loc common.cancel}">
+                                            <Path Data="M0,0 L9,9 M9,0 L0,9" Stroke="{Binding $parent[Button].Foreground}"
+                                                  StrokeThickness="1" StrokeLineCap="Round" />
+                                        </Button>
+                                    </StackPanel>
                                 </Grid>
 
-                                <TextBlock Classes="progress-title" Text="{Binding ProgressText}" FontSize="26" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                                <!-- The phase, in one line: Windows says "Extracting..." here. A
+                                     paused task hides the bar and the rate: the decision below is
+                                     the only thing that can move it forward. -->
+                                <TextBlock Classes="operation-heading" Text="{Binding ProgressText}" IsVisible="{Binding !Compact}" />
+                                <ProgressBar Classes="operation-progress" Value="{Binding Progress}"
+                                             IsVisible="{Binding !HasIssue}"
+                                             IsIndeterminate="{Binding Indeterminate}" Minimum="0" Maximum="100"
+                                             AutomationProperties.Name="{Binding ProgressScope}" />
 
-                                <ProgressBar Value="{Binding Progress}" IsIndeterminate="{Binding Indeterminate}" Minimum="0" Maximum="100"
-                                             Height="5" Foreground="{DynamicResource SuccessBrush}" AutomationProperties.Name="{Binding ProgressScope}" />
-
-                                <!-- Size, speed and remaining time stay visible with the details collapsed. -->
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                    <TextBlock Text="{Binding TransferSize}" Classes="metric" />
-                                    <TextBlock Grid.Column="1" Text="{Binding QuickMetrics}" Classes="metric"
-                                               IsVisible="{Binding ShowQuickMetrics}" />
+                                <!-- Size on the left, rate on the right; both stay one line. -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" IsVisible="{Binding ShowMetrics}">
+                                    <TextBlock Text="{Binding TransferSize}" Classes="operation-metric" />
+                                    <TextBlock Grid.Column="1" Text="{Binding QuickMetrics}" Classes="operation-metric"
+                                               IsVisible="{Binding ShowQuickMetrics}" HorizontalAlignment="Right" />
                                 </Grid>
 
-                                <!-- The metric line above already states the rate, so the graph stays a
-                                     shape and never repeats the number. -->
-                                <Grid IsVisible="{Binding ShowSpeedGraph}" Height="84" ClipToBounds="True">
-                                    <c:TransferSpeedGraph Values="{Binding SpeedHistory}" Foreground="{DynamicResource SuccessBrush}" />
-                                </Grid>
+                                <!-- A compact row states where the bytes are going instead of the
+                                     three labelled rows the full card can afford. -->
+                                <TextBlock Text="{Binding CompactRoute}" Classes="operation-metric"
+                                           IsVisible="{Binding ShowCompactRoute}" ToolTip.Tip="{Binding CompactRoute}" />
 
-                                <Grid IsVisible="{Binding ShowTransferDetails}" ColumnDefinitions="Auto,*"
-                                      RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="5">
-                                    <TextBlock Text="{loc:Loc explorer.operations.name_label}" Classes="metric" />
-                                    <TextBlock Grid.Column="1" Text="{Binding CurrentFileName}" Classes="metric"
-                                               ToolTip.Tip="{Binding Snapshot.CurrentPath}" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <TextBlock Grid.Row="1" Text="{loc:Loc explorer.operations.from_label}" Classes="metric" />
-                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SourceLocation}" Classes="metric"
-                                               ToolTip.Tip="{Binding Locations}" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <TextBlock Grid.Row="2" Text="{loc:Loc explorer.operations.to_label}" IsVisible="{Binding HasDestination}" Classes="metric" />
-                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DestinationLocation}" IsVisible="{Binding HasDestination}"
-                                               Classes="metric" ToolTip.Tip="{Binding Locations}" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding Counts}" Classes="metric" TextWrapping="Wrap" Margin="0,4,0,0" />
-                                </Grid>
+                                <StackPanel IsVisible="{Binding ShowTransferDetails}" Spacing="8">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="5">
+                                        <TextBlock Text="{loc:Loc explorer.operations.name_label}" Classes="detail-label" IsVisible="{Binding HasCurrentFile}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding CurrentFileName}" Classes="detail-value"
+                                                   IsVisible="{Binding HasCurrentFile}" ToolTip.Tip="{Binding Snapshot.CurrentPath}" />
+                                        <TextBlock Grid.Row="1" Text="{loc:Loc explorer.operations.from_label}" Classes="detail-label" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SourceLocation}" Classes="detail-value"
+                                                   ToolTip.Tip="{Binding Locations}" />
+                                        <TextBlock Grid.Row="2" Text="{loc:Loc explorer.operations.to_label}" Classes="detail-label"
+                                                   IsVisible="{Binding HasDestination}" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DestinationLocation}" Classes="detail-value"
+                                                   IsVisible="{Binding HasDestination}" ToolTip.Tip="{Binding Locations}" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding Counts}" Classes="operation-metric" TextWrapping="Wrap" />
+                                </StackPanel>
 
-                                <Border IsVisible="{Binding HasIssue}" Background="{DynamicResource WarningMutedBrush}" Padding="12" CornerRadius="4">
+                                <!-- A conflict replaces the details instead of pushing them down. -->
+                                <Border IsVisible="{Binding HasIssue}" Background="{DynamicResource WarningMutedBrush}"
+                                        CornerRadius="6" Padding="12,10">
                                     <StackPanel Spacing="8">
-                                        <TextBlock Text="{Binding IssueText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding IssueTitle}" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding IssueRoute}" Classes="operation-metric" TextWrapping="Wrap"
+                                                   IsVisible="{Binding HasIssueRoute}" ToolTip.Tip="{Binding IssueRoute}" />
+                                        <TextBlock Text="{Binding IssueMessage}" Classes="operation-metric" TextWrapping="Wrap"
+                                                   IsVisible="{Binding HasIssueMessage}" />
                                         <CheckBox Content="{loc:Loc explorer.operations.apply_all}" IsChecked="{Binding ApplyToAll}"
-                                                  IsVisible="{Binding CanApplyToAll}" />
-                                        <WrapPanel>
-                                            <Button Content="{Binding RetryLabel}" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,8,6" Height="32" />
-                                            <Button Content="{loc:Loc explorer.operations.replace}" Command="{Binding ReplaceCommand}" IsVisible="{Binding CanReplace}" Margin="0,0,8,6" Height="32" />
-                                            <Button Content="{loc:Loc explorer.operations.keep_both}" Command="{Binding KeepBothCommand}" IsVisible="{Binding CanKeepBoth}" Margin="0,0,8,6" Height="32" />
-                                            <Button Content="{loc:Loc explorer.operations.skip}" Command="{Binding SkipCommand}" Margin="0,0,8,6" Height="32" />
+                                                  IsVisible="{Binding CanApplyToAll}" FontSize="12" MinHeight="24" />
+                                        <WrapPanel HorizontalAlignment="Right">
+                                            <Button Content="{Binding RetryLabel}" Command="{Binding RetryCommand}" Classes="dialog-action"
+                                                    IsVisible="{Binding CanRetry}" Margin="0,0,8,0" />
+                                            <Button Content="{loc:Loc explorer.operations.replace}" Command="{Binding ReplaceCommand}"
+                                                    Classes="dialog-action" IsVisible="{Binding CanReplace}" Margin="0,0,8,0" />
+                                            <Button Content="{loc:Loc explorer.operations.keep_both}" Command="{Binding KeepBothCommand}"
+                                                    Classes="dialog-action" IsVisible="{Binding CanKeepBoth}" Margin="0,0,8,0" />
+                                            <Button Content="{loc:Loc explorer.operations.skip}" Command="{Binding SkipCommand}"
+                                                    Classes="dialog-action" />
                                         </WrapPanel>
                                     </StackPanel>
                                 </Border>
-                                <TextBlock IsVisible="{Binding HasError}" Text="{Binding Error}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
-                                <Button Classes="transfer-details" IsVisible="{Binding !HasIssue}" Content="{Binding DetailsToggleLabel}"
-                                        Command="{Binding ToggleDetailsCommand}" HorizontalAlignment="Left" />
+
+                                <TextBlock IsVisible="{Binding HasError}" Text="{Binding Error}" TextWrapping="Wrap"
+                                           FontSize="12" Foreground="{DynamicResource DangerBrush}" />
+
+                                <Button Classes="details-toggle" IsVisible="{Binding ShowDetailsToggle}" Command="{Binding ToggleDetailsCommand}"
+                                        AutomationProperties.Name="{Binding DetailsToggleLabel}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <!-- Two marks instead of a rotated glyph: no animation is needed to
+                                             communicate the state, and the label stays readable at 12px. -->
+                                        <Path Data="M0,4 L4,0 L8,4" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2"
+                                              StrokeLineCap="Round" IsVisible="{Binding DetailsExpanded}" VerticalAlignment="Center" />
+                                        <Path Data="M0,0 L4,4 L8,0" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2"
+                                              StrokeLineCap="Round" IsVisible="{Binding !DetailsExpanded}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding DetailsToggleLabel}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
-
-        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="10">
-            <TextBlock Text="{loc:Loc explorer.operations.close_hint}" TextWrapping="Wrap" FontSize="11"
-                       VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
-            <Button Grid.Column="1" Height="30" Content="{loc:Loc explorer.operations.stop_all}"
-                    Command="{Binding CancelAllCommand}" IsVisible="{Binding AnyActive}" />
-        </Grid>
     </Grid>
 </UserControl>
