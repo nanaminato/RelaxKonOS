@@ -26,6 +26,27 @@ payload 为 `ModulePackageCatalog`，包含 sourceId、严格递增序号、UTC 
 
 `purpose=official` 要求 developmentServiceId 为 null。开发来源必须 `purpose=development`，明确绑定本机稳定 serviceId，同时 Host 环境为 Development 且 `ModulePackages:DevelopmentInstance=true`。生产实例不能接纳开发来源；开发包也不能因 manifest 字段自行升级成官方包。
 
+### 启用官方来源
+
+Server 的默认配置声明了 `official-modules`，目录地址为 `https://modules.relaxkon.com/stable/catalog.json`，初始授权模块为 `cloud-storage`。拿到发布方通过独立可信渠道交付的 ECDSA P-256 公钥后，在服务内容根目录的 `appsettings.host.json` 合并以下配置。键名须与发布工具的签名 KeyId 一致。
+
+```json
+{
+  "ModulePackages": {
+    "Sources": {
+      "official-modules": {
+        "Enabled": true,
+        "PublicKeysSpki": {
+          "module-release-key": "<发布方提供的 Base64 DER SPKI>"
+        }
+      }
+    }
+  }
+}
+```
+
+重启 Server 后，管理员可在桌面组件中心的模块商店刷新目录。首次验签通过后，搜索才会显示发布条目。若要定期刷新的话，可设置 `ModulePackages:Refresh:Enabled=true`，默认间隔为 3600 秒。增加授权模块或轮换密钥时，需随策略变更提高 `Revision`。
+
 纯校验器接受既有 `ModulePackageTrustHistory`，返回独立的 `NextHistory`，不改写输入、不写文件。历史绑定 sourceId、serviceId 和 purpose；保护策略修订、同序号目录内容、发布身份及 moduleId/version/rid 的不可变内容。移除的 keyId 永久退休，不能重新引入或换绑公钥；撤销 releaseId/digest 取历史并集，后续目录遗漏不会恢复信任。策略同修订内容变化、目录降序/同序号不同 payload、发布或版本内容变更均拒绝。历史证据容量有界，不能以静默裁剪历史解决超限。
 
 **接纳方必须先原子持久保存返回历史，再让任何发布可用于安装。** 本机离线接纳将完整签名 envelope、每来源历史、跨来源 moduleId/version/rid 内容身份和操作者/幂等键/精确摘要/修订/operationId 回执共同写入 `data/module-management/package-catalogs.json`。使用与 Host 相同的 host.lock，拒绝在 Host 运行时执行；精确 expectedRevision 冲突及文件外部修改均拒绝。相同操作者、幂等键和原始 envelope/目标修订只返回原回执，重签名文件或改目标不视为原请求。原回执是历史事实，不能绕过当前有效期检查。

@@ -8,6 +8,12 @@ internal static class ModulePackageHostConfiguration
     internal const string HostApiVersion = "1.0.0";
     internal static bool Identifier(string? value) => value is { Length: > 0 and <= 96 } && value[0] is >= 'a' and <= 'z'
         && value.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '-');
+    internal static IEnumerable<string> RemoteSourceIds(IConfiguration configuration) =>
+        configuration.GetSection("ModulePackages:Sources").GetChildren()
+            .Where(section => Identifier(section.Key) && section.GetValue<bool?>("Enabled") == true
+                && !string.IsNullOrWhiteSpace(section["CatalogUri"]))
+            .Select(section => section.Key);
+
     internal static ModulePackageTrustPolicy Source(IConfiguration configuration, string sourceId)
     {
         if (!Identifier(sourceId)) throw new ModulePackageException("module-package-source-invalid");

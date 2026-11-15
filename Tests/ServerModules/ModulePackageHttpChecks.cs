@@ -63,8 +63,14 @@ internal static class ModulePackageHttpChecks
             });
             builder.Logging.ClearProviders();
             builder.Configuration.AddJsonFile("appsettings.host.json", optional: false, reloadOnChange: false);
+            builder.Configuration["ModulePackages:Sources:official:CatalogUri"] = "https://modules.example/stable/catalog.json";
             string serviceId;
             using (var initialization = new ModuleManagementStore(builder.Configuration, root)) serviceId = initialization.ServiceId;
+            var configuredSources = ModulePackageStore.Sources(root, builder.Configuration, builder.Environment, now);
+            check(configuredSources.CatalogRevision == ModulePackageCatalogStore.InitialRevision
+                && configuredSources.Sources is [{ SourceId: "official", Status: "refresh-required", Sequence: 0, CatalogUriConfigured: true }]
+                && ModulePackageStore.Search(root, builder.Configuration, builder.Environment, null, null, 0, 25, now).Items.Count == 0,
+                "a configured remote source is refreshable before first acceptance and exposes no unsigned releases");
             var context = ModulePackageHostConfiguration.Context(serviceId, builder.Configuration, builder.Environment);
             using (var catalog = new ModulePackageCatalogStore(root, serviceId))
                 catalog.Accept(File.ReadAllBytes(built.CatalogPath), policy, context, ModulePackageCatalogStore.InitialRevision,

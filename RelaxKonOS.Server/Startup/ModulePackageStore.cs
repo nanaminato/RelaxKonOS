@@ -52,7 +52,7 @@ internal static class ModulePackageStore
             }
             catch (ModulePackageException) { }
         }
-        var ordered = items.OrderBy(item => item.SourceId == "official" ? 0 : 1).ThenBy(item => item.ModuleId,
+        var ordered = items.OrderBy(item => item.Purpose == "official" ? 0 : 1).ThenBy(item => item.ModuleId,
                 StringComparer.Ordinal).ThenByDescending(item => ParseVersion(item.Version)).ThenBy(item => item.ReleaseId,
                 StringComparer.Ordinal).ToArray();
         var page = ordered.Skip(offset).Take(limit).ToArray();
@@ -66,32 +66,40 @@ internal static class ModulePackageStore
         var document = ModulePackageCatalogStore.Read(contentRoot, serviceId);
         var context = ModulePackageHostConfiguration.Context(serviceId, configuration, environment);
         var sources = new List<ServerModuleStoreSourceDto>();
-        foreach (var source in document.Sources.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        var sourceIds = document.Sources.Keys.Union(ModulePackageHostConfiguration.RemoteSourceIds(configuration),
+            StringComparer.Ordinal).Order(StringComparer.Ordinal);
+        foreach (var sourceId in sourceIds)
         {
-            var saved = source.Value;
-            var catalogUri = configuration["ModulePackages:Sources:" + source.Key + ":CatalogUri"];
+            document.Sources.TryGetValue(sourceId, out var saved);
+            var catalogUriConfigured = !string.IsNullOrWhiteSpace(configuration["ModulePackages:Sources:" + sourceId + ":CatalogUri"]);
             try
             {
-                var policy = ModulePackageHostConfiguration.Source(configuration, source.Key);
+                var policy = ModulePackageHostConfiguration.Source(configuration, sourceId);
+                if (saved is null)
+                {
+                    sources.Add(new(policy.SourceId, policy.Purpose, "refresh-required", 0, policy.Revision, 0, 0,
+                        catalogUriConfigured, null));
+                    continue;
+                }
                 try
                 {
                     var verified = ModulePackageCatalogStore.ReadCurrentCatalog(document, policy, context, now);
                     sources.Add(new(policy.SourceId, policy.Purpose, "current", saved.History.Sequence,
                         saved.History.PolicyRevision, verified.Catalog.Releases.Length, saved.History.RevokedReleaseIds.Length,
-                        !string.IsNullOrWhiteSpace(catalogUri), null));
+                        catalogUriConfigured, null));
                 }
                 catch (ModulePackageException error) when (error.ProblemCode == "module-package-source-refresh-required")
                 {
                     sources.Add(new(policy.SourceId, policy.Purpose, "refresh-required", saved.History.Sequence,
                         saved.History.PolicyRevision, 0, saved.History.RevokedReleaseIds.Length,
-                        !string.IsNullOrWhiteSpace(catalogUri), error.ProblemCode));
+                        catalogUriConfigured, error.ProblemCode));
                 }
             }
             catch (ModulePackageException error)
             {
-                sources.Add(new(source.Key, "unknown", "unavailable", saved.History.Sequence,
-                    saved.History.PolicyRevision, 0, saved.History.RevokedReleaseIds.Length,
-                    !string.IsNullOrWhiteSpace(catalogUri), error.ProblemCode));
+                sources.Add(new(sourceId, "unknown", "unavailable", saved?.History.Sequence ?? 0,
+                    saved?.History.PolicyRevision ?? 0, 0, saved?.History.RevokedReleaseIds.Length ?? 0,
+                    false, error.ProblemCode));
             }
         }
         return new(document.Revision, sources);

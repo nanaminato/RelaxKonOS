@@ -3,7 +3,7 @@ using RelaxKonOS.ModulePackaging;
 namespace RelaxKonOS.Server.Startup;
 
 /// <summary>
-/// Opt-in periodic refresh of already accepted module catalogs. It only fetches configured HTTPS
+/// Opt-in periodic refresh of configured module catalogs. It only fetches configured HTTPS
 /// URIs and commits a catalog that passes the same signature/policy/history checks as an explicit
 /// refresh; it never installs, enables, loads or restarts a module.
 /// </summary>
@@ -35,14 +35,14 @@ internal sealed class ModuleCatalogRefreshMonitor(IHostApplicationLifetime lifet
         var serviceId = ModuleManagementStore.ReadRecoveryReport(root).ServiceId;
         var context = ModulePackageHostConfiguration.Context(serviceId, configuration, environment);
         var revision = ModulePackageCatalogStore.Read(root, serviceId).Revision;
-        foreach (var sourceId in ModulePackageCatalogStore.Read(root, serviceId).Sources.Keys.Order(StringComparer.Ordinal))
+        foreach (var sourceId in ModulePackageHostConfiguration.RemoteSourceIds(configuration).Order(StringComparer.Ordinal))
         {
             var uri = configuration["ModulePackages:Sources:" + sourceId + ":CatalogUri"];
             if (string.IsNullOrWhiteSpace(uri)) continue;
             try
             {
-                var envelope = await ModulePackageCatalogFetcher.FetchAsync(uri, cancellationToken: cancellationToken);
                 var policy = ModulePackageHostConfiguration.Source(configuration, sourceId);
+                var envelope = await ModulePackageCatalogFetcher.FetchAsync(uri, cancellationToken: cancellationToken);
                 using var store = new ModulePackageCatalogStore(root, serviceId, takeHostLock: false);
                 var receipt = store.Accept(envelope, policy, context, revision, "auto-refresh",
                     "auto-" + sourceId + "-" + DateTimeOffset.UtcNow.ToUnixTimeSeconds(), DateTimeOffset.UtcNow);
