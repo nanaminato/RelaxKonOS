@@ -91,6 +91,30 @@ if (args is ["--cloud-storage-checks"])
     return;
 }
 
+if (args is ["--cloud-r2-conditional-delete-acceptance"] or ["--cloud-r2-connector-acceptance"])
+{
+    await CloudR2ConditionalDeleteAcceptance.RunAsync(args[0] == "--cloud-r2-connector-acceptance");
+    return;
+}
+
+if (args is ["--cloud-webdav-connector-acceptance"])
+{
+    await CloudWebDavConnectorAcceptance.RunAsync();
+    return;
+}
+
+if (args is ["--cloud-aws-connector-acceptance"])
+{
+    await CloudR2ConditionalDeleteAcceptance.RunAwsAsync();
+    return;
+}
+
+if (args is ["--cloud-baidu-connector-acceptance"])
+{
+    await CloudBaiduConnectorAcceptance.RunAsync();
+    return;
+}
+
 if (args is ["--module-host-checks"])
 {
     void VerifyHost(bool passed, string message)

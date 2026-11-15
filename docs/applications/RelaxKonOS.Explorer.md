@@ -392,9 +392,16 @@ SSH 文件浏览器也在“更多”提供独立的窗口级缓存开关，默�
 
 Android 的授权和云文件功能边界以 [Android 云授权文档](../../Client/RelaxKonOS.Client.Android/docs/features/CloudAuthorization.md) 为准；桌面云浏览能力不代表 Android 已具备相同的浏览和传输实现。
 
+### 桌面云文件操作
+
+- 使用「上传文件夹」选取 Server 上的目录。下载云端目录时选取 Server 上的目标父目录，任务会创建同名子目录并复制内容，包含空目录。
+- 上传遇到同名文件时，可在操作中心选择替换、保留两份或跳过。替换受服务商的写权限和条件限制。
+- 在同一连接内移动文件或目录时，先选中条目并点击「剪切」，再打开目标目录点击「粘贴」。移动遇到同名目标会失败。
+- 删除需要再次点击确认。删除目录时会一并删除其内容。发生部分失败时，刷新源和目标目录核对实际结果。
+
 ### 添加 Cloudflare R2 连接
 
-在 Cloudflare 控制台打开 R2 对象存储，记下目标桶名，并在「管理 API 令牌」中为该桶创建凭据。仅浏览和下载时选择「对象只读」。需要上传或新建文件夹时选择「对象读写」，并在 Explorer 中勾选「允许上传和新建文件夹」。[Cloudflare R2 认证与权限](https://developers.cloudflare.com/r2/api/tokens/)
+在 Cloudflare 控制台打开 R2 对象存储，记下目标桶名，并在「管理 API 令牌」中为该桶创建凭据。仅浏览和下载时选择「对象只读」。需要写操作时选择「对象读写」，并在 Explorer 中勾选「允许写入（包括替换、移动和删除）」。[Cloudflare R2 认证与权限](https://developers.cloudflare.com/r2/api/tokens/)
 
 在桌面 Explorer 中打开「云存储」→「添加连接」，将协议选为「S3 兼容存储」，然后填写以下字段。
 

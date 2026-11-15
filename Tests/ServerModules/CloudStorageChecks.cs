@@ -11,6 +11,32 @@ using RelaxKonOS.ServerModule.CloudStorage;
 
 internal static class CloudStorageChecks
 {
+    internal static async Task RunRealTreeRoundTripAsync(CloudConnectionRequest settings, string root, CancellationToken ct,
+        string? parentReference = null)
+    {
+        var context = new TestContext(root);
+        var module = new CloudStorageModule();
+        await module.StartAsync(context, ct);
+        try
+        {
+            var builder = WebApplication.CreateSlimBuilder();
+            builder.Logging.ClearProviders();
+            builder.WebHost.UseUrls("http://127.0.0.1:0");
+            await using var app = builder.Build();
+            module.MapEndpoints(app, context);
+            await app.StartAsync(ct);
+            using var client = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>()
+                .Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
+            var owner = Guid.NewGuid();
+            SetOwner(client, owner);
+            if (settings.AllowPrivateWebDav)
+                client.DefaultRequestHeaders.Add("X-RelaxKonOS-Module-Role", "admin");
+            var connection = await CreateAsync(client, settings);
+            await CloudFileJobChecks.RunRealTreeRoundTripAsync(client, owner, connection.Id, root, parentReference, ct);
+        }
+        finally { await module.StopAsync(CancellationToken.None); }
+    }
+
     internal static async Task RunAsync(Action<bool, string> check)
     {
         await BaiduDeviceAuthorizationChecks.RunAsync(check);
@@ -74,14 +100,23 @@ internal static class CloudStorageChecks
             check(downloaded == "file-content", "the module streams the authorized WebDAV file");
             using (var denied = await client.PostAsJsonAsync(route + "/uploads?key=denied", new CreateUploadRequest("", "new.txt", 0)))
                 check(denied.StatusCode == HttpStatusCode.Forbidden, "a read-only connection rejects uploads");
+            using (var denied = await client.PostAsJsonAsync(route + "/entries/move?reference=" + file.Reference,
+                       new CloudMoveRequest(null, "denied.txt")))
+                check(denied.StatusCode == HttpStatusCode.Forbidden, "a read-only connection rejects moving an entry");
+            using (var denied = await client.DeleteAsync(route + "/entries?reference=" + file.Reference))
+                check(denied.StatusCode == HttpStatusCode.Forbidden, "a read-only connection rejects deleting an entry");
             SetOwner(client, Guid.NewGuid());
             using (var denied = await client.GetAsync(route + "/entries"))
                 check(denied.StatusCode == HttpStatusCode.NotFound, "connection IDs cannot be used by another user");
+            using (var denied = await client.DeleteAsync(route + "/entries?reference=" + file.Reference))
+                check(denied.StatusCode == HttpStatusCode.NotFound, "deletion cannot use another user's connection ID");
             SetOwner(client, owner);
             using (var updated = await client.PutAsJsonAsync(route, dav with { EnableWrites = true }))
                 updated.EnsureSuccessStatusCode();
             using (var created = await client.PostAsync(route + "/folders?name=new-folder", null))
-                check(created.StatusCode == HttpStatusCode.NoContent, "WebDAV creates a folder when write access is enabled");
+                check(created.StatusCode == HttpStatusCode.OK
+                    && (await created.Content.ReadFromJsonAsync<CloudCreatedFolder>()) is { Reference.Length: > 0 },
+                    "WebDAV returns a reference to the created folder");
             using (var uploaded = await UploadAsync(client, route, "new.txt", check))
                 check(uploaded.StatusCode == HttpStatusCode.OK, "WebDAV uses a conditional create-only upload");
             using (var conflict = await UploadAsync(client, route, "new.txt", check))
@@ -89,6 +124,17 @@ internal static class CloudStorageChecks
 
             await VerifyLargeUploadAsync(client, route, check);
             await CloudFileJobChecks.RunAsync(client, owner, connection.Id, file.Reference, root, check, rejected => upstream.RejectDavDownload = rejected);
+            check(upstream.DavUploadedTreePaths.SetEquals(["/root/tree-upload/", "/root/tree-upload/empty/", "/root/tree-upload/payload.txt"]),
+                "WebDAV receives both directories and the nested file at the expected paths");
+            using (var replaced = await UploadAsync(client, route, "space name.txt", check, replace: true))
+                check(replaced.StatusCode == HttpStatusCode.OK, "WebDAV replaces a file with a matching strong ETag");
+            using (var moved = await client.PostAsJsonAsync(route + "/entries/move?reference=" + file.Reference,
+                       new CloudMoveRequest(null, "moved.txt")))
+                check(moved.StatusCode == HttpStatusCode.NoContent, "WebDAV moves the selected file");
+            using (var deleted = await client.DeleteAsync(route + "/entries?reference=bW92ZWQudHh0"))
+                check(deleted.StatusCode == HttpStatusCode.NoContent, "WebDAV deletes the moved file");
+            using (var denied = await client.DeleteAsync(route + "/entries?reference="))
+                check(denied.StatusCode == HttpStatusCode.BadRequest, "WebDAV rejects deletion of the connection root");
             await VerifyPublishCancellationAsync(client, route, upstream, check);
 
             foreach (var (hostname, region) in new[]
@@ -106,11 +152,42 @@ internal static class CloudStorageChecks
                 var last = await client.GetFromJsonAsync<CloudDirectoryDto>(s3Route + "/entries?cursor=second-page");
                 check(last is { Entries.Count: 1, NextCursor: null }, $"{hostname} forwards the continuation token");
                 var item = page!.Entries.Single(entry => !entry.IsDirectory);
+                using (var existingFolder = await client.PostAsync(s3Route + "/folders?name=folder", null))
+                    check(existingFolder.StatusCode == HttpStatusCode.Conflict,
+                        $"{hostname} rejects creating a directory over a populated prefix without a marker");
                 check(await client.GetStringAsync(s3Route + "/download?reference=" + item.Reference) == "object",
                     $"{hostname} streams the scoped S3 object");
                 using var uploaded = await UploadAsync(client, s3Route, "new.txt", check);
                 check(uploaded.StatusCode == HttpStatusCode.OK, $"{hostname} signs a create-only S3 upload");
+                using var conflict = await UploadAsync(client, s3Route, "replace.txt", check);
+                var problem = await conflict.Content.ReadFromJsonAsync<RelaxKonOS.Protocol.Common.ProblemDetails>();
+                check(conflict.StatusCode == HttpStatusCode.Conflict && problem?.Title == CloudStorageApi.UploadReplaceAvailable,
+                    $"{hostname} requires a replacement decision before overwriting");
+                using var replaced = await UploadAsync(client, s3Route, "replace.txt", check, replace: true);
+                check(replaced.StatusCode == HttpStatusCode.OK, $"{hostname} accepts explicit replacement");
                 await VerifyLargeUploadAsync(client, s3Route, check);
+                using var failedMove = await client.PostAsJsonAsync(s3Route + "/entries/move?reference=" + item.Reference,
+                    new CloudMoveRequest(null, "occupied.txt"));
+                check(failedMove.StatusCode == HttpStatusCode.Conflict && !upstream.S3DeletedSources.Contains(hostname),
+                    $"{hostname} leaves the source intact when destination publication conflicts");
+                upstream.ChangeS3SourceBeforeDelete = true;
+                using var changed = await client.PostAsJsonAsync(s3Route + "/entries/move?reference=" + item.Reference,
+                    new CloudMoveRequest(null, "source-changed.txt"));
+                upstream.ChangeS3SourceBeforeDelete = false;
+                check(changed.StatusCode == HttpStatusCode.Conflict && upstream.S3StaleDeletes.Contains(hostname)
+                    && !upstream.S3DeletedSources.Contains(hostname),
+                    $"{hostname} reports a conflict and keeps the new source when its ETag changes after publication");
+                using var moved = await client.PostAsJsonAsync(s3Route + "/entries/move?reference=" + item.Reference,
+                    new CloudMoveRequest(null, "moved.txt"));
+                check(moved.StatusCode == HttpStatusCode.NoContent && upstream.S3DeletedSources.Contains(hostname),
+                    $"{hostname} deletes the source after conditional publication succeeds");
+                using var removed = await client.DeleteAsync(s3Route + "/entries?reference=bW92ZWQudHh0");
+                check(removed.StatusCode == HttpStatusCode.NoContent, $"{hostname} deletes the moved object");
+                var directory = page.Entries.Single(entry => entry.IsDirectory);
+                using var removedDirectory = await client.DeleteAsync(s3Route + "/entries?reference=" + directory.Reference);
+                check(removedDirectory.StatusCode == HttpStatusCode.NoContent
+                    && upstream.S3DeletedDirectoryKeys[hostname].SetEquals(["/test-bucket/scope/folder/", "/test-bucket/scope/folder/child.txt"]),
+                    $"{hostname} deletes the selected directory marker and children across listing pages");
             }
 
             {
@@ -133,11 +210,23 @@ internal static class CloudStorageChecks
                 var writerRoute = $"/cloud/connections/{writer.Id:D}";
                 check(writer.CanWrite, $"{protocol} can explicitly enable writes");
                 using (var folder = await client.PostAsync(writerRoute + "/folders?name=folder", null))
-                    check(folder.StatusCode == HttpStatusCode.NoContent, $"{protocol} creates a folder");
+                    check(folder.StatusCode == HttpStatusCode.OK
+                        && (await folder.Content.ReadFromJsonAsync<CloudCreatedFolder>()) is { Reference.Length: > 0 },
+                        $"{protocol} returns a reference to the created folder");
                 using (var uploaded = await UploadAsync(client, writerRoute, "new.txt", check))
                     check(uploaded.StatusCode == HttpStatusCode.OK, $"{protocol} publishes a staged file");
                 using (var conflict = await UploadAsync(client, writerRoute, "new.txt", check))
                     check(conflict.StatusCode == HttpStatusCode.Conflict, $"{protocol} rejects an existing destination");
+                using (var replaced = await UploadAsync(client, writerRoute, "test.txt", check, replace: true))
+                    check(replaced.StatusCode == HttpStatusCode.OK, "Baidu replaces the existing file with explicit intent");
+                using (var moved = await client.PostAsJsonAsync(writerRoute + "/entries/move?reference=" + entry.Reference,
+                           new CloudMoveRequest(null, "occupied.txt")))
+                    check(moved.StatusCode == HttpStatusCode.Conflict, "Baidu maps an item-level conflict to HTTP 409");
+                using (var moved = await client.PostAsJsonAsync(writerRoute + "/entries/move?reference=" + entry.Reference,
+                           new CloudMoveRequest(null, "moved.txt")))
+                    check(moved.StatusCode == HttpStatusCode.NoContent, "Baidu confirms successful move");
+                using (var deleted = await client.DeleteAsync(writerRoute + "/entries?reference=" + entry.Reference))
+                    check(deleted.StatusCode == HttpStatusCode.NoContent, "Baidu confirms successful deletion");
             }
             var davWriter = await CreateAsync(client, dav with { EnableWrites = true });
             upstream.RejectDavUpload = true;
@@ -273,9 +362,9 @@ internal static class CloudStorageChecks
         check(true, "Cancelled cloud publication releases its upload session");
     }
 
-    private static async Task<HttpResponseMessage> UploadAsync(HttpClient client, string route, string name, Action<bool, string> check)
+    private static async Task<HttpResponseMessage> UploadAsync(HttpClient client, string route, string name, Action<bool, string> check, bool replace = false)
     {
-        using var created = await client.PostAsJsonAsync(route + "/uploads?key=" + Guid.NewGuid().ToString("N"),
+        using var created = await client.PostAsJsonAsync($"{route}/uploads?key={Guid.NewGuid():N}&replace={replace}",
             new CreateUploadRequest("", name, 3));
         created.EnsureSuccessStatusCode();
         var session = (await created.Content.ReadFromJsonAsync<UploadSessionDto>())!;
@@ -320,7 +409,15 @@ internal static class CloudStorageChecks
     private sealed class Upstream(Action<bool, string> check) : HttpMessageHandler
     {
         private bool _davUploaded;
+        private bool _davMoved;
         private bool _baiduUploaded;
+        private bool _baiduMoved;
+        internal HashSet<string> DavUploadedTreePaths { get; } = new(StringComparer.Ordinal);
+        internal HashSet<string> S3DeletedSources { get; } = new(StringComparer.Ordinal);
+        internal HashSet<string> S3StaleDeletes { get; } = new(StringComparer.Ordinal);
+        internal bool ChangeS3SourceBeforeDelete { get; set; }
+        private bool _r2ChangedAfterPublication;
+        internal Dictionary<string, HashSet<string>> S3DeletedDirectoryKeys { get; } = new(StringComparer.Ordinal);
         internal HttpStatusCode? DavListingError { get; set; }
         internal bool RejectDavDownload { get; set; }
         internal bool RejectDavUpload { get; set; }
@@ -336,14 +433,25 @@ internal static class CloudStorageChecks
                 if (request.Method.Method == "PROPFIND")
                 {
                     if (DavListingError is { } status) return new HttpResponseMessage(status);
+                    if (uri.AbsolutePath.StartsWith("/root/tree-download/", StringComparison.Ordinal))
+                    {
+                        var tree = DavItem(uri.AbsolutePath, true);
+                        if (uri.AbsolutePath == "/root/tree-download/")
+                            tree += DavItem("/root/tree-download/empty/", true) + DavItem("/root/tree-download/payload.txt", false);
+                        return Xml(HttpStatusCode.MultiStatus, $"<multistatus xmlns=\"DAV:\">{tree}</multistatus>");
+                    }
                     var files = Enumerable.Range(0, 205).Select(index => DavItem($"/root/file-{index:D3}", false));
-                    var responses = string.Concat(files.Append(DavItem("/root/space%20name.txt", false))
+                    var responses = string.Concat(files.Append(DavItem(_davMoved ? "/root/moved.txt" : "/root/space%20name.txt", false))
                         .Append(DavItem("/outside.txt", false)).Append(DavItem("/root/", true))
                         .Append(DavItem("https://outside.example/root/external.txt", false)));
                     return Xml(HttpStatusCode.MultiStatus, $"<multistatus xmlns=\"DAV:\">{responses}</multistatus>");
                 }
                 if (request.Method.Method == "MKCOL")
+                {
+                    if (uri.AbsolutePath.StartsWith("/root/tree-upload/", StringComparison.Ordinal))
+                        DavUploadedTreePaths.Add(uri.AbsolutePath);
                     return new HttpResponseMessage(HttpStatusCode.Created);
+                }
                 if (request.Method == HttpMethod.Put)
                 {
                     if (RejectDavUpload) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
@@ -355,7 +463,14 @@ internal static class CloudStorageChecks
                         finally { if (ct.IsCancellationRequested) DavUploadCancelled.TrySetResult(); }
                     }
                     var stagedBytes = await request.Content!.ReadAsByteArrayAsync(ct);
-                    check(uri.AbsolutePath.StartsWith("/root/.relaxkonos-upload-", StringComparison.Ordinal)
+                    if (uri.AbsolutePath == "/root/space%20name.txt")
+                    {
+                        check(request.Headers.IfMatch.Single().Tag == "\"dav-etag\""
+                            && stagedBytes.AsSpan().SequenceEqual("new"u8), "WebDAV replacement sends the expected ETag and bytes");
+                        return new HttpResponseMessage(HttpStatusCode.NoContent);
+                    }
+                    check((uri.AbsolutePath.StartsWith("/root/.relaxkonos-upload-", StringComparison.Ordinal)
+                            || uri.AbsolutePath.StartsWith("/root/tree-upload/.relaxkonos-upload-", StringComparison.Ordinal))
                         && request.Headers.IfNoneMatch.Single().Tag == "*"
                         && (stagedBytes.AsSpan().SequenceEqual("new"u8) || stagedBytes.AsSpan().SequenceEqual(LargePayload())),
                         "WebDAV PUT writes the complete payload only to a random staging path");
@@ -364,12 +479,22 @@ internal static class CloudStorageChecks
                 if (request.Method.Method == "MOVE")
                 {
                     var destination = Uri.UnescapeDataString(request.Headers.GetValues("Destination").Single());
+                    if (uri.AbsolutePath == "/root/space%20name.txt")
+                    {
+                        check(destination == "https://dav.example/root/moved.txt" && request.Headers.GetValues("Overwrite").Single() == "F",
+                            "WebDAV move guards the destination against overwrite");
+                        _davMoved = true;
+                        return new HttpResponseMessage(HttpStatusCode.Created);
+                    }
                     check(request.Headers.GetValues("Overwrite").Single() == "F"
                         && destination is "https://dav.example/root/new.txt" or "https://dav.example/root/large.bin"
-                            or "https://dav.example/root/new (2).txt",
+                            or "https://dav.example/root/new (2).txt" or "https://dav.example/root/tree-upload/payload.txt",
                         "WebDAV MOVE publishes at the requested path without overwriting");
+                    if (destination.EndsWith("/tree-upload/payload.txt", StringComparison.Ordinal))
+                        DavUploadedTreePaths.Add("/root/tree-upload/payload.txt");
                     if (destination.EndsWith("/large.bin", StringComparison.Ordinal)
-                        || destination.EndsWith("/new (2).txt", StringComparison.Ordinal))
+                        || destination.EndsWith("/new (2).txt", StringComparison.Ordinal)
+                        || destination.EndsWith("/tree-upload/payload.txt", StringComparison.Ordinal))
                         return new HttpResponseMessage(HttpStatusCode.Created);
                     if (_davUploaded) return new HttpResponseMessage(HttpStatusCode.PreconditionFailed);
                     _davUploaded = true;
@@ -377,6 +502,8 @@ internal static class CloudStorageChecks
                 }
                 if (request.Method == HttpMethod.Delete)
                 {
+                    if (uri.AbsolutePath == "/root/moved.txt" && _davMoved)
+                        return new HttpResponseMessage(HttpStatusCode.NoContent);
                     check(uri.AbsolutePath.StartsWith("/root/.relaxkonos-upload-", StringComparison.Ordinal),
                         "WebDAV conflict cleanup deletes only staging");
                     return new HttpResponseMessage(HttpStatusCode.NoContent);
@@ -385,7 +512,8 @@ internal static class CloudStorageChecks
                     return new HttpResponseMessage(HttpStatusCode.Unauthorized);
                 if (uri.AbsolutePath == "/root/large.bin")
                     return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(LargePayload()) };
-                check(uri.AbsolutePath == "/root/space%20name.txt", "WebDAV download preserves the confined encoded path");
+                check(uri.AbsolutePath is "/root/space%20name.txt" or "/root/tree-download/payload.txt",
+                    "WebDAV download preserves the confined encoded path");
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("file-content") };
             }
 
@@ -406,20 +534,39 @@ internal static class CloudStorageChecks
                 if (request.Method == HttpMethod.Post)
                 {
                     var form = QueryHelpers.ParseQuery(await request.Content!.ReadAsStringAsync(ct));
-                    check(form["rtype"] == "0", "Baidu create and precreate request conflict rejection");
+                    if (fields["method"] == "filemanager")
+                    {
+                        check(form["async"] == "0" && form["ondup"] == "fail", "Baidu requests synchronous mutation without overwrite");
+                        using var list = System.Text.Json.JsonDocument.Parse(form["filelist"].ToString());
+                        var item = list.RootElement.EnumerateArray().Single();
+                        if (fields["opera"] == "move")
+                        {
+                            check(item.GetProperty("path").GetString() == "/test.txt" && item.GetProperty("dest").GetString() == "/"
+                                && item.GetProperty("ondup").GetString() == "fail", "Baidu sends the selected source and destination");
+                            if (item.GetProperty("newname").GetString() == "occupied.txt")
+                                return Json("""{"errno":0,"info":[{"errno":-8,"path":"/test.txt"}]}""");
+                            _baiduMoved = true;
+                        }
+                        else check(fields["opera"] == "delete" && item.GetString() == "/moved.txt", "Baidu sends only the selected deletion path");
+                        return Json("""{"errno":0,"info":[{"errno":0}]}""");
+                    }
+                    var replacement = form["path"] == "/test.txt";
+                    check(form["rtype"] == (replacement ? "3" : "0"), "Baidu uses the same conflict policy for precreate and create");
                     if (form["isdir"] == "1")
                     {
                         check(form["path"] == "/folder", "Baidu creates the requested directory");
                         return Json("""{"errno":0,"path":"/folder"}""");
                     }
                     if (fields["method"] == "precreate")
-                        return _baiduUploaded ? Json("""{"errno":-8}""")
+                        return _baiduUploaded && !replacement ? Json("""{"errno":-8}""")
                             : Json("""{"errno":0,"return_type":1,"uploadid":"test-upload","block_list":[0]}""");
-                    check(form["uploadid"] == "test-upload" && form["path"] == "/new.txt",
+                    check(form["uploadid"] == "test-upload" && (replacement || form["path"] == "/new.txt"),
                         "Baidu completes the precreated upload at its intended destination");
                     _baiduUploaded = true;
                     return Json("""{"errno":0,"path":"/new.txt"}""");
                 }
+                if (_baiduMoved && fields["method"] == "filemetas")
+                    return Json("""{"errno":0,"list":[{"fs_id":123,"path":"/moved.txt","server_filename":"moved.txt","isdir":0}]}""");
                 return Json("""
                     {"errno":0,"list":[{"fs_id":123,"path":"/test.txt","server_filename":"test.txt","size":13,"isdir":0,"dlink":"https://d.pcs.baidu.com/file"}]}
                     """);
@@ -454,6 +601,100 @@ internal static class CloudStorageChecks
                 && signature.Contains($"/{region}/s3/aws4_request", StringComparison.Ordinal),
                 $"S3 connector signs with region {region} (observed {scope ?? "none"})");
             var query = QueryHelpers.ParseQuery(uri.Query);
+            if (query.TryGetValue("prefix", out var prefix) && prefix == "scope/folder/"
+                && query.TryGetValue("max-keys", out var maxKeys) && maxKeys == "1")
+                return Xml(HttpStatusCode.OK, "<ListBucketResult><IsTruncated>false</IsTruncated>"
+                    + "<Contents><Key>scope/folder/child.txt</Key><Size>1</Size></Contents></ListBucketResult>");
+            if (prefix == "scope/folder/")
+            {
+                var lastPage = query.TryGetValue("continuation-token", out var folderCursor) && folderCursor == "folder-next";
+                var folderResult = lastPage
+                    ? "<IsTruncated>false</IsTruncated><Contents><Key>scope/folder/child.txt</Key><Size>1</Size><ETag>&quot;child&quot;</ETag></Contents>"
+                    : "<IsTruncated>true</IsTruncated><NextContinuationToken>folder-next</NextContinuationToken>"
+                        + "<Contents><Key>scope/folder/</Key><Size>0</Size><ETag>&quot;marker&quot;</ETag></Contents>";
+                return Xml(HttpStatusCode.OK, "<ListBucketResult>" + folderResult + "</ListBucketResult>");
+            }
+            if (uri.AbsolutePath is "/test-bucket/scope/report.txt" or "/test-bucket/scope/moved.txt"
+                or "/test-bucket/scope/folder/" or "/test-bucket/scope/folder/child.txt"
+                && request.Method == HttpMethod.Head)
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("object") };
+                var changed = region == "auto" && _r2ChangedAfterPublication && ChangeS3SourceBeforeDelete;
+                if (changed) S3StaleDeletes.Add(uri.Host);
+                var tag = uri.AbsolutePath switch
+                {
+                    "/test-bucket/scope/folder/" => "\"marker\"",
+                    "/test-bucket/scope/folder/child.txt" => "\"child\"",
+                    _ => changed ? "\"new-etag\"" : "\"s3-etag\"",
+                };
+                response.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue(tag);
+                return response;
+            }
+            if (region == "auto" && uri.AbsolutePath == "/test-bucket/scope/report.txt"
+                && request.Method == HttpMethod.Get && request.Headers.Range is not null)
+            {
+                check(request.Headers.Range.ToString() == "bytes=0-5"
+                    && request.Headers.GetValues("If-Match").Single().Trim('"') == "s3-etag",
+                    "R2 move downloads only the range from the expected source version");
+                var response = new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = new StringContent("object") };
+                response.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(0, 5, 6);
+                return response;
+            }
+            if (uri.AbsolutePath is "/test-bucket/scope/moved.txt" or "/test-bucket/scope/occupied.txt" or "/test-bucket/scope/source-changed.txt")
+            {
+                if (request.Method == HttpMethod.Post && query.ContainsKey("uploads"))
+                    return Xml(HttpStatusCode.OK, "<InitiateMultipartUploadResult><UploadId>copy-parts</UploadId></InitiateMultipartUploadResult>");
+                if (request.Method == HttpMethod.Put && query.ContainsKey("partNumber"))
+                {
+                    if (region == "auto")
+                    {
+                        check(await request.Content!.ReadAsStringAsync(ct) == "object", "R2 move uploads the checked source bytes");
+                        var response = new HttpResponseMessage(HttpStatusCode.OK);
+                        response.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"part\"");
+                        return response;
+                    }
+                    var sourceKey = Uri.UnescapeDataString(request.Headers.GetValues("x-amz-copy-source").Single()).TrimStart('/');
+                    var sourceTag = request.Headers.GetValues("x-amz-copy-source-if-match").Single();
+                    check(sourceKey == "test-bucket/scope/report.txt" && sourceTag.Trim('"') == "s3-etag",
+                        $"S3 copy constrains the source key and ETag (key: {sourceKey}, tag: {sourceTag})");
+                    return Xml(HttpStatusCode.OK, "<CopyPartResult><ETag>&quot;part&quot;</ETag></CopyPartResult>");
+                }
+                if (request.Method == HttpMethod.Post && query["uploadId"] == "copy-parts")
+                {
+                    check(request.Headers.IfNoneMatch.Single().Tag == "*", "S3 move conditionally publishes the destination");
+                    _r2ChangedAfterPublication = region == "auto" && ChangeS3SourceBeforeDelete;
+                    return uri.AbsolutePath.EndsWith("/occupied.txt", StringComparison.Ordinal)
+                        ? Xml(HttpStatusCode.PreconditionFailed, "<Error><Code>PreconditionFailed</Code></Error>")
+                        : Xml(HttpStatusCode.OK, "<CompleteMultipartUploadResult><ETag>&quot;moved&quot;</ETag></CompleteMultipartUploadResult>");
+                }
+                if (request.Method == HttpMethod.Delete && query.ContainsKey("uploadId"))
+                    return new(HttpStatusCode.NoContent);
+            }
+            if (request.Method == HttpMethod.Delete)
+            {
+                if (uri.AbsolutePath is "/test-bucket/scope/folder/" or "/test-bucket/scope/folder/child.txt")
+                {
+                    var tag = uri.AbsolutePath.EndsWith('/') ? "\"marker\"" : "\"child\"";
+                    check(request.Headers.IfMatch.Single().Tag == tag, "S3 recursive deletion uses the listed object's ETag");
+                    if (!S3DeletedDirectoryKeys.TryGetValue(uri.Host, out var paths))
+                        S3DeletedDirectoryKeys.Add(uri.Host, paths = new(StringComparer.Ordinal));
+                    paths.Add(uri.AbsolutePath);
+                    return new(HttpStatusCode.NoContent);
+                }
+                check(uri.AbsolutePath is "/test-bucket/scope/report.txt" or "/test-bucket/scope/moved.txt"
+                    && request.Headers.IfMatch.Single().Tag == "\"s3-etag\"", "S3 deletes exactly the selected object with its expected ETag");
+                if (uri.AbsolutePath.EndsWith("/report.txt", StringComparison.Ordinal))
+                {
+                    if (ChangeS3SourceBeforeDelete)
+                    {
+                        check(region != "auto", "R2 must detect a changed source before sending deletion");
+                        S3StaleDeletes.Add(uri.Host);
+                        return Xml(HttpStatusCode.PreconditionFailed, "<Error><Code>PreconditionFailed</Code></Error>");
+                    }
+                    S3DeletedSources.Add(uri.Host);
+                }
+                return new(HttpStatusCode.NoContent);
+            }
             if (uri.AbsolutePath.EndsWith("/large.bin", StringComparison.Ordinal))
             {
                 if (request.Method == HttpMethod.Get)
@@ -478,8 +719,12 @@ internal static class CloudStorageChecks
             }
             if (request.Method == HttpMethod.Put)
             {
-                check(uri.AbsolutePath == "/test-bucket/scope/new.txt" && request.Headers.IfNoneMatch.Single().Tag == "*"
-                    && await request.Content!.ReadAsStringAsync(ct) == "new", "S3 PUT is confined and conditional");
+                var replacement = uri.AbsolutePath == "/test-bucket/scope/replace.txt";
+                var createOnly = request.Headers.IfNoneMatch.SingleOrDefault()?.Tag == "*";
+                check((replacement || uri.AbsolutePath == "/test-bucket/scope/new.txt" && createOnly)
+                    && await request.Content!.ReadAsStringAsync(ct) == "new", "S3 PUT stays within the connection prefix");
+                if (replacement && createOnly)
+                    return Xml(HttpStatusCode.PreconditionFailed, "<Error><Code>PreconditionFailed</Code></Error>");
                 return new HttpResponseMessage(HttpStatusCode.OK);
             }
             if (uri.Query.Length == 0)
@@ -501,7 +746,7 @@ internal static class CloudStorageChecks
         private static string DavItem(string href, bool folder) =>
             $"<response><href>{href}</href><propstat><status>HTTP/1.1 200 OK</status><prop>"
             + $"<resourcetype>{(folder ? "<collection/>" : "")}</resourcetype><getcontentlength>12</getcontentlength>"
-            + "</prop></propstat></response>";
+            + "<getetag>&quot;dav-etag&quot;</getetag></prop></propstat></response>";
 
         private static HttpResponseMessage Json(string body) =>
             new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };

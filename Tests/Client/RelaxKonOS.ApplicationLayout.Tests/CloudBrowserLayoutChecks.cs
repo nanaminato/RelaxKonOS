@@ -83,6 +83,10 @@ internal static class CloudBrowserLayoutChecks
             "A read-only account hides the upload action");
         Check(view.FindControl<Button>("CreateFolderButton")!.IsVisible == false,
             "A read-only account hides the new-folder action");
+        Check(!view.FindControl<Button>("UploadFolderButton")!.IsVisible
+            && !view.FindControl<Button>("CutButton")!.IsVisible
+            && !view.FindControl<Button>("DeleteButton")!.IsVisible,
+            "A read-only account hides directory upload and mutation actions");
         list.SelectedItem = accounts[0];
         Pump(host);
         Check(view.FindControl<Button>("UploadButton")!.IsVisible == false,
@@ -95,8 +99,12 @@ internal static class CloudBrowserLayoutChecks
         SetProperty(view, "PickHostFiles", (Func<ExplorerPickerOptions, Task<string[]?>>)(options =>
         {
             picked = options;
-            return Task.FromResult<string[]?>(options.Mode == ExplorerPickerMode.SaveFile
-                ? ["/server/downloads/annual-report.pdf"] : ["/server/docs/a.txt", "/server/docs/b.txt"]);
+            return Task.FromResult<string[]?>(options.Mode switch
+            {
+                ExplorerPickerMode.SaveFile => ["/server/downloads/annual-report.pdf"],
+                ExplorerPickerMode.SelectFolder => ["/server/docs"],
+                _ => ["/server/docs/a.txt", "/server/docs/b.txt"],
+            });
         }));
         SetProperty(view, "SubmitTransfer", (Func<StartFileOperationRequest, Action<FileOperationDto>, Action?, Task>)((request, _, _) =>
         {
@@ -121,6 +129,18 @@ internal static class CloudBrowserLayoutChecks
             && submitted.Items.Single().DestinationPath == "/server/downloads/annual-report.pdf",
             "Cloud download submits a cloud object reference and the selected host destination");
         var grid = view.FindControl<DataGrid>("CloudEntries")!;
+        view.FindControl<Button>("UploadFolderButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Check(picked is { Mode: ExplorerPickerMode.SelectFolder }
+            && submitted is { Kind: FileOperationKind.CloudUpload, Cloud: { Reference: "ref-2026", Directory: true } }
+            && submitted.Items.Single().SourcePath == "/server/docs",
+            "Cloud directory upload submits the selected host directory as a directory task");
+        grid.SelectedItem = entries[0];
+        view.FindControl<Button>("DownloadButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Check(picked is { Mode: ExplorerPickerMode.SelectFolder }
+            && submitted is { Kind: FileOperationKind.CloudDownload, Cloud: { Directory: true } }
+            && submitted.Cloud.Reference == entries[0].Reference
+            && submitted.Items.Single().DestinationPath == "/server/docs",
+            "Cloud directory download submits the selected cloud folder and host parent");
         grid.SelectedItem = entries[3];
         Pump(host);
         var reportRow = grid.GetVisualDescendants().OfType<DataGridRow>()

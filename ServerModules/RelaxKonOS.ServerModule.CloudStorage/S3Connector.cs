@@ -5,16 +5,18 @@ using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.ServerModule.CloudStorage;
 
-internal sealed class S3Connector : IDisposable
+internal sealed partial class S3Connector : IDisposable
 {
     private readonly AmazonS3Client _client;
     private readonly string _bucket;
     private readonly string _root;
+    private readonly bool _isR2;
 
     internal S3Connector(CloudConnectionRequest connection, HttpClient http)
     {
         _bucket = connection.Bucket!;
         _root = string.IsNullOrEmpty(connection.Prefix) ? "" : connection.Prefix.TrimEnd('/') + "/";
+        _isR2 = new Uri(connection.Endpoint).IdnHost.EndsWith(".r2.cloudflarestorage.com", StringComparison.OrdinalIgnoreCase);
         AWSCredentials credentials = string.IsNullOrEmpty(connection.SessionToken)
             ? new BasicAWSCredentials(connection.UserName, connection.Secret)
             : new SessionAWSCredentials(connection.UserName, connection.Secret, connection.SessionToken);
@@ -63,12 +65,12 @@ internal sealed class S3Connector : IDisposable
         return _client.GetObjectAsync(_bucket, _root + path, ct);
     }
 
-    internal async Task UploadAsync(string path, Stream stream, CancellationToken ct)
+    internal async Task UploadAsync(string path, Stream stream, CancellationToken ct, bool replace = false)
     {
         const long partSize = 16 * 1024 * 1024;
         if (stream is FileStream file && file.Length > partSize)
         {
-            await UploadPartsAsync(_root + path, file, partSize, ct);
+            await UploadPartsAsync(_root + path, file, partSize, replace, ct);
             return;
         }
         await _client.PutObjectAsync(new PutObjectRequest
@@ -77,12 +79,12 @@ internal sealed class S3Connector : IDisposable
             Key = _root + path,
             InputStream = stream,
             AutoCloseStream = false,
-            IfNoneMatch = "*",
+            IfNoneMatch = replace ? null : "*",
             UseChunkEncoding = false,
         }, ct);
     }
 
-    private async Task UploadPartsAsync(string key, FileStream file, long partSize, CancellationToken ct)
+    private async Task UploadPartsAsync(string key, FileStream file, long partSize, bool replace, CancellationToken ct)
     {
         var started = await _client.InitiateMultipartUploadAsync(new InitiateMultipartUploadRequest
         {
@@ -105,7 +107,7 @@ internal sealed class S3Connector : IDisposable
             }
             await _client.CompleteMultipartUploadAsync(new CompleteMultipartUploadRequest
             {
-                BucketName = _bucket, Key = key, UploadId = started.UploadId, PartETags = parts, IfNoneMatch = "*",
+                BucketName = _bucket, Key = key, UploadId = started.UploadId, PartETags = parts, IfNoneMatch = replace ? null : "*",
             }, ct);
             committed = true;
         }

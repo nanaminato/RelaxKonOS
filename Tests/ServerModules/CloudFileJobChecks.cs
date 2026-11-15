@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
@@ -11,6 +12,54 @@ using RelaxKonOS.Server.UserExecution;
 
 internal static class CloudFileJobChecks
 {
+    internal static async Task RunRealTreeRoundTripAsync(HttpClient client, Guid owner, Guid connection, string root,
+        string? parentReference, CancellationToken ct)
+    {
+        using var services = new ServiceCollection()
+            .AddSingleton<IHostFileAuthorizationService, NoElevation>()
+            .AddSingleton<IUserExecutionContextResolver, ProcessIdentity>()
+            .AddSingleton<ICloudFileOperationModule>(new TestModule(client, owner))
+            .BuildServiceProvider();
+        using var jobs = new FileOperationService(DispatchProxy.Create<IPrivilegedFileService, NoPrivilegeProxy>(),
+            new PersonalMode(), services.GetRequiredService<IServiceScopeFactory>(), new NoUserExecutionTransport());
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", owner.ToString())], "test"));
+        var key = owner.ToString();
+        async Task RunAsync(FileOperationKind kind, FileOperationItem item, string? reference)
+        {
+            var work = jobs.Start(key, principal, new(Guid.NewGuid(), kind, [item], Cloud: new(connection, reference, Directory: true)));
+            while (true)
+            {
+                var result = jobs.Get(key, work.Id);
+                if (result.State == FileOperationState.Completed) return;
+                if (result.IsTerminal || result.Issue is not null)
+                    throw new InvalidOperationException($"Cloud directory job {kind} did not complete ({result.State}, {result.Issue?.Code}).");
+                await Task.Delay(30, ct);
+            }
+        }
+        var source = Directory.CreateDirectory(Path.Combine(root, "roundtrip")).FullName;
+        Directory.CreateDirectory(Path.Combine(source, "empty"));
+        await File.WriteAllTextAsync(Path.Combine(source, "payload.txt"), "directory round trip", ct);
+        var destination = Directory.CreateDirectory(Path.Combine(root, "destination")).FullName;
+        await RunAsync(FileOperationKind.CloudUpload, new(source), parentReference);
+        var route = $"/cloud/connections/{connection:D}/entries?reference={Uri.EscapeDataString(parentReference ?? "")}";
+        string? reference = null;
+        string? cursor = null;
+        do
+        {
+            var page = await client.GetFromJsonAsync<CloudDirectoryDto>(cursor is null ? route
+                : route + "&cursor=" + Uri.EscapeDataString(cursor), ct);
+            reference = page?.Entries.SingleOrDefault(entry => entry.IsDirectory && entry.Name == "roundtrip")?.Reference;
+            cursor = page?.NextCursor;
+        } while (reference is null && cursor is not null);
+        if (reference is null) throw new InvalidOperationException("The uploaded directory was not listed.");
+        await RunAsync(FileOperationKind.CloudDownload, new("roundtrip", destination), reference);
+        var published = Path.Combine(destination, "roundtrip");
+        if (!Directory.Exists(Path.Combine(published, "empty"))
+            || await File.ReadAllTextAsync(Path.Combine(published, "payload.txt"), ct) != "directory round trip"
+            || Directory.EnumerateDirectories(destination, "*.rkup").Any())
+            throw new InvalidOperationException("Cloud directory round trip did not preserve its contents.");
+    }
+
     internal static async Task RunAsync(HttpClient client, Guid owner, Guid connection, string reference, string root,
         Action<bool, string> check, Action<bool> rejectDownload)
     {
@@ -83,12 +132,32 @@ internal static class CloudFileJobChecks
             [new(source)], Cloud: new(connection, null)));
         issue = (await Wait(upload.Id, result => result.Issue is not null)).Issue
             ?? throw new InvalidOperationException("Missing cloud upload conflict.");
-        check(issue.Code == "conflict" && !issue.Choices.Contains(FileOperationDecision.Replace),
-            "Cloud upload uses the same conflict flow and preserves create-only provider writes");
+        check(issue.Code == "conflict" && issue.Choices.Contains(FileOperationDecision.Replace),
+            "Cloud upload offers an explicit replacement after a create-only conflict");
         jobs.Decide(key, upload.Id, new(issue.Id, FileOperationDecision.KeepBoth));
         var uploaded = await Finish(upload.Id);
         check(uploaded.State == FileOperationState.Completed && uploaded.CompletedSources.SequenceEqual([source]),
             $"Cloud upload publishes Server bytes under the generated sibling name ({uploaded.State}: {uploaded.Issue?.Message})");
+
+        var tree = Directory.CreateDirectory(Path.Combine(serverDirectory, "tree-upload")).FullName;
+        Directory.CreateDirectory(Path.Combine(tree, "empty"));
+        await File.WriteAllTextAsync(Path.Combine(tree, "payload.txt"), "new", timeout.Token);
+        var treeUpload = jobs.Start(key, principal, new(Guid.NewGuid(), FileOperationKind.CloudUpload,
+            [new(tree)], Cloud: new(connection, null, Directory: true)));
+        var uploadedTree = await Wait(treeUpload.Id, result => result.Issue is not null);
+        check(uploadedTree.State == FileOperationState.Completed && uploadedTree.CompletedSources.SequenceEqual([tree]),
+            $"Cloud upload copies a directory and its empty child ({uploadedTree.State}: {uploadedTree.Issue?.Message})");
+
+        var treeReference = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("tree-download/")).TrimEnd('=');
+        var treeDownload = jobs.Start(key, principal, new(Guid.NewGuid(), FileOperationKind.CloudDownload,
+            [new("tree-download", serverDirectory)], Cloud: new(connection, treeReference, Directory: true)));
+        var downloadedTree = await Wait(treeDownload.Id, result => result.Issue is not null);
+        var treeDestination = Path.Combine(serverDirectory, "tree-download");
+        check(downloadedTree.State == FileOperationState.Completed
+            && Directory.Exists(Path.Combine(treeDestination, "empty"))
+            && File.ReadAllText(Path.Combine(treeDestination, "payload.txt")) == "file-content"
+            && !Directory.EnumerateDirectories(serverDirectory, "*.rkup").Any(),
+            $"Cloud download publishes a complete directory with its empty child ({downloadedTree.State}: {downloadedTree.Issue?.Message})");
     }
 
     private sealed class TestModule(HttpClient client, Guid owner) : ICloudFileOperationModule

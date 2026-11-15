@@ -259,6 +259,12 @@
                                         Content="{loc:Loc explorer.cloud.open}" />
                                 <Button x:Name="DownloadButton" Classes="cloud-command" Click="Download_Click"
                                         Content="{loc:Loc common.download}" />
+                                <Button x:Name="CutButton" Classes="cloud-command" Click="Cut_Click"
+                                        Content="{loc:Loc common.cut}" />
+                                <Button x:Name="PasteButton" Classes="cloud-command" Click="Paste_Click"
+                                        Content="{loc:Loc common.paste}" />
+                                <Button x:Name="DeleteButton" Classes="cloud-command" Click="Delete_Click"
+                                        Content="{loc:Loc common.delete}" />
                                 <Border Classes="cloud-divider" />
                                 <TextBox x:Name="FolderName" Width="168" Height="32"
                                          PlaceholderText="{loc:Loc explorer.cloud.new_folder}" />
@@ -266,6 +272,8 @@
                                         Content="{loc:Loc explorer.cloud.create_folder}" />
                                 <Button x:Name="UploadButton" Classes="cloud-command" Click="Upload_Click"
                                         Content="{loc:Loc common.upload}" />
+                                <Button x:Name="UploadFolderButton" Classes="cloud-command" Click="UploadFolder_Click"
+                                        Content="{loc:Loc explorer.cloud.upload_folder}" />
                                 <Button x:Name="MoreButton" Classes="cloud-command" Click="More_Click"
                                         Content="{loc:Loc explorer.cloud.more}" />
                             </WrapPanel>

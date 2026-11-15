@@ -32,6 +32,19 @@ public sealed partial class ExplorerClient
         await EnsureSuccessAsync(response, ct);
     }
 
+    internal async Task MoveCloudEntryAsync(Guid id, string reference, CloudMoveRequest request, CancellationToken ct)
+    {
+        using var response = await SendRawAsync(HttpMethod.Post, CloudEntryRoute(id, "entries/move", reference, null),
+            body: request, ct: ct);
+        await EnsureSuccessAsync(response, ct);
+    }
+
+    internal async Task DeleteCloudEntryAsync(Guid id, string reference, CancellationToken ct)
+    {
+        using var response = await SendRawAsync(HttpMethod.Delete, CloudEntryRoute(id, "entries", reference, null), ct: ct);
+        await EnsureSuccessAsync(response, ct);
+    }
+
     private static string CloudRoute(Guid id) => CloudStorageApi.Route + "/connections/" + id.ToString("D");
 
     private static string CloudEntryRoute(Guid id, string action, string? reference, string? cursor) =>

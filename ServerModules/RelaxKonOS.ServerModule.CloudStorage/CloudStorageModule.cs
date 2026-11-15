@@ -134,21 +134,71 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                 if (!settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
                 var path = ChildPath(parent, name) + "/";
                 if (oauth is not null)
-                    await WithOAuthWriteAsync(id, path, () => oauth.CreateFolderAsync(path, ct), ct);
+                    await WithOAuthWriteAsync(id, () => oauth.CreateFolderAsync(path, ct), ct);
                 else if (settings.Protocol == "webdav")
                     await new WebDavConnector(settings, client).CreateFolderAsync(path, ct);
                 else
                 {
                     using var connector = new S3Connector(settings, client);
-                    await connector.UploadAsync(path, Stream.Null, ct);
+                    await connector.CreateFolderAsync(path, ct);
                 }
+                return Results.Ok(new CloudCreatedFolder(CloudTransport.Reference(path)));
+            }));
+        group.MapPost("/connections/{id:guid}/entries/move", (Guid id, string reference, CloudMoveRequest request, HttpContext http) =>
+            WithConnection(http, id, reference, async (settings, client, source, ct, oauth) =>
+            {
+                if (!settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
+                if (source.Length == 0) throw new ArgumentException("source");
+                if (oauth is not null) source = await oauth.ResolveMutationPathAsync(source, ct);
+                var parent = CloudTransport.PathFrom(request.DestinationDirectory);
+                var directory = source.EndsWith('/');
+                var destination = ChildPath(parent, request.Name) + (directory ? "/" : "");
+                if (destination == source) throw new ArgumentException("destination");
+                if (directory && destination.StartsWith(source, StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException("destination");
+                if (oauth is not null)
+                    await WithOAuthWriteAsync(id, () => oauth.MoveAsync(source, destination, ct), ct);
+                else if (settings.Protocol == "webdav")
+                {
+                    var connector = new WebDavConnector(settings, client);
+                    if (await connector.InfoAsync(source, ct) is null) return Results.NotFound();
+                    await connector.MoveAsync(source, destination, ct);
+                }
+                else if (settings.Protocol == "s3")
+                {
+                    using var connector = new S3Connector(settings, client);
+                    await connector.MoveAsync(source, destination, ct);
+                }
+                else return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
+                return Results.NoContent();
+            }));
+        group.MapDelete("/connections/{id:guid}/entries", (Guid id, string reference, HttpContext http) =>
+            WithConnection(http, id, reference, async (settings, client, path, ct, oauth) =>
+            {
+                if (!settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
+                if (path.Length == 0) throw new ArgumentException("reference");
+                if (oauth is not null)
+                    await WithOAuthWriteAsync(id, async () =>
+                        await oauth.DeleteAsync(await oauth.ResolveMutationPathAsync(path, ct), ct), ct);
+                else if (settings.Protocol == "webdav")
+                {
+                    var connector = new WebDavConnector(settings, client);
+                    if (await connector.InfoAsync(path, ct) is null) return Results.NotFound();
+                    await connector.DeleteAsync(path, ct);
+                }
+                else if (settings.Protocol == "s3")
+                {
+                    using var connector = new S3Connector(settings, client);
+                    await connector.DeleteAsync(path, ct);
+                }
+                else return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
                 return Results.NoContent();
             }));
         const string uploads = "/connections/{id:guid}/uploads";
-        group.MapPost(uploads, (Guid id, string key, CreateUploadRequest request, HttpContext http) =>
+        group.MapPost(uploads, (Guid id, string key, bool? replace, CreateUploadRequest request, HttpContext http) =>
             WithUpload(http, id, (item, revision) => _uploads.CreateAsync(item.Owner, id, revision, key,
                 ChildPath(CloudTransport.PathFrom(request.TargetDirectoryPath), request.FileName), request.Length,
-                request.LastModifiedUtc, http.RequestAborted)));
+                request.LastModifiedUtc, replace == true, http.RequestAborted)));
         group.MapGet(uploads + "/{uploadId}", (Guid id, string uploadId, HttpContext http) =>
             UploadOperation(http, id, uploadId, "get"));
         group.MapMethods(uploads + "/{uploadId}", ["PATCH"],
@@ -204,7 +254,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
     private Task<IResult> UploadOperation(HttpContext http, Guid id, string uploadId, string action,
         long? offset = null, long? length = null, string? contentHash = null) =>
         WithUpload(http, id, (item, revision) => _uploads.HandleAsync(http, item.Owner, id, revision, uploadId,
-            action, offset, length, contentHash, async (path, stream, stopping) =>
+            action, offset, length, contentHash, async (path, stream, replace, stopping) =>
             {
                 if (!Volatile.Read(ref _connections).Any(current => current.Id == item.Id && current.Revision == item.Revision
                     && current.Settings.EnableWrites))
@@ -214,21 +264,21 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                 var settings = item.Settings;
                 if (OAuthDriveConnector.Supports(settings.Protocol))
                 {
-                    await WithOAuthWriteAsync(id, path, async () =>
+                    await WithOAuthWriteAsync(id, async () =>
                     {
                         var token = await GetOAuthTokenAsync(id, item.Owner, settings.Protocol, item.Revision, deadline.Token);
-                        await new OAuthDriveConnector(token, _transport).UploadAsync(path, stream, deadline.Token);
+                        await new OAuthDriveConnector(token, _transport).UploadAsync(path, stream, deadline.Token, replace);
                     }, deadline.Token);
                     return;
                 }
                 using var client = _transport(new Uri(settings.Endpoint), settings.AllowPrivateWebDav);
                 client.Timeout = Timeout.InfiniteTimeSpan;
                 if (settings.Protocol == "webdav")
-                    await new WebDavConnector(settings, client).UploadAsync(path, stream, deadline.Token);
+                    await new WebDavConnector(settings, client).UploadAsync(path, stream, deadline.Token, replace);
                 else
                 {
                     using var connector = new S3Connector(settings, client);
-                    await connector.UploadAsync(path, stream, deadline.Token);
+                    await connector.UploadAsync(path, stream, deadline.Token, replace);
                 }
             }));
 
@@ -252,9 +302,9 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             return await action(item.Settings, client, path, deadline.Token, oauth);
         });
 
-    private async Task WithOAuthWriteAsync(Guid connection, string path, Func<Task> write, CancellationToken ct)
+    private async Task WithOAuthWriteAsync(Guid connection, Func<Task> write, CancellationToken ct)
     {
-        var stripe = (uint)HashCode.Combine(connection, path.TrimEnd('/')) % (uint)_oauthWrites.Length;
+        var stripe = (uint)connection.GetHashCode() % (uint)_oauthWrites.Length;
         var gate = _oauthWrites[stripe];
         await gate.WaitAsync(ct);
         try { await write(); }

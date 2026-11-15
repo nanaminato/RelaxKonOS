@@ -42,11 +42,40 @@ internal sealed class WebDavConnector(CloudConnectionRequest connection, HttpCli
     {
         using var request = CreateRequest(new HttpMethod("MKCOL"), path);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (response.StatusCode == HttpStatusCode.MethodNotAllowed && await InfoAsync(path, ct) is not null)
+            throw new HttpRequestException("cloud-storage-conflict", null, HttpStatusCode.Conflict);
         response.EnsureSuccessStatusCode();
     }
 
-    internal async Task UploadAsync(string path, Stream stream, CancellationToken ct)
+    internal async Task MoveAsync(string source, string destination, CancellationToken ct)
     {
+        using var request = CreateRequest(new HttpMethod("MOVE"), source);
+        request.Headers.Add("Destination", new Uri(_root.AbsoluteUri + CloudTransport.EscapePath(destination)).AbsoluteUri);
+        request.Headers.Add("Overwrite", "F");
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        EnsureMutationSucceeded(response);
+    }
+
+    internal async Task DeleteAsync(string path, CancellationToken ct)
+    {
+        using var response = await SendAsync(HttpMethod.Delete, path, null, ct);
+        EnsureMutationSucceeded(response);
+    }
+
+    private static void EnsureMutationSucceeded(HttpResponseMessage response)
+    {
+        if (response.StatusCode == HttpStatusCode.MultiStatus)
+            throw new InvalidDataException("cloud-webdav-mutation-partial");
+        response.EnsureSuccessStatusCode();
+    }
+
+    internal async Task UploadAsync(string path, Stream stream, CancellationToken ct, bool replace = false)
+    {
+        if (replace)
+        {
+            await ReplaceAsync(path, stream, ct);
+            return;
+        }
         var staging = path[..(path.LastIndexOf('/') + 1)] + ".relaxkonos-upload-" + Guid.NewGuid().ToString("N");
         using var put = CreateRequest(HttpMethod.Put, staging);
         put.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Any);
@@ -75,14 +104,27 @@ internal sealed class WebDavConnector(CloudConnectionRequest connection, HttpCli
         }
     }
 
-    private async Task<(string Path, CloudEntryDto Value)[]> PropertiesAsync(string path, string depth, CancellationToken ct)
+    private async Task ReplaceAsync(string path, Stream stream, CancellationToken ct)
+    {
+        var target = (await PropertiesAsync(path, "0", ct)).FirstOrDefault(entry => entry.Path == path);
+        if (target.Value is not { IsDirectory: false } || !EntityTagHeaderValue.TryParse(target.ETag, out var etag)
+            || etag.IsWeak || etag == EntityTagHeaderValue.Any)
+            throw new HttpRequestException("cloud-storage-replacement-requires-file-etag", null, HttpStatusCode.PreconditionFailed);
+        using var request = CreateRequest(HttpMethod.Put, path);
+        request.Headers.IfMatch.Add(etag);
+        request.Content = new StreamContent(stream);
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        EnsureMutationSucceeded(response);
+    }
+
+    private async Task<(string Path, CloudEntryDto Value, string? ETag)[]> PropertiesAsync(string path, string depth, CancellationToken ct)
     {
         using var response = await SendAsync(new HttpMethod("PROPFIND"), path, depth, ct);
         if (response.StatusCode != HttpStatusCode.MultiStatus)
             throw new HttpRequestException("cloud-storage-webdav", null, response.StatusCode);
         var document = await CloudTransport.ReadXmlAsync(response, ct);
         if (document.Root?.Name != Dav + "multistatus") throw new InvalidDataException("cloud-storage-webdav");
-        var entries = new List<(string, CloudEntryDto)>();
+        var entries = new List<(string, CloudEntryDto, string?)>();
         foreach (var item in document.Root.Elements(Dav + "response"))
         {
             var href = (string?)item.Element(Dav + "href");
@@ -103,7 +145,8 @@ internal sealed class WebDavConnector(CloudConnectionRequest connection, HttpCli
             var name = relative.TrimEnd('/').Split('/')[^1];
             entries.Add((relative, new(CloudTransport.Reference(relative), name, directory,
                 directory ? null : CloudTransport.Size((string?)prop.Element(Dav + "getcontentlength")),
-                CloudTransport.Date((string?)prop.Element(Dav + "getlastmodified")))));
+                CloudTransport.Date((string?)prop.Element(Dav + "getlastmodified"))),
+                (string?)prop.Element(Dav + "getetag")));
         }
         return entries.ToArray();
     }
@@ -115,7 +158,7 @@ internal sealed class WebDavConnector(CloudConnectionRequest connection, HttpCli
         {
             request.Headers.Add("Depth", depth);
             request.Content = new StringContent("""
-                <propfind xmlns="DAV:"><prop><resourcetype/><getcontentlength/><getlastmodified/></prop></propfind>
+                <propfind xmlns="DAV:"><prop><resourcetype/><getcontentlength/><getlastmodified/><getetag/></prop></propfind>
                 """, Encoding.UTF8, "application/xml");
         }
         return await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);

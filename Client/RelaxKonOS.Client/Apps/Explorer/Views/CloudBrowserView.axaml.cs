@@ -36,6 +36,8 @@ public partial class CloudBrowserView : UserControl
     private bool _available;
     private bool _hasDirectory;
     private bool _confirmRevoke;
+    private CloudEntryRow? _pendingDelete;
+    private (Guid Connection, CloudEntryDto Entry)? _cutEntry;
 
     private LocalizationService? _localization;
 
@@ -129,6 +131,8 @@ public partial class CloudBrowserView : UserControl
 
     internal void Reset()
     {
+        _pendingDelete = null;
+        _cutEntry = null;
         StopLoading();
         _lifetime.Cancel();
         _lifetime.Dispose();
@@ -364,12 +368,18 @@ public partial class CloudBrowserView : UserControl
         Breadcrumbs.IsEnabled = !_busy;
         MoreButton.IsEnabled = selected && _cursor is not null;
         var writable = CurrentConnection?.CanWrite == true;
+        var canMutate = writable;
+        CutButton.IsVisible = PasteButton.IsVisible = DeleteButton.IsVisible = canMutate;
+        CutButton.IsEnabled = DeleteButton.IsEnabled = directoryReady && CloudEntries.SelectedItem is CloudEntryRow;
+        PasteButton.IsEnabled = directoryReady && _cutEntry is { } cut && cut.Connection == CurrentConnection?.Id;
         FolderName.IsVisible = CreateFolderButton.IsVisible = writable;
         UploadButton.IsVisible = writable && PickHostFiles is not null && SubmitTransfer is not null;
+        UploadFolderButton.IsVisible = UploadButton.IsVisible;
+        UploadFolderButton.IsEnabled = directoryReady;
         FolderName.IsEnabled = CreateFolderButton.IsEnabled = UploadButton.IsEnabled = directoryReady;
         OpenButton.IsEnabled = !_busy && browsing && CloudEntries.SelectedItem is CloudEntryRow { IsDirectory: true };
         DownloadButton.IsEnabled = selected && PickHostFiles is not null && SubmitTransfer is not null
-            && CloudEntries.SelectedItem is CloudEntryRow { IsDirectory: false };
+            && CloudEntries.SelectedItem is CloudEntryRow;
         FolderEmpty.IsVisible = browsing && _hasDirectory && !loading && _entries.Count == 0;
     }
 
@@ -387,7 +397,15 @@ public partial class CloudBrowserView : UserControl
     {
         if (CurrentConnection is { } source) ConfigurationRequested?.Invoke(source, false);
     }
-    private void Entries_SelectionChanged(object? sender, SelectionChangedEventArgs e) => UpdateButtons();
+    private void Entries_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_pendingDelete is not null)
+        {
+            _pendingDelete = null;
+            Status.Text = null;
+        }
+        UpdateButtons();
+    }
 
     private void Entries_ContextRequested(object? sender, ContextRequestedEventArgs e)
     {
@@ -470,7 +488,7 @@ public partial class CloudBrowserView : UserControl
 
     private async void Download_Click(object? sender, RoutedEventArgs e)
     {
-        if (CloudEntries.SelectedItem is CloudEntryRow { IsDirectory: false } entry) await DownloadEntryAsync(entry);
+        if (CloudEntries.SelectedItem is CloudEntryRow entry) await DownloadEntryAsync(entry);
     }
 
     private async Task DownloadEntryAsync(CloudEntryRow entry)
@@ -479,15 +497,20 @@ public partial class CloudBrowserView : UserControl
         await RunAsync(async ct =>
         {
             var lifetime = _lifetime.Token;
-            var paths = await pick(new ExplorerPickerOptions(ExplorerPickerMode.SaveFile, DefaultFileName: entry.Name));
+            var paths = await pick(entry.IsDirectory
+                ? new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder)
+                : new ExplorerPickerOptions(ExplorerPickerMode.SaveFile, DefaultFileName: entry.Name));
             if (paths is not { Length: 1 }) return;
             ct.ThrowIfCancellationRequested();
             await submit(new(Guid.NewGuid(), FileOperationKind.CloudDownload, [new(entry.Name, paths[0])],
-                Cloud: new(source.Id, entry.Reference)), _ => { }, () => ReportTransferCredentialError(source, lifetime));
+                Cloud: new(source.Id, entry.Reference, entry.IsDirectory)), _ => { }, () => ReportTransferCredentialError(source, lifetime));
         });
     }
 
-    private async void Upload_Click(object? sender, RoutedEventArgs e)
+    private async void Upload_Click(object? sender, RoutedEventArgs e) => await UploadAsync(directory: false);
+    private async void UploadFolder_Click(object? sender, RoutedEventArgs e) => await UploadAsync(directory: true);
+
+    private async Task UploadAsync(bool directory)
     {
         if (CurrentConnection is not { CanWrite: true } source || PickHostFiles is not { } pick
             || SubmitTransfer is not { } submit) return;
@@ -495,14 +518,16 @@ public partial class CloudBrowserView : UserControl
         {
             var folders = _folders.ToArray();
             var reference = folders.LastOrDefault()?.Reference;
-            var paths = await pick(new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, AllowMultiple: true));
+            var paths = await pick(directory
+                ? new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder)
+                : new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, AllowMultiple: true));
             if (paths is not { Length: > 0 }) return;
             ct.ThrowIfCancellationRequested();
             var lifetime = _lifetime.Token;
             await submit(new(Guid.NewGuid(), FileOperationKind.CloudUpload, paths.Select(path => new FileOperationItem(path)).ToArray(),
-                Cloud: new(source.Id, reference)), result =>
+                Cloud: new(source.Id, reference, directory)), result =>
             {
-                if (result.CompletedSources.Count > 0)
+                if (directory || result.CompletedSources.Count > 0)
                     Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                     {
                         if (lifetime.IsCancellationRequested) return;
@@ -525,6 +550,49 @@ public partial class CloudBrowserView : UserControl
             ct.ThrowIfCancellationRequested();
             FolderName.Text = null;
             await LoadAsync(source.Id, _folders.ToArray(), null, ct, reload: true);
+        });
+    }
+
+    private void Cut_Click(object? sender, RoutedEventArgs e)
+    {
+        if (CurrentConnection is not { CanWrite: true } source || CloudEntries.SelectedItem is not CloudEntryRow row) return;
+        _cutEntry = (source.Id, row.Entry);
+        Status.Text = Text("cut_entry") + " " + row.Name;
+        UpdateButtons();
+    }
+
+    private async void Paste_Click(object? sender, RoutedEventArgs e)
+    {
+        if (CurrentConnection is not { CanWrite: true } source || _cutEntry is not { } cut || cut.Connection != source.Id) return;
+        var folders = _folders.ToArray();
+        await RunAsync(async ct =>
+        {
+            InvalidateConnection(source.Id);
+            await _client!.MoveCloudEntryAsync(source.Id, cut.Entry.Reference,
+                new(folders.LastOrDefault()?.Reference, cut.Entry.Name), ct);
+            _cutEntry = null;
+            await LoadAsync(source.Id, folders, null, ct, reload: true);
+        });
+    }
+
+    private async void Delete_Click(object? sender, RoutedEventArgs e)
+    {
+        if (CurrentConnection is not { CanWrite: true } source || CloudEntries.SelectedItem is not CloudEntryRow row) return;
+        if (!ReferenceEquals(row, _pendingDelete))
+        {
+            _pendingDelete = row;
+            Status.Text = Text(row.IsDirectory ? "confirm_delete_tree" : "confirm_delete_entry") + " " + row.Name;
+            return;
+        }
+        _pendingDelete = null;
+        var folders = _folders.ToArray();
+        await RunAsync(async ct =>
+        {
+            InvalidateConnection(source.Id);
+            await _client!.DeleteCloudEntryAsync(source.Id, row.Reference, ct);
+            if (_cutEntry is { } cut && cut.Connection == source.Id && cut.Entry.Reference == row.Reference)
+                _cutEntry = null;
+            await LoadAsync(source.Id, folders, null, ct, reload: true);
         });
     }
 

@@ -27,6 +27,12 @@ public sealed partial class FileOperationService
             || request.Items[0].SourcePath.Any(char.IsControl))
             throw new ArgumentException("A cloud download requires one object and one host destination.");
         var destination = Normalize(request.Items[0].DestinationPath!);
+        if (transfer.Directory)
+        {
+            try { ValidateCloudChildName(request.Items[0].SourcePath); }
+            catch (InvalidDataException error) { throw new ArgumentException("Invalid directory name.", error); }
+            destination = Path.Combine(destination, request.Items[0].SourcePath);
+        }
         if (Path.GetPathRoot(destination) == destination) throw new ArgumentException("A download requires a file name.");
         return [new(request.Items[0].SourcePath, destination)];
     }
@@ -54,9 +60,20 @@ public sealed partial class FileOperationService
                 lock (job.Gate) { job.CurrentPath = item.SourcePath; job.Bytes = job.TotalBytes = 0; }
                 try
                 {
-                    await module.RunAsync(job.Principal, (client, token) => job.Request.Kind == FileOperationKind.CloudUpload
-                        ? UploadCloudFileAsync(job, fs, client, route, cloud.Reference, item.SourcePath, name, token)
-                        : DownloadCloudFileAsync(job, fs, client, route, cloud.Reference!, destination!, replace, token), ct);
+                    await module.RunAsync(job.Principal, async (client, token) =>
+                    {
+                        if (job.Request.Kind == FileOperationKind.CloudUpload)
+                        {
+                            if (cloud.Directory)
+                                await UploadCloudTreeAsync(job, fs, client, route, cloud.Reference, item.SourcePath, name, 0, token);
+                            else
+                                await UploadCloudFileAsync(job, fs, client, route, cloud.Reference, item.SourcePath, name, replace, token);
+                        }
+                        else if (cloud.Directory)
+                            await DownloadCloudTreeAsync(job, fs, client, route, cloud.Reference!, destination!, token);
+                        else
+                            await DownloadCloudFileAsync(job, fs, client, route, cloud.Reference!, destination!, replace, token);
+                    }, ct);
                     lock (job.Gate) job.Completed.Add(item.SourcePath);
                     job.ProcessedOne(item.SourcePath);
                     break;
@@ -102,7 +119,7 @@ public sealed partial class FileOperationService
     }
 
     private static async Task UploadCloudFileAsync(Job job, ArchiveFileSystem fs, HttpClient client, string route,
-        string? reference, string source, string name, CancellationToken ct)
+        string? reference, string source, string name, bool replace, CancellationToken ct)
     {
         await FileArchiveService.RejectLinksAsync(fs, source, ct);
         if ((await fs.Info(source, ct))?.Type != FileSystemEntryType.File)
@@ -110,7 +127,7 @@ public sealed partial class FileOperationService
         await using var stream = await fs.Read(source, ct);
         var length = stream.Length;
         lock (job.Gate) job.TotalBytes = length;
-        using var create = await client.PostAsJsonAsync($"{route}/uploads?key={Guid.NewGuid():N}",
+        using var create = await client.PostAsJsonAsync($"{route}/uploads?key={Guid.NewGuid():N}&replace={(replace ? "true" : "false")}",
             new CreateUploadRequest(reference ?? "", name, length), RelaxKonOSJsonOptions.Default, ct);
         create.EnsureSuccessStatusCode();
         var session = await create.Content.ReadFromJsonAsync<UploadSessionDto>(RelaxKonOSJsonOptions.Default, ct)
@@ -150,6 +167,7 @@ public sealed partial class FileOperationService
                 if (response.StatusCode == HttpStatusCode.Conflict)
                 {
                     var problem = await response.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ProblemDetails>(cancellationToken: ct);
+                    if (problem?.Title == CloudStorageApi.UploadReplaceAvailable) throw new CloudTransferConflictException(canReplace: true);
                     if (problem?.Title == "cloud-upload-publish-failed") throw new CloudTransferConflictException();
                 }
                 await EnsureCloudTransferSuccessAsync(response, ct);

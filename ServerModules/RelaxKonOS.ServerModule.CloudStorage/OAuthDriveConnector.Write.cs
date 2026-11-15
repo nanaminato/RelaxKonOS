@@ -16,8 +16,47 @@ internal sealed partial class OAuthDriveConnector
         }, ct);
     }
 
-    internal async Task UploadAsync(string path, Stream stream, CancellationToken ct)
+    internal Task DeleteAsync(string path, CancellationToken ct) =>
+        MutateAsync("delete", JsonSerializer.Serialize(new[] { "/" + path.TrimEnd('/') }), ct);
+
+    internal async Task<string> ResolveMutationPathAsync(string reference, CancellationToken ct)
     {
+        if (!reference.StartsWith("id:", StringComparison.Ordinal)) return reference;
+        var item = await BaiduInfoAsync(reference, download: false, ct) ?? throw new KeyNotFoundException();
+        if (BaiduEntry(item).IsDirectory) throw new ArgumentException("file reference");
+        return Read(item, "path")!.Trim('/');
+    }
+
+    internal Task MoveAsync(string source, string destination, CancellationToken ct)
+    {
+        var path = destination.TrimEnd('/');
+        var separator = path.LastIndexOf('/');
+        return MutateAsync("move", JsonSerializer.Serialize(new[]
+        {
+            new { path = "/" + source.TrimEnd('/'), dest = "/" + path[..(separator + 1)].TrimEnd('/'),
+                newname = path[(separator + 1)..], ondup = "fail" },
+        }), ct);
+    }
+
+    private async Task MutateAsync(string operation, string fileList, CancellationToken ct)
+    {
+        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["async"] = "0", ["filelist"] = fileList, ["ondup"] = "fail",
+        });
+        var result = await BaiduPostAsync(BaiduUri("file", new() { ["method"] = "filemanager", ["opera"] = operation }), form, ct);
+        if (Number(result, "taskid") is > 0 || !result.TryGetProperty("info", out var items)
+            || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() != 1)
+            throw new InvalidDataException("cloud-baidu-mutation-unconfirmed");
+        var error = Number(items[0], "errno");
+        if (error == -8) throw new HttpRequestException("cloud-storage-conflict", null, HttpStatusCode.Conflict);
+        if (error != 0) throw new InvalidDataException("cloud-baidu-mutation-failed");
+    }
+
+    internal async Task UploadAsync(string path, Stream stream, CancellationToken ct, bool replace = false)
+    {
+        if (replace && !await HasFileAsync(path, ct))
+            throw new HttpRequestException("cloud-storage-replacement-requires-file", null, HttpStatusCode.PreconditionFailed);
         const int blockSize = 4 * 1024 * 1024;
         var destination = "/" + path;
         var total = stream.Length;
@@ -31,7 +70,8 @@ internal sealed partial class OAuthDriveConnector
         } while (stream.Position < total);
         var fields = new Dictionary<string, string>
         {
-            ["path"] = destination, ["isdir"] = "0", ["rtype"] = "0", ["size"] = total.ToString(CultureInfo.InvariantCulture),
+            ["path"] = destination, ["isdir"] = "0", ["rtype"] = replace ? "3" : "0",
+            ["size"] = total.ToString(CultureInfo.InvariantCulture),
             ["block_list"] = JsonSerializer.Serialize(hashes), ["autoinit"] = "1",
         };
         var staged = await BaiduFormAsync("precreate", fields, ct);
@@ -63,6 +103,21 @@ internal sealed partial class OAuthDriveConnector
         fields.Remove("autoinit");
         fields["uploadid"] = uploadId;
         await BaiduFormAsync("create", fields, ct);
+    }
+
+    private async Task<bool> HasFileAsync(string path, CancellationToken ct)
+    {
+        var separator = path.LastIndexOf('/');
+        var parent = path[..(separator + 1)];
+        var name = path[(separator + 1)..];
+        string? cursor = null;
+        do
+        {
+            var page = await ListAsync(parent, cursor, ct);
+            if (page.Entries.FirstOrDefault(entry => entry.Name == name) is { } entry) return !entry.IsDirectory;
+            cursor = page.NextCursor;
+        } while (cursor is not null);
+        return false;
     }
 
     private async Task<JsonElement> BaiduFormAsync(string method, Dictionary<string, string> fields, CancellationToken ct)

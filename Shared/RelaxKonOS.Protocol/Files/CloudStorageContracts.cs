@@ -4,6 +4,7 @@ namespace RelaxKonOS.Protocol.Files;
 
 public static class CloudStorageApi
 {
+    public const string UploadReplaceAvailable = "cloud-upload-replace-available";
     public const string CredentialsRejected = "cloud-storage-credentials-rejected";
     public const string CredentialsRejectedProblem = "https://relaxkonos.app/problems/" + CredentialsRejected;
     public const string ModuleId = "cloud-storage";
@@ -18,6 +19,9 @@ public sealed record CloudConnectionDto(Guid Id, string Name, string Protocol, b
 public sealed record CloudEntryDto(string Reference, string Name, bool IsDirectory, long? Size, DateTimeOffset? ModifiedAt);
 
 public sealed record CloudDirectoryDto(IReadOnlyList<CloudEntryDto> Entries, string? NextCursor);
+
+public sealed record CloudMoveRequest(string? DestinationDirectory, string Name);
+public sealed record CloudCreatedFolder(string Reference);
 
 // Provider secrets are write-only administrator configuration, never returned to clients.
 public sealed record CloudAuthorizationConfigurationRequest(string ClientId, string ClientSecret);

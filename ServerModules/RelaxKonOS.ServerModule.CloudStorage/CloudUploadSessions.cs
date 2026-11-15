@@ -20,10 +20,10 @@ internal sealed class CloudUploadSessions(string dataPath)
 
     private sealed record Session(string Id, Guid Owner, Guid Connection, string Revision, string Key, string Path,
         long Length, DateTimeOffset? LastModifiedUtc, long Offset, DateTimeOffset ExpiresAt,
-        string State = "receiving", int FailureStatus = 0, bool CredentialsRejected = false);
+        string State = "receiving", int FailureStatus = 0, bool CredentialsRejected = false, bool Replace = false);
 
     internal async Task<IResult> CreateAsync(Guid owner, Guid connection, string revision, string key, string path,
-        long length, DateTimeOffset? lastModifiedUtc, CancellationToken ct)
+        long length, DateTimeOffset? lastModifiedUtc, bool replace, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Length > 128 || length < 0)
             return Problem(400, "cloud-upload-invalid");
@@ -45,6 +45,7 @@ internal sealed class CloudUploadSessions(string dataPath)
                 && record.Revision == revision && record.Key == key);
             if (previous is not null)
                 return previous.Path == path && previous.Length == length && previous.LastModifiedUtc == lastModifiedUtc
+                    && previous.Replace == replace
                     ? Results.Ok(Describe(previous))
                     : Problem(409, FileUploadProblemCodes.IdempotencyConflict);
             if (active.Count >= 4096 || active.Count(record => record.State is "receiving" or "publishing") >= 128
@@ -56,7 +57,7 @@ internal sealed class CloudUploadSessions(string dataPath)
                 || new DriveInfo(Path.GetPathRoot(Path.GetFullPath(_root))!).AvailableFreeSpace < length + remaining)
                 return Problem(507, FileUploadProblemCodes.InsufficientStorage);
             var session = new Session(Guid.NewGuid().ToString("N"), owner, connection, revision, key, path, length, lastModifiedUtc, 0,
-                DateTimeOffset.UtcNow + Lifetime);
+                DateTimeOffset.UtcNow + Lifetime, Replace: replace);
             using (File.Open(Data(session.Id), FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
             try { await SaveAsync(session, ct); }
             catch { File.Delete(Data(session.Id)); throw; }
@@ -67,7 +68,7 @@ internal sealed class CloudUploadSessions(string dataPath)
 
     internal async Task<IResult> HandleAsync(HttpContext http, Guid owner, Guid connection, string revision, string id,
         string action, long? offset, long? length, string? contentHash,
-        Func<string, Stream, CancellationToken, Task> publish)
+        Func<string, Stream, bool, CancellationToken, Task> publish)
     {
         var ct = http.RequestAborted;
         await _gate.WaitAsync(ct);
@@ -120,7 +121,8 @@ internal sealed class CloudUploadSessions(string dataPath)
             if (session.State == "complete") return Results.Ok(Entry(session));
             if (session.State == "failed") return session.CredentialsRejected
                 ? CloudStorageModule.CredentialProblem()
-                : Problem(session.FailureStatus, "cloud-upload-publish-failed");
+                : Problem(session.FailureStatus, session.FailureStatus == 409 && !session.Replace
+                    ? CloudStorageApi.UploadReplaceAvailable : "cloud-upload-publish-failed");
             if (session.State == "publishing")
                 return _publishing.ContainsKey(id) ? Results.Accepted() : Problem(409, "cloud-upload-publish-unconfirmed");
             if (session.Offset != session.Length) return Problem(409, FileUploadProblemCodes.Incomplete);
@@ -136,7 +138,7 @@ internal sealed class CloudUploadSessions(string dataPath)
         finally { _gate.Release(); }
     }
 
-    private async Task PublishAsync(Session session, string? contentHash, Func<string, Stream, CancellationToken, Task> publish,
+    private async Task PublishAsync(Session session, string? contentHash, Func<string, Stream, bool, CancellationToken, Task> publish,
         CancellationTokenSource cancellation)
     {
         var status = 0;
@@ -150,7 +152,7 @@ internal sealed class CloudUploadSessions(string dataPath)
             else
             {
                 file.Position = 0;
-                await publish(session.Path, file, cancellation.Token);
+                await publish(session.Path, file, session.Replace, cancellation.Token);
             }
         }
         catch (Exception error)
