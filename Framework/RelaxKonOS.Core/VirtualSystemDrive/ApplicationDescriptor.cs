@@ -107,6 +107,6 @@ public static partial class ApplicationDescriptorValidator
         return DescriptorValidationResult.Valid;
     }
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9.-]{2,127}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[a-z0-9][a-z0-9.-]{2,127}\\z", RegexOptions.CultureInvariant)]
     private static partial Regex AppIdPattern();
 }
