@@ -175,7 +175,8 @@ RelaxKonOS/
 | **Component Center** | 组件中心：统一查看宿主组件依赖、安装状态、版本与来源，管理已接入组件的安装、更新、卸载及操作恢复 | 🚧 分组件接入中 |
 | **Tailscale** | 远端宿主 Tailscale 组网管理：账户与设备详情、自动刷新的连接状态、浏览器登录授权、完整偏好（DNS/路由/传入连接/出口节点/无人值守/自动更新）、连接与断开、退出登录、操作恢复；安装维护统一进入组件中心 | 🧪 MVP（Linux 已有实机验证，Windows 待实机验收） |
 | **Terminal** | 远端终端（SignalR + PTY 持久会话，VT 引擎可选 Auto/Managed/Native） | ✅ 可用 |
-| **Explorer** | 远端文件管理器（REST API + 宿主 OS 权限复用） | ✅ 可用 |
+| **Explorer** | 使用宿主 OS 权限管理远端文件。启用云存储模块并获得访问权限后，桌面端还可浏览云存储、传输文件和目录，并在操作中心查看进度。见[文件管理器文档](./docs/applications/RelaxKonOS.Explorer.md) | ✅ 可用 |
+| **服务端模块** | 在桌面组件中心的模块商店搜索当前服务器接受的版本，预览并确认安装计划。见[服务端模块生命周期](./Client/RelaxKonOS.Client/Apps/ComponentCenter/ServerModules.Lifecycle.md) | 取决于服务器配置 |
 | **Browser** | 内置浏览器（书签/历史、主页与链接打开位置持久化） | ✅ 可用 |
 | **Port Forwarding** | 本机 SSH loopback 隧道管理（仅 Client 本地，不参与 Server 同步） | ✅ 可用 |
 | **Task Manager** | 远端任务管理器（性能页订阅期间 SignalR 1Hz 推送 + 60s 历史；进程页按需低频采样） | ✅ 可用 |

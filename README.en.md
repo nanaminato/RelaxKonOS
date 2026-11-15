@@ -175,7 +175,8 @@ Status legend: ✅ **Available** (dependable day to day) · 🧪 **MVP** (main f
 | **Component Center** | View host component dependencies, installation status, versions and sources; install, update, uninstall and recover operations for integrated components | 🚧 Integration varies by component |
 | **Tailscale** | Manage Tailscale on the remote host: account and peer details, automatically refreshed connection state, browser sign-in, full preferences (DNS/routes/incoming/exit node/unattended/auto-update), connect/disconnect, logout and operation recovery; installation is managed through Component Center | 🧪 MVP (Linux host checks recorded; Windows host acceptance pending) |
 | **Terminal** | Remote terminal (SignalR + PTY persistent sessions, selectable VT engine: Auto/Managed/Native) | ✅ Available |
-| **Explorer** | Remote File Manager (REST API + host OS permission reuse) | ✅ Available |
+| **Explorer** | Manage remote files using host OS permissions. With the cloud storage module enabled and access granted, the desktop client can browse cloud storage, transfer files and folders, and show progress in the operation center. See the [Explorer guide](./docs/applications/RelaxKonOS.Explorer.md). | ✅ Available |
+| **Server modules** | Search releases accepted by the current server in the desktop Component Center module store, then review and confirm the installation plan. See the [server module lifecycle](./Client/RelaxKonOS.Client/Apps/ComponentCenter/ServerModules.Lifecycle.md). | Depends on server configuration |
 | **Browser** | Built-in Browser (bookmarks/history, home page and link-open-location persistence) | ✅ Available |
 | **Port Forwarding** | Local SSH loopback tunnel management (Client-only, not synced with Server) | ✅ Available |
 | **Task Manager** | Remote Task Manager (Performance page: SignalR 1Hz push while subscribed + 60s history; Processes page: on-demand low-frequency sampling) | ✅ Available |
