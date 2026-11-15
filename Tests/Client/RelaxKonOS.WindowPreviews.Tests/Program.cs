@@ -94,6 +94,11 @@ if (args.Contains("--squid-only"))
     SquidWorkspaceChecks.Run();
     return;
 }
+if (args.Contains("--proxy-only"))
+{
+    ProxyWorkspaceChecks.Run(settings);
+    return;
+}
 if (args.Contains("--firewall-only"))
 {
     FirewallSubmissionChecks.Run();

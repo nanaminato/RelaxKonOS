@@ -1,51 +1,117 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy" xmlns:cc="clr-namespace:RelaxKonOS.Client.Apps.ComponentCenter" x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxySettingsView" x:DataType="proxy:ProxyManagerViewModel" Classes="builtin-app">
   <UserControl.Styles>
-    <Style Selector="ToggleButton.network-mode-tab"><Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="12,8"/><Setter Property="HorizontalContentAlignment" Value="Center"/></Style>
-    <Style Selector="ToggleButton.network-mode-tab:checked"><Setter Property="Background" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}"/></Style>
+    <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Proxy/ProxyStyles.axaml" />
   </UserControl.Styles>
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-  <StackPanel Spacing="18">
-    <Border Padding="20" Classes="app-panel">
-      <StackPanel Spacing="12">
-        <TextBlock Text="{loc:Loc proxy.runtime}" FontSize="19" FontWeight="SemiBold" />
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="22">
-          <TextBlock Text="{loc:Loc proxy.runtime_state}" Foreground="{DynamicResource TextSecondaryBrush}" />
-          <TextBlock Grid.Column="1" Text="{Binding RuntimeState}" />
-        </Grid>
+    <StackPanel Spacing="14">
+      <StackPanel Spacing="4">
+        <TextBlock Text="{loc:Loc proxy.settings}" Classes="page-title" />
+        <TextBlock Text="{loc:Loc proxy.network_settings_hint}" Classes="page-hint" />
       </StackPanel>
-    </Border>
-    <cc:ComponentDependencySettingsView DataContext="{Binding Dependency}" />
-    <Border Padding="20" Classes="app-panel"><StackPanel Spacing="12"><TextBlock Text="{loc:Loc proxy.geodata}" FontSize="19" FontWeight="SemiBold" /><TextBlock Text="{loc:Loc proxy.geodata.hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" /><Grid ColumnDefinitions="*,Auto" ColumnSpacing="18"><TextBlock Text="{loc:Loc proxy.geodata.state}" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="{Binding ResourceState}" VerticalAlignment="Center" /></Grid><TextBlock Text="{Binding ResourceDetails}" TextWrapping="Wrap" /><Button Content="{loc:Loc proxy.geodata.prepare}" Command="{Binding PrepareResourcesCommand}" HorizontalAlignment="Left" /></StackPanel></Border>
-    <Border Padding="20" Classes="app-panel">
-      <StackPanel Spacing="12">
-        <TextBlock Text="{loc:Loc proxy.system_settings}" FontSize="19" FontWeight="SemiBold" />
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-          <StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Text="{loc:Loc proxy.tun_mode}" VerticalAlignment="Center"/><Button Classes="flat" Content="⚙" FontSize="17" Command="{Binding ShowTunSettingsDialogCommand}" ToolTip.Tip="{loc:Loc proxy.tun_managed_settings}"/></StackPanel>
-          <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsTunEnabled, Mode=OneWay}" Command="{Binding ToggleTunCommand}" VerticalAlignment="Center"/>
-        </Grid>
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-          <StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Text="{loc:Loc proxy.system_proxy}" VerticalAlignment="Center"/><Button Classes="flat" Content="⚙" FontSize="17" Command="{Binding ShowSystemProxySettingsDialogCommand}" ToolTip.Tip="{loc:Loc proxy.system_proxy_settings}"/></StackPanel>
-          <ToggleSwitch Grid.Column="1" IsChecked="{Binding SystemProxyEnabled, Mode=OneWay}" Command="{Binding ToggleSystemProxyCommand}" VerticalAlignment="Center"/>
-        </Grid>
-      </StackPanel>
-    </Border>
-    <Border Padding="20" Classes="app-panel">
-      <StackPanel Spacing="10">
-        <TextBlock Text="{loc:Loc proxy.clash_settings}" FontSize="19" FontWeight="SemiBold"/>
-        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
-          <TextBlock Text="{loc:Loc proxy.proxy_host}" VerticalAlignment="Center"/><ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding SystemProxyHostOptions}" SelectedItem="{Binding SystemProxyHost, Mode=TwoWay}"/>
-          <TextBlock Grid.Row="1" Text="{loc:Loc proxy.allow_lan}" VerticalAlignment="Center"/><ToggleSwitch Grid.Row="1" Grid.Column="1" IsChecked="{Binding AllowLan, Mode=TwoWay}"/>
-          <TextBlock Grid.Row="2" Text="{loc:Loc proxy.dns_override}" VerticalAlignment="Center"/><ToggleSwitch Grid.Row="2" Grid.Column="1" IsChecked="{Binding DnsEnabled, Mode=TwoWay}"/>
-          <TextBlock Grid.Row="3" Text="{loc:Loc proxy.ipv6}" VerticalAlignment="Center"/><ToggleSwitch Grid.Row="3" Grid.Column="1" IsChecked="{Binding Ipv6Enabled, Mode=TwoWay}"/>
-          <TextBlock Grid.Row="4" Text="{loc:Loc proxy.unified_delay}" VerticalAlignment="Center"/><ToggleSwitch Grid.Row="4" Grid.Column="1" IsChecked="{Binding UnifiedDelay, Mode=TwoWay}"/>
-          <TextBlock Grid.Row="5" Text="{loc:Loc proxy.log_level}" VerticalAlignment="Center"/><ComboBox Grid.Row="5" Grid.Column="1" Width="160" ItemsSource="{Binding LogLevels}" SelectedItem="{Binding LogLevel, Mode=TwoWay}"/>
-          <TextBlock Grid.Row="6" Text="{loc:Loc proxy.port}" VerticalAlignment="Center"/><NumericUpDown Grid.Row="6" Grid.Column="1" Width="160" Minimum="1" Maximum="65535" Value="{Binding MixedPort, Mode=TwoWay}"/>
-          <TextBlock Grid.Row="7" Text="{loc:Loc proxy.subscription_insecure_sources}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,6,12,0"/><ToggleSwitch Grid.Row="7" Grid.Column="1" IsChecked="{Binding AllowInsecureSubscriptionSources, Mode=TwoWay}" Margin="0,6,0,0"/>
-        </Grid>
-        <TextBlock Text="{loc:Loc proxy.subscription_insecure_sources_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
-        <Button Classes="primary" Content="{loc:Loc common.save}" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Left"/>
-      </StackPanel>
-    </Border>
-  </StackPanel>
+
+      <!-- Runtime facts first: every other panel on this page depends on the runtime being there. -->
+      <Border Classes="panel">
+        <StackPanel>
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="0,0,0,4">
+            <Border Classes="icon-chip">
+              <Path Classes="glyph" Stroke="{DynamicResource AccentBrush}" Data="M9 3 V5 M15 3 V5 M9 19 V21 M15 19 V21 M3 9 H5 M3 15 H5 M19 9 H21 M19 15 H21 M6 6 H18 V18 H6 Z M10 10 H14 V14 H10 Z" />
+            </Border>
+            <TextBlock Grid.Column="1" Text="{loc:Loc proxy.runtime_settings}" Classes="section-title" VerticalAlignment="Center" />
+          </Grid>
+          <Border Classes="row first"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.runtime_state}" Classes="fact-label" /><TextBlock Grid.Column="1" Text="{Binding RuntimeState}" Classes="fact-value" /></Grid></Border>
+          <Border Classes="row"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.health}" Classes="fact-label" /><TextBlock Grid.Column="1" Text="{Binding HealthState}" Classes="fact-value" /></Grid></Border>
+          <Border Classes="row"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.runtime_core_version}" Classes="fact-label" /><TextBlock Grid.Column="1" Text="{Binding RuntimeInstalledVersion}" Classes="fact-value" /></Grid></Border>
+          <Border Classes="row"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.runtime_mode}" Classes="fact-label" /><TextBlock Grid.Column="1" Text="{Binding RuntimeServiceMode}" Classes="fact-value" /></Grid></Border>
+        </StackPanel>
+      </Border>
+
+      <cc:ComponentDependencySettingsView DataContext="{Binding Dependency}" />
+
+      <Border Classes="panel">
+        <StackPanel Spacing="10">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <Border Classes="icon-chip">
+              <Path Classes="glyph" Stroke="{DynamicResource AccentBrush}" Data="M12 3 A9 9 0 1 0 12 21 A9 9 0 1 0 12 3 M3 12 H21 M12 3 C15 6.5 15 17.5 12 21 M12 3 C9 6.5 9 17.5 12 21" />
+            </Border>
+            <TextBlock Grid.Column="1" Text="{loc:Loc proxy.geodata}" Classes="section-title" VerticalAlignment="Center" />
+          </Grid>
+          <TextBlock Text="{loc:Loc proxy.geodata.hint}" Classes="section-hint" />
+          <Border Classes="row first"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.geodata.state}" Classes="fact-label" /><TextBlock Grid.Column="1" Text="{Binding ResourceState}" Classes="fact-value" /></Grid></Border>
+          <TextBlock Text="{Binding ResourceDetails}" Classes="section-hint mono" />
+          <Button Classes="ghost-action" Content="{loc:Loc proxy.geodata.prepare}" Command="{Binding PrepareResourcesCommand}" HorizontalAlignment="Left" />
+        </StackPanel>
+      </Border>
+
+      <!-- The two host network modes. The switch is the action; the gear opens the mode's own
+           managed settings, so changing a port never means hunting through a second page. -->
+      <Border Classes="panel">
+        <StackPanel>
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="0,0,0,4">
+            <Border Classes="icon-chip">
+              <Path Classes="glyph" Stroke="{DynamicResource AccentBrush}" Data="M4 6 H20 M4 12 H20 M4 18 H14" />
+            </Border>
+            <TextBlock Grid.Column="1" Text="{loc:Loc proxy.system_settings}" Classes="section-title" VerticalAlignment="Center" />
+          </Grid>
+          <Border Classes="row first">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+              <StackPanel Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="{loc:Loc proxy.tun_mode}" FontWeight="SemiBold" FontSize="13" />
+                <TextBlock Text="{Binding TunState}" Classes="section-hint" />
+              </StackPanel>
+              <Button Grid.Column="1" Classes="icon-action" Command="{Binding ShowTunSettingsDialogCommand}"
+                      ToolTip.Tip="{loc:Loc proxy.tun_managed_settings}" AutomationProperties.Name="{loc:Loc proxy.tun_managed_settings}">
+                <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M4 8 H20 M4 16 H20 M9 5 V11 M15 13 V19" />
+              </Button>
+              <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsTunEnabled, Mode=OneWay}" Command="{Binding ToggleTunCommand}" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+          <Border Classes="row">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+              <StackPanel Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="{loc:Loc proxy.system_proxy}" FontWeight="SemiBold" FontSize="13" />
+                <TextBlock Text="{Binding SystemProxyEndpoint}" Classes="section-hint" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <Button Grid.Column="1" Classes="icon-action" Command="{Binding ShowSystemProxySettingsDialogCommand}"
+                      ToolTip.Tip="{loc:Loc proxy.system_proxy_settings}" AutomationProperties.Name="{loc:Loc proxy.system_proxy_settings}">
+                <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M4 8 H20 M4 16 H20 M9 5 V11 M15 13 V19" />
+              </Button>
+              <ToggleSwitch Grid.Column="2" IsChecked="{Binding SystemProxyEnabled, Mode=OneWay}" Command="{Binding ToggleSystemProxyCommand}" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="panel">
+        <StackPanel Spacing="0">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="0,0,0,8">
+            <Border Classes="icon-chip">
+              <Path Classes="glyph" Stroke="{DynamicResource AccentBrush}" Data="M4 7 H20 M4 12 H20 M4 17 H13 M17 14 V20 M14 17 H20" />
+            </Border>
+            <TextBlock Grid.Column="1" Text="{loc:Loc proxy.clash_settings}" Classes="section-title" VerticalAlignment="Center" />
+          </Grid>
+          <Border Classes="row first"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="16"><TextBlock Text="{loc:Loc proxy.proxy_host}" Classes="field-label" /><ComboBox Grid.Column="1" Width="180" ItemsSource="{Binding SystemProxyHostOptions}" SelectedItem="{Binding SystemProxyHost, Mode=TwoWay}" /></Grid></Border>
+          <Border Classes="row"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="16"><TextBlock Text="{loc:Loc proxy.allow_lan}" Classes="field-label" /><ToggleSwitch Grid.Column="1" IsChecked="{Binding AllowLan, Mode=TwoWay}" /></Grid></Border>
+          <Border Classes="row"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="16"><TextBlock Text="{loc:Loc proxy.dns_override}" Classes="field-label" /><ToggleSwitch Grid.Column="1" IsChecked="{Binding DnsEnabled, Mode=TwoWay}" /></Grid></Border>
+          <Border Classes="row"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="16"><TextBlock Text="{loc:Loc proxy.ipv6}" Classes="field-label" /><ToggleSwitch Grid.Column="1" IsChecked="{Binding Ipv6Enabled, Mode=TwoWay}" /></Grid></Border>
+          <Border Classes="row"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="16"><TextBlock Text="{loc:Loc proxy.unified_delay}" Classes="field-label" /><ToggleSwitch Grid.Column="1" IsChecked="{Binding UnifiedDelay, Mode=TwoWay}" /></Grid></Border>
+          <Border Classes="row"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="16"><TextBlock Text="{loc:Loc proxy.log_level}" Classes="field-label" /><ComboBox Grid.Column="1" Width="180" ItemsSource="{Binding LogLevels}" SelectedItem="{Binding LogLevel, Mode=TwoWay}" /></Grid></Border>
+          <Border Classes="row"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="16"><TextBlock Text="{loc:Loc proxy.port}" Classes="field-label" /><NumericUpDown Grid.Column="1" Width="180" Minimum="1" Maximum="65535" Value="{Binding MixedPort, Mode=TwoWay}" /></Grid></Border>
+          <Border Classes="row">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+              <StackPanel Spacing="2">
+                <TextBlock Text="{loc:Loc proxy.subscription_insecure_sources}" Classes="field-label" />
+                <TextBlock Text="{loc:Loc proxy.subscription_insecure_sources_hint}" Classes="section-hint" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </StackPanel>
+              <ToggleSwitch Grid.Column="1" IsChecked="{Binding AllowInsecureSubscriptionSources, Mode=TwoWay}" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+          <Border Classes="rule" Margin="0,14,0,12" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+            <TextBlock Text="{loc:Loc proxy.safety_hint}" Classes="section-hint" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Classes="primary" Content="{loc:Loc common.save}" Command="{Binding SaveSettingsCommand}" VerticalAlignment="Center" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </StackPanel>
   </ScrollViewer>
 </UserControl>

@@ -5,40 +5,86 @@
              x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxyManagerWorkspace"
              x:DataType="proxy:ProxyManagerViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
+  <UserControl.Styles>
+    <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Proxy/ProxyStyles.axaml" />
+  </UserControl.Styles>
   <Grid RowDefinitions="Auto,Auto,*,Auto">
     <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
             <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc proxy.title}" Subtitle="{loc:Loc proxy.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/proxy.png" />
             <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" VerticalAlignment="Center"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
         </Grid>
-    <StackPanel Grid.Row="1" Spacing="0">
-
-      <Border IsVisible="{Binding HasControllerAuthenticationFailure}" Background="{DynamicResource WarningMutedBrush}" BorderBrush="{DynamicResource WarningBrush}" BorderThickness="0,0,0,1" Padding="20,12">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-          <StackPanel Spacing="3">
-            <TextBlock Text="{Binding ControllerAuthenticationTitle}" FontWeight="SemiBold" Foreground="{DynamicResource WarningBrush}" />
-            <TextBlock Text="{Binding ControllerAuthenticationHint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+    <StackPanel Grid.Row="1">
+      <!-- A controller that refuses the stored credential is a connection problem, not a login
+           problem, so the banner repeats the distinction instead of sounding like an expired
+           session. -->
+      <Border IsVisible="{Binding HasControllerAuthenticationFailure}" Classes="notice bad" Margin="20,12,20,0">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+          <Path Classes="glyph" Width="18" Height="18" Stroke="{DynamicResource DangerBrush}" StrokeThickness="1.6" Data="M12 3 L22 20 H2 Z M12 9 V14 M12 17 V17.5" />
+          <StackPanel Grid.Column="1" Spacing="3">
+            <TextBlock Text="{Binding ControllerAuthenticationTitle}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding ControllerAuthenticationHint}" Classes="section-hint" />
           </StackPanel>
-          <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" VerticalAlignment="Center" />
+          <Button Grid.Column="2" Classes="ghost-action" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" VerticalAlignment="Center" />
         </Grid>
       </Border>
     </StackPanel>
-    <Grid x:Name="WorkspaceBody" Grid.Row="2" ClipToBounds="True" ColumnDefinitions="190,*">
+    <Grid x:Name="WorkspaceBody" Grid.Row="2" ClipToBounds="True" ColumnDefinitions="204,*">
       <Border Classes="app-sidebar">
-        <StackPanel Spacing="4" Margin="14,22">
-          <TextBlock Text="{loc:Loc proxy.workspace}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0,0,6" />
-          <Button x:Name="OverviewButton" Classes="workspace-nav" Tag="overview" Click="NavigationButton_Click" Content="{loc:Loc proxy.overview}" HorizontalContentAlignment="Left" Padding="10,8" />
-          <Button x:Name="ProfilesButton" Classes="workspace-nav" Tag="profiles" Click="NavigationButton_Click" Content="{loc:Loc proxy.subscriptions}" HorizontalContentAlignment="Left" Padding="10,8" />
-          <Button x:Name="ProxiesButton" Classes="workspace-nav" Tag="proxies" Click="NavigationButton_Click" Content="{loc:Loc proxy.proxies}" HorizontalContentAlignment="Left" Padding="10,8" />
-          <Button Classes="workspace-nav" Tag="connections" Click="NavigationButton_Click" Content="{loc:Loc proxy.connections}" HorizontalContentAlignment="Left" Padding="10,8" />
-          <Button Classes="workspace-nav" Tag="logs" Click="NavigationButton_Click" Content="{loc:Loc proxy.logs}" HorizontalContentAlignment="Left" Padding="10,8" />
-          <Button x:Name="SettingsButton" Classes="workspace-nav" Tag="settings" Click="NavigationButton_Click" Content="{loc:Loc proxy.settings}" HorizontalContentAlignment="Left" Padding="10,8" />
-        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="2" Margin="12,18,12,16">
+            <TextBlock Text="{loc:Loc proxy.workspace}" Classes="rail-label" Margin="10,0,0,8" />
+            <Button x:Name="OverviewButton" Classes="workspace-nav" Tag="overview" Click="NavigationButton_Click" ToolTip.Tip="{loc:Loc proxy.overview}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M4 4 H10.5 V11 H4 Z M13.5 4 H20 V8 H13.5 Z M13.5 11 H20 V20 H13.5 Z M4 14 H10.5 V20 H4 Z" />
+                <TextBlock Text="{loc:Loc proxy.overview}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button x:Name="ProfilesButton" Classes="workspace-nav" Tag="profiles" Click="NavigationButton_Click" ToolTip.Tip="{loc:Loc proxy.subscriptions}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M7 18 A4 4 0 0 1 7.6 10.05 A5.5 5.5 0 0 1 18.4 11 A3.5 3.5 0 0 1 18 18 Z M12 12 V18 M9.5 15.5 L12 18 L14.5 15.5" />
+                <TextBlock Text="{loc:Loc proxy.subscriptions}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button x:Name="ProxiesButton" Classes="workspace-nav" Tag="proxies" Click="NavigationButton_Click" ToolTip.Tip="{loc:Loc proxy.proxies}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M12 3 L20 7.5 V16.5 L12 21 L4 16.5 V7.5 Z M4 7.5 L12 12 L20 7.5 M12 12 V21" />
+                <TextBlock Text="{loc:Loc proxy.proxies}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="workspace-nav" Tag="connections" Click="NavigationButton_Click" ToolTip.Tip="{loc:Loc proxy.connections}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M3 12 H6.5 L9.5 5 L14.5 19 L17.5 12 H21" />
+                <TextBlock Text="{loc:Loc proxy.connections}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="workspace-nav" Tag="logs" Click="NavigationButton_Click" ToolTip.Tip="{loc:Loc proxy.logs}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M5 5 H19 M5 12 H19 M5 19 H13" />
+                <TextBlock Text="{loc:Loc proxy.logs}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Border Classes="rule" Margin="10,10,10,10" />
+            <Button x:Name="SettingsButton" Classes="workspace-nav" Tag="settings" Click="NavigationButton_Click" ToolTip.Tip="{loc:Loc proxy.settings}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M4 8 H10 M15 8 H20 M4 16 H8 M13 16 H20 M12.5 5 V11 M10.5 13 V19" />
+                <TextBlock Text="{loc:Loc proxy.settings}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </ScrollViewer>
       </Border>
-      <ContentControl x:Name="ContentHost" Grid.Column="1" Margin="30,24"
+      <ContentControl x:Name="ContentHost" Grid.Column="1" Margin="24,20,24,20"
                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
     </Grid>
-    <Border Grid.Row="3" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Height="38" Padding="12,0">
-      <TextBlock Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" TextTrimming="CharacterEllipsis" FontSize="12" VerticalAlignment="Center" />
+    <!-- One status bar for the whole workspace: a tone dot states the runtime fact, the sentence
+         states the last result, and an indeterminate bar states work in flight. -->
+    <Border Grid.Row="3" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Background="{DynamicResource SurfaceRaisedBrush}" Height="40" Padding="14,0">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+        <Border Classes="dot ok" IsVisible="{Binding ProxyIsRunning}" VerticalAlignment="Center" />
+        <Border Classes="dot idle" IsVisible="{Binding !ProxyIsRunning}" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1" Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" TextTrimming="CharacterEllipsis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+        <ProgressBar Grid.Column="2" IsIndeterminate="True" Width="96" Height="3" VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
+      </Grid>
     </Border>
   </Grid>
 </UserControl>

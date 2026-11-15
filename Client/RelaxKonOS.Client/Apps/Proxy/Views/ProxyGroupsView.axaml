@@ -7,130 +7,126 @@
              x:Name="Root"
              x:DataType="proxy:ProxyManagerViewModel" Classes="builtin-app">
   <UserControl.Styles>
-    <Style Selector="Button.proxy-toolbar-button">
-      <Setter Property="Padding" Value="8,5" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="FontSize" Value="17" />
-    </Style>
-    <Style Selector="Button.proxy-node-card">
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-      <Setter Property="VerticalContentAlignment" Value="Stretch" />
-    </Style>
-    <Style Selector="Button.proxy-group-header">
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-      <Setter Property="VerticalContentAlignment" Value="Stretch" />
-    </Style>
-    <Style Selector="Button.proxy-routing-button">
-      <Setter Property="Padding" Value="14,6" />
-    </Style>
+    <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Proxy/ProxyStyles.axaml" />
   </UserControl.Styles>
 
-  <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
+  <Grid RowDefinitions="Auto,Auto,*" RowSpacing="14">
     <StackPanel Spacing="4">
-      <TextBlock Text="{loc:Loc proxy.proxies}" FontSize="21" FontWeight="SemiBold" />
-      <TextBlock Text="{loc:Loc proxy.proxies_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+      <TextBlock Text="{loc:Loc proxy.proxies}" Classes="page-title" />
+      <TextBlock Text="{loc:Loc proxy.proxies_hint}" Classes="page-hint" />
     </StackPanel>
-    <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="7" Padding="3" HorizontalAlignment="Right">
-      <Grid ColumnDefinitions="Auto,Auto,Auto" ColumnSpacing="2">
-        <Button Grid.Column="0" Classes="proxy-routing-button" Content="{loc:Loc proxy.routing_rule}" Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Rule}" IsVisible="{Binding !IsRuleRouting}" />
-        <Button Grid.Column="0" Classes="proxy-routing-button primary" Content="{loc:Loc proxy.routing_rule}" Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Rule}" IsVisible="{Binding IsRuleRouting}" />
-        <Button Grid.Column="1" Classes="proxy-routing-button" Content="{loc:Loc proxy.routing_global}" Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Global}" IsVisible="{Binding !IsGlobalRouting}" />
-        <Button Grid.Column="1" Classes="proxy-routing-button primary" Content="{loc:Loc proxy.routing_global}" Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Global}" IsVisible="{Binding IsGlobalRouting}" />
-        <Button Grid.Column="2" Classes="proxy-routing-button" Content="{loc:Loc proxy.routing_direct}" Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Direct}" IsVisible="{Binding !IsDirectRouting}" />
-        <Button Grid.Column="2" Classes="proxy-routing-button primary" Content="{loc:Loc proxy.routing_direct}" Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Direct}" IsVisible="{Binding IsDirectRouting}" />
-      </Grid>
+
+    <!-- Routing mode is one segmented control. Each segment derives its selected state from the
+         controller's reported mode, so the control can never disagree with the runtime. -->
+    <Border Grid.Row="1" Classes="segmented" HorizontalAlignment="Left">
+      <StackPanel Orientation="Horizontal" Spacing="3">
+        <Button Classes="segment" Classes.selected="{Binding IsRuleRouting}" Content="{loc:Loc proxy.routing_rule}"
+                Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Rule}" />
+        <Button Classes="segment" Classes.selected="{Binding IsGlobalRouting}" Content="{loc:Loc proxy.routing_global}"
+                Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Global}" />
+        <Button Classes="segment" Classes.selected="{Binding IsDirectRouting}" Content="{loc:Loc proxy.routing_direct}"
+                Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Direct}" />
+      </StackPanel>
     </Border>
 
     <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Spacing="10">
         <ItemsControl ItemsSource="{Binding Groups}">
-        <ItemsControl.Styles>
-          <!-- Keep every group header aligned with its expanded node area. -->
-          <Style Selector="ContentPresenter">
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-          </Style>
-        </ItemsControl.Styles>
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="proxy:ProxyGroupItem">
-            <StackPanel Spacing="8" HorizontalAlignment="Stretch">
-              <Button Classes="proxy-group-header" Command="{Binding DataContext.ToggleProxyGroupCommand, ElementName=Root}" CommandParameter="{Binding}">
-                <Border Padding="14,11" HorizontalAlignment="Stretch" Classes="app-panel">
-                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                    <TextBlock Text="⌄" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" IsVisible="{Binding IsExpanded}" />
-                    <TextBlock Text="›" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" IsVisible="{Binding !IsExpanded}" />
-                    <StackPanel Grid.Column="1" Spacing="2">
-                      <StackPanel Orientation="Horizontal" Spacing="7">
-                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="16" />
-                        <Border Background="{DynamicResource AccentMutedBrush}" CornerRadius="6" Padding="5,1"><TextBlock Text="{Binding Type}" FontSize="11" Foreground="{DynamicResource AccentBrush}" /></Border>
-                      </StackPanel>
-                      <TextBlock Text="{Binding Selected}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-                    <Border Grid.Column="2" Background="{DynamicResource AccentMutedBrush}" CornerRadius="14" Padding="9,3" VerticalAlignment="Center"><TextBlock Text="{Binding NodeCount}" Foreground="{DynamicResource AccentBrush}" FontSize="12" /></Border>
-                  </Grid>
-                </Border>
-              </Button>
-
-              <Border IsVisible="{Binding IsExpanded}" Padding="10" HorizontalAlignment="Stretch" Classes="app-panel">
-                <StackPanel Spacing="8">
-                  <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="7" Padding="6,4">
-                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="4">
-                      <Button Classes="proxy-toolbar-button" Content="◉" ToolTip.Tip="{loc:Loc proxy.latency_test_selected}"
-                              Command="{Binding DataContext.TestGroupSelectedProxyLatencyCommand, ElementName=Root}" CommandParameter="{Binding}" />
-                      <Button Grid.Column="1" Classes="proxy-toolbar-button" Content="↻" ToolTip.Tip="{loc:Loc proxy.latency_test_all}"
-                              Command="{Binding DataContext.TestGroupProxyLatenciesCommand, ElementName=Root}" CommandParameter="{Binding}" HorizontalAlignment="Left" />
-                      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
-                        <TextBox Width="360" IsVisible="{Binding DataContext.IsLatencyTestTargetVisible, ElementName=Root}"
-                                 Text="{Binding DataContext.LatencyTestTarget, ElementName=Root, Mode=TwoWay}" PlaceholderText="{loc:Loc proxy.latency_test_target_placeholder}" VerticalAlignment="Center" />
-                        <Button Classes="proxy-toolbar-button" Content="↕" ToolTip.Tip="{Binding DataContext.ProxyNodeSortLabel, ElementName=Root}"
-                                Command="{Binding DataContext.CycleProxyNodeSortCommand, ElementName=Root}" />
-                        <Button Classes="proxy-toolbar-button" Content="⌁" ToolTip.Tip="{loc:Loc proxy.latency_test_target}"
-                                Command="{Binding DataContext.ToggleLatencyTestTargetCommand, ElementName=Root}" />
-                      </StackPanel>
+          <ItemsControl.Styles>
+            <!-- Keep every group header aligned with its expanded node area. -->
+            <Style Selector="ContentPresenter">
+              <Setter Property="HorizontalAlignment" Value="Stretch" />
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </Style>
+          </ItemsControl.Styles>
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="proxy:ProxyGroupItem">
+              <StackPanel Spacing="8" HorizontalAlignment="Stretch">
+                <!-- The whole header row is the disclosure: one target, one hover state, and the
+                     chevron states the direction the next click moves. -->
+                <Button Classes="card-tile" HorizontalAlignment="Stretch" Command="{Binding DataContext.ToggleProxyGroupCommand, ElementName=Root}" CommandParameter="{Binding}">
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="14,11">
+                    <Grid Width="16" Height="16" VerticalAlignment="Center">
+                      <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M6 9 L12 15 L18 9" IsVisible="{Binding IsExpanded}" />
+                      <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M9 6 L15 12 L9 18" IsVisible="{Binding !IsExpanded}" />
                     </Grid>
-                  </Border>
-                  <ItemsControl ItemsSource="{Binding Nodes}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="proxy:ProxyNodeItem">
-                        <Button Classes="proxy-node-card" Width="270" Height="66" Margin="0,0,8,8"
-                                Command="{Binding DataContext.SelectProxyNodeCommand, ElementName=Root}"
-                                CommandParameter="{Binding}">
-                          <Grid>
-                            <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Classes="app-panel" />
-                            <Border BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2" IsVisible="{Binding IsSelected}" Classes="app-panel" />
-                            <Border Width="4" Background="{DynamicResource AccentBrush}" CornerRadius="8,0,0,8" HorizontalAlignment="Left" IsVisible="{Binding IsSelected}" />
-                            <Grid Margin="11,8" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="5">
-                              <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                              <TextBlock Grid.Column="1" Text="{Binding DelayText}" Foreground="{DynamicResource SuccessBrush}" IsVisible="{Binding HasFastDelay}" FontWeight="SemiBold" />
-                              <TextBlock Grid.Column="1" Text="{Binding DelayText}" Foreground="{DynamicResource WarningBrush}" IsVisible="{Binding HasSlowDelay}" FontWeight="SemiBold" />
-                              <TextBlock Grid.Column="1" Text="{Binding DelayText}" Foreground="{DynamicResource DangerBrush}" IsVisible="{Binding HasTimeout}" FontWeight="SemiBold" />
-                              <TextBlock Grid.Column="1" Text="{Binding DelayText}" Foreground="{DynamicResource TextTertiaryBrush}" IsVisible="{Binding HasNoDelay}" />
-                              <TextBlock Grid.Row="1" Text="{Binding GroupName}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
-                            </Grid>
-                          </Grid>
+                    <StackPanel Grid.Column="1" Spacing="3">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <Border Classes="pill accent"><TextBlock Text="{Binding Type}" /></Border>
+                      </StackPanel>
+                      <TextBlock Text="{Binding Selected}" Classes="section-hint" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Border Grid.Column="2" Classes="pill"><TextBlock Text="{Binding NodeCount}" /></Border>
+                  </Grid>
+                </Button>
+
+                <Border IsVisible="{Binding IsExpanded}" Classes="panel" Padding="12">
+                  <StackPanel Spacing="10">
+                    <!-- Node actions sit above the nodes they act on, inside the disclosed area. -->
+                    <Border Classes="inset" Padding="8,6">
+                      <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
+                        <Button Classes="icon-action" Command="{Binding DataContext.TestGroupSelectedProxyLatencyCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                ToolTip.Tip="{loc:Loc proxy.latency_test_selected}" AutomationProperties.Name="{loc:Loc proxy.latency_test_selected}">
+                          <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M4 18 A8 8 0 1 1 20 18 M12 18 L16.5 11" />
                         </Button>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </StackPanel>
-              </Border>
-            </StackPanel>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
+                        <Button Grid.Column="1" Classes="icon-action" Command="{Binding DataContext.TestGroupProxyLatenciesCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                ToolTip.Tip="{loc:Loc proxy.latency_test_all}" AutomationProperties.Name="{loc:Loc proxy.latency_test_all}">
+                          <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M20 10 A8 8 0 0 0 6 6 L3 9 M3 4 V9 H8 M4 14 A8 8 0 0 0 18 18 L21 15 M16 15 H21 V20" />
+                        </Button>
+                        <TextBox Grid.Column="2" IsVisible="{Binding DataContext.IsLatencyTestTargetVisible, ElementName=Root}"
+                                 Text="{Binding DataContext.LatencyTestTarget, ElementName=Root, Mode=TwoWay}"
+                                 PlaceholderText="{loc:Loc proxy.latency_test_target_placeholder}"
+                                 HorizontalAlignment="Right" MinWidth="200" MaxWidth="380" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4">
+                          <Button Classes="icon-action" Command="{Binding DataContext.CycleProxyNodeSortCommand, ElementName=Root}"
+                                  ToolTip.Tip="{Binding DataContext.ProxyNodeSortLabel, ElementName=Root}" AutomationProperties.Name="{Binding DataContext.ProxyNodeSortLabel, ElementName=Root}">
+                            <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M7 4 V20 M4 17 L7 20 L10 17 M14 6 H20 M14 11 H18 M14 16 H16" />
+                          </Button>
+                          <Button Classes="icon-action" Command="{Binding DataContext.ToggleLatencyTestTargetCommand, ElementName=Root}"
+                                  ToolTip.Tip="{loc:Loc proxy.latency_test_target}" AutomationProperties.Name="{loc:Loc proxy.latency_test_target}">
+                            <Path Classes="glyph" Stroke="{Binding $parent[Button].Foreground}" Data="M12 3 A9 9 0 1 0 12 21 A9 9 0 1 0 12 3 M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8 M12 2 V6 M12 18 V22 M2 12 H6 M18 12 H22" />
+                          </Button>
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Nodes}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="proxy:ProxyNodeItem">
+                          <Button Classes="card-tile node-tile" Margin="0,0,8,8" Classes.active="{Binding IsSelected}"
+                                  Command="{Binding DataContext.SelectProxyNodeCommand, ElementName=Root}" CommandParameter="{Binding}">
+                            <Grid>
+                              <Border Classes="tile-rail" IsVisible="{Binding IsSelected}" />
+                              <Grid Margin="13,10" RowDefinitions="Auto,*" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                                <!-- One delay label with a tone dot: the number stays in the
+                                     primary role, and the dot repeats the state without relying on hue. -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                  <Border Classes="dot ok" IsVisible="{Binding HasFastDelay}" />
+                                  <Border Classes="dot warn" IsVisible="{Binding HasSlowDelay}" />
+                                  <Border Classes="dot bad" IsVisible="{Binding HasTimeout}" />
+                                  <TextBlock Text="{Binding DelayText}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <Border Grid.Row="1" Classes="pill accent" IsVisible="{Binding IsSelected}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Padding="7,1">
+                                  <TextBlock Text="{loc:Loc proxy.active}" />
+                                </Border>
+                              </Grid>
+                            </Grid>
+                          </Button>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
         </ItemsControl>
       </StackPanel>
     </ScrollViewer>
