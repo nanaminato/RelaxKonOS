@@ -239,6 +239,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 ("nginx", RelaxKonOS.Protocol.Installations.InstallationServiceId.Nginx),
                 ("mihomo", RelaxKonOS.Protocol.Installations.InstallationServiceId.Mihomo),
                 ("squid", RelaxKonOS.Protocol.Installations.InstallationServiceId.Squid),
+                ("postgresql", RelaxKonOS.Protocol.Installations.InstallationServiceId.PostgreSql),
                 ("samba", RelaxKonOS.Protocol.Installations.InstallationServiceId.Smb),
                 ("docker", RelaxKonOS.Protocol.Installations.InstallationServiceId.Docker),
                 ("frpc", RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp),
@@ -273,6 +274,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             LocalizedText.Get(model.HasExternalPackageChange ? "component_center.package.acknowledge" : "component_center.package.register"),
             LocalizedStatus.Format(model.HasExternalPackageChange ? "component_center.package.acknowledge_confirm" : "component_center.package.register_confirm",
                 model.HostIdentity, identity.PackageName, identity.Version, identity.Architecture, identity.ExecutableSha256).Resolve());
+        model.ConfirmPostgreSqlRecoveryAsync = () => ConfirmAsync(LocalizedText.Get("database.recover"), LocalizedText.Get("database.confirm.Recover"));
         model.ConfirmPackageRecoveryAsync = (component, operation, action) => ConfirmAsync(
             LocalizedText.Get("component_center.package.recovery." + action),
             LocalizedStatus.Format(action == RelaxKonOS.Protocol.ManagedRuntimes.ComponentRecoveryAction.ConfigureOfficialSource

@@ -15,7 +15,7 @@ internal static class ComponentInstallEntryChecks
     {
         ComponentDownloadChecks.Run();
         foreach (var (id, service) in new[] { ("nginx", InstallationServiceId.Nginx), ("docker", InstallationServiceId.Docker),
-            ("samba", InstallationServiceId.Smb), ("squid", InstallationServiceId.Squid),
+            ("postgresql", InstallationServiceId.PostgreSql), ("samba", InstallationServiceId.Smb), ("squid", InstallationServiceId.Squid),
             ("frpc", InstallationServiceId.Frp), ("frps", InstallationServiceId.Frp) })
         {
             var lifecycle = new EntryLifecycle(id);

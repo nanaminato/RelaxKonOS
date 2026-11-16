@@ -2,6 +2,34 @@
   "version": 1,
   "suites": [
     {
+      "id": "postgresql-bootstrap",
+      "name": "PostgreSQL Noble package preflight and initialization planning",
+      "project": "Tests/PostgreSql/RelaxKonOS.PostgreSql.Tests.csproj",
+      "args": [],
+      "default": true,
+      "timeoutSeconds": 300
+    },
+    {
+      "id": "postgresql-desktop",
+      "name": "PostgreSQL desktop state, commands and localized layouts",
+      "project": "Tests/Client/RelaxKonOS.WindowPreviews.Tests/RelaxKonOS.WindowPreviews.Tests.csproj",
+      "args": [
+        "--database-only"
+      ],
+      "default": true,
+      "timeoutSeconds": 300
+    },
+    {
+      "id": "postgresql-server",
+      "name": "PostgreSQL installation receipts and coordinator",
+      "project": "Tests/Server/RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj",
+      "args": [
+        "--postgresql-only"
+      ],
+      "default": true,
+      "timeoutSeconds": 300
+    },
+    {
       "id": "server-modules",
       "name": "Server module framework, capabilities and residency",
       "project": "Tests/ServerModules/RelaxKonOS.ServerModules.Tests.csproj",

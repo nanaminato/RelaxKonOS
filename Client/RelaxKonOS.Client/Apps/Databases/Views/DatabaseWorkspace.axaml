@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:db="clr-namespace:RelaxKonOS.Client.Apps.Databases"
+ xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Databases.Views" x:Class="RelaxKonOS.Client.Apps.Databases.Views.DatabaseWorkspace"
+ x:DataType="db:DatabaseViewModel" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
+ <Grid ColumnDefinitions="190,*" Margin="16" ColumnSpacing="16">
+  <StackPanel Spacing="12">
+   <TextBlock Text="{loc:Loc application.relaxkonos.database.display_name}" FontSize="20" TextWrapping="Wrap" />
+   <Button Content="{loc:Loc database.overview}" Click="Overview" />
+   <Button Content="{loc:Loc database.accounts}" Click="Accounts" />
+   <Button Content="{loc:Loc database.remote_title}" Click="RemoteAccess" />
+   <Button Content="{loc:Loc database.maintenance}" Click="Maintenance" />
+   <Button Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
+  </StackPanel>
+  <ContentControl Grid.Column="1" x:Name="Page"><views:DatabaseOverview /></ContentControl>
+ </Grid>
+</UserControl>

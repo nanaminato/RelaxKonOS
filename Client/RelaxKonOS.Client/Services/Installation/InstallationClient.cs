@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -98,6 +98,11 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
             InstallationServiceId.Frp => HostElevationCapability.FrpInstall, InstallationServiceId.Mihomo => HostElevationCapability.MihomoInstall,
             InstallationServiceId.Git => HostElevationCapability.GitPackageInstall, InstallationServiceId.Docker => HostElevationCapability.DockerInstall,
             InstallationServiceId.Squid => HostElevationCapability.ProxyServiceAction,
+            InstallationServiceId.PostgreSql => HostElevationCapability.NativeServiceAction,
+            InstallationServiceId.PostgreSqlAccounts => HostElevationCapability.DatabaseAccountsManage,
+            InstallationServiceId.PostgreSqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
+            InstallationServiceId.PostgreSqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,
+            InstallationServiceId.PostgreSqlMaintenance => HostElevationCapability.DatabaseMaintenance,
             InstallationServiceId.Tailscale => HostElevationCapability.HostNetworkChange,
             InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall, _ => throw new ArgumentOutOfRangeException(nameof(service))
         };

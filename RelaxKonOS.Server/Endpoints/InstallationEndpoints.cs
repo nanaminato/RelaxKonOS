@@ -104,6 +104,11 @@ public static class InstallationEndpoints
         InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall,
         InstallationServiceId.Docker => HostElevationCapability.DockerInstall,
         InstallationServiceId.Squid => HostElevationCapability.ProxyServiceAction,
+        InstallationServiceId.PostgreSql => HostElevationCapability.NativeServiceAction,
+            InstallationServiceId.PostgreSqlAccounts => HostElevationCapability.DatabaseAccountsManage,
+            InstallationServiceId.PostgreSqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
+            InstallationServiceId.PostgreSqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,
+            InstallationServiceId.PostgreSqlMaintenance => HostElevationCapability.DatabaseMaintenance,
         InstallationServiceId.Git => HostElevationCapability.GitPackageInstall,
         InstallationServiceId.Tailscale => HostElevationCapability.HostNetworkChange,
         _ => throw new ArgumentOutOfRangeException(nameof(service))

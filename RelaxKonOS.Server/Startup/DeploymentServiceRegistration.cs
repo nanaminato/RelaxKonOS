@@ -1,4 +1,4 @@
-﻿namespace RelaxKonOS.Server.Startup;
+namespace RelaxKonOS.Server.Startup;
 
 internal static class DeploymentServiceRegistration
 {
@@ -12,6 +12,12 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SmbInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.NginxInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SquidInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Databases.PostgreSqlCredentialStore>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlAccountsInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlAdminRecoveryInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlRemoteAccessInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlMaintenanceInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.FrpInstallationService>();
         // Mihomo installs only through the managed catalog adapter. The fixed-manifest installer is gone,
         // so no request shape can reach the retired download/archive path.

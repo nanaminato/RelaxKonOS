@@ -17,6 +17,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     private readonly SemaphoreSlim submitGate = new(1, 1);
     private Task? observation;
     private string? pendingKey;
+    public bool HasPendingSubmission => pendingKey is not null;
     private CancellationTokenSource? transferCancellation;
     private InstallationStage transferStage;
     [ObservableProperty] private bool isTransferring;
@@ -82,6 +83,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
             if (options is MihomoInstallationRequest { Plan: { } mihomoPlan }) pendingKey = mihomoPlan.Request.IdempotencyKey;
             else if (options is NginxInstallationRequest { FrozenPackage: { } package }) pendingKey = package.Request.IdempotencyKey;
             else if (options is FrpInstallationRequest { FrozenArchive: { } bundle }) pendingKey = bundle.Request.IdempotencyKey;
+            else if (options is RelaxKonOS.Protocol.Databases.PostgreSqlInstallationRequest { FrozenPackage: { } postgresql }) pendingKey = postgresql.Request.IdempotencyKey;
             else if (options is SquidInstallationRequest { FrozenPackage: { } squid }) pendingKey = squid.Request.IdempotencyKey;
             else if (options is SmbInstallationRequest { FrozenPackage: { } samba }) pendingKey = samba.Request.IdempotencyKey;
             else if (options is DockerInstallationRequest { FrozenPackage: { } docker }) pendingKey = docker.Request.IdempotencyKey;

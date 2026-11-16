@@ -108,6 +108,10 @@ public enum PrivilegedOperationKind
     /// Read-only resolution of the Nginx package the host's own package manager would install.
     /// It reads signed repository metadata and never downloads, installs, or changes a source.
     /// </summary>
+    PostgreSqlQuery,
+    PostgreSqlMaintenancePlan,
+    PostgreSqlExecute,
+    PostgreSqlRecover,
     ComponentPackageQuery,
     ComponentPackageInstall,
     ComponentPackageChange,
@@ -454,6 +458,9 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
     [property: JsonPropertyName("processId")] int? ProcessId = null,
     [property: JsonPropertyName("processExpectedStartTime")] DateTimeOffset? ProcessExpectedStartTime = null,
+    [property: JsonPropertyName("postgreSqlSecrets")] RelaxKonOS.Protocol.Databases.PostgreSqlSecrets? PostgreSqlSecrets = null,
+    [property: JsonPropertyName("postgreSqlTls")] RelaxKonOS.Protocol.Databases.PostgreSqlTlsMaterial? PostgreSqlTls = null,
+    [property: JsonPropertyName("postgreSql")] RelaxKonOS.Protocol.Databases.PostgreSqlInstallationRequest? PostgreSql = null,
     [property: JsonPropertyName("squidConfiguration")] RelaxKonOS.Protocol.GatewayProxy.ApplySquidConfigurationRequest? SquidConfiguration = null,
     [property: JsonPropertyName("squidServiceAction")] RelaxKonOS.Protocol.GatewayProxy.SquidServiceAction? SquidServiceAction = null,
     [property: JsonPropertyName("squidAccount")] RelaxKonOS.Protocol.GatewayProxy.SquidAccountMutation? SquidAccount = null,

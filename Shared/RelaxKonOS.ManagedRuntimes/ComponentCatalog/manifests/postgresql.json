@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "postgresql",
+  "runtimeId": "postgresql",
+  "category": "database",
+  "name": "PostgreSQL",
+  "descriptionKey": "component_center.component.postgresql.description",
+  "integration": "Installation",
+  "applicationId": "relaxkonos.database",
+  "requiredComponents": [],
+  "optionalComponents": [],
+  "conflicts": [],
+  "applications": [
+    "relaxkonos.database"
+  ],
+  "targets": [
+    {
+      "os": "linux",
+      "architectures": [
+        "x64"
+      ],
+      "installer": {
+        "type": "apt",
+        "available": true
+      },
+      "sourceKind": "SystemPackage",
+      "officialDownloads": false,
+      "releases": {
+        "type": "apt"
+      },
+      "artifact": {
+        "selector": "package"
+      }
+    }
+  ]
+}

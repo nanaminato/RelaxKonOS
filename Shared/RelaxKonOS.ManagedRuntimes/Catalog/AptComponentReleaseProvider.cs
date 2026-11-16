@@ -13,12 +13,13 @@ public sealed class AptComponentReleaseProvider(Func<string, CancellationToken, 
         if (target.Releases.Type != Type || target.Artifact.Selector != "package" || environment.Os != "linux"
             || target.Os != environment.Os || !target.Architectures.Contains(environment.Architecture))
             throw new RuntimePolicyException("component.platform_unsupported");
-        var definition = HostPackageDefinitions.Find(component.Id) ?? throw new RuntimePolicyException("component.release_provider_unavailable");
+        var packageName = component.Id == ComponentIds.PostgreSql ? "postgresql-16"
+            : HostPackageDefinitions.Find(component.Id)?.PackageName ?? throw new RuntimePolicyException("component.release_provider_unavailable");
         var observed = await resolve(component.Id, ct);
         if (observed.BlockingProblem is { } problem) throw new RuntimePolicyException(problem);
         if (observed.Candidate is not { } package) return [];
         var architecture = environment.Architecture == "x64" ? "amd64" : environment.Architecture;
-        if (observed.PackageName != definition.PackageName || package.PackageName != definition.PackageName || package.Architecture != architecture)
+        if (observed.PackageName != packageName || package.PackageName != packageName || package.Architecture != architecture)
             throw new RuntimePolicyException("component.artifact_source_invalid");
         return [new(package.RepositoryId + ":" + package.Version, package.Version, "stable",
             [new(package.PackageName, environment.Os, environment.Architecture, "deb", null, null, package.Sha256)], package)];

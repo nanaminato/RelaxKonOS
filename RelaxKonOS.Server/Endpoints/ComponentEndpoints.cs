@@ -73,6 +73,7 @@ public static class ComponentEndpoints
             [ComponentIds.Mihomo] = InstallationServiceId.Mihomo,
             [ComponentIds.Nginx] = InstallationServiceId.Nginx,
             [ComponentIds.Squid] = InstallationServiceId.Squid,
+            [ComponentIds.PostgreSql] = InstallationServiceId.PostgreSql,
             [ComponentIds.Samba] = InstallationServiceId.Smb,
             [ComponentIds.Docker] = InstallationServiceId.Docker,
             [ComponentIds.Tailscale] = InstallationServiceId.Tailscale,

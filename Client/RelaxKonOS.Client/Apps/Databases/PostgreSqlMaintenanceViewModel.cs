@@ -1,0 +1,80 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Protocol.Databases;
+using RelaxKonOS.Protocol.Installations;
+namespace RelaxKonOS.Client.Apps.Databases;
+public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient client, InstallationTaskViewModel installation):ObservableObject,IDisposable
+{
+    public InstallationTaskViewModel Installation=>installation;
+    public Func<PostgreSqlMaintenanceCommand?,Task<bool>>? ConfirmAsync {get;set;}
+    public Func<bool>? OtherBusy {get;set;}
+    public bool CanManage {get;set;}
+    private bool invalid;
+    private PostgreSqlInstallationRequest? pending;
+    [ObservableProperty] private PostgreSqlState? snapshot;
+    [ObservableProperty] private PostgreSqlState? plan;
+    [ObservableProperty] private PostgreSqlBackup? selectedBackup;
+    [ObservableProperty] private string deleteConfirmation="";
+    [ObservableProperty] private bool busy;
+    [ObservableProperty] private LocalizedStatus notice=LocalizedStatus.Literal("");
+    public bool HasPending=>pending is not null;
+    public IEnumerable<PostgreSqlBackup> Backups=>Snapshot?.Backups??[];
+    public string Candidate=>Plan?.Candidate?.Version??"—";
+    private bool Ready=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&OtherBusy?.Invoke()!=true&&pending is null&&Snapshot is {Supported:true,Managed:true,InstanceId:not null,PendingOperationId:null,RemoteAccess:null};
+    public bool CanBackup=>Ready&&Snapshot is {Installed:true,ProblemCode:null};
+    public bool CanRestore=>CanBackup&&SelectedBackup is {RestoreVerified:true} b&&b.Version==Snapshot!.Version;
+    private bool HasPlan=>Plan?.Revision==Snapshot?.Revision&&Plan?.Candidate is not null;
+    public bool CanUpdate=>CanBackup&&HasPlan&&Plan!.Candidate!.Version!=Snapshot!.Version;
+    public bool CanRepair=>Ready&&Snapshot?.Installed==true&&HasPlan&&Plan!.Candidate!.Version==Snapshot.Version;
+    public bool CanReinstall=>Ready&&Snapshot?.PackageRemoved==true&&HasPlan;
+    public bool CanDelete=>CanBackup&&DeleteConfirmation==Snapshot!.InstanceId!.Value.ToString("N");
+    public bool CanRecover=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&OtherBusy?.Invoke()!=true&&pending is null&&Snapshot?.PendingMaintenance is not null;
+    public bool CanResume=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&pending is not null;
+    partial void OnSnapshotChanged(PostgreSqlState? value){Plan=null;Notify();}
+    partial void OnPlanChanged(PostgreSqlState? value)=>Notify();
+    partial void OnBusyChanged(bool value)=>Notify();
+    partial void OnDeleteConfirmationChanged(string value)=>Notify();
+    partial void OnSelectedBackupChanged(PostgreSqlBackup? value)=>Notify();
+    public void Notify(){foreach(var name in new[]{nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
+    [RelayCommand] private async Task PlanAsync()
+    {
+        if(!Ready)return;Busy=true;
+        try{var result=await client.MaintenancePlanAsync(default);if(!invalid){Plan=result;Notice=LocalizedStatus.Literal("");}}
+        catch{Notice=LocalizedStatus.Key("database.maintenance_plan_failed");}
+        finally{Busy=false;}
+    }
+    [RelayCommand] private Task UpdateAsync()=>Submit(PostgreSqlMaintenanceAction.Update,CanUpdate);
+    [RelayCommand] private Task RepairAsync()=>Submit(PostgreSqlMaintenanceAction.Repair,CanRepair);
+    [RelayCommand] private Task BackupAsync()=>Submit(PostgreSqlMaintenanceAction.Backup,CanBackup);
+    [RelayCommand] private Task RestoreAsync()=>Submit(PostgreSqlMaintenanceAction.Restore,CanRestore);
+    [RelayCommand] private Task ReinstallAsync()=>Submit(PostgreSqlMaintenanceAction.Reinstall,CanReinstall);
+    [RelayCommand] private Task KeepDataAsync()=>Submit(PostgreSqlMaintenanceAction.UninstallKeepData,CanBackup);
+    [RelayCommand] private Task DeleteDataAsync()=>Submit(PostgreSqlMaintenanceAction.UninstallDeleteData,CanDelete);
+    private async Task Submit(PostgreSqlMaintenanceAction action,bool allowed)
+    {
+        if(!allowed)return;
+        var command=new PostgreSqlMaintenanceCommand(action,Snapshot!.InstanceId!.Value,Snapshot.Revision,
+            action is PostgreSqlMaintenanceAction.Update or PostgreSqlMaintenanceAction.Repair or PostgreSqlMaintenanceAction.Reinstall?Plan!.Candidate:null,
+            action==PostgreSqlMaintenanceAction.Restore?SelectedBackup!.Id:null,
+            action==PostgreSqlMaintenanceAction.UninstallDeleteData?DeleteConfirmation:null);
+        Busy=true;
+        try{if(ConfirmAsync is null||!await ConfirmAsync(command)||invalid)return;pending=new(true,Maintenance:command);await Send();}finally{Busy=false;}
+    }
+    [RelayCommand] private async Task RecoverAsync()
+    {
+        if(!CanRecover)return;var original=Snapshot!.PendingOperationId;Busy=true;
+        try{if(ConfirmAsync is null||!await ConfirmAsync(null)||invalid)return;pending=new(true,RecoverOperationId:original);await Send();}finally{Busy=false;}
+    }
+    [RelayCommand] private async Task ResumeAsync(){if(!CanResume)return;Busy=true;try{await Send();}finally{Busy=false;}}
+    private async Task Send()
+    {
+        var previous=installation.Operation?.OperationId;
+        await installation.SubmitAsync(pending!.RecoverOperationId is null?InstallationOperationKind.Configure:InstallationOperationKind.Repair,pending);
+        if(!installation.HasPendingSubmission||installation.Operation?.OperationId is {} accepted&&accepted!=previous)pending=null;
+        Notify();
+    }
+    public void Invalidate(){invalid=true;Snapshot=null;pending=null;Notify();}
+    public void Dispose(){Invalidate();installation.Dispose();}
+}

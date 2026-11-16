@@ -124,6 +124,8 @@ internal static class HostServiceRegistration
                     services.GetRequiredService<RelaxKonOS.Server.Runtimes.IRuntimeManager>(),
                     services.GetRequiredService<Microsoft.Extensions.Options.IOptions<RelaxKonOS.Server.Runtimes.FrpRuntimeOptions>>(),
                     services.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>()));
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.PostgreSqlComponentAdapter>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Components.IComponentLifecycleAdapter>(services => services.GetRequiredService<RelaxKonOS.Server.Components.PostgreSqlComponentAdapter>());
         builder.Services.AddSingleton<RelaxKonOS.Server.Components.ComponentLifecycleRegistry>();
         // 网站发布事务归 webserver 模块（见 Startup/Modules/WebServerModule.cs）：它依赖证书模块，
         // 而 Nginx 的读状态与集成操作仍留在 Core，供部署与组件中心使用。

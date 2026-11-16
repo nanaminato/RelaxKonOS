@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:db="clr-namespace:RelaxKonOS.Client.Apps.Databases"
+ xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.Databases;assembly=RelaxKonOS.Protocol"
+ x:Class="RelaxKonOS.Client.Apps.Databases.Views.DatabaseAccounts" x:DataType="db:PostgreSqlAccountsViewModel">
+ <ScrollViewer HorizontalScrollBarVisibility="Disabled"><StackPanel Spacing="14">
+  <TextBlock Text="{loc:Loc database.accounts}" FontSize="24" />
+  <TextBlock Text="{loc:Loc database.accounts_scope}" TextWrapping="Wrap" />
+  <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" />
+  <Border Classes="app-panel" Padding="16"><StackPanel Spacing="10">
+   <TextBlock Text="{loc:Loc database.create_database}" FontSize="18" />
+   <TextBlock Text="{loc:Loc database.name_rule}" TextWrapping="Wrap" />
+   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+    <TextBox Text="{Binding NewDatabase}" PlaceholderText="{loc:Loc database.database_name}" />
+    <Button Grid.Column="1" Content="{loc:Loc database.create_database}" Command="{Binding CreateDatabaseCommand}" IsEnabled="{Binding CanCreateDatabase}" />
+   </Grid>
+  </StackPanel></Border>
+  <Border Classes="app-panel" Padding="16"><StackPanel Spacing="10">
+   <TextBlock Text="{loc:Loc database.database_name}" />
+   <ComboBox ItemsSource="{Binding Databases}" SelectedItem="{Binding SelectedDatabase}" HorizontalAlignment="Stretch">
+    <ComboBox.ItemTemplate><DataTemplate x:DataType="protocol:PostgreSqlDatabase"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+   </ComboBox>
+   <TextBlock Text="{loc:Loc database.owner_role}" /><SelectableTextBlock Text="{Binding OwnerRole}" />
+   <TextBlock Text="{loc:Loc database.account_name}" />
+   <ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}" HorizontalAlignment="Stretch">
+    <ComboBox.ItemTemplate><DataTemplate x:DataType="protocol:PostgreSqlAccount"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+   </ComboBox>
+   <TextBlock Text="{loc:Loc database.connection_local}" TextWrapping="Wrap" />
+   <SelectableTextBlock Text="{Binding ConnectionInfo}" TextWrapping="Wrap" />
+   <TextBlock Text="{loc:Loc database.applications_need_update}" IsVisible="{Binding ApplicationsNeedUpdate}" TextWrapping="Wrap" />
+  </StackPanel></Border>
+  <Border Classes="app-panel" Padding="16"><StackPanel Spacing="10">
+   <TextBlock Text="{loc:Loc database.account_permissions}" FontSize="18" />
+   <TextBlock Text="{loc:Loc database.permission_hint}" TextWrapping="Wrap" />
+   <ComboBox ItemsSource="{Binding Permissions}" SelectedItem="{Binding SelectedPermission}" HorizontalAlignment="Stretch">
+    <ComboBox.ItemTemplate><DataTemplate x:DataType="db:PostgreSqlPermissionChoice"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+   </ComboBox>
+   <Button Content="{loc:Loc database.set_grant}" Command="{Binding SetGrantCommand}" IsEnabled="{Binding CanSetGrant}" HorizontalAlignment="Left" />
+   <TextBox Text="{Binding NewAccount}" PlaceholderText="{loc:Loc database.new_account_name}" />
+   <TextBlock Text="{loc:Loc database.password_rule}" TextWrapping="Wrap" />
+   <TextBox Text="{Binding Password}" PasswordChar="●" PlaceholderText="{loc:Loc database.new_password}" />
+   <TextBox Text="{Binding PasswordAgain}" PasswordChar="●" PlaceholderText="{loc:Loc database.repeat_password}" />
+   <WrapPanel ItemSpacing="10" LineSpacing="10">
+    <Button Content="{loc:Loc database.create_account}" Command="{Binding CreateAccountCommand}" IsEnabled="{Binding CanCreateAccount}" />
+    <Button Content="{loc:Loc database.change_password}" Command="{Binding ChangePasswordCommand}" IsEnabled="{Binding CanChangePassword}" />
+   </WrapPanel>
+   <TextBlock Text="{loc:Loc database.password_effect}" TextWrapping="Wrap" />
+  </StackPanel></Border>
+  <WrapPanel ItemSpacing="10">
+   <Button Content="{loc:Loc database.resume}" Command="{Binding ResumeCommand}" IsVisible="{Binding CanResume}" />
+   <Button Content="{loc:Loc database.recover}" Command="{Binding RecoverCommand}" IsVisible="{Binding CanRecover}" />
+  </WrapPanel>
+  <TextBlock Text="{Binding Installation.SummaryText}" TextWrapping="Wrap" />
+  <Expander Header="{loc:Loc common.operation_log}"><TextBox Text="{Binding Installation.OperationLog, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" /></Expander>
+ </StackPanel></ScrollViewer>
+</UserControl>

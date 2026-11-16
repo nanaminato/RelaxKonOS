@@ -230,7 +230,7 @@ public partial class ComponentCenterViewModel
                 ? LocalizedStatus.Key("component_center.native.platform_method.download")
                 : LocalizedStatus.Key("component_center.native.platform_method.none");
     /// <summary>Update and uninstall are only frozen for distribution packages in this build.</summary>
-    public bool ShowPackageChangeActions => IsSystemPackage || IsNativeInstaller || SelectedDefinition?.ComponentId is "frpc" or "frps";
+    public bool ShowPackageChangeActions => SelectedDefinition?.ComponentId != "postgresql" && (IsSystemPackage || IsNativeInstaller || SelectedDefinition?.ComponentId is "frpc" or "frps");
     /// <summary>A direct download can only be installed here; saying so is part of the answer.</summary>
     public bool ShowInstallOnlyNote => IsDirectDownload && !ShowPackageChangeActions;
     [RelayCommand] private async Task UpdatePackageAsync() => await PreparePackageChangeAsync(RuntimeChange.Update);
@@ -273,6 +273,7 @@ public partial class ComponentCenterViewModel
             "mihomo" => new MihomoInstallationRequest(true, FrozenPackage: execution),
             "nginx" => new NginxInstallationRequest(true, FrozenPackage: execution),
             "squid" => new SquidInstallationRequest(true, execution),
+            "postgresql" => new RelaxKonOS.Protocol.Databases.PostgreSqlInstallationRequest(true, execution),
             "samba" => new SmbInstallationRequest(true, execution),
             "docker" => new DockerInstallationRequest(true, execution),
             "git" => new GitInstallationRequest(true, execution),
@@ -341,6 +342,19 @@ public partial class ComponentCenterViewModel
         await PackageInstallation!.SubmitAsync(InstallationOperationKind.Repair, request);
     }
 
+    public bool CanRecoverPostgreSql => SelectedDefinition?.ComponentId == "postgresql" && Runtime.CanManage && !Runtime.IsInvalidated
+        && PackageInstallation is not null && !_packageInstallations.Values.Any(task => task.IsActive)
+        && SelectedComponentState is { State.RecoveryRequired: true, PendingOperationId: not null };
+    public Func<Task<bool>>? ConfirmPostgreSqlRecoveryAsync { get; set; }
+    [RelayCommand] private async Task RecoverPostgreSqlAsync()
+    {
+        if (!CanRecoverPostgreSql || SelectedComponentState?.PendingOperationId is not { } original
+            || ConfirmPostgreSqlRecoveryAsync is null || !await ConfirmPostgreSqlRecoveryAsync()) return;
+        if (!CanRecoverPostgreSql || SelectedComponentState?.PendingOperationId != original) return;
+        await PackageInstallation!.SubmitAsync(InstallationOperationKind.Repair,
+            new RelaxKonOS.Protocol.Databases.PostgreSqlInstallationRequest(true, RecoverOperationId: original));
+    }
+
     public bool CanRecoverPackage => SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git" or "tailscale" or "sing-box" or "mihomo"
         && Runtime.CanManage && !Runtime.IsInvalidated && PackageInstallation is not null
         && !_packageInstallations.Values.Any(task => task.IsActive)
@@ -386,7 +400,7 @@ public partial class ComponentCenterViewModel
     public bool ShowPackageFreeze => !ShowOfficialDownloads && _lifecycle is not null && HostPlatformKnown
         && (DeclaresSourceOnHost(ComponentSourceKind.SystemPackage) || DeclaresSourceOnHost(ComponentSourceKind.ManagedArchive) || IsNativeInstaller)
         && (SelectedDefinition?.ComponentId != "git" || IsSystemPackage)
-        && SelectedDefinition?.ComponentId is "nginx" or "squid" or "samba" or "docker" or "git" or "tailscale" or "frpc" or "frps" or "sing-box" or "mihomo";
+        && SelectedDefinition?.ComponentId is "postgresql" or "nginx" or "squid" or "samba" or "docker" or "git" or "tailscale" or "frpc" or "frps" or "sing-box" or "mihomo";
     public bool CanResolvePackage => ShowPackageFreeze && Runtime.CanRead && !IsRefreshingComponents && !IsResolvingPackage && PackageInstallation?.IsActive != true && !Runtime.IsInvalidated;
     public bool HasPackageFreeze => SelectedComponentFreeze is not null;
     public LocalizedStatus PackageInstalledText => LocalizedStatus.Format("component_center.package.installed",
@@ -509,7 +523,7 @@ public partial class ComponentCenterViewModel
 
     private void NotifyPackage()
     {
-        foreach (var property in new[] { nameof(ShowRegisterPackage), nameof(CanRegisterPackage), nameof(HasExternalPackageChange), nameof(ExternalPackageChangeText), nameof(RegisterPackageText), nameof(PackageSourceActionText), nameof(ShowPackageInstall), nameof(CanApplyPackagePlan), nameof(CanChangeInstalledPackage), nameof(IsSystemPackage), nameof(IsNativeInstaller), nameof(IsDirectDownload), nameof(PackageManagers), nameof(HasPackageManagerChoice), nameof(SelectedPackageManagerText), nameof(PackageMethodTitle), nameof(PackageMethodHint), nameof(PlatformMethodText), nameof(ShowPackageChangeActions), nameof(ShowInstallOnlyNote), nameof(CanRefreshPackageSources), nameof(CanRecoverPackage), nameof(PackageRecoveryText), nameof(PinnedArchiveCandidates), nameof(HasPinnedArchiveCandidates), nameof(PackageInstallation), nameof(CanInstallPackage), nameof(ShowPackageFreeze), nameof(CanResolvePackage), nameof(HasPackageFreeze),
+        foreach (var property in new[] { nameof(ShowRegisterPackage), nameof(CanRegisterPackage), nameof(HasExternalPackageChange), nameof(ExternalPackageChangeText), nameof(RegisterPackageText), nameof(PackageSourceActionText), nameof(ShowPackageInstall), nameof(CanApplyPackagePlan), nameof(CanChangeInstalledPackage), nameof(IsSystemPackage), nameof(IsNativeInstaller), nameof(IsDirectDownload), nameof(PackageManagers), nameof(HasPackageManagerChoice), nameof(SelectedPackageManagerText), nameof(PackageMethodTitle), nameof(PackageMethodHint), nameof(PlatformMethodText), nameof(ShowPackageChangeActions), nameof(ShowInstallOnlyNote), nameof(CanRefreshPackageSources), nameof(CanRecoverPackage), nameof(CanRecoverPostgreSql), nameof(PackageRecoveryText), nameof(PinnedArchiveCandidates), nameof(HasPinnedArchiveCandidates), nameof(PackageInstallation), nameof(CanInstallPackage), nameof(ShowPackageFreeze), nameof(CanResolvePackage), nameof(HasPackageFreeze),
             nameof(PackageInstalledText), nameof(PackageCandidateText), nameof(PackageRepositoryText),
             nameof(PackageDigestText), nameof(PackageAlsoInstallsText), nameof(PackageVerdictText), nameof(PackageStateText), nameof(HasPackageStateProblem) })
             OnPropertyChanged(property);

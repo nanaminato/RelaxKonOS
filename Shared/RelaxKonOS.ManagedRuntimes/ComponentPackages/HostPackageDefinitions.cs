@@ -28,5 +28,5 @@ public static class HostPackageDefinitions
             System.Text.RegularExpressions.RegexOptions.CultureInvariant);
         return match.Success && SingBoxRuntimeSupport.CapabilityFor(match.Groups["upstream"].Value) is not null;
     }
-    public static bool KnownPackage(string? package) => package is "sing-box" or "mihomo" or "nginx" or "squid" or "samba" or "docker-ce" or "git" or "tailscale";
+    public static bool KnownPackage(string? package) => package is "postgresql-16" or "sing-box" or "mihomo" or "nginx" or "squid" or "samba" or "docker-ce" or "git" or "tailscale";
 }

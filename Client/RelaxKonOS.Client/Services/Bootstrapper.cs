@@ -367,6 +367,9 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.ProcessGuardian.ProcessGuardianApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Firewall.FirewallApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Squid.SquidApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.Databases.DatabaseApp>();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.Databases.IPostgreSqlClient, RelaxKonOS.Client.Apps.Databases.PostgreSqlClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).RemoveAllLoggers();
         services.AddSingleton<RelaxKonOS.Client.Apps.ProxyServer.ProxyServerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>();
         services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDraftStore(Path.Combine(

@@ -19,7 +19,7 @@
 
 ## 建议推进方式
 
-2026-11-04 补充：[APP-005 数据库引擎管理](proposals/DatabaseManagement.md)已被用户明确提出需求，进入重点评估。重点为快速安装、账号密码修改与管理员恢复、外部访问控制，不扩展为完整 SQL 查询客户端。建议首批评估 PostgreSQL、MySQL，随后 MariaDB 和 Redis/Valkey；具体平台与安装模式待确定。该补充不表示已启动代码实施或数据库生命周期已通过验证。
+2026-11-04 补充：[APP-005 数据库引擎管理](proposals/DatabaseManagement.md)已被用户明确提出需求，进入重点评估。重点为快速安装、账号密码修改与管理员恢复、外部访问控制，不扩展为完整 SQL 查询客户端。建议首批评估 PostgreSQL、MySQL，随后 MariaDB 和 Redis/Valkey；2026-11-16 已建立[领域设计与跟踪](../applications/RelaxKonOS.DatabaseManager.Design.md)：建议先完成 PostgreSQL 单实例闭环，再接 MySQL，首个候选验收组合为 Ubuntu 24.04 x64 直接安装 PostgreSQL 16；DB-01 已核实官方签名来源及 16.15/16.2 制品，DB-02 已开始专属预检与初始化规划。Windows 直接安装和 Linux Docker 分阶段验收。基础实现和隔离原生检查不表示完整数据库生命周期或客户端闭环已通过验证。
 
 首发三项选择备份恢复、文件同步、网络诊断。它们分别解决数据安全、数据流动和服务可达性，能复用现有文件、任务、站点及网络上下文。
 

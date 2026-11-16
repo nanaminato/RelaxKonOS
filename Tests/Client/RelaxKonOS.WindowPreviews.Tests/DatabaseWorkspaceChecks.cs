@@ -1,0 +1,183 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Reflection;
+using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Protocol.Common;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media.Imaging;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using RelaxKonOS.Client.Apps.Databases;
+using RelaxKonOS.Client.Apps.Databases.Views;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Protocol.Databases;
+using RelaxKonOS.Protocol.Installations;
+
+internal static class DatabaseWorkspaceChecks
+{
+    public static void Run(ShellSettings settings)
+    {
+        void Check(bool ok,string label) { if(!ok)throw new Exception(label);Console.WriteLine("PASS Database "+label); }
+        var fake=new Client();
+        using var model=new DatabaseViewModel(fake) { CanManage=true,
+            Installation=new(null!,null!,InstallationServiceId.PostgreSql,"test",()=>Task.CompletedTask,()=>Task.FromResult<string?>(null)) };
+        model.RefreshAsync().GetAwaiter().GetResult();
+        Check(model.CanInitialize && !model.CanStart && !model.CanStop,"installed engine exposes only initialization");
+        var prompted=false;model.ChoosePortAsync=()=>{prompted=true;return Task.FromResult<int?>(null);};
+        model.InitializeCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(prompted && model.Installation.Operation is null,"cancelled initialization sends no request");
+        model.Snapshot=fake.State with { InstanceId=Guid.NewGuid(),Running=true,ConnectionVerified=true };
+        Check(!model.CanInitialize && model.CanStop && model.CanVerify && !model.CanStart,"running instance exposes stop and verify");
+        model.Snapshot=model.Snapshot with { PendingOperationId=Guid.NewGuid() };
+        Check(!model.CanStop && !model.CanVerify && model.CanRecover,"pending transaction blocks ordinary actions");
+        model.Snapshot=model.Snapshot with { PendingOperationId=null,Running=false,ConnectionVerified=false };
+        Check(model.CanStart && !model.CanStop,"stopped instance exposes start");
+        model.CanManage=false;model.NotifyState();Check(!model.CanStart && !model.CanRecover,"viewer cannot modify state");model.CanManage=true;
+        var output=Path.Combine(AppContext.BaseDirectory,"preview-qa","database");Directory.CreateDirectory(output);
+        foreach(var language in new[]{"zh-CN","en-US","ja-JP"})
+        {
+            settings.Language=language;Dispatcher.UIThread.RunJobs();
+            foreach(var size in new[]{new PixelSize(980,700),new PixelSize(760,580)})
+            {
+                var view=new DatabaseWorkspace { DataContext=model };
+                var window=new Window { Width=size.Width,Height=size.Height,Content=view };
+                window.Show();Dispatcher.UIThread.RunJobs();window.UpdateLayout();
+                Check(view.GetVisualDescendants().OfType<Button>().Any(x=>x.IsVisible && x.Command==model.StartCommand),"start control renders in "+language);
+                Check(!view.GetVisualDescendants().OfType<TextBlock>().Any(x=>x.Text?.StartsWith("database.")==true),"localized overview in "+language);
+                using(var bitmap=new RenderTargetBitmap(size)){bitmap.Render(window);bitmap.Save(Path.Combine(output,language+"-"+size.Width+".png"));}
+                window.Close();Dispatcher.UIThread.RunJobs();
+            }
+        }
+        using var handler = new LostResponseHandler();
+        using var http = new HttpClient(handler);
+        model.Installation.Dispose();
+        model.Installation = new(new InstallationClient(http, DispatchProxy.Create<IAuthSession, EntrySession>()), null!,
+            InstallationServiceId.PostgreSql, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+        model.ConfirmAsync = (_, _) => Task.FromResult(true);
+        model.StartCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(model.CanResume && !model.CanStart && !model.CanStop, "lost response preserves original request and blocks new work");
+        model.Snapshot = model.Snapshot! with { Revision = 99 };
+        model.ResumeCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(handler.Bodies.Count == 2 && handler.Bodies[0] == handler.Bodies[1] && handler.Keys[0] == handler.Keys[1],
+            "retry preserves exact command and idempotency key despite refreshed state");
+        Check(!model.CanResume, "accepted original request clears retry state");
+        using var adminHandler = new LostResponseHandler(InstallationServiceId.PostgreSqlAdminRecovery);
+        using var adminHttp = new HttpClient(adminHandler);
+        using var adminModel = new DatabaseViewModel(fake) { CanManage = true, Snapshot = model.Snapshot! with { Managed = false, ConnectionVerified = false, ProblemCode = "database.native_failed" },
+            Installation = new(null!, null!, InstallationServiceId.PostgreSql, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null)),
+            AdminRecoveryInstallation = new(new InstallationClient(adminHttp, DispatchProxy.Create<IAuthSession, EntrySession>()), null!,
+                InstallationServiceId.PostgreSqlAdminRecovery, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null)) };
+        Check(adminModel.CanAdminRecovery, "lost peer identity still exposes dedicated recovery");
+        adminModel.ConfirmAdminRecoveryAsync = () => Task.FromResult(false);
+        adminModel.AdminRecoveryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(adminHandler.Bodies.Count == 0, "cancelled administrator recovery has no effect");
+        adminModel.ConfirmAdminRecoveryAsync = () => Task.FromResult(true);
+        adminModel.AdminRecoveryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(adminModel.CanResumeAdminRecovery && !adminModel.CanAdminRecovery && !adminModel.CanStart, "lost recovery response blocks new operations");
+        adminModel.Snapshot = adminModel.Snapshot! with { Revision = 1000 };
+        adminModel.ResumeAdminRecoveryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(adminHandler.Bodies.Count == 2 && adminHandler.Bodies[0] == adminHandler.Bodies[1] && adminHandler.Keys[0] == adminHandler.Keys[1],
+            "administrator recovery retry preserves original intent and key");
+        adminModel.Snapshot = adminModel.Snapshot! with { PendingOperationId = Guid.NewGuid(), PendingAdminRecovery = new(adminModel.Snapshot.InstanceId!.Value, 2) };
+        Check(adminModel.CanAdminRecovery && !adminModel.CanRecover, "administrator pending operation uses dedicated recovery entry");
+        foreach (var language in new[] { "zh-CN", "en-US", "ja-JP" })
+        {
+            settings.Language = language; Dispatcher.UIThread.RunJobs();
+            var maintenance = new DatabaseMaintenance { DataContext = adminModel };
+            var window = new Window { Width = 760, Height = 680, Content = maintenance };
+            window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+            Check(maintenance.GetVisualDescendants().OfType<Button>().Any(x => x.Command == adminModel.AdminRecoveryCommand), "administrator recovery control renders in " + language);
+            Check(!maintenance.GetVisualDescendants().OfType<TextBlock>().Any(x => x.Text?.StartsWith("database.") == true), "administrator recovery copy localized in " + language);
+            using (var bitmap = new RenderTargetBitmap(new PixelSize(760, 680))) { bitmap.Render(window); bitmap.Save(Path.Combine(output, "admin-" + language + ".png")); }
+            window.Close(); Dispatcher.UIThread.RunJobs();
+        }
+        adminModel.CanManage = false;
+        Check(!adminModel.CanAdminRecovery && !adminModel.CanResumeAdminRecovery, "viewer cannot recover administrator");
+        adminModel.Invalidate();
+        Check(!adminModel.CanAdminRecovery, "invalidated session cannot recover administrator");
+        using var remoteHandler=new LostResponseHandler(InstallationServiceId.PostgreSqlRemoteAccess);
+        using var remoteHttp=new HttpClient(remoteHandler);
+        using var remoteModel=new PostgreSqlRemoteViewModel(null!,new(new InstallationClient(remoteHttp,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,
+            InstallationServiceId.PostgreSqlRemoteAccess,"test",()=>Task.CompletedTask,()=>Task.FromResult<string?>(null)))
+        { CanManage=true,Snapshot=model.Snapshot! with { Running=true,ConnectionVerified=true }, ListenAddress="192.168.10.5",ServerName="db.example.test",Sources="0.0.0.0/0",
+            SelectedAccount=new("appdb","appuser",11,PostgreSqlPermission.ReadWrite,Guid.NewGuid(),1,false),
+            SelectedCertificate=System.Text.Json.JsonSerializer.Deserialize<RelaxKonOS.Protocol.Certificates.CertificateDto>("{\"id\":\""+Guid.NewGuid()+"\",\"primaryDomain\":\"db.example.test\",\"fingerprintSha256\":\""+new string('A',64)+"\"}") };
+        remoteModel.ConfirmAsync=()=>Task.FromResult(true);
+        remoteModel.EnableCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(remoteHandler.Bodies.Count==0,"remote access rejects unrestricted source before submission");
+        remoteModel.Sources="192.168.10.0/24";remoteModel.ConfirmAsync=()=>Task.FromResult(false);
+        remoteModel.EnableCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(remoteHandler.Bodies.Count==0,"cancelled remote access does not submit");
+        remoteModel.ConfirmAsync=()=>Task.FromResult(true);
+        remoteModel.EnableCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(remoteModel.CanResume && !remoteModel.CanEnable,"remote response loss preserves intent and blocks new work");
+        remoteModel.Sources="192.168.20.0/24";
+        remoteModel.ResumeCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(remoteHandler.Bodies.Count==2 && remoteHandler.Bodies[0]==remoteHandler.Bodies[1] && remoteHandler.Keys[0]==remoteHandler.Keys[1],"remote retry keeps original source policy and key");
+        foreach(var language in new[]{"zh-CN","en-US","ja-JP"})
+        {
+            settings.Language=language;Dispatcher.UIThread.RunJobs();
+            var view=new DatabaseRemoteAccess { DataContext=remoteModel };var window=new Window { Width=760,Height=680,Content=view };
+            window.Show();Dispatcher.UIThread.RunJobs();window.UpdateLayout();
+            Check(!view.GetVisualDescendants().OfType<TextBlock>().Any(x=>x.Text?.StartsWith("database.")==true),"remote access localized in "+language);
+            using(var bitmap=new RenderTargetBitmap(new PixelSize(760,680))){bitmap.Render(window);bitmap.Save(Path.Combine(output,"remote-"+language+".png"));}
+            window.Close();Dispatcher.UIThread.RunJobs();
+        }
+        remoteModel.CanManage=false;Check(!remoteModel.CanEnable && !remoteModel.CanClose,"viewer cannot change remote access");
+        remoteModel.Invalidate();Check(!remoteModel.CanEnable,"invalidated session cannot expose database");
+        using var maintenanceHandler=new LostResponseHandler(InstallationServiceId.PostgreSqlMaintenance);
+        using var maintenanceHttp=new HttpClient(maintenanceHandler);
+        using var maintenanceModel=new PostgreSqlMaintenanceViewModel(new Client(),new(new InstallationClient(maintenanceHttp,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,
+            InstallationServiceId.PostgreSqlMaintenance,"test",()=>Task.CompletedTask,()=>Task.FromResult<string?>(null)))
+            {CanManage=true,Snapshot=model.Snapshot! with {PendingOperationId=null,ProblemCode=null},ConfirmAsync=_=>Task.FromResult(false)};
+        Check(maintenanceModel.CanBackup&&!maintenanceModel.CanDelete&&!maintenanceModel.CanUpdate,"maintenance requires a frozen target and typed deletion confirmation");
+        maintenanceModel.BackupCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(maintenanceHandler.Bodies.Count==0,"cancelled backup makes no request");
+        maintenanceModel.DeleteConfirmation=maintenanceModel.Snapshot!.InstanceId!.Value.ToString("N");
+        Check(maintenanceModel.CanDelete,"exact instance confirmation enables destructive removal");
+        maintenanceModel.ConfirmAsync=_=>Task.FromResult(true);
+        maintenanceModel.BackupCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(maintenanceModel.CanResume&&!maintenanceModel.CanDelete,"lost maintenance response blocks new destructive work");
+        maintenanceModel.ResumeCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(maintenanceHandler.Bodies.Count==2&&maintenanceHandler.Bodies[0]==maintenanceHandler.Bodies[1]&&maintenanceHandler.Keys[0]==maintenanceHandler.Keys[1],"maintenance retry retains frozen request and idempotency key");
+        foreach(var language in new[]{"zh-CN","en-US","ja-JP"})
+        {
+            settings.Language=language;Dispatcher.UIThread.RunJobs();
+            var hostModel=new DatabaseViewModel(new Client()){MaintenanceManager=maintenanceModel};
+            var view=new DatabaseMaintenance{DataContext=hostModel};var window=new Window{Width=980,Height=760,Content=view};
+            window.Show();Dispatcher.UIThread.RunJobs();window.UpdateLayout();
+            Check(view.GetVisualDescendants().OfType<Button>().Any(x=>x.Command==maintenanceModel.BackupCommand),"maintenance controls render in "+language);
+            Check(!view.GetVisualDescendants().OfType<TextBlock>().Any(x=>x.Text?.StartsWith("database.")==true),"maintenance copy localized in "+language);
+            using(var bitmap=new RenderTargetBitmap(new PixelSize(980,760))){bitmap.Render(window);bitmap.Save(Path.Combine(output,"maintenance-"+language+".png"));}
+            window.Close();Dispatcher.UIThread.RunJobs();
+        }
+        maintenanceModel.CanManage=false;Check(!maintenanceModel.CanBackup&&!maintenanceModel.CanRecover,"viewer cannot maintain instance");
+        maintenanceModel.Invalidate();Check(!maintenanceModel.CanResume,"invalidated maintenance session cannot replay");
+        model.Invalidate();Check(!model.CanStart && !model.CanRecover,"session invalidation disables stale window");
+        Console.WriteLine("Database previews: "+output);
+    }
+    private sealed class LostResponseHandler(InstallationServiceId service = InstallationServiceId.PostgreSql) : HttpMessageHandler
+    {
+        public List<string> Bodies = []; public List<string> Keys = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                Bodies.Add(await request.Content!.ReadAsStringAsync(ct)); Keys.Add(request.Headers.GetValues("Idempotency-Key").Single());
+                if (Bodies.Count == 1) throw new HttpRequestException("fixture lost response");
+            }
+            return new(HttpStatusCode.Accepted) { Content = JsonContent.Create(new InstallationOperationDto(Guid.NewGuid(),
+                service, InstallationOperationKind.Configure, InstallationOperationState.Succeeded,
+                InstallationStage.Completed, null, null, DateTimeOffset.UtcNow, null, DateTimeOffset.UtcNow, false), options: RelaxKonOSJsonOptions.Default) };
+        }
+    }
+    private sealed class Client:IPostgreSqlClient
+    {
+        public PostgreSqlState State=new(true,true,true,"16.15-0ubuntu0.24.04.1",2,null,55432,false,false,null,null,null);
+        public Task StageCredentialAsync(PostgreSqlCredentialRequest request, CancellationToken ct) => Task.CompletedTask;
+        public Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct)=>ReadAsync(ct);
+        public Task<PostgreSqlState> ReadAsync(CancellationToken ct)=>Task.FromResult(State);
+    }
+}

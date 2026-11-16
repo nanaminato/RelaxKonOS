@@ -12,13 +12,14 @@ public static class ComponentIds
     public const string Mihomo = "mihomo";
     public const string Nginx = "nginx";
     public const string Squid = "squid";
+    public const string PostgreSql = "postgresql";
     public const string Samba = "samba";
     public const string Docker = "docker";
     public const string Frpc = "frpc";
     public const string Frps = "frps";
     public const string Git = "git";
     public const string Tailscale = "tailscale";
-    public static bool Known(string? componentId) => componentId is SingBox or Mihomo or Nginx or Squid or Samba or Docker or Frpc or Frps or Git or Tailscale;
+    public static bool Known(string? componentId) => componentId is PostgreSql or SingBox or Mihomo or Nginx or Squid or Samba or Docker or Frpc or Frps or Git or Tailscale;
 }
 
 /// <summary>

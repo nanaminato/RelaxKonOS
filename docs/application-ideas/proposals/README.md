@@ -9,7 +9,7 @@
 | APP-001 | [备份与恢复中心](BackupRecovery.md) |
 | APP-002 | [文件同步与云存储](FileSync.md) |
 | APP-003 | [服务器迁移助手](ServerMigration.md) |
-| APP-005 | [数据库引擎管理](DatabaseManagement.md) |
+| APP-005 | [数据库引擎管理](DatabaseManagement.md) · [领域设计与跟踪](../../applications/RelaxKonOS.DatabaseManager.Design.md) |
 | APP-007 | [存储空间分析与清理](StorageAnalysis.md) |
 | APP-013 | [网络诊断工作台](NetworkDiagnostics.md) |
 | APP-016 | [服务可用性巡检](AvailabilityChecks.md) |

@@ -22,6 +22,7 @@ public sealed record ApplicationAvailability(AppId ApplicationId, string? Server
     public bool CanOpen => State is ComponentAvailabilityKind.Installed or ComponentAvailabilityKind.NotRequired
         // An external copy is usable only where the application itself resolves the executable; the
         // catalog owns that closed set so no dependency is waived by accident.
+        || ComponentId == "postgresql" && State is ComponentAvailabilityKind.Recovery or ComponentAvailabilityKind.Busy
         || State is ComponentAvailabilityKind.External && ComponentCatalog.AllowsExternalLaunch(ComponentId);
 }
 

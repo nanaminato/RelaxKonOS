@@ -4,9 +4,9 @@ using RelaxKonOS.Protocol.Common;
 namespace RelaxKonOS.Protocol.Installations;
 
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationServiceId>))]
-public enum InstallationServiceId { Smb, Nginx, Frp, Mihomo, Docker, Git, SingBox, Squid, Tailscale }
+public enum InstallationServiceId { Smb, Nginx, Frp, Mihomo, Docker, Git, SingBox, Squid, Tailscale, PostgreSql, PostgreSqlAccounts, PostgreSqlAdminRecovery, PostgreSqlRemoteAccess, PostgreSqlMaintenance }
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationOperationKind>))]
-public enum InstallationOperationKind { Install, Upgrade, Repair, Uninstall, Rollback }
+public enum InstallationOperationKind { Install, Upgrade, Repair, Uninstall, Rollback, Configure }
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationOperationState>))]
 public enum InstallationOperationState { Queued, Running, Succeeded, Failed, Cancelled, Interrupted }
 [JsonConverter(typeof(JsonStringEnumConverter<InstallationStage>))]

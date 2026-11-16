@@ -118,6 +118,7 @@ internal static class ServerPipeline
         if (eventAlertsOptions.Enabled) app.MapEventAlertEndpoints();
         app.MapRuntimeCatalogEndpoints();
         app.MapComponentEndpoints();
+        app.MapPostgreSqlEndpoints();
         app.MapServerModuleManagementEndpoints();
         app.MapModulePrivilegeEndpoints();
         app.MapTaskPlanningEndpoints();

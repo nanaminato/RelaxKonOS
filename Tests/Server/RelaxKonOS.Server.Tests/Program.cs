@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args is ["--postgresql-only"]) { await PostgreSqlChecks.RunAsync(); return; }
 if (args is ["--firewall-boundary-only"])
 {
     await FirewallBoundaryChecks.RunAsync();

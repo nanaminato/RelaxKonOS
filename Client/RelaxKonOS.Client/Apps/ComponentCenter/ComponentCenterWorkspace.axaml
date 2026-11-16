@@ -464,6 +464,7 @@
           <Button Classes="ghost-action" IsVisible="{Binding ShowPackageChangeActions}" Content="{loc:Loc component_center.native.action.Uninstall}"
                   Command="{Binding UninstallPackageCommand}" IsEnabled="{Binding CanChangeInstalledPackage}" />
          </WrapPanel>
+         <Button Classes="ghost-action" IsVisible="{Binding CanRecoverPostgreSql}" Content="{loc:Loc database.recover}" Command="{Binding RecoverPostgreSqlCommand}" />
          <Border Classes="inset-block" IsVisible="{Binding CanRecoverPackage}">
           <StackPanel Spacing="8">
            <TextBlock Text="{Binding PackageRecoveryText}" TextWrapping="Wrap" FontSize="12" />

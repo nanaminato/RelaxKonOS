@@ -1,0 +1,69 @@
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following additional packages will be installed:
+  adduser libbsd0 libc-bin libc6 libedit2 libgdbm-compat4t64 libgdbm6t64
+  libgssapi-krb5-2 libicu74 libjson-perl libk5crypto3 libkeyutils1 libkrb5-3
+  libkrb5support0 libldap2 libllvm17t64 libperl5.38t64 libpq5 libreadline8t64
+  libsasl2-2 libsasl2-modules-db libxml2 libxslt1.1 locales netbase openssl
+  perl perl-base perl-modules-5.38 postgresql-client-16
+  postgresql-client-common postgresql-common readline-common ssl-cert tzdata
+  ucf
+Suggested packages:
+  liblocale-gettext-perl cron quota ecryptfs-utils manpages glibc-doc
+  libnss-nis libnss-nisplus gdbm-l10n krb5-doc krb5-user ca-certificates
+  perl-doc libterm-readline-gnu-perl | libterm-readline-perl-perl make
+  libtap-harness-archive-perl postgresql-doc-16 readline-doc
+Recommended packages:
+  libjson-xs-perl krb5-locales libldap-common libsasl2-modules sysstat
+  logrotate
+The following NEW packages will be installed:
+  adduser libbsd0 libedit2 libgdbm-compat4t64 libgdbm6t64 libgssapi-krb5-2
+  libicu74 libjson-perl libk5crypto3 libkeyutils1 libkrb5-3 libkrb5support0
+  libldap2 libllvm17t64 libperl5.38t64 libpq5 libreadline8t64 libsasl2-2
+  libsasl2-modules-db libxml2 libxslt1.1 locales netbase openssl perl
+  perl-modules-5.38 postgresql-16 postgresql-client-16
+  postgresql-client-common postgresql-common readline-common ssl-cert tzdata
+  ucf
+The following packages will be upgraded:
+  libc-bin libc6 perl-base
+3 upgraded, 34 newly installed, 0 to remove and 3 not upgraded.
+Need to get 76.3 MB of archives.
+After this operation, 290 MB of additional disk space will be used.
+'http://archive.ubuntu.com/ubuntu/pool/main/p/perl/perl-base_5.38.2-3.2ubuntu0.7_amd64.deb' perl-base_5.38.2-3.2ubuntu0.7_amd64.deb 1827882 SHA256:38045b6be63d521ab389b2fe619f0d22ad0582191605e6108a4c51b452090265
+'http://archive.ubuntu.com/ubuntu/pool/main/g/glibc/libc6_2.39-0ubuntu8.12_amd64.deb' libc6_2.39-0ubuntu8.12_amd64.deb 3264258 SHA256:d821b41fc59cb4978ecd53bc83e5c964ac15d305c8d2ac4c8a35aebe55010fb9
+'http://archive.ubuntu.com/ubuntu/pool/main/g/glibc/libc-bin_2.39-0ubuntu8.12_amd64.deb' libc-bin_2.39-0ubuntu8.12_amd64.deb 681714 SHA256:22f0393621e72ed1b53d228ee332180269182b5445761c7d7b74f5cba75a1dd6
+'http://archive.ubuntu.com/ubuntu/pool/main/p/perl/perl-modules-5.38_5.38.2-3.2ubuntu0.7_all.deb' perl-modules-5.38_5.38.2-3.2ubuntu0.7_all.deb 3109958 SHA256:8d2652aa897458aa2482be38d1d0fb26745e87450ab5b620b33180ab0078190c
+'http://archive.ubuntu.com/ubuntu/pool/main/g/gdbm/libgdbm6t64_1.23-5.1build1_amd64.deb' libgdbm6t64_1.23-5.1build1_amd64.deb 34440 SHA256:18d6d74a5c038b458d95ba0c0909e0f086cd50bb9a0fee32697902724fc5645e
+'http://archive.ubuntu.com/ubuntu/pool/main/g/gdbm/libgdbm-compat4t64_1.23-5.1build1_amd64.deb' libgdbm-compat4t64_1.23-5.1build1_amd64.deb 6710 SHA256:fb8564afd7b7d74d55207070ba50339478e22d29a39ec740dc482f069ac7ee65
+'http://archive.ubuntu.com/ubuntu/pool/main/p/perl/libperl5.38t64_5.38.2-3.2ubuntu0.7_amd64.deb' libperl5.38t64_5.38.2-3.2ubuntu0.7_amd64.deb 4863750 SHA256:134f2d9341d97b8a3582df4d646f8da19d505aa75eb42e67cefb7570c42be7cc
+'http://archive.ubuntu.com/ubuntu/pool/main/p/perl/perl_5.38.2-3.2ubuntu0.7_amd64.deb' perl_5.38.2-3.2ubuntu0.7_amd64.deb 231404 SHA256:5e95eaa0db06b3eb4c669c033a6a9347f47c2923c8fd1297c7d9c553c4f8d153
+'http://archive.ubuntu.com/ubuntu/pool/main/a/adduser/adduser_3.137ubuntu1_all.deb' adduser_3.137ubuntu1_all.deb 100872 SHA256:542aff2395eb912a56833e11a78076342779689d8fede7adcf08d1d6b0d0cd8b
+'http://archive.ubuntu.com/ubuntu/pool/main/libj/libjson-perl/libjson-perl_4.10000-1_all.deb' libjson-perl_4.10000-1_all.deb 81896 SHA256:b88095b0b6307650f581c17240ea2cc7ba1676c6f7eb72b0066eaf159215d926
+'http://archive.ubuntu.com/ubuntu/pool/main/n/netbase/netbase_6.4_all.deb' netbase_6.4_all.deb 13112 SHA256:8cdbc9c3dca01e660759bf9d840f72e45ac72faf5d19ca1faecacaf6a60c1a87
+'http://archive.ubuntu.com/ubuntu/pool/main/p/postgresql-common/postgresql-client-common_257build1.1_all.deb' postgresql-client-common_257build1.1_all.deb 36410 SHA256:696255bc15e9736edfcb8f7d0309deaf35d761233bd26e2db14d2ae8660a9602
+'http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/openssl_3.0.13-0ubuntu3.16_amd64.deb' openssl_3.0.13-0ubuntu3.16_amd64.deb 1003702 SHA256:675b84971ffd4467707008c25ef7520f90ea7c23ef27b7a76b0dccf1d7c4dc3f
+'http://archive.ubuntu.com/ubuntu/pool/main/s/ssl-cert/ssl-cert_1.1.2ubuntu1_all.deb' ssl-cert_1.1.2ubuntu1_all.deb 17826 SHA256:99654cc8dd7e2cd4cc907504f7564c0055d8cb06e1bf5aa93f822f007981d271
+'http://archive.ubuntu.com/ubuntu/pool/main/u/ucf/ucf_3.0043%2bnmu1_all.deb' ucf_3.0043+nmu1_all.deb 56522 SHA256:397e541af11db776ed7facf1674ee37b56e7de51348c9f077d7a283912c4b458
+'http://archive.ubuntu.com/ubuntu/pool/main/p/postgresql-common/postgresql-common_257build1.1_all.deb' postgresql-common_257build1.1_all.deb 161444 SHA256:5363ba39f18ede7f54776d41356d7dd6e859d089ee0092096050500c9d4413f5
+'http://archive.ubuntu.com/ubuntu/pool/main/libb/libbsd/libbsd0_0.12.1-1build1.1_amd64.deb' libbsd0_0.12.1-1build1.1_amd64.deb 41238 SHA256:f3857b0863ac5cfd4263e9bf6cfb1d4be88d5321e4070d5bc2b62b0949e6c86f
+'http://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libkrb5support0_1.20.1-6ubuntu2.10_amd64.deb' libkrb5support0_1.20.1-6ubuntu2.10_amd64.deb 34942 SHA256:9224ede3246a82a845ea97652ecfae57f88e8d8f520d8a186f9157167574fb34
+'http://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libk5crypto3_1.20.1-6ubuntu2.10_amd64.deb' libk5crypto3_1.20.1-6ubuntu2.10_amd64.deb 81944 SHA256:273f7cc95a68d927d7f71c3e78b7717a16a8d86e646a206bae7bf797150ae9db
+'http://archive.ubuntu.com/ubuntu/pool/main/k/keyutils/libkeyutils1_1.6.3-3build1_amd64.deb' libkeyutils1_1.6.3-3build1_amd64.deb 9490 SHA256:0679f198b0128179e46cdf956fb2022c23c758664c00bc8efa0382d509683a8a
+'http://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libkrb5-3_1.20.1-6ubuntu2.10_amd64.deb' libkrb5-3_1.20.1-6ubuntu2.10_amd64.deb 347568 SHA256:60b48c5a3233f1d8caba30d6573edc8e131911ab6d63adcd664f7cbe62708362
+'http://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libgssapi-krb5-2_1.20.1-6ubuntu2.10_amd64.deb' libgssapi-krb5-2_1.20.1-6ubuntu2.10_amd64.deb 142830 SHA256:0d4a0187bcdbbe3e6a10bfa574100087d12052d0d0ef28614fd6210021c587b2
+'http://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu74_74.2-1ubuntu3.1_amd64.deb' libicu74_74.2-1ubuntu3.1_amd64.deb 10860078 SHA256:c9a70989678660eed9a1e904c74fa043da8bec8e2036856fc16e31ced79b04f8
+'http://archive.ubuntu.com/ubuntu/pool/main/r/readline/readline-common_8.2-4build1_all.deb' readline-common_8.2-4build1_all.deb 56484 SHA256:879bfd7f8a9bc4c0f7cdc777cdd8bc6de5f8c4a2ac80c060322a1b22f13504bb
+'http://archive.ubuntu.com/ubuntu/pool/main/r/readline/libreadline8t64_8.2-4build1_amd64.deb' libreadline8t64_8.2-4build1_amd64.deb 152856 SHA256:563977a16df03b611f5239cc1e9a0426e86479fcc616b5c9e200ea32063119e5
+'http://archive.ubuntu.com/ubuntu/pool/main/libx/libxml2/libxml2_2.9.14%2bdfsg-1.3ubuntu3.10_amd64.deb' libxml2_2.9.14+dfsg-1.3ubuntu3.10_amd64.deb 763592 SHA256:c5a065f85c1e6f605741e365e40cad71c3ceb0e85e2791400bd35b8896e12ad1
+'http://archive.ubuntu.com/ubuntu/pool/main/g/glibc/locales_2.39-0ubuntu8.12_all.deb' locales_2.39-0ubuntu8.12_all.deb 4231592 SHA256:0047f997c3799818514d1d08fece7cf2614a61e5505678bcf0c9558587a85d1d
+'http://archive.ubuntu.com/ubuntu/pool/main/t/tzdata/tzdata_2026e-0ubuntu0.24.04.1_all.deb' tzdata_2026e-0ubuntu0.24.04.1_all.deb 282136 SHA256:2f6794a7f31753fc947d9ac02ff03ea46510f34864f9d132a93d7b105e3c4447
+'http://archive.ubuntu.com/ubuntu/pool/main/libe/libedit/libedit2_3.1-20230828-1build1_amd64.deb' libedit2_3.1-20230828-1build1_amd64.deb 97586 SHA256:3afbc8ddf835049dd4d88275b9d13680e4c4cdd59e191cbd63424152cc08e00e
+'http://archive.ubuntu.com/ubuntu/pool/main/c/cyrus-sasl2/libsasl2-modules-db_2.1.28%2bdfsg1-5ubuntu3.1_amd64.deb' libsasl2-modules-db_2.1.28+dfsg1-5ubuntu3.1_amd64.deb 20354 SHA256:1f13548b1774cd9c70c50b8c3267204a101334a4d2f979338896ba5a4c6f81b8
+'http://archive.ubuntu.com/ubuntu/pool/main/c/cyrus-sasl2/libsasl2-2_2.1.28%2bdfsg1-5ubuntu3.1_amd64.deb' libsasl2-2_2.1.28+dfsg1-5ubuntu3.1_amd64.deb 53194 SHA256:eda097f98dcb3a08b9ce157d6191d140e4885c1cba47b683c94b8ca45e88f458
+'http://archive.ubuntu.com/ubuntu/pool/main/o/openldap/libldap2_2.6.10%2bdfsg-0ubuntu0.24.04.1_amd64.deb' libldap2_2.6.10+dfsg-0ubuntu0.24.04.1_amd64.deb 197620 SHA256:7f3f8e565401256f21d5aa562c9f92dbb63537b73aaea6283e4db5264f1598f4
+'http://archive.ubuntu.com/ubuntu/pool/main/l/llvm-toolchain-17/libllvm17t64_17.0.6-9ubuntu1_amd64.deb' libllvm17t64_1%3a17.0.6-9ubuntu1_amd64.deb 26162724 SHA256:1863b5459ca4a6691f5e039e76157f074ee08b48176267642ee4dfea065f5db4
+'http://archive.ubuntu.com/ubuntu/pool/main/p/postgresql-16/libpq5_16.15-0ubuntu0.24.04.1_amd64.deb' libpq5_16.15-0ubuntu0.24.04.1_amd64.deb 151262 SHA256:3f96dd36bcd7841172c1ead4965da20a193bb9ccf9a93a3f5a3ac7f56369dbb1
+'http://archive.ubuntu.com/ubuntu/pool/main/libx/libxslt/libxslt1.1_1.1.39-0exp1ubuntu0.24.04.3_amd64.deb' libxslt1.1_1.1.39-0exp1ubuntu0.24.04.3_amd64.deb 167806 SHA256:e716daf96ea2526cab92e5cc4708739d5f2f4b89fb76782dfda7f49283eeeb40
+'http://archive.ubuntu.com/ubuntu/pool/main/p/postgresql-16/postgresql-client-16_16.15-0ubuntu0.24.04.1_amd64.deb' postgresql-client-16_16.15-0ubuntu0.24.04.1_amd64.deb 1301302 SHA256:4796f72e1a7270ad8c17b1ecb025cd453f692b42c10aaf89f6b476da61761eac
+'http://archive.ubuntu.com/ubuntu/pool/main/p/postgresql-16/postgresql-16_16.15-0ubuntu0.24.04.1_amd64.deb' postgresql-16_16.15-0ubuntu0.24.04.1_amd64.deb 15610426 SHA256:d60ae76fb862cd4cca7bfdcdcdcc271c5e1d75f6b7915305ce2d962735a4b666

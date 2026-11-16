@@ -73,7 +73,7 @@ public sealed class UnixSocketPrivilegedOperationTransport(PrivilegedHelperOptio
             nginxResultMayBeUnknown = request.Operation is PrivilegedOperationKind.NginxTrackedReload or PrivilegedOperationKind.NginxTrackedLifecycle
                 || request.Operation == PrivilegedOperationKind.NginxSystemServiceAction
                     && request.NginxServiceAction == NginxSystemServiceAction.Reload;
-            packageResultMayBeUnknown = request.Operation is PrivilegedOperationKind.ComponentPackageInstall
+            packageResultMayBeUnknown = request.Operation is PrivilegedOperationKind.PostgreSqlExecute or PrivilegedOperationKind.PostgreSqlRecover or PrivilegedOperationKind.ComponentPackageInstall
                 or PrivilegedOperationKind.ComponentPackageChange;
             await PrivilegedHelperSocketFraming.WriteAsync(stream, JsonSerializer.SerializeToUtf8Bytes(request), CancellationToken.None);
             using var responseTimeout = drainAfterDispatch
