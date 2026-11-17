@@ -26,7 +26,7 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
     public bool CanManage { get; set; }
     public PostgreSqlAccountsViewModel? AccountManager { get; set; }
     public PostgreSqlMaintenanceViewModel? MaintenanceManager { get; set; }
-    public bool MaintenanceBusy => MaintenanceManager?.Busy==true||MaintenanceManager?.HasPending==true||MaintenanceManager?.Installation.IsActive==true;
+    public bool MaintenanceBusy => MaintenanceManager?.Busy==true||MaintenanceManager?.HasPending==true||MaintenanceManager?.Installation.IsActive==true||MaintenanceManager?.ScheduleInstallation?.IsActive==true;
     public PostgreSqlRemoteViewModel? RemoteManager { get; set; }
     public Func<PostgreSqlAction, PostgreSqlState, Task<bool>>? ConfirmAsync { get; set; }
     public Func<Task<int?>>? ChoosePortAsync { get; set; }

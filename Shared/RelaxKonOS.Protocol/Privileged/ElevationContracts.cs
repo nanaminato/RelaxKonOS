@@ -19,6 +19,7 @@ public enum HostElevationCapability
     DatabaseAdminRecovery,
     DatabaseRemoteAccess,
     DatabaseMaintenance,
+    DatabaseBackupAutomation,
     NginxInstall,
     NginxLifecycle,
     NginxConfigurationWrite,

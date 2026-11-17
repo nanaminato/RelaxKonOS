@@ -16,7 +16,7 @@ public sealed record PostgreSqlState(bool Supported, bool Installed, bool Manage
     ComponentPackageTarget? Candidate = null, IReadOnlyList<PostgreSqlDatabase>? Databases = null,
     IReadOnlyList<PostgreSqlAccount>? Accounts = null, PostgreSqlAccountCommand? PendingAccount = null,
     PostgreSqlAdminRecoveryCommand? PendingAdminRecovery = null, PostgreSqlRemoteCommand? RemoteAccess = null, PostgreSqlRemoteCommand? PendingRemoteAccess = null, PostgreSqlMaintenanceCommand? PendingMaintenance = null,
-    IReadOnlyList<PostgreSqlBackup>? Backups = null, bool PackageRemoved = false, bool DataDeleted = false);
+    IReadOnlyList<PostgreSqlBackup>? Backups = null, bool PackageRemoved = false, bool DataDeleted = false, PostgreSqlBackupSchedule? BackupSchedule = null, RelaxKonOS.Protocol.Installations.InstallationOperationDto? ScheduledOperation = null);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record PostgreSqlInstallationRequest(bool Confirmed,

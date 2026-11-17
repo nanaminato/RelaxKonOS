@@ -110,6 +110,7 @@ public enum PrivilegedOperationKind
     /// </summary>
     PostgreSqlQuery,
     PostgreSqlMaintenancePlan,
+    PostgreSqlBackupScheduleQuery,
     PostgreSqlExecute,
     PostgreSqlRecover,
     ComponentPackageQuery,

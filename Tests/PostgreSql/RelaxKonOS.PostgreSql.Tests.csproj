@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="../../RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj" />
     <ProjectReference Include="../../Shared/RelaxKonOS.ManagedRuntimes/RelaxKonOS.ManagedRuntimes.csproj" />
+    <ProjectReference Include="../../RelaxKonOS.Server/RelaxKonOS.Server.csproj" />
     <None Include="Fixtures/*.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

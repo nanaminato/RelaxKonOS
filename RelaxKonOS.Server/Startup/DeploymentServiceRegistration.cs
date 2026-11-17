@@ -18,6 +18,9 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlAdminRecoveryInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlRemoteAccessInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlMaintenanceInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlBackupAutomationInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Databases.PostgreSqlBackupScheduler>();
+        builder.Services.AddHostedService(sp=>sp.GetRequiredService<RelaxKonOS.Server.Databases.PostgreSqlBackupScheduler>());
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.FrpInstallationService>();
         // Mihomo installs only through the managed catalog adapter. The fixed-manifest installer is gone,
         // so no request shape can reach the retired download/archive path.

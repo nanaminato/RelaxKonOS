@@ -17,11 +17,11 @@ public static partial class PrivilegedOperationExecutor
     private const string PgSuppression = "# RelaxKonOS pending PostgreSQL installation\ncreate_main_cluster = false\n";
     private static readonly SemaphoreSlim PgGate = new(1, 1);
     private static readonly JsonSerializerOptions PgJson = new() { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
-    private sealed record PgPending(Guid Id, string Identity, PostgreSqlInstallationRequest Request, string Phase);
+    private sealed record PgPending(Guid Id, string Identity, PostgreSqlInstallationRequest Request, string Phase, bool RestartAfterBackup=false);
     private sealed record PgReceipt(Guid Id, string Identity);
     private sealed record PgLedger(long Revision, ComponentPackageTarget? Package, string? BinaryHash, string? ServiceHash,
         Guid? Instance, int Port, string? ConfigurationHash, PgPending? Pending, IReadOnlyList<PgReceipt> Receipts,
-        [property: JsonRequired] IReadOnlyList<PostgreSqlDatabase> Databases, [property: JsonRequired] IReadOnlyList<PostgreSqlAccount> Accounts, PostgreSqlRemoteCommand? RemoteAccess = null, bool PackageRemoved = false, IReadOnlyList<PostgreSqlBackup>? Backups = null, bool DataDeleted = false);
+        [property: JsonRequired] IReadOnlyList<PostgreSqlDatabase> Databases, [property: JsonRequired] IReadOnlyList<PostgreSqlAccount> Accounts, PostgreSqlRemoteCommand? RemoteAccess = null, bool PackageRemoved = false, IReadOnlyList<PostgreSqlBackup>? Backups = null, bool DataDeleted = false, PostgreSqlBackupSchedule? BackupSchedule=null, IReadOnlyList<PostgreSqlBackup>? BackupDeletions=null);
     private sealed record PgCommandResult(int Code, string Output);
     private sealed class PgFailure(string code) : Exception(code);
 
@@ -30,7 +30,7 @@ public static partial class PrivilegedOperationExecutor
         if (request != new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
             Correlation: request.Correlation, PostgreSql: request.PostgreSql, PostgreSqlSecrets: request.PostgreSqlSecrets, PostgreSqlTls: request.PostgreSqlTls))
             return new(false, 64, Error: "database.request_invalid", ProblemCode: PrivilegedProblemCode.InvalidRequest);
-        if (request.Operation is (PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan) && (request.PostgreSql is not null || request.PostgreSqlSecrets is not null || request.PostgreSqlTls is not null))
+        if (request.Operation is (PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlBackupScheduleQuery) && (request.PostgreSql is not null || request.PostgreSqlSecrets is not null || request.PostgreSqlTls is not null))
             return new(false, 64, Error: "database.request_invalid", ProblemCode: PrivilegedProblemCode.InvalidRequest);
         if (!OperatingSystem.IsLinux() || !File.Exists("/etc/os-release")) return PgReply(PgUnsupported());
         var release = File.ReadAllLines("/etc/os-release");
@@ -48,6 +48,9 @@ public static partial class PrivilegedOperationExecutor
             using var gate = new FileStream(PgRoot + "/lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             var ledger = PgRead();
             var id = request.OperationId!.Value;
+            if(request.Operation==PrivilegedOperationKind.PostgreSqlBackupScheduleQuery)
+                return PgReply(new(true,ledger.Package is not null&&!ledger.PackageRemoved,ledger.Package is not null,ledger.Package?.Version,ledger.Revision,ledger.Instance,ledger.Port,false,false,
+                    ledger.Pending?.Id,null,null,PendingMaintenance:ledger.Pending?.Request.Maintenance,BackupSchedule:ledger.BackupSchedule));
             if (request.Operation == PrivilegedOperationKind.PostgreSqlMaintenancePlan)
                 return PgReply((await PgObserve(ledger,id)) with { Candidate = await PgResolveMaintenance() });
             if (request.Operation == PrivilegedOperationKind.PostgreSqlQuery)
@@ -144,6 +147,7 @@ public static partial class PrivilegedOperationExecutor
             || value.Pending is { } pending && (pending.Id == Guid.Empty || string.IsNullOrEmpty(pending.Identity) || pending.Request is null
                 || pending.Identity != PgHash(JsonSerializer.SerializeToUtf8Bytes(pending.Request, PgJson))))
             throw new PgFailure("database.state_invalid");
+        PgValidateBackupPolicyLedger(value);
         return value;
     }
     private static void PgWrite(PgLedger value)
@@ -352,11 +356,14 @@ public static partial class PrivilegedOperationExecutor
                 ledger = PgPhase(ledger, "Verified");
             }
         }
+        else if (pending.Request.Maintenance is {Action:PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup or PostgreSqlMaintenanceAction.DeleteBackup}) ledger=await PgContinueBackupPolicy(ledger);
         else if (pending.Request.Maintenance is not null) ledger = await PgContinueMaintenance(ledger);
         else if (pending.Request.RemoteAccess is not null) ledger = await PgContinueRemote(ledger, tls);
         else if (pending.Request.AdminRecovery is not null) ledger = await PgContinueAdminRecovery(ledger);
         else if (pending.Request.AccountCommand is { } accountCommand) ledger = await PgContinueAccount(ledger, accountCommand, secrets);
         if (ledger.Pending!.Phase != "Verified") throw new PgFailure("database.state_invalid");
+        if(pending.Request.Maintenance?.Action is PostgreSqlMaintenanceAction.Update or PostgreSqlMaintenanceAction.UninstallKeepData or PostgreSqlMaintenanceAction.UninstallDeleteData)
+            ledger=ledger with {BackupSchedule=pending.Request.Maintenance.Action==PostgreSqlMaintenanceAction.UninstallDeleteData?null:ledger.BackupSchedule is {} policy?policy with {Enabled=false,LastOutcome="database.backup_schedule_lifecycle"}:null};
         var completed = ledger with { Revision = ledger.Revision + 1, Pending = null, Receipts = [.. ledger.Receipts, new(pending.Id, pending.Identity)] };
         PgWrite(completed);
         return completed;
@@ -452,7 +459,7 @@ public static partial class PrivilegedOperationExecutor
         catch (PgFailure ex) { problem = ex.Message; }
         return new(true, ledger.Package is not null && !ledger.PackageRemoved, ledger.Package is not null, ledger.Package?.Version,
             ledger.Revision, ledger.Instance, ledger.Port, running, verified, ledger.Pending?.Id,
-            ledger.Receipts.Any(x => x.Id == operation) ? operation : null, ledger.Pending is null ? problem : "database.recovery_required", candidate, ledger.Databases, ledger.Accounts, ledger.Pending?.Request.AccountCommand, ledger.Pending?.Request.AdminRecovery, ledger.RemoteAccess, ledger.Pending?.Request.RemoteAccess, ledger.Pending?.Request.Maintenance, ledger.Backups, ledger.PackageRemoved, ledger.DataDeleted);
+            ledger.Receipts.Any(x => x.Id == operation) ? operation : null, ledger.Pending is null ? problem : "database.recovery_required", candidate, ledger.Databases, ledger.Accounts, ledger.Pending?.Request.AccountCommand, ledger.Pending?.Request.AdminRecovery, ledger.RemoteAccess, ledger.Pending?.Request.RemoteAccess, ledger.Pending?.Request.Maintenance, ledger.Backups, ledger.PackageRemoved, ledger.DataDeleted, ledger.BackupSchedule);
     }
     private static async Task<PgCommandResult> PgRun(string executable, string[] arguments, bool allowFailure = false, int minutes = 1, string? input = null, string? passfile = null)
     {

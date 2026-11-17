@@ -23,7 +23,7 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
-        if (request.Operation is PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlExecute or PrivilegedOperationKind.PostgreSqlRecover)
+        if (request.Operation is PrivilegedOperationKind.PostgreSqlBackupScheduleQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlExecute or PrivilegedOperationKind.PostgreSqlRecover)
             return await ExecutePostgreSqlAsync(request);
         if (request.PostgreSql is not null || (request.PostgreSqlSecrets is not null || request.PostgreSqlTls is not null)) return Fail(64, PrivilegedProblemCode.InvalidRequest, "PostgreSQL fields require a dedicated operation");
         if (request.Operation is PrivilegedOperationKind.MihomoProbeWitnessRegister or PrivilegedOperationKind.MihomoProbeWitnessRead

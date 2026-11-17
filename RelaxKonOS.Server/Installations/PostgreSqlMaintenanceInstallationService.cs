@@ -5,24 +5,25 @@ using RelaxKonOS.Server.Components;
 using RelaxKonOS.Server.Privileged;
 namespace RelaxKonOS.Server.Installations;
 
-public sealed class PostgreSqlMaintenanceInstallationService(IPrivilegedOperationTransport helper, PostgreSqlComponentAdapter component, RelaxKonOS.Server.Databases.PostgreSqlCredentialStore credentials)
+public class PostgreSqlMaintenanceInstallationService(IPrivilegedOperationTransport helper, PostgreSqlComponentAdapter component, RelaxKonOS.Server.Databases.PostgreSqlCredentialStore credentials)
     : InstallationService<PostgreSqlInstallationRequest>
 {
     public override InstallationServiceId Id => InstallationServiceId.PostgreSqlMaintenance;
     public override IReadOnlyList<string> Resources => ["service:PostgreSql", "linux:apt-dpkg"];
+    protected virtual bool Accept(PostgreSqlMaintenanceCommand command)=>command.Action is not (PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup);
     protected override bool Confirmed(PostgreSqlInstallationRequest request) => request.Confirmed;
     protected override bool Supports(InstallationOperationKind kind) => kind is InstallationOperationKind.Configure or InstallationOperationKind.Repair;
     protected override void ValidateRequest(InstallationOperationKind kind, PostgreSqlInstallationRequest request, string key)
     {
         if (request.RemoteAccess is not null || request.Command is not null || request.FrozenPackage is not null || request.AccountCommand is not null || request.AdminRecovery is not null
-            || (kind == InstallationOperationKind.Configure ? request.Maintenance is not {} command || !PostgreSqlMaintenanceValidation.Valid(command) || request.RecoverOperationId is not null
+            || (kind == InstallationOperationKind.Configure ? request.Maintenance is not {} command || !PostgreSqlMaintenanceValidation.Valid(command) || !Accept(command) || request.RecoverOperationId is not null
                 : request.Maintenance is not null || request.RecoverOperationId is not { } id || id == Guid.Empty))
             throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
     }
     protected override async Task ExecuteAsync(InstallationOperationKind kind, PostgreSqlInstallationRequest request, string actor, IInstallationProgress progress, CancellationToken ct)
     {
         var before = await component.ReadAsync(ct);
-        if (request.RecoverOperationId is not null && before.PendingOperationId is not null && before.PendingMaintenance is null)
+        if (request.RecoverOperationId is not null && before.PendingOperationId is not null && (before.PendingMaintenance is null||!Accept(before.PendingMaintenance)))
             throw new InstallationException("database.maintenance_authorization", 403);
         // A previous Core process may have stopped after native deletion but before secret cleanup.
         // Do not clear the native tombstone through reinstall until its server-owned references are gone.

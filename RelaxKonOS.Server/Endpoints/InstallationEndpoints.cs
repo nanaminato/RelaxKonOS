@@ -109,6 +109,7 @@ public static class InstallationEndpoints
             InstallationServiceId.PostgreSqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
             InstallationServiceId.PostgreSqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,
             InstallationServiceId.PostgreSqlMaintenance => HostElevationCapability.DatabaseMaintenance,
+            InstallationServiceId.PostgreSqlBackupAutomation => HostElevationCapability.DatabaseBackupAutomation,
         InstallationServiceId.Git => HostElevationCapability.GitPackageInstall,
         InstallationServiceId.Tailscale => HostElevationCapability.HostNetworkChange,
         _ => throw new ArgumentOutOfRangeException(nameof(service))

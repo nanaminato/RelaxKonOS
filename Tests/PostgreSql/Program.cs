@@ -2,6 +2,8 @@ using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.ManagedRuntimes.PostgreSql;
 
+if(args is ["scheduler-native"]){await PostgreSqlSchedulerSmoke.RunAsync();return;}
+
 if (args is ["helper-json", _] or ["helper-stdin"])
 {
     var request = JsonSerializer.Deserialize<RelaxKonOS.Protocol.Privileged.PrivilegedOperationRequest>((args.Length == 1 ? await Console.In.ReadToEndAsync() : File.ReadAllText(args[1])))!;

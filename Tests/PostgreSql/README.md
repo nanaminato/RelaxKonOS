@@ -104,3 +104,24 @@ docker exec relaxkonos-db06 python3 /opt/native-maintenance-smoke.py --after-res
 ```
 
 `--old-fixture` is deliberately destructive **fixture preparation**: it removes the baseline disposable cluster, installs signed Ubuntu 16.2 packages, resets only the disposable ownership record and invokes real product initialization under 16.2. It is not a production downgrade or import API. `--update` then invokes the actual frozen 16.15 maintenance plan. `--lifecycle` corrupts the disposable executable and ultimately deletes the owned data, backups and configuration before testing explicit new initialization. Never run these scripts against a real application host. The failure phase repairs only its deliberately broken administrator offline before resuming the original transaction. Remove only the labelled fixture after collecting evidence. No physical power-loss claim is made.
+
+
+## DB-07A automatic offline recovery points and retention
+
+See [DB-07A scope and evidence](../../docs/applications/RelaxKonOS.DatabaseManager.PostgreSql.DB07.md). Create a fresh disposable fixture named `relaxkonos-db07`, labelled `relaxkonos.task=db07`, using the DB-02 systemd image, current published executor, no bind mounts and no published ports. Set the same DB-02 disposable marker and complete the native DB-02 baseline. Copy `native-backup-automation-smoke.py` and `native-accounts-smoke.py` into `/opt`. These tests stop the fixture database, inject faults, restore data and ultimately uninstall/delete the fixture instance; never use a real application host.
+
+```powershell
+docker exec relaxkonos-db07 python3 /opt/native-backup-automation-smoke.py --normal
+docker exec relaxkonos-db07 python3 /opt/native-backup-automation-smoke.py --prepare-restart
+docker restart relaxkonos-db07
+docker exec relaxkonos-db07 python3 /opt/native-backup-automation-smoke.py --after-restart
+docker exec relaxkonos-db07 python3 /opt/native-backup-automation-smoke.py --prepare-cleanup-restart
+docker restart relaxkonos-db07
+docker exec relaxkonos-db07 python3 /opt/native-backup-automation-smoke.py --after-cleanup-restart
+docker exec relaxkonos-db07 python3 /opt/native-accounts-smoke.py /opt/acceptance/RelaxKonOS.PostgreSql.Tests
+docker exec relaxkonos-db07 /opt/acceptance/RelaxKonOS.PostgreSql.Tests scheduler-native
+docker exec relaxkonos-db07 python3 /opt/native-backup-automation-smoke.py --restore-automatic
+docker exec relaxkonos-db07 python3 /opt/native-backup-automation-smoke.py --lifecycle
+```
+
+Wait until systemd is ready after each restart before continuing. Fault context lives in the fixture's persistent `/var/lib/relaxkonos` tree, not `/tmp`. The scheduler harness runs the actual Core background worker/coordinator/service with an in-process transport to the actual Helper; it does not exercise HTTP/PAM or a full deployed server. Run it **after** the accounts fixture so the latest automatic copy contains the current identity/grant state required by restore gates. Tests verify running-instance opt-in, retention/manual protection, same-slot receipts, persistent isolation/deletion responsibility, restored service/data and policy revocation. Inspect the task label, mounts and port mappings before removing only this disposable container. No physical power-loss claim is made.

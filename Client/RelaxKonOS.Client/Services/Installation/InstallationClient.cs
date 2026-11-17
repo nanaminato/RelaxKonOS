@@ -103,6 +103,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
             InstallationServiceId.PostgreSqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
             InstallationServiceId.PostgreSqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,
             InstallationServiceId.PostgreSqlMaintenance => HostElevationCapability.DatabaseMaintenance,
+            InstallationServiceId.PostgreSqlBackupAutomation => HostElevationCapability.DatabaseBackupAutomation,
             InstallationServiceId.Tailscale => HostElevationCapability.HostNetworkChange,
             InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall, _ => throw new ArgumentOutOfRangeException(nameof(service))
         };

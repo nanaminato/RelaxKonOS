@@ -75,10 +75,19 @@ public sealed class DatabaseApp : RemoteApplicationBase
             ()=>context.ShowDialogAsync<string?>(window,LocalizedText.Get("installation.elevation_title"),
                 dialog=>new RelaxKonOS.Client.Apps.FileServices.Views.FileServicesPasswordDialogView(dialog,LocalizedText.Get("installation.elevation_message")),new Size(460,230)),"maintenance-installation");
         model.MaintenanceManager=new(context.Services.GetRequiredService<IPostgreSqlClient>(),maintenanceTask)
-        {CanManage=model.CanManage,ConfirmAsync=command=>Confirm("database.maintenance_confirm",command is null?LocalizedText.Get("database.recover"):LocalizedText.Get("database.maintenance_action."+command.Action)+" · "+(command.Target?.Version??command.BackupId?.ToString()??command.InstanceId.ToString())),
+        {CanManage=model.CanManage,ConfirmAsync=command=>Confirm(command?.Action==RelaxKonOS.Protocol.Databases.PostgreSqlMaintenanceAction.DeleteBackup?"database.backup_delete_confirm":"database.maintenance_confirm",command is null?LocalizedText.Get("database.recover"):LocalizedText.Get("database.maintenance_action."+command.Action)+" · "+(command.Target?.Version??command.BackupId?.ToString()??command.InstanceId.ToString())),
             OtherBusy=()=>model.Busy||model.CanResume||model.Installation.IsActive||model.AdminRecoveryInstallation.IsActive||model.CanResumeAdminRecovery||model.RemoteManager.Busy||model.RemoteManager.HasPending||remoteTask.IsActive||model.AccountManager.Busy||model.AccountManager.HasPendingRequest||accountsTask.IsActive};
         maintenanceTask.PropertyChanged+=(_,_)=>{model.MaintenanceManager.Notify();model.NotifyState();model.AccountManager.Notify();model.RemoteManager.Notify();};
         model.MaintenanceManager.PropertyChanged+=(_,_)=>{model.NotifyState();model.AccountManager.Notify();model.RemoteManager.Notify();};
+        var backupPolicyTask=new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(),context.Services.GetRequiredService<IAppSettingsClient>(),
+            InstallationServiceId.PostgreSqlBackupAutomation,"relaxkonos.database",model.RefreshAsync,
+            ()=>context.ShowDialogAsync<string?>(window,LocalizedText.Get("installation.elevation_title"),
+                dialog=>new RelaxKonOS.Client.Apps.FileServices.Views.FileServicesPasswordDialogView(dialog,LocalizedText.Get("installation.elevation_message")),new Size(460,230)),"backup-policy-installation");
+        model.MaintenanceManager.ScheduleInstallation=backupPolicyTask;
+        model.MaintenanceManager.ConfirmScheduleAsync=policy=>Confirm("database.backup_schedule_confirm",
+            LocalizedText.Get(policy.Enabled?"database.backup_schedule_enabled":"database.backup_schedule_disabled")+" · "+policy.IntervalHours+" h · "+policy.KeepLast+" · "+LocalizedText.Get(policy.AllowDowntime?"database.backup_schedule_downtime":"database.backup_schedule_stopped_only"));
+        backupPolicyTask.PropertyChanged+=(_,_)=>{model.MaintenanceManager.Notify();model.NotifyState();model.AccountManager.Notify();model.RemoteManager.Notify();};
+        _=backupPolicyTask.RestoreAsync();
         _=maintenanceTask.RestoreAsync();
         view.DataContext = model;
         model.Installation.PropertyChanged += (_, _) => { model.NotifyState(); model.AccountManager.Notify(); };

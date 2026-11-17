@@ -142,6 +142,28 @@ internal static class DatabaseWorkspaceChecks
         Check(maintenanceModel.CanResume&&!maintenanceModel.CanDelete,"lost maintenance response blocks new destructive work");
         maintenanceModel.ResumeCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(maintenanceHandler.Bodies.Count==2&&maintenanceHandler.Bodies[0]==maintenanceHandler.Bodies[1]&&maintenanceHandler.Keys[0]==maintenanceHandler.Keys[1],"maintenance retry retains frozen request and idempotency key");
+        using var policyHandler=new LostResponseHandler(InstallationServiceId.PostgreSqlBackupAutomation);
+        using var policyHttp=new HttpClient(policyHandler);
+        maintenanceModel.ScheduleInstallation=new(new InstallationClient(policyHttp,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,
+            InstallationServiceId.PostgreSqlBackupAutomation,"test",()=>Task.CompletedTask,()=>Task.FromResult<string?>(null));
+        maintenanceModel.ConfirmScheduleAsync=_=>Task.FromResult(false);
+        maintenanceModel.ScheduleEnabled=true;maintenanceModel.IntervalHours=24;maintenanceModel.KeepLast=2;
+        Check(maintenanceModel.CanConfigureSchedule&&!maintenanceModel.AllowDowntime,"policy defaults to no recurring downtime");
+        maintenanceModel.SaveScheduleCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(policyHandler.Bodies.Count==0,"cancelled ongoing grant is not submitted");
+        maintenanceModel.ConfirmScheduleAsync=_=>Task.FromResult(true);maintenanceModel.KeepLast=0;
+        maintenanceModel.SaveScheduleCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(policyHandler.Bodies.Count==0,"invalid retention rejected before submission");
+        maintenanceModel.KeepLast=2;maintenanceModel.AllowDowntime=true;
+        maintenanceModel.SaveScheduleCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(maintenanceModel.CanResumeSchedule&&!maintenanceModel.CanBackup&&!maintenanceModel.CanConfigureSchedule,"lost policy response blocks conflicting work");
+        maintenanceModel.KeepLast=6;maintenanceModel.AllowDowntime=false;
+        maintenanceModel.ResumeScheduleCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(policyHandler.Bodies.Count==2&&policyHandler.Bodies[0]==policyHandler.Bodies[1]&&policyHandler.Keys[0]==policyHandler.Keys[1],"policy retry retains exact downtime authorization and retention");
+        var originalMaintenanceSnapshot=maintenanceModel.Snapshot!;
+        maintenanceModel.Snapshot=originalMaintenanceSnapshot with {PendingOperationId=Guid.NewGuid(),PendingMaintenance=new(PostgreSqlMaintenanceAction.ScheduledBackup,originalMaintenanceSnapshot.InstanceId!.Value,0,ScheduleId:Guid.NewGuid(),DueAt:DateTimeOffset.UtcNow)};
+        Check(maintenanceModel.CanRecoverSchedule&&!maintenanceModel.CanRecover,"scheduled pending work uses its dedicated recovery authority");
+        maintenanceModel.Snapshot=originalMaintenanceSnapshot;
         foreach(var language in new[]{"zh-CN","en-US","ja-JP"})
         {
             settings.Language=language;Dispatcher.UIThread.RunJobs();
@@ -153,7 +175,7 @@ internal static class DatabaseWorkspaceChecks
             using(var bitmap=new RenderTargetBitmap(new PixelSize(980,760))){bitmap.Render(window);bitmap.Save(Path.Combine(output,"maintenance-"+language+".png"));}
             window.Close();Dispatcher.UIThread.RunJobs();
         }
-        maintenanceModel.CanManage=false;Check(!maintenanceModel.CanBackup&&!maintenanceModel.CanRecover,"viewer cannot maintain instance");
+        maintenanceModel.CanManage=false;Check(!maintenanceModel.CanBackup&&!maintenanceModel.CanRecover&&!maintenanceModel.CanConfigureSchedule&&!maintenanceModel.CanRecoverSchedule,"viewer cannot maintain instance or grant automatic backups");
         maintenanceModel.Invalidate();Check(!maintenanceModel.CanResume,"invalidated maintenance session cannot replay");
         model.Invalidate();Check(!model.CanStart && !model.CanRecover,"session invalidation disables stale window");
         Console.WriteLine("Database previews: "+output);

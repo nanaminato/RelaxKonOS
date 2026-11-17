@@ -48,6 +48,8 @@ public static partial class PrivilegedOperationExecutor
     }
     private static async Task PgMaintenancePreflight(PgLedger l,PostgreSqlMaintenanceCommand c)
     {
+        if(c.Action is PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup or PostgreSqlMaintenanceAction.DeleteBackup)
+        {await PgBackupPolicyPreflight(l,c);return;}
         if(!PostgreSqlMaintenanceValidation.Valid(c)||l.Instance!=c.InstanceId||l.Revision!=c.ExpectedRevision||l.Package is null||l.RemoteAccess is not null)throw new PgFailure("database.maintenance_invalid");
         if(c.Action==PostgreSqlMaintenanceAction.Reinstall ? !l.PackageRemoved : l.PackageRemoved)throw new PgFailure("database.maintenance_invalid");
         await PgExclusiveInstance(l);
@@ -158,7 +160,7 @@ public static partial class PrivilegedOperationExecutor
         PgAtomic(root+"/manifest.json",JsonSerializer.SerializeToUtf8Bytes(manifest,PgJson));
         await PgRun("/usr/bin/sync",["-f",root]);
         if(verify)await PgVerifyBackupCopy(l,id);
-        var record=new PostgreSqlBackup(id,l.Package.Version,DateTimeOffset.UtcNow,PgFileHash(root+"/manifest.json"),verify);
+        var record=new PostgreSqlBackup(id,l.Package.Version,DateTimeOffset.UtcNow,PgFileHash(root+"/manifest.json"),verify,l.Pending!.Request.Maintenance?.Action==PostgreSqlMaintenanceAction.ScheduledBackup);
         l=l with { Backups=[..(l.Backups??[]).Where(x=>x.Id!=id),record] };PgWrite(l);return l;
     }
     private static async Task PgCheckMaintenanceScope(PgLedger l)
@@ -330,7 +332,7 @@ public static partial class PrivilegedOperationExecutor
                     l=PgPhase(l,"MaintenanceVerified");
                 }
             }
-            else if(command.Action==PostgreSqlMaintenanceAction.Backup)l=PgPhase(l,"MaintenanceVerified");
+            else if(command.Action is PostgreSqlMaintenanceAction.Backup or PostgreSqlMaintenanceAction.ScheduledBackup)l=PgPhase(l,"MaintenanceVerified");
             if(l.Pending!.Phase is not ("MaintenanceVerified" or "Verified"))throw new PgFailure("database.state_invalid");
             if(PgOwnMask(plan)){File.Delete(PgAdminMask(plan));LinuxDirectorySync.Flush("/etc/systemd/system");await PgRun("/usr/bin/systemctl",["daemon-reload"]);}
             if(command.Action==PostgreSqlMaintenanceAction.Reinstall&&l.DataDeleted)l=l with {Instance=null,ConfigurationHash=null,DataDeleted=false};

@@ -3,6 +3,21 @@
  xmlns:cc="clr-namespace:RelaxKonOS.Client.Apps.ComponentCenter" x:Class="RelaxKonOS.Client.Apps.Databases.Views.DatabaseMaintenance" x:DataType="db:DatabaseViewModel">
  <ScrollViewer HorizontalScrollBarVisibility="Disabled"><StackPanel Spacing="16">
   <StackPanel DataContext="{Binding MaintenanceManager}" x:DataType="db:PostgreSqlMaintenanceViewModel" Spacing="10">
+   <TextBlock Text="{loc:Loc database.backup_schedule_title}" FontSize="18" FontWeight="SemiBold" />
+   <TextBlock Text="{loc:Loc database.backup_schedule_hint}" TextWrapping="Wrap" />
+   <CheckBox Content="{loc:Loc database.backup_schedule_enabled}" IsChecked="{Binding ScheduleEnabled}" />
+   <WrapPanel>
+    <StackPanel Margin="0,0,16,8"><TextBlock Text="{loc:Loc database.backup_schedule_interval}"/><NumericUpDown Minimum="1" Maximum="168" Value="{Binding IntervalHours}" Width="120" /></StackPanel>
+    <StackPanel Margin="0,0,16,8"><TextBlock Text="{loc:Loc database.backup_schedule_keep}"/><NumericUpDown Minimum="1" Maximum="6" Value="{Binding KeepLast}" Width="120" /></StackPanel>
+   </WrapPanel>
+   <CheckBox Content="{loc:Loc database.backup_schedule_downtime}" IsChecked="{Binding AllowDowntime}" />
+   <Button Content="{loc:Loc database.backup_schedule_save}" Command="{Binding SaveScheduleCommand}" IsEnabled="{Binding CanConfigureSchedule}" HorizontalAlignment="Left" />
+   <TextBlock Text="{loc:Loc database.backup_schedule_next}" /><TextBlock Text="{Binding NextDue}" />
+   <TextBlock Text="{Binding ScheduleOutcome}" TextWrapping="Wrap" />
+   <TextBlock Text="{Binding ScheduledTask}" TextWrapping="Wrap" />
+   <Button Content="{loc:Loc database.recover}" Command="{Binding RecoverScheduleCommand}" IsEnabled="{Binding CanRecoverSchedule}" HorizontalAlignment="Left" />
+   <Button Content="{loc:Loc database.resume}" Command="{Binding ResumeScheduleCommand}" IsVisible="{Binding CanResumeSchedule}" HorizontalAlignment="Left" />
+   <TextBlock Text="{Binding ScheduleInstallation.SummaryText}" TextWrapping="Wrap" />
    <TextBlock Text="{loc:Loc database.maintenance_hint}" TextWrapping="Wrap" />
    <Button Content="{loc:Loc database.maintenance_plan}" Command="{Binding PlanCommand}" HorizontalAlignment="Left" />
    <TextBlock Text="{Binding Candidate}" />
@@ -13,8 +28,9 @@
     <Button Content="{loc:Loc database.maintenance_action.Backup}" Command="{Binding BackupCommand}" IsEnabled="{Binding CanBackup}" Margin="0,0,8,8" />
    </WrapPanel>
    <ComboBox ItemsSource="{Binding Backups}" SelectedItem="{Binding SelectedBackup}" HorizontalAlignment="Stretch">
-    <ComboBox.ItemTemplate><DataTemplate x:DataType="p:PostgreSqlBackup"><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Text="{Binding CreatedAt}"/><TextBlock Text="{Binding Version}"/><TextBlock Text="{Binding Id}"/></StackPanel></DataTemplate></ComboBox.ItemTemplate>
+    <ComboBox.ItemTemplate><DataTemplate x:DataType="p:PostgreSqlBackup"><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Text="{Binding CreatedAt}"/><TextBlock Text="{Binding Version}"/><TextBlock Text="{Binding Id}"/><TextBlock Text="{loc:Loc database.backup_automatic}" IsVisible="{Binding Automatic}"/></StackPanel></DataTemplate></ComboBox.ItemTemplate>
    </ComboBox>
+   <Button Content="{loc:Loc database.maintenance_action.DeleteBackup}" Command="{Binding DeleteBackupCommand}" IsEnabled="{Binding CanDeleteBackup}" HorizontalAlignment="Left" />
    <Button Content="{loc:Loc database.maintenance_action.Restore}" Command="{Binding RestoreCommand}" IsEnabled="{Binding CanRestore}" HorizontalAlignment="Left" />
    <Button Content="{loc:Loc database.maintenance_action.UninstallKeepData}" Command="{Binding KeepDataCommand}" IsEnabled="{Binding CanBackup}" HorizontalAlignment="Left" />
    <TextBlock Text="{loc:Loc database.delete_confirmation}" TextWrapping="Wrap" />

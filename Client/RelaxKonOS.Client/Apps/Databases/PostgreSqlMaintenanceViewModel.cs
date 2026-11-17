@@ -8,6 +8,23 @@ namespace RelaxKonOS.Client.Apps.Databases;
 public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient client, InstallationTaskViewModel installation):ObservableObject,IDisposable
 {
     public InstallationTaskViewModel Installation=>installation;
+    public InstallationTaskViewModel? ScheduleInstallation {get;set;}
+    public Func<PostgreSqlBackupScheduleRequest,Task<bool>>? ConfirmScheduleAsync {get;set;}
+    private PostgreSqlInstallationRequest? policyPending;
+    [ObservableProperty] private bool scheduleEnabled;
+    [ObservableProperty] private int intervalHours=24;
+    [ObservableProperty] private int keepLast=3;
+    [ObservableProperty] private bool allowDowntime;
+    public string NextDue=>Snapshot?.BackupSchedule is {Enabled:true} policy?policy.NextDueAt.ToLocalTime().ToString("g"):"—";
+    public LocalizedStatus ScheduleOutcome=>LocalizedStatus.Key(Snapshot?.BackupSchedule?.LastOutcome??"database.backup_schedule_no_run");
+    public string ScheduledTask=>Snapshot?.ScheduledOperation is {} operation?$"{operation.OperationId} · {LocalizedText.Get("installation.stage."+operation.Stage)}":"—";
+    public bool CanConfigureSchedule=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&ScheduleInstallation is {IsActive:false}&&OtherBusy?.Invoke()!=true&&!HasPending
+        &&Snapshot is {Supported:true,Managed:true,InstanceId:not null,PendingOperationId:null};
+    public bool CanRecoverSchedule=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&ScheduleInstallation is {IsActive:false}&&OtherBusy?.Invoke()!=true&&!HasPending
+        &&Snapshot?.PendingMaintenance?.Action is PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup;
+    public bool CanResumeSchedule=>!invalid&&!Busy&&CanManage&&ScheduleInstallation is {IsActive:false}&&policyPending is not null;
+    public bool CanDeleteBackup=>CanConfigureSchedule&&SelectedBackup is not null;
+
     public Func<PostgreSqlMaintenanceCommand?,Task<bool>>? ConfirmAsync {get;set;}
     public Func<bool>? OtherBusy {get;set;}
     public bool CanManage {get;set;}
@@ -19,10 +36,10 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     [ObservableProperty] private string deleteConfirmation="";
     [ObservableProperty] private bool busy;
     [ObservableProperty] private LocalizedStatus notice=LocalizedStatus.Literal("");
-    public bool HasPending=>pending is not null;
+    public bool HasPending=>pending is not null||policyPending is not null;
     public IEnumerable<PostgreSqlBackup> Backups=>Snapshot?.Backups??[];
     public string Candidate=>Plan?.Candidate?.Version??"—";
-    private bool Ready=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&OtherBusy?.Invoke()!=true&&pending is null&&Snapshot is {Supported:true,Managed:true,InstanceId:not null,PendingOperationId:null,RemoteAccess:null};
+    private bool Ready=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&ScheduleInstallation?.IsActive!=true&&OtherBusy?.Invoke()!=true&&!HasPending&&Snapshot is {Supported:true,Managed:true,InstanceId:not null,PendingOperationId:null,RemoteAccess:null};
     public bool CanBackup=>Ready&&Snapshot is {Installed:true,ProblemCode:null};
     public bool CanRestore=>CanBackup&&SelectedBackup is {RestoreVerified:true} b&&b.Version==Snapshot!.Version;
     private bool HasPlan=>Plan?.Revision==Snapshot?.Revision&&Plan?.Candidate is not null;
@@ -30,14 +47,17 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     public bool CanRepair=>Ready&&Snapshot?.Installed==true&&HasPlan&&Plan!.Candidate!.Version==Snapshot.Version;
     public bool CanReinstall=>Ready&&Snapshot?.PackageRemoved==true&&HasPlan;
     public bool CanDelete=>CanBackup&&DeleteConfirmation==Snapshot!.InstanceId!.Value.ToString("N");
-    public bool CanRecover=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&OtherBusy?.Invoke()!=true&&pending is null&&Snapshot?.PendingMaintenance is not null;
+    public bool CanRecover=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&ScheduleInstallation?.IsActive!=true&&OtherBusy?.Invoke()!=true&&!HasPending&&Snapshot?.PendingMaintenance is {Action:not (PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup)};
     public bool CanResume=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&pending is not null;
-    partial void OnSnapshotChanged(PostgreSqlState? value){Plan=null;Notify();}
+    partial void OnSnapshotChanged(PostgreSqlState? value)
+    {
+        Plan=null;var policy=value?.BackupSchedule;ScheduleEnabled=policy?.Enabled??false;IntervalHours=policy?.IntervalHours??24;KeepLast=policy?.KeepLast??3;AllowDowntime=policy?.AllowDowntime??false;Notify();
+    }
     partial void OnPlanChanged(PostgreSqlState? value)=>Notify();
     partial void OnBusyChanged(bool value)=>Notify();
     partial void OnDeleteConfirmationChanged(string value)=>Notify();
     partial void OnSelectedBackupChanged(PostgreSqlBackup? value)=>Notify();
-    public void Notify(){foreach(var name in new[]{nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
+    public void Notify(){foreach(var name in new[]{nameof(CanConfigureSchedule),nameof(CanRecoverSchedule),nameof(CanResumeSchedule),nameof(CanDeleteBackup),nameof(NextDue),nameof(ScheduleOutcome),nameof(ScheduledTask),nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
     [RelayCommand] private async Task PlanAsync()
     {
         if(!Ready)return;Busy=true;
@@ -45,6 +65,29 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
         catch{Notice=LocalizedStatus.Key("database.maintenance_plan_failed");}
         finally{Busy=false;}
     }
+    [RelayCommand] private async Task SaveScheduleAsync()
+    {
+        if(!CanConfigureSchedule)return;
+        var policy=new PostgreSqlBackupScheduleRequest(ScheduleEnabled,IntervalHours,KeepLast,AllowDowntime);
+        if(IntervalHours is <1 or >168||KeepLast is <1 or >6){Notice=LocalizedStatus.Key("database.backup_schedule_invalid");return;}
+        var before=Snapshot!;Busy=true;
+        try{if(ConfirmScheduleAsync is null||!await ConfirmScheduleAsync(policy)||invalid)return;
+            policyPending=new(true,Maintenance:new(PostgreSqlMaintenanceAction.ConfigureBackupSchedule,before.InstanceId!.Value,before.Revision,Schedule:policy));await SendPolicy();}
+        finally{Busy=false;}
+    }
+    [RelayCommand] private async Task RecoverScheduleAsync()
+    {
+        if(!CanRecoverSchedule)return;var original=Snapshot!.PendingOperationId;Busy=true;
+        try{if(ConfirmAsync is null||!await ConfirmAsync(null)||invalid)return;policyPending=new(true,RecoverOperationId:original);await SendPolicy();}finally{Busy=false;}
+    }
+    [RelayCommand] private async Task ResumeScheduleAsync(){if(!CanResumeSchedule)return;Busy=true;try{await SendPolicy();}finally{Busy=false;}}
+    private async Task SendPolicy()
+    {
+        var task=ScheduleInstallation!;var previous=task.Operation?.OperationId;
+        await task.SubmitAsync(policyPending!.RecoverOperationId is null?InstallationOperationKind.Configure:InstallationOperationKind.Repair,policyPending);
+        if(!task.HasPendingSubmission||task.Operation?.OperationId is {} accepted&&accepted!=previous)policyPending=null;Notify();
+    }
+    [RelayCommand] private Task DeleteBackupAsync()=>Submit(PostgreSqlMaintenanceAction.DeleteBackup,CanDeleteBackup);
     [RelayCommand] private Task UpdateAsync()=>Submit(PostgreSqlMaintenanceAction.Update,CanUpdate);
     [RelayCommand] private Task RepairAsync()=>Submit(PostgreSqlMaintenanceAction.Repair,CanRepair);
     [RelayCommand] private Task BackupAsync()=>Submit(PostgreSqlMaintenanceAction.Backup,CanBackup);
@@ -57,7 +100,7 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
         if(!allowed)return;
         var command=new PostgreSqlMaintenanceCommand(action,Snapshot!.InstanceId!.Value,Snapshot.Revision,
             action is PostgreSqlMaintenanceAction.Update or PostgreSqlMaintenanceAction.Repair or PostgreSqlMaintenanceAction.Reinstall?Plan!.Candidate:null,
-            action==PostgreSqlMaintenanceAction.Restore?SelectedBackup!.Id:null,
+            action is PostgreSqlMaintenanceAction.Restore or PostgreSqlMaintenanceAction.DeleteBackup?SelectedBackup!.Id:null,
             action==PostgreSqlMaintenanceAction.UninstallDeleteData?DeleteConfirmation:null);
         Busy=true;
         try{if(ConfirmAsync is null||!await ConfirmAsync(command)||invalid)return;pending=new(true,Maintenance:command);await Send();}finally{Busy=false;}
@@ -75,6 +118,6 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
         if(!installation.HasPendingSubmission||installation.Operation?.OperationId is {} accepted&&accepted!=previous)pending=null;
         Notify();
     }
-    public void Invalidate(){invalid=true;Snapshot=null;pending=null;Notify();}
-    public void Dispose(){Invalidate();installation.Dispose();}
+    public void Invalidate(){invalid=true;Snapshot=null;pending=null;policyPending=null;Notify();}
+    public void Dispose(){Invalidate();installation.Dispose();ScheduleInstallation?.Dispose();}
 }
