@@ -46,6 +46,21 @@ public sealed class DatabaseApp : RemoteApplicationBase
                 dialog => new RelaxKonOS.Client.Apps.FileServices.Views.FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")), new Size(460, 230)),
             "mysql-installation");
         mysql.Installation.PropertyChanged += (_, _) => mysql.Notify();
+        Task<string?> MySqlElevationAsync() => context.ShowDialogAsync<string?>(window, LocalizedText.Get("installation.elevation_title"),
+            dialog => new RelaxKonOS.Client.Apps.FileServices.Views.FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")), new Size(460, 230));
+        mysql.AccountInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+            InstallationServiceId.MySqlAccounts, "relaxkonos.database", mysql.RefreshAsync, MySqlElevationAsync, "mysql-accounts-installation");
+        mysql.AccountInstallation.PropertyChanged += (_, _) => mysql.Notify();
+        mysql.ConfirmAccountAsync = (action, account) => Confirm("database.accounts_confirm",
+            LocalizedText.Get("database.account_action." + action) + " · " + account.Database +
+            (account.User is null ? "" : " · " + account.User + "@" + account.Host));
+        mysql.AuthorizeAccountsAsync = async () =>
+        {
+            var password = await MySqlElevationAsync();
+            return !string.IsNullOrEmpty(password) && await context.Services.GetRequiredService<InstallationClient>()
+                .ElevateAsync(InstallationServiceId.MySqlAccounts, password, default);
+        };
+        _ = mysql.AccountInstallation.RestoreAsync();
         model.MySql = mysql;
         _ = mysql.Installation.RestoreAsync();
         model.AdminRecoveryInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),

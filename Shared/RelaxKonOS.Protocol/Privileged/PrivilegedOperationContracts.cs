@@ -462,6 +462,7 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
     [property: JsonPropertyName("processId")] int? ProcessId = null,
     [property: JsonPropertyName("processExpectedStartTime")] DateTimeOffset? ProcessExpectedStartTime = null,
+    [property: JsonPropertyName("mySqlSecrets")] RelaxKonOS.Protocol.Databases.MySqlSecrets? MySqlSecrets = null,
     [property: JsonPropertyName("mySql")] RelaxKonOS.Protocol.Databases.MySqlRequest? MySql = null,
     [property: JsonPropertyName("postgreSqlSecrets")] RelaxKonOS.Protocol.Databases.PostgreSqlSecrets? PostgreSqlSecrets = null,
     [property: JsonPropertyName("postgreSqlTls")] RelaxKonOS.Protocol.Databases.PostgreSqlTlsMaterial? PostgreSqlTls = null,

@@ -1,6 +1,9 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "database.mysql_accounts_scope": "Accounts use localhost over the private Unix socket and have grants on one database. Update application credentials after rotation.",
+    "database.mysql_password_hint": "Password (at least 16 characters)",
+    "database.mysql_account_invalid": "Check the database, user and password. Names use lowercase letters and digits. Passwords need 16–128 visible ASCII characters without quotes or backslashes.",
     "database.mysql_install": "Install MySQL",
     "database.mysql_scope": "Ubuntu 24.04 amd64 · Single instance · Local connection verified over a private Unix socket.",
     "database.mysql_confirm": "Run this MySQL operation? First installation uses fixed Oracle core packages and signed Ubuntu dependencies.",

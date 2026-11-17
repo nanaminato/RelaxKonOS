@@ -99,7 +99,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
             InstallationServiceId.Git => HostElevationCapability.GitPackageInstall, InstallationServiceId.Docker => HostElevationCapability.DockerInstall,
             InstallationServiceId.Squid => HostElevationCapability.ProxyServiceAction,
             InstallationServiceId.PostgreSql or InstallationServiceId.MySql => HostElevationCapability.NativeServiceAction,
-            InstallationServiceId.PostgreSqlAccounts => HostElevationCapability.DatabaseAccountsManage,
+            InstallationServiceId.PostgreSqlAccounts or InstallationServiceId.MySqlAccounts => HostElevationCapability.DatabaseAccountsManage,
             InstallationServiceId.PostgreSqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
             InstallationServiceId.PostgreSqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,
             InstallationServiceId.PostgreSqlMaintenance => HostElevationCapability.DatabaseMaintenance,

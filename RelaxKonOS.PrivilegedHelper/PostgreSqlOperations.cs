@@ -22,7 +22,7 @@ public static partial class PrivilegedOperationExecutor
     private sealed record PgLedger(long Revision, ComponentPackageTarget? Package, string? BinaryHash, string? ServiceHash,
         Guid? Instance, int Port, string? ConfigurationHash, PgPending? Pending, IReadOnlyList<PgReceipt> Receipts,
         [property: JsonRequired] IReadOnlyList<PostgreSqlDatabase> Databases, [property: JsonRequired] IReadOnlyList<PostgreSqlAccount> Accounts, PostgreSqlRemoteCommand? RemoteAccess = null, bool PackageRemoved = false, IReadOnlyList<PostgreSqlBackup>? Backups = null, bool DataDeleted = false, PostgreSqlBackupSchedule? BackupSchedule=null, IReadOnlyList<PostgreSqlBackup>? BackupDeletions=null, Guid? LedgerInstance=null);
-    private sealed record PgCommandResult(int Code, string Output);
+    private sealed record PgCommandResult(int Code, string Output, string Error);
     private sealed class PgFailure(string code) : Exception(code);
 
     private static async Task<PrivilegedOperationResult> ExecutePostgreSqlAsync(PrivilegedOperationRequest request)
@@ -482,7 +482,7 @@ public static partial class PrivilegedOperationExecutor
             ledger.Revision, ledger.Instance, ledger.Port, running, verified, ledger.Pending?.Id,
             ledger.Receipts.Any(x => x.Id == operation) ? operation : null, ledger.Pending is null ? problem : "database.recovery_required", candidate, ledger.Databases, ledger.Accounts, ledger.Pending?.Request.AccountCommand, ledger.Pending?.Request.AdminRecovery, ledger.RemoteAccess, ledger.Pending?.Request.RemoteAccess, ledger.Pending?.Request.Maintenance, ledger.Backups, ledger.PackageRemoved, ledger.DataDeleted, ledger.BackupSchedule);
     }
-    private static async Task<PgCommandResult> PgRun(string executable, string[] arguments, bool allowFailure = false, int minutes = 1, string? input = null, string? passfile = null, string? workingDirectory = null)
+    private static async Task<PgCommandResult> PgRun(string executable, string[] arguments, bool allowFailure = false, int minutes = 1, string? input = null, string? passfile = null, string? workingDirectory = null, string? mysqlPassword = null)
     {
         using var process = new Process { StartInfo = new(executable) { UseShellExecute = false, RedirectStandardInput = true,
             RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
@@ -492,6 +492,7 @@ public static partial class PrivilegedOperationExecutor
         process.StartInfo.Environment["LANG"] = "C.UTF-8";
         process.StartInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
         if (passfile is not null) process.StartInfo.Environment["PGPASSFILE"] = passfile;
+        if (mysqlPassword is not null) process.StartInfo.Environment["MYSQL_PWD"] = mysqlPassword;
         process.StartInfo.Environment["PGCONNECT_TIMEOUT"] = "5";
         foreach (var arg in arguments) process.StartInfo.ArgumentList.Add(arg);
         if (!process.Start()) throw new PgFailure("database.native_failed");
@@ -510,7 +511,7 @@ public static partial class PrivilegedOperationExecutor
             process.StandardInput.Close();
             await Task.WhenAll(stdout, stderr, process.WaitForExitAsync(deadline.Token));
             if (process.ExitCode != 0 && !allowFailure) throw new PgFailure("database.native_failed");
-            return new(process.ExitCode, await stdout);
+            return new(process.ExitCode, await stdout, await stderr);
         }
         catch { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } throw; }
     }

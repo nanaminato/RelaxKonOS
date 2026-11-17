@@ -36,21 +36,26 @@ public sealed partial class MySqlViewModel(HttpClient http, IAuthSession session
         { Running: true } => "database.connection_unverified",
         _ => "database.stopped"
     });
-    private bool Writable => !invalid && !Busy && CanManage && !Installation.IsActive && submission is null
+    private bool Writable => !invalid && !Busy && CanManage && !Installation.IsActive && AccountInstallation?.IsActive != true && submission is null
         && State is { Supported: true, PendingOperationId: null, ProblemCode: null };
     public bool CanInstall => Writable && State is { Installed: false };
     public bool CanInitialize => Writable && State is { Installed: true, InstanceId: null };
     public bool CanStart => Writable && State is { InstanceId: not null, Running: false };
     public bool CanStop => Writable && State is { Running: true };
-    public bool CanRecover => !invalid && !Busy && CanManage && !Installation.IsActive && submission is null && State?.PendingOperationId is not null;
-    public bool CanResume => !invalid && !Busy && CanManage && !Installation.IsActive && submission is not null;
+    public bool CanRecover => !invalid && !Busy && CanManage && !Installation.IsActive && AccountInstallation?.IsActive != true && submission is null && State?.PendingOperationId is not null;
+    public bool CanResume => !invalid && !Busy && CanManage && !Installation.IsActive && AccountInstallation?.IsActive != true && submission is not null;
 
-    partial void OnStateChanged(MySqlState? value) => Notify();
+    partial void OnStateChanged(MySqlState? value)
+    {
+        SelectedDatabase = Databases.FirstOrDefault(x => x == SelectedDatabase);
+        SelectedAccount = Accounts.FirstOrDefault(x => x.Identity == SelectedAccount?.Identity);
+        Notify();
+    }
     partial void OnBusyChanged(bool value) => Notify();
     public void Notify()
     {
         foreach (var property in new[] { nameof(Status), nameof(CanInstall), nameof(CanInitialize), nameof(CanStart),
-            nameof(CanStop), nameof(CanRecover), nameof(CanResume) }) OnPropertyChanged(property);
+            nameof(CanStop), nameof(CanRecover), nameof(CanResume), nameof(CanManageAccounts), nameof(Databases), nameof(Accounts) }) OnPropertyChanged(property);
     }
 
     [RelayCommand] public async Task RefreshAsync()
@@ -104,6 +109,7 @@ public sealed partial class MySqlViewModel(HttpClient http, IAuthSession session
             if (ConfirmAsync is null || !await ConfirmAsync() || invalid || !ReferenceEquals(login, session.CurrentSession)) return;
             submission = action is null ? new(true, RecoverOperationId: snapshot.PendingOperationId)
                 : new(true, action, snapshot.Revision);
+            submissionTask = action is null && snapshot.PendingAccount is not null ? AccountInstallation : Installation;
             await SendAsync();
         }
         finally { Busy = false; }
@@ -113,9 +119,10 @@ public sealed partial class MySqlViewModel(HttpClient http, IAuthSession session
     {
         var kind = submission!.RecoverOperationId is not null ? InstallationOperationKind.Repair
             : submission.Action == MySqlAction.Install ? InstallationOperationKind.Install : InstallationOperationKind.Configure;
-        var previous = Installation.Operation?.OperationId;
-        await Installation.SubmitAsync(kind, submission);
-        if (!Installation.HasPendingSubmission || Installation.Operation?.OperationId is { } accepted && accepted != previous)
+        var task = submissionTask ?? Installation;
+        var previous = task.Operation?.OperationId;
+        await task.SubmitAsync(kind, submission);
+        if (!task.HasPendingSubmission || task.Operation?.OperationId is { } accepted && accepted != previous)
             submission = null;
         Notify();
     }
@@ -126,12 +133,14 @@ public sealed partial class MySqlViewModel(HttpClient http, IAuthSession session
         lifetime.Cancel();
         State = null;
         submission = null;
+        AccountPassword = "";
     }
 
     public void Dispose()
     {
         Invalidate();
         Installation.Dispose();
+        AccountInstallation?.Dispose();
         lifetime.Dispose();
     }
 }

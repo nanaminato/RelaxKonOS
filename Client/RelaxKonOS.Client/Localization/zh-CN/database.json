@@ -1,6 +1,9 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "database.mysql_accounts_scope": "账号仅限 localhost，通过私有 Unix socket 连接，且只授权一个库。改密后请更新应用凭据。",
+    "database.mysql_password_hint": "密码（至少 16 个字符）",
+    "database.mysql_account_invalid": "检查库名、用户名和密码。名称仅支持小写字母与数字，密码需为 16–128 个可见 ASCII 字符且不含引号或反斜杠。",
     "database.mysql_install": "安装 MySQL",
     "database.mysql_scope": "Ubuntu 24.04 amd64 · 单实例 · 仅通过私有 Unix socket 验证本机连接。",
     "database.mysql_confirm": "确认执行 MySQL 操作？首次安装使用 Oracle 固定核心包及 Ubuntu 签名依赖。",

@@ -6,10 +6,12 @@ using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Installations;
 
-public sealed class MySqlInstallationService(IPrivilegedOperationTransport helper)
+public class MySqlInstallationService(IPrivilegedOperationTransport helper,
+    RelaxKonOS.Server.Databases.PostgreSqlCredentialStore credentials)
     : InstallationService<MySqlRequest>
 {
     public override InstallationServiceId Id => InstallationServiceId.MySql;
+    protected virtual bool Accounts => false;
     public override IReadOnlyList<string> Resources => ["service:MySql", "linux:apt-dpkg"];
     protected override bool Confirmed(MySqlRequest request) => request.Confirmed;
     protected override bool Supports(InstallationOperationKind kind) =>
@@ -17,7 +19,7 @@ public sealed class MySqlInstallationService(IPrivilegedOperationTransport helpe
 
     protected override void ValidateRequest(InstallationOperationKind kind, MySqlRequest request, string key)
     {
-        if (!request.Valid || !(kind switch
+        if (!request.Valid || request.RecoverOperationId is null && (request.Account is not null) != Accounts || !(kind switch
         {
             InstallationOperationKind.Install => request.Action == MySqlAction.Install,
             InstallationOperationKind.Configure => request.Action is not null and not MySqlAction.Install,
@@ -39,11 +41,27 @@ public sealed class MySqlInstallationService(IPrivilegedOperationTransport helpe
     protected override async Task ExecuteAsync(InstallationOperationKind kind, MySqlRequest request, string actor,
         IInstallationProgress progress, CancellationToken ct)
     {
+        MySqlSecrets? secrets = null;
+        if (Accounts || request.RecoverOperationId is not null)
+        {
+            var before = await ReadAsync(ct, request.RecoverOperationId);
+            if (request.RecoverOperationId is not null && before.PendingOperationId is not null
+                && (before.PendingAccount is not null) != Accounts)
+                throw new InstallationException("database.accounts_authorization_required", 403);
+            var account = request.Account ?? before.PendingAccount;
+            if (account?.CredentialReference is { } reference)
+            {
+                var password = credentials.Read(reference, account.InstanceId, request.Account is null ? null : actor);
+                var previous = account.Grant is null
+                    ? before.Accounts?.SingleOrDefault(x => x.User == account.User && x.Host == account.Host) : null;
+                secrets = new(password, previous is null ? null : credentials.Read(previous.CredentialReference, account.InstanceId));
+            }
+        }
         await progress.ReportAsync(new(kind == InstallationOperationKind.Install ? InstallationStage.Installing : InstallationStage.Configuring,
             Cancellable: false), ct);
         var original = request.RecoverOperationId ?? progress.OperationId;
         var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.MySqlExecute,
-            OperationId: progress.OperationId, MySql: request), CancellationToken.None);
+            OperationId: progress.OperationId, MySql: request, MySqlSecrets: secrets), CancellationToken.None);
         MySqlState state;
         try { state = await ReadAsync(CancellationToken.None, original); }
         catch (Exception error) when (error is InstallationException or JsonException or FormatException or IOException)
@@ -66,4 +84,12 @@ public sealed class MySqlInstallationService(IPrivilegedOperationTransport helpe
         catch (Exception error) when (error is InstallationException or JsonException or FormatException or IOException) { }
         return new(InstallationOperationState.Interrupted, "database.recovery_required");
     }
+}
+
+
+public sealed class MySqlAccountsInstallationService(IPrivilegedOperationTransport helper,
+    RelaxKonOS.Server.Databases.PostgreSqlCredentialStore credentials) : MySqlInstallationService(helper, credentials)
+{
+    public override InstallationServiceId Id => InstallationServiceId.MySqlAccounts;
+    protected override bool Accounts => true;
 }

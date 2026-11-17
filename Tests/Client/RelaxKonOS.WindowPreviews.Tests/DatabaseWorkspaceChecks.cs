@@ -235,6 +235,9 @@ internal static class DatabaseWorkspaceChecks
             Installation = new(null!, null!, InstallationServiceId.MySql, "test",
                 () => Task.CompletedTask, () => Task.FromResult<string?>(null))
         };
+        mysql.AccountInstallation = new(null!, null!, InstallationServiceId.MySqlAccounts, "test",
+            () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+        Check(!mysql.CanManageAccounts, "MySQL account controls require verified running instance");
         Check(mysql.CanInstall && !mysql.CanInitialize, "MySQL fresh host exposes installation");
         mysql.State = mysql.State with { Installed = true };
         Check(mysql.CanInitialize && !mysql.CanInstall, "MySQL installed host exposes initialization");
@@ -245,6 +248,8 @@ internal static class DatabaseWorkspaceChecks
         Dispatcher.UIThread.RunJobs();
         Check(mysqlView.GetVisualDescendants().OfType<Button>().Any(button => button.Command == mysql.StopCommand && button.IsEnabled),
             "MySQL page renders running lifecycle controls");
+        Check(mysql.CanManageAccounts && mysqlView.GetVisualDescendants().OfType<TextBox>().Any(box => box.PasswordChar != '\0'),
+            "MySQL running account form masks the password");
         mysqlWindow.Close();
         mysql.State = mysql.State with { PendingOperationId = Guid.NewGuid(), ProblemCode = "database.recovery_required" };
         Check(mysql.CanRecover && !mysql.CanStop, "MySQL pending operation exposes only recovery");

@@ -11,12 +11,12 @@ public static partial class PrivilegedOperationExecutor
     private static readonly SemaphoreSlim MyGate = new(1);
     private sealed record MyIntent(Guid Id, MySqlRequest Request, Guid? Instance, string Phase);
     private sealed record MyLedger(long Revision, bool Installed, Guid? Instance, MyIntent? Pending,
-        Dictionary<Guid, MySqlRequest> Receipts);
+        Dictionary<Guid, MySqlRequest> Receipts, IReadOnlyList<string>? Databases = null, IReadOnlyList<MySqlAccount>? Accounts = null);
     private static async Task<PrivilegedOperationResult> ExecuteMySqlAsync(PrivilegedOperationRequest request)
     {
         if (request != new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
-            Correlation: request.Correlation, MySql: request.MySql)
-            || ((request.Operation == PrivilegedOperationKind.MySqlQuery) != (request.MySql is null)))
+            Correlation: request.Correlation, MySql: request.MySql, MySqlSecrets: request.MySqlSecrets)
+            || ((request.Operation == PrivilegedOperationKind.MySqlQuery) != (request.MySql is null)) || request.MySql is null && request.MySqlSecrets is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "database.request_invalid");
 
         if (!OperatingSystem.IsLinux() || !File.Exists("/etc/os-release")
@@ -50,7 +50,7 @@ public static partial class PrivilegedOperationExecutor
             if (request.MySql is null)
                 return MyReply(await MyObserve(ledger, id));
             var intent = request.MySql;
-            if (!intent.Valid) throw new PgFailure("database.request_invalid");
+            if (!intent.Valid || request.MySqlSecrets is not null && intent.Account is null && intent.RecoverOperationId is null) throw new PgFailure("database.request_invalid");
             if (ledger.Receipts.TryGetValue(id, out var committed))
             {
                 if (committed != intent) throw new PgFailure("database.operation_conflict");
@@ -75,13 +75,21 @@ public static partial class PrivilegedOperationExecutor
             {
                 if (ledger.Revision != intent.Revision)
                     throw new PgFailure("database.plan_changed");
-                await MyPreflight(ledger, intent.Action!.Value);
+                if (intent.Account is { } account)
+                    await MyAccountPreflight(ledger, intent.Action!.Value, account, request.MySqlSecrets);
+                else await MyPreflight(ledger, intent.Action!.Value);
                 ledger = MySave(ledger with { Pending = new(id, intent,
                     intent.Action == MySqlAction.Initialize ? Guid.NewGuid() : ledger.Instance, "Prepared") });
             }
             if (ledger.Pending is not null)
             {
-                ledger = await MyContinue(ledger);
+                if (ledger.Pending.Request.Account is not null)
+                    ledger = await MyContinueAccount(ledger, request.MySqlSecrets);
+                else
+                {
+                    if (request.MySqlSecrets is not null) throw new PgFailure("database.request_invalid");
+                    ledger = await MyContinue(ledger);
+                }
                 var completed = ledger.Pending!;
                 ledger.Receipts.Add(completed.Id, completed.Request);
                 ledger = MySave(ledger with { Revision = ledger.Revision + 1, Pending = null });
@@ -343,6 +351,6 @@ public static partial class PrivilegedOperationExecutor
             catch (IOException) { problem = "database.state_unavailable"; }
         }
         return new(true, ledger.Revision, ledger.Installed, ledger.Instance, running, verified,
-            ledger.Pending?.Id, ledger.Receipts.ContainsKey(operation) ? operation : null, problem);
+            ledger.Pending?.Id, ledger.Receipts.ContainsKey(operation) ? operation : null, problem, ledger.Databases, ledger.Accounts, ledger.Pending?.Request.Account);
     }
 }
