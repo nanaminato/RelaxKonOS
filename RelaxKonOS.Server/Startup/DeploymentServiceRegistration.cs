@@ -12,6 +12,9 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SmbInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.NginxInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SquidInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.MySqlInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService>(sp =>
+            sp.GetRequiredService<RelaxKonOS.Server.Installations.MySqlInstallationService>());
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Databases.PostgreSqlCredentialStore>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlAccountsInstallationService>();

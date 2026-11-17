@@ -119,6 +119,13 @@ internal static class ServerPipeline
         app.MapRuntimeCatalogEndpoints();
         app.MapComponentEndpoints();
         app.MapPostgreSqlEndpoints();
+        app.MapGet(RelaxKonOS.Protocol.Databases.MySqlRoutes.State,
+            async (RelaxKonOS.Server.Installations.MySqlInstallationService mysql, CancellationToken ct) =>
+            {
+                try { return Results.Ok(await mysql.ReadAsync(ct)); }
+                catch (RelaxKonOS.Server.Installations.InstallationException)
+                { return Results.Problem(statusCode: 503); }
+            }).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
         app.MapServerModuleManagementEndpoints();
         app.MapModulePrivilegeEndpoints();
         app.MapTaskPlanningEndpoints();

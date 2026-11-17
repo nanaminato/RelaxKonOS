@@ -2,6 +2,17 @@ using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.ManagedRuntimes.PostgreSql;
 
+if (args is ["mysql-product", var mode])
+{
+    await MySqlProductSmoke.RunAsync(mode);
+    return;
+}
+
+if (args is ["mysql-bootstrap-plan"])
+{
+    Console.WriteLine(JsonSerializer.Serialize(RelaxKonOS.ManagedRuntimes.MySql.MySqlBootstrapPolicy.Plan(Guid.NewGuid())));
+    return;
+}
 if(args is ["instance-delete-native"]){await PostgreSqlSchedulerSmoke.DeleteInstanceAsync();return;}
 
 if(args is ["scheduler-native"]){await PostgreSqlSchedulerSmoke.RunAsync();return;}

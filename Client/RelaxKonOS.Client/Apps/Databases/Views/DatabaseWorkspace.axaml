@@ -9,6 +9,7 @@
    <Button Content="{loc:Loc database.accounts}" Click="Accounts" />
    <Button Content="{loc:Loc database.remote_title}" Click="RemoteAccess" />
    <Button Content="{loc:Loc database.maintenance}" Click="Maintenance" />
+   <Button Content="MySQL" Click="MySql" />
    <Button Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
   </StackPanel>
   <ContentControl Grid.Column="1" x:Name="Page"><views:DatabaseOverview /></ContentControl>

@@ -1,6 +1,9 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "database.mysql_install": "安装 MySQL",
+    "database.mysql_scope": "Ubuntu 24.04 amd64 · 单实例 · 仅通过私有 Unix socket 验证本机连接。",
+    "database.mysql_confirm": "确认执行 MySQL 操作？首次安装使用 Oracle 固定核心包及 Ubuntu 签名依赖。",
     "database.maintenance_action.DeleteInstance": "删除第二实例",
     "database.delete_instance_confirm": "永久删除 {0} 的数据、账号凭据和备份。主实例继续运行，共享软件包保留。",
     "database.port_conflict": "端口已被占用或由另一个 PostgreSQL 集群保留。",

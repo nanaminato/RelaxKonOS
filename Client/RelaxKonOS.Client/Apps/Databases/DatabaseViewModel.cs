@@ -59,6 +59,7 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
     [ObservableProperty] private PostgreSqlState? snapshot;
     [ObservableProperty] private bool busy;
     [ObservableProperty] private LocalizedStatus notice = LocalizedStatus.Literal("");
+    public MySqlViewModel? MySql { get; set; }
     public InstallationTaskViewModel Installation { get; set; } = null!;
     public InstallationTaskViewModel? AdminRecoveryInstallation { get; set; }
     public Func<Task<bool>>? ConfirmAdminRecoveryAsync { get; set; }
@@ -194,6 +195,6 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
         try { await SendAsync(submissionKind, request); }
         finally { Busy = false; }
     }
-    public void Invalidate() { invalid = true; lifetime.Cancel(); MaintenanceManager?.Invalidate(); AccountManager?.Invalidate(); RemoteManager?.Invalidate(); Snapshot = null; Notice = LocalizedStatus.Key("database.session_changed"); NotifyState(); }
-    public void Dispose() { Invalidate(); lifetime.Dispose(); Installation?.Dispose(); AdminRecoveryInstallation?.Dispose(); Dependency?.Dispose(); MaintenanceManager?.Dispose(); AccountManager?.Dispose(); RemoteManager?.Dispose(); }
+    public void Invalidate() { MySql?.Invalidate(); invalid = true; lifetime.Cancel(); MaintenanceManager?.Invalidate(); AccountManager?.Invalidate(); RemoteManager?.Invalidate(); Snapshot = null; Notice = LocalizedStatus.Key("database.session_changed"); NotifyState(); }
+    public void Dispose() { Invalidate(); MySql?.Dispose(); lifetime.Dispose(); Installation?.Dispose(); AdminRecoveryInstallation?.Dispose(); Dependency?.Dispose(); MaintenanceManager?.Dispose(); AccountManager?.Dispose(); RemoteManager?.Dispose(); }
 }

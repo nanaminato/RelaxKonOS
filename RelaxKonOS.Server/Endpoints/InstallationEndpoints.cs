@@ -104,7 +104,7 @@ public static class InstallationEndpoints
         InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall,
         InstallationServiceId.Docker => HostElevationCapability.DockerInstall,
         InstallationServiceId.Squid => HostElevationCapability.ProxyServiceAction,
-        InstallationServiceId.PostgreSql => HostElevationCapability.NativeServiceAction,
+        InstallationServiceId.PostgreSql or InstallationServiceId.MySql => HostElevationCapability.NativeServiceAction,
             InstallationServiceId.PostgreSqlAccounts => HostElevationCapability.DatabaseAccountsManage,
             InstallationServiceId.PostgreSqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
             InstallationServiceId.PostgreSqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,

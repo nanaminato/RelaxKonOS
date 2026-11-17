@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:db="clr-namespace:RelaxKonOS.Client.Apps.Databases"
+ x:Class="RelaxKonOS.Client.Apps.Databases.Views.MySqlOverview" x:DataType="db:MySqlViewModel">
+ <ScrollViewer><StackPanel Spacing="14">
+  <TextBlock Text="MySQL 8.4.13 LTS" FontSize="24" />
+  <TextBlock Text="{loc:Loc database.mysql_scope}" TextWrapping="Wrap" />
+  <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+  <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" />
+  <WrapPanel>
+   <Button Content="{loc:Loc database.mysql_install}" Command="{Binding InstallCommand}" IsEnabled="{Binding CanInstall}" Margin="0,0,8,8" />
+   <Button Content="{loc:Loc database.initialize}" Command="{Binding InitializeCommand}" IsEnabled="{Binding CanInitialize}" Margin="0,0,8,8" />
+   <Button Content="{loc:Loc database.start}" Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}" Margin="0,0,8,8" />
+   <Button Content="{loc:Loc database.stop}" Command="{Binding StopCommand}" IsEnabled="{Binding CanStop}" Margin="0,0,8,8" />
+   <Button Content="{loc:Loc database.verify}" Command="{Binding VerifyCommand}" IsEnabled="{Binding CanStop}" Margin="0,0,8,8" />
+   <Button Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" Margin="0,0,8,8" />
+  </WrapPanel>
+  <Button Content="{loc:Loc database.recover}" Command="{Binding RecoverCommand}" IsEnabled="{Binding CanRecover}" />
+  <Button Content="{loc:Loc database.resume}" Command="{Binding ResumeCommand}" IsVisible="{Binding CanResume}" />
+  <TextBlock Text="{Binding Installation.SummaryText}" TextWrapping="Wrap" />
+ </StackPanel></ScrollViewer>
+</UserControl>

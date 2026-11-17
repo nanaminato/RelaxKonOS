@@ -1,6 +1,9 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "database.mysql_install": "MySQL をインストール",
+    "database.mysql_scope": "Ubuntu 24.04 amd64 · 単一インスタンス · 専用 Unix ソケットでローカル接続を確認します。",
+    "database.mysql_confirm": "MySQL の操作を実行しますか？初回は固定の Oracle コアパッケージと署名済み Ubuntu 依存パッケージを使用します。",
     "database.maintenance_action.DeleteInstance": "2 番目のインスタンスを削除",
     "database.delete_instance_confirm": "{0} のデータ、資格情報、バックアップを完全に削除します。主インスタンスは稼働を継続し、共有パッケージは保持されます。",
     "database.port_conflict": "このポートは使用中か、別の PostgreSQL クラスタが予約しています。",

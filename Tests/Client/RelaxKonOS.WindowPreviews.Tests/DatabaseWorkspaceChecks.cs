@@ -227,6 +227,29 @@ internal static class DatabaseWorkspaceChecks
         selectionModel.RefreshAsync().GetAwaiter().GetResult();
         Check(selectionClient.LastInstance is null && selectionModel.Snapshot?.InstanceId == primary
             && selectionModel.SelectedInstance is null, "refresh falls back to primary after secondary deletion");
+        using var mysqlHttp = new HttpClient();
+        using var mysql = new MySqlViewModel(mysqlHttp, DispatchProxy.Create<IAuthSession,EntrySession>())
+        {
+            CanManage = true,
+            State = new(true, 1, false, null, false, false, null, null, null),
+            Installation = new(null!, null!, InstallationServiceId.MySql, "test",
+                () => Task.CompletedTask, () => Task.FromResult<string?>(null))
+        };
+        Check(mysql.CanInstall && !mysql.CanInitialize, "MySQL fresh host exposes installation");
+        mysql.State = mysql.State with { Installed = true };
+        Check(mysql.CanInitialize && !mysql.CanInstall, "MySQL installed host exposes initialization");
+        mysql.State = mysql.State with { InstanceId = Guid.NewGuid(), Running = true, Verified = true };
+        var mysqlView = new MySqlOverview { DataContext = mysql };
+        var mysqlWindow = new Window { Width = 760, Height = 460, Content = mysqlView };
+        mysqlWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+        Check(mysqlView.GetVisualDescendants().OfType<Button>().Any(button => button.Command == mysql.StopCommand && button.IsEnabled),
+            "MySQL page renders running lifecycle controls");
+        mysqlWindow.Close();
+        mysql.State = mysql.State with { PendingOperationId = Guid.NewGuid(), ProblemCode = "database.recovery_required" };
+        Check(mysql.CanRecover && !mysql.CanStop, "MySQL pending operation exposes only recovery");
+        mysql.Invalidate();
+        Check(!mysql.CanRecover, "MySQL invalidated session cannot mutate");
         model.Invalidate();Check(!model.CanStart && !model.CanRecover,"session invalidation disables stale window");
         Console.WriteLine("Database previews: "+output);
     }

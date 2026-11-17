@@ -35,6 +35,19 @@ public sealed class DatabaseApp : RemoteApplicationBase
             InstallationServiceId.PostgreSql, "relaxkonos.database", model.RefreshAsync,
             () => context.ShowDialogAsync<string?>(window, LocalizedText.Get("installation.elevation_title"),
                 dialog => new RelaxKonOS.Client.Apps.FileServices.Views.FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")), new Size(460, 230)));
+        var mysql = new MySqlViewModel(context.Services.GetRequiredService<HttpClient>(), session)
+        {
+            CanManage = model.CanManage,
+            ConfirmAsync = () => Confirm("database.mysql_confirm")
+        };
+        mysql.Installation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+            InstallationServiceId.MySql, "relaxkonos.database", mysql.RefreshAsync,
+            () => context.ShowDialogAsync<string?>(window, LocalizedText.Get("installation.elevation_title"),
+                dialog => new RelaxKonOS.Client.Apps.FileServices.Views.FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")), new Size(460, 230)),
+            "mysql-installation");
+        mysql.Installation.PropertyChanged += (_, _) => mysql.Notify();
+        model.MySql = mysql;
+        _ = mysql.Installation.RestoreAsync();
         model.AdminRecoveryInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
             InstallationServiceId.PostgreSqlAdminRecovery, "relaxkonos.database", model.RefreshAsync,
             () => context.ShowDialogAsync<string?>(window, LocalizedText.Get("installation.elevation_title"),

@@ -38,7 +38,7 @@
 | --- | --- | --- |
 | PostgreSQL 16 / Ubuntu 24.04 x64 / native / apt | 首个纵向切片 | DB-01 已核实 16.15 与隔离更新起点 16.2、依赖及默认集群行为；DB-02/03 实例及账号闭环、DB-04 管理身份恢复、DB-05 指定来源 TLS、DB-06 补丁更新/备份恢复/卸载已实现，隔离验收通过；真实主机完整联调待完成 |
 | PostgreSQL / Windows x64 / native | PostgreSQL 扩展 | 官方发行渠道、安装器或归档机制及服务账户单独验收；版本待定 |
-| MySQL 8.4 LTS / Linux x64 / native | 第二引擎 | 发行版与签名来源待定；没有目标包则阻止，不自动加源 |
+| MySQL 8.4 LTS / Linux x64 / native | 第二引擎 | Ubuntu 24.04 amd64 / systemd，Oracle 签名核心包与私有 socket 单实例闭环 |
 | MySQL 8.4 LTS / Windows x64 / native | MySQL 扩展 | 原生安装、服务与恢复单独验收 |
 | PostgreSQL、MySQL / Linux / docker | 后续 | 组件目录容器机制、受管卷和领域委托部署补齐后验收 |
 | ARM64、其他发行版、多实例 | 后续 | 逐组合验证，不能继承 x64 或其他发行版结论 |
@@ -150,7 +150,7 @@ MySQL 适配必须单独实现 `(user, host)` 身份、认证插件、授权、T
 | DB-06 | 已完成首轮隔离切片 | [实现与验收](RelaxKonOS.DatabaseManager.PostgreSql.DB06.md)：真实 16.2→16.15、损坏二进制修复、停机备份/恢复门禁、保留/删除数据、外部实例拒绝与 Helper 中断/systemd 重启接续；真实主机完整联调待完成 |
 | DB-07 | 分项推进 | DB-07A [PostgreSQL 自动备份与保留策略](RelaxKonOS.DatabaseManager.PostgreSql.DB07.md)已完成实现、桌面接线及隔离验收；DB-07B [PostgreSQL 主版本迁移](RelaxKonOS.DatabaseManager.PostgreSql.DB07B.md)限定路径实现、桌面接线和隔离验收已完成；DB-07C [PostgreSQL 多实例管理](RelaxKonOS.DatabaseManager.PostgreSql.DB07C.md)同主版本双实例台账、事务分派、独立删除、桌面接线与原生隔离验收已完成；MariaDB、Redis/Valkey 保持后续，不能因单个切片完成而关闭整个集合 |
 | DB-08 | 待实施 | Windows PostgreSQL 独立矩阵；不复用 Linux 验收结论 |
-| DB-09 | 待实施 | MySQL LTS 第二适配，重复 DB-01～06 的适用验收；证明公共模型未固化 PostgreSQL 语义 |
+| DB-09 | 首轮单实例 | [MySQL 8.4 首轮安装与本机连接](RelaxKonOS.DatabaseManager.MySql.DB09.md)。安装、初始化、启停与本机验证已接线。账号及其他生命周期后续推进 |
 | DB-10 | 后续；公共机制前置 | Linux Docker 组件机制及领域委托接入，验证卷、首次初始化、凭据轮换和数据升级门禁 |
 
 推荐顺序：DB-01 → PostgreSQL DB-02/03 本机开发切片 → DB-05/06 形成受限 MVP → DB-04 完整密码恢复 → DB-08/09 → DB-10/07。DB-04 未通过的阶段必须明确显示“支持正常改密，不支持管理身份遗失恢复”。首个可交付 MVP 不等于 APP-005 全部需求完成。
