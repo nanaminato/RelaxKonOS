@@ -75,6 +75,49 @@ def login(selected, password):
     return result.returncode == 0 and result.stdout.strip() == "isoprobe"
 
 
+if "--delete-second" in sys.argv:
+    primary = state()
+    secondary_id = next(x["Id"] for x in primary["Instances"] if x["Id"] != primary["InstanceId"])
+    primary = control("Start", primary) if not primary["Running"] else primary
+    secondary = state(secondary_id)
+    primary_id = uuid.UUID(primary["InstanceId"]).hex
+    suffix = uuid.UUID(secondary_id).hex
+    root = Path("/var/lib/relaxkonos/postgresql-control/backups")
+    data_path = Path(admin(secondary, "SHOW data_directory;"))
+    config_path = Path(admin(secondary, "SHOW config_file;")).parent
+    pid_path = Path(admin(primary, "SHOW data_directory;")) / "postmaster.pid"
+    pid = pid_path.read_text().splitlines()[0]
+    primary_backups = sorted(p.name for p in (root / primary_id).iterdir())
+    assert primary_backups and (root / suffix).is_dir()
+    check(execute("Maintenance", "DeleteInstance", primary, DeleteConfirmation=primary_id) == "database.maintenance_invalid",
+          "independent deletion refuses the primary instance")
+    check(execute("Maintenance", "DeleteInstance", secondary, DeleteConfirmation=primary_id) == "database.maintenance_invalid",
+          "deletion confirmation must name the exact secondary")
+    with subprocess.Popen([binary, "instance-delete-native"], stdout=subprocess.PIPE, text=True) as deletion:
+        probes = 0
+        while deletion.poll() is None:
+            check_data = admin(primary, "SELECT id FROM db07c_a;")
+            assert check_data == "71" and pid_path.read_text().splitlines()[0] == pid
+            probes += 1
+        print(deletion.stdout.read(), end="", flush=True)
+        assert deletion.returncode == 0
+    check(probes > 0 and admin(primary, "SELECT id FROM db07c_a;") == "71"
+          and pid_path.read_text().splitlines()[0] == pid, "primary serves data throughout secondary deletion with the same postmaster")
+    check(not data_path.exists() and not config_path.exists() and not (root / suffix).exists()
+          and not Path("/run/postgresql/rk" + suffix).exists(), "only secondary data, configuration, socket and backup root removed")
+    remaining = state()
+    check(remaining["Instances"] == [{"Id": primary["InstanceId"], "Port": primary["Port"]}]
+          and remaining["Accounts"] == primary["Accounts"]
+          and sorted(p.name for p in (root / primary_id).iterdir()) == primary_backups,
+          "primary inventory, account and backups preserved")
+    check(call(instance=secondary_id) == "database.instance_invalid", "deleted secondary is no longer selectable")
+    candidate = call("PostgreSqlMaintenancePlan")["Candidate"]
+    repaired = execute("Maintenance", "Repair", state(), Target=candidate)
+    check(isinstance(repaired, dict), "shared package repair is enabled again after deletion")
+    primary = control("Start", primary)
+    check(admin(primary, "SELECT id FROM db07c_a;") == "71", "primary starts with its original data after shared repair")
+    sys.exit(0)
+
 if "--after-restart" in sys.argv:
     primary = state()
     ids = primary["Instances"]

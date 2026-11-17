@@ -2,6 +2,8 @@ using System.Text.Json;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.ManagedRuntimes.PostgreSql;
 
+if(args is ["instance-delete-native"]){await PostgreSqlSchedulerSmoke.DeleteInstanceAsync();return;}
+
 if(args is ["scheduler-native"]){await PostgreSqlSchedulerSmoke.RunAsync();return;}
 
 if (args is ["helper-json", _] or ["helper-stdin"])

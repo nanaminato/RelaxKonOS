@@ -1,6 +1,8 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "database.maintenance_action.DeleteInstance": "Delete second instance",
+    "database.delete_instance_confirm": "Permanently delete data, credentials and backups for {0}. The primary instance keeps running and shared packages are retained.",
     "database.port_conflict": "The port is in use or reserved by another PostgreSQL cluster.",
     "database.switch_instance": "Switch instance",
     "database.overview": "Overview",

@@ -53,6 +53,8 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     public bool CanRepair=>SharedPackageWritable&&Ready&&Snapshot?.Installed==true&&HasPlan&&!migrationPlan&&Plan!.Candidate!.Version==Snapshot.Version;
     public bool CanReinstall=>SharedPackageWritable&&Ready&&Snapshot?.PackageRemoved==true&&HasPlan&&!migrationPlan;
     public bool CanKeepData=>SharedPackageWritable&&CanBackup;
+    public bool CanDeleteInstance => CanBackup && Snapshot?.Instances is { Count: > 1 } instances
+        && Snapshot.InstanceId is { } id && instances[0].Id != id && DeleteConfirmation == id.ToString("N");
     public bool CanDelete=>SharedPackageWritable&&CanBackup&&DeleteConfirmation==Snapshot!.InstanceId!.Value.ToString("N");
     public bool CanRecover=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&ScheduleInstallation?.IsActive!=true&&OtherBusy?.Invoke()!=true&&!HasPending&&Snapshot?.PendingMaintenance is {Action:not (PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup)};
     public bool CanResume=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&pending is not null;
@@ -64,7 +66,7 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     partial void OnBusyChanged(bool value)=>Notify();
     partial void OnDeleteConfirmationChanged(string value)=>Notify();
     partial void OnSelectedBackupChanged(PostgreSqlBackup? value)=>Notify();
-    public void Notify(){foreach(var name in new[]{nameof(CanMigrate),nameof(CanKeepData),nameof(PlanDetails),nameof(CanConfigureSchedule),nameof(CanRecoverSchedule),nameof(CanResumeSchedule),nameof(CanDeleteBackup),nameof(NextDue),nameof(ScheduleOutcome),nameof(ScheduledTask),nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
+    public void Notify(){foreach(var name in new[]{nameof(CanMigrate),nameof(CanKeepData),nameof(PlanDetails),nameof(CanConfigureSchedule),nameof(CanRecoverSchedule),nameof(CanResumeSchedule),nameof(CanDeleteBackup),nameof(NextDue),nameof(ScheduleOutcome),nameof(ScheduledTask),nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanDeleteInstance),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
     [RelayCommand] private async Task PlanAsync()
     {
         if(!Ready)return;Busy=true;
@@ -111,6 +113,7 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     [RelayCommand] private Task RestoreAsync()=>Submit(PostgreSqlMaintenanceAction.Restore,CanRestore);
     [RelayCommand] private Task ReinstallAsync()=>Submit(PostgreSqlMaintenanceAction.Reinstall,CanReinstall);
     [RelayCommand] private Task KeepDataAsync()=>Submit(PostgreSqlMaintenanceAction.UninstallKeepData,CanKeepData);
+    [RelayCommand] private Task DeleteInstanceAsync()=>Submit(PostgreSqlMaintenanceAction.DeleteInstance,CanDeleteInstance);
     [RelayCommand] private Task DeleteDataAsync()=>Submit(PostgreSqlMaintenanceAction.UninstallDeleteData,CanDelete);
     private async Task Submit(PostgreSqlMaintenanceAction action,bool allowed)
     {
@@ -118,7 +121,7 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
         var command=new PostgreSqlMaintenanceCommand(action,Snapshot!.InstanceId!.Value,Snapshot.Revision,
             action is PostgreSqlMaintenanceAction.Update or PostgreSqlMaintenanceAction.Repair or PostgreSqlMaintenanceAction.Reinstall or PostgreSqlMaintenanceAction.MigrateMajor?Plan!.Candidate:null,
             action is PostgreSqlMaintenanceAction.Restore or PostgreSqlMaintenanceAction.DeleteBackup?SelectedBackup!.Id:null,
-            action==PostgreSqlMaintenanceAction.UninstallDeleteData?DeleteConfirmation:null,
+            action is PostgreSqlMaintenanceAction.UninstallDeleteData or PostgreSqlMaintenanceAction.DeleteInstance?DeleteConfirmation:null,
             MigrationSourceFingerprint:action==PostgreSqlMaintenanceAction.MigrateMajor?"B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8":null);
         Busy=true;
         try{if(ConfirmAsync is null||!await ConfirmAsync(command)||invalid)return;pending=new(true,Maintenance:command);await Send();}finally{Busy=false;}

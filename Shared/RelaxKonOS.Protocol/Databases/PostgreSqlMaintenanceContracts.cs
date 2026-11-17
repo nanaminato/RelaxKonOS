@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 namespace RelaxKonOS.Protocol.Databases;
 [JsonConverter(typeof(JsonStringEnumConverter<PostgreSqlMaintenanceAction>))]
-public enum PostgreSqlMaintenanceAction { Update, Repair, Backup, Restore, UninstallKeepData, UninstallDeleteData, Reinstall, ConfigureBackupSchedule, ScheduledBackup, DeleteBackup, MigrateMajor }
+public enum PostgreSqlMaintenanceAction { Update, Repair, Backup, Restore, UninstallKeepData, UninstallDeleteData, Reinstall, ConfigureBackupSchedule, ScheduledBackup, DeleteBackup, MigrateMajor, DeleteInstance }
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record PostgreSqlMaintenanceCommand(PostgreSqlMaintenanceAction Action, Guid InstanceId, long ExpectedRevision,
     ComponentPackageTarget? Target = null, Guid? BackupId = null, string? DeleteConfirmation = null, PostgreSqlBackupScheduleRequest? Schedule = null, Guid? ScheduleId = null, DateTimeOffset? DueAt = null, string? MigrationSourceFingerprint = null);
@@ -12,7 +12,7 @@ public static class PostgreSqlMaintenanceValidation
     public static bool Valid(PostgreSqlMaintenanceCommand c) => Enum.IsDefined(c.Action) && c.InstanceId != Guid.Empty && (c.Action==PostgreSqlMaintenanceAction.ScheduledBackup?c.ExpectedRevision==0:c.ExpectedRevision>0)
         && (c.Action is PostgreSqlMaintenanceAction.Update or PostgreSqlMaintenanceAction.Repair or PostgreSqlMaintenanceAction.Reinstall or PostgreSqlMaintenanceAction.MigrateMajor ? c.Target is not null : c.Target is null)
         && (c.Action is PostgreSqlMaintenanceAction.Restore or PostgreSqlMaintenanceAction.DeleteBackup ? c.BackupId is {} id && id!=Guid.Empty : c.BackupId is null)
-        && (c.Action == PostgreSqlMaintenanceAction.UninstallDeleteData ? c.DeleteConfirmation==c.InstanceId.ToString("N") : c.DeleteConfirmation is null)
+        && (c.Action is PostgreSqlMaintenanceAction.UninstallDeleteData or PostgreSqlMaintenanceAction.DeleteInstance ? c.DeleteConfirmation==c.InstanceId.ToString("N") : c.DeleteConfirmation is null)
         && (c.Action==PostgreSqlMaintenanceAction.ConfigureBackupSchedule ? c.Schedule is {} policy && policy.IntervalHours is >=1 and <=168 && policy.KeepLast is >=1 and <=6 : c.Schedule is null)
         && (c.Action==PostgreSqlMaintenanceAction.MigrateMajor ? c.MigrationSourceFingerprint=="B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8" : c.MigrationSourceFingerprint is null)
         && (c.Action==PostgreSqlMaintenanceAction.ScheduledBackup ? c.ScheduleId is {} scheduleId && scheduleId!=Guid.Empty && c.DueAt is {} due && due.Offset==TimeSpan.Zero : c.ScheduleId is null && c.DueAt is null);

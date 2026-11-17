@@ -59,6 +59,21 @@ public static partial class PrivilegedOperationExecutor
 
     private static async Task PgMaintenancePreflight(PgLedger l,PostgreSqlMaintenanceCommand c)
     {
+        if (c.Action == PostgreSqlMaintenanceAction.DeleteInstance)
+        {
+            if (!PostgreSqlMaintenanceValidation.Valid(c) || l.LedgerInstance != c.InstanceId
+                || l.Instance != c.InstanceId || l.Revision != c.ExpectedRevision || l.DataDeleted
+                || l.PackageRemoved || l.RemoteAccess is not null)
+                throw new PgFailure("database.maintenance_invalid");
+            await PgVerifyPackage(l);
+            await PgVerifyConfiguration(l);
+            var plan = PostgreSqlInitializationPlanner.Create(c.InstanceId, l.Port, PgMajor(l));
+            // The running socket is checked as a path here and its directory is scanned after stop.
+            PgNoLinks(plan.SocketDirectory);
+            foreach (var path in new[] { plan.DataDirectory, plan.ConfigurationDirectory, PgBackupRoot(l) })
+                if (Directory.Exists(path)) PgTreeFiles(path);
+            return;
+        }
         if(c.Action==PostgreSqlMaintenanceAction.MigrateMajor){await PgMajorPreflight(l,c);return;}
         if(c.Action is PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup or PostgreSqlMaintenanceAction.DeleteBackup)
         {await PgBackupPolicyPreflight(l,c);return;}

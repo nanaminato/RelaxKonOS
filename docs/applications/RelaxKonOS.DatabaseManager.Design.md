@@ -148,7 +148,7 @@ MySQL 适配必须单独实现 `(user, host)` 身份、认证插件、授权、T
 | DB-04 | PostgreSQL 本机 peer 管理身份恢复已实现；隔离验收通过 | 专属授权、持久 systemd 隔离、单用户修复、正常认证验证与清理、失败及真实 Helper 中断/容器重启恢复、客户端入口；见 [实现与验收](RelaxKonOS.DatabaseManager.PostgreSql.DB04.md)。仅限既有固定角色身份，真实主机联调/物理掉电待验收 |
 | DB-05 | 已实现；IPv4/IPv6 隔离异机验收通过 | 证书中心指纹绑定、指定来源 hostssl/SCRAM、监听及专属 nft/systemd guard、CLI 正反向探测、关闭和桌面流程；见 [实现与验收](RelaxKonOS.DatabaseManager.PostgreSql.DB05.md)。真实主机联调、证书自动部署与探测结果自动回传尚未完成 |
 | DB-06 | 已完成首轮隔离切片 | [实现与验收](RelaxKonOS.DatabaseManager.PostgreSql.DB06.md)：真实 16.2→16.15、损坏二进制修复、停机备份/恢复门禁、保留/删除数据、外部实例拒绝与 Helper 中断/systemd 重启接续；真实主机完整联调待完成 |
-| DB-07 | 分项推进 | DB-07A [PostgreSQL 自动备份与保留策略](RelaxKonOS.DatabaseManager.PostgreSql.DB07.md)已完成实现、桌面接线及隔离验收；DB-07B [PostgreSQL 主版本迁移](RelaxKonOS.DatabaseManager.PostgreSql.DB07B.md)限定路径实现、桌面接线和隔离验收已完成；DB-07C [PostgreSQL 多实例管理](RelaxKonOS.DatabaseManager.PostgreSql.DB07C.md)同主版本双实例台账、事务分派、桌面接线与原生隔离验收已完成；MariaDB、Redis/Valkey 保持后续，不能因单个切片完成而关闭整个集合 |
+| DB-07 | 分项推进 | DB-07A [PostgreSQL 自动备份与保留策略](RelaxKonOS.DatabaseManager.PostgreSql.DB07.md)已完成实现、桌面接线及隔离验收；DB-07B [PostgreSQL 主版本迁移](RelaxKonOS.DatabaseManager.PostgreSql.DB07B.md)限定路径实现、桌面接线和隔离验收已完成；DB-07C [PostgreSQL 多实例管理](RelaxKonOS.DatabaseManager.PostgreSql.DB07C.md)同主版本双实例台账、事务分派、独立删除、桌面接线与原生隔离验收已完成；MariaDB、Redis/Valkey 保持后续，不能因单个切片完成而关闭整个集合 |
 | DB-08 | 待实施 | Windows PostgreSQL 独立矩阵；不复用 Linux 验收结论 |
 | DB-09 | 待实施 | MySQL LTS 第二适配，重复 DB-01～06 的适用验收；证明公共模型未固化 PostgreSQL 语义 |
 | DB-10 | 后续；公共机制前置 | Linux Docker 组件机制及领域委托接入，验证卷、首次初始化、凭据轮换和数据升级门禁 |

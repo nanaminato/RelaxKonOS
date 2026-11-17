@@ -1,6 +1,8 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "database.maintenance_action.DeleteInstance": "2 番目のインスタンスを削除",
+    "database.delete_instance_confirm": "{0} のデータ、資格情報、バックアップを完全に削除します。主インスタンスは稼働を継続し、共有パッケージは保持されます。",
     "database.port_conflict": "このポートは使用中か、別の PostgreSQL クラスタが予約しています。",
     "database.switch_instance": "インスタンスを切り替え",
     "database.overview": "概要",

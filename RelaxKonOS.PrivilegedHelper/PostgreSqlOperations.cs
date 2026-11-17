@@ -92,7 +92,7 @@ public static partial class PrivilegedOperationExecutor
                 else
                 {
                     PgCheckInstanceMutation(primary, instances, ledger, options);
-                    if (ledger.LedgerInstance is not null && instances.Length == 0)
+                    if (ledger.LedgerInstance is not null && instances.All(l => l.DataDeleted))
                     {
                         await PgVerifyConfiguration(primary);
                         await PgExclusiveInstance(primary);
@@ -370,6 +370,7 @@ public static partial class PrivilegedOperationExecutor
                 ledger = PgPhase(ledger, "Verified");
             }
         }
+        else if (pending.Request.Maintenance is { Action: PostgreSqlMaintenanceAction.DeleteInstance }) ledger = await PgContinueInstanceDeletion(ledger);
         else if (pending.Request.Maintenance is {Action:PostgreSqlMaintenanceAction.MigrateMajor}) ledger=await PgContinueMajor(ledger);
         else if (pending.Request.Maintenance is {Action:PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup or PostgreSqlMaintenanceAction.DeleteBackup}) ledger=await PgContinueBackupPolicy(ledger);
         else if (pending.Request.Maintenance is not null) ledger = await PgContinueMaintenance(ledger);
@@ -449,7 +450,12 @@ public static partial class PrivilegedOperationExecutor
         string? problem = null; ComponentPackageTarget? candidate = null; bool running = false, verified = false;
         try
         {
-            if (ledger.PackageRemoved) { problem = "database.package_retained"; }
+            if (ledger.LedgerInstance is not null && (ledger.DataDeleted ||
+                ledger.Pending?.Request.Maintenance?.Action == PostgreSqlMaintenanceAction.DeleteInstance))
+            {
+                // Deletion receipts and pending work must remain readable after any owned path is gone.
+            }
+            else if (ledger.PackageRemoved) { problem = "database.package_retained"; }
             else if (ledger.Package is null)
             { if (ledger.Pending is null) { await PgRequireEmptyHost(); candidate = await PgResolve(); } }
             else

@@ -209,6 +209,24 @@ internal static class DatabaseWorkspaceChecks
         selectionModel.SwitchInstanceCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(selectionClient.LastInstance == peer && selectionModel.Snapshot?.InstanceId == peer && selectionModel.Port == "55433",
             "instance selection requests and displays the selected cluster");
+        using var peerMaintenance = new PostgreSqlMaintenanceViewModel(selectionClient, new(
+            new InstallationClient(maintenanceHttp, DispatchProxy.Create<IAuthSession,EntrySession>()), null!,
+            InstallationServiceId.PostgreSqlMaintenance, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null)))
+        {
+            CanManage = true, Snapshot = selectionClient.State, DeleteConfirmation = primary.ToString("N")
+        };
+        Check(!peerMaintenance.CanDeleteInstance, "primary UUID cannot confirm secondary deletion");
+        peerMaintenance.DeleteConfirmation = peer.ToString("N");
+        Check(peerMaintenance.CanDeleteInstance && !peerMaintenance.CanDelete, "secondary confirmation enables independent deletion only");
+        peerMaintenance.Snapshot = selectionClient.State with { InstanceId = primary, Instances = [instanceList[0]] };
+        peerMaintenance.DeleteConfirmation = primary.ToString("N");
+        Check(!peerMaintenance.CanDeleteInstance && peerMaintenance.CanDelete && peerMaintenance.CanKeepData,
+            "single primary restores shared package maintenance controls");
+        selectionClient.State = selectionClient.State with { InstanceId = primary, Port = 55432, Instances = [instanceList[0]] };
+        selectionClient.MissingInstance = peer;
+        selectionModel.RefreshAsync().GetAwaiter().GetResult();
+        Check(selectionClient.LastInstance is null && selectionModel.Snapshot?.InstanceId == primary
+            && selectionModel.SelectedInstance is null, "refresh falls back to primary after secondary deletion");
         model.Invalidate();Check(!model.CanStart && !model.CanRecover,"session invalidation disables stale window");
         Console.WriteLine("Database previews: "+output);
     }
@@ -238,11 +256,14 @@ internal static class DatabaseWorkspaceChecks
         public Task StageCredentialAsync(PostgreSqlCredentialRequest request, CancellationToken ct) => Task.CompletedTask;
         public Task<PostgreSqlState> MigrationPlanAsync(CancellationToken ct)=>ReadAsync(ct);
         public Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct)=>ReadAsync(ct);
+        public Guid? MissingInstance { get; set; }
         public Guid? LastInstance { get; private set; }
         public Task<PostgreSqlState> ReadAsync(CancellationToken ct, Guid? instance = null)
         {
             LastInstance = instance;
-            return Task.FromResult(State);
+            return instance.HasValue && instance == MissingInstance
+                ? Task.FromException<PostgreSqlState>(new InstallationApiException("database.instance_invalid", System.Net.HttpStatusCode.ServiceUnavailable))
+                : Task.FromResult(State);
         }
     }
 }

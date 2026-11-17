@@ -162,3 +162,10 @@ docker exec relaxkonos-db07c python3 /opt/native-multi-instance-smoke.py /opt/ac
 ```
 
 Wait for systemd to become ready before the last command. Verify the fixture label, mounts and port bindings before removing the container.
+
+
+Run the independent secondary deletion scenario after the two-instance smoke, while the fixture still contains both clusters. It uses the real installation queue and an in-process Helper transport to verify encrypted credential cleanup, probes the primary throughout deletion and performs a real shared package repair afterward.
+
+```powershell
+docker exec relaxkonos-db07c python3 /opt/native-multi-instance-smoke.py /opt/acceptance/RelaxKonOS.PostgreSql.Tests --delete-second
+```

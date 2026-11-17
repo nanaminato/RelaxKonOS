@@ -27,24 +27,7 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
         Busy = true;
         try
         {
-            if (AccountManager is { } accounts)
-            {
-                accounts.NewDatabase = accounts.NewAccount = accounts.Password = accounts.PasswordAgain = "";
-                accounts.SelectedAccount = null;
-                accounts.SelectedDatabase = null;
-            }
-            if (MaintenanceManager is { } maintenance)
-            {
-                maintenance.SelectedBackup = null;
-                maintenance.DeleteConfirmation = "";
-            }
-            if (RemoteManager is { } remote)
-            {
-                remote.ListenAddress = remote.ServerName = remote.Sources = "";
-                remote.SelectedAccount = null;
-                remote.SelectedCertificate = null;
-            }
-            Snapshot = null;
+            ClearInstanceDrafts();
             await RefreshAsync();
         }
         finally { Busy = false; }
@@ -52,6 +35,27 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
 
     private PostgreSqlInstallationRequest? submission;
     private InstallationOperationKind submissionKind;
+    private void ClearInstanceDrafts()
+    {
+        if (AccountManager is { } accounts)
+        {
+            accounts.NewDatabase = accounts.NewAccount = accounts.Password = accounts.PasswordAgain = "";
+            accounts.SelectedAccount = null;
+            accounts.SelectedDatabase = null;
+        }
+        if (MaintenanceManager is { } maintenance)
+        {
+            maintenance.SelectedBackup = null;
+            maintenance.DeleteConfirmation = "";
+        }
+        if (RemoteManager is { } remote)
+        {
+            remote.ListenAddress = remote.ServerName = remote.Sources = "";
+            remote.SelectedAccount = null;
+            remote.SelectedCertificate = null;
+        }
+        Snapshot = null;
+    }
     [ObservableProperty] private PostgreSqlState? snapshot;
     [ObservableProperty] private bool busy;
     [ObservableProperty] private LocalizedStatus notice = LocalizedStatus.Literal("");
@@ -128,10 +132,21 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
     {
         if (invalid || reading) return;
         reading = true;
-        try { Snapshot = await client.ReadAsync(lifetime.Token, activeInstance); Notice = Snapshot.ProblemCode is { } code ? LocalizedStatus.Key(code) : LocalizedStatus.Literal(""); }
+        try { Snapshot = await ReadCurrentInstanceAsync(); Notice = Snapshot.ProblemCode is { } code ? LocalizedStatus.Key(code) : LocalizedStatus.Literal(""); }
         catch (OperationCanceledException) { }
         catch { Snapshot = null; Notice = LocalizedStatus.Key("database.state_unavailable"); }
         finally { reading = false; NotifyState(); }
+    }
+    private async Task<PostgreSqlState> ReadCurrentInstanceAsync()
+    {
+        try { return await client.ReadAsync(lifetime.Token, activeInstance); }
+        catch (InstallationApiException error) when (activeInstance is not null && error.ProblemCode == "database.instance_invalid")
+        {
+            activeInstance = null;
+            SelectedInstance = null;
+            ClearInstanceDrafts();
+            return await client.ReadAsync(lifetime.Token);
+        }
     }
     [RelayCommand] private Task InitializeAsync() => SubmitAsync(PostgreSqlAction.Initialize);
     [RelayCommand] private Task StartAsync() => SubmitAsync(PostgreSqlAction.Start);

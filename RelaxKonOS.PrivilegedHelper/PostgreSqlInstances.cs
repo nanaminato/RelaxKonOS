@@ -17,7 +17,7 @@ public static partial class PrivilegedOperationExecutor
         ?? request?.RemoteAccess?.InstanceId ?? request?.Maintenance?.InstanceId;
 
     private static IReadOnlyList<PostgreSqlInstanceSummary> PgInstanceSummaries(PgLedger primary, PgLedger[] additional) =>
-        additional.Prepend(primary).Where(l => l.Instance is not null || l.LedgerInstance is not null)
+        additional.Prepend(primary).Where(l => !l.DataDeleted && (l.Instance is not null || l.LedgerInstance is not null))
             .Select(l => new PostgreSqlInstanceSummary(l.Instance ?? l.LedgerInstance!.Value,
                 l.Pending?.Request.Command is { Action: PostgreSqlAction.Initialize } init ? init.Port : l.Port)).ToArray();
 
@@ -29,7 +29,7 @@ public static partial class PrivilegedOperationExecutor
         {
             if (intent is not null || request.Operation != PrivilegedOperationKind.PostgreSqlQuery)
                 throw new PgFailure("database.request_invalid");
-            return ledgers.SingleOrDefault(l => (l.Instance ?? l.LedgerInstance) == selected)
+            return ledgers.SingleOrDefault(l => !(l.DataDeleted && l.LedgerInstance is not null) && (l.Instance ?? l.LedgerInstance) == selected)
                 ?? throw new PgFailure("database.instance_invalid");
         }
 
@@ -47,10 +47,10 @@ public static partial class PrivilegedOperationExecutor
 
         var registered = additional.SingleOrDefault(l => l.LedgerInstance == target);
         if (registered is not null)
-            return registered;
+            return !registered.DataDeleted ? registered : throw new PgFailure("database.instance_invalid");
         if (intent?.Command is not { Action: PostgreSqlAction.Initialize } || primary.Instance is null)
             return primary;
-        if (additional.Length != 0 || primary.PackageRemoved || primary.DataDeleted || primary.RemoteAccess is not null)
+        if (additional.Any(l => !l.DataDeleted) || primary.PackageRemoved || primary.DataDeleted || primary.RemoteAccess is not null)
             throw new PgFailure("database.maintenance_invalid");
 
         return new(primary.Revision, primary.Package, primary.BinaryHash, primary.ServiceHash,
@@ -62,10 +62,12 @@ public static partial class PrivilegedOperationExecutor
     {
         if (additional.Prepend(primary).Any(l => l.LedgerInstance != ledger.LedgerInstance && l.Pending is not null))
             throw new PgFailure("database.recovery_required");
-        if (additional.Length != 0 &&
+        if (additional.Any(l => !l.DataDeleted) &&
             (request.Maintenance?.Action is PostgreSqlMaintenanceAction.Update or PostgreSqlMaintenanceAction.Repair
                 or PostgreSqlMaintenanceAction.Reinstall or PostgreSqlMaintenanceAction.UninstallKeepData
                 or PostgreSqlMaintenanceAction.UninstallDeleteData or PostgreSqlMaintenanceAction.MigrateMajor))
+            throw new PgFailure("database.maintenance_invalid");
+        if (request.Maintenance?.Action == PostgreSqlMaintenanceAction.DeleteInstance && ledger.LedgerInstance is null)
             throw new PgFailure("database.maintenance_invalid");
         if (ledger.LedgerInstance is not null && (request.RemoteAccess is not null ||
             request.Maintenance?.Action is PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup))

@@ -41,6 +41,7 @@
    <Button Content="{loc:Loc database.maintenance_action.UninstallKeepData}" Command="{Binding KeepDataCommand}" IsEnabled="{Binding CanKeepData}" HorizontalAlignment="Left" />
    <TextBlock Text="{loc:Loc database.delete_confirmation}" TextWrapping="Wrap" />
    <TextBox Text="{Binding DeleteConfirmation}" />
+   <Button Content="{loc:Loc database.maintenance_action.DeleteInstance}" Command="{Binding DeleteInstanceCommand}" IsEnabled="{Binding CanDeleteInstance}" HorizontalAlignment="Left" />
    <Button Content="{loc:Loc database.maintenance_action.UninstallDeleteData}" Command="{Binding DeleteDataCommand}" IsEnabled="{Binding CanDelete}" HorizontalAlignment="Left" />
    <Button Content="{loc:Loc database.recover}" Command="{Binding RecoverCommand}" IsEnabled="{Binding CanRecover}" HorizontalAlignment="Left" />
    <Button Content="{loc:Loc database.resume}" Command="{Binding ResumeCommand}" IsVisible="{Binding CanResume}" HorizontalAlignment="Left" />

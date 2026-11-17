@@ -47,7 +47,7 @@ public class PostgreSqlMaintenanceInstallationService(IPrivilegedOperationTransp
     }
     private void Cleanup(PostgreSqlState state)
     {
-        if(state.DataDeleted && state.PackageRemoved && state.InstanceId is {} instance)credentials.DeleteInstance(instance);
+        if(state.DataDeleted && state.InstanceId is {} instance)credentials.DeleteInstance(instance);
     }
     public override async Task<InstallationRecovery> RecoverAsync(InstallationOperationDto operation, CancellationToken ct)
     {

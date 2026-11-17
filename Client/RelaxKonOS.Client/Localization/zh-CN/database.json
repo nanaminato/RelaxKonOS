@@ -1,6 +1,8 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "database.maintenance_action.DeleteInstance": "删除第二实例",
+    "database.delete_instance_confirm": "永久删除 {0} 的数据、账号凭据和备份。主实例继续运行，共享软件包保留。",
     "database.port_conflict": "端口已被占用或由另一个 PostgreSQL 集群保留。",
     "database.switch_instance": "切换实例",
     "database.overview": "概览",
