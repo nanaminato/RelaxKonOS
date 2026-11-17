@@ -13,6 +13,7 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.NginxInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SquidInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.MySqlInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MySqlAdminRecoveryInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MySqlAccountsInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService>(sp =>
             sp.GetRequiredService<RelaxKonOS.Server.Installations.MySqlInstallationService>());

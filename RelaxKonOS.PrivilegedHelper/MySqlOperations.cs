@@ -77,6 +77,7 @@ public static partial class PrivilegedOperationExecutor
                     throw new PgFailure("database.plan_changed");
                 if (intent.Account is { } account)
                     await MyAccountPreflight(ledger, intent.Action!.Value, account, request.MySqlSecrets);
+                else if (intent.Action == MySqlAction.RecoverAdministrator) await MyAdminPreflight(ledger, intent.AdministratorInstanceId!.Value);
                 else await MyPreflight(ledger, intent.Action!.Value);
                 ledger = MySave(ledger with { Pending = new(id, intent,
                     intent.Action == MySqlAction.Initialize ? Guid.NewGuid() : ledger.Instance, "Prepared") });
@@ -88,7 +89,8 @@ public static partial class PrivilegedOperationExecutor
                 else
                 {
                     if (request.MySqlSecrets is not null) throw new PgFailure("database.request_invalid");
-                    ledger = await MyContinue(ledger);
+                    ledger = ledger.Pending.Request.Action == MySqlAction.RecoverAdministrator
+                        ? await MyContinueAdmin(ledger) : await MyContinue(ledger);
                 }
                 var completed = ledger.Pending!;
                 ledger.Receipts.Add(completed.Id, completed.Request);
@@ -202,33 +204,39 @@ public static partial class PrivilegedOperationExecutor
     }
 
     private static string MyUnit(MySqlBootstrapInstance plan) => "/etc/systemd/system/" + plan.ServiceName;
-    private static async Task MyVerifyUnit(MySqlBootstrapInstance plan)
+    private static async Task MyVerifyUnit(MySqlBootstrapInstance plan, string? dropIn = null, string? unitPath = null, string? unitText = null)
     {
-        PgNoLinks(MyUnit(plan));
+        unitPath ??= MyUnit(plan);
+        PgNoLinks(unitPath);
         PgNoLinks(plan.DataDirectory);
         PgNoLinks(plan.SocketDirectory);
-        if (File.ReadAllText(MyUnit(plan)) != plan.UnitText)
+        if (File.ReadAllText(unitPath) != (unitText ?? plan.UnitText))
             throw new PgFailure("database.configuration_drift");
         var identity = await PgRun("/usr/bin/systemctl", ["show", "-p", "FragmentPath", "-p", "DropInPaths", plan.ServiceName]);
         if (!identity.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Order().SequenceEqual(
-            new[] { "DropInPaths=", "FragmentPath=" + MyUnit(plan) }))
+            new[] { "DropInPaths=" + dropIn, "FragmentPath=" + unitPath }))
             throw new PgFailure("database.service_identity_changed");
     }
 
     private static async Task<string> MySqlQuery(MySqlBootstrapInstance plan, string sql) =>
-        (await PgRun("/usr/bin/mysql", ["--no-defaults", "--protocol=SOCKET", "--socket=" + plan.SocketDirectory + "/mysql.sock",
+        (await PgRun("/usr/bin/mysql", ["--no-defaults", "--no-login-paths", "--protocol=SOCKET", "--socket=" + plan.SocketDirectory + "/mysql.sock",
             "--user=root", "--batch", "--skip-column-names", "--connect-timeout=2"], input: sql)).Output.Trim();
 
     private static async Task<bool> MyRunning(MySqlBootstrapInstance plan) =>
         (await PgRun("/usr/bin/systemctl", ["is-active", plan.ServiceName], allowFailure: true)).Code == 0;
 
-    private static async Task MyVerifyConnection(MySqlBootstrapInstance plan)
+    private static async Task MyVerifyProcess(MySqlBootstrapInstance plan)
     {
-        await MyVerifyUnit(plan);
         var id = (await PgRun("/usr/bin/systemctl", ["show", "-p", "MainPID", "--value", plan.ServiceName])).Output.Trim();
         if (!int.TryParse(id, out var pid) || pid <= 1 ||
             File.ResolveLinkTarget($"/proc/{pid}/exe", true)?.FullName != MySqlBootstrapPolicy.Server)
             throw new PgFailure("database.service_identity_changed");
+    }
+
+    private static async Task MyVerifyConnection(MySqlBootstrapInstance plan)
+    {
+        await MyVerifyUnit(plan);
+        await MyVerifyProcess(plan);
         var result = await MySqlQuery(plan, "SELECT CURRENT_USER(), VERSION(), @@datadir, @@skip_networking, plugin FROM mysql.user WHERE user='root' AND host='localhost';");
         if (result != $"root@localhost\t{MySqlBootstrapPolicy.Version}\t{plan.DataDirectory}/\t1\tauth_socket")
             throw new PgFailure("database.connection_unverified");
@@ -351,6 +359,7 @@ public static partial class PrivilegedOperationExecutor
             catch (IOException) { problem = "database.state_unavailable"; }
         }
         return new(true, ledger.Revision, ledger.Installed, ledger.Instance, running, verified,
-            ledger.Pending?.Id, ledger.Receipts.ContainsKey(operation) ? operation : null, problem, ledger.Databases, ledger.Accounts, ledger.Pending?.Request.Account);
+            ledger.Pending?.Id, ledger.Receipts.ContainsKey(operation) ? operation : null, problem, ledger.Databases, ledger.Accounts, ledger.Pending?.Request.Account,
+            ledger.Pending?.Request.Action == MySqlAction.RecoverAdministrator);
     }
 }

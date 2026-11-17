@@ -1,6 +1,7 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "database.mysql_admin_recovery_confirm": "root@localhost の OS 認証を復旧しますか？MySQL は停止し、復旧中は通常起動を禁止します。完了後も停止したままです。",
     "database.mysql_accounts_scope": "localhost のアカウントは専用 Unix ソケットを使い、権限は 1 データベースに限定されます。変更後はアプリの資格情報を更新してください。",
     "database.mysql_password_hint": "パスワード（16 文字以上）",
     "database.mysql_account_invalid": "データベース名、ユーザー名、パスワードを確認してください。名前は小文字と数字、パスワードは引用符とバックスラッシュを除く ASCII 16～128 文字です。",

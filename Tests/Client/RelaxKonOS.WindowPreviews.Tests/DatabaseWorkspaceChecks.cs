@@ -250,6 +250,11 @@ internal static class DatabaseWorkspaceChecks
             "MySQL page renders running lifecycle controls");
         Check(mysql.CanManageAccounts && mysqlView.GetVisualDescendants().OfType<TextBox>().Any(box => box.PasswordChar != '\0'),
             "MySQL running account form masks the password");
+        mysql.AdministratorInstallation = new(null!, null!, InstallationServiceId.MySqlAdminRecovery, "test",
+            () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+        Check(!mysql.CanRecoverAdministrator, "verified MySQL administrator needs no recovery");
+        mysql.State = mysql.State with { Verified = false, ProblemCode = "database.connection_unverified" };
+        Check(mysql.CanRecoverAdministrator && !mysql.CanManageAccounts, "lost MySQL administrator has dedicated recovery entry");
         mysqlWindow.Close();
         mysql.State = mysql.State with { PendingOperationId = Guid.NewGuid(), ProblemCode = "database.recovery_required" };
         Check(mysql.CanRecover && !mysql.CanStop, "MySQL pending operation exposes only recovery");

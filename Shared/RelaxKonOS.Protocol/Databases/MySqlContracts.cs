@@ -4,20 +4,22 @@ using RelaxKonOS.Protocol.Common;
 namespace RelaxKonOS.Protocol.Databases;
 
 [JsonConverter(typeof(JsonStringEnumConverter<MySqlAction>))]
-public enum MySqlAction { Install, Initialize, Start, Stop, Verify, CreateDatabase, CreateAccount, SetGrant, ChangePassword }
+public enum MySqlAction { Install, Initialize, Start, Stop, Verify, CreateDatabase, CreateAccount, SetGrant, ChangePassword, RecoverAdministrator }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record MySqlRequest(bool Confirmed, MySqlAction? Action = null, long Revision = 0, Guid? RecoverOperationId = null, MySqlAccountCommand? Account = null)
+public sealed record MySqlRequest(bool Confirmed, MySqlAction? Action = null, long Revision = 0, Guid? RecoverOperationId = null, MySqlAccountCommand? Account = null, Guid? AdministratorInstanceId = null)
 {
     [JsonIgnore]
     public bool Valid => Confirmed && (RecoverOperationId is { } id
-        ? id != Guid.Empty && Action is null && Revision == 0 && Account is null
-        : Action is { } action && Enum.IsDefined(action) && Revision > 0 && (action >= MySqlAction.CreateDatabase ? Account?.Valid(action) == true : Account is null));
+        ? id != Guid.Empty && Action is null && Revision == 0 && Account is null && AdministratorInstanceId is null
+        : Action is { } action && Enum.IsDefined(action) && Revision > 0 && (action == MySqlAction.RecoverAdministrator
+            ? Account is null && AdministratorInstanceId is { } target && target != Guid.Empty
+            : AdministratorInstanceId is null && (action >= MySqlAction.CreateDatabase ? Account?.Valid(action) == true : Account is null)));
 }
 
 public sealed record MySqlState(bool Supported, long Revision, bool Installed, Guid? InstanceId,
     bool Running, bool Verified, Guid? PendingOperationId, Guid? CommittedOperationId, string? ProblemCode, IReadOnlyList<string>? Databases = null, IReadOnlyList<MySqlAccount>? Accounts = null,
-    MySqlAccountCommand? PendingAccount = null);
+    MySqlAccountCommand? PendingAccount = null, bool PendingAdministratorRecovery = false);
 
 public static class MySqlRoutes
 {

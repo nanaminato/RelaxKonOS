@@ -19,7 +19,8 @@ internal static class MySqlProductSmoke
         var credentials = new RelaxKonOS.Server.Databases.PostgreSqlCredentialStore(new FixtureEnvironment(), new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
         var service = new MySqlInstallationService(transport, credentials);
         var accountService = new MySqlAccountsInstallationService(transport, credentials);
-        var coordinator = new InstallationCoordinator(new(new FixtureEnvironment()), [service, accountService], new Lifetime());
+        var adminService = new MySqlAdminRecoveryInstallationService(transport, credentials);
+        var coordinator = new InstallationCoordinator(new(new FixtureEnvironment()), [service, accountService, adminService], new Lifetime());
         await coordinator.StartAsync(default);
         try
         {
@@ -40,6 +41,72 @@ internal static class MySqlProductSmoke
             }
 
             var initial = await service.ReadAsync(default);
+            if (mode is "--admin-loss" or "--admin-recover" or "--admin-after-restart")
+            {
+                var instance = initial.InstanceId!.Value;
+                var plan = RelaxKonOS.ManagedRuntimes.MySql.MySqlBootstrapPolicy.Plan(instance);
+                if (mode == "--admin-loss")
+                {
+                    if (!initial.Running) await Execute(MySqlAction.Start);
+                    var setup = await Sql(plan.SocketDirectory, "root", null,
+                        "CREATE DATABASE IF NOT EXISTS adminfixture; CREATE TABLE IF NOT EXISTS adminfixture.witness(id int PRIMARY KEY); INSERT IGNORE INTO adminfixture.witness VALUES (84); CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' ACCOUNT LOCK; ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '" + Guid.NewGuid().ToString("N") + "' ACCOUNT LOCK;");
+                    Check(setup.Code == 0, "fixture loses only the local administrator identity");
+                    Check((await service.ReadAsync(default)) is { Running: true, Verified: false },
+                        "ordinary health no longer authenticates the locked administrator");
+                    return;
+                }
+                var recovery = initial.PendingOperationId is { } pending
+                    ? new MySqlRequest(true, RecoverOperationId: pending)
+                    : new MySqlRequest(true, MySqlAction.RecoverAdministrator, initial.Revision, AdministratorInstanceId: instance);
+                if (mode == "--admin-after-restart")
+                {
+                    Check(initial.PendingAdministratorRecovery && initial.PendingOperationId is not null && !initial.Running,
+                        "original administrator recovery survives systemd restart");
+                    using var start = Process.Start(new ProcessStartInfo("/usr/bin/systemctl", "start " + plan.ServiceName)
+                        { UseShellExecute = false, RedirectStandardError = true })!;
+                    await start.WaitForExitAsync();
+                    using var observe = Process.Start(new ProcessStartInfo("/usr/bin/systemctl", "is-active " + plan.ServiceName)
+                        { UseShellExecute = false, RedirectStandardOutput = true })!;
+                    await observe.WaitForExitAsync();
+                    Check(observe.ExitCode != 0, "persistent guard blocks ordinary service after restart");
+                    var foreign = "/run/relaxkonos-mysql-recovery-" + initial.PendingOperationId!.Value.ToString("N") + ".sql";
+                    File.WriteAllText(foreign, "disposable foreign content");
+                    try
+                    {
+                        var failed = await Submit(InstallationOperationKind.Repair, recovery, InstallationServiceId.MySqlAdminRecovery);
+                        var isolated = await service.ReadAsync(default);
+                        Check(failed.State == InstallationOperationState.Interrupted && isolated.PendingOperationId == initial.PendingOperationId
+                            && File.ReadAllText(foreign) == "disposable foreign content"
+                            && File.Exists("/etc/systemd/system/" + plan.ServiceName + ".d/90-recovery.conf"),
+                            "foreign temporary SQL causes safe refusal and leaves the original isolation in place");
+                    }
+                    finally { File.Delete(foreign); }
+                }
+                if (recovery.RecoverOperationId is null)
+                {
+                    var denied = false;
+                    try { await Submit(InstallationOperationKind.Configure, recovery); }
+                    catch (InstallationException) { denied = true; }
+                    Check(denied, "ordinary lifecycle authority cannot dispatch administrator recovery");
+                }
+                var operation = await Submit(recovery.RecoverOperationId is null ? InstallationOperationKind.Configure : InstallationOperationKind.Repair,
+                    recovery, InstallationServiceId.MySqlAdminRecovery);
+                Check(operation.State == InstallationOperationState.Succeeded, "administrator recovery commits: " + operation.ProblemCode);
+                var after = await service.ReadAsync(default, recovery.RecoverOperationId ?? operation.OperationId);
+                Check(!after.Running && after.CommittedOperationId != null && after.PendingOperationId is null,
+                    "recovery commits original receipt and leaves ordinary service stopped");
+                Check(!Directory.Exists("/etc/systemd/system/" + plan.ServiceName + ".d")
+                    && !Directory.EnumerateFileSystemEntries("/run", "relaxkonos-mysql-recovery-*").Any()
+                    && !Directory.EnumerateFileSystemEntries("/run/systemd/system", "relaxkonos-mysql-recovery-*").Any(),
+                    "temporary startup SQL, private unit, runtime socket and guard removed");
+                await Execute(MySqlAction.Start);
+                var identity = await Sql(plan.SocketDirectory, "root", null,
+                    "SELECT CURRENT_USER(), (SELECT account_locked FROM mysql.user WHERE user='root' AND host='127.0.0.1'), (SELECT id FROM adminfixture.witness);");
+                Check(identity.Code == 0 && identity.Output.Trim() == "root@localhost\tY\t84",
+                    "normal socket authenticates local root, preserves other host and data");
+                await Execute(MySqlAction.Stop);
+                return;
+            }
             if (mode == "--accounts")
             {
                 await Execute(MySqlAction.Start);

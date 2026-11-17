@@ -1,6 +1,7 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "database.mysql_admin_recovery_confirm": "确认恢复 root@localhost 的本机系统身份认证？此操作会停止 MySQL，隔离期间禁止普通启动，恢复成功后保持停止。",
     "database.mysql_accounts_scope": "账号仅限 localhost，通过私有 Unix socket 连接，且只授权一个库。改密后请更新应用凭据。",
     "database.mysql_password_hint": "密码（至少 16 个字符）",
     "database.mysql_account_invalid": "检查库名、用户名和密码。名称仅支持小写字母与数字，密码需为 16–128 个可见 ASCII 字符且不含引号或反斜杠。",

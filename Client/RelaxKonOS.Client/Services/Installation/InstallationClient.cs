@@ -100,7 +100,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
             InstallationServiceId.Squid => HostElevationCapability.ProxyServiceAction,
             InstallationServiceId.PostgreSql or InstallationServiceId.MySql => HostElevationCapability.NativeServiceAction,
             InstallationServiceId.PostgreSqlAccounts or InstallationServiceId.MySqlAccounts => HostElevationCapability.DatabaseAccountsManage,
-            InstallationServiceId.PostgreSqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
+            InstallationServiceId.PostgreSqlAdminRecovery or InstallationServiceId.MySqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
             InstallationServiceId.PostgreSqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,
             InstallationServiceId.PostgreSqlMaintenance => HostElevationCapability.DatabaseMaintenance,
             InstallationServiceId.PostgreSqlBackupAutomation => HostElevationCapability.DatabaseBackupAutomation,

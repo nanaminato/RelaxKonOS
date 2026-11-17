@@ -61,6 +61,11 @@ public sealed class DatabaseApp : RemoteApplicationBase
                 .ElevateAsync(InstallationServiceId.MySqlAccounts, password, default);
         };
         _ = mysql.AccountInstallation.RestoreAsync();
+        mysql.AdministratorInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+            InstallationServiceId.MySqlAdminRecovery, "relaxkonos.database", mysql.RefreshAsync, MySqlElevationAsync, "mysql-admin-recovery-installation");
+        mysql.AdministratorInstallation.PropertyChanged += (_, _) => mysql.Notify();
+        mysql.ConfirmAdministratorAsync = () => Confirm("database.mysql_admin_recovery_confirm");
+        _ = mysql.AdministratorInstallation.RestoreAsync();
         model.MySql = mysql;
         _ = mysql.Installation.RestoreAsync();
         model.AdminRecoveryInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
