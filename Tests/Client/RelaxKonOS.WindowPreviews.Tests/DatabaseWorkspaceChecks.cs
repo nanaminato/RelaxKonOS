@@ -237,7 +237,10 @@ internal static class DatabaseWorkspaceChecks
         };
         mysql.AccountInstallation = new(null!, null!, InstallationServiceId.MySqlAccounts, "test",
             () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+        mysql.RemoteInstallation = new(null!, null!, InstallationServiceId.MySqlRemoteAccess, "test",
+            () => Task.CompletedTask, () => Task.FromResult<string?>(null));
         Check(!mysql.CanManageAccounts, "MySQL account controls require verified running instance");
+        Check(!mysql.CanOpenRemote, "MySQL remote opening requires a verified instance");
         Check(mysql.CanInstall && !mysql.CanInitialize, "MySQL fresh host exposes installation");
         mysql.State = mysql.State with { Installed = true };
         Check(mysql.CanInitialize && !mysql.CanInstall, "MySQL installed host exposes initialization");
@@ -250,8 +253,15 @@ internal static class DatabaseWorkspaceChecks
             "MySQL page renders running lifecycle controls");
         Check(mysql.CanManageAccounts && mysqlView.GetVisualDescendants().OfType<TextBox>().Any(box => box.PasswordChar != '\0'),
             "MySQL running account form masks the password");
+        Check(mysqlView.GetVisualDescendants().OfType<Button>().Any(button => button.Command == mysql.OpenRemoteCommand && button.IsEnabled),
+            "MySQL page exposes remote opening for a verified instance");
         mysql.AdministratorInstallation = new(null!, null!, InstallationServiceId.MySqlAdminRecovery, "test",
             () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+        mysql.State = mysql.State with { RemoteAccess = new(mysql.State.InstanceId!.Value, "10.77.0.1", "10.77.0.2",
+            "app", "reader", MySqlGrant.ReadOnly, "mysql.example.test", Guid.NewGuid(), new string('A', 64)), Verified = false };
+        Check(mysql.CanCloseRemote && !mysql.CanOpenRemote && !mysql.CanManageAccounts && !mysql.CanRecoverAdministrator && !mysql.CanStop,
+            "MySQL keeps close available on an unverified remote policy and gates other mutations");
+        mysql.State = mysql.State with { RemoteAccess = null, Verified = true };
         Check(!mysql.CanRecoverAdministrator, "verified MySQL administrator needs no recovery");
         mysql.State = mysql.State with { Verified = false, ProblemCode = "database.connection_unverified" };
         Check(mysql.CanRecoverAdministrator && !mysql.CanManageAccounts, "lost MySQL administrator has dedicated recovery entry");

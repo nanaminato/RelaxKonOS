@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using RelaxKonOS.Protocol.Databases;
@@ -16,11 +17,19 @@ internal static class MySqlProductSmoke
         if (File.ReadAllText("/etc/relaxkonos-db09-product-disposable").Trim() != "DB-09-product")
             throw new InvalidOperationException("Disposable fixture required");
         var transport = new NativeProcess();
-        var credentials = new RelaxKonOS.Server.Databases.PostgreSqlCredentialStore(new FixtureEnvironment(), new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+        var environment = new FixtureEnvironment();
+        var protection = DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(environment.ContentRootPath, "test-keyring")));
+        var credentials = new RelaxKonOS.Server.Databases.PostgreSqlCredentialStore(environment, protection);
         var service = new MySqlInstallationService(transport, credentials);
         var accountService = new MySqlAccountsInstallationService(transport, credentials);
         var adminService = new MySqlAdminRecoveryInstallationService(transport, credentials);
-        var coordinator = new InstallationCoordinator(new(new FixtureEnvironment()), [service, accountService, adminService], new Lifetime());
+        var config = new Microsoft.Extensions.Configuration.ConfigurationManager();
+        config["Storage:Provider"] = "fixture";
+        var certificates = new RelaxKonOS.Server.Certificate.FileCertificateStore(environment,
+            new RelaxKonOS.Server.Certificate.CertificateOptions(),
+            new RelaxKonOS.Server.Certificate.CertificateMetadataRepository(environment, config));
+        var remoteService = new MySqlRemoteInstallationService(transport, credentials, certificates);
+        var coordinator = new InstallationCoordinator(new(new FixtureEnvironment()), [service, accountService, adminService, remoteService], new Lifetime());
         await coordinator.StartAsync(default);
         try
         {
@@ -41,6 +50,41 @@ internal static class MySqlProductSmoke
             }
 
             var initial = await service.ReadAsync(default);
+            if (mode is "--remote-open" or "--remote-close" or "--remote-conflict" or "--remote-resume")
+            {
+                var instance = initial.InstanceId!.Value;
+                MySqlRemotePolicy? policy = null;
+                if (mode is "--remote-open" or "--remote-conflict")
+                {
+                    var input = JsonSerializer.Deserialize<RemoteTestInput>(await Console.In.ReadToEndAsync())!;
+                    policy = input.Policy;
+                    await certificates.SaveAsync(new(policy.CertificateId, [policy.ServerName],
+                        RelaxKonOS.Protocol.Certificates.CertificateChallengeType.DirectHttp01,
+                        RelaxKonOS.Protocol.Certificates.CertificateKeyAlgorithm.Rsa2048,
+                        null, input.CertificatePem, input.PrivateKeyPem, DateTimeOffset.UtcNow), default);
+                    var owned = initial.Accounts!.Single(x => x.User == policy.User && x.Host == "localhost");
+                    credentials.Stage(new(owned.CredentialReference, instance, input.Password), "fixture");
+                }
+                if (mode == "--remote-resume") policy = initial.PendingRemote?.Policy;
+                var resume = mode == "--remote-resume" ? initial.PendingOperationId : null;
+                if (mode == "--remote-resume") Check(resume is not null, "original remote transaction survived Helper exit");
+                var remote = await Submit(resume is null ? InstallationOperationKind.Configure : InstallationOperationKind.Repair,
+                    resume is null ? new(true, MySqlAction.ConfigureRemote, initial.Revision, Remote: new(instance, policy))
+                        : new(true, RecoverOperationId: resume),
+                    InstallationServiceId.MySqlRemoteAccess);
+                var observed = await service.ReadAsync(default, resume ?? remote.OperationId);
+                if (mode == "--remote-conflict")
+                {
+                    Check(remote.State == InstallationOperationState.Interrupted && observed.PendingOperationId == remote.OperationId,
+                        "listen conflict leaves the original remote transaction pending: " + remote.ProblemCode);
+                    return;
+                }
+                Check(remote.State == InstallationOperationState.Succeeded,
+                    "certificate center and production queue commit remote operation: " + remote.ProblemCode);
+                Check(observed.Verified && observed.CommittedOperationId == (resume ?? remote.OperationId)
+                    && (observed.RemoteAccess is null) == (policy is null), "remote receipt and observed policy match");
+                return;
+            }
             if (mode is "--admin-loss" or "--admin-recover" or "--admin-after-restart")
             {
                 var instance = initial.InstanceId!.Value;
@@ -226,6 +270,8 @@ internal static class MySqlProductSmoke
         }
         finally { await coordinator.StopAsync(default); }
     }
+
+    private sealed record RemoteTestInput(MySqlRemotePolicy Policy, string CertificatePem, string PrivateKeyPem, string Password);
 
     private static Process StartSql(string socket, string user, string? password)
     {

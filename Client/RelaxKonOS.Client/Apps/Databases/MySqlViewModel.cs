@@ -38,17 +38,17 @@ public sealed partial class MySqlViewModel(HttpClient http, IAuthSession session
         { Running: true } => "database.connection_unverified",
         _ => "database.stopped"
     });
-    private bool Writable => !invalid && !Busy && CanManage && !Installation.IsActive && AccountInstallation?.IsActive != true && AdministratorInstallation?.IsActive != true && submission is null
-        && State is { Supported: true, PendingOperationId: null, ProblemCode: null };
+    private bool Writable => !invalid && !Busy && CanManage && !Installation.IsActive && AccountInstallation?.IsActive != true && AdministratorInstallation?.IsActive != true && RemoteInstallation?.IsActive != true && submission is null
+        && State is { Supported: true, PendingOperationId: null, ProblemCode: null, RemoteAccess: null };
     public bool CanInstall => Writable && State is { Installed: false };
     public bool CanInitialize => Writable && State is { Installed: true, InstanceId: null };
     public bool CanStart => Writable && State is { InstanceId: not null, Running: false };
     public bool CanStop => Writable && State is { Running: true };
-    public bool CanRecover => !invalid && !Busy && CanManage && !Installation.IsActive && AccountInstallation?.IsActive != true && AdministratorInstallation?.IsActive != true && submission is null && State?.PendingOperationId is not null;
-    public bool CanRecoverAdministrator => !invalid && !Busy && CanManage && !Installation.IsActive
+    public bool CanRecover => !invalid && !Busy && CanManage && !Installation.IsActive && AccountInstallation?.IsActive != true && AdministratorInstallation?.IsActive != true && RemoteInstallation?.IsActive != true && submission is null && State?.PendingOperationId is not null;
+    public bool CanRecoverAdministrator => !invalid && !Busy && CanManage && !Installation.IsActive && RemoteInstallation?.IsActive != true
         && AccountInstallation?.IsActive != true && AdministratorInstallation is { IsActive: false } && submission is null
-        && State is { Supported: true, Installed: true, InstanceId: not null, PendingOperationId: null, Verified: false };
-    public bool CanResume => !invalid && !Busy && CanManage && !Installation.IsActive && AccountInstallation?.IsActive != true && AdministratorInstallation?.IsActive != true && submission is not null;
+        && State is { Supported: true, Installed: true, InstanceId: not null, PendingOperationId: null, Verified: false, RemoteAccess: null };
+    public bool CanResume => !invalid && !Busy && CanManage && !Installation.IsActive && AccountInstallation?.IsActive != true && AdministratorInstallation?.IsActive != true && RemoteInstallation?.IsActive != true && submission is not null;
 
     partial void OnStateChanged(MySqlState? value)
     {
@@ -60,7 +60,7 @@ public sealed partial class MySqlViewModel(HttpClient http, IAuthSession session
     public void Notify()
     {
         foreach (var property in new[] { nameof(Status), nameof(CanInstall), nameof(CanInitialize), nameof(CanStart),
-            nameof(CanStop), nameof(CanRecover), nameof(CanRecoverAdministrator), nameof(CanResume), nameof(CanManageAccounts), nameof(Databases), nameof(Accounts) }) OnPropertyChanged(property);
+            nameof(CanStop), nameof(CanRecover), nameof(CanRecoverAdministrator), nameof(CanResume), nameof(CanOpenRemote), nameof(CanCloseRemote), nameof(RemoteConnectionInfo), nameof(CanManageAccounts), nameof(Databases), nameof(Accounts) }) OnPropertyChanged(property);
     }
 
     [RelayCommand] public async Task RefreshAsync()
@@ -113,11 +113,12 @@ public sealed partial class MySqlViewModel(HttpClient http, IAuthSession session
         try
         {
             var administrator = action == MySqlAction.RecoverAdministrator || action is null && snapshot.PendingAdministratorRecovery;
-            var confirm = administrator ? ConfirmAdministratorAsync : ConfirmAsync;
+            var remote = action is null && snapshot.PendingRemote is not null;
+            var confirm = remote ? ConfirmRemoteAsync : administrator ? ConfirmAdministratorAsync : ConfirmAsync;
             if (confirm is null || !await confirm() || invalid || !ReferenceEquals(login, session.CurrentSession)) return;
             submission = action is null ? new(true, RecoverOperationId: snapshot.PendingOperationId)
                 : new(true, action, snapshot.Revision, AdministratorInstanceId: administrator ? snapshot.InstanceId : null);
-            submissionTask = administrator ? AdministratorInstallation : action is null && snapshot.PendingAccount is not null ? AccountInstallation : Installation;
+            submissionTask = remote ? RemoteInstallation : administrator ? AdministratorInstallation : action is null && snapshot.PendingAccount is not null ? AccountInstallation : Installation;
             await SendAsync();
         }
         finally { Busy = false; }
@@ -150,6 +151,7 @@ public sealed partial class MySqlViewModel(HttpClient http, IAuthSession session
         Installation.Dispose();
         AccountInstallation?.Dispose();
         AdministratorInstallation?.Dispose();
+        RemoteInstallation?.Dispose();
         lifetime.Dispose();
     }
 }

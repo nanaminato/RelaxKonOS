@@ -66,6 +66,12 @@ public sealed class DatabaseApp : RemoteApplicationBase
         mysql.AdministratorInstallation.PropertyChanged += (_, _) => mysql.Notify();
         mysql.ConfirmAdministratorAsync = () => Confirm("database.mysql_admin_recovery_confirm");
         _ = mysql.AdministratorInstallation.RestoreAsync();
+        mysql.RemoteCertificates = context.Services.GetRequiredService<RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient>();
+        mysql.RemoteInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
+            InstallationServiceId.MySqlRemoteAccess, "relaxkonos.database", mysql.RefreshAsync, MySqlElevationAsync, "mysql-remote-installation");
+        mysql.RemoteInstallation.PropertyChanged += (_, _) => mysql.Notify();
+        mysql.ConfirmRemoteAsync = () => Confirm("database.mysql_remote_confirm");
+        _ = mysql.RemoteInstallation.RestoreAsync();
         model.MySql = mysql;
         _ = mysql.Installation.RestoreAsync();
         model.AdminRecoveryInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),

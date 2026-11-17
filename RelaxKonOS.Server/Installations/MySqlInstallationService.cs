@@ -13,6 +13,7 @@ public class MySqlInstallationService(IPrivilegedOperationTransport helper,
     public override InstallationServiceId Id => InstallationServiceId.MySql;
     protected virtual bool Accounts => false;
     protected virtual bool AdministratorRecovery => false;
+    private protected virtual RelaxKonOS.Server.Certificate.ICertificateStore? RemoteCertificates => null;
     public override IReadOnlyList<string> Resources => ["service:MySql", "linux:apt-dpkg"];
     protected override bool Confirmed(MySqlRequest request) => request.Confirmed;
     protected override bool Supports(InstallationOperationKind kind) =>
@@ -21,7 +22,7 @@ public class MySqlInstallationService(IPrivilegedOperationTransport helper,
     protected override void ValidateRequest(InstallationOperationKind kind, MySqlRequest request, string key)
     {
         if (!request.Valid || request.RecoverOperationId is null && ((request.Account is not null) != Accounts
-            || (request.Action == MySqlAction.RecoverAdministrator) != AdministratorRecovery) || !(kind switch
+            || (request.Action == MySqlAction.RecoverAdministrator) != AdministratorRecovery || (request.Remote is not null) != (RemoteCertificates is not null)) || !(kind switch
         {
             InstallationOperationKind.Install => request.Action == MySqlAction.Install,
             InstallationOperationKind.Configure => request.Action is not null and not MySqlAction.Install,
@@ -44,12 +45,26 @@ public class MySqlInstallationService(IPrivilegedOperationTransport helper,
         IInstallationProgress progress, CancellationToken ct)
     {
         MySqlSecrets? secrets = null;
-        if (Accounts || request.RecoverOperationId is not null)
+        PostgreSqlTlsMaterial? tls = null;
+        if (Accounts || RemoteCertificates is not null || request.RecoverOperationId is not null)
         {
             var before = await ReadAsync(ct, request.RecoverOperationId);
             if (request.RecoverOperationId is not null && before.PendingOperationId is not null
-                && ((before.PendingAccount is not null) != Accounts || before.PendingAdministratorRecovery != AdministratorRecovery))
+                && ((before.PendingAccount is not null) != Accounts || before.PendingAdministratorRecovery != AdministratorRecovery || (before.PendingRemote is not null) != (RemoteCertificates is not null)))
                 throw new InstallationException("database.accounts_authorization_required", 403);
+            if (RemoteCertificates is { } certificates && (request.Remote ?? before.PendingRemote)?.Policy is { } policy)
+            {
+                var metadata = await certificates.GetAsync(policy.CertificateId, ct);
+                var paths = await certificates.GetNginxPathsAsync(policy.CertificateId, ct);
+                if (metadata is null || metadata.Status is RelaxKonOS.Protocol.Certificates.CertificateStatus.Revoked
+                    or RelaxKonOS.Protocol.Certificates.CertificateStatus.Expired || paths is null)
+                    throw new InstallationException("database.tls_invalid");
+                tls = new(await File.ReadAllTextAsync(paths.Value.FullChainPath, ct), await File.ReadAllTextAsync(paths.Value.PrivateKeyPath, ct));
+                var local = before.Accounts?.SingleOrDefault(x => x.Database == policy.Database && x.User == policy.User
+                    && x.Host == "localhost" && x.Grant == policy.Grant)
+                    ?? throw new InstallationException("database.resource_unmanaged");
+                secrets = new(credentials.Read(local.CredentialReference, policy.InstanceId));
+            }
             var account = request.Account ?? before.PendingAccount;
             if (account?.CredentialReference is { } reference)
             {
@@ -63,7 +78,7 @@ public class MySqlInstallationService(IPrivilegedOperationTransport helper,
             Cancellable: false), ct);
         var original = request.RecoverOperationId ?? progress.OperationId;
         var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.MySqlExecute,
-            OperationId: progress.OperationId, MySql: request, MySqlSecrets: secrets), CancellationToken.None);
+            OperationId: progress.OperationId, MySql: request, MySqlSecrets: secrets, MySqlTls: tls), CancellationToken.None);
         MySqlState state;
         try { state = await ReadAsync(CancellationToken.None, original); }
         catch (Exception error) when (error is InstallationException or JsonException or FormatException or IOException)
@@ -102,4 +117,13 @@ public sealed class MySqlAdminRecoveryInstallationService(IPrivilegedOperationTr
 {
     public override InstallationServiceId Id => InstallationServiceId.MySqlAdminRecovery;
     protected override bool AdministratorRecovery => true;
+}
+
+
+internal sealed class MySqlRemoteInstallationService(IPrivilegedOperationTransport helper,
+    RelaxKonOS.Server.Databases.PostgreSqlCredentialStore credentials, RelaxKonOS.Server.Certificate.ICertificateStore certificates)
+    : MySqlInstallationService(helper, credentials)
+{
+    public override InstallationServiceId Id => InstallationServiceId.MySqlRemoteAccess;
+    private protected override RelaxKonOS.Server.Certificate.ICertificateStore RemoteCertificates => certificates;
 }

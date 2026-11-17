@@ -45,7 +45,7 @@ Ubuntu 24.04 amd64 一次性 systemd 容器 `relaxkonos-db09` 中，安装三个
 
 桌面 MySQL 页面使用独立的 MySQL 账号安装服务和数据库账号提权能力。事务绑定实例、状态修订与完整的 (user, host)，当前仅接受字面 localhost。数据库及用户名使用小写字母和数字，避免 MySQL 库级授权中的通配符语义。账号只绑定一个受管库。只读授予 SELECT，读写授予 SELECT、INSERT、UPDATE、DELETE。授予与降权前核对已有权限，提交前复核真实 SHOW GRANTS 和认证插件。账号创建时通过原生属性保存归属标识，后续按完整身份核对，防止接管换名或重建的对象。
 
-密码先经提权接口存入现有实例绑定的加密凭据库，持久安装载荷只含凭据引用。Helper 通过子进程标准输入提交固定 SQL，并在专用 root 客户端进程中探测密码。改密前验证旧密码，提交凭据引用前用独立新连接验证新密码成功及旧密码明确被拒绝。已认证的连接保留原会话，应用需要更新后续连接使用的秘密。私有系统 socket 的目录访问范围沿用初始安装配置，仍需有相应宿主权限才能连接。远程账号留待后续。管理员身份恢复另见下文。
+密码先经提权接口存入现有实例绑定的加密凭据库，持久安装载荷只含凭据引用。Helper 通过子进程标准输入提交固定 SQL，并在专用 root 客户端进程中探测密码。改密前验证旧密码，提交凭据引用前用独立新连接验证新密码成功及旧密码明确被拒绝。已认证的连接保留原会话，应用需要更新后续连接使用的秘密。私有系统 socket 的目录访问范围沿用初始安装配置，仍需有相应宿主权限才能连接。远程账号和管理员身份恢复见对应章节。
 
 恢复按原操作处理。账号创建可核对原生归属标识。改密返回不明时先探测已暂存的新旧密码，核对成功时收尾。若建库原生执行结果未知且同名库已经存在，保留待核对状态，避免自动接管同名库。
 
@@ -75,3 +75,19 @@ Ubuntu 24.04 amd64、真实 systemd 与 Oracle MySQL 8.4.13。先执行 mysql-pr
 复现使用同一个一次性容器，运行 --admin-loss 后调用 [Helper 中断脚本](../../Tests/MySql/native-admin-recovery-interrupt.py)，重启 systemd 容器后运行 mysql-product --admin-after-restart。桌面数据库回归 101 项、PostgreSQL 服务端回归 103 项通过。隔离测试通过生产安装队列和独立实际 Helper 进程，桌面渲染单独测试。完整 HTTP/PAM 真实主机联调和物理断电尚未验收。
 
 本轮一次性容器标签为 db09-admin，无宿主挂载与公开端口，验收后已清理。
+
+
+## 指定来源 TLS 远程访问
+
+首轮限定 Oracle MySQL 8.4.13、Ubuntu 24.04 amd64 和一个精确 IPv4 来源。实例在主机持有的非回环 IPv4 上监听 3306，关闭 X Plugin 和名称解析。操作者在 MySQL 桌面页选择受管本机账号及证书中心证书，填写监听地址、来源地址和证书 DNS 名，再确认开放。Helper 复用该本机账号的密码和单库权限创建独立的 `user@来源 IPv4`，保留原本机账号。远程账号使用 `REQUIRE SSL`，实例启用 `require_secure_transport`，TLS 最低版本为 1.2。`root@localhost` 保留 `auth_socket` 认证。连接端使用 `VERIFY_IDENTITY`、预期 DNS 名和可信 CA。[官方 TLS 说明](https://dev.mysql.com/doc/refman/8.4/en/using-encrypted-connections.html) · [官方账号匹配说明](https://dev.mysql.com/doc/refman/8.4/en/account-names.html)
+
+Server 使用独立的远程访问提权能力提交安装队列，按证书 ID 读取证书中心材料，Helper 核验证书指纹、DNS 名和密钥。操作台账持久记录意图和远程账号阶段，nftables 表随规则原子写入原操作的归属标记。Helper 先安装拒绝规则，再重启并验证实例、root socket、精确监听、TLS 要求和账号权限，最后开放指定来源。其他到目标地址和端口的来源在实例规则中丢弃，允许来源仍受宿主其他防火墙规则约束。关闭先恢复拒绝规则，再重启至仅监听 socket 的单元，清理归属匹配的远程账号、TLS 文件和实例规则。外部规则或单元漂移会中止操作。证书或账号发生变更时，需要先关闭远程访问，再按新配置开放。
+
+开启和关闭都会重启实例并中断已有连接。systemd 每次启动都先加载拒绝规则，重启后产品保留已配置的远程策略，但标记为未验证。需要重新开放时，先在桌面关闭该策略，再提交开放。本机 Unix socket 在实例启动完成后仍可认证。启停、账号修改和管理员恢复须先关闭远程策略。
+
+
+隔离计划验收在安装 Oracle 8.4.13 固定核心包的一次性 Noble systemd 容器上通过 5 项。两个 veth 网络命名空间分别模拟允许与禁止来源。关闭防火墙规则时监听不可达，开放后允许来源使用 VERIFY_IDENTITY 校验证书并以准确 user@host 读取绑定数据库及确认 TLS 密码套件。禁止来源命中 nftables 丢弃计数。允许来源的明文请求收到原生拒绝。关闭后恢复原普通单元，root@localhost 通过 Unix socket 读回原数据。聚焦计划回归 50 项通过，容器已清理。
+
+产品路径复现使用带 nftables、iproute2 和 openssl 的独立 Noble systemd 容器。设置 `/etc/relaxkonos-db09-product-disposable` 为 `DB-09-product`，用测试执行器 `mysql-product --normal` 通过安装队列安装并初始化实例。随后运行[产品验收脚本](../../Tests/MySql/native-remote-product-smoke.py)，传入 Linux x64 测试执行器路径。脚本使用 `10.77.0.1` 监听、`10.77.0.2` 允许、`10.78.0.2` 禁止，经证书中心保存测试证书并经实际安装服务提交 Helper 子进程。隔离夹具使用标准输入承载提权请求，桌面接线由桌面回归覆盖。
+
+MySQL 8.4.13 的产品路径隔离验收通过。占用 `3306` 使开启失败时，防火墙仍拦截允许来源，原操作保持待恢复。释放端口后，新的 Server 和 Helper 测试进程从证书中心、持久凭据和原操作台账续做成功。允许来源以 `VERIFY_IDENTITY` 连接并读取原数据，禁止来源命中 nftables 丢弃规则，同一允许来源使用明文时被 MySQL 拒绝。systemd 重启后入站保持关闭，本机 root socket 仍可用。执行关闭后，远程账号被删除，MySQL 恢复仅 Unix socket，`root@localhost` 仍可读取原数据。

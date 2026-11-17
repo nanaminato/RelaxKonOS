@@ -10,3 +10,4 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("RelaxKonOS.ModuleHost.Windows.Tests")]
 [assembly: InternalsVisibleTo("RelaxKonOS.Settings.Tests")]
+[assembly: InternalsVisibleTo("RelaxKonOS.PostgreSql.Tests")]

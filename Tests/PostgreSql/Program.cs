@@ -8,6 +8,19 @@ if (args is ["mysql-product", var mode])
     return;
 }
 
+if (args is ["mysql-remote-plan", var policyPath])
+{
+    var remote = JsonSerializer.Deserialize<RelaxKonOS.Protocol.Databases.MySqlRemotePolicy>(File.ReadAllBytes(policyPath))!;
+    Console.WriteLine(JsonSerializer.Serialize(new
+    {
+        Unit = RelaxKonOS.ManagedRuntimes.MySql.MySqlRemotePlan.Unit(remote),
+        Closed = RelaxKonOS.ManagedRuntimes.MySql.MySqlRemotePlan.Firewall(remote, false),
+        Open = RelaxKonOS.ManagedRuntimes.MySql.MySqlRemotePlan.Firewall(remote, true),
+        Table = RelaxKonOS.ManagedRuntimes.MySql.MySqlRemotePlan.FirewallTable(remote.InstanceId),
+        MaterialDirectory = RelaxKonOS.ManagedRuntimes.MySql.MySqlRemotePlan.MaterialDirectory(remote.InstanceId)
+    }));
+    return;
+}
 if (args is ["mysql-bootstrap-plan"])
 {
     Console.WriteLine(JsonSerializer.Serialize(RelaxKonOS.ManagedRuntimes.MySql.MySqlBootstrapPolicy.Plan(Guid.NewGuid())));
@@ -41,6 +54,18 @@ void Check(bool condition, string label)
     checks++;
     Console.WriteLine("PASS " + label);
 }
+var mysqlRemote = new RelaxKonOS.Protocol.Databases.MySqlRemotePolicy(instance, "10.77.0.1", "10.77.0.2",
+    "tlsfixture", "tlsprobe", RelaxKonOS.Protocol.Databases.MySqlGrant.ReadOnly, "mysql.example.test", Guid.NewGuid(), new string('A', 64));
+Check(mysqlRemote.Valid && !(mysqlRemote with { SourceAddress = "10.77.0.0/24" }).Valid
+    && !(mysqlRemote with { ListenAddress = "0.0.0.0" }).Valid
+    && !(mysqlRemote with { User = "root" }).Valid, "MySQL TLS plans require exact IPv4 identities and reject root");
+var mysqlUnit = RelaxKonOS.ManagedRuntimes.MySql.MySqlRemotePlan.Unit(mysqlRemote);
+Check(mysqlUnit.Contains("--bind-address=10.77.0.1") && mysqlUnit.Contains("--require-secure-transport=ON")
+    && mysqlUnit.Contains("--mysqlx=OFF") && !mysqlUnit.Contains("--skip-networking"),
+    "MySQL TLS plan binds only the selected address and retains the X Plugin restriction");
+var closedFirewall = RelaxKonOS.ManagedRuntimes.MySql.MySqlRemotePlan.Firewall(mysqlRemote, false);
+Check(!closedFirewall.Contains("ip saddr") && closedFirewall.Contains("tcp dport 3306 counter drop"),
+    "MySQL closed guard does not admit any source");
 var fixtures = Path.Combine(AppContext.BaseDirectory, "Fixtures");
 var policy = File.ReadAllText(Path.Combine(fixtures, "noble-policy.txt"));
 var artifacts = File.ReadAllText(Path.Combine(fixtures, "noble-install-uris.txt"));

@@ -1,6 +1,9 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "database.mysql_remote_scope": "IPv4 の接続元を 1 件指定します。開閉時に MySQL を再起動します。アカウント管理や管理者の復旧前に閉じてください。",
+    "database.mysql_remote_source": "許可する接続元 IPv4（1 件）",
+    "database.mysql_remote_confirm": "MySQL のリモートアクセスを変更しますか？既存の接続が切断され、専用のファイアウォールルールが変更されます。",
     "database.mysql_admin_recovery_confirm": "root@localhost の OS 認証を復旧しますか？MySQL は停止し、復旧中は通常起動を禁止します。完了後も停止したままです。",
     "database.mysql_accounts_scope": "localhost のアカウントは専用 Unix ソケットを使い、権限は 1 データベースに限定されます。変更後はアプリの資格情報を更新してください。",
     "database.mysql_password_hint": "パスワード（16 文字以上）",

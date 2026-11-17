@@ -11,12 +11,12 @@ public static partial class PrivilegedOperationExecutor
     private static readonly SemaphoreSlim MyGate = new(1);
     private sealed record MyIntent(Guid Id, MySqlRequest Request, Guid? Instance, string Phase);
     private sealed record MyLedger(long Revision, bool Installed, Guid? Instance, MyIntent? Pending,
-        Dictionary<Guid, MySqlRequest> Receipts, IReadOnlyList<string>? Databases = null, IReadOnlyList<MySqlAccount>? Accounts = null);
+        Dictionary<Guid, MySqlRequest> Receipts, IReadOnlyList<string>? Databases = null, IReadOnlyList<MySqlAccount>? Accounts = null, MySqlRemotePolicy? RemoteAccess = null, Guid? RemoteOwner = null);
     private static async Task<PrivilegedOperationResult> ExecuteMySqlAsync(PrivilegedOperationRequest request)
     {
         if (request != new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
-            Correlation: request.Correlation, MySql: request.MySql, MySqlSecrets: request.MySqlSecrets)
-            || ((request.Operation == PrivilegedOperationKind.MySqlQuery) != (request.MySql is null)) || request.MySql is null && request.MySqlSecrets is not null)
+            Correlation: request.Correlation, MySql: request.MySql, MySqlSecrets: request.MySqlSecrets, MySqlTls: request.MySqlTls)
+            || ((request.Operation == PrivilegedOperationKind.MySqlQuery) != (request.MySql is null)) || request.MySql is null && (request.MySqlSecrets is not null || request.MySqlTls is not null))
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "database.request_invalid");
 
         if (!OperatingSystem.IsLinux() || !File.Exists("/etc/os-release")
@@ -50,7 +50,7 @@ public static partial class PrivilegedOperationExecutor
             if (request.MySql is null)
                 return MyReply(await MyObserve(ledger, id));
             var intent = request.MySql;
-            if (!intent.Valid || request.MySqlSecrets is not null && intent.Account is null && intent.RecoverOperationId is null) throw new PgFailure("database.request_invalid");
+            if (!intent.Valid || (request.MySqlSecrets is not null || request.MySqlTls is not null) && intent.Account is null && intent.Remote is null && intent.RecoverOperationId is null) throw new PgFailure("database.request_invalid");
             if (ledger.Receipts.TryGetValue(id, out var committed))
             {
                 if (committed != intent) throw new PgFailure("database.operation_conflict");
@@ -75,7 +75,11 @@ public static partial class PrivilegedOperationExecutor
             {
                 if (ledger.Revision != intent.Revision)
                     throw new PgFailure("database.plan_changed");
-                if (intent.Account is { } account)
+                if (intent.Remote is { } remote)
+                    await MyRemotePreflight(ledger, remote, request.MySqlTls, request.MySqlSecrets);
+                else if (ledger.RemoteAccess is not null || request.MySqlTls is not null)
+                    throw new PgFailure("database.remote_request_invalid");
+                else if (intent.Account is { } account)
                     await MyAccountPreflight(ledger, intent.Action!.Value, account, request.MySqlSecrets);
                 else if (intent.Action == MySqlAction.RecoverAdministrator) await MyAdminPreflight(ledger, intent.AdministratorInstanceId!.Value);
                 else await MyPreflight(ledger, intent.Action!.Value);
@@ -84,11 +88,13 @@ public static partial class PrivilegedOperationExecutor
             }
             if (ledger.Pending is not null)
             {
-                if (ledger.Pending.Request.Account is not null)
+                if (ledger.Pending.Request.Remote is not null)
+                    ledger = await MyContinueRemote(ledger, request.MySqlTls, request.MySqlSecrets);
+                else if (ledger.Pending.Request.Account is not null)
                     ledger = await MyContinueAccount(ledger, request.MySqlSecrets);
                 else
                 {
-                    if (request.MySqlSecrets is not null) throw new PgFailure("database.request_invalid");
+                    if (request.MySqlSecrets is not null || request.MySqlTls is not null) throw new PgFailure("database.request_invalid");
                     ledger = ledger.Pending.Request.Action == MySqlAction.RecoverAdministrator
                         ? await MyContinueAdmin(ledger) : await MyContinue(ledger);
                 }
@@ -347,11 +353,14 @@ public static partial class PrivilegedOperationExecutor
             {
                 var plan = MySqlBootstrapPolicy.Plan(id);
                 await MyVerifyPackages();
-                await MyVerifyUnit(plan);
+                if (ledger.RemoteAccess is { } remote)
+                    await MyVerifyRemoteUnit(plan, remote, ledger.RemoteOwner!.Value);
+                else await MyVerifyUnit(plan);
                 running = await MyRunning(plan);
                 if (running)
                 {
-                    await MyVerifyConnection(plan);
+                    if (ledger.RemoteAccess is { } policy) await MyProbeRemote(plan, policy, ledger.RemoteOwner!.Value, true);
+                    else await MyVerifyConnection(plan);
                     verified = true;
                 }
             }
@@ -360,6 +369,6 @@ public static partial class PrivilegedOperationExecutor
         }
         return new(true, ledger.Revision, ledger.Installed, ledger.Instance, running, verified,
             ledger.Pending?.Id, ledger.Receipts.ContainsKey(operation) ? operation : null, problem, ledger.Databases, ledger.Accounts, ledger.Pending?.Request.Account,
-            ledger.Pending?.Request.Action == MySqlAction.RecoverAdministrator);
+            ledger.Pending?.Request.Action == MySqlAction.RecoverAdministrator, ledger.RemoteAccess, ledger.Pending?.Request.Remote);
     }
 }

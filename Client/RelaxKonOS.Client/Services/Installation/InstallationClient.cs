@@ -101,7 +101,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
             InstallationServiceId.PostgreSql or InstallationServiceId.MySql => HostElevationCapability.NativeServiceAction,
             InstallationServiceId.PostgreSqlAccounts or InstallationServiceId.MySqlAccounts => HostElevationCapability.DatabaseAccountsManage,
             InstallationServiceId.PostgreSqlAdminRecovery or InstallationServiceId.MySqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
-            InstallationServiceId.PostgreSqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,
+            InstallationServiceId.PostgreSqlRemoteAccess or InstallationServiceId.MySqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,
             InstallationServiceId.PostgreSqlMaintenance => HostElevationCapability.DatabaseMaintenance,
             InstallationServiceId.PostgreSqlBackupAutomation => HostElevationCapability.DatabaseBackupAutomation,
             InstallationServiceId.Tailscale => HostElevationCapability.HostNetworkChange,

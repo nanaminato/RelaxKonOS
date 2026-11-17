@@ -150,7 +150,7 @@ MySQL 适配必须单独实现 `(user, host)` 身份、认证插件、授权、T
 | DB-06 | 已完成首轮隔离切片 | [实现与验收](RelaxKonOS.DatabaseManager.PostgreSql.DB06.md)：真实 16.2→16.15、损坏二进制修复、停机备份/恢复门禁、保留/删除数据、外部实例拒绝与 Helper 中断/systemd 重启接续；真实主机完整联调待完成 |
 | DB-07 | 分项推进 | DB-07A [PostgreSQL 自动备份与保留策略](RelaxKonOS.DatabaseManager.PostgreSql.DB07.md)已完成实现、桌面接线及隔离验收；DB-07B [PostgreSQL 主版本迁移](RelaxKonOS.DatabaseManager.PostgreSql.DB07B.md)限定路径实现、桌面接线和隔离验收已完成；DB-07C [PostgreSQL 多实例管理](RelaxKonOS.DatabaseManager.PostgreSql.DB07C.md)同主版本双实例台账、事务分派、独立删除、桌面接线与原生隔离验收已完成；MariaDB、Redis/Valkey 保持后续，不能因单个切片完成而关闭整个集合 |
 | DB-08 | 待实施 | Windows PostgreSQL 独立矩阵；不复用 Linux 验收结论 |
-| DB-09 | 首轮单实例 | [MySQL 8.4 首轮安装与本机连接](RelaxKonOS.DatabaseManager.MySql.DB09.md)。安装、初始化、启停、本机连接及建库、最小权限账号、授权、正常改密和现有本机管理员认证恢复已接线。其他生命周期后续推进 |
+| DB-09 | 首轮单实例 | [MySQL 8.4 实现与验收](RelaxKonOS.DatabaseManager.MySql.DB09.md)。安装、初始化、启停、本机连接、建库、最小权限账号、授权、正常改密、本机管理员认证恢复和单一精确 IPv4 来源的 TLS 开关已接线并通过对应隔离验收。其他生命周期后续推进 |
 | DB-10 | 后续；公共机制前置 | Linux Docker 组件机制及领域委托接入，验证卷、首次初始化、凭据轮换和数据升级门禁 |
 
 推荐顺序：DB-01 → PostgreSQL DB-02/03 本机开发切片 → DB-05/06 形成受限 MVP → DB-04 完整密码恢复 → DB-08/09 → DB-10/07。DB-04 未通过的阶段必须明确显示“支持正常改密，不支持管理身份遗失恢复”。首个可交付 MVP 不等于 APP-005 全部需求完成。
