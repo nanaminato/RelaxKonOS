@@ -47,6 +47,12 @@ Expected checks include signed frozen installation, default-cluster suppression/
 
 After collecting evidence, remove only the named test container. No test credentials are used. The application credential-management workflow remains DB-03.
 
+## DB-07D native platforms
+
+Repeat the DB-02 fixture procedure with `--build-arg BASE_IMAGE=ubuntu:26.04` and pass `--major 18` to `native-helper-smoke.py`. For Debian use `--build-arg BASE_IMAGE=debian:13` and `--major 17`. Give each fixture its own image tag and container name. Before running the test executable, install its .NET ICU dependency inside the fixture (`libicu78` on Ubuntu or `libicu76` on Debian) from signed APT sources. The integrity checks require the full Debian package layout, so use the standard image for this fixture.
+
+The smoke test checks that the explicit install plan resolves the package candidate separately from normal status reads. It also runs the native same-version repair, checks the verified backup and original operation receipt, and starts the service to read back the original data.
+
 ## DB-03 accounts and normal password rotation
 
 See [DB-03 implementation and acceptance](../../docs/applications/RelaxKonOS.DatabaseManager.PostgreSql.DB03.md). After initializing a **fresh fixture using the current build** with the DB-02 product-path commands above, run:

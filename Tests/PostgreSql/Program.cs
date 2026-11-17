@@ -82,39 +82,68 @@ var closedFirewall = RelaxKonOS.ManagedRuntimes.MySql.MySqlRemotePlan.Firewall(m
 Check(!closedFirewall.Contains("ip saddr") && closedFirewall.Contains("tcp dport 3306 counter drop"),
     "MySQL closed guard does not admit any source");
 var fixtures = Path.Combine(AppContext.BaseDirectory, "Fixtures");
+var noble = PostgreSqlPlatform.Noble;
 var policy = File.ReadAllText(Path.Combine(fixtures, "noble-policy.txt"));
 var artifacts = File.ReadAllText(Path.Combine(fixtures, "noble-install-uris.txt"));
-Check(PostgreSqlBootstrapPolicy.TryResolve(policy, artifacts, out var target, out var problem)
+Check(PostgreSqlBootstrapPolicy.TryResolve(noble, policy, artifacts, out var target, out var problem)
     && target is not null && problem is null, "actual Noble APT snapshot resolves");
 Check(target!.Version == "16.15-0ubuntu0.24.04.1"
     && target.Sha256 == "d60ae76fb862cd4cca7bfdcdcdcc271c5e1d75f6b7915305ce2d962735a4b666"
     && target.Dependencies.Count == 36, "exact server artifact and full dependency closure retained");
 Check(target.Dependencies.Any(x => x.FileName.StartsWith("libc6_", StringComparison.Ordinal)), "system package upgrades remain visible");
-Check(!PostgreSqlBootstrapPolicy.TryResolve(policy.Replace("Installed: (none)", "Installed: 16.2-1ubuntu4"), artifacts, out _, out problem)
+Check(!PostgreSqlBootstrapPolicy.TryResolve(noble, policy.Replace("Installed: (none)", "Installed: 16.2-1ubuntu4"), artifacts, out _, out problem)
     && problem == "database.external_installation", "external install is never adopted by a fresh plan");
 foreach (var version in new[] { "16.2-1ubuntu4", "16.14-0ubuntu0.24.04.1", "17.1-0ubuntu0.24.04.1", "16.15-1.pgdg24.04+1", "16.15-0ubuntu0.26.04.1", "16.15rc1", "16.15-0ubuntu0.24.04.1\n" })
-    Check(!PostgreSqlBootstrapPolicy.SupportsPackageVersion(version), "reject unsupported version " + version.Trim());
-Check(PostgreSqlBootstrapPolicy.SupportsPackageVersion("16.16-0ubuntu0.24.04.1"), "new stable Noble patch can be evaluated without a hardcoded release list");
-Check(PostgreSqlBootstrapPolicy.CheckTarget(target with { Suite = "resolute-updates" }) == "database.source_unsupported", "cross-release repository refused");
-Check(PostgreSqlBootstrapPolicy.CheckTarget(target with { Architecture = "arm64" }) == "database.platform_unsupported", "unverified architecture refused");
-Check(PostgreSqlBootstrapPolicy.CheckTarget(target with { Sha256 = "" }) == "database.package_unresolved", "missing SHA256 refused");
+    Check(!noble.SupportsPackageVersion(version), "reject unsupported version " + version.Trim());
+Check(noble.SupportsPackageVersion("16.16-0ubuntu0.24.04.1"), "new stable Noble patch can be evaluated without a hardcoded release list");
+Check(PostgreSqlBootstrapPolicy.CheckTarget(noble, target with { Suite = "resolute-updates" }) == "database.source_unsupported", "cross-release repository refused");
+Check(PostgreSqlBootstrapPolicy.CheckTarget(noble, target with { Architecture = "arm64" }) == "database.platform_unsupported", "unverified architecture refused");
+Check(PostgreSqlBootstrapPolicy.CheckTarget(noble, target with { Sha256 = "" }) == "database.package_unresolved", "missing SHA256 refused");
 foreach (var uri in new[] { "https://archive.ubuntu.com.evil.example/ubuntu/pool/x.deb", "http://archive.ubuntu.com:8080/ubuntu/pool/x.deb", "http://archive.ubuntu.com/ubuntu/pool/x.deb?token=x" })
-    Check(PostgreSqlBootstrapPolicy.CheckTarget(target with { Dependencies = target.Dependencies.Select((x, i) => i == 0 ? x with { Uri = uri } : x).ToArray() })
+    Check(PostgreSqlBootstrapPolicy.CheckTarget(noble, target with { Dependencies = target.Dependencies.Select((x, i) => i == 0 ? x with { Uri = uri } : x).ToArray() })
         is not null, "dependency origin cannot widen source policy");
-Check(PostgreSqlBootstrapPolicy.CheckTarget(target with { Dependencies = target.Dependencies.Where(x => !x.FileName.StartsWith("postgresql-common_", StringComparison.Ordinal)).ToArray() })
+Check(PostgreSqlBootstrapPolicy.CheckTarget(noble, target with { Dependencies = target.Dependencies.Where(x => !x.FileName.StartsWith("postgresql-common_", StringComparison.Ordinal)).ToArray() })
     == "database.package_dependencies_incomplete", "service-owner package required separately from server binary");
 Check(!AptPackageResolution.MatchesModuleResolution(target, target with { Dependencies = target.Dependencies.Skip(1).ToArray() }), "frozen dependency removal is drift");
-Check(!PostgreSqlBootstrapPolicy.TryResolve(policy.Replace("  Installed: (none)", ""), artifacts, out _, out problem)
+Check(!PostgreSqlBootstrapPolicy.TryResolve(noble, policy.Replace("  Installed: (none)", ""), artifacts, out _, out problem)
     && problem == "database.inventory_unknown", "missing installed state cannot imply absence");
-Check(!PostgreSqlBootstrapPolicy.TryResolve(policy.Replace("Installed: (none)", "Installed: unknown"), artifacts, out _, out problem)
+Check(!PostgreSqlBootstrapPolicy.TryResolve(noble, policy.Replace("Installed: (none)", "Installed: unknown"), artifacts, out _, out problem)
     && problem == "database.inventory_unknown", "unknown installed state cannot imply absence");
-Check(PostgreSqlBootstrapPolicy.CheckTarget(target with { RepositoryId = "forged|noble|main|amd64" }) == "database.source_unsupported", "repository identity matches its fields");
+Check(PostgreSqlBootstrapPolicy.CheckTarget(noble, target with { RepositoryId = "forged|noble|main|amd64" }) == "database.source_unsupported", "repository identity matches its fields");
 var common = target.Dependencies.Single(x => x.FileName.StartsWith("postgresql-common_", StringComparison.Ordinal));
-Check(PostgreSqlBootstrapPolicy.CheckTarget(target with { Dependencies = [.. target.Dependencies, common with { FileName = "postgresql-common_257build1.2_all.deb" }] })
+Check(PostgreSqlBootstrapPolicy.CheckTarget(noble, target with { Dependencies = [.. target.Dependencies, common with { FileName = "postgresql-common_257build1.2_all.deb" }] })
     == "database.package_dependencies_unsupported", "two revisions of the same dependency cannot be frozen");
 var host = new PostgreSqlHostObservation("linux", "ubuntu", "24.04", "amd64", true, true, [], [], true, true);
 Check(PostgreSqlBootstrapPolicy.CheckHost(host) is null, "clean target passes preflight, without granting execution");
-Check(PostgreSqlBootstrapPolicy.CheckHost(host with { Version = "26.04" }) == "database.platform_unsupported", "actual 26.04 acceptance host cannot stand in for Noble");
+Check(PostgreSqlBootstrapPolicy.CheckHost(host with { Version = "26.04" }) is null, "Resolute host passes matching preflight");
+Check(PostgreSqlBootstrapPolicy.CheckHost(host with { Distribution = "debian", Version = "13" }) is null, "Trixie host passes matching preflight");
+Check(PostgreSqlBootstrapPolicy.CheckHost(host with { Distribution = "debian", Version = "12" }) == "database.platform_unsupported", "unverified Debian release refused");
+var trixie = PostgreSqlPlatform.Trixie;
+var resolute = PostgreSqlPlatform.Resolute;
+Check(PostgreSqlPlatform.FromOsRelease(["ID=debian", "VERSION_ID=\"13\""]) == trixie
+    && PostgreSqlPlatform.FromOsRelease(["ID=ubuntu", "VERSION_ID=26.04"]) == resolute
+    && PostgreSqlPlatform.FromOsRelease(["ID=debian", "ID=ubuntu", "VERSION_ID=13"]) is null,
+    "os-release chooses an unambiguous native package profile");
+var trixieSources = trixie.GetAptSources("""
+    500 http://deb.debian.org/debian stable/main amd64 Packages
+        release o=Debian,a=stable,n=trixie,l=Debian,c=main,b=amd64
+    500 http://deb.debian.org/debian-security stable-security/main amd64 Packages
+        release o=Debian,a=stable-security,n=trixie-security,l=Debian-Security,c=main,b=amd64
+    500 http://deb.debian.org/debian stable-updates/main amd64 Packages
+        release o=Debian,a=stable-updates,n=forky-updates,l=Debian,c=main,b=amd64
+    500 http://deb.debian.org/debian trixie-backports/main amd64 Packages
+    500 http://security.debian.org/debian-security trixie/main amd64 Packages
+    """);
+Check(trixieSources.Count == 2
+    && trixieSources.Any(source => source.Contains("trixie-stable.gpg]") && source.EndsWith("/debian trixie main"))
+    && trixieSources.Any(source => source.Contains("security-automatic.gpg]") && source.EndsWith("/debian-security trixie-security main")),
+    "Debian aliases resolve to the observed codename with separate archive and security keys");
+Check(trixie.SupportsPackageVersion("17.12-0+deb13u1") && !trixie.SupportsPackageVersion("17.10-0+deb13u2")
+    && !trixie.SupportsPackageVersion("17.12-1.pgdg13+1"), "Trixie admits only supported distribution patch versions");
+Check(resolute.SupportsPackageVersion("18.7-0ubuntu0.26.04.1") && !resolute.SupportsPackageVersion("18.3-1")
+    && !resolute.SupportsPackageVersion("18.7-1.pgdg24.04+2"), "Resolute admits only supported distribution patch versions");
+Check(resolute.GetAptSources("500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages").Count == 0,
+    "Ubuntu profiles do not reuse another release's signed sources");
 Check(PostgreSqlBootstrapPolicy.CheckHost(host with { SystemdAvailable = false }) == "database.service_host_unavailable", "package-test container cannot claim systemd readiness");
 Check(PostgreSqlBootstrapPolicy.CheckHost(host with { ExistingPackages = null }) == "database.inventory_unknown", "unknown inventory is not absent");
 Check(PostgreSqlBootstrapPolicy.CheckHost(host with { ExistingPackages = ["postgresql-common"] }) == "database.external_installation", "shared package collision blocks bootstrap");
@@ -130,6 +159,10 @@ Check(init.ServiceName == "postgresql@16-rkc420766591c447e989786639a70b5de0.serv
 var nextMajor = PostgreSqlInitializationPlanner.Create(instance, 55432, 18);
 Check(nextMajor.ServiceName.StartsWith("postgresql@18-", StringComparison.Ordinal) && nextMajor.ConfigurationDirectory.StartsWith("/etc/postgresql/18/", StringComparison.Ordinal)
     && nextMajor.DataDirectory == init.DataDirectory && nextMajor.CreateArguments.Contains("18"), "new major preserves instance data identity but changes service and configuration identity");
+var trixieInstance = PostgreSqlInitializationPlanner.Create(instance, 55432, 17);
+Check(trixieInstance.ServiceName.StartsWith("postgresql@17-", StringComparison.Ordinal)
+    && trixieInstance.ConfigurationDirectory.StartsWith("/etc/postgresql/17/", StringComparison.Ordinal),
+    "Debian PostgreSQL gets its own native cluster and unit names");
 try { PostgreSqlInitializationPlanner.Create(instance, 55432, 19); throw new Exception("accepted unsupported major"); }
 catch (ArgumentOutOfRangeException) { checks++; }
 var secondInstance = Guid.Parse("11abdb5e-2aff-4d11-8fc8-2cf21c441233");

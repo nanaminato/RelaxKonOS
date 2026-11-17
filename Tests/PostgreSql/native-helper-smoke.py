@@ -1,11 +1,16 @@
-"""Run only inside a disposable Ubuntu 24.04/systemd fixture; never a production host.
+"""Run only inside a disposable systemd fixture; never a production host.
 Create /etc/relaxkonos-db02-disposable explicitly before running. No secrets are used.
-Usage: python3 native-helper-smoke.py /opt/acceptance/RelaxKonOS.PostgreSql.Tests [--existing]
+Usage: python3 native-helper-smoke.py /opt/acceptance/RelaxKonOS.PostgreSql.Tests [--major 16|17|18] [--existing]
 """
-import base64,json,os,subprocess,sys,uuid
+import argparse,base64,json,os,subprocess,uuid
 from pathlib import Path
 assert os.geteuid()==0 and Path('/etc/relaxkonos-db02-disposable').read_text().strip()=='DB-02'
-binary=sys.argv[1]; count=0
+parser=argparse.ArgumentParser()
+parser.add_argument('binary')
+parser.add_argument('--major',type=int,choices=(16,17,18),default=16)
+parser.add_argument('--existing',action='store_true')
+args=parser.parse_args()
+binary=args.binary; major=args.major; count=0
 def check(ok,label):
  global count
  assert ok,label
@@ -26,23 +31,30 @@ def command(action,id=None,expected=None):
  before=state()
  options={'Confirmed':True,'Command':{'Action':action,'InstanceId':before['InstanceId'] or str(uuid.uuid4()),'ExpectedRevision':before['Revision'] if expected is None else expected,'Port':55432}}
  id=id or str(uuid.uuid4());return call('PostgreSqlExecute',options,id),id,options
-s=state();check(s['Supported'],'real Noble x64 systemd accepted')
-if '--existing' not in sys.argv:
- check(not s['Installed'] and s['ProblemCode'] is None,'fresh host offers signed candidate')
- id=str(uuid.uuid4());target=s['Candidate']
+s=state();check(s['Supported'],'real x64 systemd host accepted')
+if not args.existing:
+ check(not s['Installed'] and s['ProblemCode'] is None and s['Candidate'] is None
+       and not Path('/var/lib/relaxkonos/postgresql-control/sources.list').exists(),'fresh status does not refresh APT')
+ planned=call('PostgreSqlInstallPlan')
+ check(planned['success'] and planned['state']['ProblemCode'] is None,f'fresh host offers signed candidate: {planned.get("state",{}).get("ProblemCode") or planned.get("error")}')
+ id=str(uuid.uuid4());target=planned['state']['Candidate']
+ check(target['PackageName']==f'postgresql-{major}','host offers the expected native PostgreSQL major')
  plan={'ComponentId':'postgresql','HostId':run('hostname'),'Change':'Install','ExpectedRevision':s['Revision'],'Mode':'SystemPackage','SourceId':None,'ExpectedSourceRevision':0,'ExpectedTrustRevision':0,'ReleaseId':None,'RequestedVersion':target['Version'],'KeepData':True,'IdempotencyKey':id}
  options={'Confirmed':True,'FrozenPackage':{'ComponentId':'postgresql','Request':plan,'Expected':{'Mode':'SystemPackage','Archive':None,'Package':target}}}
  installed=call('PostgreSqlExecute',options,id)
- check(installed['success'] and installed['state']['CommittedOperationId']==id,'frozen signed package installation commits receipt')
+ check(installed['success'] and installed['state']['CommittedOperationId']==id,
+       f'frozen signed package installation commits receipt: {installed.get("error")}')
  check(run('pg_lsclusters','--no-header')=='','package scripts did not create a default cluster')
  check(not Path('/etc/postgresql-common/createcluster.conf').exists(),'temporary suppression is cleaned after commit')
  replay=call('PostgreSqlExecute',options,id)
  check(replay['success'] and replay['state']['Revision']==installed['state']['Revision'],'install replay is idempotent across Helper processes')
  initialized,_,_=command('Initialize')
- check(initialized['success'] and initialized['state']['ConnectionVerified'],'initialization verifies real local authentication')
+ check(initialized['success'] and initialized['state']['ConnectionVerified'],
+       f'initialization verifies real local authentication: {initialized.get("error")}')
 s=state();check(s['Installed'] and s['Managed'] and s['InstanceId'],'ledger owns a real initialized instance')
-instance=s['InstanceId'].replace('-','');unit='postgresql@16-rk'+instance+'.service';socket='/run/postgresql/rk'+instance
-def sql(text):return run('runuser','-u','postgres','--','/usr/lib/postgresql/16/bin/psql','-XAtw','-v','ON_ERROR_STOP=1','-h',socket,'-p','55432','-d','postgres',input=text)
+instance=s['InstanceId'].replace('-','');unit=f'postgresql@{major}-rk'+instance+'.service';socket='/run/postgresql/rk'+instance
+def sql(text):return run('runuser','-u','postgres','--',f'/usr/lib/postgresql/{major}/bin/psql','-XAtw','-v','ON_ERROR_STOP=1','-h',socket,'-p','55432','-d','postgres',input=text)
+check(sql('SHOW server_version_num;').startswith(str(major)),'connected server runs the requested major')
 check(sql("SHOW listen_addresses;")=='127.0.0.1,::1','only loopback addresses listen')
 check(sql("SHOW password_encryption;")=='scram-sha-256','SCRAM password storage configured')
 sql('CREATE TABLE IF NOT EXISTS db02_acceptance(value int); INSERT INTO db02_acceptance VALUES (42);')
@@ -88,4 +100,19 @@ try:
  check(run('systemctl','show','-p','MainPID','--value',unit)==pid,'uncertain recovery leaves the existing process untouched')
 finally:ledger.write_bytes(original)
 check(state()['PendingOperationId'] is None,'fixture finishes without a pending transaction')
+if major in (17,18) and not args.existing:
+    maintenance=call('PostgreSqlMaintenancePlan')
+    check(maintenance['success'],f'native maintenance candidate resolves: {maintenance.get("error")}')
+    check(maintenance['state']['Candidate']['PackageName']==f'postgresql-{major}'
+          and maintenance['state']['Candidate']['Suite']==target['Suite'],'maintenance stays on the native source and major')
+    check(not call('PostgreSqlMigrationPlan')['success'],'Noble PGDG migration is unavailable on native newer majors')
+    before=state(); operation=str(uuid.uuid4())
+    repair=call('PostgreSqlExecute',{'Confirmed':True,'Maintenance':{'Action':'Repair',
+        'InstanceId':before['InstanceId'],'ExpectedRevision':before['Revision'],'Target':maintenance['state']['Candidate']}},operation)
+    check(repair['success'] and repair['state']['CommittedOperationId']==operation,
+          f'native repair commits a receipt: {repair.get("error")}')
+    check(not repair['state']['Running'] and any(b['RestoreVerified'] for b in repair['state']['Backups']),
+          'repair leaves the cluster stopped with a verified backup')
+    check(command('Start')[0]['success'] and sql('SELECT count(*) FROM db02_acceptance WHERE value=42;')!='0',
+          'data survives native same-version repair')
 print('Native Helper checks passed: '+str(count),flush=True)

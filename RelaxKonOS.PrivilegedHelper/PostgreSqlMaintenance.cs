@@ -13,19 +13,22 @@ public static partial class PrivilegedOperationExecutor
     private static string PgBackupPath(PgLedger l,Guid id) => PgBackupRoot(l)+"/"+id.ToString("N");
     private static async Task<ComponentPackageTarget> PgResolveMaintenance(PgLedger l)
     {
-        if (PgMajor(l)==18) return await PgResolveMajor();
-        // Bootstrap refresh verifies the already configured Ubuntu signing authority even on an installed host.
-        try { await PgResolve(); } catch(PgFailure e) when(e.Message is "database.external_installation" or "database.inventory_unknown" or "database.package_dependencies_incomplete") { }
-        var policy=(await PgRun("/usr/bin/apt-cache",[..PgAptOptions(),"policy","postgresql-16"])).Output;
-        if(!AptPackageResolution.TryParsePolicy(policy,"postgresql-16",out var parsed) || parsed?.CandidateVersion is not {} version
-            || version!="16.15-0ubuntu0.24.04.1") throw new PgFailure("database.maintenance_version_unsupported");
-        var uris=(await PgRun("/usr/bin/apt-get",[..PgAptOptions(),"-o","Dir::Cache::archives="+PgRoot+"/empty","install","--print-uris","--reinstall","--yes","--no-remove","--no-install-recommends",
-            "postgresql-16="+version,"postgresql-client-16="+version,"postgresql-common","postgresql-client-common"])).Output;
-        if(!AptPackageResolution.TryParseUriPlan(uris,"postgresql-16",version,out var main,out var dependencies)
-            || !AptPackageResolution.TryBuildModuleResolution(parsed,main,dependencies,["postgresql-16"],out var result,out _) || result is null
-            || PostgreSqlBootstrapPolicy.CheckTarget(result) is not null) throw new PgFailure("database.package_unresolved");
-        return new(result.Package,result.Version,result.Architecture,result.RepositoryId,result.BaseUri,result.Suite,result.Area,result.PoolUri,result.Sha256,result.Bytes,
-            result.Dependencies.Select(x=>new ComponentPackageArtifact(x.FileName,x.Uri,x.Bytes,x.Sha256)).ToArray());
+        var platform = PgRequirePlatform();
+        if (platform == PostgreSqlPlatform.Noble && l.Package?.Suite == "noble-pgdg") return await PgResolveMajor();
+        if (l.Package?.PackageName != platform.Package || platform.RepositorySigningKeys(l.Package.BaseUri, l.Package.Suite) is null)
+            throw new PgFailure("database.maintenance_version_unsupported");
+        await PgRefreshNativeSources(platform);
+        var policy = (await PgRun("/usr/bin/apt-cache", [.. PgAptOptions(), "policy", platform.Package])).Output;
+        if (!AptPackageResolution.TryParsePolicy(policy, platform.Package, out var parsed) || parsed?.CandidateVersion is not { } version
+            || !platform.SupportsPackageVersion(version) || platform == PostgreSqlPlatform.Noble && version != "16.15-0ubuntu0.24.04.1")
+            throw new PgFailure("database.maintenance_version_unsupported");
+        var uris = (await PgRun("/usr/bin/apt-get", [.. PgAptOptions(), "-o", "Dir::Cache::archives=" + PgRoot + "/empty",
+            "install", "--print-uris", "--reinstall", "--yes", "--no-remove", "--no-install-recommends",
+            platform.Package + "=" + version, platform.ClientPackage + "=" + version,
+            PostgreSqlBootstrapPolicy.ServicePackage, PostgreSqlBootstrapPolicy.ScriptPackage])).Output;
+        if (!PostgreSqlBootstrapPolicy.TryResolveArtifacts(platform, parsed, uris, out var result, out var problem) || result is null)
+            throw new PgFailure(problem ?? "database.package_unresolved");
+        return PgPackageTarget(result);
     }
     private static async Task PgExclusiveInstance(PgLedger l, bool allowManagedPeers = false)
     {
@@ -42,9 +45,16 @@ public static partial class PrivilegedOperationExecutor
             foreach(var cluster in Directory.GetDirectories(major)) if(!ownedConfigurations.Contains(cluster)) throw new PgFailure("database.external_installation");
         if(Directory.Exists("/var/lib/postgresql"))
             foreach(var file in Directory.EnumerateFiles("/var/lib/postgresql","PG_VERSION",SearchOption.AllDirectories))throw new PgFailure("database.external_installation");
+        var allowedPackages = new HashSet<string>(StringComparer.Ordinal)
+        {
+            l.Package!.PackageName, $"postgresql-client-{PgMajor(l)}",
+            PostgreSqlBootstrapPolicy.ServicePackage, PostgreSqlBootstrapPolicy.ScriptPackage
+        };
+        if (l.Package.Suite == "noble-pgdg") allowedPackages.Add(PostgreSqlPlatform.Noble.ClientPackage);
+        if (PgRequirePlatform() == PostgreSqlPlatform.Trixie) allowedPackages.Add(PostgreSqlBootstrapPolicy.CommonDevPackage);
         var installed=(await PgRun("/usr/bin/dpkg-query",["-W","-f=${binary:Package}|${db:Status-Status}\n","postgresql*"],allowFailure:true)).Output;
         foreach(var line in installed.Split('\n',StringSplitOptions.RemoveEmptyEntries))
-            if(line.EndsWith("|installed",StringComparison.Ordinal) && !new[]{l.Package!.PackageName,"postgresql-client-"+PgMajor(l),"postgresql-client-16","postgresql-common","postgresql-client-common"}.Contains(line.Split('|')[0])) throw new PgFailure("database.external_installation");
+            if(line.EndsWith("|installed",StringComparison.Ordinal) && !allowedPackages.Contains(line.Split('|')[0])) throw new PgFailure("database.external_installation");
         if(!l.DataDeleted)
         {
             if(!Directory.Exists(plan.DataDirectory)||!Directory.Exists(plan.ConfigurationDirectory))throw new PgFailure("database.instance_invalid");
@@ -226,7 +236,14 @@ public static partial class PrivilegedOperationExecutor
         var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value, l.Port, PgMajor(l));await PgStartPrivate(l);
         try
         {
-            if(PgMajor(l)==18){foreach(var db in l.Databases.Select(x=>x.Name).Prepend("postgres").Append("template1"))await PgSql(l,db,"REINDEX DATABASE "+PgId(db)+"; ANALYZE;");return;}
+            if (PgMajor(l) != 16)
+            {
+                foreach (var db in l.Databases.Select(x => x.Name).Prepend("postgres").Append("template1"))
+                    await PgSql(l, db, "REINDEX DATABASE " + PgId(db) + "; ANALYZE;");
+                foreach (var db in l.Databases) await PgVerifyDatabase(l, db);
+                foreach (var account in l.Accounts) await PgVerifyAccount(l, account);
+                return;
+            }
             var fix="/usr/share/postgresql/16/fix-CVE-2024-4317.sql";PgNoLinks(fix);
             if(!File.Exists(fix))throw new PgFailure("database.maintenance_migration_required");
             await PgSql(l,"postgres","ALTER DATABASE template0 ALLOW_CONNECTIONS true;");

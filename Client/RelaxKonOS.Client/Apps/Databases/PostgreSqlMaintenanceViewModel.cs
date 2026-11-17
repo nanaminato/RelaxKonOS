@@ -32,7 +32,9 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     private bool migrationPlan;
     [ObservableProperty] private bool migrationSourceAccepted;
     private bool SharedPackageWritable => Snapshot?.Instances?.Count is not > 1;
-    public bool CanMigrate=>SharedPackageWritable&&CanBackup&&HasPlan&&migrationPlan&&MigrationSourceAccepted&&Snapshot!.Version=="16.15-0ubuntu0.24.04.1"&&Plan!.Candidate!.PackageName=="postgresql-18";
+    public bool ShowsMigration => Snapshot?.Version == "16.15-0ubuntu0.24.04.1";
+    public bool CanPlanMigration => ShowsMigration && SharedPackageWritable && CanBackup;
+    public bool CanMigrate=>CanPlanMigration&&HasPlan&&migrationPlan&&MigrationSourceAccepted&&Plan!.Candidate!.PackageName=="postgresql-18";
     public string PlanDetails=>Plan?.Candidate is {} target?target.BaseUri+" · "+target.Suite+"\n"+string.Join("\n",target.AlsoInstalls.Select(x=>Uri.UnescapeDataString(x.FileName))):"";
     partial void OnMigrationSourceAcceptedChanged(bool value)=>Notify();
     private PostgreSqlInstallationRequest? pending;
@@ -66,7 +68,7 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     partial void OnBusyChanged(bool value)=>Notify();
     partial void OnDeleteConfirmationChanged(string value)=>Notify();
     partial void OnSelectedBackupChanged(PostgreSqlBackup? value)=>Notify();
-    public void Notify(){foreach(var name in new[]{nameof(CanMigrate),nameof(CanKeepData),nameof(PlanDetails),nameof(CanConfigureSchedule),nameof(CanRecoverSchedule),nameof(CanResumeSchedule),nameof(CanDeleteBackup),nameof(NextDue),nameof(ScheduleOutcome),nameof(ScheduledTask),nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanDeleteInstance),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
+    public void Notify(){foreach(var name in new[]{nameof(ShowsMigration),nameof(CanPlanMigration),nameof(CanMigrate),nameof(CanKeepData),nameof(PlanDetails),nameof(CanConfigureSchedule),nameof(CanRecoverSchedule),nameof(CanResumeSchedule),nameof(CanDeleteBackup),nameof(NextDue),nameof(ScheduleOutcome),nameof(ScheduledTask),nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanDeleteInstance),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
     [RelayCommand] private async Task PlanAsync()
     {
         if(!Ready)return;Busy=true;
@@ -77,7 +79,7 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     }
     [RelayCommand] private async Task MigrationPlanAsync()
     {
-        if(!Ready)return;Busy=true;MigrationSourceAccepted=false;
+        if(!CanPlanMigration)return;Busy=true;MigrationSourceAccepted=false;
         try{var result=await client.MigrationPlanAsync(default);if(!invalid){migrationPlan=true;Plan=result;Notice=LocalizedStatus.Literal("");}}
         catch(InstallationApiException error){Notice=LocalizedStatus.Key(error.ProblemCode);}
         catch{Notice=LocalizedStatus.Key("database.maintenance_plan_failed");}

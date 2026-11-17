@@ -1,5 +1,6 @@
 using System.Text;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
+using RelaxKonOS.ManagedRuntimes.PostgreSql;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 public static partial class PrivilegedOperationExecutor
 {
@@ -86,11 +87,11 @@ Gtz3cydIohvNO9d90+29h0eGEDYti7j7maHkBKUAwlcPvMg5m3Y=
 """;
     private static async Task<ComponentPackageTarget> PgResolveMajor()
     {
+        if (PgRequirePlatform() != PostgreSqlPlatform.Noble) throw new PgFailure("database.migration_version_unsupported");
         if(!File.Exists("/etc/ssl/certs/ca-certificates.crt"))throw new PgFailure("database.migration_ca_required");
         // Ubuntu sources remain constrained by the existing bootstrap resolver. PGDG is private
         // discovery only here; installation requires an explicit fingerprint-bound confirmation.
-        try { await PgResolve(); }
-        catch(PgFailure e) when(e.Message is "database.external_installation" or "database.inventory_unknown" or "database.package_dependencies_incomplete") { }
+        await PgRefreshNativeSources(PostgreSqlPlatform.Noble);
         PgAtomic(PgRoot+"/pgdg.asc",Encoding.ASCII.GetBytes(PgMajorKey+"\n"));
         var sources=File.ReadAllText(PgRoot+"/sources.list");
         sources+=$"deb [arch=amd64 signed-by={PgRoot}/pgdg.asc,{PgMajorFingerprint}] https://apt.postgresql.org/pub/repos/apt noble-pgdg main\n";
@@ -116,7 +117,6 @@ Gtz3cydIohvNO9d90+29h0eGEDYti7j7maHkBKUAwlcPvMg5m3Y=
             if(pgdg&&name is not ("postgresql-18" or "postgresql-client-18" or "postgresql-common" or "postgresql-client-common" or "libpq5"))throw new PgFailure("database.package_dependencies_unsupported");
             if(name.StartsWith("postgresql",StringComparison.Ordinal)&&name is not ("postgresql-18" or "postgresql-client-18" or "postgresql-common" or "postgresql-client-common"))throw new PgFailure("database.package_dependencies_unsupported");
         }
-        return new(result.Package,result.Version,result.Architecture,result.RepositoryId,result.BaseUri,result.Suite,result.Area,result.PoolUri,result.Sha256,result.Bytes,
-            result.Dependencies.Select(x=>new ComponentPackageArtifact(x.FileName,x.Uri,x.Bytes,x.Sha256)).ToArray());
+        return PgPackageTarget(result);
     }
 }

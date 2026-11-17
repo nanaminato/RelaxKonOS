@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.ManagedRuntimes.PostgreSql;
 using RelaxKonOS.Protocol.Databases;
@@ -30,11 +29,9 @@ public static partial class PrivilegedOperationExecutor
         if (request != new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
             Correlation: request.Correlation, PostgreSql: request.PostgreSql, PostgreSqlSecrets: request.PostgreSqlSecrets, PostgreSqlTls: request.PostgreSqlTls, PostgreSqlInstance: request.PostgreSqlInstance))
             return new(false, 64, Error: "database.request_invalid", ProblemCode: PrivilegedProblemCode.InvalidRequest);
-        if (request.Operation is (PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlBackupScheduleQuery or PrivilegedOperationKind.PostgreSqlMigrationPlan) && (request.PostgreSql is not null || request.PostgreSqlSecrets is not null || request.PostgreSqlTls is not null))
+        if (request.Operation is (PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlInstallPlan or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlBackupScheduleQuery or PrivilegedOperationKind.PostgreSqlMigrationPlan) && (request.PostgreSql is not null || request.PostgreSqlSecrets is not null || request.PostgreSqlTls is not null))
             return new(false, 64, Error: "database.request_invalid", ProblemCode: PrivilegedProblemCode.InvalidRequest);
-        if (!OperatingSystem.IsLinux() || !File.Exists("/etc/os-release")) return PgReply(PgUnsupported());
-        var release = File.ReadAllLines("/etc/os-release");
-        if (!release.Contains("ID=ubuntu") || !release.Contains("VERSION_ID=\"24.04\"")
+        if (!OperatingSystem.IsLinux() || PgHostPlatform() is null
             || System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture != System.Runtime.InteropServices.Architecture.X64
             || !Directory.Exists("/run/systemd/system")) return PgReply(PgUnsupported());
         await PgGate.WaitAsync();
@@ -53,12 +50,15 @@ public static partial class PrivilegedOperationExecutor
             if(request.Operation==PrivilegedOperationKind.PostgreSqlBackupScheduleQuery)
                 return PgReply(new(true,ledger.Package is not null&&!ledger.PackageRemoved,ledger.Package is not null,ledger.Package?.Version,ledger.Revision,ledger.Instance,ledger.Port,false,false,
                     ledger.Pending?.Id,null,null,PendingMaintenance:ledger.Pending?.Request.Maintenance,BackupSchedule:ledger.BackupSchedule));
+            if (request.Operation == PrivilegedOperationKind.PostgreSqlMigrationPlan && ledger.Package?.PackageName != PostgreSqlPlatform.Noble.Package)
+                throw new PgFailure("database.migration_version_unsupported");
             if (request.Operation == PrivilegedOperationKind.PostgreSqlMigrationPlan)
                 return PgReply((await PgObserve(ledger,id)) with { Candidate = await PgResolveMajor() });
             if (request.Operation == PrivilegedOperationKind.PostgreSqlMaintenancePlan)
                 return PgReply((await PgObserve(ledger,id)) with { Candidate = await PgResolveMaintenance(ledger) });
-            if (request.Operation == PrivilegedOperationKind.PostgreSqlQuery)
-                return PgReply((await PgObserve(ledger, id)) with { Instances = PgInstanceSummaries(primary, instances) });
+            if (request.Operation is PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlInstallPlan)
+                return PgReply((await PgObserve(ledger, id, resolveInstallCandidate: request.Operation == PrivilegedOperationKind.PostgreSqlInstallPlan))
+                    with { Instances = PgInstanceSummaries(primary, instances) });
             if (request.PostgreSql is not { Confirmed: true } options) throw new PgFailure("database.confirmation_required");
             if (request.Operation == PrivilegedOperationKind.PostgreSqlRecover)
             {
@@ -242,27 +242,39 @@ public static partial class PrivilegedOperationExecutor
         "-o", "Dir::State::lists=" + PgRoot + "/lists", "-o", "Dir::Cache::archives=" + PgRoot + "/archives",
         "-o", "APT::Sandbox::User=root", "-o", "Acquire::AllowInsecureRepositories=false", "-o", "Acquire::AllowDowngradeToInsecureRepositories=false",
         "-o", "APT::Get::AllowUnauthenticated=false", "-o", "Acquire::Check-Valid-Until=true", "-o", "Acquire::ForceHash=SHA256"];
-    private static async Task<ComponentPackageTarget> PgResolve()
+    private static PostgreSqlPlatform? PgHostPlatform() => File.Exists("/etc/os-release")
+        ? PostgreSqlPlatform.FromOsRelease(File.ReadLines("/etc/os-release")) : null;
+
+    private static PostgreSqlPlatform PgRequirePlatform() => PgHostPlatform() ?? throw new PgFailure("database.platform_unsupported");
+
+    private static async Task PgRefreshNativeSources(PostgreSqlPlatform platform)
     {
         // Use only official repositories already present in the host's policy. No global source edits.
         var observed = (await PgRun("/usr/bin/apt-cache", ["policy"])).Output;
-        var sources = Regex.Matches(observed, @"(?m)^\s*\d+\s+(https?://(?:archive\.ubuntu\.com|security\.ubuntu\.com|cn\.archive\.ubuntu\.com)/ubuntu/?)[ ]+(noble(?:-updates|-security)?)/main[ ]+amd64[ ]+Packages\s*$")
-            .Select(m => $"deb [arch=amd64 signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg,F6ECB3762474EDA9D21B7022871920D1991BC93C] {m.Groups[1].Value} {m.Groups[2].Value} main")
-            .Distinct().Order().ToArray();
-        if (sources.Length == 0) throw new PgFailure("database.source_unsupported");
+        var sources = platform.GetAptSources(observed);
+        if (sources.Count == 0) throw new PgFailure("database.source_unsupported");
         PgAtomic(PgRoot + "/sources.list", Encoding.UTF8.GetBytes(string.Join('\n', sources) + "\n"));
         Directory.CreateDirectory(PgRoot + "/lists"); Directory.CreateDirectory(PgRoot + "/archives");
         await PgRun("/usr/bin/apt-get", [.. PgAptOptions(), "update", "-o", "APT::Update::Error-Mode=any"], minutes: 10);
-        var policy = (await PgRun("/usr/bin/apt-cache", [.. PgAptOptions(), "policy", PostgreSqlBootstrapPolicy.Package])).Output;
-        if (!AptPackageResolution.TryParsePolicy(policy, PostgreSqlBootstrapPolicy.Package, out var parsed) || parsed?.CandidateVersion is not { } version)
+    }
+
+    private static async Task<ComponentPackageTarget> PgResolve()
+    {
+        var platform = PgRequirePlatform();
+        await PgRefreshNativeSources(platform);
+        var policy = (await PgRun("/usr/bin/apt-cache", [.. PgAptOptions(), "policy", platform.Package])).Output;
+        if (!AptPackageResolution.TryParsePolicy(policy, platform.Package, out var parsed) || parsed?.CandidateVersion is not { } version)
             throw new PgFailure("database.package_unresolved");
         var uris = (await PgRun("/usr/bin/apt-get", [.. PgAptOptions(), "-o", "Dir::Cache::archives=" + PgRoot + "/empty",
-            "install", "--print-uris", "--reinstall", "--yes", "--no-remove", "--no-install-recommends", PostgreSqlBootstrapPolicy.Package + "=" + version])).Output;
-        if (!PostgreSqlBootstrapPolicy.TryResolve(policy, uris, out var target, out var problem) || target is null)
+            "install", "--print-uris", "--reinstall", "--yes", "--no-remove", "--no-install-recommends", platform.Package + "=" + version])).Output;
+        if (!PostgreSqlBootstrapPolicy.TryResolve(platform, policy, uris, out var target, out var problem) || target is null)
             throw new PgFailure(problem ?? "database.package_unresolved");
-        return new(target.Package, target.Version, target.Architecture, target.RepositoryId, target.BaseUri, target.Suite, target.Area,
-            target.PoolUri, target.Sha256, target.Bytes, target.Dependencies.Select(x => new ComponentPackageArtifact(x.FileName, x.Uri, x.Bytes, x.Sha256)).ToArray());
+        return PgPackageTarget(target);
     }
+
+    private static ComponentPackageTarget PgPackageTarget(ModulePackageResolution target) =>
+        new(target.Package, target.Version, target.Architecture, target.RepositoryId, target.BaseUri, target.Suite, target.Area,
+            target.PoolUri, target.Sha256, target.Bytes, target.Dependencies.Select(x => new ComponentPackageArtifact(x.FileName, x.Uri, x.Bytes, x.Sha256)).ToArray());
 
     private static async Task<PgLedger> PgContinue(PgLedger ledger, PostgreSqlSecrets? secrets = null, PostgreSqlTlsMaterial? tls = null)
     {
@@ -300,7 +312,8 @@ public static partial class PrivilegedOperationExecutor
                 var names = package.AlsoInstalls.Select(x => Uri.UnescapeDataString(x.FileName).Split('_')).Select(x => x[0] + "=" + x[1]);
                 await PgRun("/usr/bin/apt-get", [.. PgAptOptions(), "install", "--no-download", "--yes", "--no-remove", "--no-install-recommends",
                     "-o", "Dpkg::Options::=--force-confold", package.PackageName + "=" + package.Version, .. names], minutes: 15);
-                ledger = ledger with { Package = package, BinaryHash = PgFileHash(PostgreSqlBootstrapPolicy.Executable), ServiceHash = PgFileHash(PostgreSqlBootstrapPolicy.ServiceTemplate) };
+                ledger = ledger with { Package = package };
+                ledger = ledger with { BinaryHash = PgFileHash(PgBin(ledger, "postgres")), ServiceHash = PgFileHash(PostgreSqlBootstrapPolicy.ServiceTemplate) };
                 await PgVerifyPackage(ledger);
                 if ((await PgRun("/usr/bin/pg_lsclusters", ["--no-header"])).Output.Trim().Length != 0)
                     throw new PgFailure("database.external_installation");
@@ -445,7 +458,7 @@ public static partial class PrivilegedOperationExecutor
         if ((await PgRun("/usr/bin/systemctl", ["show", "-p", "MainPID", "--value", plan.ServiceName])).Output.Trim() != pidText)
             throw new PgFailure("database.service_identity_changed");
     }
-    private static async Task<PostgreSqlState> PgObserve(PgLedger ledger, Guid operation)
+    private static async Task<PostgreSqlState> PgObserve(PgLedger ledger, Guid operation, bool resolveInstallCandidate = false)
     {
         string? problem = null; ComponentPackageTarget? candidate = null; bool running = false, verified = false;
         try
@@ -457,7 +470,13 @@ public static partial class PrivilegedOperationExecutor
             }
             else if (ledger.PackageRemoved) { problem = "database.package_retained"; }
             else if (ledger.Package is null)
-            { if (ledger.Pending is null) { await PgRequireEmptyHost(); candidate = await PgResolve(); } }
+            {
+                if (ledger.Pending is null)
+                {
+                    await PgRequireEmptyHost();
+                    if (resolveInstallCandidate) candidate = await PgResolve();
+                }
+            }
             else
             {
                 await PgVerifyPackage(ledger);

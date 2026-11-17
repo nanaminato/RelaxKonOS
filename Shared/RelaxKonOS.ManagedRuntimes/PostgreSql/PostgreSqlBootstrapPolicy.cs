@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using RelaxKonOS.ManagedRuntimes.ComponentPackages;
 using RelaxKonOS.Protocol.Privileged;
 
@@ -18,16 +17,14 @@ public sealed record PostgreSqlHostObservation(
 /// </summary>
 public static class PostgreSqlBootstrapPolicy
 {
-    public const string Package = "postgresql-16";
-    public const string MinimumPackageVersion = "16.15-0ubuntu0.24.04.1";
     public const string ServicePackage = "postgresql-common";
     public const string ScriptPackage = "postgresql-client-common";
+    public const string CommonDevPackage = "postgresql-common-dev";
     public const string ServiceTemplate = "/usr/lib/systemd/system/postgresql@.service";
-    public const string Executable = "/usr/lib/postgresql/16/bin/postgres";
 
     public static string? CheckHost(PostgreSqlHostObservation host)
     {
-        if (host.Os != "linux" || host.Distribution != "ubuntu" || host.Version != "24.04"
+        if (host.Os != "linux" || PostgreSqlPlatform.Match(host.Distribution, host.Version) is null
             || host.Architecture != "amd64") return "database.platform_unsupported";
         if (!host.SystemdAvailable) return "database.service_host_unavailable";
         if (!host.PackageAuditClean) return "database.package_recovery_required";
@@ -39,18 +36,14 @@ public static class PostgreSqlBootstrapPolicy
         return host.PortAvailable == true ? null : "database.port_conflict";
     }
 
-    public static bool SupportsPackageVersion(string? version) => version is { Length: <= 128 }
-        && Regex.IsMatch(version, @"\A16\.[0-9]+-0ubuntu0\.24\.04\.[0-9]+\z", RegexOptions.CultureInvariant)
-        && DebianVersion.Compare(version, MinimumPackageVersion) >= 0;
-
     /// <summary>Reuses the existing SHA-256 module-resolution parser without extending executable package mappings.</summary>
-    public static bool TryResolve(string policyText, string artifactText,
+    public static bool TryResolve(PostgreSqlPlatform platform, string policyText, string artifactText,
         out ModulePackageResolution? resolution, out string? problem)
     {
         resolution = null;
         problem = "database.package_unresolved";
         if (policyText.Length > 262144 || artifactText.Length > 262144
-            || !AptPackageResolution.TryParsePolicy(policyText, Package, out var policy)
+            || !AptPackageResolution.TryParsePolicy(policyText, platform.Package, out var policy)
             || policy?.CandidateVersion is not { } version) return false;
         if (policy.InstalledVersion is not null) { problem = "database.external_installation"; return false; }
         var installedLines = policyText.Split('\n').Where(line => line.StartsWith("  Installed:", StringComparison.Ordinal)).ToArray();
@@ -58,59 +51,56 @@ public static class PostgreSqlBootstrapPolicy
         if (installedLines.Length != 1 || candidateLines != 1
             || installedLines[0].Trim() != "Installed: (none)")
         { problem = "database.inventory_unknown"; return false; }
-        if (!SupportsPackageVersion(version)) { problem = "database.version_unsupported"; return false; }
-        if (!AptPackageResolution.TryParseUriPlan(artifactText, Package, version, out var main, out var dependencies)
-            || !AptPackageResolution.TryBuildModuleResolution(policy, main, dependencies, [Package], out var target, out _)
+        return TryResolveArtifacts(platform, policy, artifactText, out resolution, out problem);
+    }
+
+    public static bool TryResolveArtifacts(PostgreSqlPlatform platform, AptPolicy policy, string artifactText,
+        out ModulePackageResolution? resolution, out string? problem)
+    {
+        resolution = null;
+        problem = "database.package_unresolved";
+        if (policy.CandidateVersion is not { } version || artifactText.Length > 262144) return false;
+        if (!platform.SupportsPackageVersion(version)) { problem = "database.version_unsupported"; return false; }
+        if (!AptPackageResolution.TryParseUriPlan(artifactText, platform.Package, version, out var main, out var dependencies)
+            || !AptPackageResolution.TryBuildModuleResolution(policy, main, dependencies, [platform.Package], out var target, out _)
             || target is null) return false;
-        problem = CheckTarget(target);
+        problem = CheckTarget(platform, target);
         if (problem is not null) return false;
         resolution = target;
         return true;
     }
 
-    public static string? CheckTarget(ModulePackageResolution target)
+    public static string? CheckTarget(PostgreSqlPlatform platform, ModulePackageResolution target)
     {
         if (!AptPackageResolution.IsUsableModuleResolution(target, out _)) return "database.package_unresolved";
-        if (target.Package != Package || !SupportsPackageVersion(target.Version)) return "database.version_unsupported";
+        if (target.Package != platform.Package || !platform.SupportsPackageVersion(target.Version)) return "database.version_unsupported";
         if (target.Architecture != "amd64") return "database.platform_unsupported";
         if (target.RepositoryId != string.Join('|', target.BaseUri, target.Suite, target.Area, target.Architecture))
             return "database.source_unsupported";
-        if (target.Area != "main" || target.Suite is not ("noble" or "noble-updates" or "noble-security")
-            || !OfficialUri(target.BaseUri, artifact: false) || !OfficialUri(target.PoolUri, artifact: true)
+        if (target.Area != "main" || platform.RepositorySigningKeys(target.BaseUri, target.Suite) is null
+            || !platform.OfficialArtifact(target.PoolUri)
             || !target.PoolUri.StartsWith(target.BaseUri.TrimEnd('/') + "/pool/", StringComparison.Ordinal)
-            || target.Dependencies.Any(item => !OfficialUri(item.Uri, artifact: true)))
+            || target.Dependencies.Any(item => !platform.OfficialArtifact(item.Uri)))
             return "database.source_unsupported";
         var name = Uri.UnescapeDataString(new Uri(target.PoolUri).Segments[^1]);
-        if (name != $"{Package}_{target.Version}_amd64.deb") return "database.package_unresolved";
+        if (name != $"{platform.Package}_{target.Version}_amd64.deb") return "database.package_unresolved";
         var packages = target.Dependencies.Select(item => item.FileName.Split('_')[0]).ToArray();
-        if (packages.Contains(Package, StringComparer.Ordinal)
+        if (packages.Contains(platform.Package, StringComparer.Ordinal)
             || packages.Distinct(StringComparer.Ordinal).Count() != packages.Length)
             return "database.package_dependencies_unsupported";
-        // A fresh-host plan must include a matching client and the two independently owned service/script packages.
-        if (!target.Dependencies.Any(item => item.FileName == $"postgresql-client-16_{target.Version}_amd64.deb")
-            || !target.Dependencies.Any(item => CommonPackage(item.FileName, ServicePackage))
-            || !target.Dependencies.Any(item => CommonPackage(item.FileName, ScriptPackage)))
+        var client = $"{platform.ClientPackage}_{target.Version}_amd64.deb";
+        if (!target.Dependencies.Any(item => item.FileName == client)
+            || !target.Dependencies.Any(item => platform.IsCommonPackage(item.FileName, ServicePackage))
+            || !target.Dependencies.Any(item => platform.IsCommonPackage(item.FileName, ScriptPackage)))
             return "database.package_dependencies_incomplete";
         // A dependency cannot smuggle in another database major or extension during bootstrap.
         if (target.Dependencies.Any(item => item.FileName.StartsWith("postgresql-", StringComparison.Ordinal)
-            && item.FileName != $"postgresql-client-16_{target.Version}_amd64.deb"
-            && !CommonPackage(item.FileName, ServicePackage) && !CommonPackage(item.FileName, ScriptPackage)))
+            && item.FileName != client
+            && !platform.IsCommonPackage(item.FileName, ServicePackage)
+            && !platform.IsCommonPackage(item.FileName, ScriptPackage)
+            && !(platform == PostgreSqlPlatform.Trixie && platform.IsCommonPackage(item.FileName, CommonDevPackage))))
             return "database.package_dependencies_unsupported";
         return null;
     }
 
-    private static bool CommonPackage(string file, string package) => Regex.IsMatch(file,
-        @"\A" + Regex.Escape(package) + @"_257build1(?:\.[0-9]+)?_all\.deb\z", RegexOptions.CultureInvariant);
-
-    private static bool OfficialUri(string value, bool artifact)
-    {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")
-            || !uri.IsDefaultPort || uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0
-            || uri.Host is not ("archive.ubuntu.com" or "security.ubuntu.com" or "cn.archive.ubuntu.com")
-            || Regex.IsMatch(value, @"%(?!2[bB]|3[aA])", RegexOptions.CultureInvariant)
-            || value.Contains('\\') || value.Contains("/../", StringComparison.Ordinal)) return false;
-        return artifact ? uri.AbsolutePath.StartsWith("/ubuntu/pool/", StringComparison.Ordinal)
-            && uri.AbsolutePath.EndsWith(".deb", StringComparison.Ordinal)
-            : uri.AbsolutePath.TrimEnd('/') == "/ubuntu";
-    }
 }

@@ -99,11 +99,15 @@
        <TreeView.ItemTemplate>
         <TreeDataTemplate x:DataType="vm:ComponentTreeNode" ItemsSource="{Binding VisibleChildren}">
          <StackPanel Spacing="3" Margin="0,3">
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" IsVisible="{Binding !ShowStatus}">
-           <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
-                      Foreground="{DynamicResource TextTertiaryBrush}" TextTrimming="CharacterEllipsis" />
-           <TextBlock Grid.Column="1" Text="{Binding VisibleChildren.Count}" FontSize="11" VerticalAlignment="Center"
-                      FontFamily="Consolas" Foreground="{DynamicResource TextTertiaryBrush}" />
+          <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8" Margin="0,0,16,0" IsVisible="{Binding !ShowStatus}">
+           <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                      Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                      ToolTip.Tip="{Binding Label}" />
+           <Border Grid.Column="1" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="8"
+                   Padding="6,1" MinWidth="22" VerticalAlignment="Center">
+            <TextBlock Text="{Binding VisibleChildren.Count}" FontSize="12" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+           </Border>
           </Grid>
           <TextBlock Text="{Binding Label}" FontSize="13" TextTrimming="CharacterEllipsis" IsVisible="{Binding ShowStatus}"
                      ToolTip.Tip="{Binding Label}" />

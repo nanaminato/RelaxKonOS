@@ -111,6 +111,7 @@ public enum PrivilegedOperationKind
     MySqlQuery,
     MySqlExecute,
     PostgreSqlQuery,
+    PostgreSqlInstallPlan,
     PostgreSqlMaintenancePlan,
     PostgreSqlMigrationPlan,
     PostgreSqlBackupScheduleQuery,

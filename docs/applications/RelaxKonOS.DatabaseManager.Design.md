@@ -1,6 +1,6 @@
 # 数据库引擎管理设计（APP-005）
 
-> 状态：DB-01 已核实，DB-02/03/04、DB-05 指定来源 TLS 与 DB-06 补丁维护切片已实现并通过隔离 systemd/PostgreSQL 验收；真实主机完整联调待验收。更新：2026-11-16。
+> 状态：DB-01 已核实，DB-02/03/04、DB-05 指定来源 TLS 与 DB-06 补丁维护切片已实现并通过隔离 systemd/PostgreSQL 验收。DB-07D 扩充原生平台矩阵，验收范围见下文。更新：2026-11-17。
 > 本文拥有数据库领域设计与 DB 跟踪项；[原提案](../application-ideas/proposals/DatabaseManagement.md)保留需求入口。本文的实施顺序是建议，不能作为支持矩阵或交付承诺。
 
 ## 1. 决策摘要
@@ -37,6 +37,8 @@
 | 组合 | 建议阶段 | 当前结论与准入条件 |
 | --- | --- | --- |
 | PostgreSQL 16 / Ubuntu 24.04 x64 / native / apt | 首个纵向切片 | DB-01 已核实 16.15 与隔离更新起点 16.2、依赖及默认集群行为；DB-02/03 实例及账号闭环、DB-04 管理身份恢复、DB-05 指定来源 TLS、DB-06 补丁更新/备份恢复/卸载已实现，隔离验收通过；真实主机完整联调待完成 |
+| PostgreSQL 18 / Ubuntu 26.04 x64 / native / apt | DB-07D | Ubuntu 官方更新或安全包，最低 `18.6-0ubuntu0.26.04.1` |
+| PostgreSQL 17 / Debian 13 x64 / native / apt | DB-07D | Debian 官方更新或安全包，最低 `17.11-0+deb13u1` |
 | PostgreSQL / Windows x64 / native | PostgreSQL 扩展 | 官方发行渠道、安装器或归档机制及服务账户单独验收；版本待定 |
 | MySQL 8.4 LTS / Linux x64 / native | 第二引擎 | Ubuntu 24.04 amd64 / systemd，Oracle 签名核心包与私有 socket 单实例闭环 |
 | MySQL 8.4 LTS / Windows x64 / native | MySQL 扩展 | 原生安装、服务与恢复单独验收 |
@@ -149,6 +151,7 @@ MySQL 适配必须单独实现 `(user, host)` 身份、认证插件、授权、T
 | DB-05 | 已实现；IPv4/IPv6 隔离异机验收通过 | 证书中心指纹绑定、指定来源 hostssl/SCRAM、监听及专属 nft/systemd guard、CLI 正反向探测、关闭和桌面流程；见 [实现与验收](RelaxKonOS.DatabaseManager.PostgreSql.DB05.md)。真实主机联调、证书自动部署与探测结果自动回传尚未完成 |
 | DB-06 | 已完成首轮隔离切片 | [实现与验收](RelaxKonOS.DatabaseManager.PostgreSql.DB06.md)：真实 16.2→16.15、损坏二进制修复、停机备份/恢复门禁、保留/删除数据、外部实例拒绝与 Helper 中断/systemd 重启接续；真实主机完整联调待完成 |
 | DB-07 | 分项推进 | DB-07A [PostgreSQL 自动备份与保留策略](RelaxKonOS.DatabaseManager.PostgreSql.DB07.md)已完成实现、桌面接线及隔离验收；DB-07B [PostgreSQL 主版本迁移](RelaxKonOS.DatabaseManager.PostgreSql.DB07B.md)限定路径实现、桌面接线和隔离验收已完成；DB-07C [PostgreSQL 多实例管理](RelaxKonOS.DatabaseManager.PostgreSql.DB07C.md)同主版本双实例台账、事务分派、独立删除、桌面接线与原生隔离验收已完成；MariaDB、Redis/Valkey 保持后续，不能因单个切片完成而关闭整个集合 |
+| DB-07D | 已实现并通过隔离验收 | Ubuntu 26.04 / PostgreSQL 18，Debian 13 / PostgreSQL 17。覆盖首次安装、实例启停和同版本修复。见[平台扩展](#db-07d-postgresql-原生平台扩展) |
 | DB-08 | 待实施 | Windows PostgreSQL 独立矩阵；不复用 Linux 验收结论 |
 | DB-09 | 首轮单实例 | [MySQL 8.4 实现与验收](RelaxKonOS.DatabaseManager.MySql.DB09.md)。已接线安装、初始化、启停、本机连接、建库和账号、管理员恢复、指定 IPv4 来源的 TLS，以及 8.4.11 → 8.4.13 更新、同版本修复、停机备份和恢复、保留或删除数据卸载。平台范围和产品隔离验证见分项记录 |
 | DB-10 | 后续；公共机制前置 | Linux Docker 组件机制及领域委托接入，验证卷、首次初始化、凭据轮换和数据升级门禁 |
@@ -178,5 +181,15 @@ MySQL 适配必须单独实现 `(user, host)` 身份、认证插件、授权、T
 
 [DB-02 实现与验收](RelaxKonOS.DatabaseManager.PostgreSql.DB02.md)记录本轮新增的专属组件安装事务、Helper 台账/恢复、实例身份验证、Core 安装队列与 Avalonia 入口。隔离 Ubuntu 24.04 amd64、真实 systemd 和 PostgreSQL 16.15 已走通首次安装→初始化→停止→启动→认证查询，包含数据保留、同键冲突、回执对账和配置漂移检查。[DB-03](RelaxKonOS.DatabaseManager.PostgreSql.DB03.md)已补齐账号/授权/正常改密产品流程及隔离验收；[DB-05](RelaxKonOS.DatabaseManager.PostgreSql.DB05.md)已实现指定来源 TLS 远程访问与隔离异机验收；[DB-06](RelaxKonOS.DatabaseManager.PostgreSql.DB06.md)已补齐同主版本跨补丁更新、修复、备份恢复及卸载隔离切片。
 
-已登记 Ubuntu 验收机为 26.04，官方 PostgreSQL 候选为 18；未更改其软件源或部署本切片。容器测试不是 Docker 产品模式，也不替代真实 24.04 主机上的完整部署验收。
+已登记 Ubuntu 验收机为 26.04，官方 PostgreSQL 候选为 18。DB-02 的容器证据限 Ubuntu 24.04 隔离环境。
+
+## DB-07D PostgreSQL 原生平台扩展
+
+Helper 从宿主 `os-release`、进程架构和 systemd 判定准入。按平台选择发行版自带的 PostgreSQL 主版本，保留原 Ubuntu 24.04 组合。Debian `stable` 系列源须由已有 APT 索引确认实际为 `trixie` 系列，再使用固定代号刷新私有索引。Debian 归档与安全更新分别使用 Trixie 归档和安全密钥。Ubuntu 继续核对指定归档指纹。系统 APT 配置保留原样。
+
+状态查询读取原生归属与账本。显式安装计划刷新签名索引，冻结服务器包、同版本客户端包、服务脚本包及依赖的版本和 SHA-256。执行时复核冻结目标和下载文件，抑制默认集群创建并验证受管实例的服务与连接。新平台的维护计划沿用已安装主版本和发行版源。Ubuntu 24.04 的既有 PGDG 迁移使用独立的显式来源确认。
+
+隔离 systemd 验收使用 Ubuntu 官方 `18.6-0ubuntu0.26.04.1` 和 Debian 官方 `17.12-0+deb13u1`。两套均通过签名安装计划、安装回执、默认集群抑制、实例初始化、认证、启停和同版本修复，修复后读回原数据。Debian 标准镜像首次下载失败后，以原操作 ID 和原冻结计划重试并完成验证。Debian slim 镜像裁剪包文件，dpkg 完整性检查拒绝提交。数据库桌面专项、组件安装入口专项及 PostgreSQL 服务端专项均通过。
+
+验收入口见 [PostgreSQL 测试说明](../../Tests/PostgreSql/README.md#db-07d-native-platforms)。两套组合的真实主机部署、跨补丁数据更新与完整远程访问验收待补。
 

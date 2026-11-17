@@ -1,5 +1,9 @@
 # 组件中心实施进度
 
+## PostgreSQL 原生平台扩展（2026-11-17，DB-07D）
+
+组件中心通过 Core 内置的 PostgreSQL 适配器为 Ubuntu 26.04 amd64 / PostgreSQL 18 和 Debian 13 amd64 / PostgreSQL 17 生成签名 APT 软件包安装计划。常规状态查询独立于 APT 刷新，维护从数据库引擎管理进入。实现和验收范围见[数据库平台扩展](../applications/RelaxKonOS.DatabaseManager.Design.md#db-07d-postgresql-原生平台扩展)。
+
 ## 签名 HTTPS 来源与显式发布者信任（2026-11-02，CC-05 / MR-01，Phase 2/3）
 
 组件中心「来源」已接入当前桌面用户拥有的来源日志与两步审查：固定 HTTPS 根、发布者、P-256 公钥指纹、provider 白名单、最长有效期及可选私网 CIDR/端口。表单变化撤销待确认策略；登记、刷新不触发安装。来源可禁用、移除、轮换密钥，移除不删除退休密钥/序号/不可变版本/撤销历史。签名索引、manifest 与制品资源表整体接纳，失败保留已接纳缓存；过期/禁用缓存只显示。日志丢失或损坏阻断远程信任，不重置为全新来源。本地内置目录仍可离线工作。

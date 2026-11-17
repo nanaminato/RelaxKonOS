@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RelaxKonOS.ManagedRuntimes.PostgreSql;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
@@ -29,18 +30,23 @@ public sealed class PostgreSqlComponentAdapter(IPrivilegedOperationTransport hel
     }
     private ComponentState Map(PostgreSqlState state) => new(ComponentId, Environment.MachineName, state.Revision,
         state.Managed ? RuntimeOwnership.Managed : state.Installed || state.ProblemCode == "database.external_installation" ? RuntimeOwnership.External : RuntimeOwnership.Absent,
-        ComponentSourceMode.SystemPackage, new("linux", "amd64", "noble", null, RuntimeInstallMode.SystemPackage, "systemd"),
+        ComponentSourceMode.SystemPackage, new("linux", "amd64", HostCodename(), null, RuntimeInstallMode.SystemPackage, "systemd"),
         state.Version, state.PendingOperationId is not null || state.InstanceId is not null && state.ProblemCode is not null);
+
+    private static string? HostCodename() => File.Exists("/etc/os-release")
+        ? PostgreSqlPlatform.FromOsRelease(File.ReadLines("/etc/os-release"))?.Codename : null;
+
     public async Task<ComponentStateView> StateAsync(CancellationToken ct)
     {
         var state = await ReadAsync(ct);
         return new(ComponentId, state.Supported ? Map(state) : null,
             [new(ComponentSourceMode.SystemPackage, "linux", state.Supported, state.Supported ? null : ComponentProblemCodes.PlatformUnsupported, "apt")],
-            state.ProblemCode is null ? [] : [state.ProblemCode], PendingOperationId: state.PendingOperationId);
+            !state.Supported ? [ComponentProblemCodes.PlatformUnsupported]
+                : state.ProblemCode is null ? [] : [state.ProblemCode], PendingOperationId: state.PendingOperationId);
     }
     public async Task<ComponentPlanResult> PlanAsync(ComponentPlanRequest request, CancellationToken ct)
     {
-        var state = await ReadAsync(ct);
+        var state = Decode(await helper.ExecuteAsync(new(PrivilegedOperationKind.PostgreSqlInstallPlan), ct));
         var problems = new List<string>();
         if (!state.Supported) problems.Add(ComponentProblemCodes.PlatformUnsupported);
         if (state.ProblemCode is { } problem) problems.Add(problem);
@@ -50,7 +56,8 @@ public sealed class PostgreSqlComponentAdapter(IPrivilegedOperationTransport hel
         if (state.Candidate is null) problems.Add(ComponentProblemCodes.PackageUnresolved);
         if (request.RequestedVersion is { Length: > 0 } version && version != state.Candidate?.Version)
             problems.Add(ComponentProblemCodes.PackageVersionMismatch);
-        return new(request, Map(state), state.Candidate is null ? null : ComponentFrozenTarget.FromPackage(state.Candidate), problems,
+        return new(request, state.Supported ? Map(state) : null,
+            state.Candidate is null ? null : ComponentFrozenTarget.FromPackage(state.Candidate), problems,
             ["database.package_install_only", "database.package_system_dependencies", "database.rollback_unsupported"]);
     }
     public static bool Valid(ComponentPlanRequest request) => request.ComponentId == ComponentIds.PostgreSql

@@ -26,7 +26,7 @@ public static partial class PrivilegedOperationExecutor
         if (request.Operation is PrivilegedOperationKind.MySqlQuery or PrivilegedOperationKind.MySqlExecute)
             return await ExecuteMySqlAsync(request);
         if (request.MySql is not null || request.MySqlSecrets is not null || request.MySqlTls is not null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "MySQL fields require a dedicated operation");
-        if (request.Operation is PrivilegedOperationKind.PostgreSqlMigrationPlan or PrivilegedOperationKind.PostgreSqlBackupScheduleQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlExecute or PrivilegedOperationKind.PostgreSqlRecover)
+        if (request.Operation is PrivilegedOperationKind.PostgreSqlMigrationPlan or PrivilegedOperationKind.PostgreSqlBackupScheduleQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlInstallPlan or PrivilegedOperationKind.PostgreSqlExecute or PrivilegedOperationKind.PostgreSqlRecover)
             return await ExecutePostgreSqlAsync(request);
         if (request.PostgreSqlInstance is not null || request.PostgreSql is not null || (request.PostgreSqlSecrets is not null || request.PostgreSqlTls is not null)) return Fail(64, PrivilegedProblemCode.InvalidRequest, "PostgreSQL fields require a dedicated operation");
         if (request.Operation is PrivilegedOperationKind.MihomoProbeWitnessRegister or PrivilegedOperationKind.MihomoProbeWitnessRead

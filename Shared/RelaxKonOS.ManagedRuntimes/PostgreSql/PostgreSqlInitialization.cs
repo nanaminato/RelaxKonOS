@@ -41,7 +41,7 @@ public static class PostgreSqlInitializationPlanner
     {
         if (instanceId == Guid.Empty) throw new ArgumentException("database.instance_invalid", nameof(instanceId));
         if (port is < 1024 or > 65535) throw new ArgumentOutOfRangeException(nameof(port), "database.port_invalid");
-        if (major is not (16 or 18)) throw new ArgumentOutOfRangeException(nameof(major));
+        if (major is not (16 or 17 or 18)) throw new ArgumentOutOfRangeException(nameof(major));
         var name = "rk" + instanceId.ToString("N");
         var data = $"/var/lib/relaxkonos/databases/{instanceId:N}/data";
         var config = $"/etc/postgresql/{major}/{name}";
