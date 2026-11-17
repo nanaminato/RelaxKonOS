@@ -139,7 +139,7 @@
     "database.maintenance_action.UninstallKeepData": "Uninstall, keep data",
     "database.maintenance_action.UninstallDeleteData": "Uninstall and delete data",
     "database.maintenance_plan": "Check maintenance candidate",
-    "database.maintenance_hint": "Maintenance stops the instance and disconnects clients. Start it explicitly afterwards. Only reviewed PostgreSQL 16 Ubuntu packages are supported; close remote access first. Restore requires matching version, accounts, grants and credential references.",
+    "database.maintenance_hint": "Maintenance stops the instance and closes connections; start it explicitly afterwards. Supports verified PostgreSQL 16 Ubuntu packages and migrated PostgreSQL 18 PGDG packages. Disable remote access first. Restore requires matching versions, accounts, grants and credential references.",
     "database.maintenance_confirm": "This stops the service and performs the selected maintenance. Deleting data permanently removes this instance’s data, backups and managed credentials. Other actions retain verified backups. Continue?",
     "database.delete_confirmation": "To delete, enter the instance ID from Overview without hyphens.",
     "database.maintenance_plan_failed": "Unable to verify the maintenance candidate. Check sources and state.",
@@ -179,6 +179,15 @@
     "database.maintenance_action.ConfigureBackupSchedule": "Configure automatic backups",
     "database.maintenance_action.ScheduledBackup": "Run due backup",
     "database.maintenance_action.DeleteBackup": "Delete selected backup",
-    "database.backup_delete_confirm": "Permanently delete the selected backup and its restore reference, keeping current instance data. It may be the only recovery point. Continue?"
+    "database.backup_delete_confirm": "Permanently delete the selected backup and its restore reference, keeping current instance data. It may be the only recovery point. Continue?",
+    "database.maintenance_action.MigrateMajor": "Migrate major version (16 → 18)",
+    "database.migration_plan": "Check major migration plan",
+    "database.migration_source": "I confirm the official PostgreSQL PGDG noble-pgdg source and the key below",
+    "database.migration_hint": "Managed 16.15 → 18.7 only. Migration stops service, updates shared client/common/libpq5 packages and retains a verified old-version backup. It finishes stopped and disables scheduled backups. No automatic downgrade. Verify application compatibility first.",
+    "database.migration_confirm": "Migrate {0}? Signed packages from https://apt.postgresql.org/pub/repos/apt will be used for offline backup, copy migration and privilege checks. Failure remains isolated; unknown native outcomes are not blindly retried.",
+    "database.migration_invalid": "Migration scope or prerequisites are not satisfied.",
+    "database.migration_version_unsupported": "The candidate is outside the verified major migration range.",
+    "database.migration_uncertain": "Native migration outcome is uncertain; isolation and the original operation remain pending evidence.",
+    "database.migration_ca_required": "Install trusted system CA certificates before verifying the PGDG HTTPS source."
   }
 }

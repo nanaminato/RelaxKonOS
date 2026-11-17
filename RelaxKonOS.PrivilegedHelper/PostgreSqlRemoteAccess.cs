@@ -12,7 +12,7 @@ public static partial class PrivilegedOperationExecutor
     private static string PgRemoteRoot(PgLedger l) => PgRoot + "/remote-" + l.Instance!.Value.ToString("N");
     private static string PgRemoteTable(PgLedger l) => "rkpg_" + l.Instance!.Value.ToString("N");
     private static string PgRemoteGuard(PgLedger l) => "[Unit]\nAfter=nftables.service ufw.service firewalld.service\n[Service]\nExecStartPre=+/usr/sbin/nft -f " + PgRemoteRoot(l) + "/guard.nft\n";
-    private static string PgRemoteDropIn(PgLedger l) => "/etc/systemd/system/" + PostgreSqlInitializationPlanner.Create(l.Instance!.Value,l.Port).ServiceName + ".d";
+    private static string PgRemoteDropIn(PgLedger l) => "/etc/systemd/system/" + PostgreSqlInitializationPlanner.Create(l.Instance!.Value, l.Port, PgMajor(l)).ServiceName + ".d";
     private static bool PgRemoteOwnDropIn(PgLedger l)
     {
         var path=PgRemoteDropIn(l); PgNoLinks(path); PgNoLinks(path+"/50-rk-database.conf");
@@ -61,7 +61,7 @@ public static partial class PrivilegedOperationExecutor
     private static async Task PgRemoteVerify(PgLedger ledger)
     {
         if (ledger.RemoteAccess is not { } policy) return;
-        var plan = PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port);
+        var plan = PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port, PgMajor(ledger));
         if(File.GetUnixFileMode(plan.ConfigurationDirectory+"/rk-server.key") != (UnixFileMode.UserRead|UnixFileMode.UserWrite)) throw new PgFailure("database.tls_invalid");
         PgRemoteCertificate(policy, new(File.ReadAllText(plan.ConfigurationDirectory+"/rk-server.pem"), File.ReadAllText(plan.ConfigurationDirectory+"/rk-server.key")));
         if (!PgRemoteOwnDropIn(ledger)) throw new PgFailure("database.firewall_drift");
@@ -78,7 +78,7 @@ public static partial class PrivilegedOperationExecutor
     }
     private static async Task<PgLedger> PgContinueRemote(PgLedger ledger, PostgreSqlTlsMaterial? tls)
     {
-        var command=ledger.Pending!.Request.RemoteAccess!;var plan=PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value,ledger.Port);
+        var command=ledger.Pending!.Request.RemoteAccess!;var plan=PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port, PgMajor(ledger));
         var root=PgRemoteRoot(ledger);PgNoLinks(root);Directory.CreateDirectory(root);
         await PgVerifyPackage(ledger);
         // Persist drop-all before touching the listener. Guard runs before every normal systemd start.

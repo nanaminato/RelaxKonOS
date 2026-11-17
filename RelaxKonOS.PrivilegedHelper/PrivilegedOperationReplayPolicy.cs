@@ -6,7 +6,7 @@ internal static class PrivilegedOperationReplayPolicy
 {
     // These verbs share a durable operation identity. The protected domain ledger owns replay safety.
     internal static bool UsesDurableReceipt(PrivilegedOperationKind operation) => operation is
-        PrivilegedOperationKind.PostgreSqlBackupScheduleQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlExecute or PrivilegedOperationKind.PostgreSqlRecover or
+        PrivilegedOperationKind.PostgreSqlMigrationPlan or PrivilegedOperationKind.PostgreSqlBackupScheduleQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlExecute or PrivilegedOperationKind.PostgreSqlRecover or
         PrivilegedOperationKind.ComponentPackageQuery or PrivilegedOperationKind.ComponentPackageInstall
         or PrivilegedOperationKind.ComponentPackageChange or PrivilegedOperationKind.ComponentPackageRecover or
         PrivilegedOperationKind.TailscaleInstallerQuery or PrivilegedOperationKind.TailscaleInstallerExecute or PrivilegedOperationKind.TailscaleInstallerRecover or

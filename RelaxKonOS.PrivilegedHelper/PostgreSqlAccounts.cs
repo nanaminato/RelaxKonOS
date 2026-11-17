@@ -13,8 +13,8 @@ public static partial class PrivilegedOperationExecutor
         + "CREATE TABLE IF NOT EXISTS rk_db_control.operations(id uuid PRIMARY KEY, identity text NOT NULL); REVOKE ALL ON rk_db_control.operations FROM PUBLIC; ";
     private static async Task<PgCommandResult> PgSql(PgLedger ledger, string database, string sql, bool allowFailure = false)
     {
-        var plan = PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port);
-        return await PgRun("/usr/sbin/runuser", ["-u", "postgres", "--", "/usr/lib/postgresql/16/bin/psql", "-XqAtw", "-v", "ON_ERROR_STOP=1",
+        var plan = PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port, PgMajor(ledger));
+        return await PgRun("/usr/sbin/runuser", ["-u", "postgres", "--", PgBin(ledger, "psql"), "-XqAtw", "-v", "ON_ERROR_STOP=1",
             "-h", plan.SocketDirectory, "-p", ledger.Port.ToString(CultureInfo.InvariantCulture), "-d", database], allowFailure: allowFailure,
             input: "SET log_statement='none'; SET log_min_error_statement='panic'; SET log_min_messages='panic'; SET statement_timeout='30s'; SET lock_timeout='10s';\n" + sql);
     }
@@ -198,7 +198,7 @@ public static partial class PrivilegedOperationExecutor
         try
         {
             PgAtomic(file, Encoding.UTF8.GetBytes($"127.0.0.1:{ledger.Port}:{account.Database}:{account.Name}:{password.Replace("\\", "\\\\", StringComparison.Ordinal).Replace(":", "\\:", StringComparison.Ordinal)}\n"));
-            var result = await PgRun("/usr/lib/postgresql/16/bin/psql", ["-XqAtw", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-p", ledger.Port.ToString(CultureInfo.InvariantCulture), "-U", account.Name, "-d", account.Database],
+            var result = await PgRun(PgBin(ledger, "psql"), ["-XqAtw", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-p", ledger.Port.ToString(CultureInfo.InvariantCulture), "-U", account.Name, "-d", account.Database],
                 allowFailure: true, input: "SELECT current_user||'|'||current_database();", passfile: file);
             return result.Code == 0 && result.Output.Trim() == account.Name + "|" + account.Database;
         }

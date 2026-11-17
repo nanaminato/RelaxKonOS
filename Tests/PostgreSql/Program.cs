@@ -17,7 +17,7 @@ if (args is ["helper-json", _] or ["helper-stdin"])
 var instance = Guid.Parse("c4207665-91c4-47e9-8978-6639a70b5de0");
 if (args is ["initialization-json"])
 {
-    Console.WriteLine(JsonSerializer.Serialize(PostgreSqlInitializationPlanner.Create(instance, 55432)));
+    Console.WriteLine(JsonSerializer.Serialize(PostgreSqlInitializationPlanner.Create(instance, 55432, 16)));
     return;
 }
 
@@ -68,17 +68,22 @@ Check(PostgreSqlBootstrapPolicy.CheckHost(host with { ExistingPackages = ["postg
 Check(PostgreSqlBootstrapPolicy.CheckHost(host with { PathsAbsent = false }) == "database.external_installation", "nonempty or foreign paths block bootstrap");
 Check(PostgreSqlBootstrapPolicy.CheckHost(host with { PortAvailable = false }) == "database.port_conflict", "port collision blocks bootstrap");
 Check(PostgreSqlBootstrapPolicy.CheckHost(host with { PackageAuditClean = false }) == "database.package_recovery_required", "pending package state blocks bootstrap");
-var init = PostgreSqlInitializationPlanner.Create(instance, 55432);
+var init = PostgreSqlInitializationPlanner.Create(instance, 55432, 16);
 Check(init.CreateArguments.Contains("--auth-local=peer") && init.CreateArguments.Contains("--auth-host=scram-sha-256")
     && !init.CreateArguments.Contains("--start"), "both authentication classes explicit and no start before validation");
 Check(!init.HbaConfiguration.Contains("trust", StringComparison.Ordinal) && init.HbaConfiguration.Contains("::/0 reject", StringComparison.Ordinal), "HBA denies other sources in both families");
 Check(init.ServiceName == "postgresql@16-rkc420766591c447e989786639a70b5de0.service"
     && init.SocketDirectory != "/tmp" && init.DataDirectory.Contains(instance.ToString("N")), "stable instance-bound paths and concrete service identity");
+var nextMajor = PostgreSqlInitializationPlanner.Create(instance, 55432, 18);
+Check(nextMajor.ServiceName.StartsWith("postgresql@18-", StringComparison.Ordinal) && nextMajor.ConfigurationDirectory.StartsWith("/etc/postgresql/18/", StringComparison.Ordinal)
+    && nextMajor.DataDirectory == init.DataDirectory && nextMajor.CreateArguments.Contains("18"), "new major preserves instance data identity but changes service and configuration identity");
+try { PostgreSqlInitializationPlanner.Create(instance, 55432, 19); throw new Exception("accepted unsupported major"); }
+catch (ArgumentOutOfRangeException) { checks++; }
 foreach (var port in new[] { -1, 0, 1023, 65536 })
 {
-    try { PostgreSqlInitializationPlanner.Create(instance, port); throw new Exception("accepted invalid port"); }
+    try { PostgreSqlInitializationPlanner.Create(instance, port, 16); throw new Exception("accepted invalid port"); }
     catch (ArgumentOutOfRangeException) { checks++; }
 }
-try { PostgreSqlInitializationPlanner.Create(Guid.Empty, 5432); throw new Exception("accepted empty instance"); }
+try { PostgreSqlInitializationPlanner.Create(Guid.Empty, 5432, 16); throw new Exception("accepted empty instance"); }
 catch (ArgumentException) { checks++; }
 Console.WriteLine($"PostgreSQL checks passed: {checks}");

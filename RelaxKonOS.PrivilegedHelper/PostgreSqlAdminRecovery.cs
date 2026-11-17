@@ -13,12 +13,12 @@ public static partial class PrivilegedOperationExecutor
             throw new PgFailure("database.plan_changed");
         await PgVerifyPackage(ledger);
         await PgVerifyConfiguration(ledger);
-        var plan = PostgreSqlInitializationPlanner.Create(command.InstanceId, ledger.Port);
+        var plan = PostgreSqlInitializationPlanner.Create(command.InstanceId, ledger.Port, PgMajor(ledger));
         if (File.ReadAllText(plan.ConfigurationDirectory + "/pg_hba.conf") != plan.HbaConfiguration
             || File.ReadAllText(plan.ConfigurationDirectory + "/start.conf").Split('\n').Where(x => !x.TrimStart().StartsWith('#')).Any(x => x.Trim() is not ("" or "manual")))
             throw new PgFailure("database.configuration_drift");
         if ((await PgRun("/usr/bin/stat", ["-c", "%U", plan.DataDirectory])).Output.Trim() != "postgres"
-            || File.ReadAllText(plan.DataDirectory + "/PG_VERSION").Trim() != "16") throw new PgFailure("database.instance_invalid");
+            || File.ReadAllText(plan.DataDirectory + "/PG_VERSION").Trim() != PgMajor(ledger).ToString()) throw new PgFailure("database.instance_invalid");
     }
     private static async Task PgMaskAdmin(PgLedger ledger, PostgreSqlInitialization plan)
     {
@@ -43,12 +43,12 @@ public static partial class PrivilegedOperationExecutor
             var options = File.ReadAllText(plan.DataDirectory + "/postmaster.opts");
             if (!options.Contains("listen_addresses=", StringComparison.Ordinal) || !options.Contains("unix_socket_permissions=0700", StringComparison.Ordinal))
                 throw new PgFailure("database.service_identity_changed");
-            await PgRun("/usr/sbin/runuser", ["-u", "postgres", "--", "/usr/lib/postgresql/16/bin/pg_ctl", "-D", plan.DataDirectory, "-m", "fast", "-w", "stop"]);
+            await PgRun("/usr/sbin/runuser", ["-u", "postgres", "--", PgBin(plan.Major, "pg_ctl"), "-D", plan.DataDirectory, "-m", "fast", "-w", "stop"]);
         }
     }
     private static async Task<PgLedger> PgContinueAdminRecovery(PgLedger ledger)
     {
-        var plan = PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port);
+        var plan = PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port, PgMajor(ledger));
         await PgVerifyPackage(ledger);
         await PgVerifyConfiguration(ledger, allowAdminMask: true);
         // Mask is persistent across Helper/container/host restart. No trust HBA is ever installed.
@@ -64,14 +64,14 @@ public static partial class PrivilegedOperationExecutor
                 // Fixed desired-state repair is idempotent. Only the built-in role OID is accepted.
                 const string sql = "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_authid WHERE oid=10 AND rolname='postgres') THEN RAISE EXCEPTION 'administrator identity changed'; END IF; END $$;\n"
                     + "ALTER ROLE postgres WITH LOGIN SUPERUSER CREATEDB CREATEROLE INHERIT REPLICATION BYPASSRLS CONNECTION LIMIT -1 PASSWORD NULL VALID UNTIL 'infinity';\n";
-                await PgRun("/usr/sbin/runuser", ["-u", "postgres", "--", PostgreSqlBootstrapPolicy.Executable, "--single", "-D", plan.DataDirectory,
+                await PgRun("/usr/sbin/runuser", ["-u", "postgres", "--", PgBin(ledger, "postgres"), "--single", "-D", plan.DataDirectory,
                     "-c", "config_file=" + plan.ConfigurationDirectory + "/postgresql.conf", "-c", "exit_on_error=on", "postgres"], input: sql);
                 ledger = PgPhase(ledger, "AdminRepaired");
             }
             if (ledger.Pending!.Phase == "AdminRepaired")
             {
                 await PgRun("/usr/bin/install", ["-d", "-m", "700", "-o", "postgres", "-g", "postgres", plan.SocketDirectory]);
-                await PgRun("/usr/sbin/runuser", ["-u", "postgres", "--", "/usr/lib/postgresql/16/bin/pg_ctl", "-D", plan.DataDirectory,
+                await PgRun("/usr/sbin/runuser", ["-u", "postgres", "--", PgBin(ledger, "pg_ctl"), "-D", plan.DataDirectory,
                     "-l", plan.DataDirectory + "/rk-admin-recovery.log", "-o", "-c config_file=" + plan.ConfigurationDirectory + "/postgresql.conf -c listen_addresses='' -c unix_socket_permissions=0700", "-w", "start"]);
                 try
                 {

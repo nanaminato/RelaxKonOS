@@ -139,7 +139,7 @@
     "database.maintenance_action.UninstallKeepData": "データを保持してアンインストール",
     "database.maintenance_action.UninstallDeleteData": "データを削除してアンインストール",
     "database.maintenance_plan": "保守候補を確認",
-    "database.maintenance_hint": "保守はインスタンスと接続を停止します。完了後は手動で起動してください。検証済み PostgreSQL 16 Ubuntu パッケージのみ対応します。リモートアクセスを先に閉じてください。復元にはバージョン、アカウント、権限、認証情報の一致が必要です。",
+    "database.maintenance_hint": "メンテナンスは接続を閉じて停止し、完了後は手動起動が必要です。検証済み PostgreSQL 16 Ubuntu および移行後の 18 PGDG パッケージに対応します。先にリモートアクセスを無効にしてください。復元には版、アカウント、権限、資格情報参照の一致が必要です。",
     "database.maintenance_confirm": "サービスを停止して選択した保守を実行します。データ削除はこのインスタンスのデータ、バックアップ、管理認証情報を永久に削除します。他の操作では検証済みバックアップを保持します。続行しますか？",
     "database.delete_confirmation": "削除確認：概要のインスタンス ID をハイフンなしで入力してください。",
     "database.maintenance_plan_failed": "保守候補を検証できません。ソースと状態を確認してください。",
@@ -179,6 +179,15 @@
     "database.maintenance_action.ConfigureBackupSchedule": "自動バックアップを設定",
     "database.maintenance_action.ScheduledBackup": "期限のバックアップを実行",
     "database.maintenance_action.DeleteBackup": "選択したバックアップを削除",
-    "database.backup_delete_confirm": "選択したバックアップと復元参照を永久に削除します。現在のデータは削除しません。唯一の復元ポイントの可能性があります。続行しますか？"
+    "database.backup_delete_confirm": "選択したバックアップと復元参照を永久に削除します。現在のデータは削除しません。唯一の復元ポイントの可能性があります。続行しますか？",
+    "database.maintenance_action.MigrateMajor": "メジャーバージョン移行（16 → 18）",
+    "database.migration_plan": "メジャー移行計画を確認",
+    "database.migration_source": "PostgreSQL 公式 PGDG noble-pgdg ソースと下記の鍵を確認しました",
+    "database.migration_hint": "管理対象 16.15 → 18.7 のみ。停止して共有 client/common/libpq5 を更新し、検証済み旧版バックアップを保持します。完了後も停止し、自動バックアップを無効化します。自動ダウングレードはありません。アプリの互換性を先に確認してください。",
+    "database.migration_confirm": "{0} を移行しますか？ https://apt.postgresql.org/pub/repos/apt の署名済みパッケージを使用し、停止バックアップ、コピー移行、権限検証を実行します。失敗時は隔離を維持し、結果不明の操作を再実行しません。",
+    "database.migration_invalid": "移行範囲または前提条件を満たしていません。",
+    "database.migration_version_unsupported": "候補は検証済み移行範囲外です。",
+    "database.migration_uncertain": "移行結果を確認できません。隔離と元の操作を保持して復旧証拠の確認を待ちます。",
+    "database.migration_ca_required": "PGDG HTTPS ソースの検証には信頼されたシステム CA 証明書が必要です。"
   }
 }

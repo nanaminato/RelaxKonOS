@@ -159,6 +159,20 @@ internal static class PostgreSqlChecks
             Check(PostgreSqlAccountValidation.Password("Allowed-Fixture-Password!") && !PostgreSqlAccountValidation.Password("short")
                 && !PostgreSqlAccountValidation.Password("non-ascii-password-密码"), "credential normalization policy is explicit");
             var maintenanceService=new PostgreSqlMaintenanceInstallationService(transport,adapter,credentials);
+            var majorTarget=new ComponentPackageTarget("postgresql-18","18.7-1.pgdg24.04+2","amd64","fixture","https://apt.postgresql.org/pub/repos/apt","noble-pgdg","main","https://apt.postgresql.org/pub/repos/apt/pool/main/p/postgresql-18/fixture.deb",new string('a',64),1,[]);
+            var migration=new PostgreSqlInstallationRequest(true,Maintenance:new(PostgreSqlMaintenanceAction.MigrateMajor,state.InstanceId!.Value,state.Revision,majorTarget,MigrationSourceFingerprint:"B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8"));
+            Check(maintenanceService.Validate(InstallationOperationKind.Configure,JsonSerializer.SerializeToElement(migration),"key") is PostgreSqlInstallationRequest,"major migration requires a typed target and explicit signing identity");
+            foreach(var bad in new[]{migration with {Maintenance=migration.Maintenance! with {Target=null}},migration with {Maintenance=migration.Maintenance! with {MigrationSourceFingerprint=null}},migration with {Maintenance=migration.Maintenance! with {MigrationSourceFingerprint="other-key"}},migration with {Maintenance=migration.Maintenance! with {Action=PostgreSqlMaintenanceAction.Update}}})
+            {
+                var denied=false;try{maintenanceService.Validate(InstallationOperationKind.Configure,JsonSerializer.SerializeToElement(bad),"key");}catch(InstallationException){denied=true;}
+                Check(denied,"major source confirmation cannot be omitted or attached to ordinary update");
+            }
+            var policyService=new PostgreSqlBackupAutomationInstallationService(transport,adapter,credentials);
+            foreach(var limited in new IInstallationService[]{service,accountService,adminService,policyService})
+            {
+                var denied=false;try{limited.Validate(InstallationOperationKind.Configure,JsonSerializer.SerializeToElement(migration),"key");}catch(InstallationException){denied=true;}
+                Check(denied,"limited database authority cannot submit major migration");
+            }
             var backupRequest=new PostgreSqlInstallationRequest(true,Maintenance:new(PostgreSqlMaintenanceAction.Backup,state.InstanceId!.Value,state.Revision));
             Check(maintenanceService.Validate(InstallationOperationKind.Configure,JsonSerializer.SerializeToElement(backupRequest),"key") is PostgreSqlInstallationRequest,"maintenance validates typed command");
             Check(InstallationEndpoints.Capability(InstallationServiceId.PostgreSqlMaintenance)==HostElevationCapability.DatabaseMaintenance,"maintenance requires its own elevation");

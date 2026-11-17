@@ -11,8 +11,9 @@ public static partial class PrivilegedOperationExecutor
     private sealed record PgBackupManifest(Guid Instance, string Version, PgLedger Snapshot, Dictionary<string,string> Files, Dictionary<string,string> ConfigurationFiles);
     private static string PgBackupRoot(PgLedger l) => PgRoot+"/backups/"+l.Instance!.Value.ToString("N");
     private static string PgBackupPath(PgLedger l,Guid id) => PgBackupRoot(l)+"/"+id.ToString("N");
-    private static async Task<ComponentPackageTarget> PgResolveMaintenance()
+    private static async Task<ComponentPackageTarget> PgResolveMaintenance(PgLedger l)
     {
+        if (PgMajor(l)==18) return await PgResolveMajor();
         // Bootstrap refresh verifies the already configured Ubuntu signing authority even on an installed host.
         try { await PgResolve(); } catch(PgFailure e) when(e.Message is "database.external_installation" or "database.inventory_unknown" or "database.package_dependencies_incomplete") { }
         var policy=(await PgRun("/usr/bin/apt-cache",[..PgAptOptions(),"policy","postgresql-16"])).Output;
@@ -28,7 +29,7 @@ public static partial class PrivilegedOperationExecutor
     }
     private static async Task PgExclusiveInstance(PgLedger l)
     {
-        var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value,l.Port);
+        var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value, l.Port, PgMajor(l));
         foreach(var directory in new[]{"/etc/postgresql","/var/lib/postgresql"}) PgNoLinks(directory);
         if(Directory.Exists("/etc/postgresql")) foreach(var major in Directory.GetDirectories("/etc/postgresql"))
             foreach(var cluster in Directory.GetDirectories(major)) if(cluster!=plan.ConfigurationDirectory) throw new PgFailure("database.external_installation");
@@ -36,7 +37,7 @@ public static partial class PrivilegedOperationExecutor
             foreach(var file in Directory.EnumerateFiles("/var/lib/postgresql","PG_VERSION",SearchOption.AllDirectories))throw new PgFailure("database.external_installation");
         var installed=(await PgRun("/usr/bin/dpkg-query",["-W","-f=${binary:Package}|${db:Status-Status}\n","postgresql*"],allowFailure:true)).Output;
         foreach(var line in installed.Split('\n',StringSplitOptions.RemoveEmptyEntries))
-            if(line.EndsWith("|installed",StringComparison.Ordinal) && line.Split('|')[0] is not ("postgresql-16" or "postgresql-client-16" or "postgresql-common" or "postgresql-client-common")) throw new PgFailure("database.external_installation");
+            if(line.EndsWith("|installed",StringComparison.Ordinal) && !new[]{l.Package!.PackageName,"postgresql-client-"+PgMajor(l),"postgresql-client-16","postgresql-common","postgresql-client-common"}.Contains(line.Split('|')[0])) throw new PgFailure("database.external_installation");
         if(!l.DataDeleted)
         {
             if(!Directory.Exists(plan.DataDirectory)||!Directory.Exists(plan.ConfigurationDirectory))throw new PgFailure("database.instance_invalid");
@@ -48,6 +49,7 @@ public static partial class PrivilegedOperationExecutor
     }
     private static async Task PgMaintenancePreflight(PgLedger l,PostgreSqlMaintenanceCommand c)
     {
+        if(c.Action==PostgreSqlMaintenanceAction.MigrateMajor){await PgMajorPreflight(l,c);return;}
         if(c.Action is PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup or PostgreSqlMaintenanceAction.DeleteBackup)
         {await PgBackupPolicyPreflight(l,c);return;}
         if(!PostgreSqlMaintenanceValidation.Valid(c)||l.Instance!=c.InstanceId||l.Revision!=c.ExpectedRevision||l.Package is null||l.RemoteAccess is not null)throw new PgFailure("database.maintenance_invalid");
@@ -56,13 +58,13 @@ public static partial class PrivilegedOperationExecutor
         if(!l.PackageRemoved)
         {
             if(c.Action!=PostgreSqlMaintenanceAction.Repair)await PgVerifyPackage(l);
-            else if((await PgRun("/usr/bin/dpkg-query",["-W","-f=${Status}|${Version}","postgresql-16"])).Output.Trim()!="install ok installed|"+l.Package.Version
+            else if((await PgRun("/usr/bin/dpkg-query",["-W","-f=${Status}|${Version}",l.Package!.PackageName])).Output.Trim()!="install ok installed|"+l.Package.Version
                 || PgFileHash(PostgreSqlBootstrapPolicy.ServiceTemplate)!=l.ServiceHash)throw new PgFailure("database.package_identity_changed");
             await PgVerifyConfiguration(l);
         }
         if(c.Target is {} target)
         {
-            if(!AptPackageResolution.MatchesExpectation(target,await PgResolveMaintenance()))throw new PgFailure("database.plan_changed");
+            if(!AptPackageResolution.MatchesExpectation(target,await PgResolveMaintenance(l)))throw new PgFailure("database.plan_changed");
             var comparison=DebianVersion.Compare(target.Version,l.Package.Version);
             if(c.Action==PostgreSqlMaintenanceAction.Update && comparison<=0 || c.Action==PostgreSqlMaintenanceAction.Repair && comparison!=0
                 || c.Action==PostgreSqlMaintenanceAction.Reinstall && comparison<0)throw new PgFailure("database.maintenance_invalid");
@@ -118,27 +120,27 @@ public static partial class PrivilegedOperationExecutor
     }
     private static async Task PgStartPrivate(PgLedger l,string? data=null,string? socket=null)
     {
-        var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value,l.Port);data??=plan.DataDirectory;socket??=plan.SocketDirectory;
+        var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value, l.Port, PgMajor(l));data??=plan.DataDirectory;socket??=plan.SocketDirectory;
         await PgRun("/usr/bin/install",["-d","-m","700","-o","postgres","-g","postgres",socket]);
-        await PgRun("/usr/sbin/runuser",["-u","postgres","--","/usr/lib/postgresql/16/bin/pg_ctl","-D",data,"-l",data+"/rk-maintenance.log","-o",
+        await PgRun("/usr/sbin/runuser",["-u","postgres","--",PgBin(l, "pg_ctl"),"-D",data,"-l",data+"/rk-maintenance.log","-o",
             "-c config_file="+plan.ConfigurationDirectory+"/postgresql.conf -c data_directory="+data+" -c listen_addresses='' -c unix_socket_directories="+socket+" -c unix_socket_permissions=0700 -c external_pid_file="+data+"/rk-maintenance.pid","-w","start"]);
     }
     private static async Task<string> PgPrivateSql(PgLedger l,string socket,string db,string sql)=>
-        (await PgRun("/usr/sbin/runuser",["-u","postgres","--","/usr/lib/postgresql/16/bin/psql","-XqAtw","-v","ON_ERROR_STOP=1","-h",socket,"-p",l.Port.ToString(),"-d",db],input:sql)).Output.Trim();
+        (await PgRun("/usr/sbin/runuser",["-u","postgres","--",PgBin(l, "psql"),"-XqAtw","-v","ON_ERROR_STOP=1","-h",socket,"-p",l.Port.ToString(),"-d",db],input:sql)).Output.Trim();
     private static async Task PgStopCopy(string data)
     {
-        if(File.Exists(data+"/postmaster.pid")) await PgRun("/usr/sbin/runuser",["-u","postgres","--","/usr/lib/postgresql/16/bin/pg_ctl","-D",data,"-m","fast","-w","stop"]);
+        if(File.Exists(data+"/postmaster.pid")) await PgRun("/usr/sbin/runuser",["-u","postgres","--",PgBin(PgDataMajor(data), "pg_ctl"),"-D",data,"-m","fast","-w","stop"]);
     }
     private static async Task PgVerifyBackupCopy(PgLedger l,Guid id)
     {
-        var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value,l.Port);
+        var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value, l.Port, PgMajor(l));
         var check=Path.GetDirectoryName(plan.DataDirectory)!+"/verify-"+id.ToString("N");var data=check+"/data";var socket="/run/postgresql/rkb"+id.ToString("N");
         if(Directory.Exists(check)) { await PgStopCopy(data);PgDeleteOwnedTree(check,Path.GetDirectoryName(plan.DataDirectory)!); }
         await PgRun("/usr/bin/install",["-d","-m","700","-o","postgres","-g","postgres",check]);
         await PgRun("/usr/bin/cp",["-a","--reflink=auto",PgBackupPath(l,id)+"/data",data],minutes:10);
         try
         {
-            await PgRun("/usr/sbin/runuser",["-u","postgres","--","/usr/lib/postgresql/16/bin/pg_checksums","--check","-D",data],minutes:10);
+            await PgRun("/usr/sbin/runuser",["-u","postgres","--",PgBin(l, "pg_checksums"),"--check","-D",data],minutes:10);
             await PgStartPrivate(l,data,socket);
             if(await PgPrivateSql(l,socket,"postgres","SELECT current_setting('listen_addresses')||'|'||current_setting('data_directory');")!="|"+data)throw new PgFailure("database.backup_unverified");
             foreach(var db in l.Databases)await PgVerifyDatabase(l,db,(database,sql)=>PgPrivateSql(l,socket,database,sql));
@@ -150,7 +152,7 @@ public static partial class PrivilegedOperationExecutor
     }
     private static async Task<PgLedger> PgCreateBackup(PgLedger l, bool verify=true)
     {
-        var id=l.Pending!.Id;var root=PgBackupPath(l,id);var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value,l.Port);
+        var id=l.Pending!.Id;var root=PgBackupPath(l,id);var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value, l.Port, PgMajor(l));
         if(l.Backups?.Any(x=>x.Id==id&&x.RestoreVerified)==true){PgReadBackup(l,id);return l;}
         if(Directory.Exists(root))PgDeleteOwnedTree(root,PgBackupRoot(l));
         Directory.CreateDirectory(root);PgNoLinks(root);
@@ -165,7 +167,7 @@ public static partial class PrivilegedOperationExecutor
     }
     private static async Task PgCheckMaintenanceScope(PgLedger l)
     {
-        var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value,l.Port);await PgStartPrivate(l);
+        var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value, l.Port, PgMajor(l));await PgStartPrivate(l);
         try
         {
             var expected=l.Databases.Select(x=>x.Name).Concat(["postgres","template0","template1"]).Order(StringComparer.Ordinal);
@@ -196,9 +198,10 @@ public static partial class PrivilegedOperationExecutor
     }
     private static async Task PgPostPatch(PgLedger l)
     {
-        var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value,l.Port);await PgStartPrivate(l);
+        var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value, l.Port, PgMajor(l));await PgStartPrivate(l);
         try
         {
+            if(PgMajor(l)==18){foreach(var db in l.Databases.Select(x=>x.Name).Prepend("postgres").Append("template1"))await PgSql(l,db,"REINDEX DATABASE "+PgId(db)+"; ANALYZE;");return;}
             var fix="/usr/share/postgresql/16/fix-CVE-2024-4317.sql";PgNoLinks(fix);
             if(!File.Exists(fix))throw new PgFailure("database.maintenance_migration_required");
             await PgSql(l,"postgres","ALTER DATABASE template0 ALLOW_CONNECTIONS true;");
@@ -206,7 +209,7 @@ public static partial class PrivilegedOperationExecutor
             {
                 foreach(var db in l.Databases.Select(x=>x.Name).Concat(["postgres","template1","template0"]))
                 {
-                    await PgRun("/usr/sbin/runuser",["-u","postgres","--","/usr/lib/postgresql/16/bin/psql","-XqAtw","-v","ON_ERROR_STOP=1","-h",plan.SocketDirectory,"-p",l.Port.ToString(),"-d",db,"-f",fix]);
+                    await PgRun("/usr/sbin/runuser",["-u","postgres","--",PgBin(l, "psql"),"-XqAtw","-v","ON_ERROR_STOP=1","-h",plan.SocketDirectory,"-p",l.Port.ToString(),"-d",db,"-f",fix]);
                     await PgSql(l,db,"REINDEX DATABASE "+PgId(db)+"; ANALYZE;");
                 }
             }
@@ -218,9 +221,9 @@ public static partial class PrivilegedOperationExecutor
     }
     private static async Task<PgLedger> PgContinueMaintenance(PgLedger l)
     {
-        var command=l.Pending!.Request.Maintenance!;var plan=PostgreSqlInitializationPlanner.Create(command.InstanceId,l.Port);
+        var command=l.Pending!.Request.Maintenance!;var plan=PostgreSqlInitializationPlanner.Create(command.InstanceId, l.Port, PgMajor(l));
         if(l.Pending!.Phase=="Prepared" && command.Target is {} target)
-        {if(!AptPackageResolution.MatchesExpectation(target,await PgResolveMaintenance()))throw new PgFailure("database.plan_changed");await PgDownloadMaintenance(target);}
+        {if(!AptPackageResolution.MatchesExpectation(target,await PgResolveMaintenance(l)))throw new PgFailure("database.plan_changed");await PgDownloadMaintenance(target);}
         if(l.Instance is not null && !l.DataDeleted && l.Pending!.Phase!="RestoreDispatched"
             && !(command.Action==PostgreSqlMaintenanceAction.UninstallDeleteData && l.Pending.Phase=="PackageRemoved"))
             await PgVerifyConfiguration(l,allowAdminMask:true);
@@ -256,13 +259,13 @@ public static partial class PrivilegedOperationExecutor
                 if(l.Pending!.Phase=="MaintenancePackageDispatched")
                 {
                     // No blind dpkg replay. Only the frozen target, clean audit and verified bytes can reconcile this phase.
-                    var status=(await PgRun("/usr/bin/dpkg-query",["-W","-f=${Status}|${Version}","postgresql-16"])).Output.Trim();
+                    var status=(await PgRun("/usr/bin/dpkg-query",["-W","-f=${Status}|${Version}",l.Package!.PackageName])).Output.Trim();
                     if(status!="install ok installed|"+package.Version)throw new PgFailure("database.maintenance_package_uncertain");
                     l=PgPhase(l,"MaintenancePackageApplied");
                 }
                 if(l.Pending!.Phase=="MaintenancePackageApplied")
                 {
-                    l=l with { Package=package,PackageRemoved=false,BinaryHash=PgFileHash(PostgreSqlBootstrapPolicy.Executable),ServiceHash=PgFileHash(PostgreSqlBootstrapPolicy.ServiceTemplate) };
+                    l=l with { Package=package,PackageRemoved=false,BinaryHash=PgFileHash(PgBin(l,"postgres")),ServiceHash=PgFileHash(PostgreSqlBootstrapPolicy.ServiceTemplate) };
                     await PgVerifyPackage(l);
                     if(command.Action==PostgreSqlMaintenanceAction.Repair)
                     {
@@ -303,12 +306,12 @@ public static partial class PrivilegedOperationExecutor
                 if(l.Pending!.Phase=="BackupVerified")
                 {
                     await PgExclusiveInstance(l);
-                    l=PgPhase(l,"RemoveDispatched");await PgRun("/usr/bin/dpkg",["--remove","postgresql-16"],minutes:10);
+                    l=PgPhase(l,"RemoveDispatched");await PgRun("/usr/bin/dpkg",["--remove",l.Package!.PackageName],minutes:10);
                 }
                 if(l.Pending!.Phase=="RemoveDispatched")
                 {
-                    var status=await PgRun("/usr/bin/dpkg-query",["-W","-f=${db:Status-Status}","postgresql-16"],allowFailure:true);
-                    if(status.Output.Trim() is not ("config-files" or "not-installed") || File.Exists(PostgreSqlBootstrapPolicy.Executable))throw new PgFailure("database.maintenance_package_uncertain");
+                    var status=await PgRun("/usr/bin/dpkg-query",["-W","-f=${db:Status-Status}",l.Package!.PackageName],allowFailure:true);
+                    if(status.Output.Trim() is not ("config-files" or "not-installed") || File.Exists(PgBin(l,"postgres")))throw new PgFailure("database.maintenance_package_uncertain");
                     l=l with { PackageRemoved=true };l=PgPhase(l,"PackageRemoved");
                 }
                 if(l.Pending!.Phase=="PackageRemoved")
@@ -316,7 +319,7 @@ public static partial class PrivilegedOperationExecutor
                     if(command.Action==PostgreSqlMaintenanceAction.UninstallDeleteData)
                     {
                         PgDeleteOwnedTree(plan.DataDirectory,Path.GetDirectoryName(plan.DataDirectory)!);
-                        PgDeleteOwnedTree(plan.ConfigurationDirectory,"/etc/postgresql/16");
+                        PgDeleteOwnedTree(plan.ConfigurationDirectory,"/etc/postgresql/"+PgMajor(l));
                         PgDeleteOwnedTree(PgBackupRoot(l),PgRoot+"/backups");
                         if(PgRemoteOwnDropIn(l)) { File.Delete(PgRemoteDropIn(l)+"/50-rk-database.conf");Directory.Delete(PgRemoteDropIn(l)); }
                         if(Directory.Exists(PgRemoteRoot(l)))

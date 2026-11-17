@@ -125,3 +125,27 @@ docker exec relaxkonos-db07 python3 /opt/native-backup-automation-smoke.py --lif
 ```
 
 Wait until systemd is ready after each restart before continuing. Fault context lives in the fixture's persistent `/var/lib/relaxkonos` tree, not `/tmp`. The scheduler harness runs the actual Core background worker/coordinator/service with an in-process transport to the actual Helper; it does not exercise HTTP/PAM or a full deployed server. Run it **after** the accounts fixture so the latest automatic copy contains the current identity/grant state required by restore gates. Tests verify running-instance opt-in, retention/manual protection, same-slot receipts, persistent isolation/deletion responsibility, restored service/data and policy revocation. Inspect the task label, mounts and port mappings before removing only this disposable container. No physical power-loss claim is made.
+
+
+## DB-07B explicit major migration
+
+See [DB-07B scope and evidence](../../docs/applications/RelaxKonOS.DatabaseManager.PostgreSql.DB07B.md). Publish the current test executor and create a **fresh disposable** Ubuntu 24.04 amd64 systemd container with task label `relaxkonos.task=db07b`, no bind mounts or public ports. Use the DB-02 marker and native baseline above. Install `ca-certificates` from the signed Ubuntu repository **inside the fixture** as an HTTPS prerequisite; the product does not install it through a read-only plan. Run the DB-03 accounts smoke first to include real managed roles and permissions. Copy `native-major-migration-smoke.py` to `/opt`.
+
+Normal path on one fresh fixture:
+
+```powershell
+docker exec relaxkonos-db07b python3 /opt/native-major-migration-smoke.py --normal
+docker exec relaxkonos-db07b python3 /opt/native-major-migration-smoke.py --receipt-window
+docker exec relaxkonos-db07b python3 /opt/native-major-migration-smoke.py --ca-precondition
+docker exec relaxkonos-db07b python3 /opt/native-major-migration-smoke.py --post-migration
+```
+
+Real interruption on a **separate fresh source fixture**, never on the already migrated instance:
+
+```powershell
+docker exec relaxkonos-db07b-interrupt python3 /opt/native-major-migration-smoke.py --prepare-restart
+docker restart relaxkonos-db07b-interrupt
+docker exec relaxkonos-db07b-interrupt python3 /opt/native-major-migration-smoke.py --after-restart
+```
+
+Wait for systemd readiness after restart. The script terminates the actual Helper at `MajorUpgraded`, after native copy completion and before activation; both ordinary services must remain persistently masked with closed IPv4/IPv6 TCP. Context is stored under `/var/lib/relaxkonos`. `--receipt-window` deliberately injects a verified checkpoint before receipt commit and must not be reported as a physical crash. `--post-migration` ends by uninstalling and deleting the owned fixture data, configuration, backups and schedule. `--ca-precondition` temporarily moves and restores only the fixture's CA bundle. Native initialization/copy interrupted before a completion checkpoint remains isolated and is not automatically replayed. Inspect task labels, mounts and port bindings before removing only the named disposable fixtures.

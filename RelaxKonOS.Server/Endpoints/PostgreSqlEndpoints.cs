@@ -17,6 +17,11 @@ public static class PostgreSqlEndpoints
             try { return Results.Ok(PostgreSqlComponentAdapter.Decode(await helper.ExecuteAsync(new(RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.PostgreSqlMaintenancePlan),ct))); }
             catch(ComponentLifecycleException ex) {return Results.Problem(statusCode:503,extensions:new Dictionary<string,object?>{{"code",ex.ProblemCode}});}
         }).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
+        app.MapGet(PostgreSqlRoutes.MigrationPlan, async (RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport helper, CancellationToken ct) =>
+        {
+            try { return Results.Ok(PostgreSqlComponentAdapter.Decode(await helper.ExecuteAsync(new(RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.PostgreSqlMigrationPlan),ct))); }
+            catch(ComponentLifecycleException ex) {return Results.Problem(statusCode:503,extensions:new Dictionary<string,object?>{{"code",ex.ProblemCode}});}
+        }).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
         app.MapPost(PostgreSqlRoutes.Credentials, (PostgreSqlCredentialRequest request, HttpContext http,
             RelaxKonOS.Server.Databases.PostgreSqlCredentialStore credentials, RelaxKonOS.Server.Privileged.IHostElevationSessionStore elevations) =>
         {

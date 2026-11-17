@@ -29,6 +29,11 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     public Func<bool>? OtherBusy {get;set;}
     public bool CanManage {get;set;}
     private bool invalid;
+    private bool migrationPlan;
+    [ObservableProperty] private bool migrationSourceAccepted;
+    public bool CanMigrate=>CanBackup&&HasPlan&&migrationPlan&&MigrationSourceAccepted&&Snapshot!.Version=="16.15-0ubuntu0.24.04.1"&&Plan!.Candidate!.PackageName=="postgresql-18";
+    public string PlanDetails=>Plan?.Candidate is {} target?target.BaseUri+" · "+target.Suite+"\n"+string.Join("\n",target.AlsoInstalls.Select(x=>Uri.UnescapeDataString(x.FileName))):"";
+    partial void OnMigrationSourceAcceptedChanged(bool value)=>Notify();
     private PostgreSqlInstallationRequest? pending;
     [ObservableProperty] private PostgreSqlState? snapshot;
     [ObservableProperty] private PostgreSqlState? plan;
@@ -43,28 +48,38 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     public bool CanBackup=>Ready&&Snapshot is {Installed:true,ProblemCode:null};
     public bool CanRestore=>CanBackup&&SelectedBackup is {RestoreVerified:true} b&&b.Version==Snapshot!.Version;
     private bool HasPlan=>Plan?.Revision==Snapshot?.Revision&&Plan?.Candidate is not null;
-    public bool CanUpdate=>CanBackup&&HasPlan&&Plan!.Candidate!.Version!=Snapshot!.Version;
-    public bool CanRepair=>Ready&&Snapshot?.Installed==true&&HasPlan&&Plan!.Candidate!.Version==Snapshot.Version;
-    public bool CanReinstall=>Ready&&Snapshot?.PackageRemoved==true&&HasPlan;
+    public bool CanUpdate=>CanBackup&&HasPlan&&!migrationPlan&&Plan!.Candidate!.Version!=Snapshot!.Version;
+    public bool CanRepair=>Ready&&Snapshot?.Installed==true&&HasPlan&&!migrationPlan&&Plan!.Candidate!.Version==Snapshot.Version;
+    public bool CanReinstall=>Ready&&Snapshot?.PackageRemoved==true&&HasPlan&&!migrationPlan;
     public bool CanDelete=>CanBackup&&DeleteConfirmation==Snapshot!.InstanceId!.Value.ToString("N");
     public bool CanRecover=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&ScheduleInstallation?.IsActive!=true&&OtherBusy?.Invoke()!=true&&!HasPending&&Snapshot?.PendingMaintenance is {Action:not (PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup)};
     public bool CanResume=>!invalid&&!Busy&&CanManage&&!installation.IsActive&&pending is not null;
     partial void OnSnapshotChanged(PostgreSqlState? value)
     {
-        Plan=null;var policy=value?.BackupSchedule;ScheduleEnabled=policy?.Enabled??false;IntervalHours=policy?.IntervalHours??24;KeepLast=policy?.KeepLast??3;AllowDowntime=policy?.AllowDowntime??false;Notify();
+        migrationPlan=false;MigrationSourceAccepted=false;Plan=null;var policy=value?.BackupSchedule;ScheduleEnabled=policy?.Enabled??false;IntervalHours=policy?.IntervalHours??24;KeepLast=policy?.KeepLast??3;AllowDowntime=policy?.AllowDowntime??false;Notify();
     }
     partial void OnPlanChanged(PostgreSqlState? value)=>Notify();
     partial void OnBusyChanged(bool value)=>Notify();
     partial void OnDeleteConfirmationChanged(string value)=>Notify();
     partial void OnSelectedBackupChanged(PostgreSqlBackup? value)=>Notify();
-    public void Notify(){foreach(var name in new[]{nameof(CanConfigureSchedule),nameof(CanRecoverSchedule),nameof(CanResumeSchedule),nameof(CanDeleteBackup),nameof(NextDue),nameof(ScheduleOutcome),nameof(ScheduledTask),nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
+    public void Notify(){foreach(var name in new[]{nameof(CanMigrate),nameof(PlanDetails),nameof(CanConfigureSchedule),nameof(CanRecoverSchedule),nameof(CanResumeSchedule),nameof(CanDeleteBackup),nameof(NextDue),nameof(ScheduleOutcome),nameof(ScheduledTask),nameof(HasPending),nameof(Backups),nameof(Candidate),nameof(CanBackup),nameof(CanRestore),nameof(CanUpdate),nameof(CanRepair),nameof(CanReinstall),nameof(CanDelete),nameof(CanRecover),nameof(CanResume)})OnPropertyChanged(name);}
     [RelayCommand] private async Task PlanAsync()
     {
         if(!Ready)return;Busy=true;
-        try{var result=await client.MaintenancePlanAsync(default);if(!invalid){Plan=result;Notice=LocalizedStatus.Literal("");}}
+        try{var result=await client.MaintenancePlanAsync(default);if(!invalid){migrationPlan=false;Plan=result;Notice=LocalizedStatus.Literal("");}}
+        catch(InstallationApiException error){Notice=LocalizedStatus.Key(error.ProblemCode);}
         catch{Notice=LocalizedStatus.Key("database.maintenance_plan_failed");}
         finally{Busy=false;}
     }
+    [RelayCommand] private async Task MigrationPlanAsync()
+    {
+        if(!Ready)return;Busy=true;MigrationSourceAccepted=false;
+        try{var result=await client.MigrationPlanAsync(default);if(!invalid){migrationPlan=true;Plan=result;Notice=LocalizedStatus.Literal("");}}
+        catch(InstallationApiException error){Notice=LocalizedStatus.Key(error.ProblemCode);}
+        catch{Notice=LocalizedStatus.Key("database.maintenance_plan_failed");}
+        finally{Busy=false;}
+    }
+    [RelayCommand] private Task MigrateAsync()=>Submit(PostgreSqlMaintenanceAction.MigrateMajor,CanMigrate);
     [RelayCommand] private async Task SaveScheduleAsync()
     {
         if(!CanConfigureSchedule)return;
@@ -99,9 +114,10 @@ public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient cli
     {
         if(!allowed)return;
         var command=new PostgreSqlMaintenanceCommand(action,Snapshot!.InstanceId!.Value,Snapshot.Revision,
-            action is PostgreSqlMaintenanceAction.Update or PostgreSqlMaintenanceAction.Repair or PostgreSqlMaintenanceAction.Reinstall?Plan!.Candidate:null,
+            action is PostgreSqlMaintenanceAction.Update or PostgreSqlMaintenanceAction.Repair or PostgreSqlMaintenanceAction.Reinstall or PostgreSqlMaintenanceAction.MigrateMajor?Plan!.Candidate:null,
             action is PostgreSqlMaintenanceAction.Restore or PostgreSqlMaintenanceAction.DeleteBackup?SelectedBackup!.Id:null,
-            action==PostgreSqlMaintenanceAction.UninstallDeleteData?DeleteConfirmation:null);
+            action==PostgreSqlMaintenanceAction.UninstallDeleteData?DeleteConfirmation:null,
+            MigrationSourceFingerprint:action==PostgreSqlMaintenanceAction.MigrateMajor?"B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8":null);
         Busy=true;
         try{if(ConfirmAsync is null||!await ConfirmAsync(command)||invalid)return;pending=new(true,Maintenance:command);await Send();}finally{Busy=false;}
     }

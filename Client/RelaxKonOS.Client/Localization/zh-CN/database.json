@@ -139,7 +139,7 @@
     "database.maintenance_action.UninstallKeepData": "卸载并保留数据",
     "database.maintenance_action.UninstallDeleteData": "卸载并删除数据",
     "database.maintenance_plan": "核实维护候选",
-    "database.maintenance_hint": "维护会停止实例并关闭连接，完成后需手动启动。仅支持 PostgreSQL 16 已核实的 Ubuntu 软件包；操作前请关闭远程访问。恢复要求版本、账号、授权及凭据引用与备份一致。",
+    "database.maintenance_hint": "维护会停止实例并关闭连接，完成后需手动启动。支持已核实的 PostgreSQL 16 Ubuntu 与迁移后的 18 PGDG 软件包；操作前须关闭远程访问。恢复要求版本、账号、授权及凭据引用与备份一致。",
     "database.maintenance_confirm": "此操作会停止服务，并执行所选维护。删除数据会永久删除此实例的数据、备份和托管凭据；其他操作保留已验证备份。是否继续？",
     "database.delete_confirmation": "删除确认：输入概览中的实例标识，去掉连字符。",
     "database.maintenance_plan_failed": "无法核实维护候选，请检查来源与当前状态。",
@@ -179,6 +179,15 @@
     "database.maintenance_action.ConfigureBackupSchedule": "配置自动备份",
     "database.maintenance_action.ScheduledBackup": "执行到期备份",
     "database.maintenance_action.DeleteBackup": "删除所选备份",
-    "database.backup_delete_confirm": "将永久删除所选备份及其恢复引用，不删除当前实例数据。此备份可能是唯一恢复点。是否继续？"
+    "database.backup_delete_confirm": "将永久删除所选备份及其恢复引用，不删除当前实例数据。此备份可能是唯一恢复点。是否继续？",
+    "database.maintenance_action.MigrateMajor": "主版本迁移（16 → 18）",
+    "database.migration_plan": "核实主版本迁移计划",
+    "database.migration_source": "我确认使用 PostgreSQL 官方 PGDG noble-pgdg 来源及下列公钥",
+    "database.migration_hint": "仅支持受管 16.15 → 18.7。迁移会停机，升级共享客户端/common/libpq5，保留经验证的旧版备份。成功后保持停止，自动备份计划停用；不支持自动降级。须先验证应用与新版本兼容。",
+    "database.migration_confirm": "确认迁移 {0}？将使用 https://apt.postgresql.org/pub/repos/apt 的签名软件包，执行停机备份、复制迁移和权限核验。失败保持隔离待恢复；原生操作结果未知时不会盲目重试。",
+    "database.migration_invalid": "迁移范围或前置条件不满足。",
+    "database.migration_version_unsupported": "当前候选不在已验收的主版本迁移范围内。",
+    "database.migration_uncertain": "迁移原生结果尚不能确认；保留隔离与原操作，需要核对恢复证据。",
+    "database.migration_ca_required": "主机需先安装可信系统 CA 证书，才能核验 PGDG HTTPS 来源。"
   }
 }

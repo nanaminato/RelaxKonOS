@@ -66,7 +66,7 @@ public static partial class PrivilegedOperationExecutor
             return PgPhase(l,"Verified");
         }
         if(l.BackupSchedule?.LastOperationId==l.Pending!.Id)return PgPhase(l,"Verified");
-        var plan=PostgreSqlInitializationPlanner.Create(command.InstanceId,l.Port);
+        var plan=PostgreSqlInitializationPlanner.Create(command.InstanceId, l.Port, PgMajor(l));
         if(l.Pending!.Phase=="Prepared")
         {
             try

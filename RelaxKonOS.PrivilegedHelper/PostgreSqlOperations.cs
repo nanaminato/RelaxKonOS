@@ -30,7 +30,7 @@ public static partial class PrivilegedOperationExecutor
         if (request != new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
             Correlation: request.Correlation, PostgreSql: request.PostgreSql, PostgreSqlSecrets: request.PostgreSqlSecrets, PostgreSqlTls: request.PostgreSqlTls))
             return new(false, 64, Error: "database.request_invalid", ProblemCode: PrivilegedProblemCode.InvalidRequest);
-        if (request.Operation is (PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlBackupScheduleQuery) && (request.PostgreSql is not null || request.PostgreSqlSecrets is not null || request.PostgreSqlTls is not null))
+        if (request.Operation is (PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlBackupScheduleQuery or PrivilegedOperationKind.PostgreSqlMigrationPlan) && (request.PostgreSql is not null || request.PostgreSqlSecrets is not null || request.PostgreSqlTls is not null))
             return new(false, 64, Error: "database.request_invalid", ProblemCode: PrivilegedProblemCode.InvalidRequest);
         if (!OperatingSystem.IsLinux() || !File.Exists("/etc/os-release")) return PgReply(PgUnsupported());
         var release = File.ReadAllLines("/etc/os-release");
@@ -51,8 +51,10 @@ public static partial class PrivilegedOperationExecutor
             if(request.Operation==PrivilegedOperationKind.PostgreSqlBackupScheduleQuery)
                 return PgReply(new(true,ledger.Package is not null&&!ledger.PackageRemoved,ledger.Package is not null,ledger.Package?.Version,ledger.Revision,ledger.Instance,ledger.Port,false,false,
                     ledger.Pending?.Id,null,null,PendingMaintenance:ledger.Pending?.Request.Maintenance,BackupSchedule:ledger.BackupSchedule));
+            if (request.Operation == PrivilegedOperationKind.PostgreSqlMigrationPlan)
+                return PgReply((await PgObserve(ledger,id)) with { Candidate = await PgResolveMajor() });
             if (request.Operation == PrivilegedOperationKind.PostgreSqlMaintenancePlan)
-                return PgReply((await PgObserve(ledger,id)) with { Candidate = await PgResolveMaintenance() });
+                return PgReply((await PgObserve(ledger,id)) with { Candidate = await PgResolveMaintenance(ledger) });
             if (request.Operation == PrivilegedOperationKind.PostgreSqlQuery)
                 return PgReply(await PgObserve(ledger, id));
             if (request.PostgreSql is not { Confirmed: true } options) throw new PgFailure("database.confirmation_required");
@@ -199,7 +201,7 @@ public static partial class PrivilegedOperationExecutor
             if (command.Action == PostgreSqlAction.Initialize)
             {
                 if (ledger.Instance is not null) throw new PgFailure("database.instance_exists");
-                var plan = PostgreSqlInitializationPlanner.Create(command.InstanceId, command.Port);
+                var plan = PostgreSqlInitializationPlanner.Create(command.InstanceId, command.Port, PgMajor(ledger));
                 foreach (var path in new[] { plan.DataDirectory, plan.ConfigurationDirectory, plan.SocketDirectory })
                 { PgNoLinks(path); if (Directory.Exists(path) || File.Exists(path)) throw new PgFailure("database.external_installation"); }
                 using var ipv4 = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, command.Port);
@@ -307,7 +309,7 @@ public static partial class PrivilegedOperationExecutor
         else if (pending.Request.Command is { } command)
         {
             await PgVerifyPackage(ledger);
-            var plan = PostgreSqlInitializationPlanner.Create(command.InstanceId, command.Port);
+            var plan = PostgreSqlInitializationPlanner.Create(command.InstanceId, command.Port, PgMajor(ledger));
             if (command.Action == PostgreSqlAction.Initialize)
             {
                 if (ledger.Pending!.Phase == "Prepared")
@@ -356,6 +358,7 @@ public static partial class PrivilegedOperationExecutor
                 ledger = PgPhase(ledger, "Verified");
             }
         }
+        else if (pending.Request.Maintenance is {Action:PostgreSqlMaintenanceAction.MigrateMajor}) ledger=await PgContinueMajor(ledger);
         else if (pending.Request.Maintenance is {Action:PostgreSqlMaintenanceAction.ConfigureBackupSchedule or PostgreSqlMaintenanceAction.ScheduledBackup or PostgreSqlMaintenanceAction.DeleteBackup}) ledger=await PgContinueBackupPolicy(ledger);
         else if (pending.Request.Maintenance is not null) ledger = await PgContinueMaintenance(ledger);
         else if (pending.Request.RemoteAccess is not null) ledger = await PgContinueRemote(ledger, tls);
@@ -371,20 +374,20 @@ public static partial class PrivilegedOperationExecutor
 
     private static async Task PgVerifyPackage(PgLedger ledger)
     {
-        if (ledger.Package is null || PgFileHash(PostgreSqlBootstrapPolicy.Executable) != ledger.BinaryHash
+        if (ledger.Package is null || PgFileHash(PgBin(ledger, "postgres")) != ledger.BinaryHash
             || PgFileHash(PostgreSqlBootstrapPolicy.ServiceTemplate) != ledger.ServiceHash) throw new PgFailure("database.package_identity_changed");
-        var version = (await PgRun("/usr/bin/dpkg-query", ["-W", "-f=${Status}|${Version}|${Architecture}", "postgresql-16"])).Output.Trim();
+        var version = (await PgRun("/usr/bin/dpkg-query", ["-W", "-f=${Status}|${Version}|${Architecture}", ledger.Package!.PackageName])).Output.Trim();
         if (version != "install ok installed|" + ledger.Package.Version + "|amd64") throw new PgFailure("database.package_identity_changed");
-        foreach (var pair in new[] { (PostgreSqlBootstrapPolicy.Executable, "postgresql-16"), (PostgreSqlBootstrapPolicy.ServiceTemplate, "postgresql-common") })
+        foreach (var pair in new[] { (PgBin(ledger, "postgres"), ledger.Package!.PackageName), (PostgreSqlBootstrapPolicy.ServiceTemplate, "postgresql-common") })
         {
             var owner = (await PgRun("/usr/bin/dpkg-query", ["-S", pair.Item1])).Output.Trim();
             if (owner != pair.Item2 + ": " + pair.Item1) throw new PgFailure("database.package_identity_changed");
         }
         if ((await PgRun("/usr/bin/dpkg", ["--audit"])).Output.Trim().Length != 0) throw new PgFailure("database.package_recovery_required");
-        var integrity = await PgRun("/usr/bin/dpkg", ["--verify", "postgresql-16", "postgresql-client-16", "postgresql-common", "postgresql-client-common"], allowFailure: true);
+        var integrity = await PgRun("/usr/bin/dpkg", ["--verify", ledger.Package!.PackageName, "postgresql-client-"+PgMajor(ledger), "postgresql-common", "postgresql-client-common"], allowFailure: true);
         if (integrity.Code is not (0 or 1) || integrity.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Any(line => !line.EndsWith(" " + PgCreateConfig, StringComparison.Ordinal)
-                && !(line.StartsWith("missing", StringComparison.Ordinal) && (line.Contains(" /usr/share/doc/", StringComparison.Ordinal) || line.Contains(" /usr/share/man/", StringComparison.Ordinal))))) throw new PgFailure("database.package_identity_changed");
+                && !(line.StartsWith("missing", StringComparison.Ordinal) && (line.Contains(" /usr/share/doc/", StringComparison.Ordinal) || line.Contains(" /usr/share/man/", StringComparison.Ordinal) || line.Contains(" /usr/share/locale/", StringComparison.Ordinal) && line.EndsWith(".mo", StringComparison.Ordinal))))) throw new PgFailure("database.package_identity_changed");
         foreach (var unit in new[] { "/etc/systemd/system/postgresql@.service", "/run/systemd/system/postgresql@.service" })
             if (File.Exists(unit) || Directory.Exists(unit + ".d")) throw new PgFailure("database.service_identity_changed");
     }
@@ -400,7 +403,7 @@ public static partial class PrivilegedOperationExecutor
     }
     private static Task PgVerifyConfiguration(PgLedger ledger, bool allowAdminMask = false)
     {
-        var plan = PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port);
+        var plan = PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port, PgMajor(ledger));
         if (PgConfigurationHash(plan) != ledger.ConfigurationHash) throw new PgFailure("database.configuration_drift");
         foreach (var root in new[] { "/etc/systemd/system/", "/run/systemd/system/", "/usr/lib/systemd/system/" })
             if ((File.Exists(root + plan.ServiceName) || new FileInfo(root + plan.ServiceName).LinkTarget is not null) && !(allowAdminMask && root == "/etc/systemd/system/" && PgOwnMask(plan)) || Directory.Exists(root + plan.ServiceName + ".d") && !(root == "/etc/systemd/system/" && PgRemoteOwnDropIn(ledger))) throw new PgFailure("database.service_identity_changed");
@@ -412,19 +415,19 @@ public static partial class PrivilegedOperationExecutor
     {
         await PgVerifyConfiguration(ledger);
         await PgRemoteVerify(ledger);
-        var plan = PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port);
+        var plan = PostgreSqlInitializationPlanner.Create(ledger.Instance!.Value, ledger.Port, PgMajor(ledger));
         if (!await PgRunning(plan)) throw new PgFailure("database.not_running");
         var unit = (await PgRun("/usr/bin/systemctl", ["show", "-p", "FragmentPath", "-p", "DropInPaths", plan.ServiceName])).Output.Trim().Split('\n').Order().ToArray();
         if (!unit.SequenceEqual(new[] { "DropInPaths=" + (PgRemoteOwnDropIn(ledger) ? PgRemoteDropIn(ledger) + "/50-rk-database.conf" : ""), "FragmentPath=" + PostgreSqlBootstrapPolicy.ServiceTemplate }))
             throw new PgFailure("database.service_identity_changed");
         var pidText = (await PgRun("/usr/bin/systemctl", ["show", "-p", "MainPID", "--value", plan.ServiceName])).Output.Trim();
-        if (!int.TryParse(pidText, out var pid) || pid <= 1 || File.ResolveLinkTarget($"/proc/{pid}/exe", true)?.FullName != PostgreSqlBootstrapPolicy.Executable)
+        if (!int.TryParse(pidText, out var pid) || pid <= 1 || File.ResolveLinkTarget($"/proc/{pid}/exe", true)?.FullName != PgBin(ledger, "postgres"))
             throw new PgFailure("database.service_identity_changed");
         const string query = "SELECT current_user, current_setting('data_directory'), current_setting('port'), current_setting('server_version_num'), (SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL);";
-        var output = (await PgRun("/usr/sbin/runuser", ["-u", "postgres", "--", "/usr/lib/postgresql/16/bin/psql", "-XAtw", "-v", "ON_ERROR_STOP=1",
+        var output = (await PgRun("/usr/sbin/runuser", ["-u", "postgres", "--", PgBin(ledger, "psql"), "-XAtw", "-v", "ON_ERROR_STOP=1",
             "-h", plan.SocketDirectory, "-p", ledger.Port.ToString(System.Globalization.CultureInfo.InvariantCulture), "-d", "postgres"], input: query)).Output.Trim().Split('|');
         if (output.Length != 5 || output[0] != "postgres" || output[1] != plan.DataDirectory || output[2] != ledger.Port.ToString()
-            || !int.TryParse(output[3], out var nativeVersion) || nativeVersion is < 160000 or >= 170000 || output[4] != "0")
+            || !int.TryParse(output[3], out var nativeVersion) || nativeVersion / 10000 != PgMajor(ledger) || output[4] != "0")
             throw new PgFailure("database.connection_unverified");
         if ((await PgRun("/usr/bin/systemctl", ["show", "-p", "MainPID", "--value", plan.ServiceName])).Output.Trim() != pidText)
             throw new PgFailure("database.service_identity_changed");
@@ -443,7 +446,7 @@ public static partial class PrivilegedOperationExecutor
                 if (ledger.Instance is { } instance)
                 {
                     await PgVerifyConfiguration(ledger, allowAdminMask: ledger.Pending?.Request.AdminRecovery is not null || ledger.Pending?.Request.Maintenance is not null);
-                    running = await PgRunning(PostgreSqlInitializationPlanner.Create(instance, ledger.Port));
+                    running = await PgRunning(PostgreSqlInitializationPlanner.Create(instance, ledger.Port, PgMajor(ledger)));
                     if (running)
                     {
                         await PgVerifyConnection(ledger); verified = true;
@@ -461,10 +464,11 @@ public static partial class PrivilegedOperationExecutor
             ledger.Revision, ledger.Instance, ledger.Port, running, verified, ledger.Pending?.Id,
             ledger.Receipts.Any(x => x.Id == operation) ? operation : null, ledger.Pending is null ? problem : "database.recovery_required", candidate, ledger.Databases, ledger.Accounts, ledger.Pending?.Request.AccountCommand, ledger.Pending?.Request.AdminRecovery, ledger.RemoteAccess, ledger.Pending?.Request.RemoteAccess, ledger.Pending?.Request.Maintenance, ledger.Backups, ledger.PackageRemoved, ledger.DataDeleted, ledger.BackupSchedule);
     }
-    private static async Task<PgCommandResult> PgRun(string executable, string[] arguments, bool allowFailure = false, int minutes = 1, string? input = null, string? passfile = null)
+    private static async Task<PgCommandResult> PgRun(string executable, string[] arguments, bool allowFailure = false, int minutes = 1, string? input = null, string? passfile = null, string? workingDirectory = null)
     {
         using var process = new Process { StartInfo = new(executable) { UseShellExecute = false, RedirectStandardInput = true,
             RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
+        if (workingDirectory is not null) process.StartInfo.WorkingDirectory = workingDirectory;
         process.StartInfo.Environment.Clear();
         process.StartInfo.Environment["PATH"] = "/usr/sbin:/usr/bin:/sbin:/bin";
         process.StartInfo.Environment["LANG"] = "C.UTF-8";

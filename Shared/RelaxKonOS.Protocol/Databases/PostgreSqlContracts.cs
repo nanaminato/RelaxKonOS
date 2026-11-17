@@ -28,6 +28,7 @@ public sealed record PostgreSqlAdminRecoveryCommand(Guid InstanceId, long Expect
 
 public static class PostgreSqlRoutes
 {
+    public const string MigrationPlan = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/databases/postgresql/migration-plan";
     public const string MaintenancePlan = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/databases/postgresql/maintenance-plan";
     public const string Credentials = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/databases/postgresql/credentials";
     public const string State = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/databases/postgresql";

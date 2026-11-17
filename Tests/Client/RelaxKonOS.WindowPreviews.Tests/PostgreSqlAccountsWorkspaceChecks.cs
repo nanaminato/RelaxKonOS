@@ -65,6 +65,7 @@ internal static class PostgreSqlAccountsWorkspaceChecks
         public List<PostgreSqlCredentialRequest> Credentials=[];
         public PostgreSqlState State=new(true,true,true,"16.15",5,Guid.NewGuid(),55432,true,true,null,null,null,
             Databases:[new("sample",100,"rk_owner_sample",200)], Accounts:[new("sample","app_writer",300,PostgreSqlPermission.ReadWrite,Guid.NewGuid(),2,true)]);
+        public Task<PostgreSqlState> MigrationPlanAsync(CancellationToken ct)=>ReadAsync(ct);
         public Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct)=>ReadAsync(ct);
         public Task<PostgreSqlState> ReadAsync(CancellationToken ct)=>Task.FromResult(State);
         public Task StageCredentialAsync(PostgreSqlCredentialRequest request,CancellationToken ct)

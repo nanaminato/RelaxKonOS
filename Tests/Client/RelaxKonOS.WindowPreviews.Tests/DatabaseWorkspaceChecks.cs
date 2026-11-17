@@ -142,6 +142,25 @@ internal static class DatabaseWorkspaceChecks
         Check(maintenanceModel.CanResume&&!maintenanceModel.CanDelete,"lost maintenance response blocks new destructive work");
         maintenanceModel.ResumeCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(maintenanceHandler.Bodies.Count==2&&maintenanceHandler.Bodies[0]==maintenanceHandler.Bodies[1]&&maintenanceHandler.Keys[0]==maintenanceHandler.Keys[1],"maintenance retry retains frozen request and idempotency key");
+        using var sourceFailureHttp=new HttpClient(new SourceFailureHandler());
+        var sourceClient=new PostgreSqlClient(sourceFailureHttp,DispatchProxy.Create<IAuthSession,EntrySession>());
+        var sourceProblem=false;
+        try{sourceClient.MigrationPlanAsync(default).GetAwaiter().GetResult();}catch(InstallationApiException error){sourceProblem=error.ProblemCode=="database.migration_ca_required";}
+        Check(sourceProblem,"migration prerequisite code survives HTTP problem response");
+        using var migrationHandler=new LostResponseHandler(InstallationServiceId.PostgreSqlMaintenance);
+        using var migrationHttp=new HttpClient(migrationHandler);
+        var migrationClient=new Client {State=maintenanceModel.Snapshot! with {Version="16.15-0ubuntu0.24.04.1",Candidate=new("postgresql-18","18.7-1.pgdg24.04+2","amd64","fixture","https://apt.postgresql.org/pub/repos/apt","noble-pgdg","main","https://apt.postgresql.org/pub/repos/apt/pool/fixture.deb",new string('a',64),1,[])}};
+        using var migrationModel=new PostgreSqlMaintenanceViewModel(migrationClient,new(new InstallationClient(migrationHttp,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,InstallationServiceId.PostgreSqlMaintenance,"test",()=>Task.CompletedTask,()=>Task.FromResult<string?>(null)))
+            {CanManage=true,Snapshot=migrationClient.State,ConfirmAsync=_=>Task.FromResult(false)};
+        migrationModel.MigrationPlanCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(!migrationModel.CanMigrate&&!migrationModel.CanUpdate,"major discovery neither grants source trust nor becomes patch update");
+        migrationModel.MigrationSourceAccepted=true;Check(migrationModel.CanMigrate,"explicit source selection enables reviewed migration");
+        migrationModel.MigrateCommand.ExecuteAsync(null).GetAwaiter().GetResult();Check(migrationHandler.Bodies.Count==0,"cancelled migration does not submit");
+        migrationModel.ConfirmAsync=_=>Task.FromResult(true);migrationModel.MigrateCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(migrationModel.CanResume&&!migrationModel.CanMigrate,"lost migration response preserves pending intent");
+        migrationModel.MigrationSourceAccepted=false;migrationModel.ResumeCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(migrationHandler.Bodies.Count==2&&migrationHandler.Bodies[0]==migrationHandler.Bodies[1]&&migrationHandler.Keys[0]==migrationHandler.Keys[1],"migration retries exact target and confirmed signing identity");
+        migrationModel.Invalidate();Check(!migrationModel.CanResume&&!migrationModel.CanMigrate,"invalidated session cannot resume migration");
         using var policyHandler=new LostResponseHandler(InstallationServiceId.PostgreSqlBackupAutomation);
         using var policyHttp=new HttpClient(policyHandler);
         maintenanceModel.ScheduleInstallation=new(new InstallationClient(policyHttp,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,
@@ -180,6 +199,11 @@ internal static class DatabaseWorkspaceChecks
         model.Invalidate();Check(!model.CanStart && !model.CanRecover,"session invalidation disables stale window");
         Console.WriteLine("Database previews: "+output);
     }
+    private sealed class SourceFailureHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)=>Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {Content=JsonContent.Create(new {code="database.migration_ca_required"})});
+    }
     private sealed class LostResponseHandler(InstallationServiceId service = InstallationServiceId.PostgreSql) : HttpMessageHandler
     {
         public List<string> Bodies = []; public List<string> Keys = [];
@@ -199,6 +223,7 @@ internal static class DatabaseWorkspaceChecks
     {
         public PostgreSqlState State=new(true,true,true,"16.15-0ubuntu0.24.04.1",2,null,55432,false,false,null,null,null);
         public Task StageCredentialAsync(PostgreSqlCredentialRequest request, CancellationToken ct) => Task.CompletedTask;
+        public Task<PostgreSqlState> MigrationPlanAsync(CancellationToken ct)=>ReadAsync(ct);
         public Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct)=>ReadAsync(ct);
         public Task<PostgreSqlState> ReadAsync(CancellationToken ct)=>Task.FromResult(State);
     }
