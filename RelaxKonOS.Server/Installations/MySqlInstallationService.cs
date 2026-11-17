@@ -13,6 +13,7 @@ public class MySqlInstallationService(IPrivilegedOperationTransport helper,
     public override InstallationServiceId Id => InstallationServiceId.MySql;
     protected virtual bool Accounts => false;
     protected virtual bool AdministratorRecovery => false;
+    protected virtual bool Maintenance => false;
     private protected virtual RelaxKonOS.Server.Certificate.ICertificateStore? RemoteCertificates => null;
     public override IReadOnlyList<string> Resources => ["service:MySql", "linux:apt-dpkg"];
     protected override bool Confirmed(MySqlRequest request) => request.Confirmed;
@@ -22,7 +23,8 @@ public class MySqlInstallationService(IPrivilegedOperationTransport helper,
     protected override void ValidateRequest(InstallationOperationKind kind, MySqlRequest request, string key)
     {
         if (!request.Valid || request.RecoverOperationId is null && ((request.Account is not null) != Accounts
-            || (request.Action == MySqlAction.RecoverAdministrator) != AdministratorRecovery || (request.Remote is not null) != (RemoteCertificates is not null)) || !(kind switch
+            || (request.Action == MySqlAction.RecoverAdministrator) != AdministratorRecovery || (request.Remote is not null) != (RemoteCertificates is not null)
+            || (request.Maintenance is not null) != Maintenance) || !(kind switch
         {
             InstallationOperationKind.Install => request.Action == MySqlAction.Install,
             InstallationOperationKind.Configure => request.Action is not null and not MySqlAction.Install,
@@ -50,7 +52,8 @@ public class MySqlInstallationService(IPrivilegedOperationTransport helper,
         {
             var before = await ReadAsync(ct, request.RecoverOperationId);
             if (request.RecoverOperationId is not null && before.PendingOperationId is not null
-                && ((before.PendingAccount is not null) != Accounts || before.PendingAdministratorRecovery != AdministratorRecovery || (before.PendingRemote is not null) != (RemoteCertificates is not null)))
+                && ((before.PendingAccount is not null) != Accounts || before.PendingAdministratorRecovery != AdministratorRecovery
+                    || (before.PendingRemote is not null) != (RemoteCertificates is not null) || (before.PendingMaintenance is not null) != Maintenance))
                 throw new InstallationException("database.accounts_authorization_required", 403);
             if (RemoteCertificates is { } certificates && (request.Remote ?? before.PendingRemote)?.Policy is { } policy)
             {
@@ -83,7 +86,12 @@ public class MySqlInstallationService(IPrivilegedOperationTransport helper,
         try { state = await ReadAsync(CancellationToken.None, original); }
         catch (Exception error) when (error is InstallationException or JsonException or FormatException or IOException)
         { throw new InstallationInterruptedException("database.recovery_required"); }
-        if (state.CommittedOperationId == original && state.PendingOperationId is null) return;
+        if (state.CommittedOperationId == original && state.PendingOperationId is null)
+        {
+            if (state.MaintenanceCompensated) throw new InstallationException("database.mysql_maintenance_compensated");
+            CleanDeletedCredentials(state);
+            return;
+        }
         if (state.PendingOperationId is not null || result.Success)
             throw new InstallationInterruptedException("database.recovery_required");
         throw new InstallationException(result.Error is { } code && code.StartsWith("database.", StringComparison.Ordinal)
@@ -96,11 +104,28 @@ public class MySqlInstallationService(IPrivilegedOperationTransport helper,
         {
             var state = await ReadAsync(ct, operation.OperationId);
             if (state.CommittedOperationId == operation.OperationId && state.PendingOperationId is null)
+            {
+                if (state.MaintenanceCompensated) return new(InstallationOperationState.Failed, "database.mysql_maintenance_compensated");
+                CleanDeletedCredentials(state);
                 return new(InstallationOperationState.Succeeded);
+            }
         }
         catch (Exception error) when (error is InstallationException or JsonException or FormatException or IOException) { }
         return new(InstallationOperationState.Interrupted, "database.recovery_required");
     }
+
+    private void CleanDeletedCredentials(MySqlState state)
+    {
+        if (Maintenance && state.CommittedMaintenance is { Action: MySqlMaintenanceAction.UninstallDeleteData } removed)
+            credentials.DeleteInstance(removed.InstanceId);
+    }
+}
+
+public sealed class MySqlMaintenanceInstallationService(IPrivilegedOperationTransport helper,
+    RelaxKonOS.Server.Databases.PostgreSqlCredentialStore credentials) : MySqlInstallationService(helper, credentials)
+{
+    public override InstallationServiceId Id => InstallationServiceId.MySqlMaintenance;
+    protected override bool Maintenance => true;
 }
 
 

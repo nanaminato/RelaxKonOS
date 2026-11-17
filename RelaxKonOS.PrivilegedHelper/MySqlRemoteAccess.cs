@@ -21,7 +21,7 @@ public static partial class PrivilegedOperationExecutor
         if (ledger.Instance != request.InstanceId || (request.Policy is null) == (ledger.RemoteAccess is null))
             throw new PgFailure("database.remote_request_invalid");
         if (!File.Exists("/usr/sbin/nft")) throw new PgFailure("database.firewall_unavailable");
-        await MyVerifyPackages();
+        await MyVerifyPackages(ledger.Version);
         var plan = MySqlBootstrapPolicy.Plan(request.InstanceId);
         if (request.Policy is { } policy)
         {
@@ -30,7 +30,7 @@ public static partial class PrivilegedOperationExecutor
                 || !NetworkInterface.GetAllNetworkInterfaces().SelectMany(i => i.GetIPProperties().UnicastAddresses)
                     .Any(a => a.Address.ToString() == policy.ListenAddress))
                 throw new PgFailure("database.remote_request_invalid");
-            await MyVerifyConnection(plan);
+            await MyVerifyConnection(plan, ledger.Version);
             var account = ledger.Accounts?.SingleOrDefault(a => a.Database == policy.Database && a.User == policy.User
                 && a.Host == "localhost" && a.Grant == policy.Grant) ?? throw new PgFailure("database.resource_unmanaged");
             var local = new MySqlAccountCommand(plan.Id, account.Database, account.User, account.Host);
@@ -105,14 +105,14 @@ public static partial class PrivilegedOperationExecutor
         var drop = MyRemoteDrop(plan);
         var material = MySqlRemotePlan.MaterialDirectory(plan.Id);
         var ownership = request.Policy is not null ? pending.Id : ledger.RemoteOwner ?? throw new PgFailure("database.remote_request_invalid");
-        await MyVerifyPackages();
+        await MyVerifyPackages(ledger.Version);
 
         if (request.Policy is not null && pending.Phase == "Prepared")
         {
             MyValidateCertificate(policy, tls);
             if (secrets is not { PreviousPassword: null } || !MySqlAccountCommand.Password(secrets.Password))
                 throw new PgFailure("database.credential_invalid");
-            await MyVerifyConnection(plan);
+            await MyVerifyConnection(plan, ledger.Version);
             var witness = pending.Id.ToString("N");
             if (await MyRemoteOwner(plan, policy) == "absent")
                 await MySqlQuery(plan, $"CREATE USER {name} IDENTIFIED WITH caching_sha2_password BY '{secrets.Password}' REQUIRE SSL ATTRIBUTE '{{\"rk_remote\":\"{witness}\"}}';");
@@ -181,7 +181,7 @@ public static partial class PrivilegedOperationExecutor
         await MyVerifyUnit(plan);
         await PgRun("/usr/bin/systemctl", ["start", plan.ServiceName]);
         await MyWaitSocket(plan);
-        await MyVerifyConnection(plan);
+        await MyVerifyConnection(plan, ledger.Version);
         var owner = await MyRemoteOwner(plan, policy);
         if (owner != "absent")
         {

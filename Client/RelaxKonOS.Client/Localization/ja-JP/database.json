@@ -3,6 +3,9 @@
   "Strings": {
     "database.mysql_remote_scope": "IPv4 の接続元を 1 件指定します。開閉時に MySQL を再起動します。アカウント管理や管理者の復旧前に閉じてください。",
     "database.mysql_remote_source": "許可する接続元 IPv4（1 件）",
+    "database.mysql_maintenance_scope": "メンテナンス前にリモート接続を閉じてください。バックアップ時は MySQL を停止し、隔離インスタンスで検証します。修復には検証済みのバックアップとインスタンスの停止が必要です。",
+    "database.mysql_maintenance_compensated": "検証に失敗したため、元のパッケージとデータで MySQL を再開しました。",
+    "database.mysql_delete_scope": "アンインストールしてデータ、バックアップ、保存済みの資格情報を完全に削除するには、インスタンス ID を入力してください。",
     "database.mysql_remote_confirm": "MySQL のリモートアクセスを変更しますか？既存の接続が切断され、専用のファイアウォールルールが変更されます。",
     "database.mysql_admin_recovery_confirm": "root@localhost の OS 認証を復旧しますか？MySQL は停止し、復旧中は通常起動を禁止します。完了後も停止したままです。",
     "database.mysql_accounts_scope": "localhost のアカウントは専用 Unix ソケットを使い、権限は 1 データベースに限定されます。変更後はアプリの資格情報を更新してください。",

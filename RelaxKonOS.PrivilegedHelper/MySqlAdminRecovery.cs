@@ -18,7 +18,7 @@ public static partial class PrivilegedOperationExecutor
         if (!ledger.Installed || ledger.Instance != instance)
             throw new PgFailure("database.instance_invalid");
         var plan = MySqlBootstrapPolicy.Plan(instance);
-        await MyVerifyPackages();
+        await MyVerifyPackages(ledger.Version);
         await MyVerifyUnit(plan);
         PgNoLinks(MyAdminGuardDirectory(plan));
         if (Directory.Exists(MyAdminGuardDirectory(plan)))
@@ -105,7 +105,7 @@ public static partial class PrivilegedOperationExecutor
         await PgRun("/usr/bin/systemctl", ["daemon-reload"]);
     }
 
-    private static async Task MyRunPrivateRecovery(MySqlBootstrapInstance normal, MySqlBootstrapInstance repair, string? initFile)
+    private static async Task MyRunPrivateRecovery(MySqlBootstrapInstance normal, MySqlBootstrapInstance repair, string? initFile, string version)
     {
         var text = MyRecoveryUnitText(normal, repair, initFile);
         var path = MyPrivateUnit(repair);
@@ -124,7 +124,7 @@ public static partial class PrivilegedOperationExecutor
             await PgRun("/usr/bin/systemctl", ["start", repair.ServiceName]);
             await MyWaitSocket(repair);
             await MyVerifyProcess(repair);
-            var expected = $"root@localhost\t{MySqlBootstrapPolicy.Version}\t{normal.DataDirectory}/\t1\tauth_socket\tN\tN";
+            var expected = $"root@localhost\t{version}\t{normal.DataDirectory}/\t1\tauth_socket\tN\tN";
             var actual = await MySqlQuery(repair, "SELECT CURRENT_USER(), VERSION(), @@datadir, @@skip_networking, plugin, account_locked, password_expired FROM mysql.user WHERE user='root' AND host='localhost';");
             if (expected != actual || await MySqlQuery(repair, "SELECT IFNULL(@@init_file,'');") != (initFile ?? ""))
                 throw new PgFailure("database.admin_recovery_unverified");
@@ -146,7 +146,7 @@ public static partial class PrivilegedOperationExecutor
         var normal = MySqlBootstrapPolicy.Plan(instance);
         var repair = MyRecoveryPlan(normal, intent.Id);
         var initFile = repair.SocketDirectory + ".sql";
-        await MyVerifyPackages();
+        await MyVerifyPackages(ledger.Version);
         await MyVerifyAdminData(normal);
 
         if (intent.Phase == "Prepared")
@@ -160,13 +160,13 @@ public static partial class PrivilegedOperationExecutor
         if (ledger.Pending!.Phase is "AdminIsolationPrepared" or "AdminIsolated")
         {
             ledger = MyPhase(ledger, "AdminIsolated");
-            await MyRunPrivateRecovery(normal, repair, initFile);
+            await MyRunPrivateRecovery(normal, repair, initFile, ledger.Version);
             ledger = MyPhase(ledger, "AdminAuthenticationRestored");
         }
         if (ledger.Pending!.Phase == "AdminAuthenticationRestored")
         {
             // Validate a fresh process under ordinary authentication without an init file.
-            await MyRunPrivateRecovery(normal, repair, null);
+            await MyRunPrivateRecovery(normal, repair, null, ledger.Version);
             ledger = MyPhase(ledger, "AdminRecoveryCleaned");
         }
         if (ledger.Pending!.Phase != "AdminRecoveryCleaned") throw new PgFailure("database.state_invalid");

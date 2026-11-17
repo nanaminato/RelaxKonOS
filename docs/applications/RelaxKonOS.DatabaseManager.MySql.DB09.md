@@ -91,3 +91,17 @@ Server 使用独立的远程访问提权能力提交安装队列，按证书 ID 
 产品路径复现使用带 nftables、iproute2 和 openssl 的独立 Noble systemd 容器。设置 `/etc/relaxkonos-db09-product-disposable` 为 `DB-09-product`，用测试执行器 `mysql-product --normal` 通过安装队列安装并初始化实例。随后运行[产品验收脚本](../../Tests/MySql/native-remote-product-smoke.py)，传入 Linux x64 测试执行器路径。脚本使用 `10.77.0.1` 监听、`10.77.0.2` 允许、`10.78.0.2` 禁止，经证书中心保存测试证书并经实际安装服务提交 Helper 子进程。隔离夹具使用标准输入承载提权请求，桌面接线由桌面回归覆盖。
 
 MySQL 8.4.13 的产品路径隔离验收通过。占用 `3306` 使开启失败时，防火墙仍拦截允许来源，原操作保持待恢复。释放端口后，新的 Server 和 Helper 测试进程从证书中心、持久凭据和原操作台账续做成功。允许来源以 `VERIFY_IDENTITY` 连接并读取原数据，禁止来源命中 nftables 丢弃规则，同一允许来源使用明文时被 MySQL 拒绝。systemd 重启后入站保持关闭，本机 root socket 仍可用。执行关闭后，远程账号被删除，MySQL 恢复仅 Unix socket，`root@localhost` 仍可读取原数据。
+
+## 8.4 LTS 补丁维护
+
+范围是 Ubuntu 24.04 amd64、Oracle Community 核心包和单一受管实例。更新方向固定为 `8.4.11-1ubuntu24.04` → `8.4.13-1ubuntu24.04`。8.4.12 仅发布 Docker 镜像安全补丁。8.4.11 的 Ubuntu amd64 DEB bundle 已通过 Oracle 发布密钥 `BCA43417C3B485DD128EC6D4B7B3B788A8D3785C` 的分离签名校验，池内三个核心包与签名归档提取结果的长度及 SHA-256 一致。首次桌面安装使用 8.4.13，安装 API 可显式选择固定 8.4.11 基线。应用重新核对本地缓存和下载制品摘要。 [8.4.11 发行说明](https://dev.mysql.com/doc/relnotes/mysql/8.4/en/news-8-4-11.html) · [8.4.12 发布范围](https://dev.mysql.com/doc/relnotes/mysql/8.4/en/news-8-4-12.html) · [Oracle 签名说明](https://dev.mysql.com/doc/refman/8.4/en/checking-gpg-signature.html) · [Oracle 核心包池](https://repo.mysql.com/apt/ubuntu/pool/mysql-8.4-lts/m/mysql-community/)
+
+维护通过独立提权的安装队列提交，绑定实例 ID、操作 ID、修订和版本。远程策略须先关闭；Helper 核对受管单元、进程、包状态和数据目录，拒绝发现外部 MySQL、MariaDB 或 Percona 包、实例和常见默认路径后的共享包变更。仅接收当前机受管实例的单目录数据和可核对账号授权。外部表空间、额外系统账号或库、持久化全局配置、复制和组件超出当前备份门禁。更新会停机，软件包操作限定三个核心包及其现有依赖，保留 Ubuntu 依赖。
+
+慢停机通过 `innodb_fast_shutdown=0` 和 systemd 退出状态确认。Helper 写入启动门禁后复制数据并核对逐文件摘要、单元和受管库及账号台账。备份必须在新数据目录、私有 socket 和禁用网络的临时实例中打开，检查原生版本、`root@localhost`、受管账号和授权，同时对受管表执行 `CHECK TABLE`。恢复限原实例、原版本和相同数据库及账号台账，阻止恢复已通过产品变更的旧权限和密码。更新同时验证旧版备份以及用目标二进制打开备份副本。独立修复要求实例已停止且存在同版本验证备份，使用精确版本重新安装核心包。 [Oracle 停机备份说明](https://dev.mysql.com/doc/refman/8.4/en/innodb-backup.html) · [Oracle 包升级说明](https://dev.mysql.com/doc/refman/8.4/en/upgrade-binary-package.html)
+
+保留数据卸载清除受管服务和核心包，保留实例、备份和加密凭据。重新安装使用原版本并核实备份，复用原目录和身份。删除数据需再次确认目标实例 ID，清理该实例的数据、备份、专用系统身份和凭据引用。持久阶段允许恢复中断的停机、备份、换包、目录切换和删除；恢复时先核对原操作归属。目标副本验证失败且活动数据尚未由新版打开时，可补偿到旧包和旧实例。新版开始打开活动数据之后的失败保留备份和待恢复状态，旧二进制不会打开已可能变更的数据目录。
+
+原生范围验收在一次性 Noble systemd 容器通过四项，覆盖 8.4.11 副本恢复、真实跨补丁更新、8.4.13 损坏二进制修复，以及精确移除核心包后保留数据和副本。复现使用带 `DB-09-maintenance` 标记的[原生维护脚本](../../Tests/MySql/native-maintenance-scope-smoke.py)。产品验证从空容器运行测试执行器 `mysql-product --maintenance`，使用既有 `DB-09-product` 标记，以实际安装队列启动 Helper 子进程。完整认证 HTTP/PAM 链路另由实机验证。
+
+产品隔离验收从空容器安装并初始化 8.4.11，共通过 39 项。外部默认数据目录会阻止更新，另经真实 Helper 验证未知备份 ID 会在写入待办前被拒绝。慢停机后终止 Helper，新 Helper 以原操作 ID 完成备份并恢复服务。实际恢复将测试行从 `99` 还原到 `84`，随后升级到 8.4.13，原账号仍可登录读取。另在目标包校验后注入候选启动故障，隔离副本失败后恢复旧包和旧服务；再次更新成功。修复从损坏的 `mysqld` 恢复原版本。保留数据卸载后，原版本重装仍能使用原凭据。删除数据卸载清理了目标数据、备份与加密凭据引用。桌面数据库回归 109 项、数据库策略回归 52 项通过。

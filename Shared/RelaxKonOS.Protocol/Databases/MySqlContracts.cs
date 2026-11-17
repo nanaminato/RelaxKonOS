@@ -4,24 +4,28 @@ using RelaxKonOS.Protocol.Common;
 namespace RelaxKonOS.Protocol.Databases;
 
 [JsonConverter(typeof(JsonStringEnumConverter<MySqlAction>))]
-public enum MySqlAction { Install, Initialize, Start, Stop, Verify, CreateDatabase, CreateAccount, SetGrant, ChangePassword, RecoverAdministrator, ConfigureRemote }
+public enum MySqlAction { Install, Initialize, Start, Stop, Verify, CreateDatabase, CreateAccount, SetGrant, ChangePassword, RecoverAdministrator, ConfigureRemote, Maintain }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record MySqlRequest(bool Confirmed, MySqlAction? Action = null, long Revision = 0, Guid? RecoverOperationId = null, MySqlAccountCommand? Account = null, Guid? AdministratorInstanceId = null, MySqlRemoteChange? Remote = null)
+public sealed record MySqlRequest(bool Confirmed, MySqlAction? Action = null, long Revision = 0, Guid? RecoverOperationId = null, MySqlAccountCommand? Account = null, Guid? AdministratorInstanceId = null, MySqlRemoteChange? Remote = null, MySqlMaintenanceCommand? Maintenance = null, string? InstallVersion = null)
 {
     [JsonIgnore]
-    public bool Valid => Confirmed && (RecoverOperationId is { } id
-        ? id != Guid.Empty && Action is null && Revision == 0 && Account is null && AdministratorInstanceId is null && Remote is null
-        : Action is { } action && Enum.IsDefined(action) && Revision > 0 && (action == MySqlAction.ConfigureRemote
+    public bool Valid => Confirmed && (InstallVersion is null || Action == MySqlAction.Install && InstallVersion is "8.4.11" or "8.4.13") && (RecoverOperationId is { } id
+        ? id != Guid.Empty && Action is null && Revision == 0 && Account is null && AdministratorInstanceId is null && Remote is null && Maintenance is null
+        : Action is { } action && Enum.IsDefined(action) && Revision > 0 && (action == MySqlAction.Maintain
+            ? Account is null && AdministratorInstanceId is null && Remote is null && Maintenance?.Valid == true
+            : Maintenance is null && (action == MySqlAction.ConfigureRemote
             ? Account is null && AdministratorInstanceId is null && Remote?.Valid == true
             : Remote is null && (action == MySqlAction.RecoverAdministrator
             ? Account is null && AdministratorInstanceId is { } target && target != Guid.Empty
-            : AdministratorInstanceId is null && (action >= MySqlAction.CreateDatabase ? Account?.Valid(action) == true : Account is null))));
+            : AdministratorInstanceId is null && (action >= MySqlAction.CreateDatabase ? Account?.Valid(action) == true : Account is null)))));
 }
 
 public sealed record MySqlState(bool Supported, long Revision, bool Installed, Guid? InstanceId,
     bool Running, bool Verified, Guid? PendingOperationId, Guid? CommittedOperationId, string? ProblemCode, IReadOnlyList<string>? Databases = null, IReadOnlyList<MySqlAccount>? Accounts = null,
-    MySqlAccountCommand? PendingAccount = null, bool PendingAdministratorRecovery = false, MySqlRemotePolicy? RemoteAccess = null, MySqlRemoteChange? PendingRemote = null);
+    MySqlAccountCommand? PendingAccount = null, bool PendingAdministratorRecovery = false, MySqlRemotePolicy? RemoteAccess = null, MySqlRemoteChange? PendingRemote = null,
+    string? Version = null, MySqlMaintenanceCommand? PendingMaintenance = null, IReadOnlyList<MySqlBackup>? Backups = null,
+    MySqlMaintenanceCommand? CommittedMaintenance = null, bool MaintenanceCompensated = false);
 
 public static class MySqlRoutes
 {

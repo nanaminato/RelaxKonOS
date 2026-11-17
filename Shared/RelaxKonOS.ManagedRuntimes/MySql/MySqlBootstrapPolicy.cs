@@ -1,8 +1,8 @@
 namespace RelaxKonOS.ManagedRuntimes.MySql;
 
-public sealed record MySqlBootstrapArtifact(string Name, long Bytes, string Sha256)
+public sealed record MySqlBootstrapArtifact(string Name, long Bytes, string Sha256, string PackageVersion = MySqlBootstrapPolicy.PackageVersion)
 {
-    public string FileName => $"{Name}_{MySqlBootstrapPolicy.PackageVersion}_amd64.deb";
+    public string FileName => $"{Name}_{PackageVersion}_amd64.deb";
     public string Uri => $"{MySqlBootstrapPolicy.Repository}/pool/mysql-8.4-lts/m/mysql-community/{FileName}";
 }
 

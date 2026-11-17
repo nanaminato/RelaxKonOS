@@ -23,13 +23,14 @@ internal static class MySqlProductSmoke
         var service = new MySqlInstallationService(transport, credentials);
         var accountService = new MySqlAccountsInstallationService(transport, credentials);
         var adminService = new MySqlAdminRecoveryInstallationService(transport, credentials);
+        var maintenanceService = new MySqlMaintenanceInstallationService(transport, credentials);
         var config = new Microsoft.Extensions.Configuration.ConfigurationManager();
         config["Storage:Provider"] = "fixture";
         var certificates = new RelaxKonOS.Server.Certificate.FileCertificateStore(environment,
             new RelaxKonOS.Server.Certificate.CertificateOptions(),
             new RelaxKonOS.Server.Certificate.CertificateMetadataRepository(environment, config));
         var remoteService = new MySqlRemoteInstallationService(transport, credentials, certificates);
-        var coordinator = new InstallationCoordinator(new(new FixtureEnvironment()), [service, accountService, adminService, remoteService], new Lifetime());
+        var coordinator = new InstallationCoordinator(new(new FixtureEnvironment()), [service, accountService, adminService, remoteService, maintenanceService], new Lifetime());
         await coordinator.StartAsync(default);
         try
         {
@@ -50,6 +51,91 @@ internal static class MySqlProductSmoke
             }
 
             var initial = await service.ReadAsync(default);
+            if (mode == "--maintenance")
+            {
+                Check(!initial.Installed, "disposable MySQL maintenance starts without installed packages");
+                var install = await Submit(InstallationOperationKind.Install,
+                    new(true, MySqlAction.Install, initial.Revision, InstallVersion: "8.4.11"));
+                Check(install.State == InstallationOperationState.Succeeded, "signed baseline installed via queue: " + install.ProblemCode);
+                await Execute(MySqlAction.Initialize);
+                var state = await service.ReadAsync(default);
+                var instance = state.InstanceId!.Value;
+                var plan = RelaxKonOS.ManagedRuntimes.MySql.MySqlBootstrapPolicy.Plan(instance);
+                var database = "maintenancefixture";
+                var reference = Guid.NewGuid();
+                var password = Guid.NewGuid().ToString("N");
+                async Task Account(MySqlAction action, MySqlAccountCommand target)
+                {
+                    var current = await service.ReadAsync(default);
+                    var result = await Submit(InstallationOperationKind.Configure, new(true, action, current.Revision, Account: target), InstallationServiceId.MySqlAccounts);
+                    Check(result.State == InstallationOperationState.Succeeded, "managed witness setup " + action + ": " + result.ProblemCode);
+                }
+                credentials.Stage(new(reference, instance, password), "fixture");
+                await Account(MySqlAction.CreateDatabase, new(instance, database));
+                await Account(MySqlAction.CreateAccount, new(instance, database, "reader", "localhost", MySqlGrant.ReadOnly, reference));
+                Check((await Sql(plan.SocketDirectory, "root", null, $"CREATE TABLE {database}.witness(id INT) ENGINE=InnoDB; INSERT INTO {database}.witness VALUES (84);")).Code == 0,
+                    "temporary maintenance witness created");
+                Check(state.Verified && state.Version == "8.4.11", "maintenance starts on the qualified baseline");
+                async Task<MySqlState> Maintain(MySqlMaintenanceAction action, string version, Guid? backup = null,
+                    InstallationOperationState expected = InstallationOperationState.Succeeded)
+                {
+                    var current = await service.ReadAsync(default);
+                    var change = new MySqlMaintenanceCommand(instance, action, version, backup,
+                        action == MySqlMaintenanceAction.UninstallDeleteData ? instance.ToString("N") : null);
+                    var result = await Submit(InstallationOperationKind.Configure, new(true, MySqlAction.Maintain, current.Revision, Maintenance: change), InstallationServiceId.MySqlMaintenance);
+                    Check(result.State == expected, "maintenance " + action + " via queue: " + result.ProblemCode);
+                    var verified = await service.ReadAsync(default, result.OperationId);
+                    if (expected == InstallationOperationState.Succeeded)
+                        Check(verified.CommittedOperationId == result.OperationId && verified.PendingOperationId is null, "maintenance receipt " + action);
+                    return verified;
+                }
+
+                Check(state.Backups is null, "backup validation starts without prior snapshots");
+                var external = "/var/lib/mysql";
+                Check(!Directory.Exists(external), "fixture default data path initially absent");
+                Directory.CreateDirectory(external);
+                try
+                {
+                    var refused = await Maintain(MySqlMaintenanceAction.Update, "8.4.13", expected: InstallationOperationState.Failed);
+                    Check(refused.Version == "8.4.11" && refused.Running && refused.PendingOperationId is null, "external data prevents dispatch without touching live instance");
+                }
+                finally { Directory.Delete(external); }
+                transport.InterruptColdBackup = true;
+                var interruptedBackup = await Maintain(MySqlMaintenanceAction.Backup, "8.4.11", expected: InstallationOperationState.Interrupted);
+                var originalBackup = interruptedBackup.PendingOperationId!.Value;
+                Check(transport.BackupHelperKilled && !interruptedBackup.Running, "Helper interruption leaves the original stop and backup intent fenced");
+                var resumed = await Submit(InstallationOperationKind.Repair, new(true, RecoverOperationId: originalBackup), InstallationServiceId.MySqlMaintenance);
+                Check(resumed.State == InstallationOperationState.Succeeded, "fresh Helper resumes original cold backup: " + resumed.ProblemCode);
+                var saved = await service.ReadAsync(default, originalBackup);
+                Check(saved.Verified && saved.Backups is { Count: 1 }, "standalone verified backup listed");
+                Check((await Sql(plan.SocketDirectory, "root", null, $"UPDATE {database}.witness SET id=99;")).Code == 0, "live witness differs from backup");
+                await Maintain(MySqlMaintenanceAction.Restore, "8.4.11", saved.Backups![0].Id);
+                transport.FailCandidateProbe = true;
+                var compensated = await Maintain(MySqlMaintenanceAction.Update, "8.4.13", expected: InstallationOperationState.Failed);
+                Check(transport.CandidateDamaged && compensated.MaintenanceCompensated && compensated.Verified && compensated.Version == "8.4.11",
+                    "candidate failure rolls back before opening live data and restores the original service");
+                var upgraded = await Maintain(MySqlMaintenanceAction.Update, "8.4.13");
+                Check(upgraded.Version == "8.4.13" && upgraded.Verified, "native version verified after package change");
+                var loginAfter = await Sql(plan.SocketDirectory, "reader", password, $"SELECT id FROM {database}.witness;");
+                Check(loginAfter.Code == 0 && loginAfter.Output.Trim() == "84", "restore and update preserve original rows and credential");
+                await Maintain(MySqlMaintenanceAction.Backup, "8.4.13");
+                await Execute(MySqlAction.Stop);
+                await File.WriteAllTextAsync("/usr/sbin/mysqld", "disposable modified executable");
+                var repaired = await Maintain(MySqlMaintenanceAction.Repair, "8.4.13");
+                Check(repaired.Verified, "repair restores native executable and Unix socket");
+                var retained = await Maintain(MySqlMaintenanceAction.UninstallKeepData, "8.4.13");
+                Check(!retained.Installed && retained.InstanceId == instance && Directory.Exists(plan.DataDirectory)
+                    && credentials.Read(reference, instance) == password, "keep data retains the exact instance and encrypted credential");
+                await Maintain(MySqlMaintenanceAction.Reinstall, "8.4.13");
+                var afterReinstall = await Sql(plan.SocketDirectory, "reader", password, $"SELECT id FROM {database}.witness;");
+                Check(afterReinstall.Code == 0 && afterReinstall.Output.Trim() == "84", "kept instance reopens with original data and login");
+                var deleted = await Maintain(MySqlMaintenanceAction.UninstallDeleteData, "8.4.13");
+                Check(!deleted.Installed && deleted.InstanceId is null && !Directory.Exists(plan.DataDirectory)
+                    && !Directory.Exists("/var/lib/relaxkonos/mysql-control/backups/" + instance.ToString("N"))
+                    && !Directory.EnumerateFiles(Path.Combine(environment.ContentRootPath, "data", "database-secrets")).Any(),
+                    "delete data removes owned instance, backups and credential reference");
+                return;
+            }
             if (mode is "--remote-open" or "--remote-close" or "--remote-conflict" or "--remote-resume")
             {
                 var instance = initial.InstanceId!.Value;
@@ -307,6 +393,10 @@ internal static class MySqlProductSmoke
     private sealed class NativeProcess : IPrivilegedOperationTransport
     {
         public bool DropInstallReceiptRead { get; set; }
+        public bool InterruptColdBackup { get; set; }
+        public bool BackupHelperKilled { get; private set; }
+        public bool FailCandidateProbe { get; set; }
+        public bool CandidateDamaged { get; private set; }
         public int InstallDispatches { get; private set; }
         private bool dropNextQuery;
 
@@ -333,6 +423,33 @@ internal static class MySqlProductSmoke
             var stderr = process.StandardError.ReadToEndAsync(ct);
             await process.StandardInput.WriteAsync(JsonSerializer.Serialize(request));
             process.StandardInput.Close();
+            var interrupt = InterruptColdBackup && request.MySql?.Maintenance?.Action == MySqlMaintenanceAction.Backup;
+            var failCandidate = FailCandidateProbe && request.MySql?.Maintenance?.Action == MySqlMaintenanceAction.Update;
+            if (interrupt || failCandidate)
+            {
+                if (interrupt) InterruptColdBackup = false;
+                if (failCandidate) FailCandidateProbe = false;
+                const string ledger = "/var/lib/relaxkonos/mysql-control/state.json";
+                var checkpoint = interrupt ? "StoppedForMaintenance" : "PackagesApplied";
+                while (!process.HasExited)
+                {
+                    if ((await File.ReadAllTextAsync(ledger, ct)).Contains(checkpoint, StringComparison.Ordinal))
+                    {
+                        if (failCandidate)
+                        {
+                            await File.WriteAllTextAsync("/usr/sbin/mysqld", "disposable failed candidate fixture", ct);
+                            CandidateDamaged = true;
+                            break;
+                        }
+                        process.Kill(entireProcessTree: true);
+                        await process.WaitForExitAsync(ct);
+                        await Task.WhenAll(stdout, stderr);
+                        BackupHelperKilled = true;
+                        return new(false, Error: "fixture.helper_killed");
+                    }
+                    await Task.Delay(10, ct);
+                }
+            }
             await process.WaitForExitAsync(ct);
             await stderr;
             var reply = JsonSerializer.Deserialize<PrivilegedOperationResult>(await stdout)!;

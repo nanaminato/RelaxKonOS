@@ -3,6 +3,9 @@
   "Strings": {
     "database.mysql_remote_scope": "仅支持一个精确 IPv4 来源。开放和关闭会重启实例。先关闭访问，再维护账号或恢复管理员。",
     "database.mysql_remote_source": "允许的来源 IPv4（单个地址）",
+    "database.mysql_maintenance_scope": "维护前请关闭远程访问。备份会停止 MySQL，并在隔离实例中验证。修复需要已验证备份和已停止的实例。",
+    "database.mysql_maintenance_compensated": "新版验证失败，MySQL 已使用原软件包和数据恢复运行。",
+    "database.mysql_delete_scope": "输入实例 ID 以卸载并永久删除该实例的数据、备份和已保存凭据。",
     "database.mysql_remote_confirm": "确认更改 MySQL 远程访问？当前连接会断开，只修改实例专属的防火墙规则。",
     "database.mysql_admin_recovery_confirm": "确认恢复 root@localhost 的本机系统身份认证？此操作会停止 MySQL，隔离期间禁止普通启动，恢复成功后保持停止。",
     "database.mysql_accounts_scope": "账号仅限 localhost，通过私有 Unix socket 连接，且只授权一个库。改密后请更新应用凭据。",

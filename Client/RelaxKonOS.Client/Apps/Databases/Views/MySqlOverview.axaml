@@ -4,7 +4,7 @@
  xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:db="clr-namespace:RelaxKonOS.Client.Apps.Databases"
  x:Class="RelaxKonOS.Client.Apps.Databases.Views.MySqlOverview" x:DataType="db:MySqlViewModel">
  <ScrollViewer><StackPanel Spacing="14">
-  <TextBlock Text="MySQL 8.4.13 LTS" FontSize="24" />
+  <TextBlock Text="{Binding VersionLabel}" FontSize="24" />
   <TextBlock Text="{loc:Loc database.mysql_scope}" TextWrapping="Wrap" />
   <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
   <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" />
@@ -60,5 +60,25 @@
    </WrapPanel>
   </StackPanel>
   <TextBlock Text="{Binding AccountInstallation.SummaryText}" TextWrapping="Wrap" />
+  <TextBlock Text="{loc:Loc database.maintenance}" FontSize="18" />
+  <TextBlock Text="{loc:Loc database.mysql_maintenance_scope}" TextWrapping="Wrap" />
+  <WrapPanel>
+   <Button Content="{loc:Loc database.maintenance_action.Backup}" Command="{Binding BackupCommand}" IsEnabled="{Binding CanBackup}" Margin="0,0,8,8" />
+   <Button Content="{loc:Loc database.maintenance_action.Update}" Command="{Binding UpdateCommand}" IsEnabled="{Binding CanUpdate}" Margin="0,0,8,8" />
+   <Button Content="{loc:Loc database.maintenance_action.Repair}" Command="{Binding RepairCommand}" IsEnabled="{Binding CanRepair}" Margin="0,0,8,8" />
+   <Button Content="{loc:Loc database.maintenance_action.UninstallKeepData}" Command="{Binding UninstallKeepCommand}" IsEnabled="{Binding CanBackup}" Margin="0,0,8,8" />
+   <Button Content="{loc:Loc database.maintenance_action.Reinstall}" Command="{Binding ReinstallCommand}" IsEnabled="{Binding CanReinstall}" Margin="0,0,8,8" />
+  </WrapPanel>
+  <ComboBox ItemsSource="{Binding MaintenanceBackups}" SelectedItem="{Binding SelectedBackup}">
+   <ComboBox.ItemTemplate><DataTemplate x:DataType="p:MySqlBackup"><TextBlock Text="{Binding CreatedAt}" /></DataTemplate></ComboBox.ItemTemplate>
+  </ComboBox>
+  <Button Content="{loc:Loc database.maintenance_action.Restore}" Command="{Binding RestoreBackupCommand}" IsEnabled="{Binding CanRestore}" />
+  <StackPanel Spacing="8" IsEnabled="{Binding CanBackup}">
+   <TextBlock Text="{loc:Loc database.mysql_delete_scope}" TextWrapping="Wrap" />
+   <SelectableTextBlock Text="{Binding DeleteInstanceId}" />
+   <TextBox Text="{Binding DeleteConfirmation}" />
+   <Button Content="{loc:Loc database.maintenance_action.UninstallDeleteData}" Command="{Binding UninstallDeleteCommand}" IsEnabled="{Binding CanDeleteData}" />
+  </StackPanel>
+  <TextBlock Text="{Binding MaintenanceInstallation.SummaryText}" TextWrapping="Wrap" />
  </StackPanel></ScrollViewer>
 </UserControl>

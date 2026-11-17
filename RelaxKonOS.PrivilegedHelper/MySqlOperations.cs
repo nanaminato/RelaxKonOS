@@ -11,7 +11,9 @@ public static partial class PrivilegedOperationExecutor
     private static readonly SemaphoreSlim MyGate = new(1);
     private sealed record MyIntent(Guid Id, MySqlRequest Request, Guid? Instance, string Phase);
     private sealed record MyLedger(long Revision, bool Installed, Guid? Instance, MyIntent? Pending,
-        Dictionary<Guid, MySqlRequest> Receipts, IReadOnlyList<string>? Databases = null, IReadOnlyList<MySqlAccount>? Accounts = null, MySqlRemotePolicy? RemoteAccess = null, Guid? RemoteOwner = null);
+        Dictionary<Guid, MySqlRequest> Receipts, IReadOnlyList<string>? Databases = null, IReadOnlyList<MySqlAccount>? Accounts = null, MySqlRemotePolicy? RemoteAccess = null, Guid? RemoteOwner = null,
+        string Version = MySqlBootstrapPolicy.Version, bool Retained = false, IReadOnlyList<MyBackupRecord>? Backups = null,
+        IReadOnlyList<Guid>? CompensatedMaintenance = null);
     private static async Task<PrivilegedOperationResult> ExecuteMySqlAsync(PrivilegedOperationRequest request)
     {
         if (request != new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
@@ -42,7 +44,8 @@ public static partial class PrivilegedOperationExecutor
             var ledger = File.Exists(path)
                 ? JsonSerializer.Deserialize<MyLedger>(File.ReadAllBytes(path), PgJson) ?? throw new PgFailure("database.state_invalid")
                 : new MyLedger(1, false, null, null, []);
-            if (ledger.Revision < 1 || ledger.Instance == Guid.Empty || ledger.Instance is not null && !ledger.Installed
+            if (ledger.Revision < 1 || ledger.Instance == Guid.Empty || ledger.Instance is not null && !ledger.Installed && !ledger.Retained
+                || MySqlMaintenancePolicy.Artifacts(ledger.Version) is null
                 || ledger.Receipts is null || ledger.Pending is { } saved &&
                 (saved.Id == Guid.Empty || !saved.Request.Valid || saved.Request.Action is null))
                 throw new PgFailure("database.state_invalid");
@@ -79,11 +82,12 @@ public static partial class PrivilegedOperationExecutor
                     await MyRemotePreflight(ledger, remote, request.MySqlTls, request.MySqlSecrets);
                 else if (ledger.RemoteAccess is not null || request.MySqlTls is not null)
                     throw new PgFailure("database.remote_request_invalid");
+                else if (intent.Maintenance is { } maintenance) await MyMaintenancePreflight(ledger, maintenance);
                 else if (intent.Account is { } account)
                     await MyAccountPreflight(ledger, intent.Action!.Value, account, request.MySqlSecrets);
                 else if (intent.Action == MySqlAction.RecoverAdministrator) await MyAdminPreflight(ledger, intent.AdministratorInstanceId!.Value);
                 else await MyPreflight(ledger, intent.Action!.Value);
-                ledger = MySave(ledger with { Pending = new(id, intent,
+                ledger = MySave(ledger with { Version = intent.InstallVersion ?? ledger.Version, Pending = new(id, intent,
                     intent.Action == MySqlAction.Initialize ? Guid.NewGuid() : ledger.Instance, "Prepared") });
             }
             if (ledger.Pending is not null)
@@ -95,8 +99,12 @@ public static partial class PrivilegedOperationExecutor
                 else
                 {
                     if (request.MySqlSecrets is not null || request.MySqlTls is not null) throw new PgFailure("database.request_invalid");
-                    ledger = ledger.Pending.Request.Action == MySqlAction.RecoverAdministrator
-                        ? await MyContinueAdmin(ledger) : await MyContinue(ledger);
+                    ledger = ledger.Pending.Request.Action switch
+                    {
+                        MySqlAction.RecoverAdministrator => await MyContinueAdmin(ledger),
+                        MySqlAction.Maintain => await MyContinueMaintenance(ledger),
+                        _ => await MyContinue(ledger)
+                    };
                 }
                 var completed = ledger.Pending!;
                 ledger.Receipts.Add(completed.Id, completed.Request);
@@ -135,7 +143,7 @@ public static partial class PrivilegedOperationExecutor
     {
         if (action == MySqlAction.Install)
         {
-            if (ledger.Installed) throw new PgFailure("database.installation_exists");
+            if (ledger.Installed || ledger.Retained) throw new PgFailure("database.installation_exists");
             foreach (var path in new[] { "/etc/mysql", "/var/lib/mysql", "/var/lib/relaxkonos/mysql", MySqlBootstrapPolicy.Server, "/usr/bin/mysql" })
             {
                 PgNoLinks(path);
@@ -149,7 +157,7 @@ public static partial class PrivilegedOperationExecutor
         }
         if (!ledger.Installed || (action == MySqlAction.Initialize) != (ledger.Instance is null))
             throw new PgFailure("database.instance_invalid");
-        await MyVerifyPackages();
+        await MyVerifyPackages(ledger.Version);
         if (action == MySqlAction.Initialize &&
             (await PgRun("/usr/bin/getent", ["passwd", MyUser], allowFailure: true)).Code != 2)
             throw new PgFailure("database.external_installation");
@@ -161,14 +169,15 @@ public static partial class PrivilegedOperationExecutor
             throw new PgFailure("database.package_recovery_required");
     }
 
-    private static async Task MyVerifyPackages()
+    private static async Task MyVerifyPackages(string version, bool verifyFiles = true)
     {
         await MyAudit();
-        foreach (var artifact in MySqlBootstrapPolicy.Artifacts)
+        foreach (var artifact in MySqlMaintenancePolicy.Artifacts(version) ?? throw new PgFailure("database.maintenance_version_unsupported"))
         {
             var status = await PgRun("/usr/bin/dpkg-query", ["-W", "-f=${Status}|${Version}|${Architecture}", artifact.Name]);
-            if (status.Output != $"install ok installed|{MySqlBootstrapPolicy.PackageVersion}|amd64")
+            if (status.Output != $"install ok installed|{artifact.PackageVersion}|amd64")
                 throw new PgFailure("database.package_identity_changed");
+            if (!verifyFiles) continue;
             var verification = await PgRun("/usr/bin/dpkg", ["--verify", artifact.Name]);
             if (verification.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Any(line =>
                 !line.StartsWith("missing") || (!line.Contains(" /usr/share/doc/") && !line.Contains(" /usr/share/man/"))))
@@ -183,16 +192,21 @@ public static partial class PrivilegedOperationExecutor
         }
     }
 
-    private static async Task<string[]> MyPrepareArtifacts()
+    private static async Task<string[]> MyPrepareArtifacts(string version)
     {
         using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false };
         using var http = new HttpClient(handler);
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         var paths = new List<string>();
-        foreach (var artifact in MySqlBootstrapPolicy.Artifacts)
+        foreach (var artifact in MySqlMaintenancePolicy.Artifacts(version) ?? throw new PgFailure("database.maintenance_version_unsupported"))
         {
             var path = MyRoot + "/" + artifact.FileName;
             PgNoLinks(path);
+            if (File.Exists(path) && new FileInfo(path).Length == artifact.Bytes && PgFileHash(path).Equals(artifact.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                paths.Add(path);
+                continue;
+            }
             using var response = await http.GetAsync(artifact.Uri, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength is { } length && length != artifact.Bytes)
@@ -239,21 +253,22 @@ public static partial class PrivilegedOperationExecutor
             throw new PgFailure("database.service_identity_changed");
     }
 
-    private static async Task MyVerifyConnection(MySqlBootstrapInstance plan)
+    private static async Task MyVerifyConnection(MySqlBootstrapInstance plan, string version)
     {
         await MyVerifyUnit(plan);
         await MyVerifyProcess(plan);
         var result = await MySqlQuery(plan, "SELECT CURRENT_USER(), VERSION(), @@datadir, @@skip_networking, plugin FROM mysql.user WHERE user='root' AND host='localhost';");
-        if (result != $"root@localhost\t{MySqlBootstrapPolicy.Version}\t{plan.DataDirectory}/\t1\tauth_socket")
+        if (result != $"root@localhost\t{version}\t{plan.DataDirectory}/\t1\tauth_socket")
             throw new PgFailure("database.connection_unverified");
     }
 
-    private static async Task MyWaitSocket(MySqlBootstrapInstance plan)
+    private static async Task MyWaitSocket(MySqlBootstrapInstance plan, int attempts = 50)
     {
-        for (var attempt = 0; attempt < 50; attempt++)
+        for (var attempt = 0; attempt < attempts; attempt++)
         {
             try { if (await MySqlQuery(plan, "SELECT CURRENT_USER();") == "root@localhost") return; }
-            catch (PgFailure) { }
+            catch (Exception error) when (error is PgFailure or IOException) { }
+            if (attempt > 0 && attempt % 10 == 0 && !await MyRunning(plan)) break;
             await Task.Delay(200);
         }
         throw new PgFailure("database.connection_unverified");
@@ -268,7 +283,7 @@ public static partial class PrivilegedOperationExecutor
             if (intent.Phase == "Prepared")
             {
                 await MyPreflight(ledger, action);
-                var paths = await MyPrepareArtifacts();
+                var paths = await MyPrepareArtifacts(ledger.Version);
                 const string ubuntuSource = "deb [arch=amd64 signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg,F6ECB3762474EDA9D21B7022871920D1991BC93C] http://archive.ubuntu.com/ubuntu ";
                 PgAtomic(MyRoot + "/ubuntu.list", Encoding.UTF8.GetBytes(string.Concat(
                     new[] { "noble", "noble-updates", "noble-security" }.Select(suite => ubuntuSource + suite + " main universe\n"))));
@@ -282,7 +297,7 @@ public static partial class PrivilegedOperationExecutor
                 ledger = MyPhase(ledger, "PackageDispatched");
                 await PgRun("/usr/bin/apt-get", [.. apt, "install", "--yes", "--no-remove", "--no-install-recommends", .. paths], minutes: 15);
             }
-            await MyVerifyPackages();
+            await MyVerifyPackages(ledger.Version);
             if (Directory.Exists("/var/lib/mysql")) throw new PgFailure("database.external_installation");
             return ledger with { Installed = true };
         }
@@ -315,17 +330,17 @@ public static partial class PrivilegedOperationExecutor
                 await MyVerifyUnit(plan);
                 ledger = MyPhase(ledger, "Securing");
             }
-            await MyVerifyPackages();
+            await MyVerifyPackages(ledger.Version);
             await MyVerifyUnit(plan);
             if (!await MyRunning(plan)) await PgRun("/usr/bin/systemctl", ["start", plan.ServiceName]);
             await MyWaitSocket(plan);
             if (await MySqlQuery(plan, "SELECT COUNT(*) FROM information_schema.plugins WHERE PLUGIN_NAME='auth_socket' AND PLUGIN_STATUS='ACTIVE';") == "0")
                 await MySqlQuery(plan, "INSTALL PLUGIN auth_socket SONAME 'auth_socket.so';");
             await MySqlQuery(plan, "ALTER USER 'root'@'localhost' IDENTIFIED WITH auth_socket;");
-            await MyVerifyConnection(plan);
+            await MyVerifyConnection(plan, ledger.Version);
             return ledger with { Instance = plan.Id };
         }
-        await MyVerifyPackages();
+        await MyVerifyPackages(ledger.Version);
         await MyVerifyUnit(plan);
         if (action == MySqlAction.Start)
         {
@@ -338,7 +353,7 @@ public static partial class PrivilegedOperationExecutor
             if ((await PgRun("/usr/bin/systemctl", ["show", "-p", "MainPID", "--value", plan.ServiceName])).Output.Trim() != "0")
                 throw new PgFailure("database.stop_unconfirmed");
         }
-        else await MyVerifyConnection(plan);
+        else await MyVerifyConnection(plan, ledger.Version);
         return ledger;
     }
 
@@ -347,12 +362,12 @@ public static partial class PrivilegedOperationExecutor
         var running = false;
         var verified = false;
         string? problem = ledger.Pending is null ? null : "database.recovery_required";
-        if (ledger.Instance is { } id && ledger.Pending is null)
+        if (ledger.Installed && ledger.Instance is { } id && ledger.Pending is null)
         {
             try
             {
                 var plan = MySqlBootstrapPolicy.Plan(id);
-                await MyVerifyPackages();
+                await MyVerifyPackages(ledger.Version);
                 if (ledger.RemoteAccess is { } remote)
                     await MyVerifyRemoteUnit(plan, remote, ledger.RemoteOwner!.Value);
                 else await MyVerifyUnit(plan);
@@ -360,15 +375,19 @@ public static partial class PrivilegedOperationExecutor
                 if (running)
                 {
                     if (ledger.RemoteAccess is { } policy) await MyProbeRemote(plan, policy, ledger.RemoteOwner!.Value, true);
-                    else await MyVerifyConnection(plan);
+                    else await MyVerifyConnection(plan, ledger.Version);
                     verified = true;
                 }
             }
             catch (PgFailure error) { problem = error.Message; }
             catch (IOException) { problem = "database.state_unavailable"; }
         }
+        var receipt = ledger.Receipts.GetValueOrDefault(operation);
+        var committedMaintenance = receipt?.RecoverOperationId is { } original ? ledger.Receipts.GetValueOrDefault(original)?.Maintenance : receipt?.Maintenance;
         return new(true, ledger.Revision, ledger.Installed, ledger.Instance, running, verified,
             ledger.Pending?.Id, ledger.Receipts.ContainsKey(operation) ? operation : null, problem, ledger.Databases, ledger.Accounts, ledger.Pending?.Request.Account,
-            ledger.Pending?.Request.Action == MySqlAction.RecoverAdministrator, ledger.RemoteAccess, ledger.Pending?.Request.Remote);
+            ledger.Pending?.Request.Action == MySqlAction.RecoverAdministrator, ledger.RemoteAccess, ledger.Pending?.Request.Remote,
+            ledger.Installed || ledger.Retained ? ledger.Version : null, ledger.Pending?.Request.Maintenance, ledger.Backups?.Select(x => x.Backup).ToArray(),
+            committedMaintenance, ledger.CompensatedMaintenance?.Contains(receipt?.RecoverOperationId ?? operation) == true);
     }
 }

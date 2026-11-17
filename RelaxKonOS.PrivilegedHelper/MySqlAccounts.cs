@@ -58,8 +58,8 @@ public static partial class PrivilegedOperationExecutor
         if (ledger.Instance != account.InstanceId) throw new PgFailure("database.instance_invalid");
         MyVerifySecrets(action, secrets);
         var plan = MySqlBootstrapPolicy.Plan(account.InstanceId);
-        await MyVerifyPackages();
-        await MyVerifyConnection(plan);
+        await MyVerifyPackages(ledger.Version);
+        await MyVerifyConnection(plan, ledger.Version);
         if (secrets is not null && await MySqlQuery(plan, "SELECT @@global.general_log, @@global.log_bin;") != "0\t0")
             throw new PgFailure("database.configuration_drift");
         if (action == MySqlAction.CreateDatabase)
@@ -91,8 +91,8 @@ public static partial class PrivilegedOperationExecutor
         var action = request.Action!.Value;
         MyVerifySecrets(action, secrets);
         var plan = MySqlBootstrapPolicy.Plan(account.InstanceId);
-        await MyVerifyPackages();
-        await MyVerifyConnection(plan);
+        await MyVerifyPackages(ledger.Version);
+        await MyVerifyConnection(plan, ledger.Version);
         if (secrets is not null && await MySqlQuery(plan, "SELECT @@global.general_log, @@global.log_bin;") != "0\t0")
             throw new PgFailure("database.configuration_drift");
         if (action == MySqlAction.CreateDatabase)

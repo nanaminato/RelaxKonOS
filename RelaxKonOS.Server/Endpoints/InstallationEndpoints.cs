@@ -108,7 +108,7 @@ public static class InstallationEndpoints
             InstallationServiceId.PostgreSqlAccounts or InstallationServiceId.MySqlAccounts => HostElevationCapability.DatabaseAccountsManage,
             InstallationServiceId.PostgreSqlAdminRecovery or InstallationServiceId.MySqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
             InstallationServiceId.PostgreSqlRemoteAccess or InstallationServiceId.MySqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,
-            InstallationServiceId.PostgreSqlMaintenance => HostElevationCapability.DatabaseMaintenance,
+            InstallationServiceId.PostgreSqlMaintenance or InstallationServiceId.MySqlMaintenance => HostElevationCapability.DatabaseMaintenance,
             InstallationServiceId.PostgreSqlBackupAutomation => HostElevationCapability.DatabaseBackupAutomation,
         InstallationServiceId.Git => HostElevationCapability.GitPackageInstall,
         InstallationServiceId.Tailscale => HostElevationCapability.HostNetworkChange,

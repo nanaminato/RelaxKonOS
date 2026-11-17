@@ -3,6 +3,9 @@
   "Strings": {
     "database.mysql_remote_scope": "Allows one exact IPv4 source. Opening and closing restart MySQL. Close access before account maintenance or administrator recovery.",
     "database.mysql_remote_source": "Allowed source IPv4 (one address)",
+    "database.mysql_maintenance_scope": "Close remote access before maintenance. Backups stop MySQL and are verified in a private instance. Repair requires a verified backup and a stopped instance.",
+    "database.mysql_maintenance_compensated": "Verification failed. MySQL resumed on its original packages and data.",
+    "database.mysql_delete_scope": "Type the instance ID to uninstall and permanently delete its data, backups, and saved credentials.",
     "database.mysql_remote_confirm": "Change MySQL remote access? Existing sessions disconnect. Only the instance firewall rules are changed.",
     "database.mysql_admin_recovery_confirm": "Restore operating-system authentication for root@localhost? MySQL will stop. Ordinary startup is blocked during recovery and the instance remains stopped afterward.",
     "database.mysql_accounts_scope": "Accounts use localhost over the private Unix socket and have grants on one database. Update application credentials after rotation.",

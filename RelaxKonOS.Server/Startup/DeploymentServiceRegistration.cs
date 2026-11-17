@@ -24,6 +24,7 @@ internal static class DeploymentServiceRegistration
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlAdminRecoveryInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlRemoteAccessInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlMaintenanceInstallationService>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MySqlMaintenanceInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.PostgreSqlBackupAutomationInstallationService>();
         builder.Services.AddSingleton<RelaxKonOS.Server.Databases.PostgreSqlBackupScheduler>();
         builder.Services.AddHostedService(sp=>sp.GetRequiredService<RelaxKonOS.Server.Databases.PostgreSqlBackupScheduler>());

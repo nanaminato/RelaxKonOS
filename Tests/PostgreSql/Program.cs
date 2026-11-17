@@ -60,6 +60,21 @@ Check(mysqlRemote.Valid && !(mysqlRemote with { SourceAddress = "10.77.0.0/24" }
     && !(mysqlRemote with { ListenAddress = "0.0.0.0" }).Valid
     && !(mysqlRemote with { User = "root" }).Valid, "MySQL TLS plans require exact IPv4 identities and reject root");
 var mysqlUnit = RelaxKonOS.ManagedRuntimes.MySql.MySqlRemotePlan.Unit(mysqlRemote);
+var mysqlBaseline = RelaxKonOS.ManagedRuntimes.MySql.MySqlMaintenancePolicy.Baseline;
+var mysqlTarget = RelaxKonOS.ManagedRuntimes.MySql.MySqlMaintenancePolicy.Target;
+var mysqlOldArtifacts = RelaxKonOS.ManagedRuntimes.MySql.MySqlMaintenancePolicy.Artifacts(mysqlBaseline);
+var mysqlNewArtifacts = RelaxKonOS.ManagedRuntimes.MySql.MySqlMaintenancePolicy.Artifacts(mysqlTarget);
+Check(mysqlOldArtifacts is { Count: 3 } && mysqlNewArtifacts is { Count: 3 }
+    && mysqlOldArtifacts.Select(x => x.Name).SequenceEqual(mysqlNewArtifacts.Select(x => x.Name))
+    && mysqlOldArtifacts.All(x => x.FileName.EndsWith("_8.4.11-1ubuntu24.04_amd64.deb", StringComparison.Ordinal))
+    && mysqlNewArtifacts.All(x => x.FileName.EndsWith("_8.4.13-1ubuntu24.04_amd64.deb", StringComparison.Ordinal))
+    && !mysqlOldArtifacts.Select(x => x.Sha256).Intersect(mysqlNewArtifacts.Select(x => x.Sha256)).Any(),
+    "MySQL maintenance freezes distinct Oracle core artifact sets");
+Check(RelaxKonOS.ManagedRuntimes.MySql.MySqlMaintenancePolicy.CanUpdate(mysqlBaseline, mysqlTarget)
+    && !RelaxKonOS.ManagedRuntimes.MySql.MySqlMaintenancePolicy.CanUpdate(mysqlTarget, mysqlBaseline)
+    && !RelaxKonOS.ManagedRuntimes.MySql.MySqlMaintenancePolicy.CanUpdate(mysqlTarget, mysqlTarget)
+    && RelaxKonOS.ManagedRuntimes.MySql.MySqlMaintenancePolicy.Artifacts("8.4.12") is null,
+    "MySQL maintenance allows only the qualified native patch transition");
 Check(mysqlUnit.Contains("--bind-address=10.77.0.1") && mysqlUnit.Contains("--require-secure-transport=ON")
     && mysqlUnit.Contains("--mysqlx=OFF") && !mysqlUnit.Contains("--skip-networking"),
     "MySQL TLS plan binds only the selected address and retains the X Plugin restriction");

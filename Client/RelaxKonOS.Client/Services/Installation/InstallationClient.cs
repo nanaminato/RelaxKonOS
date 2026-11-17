@@ -102,7 +102,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
             InstallationServiceId.PostgreSqlAccounts or InstallationServiceId.MySqlAccounts => HostElevationCapability.DatabaseAccountsManage,
             InstallationServiceId.PostgreSqlAdminRecovery or InstallationServiceId.MySqlAdminRecovery => HostElevationCapability.DatabaseAdminRecovery,
             InstallationServiceId.PostgreSqlRemoteAccess or InstallationServiceId.MySqlRemoteAccess => HostElevationCapability.DatabaseRemoteAccess,
-            InstallationServiceId.PostgreSqlMaintenance => HostElevationCapability.DatabaseMaintenance,
+            InstallationServiceId.PostgreSqlMaintenance or InstallationServiceId.MySqlMaintenance => HostElevationCapability.DatabaseMaintenance,
             InstallationServiceId.PostgreSqlBackupAutomation => HostElevationCapability.DatabaseBackupAutomation,
             InstallationServiceId.Tailscale => HostElevationCapability.HostNetworkChange,
             InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall, _ => throw new ArgumentOutOfRangeException(nameof(service))

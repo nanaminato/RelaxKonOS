@@ -21,7 +21,7 @@ public sealed partial class MySqlViewModel
     [ObservableProperty] private IReadOnlyList<CertificateDto> remoteCertificateChoices = [];
 
     private bool RemoteReady => !invalid && !Busy && CanManage && submission is null && !Installation.IsActive
-        && AccountInstallation?.IsActive != true && AdministratorInstallation?.IsActive != true
+        && AccountInstallation?.IsActive != true && AdministratorInstallation?.IsActive != true && MaintenanceInstallation?.IsActive != true
         && RemoteInstallation is { IsActive: false } && State is { PendingOperationId: null, InstanceId: not null, Supported: true };
     public bool CanOpenRemote => RemoteReady && State is { RemoteAccess: null, Verified: true };
     public bool CanCloseRemote => RemoteReady && State?.RemoteAccess is not null;

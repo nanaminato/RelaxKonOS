@@ -239,6 +239,8 @@ internal static class DatabaseWorkspaceChecks
             () => Task.CompletedTask, () => Task.FromResult<string?>(null));
         mysql.RemoteInstallation = new(null!, null!, InstallationServiceId.MySqlRemoteAccess, "test",
             () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+        mysql.MaintenanceInstallation = new(null!, null!, InstallationServiceId.MySqlMaintenance, "test",
+            () => Task.CompletedTask, () => Task.FromResult<string?>(null));
         Check(!mysql.CanManageAccounts, "MySQL account controls require verified running instance");
         Check(!mysql.CanOpenRemote, "MySQL remote opening requires a verified instance");
         Check(mysql.CanInstall && !mysql.CanInitialize, "MySQL fresh host exposes installation");
@@ -262,6 +264,20 @@ internal static class DatabaseWorkspaceChecks
         Check(mysql.CanCloseRemote && !mysql.CanOpenRemote && !mysql.CanManageAccounts && !mysql.CanRecoverAdministrator && !mysql.CanStop,
             "MySQL keeps close available on an unverified remote policy and gates other mutations");
         mysql.State = mysql.State with { RemoteAccess = null, Verified = true };
+        var obsoleteBackup = new MySqlBackup(Guid.NewGuid(), "8.4.11", DateTimeOffset.UtcNow);
+        var currentBackup = new MySqlBackup(Guid.NewGuid(), "8.4.13", DateTimeOffset.UtcNow);
+        mysql.State = mysql.State with { Version = "8.4.13", Backups = [obsoleteBackup, currentBackup] };
+        mysql.SelectedBackup = obsoleteBackup;
+        Check(mysql.CanBackup && !mysql.CanUpdate && !mysql.CanRestore, "MySQL current patch offers a backup and rejects old-version restore selection");
+        mysql.SelectedBackup = currentBackup;
+        Check(mysql.CanRestore && !mysql.CanDeleteData, "MySQL eligible backup and independent deletion confirmation gate");
+        mysql.DeleteConfirmation = mysql.State.InstanceId!.Value.ToString("N");
+        Check(mysql.CanDeleteData, "MySQL delete data requires the exact instance identity");
+        mysql.State = mysql.State with { Version = "8.4.11" };
+        Check(mysql.CanUpdate, "MySQL desktop exposes only the qualified cross-patch direction");
+        mysql.State = mysql.State with { Installed = false, Running = false, Verified = false };
+        Check(mysql.CanReinstall && !mysql.CanInstall && !mysql.CanStart, "retained MySQL data offers exact-version reinstall only");
+        mysql.State = mysql.State with { Installed = true, Running = true, Verified = true };
         Check(!mysql.CanRecoverAdministrator, "verified MySQL administrator needs no recovery");
         mysql.State = mysql.State with { Verified = false, ProblemCode = "database.connection_unverified" };
         Check(mysql.CanRecoverAdministrator && !mysql.CanManageAccounts, "lost MySQL administrator has dedicated recovery entry");
