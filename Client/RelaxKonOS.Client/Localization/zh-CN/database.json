@@ -1,9 +1,11 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "database.port_conflict": "端口已被占用或由另一个 PostgreSQL 集群保留。",
+    "database.switch_instance": "切换实例",
     "database.overview": "概览",
     "database.maintenance": "组件与恢复",
-    "database.scope": "PostgreSQL 16 · Ubuntu 24.04 x64 · 单个本机实例",
+    "database.scope": "Ubuntu 24.04 x64 · PostgreSQL 本机实例",
     "database.version": "已安装版本",
     "database.instance": "实例标识",
     "database.port": "端口",

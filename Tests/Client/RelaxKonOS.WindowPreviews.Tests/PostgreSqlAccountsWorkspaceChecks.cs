@@ -67,7 +67,7 @@ internal static class PostgreSqlAccountsWorkspaceChecks
             Databases:[new("sample",100,"rk_owner_sample",200)], Accounts:[new("sample","app_writer",300,PostgreSqlPermission.ReadWrite,Guid.NewGuid(),2,true)]);
         public Task<PostgreSqlState> MigrationPlanAsync(CancellationToken ct)=>ReadAsync(ct);
         public Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct)=>ReadAsync(ct);
-        public Task<PostgreSqlState> ReadAsync(CancellationToken ct)=>Task.FromResult(State);
+        public Task<PostgreSqlState> ReadAsync(CancellationToken ct, Guid? instance = null)=>Task.FromResult(State);
         public Task StageCredentialAsync(PostgreSqlCredentialRequest request,CancellationToken ct)
         { Credentials.Add(request);if(Credentials.Count==1)throw new InstallationApiException("elevation-required",HttpStatusCode.Forbidden);return Task.CompletedTask; }
     }

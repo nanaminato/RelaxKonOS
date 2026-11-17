@@ -1,9 +1,11 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "database.port_conflict": "このポートは使用中か、別の PostgreSQL クラスタが予約しています。",
+    "database.switch_instance": "インスタンスを切り替え",
     "database.overview": "概要",
     "database.maintenance": "コンポーネントと復旧",
-    "database.scope": "PostgreSQL 16 · Ubuntu 24.04 x64 · 単一ローカルインスタンス",
+    "database.scope": "Ubuntu 24.04 x64 · ローカル PostgreSQL インスタンス",
     "database.version": "インストール済みバージョン",
     "database.instance": "インスタンス ID",
     "database.port": "ポート",

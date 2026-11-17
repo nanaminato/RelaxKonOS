@@ -21,7 +21,7 @@ public sealed class PostgreSqlAdminRecoveryInstallationService(IPrivilegedOperat
     }
     protected override async Task ExecuteAsync(InstallationOperationKind kind, PostgreSqlInstallationRequest request, string actor, IInstallationProgress progress, CancellationToken ct)
     {
-        var before = await component.ReadAsync(ct);
+        var before = await component.ReadAsync(ct, request.RecoverOperationId, request.AdminRecovery?.InstanceId);
         if (request.RecoverOperationId is not null && before.PendingOperationId is not null && before.PendingAdminRecovery is null)
             throw new InstallationException("database.admin_recovery_authorization", 403);
         await progress.ReportAsync(new(InstallationStage.Configuring, Cancellable: false), ct);

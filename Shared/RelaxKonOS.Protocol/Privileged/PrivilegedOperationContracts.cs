@@ -462,6 +462,7 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("processExpectedStartTime")] DateTimeOffset? ProcessExpectedStartTime = null,
     [property: JsonPropertyName("postgreSqlSecrets")] RelaxKonOS.Protocol.Databases.PostgreSqlSecrets? PostgreSqlSecrets = null,
     [property: JsonPropertyName("postgreSqlTls")] RelaxKonOS.Protocol.Databases.PostgreSqlTlsMaterial? PostgreSqlTls = null,
+    [property: JsonPropertyName("postgreSqlInstance")] Guid? PostgreSqlInstance = null,
     [property: JsonPropertyName("postgreSql")] RelaxKonOS.Protocol.Databases.PostgreSqlInstallationRequest? PostgreSql = null,
     [property: JsonPropertyName("squidConfiguration")] RelaxKonOS.Protocol.GatewayProxy.ApplySquidConfigurationRequest? SquidConfiguration = null,
     [property: JsonPropertyName("squidServiceAction")] RelaxKonOS.Protocol.GatewayProxy.SquidServiceAction? SquidServiceAction = null,

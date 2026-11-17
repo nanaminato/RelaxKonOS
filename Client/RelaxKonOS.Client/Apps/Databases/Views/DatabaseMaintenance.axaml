@@ -38,7 +38,7 @@
    </ComboBox>
    <Button Content="{loc:Loc database.maintenance_action.DeleteBackup}" Command="{Binding DeleteBackupCommand}" IsEnabled="{Binding CanDeleteBackup}" HorizontalAlignment="Left" />
    <Button Content="{loc:Loc database.maintenance_action.Restore}" Command="{Binding RestoreCommand}" IsEnabled="{Binding CanRestore}" HorizontalAlignment="Left" />
-   <Button Content="{loc:Loc database.maintenance_action.UninstallKeepData}" Command="{Binding KeepDataCommand}" IsEnabled="{Binding CanBackup}" HorizontalAlignment="Left" />
+   <Button Content="{loc:Loc database.maintenance_action.UninstallKeepData}" Command="{Binding KeepDataCommand}" IsEnabled="{Binding CanKeepData}" HorizontalAlignment="Left" />
    <TextBlock Text="{loc:Loc database.delete_confirmation}" TextWrapping="Wrap" />
    <TextBox Text="{Binding DeleteConfirmation}" />
    <Button Content="{loc:Loc database.maintenance_action.UninstallDeleteData}" Command="{Binding DeleteDataCommand}" IsEnabled="{Binding CanDelete}" HorizontalAlignment="Left" />

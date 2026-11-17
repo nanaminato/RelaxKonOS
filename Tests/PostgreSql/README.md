@@ -149,3 +149,16 @@ docker exec relaxkonos-db07b-interrupt python3 /opt/native-major-migration-smoke
 ```
 
 Wait for systemd readiness after restart. The script terminates the actual Helper at `MajorUpgraded`, after native copy completion and before activation; both ordinary services must remain persistently masked with closed IPv4/IPv6 TCP. Context is stored under `/var/lib/relaxkonos`. `--receipt-window` deliberately injects a verified checkpoint before receipt commit and must not be reported as a physical crash. `--post-migration` ends by uninstalling and deleting the owned fixture data, configuration, backups and schedule. `--ca-precondition` temporarily moves and restores only the fixture's CA bundle. Native initialization/copy interrupted before a completion checkpoint remains isolated and is not automatically replayed. Inspect task labels, mounts and port bindings before removing only the named disposable fixtures.
+
+
+## DB-07C two managed instances
+
+Use a fresh Ubuntu 24.04 amd64 systemd fixture named `relaxkonos-db07c` with label `relaxkonos.task=db07c`, no host mounts or published ports. Publish the current test executor and run the DB-02 native baseline above. Set `/etc/relaxkonos-db07c-disposable` to `DB-07C` and copy `native-multi-instance-smoke.py` to `/opt`. The script creates a second instance and exercises account creation and physical restore through the actual Helper.
+
+```powershell
+docker exec relaxkonos-db07c python3 /opt/native-multi-instance-smoke.py /opt/acceptance/RelaxKonOS.PostgreSql.Tests
+docker restart relaxkonos-db07c
+docker exec relaxkonos-db07c python3 /opt/native-multi-instance-smoke.py /opt/acceptance/RelaxKonOS.PostgreSql.Tests --after-restart
+```
+
+Wait for systemd to become ready before the last command. Verify the fixture label, mounts and port bindings before removing the container.

@@ -12,7 +12,7 @@ using RelaxKonOS.Protocol.Privileged;
 
 public static partial class PrivilegedOperationExecutor
 {
-    private const string PgRoot = "/var/lib/relaxkonos/postgresql-control";
+    private const string PgRoot = PostgreSqlInitializationPlanner.ControlRoot;
     private const string PgCreateConfig = "/etc/postgresql-common/createcluster.conf";
     private const string PgSuppression = "# RelaxKonOS pending PostgreSQL installation\ncreate_main_cluster = false\n";
     private static readonly SemaphoreSlim PgGate = new(1, 1);
@@ -21,14 +21,14 @@ public static partial class PrivilegedOperationExecutor
     private sealed record PgReceipt(Guid Id, string Identity);
     private sealed record PgLedger(long Revision, ComponentPackageTarget? Package, string? BinaryHash, string? ServiceHash,
         Guid? Instance, int Port, string? ConfigurationHash, PgPending? Pending, IReadOnlyList<PgReceipt> Receipts,
-        [property: JsonRequired] IReadOnlyList<PostgreSqlDatabase> Databases, [property: JsonRequired] IReadOnlyList<PostgreSqlAccount> Accounts, PostgreSqlRemoteCommand? RemoteAccess = null, bool PackageRemoved = false, IReadOnlyList<PostgreSqlBackup>? Backups = null, bool DataDeleted = false, PostgreSqlBackupSchedule? BackupSchedule=null, IReadOnlyList<PostgreSqlBackup>? BackupDeletions=null);
+        [property: JsonRequired] IReadOnlyList<PostgreSqlDatabase> Databases, [property: JsonRequired] IReadOnlyList<PostgreSqlAccount> Accounts, PostgreSqlRemoteCommand? RemoteAccess = null, bool PackageRemoved = false, IReadOnlyList<PostgreSqlBackup>? Backups = null, bool DataDeleted = false, PostgreSqlBackupSchedule? BackupSchedule=null, IReadOnlyList<PostgreSqlBackup>? BackupDeletions=null, Guid? LedgerInstance=null);
     private sealed record PgCommandResult(int Code, string Output);
     private sealed class PgFailure(string code) : Exception(code);
 
     private static async Task<PrivilegedOperationResult> ExecutePostgreSqlAsync(PrivilegedOperationRequest request)
     {
         if (request != new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
-            Correlation: request.Correlation, PostgreSql: request.PostgreSql, PostgreSqlSecrets: request.PostgreSqlSecrets, PostgreSqlTls: request.PostgreSqlTls))
+            Correlation: request.Correlation, PostgreSql: request.PostgreSql, PostgreSqlSecrets: request.PostgreSqlSecrets, PostgreSqlTls: request.PostgreSqlTls, PostgreSqlInstance: request.PostgreSqlInstance))
             return new(false, 64, Error: "database.request_invalid", ProblemCode: PrivilegedProblemCode.InvalidRequest);
         if (request.Operation is (PrivilegedOperationKind.PostgreSqlQuery or PrivilegedOperationKind.PostgreSqlMaintenancePlan or PrivilegedOperationKind.PostgreSqlBackupScheduleQuery or PrivilegedOperationKind.PostgreSqlMigrationPlan) && (request.PostgreSql is not null || request.PostgreSqlSecrets is not null || request.PostgreSqlTls is not null))
             return new(false, 64, Error: "database.request_invalid", ProblemCode: PrivilegedProblemCode.InvalidRequest);
@@ -46,8 +46,10 @@ public static partial class PrivilegedOperationExecutor
             File.SetUnixFileMode(PgRoot, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             PgNoLinks(PgRoot + "/lock");
             using var gate = new FileStream(PgRoot + "/lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            var ledger = PgRead();
+            var primary = PgRead();
+            var instances = PgReadAdditional();
             var id = request.OperationId!.Value;
+            var ledger = PgSelectLedger(primary, instances, request, id);
             if(request.Operation==PrivilegedOperationKind.PostgreSqlBackupScheduleQuery)
                 return PgReply(new(true,ledger.Package is not null&&!ledger.PackageRemoved,ledger.Package is not null,ledger.Package?.Version,ledger.Revision,ledger.Instance,ledger.Port,false,false,
                     ledger.Pending?.Id,null,null,PendingMaintenance:ledger.Pending?.Request.Maintenance,BackupSchedule:ledger.BackupSchedule));
@@ -56,7 +58,7 @@ public static partial class PrivilegedOperationExecutor
             if (request.Operation == PrivilegedOperationKind.PostgreSqlMaintenancePlan)
                 return PgReply((await PgObserve(ledger,id)) with { Candidate = await PgResolveMaintenance(ledger) });
             if (request.Operation == PrivilegedOperationKind.PostgreSqlQuery)
-                return PgReply(await PgObserve(ledger, id));
+                return PgReply((await PgObserve(ledger, id)) with { Instances = PgInstanceSummaries(primary, instances) });
             if (request.PostgreSql is not { Confirmed: true } options) throw new PgFailure("database.confirmation_required");
             if (request.Operation == PrivilegedOperationKind.PostgreSqlRecover)
             {
@@ -89,6 +91,12 @@ public static partial class PrivilegedOperationExecutor
                 }
                 else
                 {
+                    PgCheckInstanceMutation(primary, instances, ledger, options);
+                    if (ledger.LedgerInstance is not null && instances.Length == 0)
+                    {
+                        await PgVerifyConfiguration(primary);
+                        await PgExclusiveInstance(primary);
+                    }
                     await PgPreflight(ledger, options);
                     if (options.Maintenance is {} maintenance) await PgMaintenancePreflight(ledger, maintenance);
                     if (options.RemoteAccess is { } remote) await PgRemotePreflight(ledger, remote, request.PostgreSqlTls);
@@ -134,15 +142,16 @@ public static partial class PrivilegedOperationExecutor
             if (new FileInfo(p).LinkTarget is not null || new DirectoryInfo(p).LinkTarget is not null)
                 throw new PgFailure("database.path_untrusted");
     }
-    private static PgLedger PgRead()
+    private static PgLedger PgRead(Guid? instance = null)
     {
-        var path = PgRoot + "/state.json";
+        var path = PgLedgerPath(instance);
         PgNoLinks(path);
+        if (!File.Exists(path) && instance is not null) throw new PgFailure("database.state_invalid");
         if (!File.Exists(path)) return new(1, null, null, null, null, 5432, null, null, [], [], []);
         if (new FileInfo(path).Length > 2097152) throw new PgFailure("database.state_invalid");
         LinuxDirectorySync.Flush(PgRoot);
         var value = JsonSerializer.Deserialize<PgLedger>(File.ReadAllBytes(path), PgJson) ?? throw new PgFailure("database.state_invalid");
-        if (value.Databases is null || value.Accounts is null || value.Revision < 1 || value.Receipts is null || value.Receipts.Any(x => x.Id == Guid.Empty || string.IsNullOrEmpty(x.Identity))
+        if (value.LedgerInstance != instance || value.Databases is null || value.Accounts is null || value.Revision < 1 || value.Receipts is null || value.Receipts.Any(x => x.Id == Guid.Empty || string.IsNullOrEmpty(x.Identity))
             || value.Receipts.Select(x => x.Id).Distinct().Count() != value.Receipts.Count
             || value.Port is < 1024 or > 65535 || value.Instance == Guid.Empty
             || value.Instance is not null && value.Package is null
@@ -155,7 +164,7 @@ public static partial class PrivilegedOperationExecutor
     private static void PgWrite(PgLedger value)
     {
         if (value.Receipts.Count > 10000) throw new PgFailure("database.state_capacity");
-        PgAtomic(PgRoot + "/state.json", JsonSerializer.SerializeToUtf8Bytes(value, PgJson));
+        PgAtomic(PgLedgerPath(value.LedgerInstance), JsonSerializer.SerializeToUtf8Bytes(value, PgJson));
     }
     private static void PgAtomic(string path, byte[] value)
     {
@@ -204,6 +213,9 @@ public static partial class PrivilegedOperationExecutor
                 var plan = PostgreSqlInitializationPlanner.Create(command.InstanceId, command.Port, PgMajor(ledger));
                 foreach (var path in new[] { plan.DataDirectory, plan.ConfigurationDirectory, plan.SocketDirectory })
                 { PgNoLinks(path); if (Directory.Exists(path) || File.Exists(path)) throw new PgFailure("database.external_installation"); }
+                var clusters = await PgRun("/usr/bin/pg_lsclusters", ["--no-header"]);
+                if (PostgreSqlInitializationPlanner.CheckClusterPort(clusters.Output, command.Port) is { } problem)
+                    throw new PgFailure(problem);
                 using var ipv4 = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, command.Port);
                 ipv4.Start();
                 using var ipv6 = new System.Net.Sockets.TcpListener(System.Net.IPAddress.IPv6Loopback, command.Port);

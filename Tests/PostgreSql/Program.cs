@@ -79,6 +79,20 @@ Check(nextMajor.ServiceName.StartsWith("postgresql@18-", StringComparison.Ordina
     && nextMajor.DataDirectory == init.DataDirectory && nextMajor.CreateArguments.Contains("18"), "new major preserves instance data identity but changes service and configuration identity");
 try { PostgreSqlInitializationPlanner.Create(instance, 55432, 19); throw new Exception("accepted unsupported major"); }
 catch (ArgumentOutOfRangeException) { checks++; }
+var secondInstance = Guid.Parse("11abdb5e-2aff-4d11-8fc8-2cf21c441233");
+var second = PostgreSqlInitializationPlanner.Create(secondInstance, 55433, 16);
+Check(second.DataDirectory != init.DataDirectory && second.ConfigurationDirectory != init.ConfigurationDirectory
+    && second.SocketDirectory != init.SocketDirectory && second.ServiceName != init.ServiceName,
+    "same-major clusters use distinct data, configuration, socket and service identities");
+Check(PostgreSqlInitializationPlanner.BackupRoot(instance) != PostgreSqlInitializationPlanner.BackupRoot(secondInstance),
+    "backup roots differ even when backup IDs match");
+const string stoppedCluster = "16 external 55432 down postgres /var/lib/postgresql/16/external /var/log/postgresql/pg.log";
+Check(PostgreSqlInitializationPlanner.CheckClusterPort(stoppedCluster, 55432) == "database.port_conflict",
+    "stopped cluster retains its configured port reservation");
+Check(PostgreSqlInitializationPlanner.CheckClusterPort(stoppedCluster, 55433) is null,
+    "distinct configured ports remain eligible for the native bind probe");
+Check(PostgreSqlInitializationPlanner.CheckClusterPort("16 external unknown down", 55433) == "database.inventory_unknown",
+    "unparseable cluster inventory blocks port assignment");
 foreach (var port in new[] { -1, 0, 1023, 65536 })
 {
     try { PostgreSqlInitializationPlanner.Create(instance, port, 16); throw new Exception("accepted invalid port"); }

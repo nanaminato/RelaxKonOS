@@ -27,7 +27,7 @@ public sealed partial class PostgreSqlRemoteViewModel(IRemoteCertificateClient c
     public IEnumerable<PostgreSqlAccount> Accounts => Snapshot?.Accounts?.Where(x=>x.Permission!=PostgreSqlPermission.Migration)??[];
     public bool HasPending => pending is not null;
     private bool Ready => !invalid && !Busy && CanManage && !installation.IsActive && OtherBusy?.Invoke()!=true && pending is null && Snapshot is { Supported:true, Installed:true, InstanceId:not null };
-    public bool CanEnable => Ready && Snapshot is { RemoteAccess:null, PendingOperationId:null, ConnectionVerified:true };
+    public bool CanEnable => (Snapshot?.Instances?.FirstOrDefault()?.Id == Snapshot?.InstanceId || Snapshot?.Instances is null) && Ready && Snapshot is { RemoteAccess:null, PendingOperationId:null, ConnectionVerified:true };
     public bool CanClose => Ready && Snapshot is { RemoteAccess:not null, PendingOperationId:null };
     public bool CanRecover => Ready && Snapshot?.PendingRemoteAccess is not null;
     public bool CanResume => !invalid && !Busy && CanManage && !installation.IsActive && pending is not null;

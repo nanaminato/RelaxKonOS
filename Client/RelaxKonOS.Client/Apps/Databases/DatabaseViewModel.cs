@@ -13,6 +13,43 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
     private readonly CancellationTokenSource lifetime = new();
     private bool invalid;
     private bool reading;
+    private Guid? activeInstance;
+    [ObservableProperty] private PostgreSqlInstanceSummary? selectedInstance;
+    public IReadOnlyList<PostgreSqlInstanceSummary> Instances => Snapshot?.Instances ?? [];
+    public bool CanSwitchInstance => !invalid && !reading && !Busy && !MaintenanceBusy && submission is null
+        && adminSubmission is null && Installation?.IsActive != true && AdminRecoveryInstallation?.IsActive != true
+        && AccountManager?.Busy != true && AccountManager?.HasPendingRequest != true && AccountManager?.Installation.IsActive != true
+        && RemoteManager?.Busy != true && RemoteManager?.HasPending != true && RemoteManager?.Installation.IsActive != true;
+    [RelayCommand] private async Task SwitchInstanceAsync()
+    {
+        if (!CanSwitchInstance || SelectedInstance is not { } selected || selected.Id == Snapshot?.InstanceId) return;
+        activeInstance = selected.Id;
+        Busy = true;
+        try
+        {
+            if (AccountManager is { } accounts)
+            {
+                accounts.NewDatabase = accounts.NewAccount = accounts.Password = accounts.PasswordAgain = "";
+                accounts.SelectedAccount = null;
+                accounts.SelectedDatabase = null;
+            }
+            if (MaintenanceManager is { } maintenance)
+            {
+                maintenance.SelectedBackup = null;
+                maintenance.DeleteConfirmation = "";
+            }
+            if (RemoteManager is { } remote)
+            {
+                remote.ListenAddress = remote.ServerName = remote.Sources = "";
+                remote.SelectedAccount = null;
+                remote.SelectedCertificate = null;
+            }
+            Snapshot = null;
+            await RefreshAsync();
+        }
+        finally { Busy = false; }
+    }
+
     private PostgreSqlInstallationRequest? submission;
     private InstallationOperationKind submissionKind;
     [ObservableProperty] private PostgreSqlState? snapshot;
@@ -39,7 +76,8 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
     public string Instance => Snapshot?.InstanceId?.ToString() ?? "—";
     public string Port => Snapshot?.Port.ToString(System.Globalization.CultureInfo.CurrentCulture) ?? "—";
     private bool Writable => !MaintenanceBusy && RemoteManager?.Busy != true && RemoteManager?.HasPending != true && RemoteManager?.Installation.IsActive != true && adminSubmission is null && AdminRecoveryInstallation?.IsActive != true && AccountManager?.HasPendingRequest != true && AccountManager?.Busy != true && AccountManager?.Installation.IsActive != true && submission is null && !invalid && !Busy && Installation?.IsActive != true && CanManage && Snapshot is { Supported: true, Managed: true, PendingOperationId: null, ProblemCode: null };
-    public bool CanInitialize => Writable && Snapshot?.InstanceId is null;
+    public bool CanInitialize => Writable && Snapshot is { Installed: true, RemoteAccess: null } state
+        && (state.InstanceId is null || state.Instances?.Count == 1);
     public bool CanStart => Writable && Snapshot is { InstanceId: not null, Running: false };
     public bool CanStop => Writable && Snapshot?.Running == true;
     public bool CanVerify => CanStop;
@@ -50,7 +88,7 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
     public void NotifyState()
     {
         foreach (var name in new[] { nameof(StateText), nameof(ConnectionText), nameof(Version), nameof(Instance), nameof(Port),
-            nameof(CanAdminRecovery), nameof(CanResumeAdminRecovery), nameof(CanInitialize), nameof(CanStart), nameof(CanStop), nameof(CanVerify), nameof(CanRecover), nameof(CanResume) }) OnPropertyChanged(name);
+            nameof(Instances), nameof(CanSwitchInstance), nameof(CanAdminRecovery), nameof(CanResumeAdminRecovery), nameof(CanInitialize), nameof(CanStart), nameof(CanStop), nameof(CanVerify), nameof(CanRecover), nameof(CanResume) }) OnPropertyChanged(name);
     }
     public bool CanAdminRecovery => !MaintenanceBusy && RemoteManager?.Busy != true && RemoteManager?.HasPending != true && RemoteManager?.Installation.IsActive != true && Snapshot?.RemoteAccess is null && !invalid && !Busy && CanManage && Installation?.IsActive != true
         && AccountManager?.Busy != true && AccountManager?.Installation.IsActive != true && AccountManager?.HasPendingRequest != true
@@ -90,10 +128,10 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
     {
         if (invalid || reading) return;
         reading = true;
-        try { Snapshot = await client.ReadAsync(lifetime.Token); Notice = Snapshot.ProblemCode is { } code ? LocalizedStatus.Key(code) : LocalizedStatus.Literal(""); }
+        try { Snapshot = await client.ReadAsync(lifetime.Token, activeInstance); Notice = Snapshot.ProblemCode is { } code ? LocalizedStatus.Key(code) : LocalizedStatus.Literal(""); }
         catch (OperationCanceledException) { }
         catch { Snapshot = null; Notice = LocalizedStatus.Key("database.state_unavailable"); }
-        finally { reading = false; }
+        finally { reading = false; NotifyState(); }
     }
     [RelayCommand] private Task InitializeAsync() => SubmitAsync(PostgreSqlAction.Initialize);
     [RelayCommand] private Task StartAsync() => SubmitAsync(PostgreSqlAction.Start);
@@ -111,7 +149,7 @@ public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : Observ
             if (port is null || invalid) return;
             if (ConfirmAsync is null || !await ConfirmAsync(action, before) || invalid) return;
             await SendAsync(InstallationOperationKind.Configure, new PostgreSqlInstallationRequest(true,
-                Command: new(action, before.InstanceId ?? Guid.NewGuid(), before.Revision, port.Value)));
+                Command: new(action, action == PostgreSqlAction.Initialize ? Guid.NewGuid() : before.InstanceId!.Value, before.Revision, port.Value)));
         }
         finally { Busy = false; }
     }

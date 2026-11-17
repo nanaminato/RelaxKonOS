@@ -22,7 +22,7 @@ public class PostgreSqlMaintenanceInstallationService(IPrivilegedOperationTransp
     }
     protected override async Task ExecuteAsync(InstallationOperationKind kind, PostgreSqlInstallationRequest request, string actor, IInstallationProgress progress, CancellationToken ct)
     {
-        var before = await component.ReadAsync(ct);
+        var before = await component.ReadAsync(ct, request.RecoverOperationId, request.Maintenance?.InstanceId);
         if (request.RecoverOperationId is not null && before.PendingOperationId is not null && (before.PendingMaintenance is null||!Accept(before.PendingMaintenance)))
             throw new InstallationException("database.maintenance_authorization", 403);
         // A previous Core process may have stopped after native deletion but before secret cleanup.

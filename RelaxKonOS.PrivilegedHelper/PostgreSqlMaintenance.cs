@@ -9,7 +9,7 @@ using RelaxKonOS.Protocol.Privileged;
 public static partial class PrivilegedOperationExecutor
 {
     private sealed record PgBackupManifest(Guid Instance, string Version, PgLedger Snapshot, Dictionary<string,string> Files, Dictionary<string,string> ConfigurationFiles);
-    private static string PgBackupRoot(PgLedger l) => PgRoot+"/backups/"+l.Instance!.Value.ToString("N");
+    private static string PgBackupRoot(PgLedger l) => PostgreSqlInitializationPlanner.BackupRoot(l.Instance!.Value);
     private static string PgBackupPath(PgLedger l,Guid id) => PgBackupRoot(l)+"/"+id.ToString("N");
     private static async Task<ComponentPackageTarget> PgResolveMaintenance(PgLedger l)
     {
@@ -27,12 +27,19 @@ public static partial class PrivilegedOperationExecutor
         return new(result.Package,result.Version,result.Architecture,result.RepositoryId,result.BaseUri,result.Suite,result.Area,result.PoolUri,result.Sha256,result.Bytes,
             result.Dependencies.Select(x=>new ComponentPackageArtifact(x.FileName,x.Uri,x.Bytes,x.Sha256)).ToArray());
     }
-    private static async Task PgExclusiveInstance(PgLedger l)
+    private static async Task PgExclusiveInstance(PgLedger l, bool allowManagedPeers = false)
     {
         var plan=PostgreSqlInitializationPlanner.Create(l.Instance!.Value, l.Port, PgMajor(l));
+        var ownedConfigurations = new HashSet<string>(StringComparer.Ordinal) { plan.ConfigurationDirectory };
+        if (allowManagedPeers)
+        {
+            foreach (var peer in PgReadAdditional().Prepend(PgRead()))
+                if (peer.Instance is { } id && peer.Package?.PackageName == l.Package?.PackageName && !peer.DataDeleted)
+                    ownedConfigurations.Add(PostgreSqlInitializationPlanner.Create(id, peer.Port, PgMajor(peer)).ConfigurationDirectory);
+        }
         foreach(var directory in new[]{"/etc/postgresql","/var/lib/postgresql"}) PgNoLinks(directory);
         if(Directory.Exists("/etc/postgresql")) foreach(var major in Directory.GetDirectories("/etc/postgresql"))
-            foreach(var cluster in Directory.GetDirectories(major)) if(cluster!=plan.ConfigurationDirectory) throw new PgFailure("database.external_installation");
+            foreach(var cluster in Directory.GetDirectories(major)) if(!ownedConfigurations.Contains(cluster)) throw new PgFailure("database.external_installation");
         if(Directory.Exists("/var/lib/postgresql"))
             foreach(var file in Directory.EnumerateFiles("/var/lib/postgresql","PG_VERSION",SearchOption.AllDirectories))throw new PgFailure("database.external_installation");
         var installed=(await PgRun("/usr/bin/dpkg-query",["-W","-f=${binary:Package}|${db:Status-Status}\n","postgresql*"],allowFailure:true)).Output;
@@ -47,6 +54,9 @@ public static partial class PrivilegedOperationExecutor
             if(Directory.EnumerateFileSystemEntries(plan.DataDirectory+"/pg_tblspc").Any())throw new PgFailure("database.backup_scope_unsupported");
         }
     }
+    private static bool PgIsInstanceBackup(PostgreSqlMaintenanceAction action) =>
+        action is PostgreSqlMaintenanceAction.Backup or PostgreSqlMaintenanceAction.Restore or PostgreSqlMaintenanceAction.ScheduledBackup;
+
     private static async Task PgMaintenancePreflight(PgLedger l,PostgreSqlMaintenanceCommand c)
     {
         if(c.Action==PostgreSqlMaintenanceAction.MigrateMajor){await PgMajorPreflight(l,c);return;}
@@ -54,7 +64,7 @@ public static partial class PrivilegedOperationExecutor
         {await PgBackupPolicyPreflight(l,c);return;}
         if(!PostgreSqlMaintenanceValidation.Valid(c)||l.Instance!=c.InstanceId||l.Revision!=c.ExpectedRevision||l.Package is null||l.RemoteAccess is not null)throw new PgFailure("database.maintenance_invalid");
         if(c.Action==PostgreSqlMaintenanceAction.Reinstall ? !l.PackageRemoved : l.PackageRemoved)throw new PgFailure("database.maintenance_invalid");
-        await PgExclusiveInstance(l);
+        await PgExclusiveInstance(l, PgIsInstanceBackup(c.Action));
         if(!l.PackageRemoved)
         {
             if(c.Action!=PostgreSqlMaintenanceAction.Repair)await PgVerifyPackage(l);
@@ -234,7 +244,7 @@ public static partial class PrivilegedOperationExecutor
             if(l.Pending!.Phase=="Prepared")l=PgPhase(l,"MaintenanceStopped");
             if(l.Pending!.Phase=="MaintenanceStopped")
             {
-                await PgExclusiveInstance(l);
+                await PgExclusiveInstance(l, PgIsInstanceBackup(command.Action));
                 if(!l.PackageRemoved)
                 {
                     if(command.Action!=PostgreSqlMaintenanceAction.Repair)await PgCheckMaintenanceScope(l);

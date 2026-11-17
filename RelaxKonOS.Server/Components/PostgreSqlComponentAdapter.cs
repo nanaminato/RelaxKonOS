@@ -14,9 +14,9 @@ public sealed class PostgreSqlComponentAdapter(IPrivilegedOperationTransport hel
     public IReadOnlyList<ComponentModeSupport> Modes => [new(ComponentSourceMode.SystemPackage, "linux", OperatingSystem.IsLinux(),
         OperatingSystem.IsLinux() ? null : ComponentProblemCodes.PlatformUnsupported, "apt")];
 
-    public async Task<PostgreSqlState> ReadAsync(CancellationToken ct, Guid? operation = null)
+    public async Task<PostgreSqlState> ReadAsync(CancellationToken ct, Guid? operation = null, Guid? instance = null)
     {
-        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.PostgreSqlQuery, OperationId: operation), ct);
+        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.PostgreSqlQuery, OperationId: operation, PostgreSqlInstance: instance), ct);
         return Decode(result);
     }
     internal static PostgreSqlState Decode(PrivilegedOperationResult result)

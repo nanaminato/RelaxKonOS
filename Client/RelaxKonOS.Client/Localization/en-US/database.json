@@ -1,9 +1,11 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "database.port_conflict": "The port is in use or reserved by another PostgreSQL cluster.",
+    "database.switch_instance": "Switch instance",
     "database.overview": "Overview",
     "database.maintenance": "Components and recovery",
-    "database.scope": "PostgreSQL 16 · Ubuntu 24.04 x64 · One local instance",
+    "database.scope": "Ubuntu 24.04 x64 · Local PostgreSQL instances",
     "database.version": "Installed version",
     "database.instance": "Instance ID",
     "database.port": "Port",

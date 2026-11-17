@@ -10,6 +10,28 @@ public sealed record PostgreSqlInitialization(
 
 public static class PostgreSqlInitializationPlanner
 {
+    public const string ControlRoot = "/var/lib/relaxkonos/postgresql-control";
+
+    public static string BackupRoot(Guid instanceId)
+    {
+        if (instanceId == Guid.Empty) throw new ArgumentException("database.instance_invalid", nameof(instanceId));
+        return $"{ControlRoot}/backups/{instanceId:N}";
+    }
+
+    public static string? CheckClusterPort(string inventory, int requestedPort)
+    {
+        foreach (var line in inventory.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var columns = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (columns.Length < 4 || !int.TryParse(columns[2], NumberStyles.None, CultureInfo.InvariantCulture, out var port)
+                || port is < 1 or > 65535)
+                return "database.inventory_unknown";
+            if (port == requestedPort)
+                return "database.port_conflict";
+        }
+        return null;
+    }
+
     /// <summary>
     /// Compiles inputs only; does not create directories or launch programs. The executor must prove
     /// all paths absent, suppress package-created default clusters in its durable transaction,

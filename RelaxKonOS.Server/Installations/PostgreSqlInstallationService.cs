@@ -32,7 +32,7 @@ public sealed class PostgreSqlInstallationService(IPrivilegedOperationTransport 
     protected override async Task ExecuteAsync(InstallationOperationKind kind, PostgreSqlInstallationRequest request, string actor,
         IInstallationProgress progress, CancellationToken ct)
     {
-        if (request.RecoverOperationId is not null && (await component.ReadAsync(ct)) is var pending && (pending.PendingAccount is not null || pending.PendingAdminRecovery is not null || pending.PendingRemoteAccess is not null || pending.PendingMaintenance is not null))
+        if (request.RecoverOperationId is not null && (await component.ReadAsync(ct, request.RecoverOperationId, null)) is var pending && (pending.PendingAccount is not null || pending.PendingAdminRecovery is not null || pending.PendingRemoteAccess is not null || pending.PendingMaintenance is not null))
             throw new InstallationException("database.accounts_authorization_required", 403);
         await progress.ReportAsync(new(kind == InstallationOperationKind.Install ? InstallationStage.Installing : InstallationStage.Configuring, Cancellable: false), ct);
         var operation = request.RecoverOperationId ?? progress.OperationId;
@@ -44,7 +44,10 @@ public sealed class PostgreSqlInstallationService(IPrivilegedOperationTransport 
         catch (ComponentLifecycleException) { throw new InstallationInterruptedException("database.recovery_required"); }
         if (state.PendingOperationId is not null || state.CommittedOperationId != operation)
         {
-            if (state.PendingOperationId is not null || !result.Success) throw new InstallationInterruptedException("database.recovery_required");
+            if (state.PendingOperationId is not null) throw new InstallationInterruptedException("database.recovery_required");
+            if (!result.Success && result.Error is { } code && code.StartsWith("database.", StringComparison.Ordinal))
+                throw new InstallationException(code);
+            if (!result.Success) throw new InstallationInterruptedException("database.recovery_required");
             throw new InstallationException("database.operation_unverified");
         }
         await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: false), CancellationToken.None);

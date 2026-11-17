@@ -196,6 +196,19 @@ internal static class DatabaseWorkspaceChecks
         }
         maintenanceModel.CanManage=false;Check(!maintenanceModel.CanBackup&&!maintenanceModel.CanRecover&&!maintenanceModel.CanConfigureSchedule&&!maintenanceModel.CanRecoverSchedule,"viewer cannot maintain instance or grant automatic backups");
         maintenanceModel.Invalidate();Check(!maintenanceModel.CanResume,"invalidated maintenance session cannot replay");
+        var peer = Guid.NewGuid();
+        var primary = Guid.NewGuid();
+        var selectionClient = new Client();
+        var instanceList = new PostgreSqlInstanceSummary[] { new(primary, 55432), new(peer, 55433) };
+        selectionClient.State = selectionClient.State with { InstanceId = peer, Port = 55433, Instances = instanceList };
+        using var selectionModel = new DatabaseViewModel(selectionClient)
+        {
+            Snapshot = selectionClient.State with { InstanceId = primary, Port = 55432 },
+            SelectedInstance = instanceList[1]
+        };
+        selectionModel.SwitchInstanceCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(selectionClient.LastInstance == peer && selectionModel.Snapshot?.InstanceId == peer && selectionModel.Port == "55433",
+            "instance selection requests and displays the selected cluster");
         model.Invalidate();Check(!model.CanStart && !model.CanRecover,"session invalidation disables stale window");
         Console.WriteLine("Database previews: "+output);
     }
@@ -225,6 +238,11 @@ internal static class DatabaseWorkspaceChecks
         public Task StageCredentialAsync(PostgreSqlCredentialRequest request, CancellationToken ct) => Task.CompletedTask;
         public Task<PostgreSqlState> MigrationPlanAsync(CancellationToken ct)=>ReadAsync(ct);
         public Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct)=>ReadAsync(ct);
-        public Task<PostgreSqlState> ReadAsync(CancellationToken ct)=>Task.FromResult(State);
+        public Guid? LastInstance { get; private set; }
+        public Task<PostgreSqlState> ReadAsync(CancellationToken ct, Guid? instance = null)
+        {
+            LastInstance = instance;
+            return Task.FromResult(State);
+        }
     }
 }

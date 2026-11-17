@@ -24,7 +24,7 @@ internal sealed class PostgreSqlRemoteAccessInstallationService(IPrivilegedOpera
     }
     protected override async Task ExecuteAsync(InstallationOperationKind kind, PostgreSqlInstallationRequest request, string actor, IInstallationProgress progress, CancellationToken ct)
     {
-        var before=await component.ReadAsync(ct);
+        var before=await component.ReadAsync(ct, request.RecoverOperationId, request.RemoteAccess?.InstanceId);
         if(request.RecoverOperationId is not null && before.PendingOperationId is not null && before.PendingRemoteAccess is null) throw new InstallationException("database.remote_authorization",403);
         var command=request.RemoteAccess ?? before.PendingRemoteAccess;
         PostgreSqlTlsMaterial? material=null;

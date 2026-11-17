@@ -6,11 +6,11 @@ using RelaxKonOS.Protocol.Databases;
 
 namespace RelaxKonOS.Client.Apps.Databases;
 
-public interface IPostgreSqlClient { Task<PostgreSqlState> ReadAsync(CancellationToken ct); Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct); Task<PostgreSqlState> MigrationPlanAsync(CancellationToken ct); Task StageCredentialAsync(PostgreSqlCredentialRequest request, CancellationToken ct); }
+public interface IPostgreSqlClient { Task<PostgreSqlState> ReadAsync(CancellationToken ct, Guid? instance = null); Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct); Task<PostgreSqlState> MigrationPlanAsync(CancellationToken ct); Task StageCredentialAsync(PostgreSqlCredentialRequest request, CancellationToken ct); }
 public sealed class PostgreSqlClient(HttpClient http, IAuthSession session) : IPostgreSqlClient
 {
     private readonly object? login = session.CurrentSession;
-    public Task<PostgreSqlState> ReadAsync(CancellationToken ct) => ReadStateAsync(PostgreSqlRoutes.State,ct);
+    public Task<PostgreSqlState> ReadAsync(CancellationToken ct, Guid? instance = null) => ReadStateAsync(instance is { } id ? PostgreSqlRoutes.State + "?instance=" + id.ToString("D") : PostgreSqlRoutes.State,ct);
     public Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct) => ReadStateAsync(PostgreSqlRoutes.MaintenancePlan,ct);
     public Task<PostgreSqlState> MigrationPlanAsync(CancellationToken ct) => ReadStateAsync(PostgreSqlRoutes.MigrationPlan,ct);
     private async Task<PostgreSqlState> ReadStateAsync(string route,CancellationToken ct)

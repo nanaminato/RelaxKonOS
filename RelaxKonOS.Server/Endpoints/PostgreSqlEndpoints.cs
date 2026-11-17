@@ -7,9 +7,9 @@ public static class PostgreSqlEndpoints
 {
     public static IEndpointRouteBuilder MapPostgreSqlEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(PostgreSqlRoutes.State, async (PostgreSqlComponentAdapter component, RelaxKonOS.Server.Databases.PostgreSqlBackupScheduler scheduler, CancellationToken ct) =>
+        app.MapGet(PostgreSqlRoutes.State, async (PostgreSqlComponentAdapter component, RelaxKonOS.Server.Databases.PostgreSqlBackupScheduler scheduler, Guid? instance, CancellationToken ct) =>
         {
-            try { var state=await component.ReadAsync(ct); return Results.Ok(state with {ScheduledOperation=scheduler.Observe(state)}); }
+            try { var state=await component.ReadAsync(ct, instance: instance); return Results.Ok(state with {ScheduledOperation=scheduler.Observe(state)}); }
             catch (ComponentLifecycleException ex) { return Results.Problem(statusCode: 503, extensions: new Dictionary<string, object?> { ["code"] = ex.ProblemCode }); }
         }).RequireAuthorization(RuntimeCatalogEndpoints.ReadPolicy);
         app.MapGet(PostgreSqlRoutes.MaintenancePlan, async (RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport helper, CancellationToken ct) =>

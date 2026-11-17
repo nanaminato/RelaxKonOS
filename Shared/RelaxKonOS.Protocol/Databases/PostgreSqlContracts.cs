@@ -10,13 +10,16 @@ public enum PostgreSqlAction { Initialize, Start, Stop, Verify }
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record PostgreSqlCommand(PostgreSqlAction Action, Guid InstanceId, long ExpectedRevision, int Port = 5432);
 
+public sealed record PostgreSqlInstanceSummary(Guid Id, int Port);
+
 public sealed record PostgreSqlState(bool Supported, bool Installed, bool Managed, string? Version,
     long Revision, Guid? InstanceId, int Port, bool Running, bool ConnectionVerified,
     Guid? PendingOperationId, Guid? CommittedOperationId, string? ProblemCode,
     ComponentPackageTarget? Candidate = null, IReadOnlyList<PostgreSqlDatabase>? Databases = null,
     IReadOnlyList<PostgreSqlAccount>? Accounts = null, PostgreSqlAccountCommand? PendingAccount = null,
     PostgreSqlAdminRecoveryCommand? PendingAdminRecovery = null, PostgreSqlRemoteCommand? RemoteAccess = null, PostgreSqlRemoteCommand? PendingRemoteAccess = null, PostgreSqlMaintenanceCommand? PendingMaintenance = null,
-    IReadOnlyList<PostgreSqlBackup>? Backups = null, bool PackageRemoved = false, bool DataDeleted = false, PostgreSqlBackupSchedule? BackupSchedule = null, RelaxKonOS.Protocol.Installations.InstallationOperationDto? ScheduledOperation = null);
+    IReadOnlyList<PostgreSqlBackup>? Backups = null, bool PackageRemoved = false, bool DataDeleted = false, PostgreSqlBackupSchedule? BackupSchedule = null, RelaxKonOS.Protocol.Installations.InstallationOperationDto? ScheduledOperation = null,
+    IReadOnlyList<PostgreSqlInstanceSummary>? Instances = null);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record PostgreSqlInstallationRequest(bool Confirmed,

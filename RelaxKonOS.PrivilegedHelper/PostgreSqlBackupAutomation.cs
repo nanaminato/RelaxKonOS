@@ -82,7 +82,7 @@ public static partial class PrivilegedOperationExecutor
                 if((l.Backups?.Count??0)>=8)return PgScheduleFinished(l,"database.backup_capacity");
                 await PgVerifyPackage(l);await PgVerifyConfiguration(l,allowAdminMask:true);
                 if(running)await PgVerifyConnection(l);
-                await PgExclusiveInstance(l);
+                await PgExclusiveInstance(l, allowManagedPeers: true);
                 l=l with {Pending=l.Pending with {RestartAfterBackup=l.Pending!.RestartAfterBackup||running}};PgWrite(l);
             }
             catch(PgFailure e)

@@ -23,7 +23,7 @@ public sealed class PostgreSqlAccountsInstallationService(IPrivilegedOperationTr
     }
     protected override async Task ExecuteAsync(InstallationOperationKind kind, PostgreSqlInstallationRequest request, string actor, IInstallationProgress progress, CancellationToken ct)
     {
-        var before = await component.ReadAsync(ct);
+        var before = await component.ReadAsync(ct, request.RecoverOperationId, request.AccountCommand?.InstanceId);
         if (request.RecoverOperationId is not null && before.PendingOperationId is not null && before.PendingAccount is null)
             throw new InstallationException("database.accounts_authorization_required", 403);
         var command = request.AccountCommand ?? before.PendingAccount;
