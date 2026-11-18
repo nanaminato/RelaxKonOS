@@ -191,5 +191,18 @@ Helper 从宿主 `os-release`、进程架构和 systemd 判定准入。按平台
 
 隔离 systemd 验收使用 Ubuntu 官方 `18.6-0ubuntu0.26.04.1` 和 Debian 官方 `17.12-0+deb13u1`。两套均通过签名安装计划、安装回执、默认集群抑制、实例初始化、认证、启停和同版本修复，修复后读回原数据。Debian 标准镜像首次下载失败后，以原操作 ID 和原冻结计划重试并完成验证。Debian slim 镜像裁剪包文件，dpkg 完整性检查拒绝提交。数据库桌面专项、组件安装入口专项及 PostgreSQL 服务端专项均通过。
 
+2026-11-18 对提交 `b3dcc4ef` 复验，结果如下。
+
+| 测试 | 结果 |
+| --- | --- |
+| PostgreSQL 本地专项 | 60 项通过 |
+| 服务端 `--postgresql-only` | 通过 |
+| 桌面端 `--database-only` | 通过 |
+| 桌面端 `--component-installs-only` | 37 项通过 |
+| Ubuntu 26.04 amd64 / PostgreSQL 18 原生 Helper 冒烟 | 38 项通过 |
+| Debian 13 amd64 / PostgreSQL 17 原生 Helper 冒烟 | 38 项通过 |
+
+两套新建的隔离 systemd 容器均验证了状态查询不刷新 APT、显式计划解析签名软件包、安装回执、原生认证、启停及重启后数据保留。同版本修复提交了操作回执，完成后实例处于停止状态且备份已验证，重新启动后成功读回原数据。
+
 验收入口见 [PostgreSQL 测试说明](../../Tests/PostgreSql/README.md#db-07d-native-platforms)。两套组合的真实主机部署、跨补丁数据更新与完整远程访问验收待补。
 
