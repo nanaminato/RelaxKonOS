@@ -45,8 +45,8 @@ internal static class TerminalResidencyChecks
             await UntilAsync(() => pty.Stops == 1);
             Check(!close.IsCompleted && f.Active == 1, "Close cannot detach an unfinished typed output send after PTY cleanup");
             using var budget = new CancellationTokenSource(); var stop = f.Manager.StopAsync(budget.Token); budget.Cancel();
-            try { await stop; } catch (OperationCanceledException) { }
-            Check(!close.IsCompleted && f.Active == 1, "Host stop timeout preserves the real output task and session lease");
+            await stop.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(!close.IsCompleted && f.Active == 1, "Host stop timeout returns normally and preserves the real output task and session lease");
             pending.TrySetResult(); await close.WaitAsync(TimeSpan.FromSeconds(5));
             await f.Manager.StopAsync(default);
             Check(f.Active == 0 && f.Client.Sends == 1, "Actual output completion precedes zero work without replaying overflowed live output");

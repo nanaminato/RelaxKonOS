@@ -20,7 +20,7 @@ internal static class TerminalAdministratorAuthorizationChecks
         var factory = new PassiveFactory();
         var context = provider.GetRequiredService<IHubContext<TerminalHub, ITerminalHubClient>>();
         var leases = new TerminalTestLeases();
-        var manager = new TerminalSessionManager(factory, context, null!, provider.GetRequiredService<IServiceScopeFactory>(), leases);
+        var manager = new TerminalSessionManager(factory, context, null!, provider.GetRequiredService<IServiceScopeFactory>(), leases, Microsoft.Extensions.Logging.Abstractions.NullLogger<TerminalSessionManager>.Instance);
         var privileges = new TestHostAccountPrivilegeService { Level = HostAccountPrivilege.StandardUser };
         var caller = new Caller();
         var hub = new TerminalHub(manager, privileges) { Context = caller };

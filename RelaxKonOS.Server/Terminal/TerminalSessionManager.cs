@@ -25,17 +25,20 @@ public sealed class TerminalSessionManager : IHostedService, IDisposable
     private readonly IHubContext<TerminalHub, ITerminalHubClient> _hub;
     private readonly Settings.WorkspaceEnvironmentService _environment;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<TerminalSessionManager> _logger;
 
     public TerminalSessionManager(
         IPtyFactory ptyFactory,
         IHubContext<TerminalHub, ITerminalHubClient> hub,
-        Settings.WorkspaceEnvironmentService environment, IServiceScopeFactory scopeFactory, IResidentModuleWorkLeaseSource leases)
+        Settings.WorkspaceEnvironmentService environment, IServiceScopeFactory scopeFactory, IResidentModuleWorkLeaseSource leases,
+        ILogger<TerminalSessionManager> logger)
     {
         _ptyFactory = ptyFactory;
         _hub = hub;
         _environment = environment;
         _scopeFactory = scopeFactory;
         _leases = leases;
+        _logger = logger;
     }
 
     /// <summary>
@@ -146,11 +149,18 @@ public sealed class TerminalSessionManager : IHostedService, IDisposable
     public async Task StopAsync(CancellationToken ct)
     {
         _stopping = true;
-        await _creation.WaitAsync(ct);
-        Task[] close;
-        try { close = _sessions.Values.Select(session => session.CloseAsync()).ToArray(); }
-        finally { _creation.Release(); }
-        await Task.WhenAll(close).WaitAsync(ct);
+        try
+        {
+            await _creation.WaitAsync(ct);
+            Task[] close;
+            try { close = _sessions.Values.Select(session => session.CloseAsync()).ToArray(); }
+            finally { _creation.Release(); }
+            await Task.WhenAll(close).WaitAsync(ct);
+        }
+        catch (OperationCanceledException error) when (ct.IsCancellationRequested && error.CancellationToken == ct)
+        {
+            _logger.LogWarning("Server shutdown was canceled before terminal session cleanup could be confirmed.");
+        }
     }
     public void Dispose()
     {

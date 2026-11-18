@@ -33,7 +33,7 @@ internal static class WorkspaceTerminalChecks
         serviceCollection.AddScoped<IWorkspaceRepository>(_ => workspaces);
         using var services = serviceCollection.BuildServiceProvider();
         var factory = new CapturingFactory();
-        var manager = new TerminalSessionManager(factory, services.GetRequiredService<IHubContext<TerminalHub, ITerminalHubClient>>(), environment, services.GetRequiredService<IServiceScopeFactory>(), new TerminalTestLeases());
+        var manager = new TerminalSessionManager(factory, services.GetRequiredService<IHubContext<TerminalHub, ITerminalHubClient>>(), environment, services.GetRequiredService<IServiceScopeFactory>(), new TerminalTestLeases(), Microsoft.Extensions.Logging.Abstractions.NullLogger<TerminalSessionManager>.Instance);
         var request = new StartTerminalRequest(80, 24, 0, 0, null, null);
         var first = await manager.GetOrCreateAsync(workspace.UserId.ToString("D"), null, request);
         Check(first.Created && factory.Last!.WorkspaceEnvironment!.Values.Single().Value == "first", "New terminals read Workspace overrides.");

@@ -423,9 +423,15 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
     {
         BeginStop();
         await base.StopAsync(cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
         if (ExecuteTask is { } execution)
-            try { await execution; } catch (OperationCanceledException) when (_stopping) { }
+        {
+            try { await execution.WaitAsync(cancellationToken); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning("Server shutdown was canceled before ModuleHost cleanup could be confirmed.");
+            }
+            catch (OperationCanceledException) when (_stopping) { }
+        }
     }
 
     private void BeginStop()
