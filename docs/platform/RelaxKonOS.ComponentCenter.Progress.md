@@ -1,5 +1,13 @@
 # 组件中心实施进度
 
+## Nginx 下载代理通配符修复（2026-11-18，MR-04 / CC-05）
+
+本机 Nginx 安装操作 `b807b16a-f4ac-4067-8c8c-12fee31115bf` 于 23:12:35 进入 Downloading 后约 6 ms 失败。只读读取原代理排除列表、执行原 `WebProxy.BypassList` 赋值，复现 `RegexParseException / QuantifierAfterNothing`：此前已接受的 `NO_PROXY` 通配符被直接当作正则表达式。并非本次管理员验证拒绝，也未进入 Nginx 原生安装。
+
+Core 下载客户端改为按主机/域名、通配符、IP/CIDR 与可选端口匹配排除项，HTTP/HTTPS 各用对应代理，认证通过 `ICredentials` 传递。原配置、来源及直连/代理选择保持，失败不自动直连。Nginx 安装执行异常写入既有脱敏运行日志并绑定原 operationId，领域回执不写原始异常或凭据。通配符/边界/端口/认证及真实 HTTP 代理、排除、作用域、停止监听回归通过。
+
+本机已按现有 upgrade 流程部署 `0.3.0-local.nginxproxy`，上一版本为 `0.3.0-local.ps7tls`；原 installationId、配置与数据保留，健康检查通过，Server/Helper/Guardian 均 Running。完整部署原因是修复涉及 Core 出站工厂及共享事件定义，不能仅替换 WebServer 模块；原版本目录未覆盖。用户选择暂不安装，故此次未记录 Nginx 实际下载安装/启动成功，不构成跨版本运行时验收。扩大执行 `--components-only` 时在 `ComponentCatalogChecks` 的 `all existing components ship as manifests` 断言失败，未记录为组件全量回归通过。
+
 ## 本地信任锁不可访问时的打开保护（2026-11-18，CC-05）
 
 `ComponentCatalogSourceStore` 的目录创建、路径检查和独占 `trust.lock` 获取纳入既有恢复门禁；访问拒绝或锁占用不再从 DI 初始化逃逸并使整个桌面客户端退出。失败实例释放已取得的锁，禁止远程来源读取、授权及信任变更，不删除或重建原信任历史。组件中心继续显示内置组件，发布源页显示目录权限/锁占用恢复提示并禁止审阅确认。

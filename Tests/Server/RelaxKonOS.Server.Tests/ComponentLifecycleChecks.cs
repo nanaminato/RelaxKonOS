@@ -131,7 +131,7 @@ internal static class ComponentLifecycleChecks
             == RelaxKonOS.Protocol.Installations.InstallationOperationState.Interrupted,
             "Interrupted package status persists across a second ledger reload.");
         var service = new RelaxKonOS.Server.Installations.NginxInstallationService(null!, null!,
-            new ComponentLifecycleRegistry([new ProbeAdapter(ComponentIds.Nginx)]), new RecoveryQueryTransport());
+            new ComponentLifecycleRegistry([new ProbeAdapter(ComponentIds.Nginx)]), new RecoveryQueryTransport(), null!, null!);
         var state = NginxPackagePlan.BuildState(new("nginx", null, Candidate()), false, "host", "amd64");
         var request = new ComponentPlanRequest("nginx", "host", RuntimeChange.Install, state.Revision,
             ComponentSourceMode.SystemPackage, null, 0, 0, null, null, true, "frozen-key");

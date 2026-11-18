@@ -1,5 +1,7 @@
 # RelaxKonOS DockerManager 设计
 
+2026-11-18：主机出站下载的 `NO_PROXY` 不再直接传给 .NET 正则式 `WebProxy.BypassList`。下载工厂按域名、通配符、IP/CIDR 和端口匹配排除项，HTTP/HTTPS 分别选择已配置代理，凭据通过 `ICredentials` 交付；不改变 Docker 引擎或构建层的原环境变量格式。真实 HTTP 代理、排除与失效拒绝回归通过。此修复由 Nginx 官方归档下载初始化失败触发，实机部署及验收边界见[组件中心进度](../platform/RelaxKonOS.ComponentCenter.Progress.md#nginx-下载代理通配符修复2026-11-18mr-04--cc-05)。
+
 > MB-05A（2026-11-04）：Compose 栈协调器已采用同一驻留协调器的 resident 工作 owner。异步准入在持久 queued 之前取得真实租约，任务先登记再启动，覆盖 Compose、观察和终态持久化；Stop 关闭准入并等待真实 Task，等待超时不清除保护。未知终态写入失败隔离该代 owner 并阻止新副作用，不自动重放 Compose。Core Engine/安装/代理端口和外部容器不随管理生命周期停止。此阶段不是动态休眠、程序集卸载或生产内存收益验收，真实 Engine 的部署/观察/修复/幂等/卷生命周期和工作排空已验收，重启与故障联合矩阵仍开放；整体进展由[模块边界设计](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)拥有。
 
 > 内置 Docker 管理器。它管理 **RelaxKonOS.Server 所在宿主机** 的本地 Docker Engine；客户端只负责本地 UI 渲染，不直连 Docker socket、不保存 Docker 凭据，也不将守护进程 API 暴露到网络。

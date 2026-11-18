@@ -2,6 +2,25 @@ internal static class ManagedOutboundProxyChecks
 {
     internal static async Task RunAsync(string root)
     {
+        var configured = new DockerProxyResolution(true, DockerProxySource.Custom,
+            "http://http-user:http-secret@127.0.0.1:8101", "http://https-user:https-secret@127.0.0.1:8102",
+            "*.internal.test,.example.test,10.0.0.0/8,[::1],localhost:8080", false, false, true, true, "", false, "");
+        var rules = new OutboundDownloadProxy(configured);
+        foreach (var address in new[] { "https://a.internal.test", "https://example.test", "https://a.example.test",
+            "http://10.1.2.3", "http://[::1]", "http://localhost:8080" })
+            TestAssert.Assert(rules.IsBypassed(new Uri(address)), "Saved NO_PROXY wildcard/domain/CIDR/IP/port token was not honored.");
+        foreach (var address in new[] { "https://internal.test.evil", "https://notexample.test", "http://11.1.2.3", "http://localhost:8081" })
+            TestAssert.Assert(!rules.IsBypassed(new Uri(address)), "NO_PROXY rule bypassed an unrelated host or port.");
+        TestAssert.Assert(rules.GetProxy(new("http://nginx.org"))?.Port == 8101
+            && rules.GetProxy(new("https://nginx.org"))?.Port == 8102,
+            "HTTP and HTTPS downloads must use their separately configured proxy endpoints.");
+        var httpsProxy = rules.GetProxy(new Uri("https://nginx.org"))!;
+        TestAssert.Assert(httpsProxy.UserInfo.Length == 0
+            && rules.Credentials!.GetCredential(httpsProxy, "Basic") is { UserName: "https-user", Password: "https-secret" },
+            "Proxy credentials must be supplied through ICredentials, not embedded in the forwarded address.");
+        TestAssert.Assert(new OutboundDownloadProxy(configured with { NoProxy = "*" }).IsBypassed(new("https://nginx.org")),
+            "An explicit all-host bypass must be accepted without regex parsing.");
+        Console.WriteLine("NO_PROXY wildcard/domain/CIDR/IP/port and per-scheme credential checks passed.");
         await DockerChecks.VerifyDockerProxyAsync(root);
         await using var origin = new LocalHttpResponder("origin");
         await using var first = new LocalHttpResponder("proxy-one");

@@ -12,7 +12,8 @@ using RelaxKonOS.Server.WebServer;
 namespace RelaxKonOS.Server.Installations;
 
 internal sealed class NginxInstallationService(NginxWebServerManager manager, InstallationFileReferenceStore references, ComponentLifecycleRegistry components,
-    RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport helper) : InstallationService<NginxInstallationRequest>
+    RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport helper,
+    RelaxKonOS.Server.Observability.IEventLogger events, RelaxKonOS.Server.Observability.IObservabilitySanitizer sanitizer) : InstallationService<NginxInstallationRequest>
 {
     public override InstallationServiceId Id => InstallationServiceId.Nginx;
     protected override bool Confirmed(NginxInstallationRequest request) => request.Confirmed;
@@ -40,6 +41,23 @@ internal sealed class NginxInstallationService(NginxWebServerManager manager, In
         ComponentPackageInstallations.Validate(ComponentIds.Nginx, kind, frozen, key);
     }
     protected override async Task ExecuteAsync(InstallationOperationKind kind, NginxInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
+    {
+        try { await ExecuteCoreAsync(kind, options, actor, progress, ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception error)
+        {
+            var diagnostic = sanitizer.SanitizeException(error);
+            events.Write(new(RelaxKonOS.Protocol.Observability.ObservabilityEventCatalog.InstallationFailed,
+                RelaxKonOS.Protocol.Observability.ObservabilitySeverity.Error,
+                RelaxKonOS.Protocol.Observability.ObservabilityOutcome.Failed, "server",
+                "Nginx installation failed: " + diagnostic.Summary,
+                error is InstallationException known ? known.ProblemCode : InstallationProblemCodes.Failed,
+                OperationId: progress.OperationId, Exception: diagnostic));
+            throw;
+        }
+    }
+
+    private async Task ExecuteCoreAsync(InstallationOperationKind kind, NginxInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
     {
         if (options.Recovery is { } maintenance)
         {

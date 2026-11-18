@@ -26,6 +26,7 @@ public static class ObservabilityEventCatalog
     public static readonly Definition TrustValidationFailed = new(1602, "trust.validation_failed");
     public static readonly Definition StorageMigrationFailed = new(1700, "storage.migration.failed");
     public static readonly Definition OperationRecoveryStarted = new(1701, "operation.recovery.started");
+    public static readonly Definition InstallationFailed = new(1702, "installation.failed");
     public static readonly Definition GuardianProbeFailed = new(1800, "guardian.probe.failed");
     public static readonly Definition GuardianRestartCompleted = new(1801, "guardian.restart.completed");
     public static readonly Definition SinkDegraded = new(1900, "observability.sink.degraded");
@@ -37,7 +38,7 @@ public static class ObservabilityEventCatalog
         RequestStarted, RequestCompleted, RequestUnhandledException, LoginSucceeded, LoginDenied, TokenRejected,
         AuthorizationDenied, ElevationGranted, PrivilegedRequestAccepted, PrivilegedTransportRejected,
         PrivilegedRequestCompleted, ConfigurationChanged, ServiceRestart, CertificateDeployed, DependencyUnavailable,
-        InputRejected, TrustValidationFailed, StorageMigrationFailed, OperationRecoveryStarted, GuardianProbeFailed,
+        InputRejected, TrustValidationFailed, StorageMigrationFailed, OperationRecoveryStarted, InstallationFailed, GuardianProbeFailed,
         GuardianRestartCompleted, SinkDegraded, AuditWriteFailed, StorageVerified
     ];
 

@@ -37,11 +37,7 @@ public sealed class OutboundProxyHttpClientFactory(IDockerProxyResolver resolver
         var handler = new HttpClientHandler { UseProxy = enabled, AllowAutoRedirect = false };
         if (enabled)
         {
-            handler.Proxy = new WebProxy(resolution.HttpProxy)
-            {
-                BypassProxyOnLocal = false,
-                BypassList = resolution.NoProxy.Split([';', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
-            };
+            handler.Proxy = new OutboundDownloadProxy(resolution);
         }
         return new HttpClient(handler, disposeHandler: true) { Timeout = timeout };
     }
