@@ -144,7 +144,7 @@ function Get-ExistingInstallationState {
 function Test-LoopbackHealth([string] $Mode, $State) {
     $listenUrl = Get-StateField $State 'listenUrl'
     if (-not $listenUrl) { $listenUrl = Get-DefaultListenUrl $Mode }
-    if (-not ('RelaxKonOSDeploymentHealthProbe' -as [type])) {
+    if ($PSVersionTable.PSEdition -eq 'Desktop' -and -not ('RelaxKonOSDeploymentHealthProbe' -as [type])) {
         Add-Type -TypeDefinition @"
 using System;
 using System.Net;
@@ -167,7 +167,13 @@ public static class RelaxKonOSDeploymentHealthProbe {
     $endpoint = [UriBuilder]::new($listenUrl)
     $endpoint.Host = '127.0.0.1'
     $endpoint.Path = '/healthz'
-    return [RelaxKonOSDeploymentHealthProbe]::Check($endpoint.Uri.AbsoluteUri)
+    if ($PSVersionTable.PSEdition -eq 'Desktop') {
+        return [RelaxKonOSDeploymentHealthProbe]::Check($endpoint.Uri.AbsoluteUri)
+    }
+    try {
+        $response = Invoke-WebRequest -Uri $endpoint.Uri -NoProxy -SkipCertificateCheck -MaximumRedirection 0 -TimeoutSec 5 -ErrorAction Stop
+        return $response.StatusCode -eq 200
+    } catch { return $false }
 }
 
 function Test-LoopbackPortOpen([int] $Port) {

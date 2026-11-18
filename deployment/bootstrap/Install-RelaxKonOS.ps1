@@ -290,7 +290,7 @@ function Stop-RelaxKonOSServices {
 }
 
 function Test-LoopbackHealth([string] $ListenUrl) {
-    if (-not ('RelaxKonOSDeploymentHealthProbe' -as [type])) {
+    if ($PSVersionTable.PSEdition -eq 'Desktop' -and -not ('RelaxKonOSDeploymentHealthProbe' -as [type])) {
         Add-Type -TypeDefinition @"
 using System;
 using System.Net;
@@ -315,7 +315,15 @@ public static class RelaxKonOSDeploymentHealthProbe {
     $endpoint.Path = '/healthz'
     $clock = [Diagnostics.Stopwatch]::StartNew()
     do {
-        if ([RelaxKonOSDeploymentHealthProbe]::Check($endpoint.Uri.AbsoluteUri)) {
+        $healthy = if ($PSVersionTable.PSEdition -eq 'Desktop') {
+            [RelaxKonOSDeploymentHealthProbe]::Check($endpoint.Uri.AbsoluteUri)
+        } else {
+            try {
+                $response = Invoke-WebRequest -Uri $endpoint.Uri -NoProxy -SkipCertificateCheck -MaximumRedirection 0 -TimeoutSec 5 -ErrorAction Stop
+                $response.StatusCode -eq 200
+            } catch { $false }
+        }
+        if ($healthy) {
             try {
                 . (Get-InstalledEnginePath 'deployment\windows\RelaxKonOSDeploymentVerification.ps1')
                 Assert-WindowsDeploymentPayload (Get-VersionRoot $targetVersion) $Mode $DataRoot $GuardianSelected
