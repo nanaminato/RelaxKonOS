@@ -35,7 +35,7 @@ internal static class TailscaleLifecycleClientChecks
             return new(HttpStatusCode.ServiceUnavailable) { Content = JsonContent.Create(new { code = "offline" }) };
         }));
         using var task = new InstallationTaskViewModel(new InstallationClient(http, session), settings, InstallationServiceId.Tailscale,
-            "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+            "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false));
         model.AttachPackageInstallation("tailscale", task);
         model.SelectedNode = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "tailscale");
         await model.RefreshPackageInstallationAsync("tailscale");

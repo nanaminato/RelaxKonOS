@@ -16,7 +16,7 @@ public sealed class ComponentCatalogSourceStore : IDisposable
         Dictionary<string, Saved> Sources, Dictionary<string, string> VersionIdentities);
     private const int StateLimit = 32 * 1024 * 1024;
     private readonly string _root, _owner, _path, _marker;
-    private readonly FileStream _fileLock;
+    private readonly FileStream? _fileLock;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly IComponentCatalogTransport _transport;
     private readonly TimeProvider _clock;
@@ -33,14 +33,14 @@ public sealed class ComponentCatalogSourceStore : IDisposable
         _path = Path.Combine(_root, "trust-state.json"); _marker = _root + ".initialized";
         _transport = transport ?? new ComponentCatalogHttpsTransport(); _clock = clock ?? TimeProvider.System;
         if (string.IsNullOrWhiteSpace(owner) || owner.Length > 256 || owner.Any(char.IsControl)) throw RemoteCatalogRules.Error("owner_invalid");
-        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(_root);
-        else Directory.CreateDirectory(_root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        CheckPath(_root);
-        var lockPath = Path.Combine(_root, "trust.lock");
-        if (File.Exists(lockPath)) CheckPath(lockPath);
-        _fileLock = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         try
         {
+            if (OperatingSystem.IsWindows()) Directory.CreateDirectory(_root);
+            else Directory.CreateDirectory(_root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            CheckPath(_root);
+            var lockPath = Path.Combine(_root, "trust.lock");
+            if (File.Exists(lockPath)) CheckPath(lockPath);
+            _fileLock = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             var hasState = File.Exists(_path); var hasMarker = File.Exists(_marker);
             if (!hasState && !hasMarker)
                 _state = new(1, owner, Guid.NewGuid().ToString("N"), 0, new(StringComparer.Ordinal), new(StringComparer.Ordinal));
@@ -52,13 +52,15 @@ public sealed class ComponentCatalogSourceStore : IDisposable
                 ValidateState();
             }
         }
-        catch (Exception error) when (error is IOException or InvalidDataException or RuntimePolicyException or FormatException or JsonException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or RuntimePolicyException or FormatException or JsonException)
         {
             // Do not reset trust. Remote operations remain blocked, while bundled/local installation still works.
+            _fileLock?.Dispose();
+            _fileLock = null;
             RecoveryProblem = "component.catalog_recovery_required";
             _state = new(1, owner, Guid.NewGuid().ToString("N"), 0, new(StringComparer.Ordinal), new(StringComparer.Ordinal));
         }
-        catch { _fileLock.Dispose(); throw; }
+        catch { _fileLock?.Dispose(); throw; }
     }
 
     public long Revision { get { _gate.Wait(); try { CheckUnchanged(); return _state.Revision; } finally { _gate.Release(); } } }
@@ -468,7 +470,7 @@ public sealed class ComponentCatalogSourceStore : IDisposable
         public void Revalidate() { if (_release is null) throw new ObjectDisposedException(nameof(Lease)); validate(); }
         public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
     }
-    public void Dispose() { if (_disposed) return; _disposed = true; _fileLock.Dispose(); _gate.Dispose(); }
+    public void Dispose() { if (_disposed) return; _disposed = true; _fileLock?.Dispose(); _gate.Dispose(); }
 }
 
 public sealed class HttpCatalogSource(ComponentCatalogSourceStore store, string sourceId) : IAuthenticatedComponentCatalogSource

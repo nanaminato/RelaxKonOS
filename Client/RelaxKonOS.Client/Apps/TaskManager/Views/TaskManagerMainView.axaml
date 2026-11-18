@@ -109,7 +109,7 @@
                                 <StackPanel Grid.Row="1" Grid.Column="0"><TextBlock Text="{Binding SelectedPerformanceItem.Detail3Label}" Classes="metric-label" /><TextBlock Text="{Binding SelectedPerformanceItem.Detail3Value}" FontSize="19" /></StackPanel>
                                 <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="{Binding SelectedPerformanceItem.Detail4Label}" Classes="metric-label" /><TextBlock Text="{Binding SelectedPerformanceItem.Detail4Value}" FontSize="19" /></StackPanel>
                                 <StackPanel Grid.Row="1" Grid.Column="2"><TextBlock Text="{Binding SelectedPerformanceItem.Detail5Label}" Classes="metric-label" /><TextBlock Text="{Binding SelectedPerformanceItem.Detail5Value}" FontSize="19" /></StackPanel>
-                                <StackPanel Grid.Row="2" Grid.Column="0"><TextBlock Text="{Binding SelectedPerformanceItem.Detail6Label}" Classes="metric-label" /><TextBlock Text="{Binding SelectedPerformanceItem.Detail6Value}" FontSize="19" /></StackPanel>
+                                <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"><TextBlock Text="{Binding SelectedPerformanceItem.Detail6Label}" Classes="metric-label" /><TextBlock Text="{Binding SelectedPerformanceItem.Detail6Value}" FontSize="19" /></StackPanel>
                             </Grid>
                             <Grid Grid.Column="1" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="10">
                                 <TextBlock Grid.Row="0" Text="{Binding SelectedPerformanceItem.Detail7Label}" Classes="metric-label" /><TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedPerformanceItem.Detail7Value}" FontSize="12" />

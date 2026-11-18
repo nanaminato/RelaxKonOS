@@ -11,7 +11,7 @@ using RelaxKonOS.Protocol.Installations;
 namespace RelaxKonOS.Client.Services.Installation;
 
 public sealed partial class InstallationTaskViewModel(InstallationClient client, IAppSettingsClient settings,
-    InstallationServiceId service, string appId, Func<Task> refresh, Func<Task<string?>> passwordPrompt, string workspaceKey = "installation") : ObservableObject, IDisposable
+    InstallationServiceId service, string appId, Func<Task> refresh, Func<Task<bool>> requestElevation, string workspaceKey = "installation") : ObservableObject, IDisposable
 {
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim submitGate = new(1, 1);
@@ -93,10 +93,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
             try { submitted = await client.StartAsync(service, kind, options, pendingKey, lifetime.Token); }
             catch (InstallationApiException error) when (error.ProblemCode == "elevation-required")
             {
-                var password = await passwordPrompt();
-                if (string.IsNullOrEmpty(password)) return;
-                try { if (!await client.ElevateAsync(service, password, lifetime.Token)) return; }
-                finally { password = null; }
+                if (!await requestElevation()) return;
                 submitted = await client.StartAsync(service, kind, options, pendingKey, lifetime.Token);
             }
             if (submitted is null) return;
@@ -109,6 +106,12 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
             ConnectionText = FormatProblemCode(error.ProblemCode);
             if (error.Status is HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.Forbidden) pendingKey = null;
             await ShowHelperFailureAsync(error.ProblemCode);
+        }
+        catch (RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException error)
+        {
+            var code = error.Type.Split('/').Last();
+            ConnectionText = FormatProblemCode(code);
+            await ShowHelperFailureAsync(code);
         }
         catch (OperationCanceledException) { }
         catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
@@ -272,6 +275,15 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         // mismatch). The shared banner has no resource domain for it, so resolve it through the
         // component center's own table instead of falling back to "installation failed".
         if (ComponentProblemText.IsComponentCode(problemCode)) return LocalizedText.Get(ComponentProblemText.Key(problemCode));
+
+        if (problemCode == "elevation-password-required")
+            return LocalizedText.Get("settings.host_time.password_required");
+        if (problemCode == "elevation-password-invalid")
+            return LocalizedText.Get("settings.host_time.password_invalid");
+        if (problemCode == "elevation-account-not-administrator")
+            return LocalizedText.Get("settings.host_time.administrator_required");
+        if (problemCode.StartsWith("elevation-", StringComparison.Ordinal) || problemCode.StartsWith("host-administrator-authentication-", StringComparison.Ordinal))
+            return LocalizedText.Get("settings.host_time.password_check_failed");
 
         var candidates = new List<string>();
         if (problemCode.StartsWith("installation.", StringComparison.Ordinal))

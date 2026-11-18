@@ -35,6 +35,23 @@ internal static class RemoteComponentCatalogChecks
             Refuse(() => RemoteCatalogRules.Resolve(path), "escaping reference " + path);
         Check(RemoteCatalogRules.Resolve("../packages/app.roapp", "./manifests/app.json") == "packages/app.roapp", "same relative references work over HTTPS");
         store.Approve(policy, 0, policy.Fingerprint);
+        var journal = Path.Combine(fixture.StateRoot, "trust-state.json");
+        var originalJournal = File.ReadAllBytes(journal);
+        using (var lockedStore = new ComponentCatalogSourceStore(fixture.StateRoot, "test-owner", fixture.Transport, fixture.Clock))
+        {
+            Check(lockedStore.RecoveryProblem == "component.catalog_recovery_required", "busy trust lock blocks remote operations without crashing initialization");
+            Refuse(() => lockedStore.Approve(policy, 0, policy.Fingerprint), "unlocked instance cannot approve sources");
+        }
+        Check(File.ReadAllBytes(journal).SequenceEqual(originalJournal), "lock failure leaves the original trust journal unchanged");
+        var deniedRoot = Path.Combine(fixture.ContentRoot, "denied-trust");
+        Directory.CreateDirectory(Path.Combine(deniedRoot, "trust.lock"));
+        using (var deniedStore = new ComponentCatalogSourceStore(deniedRoot, "test-owner"))
+        {
+            Check(deniedStore.RecoveryProblem == "component.catalog_recovery_required", "inaccessible lock becomes a blocked trust state");
+            Refuse(() => deniedStore.Sources(), "unavailable trust cannot expose an apparently empty trusted source list");
+            Refuse(() => deniedStore.Approve(policy, 0, policy.Fingerprint), "unavailable trust cannot approve new sources");
+        }
+        Check(!File.Exists(Path.Combine(deniedRoot, "trust-state.json")), "unavailable lock never creates replacement trust history");
         fixture.Publish(1);
         await store.RefreshAsync(policy.SourceId);
         Check(store.Sources().Single().Status == "ready", "valid signed metadata accepted");

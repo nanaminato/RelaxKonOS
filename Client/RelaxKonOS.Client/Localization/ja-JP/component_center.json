@@ -453,7 +453,7 @@
     "component_center.sources.removed": "提供元を削除しました。インストール済みアプリ、ロールバック防止と失効記録は保持されます。",
     "component_center.sources.refreshed": "署名を検証しカタログを保存しました。アプリはインストールされていません。",
     "component_center.sources.refresh_failed": "更新できませんでした。受理済み情報は保持されます。有効期限と状態を確認してください。",
-    "component_center.sources.state_failed": "信頼状態の復旧が必要です。リモートのインストールを停止し、同梱カタログは利用できます。",
+    "component_center.sources.state_failed": "ソースの信頼ストアにアクセスできないか、復旧が必要です。他のクライアントを閉じ、現在のユーザーのディレクトリアクセス権を確認して再起動してください。リモートインストールは停止していますが、同梱コンポーネントは利用できます。信頼履歴は削除しないでください。",
     "component_center.sources.complex_policy": "複数のキーまたはネットワーク範囲を含みます。置き換える前に配置ツールですべての項目を確認してください。",
     "component_center.sources.trust.official": "公式（固定された RelaxKonOS 発行者キー）",
     "component_center.sources.trust.user-trusted": "このユーザーが明示的に信頼した発行者キー",

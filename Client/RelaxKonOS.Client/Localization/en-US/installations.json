@@ -26,6 +26,7 @@
     "installation.operation_unavailable": "Operation unavailable.",
     "installation.refresh_failed": "Installation finished; refreshing service status failed.",
     "installation.cancel_unavailable": "Cancellation could not be accepted.",
+    "installation.problem.permission_denied": "This session cannot install software. Switch to the controller device and try again.",
     "installation.problem.unknown": "The installation task failed. Check the server diagnostics and try again.",
     "installation.problem.store_unavailable": "The installation task store is unavailable. Try again after the server recovers.",
     "installation.problem.invalid_request": "The installation request is invalid.",

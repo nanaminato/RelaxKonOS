@@ -20,7 +20,7 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 
 const string helperCode = "proxy.privileged_operation_unavailable";
-if (args.FirstOrDefault() is "--component-center-host" or "--component-center-observe-host" or "--component-center-cancel-host")
+if (args.Contains("--component-trust-only") || args.Contains("--installation-elevation-only") || args.FirstOrDefault() is "--component-center-host" or "--component-center-observe-host" or "--component-center-cancel-host")
     AppBuilder.Configure<Application>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
 else
     AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
@@ -31,6 +31,7 @@ using var services = new ServiceCollection()
     .AddSingleton(new LocalizationService(new ShellSettings(null!), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))))
     .BuildServiceProvider();
 typeof(App).GetProperty(nameof(App.Services))!.SetValue(null, services);
+if (args.Contains("--component-trust-only")) { ComponentTrustStorageChecks.Run(); return; }
 if (args.Contains("--component-refresh-only")) { await ComponentRefreshChecks.RunAsync(); return; }
 if (args.Contains("--component-lifecycle-only")) { await ComponentLifecycleClientChecks.RunAsync(); return; }
 if (args.Contains("--component-selection-only")) { ComponentSelectionChecks.Run(); return; }
@@ -84,6 +85,36 @@ if (args.Contains("--direct-compensation-wire-only"))
     Check(calls == 1, "Sing-box cannot send a request to the Mihomo compensation route");
     return;
 }
+string FormatInstallationProblem(string code) => (string)typeof(InstallationTaskViewModel).GetMethod("FormatProblemCode", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [code])!;
+// Grant acceptance and cancellation both preserve the original Nginx operation identity.
+foreach (var grant in new[] { true, false })
+{
+    var requests = new List<string>();
+    var grants = 0;
+    using var http = new HttpClient(new Handler(request =>
+    {
+        Check(request.RequestUri!.AbsolutePath == InstallationApiRoutes.Start(InstallationServiceId.Nginx, InstallationOperationKind.Install),
+            "Nginx grant retry keeps its installation route");
+        requests.Add(request.Headers.GetValues("Idempotency-Key").Single());
+        return requests.Count == 1
+            ? Json(HttpStatusCode.Forbidden, new { problemCode = "elevation-required" })
+            : Json(HttpStatusCode.BadRequest, new { problemCode = "installation.invalid_request" });
+    }));
+    using var task = new InstallationTaskViewModel(new InstallationClient(http, session), settings, InstallationServiceId.Nginx,
+        "test", () => Task.CompletedTask, () => { grants++; return Task.FromResult(grant); });
+    await task.SubmitAsync(InstallationOperationKind.Install, new NginxInstallationRequest(true, Version: "1.30.6"));
+    Check(grants == 1 && requests.Count == (grant ? 2 : 1),
+        "Nginx retries only after a successful grant; cancellation never dispatches again");
+    Check(requests.Distinct().Count() == 1, "Nginx authorization retry preserves the operation key");
+}
+Check(InstallationClient.ElevationCapability(InstallationServiceId.Nginx) == HostElevationCapability.NginxInstall,
+    "Nginx requests its own host capability");
+Check(FormatInstallationProblem("elevation-password-invalid") == LocalizedText.Get("settings.host_time.password_invalid")
+    && FormatInstallationProblem("elevation-account-not-administrator") == LocalizedText.Get("settings.host_time.administrator_required"),
+    "Installation errors distinguish invalid credentials and non-administrator accounts");
+
+if (args.Contains("--installation-elevation-only")) return;
+
 var componentLink = ComponentCenterNavigation.Component("https://host.example/", "relaxkonos.proxy-server", "sing-box");
 Check(ComponentCenterNavigation.TryParse(componentLink, out var linkTarget)
     && linkTarget is { HostId: "https://host.example/", AppId: "relaxkonos.proxy-server", ComponentId: "sing-box" },
@@ -137,7 +168,7 @@ using (var http = new HttpClient(new Handler(_ => Json(HttpStatusCode.NotFound, 
 {
     var client = new InstallationClient(http, session);
     Check(await client.GetActiveAsync(InstallationServiceId.Mihomo, default) is null, "Missing active task is an empty result");
-    using var vm = new InstallationTaskViewModel(client, settings, InstallationServiceId.Mihomo, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+    using var vm = new InstallationTaskViewModel(client, settings, InstallationServiceId.Mihomo, "test", () => Task.CompletedTask, () => Task.FromResult(false));
     var dialogs = 0;
     vm.ShowPrivilegedHelperUnavailableAsync = code => { Check(code == helperCode, "Helper error is preserved"); dialogs++; return Task.CompletedTask; };
     Check(await vm.CreateFileReferenceAsync("/mihomo.gz") is null && vm.HasMessage && dialogs == 1,
@@ -155,7 +186,7 @@ using (var http = new HttpClient(new Handler(request => Json(HttpStatusCode.OK,
     var completed = new TaskCompletionSource();
     var dialogs = 0;
     using var vm = new InstallationTaskViewModel(new InstallationClient(http, session), settings, InstallationServiceId.Mihomo,
-        "test", () => { completed.SetResult(); return Task.CompletedTask; }, () => Task.FromResult<string?>(null));
+        "test", () => { completed.SetResult(); return Task.CompletedTask; }, () => Task.FromResult(false));
     vm.ShowPrivilegedHelperUnavailableAsync = code => { Check(code == helperCode, "Polled helper error is preserved"); dialogs++; return Task.CompletedTask; };
     await vm.SubmitAsync(InstallationOperationKind.Install, RuntimePlanBody());
     await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -166,7 +197,7 @@ using (var http = new HttpClient(new Handler(request => Json(HttpStatusCode.OK,
 using (var handler = new BlockingTransferHandler())
 using (var http = new HttpClient(handler))
 using (var vm = new InstallationTaskViewModel(new InstallationClient(http, session), settings,
-    InstallationServiceId.Nginx, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null)))
+    InstallationServiceId.Nginx, "test", () => Task.CompletedTask, () => Task.FromResult(false)))
 {
     using var package = new MemoryStream([1, 2, 3]);
     var transfer = vm.UploadPackageAsync("nginx.zip", package);

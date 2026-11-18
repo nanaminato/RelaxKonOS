@@ -55,8 +55,8 @@ public sealed partial class CatalogSourcesViewModel : ObservableObject, IDisposa
     public string ReviewFingerprint => _review?.Fingerprint ?? "";
     public string ReviewValidity => _review is null ? "" : _review.MaximumValiditySeconds.ToString(System.Globalization.CultureInfo.InvariantCulture) + " s";
     public LocalizedStatus ReviewTrust => LocalizedStatus.Key("component_center.sources.trust." + (_review?.Trust ?? "user-trusted"));
-    public bool CanConfirm => IsReviewing && _review is not null && !IsBusy;
-    public bool CanEdit => !IsBusy && !IsReviewing;
+    public bool CanConfirm => _store.RecoveryProblem is null && IsReviewing && _review is not null && !IsBusy;
+    public bool CanEdit => _store.RecoveryProblem is null && !IsBusy && !IsReviewing;
 
     public CatalogSourcesViewModel(ComponentCatalogSourceStore store)
     { _store = store; store.Changed += Changed; Reload(); }
@@ -67,7 +67,7 @@ public sealed partial class CatalogSourcesViewModel : ObservableObject, IDisposa
         try { Sources.Clear(); foreach (var view in _store.Sources()) Sources.Add(new(view)); }
         catch (Exception error) when (Known(error)) { Notice = LocalizedStatus.Key("component_center.sources.state_failed"); }
     }
-    private static bool Known(Exception error) => error is RuntimePolicyException or IOException or InvalidDataException
+    private static bool Known(Exception error) => error is RuntimePolicyException or IOException or UnauthorizedAccessException or InvalidDataException
         or InvalidOperationException or ArgumentException or System.Text.Json.JsonException;
 
     protected override void OnPropertyChanged(PropertyChangedEventArgs args)
@@ -89,7 +89,7 @@ public sealed partial class CatalogSourcesViewModel : ObservableObject, IDisposa
     [RelayCommand]
     private void Review()
     {
-        if (IsBusy) return;
+        if (IsBusy || _store.RecoveryProblem is not null) return;
         try
         {
             var providers = new List<string>();

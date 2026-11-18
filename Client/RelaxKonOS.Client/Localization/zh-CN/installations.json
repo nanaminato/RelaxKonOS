@@ -26,6 +26,7 @@
     "installation.operation_unavailable": "任务不可用。",
     "installation.refresh_failed": "任务已结束，但服务状态刷新失败。",
     "installation.cancel_unavailable": "取消请求未被接受。",
+    "installation.problem.permission_denied": "当前会话没有安装权限。请切换到控制设备后重试。",
     "installation.problem.unknown": "安装任务失败。请查看服务器诊断信息后重试。",
     "installation.problem.store_unavailable": "安装任务存储暂不可用。请等待服务器恢复后重试。",
     "installation.problem.invalid_request": "安装请求无效。",

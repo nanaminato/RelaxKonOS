@@ -453,7 +453,7 @@
     "component_center.sources.removed": "Source removed. Installed applications, rollback protection and revocations are retained.",
     "component_center.sources.refreshed": "Signed catalog verified and saved. No application was installed.",
     "component_center.sources.refresh_failed": "Could not refresh the source. Previously accepted information is retained; check its expiry and source status.",
-    "component_center.sources.state_failed": "Source trust state needs recovery. Remote installation is blocked; the bundled catalog remains available.",
+    "component_center.sources.state_failed": "The source trust store is unavailable or needs recovery. Close other clients, check the current user's directory access, then restart the client. Remote installation is blocked; bundled components remain available. Do not delete trust history.",
     "component_center.sources.complex_policy": "This policy contains multiple keys or private networks. Review all entries with the deployment tools before replacing it.",
     "component_center.sources.trust.official": "Official (pinned RelaxKonOS publisher key)",
     "component_center.sources.trust.user-trusted": "Publisher key explicitly trusted by this user",

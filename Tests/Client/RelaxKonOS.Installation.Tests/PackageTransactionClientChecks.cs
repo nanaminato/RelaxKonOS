@@ -29,7 +29,7 @@ internal static class PackageTransactionClientChecks
             return new(HttpStatusCode.ServiceUnavailable) { Content = JsonContent.Create(new { problemCode = "installation.connection_unavailable" }) };
         }));
         using var task = new InstallationTaskViewModel(new InstallationClient(http, session), settings,
-            InstallationServiceId.Nginx, "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+            InstallationServiceId.Nginx, "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false));
         await task.SubmitAsync(InstallationOperationKind.Install, options);
         await task.SubmitAsync(InstallationOperationKind.Install, options);
         Check(keys.Count == 2 && keys.All(key => key == plan.IdempotencyKey),
@@ -86,7 +86,7 @@ internal static class PackageTransactionClientChecks
                 return new(HttpStatusCode.ServiceUnavailable) { Content = JsonContent.Create(new { problemCode = "installation.connection_unavailable" }) };
             }));
             using var task = new InstallationTaskViewModel(new InstallationClient(http, session), settings, service,
-                "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult<string?>(null), "installation." + id);
+                "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false), "installation." + id);
             await task.SubmitAsync(InstallationOperationKind.Install, options);
             await task.SubmitAsync(InstallationOperationKind.Install, options);
             Check(seen.Count == 2 && seen.All(key => key == plan.IdempotencyKey), id + " retry retains its frozen operation key");

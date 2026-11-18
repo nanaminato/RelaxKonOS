@@ -1764,3 +1764,7 @@ Linux 系统包 Nginx 的 WebRoot 启用中断后，Server 用原站点 Helper �
 Linux Nginx 集成在锚点提交前保存原操作与主配置快照。Server 重启后按原 ID 查询 Helper，并核对当前锚点与快照。同键请求返回原回执。缺少成功证据或配置漂移时保持待核验，拒绝同实例新的后台变更。见[Nginx 集成检查点](../architecture/server-module-evidence/WebServer.md#mb-05-nginx-集成检查点与执行代次)。
 
 可向 `POST /api/v1.0/webservers/operations/{operationId}/compensate-integration` 提交 `{"confirmed":true}`，为已由 Helper 明确记录失败的原集成操作发起具名补偿。需要原实例的 Nginx 配置写入授权。Server 核对锚点、原快照、站点依赖和原生作业状态。受理后原回执关联唯一 `compensationOperationId`，重复请求读取同一回执。成功补偿保留原 Failed 状态并返回 `webserver.integration_compensated`。缺少证据时原操作继续待核验。见[集成具名补偿](../architecture/server-module-evidence/WebServer.md#mb-05-已知-nginx-集成失败的具名补偿)。
+
+## Windows 安装管理员验证（2026-11-18）
+
+组件中心的 Nginx 安装使用统一主机管理员授权弹窗，可选择管理员账号。验证失败时显示对应的凭据或管理员权限提示，取消不提交后续安装；验证成功后以原操作键重试同一安装请求。授权拒绝发生在安装任务受理之前，不能作为 Nginx 下载失败或安装器失败的证据。授权重试与取消已有客户端回归验证，本次尚未完成真实安装验收。

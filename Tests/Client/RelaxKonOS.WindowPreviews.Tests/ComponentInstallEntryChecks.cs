@@ -25,7 +25,7 @@ internal static class ComponentInstallEntryChecks
             using var handler = new EntryHandler();
             using var http = new HttpClient(handler);
             center.AttachPackageInstallation(id, new(new InstallationClient(http, DispatchProxy.Create<IAuthSession, EntrySession>()), null!, service,
-                "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult<string?>(null)));
+                "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false)));
             center.SelectedNode = center.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == id);
             center.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             Check(center.CanInstallPackage, id + " exposes the host-approved frozen installation in Component Center.");
@@ -52,7 +52,7 @@ internal static class ComponentInstallEntryChecks
         using var gitHttp = new HttpClient(gitHandler);
         gitCenter.GitEngine = new GitClientViewModel(null!) { IsGitAvailable = false };
         gitCenter.AttachPackageInstallation("git", new(new InstallationClient(gitHttp, DispatchProxy.Create<IAuthSession, EntrySession>()), null!, InstallationServiceId.Git,
-            "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult<string?>(null)));
+            "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false)));
         gitCenter.SelectedNode = gitCenter.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "git");
         Check(typeof(ComponentCenterViewModel).GetProperty("InstallGitCommand") is null && !gitCenter.ShowGitInstallation,
             "Git exposes no install command of its own; the observation panel belongs to Windows only.");

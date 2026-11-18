@@ -453,7 +453,7 @@
     "component_center.sources.removed": "已移除来源，保留已安装应用、反回退记录和撤销记录。",
     "component_center.sources.refreshed": "签名目录已验证并保存，未安装任何应用。",
     "component_center.sources.refresh_failed": "刷新失败，保留此前已接受的信息；请检查有效期和来源状态。",
-    "component_center.sources.state_failed": "来源信任状态需要恢复。远程安装已阻止，本地目录仍可使用。",
+    "component_center.sources.state_failed": "来源信任库不可用或需要恢复。请关闭其他客户端并检查当前用户的目录访问权限，然后重启客户端。远程安装已阻止，内置组件仍可使用；请勿删除信任记录。",
     "component_center.sources.complex_policy": "此策略包含多个密钥或内网范围，替换前请使用部署工具检查全部条目。",
     "component_center.sources.trust.official": "官方来源（固定的 RelaxKonOS 发布者密钥）",
     "component_center.sources.trust.user-trusted": "当前用户明确确认的发布者密钥",

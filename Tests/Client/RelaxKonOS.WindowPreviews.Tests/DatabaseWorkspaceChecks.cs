@@ -22,7 +22,7 @@ internal static class DatabaseWorkspaceChecks
         void Check(bool ok,string label) { if(!ok)throw new Exception(label);Console.WriteLine("PASS Database "+label); }
         var fake=new Client();
         using var model=new DatabaseViewModel(fake) { CanManage=true,
-            Installation=new(null!,null!,InstallationServiceId.PostgreSql,"test",()=>Task.CompletedTask,()=>Task.FromResult<string?>(null)) };
+            Installation=new(null!,null!,InstallationServiceId.PostgreSql,"test",()=>Task.CompletedTask,()=>Task.FromResult(false)) };
         model.RefreshAsync().GetAwaiter().GetResult();
         Check(model.CanInitialize && !model.CanStart && !model.CanStop,"installed engine exposes only initialization");
         var prompted=false;model.ChoosePortAsync=()=>{prompted=true;return Task.FromResult<int?>(null);};
@@ -54,7 +54,7 @@ internal static class DatabaseWorkspaceChecks
         using var http = new HttpClient(handler);
         model.Installation.Dispose();
         model.Installation = new(new InstallationClient(http, DispatchProxy.Create<IAuthSession, EntrySession>()), null!,
-            InstallationServiceId.PostgreSql, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+            InstallationServiceId.PostgreSql, "test", () => Task.CompletedTask, () => Task.FromResult(false));
         model.ConfirmAsync = (_, _) => Task.FromResult(true);
         model.StartCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(model.CanResume && !model.CanStart && !model.CanStop, "lost response preserves original request and blocks new work");
@@ -66,9 +66,9 @@ internal static class DatabaseWorkspaceChecks
         using var adminHandler = new LostResponseHandler(InstallationServiceId.PostgreSqlAdminRecovery);
         using var adminHttp = new HttpClient(adminHandler);
         using var adminModel = new DatabaseViewModel(fake) { CanManage = true, Snapshot = model.Snapshot! with { Managed = false, ConnectionVerified = false, ProblemCode = "database.native_failed" },
-            Installation = new(null!, null!, InstallationServiceId.PostgreSql, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null)),
+            Installation = new(null!, null!, InstallationServiceId.PostgreSql, "test", () => Task.CompletedTask, () => Task.FromResult(false)),
             AdminRecoveryInstallation = new(new InstallationClient(adminHttp, DispatchProxy.Create<IAuthSession, EntrySession>()), null!,
-                InstallationServiceId.PostgreSqlAdminRecovery, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null)) };
+                InstallationServiceId.PostgreSqlAdminRecovery, "test", () => Task.CompletedTask, () => Task.FromResult(false)) };
         Check(adminModel.CanAdminRecovery, "lost peer identity still exposes dedicated recovery");
         adminModel.ConfirmAdminRecoveryAsync = () => Task.FromResult(false);
         adminModel.AdminRecoveryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
@@ -100,7 +100,7 @@ internal static class DatabaseWorkspaceChecks
         using var remoteHandler=new LostResponseHandler(InstallationServiceId.PostgreSqlRemoteAccess);
         using var remoteHttp=new HttpClient(remoteHandler);
         using var remoteModel=new PostgreSqlRemoteViewModel(null!,new(new InstallationClient(remoteHttp,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,
-            InstallationServiceId.PostgreSqlRemoteAccess,"test",()=>Task.CompletedTask,()=>Task.FromResult<string?>(null)))
+            InstallationServiceId.PostgreSqlRemoteAccess,"test",()=>Task.CompletedTask,()=>Task.FromResult(false)))
         { CanManage=true,Snapshot=model.Snapshot! with { Running=true,ConnectionVerified=true }, ListenAddress="192.168.10.5",ServerName="db.example.test",Sources="0.0.0.0/0",
             SelectedAccount=new("appdb","appuser",11,PostgreSqlPermission.ReadWrite,Guid.NewGuid(),1,false),
             SelectedCertificate=System.Text.Json.JsonSerializer.Deserialize<RelaxKonOS.Protocol.Certificates.CertificateDto>("{\"id\":\""+Guid.NewGuid()+"\",\"primaryDomain\":\"db.example.test\",\"fingerprintSha256\":\""+new string('A',64)+"\"}") };
@@ -130,7 +130,7 @@ internal static class DatabaseWorkspaceChecks
         using var maintenanceHandler=new LostResponseHandler(InstallationServiceId.PostgreSqlMaintenance);
         using var maintenanceHttp=new HttpClient(maintenanceHandler);
         using var maintenanceModel=new PostgreSqlMaintenanceViewModel(new Client(),new(new InstallationClient(maintenanceHttp,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,
-            InstallationServiceId.PostgreSqlMaintenance,"test",()=>Task.CompletedTask,()=>Task.FromResult<string?>(null)))
+            InstallationServiceId.PostgreSqlMaintenance,"test",()=>Task.CompletedTask,()=>Task.FromResult(false)))
             {CanManage=true,Snapshot=model.Snapshot! with {PendingOperationId=null,ProblemCode=null},ConfirmAsync=_=>Task.FromResult(false)};
         Check(maintenanceModel.CanBackup&&!maintenanceModel.CanDelete&&!maintenanceModel.CanUpdate,"maintenance requires a frozen target and typed deletion confirmation");
         maintenanceModel.BackupCommand.ExecuteAsync(null).GetAwaiter().GetResult();
@@ -150,7 +150,7 @@ internal static class DatabaseWorkspaceChecks
         using var migrationHandler=new LostResponseHandler(InstallationServiceId.PostgreSqlMaintenance);
         using var migrationHttp=new HttpClient(migrationHandler);
         var migrationClient=new Client {State=maintenanceModel.Snapshot! with {Version="16.15-0ubuntu0.24.04.1",Candidate=new("postgresql-18","18.7-1.pgdg24.04+2","amd64","fixture","https://apt.postgresql.org/pub/repos/apt","noble-pgdg","main","https://apt.postgresql.org/pub/repos/apt/pool/fixture.deb",new string('a',64),1,[])}};
-        using var migrationModel=new PostgreSqlMaintenanceViewModel(migrationClient,new(new InstallationClient(migrationHttp,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,InstallationServiceId.PostgreSqlMaintenance,"test",()=>Task.CompletedTask,()=>Task.FromResult<string?>(null)))
+        using var migrationModel=new PostgreSqlMaintenanceViewModel(migrationClient,new(new InstallationClient(migrationHttp,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,InstallationServiceId.PostgreSqlMaintenance,"test",()=>Task.CompletedTask,()=>Task.FromResult(false)))
             {CanManage=true,Snapshot=migrationClient.State,ConfirmAsync=_=>Task.FromResult(false)};
         migrationModel.MigrationPlanCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(!migrationModel.CanMigrate&&!migrationModel.CanUpdate,"major discovery neither grants source trust nor becomes patch update");
@@ -164,7 +164,7 @@ internal static class DatabaseWorkspaceChecks
         using var policyHandler=new LostResponseHandler(InstallationServiceId.PostgreSqlBackupAutomation);
         using var policyHttp=new HttpClient(policyHandler);
         maintenanceModel.ScheduleInstallation=new(new InstallationClient(policyHttp,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,
-            InstallationServiceId.PostgreSqlBackupAutomation,"test",()=>Task.CompletedTask,()=>Task.FromResult<string?>(null));
+            InstallationServiceId.PostgreSqlBackupAutomation,"test",()=>Task.CompletedTask,()=>Task.FromResult(false));
         maintenanceModel.ConfirmScheduleAsync=_=>Task.FromResult(false);
         maintenanceModel.ScheduleEnabled=true;maintenanceModel.IntervalHours=24;maintenanceModel.KeepLast=2;
         Check(maintenanceModel.CanConfigureSchedule&&!maintenanceModel.AllowDowntime,"policy defaults to no recurring downtime");
@@ -211,7 +211,7 @@ internal static class DatabaseWorkspaceChecks
             "instance selection requests and displays the selected cluster");
         using var peerMaintenance = new PostgreSqlMaintenanceViewModel(selectionClient, new(
             new InstallationClient(maintenanceHttp, DispatchProxy.Create<IAuthSession,EntrySession>()), null!,
-            InstallationServiceId.PostgreSqlMaintenance, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null)))
+            InstallationServiceId.PostgreSqlMaintenance, "test", () => Task.CompletedTask, () => Task.FromResult(false)))
         {
             CanManage = true, Snapshot = selectionClient.State, DeleteConfirmation = primary.ToString("N")
         };
@@ -233,14 +233,14 @@ internal static class DatabaseWorkspaceChecks
             CanManage = true,
             State = new(true, 1, false, null, false, false, null, null, null),
             Installation = new(null!, null!, InstallationServiceId.MySql, "test",
-                () => Task.CompletedTask, () => Task.FromResult<string?>(null))
+                () => Task.CompletedTask, () => Task.FromResult(false))
         };
         mysql.AccountInstallation = new(null!, null!, InstallationServiceId.MySqlAccounts, "test",
-            () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+            () => Task.CompletedTask, () => Task.FromResult(false));
         mysql.RemoteInstallation = new(null!, null!, InstallationServiceId.MySqlRemoteAccess, "test",
-            () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+            () => Task.CompletedTask, () => Task.FromResult(false));
         mysql.MaintenanceInstallation = new(null!, null!, InstallationServiceId.MySqlMaintenance, "test",
-            () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+            () => Task.CompletedTask, () => Task.FromResult(false));
         Check(!mysql.CanManageAccounts, "MySQL account controls require verified running instance");
         Check(!mysql.CanOpenRemote, "MySQL remote opening requires a verified instance");
         Check(mysql.CanInstall && !mysql.CanInitialize, "MySQL fresh host exposes installation");
@@ -258,7 +258,7 @@ internal static class DatabaseWorkspaceChecks
         Check(mysqlView.GetVisualDescendants().OfType<Button>().Any(button => button.Command == mysql.OpenRemoteCommand && button.IsEnabled),
             "MySQL page exposes remote opening for a verified instance");
         mysql.AdministratorInstallation = new(null!, null!, InstallationServiceId.MySqlAdminRecovery, "test",
-            () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+            () => Task.CompletedTask, () => Task.FromResult(false));
         mysql.State = mysql.State with { RemoteAccess = new(mysql.State.InstanceId!.Value, "10.77.0.1", "10.77.0.2",
             "app", "reader", MySqlGrant.ReadOnly, "mysql.example.test", Guid.NewGuid(), new string('A', 64)), Verified = false };
         Check(mysql.CanCloseRemote && !mysql.CanOpenRemote && !mysql.CanManageAccounts && !mysql.CanRecoverAdministrator && !mysql.CanStop,

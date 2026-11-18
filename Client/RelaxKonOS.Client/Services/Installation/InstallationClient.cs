@@ -90,9 +90,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
         }
     }
     public Task<InstallationOperationDto?> CancelAsync(Guid id, CancellationToken ct) => SendAsync<InstallationOperationDto>(HttpMethod.Post, InstallationApiRoutes.Cancel(id), null, Guid.NewGuid().ToString("N"), ct);
-    public async Task<bool> ElevateAsync(InstallationServiceId service, string password, CancellationToken ct)
-    {
-        var capability = service switch
+    public static HostElevationCapability ElevationCapability(InstallationServiceId service) => service switch
         {
             InstallationServiceId.Smb => HostElevationCapability.SmbInstall, InstallationServiceId.Nginx => HostElevationCapability.NginxInstall,
             InstallationServiceId.Frp => HostElevationCapability.FrpInstall, InstallationServiceId.Mihomo => HostElevationCapability.MihomoInstall,
@@ -107,10 +105,6 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
             InstallationServiceId.Tailscale => HostElevationCapability.HostNetworkChange,
             InstallationServiceId.SingBox => HostElevationCapability.SingBoxInstall, _ => throw new ArgumentOutOfRangeException(nameof(service))
         };
-        var result = await SendAsync<HostElevationResult>(HttpMethod.Post, PrivilegedApiRoutes.Elevation,
-            new HostElevationRequest(capability, service.ToString().ToLowerInvariant(), password), null, ct);
-        return result?.Elevated == true;
-    }
     private async Task<T?> SendAsync<T>(HttpMethod method, string route, object? body, string? key, CancellationToken ct)
     {
         VerifySession();

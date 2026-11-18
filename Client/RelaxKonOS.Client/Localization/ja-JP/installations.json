@@ -26,6 +26,7 @@
     "installation.operation_unavailable": "タスクを取得できません。",
     "installation.refresh_failed": "タスク完了後の状態更新に失敗しました。",
     "installation.cancel_unavailable": "キャンセル要求は受け付けられませんでした。",
+    "installation.problem.permission_denied": "このセッションにはインストール権限がありません。制御デバイスに切り替えて再試行してください。",
     "installation.problem.unknown": "インストール タスクに失敗しました。サーバー診断を確認してから再試行してください。",
     "installation.problem.store_unavailable": "インストール タスク ストアを利用できません。サーバーの回復後に再試行してください。",
     "installation.problem.invalid_request": "インストール要求が無効です。",

@@ -247,9 +247,9 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             {
                 var task = new RelaxKonOS.Client.Services.Installation.InstallationTaskViewModel(installationClient, settings,
                     serviceId, "relaxkonos.component-center", () => model.RefreshPackageInstallationAsync(componentId),
-                    () => ShowOwnedAsync<string?>(LocalizedText.Get("installation.elevation_title"),
-                        dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
-                        new Size(460, 230)), "installation." + componentId);
+                    () => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+                        .GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>(context.Services)
+                        .RequestGrantAsync(RelaxKonOS.Client.Services.Installation.InstallationClient.ElevationCapability(serviceId), serviceId.ToString().ToLowerInvariant()), "installation." + componentId);
                 model.AttachPackageInstallation(componentId, task);
                 if (componentId == "nginx" && model.NginxSelection is { } selectedNginx) selectedNginx.Installation = task;
                 _ = task.RestoreAsync(); // Observe only, including after a window is reopened.
