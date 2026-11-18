@@ -89,6 +89,19 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
             catch (UnauthorizedAccessException) { }
         }
     }
+    internal async Task<RelaxKonOS.Protocol.ProcessGuardian.NativeServiceDto[]> ListNativeServicesAsync(CancellationToken ct) =>
+        await SendAsync<RelaxKonOS.Protocol.ProcessGuardian.NativeServiceDto[]>(HttpMethod.Get,
+            RelaxKonOS.Protocol.ProcessGuardian.ProcessGuardianApiRoutes.Services, null, null, ct) ?? [];
+
+    internal async Task<bool> StopNativeServiceAsync(string id, CancellationToken ct)
+    {
+        var route = RelaxKonOS.Protocol.ProcessGuardian.ProcessGuardianApiRoutes.ServiceAction
+            .Replace("{id}", Uri.EscapeDataString(id)).Replace("{action}", "stop");
+        var result = await SendAsync<RelaxKonOS.Protocol.ProcessGuardian.GuardianOperationResult>(
+            HttpMethod.Post, route, new RelaxKonOS.Protocol.ProcessGuardian.NativeServiceActionRequest(true), null, ct);
+        return result?.Success == true;
+    }
+
     public Task<InstallationOperationDto?> CancelAsync(Guid id, CancellationToken ct) => SendAsync<InstallationOperationDto>(HttpMethod.Post, InstallationApiRoutes.Cancel(id), null, Guid.NewGuid().ToString("N"), ct);
     public static HostElevationCapability ElevationCapability(InstallationServiceId service) => service switch
         {

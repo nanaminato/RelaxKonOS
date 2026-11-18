@@ -285,6 +285,11 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         if (problemCode.StartsWith("elevation-", StringComparison.Ordinal) || problemCode.StartsWith("host-administrator-authentication-", StringComparison.Ordinal))
             return LocalizedText.Get("settings.host_time.password_check_failed");
 
+        const string listenPortPrefix = "webserver.listen_port_unavailable.";
+        if (problemCode.StartsWith(listenPortPrefix, StringComparison.Ordinal)
+            && ushort.TryParse(problemCode.AsSpan(listenPortPrefix.Length), out var port) && port != 0)
+            return LocalizedText.Format("webservers.problem.listen_port_unavailable", port);
+
         var candidates = new List<string>();
         if (problemCode.StartsWith("installation.", StringComparison.Ordinal))
             candidates.Add("installation.problem." + problemCode["installation.".Length..]);

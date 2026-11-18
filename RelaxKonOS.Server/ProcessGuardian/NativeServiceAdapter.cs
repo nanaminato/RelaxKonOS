@@ -15,11 +15,14 @@ public sealed class NativeServiceAdapter(NativeServiceAdapterOptions options, IP
     public async Task<IReadOnlyList<NativeServiceDto>> ListAsync(CancellationToken cancellationToken = default)
     {
         var items = new List<NativeServiceDto>();
-        foreach (var id in options.AllowedServiceNames.Where(IsServiceName).Distinct(StringComparer.OrdinalIgnoreCase))
+        var names = OperatingSystem.IsWindows()
+            ? options.AllowedServiceNames.Append(NativeServiceTargets.IisWebPublishing)
+            : options.AllowedServiceNames;
+        foreach (var id in names.Where(IsServiceName).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var output = OperatingSystem.IsWindows()
                 ? await RunAsync("sc.exe", ["query", id], cancellationToken)
-                : await RunAsync("systemctl", ["show", id, "--property=Id,Description,ActiveState,UnitFileState", "--value"], cancellationToken);
+                : await RunAsync("systemctl", ["show", id, "--property=Description,ActiveState,UnitFileState"], cancellationToken);
             items.Add(OperatingSystem.IsWindows() ? ParseWindows(id, output) : ParseSystemd(id, output));
         }
         return items;
@@ -28,7 +31,7 @@ public sealed class NativeServiceAdapter(NativeServiceAdapterOptions options, IP
     public async Task<GuardianOperationResult> ApplyActionAsync(string id, string action, NativeServiceActionRequest request, CancellationToken cancellationToken = default)
     {
         if (!request.Confirmed) return new GuardianOperationResult(false, "guardian.confirmation_required");
-        if (!IsServiceName(id) || !options.AllowedServiceNames.Contains(id, StringComparer.OrdinalIgnoreCase) || action is not ("start" or "stop" or "restart"))
+        if (!IsServiceName(id) || (!options.AllowedServiceNames.Contains(id, StringComparer.OrdinalIgnoreCase) && !IsIisStop(id, action)) || action is not ("start" or "stop" or "restart"))
             return new GuardianOperationResult(false, "guardian.validation_failed");
         var privilegedAction = action switch
         {
@@ -62,7 +65,9 @@ public sealed class NativeServiceAdapter(NativeServiceAdapterOptions options, IP
     private static NativeServiceDto ParseSystemd(string id, string output)
     {
         var lines = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return new NativeServiceDto(id, lines.ElementAtOrDefault(1) ?? id, lines.ElementAtOrDefault(2) ?? "unknown", lines.ElementAtOrDefault(3) ?? "unknown", "systemd");
+        string? Value(string key) => lines.FirstOrDefault(line => line.StartsWith(key, StringComparison.Ordinal))?[key.Length..];
+        return new NativeServiceDto(id, Value("Description=") ?? id, Value("ActiveState=") ?? "unknown",
+            Value("UnitFileState=") ?? "unknown", "systemd");
     }
 
     private static NativeServiceDto ParseWindows(string id, string output)
@@ -70,6 +75,9 @@ public sealed class NativeServiceAdapter(NativeServiceAdapterOptions options, IP
         var status = output.Contains("RUNNING", StringComparison.OrdinalIgnoreCase) ? "running" : output.StartsWith("!", StringComparison.Ordinal) ? "unknown" : "stopped";
         return new NativeServiceDto(id, id, status, "scm-managed", "scm");
     }
+
+    internal static bool IsIisStop(string id, string action) => OperatingSystem.IsWindows() && action == "stop"
+        && string.Equals(id, NativeServiceTargets.IisWebPublishing, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsServiceName(string value) => value.Length is > 0 and <= 256 && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or '@');
 }

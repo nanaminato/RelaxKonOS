@@ -25,6 +25,12 @@ public sealed record GuardianAuditEntryDto(DateTimeOffset Timestamp, string Acti
 public sealed record GuardianHealthCheckDto(string Type, string? Target = null, int IntervalSeconds = 15, int TimeoutSeconds = 5, int FailureThreshold = 3);
 public sealed record NativeServiceDto(string Id, string DisplayName, string Status, string StartMode, string Platform);
 public sealed record NativeServiceActionRequest(bool Confirmed);
+
+public static class NativeServiceTargets
+{
+    public const string IisWebPublishing = "W3SVC";
+}
+
 public sealed record GuardianInstallationPlanDto(bool CanProceed, string ProblemCode, IReadOnlyList<string> Steps, IReadOnlyList<string> Warnings);
 public sealed record GuardianOperationResult(bool Success, string ProblemCode);
 

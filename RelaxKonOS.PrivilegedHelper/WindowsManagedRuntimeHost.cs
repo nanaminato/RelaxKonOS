@@ -472,7 +472,7 @@ internal static partial class WindowsManagedRuntimeHost
         finally { if (File.Exists(stage)) File.Delete(stage); }
     }
     private static async Task<PrivilegedOperationResult> NginxCommandAsync(string root, string[] arguments)
-        => await RunAsync(Path.Combine(root, "nginx.exe"), root, new[] { "-p", root.Replace('\\', '/') + "/", "-c", "conf/nginx.conf" }.Concat(arguments).ToArray());
+        => await RunAsync(Path.Combine(root, "nginx.exe"), root, new[] { "-p", root.Replace('\\', '/') + "/", "-c", "conf/nginx.conf" }.Concat(arguments).ToArray(), checkNginxBind: arguments is ["-t"]);
     private static async Task<PrivilegedOperationResult> StartNginxAsync(string root)
     {
         if (NginxRunning(root)) return new(true);
@@ -494,17 +494,43 @@ internal static partial class WindowsManagedRuntimeHost
         foreach (var argument in arguments) info.ArgumentList.Add(argument);
         return info;
     }
-    private static async Task<PrivilegedOperationResult> RunAsync(string executable, string directory, string[] arguments)
+    private static async Task<PrivilegedOperationResult> RunAsync(string executable, string directory, string[] arguments, bool checkNginxBind = false)
     {
         using var process = new Process { StartInfo = StartInfo(executable, directory, arguments) };
         if (!process.Start()) return Failure(PrivilegedProblemCode.InternalError);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        // Drain output without storing it: privileged diagnostics may include configuration secrets.
         var output = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null);
-        var error = process.StandardError.BaseStream.CopyToAsync(Stream.Null);
-        try { await process.WaitForExitAsync(deadline.Token); await Task.WhenAll(output, error); return process.ExitCode == 0 ? new(true) : Failure(PrivilegedProblemCode.InvalidRequest); }
+        var error = ReadCommandErrorAsync(process.StandardError, checkNginxBind);
+        try
+        {
+            await process.WaitForExitAsync(deadline.Token);
+            await output;
+            var bindPort = await error;
+            return process.ExitCode == 0 ? new(true)
+                : bindPort is int port ? new(false, process.ExitCode,
+                    Error: port.ToString(System.Globalization.CultureInfo.InvariantCulture), ProblemCode: PrivilegedProblemCode.Conflict)
+                : Failure(PrivilegedProblemCode.InvalidRequest);
+        }
         catch (OperationCanceledException) { if (!process.HasExited) process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); return Failure(PrivilegedProblemCode.TimedOut); }
     }
+    private static async Task<int?> ReadCommandErrorAsync(StreamReader error, bool checkNginxBind)
+    {
+        int? port = null;
+        if (checkNginxBind)
+        {
+            // Keep only a bounded prefix and return the port, never native output.
+            var buffer = new char[8192];
+            var count = await error.ReadBlockAsync(buffer.AsMemory());
+            var match = Regex.Match(new string(buffer, 0, count),
+                @"(?m)^nginx: \[emerg\] bind\(\) to [^\r\n ]+:([0-9]{1,5}) failed \((?:10013|10048):");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var parsed) && parsed is > 0 and <= 65535)
+                port = parsed;
+        }
+        var discard = new char[4096];
+        while (await error.ReadAsync(discard.AsMemory()) != 0) { }
+        return port;
+    }
+
     private static async Task<PrivilegedOperationResult> StopNginxAsync(string root)
     {
         await WindowsComponentService.StopAsync(ComponentKind.Nginx, root);

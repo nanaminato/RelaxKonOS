@@ -114,6 +114,7 @@ public partial class ComponentCenterViewModel
     {
         foreach (var name in new[] { nameof(ShowOfficialDownloads), nameof(OfficialReleases), nameof(CanRefreshOfficial), nameof(CanInstallOfficial), nameof(ShowManualVersion), nameof(OfficialDownloadUrl), nameof(CanOpenOfficialDownload), nameof(IsFileSource), nameof(ShowOnlineVersions), nameof(CanSelectPackageFile), nameof(SelectedPackageFileText), nameof(IsSelectingPackageFile) })
             OnPropertyChanged(name);
+        OnPropertyChanged(nameof(CanReviewServiceStop));
         OpenOfficialDownloadCommand.NotifyCanExecuteChanged();
         SelectPackageFileCommand.NotifyCanExecuteChanged();
     }
@@ -156,6 +157,17 @@ public partial class ComponentCenterViewModel
     [RelayCommand(CanExecute = nameof(CanOpenOfficialDownload))]
     private Task OpenOfficialDownloadAsync() => CanOpenOfficialDownload
         ? OpenComponentDownloadAsync!(OfficialDownloadUrl) : Task.CompletedTask;
+    public Func<InstallationTaskViewModel, Task>? ReviewServiceStopAsync { get; set; }
+    public bool CanReviewServiceStop => (HostPlatform is "windows" or "linux")
+        && SelectedDefinition?.ComponentId == "nginx" && Runtime.CanManage && !Runtime.IsInvalidated
+        && PackageInstallation?.Operation is { State: InstallationOperationState.Failed, Kind: InstallationOperationKind.Install }
+        && ReviewServiceStopAsync is not null;
+
+    [RelayCommand]
+    private Task ReviewServiceStopActionAsync() =>
+        CanReviewServiceStop && PackageInstallation is { } task
+            ? ReviewServiceStopAsync!(task) : Task.CompletedTask;
+
     [RelayCommand] private async Task InstallOfficialAsync()
     {
         if (!CanInstallOfficial || SelectedDefinition is not { } definition || PackageInstallation is not { } task) return;

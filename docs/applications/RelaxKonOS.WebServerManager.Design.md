@@ -1772,3 +1772,9 @@ Linux Nginx 集成在锚点提交前保存原操作与主配置快照。Server �
 ### 下载代理排除项（2026-11-18）
 
 Windows 官方归档下载使用 Core 出站下载工厂。已保存的主机、域名、通配符、IP/CIDR 和端口排除项按 `NO_PROXY` 语义匹配，不作为正则表达式；HTTPS 下载使用 HTTPS 代理设置。安装执行异常以原操作 ID 写入脱敏运行日志，公开安装回执仍使用领域问题码。实际配置已复现并修复通配符造成的下载初始化异常，代理 HTTP 回归及本机升级健康检查通过；用户暂不重试安装，真实 Nginx 下载、安装和启动尚未验证。
+
+### Windows Nginx 端口冲突提示（2026-11-19）
+
+Windows 安装任务遇到监听端口不可用时，组件中心会显示端口号，并指引用户确认占用方、调整 IIS 站点绑定或改用空闲端口，然后重新检查配置。
+
+桌面组件中心在 Nginx 安装失败后提供服务停止入口，适用 Windows 和 Linux 系统宿主。用户须核实端口占用方、从运行中的候选服务中选择目标、确认停止并完成该服务的管理员授权。Windows 提供 IIS 的 W3SVC 停止操作，Linux 只列出宿主通过 GuardianNativeServices:AllowedServiceNames 配置的服务，Helper 仍独立核验 `/etc/relaxkonos/privileged-services` 允许名单。候选列表不是端口归属检测结果。停止后提示重新检查 Nginx 配置。

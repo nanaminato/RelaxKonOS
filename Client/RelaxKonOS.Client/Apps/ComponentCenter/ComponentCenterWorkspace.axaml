@@ -269,6 +269,8 @@
          <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
          <StackPanel Spacing="10" IsVisible="{Binding PackageInstallation.HasMessage}">
           <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" FontSize="12" />
+          <Button Classes="ghost-action" Content="{loc:Loc webservers.service_stop.review}"
+                  Command="{Binding ReviewServiceStopActionCommand}" IsVisible="{Binding CanReviewServiceStop}" HorizontalAlignment="Left" />
           <Button Classes="ghost-action" Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}"
                   IsVisible="{Binding PackageInstallation.IsActive}" HorizontalAlignment="Left" />
           <Expander>
@@ -388,6 +390,8 @@
          </WrapPanel>
          <StackPanel Spacing="10" IsVisible="{Binding PackageInstallation.HasMessage}">
           <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" FontSize="12" />
+          <Button Classes="ghost-action" Content="{loc:Loc webservers.service_stop.review}"
+                  Command="{Binding ReviewServiceStopActionCommand}" IsVisible="{Binding CanReviewServiceStop}" HorizontalAlignment="Left" />
           <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
           <Button Classes="ghost-action" Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}"
                   IsVisible="{Binding PackageInstallation.IsActive}" HorizontalAlignment="Left" />
@@ -480,6 +484,8 @@
          </Border>
          <StackPanel Spacing="8" IsVisible="{Binding PackageInstallation.HasMessage}">
           <TextBlock Text="{Binding PackageInstallation.SummaryText}" TextWrapping="Wrap" FontSize="12" />
+          <Button Classes="ghost-action" Content="{loc:Loc webservers.service_stop.review}"
+                  Command="{Binding ReviewServiceStopActionCommand}" IsVisible="{Binding CanReviewServiceStop}" HorizontalAlignment="Left" />
           <ProgressBar IsIndeterminate="{Binding PackageInstallation.IsIndeterminate}" Value="{Binding PackageInstallation.Progress}" IsVisible="{Binding PackageInstallation.IsActive}" />
           <Button Classes="ghost-action" Content="{loc:Loc installation.cancel}" Command="{Binding PackageInstallation.CancelCommand}"
                   IsVisible="{Binding PackageInstallation.IsActive}" HorizontalAlignment="Left" />

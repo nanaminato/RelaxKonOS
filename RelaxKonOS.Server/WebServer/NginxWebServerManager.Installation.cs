@@ -108,6 +108,9 @@ internal sealed partial class NginxWebServerManager
             if (!installed.Success) return new(ToWebServerProblem(installed.ProblemCode, "webserver.install_failed"));
             await progress.ReportAsync("validating_configuration", cancellationToken);
             var verified = await privilegedNginx.ApplyWindowsRuntimeAsync(ManagedRuntimeAction.Test, cancellationToken: cancellationToken);
+            if (!verified.Success && verified.ProblemCode == PrivilegedProblemCode.Conflict
+                && ushort.TryParse(verified.Error, out var port) && port != 0)
+                return new(FormattableString.Invariant($"webserver.listen_port_unavailable.{port}"));
             return new(verified.Success ? "" : ToWebServerProblem(verified.ProblemCode, "webserver.config_test_failed"));
         }
         finally { packages.Delete(packageId); }

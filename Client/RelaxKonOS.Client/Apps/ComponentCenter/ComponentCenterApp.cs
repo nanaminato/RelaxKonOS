@@ -96,6 +96,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             ComponentCatalog.UseSources(componentSources);
             model.CatalogSources = new CatalogSourcesViewModel(componentSources);
         }
+        var login = session.CurrentSession;
         var view = new ComponentCenterWorkspace(model);
         var availability = context.Services.GetService(typeof(ApplicationAvailabilityService)) as ApplicationAvailabilityService;
         RelaxKonOS.Protocol.ManagedRuntimes.RuntimeInstallationSnapshot? lastObservation = null;
@@ -251,6 +252,8 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                         .GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>(context.Services)
                         .RequestGrantAsync(RelaxKonOS.Client.Services.Installation.InstallationClient.ElevationCapability(serviceId), serviceId.ToString().ToLowerInvariant()), "installation." + componentId);
                 model.AttachPackageInstallation(componentId, task);
+                if (componentId == "nginx")
+                    model.ReviewServiceStopAsync = current => ReviewServiceStopAsync(installationClient, current);
                 if (componentId == "nginx" && model.NginxSelection is { } selectedNginx) selectedNginx.Installation = task;
                 _ = task.RestoreAsync(); // Observe only, including after a window is reopened.
             }
@@ -302,7 +305,6 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             return true;
         };
         // Closing the UI must not cancel a host transaction already accepted by the ledger.
-        var login = session.CurrentSession;
         var access = new ComponentCenterAccess(session, context.Permissions, runtime,
             () => session.CurrentServer?.Capabilities.Contains(ServerCapabilities.Components) == true,
             connected => model.ConnectionAvailable = connected,
@@ -438,6 +440,88 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
         Task<TResult?> ShowOwnedAsync<TResult>(string title, Func<RelaxKonOS.WindowManager.ModalDialog<TResult>, Avalonia.Controls.Control> factory, RelaxKonOS.Core.Primitives.Size size)
             => taskDialog is { } activeTaskDialog ? activeTaskDialog.ShowDialogAsync(title, factory, size)
                 : context.ShowDialogAsync(window, title, factory, size);
+
+        async Task ReviewServiceStopAsync(RelaxKonOS.Client.Services.Installation.InstallationClient client,
+            RelaxKonOS.Client.Services.Installation.InstallationTaskViewModel task)
+        {
+            if (context.Services.GetService(typeof(RelaxKonOS.Client.Services.Privileged.IHostElevationBroker))
+                is not RelaxKonOS.Client.Services.Privileged.IHostElevationBroker broker) return;
+
+            var original = task.Operation?.OperationId;
+            var host = session.EffectiveBaseUrl;
+            bool IsCurrent() => model.CanReviewServiceStop && ReferenceEquals(model.PackageInstallation, task)
+                && task.Operation?.OperationId == original && ReferenceEquals(login, session.CurrentSession)
+                && session.EffectiveBaseUrl == host && session.State == AuthSessionState.Authenticated;
+            if (!IsCurrent()) return;
+
+            try
+            {
+                var services = (await client.ListNativeServicesAsync(default))
+                    .Where(service => service.Status is "running" or "active")
+                    .Where(service => !service.Id.StartsWith("RelaxKonOS", StringComparison.OrdinalIgnoreCase)
+                        && !service.Id.Equals("nginx.service", StringComparison.OrdinalIgnoreCase)
+                        && !service.Id.Equals("nginx", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                if (!IsCurrent()) return;
+                if (services.Length == 0)
+                {
+                    task.ConnectionText = LocalizedText.Get("webservers.service_stop.none");
+                    return;
+                }
+
+                var title = LocalizedText.Get("webservers.service_stop.review");
+                var selected = await ShowOwnedAsync<string>(title, dialog =>
+                {
+                    var picker = new Avalonia.Controls.ComboBox
+                    {
+                        ItemsSource = services.Select(service => service.Id).ToArray(),
+                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+                    };
+                    var confirm = new Avalonia.Controls.Button
+                    {
+                        Content = LocalizedText.Get("common.stop"), IsEnabled = false,
+                    };
+                    picker.SelectionChanged += (_, _) => confirm.IsEnabled = picker.SelectedItem is string;
+                    confirm.Click += (_, _) =>
+                    {
+                        if (picker.SelectedItem is string id) dialog.Close(id);
+                    };
+                    var cancel = new Avalonia.Controls.Button { Content = LocalizedText.Get("common.cancel") };
+                    cancel.Click += (_, _) => dialog.Close(null);
+                    return new Avalonia.Controls.StackPanel
+                    {
+                        Margin = new Avalonia.Thickness(20), Spacing = 16,
+                        Children =
+                        {
+                            new Avalonia.Controls.TextBlock
+                            {
+                                Text = LocalizedText.Get("webservers.service_stop.confirm"),
+                                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                            },
+                            picker,
+                            new Avalonia.Controls.StackPanel
+                            {
+                                Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8,
+                                Children = { cancel, confirm },
+                            },
+                        },
+                    };
+                }, new Size(520, 300));
+
+                if (selected is null || !IsCurrent()
+                    || !await broker.RequestGrantAsync(RelaxKonOS.Protocol.Privileged.HostElevationCapability.NativeServiceAction, selected)
+                    || !IsCurrent()) return;
+
+                var stopped = await client.StopNativeServiceAsync(selected, default);
+                if (IsCurrent()) task.ConnectionText = LocalizedText.Get(stopped
+                    ? "webservers.service_stop.stopped" : "webservers.service_stop.failed");
+            }
+            catch (Exception error) when (error is HttpRequestException or InvalidOperationException or OperationCanceledException
+                or RelaxKonOS.Client.Services.Installation.InstallationApiException or RelaxKonOSAuthException)
+            {
+                if (IsCurrent()) task.ConnectionText = LocalizedText.Get("webservers.service_stop.failed");
+            }
+        }
 
         async Task<bool> ConfirmAsync(string title, string message)
         {

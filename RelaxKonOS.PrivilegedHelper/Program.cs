@@ -438,7 +438,10 @@ static void CopyDirectory(string source, string destination, IReadOnlyList<strin
 
 static async Task<PrivilegedOperationResult> ApplyNativeServiceActionAsync(string? serviceId, PrivilegedServiceAction? action, IReadOnlyList<string> allowedServiceIds)
 {
-    if (string.IsNullOrWhiteSpace(serviceId) || action is null || !IsServiceId(serviceId) || !allowedServiceIds.Contains(serviceId, StringComparer.OrdinalIgnoreCase))
+    var iisStop = OperatingSystem.IsWindows() && action == PrivilegedServiceAction.Stop
+        && string.Equals(serviceId, RelaxKonOS.Protocol.ProcessGuardian.NativeServiceTargets.IisWebPublishing, StringComparison.OrdinalIgnoreCase);
+    if (string.IsNullOrWhiteSpace(serviceId) || action is null || !IsServiceId(serviceId)
+        || (!allowedServiceIds.Contains(serviceId, StringComparer.OrdinalIgnoreCase) && !iisStop))
         return Fail(64, PrivilegedProblemCode.ResourceNotAllowed, "service action is not allowed");
     if (OperatingSystem.IsWindows()) return await WindowsNativeServiceActions.ApplyAsync(serviceId, action.Value);
     if (serviceId.Equals(LinuxMihomoArchiveHost.Unit, StringComparison.OrdinalIgnoreCase)

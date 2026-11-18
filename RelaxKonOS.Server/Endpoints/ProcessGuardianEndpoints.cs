@@ -85,6 +85,9 @@ public static class ProcessGuardianEndpoints
         group.MapPost("/services/{id}/{action}", async (string id, string action, NativeServiceActionRequest request, HttpContext http,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.ProcessGuardian.INativeServiceAdapter services, CancellationToken ct) =>
         {
+            if (RelaxKonOS.Server.ProcessGuardian.NativeServiceAdapter.IsIisStop(id, action)
+                && !InstallationEndpoints.CanInstall(http.User, RelaxKonOS.Protocol.Installations.InstallationServiceId.Nginx))
+                return Results.Forbid();
             if (!elevations.IsGranted(http.User, HostElevationCapability.NativeServiceAction, id))
                 return Results.Problem(statusCode: 403, title: "elevation-required", detail: "This service operation needs administrator authorization for the current session.",
                     type: "https://relaxkonos.app/problems/elevation-required");
