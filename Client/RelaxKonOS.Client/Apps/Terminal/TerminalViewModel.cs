@@ -1,7 +1,5 @@
 using RelaxKonOS.App.Terminal;
-using Avalonia.Utilities;
 using Microsoft.Extensions.DependencyInjection;
-using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
@@ -21,13 +19,8 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 public partial class TerminalViewModel : TerminalAppearanceViewModel
 {
     private readonly RelaxKonOS.Client.Services.DesktopDevicePreferences? _devicePreferences;
-    public IReadOnlyList<string> VtEngines { get; } = ["Auto", "Managed", "Native"];
-    [ObservableProperty] private string _vtEngine = "Auto";
-    partial void OnVtEngineChanged(string value)
-    {
-        if (VtEngines.Contains(value))
-            _devicePreferences?.Update(options => options with { TerminalVtEngine = value });
-    }
+    protected override void OnVtEngineEdited(string value) =>
+        _devicePreferences?.Update(options => options with { TerminalVtEngine = value });
     private readonly RelaxKonOS.Client.Services.ClientPresentationPreferences? _preferences;
     public RelaxKonOS.Protocol.Registry.TerminalPaddingSettings Padding => _preferences?.TerminalPadding ?? RelaxKonOS.Protocol.Registry.TerminalPaddingSettings.Default;
     private void OnPreferencesChanged(object? sender, EventArgs args)
@@ -68,7 +61,6 @@ public partial class TerminalViewModel : TerminalAppearanceViewModel
     partial void OnTitleChanged(string value) => OnPropertyChanged(nameof(DisplayTitle));
     public Func<Task>? RequestSettingsAsync { get; set; }
     public Func<Task>? RequestEnvironmentAsync { get; set; }
-    public Action? CloseSettingsAction { get; set; }
     public Action? RequestAdministratorTerminal { get; set; }
     public bool IsAdministrator { get; }
     public bool CanOpenAdministratorTerminal => _sshDesktop?.IsConnected != true
@@ -99,12 +91,10 @@ public partial class TerminalViewModel : TerminalAppearanceViewModel
         bool isAdministrator = false,
         RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null,
         RelaxKonOS.Client.Services.DesktopDevicePreferences? devicePreferences = null)
+        : base(App.Services?.GetService<LocalizationService>(),
+            (sshDesktop?.IsConnected == true ? sshDesktop.DevicePreferences : devicePreferences)?.Value.TerminalVtEngine ?? "Auto")
     {
-        if (App.Services?.GetService<LocalizationService>() is { } language)
-            WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, TerminalViewModel>(
-                language, nameof(LocalizationService.LanguageChanged), OnLanguageChanged);
         _devicePreferences = sshDesktop?.IsConnected == true ? sshDesktop.DevicePreferences : devicePreferences;
-        _vtEngine = _devicePreferences?.Value.TerminalVtEngine ?? "Auto";
         _preferences = session is { State: AuthSessionState.Authenticated } && sshDesktop?.IsConnected != true ? preferences : null;
         _session = session;
         _settingsClient = settingsClient;
@@ -174,17 +164,12 @@ public partial class TerminalViewModel : TerminalAppearanceViewModel
     /// <summary>Re-raises the localizable state so the open window re-renders after a language switch.</summary>
     public void RefreshLocalization() => OnPropertyChanged(nameof(Status));
 
-    private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => OnPropertyChanged(string.Empty);
-
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private async Task OpenSettingsAsync()
         => await (RequestSettingsAsync?.Invoke() ?? Task.CompletedTask);
 
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private Task OpenEnvironmentAsync() => RequestEnvironmentAsync?.Invoke() ?? Task.CompletedTask;
-
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
-    private void CloseSettings() => CloseSettingsAction?.Invoke();
 
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private void OpenAdministratorTerminal() => RequestAdministratorTerminal?.Invoke();

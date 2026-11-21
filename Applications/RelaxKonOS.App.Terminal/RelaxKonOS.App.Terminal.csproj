@@ -5,9 +5,11 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
     <ItemGroup>
+        <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
         <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
         <PackageReference Include="RoyalApps.RoyalTerminal.Avalonia" />
         <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Vt.Ghostty" />
+        <EmbeddedResource Include="Localization/*.json" LogicalName="Terminal.Localization.%(Filename).json" />
     </ItemGroup>
 </Project>

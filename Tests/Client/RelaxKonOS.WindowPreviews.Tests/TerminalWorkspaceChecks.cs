@@ -5,11 +5,12 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System.Text.Json;
 using RelaxKonOS.Client.Apps.Terminal;
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Protocol.Workspace;
 
 internal static class TerminalWorkspaceChecks
 {
-    public static void Run()
+    public static void Run(ShellSettings shellSettings)
     {
         var workspace = new TerminalWorkspaceView();
         var first = new TerminalViewModel(null, new Settings(), null);
@@ -88,7 +89,7 @@ internal static class TerminalWorkspaceChecks
         Check(crowded.ScrollTabsBy(1) && crowdedScroller.Offset.X == 0, "The wheel scrolls the strip back");
         preview.Close();
         Dispatcher.UIThread.RunJobs();
-        CheckEngineMigration();
+        CheckEngineMigration(shellSettings);
         CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference.Managed);
         if (new RoyalTerminal.Terminal.GhosttyVtProcessorProvider().IsAvailable)
             CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference.Native);
@@ -161,7 +162,7 @@ internal static class TerminalWorkspaceChecks
     /// <summary>
     /// VT selection is a device preference independent of the workspace renderer token.
     /// </summary>
-    private static void CheckEngineMigration()
+    private static void CheckEngineMigration(ShellSettings shellSettings)
     {
         var provider = new RoyalTerminal.Terminal.GhosttyVtProcessorProvider();
         if (OperatingSystem.IsWindows() && System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
@@ -235,6 +236,18 @@ internal static class TerminalWorkspaceChecks
             "The VT selector uses a ComboBox");
         Check(settings.GetVisualDescendants().OfType<ComboBox>().Count() == 4,
             "The terminal settings expose VT engine, font family, size and colour scheme");
+        var originalLanguage = shellSettings.Language;
+        foreach (var (language, title) in new[]
+        {
+            ("en-US", "Terminal settings"), ("zh-CN", "终端设置"), ("ja-JP", "ターミナル設定"),
+        })
+        {
+            shellSettings.Language = language;
+            Dispatcher.UIThread.RunJobs();
+            Check(settings.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == title),
+                $"The installed settings view must follow the application language ({language}).");
+        }
+        shellSettings.Language = originalLanguage;
         host.Close();
         Dispatcher.UIThread.RunJobs();
         var path = Path.Combine(Path.GetTempPath(), "relaxkon-vt-" + Guid.NewGuid() + ".json");

@@ -1,34 +1,32 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:app="clr-namespace:RelaxKonOS.Client.Apps"
-             xmlns:terminal="clr-namespace:RelaxKonOS.Client.Apps.Terminal"
-             x:Class="RelaxKonOS.Client.Apps.Terminal.TerminalSettingsView"
-             x:DataType="terminal:TerminalViewModel"
+             xmlns:terminal="clr-namespace:RelaxKonOS.App.Terminal"
+             x:Class="RelaxKonOS.App.Terminal.TerminalSettingsView"
+             x:DataType="terminal:TerminalAppearanceViewModel"
              Width="460" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" Margin="20" RowSpacing="14">
-        <TextBlock Text="{loc:Loc terminal.settings}" FontSize="18" FontWeight="SemiBold" />
+        <TextBlock Text="{Binding SettingsTitle}" FontSize="18" FontWeight="SemiBold" />
         <Grid Grid.Row="1" ColumnDefinitions="150,*" ColumnSpacing="12">
-            <TextBlock Text="{loc:Loc terminal.font_family}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding FontFamilyLabel}" VerticalAlignment="Center" />
             <ComboBox Grid.Column="1" ItemsSource="{Binding FontFamilies}" SelectedItem="{Binding FontFamily, Mode=TwoWay}" />
         </Grid>
         <Grid Grid.Row="2" ColumnDefinitions="150,*" ColumnSpacing="12">
-            <TextBlock Text="{loc:Loc terminal.font_size}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding FontSizeLabel}" VerticalAlignment="Center" />
             <ComboBox Grid.Column="1" ItemsSource="{Binding FontSizes}" SelectedItem="{Binding FontSize, Mode=TwoWay}" />
         </Grid>
         <Grid Grid.Row="3" ColumnDefinitions="150,*" ColumnSpacing="12">
-            <TextBlock Text="{loc:Loc terminal.color_scheme}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding ColorSchemeLabel}" VerticalAlignment="Center" />
             <ComboBox Grid.Column="1" ItemsSource="{Binding ColorSchemes}" SelectedItem="{Binding ColorScheme, Mode=TwoWay}" />
         </Grid>
         <Grid Grid.Row="4" ColumnDefinitions="150,*" ColumnSpacing="12">
-            <TextBlock Text="{loc:Loc terminal.vt_engine}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding VtEngineLabel}" VerticalAlignment="Center" />
             <ComboBox Grid.Column="1" ItemsSource="{Binding VtEngines}" SelectedItem="{Binding VtEngine, Mode=TwoWay}"
-                      AutomationProperties.Name="{loc:Loc terminal.vt_engine}" />
+                      AutomationProperties.Name="{Binding VtEngineLabel}" />
         </Grid>
-        <TextBlock Grid.Row="5" Text="{loc:Loc terminal.vt_engine.description}"
+        <TextBlock Grid.Row="5" Text="{Binding VtEngineDescription}"
                    TextWrapping="Wrap" VerticalAlignment="Top" Opacity="0.7" />
         <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Classes="primary" Content="{loc:Loc common.done}" Command="{Binding CloseSettingsCommand}" />
+            <Button Classes="primary" Content="{Binding DoneLabel}" Command="{Binding CloseSettingsCommand}" />
         </StackPanel>
     </Grid>
 </UserControl>

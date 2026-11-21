@@ -115,6 +115,12 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
             Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
         }
 
+        foreach (var resource in RelaxKonOS.App.Terminal.TerminalLocalization.ResourceNames)
+        {
+            using var source = RelaxKonOS.App.Terminal.TerminalLocalization.Open(resource);
+            Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
+        }
+
         if (Directory.Exists(directory))
         {
             foreach (var path in Directory.EnumerateFiles(directory, "*.json", SearchOption.AllDirectories))

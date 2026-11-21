@@ -1,8 +1,8 @@
 {
     "Culture": "zh-CN",
     "Strings": {
-      "terminal.vt_engine": "VT 引擎",
-      "terminal.vt_engine.description": "Auto：优先 Ghostty，不可用时使用 Managed；Native：必须使用 Ghostty。仅保存在此设备，对新建终端生效。",
+        "terminal.vt_engine": "VT 引擎",
+        "terminal.vt_engine.description": "Auto：优先 Ghostty，不可用时使用 Managed；Native：必须使用 Ghostty。仅保存在此设备，对新建终端生效。",
         "terminal.open_administrator": "打开管理员终端",
         "terminal.administrator_title": "管理员终端",
         "terminal.status.administrator_connected": "已连接 · 管理员权限",
@@ -30,6 +30,7 @@
         "terminal.context.copy": "复制",
         "terminal.context.paste": "粘贴",
         "terminal.context.select_all": "全选",
-        "terminal.context.clear": "清屏"
+        "terminal.context.clear": "清屏",
+        "terminal.done": "完成"
     }
 }

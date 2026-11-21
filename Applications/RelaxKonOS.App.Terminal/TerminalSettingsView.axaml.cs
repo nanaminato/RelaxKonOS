@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.Terminal;
+namespace RelaxKonOS.App.Terminal;
 
 public partial class TerminalSettingsView : UserControl
 {

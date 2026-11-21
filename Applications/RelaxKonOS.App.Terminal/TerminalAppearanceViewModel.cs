@@ -1,4 +1,7 @@
+using Avalonia.Utilities;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.App.Terminal;
@@ -7,6 +10,42 @@ namespace RelaxKonOS.App.Terminal;
 public abstract partial class TerminalAppearanceViewModel : ObservableObject
 {
     private bool _loadingAppearance;
+    private readonly ISystemLanguage? _language;
+
+    protected TerminalAppearanceViewModel(ISystemLanguage? language, string vtEngine)
+    {
+        _vtEngine = vtEngine;
+        _language = language;
+        if (language is not null)
+            WeakEventHandlerManager.Subscribe<ISystemLanguage, SystemLanguageChangedEventArgs, TerminalAppearanceViewModel>(
+                language, nameof(ISystemLanguage.LanguageChanged), OnLanguageChanged);
+    }
+
+    private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => OnPropertyChanged(string.Empty);
+
+    public string SettingsTitle => Label("terminal.settings");
+    public string FontFamilyLabel => Label("terminal.font_family");
+    public string FontSizeLabel => Label("terminal.font_size");
+    public string ColorSchemeLabel => Label("terminal.color_scheme");
+    public string VtEngineLabel => Label("terminal.vt_engine");
+    public string VtEngineDescription => Label("terminal.vt_engine.description");
+    public string DoneLabel => Label("terminal.done");
+
+    private string Label(string key) => TerminalLocalization.Resolve(_language, key);
+
+    public IReadOnlyList<string> VtEngines { get; } = ["Auto", "Managed", "Native"];
+    [ObservableProperty] private string _vtEngine = "Auto";
+
+    partial void OnVtEngineChanged(string value)
+    {
+        if (VtEngines.Contains(value)) OnVtEngineEdited(value);
+    }
+
+    protected abstract void OnVtEngineEdited(string value);
+    public Action? CloseSettingsAction { get; set; }
+
+    [RelayCommand]
+    private void CloseSettings() => CloseSettingsAction?.Invoke();
 
     [ObservableProperty] private TerminalSettingsDto _appearance = TerminalSettingsDto.Default;
     [ObservableProperty] private string _fontFamily = TerminalSettingsDto.Default.FontFamily;

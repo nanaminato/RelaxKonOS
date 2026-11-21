@@ -169,7 +169,7 @@ if (args.Contains("--desktop-clipboard-only"))
 }
 if (args.Contains("--terminal-tabs-only"))
 {
-    TerminalWorkspaceChecks.Run();
+    TerminalWorkspaceChecks.Run(settings);
     return;
 }
 if (args.Contains("--tabstrip-only"))
