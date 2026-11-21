@@ -14,6 +14,14 @@ public sealed class SdkEditorWorkspaceFiles(IServerFiles files, Func<string, str
         return result.Directory!;
     }
 
+    public async Task<bool> PathExistsAsync(string path, CancellationToken ct)
+    {
+        await RequireGrantAsync(AppPermissions.ServerFilesRead, ct);
+        var result = await files.GetEntryAsync(path, ct);
+        RequireSuccess(result.Status);
+        return result.Entry is not null;
+    }
+
     public async Task<byte[]?> ReadFileAsync(string path, CancellationToken ct)
     {
         await RequireGrantAsync(AppPermissions.ServerFilesRead, ct);

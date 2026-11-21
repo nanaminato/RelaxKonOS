@@ -52,7 +52,7 @@ public sealed class GitClientApp : RemoteApplicationBase
         var encodings = context.Services.GetService(typeof(TextEditorEncodingSettings)) as TextEditorEncodingSettings;
         var project = new ProjectEditorViewModel(vm, client, ExplorerEditorWorkspaceFiles.Wrap(files),
             session.CurrentServer?.Platform != HostPlatformKind.Windows, encodings?.CodeEditorDefaultEncoding ?? "UTF-8",
-            files is null ? null : async path => await files.GetInfoAsync(path) is not null);
+            files is null ? null : async (path, token) => await files.GetInfoAsync(path, token) is not null);
         ManagedWindow? window = null;
 
         // Wire dialog callbacks — the VM commands call these and handle the returned request objects.

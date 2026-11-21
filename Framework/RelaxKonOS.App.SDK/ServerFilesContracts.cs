@@ -22,6 +22,9 @@ public interface IServerFiles
     /// <summary>Lists the immediate children of a directory through the captured server session and read grant.</summary>
     Task<ServerDirectoryResult> ListDirectoryAsync(string path, CancellationToken cancellationToken = default);
 
+    /// <summary>Looks up an entry with the current read grant. A successful result with no entry means the path is absent.</summary>
+    Task<ServerFileEntryResult> GetEntryAsync(string path, CancellationToken cancellationToken = default);
+
     /// <summary>Writes a file using the current RelaxKonOS Server session and the app's write grant.</summary>
     Task<AppCapabilityResult> WriteAsync(string path, byte[] content, CancellationToken cancellationToken = default);
 
@@ -48,6 +51,7 @@ public sealed record ServerFileWriteResult(AppCapabilityResult Status, string? V
 public sealed record ServerDirectoryResult(AppCapabilityResult Status, ServerDirectory? Directory = null);
 public sealed record ServerDirectory(string Path, string Name, IReadOnlyList<ServerDirectoryEntry> Entries);
 public sealed record ServerDirectoryEntry(string Path, string Name, bool IsDirectory);
+public sealed record ServerFileEntryResult(AppCapabilityResult Status, ServerDirectoryEntry? Entry = null);
 public sealed record ServerFileRenameResult(AppCapabilityResult Status, string? Path = null);
 
 public enum ServerFilePickerMode { OpenFile, SelectFolder, SaveFile }

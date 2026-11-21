@@ -23,7 +23,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
     private readonly Dictionary<string, (GitFileChangeDto File, string? Commit)> _diffs = [];
 
     public ProjectEditorViewModel(GitClientViewModel git, IServerGit client, IEditorWorkspaceFiles? workspace,
-        bool pathCaseSensitive, string defaultEncoding = "UTF-8", Func<string, Task<bool>>? pathExistsAsync = null)
+        bool pathCaseSensitive, string defaultEncoding = "UTF-8", Func<string, CancellationToken, Task<bool>>? pathExistsAsync = null)
     {
         Git = git;
         _client = client;
@@ -37,7 +37,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
         Git.OpenEditorDiffAsync = OpenDiffAsync;
         if (workspace is not null && pathExistsAsync is not null) Git.CreatePlainProjectAsync = async path =>
         {
-            if (await pathExistsAsync(path)) throw new InvalidOperationException(git.Labels("git.editor.target_exists"));
+            if (await pathExistsAsync(path, _lifetime.Token)) throw new InvalidOperationException(git.Labels("git.editor.target_exists"));
             await workspace.CreateDirectoryAsync(path, _lifetime.Token);
             await OpenPlainFolderAsync(path);
         };

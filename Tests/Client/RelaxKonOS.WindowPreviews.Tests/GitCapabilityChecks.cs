@@ -9,6 +9,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Git;
+using RelaxKonOS.Protocol.Files;
 
 internal static class GitCapabilityChecks
 {
@@ -26,14 +27,22 @@ internal static class GitCapabilityChecks
             null!, null!, null!, git: new RemoteGitClient(http, auth));
         using var lifetime = new CancellationTokenSource();
         var manifest = new ApplicationManifest(new AppId("relaxkonos.git"), "Git");
-        var git = factory.Create(manifest, lifetime.Token).Git;
+        var context = factory.Create(manifest, lifetime.Token);
+        var git = context.Git;
+
+        if ((await context.ServerFiles.GetEntryAsync("/occupied")).Status != AppCapabilityResult.PermissionDenied)
+            throw new InvalidOperationException("An app without file read access could look up an entry.");
+        permissions.Granted.Add(AppPermissions.ServerFilesRead);
+        var files = new RelaxKonOS.App.CodeEditor.SdkEditorWorkspaceFiles(context.ServerFiles, key => key);
+        if (!await files.PathExistsAsync("/occupied", default) || await files.PathExistsAsync("/missing", default))
+            throw new InvalidOperationException("The editor adapter did not distinguish existing and missing paths.");
 
         await RejectAsync<UnauthorizedAccessException>(() => git.ListRepositoriesAsync());
         permissions.Granted.Add(AppPermissions.ServerGitRead);
         if ((await git.ListRepositoriesAsync()).Count != 0) throw new InvalidOperationException("Unexpected test repository.");
         await RejectAsync<UnauthorizedAccessException>(() => git.ListCredentialAccountsAsync());
         await RejectAsync<UnauthorizedAccessException>(() => git.DeleteCredentialAccountAsync("account"));
-        if (transport.Calls != 1) throw new InvalidOperationException("Denied Git operations reached the HTTP client.");
+        if (transport.Calls != 3) throw new InvalidOperationException("Denied file or Git operations reached the HTTP client.");
 
         permissions.Granted.Add(AppPermissions.ServerGitManage);
         await git.DeleteCredentialAccountAsync("account");
@@ -42,7 +51,7 @@ internal static class GitCapabilityChecks
         await RejectAsync<InvalidOperationException>(() => git.ListRepositoriesAsync());
         lifetime.Cancel();
         await RejectAsync<OperationCanceledException>(() => git.ListRepositoriesAsync());
-        if (transport.Calls != 3) throw new InvalidOperationException("A stale or cancelled context issued a Git request.");
+        if (transport.Calls != 5) throw new InvalidOperationException("A stale or cancelled context issued a Git request.");
         Console.WriteLine("Git SDK read/manage grants, authenticated transport, connection binding and cancellation passed.");
     }
 
@@ -69,6 +78,12 @@ internal static class GitCapabilityChecks
             {
                 ("GET", GitApiRoutes.Repositories) =>
                     new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") },
+                ("GET", FileApiRoutes.Info) when request.RequestUri.Query.Contains("occupied", StringComparison.Ordinal) =>
+                    new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent("""{"path":"/occupied","name":"occupied","type":"directory"}"""),
+                    },
+                ("GET", FileApiRoutes.Info) => new HttpResponseMessage(HttpStatusCode.NotFound),
                 ("DELETE", var route) when route == GitApiRoutes.CredentialAccount.Replace("{accountId}", "account") =>
                     new HttpResponseMessage(HttpStatusCode.NoContent),
                 _ => throw new InvalidOperationException("Unexpected Git route."),

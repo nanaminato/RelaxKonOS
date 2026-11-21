@@ -717,6 +717,23 @@ public sealed class ExternalAppContextFactory
                     .ToArray()));
         }
 
+        public async Task<ServerFileEntryResult> GetEntryAsync(string path, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
+                return new(AppCapabilityResult.PermissionDenied);
+            if (string.IsNullOrWhiteSpace(path)) return new(AppCapabilityResult.InvalidArgument);
+            if (!HasWorkspace) return new(AppCapabilityResult.Unavailable);
+
+            var entry = await files.GetInfoAsync(path, cancellationToken);
+            if (!HasWorkspace) return new(AppCapabilityResult.Unavailable);
+            if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
+                return new(AppCapabilityResult.PermissionDenied);
+
+            return new(AppCapabilityResult.Succeeded, entry is null ? null : new ServerDirectoryEntry(
+                entry.Path, entry.Name, entry.Type == RelaxKonOS.Protocol.Files.FileSystemEntryType.Directory));
+        }
+
         public async Task<AppCapabilityResult> WriteAsync(string path, byte[] content, CancellationToken cancellationToken = default)
         {
             var status = CheckWriteAccess(path, cancellationToken);

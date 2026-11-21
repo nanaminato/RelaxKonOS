@@ -37,7 +37,7 @@ internal static class GitDockChecks
         var files = DispatchProxy.Create<IExplorerClient, ProjectFiles>();
         ((ProjectFiles)(object)files).Directories.Add("/dock");
         var vm = new GitClientViewModel(api, LocalizedText.Get) { IsStarting = false, HasLoadedRepositories = true };
-        using var project = new ProjectEditorViewModel(vm, api, ExplorerEditorWorkspaceFiles.Wrap(files), true, pathExistsAsync: async path => await files.GetInfoAsync(path) is not null);
+        using var project = new ProjectEditorViewModel(vm, api, ExplorerEditorWorkspaceFiles.Wrap(files), true, pathExistsAsync: async (path, token) => await files.GetInfoAsync(path, token) is not null);
         var view = GitClientWorkspace.Create(vm, project);
         var host = new Window { Width = 1475, Height = 670, Content = view };
         host.Show(); Dispatcher.UIThread.RunJobs();
