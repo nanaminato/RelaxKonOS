@@ -29,7 +29,6 @@ public sealed class BrowserPackageApp : IExternalRemoteApplication
     public Task ActivateAsync(IExternalAppContext context, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        BrowserDiagnostics.EnsureUiWatchdog();
         BrowserDiagnostics.Record("Browser activation requested.");
         var language = context.SystemLanguage;
         string Label(string key) => BrowserLocalization.Resolve(language, key);
@@ -57,6 +56,8 @@ public sealed class BrowserPackageApp : IExternalRemoteApplication
             bounds: new Rect(60, 50, 1100, 720),
             iconGlyph: Manifest.IconGlyph);
         var window = owner.Window;
+        var watchdog = new BrowserDiagnostics.UiWatchdog();
+        owner.Closed.Register(watchdog.Dispose);
         view.AttachWindowHeader(window);
         FollowTitle(owner, language);
         window.KeyDown += (_, e) =>

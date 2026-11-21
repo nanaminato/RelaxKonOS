@@ -13,9 +13,11 @@ using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
+using RelaxKonOS.Protocol.Browser;
 using RelaxKonOS.Runtime;
 using System.Reflection;
 using WindowManager = RelaxKonOS.WindowManager.WindowManager;
@@ -54,6 +56,8 @@ internal static class OfficialRoappChecks
         using var http = new HttpClient();
         using var catalog = new ComponentCatalogSourceStore(Path.Combine(root, "catalog-trust"), "test-desktop");
         var journal = new FileDeploymentJournal(Path.Combine(root, "deployment-journal"));
+        var browserData = DispatchProxy.Create<IBrowserData, OfficialBrowserDataFixture>();
+        EventAlertsAuthFixture? browserAuth = null;
         try
         {
             var (packages, applications, windows) = CreateRuntime();
@@ -159,6 +163,15 @@ internal static class OfficialRoappChecks
                     settings.Language = "en-US";
                     Dispatcher.UIThread.RunJobs();
                     Check(workspace.Title == "リモート ブラウザー", "A closed Browser window should release its language subscription.");
+                    browserAuth!.State = AuthSessionState.Authenticated;
+                    Check(await packages.LaunchAsync(applicationId), "The installed Browser should launch after login.");
+                    for (var attempt = 0; attempt < 50 && ((OfficialBrowserDataFixture)(object)browserData).SettingsReads == 0; attempt++)
+                        await Task.Delay(20);
+                    var browserWindow = windows.Windows.Single();
+                    Check(browserWindow.View.Content?.GetType().FullName == "RelaxKonOS.App.Browser.Views.BrowserMainView"
+                          && ((OfficialBrowserDataFixture)(object)browserData).SettingsReads == 1,
+                        "The signed-in package must open its workspace and read settings through the SDK.");
+                    windows.Close(browserWindow);
                 }
             }
 
@@ -241,10 +254,16 @@ internal static class OfficialRoappChecks
             var apps = new ApplicationManager(windows, services);
             var permissions = new RoappCatalogChecks.Permissions();
             var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+            if (isBrowser)
+            {
+                browserAuth = (EventAlertsAuthFixture)(object)auth;
+                browserAuth.State = AuthSessionState.Unauthenticated;
+            }
             var memory = new UsageMemoryStore(Path.Combine(root, "usage-memory.json"));
             var context = new ExternalAppContextFactory(permissions, null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
-                null!, null!, null!, null!, null!, memory, null!, null!, null!, null!);
+                null!, null!, null!, null!, null!, memory, null!, null!, null!, null!,
+                browserData: isBrowser ? browserData : null);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 
@@ -297,5 +316,26 @@ internal static class OfficialRoappChecks
     private static void Check(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+}
+
+public class OfficialBrowserDataFixture : DispatchProxy
+{
+    public int SettingsReads { get; private set; }
+
+    protected override object? Invoke(MethodInfo? method, object?[]? args)
+    {
+        switch (method?.Name)
+        {
+            case nameof(IBrowserData.ListBookmarksAsync):
+                return Task.FromResult<IReadOnlyList<BookmarkDto>>([]);
+            case nameof(IBrowserData.ListHistoryAsync):
+                return Task.FromResult<IReadOnlyList<HistoryEntryDto>>([]);
+            case nameof(IBrowserData.GetSettingsAsync):
+                SettingsReads++;
+                return Task.FromResult(BrowserSettingsDto.Default);
+            default:
+                throw new NotSupportedException(method?.Name);
+        }
     }
 }

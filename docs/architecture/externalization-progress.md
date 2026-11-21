@@ -44,7 +44,7 @@
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前 Welcome 和 Event & Alert Center 已迁出桌面宿主。桌面发行构建将 Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager 和 Registry 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装这六个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。桌面发行构建将 Browser、Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager、Registry、Code Editor 和 Docker 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装前七个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。Docker 可从官方商店按需安装。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 ## 复用边界
 
@@ -64,6 +64,7 @@
 
 - Browser 的书签、历史记录和工作区设置已通过 SDK 接入，仅官方 Browser 应用上下文提供此能力。请求绑定启动时的服务器会话。
 - Browser 的窗口和原生 WebView 已由独立 SDK 入口承载。Standard 与 Developer 使用同一官方 .roapp 离线预装。Windows Release 使用 DevCli 生成的实际归档验证来源校验、预装、未登录启动窗口跟随中英日语言、关闭后解除语言订阅、更新、失败保留版本、重启发现与卸载。已登录的原生 WebView 实机验收待完成。
+- 桌面发行项目的 `PublishOfficialDesktopApps` 目标在 Windows 上生成九份归档和校验文件。逐包复核 SHA-256 及配置集引用均通过。Browser 的签入无头回归通过，测试数据经 SDK 进入已安装包的工作区。窗口关闭时停止 UI 心跳和后台诊断计时器。
 
 - Registry SDK 分开检查读写权限，用户与实例子客户端沿用同一会话和授权。宿主提权在授权重试和令牌刷新时核对原会话。
 - Registry 桌面工作区和三个编辑对话框已使用 SDK 的注册表和窗口接口。在刷新、编辑及删除时按需请求应用权限，确认后的回复仍使用原有所有者、实例和版本核对。独立项目和应用包仍待迁移。

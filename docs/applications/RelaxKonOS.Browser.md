@@ -1,6 +1,12 @@
 # RelaxKonOS Browser 模块设计
 
-> 内置网页浏览器：基于 `Avalonia.Controls.WebView` 的 `NativeWebView`（平台原生引擎）在 Client 本地渲染网页；服务端只持久化按用户隔离的书签、历史和浏览器偏好。
+> 官方基础应用 Remote Browser 在客户端打开网页，服务端按用户保存书签、历史和浏览器偏好。
+
+## 安装与更新
+
+桌面发行版提供 `OfficialApps/relaxkonos.browser.roapp` 和配套 SHA-256。Standard 与 Developer 配置首次启动时离线预装 Browser。Minimal 用户可以在 **应用安装程序 → 官方应用** 中安装。更新、同版本修复和卸载也使用这个入口。
+
+Browser 安装后可在未连接服务器时打开登录提示。连接并登录后，应用通过 SDK 获取浏览器数据，调用绑定到启动时的服务端会话。
 
 ## 定位与边界
 
@@ -13,7 +19,7 @@ RemoteBrowser 只负责网页导航、展示以及书签、历史和主页等浏
 
 ## 客户端
 
-`BrowserApp` 创建 `BrowserViewModel` 与 `BrowserMainView`。`NativeWebView` 负责平台原生渲染；View 通过委托调用其后退、前进、刷新和停止方法，ViewModel 不持有 WebView 引用。
+`RelaxKonOS.App.Browser` 的 SDK 入口 `BrowserPackageApp` 创建 `BrowserViewModel` 和 `BrowserMainView`。视图通过委托调用 `NativeWebView` 的后退、前进、刷新和停止方法。
 
 导航流程为：地址栏输入经 `NormalizeAddress` 归一化（域名补 `https://`、`localhost:port` 补 `http://`、搜索词转为搜索 URL）后，更新当前标签状态并通过 `ViewNavigateRequested` 请求 View 导航。导航完成后，浏览器异步记录历史并更新书签状态。
 
@@ -58,7 +64,7 @@ Windows/macOS 的每个有网页内容的标签按需创建独立 `NativeWebView
 
 1. 保持网页渲染和网络访问在 Client；不得将浏览器变为 Server HTTP 代理。
 2. 浏览器不得依赖 `IPortForwardingService`，也不得因导航自动创建隧道。
-3. `IBrowserClient` 只处理浏览器数据和偏好 API；端口转发由独立应用处理。
+3. SDK 的 `IBrowserData` 提供浏览器数据和偏好 API。
 4. 书签和历史操作必须按当前 JWT 用户隔离。
 
 ### 2026-10-07：图标对齐与收藏/历史面板

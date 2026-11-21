@@ -8,42 +8,46 @@ namespace RelaxKonOS.App.Browser;
 /// does not pass through the application's HttpClient diagnostics pipeline, so a separate
 /// trace is required when investigating UI hangs during navigation.
 /// </summary>
-public static class BrowserDiagnostics
+internal static class BrowserDiagnostics
 {
     private static readonly object FileGate = new();
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RelaxKonOS", "logs", "browser-diagnostics.log");
 
-    private static long _lastUiPulse = Stopwatch.GetTimestamp();
-    private static int _watchdogStarted;
-    private static int _unresponsiveReported;
-
-    public static string FilePath => LogPath;
-
-    /// <summary>Starts a process-wide UI heartbeat and records stalls without blocking the UI thread.</summary>
-    public static void EnsureUiWatchdog()
+    /// <summary>Starts a heartbeat for an open Browser workspace. Dispose on its UI thread.</summary>
+    public sealed class UiWatchdog : IDisposable
     {
-        if (Interlocked.Exchange(ref _watchdogStarted, 1) != 0)
-            return;
+        private readonly DispatcherTimer _heartbeat;
+        private readonly Timer _monitor;
+        private long _lastUiPulse = Stopwatch.GetTimestamp();
+        private int _unresponsiveReported;
 
-        var heartbeat = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        heartbeat.Tick += (_, _) =>
+        public UiWatchdog()
         {
-            Interlocked.Exchange(ref _lastUiPulse, Stopwatch.GetTimestamp());
-            if (Interlocked.Exchange(ref _unresponsiveReported, 0) != 0)
-                Record("UI heartbeat recovered.");
-        };
-        heartbeat.Start();
+            _heartbeat = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            _heartbeat.Tick += (_, _) =>
+            {
+                Interlocked.Exchange(ref _lastUiPulse, Stopwatch.GetTimestamp());
+                if (Interlocked.Exchange(ref _unresponsiveReported, 0) != 0)
+                    Record("UI heartbeat recovered.");
+            };
+            _heartbeat.Start();
 
-        _ = new Timer(_ =>
+            _monitor = new Timer(_ =>
+            {
+                var stalledFor = Stopwatch.GetElapsedTime(Interlocked.Read(ref _lastUiPulse));
+                if (stalledFor >= TimeSpan.FromSeconds(2) && Interlocked.Exchange(ref _unresponsiveReported, 1) == 0)
+                    Record($"UI heartbeat stalled for at least {stalledFor.TotalMilliseconds:F0} ms.");
+            }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+            Record($"Browser diagnostics started. Log file: {LogPath}");
+        }
+
+        public void Dispose()
         {
-            var stalledFor = Stopwatch.GetElapsedTime(Interlocked.Read(ref _lastUiPulse));
-            if (stalledFor >= TimeSpan.FromSeconds(2) && Interlocked.Exchange(ref _unresponsiveReported, 1) == 0)
-                Record($"UI heartbeat stalled for at least {stalledFor.TotalMilliseconds:F0} ms.");
-        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
-
-        Record($"Browser diagnostics started. Log file: {LogPath}");
+            _heartbeat.Stop();
+            _monitor.Dispose();
+        }
     }
 
     public static void Record(string message)
