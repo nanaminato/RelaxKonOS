@@ -5,6 +5,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using RelaxKonOS.Core.Input;
+using RelaxKonOS.WindowManager;
 
 namespace RelaxKonOS.App.Git.Views;
 
@@ -87,6 +89,38 @@ public partial class GitClientWorkspace : UserControl
 
     public static GitClientWorkspace Create(GitClientViewModel viewModel, ProjectEditorViewModel project) => new(viewModel, project);
     public CodeEditorView EditorView => EditorPane;
+
+    public void BindWindow(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        AttachWindowHeader(window);
+        window.CanCloseAsync = async () => _project.CanClose && await _project.PrepareOperationAsync() && _project.CanClose;
+        window.KeyDown += (_, e) =>
+        {
+            if (!e.Handled && !e.IsRepeat && e.Modifiers == RemoteKeyModifiers.Alt)
+            {
+                if (e.Key == RemoteKey.Left) { NavigateHistory(-1); e.Handled = true; return; }
+                if (e.Key == RemoteKey.Right) { NavigateHistory(1); e.Handled = true; return; }
+                if (e.Key == RemoteKey.Digit(1)) { ToggleProjectTool(); e.Handled = true; return; }
+                if (e.Key == RemoteKey.Digit(0)) { ToggleCommitTool(); e.Handled = true; return; }
+                if (e.Key == RemoteKey.Digit(9)) { ToggleGitTool(); e.Handled = true; return; }
+            }
+            if (!e.Handled && !e.IsRepeat && e.Modifiers == RemoteKeyModifiers.Control && e.Key == RemoteKey.Letter('K'))
+            { ShowCommitTool(); e.Handled = true; return; }
+            if (!e.Handled && !e.IsRepeat && e.Key == RemoteKey.Letter('F') && e.Modifiers == RemoteKeyModifiers.Control)
+            { EditorView.FocusFind(); e.Handled = true; return; }
+            if (!e.Handled && !e.IsRepeat && e.Key == new RemoteKey("Tab")
+                && (e.Modifiers == RemoteKeyModifiers.Control || e.Modifiers == (RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift)))
+            { EditorView.CycleDocument(e.Modifiers.HasFlag(RemoteKeyModifiers.Shift) ? -1 : 1); e.Handled = true; return; }
+            _ = WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Alt, _viewModel.CreateBranchCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control, _project.Editor.SaveCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('O'), RemoteKeyModifiers.Control, _project.Editor.OpenDocumentCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('T'), RemoteKeyModifiers.Control, _viewModel.PullCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('K'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, _viewModel.PushCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, _project.Editor.SaveAllCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control, _project.Editor.NewDocumentCommand)
+                || WindowShortcut.TryExecute(e, RemoteKey.Letter('W'), RemoteKeyModifiers.Control, _project.Editor.CloseDocumentCommand);
+        };
+    }
 
     public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
     {

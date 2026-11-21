@@ -84,7 +84,11 @@ internal static class FusedWorkspaceChecks
             host.Show(); Pump(); manager.Attach(canvas); manager.SetHostBounds(new CoreRect(0, 0, 1100, 800));
             var serverWindow = manager.Create(new WindowCreateOptions(new AppId("test.server-center"), "Server center", serverView, new CoreRect(10, 10, 960, 640)));
             var gitWindow = manager.Create(new WindowCreateOptions(new AppId("test.git"), "Git", gitView, new CoreRect(10, 10, 960, 640)));
-            serverView.AttachWindowHeader(serverWindow); gitView.AttachWindowHeader(gitWindow);
+            serverView.AttachWindowHeader(serverWindow); gitView.BindWindow(gitWindow);
+            git.IsBusy = true;
+            Check(gitWindow.CanCloseAsync?.Invoke().GetAwaiter().GetResult() == false,
+                "Git prevents closing the bound window while a Git operation is active.");
+            git.IsBusy = false;
             var samples = new List<(ManagedWindow window, UserControl view, string name)> { (serverWindow, serverView, "server-center"), (gitWindow, gitView, "git") };
             Add(new DockerManagerWorkspace(dockerModel, new DockerProxyStatusViewModel(null!, DockerLocalization.ForLanguage(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>())), new DockerImageMirrorsViewModel(null!, DockerLocalization.ForLanguage(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>())), Done, Done, Done, Done, Done), "docker", (view, window) => view.AttachWindowHeader(window));
             Add(new ProxyManagerWorkspace(proxyModel), "proxy", (view, window) => view.AttachWindowHeader(window));

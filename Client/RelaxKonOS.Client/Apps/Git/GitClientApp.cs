@@ -15,7 +15,6 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.WindowManager;
-using RelaxKonOS.Core.Input;
 using RelaxKonOS.Client.Apps.CodeEditor;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
@@ -118,7 +117,7 @@ public sealed class GitClientApp : RemoteApplicationBase
         view.OpenSettings = () => RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsDialog.ShowAsync(context, window, dependency);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),
             view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
-        view.AttachWindowHeader(window);
+        view.BindWindow(window);
         var localization = context.Services.GetService(typeof(LocalizationService)) as LocalizationService;
         EventHandler<SystemLanguageChangedEventArgs> languageChanged = (_, _) => project.RefreshLocalization();
         if (localization is not null) localization.LanguageChanged += languageChanged;
@@ -136,33 +135,6 @@ public sealed class GitClientApp : RemoteApplicationBase
         };
         project.Editor.RequestDiscardChangesAsync = async document =>
             await project.RequestDraftActionAsync([document]) == EditorDraftAction.Discard;
-        window.CanCloseAsync = async () => project.CanClose && await project.PrepareOperationAsync() && project.CanClose;
-        window.KeyDown += (_, e) =>
-        {
-            if (!e.Handled && !e.IsRepeat && e.Modifiers == RemoteKeyModifiers.Alt)
-            {
-                if (e.Key == RemoteKey.Left) { view.NavigateHistory(-1); e.Handled = true; return; }
-                if (e.Key == RemoteKey.Right) { view.NavigateHistory(1); e.Handled = true; return; }
-                if (e.Key == RemoteKey.Digit(1)) { view.ToggleProjectTool(); e.Handled = true; return; }
-                if (e.Key == RemoteKey.Digit(0)) { view.ToggleCommitTool(); e.Handled = true; return; }
-                if (e.Key == RemoteKey.Digit(9)) { view.ToggleGitTool(); e.Handled = true; return; }
-            }
-            if (!e.Handled && !e.IsRepeat && e.Modifiers == RemoteKeyModifiers.Control && e.Key == RemoteKey.Letter('K'))
-            { view.ShowCommitTool(); e.Handled = true; return; }
-            if (!e.Handled && !e.IsRepeat && e.Key == RemoteKey.Letter('F') && e.Modifiers == RemoteKeyModifiers.Control)
-            { view.EditorView.FocusFind(); e.Handled = true; return; }
-            if (!e.Handled && !e.IsRepeat && e.Key == new RemoteKey("Tab")
-                && (e.Modifiers == RemoteKeyModifiers.Control || e.Modifiers == (RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift)))
-            { view.EditorView.CycleDocument(e.Modifiers.HasFlag(RemoteKeyModifiers.Shift) ? -1 : 1); e.Handled = true; return; }
-            _ = WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Alt, vm.CreateBranchCommand)
-                || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control, project.Editor.SaveCommand)
-                || WindowShortcut.TryExecute(e, RemoteKey.Letter('O'), RemoteKeyModifiers.Control, project.Editor.OpenDocumentCommand)
-                || WindowShortcut.TryExecute(e, RemoteKey.Letter('T'), RemoteKeyModifiers.Control, vm.PullCommand)
-                || WindowShortcut.TryExecute(e, RemoteKey.Letter('K'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, vm.PushCommand)
-                || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, project.Editor.SaveAllCommand)
-                || WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control, project.Editor.NewDocumentCommand)
-                || WindowShortcut.TryExecute(e, RemoteKey.Letter('W'), RemoteKeyModifiers.Control, project.Editor.CloseDocumentCommand);
-        };
         EventHandler<ManagedWindow>? closed = null;
         closed = (_, closedWindow) =>
         {
