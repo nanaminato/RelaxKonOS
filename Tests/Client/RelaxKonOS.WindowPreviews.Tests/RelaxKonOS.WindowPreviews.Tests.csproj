@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.Squid/RelaxKonOS.App.Squid.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Tunnels/RelaxKonOS.App.Tunnels.csproj" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../../examples/Windows11DesktopShell/RelaxKonOS.Example.Windows11DesktopShell.csproj" />

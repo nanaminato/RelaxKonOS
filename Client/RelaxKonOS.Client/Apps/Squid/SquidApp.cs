@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Squid;
 using Avalonia.Controls;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
@@ -28,7 +29,7 @@ public sealed class SquidApp : RemoteApplicationBase
         var client = (IServerSquid?)context.Services.GetService(typeof(IServerSquid));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.squid");
-        var vm = new SquidViewModel(client)
+        var vm = new SquidViewModel(client, LocalizedText.Get)
         {
             GetComponentManagementCommand = () => dependency.Components.FirstOrDefault()?.ManageCommand,
         };

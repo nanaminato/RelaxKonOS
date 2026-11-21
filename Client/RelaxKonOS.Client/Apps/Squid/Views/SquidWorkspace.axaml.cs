@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Squid;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;

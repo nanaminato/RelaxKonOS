@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Squid;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Core.Applications;
@@ -77,7 +78,7 @@ internal static class SquidWorkspaceChecks
 
         VerifyHttpContract();
         var fake = new SquidClientStub();
-        using var vm = new SquidViewModel(fake);
+        using var vm = new SquidViewModel(fake, LocalizedText.Get);
         Check(!vm.ApplyCommand.CanExecute(null) && !vm.RefreshCommand.CanExecute(null), "Permission decisions must precede requests.");
         vm.CanRead = true;
         Complete(vm.RefreshCommand.ExecuteAsync(null));
@@ -366,7 +367,7 @@ internal static class SquidWorkspaceChecks
 
         // Blocking host states get their own band so the reason an action is missing is visible.
         fake.Snapshot = fake.Snapshot with { Status = new SquidStatus(true, true, true, true, false, "hash", true, true) };
-        using (var noticeVm = new SquidViewModel(fake) { CanRead = true, CanManage = false })
+        using (var noticeVm = new SquidViewModel(fake, LocalizedText.Get) { CanRead = true, CanManage = false })
         {
             Complete(noticeVm.RefreshCommand.ExecuteAsync(null));
             Check(noticeVm.ShowRecoveryRequired && noticeVm.ShowReadOnly && noticeVm.ShowAdoptionRequired && !noticeVm.CanEdit,

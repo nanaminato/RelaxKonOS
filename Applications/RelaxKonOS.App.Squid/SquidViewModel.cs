@@ -1,12 +1,12 @@
 using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Proxy;
 
-namespace RelaxKonOS.Client.Apps.Squid;
+namespace RelaxKonOS.App.Squid;
 
 /// <summary>
 /// Window-local Squid console. Three things are deliberately kept apart: the facts read from the
@@ -20,6 +20,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     /// <summary>The workspace host supplies the shortcut to its component management surface.</summary>
     public Func<IRelayCommand?>? GetComponentManagementCommand { get; init; }
     private readonly IServerSquid _client;
+    private readonly Func<string, string, string> _localize;
     private readonly CancellationTokenSource _lifetime = new();
     private bool _initialized;
     private bool _disposed;
@@ -28,7 +29,13 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     private string? _pendingKey;
     private Guid? _operation;
 
-    public SquidViewModel(IServerSquid client) => _client = client;
+    public SquidViewModel(IServerSquid client, Func<string, string, string> localize)
+    {
+        _client = client;
+        _localize = localize;
+    }
+
+    public void RefreshLanguage() => OnPropertyChanged(string.Empty);
 
     /// <summary>Draft fields. They only reach the host through preview, validate and apply.</summary>
     [ObservableProperty] private string _bindAddress = "127.0.0.1";
@@ -66,7 +73,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public bool CanRemoveSelectedAccount => CanManageAccounts && SelectedAccount is not null
         && !IsLastEnabledAccountProtected;
     public bool CanToggleAccount => CanManageAccounts && SelectedAccount is not null && (!SelectedAccount.Enabled || CanRemoveSelectedAccount);
-    public LocalizedStatus ToggleAccountText => L(SelectedAccount?.Enabled == true ? "account_disable" : "account_enable");
+    public SquidMessage ToggleAccountText => L(SelectedAccount?.Enabled == true ? "account_disable" : "account_enable");
     partial void OnAccessModeIndexChanged(int value) => OnDraftChanged();
     partial void OnNewAccountNameChanged(string value) => NotifyActions();
     partial void OnAccountPasswordChanged(string value) { OnPropertyChanged(nameof(HasAccountDraft)); NotifyActions(); }
@@ -82,17 +89,17 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _outcomeFailed;
 
     /// <summary>Single-sentence host summary for the status bar and tooltips.</summary>
-    [ObservableProperty] private LocalizedStatus _statusText;
+    [ObservableProperty] private SquidMessage _statusText;
     /// <summary>What the window is doing right now; empty when idle.</summary>
-    [ObservableProperty] private LocalizedStatus _activityText;
+    [ObservableProperty] private SquidMessage _activityText;
     /// <summary>Native diagnostics or the last transport error. Never a claim about the runtime.</summary>
-    [ObservableProperty] private LocalizedStatus _detailText;
-    [ObservableProperty] private LocalizedStatus _previewText;
-    [ObservableProperty] private LocalizedStatus _serviceStateText;
-    [ObservableProperty] private LocalizedStatus _bootStateText;
-    [ObservableProperty] private LocalizedStatus _revisionText;
-    [ObservableProperty] private LocalizedStatus _diskStateText;
-    [ObservableProperty] private LocalizedStatus _outcomeText;
+    [ObservableProperty] private SquidMessage _detailText;
+    [ObservableProperty] private SquidMessage _previewText;
+    [ObservableProperty] private SquidMessage _serviceStateText;
+    [ObservableProperty] private SquidMessage _bootStateText;
+    [ObservableProperty] private SquidMessage _revisionText;
+    [ObservableProperty] private SquidMessage _diskStateText;
+    [ObservableProperty] private SquidMessage _outcomeText;
     [ObservableProperty] private string _pendingReference = "";
 
     /// <summary>Renderer problems, grouped by the card that can fix them.</summary>
@@ -148,7 +155,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     /// One label answers "is the gateway up?" for the whole page. It follows the same facts the
     /// service-action buttons use, so a green dot can never sit next to an unknown service.
     /// </summary>
-    public LocalizedStatus StatePillText => ShowUnsupported ? L("state.unsupported")
+    public SquidMessage StatePillText => ShowUnsupported ? L("state.unsupported")
         : IsUnavailable ? L("state.unavailable")
         : ShowRecoveryRequired ? L("state.recovery")
         : !HasServiceState ? L("state.not_installed")
@@ -158,7 +165,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public bool StatePillBad => ShowUnsupported || ShowRecoveryRequired || IsUnavailable;
     public bool StatePillNeutral => !StatePillOk && !StatePillWarn && !StatePillBad;
     /// <summary>Why the lifecycle buttons are not offered, stated once instead of left to inference.</summary>
-    public LocalizedStatus ServiceControlReasonText => ShowUnsupported ? L("control_reason.unsupported")
+    public SquidMessage ServiceControlReasonText => ShowUnsupported ? L("control_reason.unsupported")
         : IsUnavailable ? L("control_reason.unavailable")
         : ShowInstallRequired ? L("control_reason.not_installed")
         : HasPending ? L("control_reason.pending")
@@ -166,46 +173,46 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         : ShowRecoveryRequired ? L("control_reason.recovery")
         : HasServiceState && !IsConfigurationAdopted ? L("control_reason.adoption")
         : HasServiceState && !IsRunning ? L("control_reason.stopped")
-        : LocalizedStatus.Literal("");
+        : SquidMessage.Literal("");
     public bool HasServiceControlReason => !ServiceControlReasonText.IsEmpty;
 
     // Read-back of the draft on the page that owns it: a closed editor must not be the only place
     // the current configuration can be seen. None of these is an input.
-    public LocalizedStatus ListenerSummary => L("summary.endpoint", BindAddress.Trim(), Port);
-    public LocalizedStatus RemoteClientsSummary => L(AllowRemoteClients ? "summary.remote_allowed" : "summary.remote_local");
-    public LocalizedStatus NetworksSummary => L("summary.count", Lines(AllowedNetworks).Length);
-    public LocalizedStatus AllowedDomainsSummary => Lines(AllowedDomains).Length == 0
+    public SquidMessage ListenerSummary => L("summary.endpoint", BindAddress.Trim(), Port);
+    public SquidMessage RemoteClientsSummary => L(AllowRemoteClients ? "summary.remote_allowed" : "summary.remote_local");
+    public SquidMessage NetworksSummary => L("summary.count", Lines(AllowedNetworks).Length);
+    public SquidMessage AllowedDomainsSummary => Lines(AllowedDomains).Length == 0
         ? L("summary.all_allowed") : L("summary.count", Lines(AllowedDomains).Length);
-    public LocalizedStatus DeniedDomainsSummary => L("summary.count", Lines(DeniedDomains).Length);
-    public LocalizedStatus UpstreamSummary => string.IsNullOrWhiteSpace(UpstreamHost)
+    public SquidMessage DeniedDomainsSummary => L("summary.count", Lines(DeniedDomains).Length);
+    public SquidMessage UpstreamSummary => string.IsNullOrWhiteSpace(UpstreamHost)
         ? L("summary.direct") : L("summary.endpoint", UpstreamHost.Trim(), UpstreamPort);
-    public LocalizedStatus AccessModeSummary => L(AccessModeIndex switch
+    public SquidMessage AccessModeSummary => L(AccessModeIndex switch
     {
         (int)SquidAccessMode.Password => "mode_password",
         (int)SquidAccessMode.PasswordAndIpWhitelist => "mode_both",
         _ => "mode_ip"
     });
-    public LocalizedStatus AccountsSummary => Accounts.Count == 0
+    public SquidMessage AccountsSummary => Accounts.Count == 0
         ? L("accounts_empty") : L("summary.accounts", Accounts.Count, Accounts.Count(account => account.Enabled));
     public bool HasListenerProblems => ListenerProblems.Count > 0;
     public bool HasSourceProblems => SourceProblems.Count > 0;
     public bool HasDomainProblems => DomainProblems.Count > 0;
     public bool HasUpstreamProblems => UpstreamProblems.Count > 0;
     /// <summary>Which of the four draft cards a reader has to open before publishing.</summary>
-    public LocalizedStatus DraftProblemText => IsConfigurationValid ? L("draft.ok")
-        : L("draft.blocked", LocalizedStatus.Join(" · ", ListenerProblems.Concat(SourceProblems)
+    public SquidMessage DraftProblemText => IsConfigurationValid ? L("draft.ok")
+        : L("draft.blocked", SquidMessage.Join(" · ", ListenerProblems.Concat(SourceProblems)
             .Concat(DomainProblems).Concat(UpstreamProblems).Select(problem => problem.Message)));
     public bool HasDraftProblem => !IsConfigurationValid;
     /// <summary>The runtime card states whether the draft still matches what the server has.</summary>
-    public LocalizedStatus DraftStateText => HasUnsavedChanges ? L("draft.dirty") : L("draft.saved");
+    public SquidMessage DraftStateText => HasUnsavedChanges ? L("draft.dirty") : L("draft.saved");
     /// <summary>
     /// One line states whether the primary action can run and, when it cannot, which gate is closed.
     /// The buttons already know this; a reader should not have to try them to find out.
     /// </summary>
     public bool IsReadyToApply => CanApply;
-    public LocalizedStatus ApplyReadinessText => CanApply ? L("ready.apply")
-        : L("ready.blocked", LocalizedStatus.Join("；", ApplyBlockers()));
-    private IEnumerable<LocalizedStatus> ApplyBlockers()
+    public SquidMessage ApplyReadinessText => CanApply ? L("ready.apply")
+        : L("ready.blocked", SquidMessage.Join("；", ApplyBlockers()));
+    private IEnumerable<SquidMessage> ApplyBlockers()
     {
         if (ShowUnsupported) { yield return L("blocker.unsupported"); yield break; }
         if (IsUnavailable) { yield return L("blocker.unavailable"); yield break; }
@@ -242,7 +249,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public bool CanDisableService => CanControlService && IsEnabled;
     /// <summary>One boot control instead of two mutually exclusive buttons.</summary>
     public bool CanToggleBoot => CanEnableService || CanDisableService;
-    public LocalizedStatus BootActionText => L(IsEnabled ? "disable" : "enable");
+    public SquidMessage BootActionText => L(IsEnabled ? "disable" : "enable");
 
     private static readonly string[] DerivedState =
     [
@@ -273,9 +280,9 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     partial void OnIsConfigurationValidChanged(bool value) => NotifyActions();
     partial void OnIsPreviewStaleChanged(bool value) => NotifyPreviewState();
     partial void OnAdoptExistingConfigurationChanged(bool value) => NotifyActions();
-    partial void OnDetailTextChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasDetail));
-    partial void OnPreviewTextChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasPreview));
-    partial void OnOutcomeTextChanged(LocalizedStatus value) => NotifyOutcome();
+    partial void OnDetailTextChanged(SquidMessage value) => OnPropertyChanged(nameof(HasDetail));
+    partial void OnPreviewTextChanged(SquidMessage value) => OnPropertyChanged(nameof(HasPreview));
+    partial void OnOutcomeTextChanged(SquidMessage value) => NotifyOutcome();
     partial void OnOutcomeFailedChanged(bool value) => NotifyOutcome();
 
     private void NotifyOutcome()
@@ -387,12 +394,12 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         NotifyActions();
     }
 
-    private static void Add(ObservableCollection<SquidProblem> problems, LocalizedStatus message) =>
+    private static void Add(ObservableCollection<SquidProblem> problems, SquidMessage message) =>
         problems.Add(new SquidProblem(message));
 
     /// <summary>Maps a renderer problem code to a sentence; unknown codes keep the code visible.</summary>
-    private static LocalizedStatus Problem(string code) =>
-        LocalizedText.RefWithFallback("squid.problem." + code, "Configuration rejected: {0}", code);
+    private SquidMessage Problem(string code) =>
+        new(() => string.Format(CultureInfo.CurrentCulture, _localize("squid.problem." + code, "Configuration rejected: {0}"), code));
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private Task RefreshAsync() => CanRefresh ? WorkAsync(() => LoadAsync(), true) : Task.CompletedTask;
@@ -657,7 +664,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     /// that names the address or port involved; an unknown code keeps its raw form so it can be
     /// searched in the server log instead of being swallowed by a generic failure line.
     /// </summary>
-    private LocalizedStatus ProblemCodeText(string? code) => code switch
+    private SquidMessage ProblemCodeText(string? code) => code switch
     {
         SquidFailureAddressUnavailable => L("code.address_unavailable", BindAddress.Trim(), Port),
         SquidFailurePortInUse => L("code.port_in_use", Port),
@@ -667,19 +674,20 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         "squid.recovery.required" => L("code.recovery_required"),
         "squid.runtime.unavailable" => L("code.runtime_unavailable"),
         null or "" => L("code.unknown"),
-        _ => LocalizedStatus.Literal(code)
+        _ => SquidMessage.Literal(code)
     };
     // The two diagnoses the Helper can prove from the unit journal; shared with the Server contract.
     private const string SquidFailureAddressUnavailable = RelaxKonOS.Protocol.GatewayProxy.SquidFailureClassifier.AddressUnavailable;
     private const string SquidFailurePortInUse = RelaxKonOS.Protocol.GatewayProxy.SquidFailureClassifier.PortInUse;
 
-    private static LocalizedStatus L(string key) => LocalizedText.Ref("squid." + key);
-    private static LocalizedStatus L(string key, params object?[] arguments) => LocalizedText.Ref("squid." + key, arguments);
-    private static LocalizedStatus Joined(LocalizedStatus headline, IEnumerable<string> lines) =>
-        LocalizedStatus.Join("\n", lines.Where(line => !string.IsNullOrWhiteSpace(line))
-            .Select(LocalizedStatus.Literal).Prepend(headline));
+    private SquidMessage L(string key) => new(() => _localize("squid." + key, "squid." + key));
+    private SquidMessage L(string key, params object?[] arguments) =>
+        new(() => string.Format(CultureInfo.CurrentCulture, _localize("squid." + key, "squid." + key), arguments));
+    private static SquidMessage Joined(SquidMessage headline, IEnumerable<string> lines) =>
+        SquidMessage.Join("\n", lines.Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(SquidMessage.Literal).Prepend(headline));
     private const string DividerText = "—";
-    private static LocalizedStatus Divider() => LocalizedStatus.Literal(DividerText);
+    private static SquidMessage Divider() => SquidMessage.Literal(DividerText);
 
     public void InvalidateSession()
     {
@@ -700,4 +708,4 @@ public partial class SquidViewModel : ObservableObject, IDisposable
 }
 
 /// <summary>One renderer problem, localized and attributed to the card that can fix it.</summary>
-public sealed record SquidProblem(LocalizedStatus Message);
+public sealed record SquidProblem(SquidMessage Message);
