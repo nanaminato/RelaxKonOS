@@ -17,30 +17,15 @@ public sealed class TerminalSurfaceFactory
 
     public TerminalSurfaceFactory(
         ISshCredentialProvider credentials,
-        ISshHostKeyValidator hostKeys,
-        Func<IReadOnlyDictionary<string, string>>? labels = null)
+        ISshHostKeyValidator hostKeys)
     {
         _credentials = credentials;
         _hostKeys = hostKeys;
-        Labels = labels ?? TerminalSurfaceLabels.Build;
         TransportFactory = new SignalRTransportFactory(credentials, hostKeys);
     }
 
     public SignalRTransportFactory TransportFactory { get; }
 
-    public Func<IReadOnlyDictionary<string, string>> Labels { get; }
-
     public ITerminalSurface Create(VtProcessorPreference vtEngine) =>
         new BuiltInTerminalSurface(TransportFactory, _credentials, _hostKeys, vtEngine);
-}
-
-public static class TerminalSurfaceLabels
-{
-    public static IReadOnlyDictionary<string, string> Build() => new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        ["copy"] = Localization.LocalizedText.Get("terminal.context.copy"),
-        ["paste"] = Localization.LocalizedText.Get("terminal.context.paste"),
-        ["selectAll"] = Localization.LocalizedText.Get("terminal.context.select_all"),
-        ["clear"] = Localization.LocalizedText.Get("terminal.context.clear"),
-    };
 }

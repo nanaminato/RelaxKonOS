@@ -31,6 +31,7 @@
         "terminal.context.paste": "Paste",
         "terminal.context.select_all": "Select all",
         "terminal.context.clear": "Clear",
-        "terminal.done": "Done"
+        "terminal.done": "Done",
+        "terminal.environment": "Environment variables"
     }
 }

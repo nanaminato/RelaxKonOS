@@ -22,7 +22,7 @@ public partial class TerminalViewModel : TerminalTabViewModel
     protected override void OnVtEngineEdited(string value) =>
         _devicePreferences?.Update(options => options with { TerminalVtEngine = value });
     private readonly RelaxKonOS.Client.Services.ClientPresentationPreferences? _preferences;
-    public RelaxKonOS.Protocol.Registry.TerminalPaddingSettings Padding => _preferences?.TerminalPadding ?? RelaxKonOS.Protocol.Registry.TerminalPaddingSettings.Default;
+    public override RelaxKonOS.Protocol.Registry.TerminalPaddingSettings Padding => _preferences?.TerminalPadding ?? RelaxKonOS.Protocol.Registry.TerminalPaddingSettings.Default;
     private void OnPreferencesChanged(object? sender, EventArgs args)
     {
         if (_session?.State != AuthSessionState.Authenticated) return;
@@ -45,7 +45,9 @@ public partial class TerminalViewModel : TerminalTabViewModel
     private bool _attached;
     private long _attachmentGeneration;
 
-    [ObservableProperty] private LocalizedStatus _status = LocalizedText.Ref("terminal.status.ready");
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusText))]
+    private LocalizedStatus _status = LocalizedText.Ref("terminal.status.ready");
     [ObservableProperty] private bool _hasExited;
     public override string DisplayTitle
     {
@@ -57,19 +59,16 @@ public partial class TerminalViewModel : TerminalTabViewModel
             return IsAdministrator ? LocalizedText.Format("terminal.administrator_shell", name) : name;
         }
     }
-    public Func<Task>? RequestSettingsAsync { get; set; }
-    public Func<Task>? RequestEnvironmentAsync { get; set; }
-    public Action? RequestAdministratorTerminal { get; set; }
     public bool IsAdministrator { get; }
-    public bool CanOpenAdministratorTerminal => _sshDesktop?.IsConnected != true
+    public override bool CanOpenAdministratorTerminal => _sshDesktop?.IsConnected != true
         && _session?.CurrentServer is { Platform: RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
             Host.Capabilities.PrivilegedOperations: true };
 
     /// <summary>The engine currently rendering this session. The view hosts <see cref="Surface"/>.</summary>
-    public ITerminalSurface? Surface => _surface;
+    public override ITerminalSurface? Surface => _surface;
 
     /// <summary>Raised after <see cref="Surface"/> was replaced; the view re-hosts the session control.</summary>
-    public event EventHandler? SurfaceChanged;
+    public override event EventHandler? SurfaceChanged;
 
     /// <summary>
     /// True while closing the window would kill a live server PTY. Desktop teardown and logout
@@ -105,12 +104,14 @@ public partial class TerminalViewModel : TerminalTabViewModel
     }
 
     /// <summary>Called once when the terminal control is loaded.</summary>
-    public async Task AttachAsync(TerminalSurfaceFactory surfaceFactory)
+    public override async Task AttachAsync()
     {
         if (_attached) return;
         _attached = true;
         var generation = ++_attachmentGeneration;
-        _surfaceFactory = surfaceFactory;
+        var sshDesktop = _sshDesktop ?? App.Services.GetRequiredService<SshDesktopSession>();
+        _surfaceFactory = new TerminalSurfaceFactory(new SshDesktopCredentialProvider(sshDesktop),
+            new RoyalTerminal.Terminal.Transport.Ssh.KnownHostsSshHostKeyValidator());
 
         if (_preferences is not null)
         {
@@ -141,7 +142,7 @@ public partial class TerminalViewModel : TerminalTabViewModel
     /// logout/shutdown the auth session is already unauthenticated, so only the connection closes and
     /// the PTY remains available for the next workspace restore.
     /// </summary>
-    public void Detach()
+    public override void Detach()
     {
         if (!_attached) return;
         _attached = false;
@@ -159,18 +160,7 @@ public partial class TerminalViewModel : TerminalTabViewModel
         _surfaceFactory = null;
     }
 
-    /// <summary>Re-raises the localizable state so the open window re-renders after a language switch.</summary>
-    public void RefreshLocalization() => OnPropertyChanged(nameof(Status));
-
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
-    private async Task OpenSettingsAsync()
-        => await (RequestSettingsAsync?.Invoke() ?? Task.CompletedTask);
-
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
-    private Task OpenEnvironmentAsync() => RequestEnvironmentAsync?.Invoke() ?? Task.CompletedTask;
-
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
-    private void OpenAdministratorTerminal() => RequestAdministratorTerminal?.Invoke();
+    public override string StatusText => Status.Resolve();
 
     private void CreateSurface()
     {
@@ -182,7 +172,7 @@ public partial class TerminalViewModel : TerminalTabViewModel
         surface.ProcessExited += OnProcessExited;
         surface.TitleChanged += OnTitleChanged;
         surface.ApplyAppearance(Appearance);
-        surface.ApplyLabels(factory.Labels());
+        surface.ApplyLabels(SurfaceLabels());
         _surface = surface;
         SurfaceChanged?.Invoke(this, EventArgs.Empty);
     }

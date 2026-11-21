@@ -31,6 +31,7 @@
         "terminal.context.paste": "貼り付け",
         "terminal.context.select_all": "すべて選択",
         "terminal.context.clear": "クリア",
-        "terminal.done": "完了"
+        "terminal.done": "完了",
+        "terminal.environment": "環境変数"
     }
 }

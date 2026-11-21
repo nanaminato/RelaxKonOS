@@ -31,6 +31,7 @@
         "terminal.context.paste": "粘贴",
         "terminal.context.select_all": "全选",
         "terminal.context.clear": "清屏",
-        "terminal.done": "完成"
+        "terminal.done": "完成",
+        "terminal.environment": "环境变量"
     }
 }

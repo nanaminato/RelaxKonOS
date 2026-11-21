@@ -1,10 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:app="clr-namespace:RelaxKonOS.Client.Apps"
-             xmlns:terminal="clr-namespace:RelaxKonOS.Client.Apps.Terminal"
-             x:Class="RelaxKonOS.Client.Apps.Terminal.TerminalView"
-             x:DataType="terminal:TerminalViewModel"
+             xmlns:terminal="clr-namespace:RelaxKonOS.App.Terminal"
+             x:Class="RelaxKonOS.App.Terminal.TerminalView"
+             x:DataType="terminal:TerminalTabViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*">
         <Border Grid.Row="0" Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
@@ -14,28 +12,28 @@
                      know when chrome would be covered and withdraw the surface (see MenuOpened). -->
                 <Button Grid.Column="0" x:Name="SessionMenuButton" Background="Transparent" BorderThickness="0"
                         Padding="6,4" CornerRadius="6" VerticalAlignment="Center"
-                        ToolTip.Tip="{loc:Loc terminal.menu}" AutomationProperties.Name="{loc:Loc terminal.menu}">
+                        ToolTip.Tip="{Binding MenuLabel}" AutomationProperties.Name="{Binding MenuLabel}">
                     <Button.Content>
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBlock Text="{loc:Loc terminal.menu}" FontSize="12"/>
+                            <TextBlock Text="{Binding MenuLabel}" FontSize="12"/>
                             <Path Width="8" Height="4" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M0,0 L4,4 L8,0"/>
                         </StackPanel>
                     </Button.Content>
                     <Button.Flyout>
                         <MenuFlyout Opened="SessionMenu_Opened" Closed="SessionMenu_Closed">
-                            <MenuItem x:Name="MenuCopyItem" Header="{loc:Loc terminal.context.copy}" InputGesture="Ctrl+Shift+C" Click="OnCopyClicked" IsEnabled="False"/>
-                            <MenuItem Header="{loc:Loc terminal.context.paste}" InputGesture="Ctrl+Shift+V" Click="OnPasteClicked"/>
-                            <MenuItem Header="{loc:Loc terminal.context.select_all}" Click="OnSelectAllClicked"/>
-                            <MenuItem Header="{loc:Loc terminal.context.clear}" Click="OnClearClicked"/>
+                            <MenuItem x:Name="MenuCopyItem" Header="{Binding CopyLabel}" InputGesture="Ctrl+Shift+C" Click="OnCopyClicked" IsEnabled="False"/>
+                            <MenuItem Header="{Binding PasteLabel}" InputGesture="Ctrl+Shift+V" Click="OnPasteClicked"/>
+                            <MenuItem Header="{Binding SelectAllLabel}" Click="OnSelectAllClicked"/>
+                            <MenuItem Header="{Binding ClearLabel}" Click="OnClearClicked"/>
                             <Separator/>
-                            <MenuItem Header="{loc:Loc terminal.open_administrator}" Command="{Binding OpenAdministratorTerminalCommand}"
+                            <MenuItem Header="{Binding OpenAdministratorLabel}" Command="{Binding OpenAdministratorTerminalCommand}"
                                       IsVisible="{Binding CanOpenAdministratorTerminal}" />
-                            <MenuItem Header="{loc:Loc terminal.settings}" Command="{Binding OpenSettingsCommand}" />
-                            <MenuItem Header="{loc:Loc settings.environment.title}" Command="{Binding OpenEnvironmentCommand}" />
+                            <MenuItem Header="{Binding SettingsTitle}" Command="{Binding OpenSettingsCommand}" />
+                            <MenuItem Header="{Binding EnvironmentLabel}" Command="{Binding OpenEnvironmentCommand}" />
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
-                <TextBlock Grid.Column="1" Text="{Binding Status}" ToolTip.Tip="{Binding Title}" FontSize="11" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
+                <TextBlock Grid.Column="1" Text="{Binding StatusText}" ToolTip.Tip="{Binding Title}" FontSize="11" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
                            Margin="6,0" />
             </Grid>
         </Border>

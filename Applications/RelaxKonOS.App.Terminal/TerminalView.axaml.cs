@@ -1,20 +1,11 @@
-using RelaxKonOS.App.Terminal;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
-using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services;
-using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.Workspace;
-using Microsoft.Extensions.DependencyInjection;
-using RoyalTerminal.Terminal;
-using RoyalTerminal.Terminal.Transport.Ssh;
-using RoyalTerminal.Terminal.Transport.Ssh.SshNet;
 
-namespace RelaxKonOS.Client.Apps.Terminal;
+namespace RelaxKonOS.App.Terminal;
 
 /// <summary>
 /// Hosts one terminal session. RoyalTerminal is the only desktop engine, so this view only places
@@ -23,33 +14,34 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 /// </summary>
 public partial class TerminalView : UserControl, ITerminalTabContent
 {
-    private readonly TerminalSurfaceFactory _surfaces;
-    private readonly MenuItem _copyItem;
+    private readonly MenuItem _copyItem = new() { IsEnabled = false };
+    private readonly MenuItem _pasteItem = new();
+    private readonly MenuItem _selectAllItem = new();
+    private readonly MenuItem _clearItem = new();
+    private readonly ContextMenu _contextMenu;
     private ITerminalSurface? _surface;
-    private LocalizationService? _localization;
     private bool _nativeVisible = true;
     private int _openFlyouts;
 
     public TerminalView()
     {
         InitializeComponent();
-        var sshDesktop = App.Services.GetRequiredService<SshDesktopSession>();
-        _surfaces = new TerminalSurfaceFactory(new SshDesktopCredentialProvider(sshDesktop), new KnownHostsSshHostKeyValidator());
-        _copyItem = new MenuItem { Header = LocalizedText.Get("terminal.context.copy"), IsEnabled = false };
         _copyItem.Click += OnCopyClicked;
+        _pasteItem.Click += OnPasteClicked;
+        _selectAllItem.Click += OnSelectAllClicked;
+        _clearItem.Click += OnClearClicked;
+        _contextMenu = new ContextMenu { Items = { _copyItem, _pasteItem, _selectAllItem, new Separator(), _clearItem } };
     }
 
     protected override async void OnLoaded(RoutedEventArgs e)
     {
         base.OnLoaded(e);
-        if (DataContext is not TerminalViewModel vm)
+        if (DataContext is not TerminalTabViewModel vm)
             return;
 
         vm.PropertyChanged += OnViewModelPropertyChanged;
         vm.SurfaceChanged += OnSurfaceChanged;
-        _localization = App.Services.GetRequiredService<LocalizationService>();
-        _localization.LanguageChanged += OnLanguageChanged;
-        try { await vm.AttachAsync(_surfaces); }
+        try { await vm.AttachAsync(); }
         catch { /* keep the window usable if the first connection fails */ }
         HostBackground(vm.Appearance);
         ApplyPadding(vm);
@@ -58,15 +50,12 @@ public partial class TerminalView : UserControl, ITerminalTabContent
 
     protected override void OnUnloaded(RoutedEventArgs e)
     {
-        if (DataContext is TerminalViewModel vm)
+        if (DataContext is TerminalTabViewModel vm)
         {
             vm.PropertyChanged -= OnViewModelPropertyChanged;
             vm.SurfaceChanged -= OnSurfaceChanged;
             vm.Detach();
         }
-        if (_localization is { } localization)
-            localization.LanguageChanged -= OnLanguageChanged;
-        _localization = null;
         ReleaseSurface();
         base.OnUnloaded(e);
     }
@@ -79,17 +68,19 @@ public partial class TerminalView : UserControl, ITerminalTabContent
     {
         ReleaseSurface();
         TerminalHost.Children.Clear();
-        _surface = (DataContext as TerminalViewModel)?.Surface;
+        _surface = (DataContext as TerminalTabViewModel)?.Surface;
         if (_surface is null)
             return;
 
         _surface.SelectionChanged += OnSurfaceSelectionChanged;
         _surface.View.PointerPressed += OnTerminalPressed;
-        _surface.View.ContextMenu = BuildContextMenu();
+        if (DataContext is TerminalTabViewModel model)
+            RefreshContextLabels(model);
+        _surface.View.ContextMenu = _contextMenu;
         ApplyNativeVisibility();
         TerminalHost.Children.Add(_surface.View);
         _copyItem.IsEnabled = _surface.HasSelection;
-        if (DataContext is TerminalViewModel vm)
+        if (DataContext is TerminalTabViewModel vm)
             HostBackground(vm.Appearance);
     }
 
@@ -129,12 +120,6 @@ public partial class TerminalView : UserControl, ITerminalTabContent
 
     private void ApplyNativeVisibility() => _surface?.SetNativeVisible(_nativeVisible && _openFlyouts == 0);
 
-    private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs e)
-    {
-        _surface?.ApplyLabels(_surfaces.Labels());
-        (DataContext as TerminalViewModel)?.RefreshLocalization();
-    }
-
     private void OnTerminalPressed(object? sender, PointerPressedEventArgs e)
     {
         _copyItem.IsEnabled = _surface?.HasSelection == true;
@@ -144,23 +129,12 @@ public partial class TerminalView : UserControl, ITerminalTabContent
     private void OnSurfaceSelectionChanged(object? sender, EventArgs e) =>
         _copyItem.IsEnabled = _surface?.HasSelection == true;
 
-    private ContextMenu BuildContextMenu()
+    private void RefreshContextLabels(TerminalTabViewModel model)
     {
-        var paste = new MenuItem { Header = LocalizedText.Get("terminal.context.paste") };
-        var selectAll = new MenuItem { Header = LocalizedText.Get("terminal.context.select_all") };
-        var clear = new MenuItem { Header = LocalizedText.Get("terminal.context.clear") };
-
-        paste.Click += OnPasteClicked;
-        selectAll.Click += OnSelectAllClicked;
-        clear.Click += OnClearClicked;
-
-        var menu = new ContextMenu();
-        menu.Items.Add(_copyItem);
-        menu.Items.Add(paste);
-        menu.Items.Add(selectAll);
-        menu.Items.Add(new Separator());
-        menu.Items.Add(clear);
-        return menu;
+        _copyItem.Header = model.CopyLabel;
+        _pasteItem.Header = model.PasteLabel;
+        _selectAllItem.Header = model.SelectAllLabel;
+        _clearItem.Header = model.ClearLabel;
     }
 
     private async void OnCopyClicked(object? sender, RoutedEventArgs e)
@@ -191,14 +165,23 @@ public partial class TerminalView : UserControl, ITerminalTabContent
 
     public void FocusSession() => Dispatcher.UIThread.Post(FocusTerminal);
 
-    private void ApplyPadding(TerminalViewModel vm) => TerminalFrame.Padding = new Avalonia.Thickness(vm.Padding.PaddingHorizontal, vm.Padding.PaddingTop, vm.Padding.PaddingHorizontal, vm.Padding.PaddingBottom);
+    private void ApplyPadding(TerminalTabViewModel vm) => TerminalFrame.Padding = new Avalonia.Thickness(vm.Padding.PaddingHorizontal, vm.Padding.PaddingTop, vm.Padding.PaddingHorizontal, vm.Padding.PaddingBottom);
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (sender is TerminalViewModel model && e.PropertyName == nameof(TerminalViewModel.Padding)) ApplyPadding(model);
-        if (sender is TerminalViewModel { Appearance: var appearance }
-            && e.PropertyName == nameof(TerminalViewModel.Appearance))
-            HostBackground(appearance);
+        if (sender is not TerminalTabViewModel model) return;
+        if (string.IsNullOrEmpty(e.PropertyName))
+        {
+            if (_surface is { } surface)
+            {
+                surface.ApplyLabels(model.SurfaceLabels());
+                RefreshContextLabels(model);
+            }
+            ApplyPadding(model);
+            HostBackground(model.Appearance);
+        }
+        else if (e.PropertyName == nameof(TerminalTabViewModel.Padding)) ApplyPadding(model);
+        else if (e.PropertyName == nameof(TerminalTabViewModel.Appearance)) HostBackground(model.Appearance);
     }
 
     /// <summary>Matches the area around the session rows to the palette the engine is drawing with.</summary>
@@ -211,17 +194,5 @@ public partial class TerminalView : UserControl, ITerminalTabContent
             TerminalHost.Background = background;
         }
         catch { /* an unparsable colour is rejected before it reaches the workspace */ }
-    }
-}
-
-internal sealed class SshDesktopCredentialProvider(SshDesktopSession session) : ISshCredentialProvider
-{
-    public ValueTask<SshResolvedCredentials> ResolveAsync(SshCredentialRequest request, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(new SshResolvedCredentials(
-            Password: session.Password,
-            PrivateKeyPemOrPath: Array.Empty<string>(),
-            UseAgent: false));
     }
 }
