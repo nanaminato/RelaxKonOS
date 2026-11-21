@@ -5,7 +5,7 @@
              xmlns:editorApp="clr-namespace:RelaxKonOS.App.CodeEditor;assembly=RelaxKonOS.App.CodeEditor"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
-             xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
+             xmlns:workspaceIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views" xmlns:gitAppViews="clr-namespace:RelaxKonOS.App.Git.Views;assembly=RelaxKonOS.App.Git"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitClientWorkspace"
              x:DataType="gitApp:GitClientViewModel"
@@ -88,9 +88,9 @@
                     </MenuItem>
                     <MenuItem x:Name="GitMenu" Header="Git">
                         <MenuItem Header="{loc:Loc git.accounts.title}" Command="{Binding ManageCredentialAccountsCommand}" />
-                        <MenuItem Header="{loc:Loc git.workspace.commit_action}" Click="ShowCommit_Click" InputGesture="Ctrl+K" IsEnabled="{Binding CanManage}"><MenuItem.Icon><ui:WorkspaceIcon Kind="Commit"/></MenuItem.Icon></MenuItem>
-                        <MenuItem Header="{loc:Loc git.workspace.push}" Command="{Binding PushCommand}" InputGesture="Ctrl+Shift+K"><MenuItem.Icon><ui:WorkspaceIcon Kind="Push"/></MenuItem.Icon></MenuItem>
-                        <MenuItem Header="{loc:Loc git.workspace.update}" Command="{Binding PullCommand}" InputGesture="Ctrl+T"><MenuItem.Icon><ui:WorkspaceIcon Kind="Download"/></MenuItem.Icon></MenuItem>
+                        <MenuItem Header="{loc:Loc git.workspace.commit_action}" Click="ShowCommit_Click" InputGesture="Ctrl+K" IsEnabled="{Binding CanManage}"><MenuItem.Icon><workspaceIcons:WorkspaceIcon Kind="Commit"/></MenuItem.Icon></MenuItem>
+                        <MenuItem Header="{loc:Loc git.workspace.push}" Command="{Binding PushCommand}" InputGesture="Ctrl+Shift+K"><MenuItem.Icon><workspaceIcons:WorkspaceIcon Kind="Push"/></MenuItem.Icon></MenuItem>
+                        <MenuItem Header="{loc:Loc git.workspace.update}" Command="{Binding PullCommand}" InputGesture="Ctrl+T"><MenuItem.Icon><workspaceIcons:WorkspaceIcon Kind="Download"/></MenuItem.Icon></MenuItem>
                         <MenuItem Header="{loc:Loc git.workspace.pull}" Command="{Binding PullCommand}"/>
                         <MenuItem Header="{loc:Loc git.editor.fetch}" Command="{Binding FetchCommand}"/>
                         <Separator/>
@@ -175,7 +175,7 @@
                 </Button>
                 <Button x:Name="BranchBadge" Classes="header-action" Padding="7,3" MinHeight="24" MaxWidth="230" ToolTip.Tip="{loc:Loc git.editor.branches}" AutomationProperties.Name="{loc:Loc git.editor.branches}">
                     <StackPanel Orientation="Horizontal" Spacing="7">
-                        <ui:WorkspaceIcon Kind="Branch" Width="14" Height="14"/>
+                        <workspaceIcons:WorkspaceIcon Kind="Branch" Width="14" Height="14"/>
                         <TextBlock Text="{Binding Status.Branch}" MaxWidth="175" TextTrimming="CharacterEllipsis"/>
                         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M2 3 L6 7 L10 3" Width="8" Height="5" Stretch="Uniform"/>
                     </StackPanel>
@@ -193,13 +193,13 @@
                 <Grid RowDefinitions="Auto,*,Auto">
                     <StackPanel>
                         <ToggleButton x:Name="ProjectToolButton" Classes="tool-window" Click="Project_Click" ToolTip.Tip="{loc:Loc git.editor.project_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.project}">
-                            <ui:WorkspaceIcon Kind="Folder" Width="19" Height="19" Foreground="{Binding $parent[ToggleButton].Foreground}" />
+                            <workspaceIcons:WorkspaceIcon Kind="Folder" Width="19" Height="19" Foreground="{Binding $parent[ToggleButton].Foreground}" />
                         </ToggleButton>
                         <ToggleButton x:Name="CommitToolButton" Classes="tool-window" Click="Commit_Click" IsEnabled="{Binding !!SelectedRepository}" ToolTip.Tip="{loc:Loc git.editor.commit_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.commit}">
-                            <ui:WorkspaceIcon Kind="Commit" Width="19" Height="19" Foreground="{Binding $parent[ToggleButton].Foreground}" />
+                            <workspaceIcons:WorkspaceIcon Kind="Commit" Width="19" Height="19" Foreground="{Binding $parent[ToggleButton].Foreground}" />
                         </ToggleButton>
                     <ToggleButton x:Name="GitToolButton" Classes="tool-window" Click="GitWindow_Click" IsEnabled="{Binding !!SelectedRepository}" ToolTip.Tip="{loc:Loc git.editor.git_shortcut}" AutomationProperties.Name="{loc:Loc git.editor.git_window}">
-                            <ui:WorkspaceIcon Kind="Branch" Width="19" Height="19" Foreground="{Binding $parent[ToggleButton].Foreground}" />
+                            <workspaceIcons:WorkspaceIcon Kind="Branch" Width="19" Height="19" Foreground="{Binding $parent[ToggleButton].Foreground}" />
                     </ToggleButton>
                     </StackPanel>
 
@@ -243,7 +243,7 @@
                                 </DataTemplate></ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </ScrollViewer>
-                        <Button x:Name="NewGitLogButton" Grid.Column="2" Classes="header-action" Width="24" Background="Transparent" Click="NewGitLog_Click" ToolTip.Tip="{loc:Loc git.dock.new_log}" AutomationProperties.Name="{loc:Loc git.dock.new_log}"><ui:WorkspaceIcon Kind="Plus" Width="14" Height="14"/></Button>
+                        <Button x:Name="NewGitLogButton" Grid.Column="2" Classes="header-action" Width="24" Background="Transparent" Click="NewGitLog_Click" ToolTip.Tip="{loc:Loc git.dock.new_log}" AutomationProperties.Name="{loc:Loc git.dock.new_log}"><workspaceIcons:WorkspaceIcon Kind="Plus" Width="14" Height="14"/></Button>
                         <Button Grid.Column="3" Classes="header-action" Width="24" Background="Transparent" Click="GitTabList_Click" ToolTip.Tip="{loc:Loc git.dock.tab_list}" AutomationProperties.Name="{loc:Loc git.dock.tab_list}"><Path Data="M2 3 L6 7 L10 3" Width="9" Height="6" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform"/></Button>
                         <Button x:Name="GitDockOptionsButton" Grid.Column="5" Classes="header-action" Width="24" Background="Transparent" ToolTip.Tip="{loc:Loc git.editor.tool_options}" AutomationProperties.Name="{loc:Loc git.editor.tool_options}">
                             <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="2" Width="3" Height="14" Stretch="Uniform" Data="M1 1 H2 M1 6 H2 M1 11 H2"/>
@@ -259,7 +259,7 @@
                                 <MenuItem Header="{loc:Loc git.page.overview}" Tag="overview" Click="GitTool_Click"/>
                             </MenuFlyout></Button.Flyout>
                         </Button>
-                        <Button x:Name="MaximizeGitButton" Grid.Column="6" Classes="header-action" Width="24" Background="Transparent" Click="MaximizeGit_Click" ToolTip.Tip="{loc:Loc git.dock.maximize}" AutomationProperties.Name="{loc:Loc git.dock.maximize}"><ui:WorkspaceIcon Kind="Expand" Width="13" Height="13"/></Button>
+                        <Button x:Name="MaximizeGitButton" Grid.Column="6" Classes="header-action" Width="24" Background="Transparent" Click="MaximizeGit_Click" ToolTip.Tip="{loc:Loc git.dock.maximize}" AutomationProperties.Name="{loc:Loc git.dock.maximize}"><workspaceIcons:WorkspaceIcon Kind="Expand" Width="13" Height="13"/></Button>
                         <Button x:Name="HideGitButton" Grid.Column="7" Classes="header-action" Width="24" Background="Transparent" Click="HideGit_Click" ToolTip.Tip="{loc:Loc git.editor.hide_window}" AutomationProperties.Name="{loc:Loc git.editor.hide_window}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.3" Width="12" Height="1" Stretch="Uniform" Data="M1 1 H13"/></Button>
                     </Grid>
                     <ContentControl x:Name="ContentHost" Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />

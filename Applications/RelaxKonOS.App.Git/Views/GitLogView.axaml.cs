@@ -1,5 +1,3 @@
-using RelaxKonOS.App.Git;
-using RelaxKonOS.App.Git.Views;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia.Input;
@@ -10,16 +8,14 @@ using Avalonia.Controls;
 using Avalonia.Data.Converters;
 using Avalonia.Interactivity;
 using Avalonia.Media;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Theming;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
 /// <summary>三栏统一日志视图：左分支树 + 中提交列表 + 右文件变更+详情。
 /// 在 Loaded 时为 DataContext（GitClientViewModel）的 Branches 构造树形视图模型，同时响应搜索文本过滤。
 /// 右侧面板复用 VM 中 SelectedCommit → OnSelectedCommitChanged 加载 CommitDetail/CommitChangedFiles。</summary>
-internal partial class GitLogView : UserControl
+public partial class GitLogView : UserControl
 {
     public ObservableCollection<BranchTreeNode> BranchTreeRoots { get; } = [];
     public ObservableCollection<CommitFileTreeNode> CommitFileTreeRoots { get; } = [];
@@ -135,6 +131,11 @@ internal partial class GitLogView : UserControl
             or nameof(GitClientViewModel.Status))
             RebuildBranchTree();
         if (e.PropertyName is nameof(GitClientViewModel.IsBusy) or nameof(GitClientViewModel.SelectedBranch) or nameof(GitClientViewModel.SelectedCommit)) UpdateActionButtons();
+        if (e.PropertyName == nameof(GitClientViewModel.Labels))
+        {
+            QueueFilterBarLayout();
+            RebuildLogRows();
+        }
         if (IsFilterProperty(e.PropertyName)) UpdateFilterOverflowIndicator();
         if (e.PropertyName == nameof(GitClientViewModel.SelectedLogBranch)) { _selectedBranchName = _vm?.SelectedLogBranch?.Value; RestoreBranchSelection(); }
         if (e.PropertyName == nameof(GitClientViewModel.SelectedCommit))
@@ -203,12 +204,12 @@ internal partial class GitLogView : UserControl
         var head = all.FirstOrDefault(b => b.IsCurrent);
         if (head is not null)
         {
-            BranchTreeRoots.Add(new BranchTreeNode(
+            BranchTreeRoots.Add(new BranchTreeNode(_vm,
                 displayName: string.IsNullOrEmpty(currentBranchName)
-                    ? LocalizedText.Format("git.log.head_format", head.Name)
-                    : LocalizedText.Format("git.log.head_current_branch_format", head.Name),
+                    ? _vm.FormatLabel("git.log.head_format", head.Name)
+                    : _vm.FormatLabel("git.log.head_current_branch_format", head.Name),
                 icon: "⭐",
-                foreground: ThemeBrushes.Get("TextPrimaryBrush"),
+                foreground: RelaxKonOS.UI.Themes.ThemeResources.Brush("TextPrimaryBrush"),
                 fontWeight: FontWeight.SemiBold,
                 badge: string.Empty,
                 branch: head,
@@ -216,18 +217,18 @@ internal partial class GitLogView : UserControl
         }
         else if (!string.IsNullOrEmpty(currentBranchName))
         {
-            BranchTreeRoots.Add(new BranchTreeNode(
-                displayName: LocalizedText.Format("git.log.head_current_branch_format", currentBranchName),
+            BranchTreeRoots.Add(new BranchTreeNode(_vm,
+                displayName: _vm.FormatLabel("git.log.head_current_branch_format", currentBranchName),
                 icon: "⭐",
-                foreground: ThemeBrushes.Get("TextPrimaryBrush"),
+                foreground: RelaxKonOS.UI.Themes.ThemeResources.Brush("TextPrimaryBrush"),
                 fontWeight: FontWeight.SemiBold,
                 nodeKind: BranchNodeKind.Head));
         }
 
         // 2. 本地分支分组
         var locals = all.Where(b => !b.IsRemote).ToList();
-        var localGroup = new BranchTreeNode(
-            LocalizedText.Get("git.log.branch_tree_local"),
+        var localGroup = new BranchTreeNode(_vm,
+            _vm.Labels("git.log.branch_tree_local"),
             icon: "📁",
             nodeKind: BranchNodeKind.Group,
             isExpanded: GetBranchExpansionState("local", defaultValue: true));
@@ -235,13 +236,13 @@ internal partial class GitLogView : UserControl
         foreach (var b in locals)
         {
             if (!Pass(b.Name)) continue;
-            var fg = b.IsCurrent ? ThemeBrushes.Get("SuccessBrush") : ThemeBrushes.Get("TextPrimaryBrush");
+            var fg = b.IsCurrent ? RelaxKonOS.UI.Themes.ThemeResources.Brush("SuccessBrush") : RelaxKonOS.UI.Themes.ThemeResources.Brush("TextPrimaryBrush");
             var weight = b.IsCurrent ? FontWeight.SemiBold : FontWeight.Normal;
             var icon = b.IsCurrent ? "⭐" : "🌱";
             var badge = b.Ahead > 0 || b.Behind > 0
                 ? $"{(b.Ahead > 0 ? $"↑{b.Ahead}" : "")}{(b.Behind > 0 ? $"↓{b.Behind}" : "")}"
                 : string.Empty;
-            AddBranchPath(localGroup, b.Name, new BranchTreeNode(
+            AddBranchPath(localGroup, b.Name, new BranchTreeNode(_vm,
                 displayName: b.Name.Split('/').Last(),
                 icon: icon,
                 foreground: fg,
@@ -257,8 +258,8 @@ internal partial class GitLogView : UserControl
 
         // 3. 远程分组：按 remote 名（remote/name 中 slash 前）分组
         var remotes = all.Where(b => b.IsRemote).ToList();
-        var remoteRoot = new BranchTreeNode(
-            LocalizedText.Get("git.log.branch_tree_remote"),
+        var remoteRoot = new BranchTreeNode(_vm,
+            _vm.Labels("git.log.branch_tree_remote"),
             icon: "🌐",
             nodeKind: BranchNodeKind.Group,
             isExpanded: GetBranchExpansionState("remotes", defaultValue: true));
@@ -273,7 +274,7 @@ internal partial class GitLogView : UserControl
 
             if (!remoteGroups.TryGetValue(remoteName, out var rg))
             {
-                rg = new BranchTreeNode(
+                rg = new BranchTreeNode(_vm,
                     remoteName,
                     icon: "📂",
                     nodeKind: BranchNodeKind.RemoteGroup,
@@ -282,10 +283,10 @@ internal partial class GitLogView : UserControl
                 remoteGroups[remoteName] = rg;
                 remoteRoot.Children.Add(rg);
             }
-            AddBranchPath(rg, shortName, new BranchTreeNode(
+            AddBranchPath(rg, shortName, new BranchTreeNode(_vm,
                 displayName: shortName.Split('/').Last(),
                 icon: "🔗",
-                foreground: ThemeBrushes.Get("TextSecondaryBrush"),
+                foreground: RelaxKonOS.UI.Themes.ThemeResources.Brush("TextSecondaryBrush"),
                 fontWeight: FontWeight.Normal,
                 badge: string.Empty,
                 branch: b,
@@ -294,9 +295,9 @@ internal partial class GitLogView : UserControl
                 currentBranchName: currentBranchName));
         }
         BranchTreeRoots.Add(remoteRoot);
-        var tags = new BranchTreeNode(LocalizedText.Get("git.workspace.tags"), "📁", nodeKind: BranchNodeKind.Group, isExpanded: GetBranchExpansionState("tags", true)) { Key = "tags" };
+        var tags = new BranchTreeNode(_vm, _vm.Labels("git.workspace.tags"), "📁", nodeKind: BranchNodeKind.Group, isExpanded: GetBranchExpansionState("tags", true)) { Key = "tags" };
         foreach (var tag in _vm.Tags.Where(tag => Pass(tag.Name)))
-            AddBranchPath(tags, tag.Name, new BranchTreeNode(tag.Name.Split('/').Last(), "tag", branch: new GitBranchDto("refs/tags/" + tag.Name, tag.Sha), nodeKind: BranchNodeKind.Tag));
+            AddBranchPath(tags, tag.Name, new BranchTreeNode(_vm, tag.Name.Split('/').Last(), "tag", branch: new GitBranchDto("refs/tags/" + tag.Name, tag.Sha), nodeKind: BranchNodeKind.Tag));
         BranchTreeRoots.Add(tags);
         RestoreBranchSelection();
         }
@@ -310,7 +311,7 @@ internal partial class GitLogView : UserControl
         {
             key += "/" + part;
             var group = parent.Children.FirstOrDefault(child => child.Key == key);
-            if (group is null) { group = new BranchTreeNode(part, "📁", nodeKind: BranchNodeKind.Group, isExpanded: GetBranchExpansionState(key, true)) { Key = key }; parent.Children.Add(group); }
+            if (group is null) { group = new BranchTreeNode(_vm!, part, "📁", nodeKind: BranchNodeKind.Group, isExpanded: GetBranchExpansionState(key, true)) { Key = key }; parent.Children.Add(group); }
             parent = group;
         }
         node.IsFavorite = node.Branch is not null && _favorites.Contains(node.Branch.Name);
@@ -349,7 +350,7 @@ internal partial class GitLogView : UserControl
         if (_vm is null) return;
         UpdateCommitFileCount();
 
-        var fingerprint = _vm.SelectedCommit?.Sha + "|" + LocalizedText.Get("git.log.file_count_format") + "|" + string.Join(";", _vm.CommitChangedFiles.Select(file => file.Path + ":" + file.Status));
+        var fingerprint = _vm.SelectedCommit?.Sha + "|" + _vm.Labels("git.log.file_count_format") + "|" + string.Join(";", _vm.CommitChangedFiles.Select(file => file.Path + ":" + file.Status));
         if (fingerprint == _filesFingerprint) return;
         _filesFingerprint = fingerprint;
         _rebuildingFiles = true;
@@ -372,7 +373,7 @@ internal partial class GitLogView : UserControl
                 var isFile = index == segments.Length - 1;
                 if (isFile)
                 {
-                    parent.Add(new CommitFileTreeNode(segments[index], file));
+                    parent.Add(new CommitFileTreeNode(_vm, segments[index], file));
                     continue;
                 }
 
@@ -381,7 +382,7 @@ internal partial class GitLogView : UserControl
                     : $"{directoryPath}/{segments[index]}";
                 if (!directories.TryGetValue(directoryPath, out var directory))
                 {
-                    directory = new CommitFileTreeNode(segments[index]);
+                    directory = new CommitFileTreeNode(_vm, segments[index]);
                     directories[directoryPath] = directory;
                     parent.Add(directory);
                 }
@@ -406,7 +407,7 @@ internal partial class GitLogView : UserControl
 
     private void UpdateCommitFileCount()
     {
-        if (_vm is not null) CommitFileCount.Text = LocalizedText.Format("git.log.file_count_format", _vm.CommitChangedFiles.Count);
+        if (_vm is not null) CommitFileCount.Text = _vm.FormatLabel("git.log.file_count_format", _vm.CommitChangedFiles.Count);
     }
 
     private void ChangedFileTree_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -421,6 +422,8 @@ internal partial class GitLogView : UserControl
 /// <summary>分支/分组树节点（用于 TreeView）。</summary>
 public sealed class BranchTreeNode : ObservableObject
 {
+    private readonly GitClientViewModel _vm;
+
     public string DisplayName { get; }
     public string Icon { get; }
     public IBrush Foreground { get; }
@@ -451,29 +454,30 @@ public sealed class BranchTreeNode : ObservableObject
     public bool CanUpdate => IsLocalBranch || IsRemoteBranch;
     public bool CanRename => IsLocalBranch;
     public string NewBranchMenuText => IsActionableBranch
-        ? LocalizedText.Format("git.log.menu.create_branch_from_format", Branch!.Name)
-        : LocalizedText.Get("git.log.menu.new_branch");
-    public string CompareMenuText => LocalizedText.Format("git.log.menu.compare_with_current_format",
-        string.IsNullOrWhiteSpace(CurrentBranchName) ? LocalizedText.Get("git.status.unknown_branch") : CurrentBranchName);
-    public string MergeMenuText => LocalizedText.Format("git.log.menu.merge_into_current_format", Branch?.Name ?? DisplayName,
-        string.IsNullOrWhiteSpace(CurrentBranchName) ? LocalizedText.Get("git.status.unknown_branch") : CurrentBranchName);
+        ? _vm.FormatLabel("git.log.menu.create_branch_from_format", Branch!.Name)
+        : _vm.Labels("git.log.menu.new_branch");
+    public string CompareMenuText => _vm.FormatLabel("git.log.menu.compare_with_current_format",
+        string.IsNullOrWhiteSpace(CurrentBranchName) ? _vm.Labels("git.status.unknown_branch") : CurrentBranchName);
+    public string MergeMenuText => _vm.FormatLabel("git.log.menu.merge_into_current_format", Branch?.Name ?? DisplayName,
+        string.IsNullOrWhiteSpace(CurrentBranchName) ? _vm.Labels("git.status.unknown_branch") : CurrentBranchName);
     public string PullMenuText => IsRemoteBranch
-        ? LocalizedText.Format("git.log.menu.pull_remote_into_current_format", Branch?.Name ?? DisplayName,
-            string.IsNullOrWhiteSpace(CurrentBranchName) ? LocalizedText.Get("git.status.unknown_branch") : CurrentBranchName)
-        : LocalizedText.Get("git.log.menu.update");
+        ? _vm.FormatLabel("git.log.menu.pull_remote_into_current_format", Branch?.Name ?? DisplayName,
+            string.IsNullOrWhiteSpace(CurrentBranchName) ? _vm.Labels("git.status.unknown_branch") : CurrentBranchName)
+        : _vm.Labels("git.log.menu.update");
     public string? CurrentBranchName { get; }
 
     public ObservableCollection<BranchTreeNode> Children { get; } = [];
 
-    public BranchTreeNode(string displayName, string icon = "📄",
+    public BranchTreeNode(GitClientViewModel vm, string displayName, string icon = "📄",
         IBrush? foreground = null, FontWeight fontWeight = default, string badge = "",
         GitBranchDto? branch = null, BranchNodeKind nodeKind = BranchNodeKind.Item,
         bool canDelete = false, bool isBranchAndNotCurrent = false, bool isExpanded = false,
         string? currentBranchName = null)
     {
+        _vm = vm;
         DisplayName = displayName;
         Icon = icon;
-        Foreground = foreground ?? ThemeBrushes.Get("TextPrimaryBrush");
+        Foreground = foreground ?? RelaxKonOS.UI.Themes.ThemeResources.Brush("TextPrimaryBrush");
         FontWeight = fontWeight == default ? FontWeight.Normal : fontWeight;
         Badge = badge;
         Branch = branch;
@@ -490,8 +494,11 @@ public enum BranchNodeKind { Item, Group, Head, LocalBranch, RemoteBranch, Remot
 /// <summary>A node in the selected commit's changed-file tree. Directory nodes have no associated file.</summary>
 public sealed class CommitFileTreeNode : ObservableObject
 {
-    public CommitFileTreeNode(string name, GitFileChangeDto? file = null)
+    private readonly GitClientViewModel _vm;
+
+    public CommitFileTreeNode(GitClientViewModel vm, string name, GitFileChangeDto? file = null)
     {
+        _vm = vm;
         Name = name;
         File = file;
     }
@@ -500,7 +507,7 @@ public sealed class CommitFileTreeNode : ObservableObject
     private bool _isExpanded = true;
     public bool IsExpanded { get => _isExpanded; set => SetProperty(ref _isExpanded, value); }
     public int FileCount => IsFile ? 1 : Children.Sum(child => child.FileCount);
-    public string CountLabel => LocalizedText.Format("git.log.file_count_format", FileCount);
+    public string CountLabel => _vm.FormatLabel("git.log.file_count_format", FileCount);
     public GitFileChangeDto? File { get; }
     public bool IsFile => File is not null;
     public RelaxKonOS.Protocol.Files.FileSystemEntryType EntryType => IsFile ? RelaxKonOS.Protocol.Files.FileSystemEntryType.File : RelaxKonOS.Protocol.Files.FileSystemEntryType.Directory;
@@ -514,7 +521,6 @@ public static class GitLogConverters
 {
     public static readonly IValueConverter StatusBgConverter = new FileStatusBgConverter();
     public static readonly IValueConverter StatusLabelConverter = new FileStatusLabelConverter();
-    public static readonly IValueConverter CommitDateConverter = new CommitDateConverter();
     public static readonly IValueConverter MergeOpacityConverter = new FuncValueConverter<bool, double>(merge => merge ? .6 : 1);
 }
 
@@ -525,14 +531,14 @@ public sealed class FileStatusBgConverter : IValueConverter
         var s = (value as string) ?? string.Empty;
         return s.ToLowerInvariant() switch
         {
-            "added" => ThemeBrushes.Get("SuccessBrush"),
-            "modified" => ThemeBrushes.Get("InfoBrush"),
-            "deleted" => ThemeBrushes.Get("DangerBrush"),
-            "renamed" => ThemeBrushes.Get("AccentBrush"),
-            "copied" => ThemeBrushes.Get("AccentBrush"),
-            "untracked" => ThemeBrushes.Get("TextTertiaryBrush"),
-            "conflicted" => ThemeBrushes.Get("DangerBrush"),
-            _ => ThemeBrushes.Get("TextPrimaryBrush"),
+            "added" => RelaxKonOS.UI.Themes.ThemeResources.Brush("SuccessBrush"),
+            "modified" => RelaxKonOS.UI.Themes.ThemeResources.Brush("InfoBrush"),
+            "deleted" => RelaxKonOS.UI.Themes.ThemeResources.Brush("DangerBrush"),
+            "renamed" => RelaxKonOS.UI.Themes.ThemeResources.Brush("AccentBrush"),
+            "copied" => RelaxKonOS.UI.Themes.ThemeResources.Brush("AccentBrush"),
+            "untracked" => RelaxKonOS.UI.Themes.ThemeResources.Brush("TextTertiaryBrush"),
+            "conflicted" => RelaxKonOS.UI.Themes.ThemeResources.Brush("DangerBrush"),
+            _ => RelaxKonOS.UI.Themes.ThemeResources.Brush("TextPrimaryBrush"),
         };
     }
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -556,22 +562,6 @@ public sealed class FileStatusLabelConverter : IValueConverter
             _ => "·",
         };
     }
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => throw new NotSupportedException();
-}
-
-/// <summary>Compact ISO commit dates, retaining the original value if parsing fails.</summary>
-public sealed class CommitDateConverter : IValueConverter
-{
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is not string text || !DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) return value;
-        var today = DateTimeOffset.UtcNow.ToOffset(date.Offset).Date;
-        if (date.Date == today) return LocalizedText.Format("git.dock.today_time", date.ToString("HH:mm", CultureInfo.InvariantCulture));
-        if (date.Date == today.AddDays(-1)) return LocalizedText.Format("git.dock.yesterday_time", date.ToString("HH:mm", CultureInfo.InvariantCulture));
-        return date.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture);
-    }
-
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }

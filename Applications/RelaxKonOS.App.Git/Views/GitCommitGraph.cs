@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using RelaxKonOS.Protocol.Git;
+using System.Globalization;
 
 namespace RelaxKonOS.App.Git.Views;
 
@@ -16,13 +17,13 @@ public sealed class GitLogRow(GitCommitDto commit, GitGraphRow graph, IReadOnlyL
     public bool IsMerge { get; init; }
     public string Subject => Commit.Subject;
     public string Author => Commit.Author;
-    public string AuthorDate => Commit.AuthorDate;
+    public string AuthorDate { get; init; } = commit.AuthorDate;
     public string ToolTip => Commit.Sha + "\n" + Commit.Subject + "\n" + string.Join(", ", References.Select(reference => reference.Name));
 }
 public static class GitCommitGraph
 {
     public static IReadOnlyList<GitLogRow> Build(IReadOnlyList<GitCommitDto> commits, IReadOnlyList<GitGraphCommitDto> graph,
-        IReadOnlyList<GitBranchDto> branches, IReadOnlyList<GitTagDto> tags)
+        IReadOnlyList<GitBranchDto> branches, IReadOnlyList<GitTagDto> tags, Func<string, string> localize)
     {
         var parents = graph.ToDictionary(item => item.Sha, item => item.Parents, StringComparer.Ordinal);
         var heads = graph.Where(item => item.IsHead).Select(item => item.Sha).ToHashSet(StringComparer.Ordinal);
@@ -59,10 +60,24 @@ public static class GitCommitGraph
             var refs = branches.Where(branch => branch.Sha == commit.Sha).Select(branch => new GitLogReference(branch.Name,
                 new SolidColorBrush(Color.Parse(branch.IsCurrent ? "#B78924" : branch.IsRemote ? "#A275BE" : "#58A344"))))
                 .Concat(tags.Where(tag => tag.Sha == commit.Sha).Select(tag => new GitLogReference(tag.Name, new SolidColorBrush(Color.Parse("#D09B40"))))).ToArray();
-            rows.Add(new(commit, new(lane, edges, Math.Max(before.Length, lanes.Count), heads.Contains(commit.Sha)), refs) { IsMerge = ancestry.Count > 1 });
+            rows.Add(new(commit, new(lane, edges, Math.Max(before.Length, lanes.Count), heads.Contains(commit.Sha)), refs)
+            {
+                IsMerge = ancestry.Count > 1,
+                AuthorDate = FormatAuthorDate(commit.AuthorDate, localize),
+            });
             while (lanes.Count > 0 && lanes[^1] is null) lanes.RemoveAt(lanes.Count - 1);
         }
         return rows;
+    }
+
+    private static string FormatAuthorDate(string text, Func<string, string> localize)
+    {
+        if (!DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) return text;
+        var today = DateTimeOffset.UtcNow.ToOffset(date.Offset).Date;
+        var time = date.ToString("HH:mm", CultureInfo.InvariantCulture);
+        if (date.Date == today) return string.Format(CultureInfo.CurrentCulture, localize("git.dock.today_time"), time);
+        if (date.Date == today.AddDays(-1)) return string.Format(CultureInfo.CurrentCulture, localize("git.dock.yesterday_time"), time);
+        return date.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture);
     }
 }
 public sealed class GitCommitGraphCell : Control

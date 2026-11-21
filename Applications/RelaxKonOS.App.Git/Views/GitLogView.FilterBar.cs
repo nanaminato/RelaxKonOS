@@ -1,12 +1,8 @@
-using RelaxKonOS.App.Git;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
-using Microsoft.Extensions.DependencyInjection;
-using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Services;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
 /// <summary>
 /// The log toolbar above the commit list is a single row and never scrolls sideways. When the
@@ -14,7 +10,7 @@ namespace RelaxKonOS.Client.Apps.Git.Views;
 /// flyout, mirroring how the JetBrains log toolbar collapses its own filter controls. The search
 /// box is the last item to go: it shrinks to a readable minimum before it joins the flyout.
 /// </summary>
-internal partial class GitLogView
+public partial class GitLogView
 {
     private const double PreferredSearchWidth = 210;
     // A search box this wide still reads comfortably; filters only start folding below it.
@@ -31,7 +27,6 @@ internal partial class GitLogView
     private Control[] _filterGroups = [];
     private bool _filterBarReady;
     private bool _filterBarLayoutPending;
-    private LocalizationService? _localization;
 
     private void InitializeFilterBar()
     {
@@ -43,23 +38,13 @@ internal partial class GitLogView
             _filterBarReady = true;
             FilterStripHost.SizeChanged += FilterStripHost_SizeChanged;
         }
-        if (_localization is null)
-        {
-            _localization = App.Services.GetRequiredService<LocalizationService>();
-            _localization.LanguageChanged += Localization_LanguageChanged;
-        }
         QueueFilterBarLayout();
     }
 
     private void DetachFilterBar()
     {
         if (FilterOverflowButton.Flyout is { IsOpen: true } open) open.Hide();
-        if (_localization is null) return;
-        _localization.LanguageChanged -= Localization_LanguageChanged;
-        _localization = null;
     }
-
-    private void Localization_LanguageChanged(object? sender, SystemLanguageChangedEventArgs e) => QueueFilterBarLayout();
 
     private void FilterStripHost_SizeChanged(object? sender, SizeChangedEventArgs e) => QueueFilterBarLayout();
 

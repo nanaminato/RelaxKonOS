@@ -1,15 +1,13 @@
-using RelaxKonOS.App.Git.Views;
 using System.Collections.Specialized;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using RelaxKonOS.Client.Localization;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
-internal partial class GitLogView
+public partial class GitLogView
 {
     public void CopyPresentationFrom(GitLogView source)
     {
@@ -64,7 +62,7 @@ internal partial class GitLogView
         try
         {
             LogRows.Clear();
-            foreach (var row in GitCommitGraph.Build(_vm.Commits.ToArray(), _vm.GraphCommits.ToArray(), _vm.Branches.ToArray(), _vm.Tags.ToArray())) LogRows.Add(row);
+            foreach (var row in GitCommitGraph.Build(_vm.Commits.ToArray(), _vm.GraphCommits.ToArray(), _vm.Branches.ToArray(), _vm.Tags.ToArray(), _vm.Labels)) LogRows.Add(row);
             GraphWidth = Math.Clamp(LogRows.Select(row => row.Graph.LaneCount).DefaultIfEmpty(1).Max() * 13 + 12, 24, 180);
             CommitList.SelectedItem = LogRows.FirstOrDefault(row => row.Commit.Sha == _vm.SelectedCommit?.Sha);
         }
@@ -89,8 +87,8 @@ internal partial class GitLogView
     }
     private void BranchOptions_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is not Control anchor) return;
-        var singleClick = new CheckBox { Content = LocalizedText.Get("git.dock.single_click_filter"), IsChecked = _singleClickFilters };
+        if (sender is not Control anchor || _vm is null) return;
+        var singleClick = new CheckBox { Content = _vm.Labels("git.dock.single_click_filter"), IsChecked = _singleClickFilters };
         singleClick.IsCheckedChanged += (_, _) => _singleClickFilters = singleClick.IsChecked == true;
         new Flyout { Content = singleClick }.ShowAt(anchor);
     }

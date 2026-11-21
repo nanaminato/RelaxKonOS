@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
+             xmlns:workspaceIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
              xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git" xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
@@ -58,7 +58,7 @@
                                             Padding="14,12" Margin="0,3">
                                         <StackPanel Spacing="2">
                                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                                <ui:WorkspaceIcon Kind="Folder" Width="20" Height="20" Foreground="{DynamicResource AccentBrush}" />
+                                                <workspaceIcons:WorkspaceIcon Kind="Folder" Width="20" Height="20" Foreground="{DynamicResource AccentBrush}" />
                                                 <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                                             </StackPanel>
                                             <TextBlock Text="{Binding Path}" Margin="28,2,0,0" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="NoWrap" />
@@ -95,14 +95,14 @@
                 <Button Command="{Binding OpenFolderCommand}"
                         Background="{DynamicResource AccentMutedBrush}" Foreground="{DynamicResource AccentBrush}" Padding="14,6">
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ui:WorkspaceIcon Kind="Folder" Foreground="{DynamicResource AccentBrush}" />
+                        <workspaceIcons:WorkspaceIcon Kind="Folder" Foreground="{DynamicResource AccentBrush}" />
                         <TextBlock Text="{loc:Loc git.picker.open_folder}" Foreground="{DynamicResource AccentBrush}" />
                     </StackPanel>
                 </Button>
                 <Button Command="{Binding RegisterRepositoryCommand}"
                         Background="Transparent" Foreground="{DynamicResource TextSecondaryBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="14,6">
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ui:WorkspaceIcon Kind="Edit" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <workspaceIcons:WorkspaceIcon Kind="Edit" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Text="{loc:Loc git.picker.register_path}" />
                     </StackPanel>
                 </Button>

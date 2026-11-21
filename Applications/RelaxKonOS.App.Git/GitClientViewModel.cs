@@ -120,7 +120,7 @@ public sealed partial class GitClientViewModel(IServerGit client, Func<string, s
         OnPropertyChanged(nameof(StatusText));
     }
 
-    private string FormatLabel(string key, params object?[] arguments) => arguments.Length == 0
+    internal string FormatLabel(string key, params object?[] arguments) => arguments.Length == 0
         ? localize(key)
         : string.Format(CultureInfo.CurrentCulture, localize(key), arguments);
     [ObservableProperty]

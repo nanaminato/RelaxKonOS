@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 
-namespace RelaxKonOS.Client.Controls;
+namespace RelaxKonOS.UI.Imaging;
 
 /// <summary>Theme-coloured, consistently stroked workspace symbols on a 24-unit grid.</summary>
 public sealed class WorkspaceIcon : TemplatedControl
