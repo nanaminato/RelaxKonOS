@@ -16,7 +16,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     FileDeploymentJournal journal)
 {
     private static readonly DeploymentTarget LocalTarget = new("", "", "");
-    internal sealed record Review(DeploymentPlan Plan, Backend Backend);
+    internal sealed record Review(DeploymentPlan Plan, AppPackageCandidate Candidate);
 
     public async Task<Review> PrepareAsync(AppPackageCandidate candidate, IEnumerable<DeploymentRequirement> selectedOptional,
         CancellationToken cancellationToken)
@@ -54,12 +54,13 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             if (!localResolution.Succeeded)
                 throw new InvalidOperationException(localResolution.Problem);
             var plan = await coordinator.PlanAsync(LocalTarget, root, local, optional, cancellationToken);
-            return new(plan with { ClientBinding = new(Guid.Empty, "", candidate.ExpectedInstalledPath) }, backend);
+            return new(plan with { ClientBinding = new(Guid.Empty, "", candidate.ExpectedInstalledPath) }, candidate);
         }
 
         var actor = session.CurrentUser?.Id ?? throw new InvalidOperationException("deployment-account-changed");
         var connection = session.ServiceId ?? throw new InvalidOperationException("deployment-account-changed");
-        var client = NewModuleClient();
+        var binding = new DeploymentClientBinding(actor, connection, candidate.ExpectedInstalledPath);
+        var client = NewModuleClient(binding);
         var catalog = new ModuleDeploymentCatalog(client);
         var modules = new ModuleDeploymentExecutor(client);
         backend.BindModuleClient(client);
@@ -73,8 +74,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 && !resolution.OrderedReleases.Any(release => release.Package.Kind == DeploymentPackageKind.ServerModule
                     && release.Capabilities.ContainsKey(capability))))
             throw new InvalidOperationException("deployment-application-incompatible");
-        resolution = resolution with { ClientBinding = new(actor, connection, candidate.ExpectedInstalledPath) };
-        return new(await modules.PrepareAsync(resolution, snapshot, cancellationToken), backend);
+        resolution = resolution with { ClientBinding = binding };
+        return new(await modules.PrepareAsync(resolution, snapshot, cancellationToken), candidate);
     }
 
     public async Task<Review?> FindPendingAsync(AppPackageCandidate candidate, CancellationToken cancellationToken,
@@ -88,27 +89,41 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
                 digest, user.Id, connection, cancellationToken);
         if (plan?.ClientBinding is not { } binding) return null;
-        var backend = new Backend(candidate with
+        return new(plan, candidate with
         {
             InstalledVersion = plan.OrderedReleases[^1].CurrentVersion,
             ExpectedInstalledPath = binding.InstalledPath,
-        }, installer, packages, applications, session);
-        return new(plan, backend);
+        });
     }
 
     public async Task<DeveloperAppInfo> ExecuteAsync(Review review, CancellationToken cancellationToken)
     {
-        await review.Backend.VerifyBeforeExecutionAsync(review.Plan, cancellationToken);
+        var backend = new Backend(review.Candidate, installer, packages, applications, session);
         if (review.Plan.Target != LocalTarget)
-            review.Backend.BindModuleClient(NewModuleClient());
-        var coordinator = new UnifiedDeploymentCoordinator(review.Backend, journal, TimeProvider.System);
+            backend.BindModuleClient(NewModuleClient(review.Plan.ClientBinding));
+        await backend.VerifyBeforeExecutionAsync(review.Plan, cancellationToken);
+        var coordinator = new UnifiedDeploymentCoordinator(backend, journal, TimeProvider.System);
         await coordinator.ExecuteAsync(review.Plan, cancellationToken);
-        return review.Backend.InstalledApplication()
+        return backend.InstalledApplication()
             ?? throw new InvalidOperationException("deployment-application-not-registered");
     }
 
-    private ServerModuleManagementClient NewModuleClient() =>
-        new(http.CreateClient(ServerModuleCatalog.HttpClientName), session);
+    private ServerModuleManagementClient NewModuleClient(DeploymentClientBinding? binding)
+    {
+        var login = session.CurrentSession;
+        RequireDeploymentLogin();
+        var client = new ServerModuleManagementClient(http.CreateClient(ServerModuleCatalog.HttpClientName), session);
+        RequireDeploymentLogin();
+        return client;
+
+        void RequireDeploymentLogin()
+        {
+            if (binding is null || login is null || !ReferenceEquals(login, session.CurrentSession)
+                || session.State != AuthSessionState.Authenticated
+                || binding.AccountId != session.CurrentUser?.Id || binding.ConnectionIdentity != session.ServiceId)
+                throw new InvalidOperationException("deployment-account-changed");
+        }
+    }
 
     private static DeploymentPackageKey App(string id) => new(DeploymentPackageKind.Application, id);
 
@@ -125,7 +140,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         new(new AppId(manifest.Id), manifest.DisplayName, manifest.Version,
             ClientPlatforms: manifest.ClientPlatforms, ServerRequirements: manifest.ServerRequirements);
 
-    internal sealed class Backend(AppPackageCandidate candidate, AppPackageInstallerService installer,
+    private sealed class Backend(AppPackageCandidate candidate, AppPackageInstallerService installer,
         DeveloperPackageManager packages, ApplicationManager applications, IAuthSession session) : IDeploymentBackend
     {
         private DeveloperAppInfo? installed;

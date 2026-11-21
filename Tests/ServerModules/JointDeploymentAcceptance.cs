@@ -110,6 +110,17 @@ internal static class JointDeploymentAcceptance
             var review = await joint.PrepareAsync(candidate, [], default);
             Require(review.Plan.PreparedSteps.Length == 1 && review.Plan.OrderedReleases[0].Package.Id == ModuleId,
                 "the desktop plans the missing signed module before the real desktop archive");
+            var requestsBeforeLoginChange = factory.Requests;
+            factory.BeforeNextClient = () => session.Url = host.Url;
+            try
+            {
+                await joint.ExecuteAsync(review, default);
+                throw new InvalidOperationException("Expected the login change to invalidate the running attempt.");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-account-changed") { }
+            Require(factory.Requests == requestsBeforeLoginChange
+                && !applications.IsRegistered(new AppId(AppIdText)),
+                "a replacement login during client binding sends no module request");
             await ExpectRestartAsync(joint, review);
             Require(!applications.IsRegistered(new AppId(AppIdText)) && InstalledModuleStore.Read(serverRoot).Single().ModuleId == ModuleId,
                 "the first execution installs the signed module and leaves the desktop package pending");
@@ -323,13 +334,20 @@ internal static class JointDeploymentAcceptance
         public IReadOnlyList<string> EnablePreviewKeys => handler.EnablePreviewKeys;
         public int SubmittedEnableApplies => handler.SubmittedEnableApplies;
         public int Requests => handler.Requests;
+        public Action? BeforeNextClient { get; set; }
         public Task HoldNextEnableApply()
         {
             handler.EnableEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
             return handler.EnableEntered.Task;
         }
         public void DropNextEnableResponse() => handler.DropEnableResponse = true;
-        public HttpClient CreateClient(string name) => http ??= new(handler);
+        public HttpClient CreateClient(string name)
+        {
+            var before = BeforeNextClient;
+            BeforeNextClient = null;
+            before?.Invoke();
+            return http ??= new(handler);
+        }
         public void Dispose() => http?.Dispose();
     }
 
