@@ -233,7 +233,12 @@ internal static class JointDeploymentAcceptance
             }
             await packages.UninstallAsync(AppIdText);
 
-            foreach (var dependencyId in new[] { ServerModules.FirewallId, ModuleId })
+            var gitArchive = bundledModuleArchives.FirstOrDefault(path =>
+                Path.GetFileNameWithoutExtension(path) == "relaxkonos.git");
+            var activationDependencies = gitArchive is null
+                ? new[] { ServerModules.FirewallId, ModuleId }
+                : new[] { ServerModules.FirewallId, ModuleId, ServerModules.GitId };
+            foreach (var dependencyId in activationDependencies)
             {
                 var moduleClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
                 var inventory = await moduleClient.ReadAsync();
@@ -252,16 +257,25 @@ internal static class JointDeploymentAcceptance
                 session.Url = host.Url;
                 joint = Service();
 
-                var activationArchive = Path.Combine(root, dependencyId + "-dependent.roapp");
-                await PrepareDesktopArchiveAsync(archive, activationArchive, "fixture.bundled",
-                    new DeploymentPackageKey(DeploymentPackageKind.ServerModule, dependencyId));
+                var activationAppId = dependencyId == ServerModules.GitId ? "relaxkonos.git" : "fixture.bundled";
+                var activationArchive = dependencyId == ServerModules.GitId
+                    ? Path.Combine(official, activationAppId + ".roapp")
+                    : Path.Combine(root, dependencyId + "-dependent.roapp");
+                if (dependencyId == ServerModules.GitId)
+                {
+                    File.Copy(gitArchive!, activationArchive);
+                    File.Copy(gitArchive + ".sha256", activationArchive + ".sha256");
+                }
+                else
+                    await PrepareDesktopArchiveAsync(archive, activationArchive, activationAppId,
+                        new DeploymentPackageKey(DeploymentPackageKind.ServerModule, dependencyId));
                 var activationCandidate = await installer.InspectLocalAsync(activationArchive);
                 var activationReview = await joint.PrepareAsync(activationCandidate, [], default);
                 Require(activationReview.Plan.PreparedSteps.IsEmpty &&
                     activationReview.Plan.OrderedReleases[0] is { ActivationOnly: true, Satisfied: false },
                     $"{dependencyId} is reviewed as enable-only without a package download");
                 await ExpectRestartAsync(joint, activationReview);
-                Require(!applications.IsRegistered(new AppId("fixture.bundled"))
+                Require(!applications.IsRegistered(new AppId(activationAppId))
                     && ModulePackageOperationStore.Read(serverRoot).Count == 1,
                     $"enabling {dependencyId} leaves the application pending without a package operation");
                 await host.DisposeAsync();
@@ -271,9 +285,9 @@ internal static class JointDeploymentAcceptance
                 var activationPending = await joint.FindPendingAsync(activationCandidate, default)
                     ?? throw new InvalidOperationException("Missing activation-only deployment after restart.");
                 var activationInstalled = await joint.ExecuteAsync(activationPending, default);
-                Require(activationInstalled.Id == "fixture.bundled" && applications.IsRegistered(new AppId("fixture.bundled")),
-                    "restart activates the installed dependency and permits desktop application registration");
-                await packages.UninstallAsync("fixture.bundled");
+                Require(activationInstalled.Id == activationAppId && applications.IsRegistered(new AppId(activationAppId)),
+                    $"restart activates {dependencyId} and permits desktop application registration");
+                await packages.UninstallAsync(activationAppId);
             }
 
             foreach (var bundledArchive in bundledModuleArchives)
@@ -283,11 +297,12 @@ internal static class JointDeploymentAcceptance
                 {
                     "relaxkonos.certificates" => [ServerModules.CertificatesId],
                     "relaxkonos.webservers" => [ServerModules.CertificatesId, ServerModules.WebServerId],
+                    "relaxkonos.git" => [ServerModules.GitId],
                     _ => throw new ArgumentException($"Unrecognized bundled-module test package: {appId}"),
                 };
                 var bundledPath = Path.Combine(official, appId + ".roapp");
-                File.Copy(bundledArchive, bundledPath);
-                File.Copy(bundledArchive + ".sha256", bundledPath + ".sha256");
+                File.Copy(bundledArchive, bundledPath, overwrite: true);
+                File.Copy(bundledArchive + ".sha256", bundledPath + ".sha256", overwrite: true);
                 var bundledCandidate = await installer.InspectLocalAsync(bundledPath);
                 var bundledReview = await joint.PrepareAsync(bundledCandidate, [], default);
                 var releases = bundledReview.Plan.OrderedReleases;
