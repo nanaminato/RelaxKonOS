@@ -1,14 +1,13 @@
 using System.Globalization;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 
-namespace RelaxKonOS.Client.Apps.ApplicationDeployments.ViewModels;
+namespace RelaxKonOS.App.ApplicationDeployments.ViewModels;
 
 /// <summary>
 /// One published revision. It is immutable, so a row is a pure projection of what the server recorded
 /// when the revision was published — including the image identity a rollback would return to.
 /// </summary>
-public sealed class RevisionRowViewModel(ApplicationRevisionDto revision, Guid? currentRevisionId)
+public sealed class RevisionRowViewModel(ApplicationRevisionDto revision, Guid? currentRevisionId, Func<string, string> localize)
 {
     public ApplicationRevisionDto Model { get; } = revision;
 
@@ -26,7 +25,7 @@ public sealed class RevisionRowViewModel(ApplicationRevisionDto revision, Guid? 
     }
 
     public string PlatformText => string.IsNullOrWhiteSpace(Model.Platform) ? "—" : Model.Platform;
-    public string TemplateText => $"{LocalizedText.Get(DeploymentText.Enum(DeploymentText.SourcePrefix, Model.SourceKind))} · {Model.TemplateVersion}";
+    public string TemplateText => $"{localize(DeploymentText.Enum(DeploymentText.SourcePrefix, Model.SourceKind))} · {Model.TemplateVersion}";
     public string CreatedText => Model.CreatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
     public string EntryText => Model.Arguments.Count == 0
         ? Model.EntryPoint
@@ -34,7 +33,7 @@ public sealed class RevisionRowViewModel(ApplicationRevisionDto revision, Guid? 
 
     public bool IsCurrent => Model.Id == currentRevisionId;
     public bool HasProblem => !string.IsNullOrWhiteSpace(Model.ProblemCode);
-    public LocalizedStatus ProblemText => DeploymentText.Problem(Model.ProblemCode);
+    public string ProblemText => DeploymentText.Problem(Model.ProblemCode, localize);
 
     /// <summary>Image ids are long digests; the full value stays available in the tooltip.</summary>
     public string ImageTooltip => Model.ImageId ?? Model.ImageReference;

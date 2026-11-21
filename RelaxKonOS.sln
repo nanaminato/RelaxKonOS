@@ -116,6 +116,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.ProcessGuard
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.PortForwarding", "Applications\RelaxKonOS.App.PortForwarding\RelaxKonOS.App.PortForwarding.csproj", "{51128048-1B92-416C-BB1B-300BA4A9E4BB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.ApplicationDeployments", "Applications\RelaxKonOS.App.ApplicationDeployments\RelaxKonOS.App.ApplicationDeployments.csproj", "{44BE9F55-CA53-4194-ACF0-1F26E29F9236}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -774,6 +776,18 @@ Global
 		{51128048-1B92-416C-BB1B-300BA4A9E4BB}.Release|x64.Build.0 = Release|Any CPU
 		{51128048-1B92-416C-BB1B-300BA4A9E4BB}.Release|x86.ActiveCfg = Release|Any CPU
 		{51128048-1B92-416C-BB1B-300BA4A9E4BB}.Release|x86.Build.0 = Release|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Debug|x64.Build.0 = Debug|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Debug|x86.Build.0 = Debug|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Release|Any CPU.Build.0 = Release|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Release|x64.ActiveCfg = Release|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Release|x64.Build.0 = Release|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Release|x86.ActiveCfg = Release|Any CPU
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -818,5 +832,6 @@ Global
 		{35571A1B-69D5-4619-B1DD-0A5227F07CAA} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 		{5D3FDFE9-EFB1-4A7D-9755-2B392D6A4563} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 		{51128048-1B92-416C-BB1B-300BA4A9E4BB} = {A10A91C2-6485-6656-963B-F6FCBC812542}
+		{44BE9F55-CA53-4194-ACF0-1F26E29F9236} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 	EndGlobalSection
 EndGlobal

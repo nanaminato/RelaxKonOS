@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ApplicationDeployments;
 using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -578,14 +579,14 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         ReportStage(current);
         if (current.ProblemCode is { Length: > 0 } problem)
         {
-            ErrorText = DeploymentText.Problem(problem);
+            ErrorText = LocalizedStatus.Key(problem);
             // The problem code names the failure; the step's own output is what explains it. Fetching it
             // here means the operator never has to know that a second request exists.
             await LoadDiagnosticsAsync(current.OperationId, token);
         }
         else if (current.RecoveryProblemCode is { Length: > 0 } recovery)
         {
-            ErrorText = DeploymentText.Problem(recovery);
+            ErrorText = LocalizedStatus.Key(recovery);
         }
     }
 
@@ -904,7 +905,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
 
     private static LocalizedStatus Describe(Exception exception) => exception switch
     {
-        ApplicationDeploymentClientException failure => DeploymentText.Problem(failure.ProblemCode),
+        ApplicationDeploymentClientException failure => LocalizedStatus.Key(failure.ProblemCode),
         _ => LocalizedStatus.Key(DeploymentText.Prefix + ".error.transport"),
     };
 

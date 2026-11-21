@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ApplicationDeployments;
 using RelaxKonOS.AppSDK;
 using System.Text.Json;
 using Avalonia;
@@ -57,7 +58,7 @@ internal sealed class ApplicationCatalogUpgradeView : UserControl
                     + "\n" + plan.UpdateNotes;
                 if (plan.Blockers.Count != 0)
                 {
-                    error.Text = string.Join("\n", plan.Blockers.Select(problem => DeploymentText.Problem(problem).Resolve()));
+                    error.Text = string.Join("\n", plan.Blockers.Select(problem => LocalizedStatus.Key(problem).Resolve()));
                     return;
                 }
                 confirmedRequest = new(plan.Target.Id, plan.Target.Version, plan.ExpectedUpdatedAt,
@@ -95,7 +96,7 @@ internal sealed class ApplicationCatalogUpgradeView : UserControl
             IsEnabled = false;
             error.Text = "";
             try { await action(); }
-            catch (ApplicationDeploymentClientException failure) { error.Text = DeploymentText.Problem(failure.ProblemCode).Resolve(); }
+            catch (ApplicationDeploymentClientException failure) { error.Text = LocalizedStatus.Key(failure.ProblemCode).Resolve(); }
             catch (Exception failure) when (failure is HttpRequestException or OperationCanceledException or JsonException)
             { error.Text = Text("upgrade_request_failed"); }
             finally { IsEnabled = true; }

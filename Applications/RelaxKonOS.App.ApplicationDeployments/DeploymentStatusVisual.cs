@@ -1,6 +1,6 @@
 using RelaxKonOS.Protocol.ApplicationDeployments;
 
-namespace RelaxKonOS.Client.Apps.ApplicationDeployments;
+namespace RelaxKonOS.App.ApplicationDeployments;
 
 /// <summary>
 /// The single table that decides how an observed state is presented. The header badge, the list dot,
@@ -11,16 +11,16 @@ namespace RelaxKonOS.Client.Apps.ApplicationDeployments;
 /// caller supplies the state's own text. An operator with a colour-vision difference, a monochrome
 /// display, or a low-quality projector reads the shape and the word instead.
 /// </summary>
-internal static class DeploymentStatusVisual
+public static class DeploymentStatusVisual
 {
     /// <summary>
     /// The colour families the workspace palette can actually express. Deliberately small: a state
     /// picks a family rather than an arbitrary colour, so a palette swap restyles every state at
     /// once and no page can introduce a colour the theme has no token for.
     /// </summary>
-    internal enum Family { Neutral, Info, Success, Warning, Danger }
+    public enum Family { Neutral, Info, Success, Warning, Danger }
 
-    internal static Family FamilyOf(ApplicationActualState state) => state switch
+    public static Family FamilyOf(ApplicationActualState state) => state switch
     {
         ApplicationActualState.Running => Family.Success,
         // Rising and falling are both "in flight", so they share a family and a glyph; the state's
@@ -38,14 +38,14 @@ internal static class DeploymentStatusVisual
     /// animates the glyph for these and leaves the resting glyphs still, so motion itself means
     /// "in progress" instead of being decoration on every row.
     /// </summary>
-    internal static bool IsTransitioning(ApplicationActualState state) =>
+    public static bool IsTransitioning(ApplicationActualState state) =>
         state is ApplicationActualState.Starting or ApplicationActualState.Stopping;
 
     /// <summary>
     /// A shape that repeats what the colour says. Kept distinct per state so the symbol set alone is
     /// enough to scan a list.
     /// </summary>
-    internal static string GlyphOf(ApplicationActualState state) => state switch
+    public static string GlyphOf(ApplicationActualState state) => state switch
     {
         ApplicationActualState.Running => "\u25CF",   // ● filled
         ApplicationActualState.Stopped => "\u25CB",   // ○ hollow
@@ -63,7 +63,7 @@ internal static class DeploymentStatusVisual
     /// warning and accent but none for danger, so a filled variant could not be uniform across all
     /// five families.
     /// </summary>
-    internal static string AccentKey(Family family) => family switch
+    public static string AccentKey(Family family) => family switch
     {
         Family.Success => "SuccessBrush",
         Family.Info => "InfoBrush",
@@ -76,6 +76,6 @@ internal static class DeploymentStatusVisual
     /// Text colour on top of <see cref="AccentKey"/>. The neutral family has no meaning to colour,
     /// so it falls back to the ordinary secondary text role rather than a borrowed border colour.
     /// </summary>
-    internal static string ForegroundKey(Family family) =>
+    public static string ForegroundKey(Family family) =>
         family == Family.Neutral ? "TextSecondaryBrush" : AccentKey(family);
 }

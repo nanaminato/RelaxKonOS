@@ -193,10 +193,3 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
 
     private sealed record DeploymentProblemDetails(string? Title, string? ProblemCode);
 }
-
-/// <summary>A failure carrying the server's stable problem code, which the UI localizes.</summary>
-public sealed class ApplicationDeploymentClientException(string problemCode, int statusCode) : Exception(problemCode)
-{
-    public string ProblemCode { get; } = problemCode;
-    public int StatusCode { get; } = statusCode;
-}

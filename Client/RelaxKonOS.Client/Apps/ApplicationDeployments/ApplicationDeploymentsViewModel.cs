@@ -1,3 +1,5 @@
+using RelaxKonOS.App.ApplicationDeployments.ViewModels;
+using RelaxKonOS.App.ApplicationDeployments;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -303,13 +305,13 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
 
         Revisions.Clear();
         foreach (var revision in snapshot.Revisions)
-            Revisions.Add(new RevisionRowViewModel(revision, snapshot.Application.CurrentRevisionId));
+            Revisions.Add(new RevisionRowViewModel(revision, snapshot.Application.CurrentRevisionId, LocalizedText.Get));
         Operations.Clear();
         foreach (var operation in snapshot.Operations) Operations.Add(Row(operation));
 
         if (snapshot.ActiveOperation is { } active)
         {
-            ActiveOperation = new OperationRowViewModel(active);
+            ActiveOperation = new OperationRowViewModel(active, LocalizedText.Get);
             if (observeOperation) _ = PollAsync(applicationId, active);
         }
         else
@@ -474,7 +476,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         try
         {
             var operation = await enqueue(Guid.NewGuid().ToString("N"));
-            ActiveOperation = new OperationRowViewModel(operation);
+            ActiveOperation = new OperationRowViewModel(operation, LocalizedText.Get);
             await PollAsync(applicationId, operation, deleting);
         }
         catch (Exception exception) when (IsExpected(exception))
@@ -516,7 +518,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         var current = operation;
         while (current.State is DeploymentOperationState.Queued or DeploymentOperationState.Running)
         {
-            ActiveOperation = new OperationRowViewModel(current);
+            ActiveOperation = new OperationRowViewModel(current, LocalizedText.Get);
             OperationText = LocalizedStatus.Key(DeploymentText.Enum(DeploymentText.StagePrefix, current.Stage));
             try { await Task.Delay(PollInterval, token); }
             catch (OperationCanceledException) { return; }
@@ -533,9 +535,9 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
             }
         }
 
-        ActiveOperation = new OperationRowViewModel(current);
+        ActiveOperation = new OperationRowViewModel(current, LocalizedText.Get);
         OperationText = LocalizedStatus.Key(DeploymentText.Enum(DeploymentText.StatePrefix, current.State));
-        if (current.ProblemCode is { Length: > 0 } problem) ErrorText = DeploymentText.Problem(problem);
+        if (current.ProblemCode is { Length: > 0 } problem) ErrorText = LocalizedStatus.Key(problem);
 
         // A deleted application no longer exists, so the selection is dropped before reloading.
         if (deleting && current.State == DeploymentOperationState.Succeeded)
@@ -556,7 +558,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     /// from the history list too — not only from the wizard, whose error disappears when it closes.
     /// </summary>
     private OperationRowViewModel Row(DeploymentOperationDto operation) =>
-        new(operation, client.GetOperationDiagnosticsAsync);
+        new(operation, LocalizedText.Get, client.GetOperationDiagnosticsAsync);
 
     /// <summary>
     /// The address is the one field an operator routinely needs elsewhere (a browser, a curl, a log
@@ -682,7 +684,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         try
         {
             Applications.Clear();
-            foreach (var application in applications) Applications.Add(new ApplicationRowViewModel(application));
+            foreach (var application in applications) Applications.Add(new ApplicationRowViewModel(application, LocalizedText.Get));
             SelectedApplication = preferred is { } id
                 ? Applications.FirstOrDefault(row => row.Id == id) ?? Applications.FirstOrDefault()
                 : Applications.FirstOrDefault();
@@ -761,7 +763,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
 
     private static LocalizedStatus Describe(Exception exception) => exception switch
     {
-        ApplicationDeploymentClientException failure => DeploymentText.Problem(failure.ProblemCode),
+        ApplicationDeploymentClientException failure => LocalizedStatus.Key(failure.ProblemCode),
         // Handing the address to the default browser is the one action here that leaves the client
         // entirely, so a failure is the host having no registered browser rather than a lost
         // connection, and it must not be reported as one.

@@ -47,3 +47,10 @@ public interface IServerApplicationDeployments
 }
 
 public sealed record DeploymentUploadProgress(long Bytes, long? TotalBytes, TimeSpan Elapsed);
+
+/// <summary>A failure carrying the server's stable problem code, which the UI localizes.</summary>
+public sealed class ApplicationDeploymentClientException(string problemCode, int statusCode) : Exception(problemCode)
+{
+    public string ProblemCode { get; } = problemCode;
+    public int StatusCode { get; } = statusCode;
+}

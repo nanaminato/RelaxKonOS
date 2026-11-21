@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ApplicationDeployments;
 using RelaxKonOS.AppSDK;
 using System.Globalization;
 using System.Text.Json;
@@ -69,7 +70,7 @@ internal sealed class ApplicationCatalogView : UserControl
                 previewedPort = hostPort;
                 install.IsEnabled = true;
             }
-            catch (ApplicationDeploymentClientException failure) { error.Text = DeploymentText.Problem(failure.ProblemCode).Resolve(); }
+            catch (ApplicationDeploymentClientException failure) { error.Text = LocalizedStatus.Key(failure.ProblemCode).Resolve(); }
             catch (Exception failure) when (failure is HttpRequestException or OperationCanceledException or JsonException)
             { error.Text = Text("preview_failed"); }
             finally { IsEnabled = true; }
@@ -94,7 +95,7 @@ internal sealed class ApplicationCatalogView : UserControl
             error.Text = "";
             IsEnabled = false;
             try { dialog.Close(await client.InstallCatalogAsync(request, requestKey!)); }
-            catch (ApplicationDeploymentClientException failure) { error.Text = DeploymentText.Problem(failure.ProblemCode).Resolve(); }
+            catch (ApplicationDeploymentClientException failure) { error.Text = LocalizedStatus.Key(failure.ProblemCode).Resolve(); }
             catch (Exception failure) when (failure is HttpRequestException or OperationCanceledException or JsonException)
             { error.Text = Text("submit_failed"); }
             finally { IsEnabled = true; }
