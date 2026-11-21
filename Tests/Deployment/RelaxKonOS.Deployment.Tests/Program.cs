@@ -85,6 +85,16 @@ Check(await reopenedJournal.FindPendingPlanAsync(root.Package, root.Version, roo
 try { await reopenedJournal.FindStartedPlanAsync(plan.Id); throw new Exception("Expected corrupt plan rejection."); }
 catch (InvalidDataException) { }
 await File.WriteAllTextAsync(checkpointPath, checkpointJson);
+var unrelatedId = Guid.NewGuid();
+var unrelatedPath = Path.Combine(journalDirectory, unrelatedId.ToString("N"));
+File.Move(checkpointPath, unrelatedPath);
+try
+{
+    await reopenedJournal.FindStartedPlanAsync(unrelatedId);
+    throw new Exception("Expected rejection of a valid checkpoint stored under another plan ID.");
+}
+catch (InvalidDataException) { }
+finally { File.Move(unrelatedPath, checkpointPath); }
 var persisted = await journal.FindStartedPlanAsync(plan.Id) ?? throw new Exception("Missing persisted plan.");
 await coordinator.ExecuteAsync(persisted);
 await coordinator.ExecuteAsync(plan);

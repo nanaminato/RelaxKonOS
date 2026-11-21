@@ -16,12 +16,12 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             cancellationToken.ThrowIfCancellationRequested();
             if (!Guid.TryParseExact(Path.GetFileName(path), "N", out var id)) continue;
             Entry entry;
-            try { entry = await ReadAsync(path, cancellationToken); }
+            try { entry = await ReadAsync(path, id, cancellationToken); }
             catch (FileNotFoundException) { continue; }
             catch (JsonException) { continue; }
             catch (InvalidDataException) { continue; }
             var plan = entry.Plan;
-            if (entry.Checkpoint.Verified || plan.Id != id || plan.OrderedReleases.IsDefaultOrEmpty
+            if (entry.Checkpoint.Verified
                 || plan.ClientBinding is not { } client || client.AccountId != accountId
                 || client.ConnectionIdentity != connectionIdentity) continue;
             var root = plan.OrderedReleases[^1];
@@ -37,7 +37,7 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
         var path = Path.Combine(directory, planId.ToString("N"));
         try
         {
-            return (await ReadAsync(path, cancellationToken)).Plan;
+            return (await ReadAsync(path, planId, cancellationToken)).Plan;
         }
         catch (FileNotFoundException) { return null; }
         catch (DirectoryNotFoundException) { return null; }
@@ -54,7 +54,7 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             Entry? entry = null;
             if (File.Exists(path))
             {
-                entry = await ReadAsync(path, cancellationToken);
+                entry = await ReadAsync(path, plan.Id, cancellationToken);
                 if (entry.Identity != identity)
                     throw new InvalidOperationException("deployment-plan-identity-changed");
             }
@@ -88,11 +88,12 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             })
         })));
 
-    private static async Task<Entry> ReadAsync(string path, CancellationToken cancellationToken)
+    private static async Task<Entry> ReadAsync(string path, Guid expectedPlanId, CancellationToken cancellationToken)
     {
         await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         var entry = await JsonSerializer.DeserializeAsync<Entry>(input, cancellationToken: cancellationToken);
         if (entry is not { Plan: not null, Checkpoint: not null }
+            || entry.Plan.Id != expectedPlanId
             || entry.Plan.OrderedReleases.IsDefaultOrEmpty
             || entry.Plan.PreparedSteps.IsDefault
             || entry.Checkpoint.CompletedSteps < 0 || entry.Checkpoint.CompletedSteps > entry.Plan.OrderedReleases.Length
