@@ -19,6 +19,7 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.Protocol.Browser;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Runtime;
 using System.Reflection;
 using WindowManager = RelaxKonOS.WindowManager.WindowManager;
@@ -76,6 +77,7 @@ internal static class OfficialRoappChecks
         var journal = new FileDeploymentJournal(Path.Combine(root, "deployment-journal"));
         var browserData = DispatchProxy.Create<IBrowserData, OfficialBrowserDataFixture>();
         EventAlertsAuthFixture? browserAuth = null;
+        DatabasePackageAuthFixture? databaseAuth = null;
         try
         {
             var (packages, applications, windows) = CreateRuntime();
@@ -291,6 +293,15 @@ internal static class OfficialRoappChecks
                 "Package text fallback must match the manifest.");
             if (isTaskManager)
                 Check(!await packages.LaunchAsync(applicationId), "The preinstalled Task Manager must refuse launch without server capabilities.");
+            if (isDatabase)
+            {
+                Check((await installer.InspectLocalAsync(path)).Manifest.ServerRequirements?.RequiredCapabilities is [ServerCapabilities.Database],
+                    "The official Databases package must declare the database server capability.");
+                databaseAuth!.DatabaseAvailable = false;
+                Check(!await packages.LaunchAsync(applicationId) && windows.Windows.Count == 0,
+                    "Databases must refuse launch when the connected server has disabled the module.");
+                databaseAuth.DatabaseAvailable = true;
+            }
             compatibility.TaskManagerServerAvailable = true;
             if (interactive || isTaskManager || isRegistry || isBrowser || isTerminal)
             {
@@ -513,9 +524,15 @@ internal static class OfficialRoappChecks
             var windows = new WindowManager();
             var apps = new ApplicationManager(windows, services);
             var permissions = new RoappCatalogChecks.Permissions();
-            var auth = isTailscale || isDatabase ? DispatchProxy.Create<IAuthSession, TailscaleScopeAuthFixture>() : isProxyServer || isProxyManager
+            var auth = isDatabase ? DispatchProxy.Create<IAuthSession, DatabasePackageAuthFixture>()
+                : isTailscale ? DispatchProxy.Create<IAuthSession, TailscaleScopeAuthFixture>() : isProxyServer || isProxyManager
                 ? DispatchProxy.Create<IAuthSession, ProxyServerScopeAuthFixture>()
                 : DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+            if (isDatabase)
+            {
+                databaseAuth = (DatabasePackageAuthFixture)(object)auth;
+                compatibility.DatabaseEvaluator = new ApplicationCompatibilityService(auth, windows, null!, new EmptyModuleCatalog(), null!);
+            }
             if (isTerminal)
                 ((EventAlertsAuthFixture)(object)auth).State = AuthSessionState.Unauthenticated;
             if (isBrowser)
@@ -608,10 +625,25 @@ internal static class OfficialRoappChecks
     private sealed class Compatibility : IApplicationCompatibilityEvaluator
     {
         public bool TaskManagerServerAvailable { get; set; } = true;
-        public ApplicationCompatibilityResult Evaluate(ApplicationManifest manifest) =>
-            manifest.Id.Value == "relaxkonos.taskmanager" && manifest.Server.RequiredCapabilities.Count > 0 && !TaskManagerServerAvailable
-                ? new(ApplicationCompatibilityStatus.ServerUnavailable)
-                : ApplicationCompatibilityResult.Compatible;
+        public IApplicationCompatibilityEvaluator? DatabaseEvaluator { get; set; }
+        public ApplicationCompatibilityResult Evaluate(ApplicationManifest manifest)
+        {
+            if (manifest.Id.Value == "relaxkonos.taskmanager" && manifest.Server.RequiredCapabilities.Count > 0 && !TaskManagerServerAvailable)
+                return new(ApplicationCompatibilityStatus.ServerUnavailable);
+            if (manifest.Id.Value == "relaxkonos.database" && DatabaseEvaluator is { } evaluator)
+                return evaluator.Evaluate(manifest);
+            return ApplicationCompatibilityResult.Compatible;
+        }
+    }
+
+    private sealed class EmptyModuleCatalog : RelaxKonOS.Client.Services.Modules.IServerModuleCatalog
+    {
+        public IReadOnlyList<ServerModuleDto>? Cached => null;
+        public string? LastFailure => null;
+        public Task<IReadOnlyList<ServerModuleDto>?> GetAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ServerModuleDto>?>(null);
+        public void EnsureLoaded() { }
+        public void Invalidate() { }
     }
 
     private static async Task RejectAsync(Func<Task> action, string scenario)
@@ -674,4 +706,13 @@ internal sealed class OfficialPostgreSqlFixture : RelaxKonOS.AppSDK.IServerPostg
 
     public Task StageCredentialAsync(RelaxKonOS.Protocol.Databases.PostgreSqlCredentialRequest request, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
+}
+
+public class DatabasePackageAuthFixture : TailscaleScopeAuthFixture
+{
+    public bool DatabaseAvailable { get; set; } = true;
+
+    protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name == "get_CurrentServer"
+        ? new ServerDescriptorDto(HostPlatformKind.Linux, DatabaseAvailable ? [ServerCapabilities.Database] : [])
+        : base.Invoke(method, args);
 }

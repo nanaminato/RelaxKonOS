@@ -346,3 +346,4 @@
 - Databases 已切换为官方可选包，使用应用 SDK 提供的数据库、安装、证书和组件设置能力。Windows Release 制品通过官方来源与摘要、升级、安装失败、重启、卸载及只读启动验证，另有 119 项桌面检查和数据库授权专项通过。真实数据库主机与服务端模块切换尚待验收。
 - 数据库服务端的端点和领域服务各自归入单一注册入口。Windows Release 验证 6 条 PostgreSQL/MySQL 路由的方法和授权策略，以及 11 个安装适配器、凭据存储和备份调度注册。Core 仍调用这些入口，模块开关、停用保护和实机调度待验。
 - 数据库服务由内置模块 relaxkonos.database 注册并公布 server.database 能力。Windows Release 专项核对启停能力、六条路由和停用保护，使用受控 Helper 覆盖排队安装、MySQL 待恢复操作及次要 PostgreSQL 实例上的备份计划。ServerModules 默认套件通过模块目录及恢复清单检查后，在现有 Proxy 重复设置写入器断言处停止。数据库尚未以独立 .rkmodule 发布或部署到真实 Linux 主机。
+- Databases 0.2.0 声明需要 server.database。Windows Release 官方包验收使用桌面兼容性检查验证服务器撤下能力时拒绝启动，恢复公告后正常只读启动。官方包生命周期、数据库授权专项及 119 项桌面检查通过。

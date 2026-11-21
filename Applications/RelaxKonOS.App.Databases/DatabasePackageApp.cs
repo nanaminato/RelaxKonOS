@@ -2,19 +2,21 @@ using RelaxKonOS.App.Databases.Views;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.App.Databases;
 
 public sealed class DatabasePackageApp : IExternalRemoteApplication
 {
-    public ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.database"), "Database engines", "0.1.0", "▤", "Database engine management",
+    public ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.database"), "Database engines", "0.2.0", "▤", "Database engine management",
         [AppPermissions.ServerComponentsRead, AppPermissions.ServerDatabasesRead, AppPermissions.ServerDatabasesManage, AppPermissions.ServerCertificatesRead],
+        ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Database]),
         IconPath: "avares://RelaxKonOS.App.Databases/Assets/database.png", InstancePolicy: ApplicationInstancePolicy.SingleWindow);
     public async Task ActivateAsync(IExternalAppContext context, CancellationToken cancellationToken = default)
     {
         var connection = context.ServerConnection;
-        if (!connection.IsCurrent) return;
+        if (!connection.IsCurrent || !connection.Capabilities.Contains(ServerCapabilities.Database, StringComparer.Ordinal)) return;
         var permissions = context.Permissions;
         if (permissions.GetStatus(AppPermissions.ServerDatabasesRead) == AppPermissionStatus.Undecided)
             await permissions.RequestAsync(AppPermissions.ServerDatabasesRead, cancellationToken);
@@ -27,7 +29,7 @@ public sealed class DatabasePackageApp : IExternalRemoteApplication
                 await permissions.RequestAsync(AppPermissions.ServerCertificatesRead, cancellationToken);
         }
         cancellationToken.ThrowIfCancellationRequested();
-        if (!connection.IsCurrent) return;
+        if (!connection.IsCurrent || !connection.Capabilities.Contains(ServerCapabilities.Database, StringComparer.Ordinal)) return;
 
         var language = context.SystemLanguage;
         string Text(string key) => DatabaseLocalization.Resolve(language, key, $"[missing: {key}]");
