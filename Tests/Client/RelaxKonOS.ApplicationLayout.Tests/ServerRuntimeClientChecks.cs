@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Registry;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -66,7 +67,7 @@ internal static class ServerRuntimeClientChecks
             JsonSerializer.SerializeToElement(true), reopened[0].Revision));
         Check((await recovery.ListValuesAsync(RegistryScope.Server, "Server\\Runtime")).Single(field => field.Name == "sessionValid").DesiredValue.GetBoolean(),
             "A disabled sessionValid switch can be enabled again after administrator verification.");
-        var localizedRow = RegistryEntryRow.From(sessionValid);
+        var localizedRow = RegistryEntryRow.From(sessionValid, (RelaxKonOS.AppSDK.ISystemLanguage)RelaxKonOS.Client.App.Services.GetService(typeof(RelaxKonOS.Client.Services.LocalizationService))!);
         var languageBefore = settings.Language;
         var labelChanges = 0;
         localizedRow.Labels.PropertyChanged += (_, _) => labelChanges++;

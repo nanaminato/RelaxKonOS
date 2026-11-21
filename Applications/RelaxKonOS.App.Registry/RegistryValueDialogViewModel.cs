@@ -1,4 +1,3 @@
-using RelaxKonOS.App.Registry;
 using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -6,12 +5,11 @@ using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Registry;
-using RelaxKonOS.Client.Localization;
 
-namespace RelaxKonOS.Client.Apps.Registry;
+namespace RelaxKonOS.App.Registry;
 
 /// <summary>Schema-driven value editor. The target address is fixed at construction and never follows a background selection.</summary>
-public sealed partial class RegistryValueDialogViewModel : LocalizedObservableObject
+public sealed partial class RegistryValueDialogViewModel : RegistryLocalizedObject
 {
     private readonly IServerRegistry _client;
     private readonly Action<bool> _close;
@@ -33,7 +31,7 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
     public bool IsSessionValidSetting => Entry is { Scope: RegistryScope.Server, Path: "Server\\Runtime", Name: "sessionValid" };
     public bool IsServerRuntimeSetting => Entry is { Scope: RegistryScope.Server, Path: "Server\\Runtime" };
     public string DisplayName => _row?.Labels.Name ?? Name;
-    public string ValueTypeText => LocalizedText.Get("registry.type." + ValueType, ValueType.ToString());
+    public string ValueTypeText => Text.Get("registry.type." + ValueType, ValueType.ToString());
     public bool IsEnum => Editor == RegistryEditorKind.Enum;
     public bool IsStringList => Editor == RegistryEditorKind.StringList;
     public bool IsInteger => !IsEnum && Editor == RegistryEditorKind.Integer;
@@ -66,14 +64,14 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
         {
             _isRawJson = !value;
             OnPropertyChanged(nameof(IsRawJson));
-            Error = string.Format(LocalizedText.Get("registry.error.invalid_value", "Invalid registry value: {0}"), ex.Message);
+            Error = string.Format(Text.Get("registry.error.invalid_value", "Invalid registry value: {0}"), ex.Message);
         }
         OnPropertyChanged(nameof(IsText));
         OnPropertyChanged(nameof(IsStructuredJson));
     }
 
     public IReadOnlyList<RegistryValueChoiceDto> Choices => Entry is { Path: ClientPresentationPaths.Synchronization, Name: "mode" }
-        ? Entry.Schema.Choices.Select(choice => new RegistryValueChoiceDto(LocalizedText.Get("registry.sync.mode." + choice.Value.GetString(), choice.Label), choice.Value)).ToArray()
+        ? Entry.Schema.Choices.Select(choice => new RegistryValueChoiceDto(Text.Get("registry.sync.mode." + choice.Value.GetString(), choice.Label), choice.Value)).ToArray()
         : Entry?.Schema.Choices ?? [];
     [ObservableProperty] private RegistryValueChoiceDto? _selectedChoice;
     [ObservableProperty] private decimal? _numberValue;
@@ -105,14 +103,14 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
         new("#16C60C"), new("#3B78FF"), new("#F9F1A5"), new("#00B7C3"), new("#B4009E"),
     ];
 
-    public string ApplyText => LocalizedText.Get(Entry?.ApplyMode == RegistryApplyMode.Immediate ? "registry.apply.immediate" : "registry.apply.reopen");
+    public string ApplyText => Text.Get(Entry?.ApplyMode == RegistryApplyMode.Immediate ? "registry.apply.immediate" : "registry.apply.reopen");
     public Avalonia.Media.IBrush ColorPreview => Avalonia.Media.Color.TryParse(ValueText, out var color)
         ? new Avalonia.Media.SolidColorBrush(color) : Avalonia.Media.Brushes.Transparent;
     partial void OnValueTextChanged(string value) => OnPropertyChanged(nameof(ColorPreview));
     public bool CanChangeIdentity => Entry is null;
     public bool CanReset => Entry?.Schema.DefaultValue is not null;
     public string TargetLabel => Entry is { } entry
-        ? entry.Scope == RegistryScope.Server ? $"{entry.Address.ServerId} → {LocalizedText.Get("registry.scope.server", "Server instance")} ({entry.Address.ScopeId:D}) → {Path}"
+        ? entry.Scope == RegistryScope.Server ? $"{entry.Address.ServerId} → {Text.Get("registry.scope.server", "Server instance")} ({entry.Address.ScopeId:D}) → {Path}"
         : $"{entry.Address.ServerId} → {entry.OwnerUsername} ({entry.Address.OwnerUserId:D}) → {entry.Address.Scope} → {Path}"
         : Path;
     public string JsonTargetLabel => _row?.Document is { } document ? TargetLabel + " → " + document.Name + " → " + string.Join(" → ", _row.JsonPath) : TargetLabel;
@@ -134,13 +132,13 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
         OnPropertyChanged(nameof(IsNumber)); OnPropertyChanged(nameof(IsInteger));
     }
 
-    public RegistryValueDialogViewModel(RegistryEntryRow row, IServerRegistry client, Action<bool> close, Action<RegistryEntryDto> saved)
+    public RegistryValueDialogViewModel(RegistryEntryRow row, IServerRegistry client, Action<bool> close, Action<RegistryEntryDto> saved) : base(row.Language)
     {
         _row = row;
         Entry = row.Source; _client = client; _close = close; _saved = saved; Scope = Entry.Scope; Path = Entry.Path; Name = Entry.Name; ValueType = Entry.ValueType;
         SetValue(Entry.DesiredValue);
     }
-    public RegistryValueDialogViewModel(RegistryScope scope, string path, IServerRegistry client, Action<bool> close, Action<RegistryEntryDto> saved)
+    public RegistryValueDialogViewModel(RegistryScope scope, string path, IServerRegistry client, Action<bool> close, Action<RegistryEntryDto> saved, ISystemLanguage? language = null) : base(language)
     { Scope = scope; Path = path; _client = client; _close = close; _saved = saved; Name = "NewValue"; ValueType = RegistryValueType.String; ValueText = ""; }
 
     [RelayCommand]
@@ -150,19 +148,19 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
         try
         {
             if (Entry is { } baseline && (Name != baseline.Name || ValueType != baseline.ValueType))
-                throw new InvalidOperationException(LocalizedText.Get("registry.error.fixed_identity", "The field name and type are fixed."));
+                throw new InvalidOperationException(Text.Get("registry.error.fixed_identity", "The field name and type are fixed."));
             if (IsColor && !Avalonia.Media.Color.TryParse(ValueText, out _))
-                throw new InvalidOperationException(LocalizedText.Get("registry.error.invalid_color", "Enter a valid colour value."));
+                throw new InvalidOperationException(Text.Get("registry.error.invalid_color", "Enter a valid colour value."));
             if (IsHex && !TryParseHex(HexText, out _))
-                throw new InvalidOperationException(LocalizedText.Get("registry.error.invalid_number", "Enter a valid number."));
-            var value = IsEnum ? SelectedChoice?.Value ?? throw new InvalidOperationException(LocalizedText.Get("registry.error.choose_value", "Choose a value."))
+                throw new InvalidOperationException(Text.Get("registry.error.invalid_number", "Enter a valid number."));
+            var value = IsEnum ? SelectedChoice?.Value ?? throw new InvalidOperationException(Text.Get("registry.error.choose_value", "Choose a value."))
                 : IsStringList ? JsonSerializer.SerializeToElement(ListItems.Select(item => item.Value).ToArray())
                 : IsInteger ? JsonSerializer.SerializeToElement(ParseInteger())
                 : ValueType switch
                 {
                     RegistryValueType.String => JsonSerializer.SerializeToElement(ValueText),
                     RegistryValueType.Boolean => JsonSerializer.SerializeToElement(BooleanValue),
-                    RegistryValueType.Number => JsonSerializer.SerializeToElement(NumberValue ?? throw new InvalidOperationException(LocalizedText.Get("registry.error.invalid_number", "Enter a valid number."))),
+                    RegistryValueType.Number => JsonSerializer.SerializeToElement(NumberValue ?? throw new InvalidOperationException(Text.Get("registry.error.invalid_number", "Enter a valid number."))),
                     _ => !IsRawJson && JsonRoots.Count > 0 ? JsonSerializer.SerializeToElement(JsonRoots[0].BuildValue()) : JsonSerializer.Deserialize<JsonElement>(ValueText),
                 };
             var request = _row is { Document: not null } projected ? RegistryJsonProjection.Write(projected.Document!, projected.JsonPath, value)
@@ -179,11 +177,11 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
                 var latest = (await _client.ListValuesAsync(Scope, Path)).SingleOrDefault(value => value.Name == (_row?.Document?.Name ?? Name));
                 var current = latest is not null && _row?.Document is not null
                     ? RegistryJsonProjection.Resolve(latest.DesiredValue, _row.JsonPath).ToString() : latest?.DesiredValue.ToString() ?? "";
-                Error = string.Format(LocalizedText.Get("registry.error.conflict"), current);
+                Error = string.Format(Text.Get("registry.error.conflict"), current);
             }
-            catch { Error = LocalizedText.Get("registry.error.conflict_unknown"); }
+            catch { Error = Text.Get("registry.error.conflict_unknown"); }
         }
-        catch (Exception ex) { Error = string.Format(LocalizedText.Get("registry.error.invalid_value", "Invalid registry value: {0}"), ex.Message); }
+        catch (Exception ex) { Error = string.Format(Text.Get("registry.error.invalid_value", "Invalid registry value: {0}"), ex.Message); }
     }
 
     [RelayCommand]
@@ -210,7 +208,7 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
     }
 
     private long ParseInteger() => NumberValue is { } number && decimal.Truncate(number) == number
-        ? (long)number : throw new InvalidOperationException(LocalizedText.Get("registry.error.invalid_number", "Enter a valid number."));
+        ? (long)number : throw new InvalidOperationException(Text.Get("registry.error.invalid_number", "Enter a valid number."));
 
     private static string FormatHex(long value) => "0x" + value.ToString("X", CultureInfo.InvariantCulture);
 

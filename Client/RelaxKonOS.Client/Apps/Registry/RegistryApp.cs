@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Registry;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,7 +32,7 @@ public sealed class RegistryApp : RemoteApplicationBase
         var view = new RegistryView();
         var window = sdk.Windows.ShowWindow(LocalizedText.Get("application.relaxkonos.registry.display_name", "Registry"), view, new Rect(80, 60, 1120, 700), Manifest.IconGlyph);
         var viewModel = new RegistryViewModel(client, sdk.RegistryAppearance,
-            sdk.Permissions, window.Closed);
+            sdk.Permissions, window.Closed, sdk.SystemLanguage);
         view.DataContext = viewModel;
         viewModel.ShowEditDialogAsync = async row =>
         {
@@ -60,7 +61,7 @@ public sealed class RegistryApp : RemoteApplicationBase
             await window.ShowDialogAsync<bool>(LocalizedText.Get("registry.dialog.new", "New Registry Value"), dialog => new RegistryValueDialogView
             {
                 AppearancePreferences = sdk.RegistryAppearance,
-                DataContext = new RegistryValueDialogViewModel(scope, path, ownedClient, dialog.Close, entry => viewModel.ApplySaved(entry)),
+                DataContext = new RegistryValueDialogViewModel(scope, path, ownedClient, dialog.Close, entry => viewModel.ApplySaved(entry), sdk.SystemLanguage),
             }, new Size(720, 520));
         };
         viewModel.ShowNewKeyDialogAsync = async (scope, parentPath) =>
@@ -70,7 +71,7 @@ public sealed class RegistryApp : RemoteApplicationBase
             var ownedClient = client.ForUser(owner);
             await window.ShowDialogAsync<bool>(LocalizedText.Get("registry.menu.new_key"), dialog => new RegistryKeyDialogView
             {
-                DataContext = new RegistryKeyDialogViewModel(scope, parentPath, ownedClient, dialog.Close, viewModel.ApplyCreatedKey),
+                DataContext = new RegistryKeyDialogViewModel(scope, parentPath, ownedClient, dialog.Close, viewModel.ApplyCreatedKey, sdk.SystemLanguage),
             }, new Size(460, 300));
         };
         _ = viewModel.RefreshAsync();

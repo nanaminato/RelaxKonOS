@@ -1,12 +1,11 @@
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Registry;
 
-namespace RelaxKonOS.Client.Apps.Registry;
+namespace RelaxKonOS.App.Registry;
 
-public sealed partial class RegistryKeyDialogViewModel : LocalizedObservableObject
+public sealed partial class RegistryKeyDialogViewModel : RegistryLocalizedObject
 {
     private readonly IServerRegistry _client;
     private readonly Action<bool> _close;
@@ -16,7 +15,7 @@ public sealed partial class RegistryKeyDialogViewModel : LocalizedObservableObje
     [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private string? _error;
 
-    public RegistryKeyDialogViewModel(RegistryScope scope, string parentPath, IServerRegistry client, Action<bool> close, Action<RegistryKeyDto> saved)
+    public RegistryKeyDialogViewModel(RegistryScope scope, string parentPath, IServerRegistry client, Action<bool> close, Action<RegistryKeyDto> saved, ISystemLanguage? language = null) : base(language)
     { Scope = scope; ParentPath = parentPath; _client = client; _close = close; _saved = saved; }
 
     [RelayCommand]
@@ -24,7 +23,7 @@ public sealed partial class RegistryKeyDialogViewModel : LocalizedObservableObje
     {
         var name = Name.Trim();
         if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(['\\', '/', ':']) >= 0)
-        { Error = LocalizedText.Get("registry.key.invalid", "Enter a valid key name."); return; }
+        { Error = Text.Get("registry.key.invalid", "Enter a valid key name."); return; }
         try
         {
             var saved = await _client.CreateKeyAsync(new CreateRegistryKeyRequest(Scope, ParentPath + "\\" + name));

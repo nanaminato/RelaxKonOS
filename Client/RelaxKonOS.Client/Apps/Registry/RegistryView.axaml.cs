@@ -54,7 +54,7 @@ public partial class RegistryView : UserControl
         try { await vm.SaveSidebarWidthAsync((int)Math.Round(RegistryPanes.ColumnDefinitions[0].ActualWidth)); }
         catch (Exception error)
         {
-            vm.StatusText = RelaxKonOS.Client.Localization.LocalizedText.RefWithFallback("registry.status.save_failed", "Could not save value: {0}", error.Message);
+            vm.StatusText = vm.Text.RefWithFallback("registry.status.save_failed", "Could not save value: {0}", error.Message);
             ApplyAppearance();
         }
     }
@@ -92,7 +92,7 @@ public partial class RegistryView : UserControl
             catch (Exception error)
             {
                 if (DataContext is RegistryViewModel vm && ReferenceEquals(vm.SelectedKey, key))
-                    vm.StatusText = RelaxKonOS.Client.Localization.LocalizedText.RefWithFallback("registry.status.unavailable", "Registry unavailable: {0}", error.Message);
+                    vm.StatusText = vm.Text.RefWithFallback("registry.status.unavailable", "Registry unavailable: {0}", error.Message);
             }
         }
     }

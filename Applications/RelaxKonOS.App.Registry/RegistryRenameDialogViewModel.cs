@@ -1,16 +1,15 @@
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Registry;
 
-namespace RelaxKonOS.Client.Apps.Registry;
+namespace RelaxKonOS.App.Registry;
 
 /// <summary>
 /// Renames one custom value. The owner, key path and revision are captured at construction, so a
 /// background selection or tree refresh can never retarget the write.
 /// </summary>
-public sealed partial class RegistryRenameDialogViewModel : LocalizedObservableObject
+public sealed partial class RegistryRenameDialogViewModel : RegistryLocalizedObject
 {
     private readonly RegistryEntryDto _entry;
     private readonly IServerRegistry _client;
@@ -22,9 +21,9 @@ public sealed partial class RegistryRenameDialogViewModel : LocalizedObservableO
 
     public string TargetLabel => $"{_entry.Address.ServerId} → {_entry.OwnerUsername} ({_entry.Address.OwnerUserId:D}) → {_entry.Address.Scope} → {_entry.Path}";
     public string CurrentName => _entry.Name;
-    public string ImpactText => LocalizedText.Get("registry.rename.impact", "Only the value name changes; the stored value and its owner stay the same.");
+    public string ImpactText => Text.Get("registry.rename.impact", "Only the value name changes; the stored value and its owner stay the same.");
 
-    public RegistryRenameDialogViewModel(RegistryEntryRow row, IServerRegistry client, Action<bool> close, Action<RegistryEntryDto> renamed)
+    public RegistryRenameDialogViewModel(RegistryEntryRow row, IServerRegistry client, Action<bool> close, Action<RegistryEntryDto> renamed) : base(row.Language)
     {
         _entry = row.Source; _client = client; _close = close; _renamed = renamed; _newName = _entry.Name;
     }
@@ -35,7 +34,7 @@ public sealed partial class RegistryRenameDialogViewModel : LocalizedObservableO
         Error = null;
         var name = NewName?.Trim() ?? "";
         if (name.Length == 0 || name.IndexOfAny(['\\', '/', ':']) >= 0)
-        { Error = LocalizedText.Get("registry.rename.invalid", "Enter a valid value name."); return; }
+        { Error = Text.Get("registry.rename.invalid", "Enter a valid value name."); return; }
         if (string.Equals(name, _entry.Name, StringComparison.Ordinal)) { _close(false); return; }
         try
         {
@@ -45,7 +44,7 @@ public sealed partial class RegistryRenameDialogViewModel : LocalizedObservableO
             _close(true);
         }
         catch (RegistryRequestException ex) when (ex.Status == 409)
-        { Error = LocalizedText.Get("registry.rename.conflict", "The value changed or the new name is already used in this key. Refresh and try again."); }
+        { Error = Text.Get("registry.rename.conflict", "The value changed or the new name is already used in this key. Refresh and try again."); }
         catch (Exception ex) { Error = ex.Message; }
     }
 
