@@ -37,7 +37,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
         model.Installation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
             InstallationServiceId.PostgreSql, "relaxkonos.database", model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSql));
-        var mysql = new MySqlViewModel(context.Services.GetRequiredService<HttpClient>(), session)
+        var mysql = new MySqlViewModel(context.Services.GetRequiredService<IServerMySql>(), session)
         {
             CanManage = model.CanManage,
             ConfirmAsync = () => Confirm("database.mysql_confirm")

@@ -71,6 +71,7 @@ public sealed class ExternalAppContextFactory
     private readonly IServerTailscale? _tailscale;
     private readonly IServerTailscaleLogin? _tailscaleLogin;
     private readonly Func<IServerPostgreSql>? _createPostgreSqlClient;
+    private readonly Func<IServerMySql>? _createMySqlClient;
     private readonly ITailscaleOperationReferences? _tailscaleReferences;
     private readonly ITailscaleOperationReferences? _tailscaleLoginReferences;
     private readonly IServerApplicationDeployments? _applicationDeployments;
@@ -125,7 +126,8 @@ public sealed class ExternalAppContextFactory
         Func<IServerProxy>? createProxyClient = null,
         IServerTailscale? tailscale = null,
         IServerTailscaleLogin? tailscaleLogin = null,
-        ITailscaleOperationReferences? tailscaleReferences = null, Func<IServerPostgreSql>? createPostgreSqlClient = null)
+        ITailscaleOperationReferences? tailscaleReferences = null, Func<IServerPostgreSql>? createPostgreSqlClient = null,
+        Func<IServerMySql>? createMySqlClient = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -164,6 +166,7 @@ public sealed class ExternalAppContextFactory
         _tailscale = tailscale;
         _tailscaleLogin = tailscaleLogin;
         _createPostgreSqlClient = createPostgreSqlClient;
+        _createMySqlClient = createMySqlClient;
         _tailscaleReferences = tailscaleReferences;
         _tailscaleLoginReferences = RelaxKonOS.Client.Apps.Tailscale.TailscaleOperationReferences.CreateLoginStore();
         _applicationDeployments = applicationDeployments;
@@ -187,6 +190,7 @@ public sealed class ExternalAppContextFactory
         var docker = new ServerDockerResourcesCapability(appId, _permissions, fileSession, _docker, _dockerMirrors);
         var tailscale = new ServerTailscaleCapability(appId, _permissions, connection, _tailscale, _tailscaleLogin, _elevationBroker, lifetime,
             _tailscaleReferences, _tailscaleLoginReferences);
+        var databases = new ServerDatabaseCapability(appId, _permissions, connection, _createPostgreSqlClient, lifetime, _createMySqlClient);
         return new ExternalAppContext(
         appId,
         new AppPermissionScope(appId, _permissionRequests),
@@ -207,7 +211,8 @@ public sealed class ExternalAppContextFactory
         tailscale,
         tailscale,
         new ServerApplicationDeploymentsCapability(appId, _permissions, connection, _applicationDeployments, lifetime),
-        new ServerPostgreSqlCapability(appId, _permissions, connection, _createPostgreSqlClient, lifetime),
+        databases,
+        databases,
         appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime, _guardian as ProcessGuardianClient) : null,
         appId.Value == "relaxkonos.port-forwarding" && _portForwarding is { } forwarding
             && manifest.Permissions.Contains(CoreAppPermissions.DesktopPortForwardingManage)
@@ -269,6 +274,7 @@ public sealed class ExternalAppContextFactory
         IServerTailscaleLogin TailscaleLogin,
         IServerApplicationDeployments ApplicationDeployments,
         IServerPostgreSql PostgreSql,
+        IServerMySql MySql,
         IGuardianHostInteraction? GuardianHost,
         IPortForwardingService? PortForwarding,
         IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt,

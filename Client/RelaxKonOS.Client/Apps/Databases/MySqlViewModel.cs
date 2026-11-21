@@ -1,17 +1,15 @@
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Installation;
-using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Client.Apps.Databases;
 
-public sealed partial class MySqlViewModel(HttpClient http, IAuthSession session) : ObservableObject, IDisposable
+public sealed partial class MySqlViewModel(IServerMySql client, IAuthSession session) : ObservableObject, IDisposable
 {
     private readonly object? login = session.CurrentSession;
     private readonly CancellationTokenSource lifetime = new();
@@ -71,21 +69,14 @@ public sealed partial class MySqlViewModel(HttpClient http, IAuthSession session
         reading = true;
         try
         {
-            var token = await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: lifetime.Token);
-            if (invalid || !ReferenceEquals(login, session.CurrentSession)) return;
-            using var request = new HttpRequestMessage(HttpMethod.Get,
-                new Uri(new Uri(session.EffectiveBaseUrl!), MySqlRoutes.State.TrimStart('/')));
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            using var response = await http.SendAsync(request, lifetime.Token);
-            response.EnsureSuccessStatusCode();
-            var current = await response.Content.ReadFromJsonAsync<MySqlState>(RelaxKonOSJsonOptions.Default, lifetime.Token);
+            var current = await client.ReadAsync(lifetime.Token);
             if (!invalid && ReferenceEquals(login, session.CurrentSession))
             {
                 State = current;
                 Notice = LocalizedStatus.Literal("");
             }
         }
-        catch (Exception error) when (error is HttpRequestException or System.Text.Json.JsonException or InvalidOperationException)
+        catch (Exception error) when (error is HttpRequestException or System.Text.Json.JsonException or InvalidOperationException or UnauthorizedAccessException)
         {
             State = null;
             Notice = LocalizedStatus.Key("database.state_unavailable");

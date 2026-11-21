@@ -1,11 +1,8 @@
 using System.Net;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Installation;
-using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Databases;
 
 namespace RelaxKonOS.Client.Apps.Databases;
@@ -62,7 +59,7 @@ public sealed partial class MySqlViewModel
             submissionTask = AccountInstallation;
             await SendAsync();
         }
-        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or OperationCanceledException)
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException or UnauthorizedAccessException or OperationCanceledException)
         { Notice = LocalizedStatus.Key("database.credential_unavailable"); }
         finally
         {
@@ -75,17 +72,9 @@ public sealed partial class MySqlViewModel
 
     private async Task<bool> StageAccountSecretAsync(PostgreSqlCredentialRequest value)
     {
-        async Task<HttpStatusCode> Stage()
-        {
-            var token = await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: lifetime.Token);
-            if (invalid || !ReferenceEquals(login, session.CurrentSession)) return HttpStatusCode.Unauthorized;
-            using var request = new HttpRequestMessage(HttpMethod.Post,
-                new Uri(new Uri(session.EffectiveBaseUrl!), MySqlRoutes.Credentials.TrimStart('/')));
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            request.Content = JsonContent.Create(value, options: RelaxKonOSJsonOptions.Default);
-            using var response = await http.SendAsync(request, lifetime.Token);
-            return response.StatusCode;
-        }
+        Task<HttpStatusCode> Stage() => invalid || !ReferenceEquals(login, session.CurrentSession)
+            ? Task.FromResult(HttpStatusCode.Unauthorized)
+            : client.StageCredentialAsync(value, lifetime.Token);
         var status = await Stage();
         if (status == HttpStatusCode.Forbidden && AuthorizeAccountsAsync is not null && await AuthorizeAccountsAsync())
             status = await Stage();

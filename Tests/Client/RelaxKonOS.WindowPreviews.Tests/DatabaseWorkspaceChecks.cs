@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.Databases;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Common;
 using Avalonia;
@@ -229,7 +230,8 @@ internal static class DatabaseWorkspaceChecks
         Check(selectionClient.LastInstance is null && selectionModel.Snapshot?.InstanceId == primary
             && selectionModel.SelectedInstance is null, "refresh falls back to primary after secondary deletion");
         using var mysqlHttp = new HttpClient();
-        using var mysql = new MySqlViewModel(mysqlHttp, DispatchProxy.Create<IAuthSession,EntrySession>())
+        var mysqlSession = DispatchProxy.Create<IAuthSession,EntrySession>();
+        using var mysql = new MySqlViewModel(new MySqlClient(mysqlHttp, mysqlSession), mysqlSession)
         {
             CanManage = true,
             State = new(true, 1, false, null, false, false, null, null, null),

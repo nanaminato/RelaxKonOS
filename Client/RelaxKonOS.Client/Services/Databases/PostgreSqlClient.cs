@@ -5,7 +5,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Databases;
 
-namespace RelaxKonOS.Client.Apps.Databases;
+namespace RelaxKonOS.Client.Services.Databases;
 
 public sealed class PostgreSqlClient(HttpClient http, IAuthSession session) : IServerPostgreSql
 {

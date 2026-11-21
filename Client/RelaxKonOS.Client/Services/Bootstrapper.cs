@@ -332,6 +332,7 @@ public static class Bootstrapper
         services.AddSingleton<ISettingsNavigation, SettingsNavigationService>();
         services.AddSingleton<ExternalAppContextFactory>();
         services.AddSingleton<Func<IServerPostgreSql>>(provider => () => provider.GetRequiredService<IServerPostgreSql>());
+        services.AddSingleton<Func<IServerMySql>>(provider => () => provider.GetRequiredService<IServerMySql>());
         services.AddSingleton<DeveloperPackageManager>();
         services.AddSingleton(_ => new RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-catalog-sources"), "desktop-user"));
@@ -357,7 +358,9 @@ public static class Bootstrapper
         services.AddSingleton<IDesktopRestoreParticipant, TerminalDesktopRestoreParticipant>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Databases.DatabaseApp>();
-        services.AddHttpClient<IServerPostgreSql, RelaxKonOS.Client.Apps.Databases.PostgreSqlClient>()
+        services.AddHttpClient<IServerPostgreSql, Databases.PostgreSqlClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).RemoveAllLoggers();
+        services.AddHttpClient<IServerMySql, Databases.MySqlClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).RemoveAllLoggers();
         services.AddSingleton<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>();
         services.AddSingleton(new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDraftStore(Path.Combine(
