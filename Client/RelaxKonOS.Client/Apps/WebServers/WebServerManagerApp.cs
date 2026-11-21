@@ -46,7 +46,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
             return;
         }
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, Manifest.Id.Value);
-        var viewModel = new WebServerManagerViewModel(client, certificates, session, context.Permissions, elevations)
+        var viewModel = new WebServerManagerViewModel(client, certificates, new WebServerWindowConnection(session), session.CurrentServer?.Platform, context.Permissions, elevations)
         {
             Dependency = dependency
         };

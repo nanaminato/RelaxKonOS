@@ -62,6 +62,8 @@
 
 ## 测试证据
 
+- Web Server Manager 的视图模型通过 SDK 连接接口接收失效通知，由宿主继续核对原服务器、登录和用户身份。Windows Release 网站专项覆盖切换连接后清理旧站点状态，以及阻止尚在授权阶段的提交。视图模型仍在桌面宿主。
+
 - Web Server Manager 的站点域名、端口、代理路由和 HTTPS 来源草稿类型已迁入应用程序集，现有桌面编辑器直接绑定这些类型。Windows Release 网站专项验证草稿保留、提交快照和连接切换保护。连接适配、主视图模型和发行包仍待迁移。
 
 - Web Server Manager 的中、英、日资源原样迁入 `RelaxKonOS.App.WebServers` 项目。桌面宿主从应用程序集载入同一资源供 Web Server Manager 和组件中心使用。Windows Release 网站专项验证三语解析、编辑、读取恢复和当前 Nginx 选择。视图模型、独立入口及发行包仍待迁移。

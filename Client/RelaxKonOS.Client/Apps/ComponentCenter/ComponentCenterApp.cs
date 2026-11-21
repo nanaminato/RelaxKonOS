@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Apps.WebServers;
 using Size = RelaxKonOS.Core.Primitives.Size;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
@@ -94,7 +95,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             && context.Services.GetService(typeof(RelaxKonOS.AppSDK.IServerCertificates)) is RelaxKonOS.AppSDK.IServerCertificates certificates
             && context.Services.GetService(typeof(RelaxKonOS.Client.Services.Privileged.IHostElevationBroker)) is RelaxKonOS.Client.Services.Privileged.IHostElevationBroker elevations)
         {
-            model.NginxSelection = new(web, certificates, session, context.Permissions, elevations) { IsComponentCenter = true };
+            model.NginxSelection = new(web, certificates, new WebServerWindowConnection(session), session.CurrentServer?.Platform, context.Permissions, elevations) { IsComponentCenter = true };
         }
         if (context.Services.GetService(typeof(RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore))
             is RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore componentSources)

@@ -59,7 +59,7 @@ internal static class CurrentNginxChecks
         var host = (CurrentNginxClient)(object)client;
         var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         ((SiteEditorSession)(object)session).Platform = platform;
-        WebServerManagerViewModel Model(bool center) => new(client, null!, session, new FirewallTestPermissions(),
+        WebServerManagerViewModel Model(bool center) => new(client, null!, new WebServerWindowConnection(session), platform, new FirewallTestPermissions(),
             DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>()) { IsComponentCenter = center };
         var manager = Model(false);
         var center = Model(true);

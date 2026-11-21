@@ -68,7 +68,7 @@ internal static class WebSiteScopeChecks
 
         var certificates = DispatchProxy.Create<IServerCertificates, PendingSiteCertificates>();
         var certificateReads = (PendingSiteCertificates)(object)certificates;
-        vm = new WebServerManagerViewModel(client, certificates, auth, new FirewallTestPermissions(),
+        vm = new WebServerManagerViewModel(client, certificates, new WebServerWindowConnection(auth), auth.CurrentServer?.Platform, new FirewallTestPermissions(),
             DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>());
         var server = new WebServerDto("first", "nginx", WebServerType.Nginx, WebServerManagementMode.Integrated,
             "/nginx", "/nginx.conf", "test", DateTimeOffset.UtcNow, new(true, true, true));
@@ -91,7 +91,7 @@ internal static class WebSiteScopeChecks
     }
     private static WebServerManagerViewModel Create(IServerWebServers client, IAuthSession auth, IHostElevationBroker broker)
     {
-        var vm = new WebServerManagerViewModel(client, null!, auth, new FirewallTestPermissions(), broker);
+        var vm = new WebServerManagerViewModel(client, null!, new WebServerWindowConnection(auth), auth.CurrentServer?.Platform, new FirewallTestPermissions(), broker);
         vm.SelectedServer = new("first", "nginx", WebServerType.Nginx, WebServerManagementMode.Integrated,
             "/nginx", "/nginx.conf", "test", DateTimeOffset.UtcNow, new(true, true, true));
         vm.SiteName = "draft";

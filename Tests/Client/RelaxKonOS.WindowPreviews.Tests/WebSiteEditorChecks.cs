@@ -17,7 +17,8 @@ internal static class WebSiteEditorChecks
     {
         var client = DispatchProxy.Create<IServerWebServers, SiteEditorClient>();
         var stub = (SiteEditorClient)(object)client;
-        var vm = new WebServerManagerViewModel(client, null!, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions(),
+        var session = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
+        var vm = new WebServerManagerViewModel(client, null!, new WebServerWindowConnection(session), session.CurrentServer?.Platform, new FirewallTestPermissions(),
             DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>());
         vm.SelectedServer = new("test-instance", "nginx", WebServerType.Nginx, WebServerManagementMode.Integrated,
             "/nginx", "/nginx.conf", "test", DateTimeOffset.UtcNow, new(true, true, true));

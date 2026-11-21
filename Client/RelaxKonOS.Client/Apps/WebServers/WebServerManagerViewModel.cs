@@ -3,11 +3,9 @@ using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
-using Avalonia.Utilities;
 using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Privileged;
-using RelaxKonOS.Client.Services.Auth;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
@@ -16,7 +14,6 @@ using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebServers;
-using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Apps.WebServers;
@@ -41,7 +38,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         try
         {
             await _client.SelectCurrentNginxAsync(new(server.Id));
-            if (_windowConnection?.IsCurrent(_session) == true)
+            if (_windowConnection.IsCurrent)
                 StatusText = LocalizedText.Ref("webservers.current.saved");
         }
         catch { StatusText = LocalizedText.Ref("webservers.current.failed"); }
@@ -69,10 +66,11 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
 
     private readonly IServerWebServers _client;
     private readonly IServerCertificates _certificates;
-    private readonly IAuthSession _session;
+    private readonly HostPlatformKind? _serverPlatform;
     private readonly IAppPermissionScope _permissions;
     private readonly IHostElevationBroker _elevations;
-    private readonly SiteConnection? _windowConnection;
+    private readonly IExternalServerConnection _windowConnection;
+    private readonly IDisposable _connectionObservation;
     private long _siteTargetVersion;
     private long _siteSelectionVersion;
     private bool _siteEditorOpen;
@@ -80,8 +78,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private string? _siteEditorSiteId;
     private WebServerSiteDto? _siteEditorSnapshot;
     public bool SiteEditorTargetChanged => _siteEditorOpen && (_siteEditorTargetVersion != _siteTargetVersion
-        || SelectedSite?.Id != _siteEditorSiteId || _windowConnection?.IsCurrent(_session) != true);
-    public string SiteEditorTargetChangeText => LocalizedText.Get(_windowConnection?.IsCurrent(_session) == true
+        || SelectedSite?.Id != _siteEditorSiteId || !_windowConnection.IsCurrent);
+    public string SiteEditorTargetChangeText => LocalizedText.Get(_windowConnection.IsCurrent
         ? "webservers.site.editor_target_changed" : "webservers.site.editor_connection_changed");
 
     public void BeginSiteEditing()
@@ -117,18 +115,17 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private string _lastOperationLogText = string.Empty;
     private CancellationTokenSource? _operationCts;
 
-    public WebServerManagerViewModel(IServerWebServers client, IServerCertificates certificates, IAuthSession session,
+    public WebServerManagerViewModel(IServerWebServers client, IServerCertificates certificates, IExternalServerConnection connection, HostPlatformKind? serverPlatform,
         IAppPermissionScope permissions, IHostElevationBroker elevations)
     {
         _client = client;
         _certificates = certificates;
-        _session = session;
+        _serverPlatform = serverPlatform;
         _permissions = permissions;
         _elevations = elevations;
-        _windowConnection = SiteConnection.Capture(session);
-        WeakEventHandlerManager.Subscribe<IAuthSession, AuthSessionStateChangedEventArgs, WebServerManagerViewModel>(
-            session, nameof(IAuthSession.StateChanged), OnSessionChanged);
+        _windowConnection = connection;
         SelectedSiteCertificateSource = SiteCertificateSources[0];
+        _connectionObservation = connection.ObserveInvalidation(OnConnectionInvalidated);
     }
 
     public ObservableCollection<WebServerDto> Servers { get; } = [];
@@ -202,8 +199,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
 
     /// <summary>Provided by the window to surface unavailable privileged operations prominently.</summary>
     public Func<string?, Task>? ShowPrivilegedHelperUnavailableAsync { get; set; }
-    public bool IsWindowsServer => _session.CurrentServer?.Platform == HostPlatformKind.Windows;
-    public bool IsLinuxServer => _session.CurrentServer?.Platform == HostPlatformKind.Linux;
+    public bool IsWindowsServer => _serverPlatform == HostPlatformKind.Windows;
+    public bool IsLinuxServer => _serverPlatform == HostPlatformKind.Linux;
     public bool HasOperationActivity => !string.IsNullOrWhiteSpace(OperationText);
     public bool IsManagedCertificateSource => SelectedSiteCertificateSource?.Value != SiteCertificateSource.ServerFiles;
     public bool IsServerFileCertificateSource => SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles;
@@ -490,7 +487,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         var site = _siteEditorSnapshot;
         var siteId = site?.Id;
         var targetVersion = _siteTargetVersion;
-        bool IsCurrentConnection() => _windowConnection?.IsCurrent(_session) == true
+        bool IsCurrentConnection() => _windowConnection.IsCurrent
             && targetVersion == _siteTargetVersion && SelectedServer?.Id == server?.Id;
         bool IsCurrent() => IsCurrentConnection() && SelectedSite?.Id == siteId;
         if (server is null || !HasManagePermission) return;
@@ -911,7 +908,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         return operation;
     }
 
-    private bool HasReadPermission => _windowConnection?.IsCurrent(_session) == true && _permissions.IsGranted(AppPermissions.ServerWebServersRead);
+    private bool HasReadPermission => _windowConnection.IsCurrent && _permissions.IsGranted(AppPermissions.ServerWebServersRead);
     private bool HasManagePermission => HasReadPermission && _permissions.IsGranted(AppPermissions.ServerWebServersManage);
     private bool CanRefresh => HasReadPermission && !IsSavingSite && !IsLoading && !IsOperationRunning;
     private bool CanRefreshSites => HasReadPermission && !IsSavingSite && !IsLoading && !IsOperationRunning && SelectedServer is not null;
@@ -989,11 +986,11 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     // nginx -t + reload is fast; a tighter poll keeps the UI responsive without spamming the host.
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(750);
 
-    private void OnSessionChanged(object? sender, AuthSessionStateChangedEventArgs args)
+    private void OnConnectionInvalidated()
     {
         void Invalidate()
         {
-            if (_windowConnection?.IsCurrent(_session) == true) return;
+            if (_windowConnection.IsCurrent) return;
             _siteReadVersion++;
             SiteFactsAvailable = false;
             SelectedServer = null;
@@ -1009,17 +1006,5 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         }
         if (Dispatcher.UIThread.CheckAccess()) Invalidate();
         else Dispatcher.UIThread.Post(Invalidate);
-    }
-
-    private sealed record SiteConnection(string ServiceId, SessionDto Session, UserDto User)
-    {
-        public static SiteConnection? Capture(IAuthSession session)
-            => session.State == AuthSessionState.Authenticated && session.ServiceId is { Length: > 0 } serviceId
-                && session.CurrentSession is { } current && session.CurrentUser is { } user
-                ? new(serviceId, current, user) : null;
-
-        public bool IsCurrent(IAuthSession session) => session.State == AuthSessionState.Authenticated
-            && session.ServiceId == ServiceId && ReferenceEquals(session.CurrentSession, Session)
-            && ReferenceEquals(session.CurrentUser, User);
     }
 }

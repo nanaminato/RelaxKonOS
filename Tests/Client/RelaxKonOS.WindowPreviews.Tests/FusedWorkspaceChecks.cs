@@ -64,7 +64,7 @@ internal static class FusedWorkspaceChecks
         using var forwardModel = new PortForwardingViewModel(new PortForwardingService(null!, new PortForwardingSettingsStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "unused-forward-settings.json"))));
         var dockerModel = new DockerManagerViewModel(DispatchProxy.Create<IServerDockerResources, HeaderPreviewPermissions>(), DockerLocalization.ForLanguage(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>()));
         var certificateModel = new CertificateManagerViewModel(null!, permissions, RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>());
-        var webModel = new WebServerManagerViewModel(null!, null!, auth, permissions, null!);
+        var webModel = new WebServerManagerViewModel(null!, null!, new WebServerWindowConnection(auth), auth.CurrentServer?.Platform, permissions, null!);
         var deploymentModel = new ApplicationDeploymentsViewModel(null!, permissions);
         var filesModel = new FileServicesViewModel(null!, permissions, () => true);
         using var notepadModel = new NotepadViewModel(new NotepadText(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>()), null, null);
