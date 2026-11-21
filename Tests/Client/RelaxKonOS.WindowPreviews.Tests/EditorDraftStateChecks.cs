@@ -102,7 +102,7 @@ internal static class EditorDraftStateChecks
     private static void CodeEditor()
     {
         var files = new RecordingExplorerClient();
-        var code = new CodeEditorViewModel(files, pathCaseSensitive: true, "UTF-8");
+        var code = new CodeEditorViewModel(ExplorerEditorWorkspaceFiles.Wrap(files), pathCaseSensitive: true, "UTF-8");
 
         code.NewDocumentCommand.Execute(null);
         Check(!code.HasUnsavedDocuments && code.CanEditDocument,
@@ -134,7 +134,7 @@ internal static class EditorDraftStateChecks
             "A second dirty tab also counts as unsaved state.");
 
         // A write in flight locks the window and, once confirmed, clears only its own tab.
-        var saver = new CodeEditorViewModel(files, pathCaseSensitive: true, "UTF-8")
+        var saver = new CodeEditorViewModel(ExplorerEditorWorkspaceFiles.Wrap(files), pathCaseSensitive: true, "UTF-8")
         {
             RequestSavePathAsync = _ => Task.FromResult<string?>("/remote/app.cs"),
         };
@@ -158,7 +158,7 @@ internal static class EditorDraftStateChecks
     private static void CodeEditorPreviews()
     {
         var files = new RecordingExplorerClient();
-        using var code = new CodeEditorViewModel(files);
+        using var code = new CodeEditorViewModel(ExplorerEditorWorkspaceFiles.Wrap(files));
         var view = new CodeEditorView { DataContext = code };
         var host = new Window { Width = 960, Height = 640, Content = view };
         try

@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using RelaxKonOS.App.Notepad;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.TextEditor;
@@ -105,6 +106,12 @@ internal static class NotepadWorkspaceChecks
                 && createFile.Result.Status == AppCapabilityResult.Succeeded
                 && duplicateCreate.Result.Status == AppCapabilityResult.Conflict,
                 "Conditional saves report stale versions and exclusive creation cannot overwrite.");
+            using (var editor = new CodeEditorViewModel(new SdkEditorWorkspaceFiles(context.ServerFiles)))
+            {
+                Wait(editor.OpenPathAsync("/remote/notes.txt"));
+                Check(editor.CurrentPath == "/remote/notes.txt" && editor.Text == FileTransport.Original,
+                    "Code Editor loads remote documents through the SDK workspace adapter.");
+            }
             var create = context.ServerFiles.CreateDirectoryAsync("/remote/draft");
             var invalidRename = context.ServerFiles.RenameAsync("/remote/draft", "../renamed");
             Wait(Task.WhenAll(create, invalidRename));

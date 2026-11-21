@@ -85,5 +85,5 @@
 - 桌面 SDK 可以通过现有服务器文件 API 列出目录的直接子项。Windows Release 回归验证了未授权时拦截请求，以及获授权后返回文件和子目录。Code Editor 工作区仍需接入该能力。
 - 桌面 SDK 提供新建目录、就地重命名和删除。Windows Release 通过桌面 SDK 和已有文件客户端接测试 HTTP 传输，验证写授权、非法新名称拦截和三个认证请求。Code Editor 仍需接入这些能力及条件保存。
 - 桌面 SDK 的文件读取提供内容版本，条件保存复用当前服务端端点。Windows Release 回归验证匹配版本、冲突、仅创建和应用写权限。服务端条件写入回归另行验证冲突会保留文件内容。
-- Code Editor 和 Git 共用的编辑器工作区通过 `IEditorWorkspaceFiles` 声明六项文件操作。现有服务器和 SSH 客户端继续实现这些操作。独立编辑器文件能力的 SDK 接线仍待完成。
+- Code Editor 和 Git 共用的编辑器工作区通过 `IEditorWorkspaceFiles` 声明六项文件操作。Code Editor 的服务器工作区通过 SDK 读写文件和管理目录树。SSH 工作区和 Git 项目编辑器通过现有 Explorer 客户端适配。Code Editor 的窗口、对话框和发行包仍待迁移。
 - 独立部署设备和 Linux 双包验收、Android 和全应用三语言界面验收均待执行。

@@ -49,7 +49,7 @@ internal static class EditorContextChecks
         var files = DispatchProxy.Create<IExplorerClient, ProjectFiles>();
         var store = (ProjectFiles)(object)files;
         store.Files["/work/app.cs"] = Encoding.UTF8.GetBytes("initial");
-        using var vm = new CodeEditorViewModel(files, conditionalWriter: store);
+        using var vm = new CodeEditorViewModel(ExplorerEditorWorkspaceFiles.Wrap(files), conditionalWriter: store);
         await vm.AddWorkspaceRootAsync("/work");
         var root = vm.WorkspaceRoots.Single();
         vm.RequestEntryNameAsync = (_, _) => Task.FromResult<string?>("src");

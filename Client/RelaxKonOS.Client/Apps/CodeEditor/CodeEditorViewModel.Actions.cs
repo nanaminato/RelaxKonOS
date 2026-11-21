@@ -121,10 +121,10 @@ public sealed partial class CodeEditorViewModel
             }
             else if (action == EditorTreeAction.Rename)
             {
-                var entry = await _files.RenameAsync(node.Path, name!, _lifetime.Token);
+                var renamedPath = await _files.RenameAsync(node.Path, name!, _lifetime.Token);
                 if (_disposed) return;
                 foreach (var doc in OpenDocuments.Where(doc => doc.Path is not null && AtOrBelow(doc.Path, node.Path)).ToArray())
-                    doc.Path = NormalizeTreePath(entry.Path) + NormalizeTreePath(doc.Path!)[NormalizeTreePath(node.Path).Length..];
+                    doc.Path = NormalizeTreePath(renamedPath) + NormalizeTreePath(doc.Path!)[NormalizeTreePath(node.Path).Length..];
                 if (ActiveDocument is { } active) CurrentPath = active.Path;
             }
             else

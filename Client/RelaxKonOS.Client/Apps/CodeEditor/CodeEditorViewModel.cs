@@ -499,10 +499,10 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             var directory = await _files.GetDirectoryAsync(node.Path, _lifetime.Token);
             if (_disposed) return;
             node.Children.Clear();
-            foreach (var child in directory.Directories)
-                node.Children.Add(CreateFolderNode(child.Name, child.Path, false));
-            foreach (var file in directory.Files)
-                node.Children.Add(new CodeEditorFolderNode(file.Name, file.Path, false));
+            foreach (var entry in directory.Entries)
+                node.Children.Add(entry.IsDirectory
+                    ? CreateFolderNode(entry.Name, entry.Path, false)
+                    : new CodeEditorFolderNode(entry.Name, entry.Path, false));
             node.IsLoaded = true;
             StatusText = LocalizedText.Ref("code_editor.status.folder_loaded", directory.Name);
         }

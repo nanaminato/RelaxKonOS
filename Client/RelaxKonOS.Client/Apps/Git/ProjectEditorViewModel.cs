@@ -29,7 +29,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
         Git = git;
         _client = client;
         Git.RepositoryPathComparison = pathCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        Editor = new CodeEditorViewModel(files, pathCaseSensitive, defaultEncoding, files as IEditorFileWriter)
+        Editor = new CodeEditorViewModel(ExplorerEditorWorkspaceFiles.Wrap(files), pathCaseSensitive, defaultEncoding, files as IEditorFileWriter)
         { OpenFilesOnSelection = false, IsProjectWorkspace = true };
         Git.OpenEditorProjectAsync = OpenRepositoryAsync;
         Git.OpenPlainFolderAsync = OpenPlainFolderAsync;

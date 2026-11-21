@@ -8,6 +8,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Input;
@@ -46,7 +47,13 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var encodingSettings = context.Services.GetService(typeof(TextEditorEncodingSettings)) as TextEditorEncodingSettings;
         var pathCaseSensitive = sshDesktop?.IsConnected == true || session?.CurrentServer?.Platform != HostPlatformKind.Windows;
-        var viewModel = new CodeEditorViewModel(files, pathCaseSensitive, encodingSettings?.CodeEditorDefaultEncoding ?? "UTF-8")
+        var sdkFiles = sshDesktop?.IsConnected == true ? null :
+            (context.Services.GetService(typeof(ExternalAppContextFactory)) as ExternalAppContextFactory)
+                ?.Create(Manifest, openedFile: path).ServerFiles;
+        var workspace = sshDesktop?.IsConnected == true ? ExplorerEditorWorkspaceFiles.Wrap(files)
+            : sdkFiles is null ? null : new SdkEditorWorkspaceFiles(sdkFiles);
+        var viewModel = new CodeEditorViewModel(workspace, sdkFiles?.IsPathCaseSensitive ?? pathCaseSensitive,
+            encodingSettings?.CodeEditorDefaultEncoding ?? "UTF-8")
         {
             SaveDefaultEncodingAsync = encoding => encodingSettings?.SetCodeEditorDefaultEncodingAsync(encoding) ?? Task.CompletedTask,
         };

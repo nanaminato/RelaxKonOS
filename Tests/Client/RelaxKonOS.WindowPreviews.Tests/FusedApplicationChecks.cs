@@ -70,7 +70,7 @@ internal static class FusedApplicationChecks
         fake.Pending = null;
         switchTask.GetAwaiter().GetResult();
         Check(explorer.ActiveTab == second && explorer.AddressbarPath == "/b/child", "Pending navigation did not commit correctly.");
-        var code = new CodeEditorViewModel(files);
+        var code = new CodeEditorViewModel(ExplorerEditorWorkspaceFiles.Wrap(files));
         code.NewDocumentCommand.Execute(null);
         code.Text = "class Draft {}";
         code.NewDocumentCommand.Execute(null);
