@@ -10,7 +10,7 @@
 dotnet publish Client/RelaxKonOS.Client.Desktop -c Release -o ./.codex-scratch/desktop-publish
 ```
 
-在 **应用安装器 → 选择本地包** 中打开同一客户端发行目录里的 `OfficialApps/relaxkonos.imageviewer.roapp`，确认后安装。选择发行目录中更新版本的包可以更新，同版本为修复。卸载使用 **设置 → 应用 → 图像查看器 → 卸载**。发布制品由安装者随客户端部署到其安装目录，包与摘要继承客户端安装目录的信任边界。
+在 **应用安装程序 → 官方应用** 中选择图片查看器，获取软件包并确认安装。有新版时可从同一入口获取更新，也可从该入口卸载。手动选择同一发行目录里的 `OfficialApps/relaxkonos.imageviewer.roapp` 仍可用于同版本修复。线上目录由桌面发行版预配置。见[官方桌面商店](../platform/RelaxKonOS.PackageStore.Design.md#轻量官方桌面商店)。
 
 安装器在审查和提交时核对来源与摘要。候选版本通过客户端平台、程序集及入口校验后，用原有 VSD 指针完成更新。失败候选保留原指针和注册。图片查看器经外部应用 SDK 读取远程文件，首次使用需授予 `server.files.read`。普通工作区和 SSH 桌面分别使用各自的文件连接；授权仍受连接账号和服务端策略限制。
 
@@ -24,6 +24,4 @@ dotnet publish Client/RelaxKonOS.Client.Desktop -c Release -o ./.codex-scratch/d
 - Windows Debug 桌面验收覆盖官方 ID 的 Direct Deploy、更新、候选加载失败时保留在用窗口、显式回滚和卸载。Release 桥接拒绝 Direct Deploy。
 - 图片工作区检查覆盖权限提示、SVG、快捷键和实时语言切换。SSH 路径尚未在实际远端主机验收。
 
-## 后续外置化
-
-记事本也按同一路径发布独立官方包。网络存储 Provider、线上应用商店、官方包下载和应用捆绑包由各自后续阶段交付。见[记事本](RelaxKonOS.Notepad.md)。
+记事本也通过同一官方桌面商店发布。见[记事本](RelaxKonOS.Notepad.md)。

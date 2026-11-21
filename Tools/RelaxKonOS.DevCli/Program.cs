@@ -42,6 +42,12 @@ try
             return await RuntimeCatalogCommands.RunAsync(arguments);
         case "component-catalog":
             return await ComponentCatalogCommands.RunAsync(arguments);
+        case "official-catalog":
+        {
+            var output = ReadOption(arguments, "--output") ?? throw new ArgumentException("Use --output to choose the static catalog directory.");
+            await OfficialDesktopCatalogCommand.RunAsync(output, arguments);
+            break;
+        }
         case "apps" when arguments.Count == 0:
             await SendAsync(new HttpRequestMessage(HttpMethod.Get, "apps"));
             break;
@@ -772,6 +778,7 @@ Commands:
   reload <app-id> [--no-launch]
   rollback <app-id> [--no-launch]
   pack <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--work-dir <path>] [--no-build] [--install]
+  official-catalog --output <static-directory> <package.roapp> [<package.roapp> ...]
   watch <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--work-dir <path>] [--no-install]
   watch <package.roapp>
   apps

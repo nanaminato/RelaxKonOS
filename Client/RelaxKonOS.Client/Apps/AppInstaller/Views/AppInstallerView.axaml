@@ -10,14 +10,44 @@
         <StackPanel Margin="24" Spacing="16" MaxWidth="620">
             <StackPanel Spacing="4">
                 <TextBlock Text="{loc:Loc app_installer.title}" FontSize="24" FontWeight="SemiBold" />
-                <TextBlock Text="{loc:Loc app_installer.description}" Opacity="0.7" TextWrapping="Wrap" />
-                <TextBlock Text="{loc:Loc app_installer.security_warning}" Opacity="0.82" TextWrapping="Wrap" />
+                <TextBlock Text="{loc:Loc app_installer.description}" IsVisible="{Binding HasPackage}" Opacity="0.7" TextWrapping="Wrap" />
+                <TextBlock Text="{loc:Loc app_installer.security_warning}" IsVisible="{Binding ShowPackageSecurityWarning}" Opacity="0.82" TextWrapping="Wrap" />
             </StackPanel>
 
-            <WrapPanel IsVisible="{Binding AllowPackageSelection}">
+            <WrapPanel IsVisible="{Binding AllowPackageSelection}" IsEnabled="{Binding !IsBusy}">
                 <Button Content="{loc:Loc app_installer.choose_local}" Command="{Binding ChooseLocalCommand}" Padding="16,8" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc app_installer.choose_server}" Command="{Binding ChooseServerCommand}" Padding="16,8" Margin="0,0,8,8" />
             </WrapPanel>
+
+            <Border Classes="card" IsVisible="{Binding ShowOfficialStore}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBlock Text="{loc:Loc app_installer.store.title}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="{loc:Loc app_installer.store.refresh}" Command="{Binding RefreshOfficialCommand}" />
+                    </Grid>
+                    <ListBox ItemsSource="{Binding OfficialApps}" SelectedItem="{Binding SelectedOfficialApp, Mode=TwoWay}" MaxHeight="240">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:OfficialAppListing">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="4,4">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding InstalledText}" Opacity="0.7" FontSize="12" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding AvailableVersion}" FontSize="12" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <TextBlock Text="{Binding SelectedOfficialApp.Description}" TextWrapping="Wrap" Opacity="0.8" />
+                    <TextBlock Text="{Binding StoreStatus}" TextWrapping="Wrap" Opacity="0.72" />
+                    <WrapPanel>
+                        <Button Classes="primary" Content="{Binding OfficialActionLabel}" Command="{Binding DownloadOfficialCommand}" Margin="0,0,8,4" />
+                        <Button Content="{loc:Loc app_installer.store.uninstall}" Command="{Binding UninstallOfficialCommand}" Margin="0,0,8,4" />
+                        <Button Content="{loc:Loc common.cancel}" Command="{Binding DownloadOfficialCancelCommand}"
+                                IsVisible="{Binding DownloadOfficialCommand.IsRunning}" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
 
             <Border Classes="card" IsVisible="{Binding HasPackage}">
                 <StackPanel Spacing="12">

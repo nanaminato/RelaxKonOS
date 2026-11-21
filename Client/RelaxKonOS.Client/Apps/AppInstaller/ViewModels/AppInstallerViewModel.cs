@@ -32,7 +32,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     public Func<string, string, Task>? ShowMessageAsync { get; set; }
 
     [ObservableProperty] private AppPackageCandidate? _currentPackage;
-    [ObservableProperty] private LocalizedStatus _status = LocalizedText.Ref("app_installer.status.choose_package");
+    [ObservableProperty] private LocalizedStatus _status;
     [ObservableProperty] private bool _isBusy;
 
     public IImage? PackageIcon { get; private set; }
@@ -107,6 +107,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
                 : CurrentPackage.IsUpdate ? "app_installer.status.updated" : "app_installer.status.installed", installed.DisplayName, installed.Version);
             CurrentPackage = null;
             ShowNext();
+            RefreshOfficialRows();
         }
         catch (PackageStorageUnavailableException exception)
         {
@@ -152,18 +153,22 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(HasPackageIcon));
         OnPropertyChanged(nameof(PackageIconGlyph));
         OnPropertyChanged(nameof(HasPackage));
+        OnPropertyChanged(nameof(ShowOfficialStore));
+        OnPropertyChanged(nameof(ShowPackageSecurityWarning));
         OnPropertyChanged(nameof(ActionLabel));
         OnPropertyChanged(nameof(CurrentVersionText));
         OnPropertyChanged(nameof(RequestedPermissions));
         OnPropertyChanged(nameof(HasRequestedPermissions));
         InstallCommand.NotifyCanExecuteChanged();
         SkipCommand.NotifyCanExecuteChanged();
+        NotifyOfficialActions();
     }
 
     partial void OnIsBusyChanged(bool value)
     {
         InstallCommand.NotifyCanExecuteChanged();
         SkipCommand.NotifyCanExecuteChanged();
+        NotifyOfficialActions();
     }
 
     private void ShowNext()
@@ -179,6 +184,10 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        _storeLifetime.Cancel();
+        _storeLifetime.Dispose();
         _localization.LanguageChanged -= OnLanguageChanged;
         (PackageIcon as IDisposable)?.Dispose();
         PackageIcon = null;
@@ -193,6 +202,8 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(RequestedPermissions));
         OnPropertyChanged(nameof(ActionLabel));
         OnPropertyChanged(nameof(CurrentVersionText));
+        RefreshOfficialRows();
+        NotifyOfficialActions();
     }
 }
 

@@ -1,15 +1,18 @@
 using RelaxKonOS.Client.Services.AppPackages;
+using RelaxKonOS.Protocol.Developer;
 
 namespace RelaxKonOS.Client.Services.Developer;
 
 /// <summary>The desktop distribution supplies this source alongside the client binaries.</summary>
-internal sealed class OfficialDesktopPackages(string directory)
+internal sealed partial class OfficialDesktopPackages(string directory, HttpClient? client = null)
 {
     public const string OriginFileName = "package-origin.json";
 
     public static bool IsReserved(string? appId) => appId?.StartsWith("relaxkonos.", StringComparison.Ordinal) == true;
 
-    public static bool IsExternalOfficialId(string appId) => appId is "relaxkonos.imageviewer" or "relaxkonos.notepad";
+    internal static IReadOnlyList<string> Ids => OfficialDesktopCatalogRules.ApplicationIds;
+
+    public static bool IsExternalOfficialId(string appId) => Ids.Contains(appId, StringComparer.Ordinal);
 
     public static bool IsAllowed(string appId, PackageOrigin origin) => IsExternalOfficialId(appId)
         && (origin == PackageOrigin.OfficialDistribution || (origin == PackageOrigin.DirectDeploy && DeveloperProfile.IsDebug));

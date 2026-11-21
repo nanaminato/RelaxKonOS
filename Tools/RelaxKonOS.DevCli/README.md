@@ -2,6 +2,8 @@
 
 `relaxkonos-dev` 会发布 RelaxKonOS 应用项目并创建其 `.roapp` 包，无需为项目编写专用 Shell 脚本。
 
+`relaxkonos-dev official-catalog --output <静态目录> <官方应用.roapp> ...` 用现有包生成桌面官方应用目录和版本化制品。重复发布同版本时制品字节必须相同。部署结构和客户端下载配置见[官方桌面商店](../../docs/platform/RelaxKonOS.PackageStore.Design.md#轻量官方桌面商店)。
+
 ```bash
 relaxkonos-dev pack ./MyApp --configuration Release
 relaxkonos-dev pack ./MyApp --configuration Debug --no-build

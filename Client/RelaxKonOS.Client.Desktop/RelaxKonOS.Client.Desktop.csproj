@@ -42,4 +42,13 @@
         </GetFileHash>
         <WriteLinesToFile File="%(OfficialDesktopPackage.Identity).sha256" Lines="%(OfficialDesktopPackage.FileHash)" Overwrite="true" />
     </Target>
+
+    <Target Name="ConfigureOfficialDesktopCatalog" AfterTargets="Publish" Condition="'$(OfficialDesktopCatalogUri)' != ''">
+        <PropertyGroup>
+            <OfficialCatalogConfigFolder>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(PublishDir)', 'OfficialApps'))</OfficialCatalogConfigFolder>
+        </PropertyGroup>
+        <MakeDir Directories="$(OfficialCatalogConfigFolder)" />
+        <WriteLinesToFile File="$(OfficialCatalogConfigFolder)catalog-source.json"
+                          Lines="{&quot;catalogUri&quot;:&quot;$(OfficialDesktopCatalogUri)&quot;}" Overwrite="true" />
+    </Target>
 </Project>

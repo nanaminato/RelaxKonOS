@@ -1,19 +1,31 @@
 # RelaxKonOS 包商店来源设计
 
-> 2026-11-21：桌面官方包可使用客户端发行版预配置的 `OfficialApps` 来源，经 SHA-256 和既有 AppInstaller 审查安装。此路径供 Image Viewer 等独立应用迁移使用，应用签名为可选。线上桌面商店、官方下载与应用捆绑包仍属于后续阶段，服务端模块的授权与签名规则继续适用。见[官方图片查看器](../applications/RelaxKonOS.ImageViewer.md)。
+> 2026-11-21：桌面应用安装程序内已接入「官方应用」。客户端使用发行版预配置的 `OfficialApps` HTTPS 目录与随包发行的官方制品，复用 AppInstaller 审查、VSD 切换和 ApplicationManager 注册。首批支持 Image Viewer 与 Notepad。详见[轻量官方桌面商店](#轻量官方桌面商店)。服务端模块的来源和签名规则继续适用。
 
 > 2026-11-02：[组件目录](RelaxKonOS.ComponentCatalog.Design.md) 已实现可选签名 HTTPS 来源与桌面用户显式信任确认，复用模块包 P-256 验证原语和本文撤销/反回退边界；`.roapp` 仍经原安装审查，不授予 BuiltIn、权限或 Helper 授权。组件来源日志与服务端模块来源配置分别属于各自用户/部署，未实现统一配置迁移、完整商店服务或跨设备同步。
 
-> 状态：设计，2026-10-31。服务端模块商店的**已接纳目录搜索、受控下载**、**管理员离线远程目录刷新**、**在线目录刷新**和**可选的周期目录刷新**已实现为 v1 切片；桌面应用商店、评分/审核和完整商店服务未实现。本文统一服务端模块商店与桌面应用商店的**来源、目录、搜索、下载和信任契约**；安装事务分别由模块安装器和桌面应用安装器拥有。
+> 服务端模块商店的目录接纳、搜索、受控下载与刷新已实现。评分、审核、跨设备同步和应用捆绑包仍是后续范围。本页分别记录桌面官方包与服务端模块的来源和下载边界。
 >
 > 范围：官方/社区/用户添加的包来源、签名目录、目录条目、搜索分页、下载与暂存、撤销与反回退，以及服务端模块和桌面 `.roapp` 两类包。Android 的商店界面、设备支持和平台边界由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/design/ApplicationPackages.Design.md)独立拥有。
 >
-> 本文不表示桌面应用商店、远程来源同步或完整商店服务已经实现。
+## 轻量官方桌面商店
+
+桌面应用安装程序列出每个允许的官方应用的最新版本和已安装状态。制品就绪后显示原有权限审查，用户确认后才安装。更新失败时恢复原 VSD 指针和 ApplicationManager 注册。卸载使用原来的窗口关闭检查，应用有未保存内容时可阻止卸载。随包提供的同版本制品可直接安装，线上目录不可用时仍可管理已安装应用和浏览随包制品。
+
+在 Windows 上，安装器会限次重试移动被短暂占用的暂存目录。重试耗尽时保留当前活动版本并报告包存储不可用。
+
+桌面发行版可用 `-p:OfficialDesktopCatalogUri=https://<发行站点>/desktop/stable/catalog.json` 生成 `OfficialApps/catalog-source.json`。配置由发行版提供。目录和制品必须使用同一预配置的 HTTPS 地址范围，客户端拒绝重定向。`relaxkonos.*` 仍需匹配应用 ID 许可集合，目录或 manifest 的声明不能授予内置身份。下载按长度、SHA-256、ID 和版本校验，安装前重新检查来源和同一份暂存文件。桌面发行不要求新增签名密钥。
+
+用现有 DevCli 的 `pack` 生成各个 `.roapp`，再运行 `official-catalog --output <静态目录> <包1.roapp> <包2.roapp>`。工具从 manifest 读取名称和版本，发布 `catalog.json` 与 `<appId>/<version>.roapp`，已有版本的制品字节保持固定。向工具提供希望出现在本次目录的所有版本。将制品先部署至固定 HTTPS 目录，再发布目录文件。
+
+目录 JSON 使用 `schemaVersion: 1` 和 `releases` 数组。每项包含 `appId`、`version`（三段正式版本号）、`displayName`、可选 `description`、小写 `sha256` 与归档字节数 `bytes`。制品路径由 ID 和版本确定。
+
+2026-11-21 使用实际 Notepad `.roapp` 构造测试版本，在本机 HTTPS 站点验收了浏览、下载、审查、安装、从 `1.0.0` 更新至 `1.1.0` 及卸载。候选版本切换注册后注入故障，旧版本在当前会话恢复，并可重新从 VSD 加载。Image Viewer 与 Notepad 均通过正式环境的随包安装与 Debug Direct Deploy 回归，Debug 操作未改变正式 VSD 的版本指针。Windows Release 发布产物包含目录配置、两个随包制品及其 SHA-256。DevCli 生成的版本制品与目录摘要一致。线上发行仍需配置正式 HTTPS 地址。
 
 ## 1. 结论与边界
 
 - 不建设一个不受约束的“任意 URL 安装器”。用户选择的是**已配置的来源**，不是包内自带的下载地址。
-- 服务端模块和桌面应用共用来源/目录/下载契约，但分别由不同权威安装：
+- 服务端模块与签名组件目录沿用下文的来源、签名和撤销契约，桌面官方应用采用上文的静态目录。各包交给对应的现有安装器：
   - `server-module` 交给[服务端模块分发设计](../architecture/RelaxKonOS.ServerModuleDistribution.Design.md)的安装器；
   - `desktop-app` 交给桌面应用安装器（现有 `AppPackageInstallerService`/`DeveloperPackageManager`）。
 - 服务端模块官方来源使用固定公钥和签名目录；现有社区 HTTPS 组件来源由用户显式添加并固定公钥指纹。桌面发行版预配置的官方包使用同发行目录提供的 SHA-256。
@@ -50,7 +62,7 @@
 | 名词 | 含义 |
 | --- | --- |
 | 来源（Source） | 一个受信任的目录 + 制品地址；由部署/客户端配置，不由包自行指定 |
-| 目录（Catalog） | 带签名、序号、有效期和撤销集合的包列表 |
+| 目录（Catalog） | 来源发布的包列表。签名目录另外提供序号、有效期和撤销集合 |
 | 条目（Listing） | 一个包的身份、展示信息、发布者和版本集合 |
 | 发布（Release） | 某个包的一个精确版本、平台/RID、摘要和制品地址 |
 | 制品（Artifact） | `.rkmodule` 或 `.roapp` 归档 |

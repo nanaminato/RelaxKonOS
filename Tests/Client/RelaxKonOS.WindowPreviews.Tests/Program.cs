@@ -83,6 +83,7 @@ if (args.Contains("--component-installs-only")) { ComponentInstallEntryChecks.Ru
 if (args.Contains("--image-viewer-only")) { ImageViewerWorkspaceChecks.Run(settings, localization); return; }
 if (args.Contains("--notepad-only")) { NotepadWorkspaceChecks.Run(settings, localization); EditorDraftStateChecks.Run(); return; }
 if (args is ["--official-roapp-only", var artifact]) { OfficialRoappChecks.Run(artifact); return; }
+if (args is ["--official-store-only", var storeArtifact]) { OfficialStoreChecks.Run(storeArtifact); return; }
 if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
 if (args.Contains("--roapp-catalog-only")) { RoappCatalogChecks.Run(settings); return; }
 if (args.Contains("--developer-release-only")) { DeveloperReleaseChecks.Run(); return; }

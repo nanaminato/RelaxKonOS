@@ -4,7 +4,7 @@
 
 ## 安装与开发
 
-发布桌面客户端会通过 DevCli 生成 `OfficialApps/relaxkonos.notepad.roapp` 和配套 SHA-256。在应用安装器选择同一发行目录中的本地包并确认，即可安装或更新。卸载入口为 **设置 → 应用 → 记事本 → 卸载**。
+发布桌面客户端会通过 DevCli 生成 `OfficialApps/relaxkonos.notepad.roapp` 和配套 SHA-256。在 **应用安装程序 → 官方应用** 中可以获取发布版、确认安装或更新、卸载。列表可使用预配置的线上目录和随包发行的制品。见[官方桌面商店](../platform/RelaxKonOS.PackageStore.Design.md#轻量官方桌面商店)。
 
 使用隔离的 Debug profile 配对后，可以运行 `relaxkonos-dev deploy ./Applications/RelaxKonOS.App.Notepad`。再次部署会更新当前版本，`rollback relaxkonos.notepad` 可恢复上一版本。工作区里已有草稿时，更新、回退或卸载会先询问是否放弃，保存进行中则保留当前窗口和版本。配对及监听方法见[开发者模式](../development/RelaxKonOS.DeveloperMode.md)。
 

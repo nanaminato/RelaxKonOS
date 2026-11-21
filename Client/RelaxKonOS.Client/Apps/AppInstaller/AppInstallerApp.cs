@@ -42,6 +42,7 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
         var view = new AppInstallerView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("app_installer.title"), view,
             bounds: new Rect(230, 110, 620, 580), iconGlyph: "📦", canResize: true);
+        window.CanCloseAsync = () => Task.FromResult(viewModel.CanCloseWindow);
 
         viewModel.RequestLocalPackagesAsync = async () =>
         {
@@ -75,6 +76,9 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
         };
         viewModel.ShowMessageAsync = (title, message) => context.ShowDialogAsync<bool>(window, title,
             dialog => CreateMessageView(dialog, message));
+        viewModel.ConfirmUninstallAsync = async row => await context.ShowDialogAsync<bool>(window,
+            LocalizedText.Get("app_installer.store.uninstall"), dialog => CreateMessageView(dialog,
+                LocalizedText.Format("app_installer.store.confirm_uninstall", row.DisplayName), confirmUninstall: true));
 
         EventHandler<ManagedWindow>? closed = null;
         closed = (_, closedWindow) =>
@@ -87,6 +91,8 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
 
         if (serverPaths.Count > 0)
             _ = viewModel.QueueServerPackagesAsync(serverPaths);
+        else
+            _ = viewModel.RefreshOfficialCommand.ExecuteAsync(null);
     }
 
     private static TopLevel? GetTopLevel() => Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
@@ -100,10 +106,23 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
             Math.Min(520, Math.Max(320, bounds.Height - 56)));
     }
 
-    private static Control CreateMessageView(ModalDialog<bool> dialog, string message)
+    private static Control CreateMessageView(ModalDialog<bool> dialog, string message, bool confirmUninstall = false)
     {
-        var confirm = new Button { Content = LocalizedText.Get("common.ok"), HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Padding = new Thickness(16, 6) };
+        var confirm = new Button { Content = LocalizedText.Get(confirmUninstall ? "app_installer.store.uninstall" : "common.ok"), Padding = new Thickness(16, 6) };
         confirm.Click += (_, _) => dialog.Close(true);
+        var buttons = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            Spacing = 8,
+        };
+        if (confirmUninstall)
+        {
+            var cancel = new Button { Content = LocalizedText.Get("common.cancel"), Padding = new Thickness(16, 6) };
+            cancel.Click += (_, _) => dialog.Cancel();
+            buttons.Children.Add(cancel);
+        }
+        buttons.Children.Add(confirm);
         return new StackPanel
         {
             Margin = new Thickness(20),
@@ -111,7 +130,7 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
             Children =
             {
                 new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                confirm,
+                buttons,
             },
         };
     }

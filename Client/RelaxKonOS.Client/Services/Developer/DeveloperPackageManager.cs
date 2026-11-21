@@ -56,7 +56,7 @@ public sealed partial class DeveloperPackageManager
         IAppPermissionManager permissions,
         IAppActivationDiagnostics activationDiagnostics,
         VirtualSystemDriveService drive,
-        string officialDirectory)
+        string officialDirectory, HttpClient? officialHttpClient = null)
     {
         _applications = applications;
         _contextFactory = contextFactory;
@@ -64,7 +64,7 @@ public sealed partial class DeveloperPackageManager
         _permissions = permissions;
         _activationDiagnostics = activationDiagnostics;
         _drive = drive;
-        _official = new OfficialDesktopPackages(Path.GetFullPath(officialDirectory));
+        _official = new OfficialDesktopPackages(Path.GetFullPath(officialDirectory), officialHttpClient);
         _drive.EnsureCreated();
         _root = _drive.ExternalProgramsDirectory;
         _catalogPath = _drive.ResolveRootChild("System/external-catalog.json");
@@ -72,6 +72,8 @@ public sealed partial class DeveloperPackageManager
         _legacyCatalogPath = Path.Combine(_legacyRoot, "catalog.json");
         _catalog = new(LoadCatalog(_catalogPath), StringComparer.Ordinal);
     }
+
+    internal OfficialDesktopPackages OfficialSource => _official;
 
     public IReadOnlyList<DeveloperAppInfo> Installed => _catalog.Values
         .OrderBy(record => record.DisplayName)
@@ -118,6 +120,33 @@ public sealed partial class DeveloperPackageManager
     public DeveloperAppInfo? FindInstalled(string appId) => _catalog.TryGetValue(appId, out var record)
         ? new DeveloperAppInfo(record.Id, record.DisplayName, record.Version, record.Path)
         : null;
+
+    internal async Task<DeveloperPackageManifest> InspectOfficialDownloadAsync(
+        string path, OfficialDesktopRelease release, CancellationToken ct)
+    {
+        await using var package = File.OpenRead(path);
+        await _official.VerifyDownloadAsync(release, package, ct);
+        using var archive = new ZipArchive(package, ZipArchiveMode.Read, leaveOpen: true);
+        ValidateOfficialArchive(archive);
+        var manifest = await ReadArchiveManifestAsync(archive, ct);
+        ValidateManifest(manifest, PackageOrigin.OfficialDistribution);
+        RequireReleaseManifest(release, manifest);
+        return manifest;
+    }
+
+    private static void RequireReleaseManifest(OfficialDesktopRelease release, DeveloperPackageManifest manifest)
+    {
+        if (manifest.Id != release.AppId || manifest.Version != release.Version)
+            throw new InvalidOperationException("component.package_expectation_changed");
+    }
+
+    private static void ValidateOfficialArchive(ZipArchive archive)
+    {
+        const long maximumExpandedBytes = 512L * 1024 * 1024;
+        if (archive.Entries.Count > 4096 || archive.Entries.Any(entry => entry.Length > maximumExpandedBytes)
+            || archive.Entries.Sum(entry => entry.Length) > maximumExpandedBytes)
+            throw new InvalidDataException("The official desktop archive exceeds its allowed size.");
+    }
 
     /// <summary>Loads installed packages at client startup. Invalid old packages are ignored instead of breaking the shell.</summary>
     public async Task LoadInstalledAsync(CancellationToken cancellationToken = default)
@@ -168,21 +197,29 @@ public sealed partial class DeveloperPackageManager
     }
 
     internal async Task<DeveloperAppInfo> InstallOfficialAsync(Stream package, string path, string appId, string expectedSha256,
-        string? installedVersion, CancellationToken cancellationToken)
+        string? installedVersion, CancellationToken cancellationToken, OfficialDesktopRelease? release = null,
+        string? installedPath = null)
     {
         await _mutations.WaitAsync(cancellationToken);
         try
         {
-            if (await _official.VerifyAsync(path, appId, package, cancellationToken) != expectedSha256)
+            if (release is { CatalogUri: not null })
+                await _official.VerifyDownloadAsync(release, package, cancellationToken);
+            else if (await _official.VerifyAsync(path, appId, package, cancellationToken) != expectedSha256)
                 throw new InvalidOperationException("component.package_expectation_changed");
-            if (FindInstalled(appId)?.Version != installedVersion)
+            var installed = FindInstalled(appId);
+            if (installed?.Version != installedVersion || release is not null && installed?.InstallationPath != installedPath)
                 throw new InvalidOperationException("component.state_revision_conflict");
+            if (release is not null && installed is not null
+                && (!Version.TryParse(installed.Version, out var current) || Version.Parse(release.Version) <= current))
+                throw new InvalidOperationException("Choose a newer official desktop release.");
 
             var record = await StageAsync(async (staging, ct) =>
             {
-                var manifest = await ExtractAndReadManifestAsync(package, staging, ct);
+                var manifest = await ExtractAndReadManifestAsync(package, staging, ct, official: true);
                 if (manifest.Id != appId)
                     throw new InvalidOperationException("component.package_expectation_changed");
+                if (release is not null) RequireReleaseManifest(release, manifest);
                 return manifest;
             }, PackageOrigin.OfficialDistribution, cancellationToken);
             try
@@ -218,12 +255,13 @@ public sealed partial class DeveloperPackageManager
             if (OfficialDesktopPackages.IsReserved(manifest.Id))
                 await _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(staging, OfficialDesktopPackages.OriginFileName), origin, cancellationToken);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            Directory.Move(staging, destination);
+            await MoveStagingDirectoryAsync(staging, destination, cancellationToken);
             var record = CreateRecord(destination, manifest, origin);
             destination = null;
             return record;
         }
-        catch (Exception exception) when (exception is UnauthorizedAccessException or DirectoryNotFoundException)
+        catch (Exception exception) when (exception is UnauthorizedAccessException or DirectoryNotFoundException
+            || IsWindowsStagingLock(exception))
         {
             // Every remaining write of this install lives below the package root: the version folder,
             // the extracted files, the descriptor and the current pointer. A denial here is the same
@@ -238,12 +276,47 @@ public sealed partial class DeveloperPackageManager
         }
     }
 
-    public async Task<bool> UninstallAsync(string appId)
+    private static async Task MoveStagingDirectoryAsync(string source, string destination, CancellationToken ct)
+    {
+        const int attempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                Directory.Move(source, destination);
+                return;
+            }
+            catch (Exception error) when (attempt < attempts && IsWindowsStagingLock(error))
+            {
+                // A Windows scanner can briefly hold freshly extracted files without delete sharing.
+                await Task.Delay(TimeSpan.FromMilliseconds(50 * attempt), ct);
+            }
+        }
+    }
+
+    private static bool IsWindowsStagingLock(Exception error) => OperatingSystem.IsWindows()
+        && error is IOException or UnauthorizedAccessException
+        && (error.HResult & 0xffff) is 5 or 32 or 33; // Access denied, sharing violation, lock violation.
+
+    public Task<bool> UninstallAsync(string appId) => UninstallCoreAsync(appId, null);
+
+    internal Task<bool> UninstallOfficialAsync(DeveloperAppInfo reviewed)
+    {
+        if (!OfficialDesktopPackages.IsExternalOfficialId(reviewed.Id))
+            throw new InvalidOperationException("The application is outside the official desktop store.");
+        return UninstallCoreAsync(reviewed.Id, reviewed);
+    }
+
+    private async Task<bool> UninstallCoreAsync(string appId, DeveloperAppInfo? reviewed)
     {
         await _mutations.WaitAsync();
         try
         {
-            if (!_catalog.ContainsKey(appId)) return false;
+            var installed = FindInstalled(appId);
+            if (reviewed is not null && installed != reviewed)
+                throw new InvalidOperationException("component.state_revision_conflict");
+            if (installed is null) return false;
             if (!await CanRetireWindowsAsync(new AppId(appId)))
                 throw new InvalidOperationException("Application windows are busy or have unsaved changes.");
             File.Delete(CurrentPath(appId));
@@ -474,9 +547,11 @@ public sealed partial class DeveloperPackageManager
 
     private static string SafeDiagnosticId(string value) => ApplicationDescriptorValidator.IsValidAppId(value) ? value : "<unknown>";
 
-    private async Task<DeveloperPackageManifest> ExtractAndReadManifestAsync(Stream package, string destination, CancellationToken cancellationToken)
+    private async Task<DeveloperPackageManifest> ExtractAndReadManifestAsync(Stream package, string destination,
+        CancellationToken cancellationToken, bool official = false)
     {
         using var archive = new ZipArchive(package, ZipArchiveMode.Read, leaveOpen: true);
+        if (official) ValidateOfficialArchive(archive);
         var manifest = await ReadArchiveManifestAsync(archive, cancellationToken);
         foreach (var entry in archive.Entries)
         {
