@@ -74,7 +74,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private readonly IServerCertificates _certificates;
     private readonly HostPlatformKind? _serverPlatform;
     private readonly IAppPermissionScope _permissions;
-    private readonly IHostElevationBroker _elevations;
+    private readonly IWebServerAuthorization _authorization;
     private readonly IExternalServerConnection _windowConnection;
     private readonly IDisposable _connectionObservation;
     private long _siteTargetVersion;
@@ -122,13 +122,13 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private CancellationTokenSource? _operationCts;
 
     public WebServerManagerViewModel(IServerWebServers client, IServerCertificates certificates, IExternalServerConnection connection, HostPlatformKind? serverPlatform,
-        IAppPermissionScope permissions, IHostElevationBroker elevations)
+        IAppPermissionScope permissions, IWebServerAuthorization authorization)
     {
         _client = client;
         _certificates = certificates;
         _serverPlatform = serverPlatform;
         _permissions = permissions;
-        _elevations = elevations;
+        _authorization = authorization;
         _windowConnection = connection;
         SelectedSiteCertificateSource = SiteCertificateSources[0];
         _connectionObservation = connection.ObserveInvalidation(OnConnectionInvalidated);
@@ -411,7 +411,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         if (candidate is null) return;
         if (RequestIntegrationConfirmationAsync is null || !await RequestIntegrationConfirmationAsync()) return;
         _dismissRuntimeFeedback?.Invoke();
-        await RunOperationAsync("integrate", ct => _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, candidate.Id,
+        await RunOperationAsync("integrate", ct => _authorization.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, candidate.Id,
             () => _client.IntegrateCandidateAsync(candidate.Id, new IntegrateWebServerRequest(true), ct), ct));
     }
 
@@ -441,7 +441,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         var server = SelectedServer;
         return server is null
             ? Task.CompletedTask
-            : RunOperationAsync(kind, ct => _elevations.ExecuteAsync(capability, server.Id,
+            : RunOperationAsync(kind, ct => _authorization.ExecuteAsync(capability, server.Id,
                 () => _client.ApplyLifecycleAsync(server.Id, action, ct), ct));
     }
 
@@ -522,7 +522,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed ? SelectedSiteCertificate?.Id : null, SiteHttpsEnabled, SiteRedirectHttpToHttps, SiteIpv6Enabled,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SiteCertificatePath) ? SiteCertificatePath : null,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null, site?.UpdatedAt);
-            var saved = await _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id,
+            var saved = await _authorization.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id,
                 () => IsCurrent() && HasManagePermission
                     ? _client.UpsertSiteAsync(server.Id, request)
                     : Task.FromException<WebServerSiteDto?>(new OperationCanceledException("The site editor target changed.")));
@@ -563,7 +563,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         if (server is null || site is null || !HasManagePermission) return;
         try
         {
-            await _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id, async () =>
+            await _authorization.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id, async () =>
             {
                 await _client.DeleteSiteAsync(server.Id, site.Id, new DeleteWebServerSiteRequest(site.UpdatedAt));
                 return true;
