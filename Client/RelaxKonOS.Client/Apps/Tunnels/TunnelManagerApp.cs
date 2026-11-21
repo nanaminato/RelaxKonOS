@@ -5,7 +5,7 @@ using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
-using RelaxKonOS.Client.Apps.Tunnels.Views;
+using RelaxKonOS.App.Tunnels.Views;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.Explorer.Views;
@@ -27,11 +27,12 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.tunnels"), "Tunnel Manager", "1.1.0", "↔", "Manage FRP tunnel desired state and runtime status", [AppPermissions.ServerTunnelsRead, AppPermissions.ServerTunnelsManage, AppPermissions.ServerComponentsRead], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Tunnels]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
     public override void Activate(AppContext context)
     {
+        var localization = context.Services.GetRequiredService<LocalizationService>();
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var client = context.Services.GetService(typeof(IServerTunnels)) as IServerTunnels;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("tunnels.title"), new TunnelLoginRequiredView(), new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false); return;
+            context.ShowWindow(LocalizedText.Get("tunnels.title"), new TunnelLoginRequiredView(LocalizedText.Get, localization), new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false); return;
         }
         var canManage = context.Permissions.IsGranted(AppPermissions.ServerTunnelsManage);
         var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.tunnels");
@@ -69,7 +70,6 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
             await context.ShowDialogAsync<bool?>(window, LocalizedText.Get("tunnels.frps.diagnostics"), dialog =>
                 new TunnelManagedFrpsDiagnosticsView { DataContext = vm, CloseAction = dialog.Cancel }, new Size(720, 600));
         };
-        var localization = context.Services.GetRequiredService<LocalizationService>();
         void ObserveLanguage(TunnelObservableObject model) =>
             WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, TunnelObservableObject>(
                 localization, nameof(LocalizationService.LanguageChanged), model.OnLanguageChanged);

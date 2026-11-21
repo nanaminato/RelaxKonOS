@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.Tunnels.Views;
+namespace RelaxKonOS.App.Tunnels.Views;
 
 /// <summary>Shell for the tunnel manager. The individual views inherit one shared view model.</summary>
 public partial class TunnelManagerView : UserControl
@@ -19,7 +19,8 @@ public partial class TunnelManagerView : UserControl
     public TunnelManagerView()
     {
         InitializeComponent();
-        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        RelaxKonOS.WindowManager.CompactWorkspaceNavigation.Install(this, WorkspaceBody,
+            LocExtension.CreateBinding(this, "common.view"));
         ShowPage("overview", OverviewButton);
     }
 

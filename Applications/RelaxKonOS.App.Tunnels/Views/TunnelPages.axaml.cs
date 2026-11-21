@@ -3,10 +3,22 @@ using Avalonia.Interactivity;
 using RelaxKonOS.App.Tunnels;
 using RelaxKonOS.Protocol.Tunnels;
 
-namespace RelaxKonOS.Client.Apps.Tunnels.Views;
+namespace RelaxKonOS.App.Tunnels.Views;
 
 public partial class TunnelOverviewView : UserControl { public TunnelOverviewView() => InitializeComponent(); }
-public partial class TunnelDefinitionsView : UserControl { public TunnelDefinitionsView() => InitializeComponent(); }
+public partial class TunnelDefinitionsView : UserControl
+{
+    public TunnelDefinitionsView()
+    {
+        InitializeComponent();
+        var stateColumn = DefinitionsGrid.Columns.OfType<DataGridTextColumn>()
+            .Single(column => column.SortMemberPath == nameof(TunnelDefinitionDto.State));
+        stateColumn.Binding = new Avalonia.Data.Binding(nameof(TunnelDefinitionDto.State))
+        {
+            Converter = new TunnelEnumTextConverter(key => (DataContext as TunnelObservableObject)?.Labels(key) ?? key),
+        };
+    }
+}
 public partial class TunnelServersView : UserControl
 {
     public TunnelServersView() => InitializeComponent();

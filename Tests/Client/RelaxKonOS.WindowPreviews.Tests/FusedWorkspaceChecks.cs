@@ -15,7 +15,7 @@ using RelaxKonOS.App.Docker.Views;
 using RelaxKonOS.Client.Apps.Proxy;
 using RelaxKonOS.Client.Apps.Proxy.Views;
 using RelaxKonOS.Client.Apps.Tunnels;
-using RelaxKonOS.Client.Apps.Tunnels.Views;
+using RelaxKonOS.App.Tunnels.Views;
 using RelaxKonOS.Client.Apps.PortForwarding;
 using RelaxKonOS.App.PortForwarding;
 using RelaxKonOS.App.PortForwarding.Views;
@@ -105,7 +105,25 @@ internal static class FusedWorkspaceChecks
             var samples = new List<(ManagedWindow window, UserControl view, string name)> { (serverWindow, serverView, "server-center"), (gitWindow, gitView, "git") };
             Add(new DockerManagerWorkspace(dockerModel, new DockerProxyStatusViewModel(null!, DockerLocalization.ForLanguage(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>())), new DockerImageMirrorsViewModel(null!, DockerLocalization.ForLanguage(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>())), Done, Done, Done, Done, Done), "docker", (view, window) => view.AttachWindowHeader(window));
             Add(new ProxyManagerWorkspace(proxyModel), "proxy", (view, window) => view.AttachWindowHeader(window));
-            Add(new TunnelManagerView { DataContext = tunnelModel }, "tunnels", (view, window) => view.AttachWindowHeader(window));
+            var tunnelDefinitions = new TunnelDefinitionsView { DataContext = tunnelModel };
+            Check(tunnelDefinitions.FindControl<DataGrid>("DefinitionsGrid")?.Columns.OfType<DataGridTextColumn>()
+                .Single(column => column.SortMemberPath == "State").Binding is Avalonia.Data.Binding { Converter: not null },
+                "The migrated tunnel definitions grid binds a localized state column.");
+            var tunnelView = new TunnelManagerView { DataContext = tunnelModel };
+            Add(tunnelView, "tunnels", (view, window) => view.AttachWindowHeader(window));
+            Pump();
+            var tunnelToggle = tunnelView.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single();
+            var tunnelLog = tunnelView.GetVisualDescendants().OfType<TextBox>().Single();
+            Check(!tunnelLog.IsEffectivelyVisible && Equals(tunnelToggle.Content, LocalizedText.Get("common.operation_log")),
+                "The migrated tunnel log starts collapsed and resolves its toggle label.");
+            tunnelModel.IsBusy = true;
+            tunnelModel.StatusText = new(() => "Applying tunnel");
+            tunnelToggle.IsChecked = true;
+            Pump();
+            Check(tunnelLog.IsEffectivelyVisible && tunnelLog.Text?.Contains("Applying tunnel", StringComparison.Ordinal) == true,
+                "The migrated tunnel workspace can show an in-flight operation log.");
+            tunnelToggle.IsChecked = false;
+            tunnelModel.IsBusy = false;
             Add(new PortForwardingMainView { DataContext = forwardModel }, "port-forwarding", (view, window) => view.AttachWindowHeader(window));
             Add(WebServerManagerWorkspace.Create(webModel), "webservers", (view, window) => view.AttachWindowHeader(window));
             Add(CertificateManagerWorkspace.Create(certificateModel, Done, Done, () => { }), "certificates", (view, window) => view.AttachWindowHeader(window));

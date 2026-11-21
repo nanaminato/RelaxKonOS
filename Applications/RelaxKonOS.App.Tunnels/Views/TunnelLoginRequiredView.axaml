@@ -1,0 +1,1 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="RelaxKonOS.App.Tunnels.Views.TunnelLoginRequiredView" Classes="builtin-app"><Grid Margin="24"><TextBlock x:Name="Notice" VerticalAlignment="Center" HorizontalAlignment="Center"/></Grid></UserControl>

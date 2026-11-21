@@ -1,19 +1,16 @@
 using System.Globalization;
 using Avalonia.Data;
 using Avalonia.Data.Converters;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Tunnels;
 
-namespace RelaxKonOS.Client.Apps.Tunnels;
+namespace RelaxKonOS.App.Tunnels.Views;
 
 /// <summary>Localizes tunnel connection-state values used in data grids and status text.</summary>
-public sealed class TunnelEnumTextConverter : IValueConverter
+internal sealed class TunnelEnumTextConverter(Func<string, string> localize) : IValueConverter
 {
-    public static readonly TunnelEnumTextConverter Instance = new();
-
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is TunnelConnectionState state
-        ? LocalizedText.Get($"tunnels.connection_state.{state}")
-        : LocalizedText.Get("tunnels.connection_state.Unknown");
+        ? localize($"tunnels.connection_state.{state}")
+        : localize("tunnels.connection_state.Unknown");
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => BindingOperations.DoNothing;
