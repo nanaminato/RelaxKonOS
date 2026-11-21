@@ -1,0 +1,18 @@
+{
+  "id": "relaxkonos.application-deployments",
+  "displayName": "Application Deployments",
+  "description": "Deploy and manage containerized applications on the RelaxKonOS Server",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.ApplicationDeployments.dll",
+  "entryType": "RelaxKonOS.App.ApplicationDeployments.ApplicationDeploymentsPackageApp",
+  "iconGlyph": "📦",
+  "iconPath": "Assets/application-deployments.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": [
+    "server.application-deployments.read",
+    "server.application-deployments.manage",
+    "server.files.read"
+  ],
+  "serverRequirements": { "capabilities": ["server.application-deployments"] }
+}

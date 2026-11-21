@@ -11,6 +11,8 @@ internal sealed class ExternalServerConnection(UsageMemoryScope scope) : IExtern
     internal IAuthSession Session => scope.Session;
     public HostPlatformKind? Platform => IsCurrent ? scope.Session.CurrentServer?.Platform : null;
 
+    public IReadOnlyList<string> Capabilities => IsCurrent ? scope.Session.CurrentServer?.Capabilities.ToArray() ?? [] : [];
+
     public bool IsCurrent => _authenticated && _server is not null && scope.Session.State == AuthSessionState.Authenticated
         && scope.Session.ServiceId == _server && scope.IsCurrent;
 

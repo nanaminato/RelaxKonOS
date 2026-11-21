@@ -506,6 +506,8 @@ public sealed partial class ApplicationDeploymentsViewModel : DeploymentObservab
     /// Follows a durable operation to a terminal state. Cancellation is offered by the server only
     /// before its critical section, so a cancel can legitimately arrive after the operation finished.
     /// </summary>
+    public void StopObserving() => polling?.Cancel();
+
     private async Task PollAsync(Guid applicationId, DeploymentOperationDto operation, bool deleting = false)
     {
         polling?.Cancel();

@@ -109,6 +109,7 @@ public interface IExternalServerConnection
 {
     bool IsCurrent { get; }
     HostPlatformKind? Platform { get; }
+    IReadOnlyList<string> Capabilities { get; }
     IDisposable ObserveInvalidation(Action invalidated);
 }
 

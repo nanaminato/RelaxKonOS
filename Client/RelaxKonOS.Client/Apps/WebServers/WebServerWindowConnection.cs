@@ -13,6 +13,8 @@ internal sealed class WebServerWindowConnection(IAuthSession session) : IExterna
     private readonly bool _authenticated = session.State == AuthSessionState.Authenticated;
     public HostPlatformKind? Platform { get; } = session.CurrentServer?.Platform;
 
+    public IReadOnlyList<string> Capabilities => IsCurrent ? session.CurrentServer?.Capabilities.ToArray() ?? [] : [];
+
     public bool IsCurrent => _authenticated && _serviceId is { Length: > 0 }
         && _login is not null && _user is not null
         && session.State == AuthSessionState.Authenticated && session.ServiceId == _serviceId
