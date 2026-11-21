@@ -5,10 +5,9 @@ namespace RelaxKonOS.App.Docker;
 
 public static class DockerLocalization
 {
-    public static IEnumerable<string> ResourceNames => typeof(DockerLocalization).Assembly.GetManifestResourceNames()
-        .Where(name => name.StartsWith("Docker.Localization.", StringComparison.Ordinal));
+    public static DockerText ForLanguage(ISystemLanguage language) => new(key => Resolve(language, key));
 
-    public static Stream Open(string resourceName) =>
+    private static Stream Open(string resourceName) =>
         typeof(DockerLocalization).Assembly.GetManifestResourceStream(resourceName)
         ?? throw new InvalidDataException($"Missing Docker localization resource '{resourceName}'.");
 
@@ -16,7 +15,7 @@ public static class DockerLocalization
     private static readonly Lazy<Dictionary<string, string>> Chinese = new(() => Load("zh-CN"));
     private static readonly Lazy<Dictionary<string, string>> Japanese = new(() => Load("ja-JP"));
 
-    internal static string Resolve(ISystemLanguage language, string key)
+    private static string Resolve(ISystemLanguage language, string key)
     {
         var labels = language.CurrentLanguage.Split('-', 2)[0].ToLowerInvariant() switch
         {

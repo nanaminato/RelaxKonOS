@@ -1,5 +1,4 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using RelaxKonOS.App.Docker;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Docker;
@@ -227,7 +226,15 @@ public sealed partial class DockerProxyViewModel(IRemoteDockerClient client) : O
         var layer = status.Layers.FirstOrDefault(candidate => candidate.Target == target);
         if (layer is null) return LocalizedText.Ref("docker.proxy.layer.state.unknown");
 
-        var parts = new List<LocalizedStatus> { LocalizedText.Ref(DockerProxyLayerLabels.StateKey(layer.State)) };
+        var stateKey = layer.State switch
+        {
+            DockerProxyLayerState.Disabled => "docker.proxy.layer.state.disabled",
+            DockerProxyLayerState.Applied => "docker.proxy.layer.state.applied",
+            DockerProxyLayerState.RestartRequired => "docker.proxy.layer.state.restart_required",
+            DockerProxyLayerState.Unsupported => "docker.proxy.layer.state.unsupported",
+            _ => "docker.proxy.layer.state.failed",
+        };
+        var parts = new List<LocalizedStatus> { LocalizedText.Ref(stateKey) };
         if (layer.ProblemCode.Length > 0) parts.Add(LocalizedText.Ref(layer.ProblemCode));
         if (layer.Detail.Length > 0) parts.Add(LocalizedText.Ref(layer.Detail));
         return parts.Count == 1 ? parts[0] : LocalizedStatus.Join(" · ", parts);

@@ -6,32 +6,39 @@ using Avalonia.Threading;
 using RelaxKonOS.WindowManager;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Services.AppPackages;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
+using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.Runtime;
+using System.Reflection;
 using WindowManager = RelaxKonOS.WindowManager.WindowManager;
 
 internal static class OfficialRoappChecks
 {
-    public static void Run(string artifact)
+    public static void Run(string artifact, ShellSettings settings, RelaxKonOS.AppSDK.ISystemLanguage language)
     {
         if (DeveloperProfile.IsDebug) throw new InvalidOperationException("Build this check in Release.");
-        var task = RunAsync(Path.GetFullPath(artifact));
+        var task = RunAsync(Path.GetFullPath(artifact), settings, language);
         var deadline = DateTime.UtcNow.AddSeconds(45);
         while (!task.IsCompleted && DateTime.UtcNow < deadline) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(5); }
         if (!task.IsCompleted) throw new InvalidOperationException("Official package check timed out.");
         task.GetAwaiter().GetResult();
     }
 
-    private static async Task RunAsync(string artifact)
+    private static async Task RunAsync(string artifact, ShellSettings settings, RelaxKonOS.AppSDK.ISystemLanguage language)
     {
         var applicationId = Path.GetFileNameWithoutExtension(artifact);
         var isNotepad = applicationId == "relaxkonos.notepad";
         var isEventAlerts = applicationId == "relaxkonos.event-alerts";
         var isCodeEditor = applicationId == "relaxkonos.codeeditor";
+        var isDocker = applicationId == "relaxkonos.docker";
         var opensFiles = isCodeEditor || applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
         var samplePath = isCodeEditor ? "/files/sample.cs" : isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
@@ -40,6 +47,7 @@ internal static class OfficialRoappChecks
         var path = Path.Combine(source, applicationId + ".roapp");
         var drive = new VirtualSystemDrive(Path.Combine(root, "drive"));
         using var services = new ServiceCollection().BuildServiceProvider();
+        using var http = new HttpClient();
         using var catalog = new ComponentCatalogSourceStore(Path.Combine(root, "catalog-trust"), "test-desktop");
         var journal = new FileDeploymentJournal(Path.Combine(root, "deployment-journal"));
         try
@@ -58,6 +66,10 @@ internal static class OfficialRoappChecks
             if (isEventAlerts)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerEventAlertsRead],
                     "The official alert package must request only permission to read alerts.");
+            if (isDocker)
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerDockerRead, AppPermissions.ServerDockerManage, AppPermissions.ServerComponentsRead]
+                    && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.docker"],
+                    "Docker review exposes the required server capability and all three permissions.");
             var provisioner = new BundledApplicationProvisioner(packages, installer,
                 new JointAppDeploymentService(null!, null!, installer, packages, applications, journal), drive);
             await WriteProfileAsync("interactive");
@@ -86,9 +98,14 @@ internal static class OfficialRoappChecks
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "An excluded application stays uninstalled on restart.");
             await provisioner.RunAsync(["--installation-profile=developer"]);
-            var first = packages.FindInstalled(applicationId) ?? throw new InvalidOperationException("The bundled default did not install.");
-            Check(File.Exists(Path.Combine(first.InstallationPath, "deployment-receipt.json")),
-                "Profile provisioning must commit the unified deployment receipt.");
+            if (isDocker)
+                Check(packages.FindInstalled(applicationId) is null, "Docker stays optional even in the Developer profile.");
+            var first = isDocker
+                ? await installer.InstallAsync(await installer.InspectLocalAsync(path))
+                : packages.FindInstalled(applicationId) ?? throw new InvalidOperationException("The bundled default did not install.");
+            if (!isDocker)
+                Check(File.Exists(Path.Combine(first.InstallationPath, "deployment-receipt.json")),
+                    "Profile provisioning must commit the unified deployment receipt.");
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) == first, "Provisioning must not reinstall the same application.");
             var id = new AppId(applicationId);
@@ -97,6 +114,18 @@ internal static class OfficialRoappChecks
 
             Check(applications.TextFileOpeners.Any(app => app.Id == id) == (isNotepad || isCodeEditor),
                 "Package text fallback must match the manifest.");
+            if (isDocker)
+            {
+                windows.Attach(new Canvas { Width = 1100, Height = 800 });
+                Check(await packages.LaunchAsync(applicationId), "Docker must launch from its installed package.");
+                for (var attempt = 0; attempt < 50 && windows.Windows.Count == 0; attempt++)
+                    await Task.Delay(20);
+                var workspace = windows.Windows.Single();
+                Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName
+                    == "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
+                    "The installed Docker entry point must create its own workspace.");
+                windows.Close(workspace);
+            }
 
             await PublishCandidateAsync(manifest => manifest["version"] = "1.1.0");
             var update = await installer.InspectLocalAsync(path);
@@ -176,7 +205,12 @@ internal static class OfficialRoappChecks
             var windows = new WindowManager();
             var apps = new ApplicationManager(windows, services);
             var permissions = new RoappCatalogChecks.Permissions();
-            return (new DeveloperPackageManager(apps, null!, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
+            var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+            var memory = new UsageMemoryStore(Path.Combine(root, "usage-memory.json"));
+            var context = new ExternalAppContextFactory(permissions, null!, language, settings, null!, auth, null!,
+                windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
+                null!, null!, null!, null!, null!, memory, null!, null!, null!, null!);
+            return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 
         async Task PublishCandidateAsync(Action<JsonObject> editManifest, Action<ZipArchive>? editArchive = null)
@@ -199,7 +233,7 @@ internal static class OfficialRoappChecks
 
         Task WriteProfileAsync(string policy)
         {
-            var entry = new[] { new { appId = applicationId, minimumVersion = "1.0.0", installPolicy = policy } };
+            var entry = new[] { new { appId = applicationId, minimumVersion = isDocker ? "0.2.0" : "1.0.0", installPolicy = policy } };
             return File.WriteAllTextAsync(Path.Combine(source, "installation-profiles.json"),
                 System.Text.Json.JsonSerializer.Serialize(new
                 {

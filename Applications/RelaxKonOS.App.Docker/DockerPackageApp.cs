@@ -22,7 +22,7 @@ public sealed class DockerPackageApp : IExternalRemoteApplication
     {
         cancellationToken.ThrowIfCancellationRequested();
         var language = context.SystemLanguage;
-        var text = new DockerText(key => DockerLocalization.Resolve(language, key));
+        var text = DockerLocalization.ForLanguage(language);
         if (!context.HasAuthenticatedServer)
         {
             var signInWindow = context.Windows.ShowWindow(text.Get(TitleKey), new DockerLoginRequiredView(text, language),

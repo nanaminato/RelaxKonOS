@@ -34,9 +34,10 @@ var settings = new ShellSettings(appearance);
 var localization = new LocalizationService(settings, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
 using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
-var vm = new DockerManagerViewModel(null!, new DockerText(RelaxKonOS.Client.Localization.LocalizedText.Get))
+var dockerText = DockerLocalization.ForLanguage(localization);
+var vm = new DockerManagerViewModel(null!, dockerText)
 {
-    StatusText = new DockerText(LocalizedText.Get).Ref("docker.status.available", "27.0", "Linux"),
+    StatusText = dockerText.Ref("docker.status.available", "27.0", "Linux"),
     ContainerLogs = "web-service: started successfully\nweb-service: listening on port 8080",
     ContainerStats = "CPU 0.4%   Memory 64 MB / 512 MB"
 };
@@ -220,7 +221,7 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 {
     settings.Language = culture;
     vm.OperationTitle = "Restart test3";
-    vm.OperationStatus = new DockerText(LocalizedText.Get).Ref("docker.operation.running_label");
+    vm.OperationStatus = dockerText.Ref("docker.operation.running_label");
     vm.OperationLog = string.Join(Environment.NewLine, Enumerable.Range(1, 80).Select(i => $"[{i}] service output"));
     vm.IsOperationRunning = true;
     vm.IsOperationLogExpanded = false;
@@ -257,7 +258,7 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
         var workspace = new DockerManagerWorkspace(vm, null!, null!, noOp, noOp, noOp, noOp, noOp);
         vm.OperationTitle = "Restart test3";
         vm.IsOperationRunning = true;
-        vm.OperationStatus = new DockerText(LocalizedText.Get).Ref("docker.operation.running_label");
+        vm.OperationStatus = dockerText.Ref("docker.operation.running_label");
         vm.OperationLog = string.Join(Environment.NewLine, Enumerable.Range(1, 80).Select(i => $"[{i}] service output"));
         host.Content = workspace;
         foreach (var expanded in new[] { false, true })

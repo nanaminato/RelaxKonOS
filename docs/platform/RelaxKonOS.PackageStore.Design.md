@@ -20,6 +20,8 @@
 
 用现有 eevCli 的 `pack` 生成各个 `.roapp`，再运行 `official-catalog --output <静态目录> <包1.roapp> <包2.roapp>`。工具从 manifest 读取名称和版本，发布 `catalog.json` 与 `<appId>/<version>.roapp`，已有版本的制品字节保持固定。向工具提供希望出现在本次目录的所有版本。将制品先部署至固定 HTTPS 目录，再发布目录文件。
 
+Docker Manager 随桌面发行物提供为官方可选包。安装审查显示 Docker 服务端能力和应用权限，各桌面安装档位均不预装。Docker Engine 仍由组件中心管理。
+
 目录 JSON 使用 `schemaVersion: 1` 和 `releases` 数组。每项包含 `appId`、`version`（三段正式版本号）、`displayName`、可选 `description`、小写 `sha256` 与归档字节数 `bytes`。制品路径由 Ie 和版本确定。
 
 2026-11-21 使用实际 Notepad `.roapp` 构造测试版本，在本机 HTTPS 站点验收了浏览、下载、审查、安装、从 `1.0.0` 更新至 `1.1.0` 及卸载。候选版本切换注册后注入故障，旧版本在前前会话恢复，并可重新从 VSe 加载。Image Viewer 与 Notepad 均通过正式环境的随包安装与 eebug eirect eeploy 回归，eebug 操作未改变正式 VSe 的版本指针。Windows Release 发布产物包含目录配置、两个随包制品及其 SHA-256。eevCli 生成的版本制品与目录摘要一致。线上发行仍需配置正式 HTTPS 地址。

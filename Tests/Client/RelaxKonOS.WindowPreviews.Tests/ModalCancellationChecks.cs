@@ -60,7 +60,7 @@ internal static class ModalCancellationChecks
         Check(context.ComponentDependencies?.CreateSettingsView(owner) is ComponentDependencySettingsView
             { DataContext: ComponentDependencySettingsViewModel { HasComponents: true } },
             "Docker can display its host-provided component dependency settings.");
-        var model = new DockerManagerViewModel(context.DockerResources, new DockerText(LocalizedText.Get));
+        var model = new DockerManagerViewModel(context.DockerResources, DockerLocalization.ForLanguage(language));
         var result = DockerManagerDialogs.ShowDeployStackAsync(owner, model);
         var draft = manager.Windows.Last();
         model.ComposeYaml = "services: {}";

@@ -93,7 +93,7 @@ if (args.Contains("--docker-inventory-only"))
     }).GetAwaiter().GetResult();
     return;
 }
-if (args is ["--official-roapp-only", var artifact]) { OfficialRoappChecks.Run(artifact); return; }
+if (args is ["--official-roapp-only", var artifact]) { OfficialRoappChecks.Run(artifact, settings, localization); return; }
 if (args is ["--official-store-only", var storeArtifact]) { OfficialStoreChecks.Run(storeArtifact); return; }
 if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
 if (args.Contains("--roapp-catalog-only")) { RoappCatalogChecks.Run(settings); return; }

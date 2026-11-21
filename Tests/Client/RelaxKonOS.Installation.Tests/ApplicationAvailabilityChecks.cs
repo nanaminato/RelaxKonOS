@@ -156,7 +156,7 @@ internal static class ApplicationAvailabilityChecks
         var observationChanges = 0;
         guard.Changed += (_, _) => observationChanges++;
         var manifest = new RelaxKonOS.Client.Apps.ProxyServer.ProxyServerApp().Manifest;
-        var dockerManifest = new RelaxKonOS.Client.Apps.Docker.DockerManagerApp().Manifest;
+        var dockerManifest = new RelaxKonOS.App.Docker.DockerPackageApp().Manifest;
         permission = AppPermissionStatus.Undecided;
         var passiveDenied = await guard.RefreshAsync(manifest);
         Check(passiveDenied?.State == ComponentAvailabilityKind.NoPermission && reads == 0 && permissionPrompts == 0

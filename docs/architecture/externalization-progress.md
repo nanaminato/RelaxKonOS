@@ -27,7 +27,7 @@
 | registry | Registry | 否 / 否 | 是 | Registry API | 基础 | 待验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期已验，真实服务端告警读取待验 |
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
-| docker | Docker | 否 / 否 | 是 | Docker 模块；组件中心管理 Engine | 可选 | 待验 |
+| docker | Docker | 否 / 否 | 是 | Docker 模块；组件中心管理 Engine | 官方可选包 | 已验证 Release 包安装、启动和生命周期；真实主机待验 |
 | processguardian | ProcessGuardian | 否 / 否 | 是 | Guardian API 与独立 Agent | 可选 | 待验 |
 | firewall | Firewall | 否 / 否 | 是 | Firewall 模块与宿主权限边界 | 可选 | 待验 |
 | proxy | Proxy | 否 / 否 | 是 | Proxy 模块；组件中心管理 mihomo | 可选 | 待验 |
@@ -62,12 +62,12 @@
 
 ## 测试证据
 
-- Docker Manager 的状态、资源详情、Compose 回执、引擎控制和账户镜像源使用 SDK，沿用现有 HTTP 路由。读取要求读授权，变更要求管理授权。SDK 在操作前后检查服务器会话，停止或重启引擎还要求用户确认。独立应用包仍待迁移。
-- Docker Manager 主工作区模型已迁入 `Applications/RelaxKonOS.App.Docker`。它通过 SDK 处理容器、资源和 Compose 操作，并从调用方获得文案。组件依赖页留在宿主，由当前应用界面提供。视图和独立入口仍待迁移。
+- Docker Manager 的状态、资源详情、Compose 回执、引擎控制和账户镜像源使用 SDK，沿用现有 HTTP 路由。读取要求读授权，变更要求管理授权。SDK 在操作前后检查服务器会话，停止或重启引擎还要求用户确认。
+- Docker Manager 主工作区模型位于 `Applications/RelaxKonOS.App.Docker`。组件依赖页由宿主 SDK 提供。
 - Docker 账户镜像源页面、模型和三种语言资源已迁入应用项目。页面通过 SDK 读取和保存当前账户的镜像源选择。
 - Docker 概览、容器、镜像、网络、卷、Compose 栈、操作日志和工作区外壳已迁入应用项目。外壳使用共享的窄窗口导航，组件依赖页仍由宿主提供。
 - Docker 对话框已迁入应用项目，由 SDK 创建和确认。Compose 提交期间禁止取消，放弃修改需经当前对话框的子窗口确认。
-- Docker 独立入口使用 SDK 打开窗口、显示组件依赖和跳转文件浏览器，自带中英日界面文案。已用 DevCli 生成本地 `.roapp`，并通过未登录、已登录和组件依赖页的窗口测试。当前内置注册调用同一入口，正式安装链路和内置注册移除仍待完成。
+- Docker 独立入口使用 SDK 打开窗口、显示组件依赖和跳转文件浏览器，自带中英日界面文案。Docker 已从桌面内置注册移除，作为官方商店可选 `.roapp` 随桌面发行物发布，各默认档位均不预装。真实 Docker 主机验收仍待执行。
 - Docker 代理状态页已迁入应用项目，通过 SDK 读取引擎、构建与 Docker Desktop 的代理状态。系统设置负责主机级代理配置的写入和清除。
 
 - 本地 SDK 10.0.300。部署库独立构建通过，零警告、零错误。桌面 Client 构建通过，NuGet 漏洞索引不可达，项目还报告了原有编译警告。
