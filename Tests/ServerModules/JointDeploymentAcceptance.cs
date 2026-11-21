@@ -292,6 +292,7 @@ internal static class JointDeploymentAcceptance
                 await packages.UninstallAsync(activationAppId);
             }
 
+            var proxyDependents = new List<string>();
             foreach (var bundledArchive in bundledModuleArchives)
             {
                 var appId = Path.GetFileNameWithoutExtension(bundledArchive);
@@ -301,6 +302,7 @@ internal static class JointDeploymentAcceptance
                     "relaxkonos.webservers" => [ServerModules.CertificatesId, ServerModules.WebServerId],
                     "relaxkonos.git" => [ServerModules.GitId],
                     "relaxkonos.firewall" => [ServerModules.FirewallId],
+                    "relaxkonos.proxy" or "relaxkonos.proxy-server" or "relaxkonos.squid" => [ServerModules.ProxyId],
                     _ => throw new ArgumentException($"Unrecognized bundled-module test package: {appId}"),
                 };
                 var bundledPath = Path.Combine(official, appId + ".roapp");
@@ -320,7 +322,22 @@ internal static class JointDeploymentAcceptance
                 Require(installedBundled.Id == appId && applications.IsRegistered(new AppId(appId))
                     && ModulePackageOperationStore.Read(serverRoot).Count == operationsBefore,
                     $"{appId} installs through the coordinator without mutating existing modules");
-                await packages.UninstallAsync(appId);
+                if (expectedModules.Contains(ServerModules.ProxyId)) proxyDependents.Add(appId);
+                else await packages.UninstallAsync(appId);
+            }
+
+            var proxyModule = new DeploymentPackageKey(DeploymentPackageKind.ServerModule, ServerModules.ProxyId);
+            if (proxyDependents.Count > 0)
+            {
+                Require(packages.RequiredBy(proxyModule).SequenceEqual(proxyDependents.Order(StringComparer.Ordinal)),
+                    "every installed Proxy application protects the shared server module");
+                foreach (var appId in proxyDependents)
+                {
+                    await packages.UninstallAsync(appId);
+                    var remaining = proxyDependents.SkipWhile(item => item != appId).Skip(1).Order(StringComparer.Ordinal);
+                    Require(packages.RequiredBy(proxyModule).SequenceEqual(remaining),
+                        $"uninstalling {appId} preserves the shared dependency of the remaining applications");
+                }
             }
 
             // Use the original desktop archive as a local prerequisite without a server dependency.
