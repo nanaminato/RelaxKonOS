@@ -176,45 +176,48 @@ internal static class JointDeploymentAcceptance
                 "the resumed deployment verifies the running module, Core and desktop application registration");
             await packages.UninstallAsync(AppIdText);
 
-            var moduleClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
-            var inventory = await moduleClient.ReadAsync();
-            var enabled = inventory.Where(module => module.DesiredEnabled && module.Id != ServerModules.FirewallId)
-                .Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
-            var disable = await moduleClient.PreviewAsync(new(serviceId, ServerModuleAction.Disable,
-                [ServerModules.FirewallId], enabled, inventory[0].DesiredRevision!, "disable-bundled-for-joint-test"));
-            Require(disable.BlockedBy.Count == 0,
-                "the isolated host previews disabling the bundled Firewall module: "
-                + string.Join(", ", disable.BlockedBy.Select(item => $"{item.ProblemCode}/{item.ModuleId}")));
-            var disabled = await moduleClient.ApplyAsync(disable.PlanId);
-            Require(disabled.State == ServerModuleOperationState.AwaitingRestart,
-                $"the isolated host accepts disabling the bundled Firewall module ({disabled.State}/{disabled.ProblemCode})");
-            await host.DisposeAsync();
-            host = await TestHost.StartAsync(serverRoot, config);
-            session.Url = host.Url;
-            joint = Service();
+            foreach (var dependencyId in new[] { ServerModules.FirewallId, ModuleId })
+            {
+                var moduleClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+                var inventory = await moduleClient.ReadAsync();
+                var enabled = inventory.Where(module => module.DesiredEnabled && module.Id != dependencyId)
+                    .Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
+                var disable = await moduleClient.PreviewAsync(new(serviceId, ServerModuleAction.Disable,
+                    [dependencyId], enabled, inventory[0].DesiredRevision!, "disable-for-joint-test-" + dependencyId));
+                Require(disable.BlockedBy.Count == 0,
+                    $"the isolated host previews disabling {dependencyId}: "
+                    + string.Join(", ", disable.BlockedBy.Select(item => $"{item.ProblemCode}/{item.ModuleId}")));
+                var disabled = await moduleClient.ApplyAsync(disable.PlanId);
+                Require(disabled.State == ServerModuleOperationState.AwaitingRestart,
+                    $"the isolated host accepts disabling {dependencyId} ({disabled.State}/{disabled.ProblemCode})");
+                await host.DisposeAsync();
+                host = await TestHost.StartAsync(serverRoot, config);
+                session.Url = host.Url;
+                joint = Service();
 
-            var bundledArchive = Path.Combine(root, "bundled-dependent.roapp");
-            await PrepareDesktopArchiveAsync(archive, bundledArchive, "fixture.bundled",
-                new DeploymentPackageKey(DeploymentPackageKind.ServerModule, ServerModules.FirewallId));
-            var bundledCandidate = await installer.InspectLocalAsync(bundledArchive);
-            var bundledReview = await joint.PrepareAsync(bundledCandidate, [], default);
-            Require(bundledReview.Plan.PreparedSteps.IsEmpty &&
-                bundledReview.Plan.OrderedReleases[0] is { ActivationOnly: true, Satisfied: false },
-                "a disabled bundled module is reviewed as enable-only without a package download");
-            await ExpectRestartAsync(joint, bundledReview);
-            Require(!applications.IsRegistered(new AppId("fixture.bundled"))
-                && ModulePackageOperationStore.Read(serverRoot).Count == 1,
-                "enabling a bundled module leaves the application pending without a package operation");
-            await host.DisposeAsync();
-            host = await TestHost.StartAsync(serverRoot, config);
-            session.Url = host.Url;
-            joint = Service();
-            var bundledPending = await joint.FindPendingAsync(bundledCandidate, default)
-                ?? throw new InvalidOperationException("Missing bundled-module deployment after restart.");
-            var bundledInstalled = await joint.ExecuteAsync(bundledPending, default);
-            Require(bundledInstalled.Id == "fixture.bundled" && applications.IsRegistered(new AppId("fixture.bundled")),
-                "restart activates the bundled dependency and permits desktop application registration");
-            await packages.UninstallAsync("fixture.bundled");
+                var activationArchive = Path.Combine(root, dependencyId + "-dependent.roapp");
+                await PrepareDesktopArchiveAsync(archive, activationArchive, "fixture.bundled",
+                    new DeploymentPackageKey(DeploymentPackageKind.ServerModule, dependencyId));
+                var activationCandidate = await installer.InspectLocalAsync(activationArchive);
+                var activationReview = await joint.PrepareAsync(activationCandidate, [], default);
+                Require(activationReview.Plan.PreparedSteps.IsEmpty &&
+                    activationReview.Plan.OrderedReleases[0] is { ActivationOnly: true, Satisfied: false },
+                    $"{dependencyId} is reviewed as enable-only without a package download");
+                await ExpectRestartAsync(joint, activationReview);
+                Require(!applications.IsRegistered(new AppId("fixture.bundled"))
+                    && ModulePackageOperationStore.Read(serverRoot).Count == 1,
+                    $"enabling {dependencyId} leaves the application pending without a package operation");
+                await host.DisposeAsync();
+                host = await TestHost.StartAsync(serverRoot, config);
+                session.Url = host.Url;
+                joint = Service();
+                var activationPending = await joint.FindPendingAsync(activationCandidate, default)
+                    ?? throw new InvalidOperationException("Missing activation-only deployment after restart.");
+                var activationInstalled = await joint.ExecuteAsync(activationPending, default);
+                Require(activationInstalled.Id == "fixture.bundled" && applications.IsRegistered(new AppId("fixture.bundled")),
+                    "restart activates the installed dependency and permits desktop application registration");
+                await packages.UninstallAsync("fixture.bundled");
+            }
 
             // Use the original desktop archive as a local prerequisite without a server dependency.
             File.Copy(archive, packagePath, overwrite: true);

@@ -44,17 +44,27 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         foreach (var module in modules)
         {
             var package = installed.SingleOrDefault(item => item.ModuleId == module.Id);
-            if (module is { Packaging: "bundled", TrustState: "host", ConfigurationWritable: true,
-                    EffectiveEnabled: false, DesiredEnabled: false, RestartRequired: false, PendingOperationId: null,
-                    RecoveryState: "none", ArtifactDigest: { Length: 64 } digest }
-                && BundledPackageVersion(module.InstalledVersion) is { } bundledVersion)
+            if (module is { ConfigurationWritable: true, EffectiveEnabled: false, DesiredEnabled: false,
+                    RestartRequired: false, PendingOperationId: null, RecoveryState: "none" }
+                && InstalledActivationVersion(module) is { } activationVersion)
             {
-                releases.Add(new(Key(module.Id), bundledVersion, digest, false,
-                    [.. module.Requires.Select(id => new DeploymentRequirement(Key(id)))], Capabilities(module.Capabilities))
+                ServerModuleStoreItemDto? signed = null;
+                if (module.Packaging == "independent" && package is { Active: true, Quarantined: false }
+                    && package.ArtifactSha256 == module.ArtifactDigest && package.Version == module.InstalledVersion)
+                    store.TryGetValue(Identity(package.SourceId, package.ReleaseId, package.ArtifactSha256), out signed);
+
+                if (module.Packaging == "bundled" || signed?.ModuleId == module.Id && signed.Version == activationVersion)
                 {
-                    ActivationOnly = true,
-                    CurrentVersion = bundledVersion,
-                });
+                    var requirements = signed is null
+                        ? module.Requires.Select(id => new DeploymentRequirement(Key(id)))
+                        : signed.Dependencies.Select(ToRequirement);
+                    releases.Add(new(Key(module.Id), activationVersion, module.ArtifactDigest!, false,
+                        [.. requirements], Capabilities(module.Capabilities))
+                    {
+                        ActivationOnly = true,
+                        CurrentVersion = activationVersion,
+                    });
+                }
             }
             var effectiveVersion = EffectivePackageVersion(module);
             if (!module.EffectiveEnabled || module.RecoveryState != "none"
@@ -100,13 +110,14 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
             module.DesiredEnabled, module.EffectiveEnabled, module.RecoveryState, module.RestartRequired,
             module.PendingOperationId
         });
-        var catalog = new
-        {
-            sources.CatalogRevision,
-            Sources = sources.Sources.OrderBy(source => source.SourceId, StringComparer.Ordinal)
-        };
-        return new(modules[0].ServiceId!, Digest(state), Digest(catalog));
+        return new(modules[0].ServiceId!, Digest(state), CatalogRevision(sources));
     }
+
+    internal static string CatalogRevision(ServerModuleStoreSourcePageDto sources) => Digest(new
+    {
+        sources.CatalogRevision,
+        Sources = sources.Sources.OrderBy(source => source.SourceId, StringComparer.Ordinal)
+    });
 
     private static string Digest<T>(T value) =>
         Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value)));
@@ -121,7 +132,21 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         return module.Packaging == "bundled" ? BundledPackageVersion(module.EffectiveVersion) : null;
     }
 
-    internal static string? BundledPackageVersion(string? value) =>
+    internal static string? InstalledActivationVersion(ServerModuleDto module)
+    {
+        if (module.ArtifactDigest is not { Length: 64 } digest || !digest.All(char.IsAsciiHexDigitLower))
+            return null;
+
+        return module switch
+        {
+            { Packaging: "bundled", TrustState: "host" } => BundledPackageVersion(module.InstalledVersion),
+            { Packaging: "independent", TrustState: "installed" } when
+                RuntimeSemanticVersion.TryParse(module.InstalledVersion, out var version) => version.Normalized,
+            _ => null,
+        };
+    }
+
+    private static string? BundledPackageVersion(string? value) =>
         RuntimeSemanticVersion.TryParse(value, out var version) ? version.Normalized
         : Version.TryParse(value, out var assembly) && assembly.Revision == 0 ? assembly.ToString(3) : null;
 

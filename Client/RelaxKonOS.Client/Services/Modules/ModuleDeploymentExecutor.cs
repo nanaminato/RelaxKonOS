@@ -80,15 +80,18 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
     {
         var facts = await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
         var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
-        var version = release.ActivationOnly && module is { Packaging: "bundled", TrustState: "host" }
-            ? ModuleDeploymentCatalog.BundledPackageVersion(module.InstalledVersion)
-            : release.ActivationOnly ? null : module?.InstalledVersion;
-        if (module is null || version != release.Version || module.ArtifactDigest != digest
+        if (module is null || module.ArtifactDigest != digest
             || module.RecoveryState != "none")
+            throw new InvalidOperationException("deployment-module-not-effective");
+        var version = release.ActivationOnly ? ModuleDeploymentCatalog.InstalledActivationVersion(module) : module.InstalledVersion;
+        if (version != release.Version)
             throw new InvalidOperationException("deployment-module-not-effective");
         if (module.PendingOperationId is not null || module.RestartRequired)
             throw new InvalidOperationException("deployment-module-AwaitingRestart");
         if (module.DesiredEnabled) return;
+        if (release.ActivationOnly && module.Packaging == "independent"
+            && ModuleDeploymentCatalog.CatalogRevision(await client.StoreSourcesAsync(cancellationToken)) != plan.Target.CatalogRevision)
+            throw new InvalidOperationException("deployment-snapshot-changed");
 
         var desired = facts.Where(item => item.DesiredEnabled).Select(item => item.Id)
             .Append(module.Id).Order(StringComparer.Ordinal).ToArray();
