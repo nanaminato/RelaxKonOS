@@ -1,8 +1,7 @@
 using Avalonia.Controls;
 using RelaxKonOS.Protocol.Workspace;
-using RoyalTerminal.Terminal;
 
-namespace RelaxKonOS.App.Terminal;
+namespace RelaxKonOS.AppSDK;
 
 /// <summary>
 /// One rendering surface for one terminal session. Desktop currently uses the in-process
@@ -21,10 +20,6 @@ public interface ITerminalSurface : IDisposable
 
     event EventHandler? SelectionChanged;
 
-    Task StartSessionAsync(ITerminalTransportOptions options, CancellationToken cancellationToken);
-
-    void StopSession();
-
     void Focus();
 
     Task CopySelectionAsync();
@@ -41,4 +36,21 @@ public interface ITerminalSurface : IDisposable
 
     /// <summary>Platform hook retained by the host; the Avalonia RoyalTerminal surface is a no-op.</summary>
     void SetNativeVisible(bool visible);
+}
+
+/// <summary>Creates a terminal session using the host's current connection and credentials.</summary>
+public interface IExternalTerminal
+{
+    bool CanOpenAdministratorTerminal { get; }
+    IExternalTerminalSession CreateSession(string vtEngine, string? sessionId, string? workingDirectory, bool isAdministrator);
+}
+
+/// <summary>A terminal view and the lifecycle of its transport.</summary>
+public interface IExternalTerminalSession : IDisposable
+{
+    ITerminalSurface Surface { get; }
+    bool IsRemote { get; }
+    bool HasAuthenticatedServer { get; }
+    string? SessionId { get; }
+    Task StartAsync(CancellationToken cancellationToken);
 }

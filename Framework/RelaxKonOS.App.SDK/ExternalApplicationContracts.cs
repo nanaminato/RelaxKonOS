@@ -48,6 +48,7 @@ public interface IExternalAppContext
     ITerminalSessionDiscovery? TerminalSessions { get; }
     ITerminalDevicePreferences? TerminalDevicePreferences { get; }
     ITerminalWorkspacePreferences? TerminalWorkspacePreferences { get; }
+    IExternalTerminal? Terminal { get; }
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
     IServerDockerImageMirrors DockerImageMirrors { get; }

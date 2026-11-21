@@ -1,16 +1,9 @@
-using RelaxKonOS.App.Terminal;
+using System.Globalization;
 using RelaxKonOS.AppSDK;
-using Microsoft.Extensions.DependencyInjection;
-using RelaxKonOS.Client.Services;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Auth;
-using RelaxKonOS.Client.Services.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Protocol.Workspace;
-using RoyalTerminal.Terminal;
-using RelaxKonOS.Client.Services.ServerCenter;
 
-namespace RelaxKonOS.Client.Apps.Terminal;
+namespace RelaxKonOS.App.Terminal;
 
 /// <summary>
 /// One view-model owns exactly one terminal session; a workspace can host several session tabs.
@@ -30,25 +23,27 @@ public partial class TerminalViewModel : TerminalTabViewModel
         OnPropertyChanged(nameof(Padding));
         if (_preferences is null || Appearance == _preferences.Appearance) return;
         ApplyAppearance(_preferences.Appearance);
-        _surface?.ApplyAppearance(Appearance);
+        Surface?.ApplyAppearance(Appearance);
     }
-    private const int Columns = 80;
-    private const int Rows = 24;
 
-    private readonly IAuthSession? _session;
+    private readonly IExternalTerminal _terminal;
     private readonly string? _initialSessionId;
     private string? _reservedSessionId;
     private readonly string? _initialWorkingDirectory;
-    private readonly TerminalConnectionOptions _connectionOptions;
-    private readonly SshDesktopSession? _sshDesktop;
-    private TerminalSurfaceFactory? _surfaceFactory;
-    private ITerminalSurface? _surface;
+    private IExternalTerminalSession? _connection;
     private bool _attached;
     private long _attachmentGeneration;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText))]
-    private LocalizedStatus _status = LocalizedText.Ref("terminal.status.ready");
+    private string _statusKey = "terminal.status.ready";
+    private object?[] _statusArguments = [];
+
+    private void SetStatus(string key, params object?[] arguments)
+    {
+        _statusKey = key;
+        _statusArguments = arguments;
+        OnPropertyChanged(nameof(StatusText));
+    }
+
     [ObservableProperty] private bool _hasExited;
     public override string DisplayTitle
     {
@@ -57,16 +52,13 @@ public partial class TerminalViewModel : TerminalTabViewModel
             if (!Title.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
                 || !(Title.Contains(":\\", StringComparison.Ordinal) || Title.StartsWith('/'))) return Title;
             var name = Title[(Math.Max(Title.LastIndexOf('\\'), Title.LastIndexOf('/')) + 1)..];
-            return IsAdministrator ? LocalizedText.Format("terminal.administrator_shell", name) : name;
+            return IsAdministrator ? string.Format(CultureInfo.CurrentCulture, Label("terminal.administrator_shell"), name) : name;
         }
     }
     public bool IsAdministrator { get; }
-    public override bool CanOpenAdministratorTerminal => _sshDesktop?.IsConnected != true
-        && _session?.CurrentServer is { Platform: RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
-            Host.Capabilities.PrivilegedOperations: true };
+    public override bool CanOpenAdministratorTerminal => _terminal.CanOpenAdministratorTerminal;
 
-    /// <summary>The engine currently rendering this session. The view hosts <see cref="Surface"/>.</summary>
-    public override ITerminalSurface? Surface => _surface;
+    public override ITerminalSurface? Surface => _connection?.Surface;
 
     /// <summary>Raised after <see cref="Surface"/> was replaced; the view re-hosts the session control.</summary>
     public override event EventHandler? SurfaceChanged;
@@ -77,30 +69,27 @@ public partial class TerminalViewModel : TerminalTabViewModel
     /// and stays available for the next workspace restore — only a deliberate close prompts and
     /// kills it.
     /// </summary>
-    public override bool HasLiveSession => _surface is not null && !HasExited && _session is { State: AuthSessionState.Authenticated };
+    public override bool HasLiveSession => !HasExited && _connection?.HasAuthenticatedServer == true;
 
     public TerminalViewModel(
-        IAuthSession? session,
-        NetworkDiagnosticsService? diagnostics,
-        SshDesktopSession? sshDesktop = null,
+        ISystemLanguage? language,
+        IExternalTerminal terminal,
         string? initialSessionId = null,
         string? initialWorkingDirectory = null,
         bool isAdministrator = false,
         ITerminalWorkspacePreferences? preferences = null,
         ITerminalDevicePreferences? devicePreferences = null)
-        : base(App.Services?.GetService<LocalizationService>(),
+        : base(language,
             devicePreferences?.VtEngine ?? "Auto")
     {
         _devicePreferences = devicePreferences;
         _preferences = preferences;
-        _session = session;
-        _connectionOptions = new(session, sshDesktop, diagnostics);
-        _sshDesktop = sshDesktop;
+        _terminal = terminal;
         _initialSessionId = initialSessionId;
         _reservedSessionId = initialSessionId;
         _initialWorkingDirectory = initialWorkingDirectory;
         IsAdministrator = isAdministrator;
-        Title = LocalizedText.Get(isAdministrator ? "terminal.administrator_title" : "application.relaxkonos.terminal.display_name");
+        Title = Label(isAdministrator ? "terminal.administrator_title" : "terminal.window_title");
     }
 
     /// <summary>Called once when the terminal control is loaded.</summary>
@@ -121,19 +110,16 @@ public partial class TerminalViewModel : TerminalTabViewModel
 
         try
         {
-            var sshDesktop = _sshDesktop ?? App.Services.GetRequiredService<SshDesktopSession>();
-            _surfaceFactory = new TerminalSurfaceFactory(new SshDesktopCredentialProvider(sshDesktop),
-                new RoyalTerminal.Terminal.Transport.Ssh.KnownHostsSshHostKeyValidator());
             CreateSurface();
         }
         catch (Exception ex)
         {
             ReleaseReservation();
             HasExited = true;
-            Status = LocalizedText.Ref("terminal.status.start_failed", ex.Message);
+            SetStatus("terminal.status.start_failed", ex.Message);
             return;
         }
-        await StartSessionAsync(_initialSessionId, generation);
+        await StartSessionAsync(generation);
     }
 
     /// <summary>
@@ -149,79 +135,51 @@ public partial class TerminalViewModel : TerminalTabViewModel
         ++_attachmentGeneration;
         _preferenceObservation?.Dispose();
         _preferenceObservation = null;
-        if (_surface is null) { _surfaceFactory = null; return; }
-
-        var kill = _session is { State: AuthSessionState.Authenticated };
-        ReleaseActiveSession(kill);
-        TeardownSurface();
-        _surfaceFactory = null;
+        if (_connection is not { } connection) return;
+        _connection = null;
+        connection.Surface.ProcessExited -= OnProcessExited;
+        connection.Surface.TitleChanged -= OnTitleChanged;
+        connection.Dispose();
     }
 
-    public override string StatusText => Status.Resolve();
+    public override string StatusText => string.Format(CultureInfo.CurrentCulture, Label(_statusKey), _statusArguments);
 
     private void CreateSurface()
     {
-        if (_surfaceFactory is not { } factory)
-            return;
-
         var engine = _devicePreferences?.VtEngine ?? VtEngine;
-        var surface = factory.Create(Enum.Parse<VtProcessorPreference>(engine));
+        _connection = _terminal.CreateSession(engine, _initialSessionId, _initialWorkingDirectory, IsAdministrator);
+        var surface = _connection.Surface;
         surface.ProcessExited += OnProcessExited;
         surface.TitleChanged += OnTitleChanged;
         surface.ApplyAppearance(Appearance);
         surface.ApplyLabels(SurfaceLabels());
-        _surface = surface;
         SurfaceChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void TeardownSurface()
+    private async Task StartSessionAsync(long generation)
     {
-        if (_surface is not { } surface)
-            return;
-
-        surface.ProcessExited -= OnProcessExited;
-        surface.TitleChanged -= OnTitleChanged;
-        surface.StopSession();
-        surface.Dispose();
-        _surface = null;
-    }
-
-    private async Task StartSessionAsync(string? sessionId, long generation)
-    {
-        if (_surface is not { } surface || _surfaceFactory is not { } factory)
-            return;
-
+        if (_connection is not { } connection) return;
         HasExited = false;
-        var dimensions = new TerminalSessionDimensions(Columns, Rows, WidthPixels: 800, HeightPixels: 480);
         try
         {
-            var (options, remote) = _connectionOptions.Create(dimensions, sessionId, _initialWorkingDirectory, IsAdministrator);
-            Status = LocalizedText.Ref(remote ? "terminal.status.connecting" : "terminal.status.local_fallback");
-            await surface.StartSessionAsync(options, CancellationToken.None);
+            SetStatus(connection.IsRemote ? "terminal.status.connecting" : "terminal.status.local_fallback");
+            await connection.StartAsync(CancellationToken.None);
             if (generation != _attachmentGeneration) return;
-            var id = factory.TransportFactory.CurrentSessionId;
+            var id = connection.SessionId;
             if (id != _reservedSessionId)
             {
                 ReleaseReservation();
                 if (id is not null && TerminalSessionReservations.TryReserve(id)) _reservedSessionId = id;
             }
-            Status = LocalizedText.Ref(IsAdministrator ? "terminal.status.administrator_connected" : "terminal.status.connected");
+            SetStatus(IsAdministrator ? "terminal.status.administrator_connected" : "terminal.status.connected");
         }
         catch (Exception ex)
         {
             if (generation != _attachmentGeneration) return;
             ReleaseReservation();
             HasExited = true;
-            Status = LocalizedText.Ref("terminal.status.start_failed", ex.Message);
+            SetStatus("terminal.status.start_failed", ex.Message);
         }
-    }
-
-    private void ReleaseActiveSession(bool kill)
-    {
-        if (_surfaceFactory is null)
-            return;
-
-        _ = kill ? _surfaceFactory.TransportFactory.KillActiveAsync() : _surfaceFactory.TransportFactory.StopActiveAsync();
     }
 
     private void ReleaseReservation()
@@ -233,7 +191,7 @@ public partial class TerminalViewModel : TerminalTabViewModel
 
     protected override void OnAppearanceEdited(TerminalSettingsDto settings)
     {
-        _surface?.ApplyAppearance(settings);
+        Surface?.ApplyAppearance(settings);
         _ = SaveAppearanceAsync(settings);
     }
 
@@ -247,16 +205,15 @@ public partial class TerminalViewModel : TerminalTabViewModel
     private void OnProcessExited(object? sender, int exitCode)
     {
         HasExited = true;
-        Status = exitCode == 0
-            ? LocalizedText.Ref("terminal.status.process_exited")
-            : LocalizedText.Ref("terminal.status.process_exited_with_code", exitCode);
+        if (exitCode == 0) SetStatus("terminal.status.process_exited");
+        else SetStatus("terminal.status.process_exited_with_code", exitCode);
     }
 
     private void OnTitleChanged(object? sender, string title)
     {
         if (!string.IsNullOrWhiteSpace(title))
         {
-            Title = IsAdministrator ? LocalizedText.Format("terminal.administrator_shell", title) : title;
+            Title = IsAdministrator ? string.Format(CultureInfo.CurrentCulture, Label("terminal.administrator_shell"), title) : title;
         }
     }
 }

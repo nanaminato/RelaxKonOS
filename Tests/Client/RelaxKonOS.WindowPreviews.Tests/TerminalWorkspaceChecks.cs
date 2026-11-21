@@ -15,11 +15,19 @@ using RelaxKonOS.Protocol.Workspace;
 
 internal static class TerminalWorkspaceChecks
 {
+    private static TerminalViewModel CreateModel(string? initialSessionId = null, ITerminalDevicePreferences? devicePreferences = null)
+    {
+        var services = RelaxKonOS.Client.App.Services;
+        var terminal = new ExternalTerminal(null, services.GetRequiredService<RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession>(), null);
+        return new TerminalViewModel(services.GetRequiredService<LocalizationService>(), terminal, initialSessionId,
+            devicePreferences: devicePreferences);
+    }
+
     public static void Run(ShellSettings shellSettings)
     {
         var workspace = new TerminalWorkspaceView();
-        var first = new TerminalViewModel(null, null);
-        var second = new TerminalViewModel(null, null);
+        var first = CreateModel();
+        var second = CreateModel();
         first.Title = @"C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe";
         Check(first.DisplayTitle == "powershell.exe", "Executable paths should have compact labels while preserving their full title.");
         first.Title = "user@host: ~/project";
@@ -70,7 +78,7 @@ internal static class TerminalWorkspaceChecks
         Dispatcher.UIThread.RunJobs();
         for (var index = 0; index < 6; index++)
         {
-            var model = new TerminalViewModel(null, null);
+            var model = CreateModel();
             crowded.AddTab(model, new TerminalView { DataContext = model });
         }
         Dispatcher.UIThread.RunJobs();
@@ -116,7 +124,7 @@ internal static class TerminalWorkspaceChecks
         TerminalWorkspace.Open(context, "T", (sessionId, directory, _) =>
         {
             sessions.Add((sessionId, directory));
-            return new TerminalViewModel(null, null, initialSessionId: sessionId);
+            return CreateModel(initialSessionId: sessionId);
         }, () => Task.CompletedTask, _ => { }, "restored", "/workspace", false);
 
         var window = windows.Windows.Single();
@@ -167,13 +175,22 @@ internal static class TerminalWorkspaceChecks
         var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "terminal-memory.json"));
         using var preferences = new ClientPresentationPreferences(null!, auth, new PresentationSettingsChanges());
         var client = new TerminalSettingsProbe();
-        var sdk = new ExternalTerminalWorkspacePreferences(new ExternalServerConnection(memory.Capture(auth)), preferences, client);
+        var connection = new ExternalServerConnection(memory.Capture(auth));
+        var sdk = new ExternalTerminalWorkspacePreferences(connection, preferences, client);
+        var ssh = new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, new ShellSettings(null!));
+        var terminal = new ExternalTerminal(connection, ssh, null);
         var appearance = TerminalSettingsDto.Default with { FontSize = 18 };
         sdk.SaveAsync(appearance).GetAwaiter().GetResult();
         Check(client.Saved == appearance && client.Writes == 1, "Terminal appearance writes through the scoped SDK");
         ((EventAlertsAuthFixture)(object)auth).ServiceId = "https://replacement.invalid";
         sdk.SaveAsync(appearance with { FontSize = 20 }).GetAwaiter().GetResult();
         Check(client.Writes == 1, "A stale Terminal SDK cannot save settings to a replacement server");
+        try
+        {
+            using var stale = terminal.CreateSession("Managed", null, null, false);
+            throw new Exception("A stale Terminal SDK created a session.");
+        }
+        catch (InvalidOperationException error) when (error.Message == "The terminal connection is no longer current.") { }
     }
 
     private sealed class TerminalSettingsProbe : ITerminalSettingsClient
@@ -303,7 +320,7 @@ internal static class TerminalWorkspaceChecks
 
         // The desktop does not consume the request: it renders RoyalTerminal either way and rewrites
         // the stored token on the next appearance change, so a legacy document migrates by itself.
-        var migrated = new TerminalViewModel(null, null);
+        var migrated = CreateModel();
         migrated.Appearance = TerminalSettingsDto.Default with { Backend = TerminalBackends.XtermJs };
         migrated.FontSize = TerminalSettingsDto.Default.FontSize + 1;
         Check(migrated.Appearance.Backend == TerminalBackends.BuiltIn,
@@ -325,7 +342,7 @@ internal static class TerminalWorkspaceChecks
                 $"The terminal view-model must not expose the retired '{member}' engine member");
         }
 
-        var settings = new TerminalSettingsView { DataContext = new TerminalViewModel(null, null) };
+        var settings = new TerminalSettingsView { DataContext = CreateModel() };
         var host = new Window { Width = 460, Height = 420, Content = settings };
         host.Show();
         Dispatcher.UIThread.RunJobs();
@@ -356,12 +373,12 @@ internal static class TerminalWorkspaceChecks
         try
         {
             var preferences = new RelaxKonOS.Client.Services.DesktopDevicePreferences(path);
-            var model = new TerminalViewModel(null, null, devicePreferences: new ExternalTerminalDevicePreferences(preferences));
+            var model = CreateModel(devicePreferences: new ExternalTerminalDevicePreferences(preferences));
             Check(model.VtEngines.SequenceEqual(new[] { "Auto", "Managed", "Native" }), "All VT modes are selectable");
             model.VtEngine = "Native";
             var reloaded = new RelaxKonOS.Client.Services.DesktopDevicePreferences(path);
             Check(reloaded.Value.TerminalVtEngine == "Native", "VT preference survives device settings reload");
-            Check(new TerminalViewModel(null, null, devicePreferences: new ExternalTerminalDevicePreferences(reloaded)).VtEngine == "Native",
+            Check(CreateModel(devicePreferences: new ExternalTerminalDevicePreferences(reloaded)).VtEngine == "Native",
                 "New terminal reads the saved VT preference");
         }
         finally { File.Delete(path); }

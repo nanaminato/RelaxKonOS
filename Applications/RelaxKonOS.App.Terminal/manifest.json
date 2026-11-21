@@ -1,0 +1,27 @@
+{
+  "id": "relaxkonos.terminal",
+  "displayName": "Terminal",
+  "description": "Open terminal sessions in RelaxKonOS",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.Terminal.dll",
+  "entryType": "RelaxKonOS.App.Terminal.TerminalPackageApp",
+  "iconGlyph": "🖥",
+  "iconPath": "Assets/terminal.png",
+  "requestedPermissions": [],
+  "serverRequirements": {
+    "capabilities": [
+      "server.terminal"
+    ]
+  },
+  "localizedMetadata": {
+    "zh-CN": {
+      "displayName": "终端",
+      "description": "打开 RelaxKonOS 终端会话"
+    },
+    "ja-JP": {
+      "displayName": "ターミナル",
+      "description": "RelaxKonOS のターミナルセッションを開きます"
+    }
+  }
+}

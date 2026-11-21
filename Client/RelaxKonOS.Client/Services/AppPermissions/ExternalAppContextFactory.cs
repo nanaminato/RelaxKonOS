@@ -149,6 +149,8 @@ public sealed class ExternalAppContextFactory
         appId.Value == "relaxkonos.terminal" && sshEndpoint is null && connection.IsCurrent
             && _presentationPreferences is not null && _terminalSettings is not null
             ? new ExternalTerminalWorkspacePreferences(connection, _presentationPreferences, _terminalSettings) : null,
+        appId.Value == "relaxkonos.terminal"
+            ? new ExternalTerminal(connection.IsCurrent ? connection : null, _sshSession, _diagnostics) : null,
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -184,6 +186,7 @@ public sealed class ExternalAppContextFactory
         ITerminalSessionDiscovery? TerminalSessions,
         ITerminalDevicePreferences? TerminalDevicePreferences,
         ITerminalWorkspacePreferences? TerminalWorkspacePreferences,
+        IExternalTerminal? Terminal,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,

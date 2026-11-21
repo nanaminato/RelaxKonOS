@@ -1,4 +1,5 @@
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RoyalTerminal.Terminal;
@@ -6,7 +7,7 @@ using RoyalTerminal.Terminal;
 namespace RelaxKonOS.Client.Apps.Terminal;
 
 /// <summary>Builds transport options from the active desktop session.</summary>
-internal sealed class TerminalConnectionOptions(IAuthSession? session, SshDesktopSession? sshDesktop,
+internal sealed class TerminalConnectionOptions(ExternalServerConnection? connection, SshDesktopSession? sshDesktop,
     NetworkDiagnosticsService? diagnostics)
 {
     public (ITerminalTransportOptions Options, bool Remote) Create(
@@ -27,13 +28,18 @@ internal sealed class TerminalConnectionOptions(IAuthSession? session, SshDeskto
                 Dimensions: dimensions)
             { ExpectedHostKeyFingerprintSha256 = fingerprint }, true);
         }
-        if (session is { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } })
+        if (connection is { IsCurrent: true } && connection.Session is
+            { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url })
         {
             return (new SignalRTransportOptions(
                 hubUrl: url.TrimEnd('/') + "/hubs/terminals",
                 dimensions: dimensions,
-                tokenProvider: () => session?.GetAccessTokenAsync(TimeSpan.FromMinutes(1)) ?? Task.FromResult<string?>(null),
-                accessToken: session.Tokens.AccessToken,
+                tokenProvider: async () =>
+                {
+                    if (!connection.IsCurrent) return null;
+                    var token = await connection.Session.GetAccessTokenAsync(TimeSpan.FromMinutes(1));
+                    return connection.IsCurrent ? token : null;
+                },
                 sessionId: sessionId,
                 workingDirectory: workingDirectory,
                 diagnostics: diagnostics,

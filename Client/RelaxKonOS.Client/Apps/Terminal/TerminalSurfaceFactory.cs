@@ -26,6 +26,6 @@ public sealed class TerminalSurfaceFactory
 
     public SignalRTransportFactory TransportFactory { get; }
 
-    public ITerminalSurface Create(VtProcessorPreference vtEngine) =>
+    public BuiltInTerminalSurface Create(VtProcessorPreference vtEngine) =>
         new BuiltInTerminalSurface(TransportFactory, _credentials, _hostKeys, vtEngine);
 }
