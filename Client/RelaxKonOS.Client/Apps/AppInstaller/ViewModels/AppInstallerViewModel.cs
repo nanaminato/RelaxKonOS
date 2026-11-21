@@ -109,8 +109,9 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         try
         {
             var candidate = CurrentPackage;
-            if (CurrentPackage.Manifest.Dependencies is { } dependencies && JointDeployment is { } joint)
+            if (candidate.Manifest.Dependencies is { } dependencies)
             {
+                var joint = JointDeployment ?? throw new InvalidOperationException("deployment-coordinator-unavailable");
                 if (_jointReview is null)
                 {
                     var pending = await joint.FindPendingAsync(candidate, _storeLifetime.Token);
@@ -126,12 +127,9 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
                     var selected = optional.Count == 0 ? optional
                         : SelectOptionalAsync is { } select ? await select(optional) : null;
                     if (selected is null || ConfirmDeploymentAsync is null) return;
-                    if (selected.Count > 0 || dependencies.Required is { Count: > 0 })
-                    {
-                        var review = await joint.PrepareAsync(candidate, selected, _storeLifetime.Token);
-                        if (!await ConfirmDeploymentAsync(review.Plan)) return;
-                        _jointReview = review;
-                    }
+                    var review = await joint.PrepareAsync(candidate, selected, _storeLifetime.Token);
+                    if (!await ConfirmDeploymentAsync(review.Plan)) return;
+                    _jointReview = review;
                 }
             }
             var installed = _jointReview is { } confirmed && JointDeployment is { } deployment

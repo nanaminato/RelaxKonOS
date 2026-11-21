@@ -14,6 +14,7 @@ using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Apps.AppInstaller.ViewModels;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
@@ -62,8 +63,52 @@ internal static class OfficialRoappChecks
         {
             var (packages, applications, windows) = CreateRuntime();
             var installer = new AppPackageInstallerService(packages, null!, catalog);
-            File.Copy(artifact, path);
-            File.Copy(artifact + ".sha256", path + ".sha256");
+            if (applicationId == "relaxkonos.welcome")
+            {
+                var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+                ((EventAlertsAuthFixture)(object)auth).State = AuthSessionState.Unauthenticated;
+                await PublishCandidateAsync(manifest => manifest["dependencies"] = new JsonObject
+                {
+                    ["optional"] = new JsonArray(new JsonObject
+                    {
+                        ["package"] = new JsonObject
+                        {
+                            ["kind"] = (int)DeploymentPackageKind.ServerModule,
+                            ["id"] = "fixture.optional",
+                        },
+                    }),
+                });
+                using var review = new AppInstallerViewModel(installer)
+                {
+                    JointDeployment = new(null!, auth, installer, packages, applications, journal),
+                    SelectOptionalAsync = optional =>
+                    {
+                        Check(optional.Count == 1 && optional[0].Package.Id == "fixture.optional", "The optional module is offered.");
+                        return Task.FromResult<IReadOnlyList<DeploymentRequirement>?>([]);
+                    },
+                    CurrentPackage = await installer.InspectLocalAsync(path),
+                };
+                var approved = false;
+                var confirmations = 0;
+                review.ConfirmDeploymentAsync = plan =>
+                {
+                    confirmations++;
+                    Check(plan.OrderedReleases.Length == 1 && plan.OrderedReleases[0].Package.Id == applicationId,
+                        "Unchecking the optional module leaves a local application-only plan.");
+                    return Task.FromResult(approved);
+                };
+                await review.InstallCommand.ExecuteAsync(null);
+                Check(confirmations == 1 && packages.FindInstalled(applicationId) is null,
+                    "Rejecting the local plan must leave the app uninstalled.");
+                approved = true;
+                await review.InstallCommand.ExecuteAsync(null);
+                var result = packages.FindInstalled(applicationId);
+                Check(confirmations == 2 && result is not null && File.Exists(Path.Combine(result.InstallationPath, "deployment-receipt.json")),
+                    "Approving the local plan must install the app through the coordinator.");
+                await packages.UninstallAsync(applicationId);
+            }
+            File.Copy(artifact, path, overwrite: true);
+            File.Copy(artifact + ".sha256", path + ".sha256", overwrite: true);
             await RejectAsync(() => installer.InspectLocalAsync(artifact), "Package outside the configured source");
             await using (var unsigned = File.OpenRead(artifact))
                 await RejectAsync(() => packages.InstallAsync(unsigned, launch: false), "Reserved ID via the generic install path");
