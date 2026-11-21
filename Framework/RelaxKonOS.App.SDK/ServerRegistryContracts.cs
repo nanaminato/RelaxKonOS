@@ -2,6 +2,18 @@ using RelaxKonOS.Protocol.Registry;
 
 namespace RelaxKonOS.AppSDK;
 
+/// <summary>Device-local presentation settings for the Registry workspace.</summary>
+public interface IRegistryAppearancePreferences
+{
+    RegistryAppearanceSettings Registry { get; }
+    event EventHandler? Changed;
+    void Activate();
+    void Deactivate();
+    Task EnsureLoadedAsync();
+    Task RefreshAsync();
+    Task SaveSidebarWidthAsync(int width);
+}
+
 /// <summary>Permission-gated registry access scoped to the captured server connection.</summary>
 public interface IServerRegistry
 {

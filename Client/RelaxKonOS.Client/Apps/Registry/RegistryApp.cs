@@ -30,7 +30,7 @@ public sealed class RegistryApp : RemoteApplicationBase
         var client = sdk.Registry;
         var view = new RegistryView();
         var window = sdk.Windows.ShowWindow(LocalizedText.Get("application.relaxkonos.registry.display_name", "Registry"), view, new Rect(80, 60, 1120, 700), Manifest.IconGlyph);
-        var viewModel = new RegistryViewModel(client, context.Services.GetService<RelaxKonOS.Client.Services.ClientPresentationPreferences>(),
+        var viewModel = new RegistryViewModel(client, sdk.RegistryAppearance,
             sdk.Permissions, window.Closed);
         view.DataContext = viewModel;
         viewModel.ShowEditDialogAsync = async row =>

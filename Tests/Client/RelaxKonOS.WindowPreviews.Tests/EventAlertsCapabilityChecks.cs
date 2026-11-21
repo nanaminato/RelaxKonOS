@@ -11,6 +11,7 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.EventAlerts;
 using RelaxKonOS.Protocol.Identity;
+using RelaxKonOS.Protocol.Workspace;
 
 internal static class EventAlertsCapabilityChecks
 {
@@ -110,6 +111,7 @@ public class EventAlertsAuthFixture : NotepadAuthFixture
 {
     internal string ServiceId { get; set; } = "http://fixture.invalid";
     internal AuthSessionState State { get; set; } = AuthSessionState.Authenticated;
+    internal DeviceDto? Device { get; set; }
     private EventHandler<AuthSessionStateChangedEventArgs>? _changed;
 
     internal void NotifyStateChanged() => _changed?.Invoke(this, new AuthSessionStateChangedEventArgs(State));
@@ -123,6 +125,7 @@ public class EventAlertsAuthFixture : NotepadAuthFixture
             case "get_ServiceId" or "get_EffectiveBaseUrl": return ServiceId;
             case "get_State": return State;
             case "get_CurrentUser": return User;
+            case "get_CurrentDevice": return Device;
             default: return base.Invoke(method, args);
         }
     }

@@ -23,7 +23,7 @@ public sealed class PresentationSettingsChanges
 }
 
 /// <summary>Current authenticated client's presentation settings. Device geometry never follows another device.</summary>
-public sealed class ClientPresentationPreferences : IDisposable
+public sealed class ClientPresentationPreferences : IDisposable, IRegistryAppearancePreferences
 {
     private readonly IServerRegistry _client;
     private readonly IAuthSession _session;

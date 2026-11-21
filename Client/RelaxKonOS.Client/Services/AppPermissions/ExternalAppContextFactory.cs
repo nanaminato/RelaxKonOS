@@ -54,6 +54,7 @@ public sealed class ExternalAppContextFactory
     private readonly IComponentLifecycleClient? _componentLifecycle;
     private readonly IHostElevationBroker? _elevationBroker;
     private readonly IServerRegistry? _registry;
+    private readonly ClientPresentationPreferences? _presentationPreferences;
 
     public ExternalAppContextFactory(
         IAppPermissionManager permissions,
@@ -79,7 +80,8 @@ public sealed class ExternalAppContextFactory
         DockerImageMirrorClient dockerMirrors,
         IComponentLifecycleClient? componentLifecycle = null,
         IHostElevationBroker? elevationBroker = null,
-        IServerRegistry? registry = null)
+        IServerRegistry? registry = null,
+        ClientPresentationPreferences? presentationPreferences = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -105,6 +107,7 @@ public sealed class ExternalAppContextFactory
         _componentLifecycle = componentLifecycle;
         _elevationBroker = elevationBroker;
         _registry = registry;
+        _presentationPreferences = presentationPreferences;
     }
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
@@ -124,6 +127,8 @@ public sealed class ExternalAppContextFactory
         new ServerMonitorCapability(appId, _permissions, connection, _systemMonitor),
         new ServerProcessesCapability(appId, _permissions, connection, _systemMonitor, _elevationBroker),
         new ServerRegistryCapability(appId, _permissions, connection, _registry),
+        appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
+            ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -154,6 +159,7 @@ public sealed class ExternalAppContextFactory
         IServerMonitor ServerMonitor,
         IServerProcesses ServerProcesses,
         IServerRegistry Registry,
+        IRegistryAppearancePreferences? RegistryAppearance,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,

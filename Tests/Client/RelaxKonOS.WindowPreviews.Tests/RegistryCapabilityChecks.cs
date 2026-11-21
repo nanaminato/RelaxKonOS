@@ -6,6 +6,7 @@ using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Registry;
+using RelaxKonOS.Protocol.Workspace;
 
 internal static class RegistryCapabilityChecks
 {
@@ -13,12 +14,22 @@ internal static class RegistryCapabilityChecks
     {
         var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
         var session = (EventAlertsAuthFixture)(object)auth;
+        session.Device = new DeviceDto(Guid.NewGuid(), "fixture", "windows", "test", null);
         var client = DispatchProxy.Create<IServerRegistry, RegistryCapabilityTransport>();
         var transport = (RegistryCapabilityTransport)(object)client;
         var permissions = new Permission();
         var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "registry-capability-memory.json"));
+        var connection = new ExternalServerConnection(memory.Capture(auth));
         IServerRegistry registry = new ServerRegistryCapability(new AppId("relaxkonos.registry"), permissions,
-            new ExternalServerConnection(memory.Capture(auth)), client);
+            connection, client);
+        using var preferences = new ClientPresentationPreferences(client, auth, new PresentationSettingsChanges());
+        IRegistryAppearancePreferences appearance = new ExternalRegistryAppearance(preferences, connection);
+        var originalDevice = session.Device;
+        session.Device = new DeviceDto(Guid.NewGuid(), "replacement", "windows", "test", null);
+        await RejectAsync<InvalidOperationException>(() => appearance.SaveSidebarWidthAsync(320));
+        Check(appearance.Registry == RegistryAppearanceSettings.Default && transport.Requests == 0,
+            "The old Registry appearance context must not read or write settings for another device.");
+        session.Device = originalDevice;
         var target = Guid.NewGuid();
         var scoped = registry.ForUser(target);
         var request = new CreateRegistryKeyRequest(RegistryScope.User, "fixture");

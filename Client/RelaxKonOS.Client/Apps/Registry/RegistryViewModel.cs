@@ -12,7 +12,7 @@ namespace RelaxKonOS.Client.Apps.Registry;
 
 /// <summary>Windows-style, on-demand registry browser. Values are fetched only for the selected key.</summary>
 public sealed partial class RegistryViewModel(IServerRegistry client,
-    RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null,
+    IRegistryAppearancePreferences? preferences = null,
     IAppPermissionScope? permissions = null, CancellationToken windowClosed = default) : LocalizedObservableObject
 {
     public RegistryAppearanceSettings Appearance => preferences?.Registry ?? RegistryAppearanceSettings.Default;
