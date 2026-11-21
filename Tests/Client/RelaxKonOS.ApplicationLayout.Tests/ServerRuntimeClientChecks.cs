@@ -23,6 +23,7 @@ internal static class ServerRuntimeClientChecks
         state.Values["CurrentUser"] = new UserDto(actor, "administrator", HostPlatformKind.Windows, "administrator", DateTimeOffset.UtcNow, null);
         state.Values["Tokens"] = new AuthTokens("test-token", "test-refresh", DateTimeOffset.UtcNow.AddHours(1), DateTimeOffset.UtcNow.AddHours(2));
         state.Values["EffectiveBaseUrl"] = "https://runtime.test";
+        state.Values["ServiceId"] = "https://runtime.test";
         using var handler = new Handler(instance);
         using var http = new HttpClient(handler);
         var client = new ServerRuntimeRegistryClient(http, session, new Grant(), instance);

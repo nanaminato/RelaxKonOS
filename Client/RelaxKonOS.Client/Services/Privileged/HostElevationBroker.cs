@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.WindowManager;
@@ -37,37 +38,41 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
     public async Task<T> ExecuteAsync<T>(HostElevationCapability capability, string target, Func<Task<T>> operation,
         CancellationToken cancellationToken = default)
     {
+        var connection = new ExternalServerConnection(memory.Capture(session));
         try { return await operation(); }
         catch (Exception exception) when (IsGrantRequired(exception))
         {
-            if (!await EnsureGrantAsync(capability, target, cancellationToken)) throw;
+            if (!connection.IsCurrent || !await EnsureGrantAsync(connection, capability, target, cancellationToken)
+                || !connection.IsCurrent) throw;
             return await operation();
         }
     }
 
     public async Task<bool> RequestGrantAsync(HostElevationCapability capability, string target,
         CancellationToken cancellationToken = default)
-        => await EnsureGrantAsync(capability, target, cancellationToken);
+        => await EnsureGrantAsync(new ExternalServerConnection(memory.Capture(session)), capability, target, cancellationToken);
 
-    private async Task<bool> EnsureGrantAsync(HostElevationCapability capability, string target, CancellationToken cancellationToken)
+    private async Task<bool> EnsureGrantAsync(ExternalServerConnection connection, HostElevationCapability capability, string target, CancellationToken cancellationToken)
     {
-        try { return (await GrantAsync(capability, target, null, null, cancellationToken)).Elevated; }
+        try { return (await GrantAsync(connection, capability, target, null, null, cancellationToken)).Elevated && connection.IsCurrent; }
         catch (RelaxKonOSAuthException exception) when (HasProblem(exception, "elevation-password-required"))
         {
-            return await RequestPasswordAsync((account, password) => GrantAsync(capability, target, password, account, cancellationToken));
+            if (!connection.IsCurrent) return false;
+            return await RequestPasswordAsync((account, password) => GrantAsync(connection, capability, target, password, account, cancellationToken))
+                && connection.IsCurrent;
         }
     }
 
-    private async Task<HostElevationResult> GrantAsync(HostElevationCapability capability, string target, string? password,
+    private async Task<HostElevationResult> GrantAsync(ExternalServerConnection connection, HostElevationCapability capability, string target, string? password,
         string? administratorUsername,
         CancellationToken cancellationToken)
     {
-        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null)
+        if (!connection.IsCurrent || session.EffectiveBaseUrl is not { } baseUrl)
             throw new RelaxKonOSAuthException(new ProblemDetails("https://relaxkonos.app/problems/elevation-session-unavailable", "Elevation", 401, null, null));
         var token = await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: cancellationToken);
-        if (string.IsNullOrWhiteSpace(token))
+        if (!connection.IsCurrent || session.EffectiveBaseUrl != baseUrl || string.IsNullOrWhiteSpace(token))
             throw new RelaxKonOSAuthException(new ProblemDetails("https://relaxkonos.app/problems/elevation-session-unavailable", "Elevation", 401, null, null));
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.EffectiveBaseUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(baseUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
         {
             Content = JsonContent.Create(new HostElevationRequest(capability, target, password, administratorUsername), options: RelaxKonOSJsonOptions.Default),
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", token) },

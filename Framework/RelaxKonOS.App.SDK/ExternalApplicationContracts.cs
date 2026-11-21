@@ -40,6 +40,7 @@ public interface IExternalAppContext
     IDesktopAppearance DesktopAppearance { get; }
     IServerMonitor ServerMonitor { get; }
     IServerProcesses ServerProcesses { get; }
+    IServerRegistry Registry { get; }
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
     IServerDockerImageMirrors DockerImageMirrors { get; }

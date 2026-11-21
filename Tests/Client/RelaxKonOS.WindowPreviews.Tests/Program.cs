@@ -84,6 +84,11 @@ if (args.Contains("--image-viewer-only")) { ImageViewerWorkspaceChecks.Run(setti
 if (args.Contains("--welcome-only")) { WelcomeWorkspaceChecks.Run(settings, localization, services); return; }
 if (args.Contains("--notepad-only")) { NotepadWorkspaceChecks.Run(settings, localization); EditorDraftStateChecks.Run(); return; }
 if (args.Contains("--event-alerts-capability-only")) { Task.Run(() => EventAlertsCapabilityChecks.RunAsync(settings, localization)).GetAwaiter().GetResult(); return; }
+if (args.Contains("--registry-capability-only"))
+{
+    Task.Run(RegistryCapabilityChecks.RunAsync).GetAwaiter().GetResult();
+    return;
+}
 if (args.Contains("--server-monitor-only"))
 {
     Task.Run(ServerMonitorCapabilityChecks.RunAsync).GetAwaiter().GetResult();

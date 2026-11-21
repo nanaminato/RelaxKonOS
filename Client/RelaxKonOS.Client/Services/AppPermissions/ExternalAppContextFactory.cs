@@ -3,6 +3,7 @@ using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.Docker;
+using RelaxKonOS.Client.Apps.Registry;
 using RelaxKonOS.Client.Services.AppSettings;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Apps.Explorer;
@@ -52,6 +53,7 @@ public sealed class ExternalAppContextFactory
     private readonly TextEditorEncodingSettings _textEncoding;
     private readonly IComponentLifecycleClient? _componentLifecycle;
     private readonly IHostElevationBroker? _elevationBroker;
+    private readonly IRegistryClient? _registry;
 
     public ExternalAppContextFactory(
         IAppPermissionManager permissions,
@@ -76,7 +78,8 @@ public sealed class ExternalAppContextFactory
         IRemoteDockerClient docker,
         DockerImageMirrorClient dockerMirrors,
         IComponentLifecycleClient? componentLifecycle = null,
-        IHostElevationBroker? elevationBroker = null)
+        IHostElevationBroker? elevationBroker = null,
+        IRegistryClient? registry = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -101,6 +104,7 @@ public sealed class ExternalAppContextFactory
         _textEncoding = textEncoding;
         _componentLifecycle = componentLifecycle;
         _elevationBroker = elevationBroker;
+        _registry = registry;
     }
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
@@ -119,6 +123,7 @@ public sealed class ExternalAppContextFactory
         new DesktopAppearanceCapability(appId, _permissions, _settings, _settingsClient, _session, _defaultApps),
         new ServerMonitorCapability(appId, _permissions, connection, _systemMonitor),
         new ServerProcessesCapability(appId, _permissions, connection, _systemMonitor, _elevationBroker),
+        new ServerRegistryCapability(appId, _permissions, connection, _registry),
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -148,6 +153,7 @@ public sealed class ExternalAppContextFactory
         IDesktopAppearance DesktopAppearance,
         IServerMonitor ServerMonitor,
         IServerProcesses ServerProcesses,
+        IServerRegistry Registry,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,
