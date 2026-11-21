@@ -1,0 +1,21 @@
+{
+  "id": "relaxkonos.firewall",
+  "displayName": "Firewall",
+  "description": "Manage host firewall policies and rules",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.Firewall.dll",
+  "entryType": "RelaxKonOS.App.Firewall.FirewallPackageApp",
+  "iconGlyph": "🧱",
+  "iconPath": "Assets/firewall.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": ["server.firewall.read", "server.firewall.manage"],
+  "serverRequirements": {
+    "platforms": ["linux", "windows"],
+    "capabilities": ["server.firewall"]
+  },
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "防火墙", "description": "管理主机防火墙策略和规则" },
+    "ja-JP": { "displayName": "ファイアウォール", "description": "ホストのファイアウォール ポリシーとルールを管理します" }
+  }
+}

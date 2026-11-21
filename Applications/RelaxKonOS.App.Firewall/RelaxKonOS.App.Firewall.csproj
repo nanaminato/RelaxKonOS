@@ -10,5 +10,6 @@
         <PackageReference Include="Avalonia.Controls.DataGrid" />
         <AvaloniaResource Include="Assets/firewall.png" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="Firewall.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Package/*.json" LogicalName="Firewall.PackageLocalization.%(Filename).json" />
     </ItemGroup>
 </Project>
