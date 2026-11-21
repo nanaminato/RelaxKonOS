@@ -1,6 +1,7 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "port_forwarding.permission.required": "请允许本地 SSH 转发后再打开工作区。",
     "port_forwarding.title": "端口转发",
     "port_forwarding.description": "从此设备到 RelaxKonOS Server 上 localhost 服务创建仅限 loopback 的 SSH 隧道。活动隧道与 SSH 设置不会同步。",
     "port_forwarding.ssh_connection": "SSH 连接（仅此设备）",

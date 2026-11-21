@@ -1,6 +1,7 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "port_forwarding.permission.required": "ワークスペースを開くには、ローカル SSH 転送を許可してください。",
     "port_forwarding.title": "ポート フォワーディング",
     "port_forwarding.description": "このデバイスから RelaxKonOS Server 上の localhost サービスへ、loopback 専用の SSH トンネルを作成します。アクティブなトンネルと SSH 設定は同期されません。",
     "port_forwarding.ssh_connection": "SSH 接続（このデバイスのみ）",

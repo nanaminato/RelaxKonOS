@@ -27,6 +27,8 @@
         "permission.server.network.configure.description": "更改服务器的 IP 地址、路由、DNS 和其他网络配置。此权限不授予其他无关的管理能力。",
         "permission.server.power.manage.display_name": "执行服务器电源操作",
         "permission.server.power.manage.description": "请求执行重启或关机等高影响的服务器操作。",
+        "permission.desktop.port-forwarding.manage.display_name": "管理本地 SSH 转发",
+        "permission.desktop.port-forwarding.manage.description": "读取连接偏好并管理到远程环回服务的本地转发。",
         "permission.desktop.wallpaper.write.display_name": "更改桌面壁纸",
         "permission.desktop.wallpaper.write.description": "允许此应用程序通过 RelaxKonOS 更改当前工作区的壁纸。",
         "permission.server.metrics.read.display_name": "读取服务器性能指标",

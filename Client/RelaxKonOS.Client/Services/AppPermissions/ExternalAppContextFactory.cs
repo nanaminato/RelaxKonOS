@@ -64,6 +64,7 @@ public sealed class ExternalAppContextFactory
     private readonly IServerFileServices? _fileServices;
     private readonly IServerFirewall? _firewall;
     private readonly IServerGuardian? _guardian;
+    private readonly IPortForwardingService? _portForwarding;
     private readonly ClientPresentationPreferences? _presentationPreferences;
     private readonly IBrowserData? _browserData;
     private readonly DesktopDevicePreferences? _devicePreferences;
@@ -105,7 +106,8 @@ public sealed class ExternalAppContextFactory
         IServerGit? git = null,
         IServerFileServices? fileServices = null,
         IServerFirewall? firewall = null,
-        IServerGuardian? guardian = null)
+        IServerGuardian? guardian = null,
+        IPortForwardingService? portForwarding = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -137,6 +139,7 @@ public sealed class ExternalAppContextFactory
         _fileServices = fileServices;
         _firewall = firewall;
         _guardian = guardian;
+        _portForwarding = portForwarding;
         _presentationPreferences = presentationPreferences;
         _browserData = browserData;
         _diagnostics = diagnostics;
@@ -168,6 +171,9 @@ public sealed class ExternalAppContextFactory
         new ServerFirewallCapability(appId, _permissions, connection, _firewall, lifetime),
         new ServerGuardianCapability(appId, _permissions, connection, _guardian, lifetime),
         appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime, _guardian as ProcessGuardianClient) : null,
+        appId.Value == "relaxkonos.port-forwarding" && _portForwarding is { } forwarding
+            && manifest.Permissions.Contains(CoreAppPermissions.DesktopPortForwardingManage)
+            ? new PortForwardingCapability(appId, _permissions, forwarding, lifetime) : null,
         appId.Value == "relaxkonos.file-services" ? new FileServicesAdministratorPrompt(appId, _permissions, connection, fileSession, _windowManager) : null,
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
@@ -218,6 +224,7 @@ public sealed class ExternalAppContextFactory
         IServerFirewall Firewall,
         IServerGuardian Guardian,
         IGuardianHostInteraction? GuardianHost,
+        IPortForwardingService? PortForwarding,
         IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt,
         IRegistryAppearancePreferences? RegistryAppearance,
         IBrowserData? BrowserData,

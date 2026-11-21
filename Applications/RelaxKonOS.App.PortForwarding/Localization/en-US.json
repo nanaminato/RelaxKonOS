@@ -1,6 +1,7 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "port_forwarding.permission.required": "Allow local SSH forwarding to open this workspace.",
     "port_forwarding.title": "Port Forwarding",
     "port_forwarding.description": "Create loopback-only SSH tunnels from this device to localhost services on the RelaxKonOS server. Active tunnels and SSH settings are never synchronized.",
     "port_forwarding.ssh_connection": "SSH connection (this device only)",

@@ -1,6 +1,4 @@
-using RelaxKonOS.AppSDK;
-
-namespace RelaxKonOS.App.PortForwarding;
+namespace RelaxKonOS.AppSDK;
 
 /// <summary>
 /// Host-local tunnel coordinator. First-party callers may request a forward without opening

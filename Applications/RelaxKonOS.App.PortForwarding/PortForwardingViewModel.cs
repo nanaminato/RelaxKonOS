@@ -272,7 +272,10 @@ public sealed partial class PortForwardingViewModel : ObservableObject, IDisposa
     private void RefreshForwards()
     {
         if (_disposed) return;
-        var current = _service.List();
+        IReadOnlyList<PortForwardInfo> current;
+        try { current = _service.List(); }
+        catch (UnauthorizedAccessException) { current = []; }
+        catch (OperationCanceledException) { current = []; }
         Forwards.Clear();
         foreach (var forward in current) Forwards.Add(forward);
         if (SelectedForward is { } selected)

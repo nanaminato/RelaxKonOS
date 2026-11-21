@@ -49,6 +49,7 @@ public interface IExternalAppContext
     IServerFirewall Firewall { get; }
     IServerGuardian Guardian { get; }
     IGuardianHostInteraction? GuardianHost { get; }
+    IPortForwardingService? PortForwarding { get; }
     IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt { get; }
     IRegistryAppearancePreferences? RegistryAppearance { get; }
     /// <summary>Available only to the official Browser application.</summary>

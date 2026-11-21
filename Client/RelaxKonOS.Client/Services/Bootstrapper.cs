@@ -343,7 +343,7 @@ public static class Bootstrapper
         // It is intentionally not part of Workspace preference synchronization.
         services.AddSingleton(new RelaxKonOS.Client.Apps.PortForwarding.PortForwardingSettingsStore(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "port-forwarding.json")));
-        services.AddSingleton<RelaxKonOS.App.PortForwarding.IPortForwardingService, RelaxKonOS.Client.Apps.PortForwarding.PortForwardingService>();
+        services.AddSingleton<RelaxKonOS.AppSDK.IPortForwardingService, RelaxKonOS.Client.Apps.PortForwarding.PortForwardingService>();
         // PreferencesSync 监听登录态，登录后把服务端偏好应用到 ShellSettings + DefaultAppRegistry。
         services.AddSingleton<PreferencesSync>();
         services.AddSingleton<WorkspacePreferencesEditor>();

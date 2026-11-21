@@ -10,6 +10,21 @@ using Avalonia.Threading;
 
 internal static class PortForwardSubmissionChecks
 {
+    private static void CheckPackageAccess(IPortForwardingService host)
+    {
+        var id = new RelaxKonOS.Core.Applications.AppId("relaxkonos.port-forwarding");
+        var grants = new CertificateCapabilityChecks.Permission(id.Value);
+        using var lifetime = new CancellationTokenSource();
+        var scoped = new RelaxKonOS.Client.Services.AppPermissions.PortForwardingCapability(id, grants, host, lifetime.Token);
+        try { scoped.List(); throw new InvalidOperationException("Missing forwarding grant was accepted."); }
+        catch (UnauthorizedAccessException) { }
+        grants.Granted.Add(RelaxKonOS.Core.Applications.AppPermissions.DesktopPortForwardingManage);
+        scoped.List();
+        lifetime.Cancel();
+        try { scoped.GetSettings(); throw new InvalidOperationException("Closed forwarding scope returned preferences."); }
+        catch (OperationCanceledException) { }
+    }
+
     public static void Run()
     {
         var temporary = Path.Combine(Path.GetTempPath(), "RelaxKonOS-forward-settings-" + Guid.NewGuid().ToString("N"));
@@ -46,6 +61,7 @@ internal static class PortForwardSubmissionChecks
         }
         finally { File.Delete(blocker); File.Delete(successfulPath); if (Directory.Exists(replacementBlocker)) Directory.Delete(replacementBlocker); Directory.Delete(temporary); }
         var service = DispatchProxy.Create<IPortForwardingService, PendingForwardService>();
+        CheckPackageAccess(DispatchProxy.Create<IPortForwardingService, PendingForwardService>());
         var fake = (PendingForwardService)service;
         using var vm = new PortForwardingViewModel(service, RelaxKonOS.Client.Localization.LocalizedText.Get) { TargetAddress = "localhost:80", PreferredLocalPortText = "7300" };
         foreach (var invalid in new[] { "http://remote.test:80", "ftp://localhost:80", "http://test:test@localhost:80", "http://localhost:80/#section" })

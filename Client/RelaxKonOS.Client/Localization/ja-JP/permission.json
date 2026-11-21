@@ -27,6 +27,8 @@
         "permission.server.network.configure.description": "サーバーの IP アドレス、ルート、DNS、およびその他のネットワーク設定を変更します。この権限によって、無関係な管理機能が付与されることはありません。",
         "permission.server.power.manage.display_name": "サーバーの電源操作",
         "permission.server.power.manage.description": "再起動やシャットダウンなど、影響の大きいサーバー操作を要求します。",
+        "permission.desktop.port-forwarding.manage.display_name": "ローカル SSH 転送の管理",
+        "permission.desktop.port-forwarding.manage.description": "接続設定を読み取り、リモートのループバックサービスへのローカル転送を管理します。",
         "permission.desktop.wallpaper.write.display_name": "デスクトップ壁紙の変更",
         "permission.desktop.wallpaper.write.description": "このアプリケーションが RelaxKonOS を通じて現在のワークスペースの壁紙を変更することを許可します。",
         "permission.server.metrics.read.display_name": "サーバーパフォーマンス指標の読み取り",

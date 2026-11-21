@@ -27,6 +27,8 @@
         "permission.server.network.configure.description": "Change server IP addresses, routes, DNS, and other network configuration. It does not grant unrelated management capabilities.",
         "permission.server.power.manage.display_name": "Perform server power operations",
         "permission.server.power.manage.description": "Request high-impact server operations such as restart or shutdown.",
+        "permission.desktop.port-forwarding.manage.display_name": "Manage local SSH forwards",
+        "permission.desktop.port-forwarding.manage.description": "Read connection preferences and manage local forwards to remote loopback services.",
         "permission.desktop.wallpaper.write.display_name": "Change desktop wallpaper",
         "permission.desktop.wallpaper.write.description": "Allow this application to change the current workspace wallpaper through RelaxKonOS.",
         "permission.server.metrics.read.display_name": "Read server performance metrics",

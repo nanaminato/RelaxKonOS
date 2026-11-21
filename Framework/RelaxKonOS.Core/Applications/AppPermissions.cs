@@ -1,10 +1,11 @@
-﻿namespace RelaxKonOS.Core.Applications;
+namespace RelaxKonOS.Core.Applications;
 
 /// <summary>Capabilities an application can request from the RelaxKonOS host.</summary>
 public static class AppPermissions
 {
     public const string ServerFilesRead = "server.files.read";
     public const string ServerFilesWrite = "server.files.write";
+    public const string DesktopPortForwardingManage = "desktop.port-forwarding.manage";
     public const string DesktopWallpaperWrite = "desktop.wallpaper.write";
     public const string ServerMetricsRead = "server.metrics.read";
     public const string ServerProcessesManage = "server.processes.manage";
@@ -62,6 +63,7 @@ public static class AppPermissions
         new(ServerNetworkRead, "Read server network information", "Read network interfaces, IP addresses, routes, and connection state.", "server_network"),
         new(ServerNetworkConfigure, "Configure server network", "Change server IP addresses, routes, DNS, and other network configuration. It does not grant unrelated management capabilities.", "server_network"),
         new(ServerPowerManage, "Perform server power operations", "Request high-impact server operations such as restart or shutdown.", "server_management"),
+        new(DesktopPortForwardingManage, "Manage local SSH forwards", "Read connection preferences and manage local forwards to remote loopback services.", "desktop_workspace"),
         new(DesktopWallpaperWrite, "Change desktop wallpaper", "Allow this application to change the current workspace wallpaper through RelaxKonOS.", "desktop_workspace"),
         new(ServerMetricsRead, "Read server performance metrics", "Read aggregate CPU, memory, disk, network, and GPU metrics from the server.", "server_monitoring"),
         new(ServerDockerRead, "Read Docker resources", "View the server's local Docker status, containers, images, networks, volumes, and safe diagnostics.", "server_management"),

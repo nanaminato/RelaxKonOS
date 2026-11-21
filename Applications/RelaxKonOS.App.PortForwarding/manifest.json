@@ -1,0 +1,13 @@
+{
+  "id": "relaxkonos.port-forwarding",
+  "displayName": "Port Forwarding",
+  "description": "Local SSH forwards to remote loopback services",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.PortForwarding.dll",
+  "entryType": "RelaxKonOS.App.PortForwarding.PortForwardingPackageApp",
+  "iconGlyph": "↔",
+  "iconPath": "Assets/port-forwarding.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": ["desktop.port-forwarding.manage"]
+}
