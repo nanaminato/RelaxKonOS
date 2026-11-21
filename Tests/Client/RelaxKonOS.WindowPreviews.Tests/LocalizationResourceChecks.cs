@@ -97,8 +97,7 @@ internal static class LocalizationResourceChecks
                         throw new Exception("Incorrect Guardian package translation " + culture + ": " + key);
                 foreach (var key in tables[culture].Keys.Where(key => key.StartsWith("port_forwarding.", StringComparison.Ordinal))
                     .Concat(["common.refresh", "common.view", "application.relaxkonos.port-forwarding.display_name"]))
-                    if (PortForwardingLocalization.Resolve(localization, key, key) != tables[culture][key]
-                        || LocalizedText.Get(key) != tables[culture][key])
+                    if (PortForwardingLocalization.Resolve(localization, key, key) != tables[culture][key])
                         throw new Exception("Incorrect port forwarding translation " + culture + ": " + key);
                 _ = LocalizedText.Format("code_editor.context.delete_confirm", "/work/example");
                 _ = LocalizedText.Format("code_editor.context.operation_failed", "failure");

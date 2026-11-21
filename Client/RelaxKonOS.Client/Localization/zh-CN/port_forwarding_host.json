@@ -1,0 +1,24 @@
+{
+  "Culture": "zh-CN",
+  "Strings": {
+    "port_forwarding.error.forward_register_failed": "无法登记已启动的端口转发。",
+    "port_forwarding.error.local_port_invalid": "首选本地端口必须介于 1 到 65535 之间。",
+    "port_forwarding.error.no_local_port": "此设备上没有可用的 loopback TCP 端口。",
+    "port_forwarding.error.path_invalid": "转发链接路径必须以 '/' 开头。",
+    "port_forwarding.error.remote_loopback_only": "只能转发 RelaxKonOS Server 上 localhost 和 127.0.0.1 的服务。",
+    "port_forwarding.error.remote_port_invalid": "远程端口必须介于 1 到 65535 之间。",
+    "port_forwarding.error.ssh_authentication": "SSH 认证失败。请检查用户、密码或密钥代理配置。",
+    "port_forwarding.error.ssh_connection_refused": "SSH 服务器拒绝连接。请检查 SSH 主机和端口，并确认服务器 SSH 服务正在运行。",
+    "port_forwarding.error.ssh_host_key": "SSH 主机密钥验证失败。请先用系统 SSH 客户端连接一次并确认服务器指纹。",
+    "port_forwarding.error.ssh_host_required": "请先连接到 RelaxKonOS，或在端口转发设置中填写 SSH 主机。",
+    "port_forwarding.error.ssh_host_unresolved": "无法解析 SSH 主机名。请检查 SSH 主机设置。",
+    "port_forwarding.error.ssh_host_user_invalid": "SSH 主机和用户不能包含空白字符或以 '-' 开头。",
+    "port_forwarding.error.ssh_password_helper": "本地 SSH 密码助手无法运行。请使用密钥代理，或检查本机 OpenSSH 安装。",
+    "port_forwarding.error.ssh_start_failed": "无法启动本地 SSH 客户端。",
+    "port_forwarding.error.ssh_startup_failed": "SSH 在端口转发可用前已退出。请检查 SSH 连接设置。",
+    "port_forwarding.error.ssh_unreachable": "无法连接到 SSH 服务器。请检查网络、主机、端口和防火墙。",
+    "port_forwarding.error.target_changed": "原转发已变化或不可用。请关闭编辑器并重新选择转发。",
+    "port_forwarding.error.web_scheme_only": "此应用仅能返回 HTTP 和 HTTPS 链接。",
+    "port_forwarding.status.running": "运行中"
+  }
+}

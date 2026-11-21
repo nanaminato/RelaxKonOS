@@ -49,7 +49,8 @@ internal static class OfficialRoappChecks
         var isFirewall = applicationId == "relaxkonos.firewall";
         var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall;
         var isGuardian = applicationId == "relaxkonos.processguardian";
-        var interactive = requiresModule || isFileServices || isGuardian;
+        var isPortForwarding = applicationId == "relaxkonos.port-forwarding";
+        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -177,6 +178,10 @@ internal static class OfficialRoappChecks
                     "Firewall review exposes its server module and scoped grants.");
                 await RejectAsync(() => installer.InstallAsync(candidate), "Firewall without joint deployment");
             }
+            if (isPortForwarding)
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.DesktopPortForwardingManage]
+                    && candidate.Manifest.Dependencies?.Required is null or [],
+                    "Port Forwarding review exposes its local SSH management permission.");
             if (isGuardian)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerGuardianRead, AppPermissions.ServerGuardianManage]
                     && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.guardian"]
@@ -254,6 +259,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.certificates" => "RelaxKonOS.App.Certificates.Views.CertificateManagerWorkspace",
                     "relaxkonos.webservers" => "RelaxKonOS.App.WebServers.Views.WebServerManagerWorkspace",
                     "relaxkonos.git" => "RelaxKonOS.App.Git.Views.GitClientWorkspace",
+                    "relaxkonos.port-forwarding" => "RelaxKonOS.App.PortForwarding.Views.PortForwardingMainView",
                     "relaxkonos.processguardian" => typeof(DockPanel).FullName,
                     "relaxkonos.firewall" => "RelaxKonOS.App.Firewall.Views.FirewallWorkspace",
                     "relaxkonos.file-services" => "RelaxKonOS.App.FileServices.Views.FileServicesWorkspace",
@@ -427,13 +433,15 @@ internal static class OfficialRoappChecks
             var firewall = isFirewall ? DispatchProxy.Create<IServerFirewall, FirewallHostStub>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerGuardianRead);
             var guardian = isGuardian ? DispatchProxy.Create<IServerGuardian, GuardianCapabilityClient>() : null;
-            var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices || isFirewall || isGuardian;
+            appPermissions.Granted.Add(AppPermissions.DesktopPortForwardingManage);
+            var forwarding = isPortForwarding ? DispatchProxy.Create<IPortForwardingService, PendingForwardService>() : null;
+            var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices || isFirewall || isGuardian || isPortForwarding;
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
                 null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
-                fileServices: fileServices, firewall: firewall, guardian: guardian);
+                fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 

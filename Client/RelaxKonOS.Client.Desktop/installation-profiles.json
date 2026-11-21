@@ -16,6 +16,7 @@
     "developer": [
       { "appId": "relaxkonos.file-services", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.firewall", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
+      { "appId": "relaxkonos.port-forwarding", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.processguardian", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.git", "minimumVersion": "0.3.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.webservers", "minimumVersion": "1.0.0", "installPolicy": "interactive" },

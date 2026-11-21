@@ -34,7 +34,7 @@
 | proxy-server | ProxyServer | 否 / 否 | 是 | ProxyServer capability；组件中心管理 sing-box | 可选 | 待验 |
 | squid | Squid | 否 / 否 | 是 | GatewayProxy capability；组件中心管理 Squid | 可选 | 待验 |
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
-| port-forwarding | PortForwarding | 否 / 否 | 是 | 连接会话与隧道 | 可选 | 待验 |
+| port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 生命周期已验，真实 SSH 待验 |
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期及隔离宿主模块复用已验，真实证书服务待验 |
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows 包生命周期及 Windows、Linux 隔离模块复用已验，Nginx 业务联调待验 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，真实设备业务联调待验 |
@@ -285,3 +285,4 @@
 - 端口转发工作区、连接页及编辑对话框已迁入应用程序集，使用应用图标、绑定本地化和 WindowManager 窄屏导航。外部入口仍待接入。Windows Release 构建、环回提交和组合工作区回归通过，覆盖草稿关闭确认。
 - 端口转发三语资源已迁入应用程序集。工作区通过应用资源解析文案，现有桌面宿主从同一资源读取操作错误。Windows Release 构建、三语资源校验及环回提交回归通过。
 - 端口转发外置入口与包清单已实现。SDK 宿主服务仅向声明并获授本地转发权限的端口转发应用提供操作。Windows Release 构建、权限与环回回归以及 DevCLI 打包通过。官方分发切换和安装启动验收待完成。
+- 端口转发已切换为官方可选包，开发者配置采用交互安装。桌面宿主移除了内置入口和应用程序集引用，宿主与发行包共享操作错误的翻译源。Windows Release 官方包生命周期、本机环回、权限和三语校验通过，真实 SSH 联调待验。

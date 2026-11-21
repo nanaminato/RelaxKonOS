@@ -1,0 +1,24 @@
+{
+  "Culture": "ja-JP",
+  "Strings": {
+    "port_forwarding.error.forward_register_failed": "開始したポート転送を登録できません。",
+    "port_forwarding.error.local_port_invalid": "優先するローカルポートは 1 から 65535 の範囲で指定してください。",
+    "port_forwarding.error.no_local_port": "このデバイスで使用できる loopback TCP ポートがありません。",
+    "port_forwarding.error.path_invalid": "転送リンクのパスは '/' で開始する必要があります。",
+    "port_forwarding.error.remote_loopback_only": "RelaxKonOS Server 上の localhost と 127.0.0.1 のサービスのみ転送できます。",
+    "port_forwarding.error.remote_port_invalid": "リモートポートは 1 から 65535 の範囲で指定してください。",
+    "port_forwarding.error.ssh_authentication": "SSH 認証に失敗しました。ユーザー、パスワード、またはキーエージェントの設定を確認してください。",
+    "port_forwarding.error.ssh_connection_refused": "SSH サーバーが接続を拒否しました。SSH ホストとポート、およびサーバー上で SSH が稼働していることを確認してください。",
+    "port_forwarding.error.ssh_host_key": "SSH ホストキーの検証に失敗しました。システムの SSH クライアントで一度接続し、サーバーのフィンガープリントを確認してください。",
+    "port_forwarding.error.ssh_host_required": "先に RelaxKonOS に接続するか、ポート転送設定で SSH ホストを指定してください。",
+    "port_forwarding.error.ssh_host_unresolved": "SSH ホスト名を解決できません。SSH ホストの設定を確認してください。",
+    "port_forwarding.error.ssh_host_user_invalid": "SSH ホストとユーザーには空白を含めたり、'-' で開始したりすることはできません。",
+    "port_forwarding.error.ssh_password_helper": "ローカル SSH パスワードヘルパーを実行できません。キーエージェントを使用するか、ローカルの OpenSSH インストールを確認してください。",
+    "port_forwarding.error.ssh_start_failed": "ローカル SSH クライアントを起動できません。",
+    "port_forwarding.error.ssh_startup_failed": "ポート転送が利用可能になる前に SSH が終了しました。SSH 接続設定を確認してください。",
+    "port_forwarding.error.ssh_unreachable": "SSH サーバーに到達できません。ネットワーク、ホスト、ポート、ファイアウォールを確認してください。",
+    "port_forwarding.error.target_changed": "元の転送が変更されたか利用できなくなりました。編集画面を閉じて転送を選び直してください。",
+    "port_forwarding.error.web_scheme_only": "このアプリケーションで返せるリンクは HTTP と HTTPS のみです。",
+    "port_forwarding.status.running": "実行中"
+  }
+}

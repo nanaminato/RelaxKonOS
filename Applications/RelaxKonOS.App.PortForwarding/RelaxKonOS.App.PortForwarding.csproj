@@ -10,5 +10,8 @@
         <AvaloniaResource Include="Assets/port-forwarding.png" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="PortForwarding.Localization.%(Filename).json" />
         <EmbeddedResource Include="Localization/Package/*.json" LogicalName="PortForwarding.PackageLocalization.%(Filename).json" />
+        <EmbeddedResource Include="../../Client/RelaxKonOS.Client/Localization/en-US/port_forwarding_host.json" LogicalName="PortForwarding.HostLocalization.en-US.json" />
+        <EmbeddedResource Include="../../Client/RelaxKonOS.Client/Localization/ja-JP/port_forwarding_host.json" LogicalName="PortForwarding.HostLocalization.ja-JP.json" />
+        <EmbeddedResource Include="../../Client/RelaxKonOS.Client/Localization/zh-CN/port_forwarding_host.json" LogicalName="PortForwarding.HostLocalization.zh-CN.json" />
     </ItemGroup>
 </Project>

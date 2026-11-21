@@ -27,6 +27,9 @@ public static class PortForwardingLocalization
         var labels = JsonSerializer.Deserialize<LanguageFile>(application)!.Strings;
         foreach (var (key, value) in JsonSerializer.Deserialize<LanguageFile>(package)!.Strings)
             labels.Add(key, value);
+        using var host = Open($"PortForwarding.HostLocalization.{culture}.json");
+        foreach (var (key, value) in JsonSerializer.Deserialize<LanguageFile>(host)!.Strings)
+            labels.Add(key, value);
         return labels;
     }
 
