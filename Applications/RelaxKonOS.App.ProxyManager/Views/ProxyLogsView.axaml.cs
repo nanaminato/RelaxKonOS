@@ -1,3 +1,3 @@
 using Avalonia.Controls;
-namespace RelaxKonOS.Client.Apps.Proxy.Views;
+namespace RelaxKonOS.App.ProxyManager.Views;
 internal partial class ProxyLogsView : UserControl { public ProxyLogsView() => InitializeComponent(); }

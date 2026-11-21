@@ -54,7 +54,7 @@ var host = new Window { Width = 1000, Height = 700 };
 host.Show();
 if (args.Contains("--proxy-traffic-only"))
 {
-    ProxyTrafficPollingChecks.Run(host);
+    ProxyTrafficPollingChecks.Run(host, localization);
     host.Close();
     return;
 }
@@ -424,7 +424,7 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 }
 ExplorerAddressChecks.Run(host);
 BrowserChecks.Run(host, settings, appearance, output);
-ProxyTrafficPollingChecks.Run(host);
+ProxyTrafficPollingChecks.Run(host, localization);
 host.Close();
 Console.WriteLine($"PASS: {cases} real-page layouts across 3 languages, 2 modes and 3 system styles. Screenshots: {output}");
 static void Check(bool condition, string message)

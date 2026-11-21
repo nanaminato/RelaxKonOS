@@ -1,12 +1,12 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:proxy="clr-namespace:RelaxKonOS.App.ProxyManager;assembly=RelaxKonOS.App.ProxyManager"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.ProxyManager.Views"
+             xmlns:proxy="clr-namespace:RelaxKonOS.App.ProxyManager"
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.Proxy;assembly=RelaxKonOS.Protocol"
-             x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxyOverviewView"
+             x:Class="RelaxKonOS.App.ProxyManager.Views.ProxyOverviewView"
              x:DataType="proxy:ProxyManagerViewModel" Classes="builtin-app">
   <UserControl.Styles>
-    <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Proxy/ProxyStyles.axaml" />
+    <StyleInclude Source="avares://RelaxKonOS.App.ProxyManager/ProxyStyles.axaml" />
     <!-- A resting runtime keeps one slow halo. It is the only motion on the page, so it reads as
          "this is alive" instead of as decoration. -->
     <Style Selector="Border.runtime-pulse">

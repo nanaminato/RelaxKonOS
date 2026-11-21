@@ -3,9 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Proxy.Views;
+namespace RelaxKonOS.App.ProxyManager.Views;
 
-internal partial class ProxySubscriptionContentDialogView : UserControl
+public partial class ProxySubscriptionContentDialogView : UserControl
 {
     private readonly ModalDialog<bool> dialog;
 

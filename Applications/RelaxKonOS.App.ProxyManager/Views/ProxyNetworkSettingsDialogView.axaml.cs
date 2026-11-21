@@ -4,9 +4,9 @@ using Avalonia.Interactivity;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Proxy.Views;
+namespace RelaxKonOS.App.ProxyManager.Views;
 
-internal partial class ProxyNetworkSettingsDialogView : UserControl
+public partial class ProxyNetworkSettingsDialogView : UserControl
 {
     private readonly ModalDialog<bool> dialog;
     private readonly ProxySettingsDto? settingsBeforeOpening;

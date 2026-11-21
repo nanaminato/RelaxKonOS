@@ -4,7 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 
-namespace RelaxKonOS.Client.Apps.Proxy.Views;
+namespace RelaxKonOS.App.ProxyManager.Views;
 
 internal partial class ProxyOverviewView : UserControl
 {

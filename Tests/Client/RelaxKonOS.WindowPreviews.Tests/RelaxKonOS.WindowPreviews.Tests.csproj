@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProxyManager/RelaxKonOS.App.ProxyManager.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProxyServer/RelaxKonOS.App.ProxyServer.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Squid/RelaxKonOS.App.Squid.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Tunnels/RelaxKonOS.App.Tunnels.csproj" />

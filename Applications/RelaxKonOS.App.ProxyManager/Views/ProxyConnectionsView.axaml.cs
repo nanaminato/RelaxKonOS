@@ -1,7 +1,7 @@
 using RelaxKonOS.App.ProxyManager;
 using Avalonia.Controls;
 using Avalonia.Threading;
-namespace RelaxKonOS.Client.Apps.Proxy.Views;
+namespace RelaxKonOS.App.ProxyManager.Views;
 internal partial class ProxyConnectionsView : UserControl
 {
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(3) };

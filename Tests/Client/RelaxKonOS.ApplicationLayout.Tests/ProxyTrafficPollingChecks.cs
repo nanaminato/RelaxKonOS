@@ -9,12 +9,12 @@ using RelaxKonOS.Protocol.Proxy;
 
 internal static class ProxyTrafficPollingChecks
 {
-    internal static void Run(Window host)
+    internal static void Run(Window host, RelaxKonOS.AppSDK.ISystemLanguage language)
     {
         var repository = DispatchProxy.Create<IServerProxy, TrafficRepository>();
         var transport = (TrafficRepository)(object)repository;
-        var model = new ProxyManagerViewModel(repository, RelaxKonOS.Client.Localization.LocalizedText.Get, false, false);
-        var viewType = typeof(RelaxKonOS.Client.App).Assembly.GetType("RelaxKonOS.Client.Apps.Proxy.Views.ProxyOverviewView", throwOnError: true)!;
+        var model = new ProxyManagerViewModel(repository, (key, fallback) => ProxyManagerLocalization.Resolve(language, key, fallback), false, false);
+        var viewType = typeof(ProxyManagerViewModel).Assembly.GetType("RelaxKonOS.App.ProxyManager.Views.ProxyOverviewView", throwOnError: true)!;
 
         host.Content = NewOverview();
         PumpUntil(() => transport.Requests.Count == 1, "The overview did not start polling on attach.");

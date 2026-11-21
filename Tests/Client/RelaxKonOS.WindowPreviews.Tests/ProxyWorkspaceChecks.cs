@@ -7,7 +7,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.Proxy;
-using RelaxKonOS.Client.Apps.Proxy.Views;
+using RelaxKonOS.App.ProxyManager.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Protocol.Desktop;
 using RelaxKonOS.Protocol.ManagedRuntimes;
@@ -22,7 +22,7 @@ using RelaxKonOS.Protocol.Workspace.SystemStyles;
 /// </summary>
 internal static class ProxyWorkspaceChecks
 {
-    public static void Run(ShellSettings settings)
+    public static void Run(ShellSettings settings, LocalizationService localization)
     {
         var original = settings.ToPreferences();
         try
@@ -32,7 +32,7 @@ internal static class ProxyWorkspaceChecks
             Directory.CreateDirectory(directory);
 
             foreach (var dark in new[] { false, true })
-            foreach (var language in new[] { "zh-CN", "en-US" })
+            foreach (var language in new[] { "zh-CN", "en-US", "ja-JP" })
             {
                 settings.SystemStyleId = SystemStyleIds.WindowsLike;
                 settings.Appearance = settings.Appearance with { Mode = dark ? ThemeKind.Dark : ThemeKind.Light };
@@ -42,7 +42,7 @@ internal static class ProxyWorkspaceChecks
 
                 // A fresh workspace per appearance: a window reused across a theme switch can capture
                 // its own re-layout, which says nothing about what a user sees.
-                var model = new ProxyManagerViewModel(new ProxyRepositoryFixture(), RelaxKonOS.Client.Localization.LocalizedText.Get, canManage: true, canManageTun: true);
+                var model = new ProxyManagerViewModel(new ProxyRepositoryFixture(), (key, fallback) => ProxyManagerLocalization.Resolve(localization, key, fallback), canManage: true, canManageTun: true);
                 model.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                 Check(model.Runtime?.State == ProxyRuntimeState.Running, "The fixture runtime is running, so the overview renders the live state.");
                 Check(model.Groups.Count == 2 && model.Subscriptions.Count == 3 && model.Connections.Count == 4, "The fixture exposes groups, subscriptions, connections and logs.");
@@ -114,7 +114,7 @@ internal static class ProxyWorkspaceChecks
                 {
                     // The footer handle is only dereferenced by the save/cancel commands, which this
                     // render does not invoke; the view itself renders from the view model alone.
-                    var dialogModel = new ProxyManagerViewModel(new ProxyRepositoryFixture(), RelaxKonOS.Client.Localization.LocalizedText.Get, canManage: true, canManageTun: true);
+                    var dialogModel = new ProxyManagerViewModel(new ProxyRepositoryFixture(), (key, fallback) => ProxyManagerLocalization.Resolve(localization, key, fallback), canManage: true, canManageTun: true);
                     dialogModel.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                     dialogModel.SelectNetworkSettingsPageForDialog(tun);
                     var dialogWindow = new Window { Width = 600, Height = tun ? 700 : 650, Content = new ProxyNetworkSettingsDialogView(dialogModel, null!) };

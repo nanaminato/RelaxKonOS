@@ -188,7 +188,7 @@ if (args.Contains("--squid-only"))
 }
 if (args.Contains("--proxy-only"))
 {
-    ProxyWorkspaceChecks.Run(settings);
+    ProxyWorkspaceChecks.Run(settings, localization);
     Task.Run(ProxyScopeChecks.RunAsync).GetAwaiter().GetResult();
     Task.Run(ProxyServerTransportChecks.RunAsync).GetAwaiter().GetResult();
     Task.Run(ProxyServerTransportChecks.VerifyScopeAsync).GetAwaiter().GetResult();
@@ -258,7 +258,7 @@ if (args.Contains("--fused-apps-only"))
 {
     FusedWindowHeaderChecks.Run(settings);
     FusedApplicationChecks.Run(settings);
-    FusedWorkspaceChecks.Run(settings);
+    FusedWorkspaceChecks.Run(settings, localization);
     SshFileBrowserLayoutChecks.Run(settings);
     EditorDraftStateChecks.Run();
     return;
@@ -298,7 +298,7 @@ SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);
 FusedWindowHeaderChecks.Run(settings);
 FusedApplicationChecks.Run(settings);
-FusedWorkspaceChecks.Run(settings);
+FusedWorkspaceChecks.Run(settings, localization);
 SshFileBrowserLayoutChecks.Run(settings);
 HostTitleBarChecks.Run(settings, localization);
 RemoteClockChecks.Run(settings, localization, services);

@@ -14,7 +14,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.App.Docker.Views;
 using RelaxKonOS.Client.Apps.Proxy;
-using RelaxKonOS.Client.Apps.Proxy.Views;
+using RelaxKonOS.App.ProxyManager.Views;
 using RelaxKonOS.Client.Apps.Tunnels;
 using RelaxKonOS.App.Tunnels.Views;
 using RelaxKonOS.Client.Apps.PortForwarding;
@@ -57,7 +57,7 @@ using CoreRect = RelaxKonOS.Core.Primitives.Rect;
 
 internal static class FusedWorkspaceChecks
 {
-    public static void Run(ShellSettings settings)
+    public static void Run(ShellSettings settings, LocalizationService localization)
     {
         var original = settings.ToPreferences();
         var login = new LoginLocalizationService(new LocalLanguageStore());
@@ -68,7 +68,7 @@ internal static class FusedWorkspaceChecks
         var gitView = GitClientWorkspace.Create(git, gitProject);
         var auth = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         var permissions = DispatchProxy.Create<IAppPermissionScope, HeaderPreviewPermissions>();
-        var proxyModel = new ProxyManagerViewModel(DispatchProxy.Create<IServerProxy, HeaderPreviewPermissions>(), RelaxKonOS.Client.Localization.LocalizedText.Get, false, false);
+        var proxyModel = new ProxyManagerViewModel(DispatchProxy.Create<IServerProxy, HeaderPreviewPermissions>(), (key, fallback) => ProxyManagerLocalization.Resolve(localization, key, fallback), false, false);
         using var tunnelModel = new TunnelManagerViewModel(null!, false, key => TunnelsLocalization.Resolve(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), key, key));
         using var forwardModel = new PortForwardingViewModel(new PortForwardingService(null!, new PortForwardingSettingsStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "unused-forward-settings.json"))), key => PortForwardingLocalization.Resolve(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), key, key));
         var dockerModel = new DockerManagerViewModel(DispatchProxy.Create<IServerDockerResources, HeaderPreviewPermissions>(), DockerLocalization.ForLanguage(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>()));

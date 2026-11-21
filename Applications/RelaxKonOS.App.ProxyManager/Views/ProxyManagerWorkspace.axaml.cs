@@ -3,9 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 
-namespace RelaxKonOS.Client.Apps.Proxy.Views;
+namespace RelaxKonOS.App.ProxyManager.Views;
 
-internal partial class ProxyManagerWorkspace : UserControl
+public partial class ProxyManagerWorkspace : UserControl
 {
     public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
     {
@@ -19,7 +19,7 @@ internal partial class ProxyManagerWorkspace : UserControl
     public ProxyManagerWorkspace(ProxyManagerViewModel viewModel)
     {
         InitializeComponent();
-        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        RelaxKonOS.WindowManager.CompactWorkspaceNavigation.Install(this, WorkspaceBody, LocExtension.CreateBinding(this, "common.view"));
         DataContext = viewModel;
         viewModel.NavigateRequested = section => Dispatcher.UIThread.Post(() => ShowPage(section, FindNavigationButton(section)));
         ShowPage("overview", OverviewButton);

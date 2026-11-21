@@ -7,5 +7,8 @@
     <ItemGroup>
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
+        <AvaloniaResource Include="Assets/proxy.png" />
+        <EmbeddedResource Include="Localization/*.json" LogicalName="ProxyManager.Localization.%(Filename).json" />
+        <InternalsVisibleTo Include="RelaxKonOS.WindowPreviews.Tests" />
     </ItemGroup>
 </Project>
