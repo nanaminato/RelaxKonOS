@@ -25,6 +25,9 @@ using AppContext = System.AppContext;
 
 internal static class ApplicationDeploymentsWorkspaceChecks
 {
+    private static string DeploymentLabel(string key) => ApplicationDeploymentsLocalization.Resolve(
+        RelaxKonOS.Client.App.Services.GetRequiredService<RelaxKonOS.Client.Services.LocalizationService>(), key, key);
+
     public static async Task CheckSdkAsync()
     {
         var id = new RelaxKonOS.Core.Applications.AppId("relaxkonos.application-deployments");
@@ -96,7 +99,7 @@ internal static class ApplicationDeploymentsWorkspaceChecks
     {
         var client = DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>();
         var wizard = new DeploymentWizardViewModel(client, DeploymentWizardIntent.Create, [],
-            RelaxKonOS.Client.Localization.LocalizedText.Get);
+            DeploymentLabel);
         var manager = new RelaxKonOS.WindowManager.WindowManager();
         manager.Attach(new Canvas { Width = 1000, Height = 800 });
         var owner = manager.Create(new WindowCreateOptions(new("test.wizard"), "Owner", new TextBlock(),
@@ -104,7 +107,7 @@ internal static class ApplicationDeploymentsWorkspaceChecks
         DeploymentWizardView? view = null;
         var result = manager.ShowDialogAsync<bool>(owner, "Wizard", dialog => view = new DeploymentWizardView(wizard, dialog));
         Dispatcher.UIThread.RunJobs();
-        var expectedTitle = RelaxKonOS.Client.Localization.LocalizedText.Get("application_deployments.wizard.title");
+        var expectedTitle = DeploymentLabel("application_deployments.wizard.title");
         Check(view is not null && ReferenceEquals(view.DataContext, wizard)
             && view.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == expectedTitle),
             "The application-owned wizard resolves its title and binds the draft model.");
@@ -139,7 +142,7 @@ internal static class ApplicationDeploymentsWorkspaceChecks
         _ = manager.ShowDialogAsync<CatalogApplicationInstallDto?>(owner, "Catalog", dialog =>
         {
             handle = dialog;
-            return view = new ApplicationCatalogView(client, [release], descriptor, dialog, RelaxKonOS.Client.Localization.LocalizedText.Get, RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>());
+            return view = new ApplicationCatalogView(client, [release], descriptor, dialog, DeploymentLabel, RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>());
         });
         var form = (StackPanel)((ScrollViewer)view!.Content!).Content!;
         var port = form.Children.OfType<TextBox>().Single(text => text.Name == "CatalogHostPort");
@@ -464,7 +467,7 @@ internal static class ApplicationDeploymentsWorkspaceChecks
         var client = DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>();
         stub = (DeploymentHostStub)(object)client;
         stub.Seed(empty, busy);
-        var model = new ApplicationDeploymentsViewModel(client, new DeploymentTestPermissions(), RelaxKonOS.Client.Localization.LocalizedText.Get);
+        var model = new ApplicationDeploymentsViewModel(client, new DeploymentTestPermissions(), DeploymentLabel);
         model.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         return model;
     }

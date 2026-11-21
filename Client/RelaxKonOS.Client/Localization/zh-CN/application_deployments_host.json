@@ -1,0 +1,7 @@
+{
+  "Culture": "zh-CN",
+  "Strings": {
+    "application_deployments.error.empty_response": "服务器返回了空响应。",
+    "application_deployments.error.not_signed_in": "请先登录 RelaxKonOS Server。"
+  }
+}

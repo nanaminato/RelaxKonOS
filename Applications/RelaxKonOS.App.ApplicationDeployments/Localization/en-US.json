@@ -203,8 +203,6 @@
     "application_deployments.error.site_requires_host_port": "A proxy site needs a host port.",
     "application_deployments.error.transport": "The server could not be reached.",
     "application_deployments.error.open_address_failed": "The access address could not be opened; this host has no registered browser.",
-    "application_deployments.error.empty_response": "The server returned an empty response.",
-    "application_deployments.error.not_signed_in": "Sign in to the RelaxKonOS Server first.",
     "application_deployments.source.image": "Container image",
     "application_deployments.source.javajar": "Java JAR",
     "application_deployments.source.dotnetpublish": ".NET publish",

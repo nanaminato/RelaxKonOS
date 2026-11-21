@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ApplicationDeployments;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.App.ApplicationDeployments.Views;
 using System.Net.Http;
@@ -14,6 +15,9 @@ using RelaxKonOS.WindowManager;
 
 internal static class ApplicationCatalogLiveChecks
 {
+    private static string DeploymentLabel(string key) => ApplicationDeploymentsLocalization.Resolve(
+        RelaxKonOS.Client.App.Services.GetRequiredService<RelaxKonOS.Client.Services.LocalizationService>(), key, key);
+
     internal static void Run(string serverUrl, string packageId, string phase)
     {
         var uri = new Uri(serverUrl, UriKind.Absolute);
@@ -46,7 +50,7 @@ internal static class ApplicationCatalogLiveChecks
         _ = manager.ShowDialogAsync<CatalogApplicationInstallDto?>(owner, "Catalog", handle =>
         {
             dialog = handle;
-            return view = new ApplicationCatalogView(client, [release!], session.CurrentServer, handle, RelaxKonOS.Client.Localization.LocalizedText.Get, RelaxKonOS.Client.App.Services.GetRequiredService<RelaxKonOS.Client.Services.LocalizationService>());
+            return view = new ApplicationCatalogView(client, [release!], session.CurrentServer, handle, DeploymentLabel, RelaxKonOS.Client.App.Services.GetRequiredService<RelaxKonOS.Client.Services.LocalizationService>());
         });
         var form = (StackPanel)((ScrollViewer)view!.Content!).Content!;
         var port = form.Children.OfType<TextBox>().Single(text => text.Name == "CatalogHostPort");

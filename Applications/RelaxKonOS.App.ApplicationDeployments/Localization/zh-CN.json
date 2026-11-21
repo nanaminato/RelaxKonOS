@@ -203,8 +203,6 @@
     "application_deployments.error.site_requires_host_port": "接入反向代理需要一个主机端口。",
     "application_deployments.error.transport": "无法连接服务器。",
     "application_deployments.error.open_address_failed": "无法打开访问地址；本机没有已注册的浏览器。",
-    "application_deployments.error.empty_response": "服务器返回了空响应。",
-    "application_deployments.error.not_signed_in": "请先登录 RelaxKonOS Server。",
     "application_deployments.source.image": "容器镜像",
     "application_deployments.source.javajar": "Java JAR",
     "application_deployments.source.dotnetpublish": ".NET 发布",

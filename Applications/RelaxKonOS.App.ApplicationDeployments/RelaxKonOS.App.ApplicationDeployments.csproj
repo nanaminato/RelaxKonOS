@@ -8,5 +8,7 @@
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
         <AvaloniaResource Include="Assets/application-deployments.png" />
+        <EmbeddedResource Include="Localization/*.json" LogicalName="ApplicationDeployments.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Package/*.json" LogicalName="ApplicationDeployments.PackageLocalization.%(Filename).json" />
     </ItemGroup>
 </Project>

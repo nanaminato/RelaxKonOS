@@ -1,0 +1,12 @@
+{
+  "Strings": {
+    "application.relaxkonos.application-deployments.display_name": "アプリケーション配置",
+    "common.cancel": "キャンセル",
+    "common.close": "閉じる",
+    "common.copy": "コピー",
+    "common.open": "開く",
+    "common.operation_log": "操作ログ",
+    "common.operation_running": "実行中",
+    "common.confirm": "確認"
+  }
+}

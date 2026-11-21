@@ -8,13 +8,11 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using RelaxKonOS.App.ApplicationDeployments.ViewModels;
-using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
 using RelaxKonOS.App.ApplicationDeployments.Views;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.Explorer.Views;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
@@ -42,12 +40,14 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
 
     public override void Activate(AppContext context)
     {
+        var localization = context.Services.GetRequiredService<LocalizationService>();
+        string Label(string key) => ApplicationDeploymentsLocalization.Resolve(localization, key, key);
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var client = context.Services.GetService(typeof(IServerApplicationDeployments)) as IServerApplicationDeployments;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.relaxkonos.application-deployments.display_name"),
-                new ApplicationDeploymentsLoginRequiredView(),
+            context.ShowWindow(Label("application.relaxkonos.application-deployments.display_name"),
+                new ApplicationDeploymentsLoginRequiredView(localization),
                 new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
@@ -55,24 +55,24 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
         // The server-side file picker is optional: without a file-services client the wizard still
         // offers the local upload path, which is the one that never requires a server browse.
         var explorer = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
-        var localization = context.Services.GetRequiredService<RelaxKonOS.Client.Services.LocalizationService>();
-        var viewModel = new ApplicationDeploymentsViewModel(client, context.Permissions, LocalizedText.Get);
+
+        var viewModel = new ApplicationDeploymentsViewModel(client, context.Permissions, Label);
         WeakEventHandlerManager.Subscribe<RelaxKonOS.Client.Services.LocalizationService, SystemLanguageChangedEventArgs, DeploymentObservableObject>(
             localization, nameof(RelaxKonOS.Client.Services.LocalizationService.LanguageChanged), viewModel.OnLanguageChanged);
         ManagedWindow? window = null;
         var view = ApplicationDeploymentsWorkspace.Create(viewModel);
-        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.application-deployments.display_name"),
+        window = context.ShowWindow(Label("application.relaxkonos.application-deployments.display_name"),
             view, new Rect(60, 50, 1220, 780), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
 
         viewModel.ConfirmAsync = async message =>
         {
             var confirmed = false;
-            await context.ShowDialogAsync<bool?>(window!, LocalizedText.Get("common.confirm"), dialog =>
+            await context.ShowDialogAsync<bool?>(window!, Label("common.confirm"), dialog =>
                 new ConfirmDialogView
                 {
                     DataContext = new ConfirmDialogViewModel(message, result => { confirmed = result; dialog.Close(result); },
-                        LocalizedText.Get("common.confirm")),
+                        Label("common.confirm")),
                 }, new Size(460, 200));
             return confirmed;
         };
@@ -82,15 +82,15 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
             WeakEventHandlerManager.Subscribe<RelaxKonOS.Client.Services.LocalizationService, SystemLanguageChangedEventArgs, DeploymentObservableObject>(
                 localization, nameof(RelaxKonOS.Client.Services.LocalizationService.LanguageChanged), wizard.OnLanguageChanged);
             return context.ShowDialogAsync<bool>(window!,
-            LocalizedText.Get("application_deployments.wizard.title"),
+            Label("application_deployments.wizard.title"),
                 dialog => new DeploymentWizardView(wizard, dialog), new Size(780, 740));
         };
         viewModel.ShowCatalogAsync = releases => context.ShowDialogAsync<CatalogApplicationInstallDto?>(window!,
-            LocalizedText.Get("application_deployments.catalog.title"),
-            dialog => new ApplicationCatalogView(client, releases, session.CurrentServer, dialog, LocalizedText.Get, localization), new Size(600, 680));
+            Label("application_deployments.catalog.title"),
+            dialog => new ApplicationCatalogView(client, releases, session.CurrentServer, dialog, Label, localization), new Size(600, 680));
         viewModel.ShowCatalogUpgradeAsync = (application, releases) => context.ShowDialogAsync<DeploymentOperationDto?>(window!,
-            LocalizedText.Get("application_deployments.catalog.upgrade"),
-            dialog => new ApplicationCatalogUpgradeView(client, application, releases, dialog, LocalizedText.Get), new Size(680, 520));
+            Label("application_deployments.catalog.upgrade"),
+            dialog => new ApplicationCatalogUpgradeView(client, application, releases, dialog, Label), new Size(680, 520));
 
         // The access address is the one field an operator routinely needs outside this window, so the
         // shell supplies both ways out of it: the system clipboard, and the default browser.
@@ -115,9 +115,9 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
             if (topLevel is null) return null;
             var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
             {
-                Title = LocalizedText.Get("application_deployments.wizard.choose_local_archive"),
+                Title = Label("application_deployments.wizard.choose_local_archive"),
                 AllowMultiple = false,
-                FileTypeFilter = [new FilePickerFileType(LocalizedText.Get("application_deployments.wizard.archive_file_type")) { Patterns = ["*.zip", "*.jar", "*.tar", "*.gz", "*.tgz"] }],
+                FileTypeFilter = [new FilePickerFileType(Label("application_deployments.wizard.archive_file_type")) { Patterns = ["*.zip", "*.jar", "*.tar", "*.gz", "*.tgz"] }],
             }, UsageMemoryStore.Capture(context), "ApplicationDeployments.deployment-archive");
             var file = selected.FirstOrDefault();
             return file is null ? null : new LocalDeploymentArchive(file.Name, file.OpenReadAsync);
@@ -126,7 +126,7 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
         viewModel.PickServerArchiveAsync = () => explorer is null
             ? Task.FromResult<string?>(null)
             : context.ShowDialogAsync<string?>(window!,
-                LocalizedText.Get("application_deployments.wizard.choose_server_archive"), dialog =>
+                Label("application_deployments.wizard.choose_server_archive"), dialog =>
                 {
                     var picker = new ExplorerViewModel(explorer,
                         new ExplorerPickerOptions(ExplorerPickerMode.OpenFile), paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "ApplicationDeployments.deployment-archive")

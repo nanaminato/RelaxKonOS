@@ -1,0 +1,12 @@
+{
+  "Strings": {
+    "application.relaxkonos.application-deployments.display_name": "Application Deployments",
+    "common.cancel": "Cancel",
+    "common.close": "Close",
+    "common.copy": "Copy",
+    "common.open": "Open",
+    "common.operation_log": "Operation log",
+    "common.operation_running": "In progress",
+    "common.confirm": "Confirm"
+  }
+}

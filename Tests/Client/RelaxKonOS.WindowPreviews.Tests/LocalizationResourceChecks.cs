@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ApplicationDeployments;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -21,14 +22,15 @@ internal static class LocalizationResourceChecks
             var files = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Localization", culture), "*.json");
             if (files.Length == 0) throw new Exception("No shipped localization files for " + culture);
             foreach (var file in files.Concat([$"Git.Localization.{culture}.json", $"FileServices.Localization.{culture}.json",
-                $"Firewall.Localization.{culture}.json", $"ProcessGuardian.Localization.{culture}.json", $"PortForwarding.Localization.{culture}.json"]))
+                $"Firewall.Localization.{culture}.json", $"ProcessGuardian.Localization.{culture}.json", $"PortForwarding.Localization.{culture}.json", $"ApplicationDeployments.Localization.{culture}.json"]))
             {
                 using var source = Path.IsPathRooted(file) ? File.OpenRead(file)
                     : file.StartsWith("Git.", StringComparison.Ordinal) ? GitLocalization.Open(file)
                     : file.StartsWith("FileServices.", StringComparison.Ordinal) ? FileServicesLocalization.Open(file)
                     : file.StartsWith("Firewall.", StringComparison.Ordinal) ? FirewallLocalization.Open(file)
                     : file.StartsWith("ProcessGuardian.", StringComparison.Ordinal) ? ProcessGuardianLocalization.Open(file)
-                    : PortForwardingLocalization.Open(file);
+                    : file.StartsWith("PortForwarding.", StringComparison.Ordinal) ? PortForwardingLocalization.Open(file)
+                    : ApplicationDeploymentsLocalization.Open(file);
                 using var json = JsonDocument.Parse(source);
                 var root = json.RootElement;
                 var rootKeys = new HashSet<string>();
@@ -99,6 +101,12 @@ internal static class LocalizationResourceChecks
                     .Concat(["common.refresh", "common.view", "application.relaxkonos.port-forwarding.display_name"]))
                     if (PortForwardingLocalization.Resolve(localization, key, key) != tables[culture][key])
                         throw new Exception("Incorrect port forwarding translation " + culture + ": " + key);
+                foreach (var key in tables[culture].Keys.Where(key => key.StartsWith("application_deployments.", StringComparison.Ordinal)
+                    || key.StartsWith("application-deployment.", StringComparison.Ordinal))
+                    .Where(key => key is not ("application_deployments.error.empty_response" or "application_deployments.error.not_signed_in"))
+                    .Concat(["common.operation_log", "common.close", "application.relaxkonos.application-deployments.display_name"]))
+                    if (ApplicationDeploymentsLocalization.Resolve(localization, key, key) != tables[culture][key])
+                        throw new Exception("Incorrect application deployment translation " + culture + ": " + key);
                 _ = LocalizedText.Format("code_editor.context.delete_confirm", "/work/example");
                 _ = LocalizedText.Format("code_editor.context.operation_failed", "failure");
             }

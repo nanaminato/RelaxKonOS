@@ -203,8 +203,6 @@
     "application_deployments.error.site_requires_host_port": "プロキシ サイトにはホスト ポートが必要です。",
     "application_deployments.error.transport": "サーバーに接続できませんでした。",
     "application_deployments.error.open_address_failed": "アクセス先を開けませんでした。このホストに既定のブラウザーが登録されていません。",
-    "application_deployments.error.empty_response": "サーバーが空の応答を返しました。",
-    "application_deployments.error.not_signed_in": "先に RelaxKonOS Server にサインインしてください。",
     "application_deployments.source.image": "コンテナ イメージ",
     "application_deployments.source.javajar": "Java JAR",
     "application_deployments.source.dotnetpublish": ".NET 公開",

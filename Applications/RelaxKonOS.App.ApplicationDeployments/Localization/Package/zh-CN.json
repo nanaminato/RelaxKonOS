@@ -1,0 +1,12 @@
+{
+  "Strings": {
+    "application.relaxkonos.application-deployments.display_name": "应用部署",
+    "common.cancel": "取消",
+    "common.close": "关闭",
+    "common.copy": "复制",
+    "common.open": "打开",
+    "common.operation_log": "操作日志",
+    "common.operation_running": "进行中",
+    "common.confirm": "确认"
+  }
+}
