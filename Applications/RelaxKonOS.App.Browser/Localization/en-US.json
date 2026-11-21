@@ -1,6 +1,7 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "application.relaxkonos.browser.display_name": "Remote Browser",
         "browser.settings.title": "Browser settings",
         "browser.settings.home_page": "Home page",
         "browser.settings.open_built_in": "Built-in browser",

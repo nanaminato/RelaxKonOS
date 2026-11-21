@@ -5,7 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Browser;
-using RelaxKonOS.Client.Apps.Browser.ViewModels;
+using RelaxKonOS.App.Browser.ViewModels;
 using RelaxKonOS.Client.Apps.Browser.Views;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;

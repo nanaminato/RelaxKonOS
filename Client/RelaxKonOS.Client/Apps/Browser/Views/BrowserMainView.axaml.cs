@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Browser.ViewModels;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -6,7 +7,6 @@ using Avalonia.Interactivity;
 using System.ComponentModel;
 using System.Diagnostics;
 using RelaxKonOS.Client.Apps.Browser;
-using RelaxKonOS.Client.Apps.Browser.ViewModels;
 using RelaxKonOS.Protocol.Browser;
 
 namespace RelaxKonOS.Client.Apps.Browser.Views;
@@ -420,7 +420,7 @@ public partial class BrowserMainView : UserControl
                 case "copy":
                     var clipboard = TopLevel.GetTopLevel(this)?.Clipboard ?? throw new InvalidOperationException("Clipboard is unavailable.");
                     await clipboard.SetTextAsync(url);
-                    model.StatusText = RelaxKonOS.Client.Localization.LocalizedText.Ref("browser.copied_link");
+                    model.StatusText = model.Text.Ref("browser.copied_link");
                     break;
                 case "delete" when bookmark is not null: await model.DeleteBookmarkCommand.ExecuteAsync(bookmark); break;
                 case "delete" when history is not null: await model.DeleteHistoryCommand.ExecuteAsync(history); break;
@@ -428,7 +428,7 @@ public partial class BrowserMainView : UserControl
         }
         catch (Exception error)
         {
-            model.StatusText = RelaxKonOS.Client.Localization.LocalizedText.Ref("browser.entry_failed", error.Message);
+            model.StatusText = model.Text.Ref("browser.entry_failed", error.Message);
         }
     }
 

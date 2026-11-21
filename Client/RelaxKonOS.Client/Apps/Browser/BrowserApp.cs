@@ -4,7 +4,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
-using RelaxKonOS.Client.Apps.Browser.ViewModels;
+using RelaxKonOS.App.Browser.ViewModels;
 using RelaxKonOS.Client.Apps.Browser.Views;
 using RelaxKonOS.Client.Services.Auth;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,9 +37,10 @@ public sealed class BrowserApp : RemoteApplicationBase
         BrowserDiagnostics.EnsureUiWatchdog();
         BrowserDiagnostics.Record("Browser activation requested.");
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var client = session?.State == AuthSessionState.Authenticated
-            ? context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest).BrowserData
+        var sdk = session?.State == AuthSessionState.Authenticated
+            ? context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest)
             : null;
+        var client = sdk?.BrowserData;
 
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
@@ -57,7 +58,7 @@ public sealed class BrowserApp : RemoteApplicationBase
             return;
         }
 
-        var viewModel = new BrowserViewModel(client);
+        var viewModel = new BrowserViewModel(client, sdk!.SystemLanguage, BrowserDiagnostics.Record);
         var view = new BrowserMainView { DataContext = viewModel };
         BrowserDiagnostics.Record("Browser view and view-model created; opening managed window.");
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.browser.display_name"), view,

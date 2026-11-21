@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "application.relaxkonos.browser.display_name": "リモート ブラウザー",
         "browser.settings.title": "ブラウザー設定",
         "browser.settings.home_page": "ホーム ページ",
         "browser.settings.open_built_in": "内蔵ブラウザー",

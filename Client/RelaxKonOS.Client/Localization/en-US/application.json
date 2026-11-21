@@ -10,7 +10,6 @@
         "application.relaxkonos.ssh-files.description": "Browse and transfer files over SFTP",
         "application.relaxkonos.settings.display_name": "Settings",
         "application.relaxkonos.codeeditor.display_name": "Code Editor",
-        "application.relaxkonos.browser.display_name": "Remote Browser",
         "application.relaxkonos.appinstaller.display_name": "App Installer",
         "application.relaxkonos.explorer.display_name": "File Explorer",
         "application.relaxkonos.file-services.display_name": "File Services",

@@ -6,7 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.Browser;
-using RelaxKonOS.Client.Apps.Browser.ViewModels;
+using RelaxKonOS.App.Browser.ViewModels;
 using RelaxKonOS.Client.Apps.Browser.Views;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;

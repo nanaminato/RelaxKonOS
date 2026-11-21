@@ -10,7 +10,6 @@
         "application.relaxkonos.ssh-files.description": "SFTP でファイルを閲覧および転送します",
         "application.relaxkonos.settings.display_name": "設定",
         "application.relaxkonos.codeeditor.display_name": "コード エディター",
-        "application.relaxkonos.browser.display_name": "リモート ブラウザー",
         "application.relaxkonos.appinstaller.display_name": "アプリ インストーラー",
         "application.relaxkonos.explorer.display_name": "ファイル エクスプローラー",
         "application.relaxkonos.file-services.display_name": "ファイル サービス",

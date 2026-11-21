@@ -7,7 +7,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.Browser;
-using RelaxKonOS.Client.Apps.Browser.ViewModels;
+using RelaxKonOS.App.Browser.ViewModels;
 using RelaxKonOS.Client.Apps.Browser.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Theming;
@@ -18,13 +18,14 @@ using RelaxKonOS.Protocol.Workspace.SystemStyles;
 
 internal static class BrowserChecks
 {
+    private static RelaxKonOS.AppSDK.ISystemLanguage Language => (RelaxKonOS.AppSDK.ISystemLanguage)RelaxKonOS.Client.App.Services.GetService(typeof(RelaxKonOS.Client.Services.LocalizationService))!;
     public static void Run(Window host, ShellSettings settings, AppearanceService appearance, string output)
     {
         VerifyAddressInput();
         VerifyHistoryGrouping();
         foreach (var count in new[] { 1000, 10000 })
         {
-            var capacityModel = new BrowserViewModel(new BrowserFixtureClient(count, count));
+            var capacityModel = new BrowserViewModel(new BrowserFixtureClient(count, count), Language);
             var timer = System.Diagnostics.Stopwatch.StartNew();
             capacityModel.LoadAsync().GetAwaiter().GetResult();
             var capacityView = new BrowserMainView { DataContext = capacityModel };
@@ -37,7 +38,7 @@ internal static class BrowserChecks
             capacityView.ClosePlatformBrowser();
         }
         var client = new BrowserFixtureClient();
-        var model = new BrowserViewModel(client);
+        var model = new BrowserViewModel(client, Language);
         model.LoadAsync().GetAwaiter().GetResult();
         Check(model.Bookmarks.Count == 100 && model.History.Count == 100, "Initial browser collections are paged");
         model.LoadMoreBookmarksCommand.ExecuteAsync(null).GetAwaiter().GetResult();
@@ -202,7 +203,7 @@ internal static class BrowserChecks
 
     private static void VerifyHistoryGrouping()
     {
-        var model = new BrowserViewModel(new BrowserFixtureClient());
+        var model = new BrowserViewModel(new BrowserFixtureClient(), Language);
         var now = DateTimeOffset.Now;
         for (var i = 0; i < 6; i++)
             model.History.Add(new HistoryEntryDto(Guid.NewGuid(), Guid.NewGuid(), $"Day {i}", $"https://day.test/{i}", 1, now, now.AddDays(-(i / 2))));
@@ -226,7 +227,7 @@ internal static class BrowserChecks
 
     private static void VerifyAddressInput()
     {
-        var model = new BrowserViewModel(new BrowserFixtureClient());
+        var model = new BrowserViewModel(new BrowserFixtureClient(), Language);
         Uri? navigated = null;
         model.ViewNavigateRequested = uri => navigated = uri;
         foreach (var (input, expected) in new[]

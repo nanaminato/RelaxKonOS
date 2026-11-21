@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "application.relaxkonos.browser.display_name": "远程浏览器",
         "browser.settings.title": "浏览器设置",
         "browser.settings.home_page": "主页",
         "browser.settings.open_built_in": "内置浏览器",
