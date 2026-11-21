@@ -3,11 +3,12 @@ using Microsoft.AspNetCore.SignalR.Client;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Hubs;
 using RelaxKonOS.Protocol.SystemMonitor;
+using RelaxKonOS.AppSDK;
 
 namespace RelaxKonOS.Client.Apps.TaskManager;
 
 /// <summary>任务管理器性能页的单窗口实时订阅。重连后由 ViewModel 回补 REST history，事件按 Sequence 去重。</summary>
-public sealed class PerformanceStream(IAuthSession session) : IAsyncDisposable
+internal sealed class PerformanceStream(IAuthSession session, Func<AppCapabilityResult> readiness) : IServerPerformanceStream
 {
     private HubConnection? _connection;
 
@@ -15,26 +16,39 @@ public sealed class PerformanceStream(IAuthSession session) : IAsyncDisposable
     public event Action? Reconnected;
     public event Action? Disconnected;
 
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task<AppCapabilityResult> StartAsync(CancellationToken cancellationToken = default)
     {
-        if (session.EffectiveBaseUrl is null || session.Tokens is null)
-            throw new InvalidOperationException("Not signed in.");
-        if (_connection is not null) return;
+        cancellationToken.ThrowIfCancellationRequested();
+        var status = readiness();
+        if (status != AppCapabilityResult.Succeeded) return status;
+        if (session.EffectiveBaseUrl is not { } baseUrl || session.Tokens is null)
+            return AppCapabilityResult.Unavailable;
+        if (_connection is not null) return AppCapabilityResult.Succeeded;
 
-        var hubUrl = new Uri(new Uri(session.EffectiveBaseUrl), RelaxKonOSEndpoints.PerformanceHubPath.TrimStart('/')).ToString();
+        var hubUrl = new Uri(new Uri(baseUrl), RelaxKonOSEndpoints.PerformanceHubPath.TrimStart('/'));
+        bool IsCurrent() => readiness() == AppCapabilityResult.Succeeded && session.EffectiveBaseUrl == baseUrl;
         var connection = new HubConnectionBuilder()
             .WithUrl(hubUrl, options =>
             {
-                ServerCertificateTrust.ConfigureSignalR(options, new Uri(hubUrl));
-                options.AccessTokenProvider = () => session.GetAccessTokenAsync(TimeSpan.FromMinutes(1));
+                ServerCertificateTrust.ConfigureSignalR(options, hubUrl);
+                options.AccessTokenProvider = async () =>
+                {
+                    if (!IsCurrent()) return null;
+                    var token = await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1));
+                    return IsCurrent() ? token : null;
+                };
             })
             .WithAutomaticReconnect()
             .Build();
-        connection.On<PerformanceRealtimeSnapshotDto>(PerformanceHubEvents.OnPerformanceSnapshot, snapshot => SnapshotReceived?.Invoke(snapshot));
+        connection.On<PerformanceRealtimeSnapshotDto>(PerformanceHubEvents.OnPerformanceSnapshot, snapshot =>
+        {
+            if (IsCurrent() && ReferenceEquals(_connection, connection)) SnapshotReceived?.Invoke(snapshot);
+        });
         connection.Reconnected += async _ =>
         {
+            if (!IsCurrent()) return;
             await SubscribeAsync(connection, CancellationToken.None);
-            Reconnected?.Invoke();
+            if (IsCurrent()) Reconnected?.Invoke();
         };
         connection.Closed += _ =>
         {
@@ -46,12 +60,16 @@ public sealed class PerformanceStream(IAuthSession session) : IAsyncDisposable
         try
         {
             await connection.StartAsync(cancellationToken);
-            await SubscribeAsync(connection, cancellationToken);
+            if (IsCurrent()) await SubscribeAsync(connection, cancellationToken);
+            if (IsCurrent()) return AppCapabilityResult.Succeeded;
+            await DisposeAsync();
+            return readiness() == AppCapabilityResult.PermissionDenied
+                ? AppCapabilityResult.PermissionDenied : AppCapabilityResult.Unavailable;
         }
         catch
         {
-            if (ReferenceEquals(_connection, connection)) _connection = null;
-            await connection.DisposeAsync();
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _connection, null, connection), connection))
+                await connection.DisposeAsync();
             throw;
         }
     }

@@ -37,6 +37,7 @@
         "task_manager.login_required": "タスク マネージャーを使用するにはサインインが必要です。\nこのアプリを起動する前に RelaxKonOS Server に接続してください。",
         "task_manager.error.not_signed_in": "サインインしていないため、システム監視サービスを利用できません。",
         "task_manager.gpu_unavailable": "NVIDIA GPU が検出されませんでした（nvidia-smi が利用できないか、GPU が NVIDIA 製ではありません）。",
+        "task_manager.connection.permission_denied": "サーバーのメトリクスを読み取る権限が必要です。",
         "task_manager.connection.initializing": "パフォーマンス サンプリングを初期化しています…",
         "task_manager.connection.live": "リアルタイム接続",
         "task_manager.connection.snapshot": "リアルタイム接続を利用できないため、スナップショットを使用します",

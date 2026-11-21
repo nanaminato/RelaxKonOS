@@ -68,7 +68,7 @@ internal static class FusedWorkspaceChecks
         var filesModel = new FileServicesViewModel(null!, permissions, () => true);
         using var notepadModel = new NotepadViewModel(new NotepadText(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>()), null, null);
         using var imageModel = new ImageViewerViewModel(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), null);
-        var tasksModel = new TaskManagerViewModel(null!, new PerformanceStream(auth), null!, auth);
+        var tasksModel = new TaskManagerViewModel(null!, null!, null!, auth);
         var browserModel = new BrowserViewModel(DispatchProxy.Create<RelaxKonOS.Client.Apps.Browser.IBrowserClient, HeaderPreviewPermissions>());
         var browserView = new BrowserMainView { DataContext = browserModel };
         var canvas = new Canvas();

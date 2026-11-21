@@ -63,6 +63,7 @@
 ## 测试证据
 
 - Task Manager 所需的性能静态信息、实时快照与短期历史已接入只读监控 SDK。读取校验应用权限和捕获的服务器会话，历史采样窗口限定为 1–60 秒。桌面视图与进程管理仍待迁移。
+- Task Manager 性能页通过 SDK 读取 HTTP 快照、历史并订阅 SignalR。两条路径使用同一指标读取授权，断线重连后回补历史。关闭窗口或切换会话会取消性能读取并释放订阅。
 
 - Docker Manager 的状态、资源详情、Compose 回执、引擎控制和账户镜像源使用 SDK，沿用现有 HTTP 路由。读取要求读授权，变更要求管理授权。SDK 在操作前后检查服务器会话，停止或重启引擎还要求用户确认。
 - Docker Manager 主工作区模型位于 `Applications/RelaxKonOS.App.Docker`。组件依赖页由宿主 SDK 提供。

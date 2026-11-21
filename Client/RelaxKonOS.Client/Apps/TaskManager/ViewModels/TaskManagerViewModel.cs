@@ -10,6 +10,8 @@ using RelaxKonOS.Protocol.SystemMonitor;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Core.Applications;
 
 namespace RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 
@@ -17,7 +19,9 @@ namespace RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IAsyncDisposable
 {
     private readonly ITaskManagerClient _client;
-    private readonly PerformanceStream _stream;
+    private readonly IServerMonitor _monitor;
+    private IServerPerformanceStream? _stream;
+    private readonly CancellationTokenSource _performanceLifetime = new();
     private readonly DispatcherTimer _processTimer;
     private List<ProcessInfoDto> _allProcesses = [];
     private readonly Dictionary<(int Id, DateTimeOffset? StartTime), ProcessTreeItemViewModel> _processRows = [];
@@ -32,18 +36,15 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     private string? _processServiceId;
     private bool _switchingProcessMode;
 
-    public TaskManagerViewModel(ITaskManagerClient client, PerformanceStream stream, IHostElevationBroker elevation, IAuthSession session)
+    public TaskManagerViewModel(ITaskManagerClient client, IServerMonitor monitor, IHostElevationBroker elevation, IAuthSession session)
     {
         _client = client;
-        _stream = stream;
+        _monitor = monitor;
         _elevation = elevation;
         _session = session;
         _processSessionId = session.CurrentSession?.Id;
         _processServiceId = session.ServiceId;
         _session.StateChanged += OnAuthSessionChanged;
-        _stream.SnapshotReceived += OnSnapshotReceived;
-        _stream.Reconnected += OnStreamReconnected;
-        _stream.Disconnected += OnStreamDisconnected;
         _processTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _processTimer.Tick += async (_, _) => await RefreshProcessesAsync();
         FilteredProcesses = [];
@@ -104,12 +105,34 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         await RefreshProcessesAsync();
     }
 
-    public async Task StartAsync()
+    public async Task StartAsync(IAppPermissionScope permissions)
     {
-        await RefreshPerformanceAsync();
-        try { await _stream.StartAsync(); ConnectionStatus = LocalizedText.Ref("task_manager.connection.live"); }
+        if (_disposed != 0 || _stream is not null) return;
+        var stream = _stream = _monitor.CreatePerformanceStream();
+        stream.SnapshotReceived += OnSnapshotReceived;
+        stream.Reconnected += OnStreamReconnected;
+        stream.Disconnected += OnStreamDisconnected;
+        var cancellationToken = _performanceLifetime.Token;
+        try
+        {
+            if (permissions.GetStatus(AppPermissions.ServerMetricsRead) == AppPermissionStatus.Undecided)
+                await permissions.RequestAsync(AppPermissions.ServerMetricsRead, cancellationToken);
+            if (cancellationToken.IsCancellationRequested) return;
+            await RefreshPerformanceAsync();
+            if (cancellationToken.IsCancellationRequested) return;
+            var status = await stream.StartAsync(cancellationToken);
+            if (cancellationToken.IsCancellationRequested) return;
+            ConnectionStatus = LocalizedText.Ref(status switch
+            {
+                AppCapabilityResult.Succeeded => "task_manager.connection.live",
+                AppCapabilityResult.PermissionDenied => "task_manager.connection.permission_denied",
+                _ => "task_manager.connection.snapshot",
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            if (cancellationToken.IsCancellationRequested) return;
             ConnectionStatus = LocalizedText.Ref("task_manager.connection.snapshot");
             StatusText = LocalizedText.Ref("task_manager.status.collect_failed", ex.Message);
         }
@@ -120,14 +143,19 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _performanceLifetime.Cancel();
         _processTimer.Stop();
         _session.StateChanged -= OnAuthSessionChanged;
-        _stream.SnapshotReceived -= OnSnapshotReceived;
-        _stream.Reconnected -= OnStreamReconnected;
-        _stream.Disconnected -= OnStreamDisconnected;
         foreach (var row in _processRows.Values) row.Dispose();
         _processRows.Clear();
-        await _stream.DisposeAsync();
+        if (_stream is { } stream)
+        {
+            stream.SnapshotReceived -= OnSnapshotReceived;
+            stream.Reconnected -= OnStreamReconnected;
+            stream.Disconnected -= OnStreamDisconnected;
+            await stream.DisposeAsync();
+        }
+        _performanceLifetime.Dispose();
     }
 
     [RelayCommand] private async Task RefreshAsync()
@@ -202,22 +230,40 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
 
     private async Task RefreshPerformanceAsync()
     {
+        if (_disposed != 0) return;
+        var cancellationToken = _performanceLifetime.Token;
         try
         {
-            var infoTask = _client.GetPerformanceInfoAsync();
-            var historyTask = _client.GetPerformanceHistoryAsync();
+            var infoTask = _monitor.GetPerformanceInfoAsync(cancellationToken);
+            var historyTask = _monitor.GetPerformanceHistoryAsync(cancellationToken: cancellationToken);
             await Task.WhenAll(infoTask, historyTask);
-            Info = await infoTask;
-            BuildPerformanceItems();
+            if (cancellationToken.IsCancellationRequested) return;
+            var info = await infoTask;
             var history = await historyTask;
-            if (history.Count == 0)
+            if (info.Data is null || history.Data is null)
             {
-                try { ApplySnapshot(await _client.GetPerformanceSnapshotAsync(), true); }
-                catch { ConnectionStatus = LocalizedText.Ref("task_manager.connection.awaiting_sample"); }
+                ConnectionStatus = LocalizedText.Ref(info.Status == AppCapabilityResult.PermissionDenied
+                    || history.Status == AppCapabilityResult.PermissionDenied
+                    ? "task_manager.connection.permission_denied" : "task_manager.connection.unavailable");
+                return;
             }
-            else ReplaceHistory(history);
+            Info = info.Data;
+            BuildPerformanceItems();
+            if (history.Data.Count == 0)
+            {
+                var sample = await _monitor.GetPerformanceSnapshotAsync(cancellationToken);
+                if (cancellationToken.IsCancellationRequested) return;
+                if (sample.Data is null)
+                {
+                    ConnectionStatus = LocalizedText.Ref("task_manager.connection.awaiting_sample");
+                    return;
+                }
+                ApplySnapshot(sample.Data, true);
+            }
+            else ReplaceHistory(history.Data);
             if (ConnectionStatus != LocalizedText.Ref("task_manager.connection.live")) ConnectionStatus = LocalizedText.Ref("task_manager.connection.snapshot_updated");
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception ex)
         {
             ConnectionStatus = LocalizedText.Ref("task_manager.connection.unavailable");
@@ -282,9 +328,22 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         catch { /* The row keeps its category glyph when the host has no matching icon. */ }
     }
 
-    private void OnSnapshotReceived(PerformanceRealtimeSnapshotDto snapshot) => Dispatcher.UIThread.Post(() => ApplySnapshot(snapshot, false));
-    private void OnStreamReconnected() => Dispatcher.UIThread.Post(async () => { ConnectionStatus = LocalizedText.Ref("task_manager.connection.backfilling"); await RefreshPerformanceAsync(); ConnectionStatus = LocalizedText.Ref("task_manager.connection.live"); });
-    private void OnStreamDisconnected() => Dispatcher.UIThread.Post(() => ConnectionStatus = LocalizedText.Ref("task_manager.connection.disconnected"));
+    private void OnSnapshotReceived(PerformanceRealtimeSnapshotDto snapshot) => Dispatcher.UIThread.Post(() =>
+    {
+        if (!_performanceLifetime.IsCancellationRequested) ApplySnapshot(snapshot, false);
+    });
+    private void OnStreamReconnected() => Dispatcher.UIThread.Post(async () =>
+    {
+        if (_performanceLifetime.IsCancellationRequested) return;
+        ConnectionStatus = LocalizedText.Ref("task_manager.connection.backfilling");
+        await RefreshPerformanceAsync();
+        if (!_performanceLifetime.IsCancellationRequested) ConnectionStatus = LocalizedText.Ref("task_manager.connection.live");
+    });
+    private void OnStreamDisconnected() => Dispatcher.UIThread.Post(() =>
+    {
+        if (!_performanceLifetime.IsCancellationRequested)
+            ConnectionStatus = LocalizedText.Ref("task_manager.connection.disconnected");
+    });
 
     private void BuildPerformanceItems()
     {
@@ -529,6 +588,10 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         if (_session.State == AuthSessionState.Authenticated && _processSessionId == _session.CurrentSession?.Id
             && _processServiceId == _session.ServiceId) return;
         _processSessionId = _session.CurrentSession?.Id; _processServiceId = _session.ServiceId;
+        _performanceLifetime.Cancel();
+        if (_stream is not null) _ = _stream.DisposeAsync();
+        Info = null; Snapshot = null; SelectedPerformanceItem = null; PerformanceItems.Clear(); _lastSequence = 0;
+        ConnectionStatus = LocalizedText.Ref("task_manager.connection.disconnected");
         IsAdministratorMode = false; _processModeGeneration++;
         foreach (var row in _processRows.Values) { row.ExpandedStateChanged -= OnProcessExpandedStateChanged; row.Dispose(); }
         _processRows.Clear(); _allProcesses.Clear(); FilteredProcesses.Clear(); SelectedProcess = null;

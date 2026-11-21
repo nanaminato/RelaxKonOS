@@ -21,6 +21,9 @@ internal static class ServerMonitorCapabilityChecks
 
         Check(await monitor.GetPerformanceHistoryAsync() is { Status: AppCapabilityResult.PermissionDenied, Data: null }
             && transport.Requests == 0, "Performance history must require the metrics read grant.");
+        await using var stream = monitor.CreatePerformanceStream();
+        Check(await stream.StartAsync() == AppCapabilityResult.PermissionDenied,
+            "The real-time subscription must require the same metrics read grant.");
         permissions.Granted = true;
         var read = monitor.GetPerformanceHistoryAsync(int.MaxValue);
         Check(transport.Requests == 1 && transport.Seconds == 60, "Performance history must be capped at 60 seconds.");
@@ -35,6 +38,8 @@ internal static class ServerMonitorCapabilityChecks
         Check(await read is { Status: AppCapabilityResult.Unavailable, Data: null }, "The former server's response must be discarded.");
         Check(await monitor.GetSnapshotAsync() is { Status: AppCapabilityResult.Unavailable, Snapshot: null }
             && transport.Requests == 2, "The old monitoring context must not contact the replacement server.");
+        Check(await stream.StartAsync() == AppCapabilityResult.Unavailable,
+            "A stream created for the former server must not open the replacement connection.");
         Console.WriteLine("Server monitoring permission, sampling bounds and connection isolation passed.");
     }
 

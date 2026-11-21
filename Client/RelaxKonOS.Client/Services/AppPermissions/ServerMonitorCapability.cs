@@ -33,6 +33,8 @@ internal sealed class ServerMonitorCapability(
         int seconds = 60, CancellationToken cancellationToken = default) =>
         ReadAsync(token => systemMonitor.GetPerformanceHistoryAsync(Math.Clamp(seconds, 1, 60), token), cancellationToken);
 
+    public IServerPerformanceStream CreatePerformanceStream() => new PerformanceStream(connection.Session, Readiness);
+
     private AppCapabilityResult Readiness()
     {
         if (!permissions.IsGranted(appId, CoreAppPermissions.ServerMetricsRead))

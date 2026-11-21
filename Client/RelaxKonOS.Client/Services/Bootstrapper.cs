@@ -197,7 +197,6 @@ public static class Bootstrapper
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "task-manager"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
-        services.AddTransient<RelaxKonOS.Client.Apps.TaskManager.PerformanceStream>();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Docker.IRemoteDockerClient, RelaxKonOS.Client.Apps.Docker.RemoteDockerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "docker"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()

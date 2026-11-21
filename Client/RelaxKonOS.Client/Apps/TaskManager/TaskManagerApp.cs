@@ -7,6 +7,7 @@ using RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 using RelaxKonOS.Client.Apps.TaskManager.Views;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Input;
@@ -41,9 +42,7 @@ public sealed class TaskManagerApp : RemoteApplicationBase
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var client = context.Services.GetService(typeof(ITaskManagerClient)) as ITaskManagerClient;
-        var performanceStream = context.Services.GetService(typeof(PerformanceStream)) as PerformanceStream;
-
-        if (session is null || client is null || performanceStream is null || session.State != AuthSessionState.Authenticated)
+        if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
             var stub = new TextBlock
             {
@@ -58,7 +57,8 @@ public sealed class TaskManagerApp : RemoteApplicationBase
             return;
         }
 
-        var viewModel = new TaskManagerViewModel(client, performanceStream,
+        var sdk = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest);
+        var viewModel = new TaskManagerViewModel(client, sdk.ServerMonitor,
             context.Services.GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>(), session);
         var view = new TaskManagerMainView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.taskmanager.display_name"), view,
@@ -78,6 +78,6 @@ public sealed class TaskManagerApp : RemoteApplicationBase
         };
 
         // 窗口打开后启动实时刷新
-        _ = viewModel.StartAsync();
+        _ = viewModel.StartAsync(sdk.Permissions);
     }
 }

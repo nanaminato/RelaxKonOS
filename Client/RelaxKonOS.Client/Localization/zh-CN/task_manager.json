@@ -37,6 +37,7 @@
         "task_manager.login_required": "任务管理器需要登录。\n请先连接到 RelaxKonOS Server，然后再启动此应用。",
         "task_manager.error.not_signed_in": "未登录；系统监控服务不可用。",
         "task_manager.gpu_unavailable": "未检测到 NVIDIA GPU（nvidia-smi 不可用或 GPU 不是 NVIDIA GPU）。",
+        "task_manager.connection.permission_denied": "需要读取服务器指标的权限。",
         "task_manager.connection.initializing": "正在初始化性能采样…",
         "task_manager.connection.live": "实时连接",
         "task_manager.connection.snapshot": "实时连接不可用，已使用快照",

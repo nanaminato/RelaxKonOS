@@ -10,12 +10,22 @@ public interface IServerMonitor
     Task<ServerPerformanceResult<PerformanceRealtimeSnapshotDto>> GetPerformanceSnapshotAsync(CancellationToken cancellationToken = default);
     Task<ServerPerformanceResult<IReadOnlyList<PerformanceRealtimeSnapshotDto>>> GetPerformanceHistoryAsync(
         int seconds = 60, CancellationToken cancellationToken = default);
+    IServerPerformanceStream CreatePerformanceStream();
 
     /// <summary>
     /// Streams host-polled snapshots. The host clamps the requested interval to protect the server
     /// from excessive sampling; every update also carries a status instead of throwing on denial.
     /// </summary>
     IAsyncEnumerable<ServerMetricsResult> WatchAsync(TimeSpan? interval = null, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Live performance samples scoped to the application and its server connection.</summary>
+public interface IServerPerformanceStream : IAsyncDisposable
+{
+    event Action<PerformanceRealtimeSnapshotDto>? SnapshotReceived;
+    event Action? Reconnected;
+    event Action? Disconnected;
+    Task<AppCapabilityResult> StartAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed record ServerMetricsResult(AppCapabilityResult Status, ServerMetricsSnapshot? Snapshot);
