@@ -52,6 +52,8 @@ public interface IExternalAppContext
     IServerSquid Squid { get; }
     IServerProxyServer ProxyServer { get; }
     IServerProxy Proxy { get; }
+    IExternalTailscale Tailscale { get; }
+    IServerTailscaleLogin TailscaleLogin { get; }
     IServerApplicationDeployments ApplicationDeployments { get; }
     IGuardianHostInteraction? GuardianHost { get; }
     IPortForwardingService? PortForwarding { get; }

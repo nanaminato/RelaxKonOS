@@ -68,6 +68,8 @@ public sealed class ExternalAppContextFactory
     private readonly Func<IServerSquid>? _createSquidClient;
     private readonly Func<IServerProxyServer>? _createProxyServerClient;
     private readonly Func<IServerProxy>? _createProxyClient;
+    private readonly IServerTailscale? _tailscale;
+    private readonly IServerTailscaleLogin? _tailscaleLogin;
     private readonly IServerApplicationDeployments? _applicationDeployments;
     private readonly IPortForwardingService? _portForwarding;
     private readonly ClientPresentationPreferences? _presentationPreferences;
@@ -117,7 +119,9 @@ public sealed class ExternalAppContextFactory
         IServerTunnels? tunnels = null,
         Func<IServerSquid>? createSquidClient = null,
         Func<IServerProxyServer>? createProxyServerClient = null,
-        Func<IServerProxy>? createProxyClient = null)
+        Func<IServerProxy>? createProxyClient = null,
+        IServerTailscale? tailscale = null,
+        IServerTailscaleLogin? tailscaleLogin = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -153,6 +157,8 @@ public sealed class ExternalAppContextFactory
         _createSquidClient = createSquidClient;
         _createProxyServerClient = createProxyServerClient;
         _createProxyClient = createProxyClient;
+        _tailscale = tailscale;
+        _tailscaleLogin = tailscaleLogin;
         _applicationDeployments = applicationDeployments;
         _portForwarding = portForwarding;
         _presentationPreferences = presentationPreferences;
@@ -172,6 +178,7 @@ public sealed class ExternalAppContextFactory
         var fileSession = _usageMemory.Capture(_session);
         var connection = new ExternalServerConnection(fileSession);
         var docker = new ServerDockerResourcesCapability(appId, _permissions, fileSession, _docker, _dockerMirrors);
+        var tailscale = new ServerTailscaleCapability(appId, _permissions, connection, _tailscale, _tailscaleLogin, _elevationBroker, lifetime);
         return new ExternalAppContext(
         appId,
         new AppPermissionScope(appId, _permissionRequests),
@@ -189,6 +196,8 @@ public sealed class ExternalAppContextFactory
         new ServerSquidCapability(appId, _permissions, connection, _createSquidClient, lifetime),
         new ServerProxyServerCapability(appId, _permissions, connection, _createProxyServerClient, lifetime),
         new ServerProxyCapability(appId, _permissions, connection, _createProxyClient, lifetime),
+        tailscale,
+        tailscale,
         new ServerApplicationDeploymentsCapability(appId, _permissions, connection, _applicationDeployments, lifetime),
         appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime, _guardian as ProcessGuardianClient) : null,
         appId.Value == "relaxkonos.port-forwarding" && _portForwarding is { } forwarding
@@ -247,6 +256,8 @@ public sealed class ExternalAppContextFactory
         IServerSquid Squid,
         IServerProxyServer ProxyServer,
         IServerProxy Proxy,
+        IExternalTailscale Tailscale,
+        IServerTailscaleLogin TailscaleLogin,
         IServerApplicationDeployments ApplicationDeployments,
         IGuardianHostInteraction? GuardianHost,
         IPortForwardingService? PortForwarding,

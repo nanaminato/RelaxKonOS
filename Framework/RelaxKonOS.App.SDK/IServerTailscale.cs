@@ -15,3 +15,8 @@ public interface IServerTailscale
     Task<TailscaleRecoverySnapshot> ReadRecoveryAsync(HostSettingsConnection connection, Guid operationId, CancellationToken ct);
     Task<TailscaleOperation> CloseAsync(HostSettingsConnection connection, TailscaleCloseRequest request, CancellationToken ct);
 }
+
+public interface IExternalTailscale : IServerTailscale
+{
+    Task<bool> RequestPeerAccessAsync(HostSettingsConnection connection, CancellationToken cancellationToken);
+}

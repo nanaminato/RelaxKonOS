@@ -321,3 +321,4 @@
 - Proxy Manager 的工作区、设置和订阅对话框、样式、图标及中英日资源已进入应用程序集。Windows Release 代理工作区、组合工作区和流量轮询通过，独立入口与官方发行接线待完成。
 - Proxy Manager 已改为官方可选包。联合部署要求与 Squid、Proxy Server 共用的 Proxy 模块及对应管理能力。Windows Release 使用实际 DevCli 归档验证拒绝绕过联合部署、只读激活、权限隔离、升级、重启发现和卸载。SDK 专项验证关闭或切换连接时取消请求并清除订阅内容。系统代理地址候选在打开相应设置时请求指标读取权限。真实 mihomo 和包含此包的完整桌面发行待验。
 - Tailscale 控制与登录契约及其共享主机连接标识已迁入应用 SDK。桌面传输继续区分稳定登录身份与当前地址，事件桥接隐藏宿主认证实现。Windows Release 246 项 Tailscale 行为、传输和布局检查通过，设置三语交互检查通过。
+- Tailscale 外置上下文已接入读取、管理及按连接绑定的登录。只读状态会隐藏账号和节点详情，原生授权限于 HostNetworkChange 的 Tailscale 目标。Windows Release 验证了只读遮蔽、登录挑战和授权期间切换服务器。现有桌面入口仍在迁移。
