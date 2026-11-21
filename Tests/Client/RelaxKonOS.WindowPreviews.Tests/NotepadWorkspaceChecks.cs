@@ -72,10 +72,27 @@ internal static class NotepadWorkspaceChecks
             model.Text = "draft";
             Wait(model.SaveCommand.ExecuteAsync(null));
             Check(transport.Writes.Count == 0 && model.IsDirty, "A denied app write grant preserves the draft and sends no request.");
+            var deniedDelete = context.ServerFiles.DeleteAsync("/remote/src");
+            Wait(deniedDelete);
+            Check(deniedDelete.Result == AppCapabilityResult.PermissionDenied && transport.TreeRequests.Count == 0,
+                "A denied app write grant prevents requests to mutate the directory tree.");
             permission.Write = AppPermissionStatus.Undecided;
             Wait(model.SaveCommand.ExecuteAsync(null));
             Check(transport.Writes.Single() == ("/remote/notes.txt", "draft", "UTF-16 LE") && !model.IsDirty
                 && permission.Requested.Contains(AppPermissions.ServerFilesWrite), "Save uses the authenticated file API and preserves the selected encoding.");
+            var create = context.ServerFiles.CreateDirectoryAsync("/remote/draft");
+            var invalidRename = context.ServerFiles.RenameAsync("/remote/draft", "../renamed");
+            Wait(Task.WhenAll(create, invalidRename));
+            Check(create.Result == AppCapabilityResult.Succeeded && invalidRename.Result.Status == AppCapabilityResult.InvalidArgument
+                && transport.TreeRequests.SequenceEqual(["create:/remote/draft"]), "Directory creation uses the file API and invalid names never reach it.");
+            var rename = context.ServerFiles.RenameAsync("/remote/draft", "renamed");
+            Wait(rename);
+            var delete = context.ServerFiles.DeleteAsync("/remote/renamed");
+            Wait(delete);
+            Check(rename.Result is { Status: AppCapabilityResult.Succeeded, Path: "/remote/renamed" }
+                && delete.Result == AppCapabilityResult.Succeeded
+                && transport.TreeRequests.SequenceEqual(["create:/remote/draft", "rename:/remote/draft:renamed", "delete:/remote/renamed"]),
+                "Rename and delete reach the authenticated file API with the intended paths.");
 
             var saveAs = model.SaveAsCommand.ExecuteAsync(null);
             var picker = Dialog<ExplorerViewModel>();
@@ -224,6 +241,7 @@ internal static class NotepadWorkspaceChecks
         public const string Original = "remote notes";
         public List<(string Path, string Text, string Encoding)> Writes { get; } = [];
         public int DirectoryRequests { get; private set; }
+        public List<string> TreeRequests { get; } = [];
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Check(request.Headers.Authorization?.Parameter == "fixture-token", "File API receives the current session identity.");
@@ -246,6 +264,22 @@ internal static class NotepadWorkspaceChecks
                     [new("/remote/src", "src", null, FileSystemEntryType.Directory, null, null, null, false, false, null)],
                     [Entry("/remote/notes.txt")], null, null));
             }
+            if (route == FileApiRoutes.Directory && request.Method == HttpMethod.Post)
+            {
+                TreeRequests.Add($"create:{path}");
+                return Json(Folder(path));
+            }
+            if (route == FileApiRoutes.Rename && request.Method == HttpMethod.Post)
+            {
+                var rename = (await request.Content!.ReadFromJsonAsync<RenameRequest>(cancellationToken: ct))!;
+                TreeRequests.Add($"rename:{rename.SourcePath}:{rename.NewName}");
+                return Json(Folder("/remote/" + rename.NewName));
+            }
+            if (route == FileApiRoutes.Delete && request.Method == HttpMethod.Delete)
+            {
+                TreeRequests.Add($"delete:{path}");
+                return new(HttpStatusCode.NoContent);
+            }
             return route switch
             {
                 FileApiRoutes.Drives => Json(new[] { new DriveDto("/", "/", null, null, true, true) }),
@@ -256,6 +290,8 @@ internal static class NotepadWorkspaceChecks
         }
 
         private static FileEntryDto Entry(string path) => new(path, Path.GetFileName(path), ".txt", 64, null, null, null, false, false, "text/plain");
+        private static FileSystemEntryDto Folder(string path) => new(path, Path.GetFileName(path), null,
+            FileSystemEntryType.Directory, null, null, null, false, false, null);
         private static HttpResponseMessage Json<T>(T value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
     }
 }

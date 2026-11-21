@@ -25,6 +25,15 @@ public interface IServerFiles
     /// <summary>Writes a file using the current RelaxKonOS Server session and the app's write grant.</summary>
     Task<AppCapabilityResult> WriteAsync(string path, byte[] content, CancellationToken cancellationToken = default);
 
+    /// <summary>Creates a directory using the app's write grant.</summary>
+    Task<AppCapabilityResult> CreateDirectoryAsync(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>Renames a file or directory in place using the app's write grant and returns its server path.</summary>
+    Task<ServerFileRenameResult> RenameAsync(string path, string newName, CancellationToken cancellationToken = default);
+
+    /// <summary>Deletes a file or directory using the app's write grant and the server's deletion policy.</summary>
+    Task<AppCapabilityResult> DeleteAsync(string path, CancellationToken cancellationToken = default);
+
     /// <summary>Opens the host's remote file or folder picker. Save mode requires both read and write grants.</summary>
     Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options);
 }
@@ -34,6 +43,7 @@ public sealed record ServerFileContentResult(AppCapabilityResult Status, byte[]?
 public sealed record ServerDirectoryResult(AppCapabilityResult Status, ServerDirectory? Directory = null);
 public sealed record ServerDirectory(string Path, string Name, IReadOnlyList<ServerDirectoryEntry> Entries);
 public sealed record ServerDirectoryEntry(string Path, string Name, bool IsDirectory);
+public sealed record ServerFileRenameResult(AppCapabilityResult Status, string? Path = null);
 
 public enum ServerFilePickerMode { OpenFile, SelectFolder, SaveFile }
 

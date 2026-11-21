@@ -653,12 +653,45 @@ public sealed class ExternalAppContextFactory
 
         public async Task<AppCapabilityResult> WriteAsync(string path, byte[] content, CancellationToken cancellationToken = default)
         {
+            var status = CheckWriteAccess(path, cancellationToken);
+            if (status != AppCapabilityResult.Succeeded) return status;
+            await files.WriteFileAsync(path, content, cancellationToken);
+            return AppCapabilityResult.Succeeded;
+        }
+
+        public async Task<AppCapabilityResult> CreateDirectoryAsync(string path, CancellationToken cancellationToken)
+        {
+            var status = CheckWriteAccess(path, cancellationToken);
+            if (status != AppCapabilityResult.Succeeded) return status;
+            await files.CreateDirectoryAsync(path, cancellationToken);
+            return AppCapabilityResult.Succeeded;
+        }
+
+        public async Task<ServerFileRenameResult> RenameAsync(string path, string newName, CancellationToken cancellationToken)
+        {
+            var status = CheckWriteAccess(path, cancellationToken);
+            if (status != AppCapabilityResult.Succeeded) return new(status);
+            if (string.IsNullOrWhiteSpace(newName) || newName is "." or ".." || newName.IndexOfAny(['/', '\\', '\0', ':']) >= 0)
+                return new(AppCapabilityResult.InvalidArgument);
+            var renamed = await files.RenameAsync(path, newName, cancellationToken);
+            return IsServerSession ? new(AppCapabilityResult.Succeeded, renamed.Path) : new(AppCapabilityResult.Unavailable);
+        }
+
+        public async Task<AppCapabilityResult> DeleteAsync(string path, CancellationToken cancellationToken)
+        {
+            var status = CheckWriteAccess(path, cancellationToken);
+            if (status != AppCapabilityResult.Succeeded) return status;
+            await files.DeleteAsync(path, cancellationToken);
+            return AppCapabilityResult.Succeeded;
+        }
+
+        private AppCapabilityResult CheckWriteAccess(string path, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesWrite))
                 return AppCapabilityResult.PermissionDenied;
             if (string.IsNullOrWhiteSpace(path)) return AppCapabilityResult.InvalidArgument;
-            if (!IsServerSession) return AppCapabilityResult.Unavailable;
-            await files.WriteFileAsync(path, content, cancellationToken);
-            return AppCapabilityResult.Succeeded;
+            return IsServerSession ? AppCapabilityResult.Succeeded : AppCapabilityResult.Unavailable;
         }
 
         public async Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options)

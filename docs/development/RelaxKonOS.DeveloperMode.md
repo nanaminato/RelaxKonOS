@@ -200,7 +200,7 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack .\example
 
 `IExternalAppContext.ServerFiles` 在普通工作区使用当前服务器文件服务，在 SSH 桌面经当前已核验主机密钥的 SFTP 会话读取宿主交给应用的单个文件。两种入口都要求 `server.files.read`，并沿用连接本身的身份和文件权限。`IsSshSession` 可用于界面标记来源。
 
-在普通服务器工作区，编辑器可通过 `ReadAsync` 读取内容、`ListDirectoryAsync` 列出目录的直接子项、`WriteAsync` 写回文件，以及 `PickAsync` 在应用所属窗口打开宿主选择器。选择器支持打开文件、另存为和选择目录，文件选择器可声明多组过滤器。应用可通过 `IsPathCaseSensitive` 判断远程路径的大小写规则。打开和浏览需要读权限，写入需要写权限，另存为选择器需要两者。文件访问沿用原服务端文件授权。记事本通过宿主提供的文本编码设置接口继续使用工作区默认编码，详见[记事本](../applications/RelaxKonOS.Notepad.md)。
+在普通服务器工作区，编辑器可通过 `ReadAsync` 读取内容、`ListDirectoryAsync` 列出目录的直接子项、`WriteAsync` 写回文件，以及 `PickAsync` 在应用所属窗口打开宿主选择器。选择器支持打开文件、另存为和选择目录，文件选择器可声明多组过滤器。应用可通过 `IsPathCaseSensitive` 判断远程路径的大小写规则。打开和浏览需要读权限，写入需要写权限，另存为选择器需要两者。应用可凭写权限使用 `CreateDirectoryAsync`、`RenameAsync` 和 `DeleteAsync` 管理文件树。重命名只接受单个新名称，并返回服务端确认的路径。文件访问沿用原服务端文件授权。记事本通过宿主提供的文本编码设置接口继续使用工作区默认编码，详见[记事本](../applications/RelaxKonOS.Notepad.md)。
 
 授予在桌面客户端是本地的。在 Windows 上，它们使用当前用户的 DPAPI 保护存储；其他平台使用兼容的本地 JSON 回退。
 
