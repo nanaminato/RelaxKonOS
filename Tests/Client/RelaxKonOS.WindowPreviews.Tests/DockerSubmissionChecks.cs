@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Docker;
 using RelaxKonOS.AppSDK;
 using System.Reflection;
 using RelaxKonOS.Client.Apps.Docker;
@@ -9,7 +10,7 @@ internal static class DockerSubmissionChecks
     {
         var client = DispatchProxy.Create<IRemoteDockerClient, DockerSubmissionStub>();
         var stub = (DockerSubmissionStub)(object)client;
-        var vm = new DockerManagerViewModel(client) { IsDockerAvailable = true, StackName = "draft", ComposeYaml = "services: {}" };
+        var vm = new DockerManagerViewModel(client, new DockerText(RelaxKonOS.Client.Localization.LocalizedText.Get)) { IsDockerAvailable = true, StackName = "draft", ComposeYaml = "services: {}" };
         var submitting = vm.TryDeployStackAsync();
         Check(!submitting.IsCompleted && vm.IsLoading, "Editor waits for a durable submission receipt.");
         Check(!vm.TryDeployStackAsync().GetAwaiter().GetResult() && stub.Submissions == 1, "Duplicate submission is blocked.");

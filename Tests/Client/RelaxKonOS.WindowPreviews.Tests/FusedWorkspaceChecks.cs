@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Docker;
 using System.Reflection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Auth;
@@ -61,7 +62,7 @@ internal static class FusedWorkspaceChecks
         var proxyModel = new ProxyManagerViewModel(DispatchProxy.Create<IProxyRepository, HeaderPreviewPermissions>(), false, false);
         using var tunnelModel = new TunnelManagerViewModel(null!, false);
         using var forwardModel = new PortForwardingViewModel(new PortForwardingService(null!, new PortForwardingSettingsStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "unused-forward-settings.json"))));
-        var dockerModel = new DockerManagerViewModel(DispatchProxy.Create<IRemoteDockerClient, HeaderPreviewPermissions>());
+        var dockerModel = new DockerManagerViewModel(DispatchProxy.Create<IRemoteDockerClient, HeaderPreviewPermissions>(), new DockerText(RelaxKonOS.Client.Localization.LocalizedText.Get));
         var certificateModel = new CertificateManagerViewModel(null!, auth, permissions);
         var webModel = new WebServerManagerViewModel(null!, null!, auth, permissions, null!);
         var deploymentModel = new ApplicationDeploymentsViewModel(null!, permissions);

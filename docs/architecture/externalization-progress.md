@@ -63,6 +63,7 @@
 ## 测试证据
 
 - Docker Manager 的状态、资源详情、Compose 回执、引擎控制和账户镜像源使用 SDK，沿用现有 HTTP 路由。读取要求读授权，变更要求管理授权。SDK 在操作前后检查服务器会话，停止或重启引擎还要求用户确认。独立应用包仍待迁移。
+- Docker Manager 主工作区模型已迁入 `Applications/RelaxKonOS.App.Docker`。它通过 SDK 处理容器、资源和 Compose 操作，并从调用方获得文案。组件依赖页留在宿主，由当前应用界面提供。视图和独立入口仍待迁移。
 
 - 本地 SDK 10.0.300。部署库独立构建通过，零警告、零错误。桌面 Client 构建通过，NuGet 漏洞索引不可达，项目还报告了原有编译警告。
 - Git CLI 通过本地代理访问 GitHub 失败，基线已通过 GitHub 连接器独立确认。

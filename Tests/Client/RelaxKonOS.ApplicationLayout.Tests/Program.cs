@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Docker;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -33,9 +34,9 @@ var settings = new ShellSettings(appearance);
 var localization = new LocalizationService(settings, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
 using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
-var vm = new DockerManagerViewModel(null!)
+var vm = new DockerManagerViewModel(null!, new DockerText(RelaxKonOS.Client.Localization.LocalizedText.Get))
 {
-    StatusText = LocalizedText.Ref("docker.status.available", "27.0", "Linux"),
+    StatusText = new DockerText(LocalizedText.Get).Ref("docker.status.available", "27.0", "Linux"),
     ContainerLogs = "web-service: started successfully\nweb-service: listening on port 8080",
     ContainerStats = "CPU 0.4%   Memory 64 MB / 512 MB"
 };
@@ -121,6 +122,7 @@ if (args.Contains("--modules-only"))
     return;
 }
 var cases = 0;
+var dockerOnly = args.Contains("--docker-only");
 foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
 foreach (var style in new[] { SystemStyleIds.WindowsLike, SystemStyleIds.MacOsLike, SystemStyleIds.UbuntuLike })
@@ -128,10 +130,10 @@ foreach (var page in new[] { "Containers", "Images", "Networks", "Volumes" })
 {
     settings.Language = culture;
     appearance.Apply(mode, AppearancePreferencesDto.Default, style);
-    var type = typeof(DockerManagerViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.Views.DockerManagerWorkspace")!;
+    var type = typeof(DockerManagerApp).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.Views.DockerManagerWorkspace")!;
     Func<Task> noOp = () => Task.CompletedTask;
     var view = (Control)type.GetMethod("Create")!.Invoke(null,
-        new object?[] { vm, null, null, noOp, noOp, noOp, noOp, noOp })!;
+        new object?[] { vm, null, null, noOp, noOp, noOp, noOp, noOp, null })!;
     host.Content = view;
     host.Width = 800;
     host.Height = 520;
@@ -171,6 +173,7 @@ foreach (var page in new[] { "Containers", "Images", "Networks", "Volumes" })
     }
     cases++;
 }
+if (!dockerOnly)
 foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
 foreach (var style in SystemStyleIds.All)
@@ -209,11 +212,11 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 {
     settings.Language = culture;
     vm.OperationTitle = "Restart test3";
-    vm.OperationStatus = LocalizedText.Ref("docker.operation.running_label");
+    vm.OperationStatus = new DockerText(LocalizedText.Get).Ref("docker.operation.running_label");
     vm.OperationLog = string.Join(Environment.NewLine, Enumerable.Range(1, 80).Select(i => $"[{i}] service output"));
     vm.IsOperationRunning = true;
     vm.IsOperationLogExpanded = false;
-    var type = typeof(DockerManagerViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.DockerOperationActivityView")!;
+    var type = typeof(DockerManagerApp).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.DockerOperationActivityView")!;
     var activity = (Control)Activator.CreateInstance(type)!;
     activity.DataContext = vm;
     host.Width = 800;
@@ -243,12 +246,12 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
     if (culture == "zh-CN")
     {
         appearance.Apply(ThemeKind.Light, AppearancePreferencesDto.Default, SystemStyleIds.WindowsLike);
-        var workspaceType = typeof(DockerManagerViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.Views.DockerManagerWorkspace")!;
+        var workspaceType = typeof(DockerManagerApp).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.Views.DockerManagerWorkspace")!;
         Func<Task> noOp = () => Task.CompletedTask;
-        var workspace = (Control)workspaceType.GetMethod("Create")!.Invoke(null, new object?[] { vm, null, null, noOp, noOp, noOp, noOp, noOp })!;
+        var workspace = (Control)workspaceType.GetMethod("Create")!.Invoke(null, new object?[] { vm, null, null, noOp, noOp, noOp, noOp, noOp, null })!;
         vm.OperationTitle = "Restart test3";
         vm.IsOperationRunning = true;
-        vm.OperationStatus = LocalizedText.Ref("docker.operation.running_label");
+        vm.OperationStatus = new DockerText(LocalizedText.Get).Ref("docker.operation.running_label");
         vm.OperationLog = string.Join(Environment.NewLine, Enumerable.Range(1, 80).Select(i => $"[{i}] service output"));
         host.Content = workspace;
         foreach (var expanded in new[] { false, true })
@@ -266,6 +269,12 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
         vm.CloseOperationActivityCommand.Execute(null);
     }
     cases++;
+}
+if (dockerOnly)
+{
+    Console.WriteLine($"PASS: {cases} Docker resource and operation layouts.");
+    host.Close();
+    return;
 }
 foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })

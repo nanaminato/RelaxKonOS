@@ -1,18 +1,14 @@
 using System.Collections.ObjectModel;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Installation;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Docker;
 
-namespace RelaxKonOS.Client.Apps.Docker;
+namespace RelaxKonOS.App.Docker;
 
 /// <summary>State and safe, typed operations for the server-local Docker Manager.</summary>
-public sealed partial class DockerManagerViewModel(IServerDockerResources resources) : ObservableObject
+public sealed partial class DockerManagerViewModel(IServerDockerResources resources, DockerText text) : ObservableObject
 {
-    /// <summary>Docker Engine installation lives in Component Center; settings only observes and navigates.</summary>
-    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
 
     public ObservableCollection<DockerContainerDto> Containers { get; } = [];
     public ObservableCollection<DockerImageDto> Images { get; } = [];
@@ -31,14 +27,14 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     public IReadOnlyList<string> VolumeDrivers { get; } = ["local"];
     public IReadOnlyList<string> RestartPolicies { get; } = ["no", "always", "unless-stopped", "on-failure"];
 
-    [ObservableProperty] private LocalizedStatus _statusText;
+    [ObservableProperty] private DockerLabel _statusText;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _isOperationRunning;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOperationActivity))]
     private string _operationTitle = string.Empty;
     [ObservableProperty] private string _operationLog = string.Empty;
-    [ObservableProperty] private LocalizedStatus _operationStatus;
+    [ObservableProperty] private DockerLabel _operationStatus;
     [ObservableProperty] private bool _isOperationLogExpanded;
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StopEngineCommand))]
@@ -127,8 +123,8 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
             EnginePlatform = string.Join(" / ", new[] { status.OperatingSystem, status.Architecture }.Where(value => !string.IsNullOrWhiteSpace(value)));
             if (string.IsNullOrWhiteSpace(EnginePlatform)) EnginePlatform = "—";
             StatusText = status.IsAvailable
-                ? LocalizedText.Ref("docker.status.available", status.ServerVersion ?? "", status.OperatingSystem ?? "")
-                : LocalizedText.Ref("docker.status.unavailable", status.ProblemCode);
+                ? text.Ref("docker.status.available", status.ServerVersion ?? "", status.OperatingSystem ?? "")
+                : text.Ref("docker.status.unavailable", status.ProblemCode);
             Replace(Containers, await containersTask); Replace(Images, await imagesTask);
             var networks = await networksTask;
             Replace(Networks, networks); Replace(Volumes, await volumesTask);
@@ -139,7 +135,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         }
         catch (Exception exception)
         {
-            StatusText = LocalizedText.Ref("docker.status.failed", exception.Message);
+            StatusText = text.Ref("docker.status.failed", exception.Message);
         }
         finally { IsLoading = false; }
     }
@@ -156,7 +152,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     public Func<string, Task<bool>>? RequestEngineConfirmationAsync { get; set; }
 
     [ObservableProperty] private bool _isEngineActionRunning;
-    [ObservableProperty] private LocalizedStatus _engineActionText;
+    [ObservableProperty] private DockerLabel _engineActionText;
 
     /// <summary>A stopped engine can be started; only a reachable one can be stopped or restarted.</summary>
     private bool CanStartEngine => !IsEngineActionRunning;
@@ -176,24 +172,24 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         if (IsEngineActionRunning) return;
         var segment = DockerEngineActionRoutes.Segment(action);
         if (action != DockerEngineAction.Start && RequestEngineConfirmationAsync is not null
-            && !await RequestEngineConfirmationAsync(LocalizedText.Get($"docker.engine.confirm.{segment}")))
+            && !await RequestEngineConfirmationAsync(text.Get($"docker.engine.confirm.{segment}")))
         {
-            EngineActionText = LocalizedText.Ref("docker.engine.status.cancelled");
+            EngineActionText = text.Ref("docker.engine.status.cancelled");
             return;
         }
 
         IsEngineActionRunning = true;
-        EngineActionText = LocalizedText.Ref($"docker.engine.status.{segment}");
+        EngineActionText = text.Ref($"docker.engine.status.{segment}");
         try
         {
             var result = await resources.ApplyEngineActionAsync(action, confirmed: true);
             EngineActionText = result.Success
-                ? LocalizedText.Ref("docker.engine.status.completed")
-                : LocalizedText.Ref(result.ProblemCode);
+                ? text.Ref("docker.engine.status.completed")
+                : text.Ref(result.ProblemCode);
         }
         catch (Exception exception)
         {
-            EngineActionText = LocalizedText.Ref("docker.engine.status.failed", exception.Message);
+            EngineActionText = text.Ref("docker.engine.status.failed", exception.Message);
         }
         finally
         {
@@ -219,30 +215,30 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     private async Task DeleteContainerAsync()
     {
         var container = SelectedContainer;
-        if (container is null || !await ConfirmDeletionAsync(LocalizedText.Format("docker.container.delete_confirmation", container.Names))) return;
+        if (container is null || !await ConfirmDeletionAsync(text.Format("docker.container.delete_confirmation", container.Names))) return;
         await ApplyContainerActionAsync("delete", true);
     }
     [RelayCommand(CanExecute = nameof(HasSelectedContainer))] private async Task LoadContainerLogsAsync()
     {
         var container = SelectedContainer; if (container is null) return;
-        await RunQuietReadAsync(LocalizedText.Get("docker.container.logs"), async () =>
+        await RunQuietReadAsync(text.Get("docker.container.logs"), async () =>
         {
             var logs = await resources.GetContainerLogsAsync(container.Id);
             if (logs is null) return false;
             ContainerLogs = string.Join(Environment.NewLine, logs.Lines);
-            StatusText = LocalizedText.Ref("docker.action.succeeded", OperationText("logs"), container.Names);
+            StatusText = text.Ref("docker.action.succeeded", OperationText("logs"), container.Names);
             return true;
         });
     }
     [RelayCommand(CanExecute = nameof(HasSelectedContainer))] private async Task LoadContainerStatsAsync()
     {
         var container = SelectedContainer; if (container is null) return;
-        await RunQuietReadAsync(LocalizedText.Get("docker.container.stats"), async () =>
+        await RunQuietReadAsync(text.Get("docker.container.stats"), async () =>
         {
             var stats = await resources.GetContainerStatsAsync(container.Id);
             if (stats is null) return false;
-            ContainerStats = LocalizedText.Format("docker.stats.summary", stats.CpuPercent, stats.MemoryUsage, stats.NetworkIo, stats.BlockIo);
-            StatusText = LocalizedText.Ref("docker.action.succeeded", OperationText("stats"), container.Names);
+            ContainerStats = text.Format("docker.stats.summary", stats.CpuPercent, stats.MemoryUsage, stats.NetworkIo, stats.BlockIo);
+            StatusText = text.Ref("docker.action.succeeded", OperationText("stats"), container.Names);
             return true;
         });
     }
@@ -276,7 +272,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     {
         var container = SelectedContainer;
         if (container is null) return;
-        await RunQuietReadAsync(LocalizedText.Get("docker.resource.details"), async () =>
+        await RunQuietReadAsync(text.Get("docker.resource.details"), async () =>
         {
             var details = await resources.GetContainerAsync(container.Id);
             ContainerDetails = details;
@@ -287,7 +283,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
             ContainerNetworksText = string.Join(Environment.NewLine, details.Networks);
             ContainerEnvironmentText = string.Join(Environment.NewLine, details.Environment);
             ContainerLabelsText = string.Join(Environment.NewLine, details.Labels.Select(label => $"{label.Key}={label.Value}"));
-            StatusText = LocalizedText.Ref("docker.container.details_loaded", container.Names);
+            StatusText = text.Ref("docker.container.details_loaded", container.Names);
             return true;
         });
         if (ContainerDetails is not null && ShowContainerDetailsAsync is not null)
@@ -296,9 +292,9 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     private async Task ApplyContainerActionAsync(string action, bool confirmed = false)
     {
         var container = SelectedContainer; if (container is null) return;
-        Func<DockerOperationResult, LocalizedStatus> status = result => result.Success
-            ? LocalizedText.Ref("docker.action.succeeded", OperationText(action), container.Names)
-            : LocalizedText.Ref("docker.action.failed", OperationText(action), ProblemText(result.ProblemCode));
+        Func<DockerOperationResult, DockerLabel> status = result => result.Success
+            ? text.Ref("docker.action.succeeded", OperationText(action), container.Names)
+            : text.Ref("docker.action.failed", OperationText(action), ProblemText(result.ProblemCode));
         if (action is "start" or "stop" or "restart" or "pause" or "unpause")
         {
             await RunQuietOperationAsync(
@@ -310,7 +306,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         await RunOperationAsync(
             () => resources.ApplyContainerActionAsync(container.Id, action, new DockerContainerActionRequest(Confirmed: confirmed)),
             status,
-            operationName: LocalizedText.Format("docker.operation.container_action", OperationText(action), container.Names));
+            operationName: text.Format("docker.operation.container_action", OperationText(action), container.Names));
     }
 
     /// <summary>Queues the non-destructive in-place container edit and reports whether its dialog can close.</summary>
@@ -322,8 +318,8 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         if (name.Equals(container.Names, StringComparison.Ordinal)) return true;
         return await RunOperationAsync(
             () => resources.UpdateContainerAsync(container.Id, new DockerContainerUpdateRequest(name)),
-            result => result.Success ? LocalizedText.Ref("docker.container.updated", name) : LocalizedText.Ref("docker.container.update_failed", ProblemText(result.ProblemCode)),
-            operationName: LocalizedText.Format("docker.operation.update_container", container.Names));
+            result => result.Success ? text.Ref("docker.container.updated", name) : text.Ref("docker.container.update_failed", ProblemText(result.ProblemCode)),
+            operationName: text.Format("docker.operation.update_container", container.Names));
     }
 
     [RelayCommand] private Task ValidateStackAsync() => PreviewStackAsync();
@@ -335,24 +331,24 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     private async Task PreviewStackAsync()
     {
         if (IsLoading || !await EnsureDockerAvailableAsync()) return;
-        if (string.IsNullOrWhiteSpace(StackName) || string.IsNullOrWhiteSpace(ComposeYaml)) { StatusText = LocalizedText.Ref("docker.stack.required"); return; }
+        if (string.IsNullOrWhiteSpace(StackName) || string.IsNullOrWhiteSpace(ComposeYaml)) { StatusText = text.Ref("docker.stack.required"); return; }
         var name = StackName.Trim();
-        await RunQuietReadAsync(LocalizedText.Get("docker.stack.validate"), async () =>
+        await RunQuietReadAsync(text.Get("docker.stack.validate"), async () =>
         {
             var preview = await resources.PreviewStackAsync(new DockerStackDefinitionDto(name, ComposeYaml));
             StackPreviewText = FormatPreview(preview);
-            StatusText = LocalizedText.Ref("docker.stack.preview_succeeded", name, preview.Services.Count, preview.Volumes.Count, preview.Networks.Count);
+            StatusText = text.Ref("docker.stack.preview_succeeded", name, preview.Services.Count, preview.Volumes.Count, preview.Networks.Count);
             return true;
-        }, LocalizedText.Get("docker.stack.preview_unavailable"));
+        }, text.Get("docker.stack.preview_unavailable"));
     }
 
     /// <summary>Closes the editor only after the server returns a deployment receipt.</summary>
     public async Task<bool> TryDeployStackAsync()
     {
         if (IsLoading || !await EnsureDockerAvailableAsync()) return false;
-        if (string.IsNullOrWhiteSpace(StackName) || string.IsNullOrWhiteSpace(ComposeYaml)) { StatusText = LocalizedText.Ref("docker.stack.required"); return false; }
+        if (string.IsNullOrWhiteSpace(StackName) || string.IsNullOrWhiteSpace(ComposeYaml)) { StatusText = text.Ref("docker.stack.required"); return false; }
         var name = StackName.Trim();
-        var title = LocalizedText.Format("docker.operation.stack", OperationText("deploy"), name);
+        var title = text.Format("docker.operation.stack", OperationText("deploy"), name);
         IsLoading = true;
         BeginOperation(title);
         var definition = new DockerStackDefinitionDto(name, ComposeYaml);
@@ -397,11 +393,11 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     {
         var stack = SelectedStack;
         if (stack is null) return;
-        await RunQuietReadAsync(LocalizedText.Get("docker.stack.services"), async () =>
+        await RunQuietReadAsync(text.Get("docker.stack.services"), async () =>
         {
             Replace(StackServices, await resources.ListStackServicesAsync(stack.Name));
-            Replace(StackOperations, (await resources.ListStackOperationsAsync(stack.Name)).Select(operation => new StackOperationRow(operation)));
-            StatusText = LocalizedText.Ref("docker.stack.services_loaded", stack.Name, StackServices.Count);
+            Replace(StackOperations, (await resources.ListStackOperationsAsync(stack.Name)).Select(operation => new StackOperationRow(operation, OperationTextFor(operation.Kind), StateText(operation.State))));
+            StatusText = text.Ref("docker.stack.services_loaded", stack.Name, StackServices.Count);
             return true;
         });
     }
@@ -413,7 +409,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     private async Task DeleteStackAsync()
     {
         var stack = SelectedStack;
-        if (stack is null || !await ConfirmDeletionAsync(LocalizedText.Format("docker.stack.delete_confirmation", stack.Name))) return;
+        if (stack is null || !await ConfirmDeletionAsync(text.Format("docker.stack.delete_confirmation", stack.Name))) return;
         await ApplySelectedStackActionAsync("delete", confirmed: true);
     }
     [RelayCommand(CanExecute = nameof(HasSelectedStack))]
@@ -422,13 +418,13 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         var stack = SelectedStack;
         if (stack is null || ShowEditStackAsync is null) return;
         DockerStackDefinitionDto? definition = null;
-        await RunQuietReadAsync(LocalizedText.Get("docker.stack.edit"), async () =>
+        await RunQuietReadAsync(text.Get("docker.stack.edit"), async () =>
         {
             definition = await resources.GetStackDefinitionAsync(stack.Name);
             if (definition is null) return false;
-            StatusText = LocalizedText.Ref("docker.stack.source_loaded", stack.Name);
+            StatusText = text.Ref("docker.stack.source_loaded", stack.Name);
             return true;
-        }, LocalizedText.Get("docker.stack.source_unavailable"));
+        }, text.Get("docker.stack.source_unavailable"));
         if (definition is null) return;
         StackName = definition.Name;
         ComposeYaml = definition.ComposeYaml;
@@ -462,7 +458,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         var stack = SelectedStack;
         if (stack is null || !DockerStackActionRoutes.TryParseAction(action, out var kind)) return;
         if (IsLoading || !await EnsureDockerAvailableAsync()) return;
-        var title = LocalizedText.Format("docker.operation.stack", OperationText(action), stack.Name);
+        var title = text.Format("docker.operation.stack", OperationText(action), stack.Name);
         IsLoading = true;
         BeginOperation(title);
         _ = ApplyStackActionCoreAsync(stack.Name, kind, confirmed);
@@ -492,13 +488,13 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     public async Task<bool> TryPullImageAsync()
     {
         if (IsLoading) return false;
-        if (string.IsNullOrWhiteSpace(ImageReference)) { StatusText = LocalizedText.Ref("docker.image.required"); return false; }
+        if (string.IsNullOrWhiteSpace(ImageReference)) { StatusText = text.Ref("docker.image.required"); return false; }
         var imageReference = ImageReference.Trim();
         return await RunOperationAsync(
             () => resources.PullImageAsync(new DockerImageOperationRequest(imageReference)),
-            result => result.Success ? LocalizedText.Ref("docker.image.pull_succeeded", imageReference) : LocalizedText.Ref("docker.image.pull_failed", ProblemText(result.ProblemCode)),
+            result => result.Success ? text.Ref("docker.image.pull_succeeded", imageReference) : text.Ref("docker.image.pull_failed", ProblemText(result.ProblemCode)),
             onSuccess: () => ImageReference = string.Empty,
-            operationName: LocalizedText.Format("docker.operation.pull", imageReference));
+            operationName: text.Format("docker.operation.pull", imageReference));
     }
 
     [RelayCommand] private Task CreateContainerAsync() => TryCreateContainerAsync();
@@ -507,28 +503,28 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     public async Task<bool> TryCreateContainerAsync()
     {
         if (IsLoading) return false;
-        if (string.IsNullOrWhiteSpace(ContainerName) || string.IsNullOrWhiteSpace(ContainerImage)) { StatusText = LocalizedText.Ref("docker.container.required"); return false; }
+        if (string.IsNullOrWhiteSpace(ContainerName) || string.IsNullOrWhiteSpace(ContainerImage)) { StatusText = text.Ref("docker.container.required"); return false; }
         var name = ContainerName.Trim();
         return await RunOperationAsync(
             () => resources.CreateContainerAsync(new DockerContainerCreateRequest(
                 name, ContainerImage.Trim(), Lines(ContainerArguments), Lines(ContainerPorts), Lines(ContainerEnvironment), Lines(ContainerMounts), ContainerNetwork, ContainerRestartPolicy)),
-            result => result.Success ? LocalizedText.Ref("docker.container.created", name) : LocalizedText.Ref("docker.container.create_failed", ProblemText(result.ProblemCode)),
+            result => result.Success ? text.Ref("docker.container.created", name) : text.Ref("docker.container.create_failed", ProblemText(result.ProblemCode)),
             onSuccess: () =>
             {
                 ContainerName = ContainerImage = ContainerArguments = ContainerPorts = ContainerEnvironment = ContainerMounts = string.Empty;
                 ContainerNetwork = "bridge"; ContainerRestartPolicy = "unless-stopped";
             },
-            operationName: LocalizedText.Format("docker.operation.create_container", name));
+            operationName: text.Format("docker.operation.create_container", name));
     }
 
     [RelayCommand(CanExecute = nameof(CanDeleteImage))] private async Task DeleteImageAsync()
     {
         var image = SelectedImage; if (image is null) return;
-        if (!await ConfirmDeletionAsync(LocalizedText.Format("docker.image.delete_confirmation", image.Repository))) return;
+        if (!await ConfirmDeletionAsync(text.Format("docker.image.delete_confirmation", image.Repository))) return;
         await RunOperationAsync(
             () => resources.DeleteImageAsync(image.Id, new DockerImageOperationRequest(image.Id, true)),
-            result => result.Success ? LocalizedText.Ref("docker.image.deleted", image.Repository) : LocalizedText.Ref("docker.image.delete_failed", ProblemText(result.ProblemCode)),
-            operationName: LocalizedText.Format("docker.operation.delete_image", image.Repository));
+            result => result.Success ? text.Ref("docker.image.deleted", image.Repository) : text.Ref("docker.image.delete_failed", ProblemText(result.ProblemCode)),
+            operationName: text.Format("docker.operation.delete_image", image.Repository));
     }
     private bool CanDeleteImage => SelectedImage is not null && !IsLoading;
     partial void OnSelectedImageChanged(DockerImageDto? value) => DeleteImageCommand.NotifyCanExecuteChanged();
@@ -539,22 +535,22 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     public async Task<bool> TryCreateNetworkAsync()
     {
         if (IsLoading) return false;
-        if (string.IsNullOrWhiteSpace(NetworkName)) { StatusText = LocalizedText.Ref("docker.network.required"); return false; }
+        if (string.IsNullOrWhiteSpace(NetworkName)) { StatusText = text.Ref("docker.network.required"); return false; }
         var name = NetworkName.Trim();
         return await RunOperationAsync(
             () => resources.CreateNetworkAsync(new DockerNetworkCreateRequest(name, SelectedNetworkDriver)),
-            result => result.Success ? LocalizedText.Ref("docker.network.created", name) : LocalizedText.Ref("docker.network.create_failed", ProblemText(result.ProblemCode)),
+            result => result.Success ? text.Ref("docker.network.created", name) : text.Ref("docker.network.create_failed", ProblemText(result.ProblemCode)),
             onSuccess: () => NetworkName = string.Empty,
-            operationName: LocalizedText.Format("docker.operation.create_network", name));
+            operationName: text.Format("docker.operation.create_network", name));
     }
     [RelayCommand(CanExecute = nameof(CanDeleteNetwork))] private async Task DeleteNetworkAsync()
     {
         var network = SelectedNetwork; if (network is null) return;
-        if (!await ConfirmDeletionAsync(LocalizedText.Format("docker.network.delete_confirmation", network.Name))) return;
+        if (!await ConfirmDeletionAsync(text.Format("docker.network.delete_confirmation", network.Name))) return;
         await RunOperationAsync(
             () => resources.DeleteNetworkAsync(network.Id, true),
-            result => result.Success ? LocalizedText.Ref("docker.network.deleted", network.Name) : LocalizedText.Ref("docker.network.delete_failed", ProblemText(result.ProblemCode)),
-            operationName: LocalizedText.Format("docker.operation.delete_network", network.Name));
+            result => result.Success ? text.Ref("docker.network.deleted", network.Name) : text.Ref("docker.network.delete_failed", ProblemText(result.ProblemCode)),
+            operationName: text.Format("docker.operation.delete_network", network.Name));
     }
     private bool CanDeleteNetwork => SelectedNetwork is not null && !IsLoading;
     [RelayCommand(CanExecute = nameof(CanLoadNetworkDetails))]
@@ -563,16 +559,16 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         var network = SelectedNetwork;
         if (network is null) return;
         ResourceDetailsText = string.Empty;
-        await RunQuietReadAsync(LocalizedText.Get("docker.resource.details"), async () =>
+        await RunQuietReadAsync(text.Get("docker.resource.details"), async () =>
         {
             var details = await resources.GetNetworkAsync(network.Id);
             if (details is null) return false;
 
-            ResourceDetailsTitle = LocalizedText.Format("docker.resource.network_details", network.Name);
+            ResourceDetailsTitle = text.Format("docker.resource.network_details", network.Name);
             ResourceDetailsText = FormatNetworkDetails(details);
-            StatusText = LocalizedText.Ref("docker.resource.details_loaded", network.Name);
+            StatusText = text.Ref("docker.resource.details_loaded", network.Name);
             return true;
-        }, LocalizedText.Format("docker.resource.details_unavailable", network.Name));
+        }, text.Format("docker.resource.details_unavailable", network.Name));
         if (!string.IsNullOrWhiteSpace(ResourceDetailsText) && ShowResourceDetailsAsync is not null)
             await ShowResourceDetailsAsync();
     }
@@ -590,22 +586,22 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     public async Task<bool> TryCreateVolumeAsync()
     {
         if (IsLoading) return false;
-        if (string.IsNullOrWhiteSpace(VolumeName)) { StatusText = LocalizedText.Ref("docker.volume.required"); return false; }
+        if (string.IsNullOrWhiteSpace(VolumeName)) { StatusText = text.Ref("docker.volume.required"); return false; }
         var name = VolumeName.Trim();
         return await RunOperationAsync(
             () => resources.CreateVolumeAsync(new DockerVolumeCreateRequest(name, SelectedVolumeDriver)),
-            result => result.Success ? LocalizedText.Ref("docker.volume.created", name) : LocalizedText.Ref("docker.volume.create_failed", ProblemText(result.ProblemCode)),
+            result => result.Success ? text.Ref("docker.volume.created", name) : text.Ref("docker.volume.create_failed", ProblemText(result.ProblemCode)),
             onSuccess: () => VolumeName = string.Empty,
-            operationName: LocalizedText.Format("docker.operation.create_volume", name));
+            operationName: text.Format("docker.operation.create_volume", name));
     }
     [RelayCommand(CanExecute = nameof(CanDeleteVolume))] private async Task DeleteVolumeAsync()
     {
         var volume = SelectedVolume; if (volume is null) return;
-        if (!await ConfirmDeletionAsync(LocalizedText.Format("docker.volume.delete_confirmation", volume.Name))) return;
+        if (!await ConfirmDeletionAsync(text.Format("docker.volume.delete_confirmation", volume.Name))) return;
         await RunOperationAsync(
             () => resources.DeleteVolumeAsync(volume.Name, true),
-            result => result.Success ? LocalizedText.Ref("docker.volume.deleted", volume.Name) : LocalizedText.Ref("docker.volume.delete_failed", ProblemText(result.ProblemCode)),
-            operationName: LocalizedText.Format("docker.operation.delete_volume", volume.Name));
+            result => result.Success ? text.Ref("docker.volume.deleted", volume.Name) : text.Ref("docker.volume.delete_failed", ProblemText(result.ProblemCode)),
+            operationName: text.Format("docker.operation.delete_volume", volume.Name));
     }
     private bool CanDeleteVolume => SelectedVolume is not null && !IsLoading;
     [RelayCommand(CanExecute = nameof(CanLoadVolumeDetails))]
@@ -614,16 +610,16 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         var volume = SelectedVolume;
         if (volume is null) return;
         ResourceDetailsText = string.Empty;
-        await RunQuietReadAsync(LocalizedText.Get("docker.resource.details"), async () =>
+        await RunQuietReadAsync(text.Get("docker.resource.details"), async () =>
         {
             var details = await resources.GetVolumeAsync(volume.Name);
             if (details is null) return false;
 
-            ResourceDetailsTitle = LocalizedText.Format("docker.resource.volume_details", volume.Name);
+            ResourceDetailsTitle = text.Format("docker.resource.volume_details", volume.Name);
             ResourceDetailsText = FormatVolumeDetails(details);
-            StatusText = LocalizedText.Ref("docker.resource.details_loaded", volume.Name);
+            StatusText = text.Ref("docker.resource.details_loaded", volume.Name);
             return true;
-        }, LocalizedText.Format("docker.resource.details_unavailable", volume.Name));
+        }, text.Format("docker.resource.details_unavailable", volume.Name));
         if (!string.IsNullOrWhiteSpace(ResourceDetailsText) && ShowResourceDetailsAsync is not null)
             await ShowResourceDetailsAsync();
     }
@@ -638,7 +634,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     private async Task<bool> ConfirmDeletionAsync(string message) =>
         RequestDeletionConfirmationAsync is not null && await RequestDeletionConfirmationAsync(message);
 
-    private async Task<bool> RunOperationAsync(Func<Task<DockerOperationResult>> operation, Func<DockerOperationResult, LocalizedStatus> status, Action? onSuccess = null, string? operationName = null)
+    private async Task<bool> RunOperationAsync(Func<Task<DockerOperationResult>> operation, Func<DockerOperationResult, DockerLabel> status, Action? onSuccess = null, string? operationName = null)
     {
         if (IsLoading || !await EnsureDockerAvailableAsync()) return false;
         IsLoading = true;
@@ -646,7 +642,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         _ = CompleteOperationAsync(operation, status, onSuccess);
         return true;
     }
-    private async Task CompleteOperationAsync(Func<Task<DockerOperationResult>> operation, Func<DockerOperationResult, LocalizedStatus> status, Action? onSuccess)
+    private async Task CompleteOperationAsync(Func<Task<DockerOperationResult>> operation, Func<DockerOperationResult, DockerLabel> status, Action? onSuccess)
     {
         try
         {
@@ -659,7 +655,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         }
         catch (Exception exception)
         {
-            StatusText = LocalizedText.Ref("docker.status.failed", exception.Message);
+            StatusText = text.Ref("docker.status.failed", exception.Message);
             AppendOperationLog([exception.Message]);
             CompleteOperation(StatusText);
             await ShowUnavailableForExceptionAsync();
@@ -676,7 +672,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     {
         var current = operation;
         var action = OperationText(DockerStackActionRoutes.Segment(current.Kind));
-        AppendOperationLog([LocalizedText.Format("docker.stack.operation_queued", current.OperationId.ToString("D"))]);
+        AppendOperationLog([text.Format("docker.stack.operation_queued", current.OperationId.ToString("D"))]);
         var lastStage = string.Empty;
         var operationPrefix = OperationLog;
         var diagnosticSnapshot = string.Empty;
@@ -684,7 +680,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         {
             await Task.Delay(TimeSpan.FromSeconds(1));
             current = await resources.GetStackOperationAsync(current.OperationId) ?? current;
-            StatusText = LocalizedText.Ref("docker.stack.operation_running", action, current.ProjectName, current.Stage.ToString());
+            StatusText = text.Ref("docker.stack.operation_running", action, current.ProjectName, current.Stage.ToString());
             OperationStatus = StatusText;
             if (lastStage != current.Stage.ToString())
             {
@@ -711,13 +707,13 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         // The observed services are the outcome. A partial failure is exactly the case where the
         // operator has to choose between retrying, stopping, or removing the project.
         AppendOperationLog(ServiceOutcomeLines(current));
-        StatusText = LocalizedText.Ref(OutcomeKey(current.State), action, current.ProjectName);
+        StatusText = text.Ref(OutcomeKey(current.State), action, current.ProjectName);
         if (current.State is DockerStackOperationState.Failed) await ShowUnavailableForProblemAsync(current.ProblemCode ?? string.Empty);
     }
 
     private async Task FailStackOperationAsync(Exception exception)
     {
-        StatusText = LocalizedText.Ref("docker.status.failed", exception.Message);
+        StatusText = text.Ref("docker.status.failed", exception.Message);
         AppendOperationLog([exception.Message]);
         if (exception is DockerStackRequestException refusal) await ShowUnavailableForProblemAsync(refusal.ProblemCode);
         else await ShowUnavailableForExceptionAsync();
@@ -732,16 +728,16 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         _ => "docker.stack.failed",
     };
 
-    private static IEnumerable<string> ServiceOutcomeLines(DockerStackOperationDto operation) =>
+    private IEnumerable<string> ServiceOutcomeLines(DockerStackOperationDto operation) =>
         operation.Services.Select(service => $"{service.Service} · {service.State} · {service.Status}")
-            .Prepend($"{LocalizedText.Get("docker.stack.observed_services")}:");
+            .Prepend($"{text.Get("docker.stack.observed_services")}:");
 
-    private static string FormatPreview(DockerStackPreviewDto preview) => string.Join(Environment.NewLine, new[]
+    private string FormatPreview(DockerStackPreviewDto preview) => string.Join(Environment.NewLine, new[]
     {
-        $"{LocalizedText.Get("docker.stack.preview_version")}: {preview.DefinitionVersion[..12]}",
-        $"{LocalizedText.Get("docker.stack.services")}: {string.Join(", ", preview.Services.Select(service => service.Image.Length > 0 ? $"{service.Service} ({service.Image})" : service.Service))}",
-        $"{LocalizedText.Get("docker.stack.preview_volumes")}: {string.Join(", ", preview.Volumes)}",
-        $"{LocalizedText.Get("docker.stack.preview_networks")}: {string.Join(", ", preview.Networks)}",
+        $"{text.Get("docker.stack.preview_version")}: {preview.DefinitionVersion[..12]}",
+        $"{text.Get("docker.stack.services")}: {string.Join(", ", preview.Services.Select(service => service.Image.Length > 0 ? $"{service.Service} ({service.Image})" : service.Service))}",
+        $"{text.Get("docker.stack.preview_volumes")}: {string.Join(", ", preview.Volumes)}",
+        $"{text.Get("docker.stack.preview_networks")}: {string.Join(", ", preview.Networks)}",
     });
 
     /// <summary>
@@ -761,7 +757,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     private string? _lastStackRequest;
     private string? _lastStackKey;
 
-    private async Task RunQuietOperationAsync<TResult>(Func<Task<TResult>> operation, Func<TResult, bool> isSuccess, Func<TResult, LocalizedStatus> status)
+    private async Task RunQuietOperationAsync<TResult>(Func<Task<TResult>> operation, Func<TResult, bool> isSuccess, Func<TResult, DockerLabel> status)
     {
         if (IsLoading || !await EnsureDockerAvailableAsync()) return;
         IsLoading = true;
@@ -773,7 +769,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         }
         catch (Exception exception)
         {
-            StatusText = LocalizedText.Ref("docker.status.failed", exception.Message);
+            StatusText = text.Ref("docker.status.failed", exception.Message);
             await ShowErrorAsync(StatusText);
         }
         finally { IsLoading = false; }
@@ -786,12 +782,12 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         try
         {
             if (await operation()) return;
-            StatusText = LocalizedText.Ref("docker.action.failed", operationName, unavailableDetail ?? LocalizedText.Get("docker.read_error.not_found"));
+            StatusText = text.Ref("docker.action.failed", operationName, unavailableDetail ?? text.Get("docker.read_error.not_found"));
             await ShowErrorAsync(StatusText);
         }
         catch (Exception exception)
         {
-            StatusText = LocalizedText.Ref("docker.action.failed", operationName, exception.Message);
+            StatusText = text.Ref("docker.action.failed", operationName, exception.Message);
             await ShowErrorAsync(StatusText);
         }
         finally { IsLoading = false; }
@@ -800,7 +796,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     private async Task<bool> EnsureDockerAvailableAsync()
     {
         if (IsDockerAvailable) return true;
-        StatusText = LocalizedText.Ref("docker.status.unavailable_operation");
+        StatusText = text.Ref("docker.status.unavailable_operation");
         await ShowDockerUnavailableDialogAsync();
         return false;
     }
@@ -808,7 +804,7 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     {
         if (problemCode is not ("docker.unavailable" or "docker.not_installed" or "docker.api_incompatible")) return;
         IsDockerAvailable = false;
-        StatusText = LocalizedText.Ref("docker.status.unavailable", problemCode);
+        StatusText = text.Ref("docker.status.unavailable", problemCode);
         await ShowDockerUnavailableDialogAsync();
     }
     private async Task ShowUnavailableForExceptionAsync()
@@ -818,12 +814,12 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
             var status = await resources.GetStatusAsync();
             if (status.IsAvailable) return;
             IsDockerAvailable = false;
-            StatusText = LocalizedText.Ref("docker.status.unavailable", status.ProblemCode);
+            StatusText = text.Ref("docker.status.unavailable", status.ProblemCode);
         }
         catch
         {
             IsDockerAvailable = false;
-            StatusText = LocalizedText.Ref("docker.status.unavailable_operation");
+            StatusText = text.Ref("docker.status.unavailable_operation");
         }
         await ShowDockerUnavailableDialogAsync();
     }
@@ -834,25 +830,25 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
         try { await ShowDockerUnavailableAsync(); }
         finally { _isUnavailableDialogShowing = false; }
     }
-    private static string OperationText(string operation) => operation switch
+    private string OperationText(string operation) => operation switch
     {
-        "validate" => LocalizedText.Get("docker.stack.validate"),
-        "deploy" => LocalizedText.Get("docker.stack.deploy"),
-        "logs" => LocalizedText.Get("docker.container.logs"),
-        "stats" => LocalizedText.Get("docker.container.stats"),
-        "delete" => LocalizedText.Get("common.delete"),
-        _ => LocalizedText.Get($"docker.action.{operation}"),
+        "validate" => text.Get("docker.stack.validate"),
+        "deploy" => text.Get("docker.stack.deploy"),
+        "logs" => text.Get("docker.container.logs"),
+        "stats" => text.Get("docker.container.stats"),
+        "delete" => text.Get("common.delete"),
+        _ => text.Get($"docker.action.{operation}"),
     };
 
     /// <summary>Display text of a durable operation's kind, shared by the history grid and the messages.</summary>
-    internal static string OperationTextFor(DockerStackOperationKind kind) => kind == DockerStackOperationKind.Deploy
-        ? LocalizedText.Get("docker.stack.deploy")
+    internal string OperationTextFor(DockerStackOperationKind kind) => kind == DockerStackOperationKind.Deploy
+        ? text.Get("docker.stack.deploy")
         : kind == DockerStackOperationKind.Delete
-            ? LocalizedText.Get("common.delete")
+            ? text.Get("common.delete")
             : OperationText(DockerStackActionRoutes.Segment(kind));
 
     /// <summary>Display text of a durable operation's state.</summary>
-    internal static string StateText(DockerStackOperationState state) => LocalizedText.Get(state switch
+    internal string StateText(DockerStackOperationState state) => text.Get(state switch
     {
         DockerStackOperationState.Queued => "docker.stack.state.queued",
         DockerStackOperationState.Running => "docker.stack.state.running",
@@ -864,11 +860,11 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     });
     private void BeginOperation(string? operationName)
     {
-        OperationTitle = string.IsNullOrWhiteSpace(operationName) ? LocalizedText.Get("docker.operation.reading") : operationName;
-        OperationLog = LocalizedText.Format("docker.operation.started", OperationTitle);
-        OperationStatus = LocalizedText.Ref("docker.operation.running_label");
+        OperationTitle = string.IsNullOrWhiteSpace(operationName) ? text.Get("docker.operation.reading") : operationName;
+        OperationLog = text.Format("docker.operation.started", OperationTitle);
+        OperationStatus = text.Ref("docker.operation.running_label");
         IsOperationRunning = true;
-        StatusText = LocalizedText.Ref("docker.operation.running", OperationTitle);
+        StatusText = text.Ref("docker.operation.running", OperationTitle);
     }
     [RelayCommand]
     private void CloseOperationActivity()
@@ -887,77 +883,77 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
     private void CompleteOperation(string outcome)
     {
         OperationStatus = outcome;
-        AppendOperationLog([LocalizedText.Format("docker.operation.finished", outcome)]);
+        AppendOperationLog([text.Format("docker.operation.finished", outcome)]);
     }
     /// <summary>
     /// The sentence for a Docker problem code. A refusal from the Compose domain is something an
     /// operator has to be able to act on, so every code this client can provoke is named here rather
     /// than being printed as the raw protocol identifier.
     /// </summary>
-    private static string ProblemText(string problemCode) => problemCode switch
+    private string ProblemText(string problemCode) => problemCode switch
     {
-        "docker.operation_timeout" => LocalizedText.Get("docker.problem.timeout"),
-        "docker.operation_failed" or "docker.compose_failed" => LocalizedText.Get("docker.problem.failed"),
-        "docker.stack_no_services" => LocalizedText.Get("docker.problem.stack_no_services"),
-        "docker.stack_source_unavailable" => LocalizedText.Get("docker.stack.source_unavailable"),
-        "docker.volume_in_use" => LocalizedText.Get("docker.volume.in_use"),
-        "docker.application_resource_managed" => LocalizedText.Get("docker.problem.application_resource_managed"),
-        "docker.stack_invalid_name" => LocalizedText.Get("docker.problem.stack_invalid_name"),
-        "docker.stack_invalid_compose" => LocalizedText.Get("docker.problem.stack_invalid_compose"),
-        "docker.compose_feature_unsupported" => LocalizedText.Get("docker.problem.compose_feature_unsupported"),
-        "docker.compose_variable_unresolved" => LocalizedText.Get("docker.problem.compose_variable_unresolved"),
-        "docker.stack_definition_changed" => LocalizedText.Get("docker.problem.stack_definition_changed"),
-        "docker.confirmation_required" => LocalizedText.Get("docker.problem.confirmation_required"),
-        "docker.stack_not_found" => LocalizedText.Get("docker.problem.stack_not_found"),
-        "docker.stack_operation_conflict" => LocalizedText.Get("docker.problem.stack_operation_conflict"),
-        "docker.stack_idempotency_required" => LocalizedText.Get("docker.problem.stack_idempotency_required"),
-        "docker.stack_idempotency_conflict" => LocalizedText.Get("docker.problem.stack_idempotency_conflict"),
-        "docker.stack_not_cancellable" => LocalizedText.Get("docker.problem.stack_not_cancellable"),
-        "docker.stack_store_unavailable" => LocalizedText.Get("docker.problem.stack_store_unavailable"),
-        "docker.unavailable" => LocalizedText.Get("docker.problem.engine_unavailable"),
+        "docker.operation_timeout" => text.Get("docker.problem.timeout"),
+        "docker.operation_failed" or "docker.compose_failed" => text.Get("docker.problem.failed"),
+        "docker.stack_no_services" => text.Get("docker.problem.stack_no_services"),
+        "docker.stack_source_unavailable" => text.Get("docker.stack.source_unavailable"),
+        "docker.volume_in_use" => text.Get("docker.volume.in_use"),
+        "docker.application_resource_managed" => text.Get("docker.problem.application_resource_managed"),
+        "docker.stack_invalid_name" => text.Get("docker.problem.stack_invalid_name"),
+        "docker.stack_invalid_compose" => text.Get("docker.problem.stack_invalid_compose"),
+        "docker.compose_feature_unsupported" => text.Get("docker.problem.compose_feature_unsupported"),
+        "docker.compose_variable_unresolved" => text.Get("docker.problem.compose_variable_unresolved"),
+        "docker.stack_definition_changed" => text.Get("docker.problem.stack_definition_changed"),
+        "docker.confirmation_required" => text.Get("docker.problem.confirmation_required"),
+        "docker.stack_not_found" => text.Get("docker.problem.stack_not_found"),
+        "docker.stack_operation_conflict" => text.Get("docker.problem.stack_operation_conflict"),
+        "docker.stack_idempotency_required" => text.Get("docker.problem.stack_idempotency_required"),
+        "docker.stack_idempotency_conflict" => text.Get("docker.problem.stack_idempotency_conflict"),
+        "docker.stack_not_cancellable" => text.Get("docker.problem.stack_not_cancellable"),
+        "docker.stack_store_unavailable" => text.Get("docker.problem.stack_store_unavailable"),
+        "docker.unavailable" => text.Get("docker.problem.engine_unavailable"),
         _ => problemCode
     };
     private static IReadOnlyList<string> Lines(string text) => text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    private static string FormatContainerDetails(DockerContainerDetailsDto details) => string.Join(Environment.NewLine, new[]
+    private string FormatContainerDetails(DockerContainerDetailsDto details) => string.Join(Environment.NewLine, new[]
     {
-        $"{LocalizedText.Get("docker.container.name")}: {details.Name}",
-        $"{LocalizedText.Get("docker.container.id")}: {details.Id}",
-        $"{LocalizedText.Get("docker.container.image")}: {details.Image}",
-        $"{LocalizedText.Get("docker.table.state")}: {details.State}",
-        $"{LocalizedText.Get("docker.table.status")}: {details.Status}",
-        $"{LocalizedText.Get("docker.container.created_at")}: {details.Created}",
-        $"{LocalizedText.Get("docker.container.restart")}: {details.RestartPolicy}",
-        $"{LocalizedText.Get("docker.container.working_directory")}: {details.WorkingDirectory}",
-        $"{LocalizedText.Get("docker.container.command")}: {details.Command}",
-        FormatSection(LocalizedText.Get("docker.container.ports"), details.Ports),
-        FormatSection(LocalizedText.Get("docker.container.mounts"), details.Mounts),
-        FormatSection(LocalizedText.Get("docker.container.networks"), details.Networks),
-        FormatSection(LocalizedText.Get("docker.container.environment"), details.Environment),
-        FormatSection(LocalizedText.Get("docker.container.labels"), details.Labels.Select(label => $"{label.Key}={label.Value}"))
+        $"{text.Get("docker.container.name")}: {details.Name}",
+        $"{text.Get("docker.container.id")}: {details.Id}",
+        $"{text.Get("docker.container.image")}: {details.Image}",
+        $"{text.Get("docker.table.state")}: {details.State}",
+        $"{text.Get("docker.table.status")}: {details.Status}",
+        $"{text.Get("docker.container.created_at")}: {details.Created}",
+        $"{text.Get("docker.container.restart")}: {details.RestartPolicy}",
+        $"{text.Get("docker.container.working_directory")}: {details.WorkingDirectory}",
+        $"{text.Get("docker.container.command")}: {details.Command}",
+        FormatSection(text.Get("docker.container.ports"), details.Ports),
+        FormatSection(text.Get("docker.container.mounts"), details.Mounts),
+        FormatSection(text.Get("docker.container.networks"), details.Networks),
+        FormatSection(text.Get("docker.container.environment"), details.Environment),
+        FormatSection(text.Get("docker.container.labels"), details.Labels.Select(label => $"{label.Key}={label.Value}"))
     });
-    private static string FormatNetworkDetails(DockerNetworkDetailsDto details) => string.Join(Environment.NewLine, new[]
+    private string FormatNetworkDetails(DockerNetworkDetailsDto details) => string.Join(Environment.NewLine, new[]
     {
-        $"{LocalizedText.Get("docker.table.name")}: {details.Name}",
-        $"{LocalizedText.Get("docker.container.id")}: {details.Id}",
-        $"{LocalizedText.Get("docker.network.driver")}: {details.Driver}",
-        $"{LocalizedText.Get("docker.table.scope")}: {details.Scope}",
-        FormatSection(LocalizedText.Get("docker.resource.attached_containers"), details.Containers),
-        FormatSection(LocalizedText.Get("docker.container.labels"), details.Labels.Select(label => $"{label.Key}={label.Value}"))
+        $"{text.Get("docker.table.name")}: {details.Name}",
+        $"{text.Get("docker.container.id")}: {details.Id}",
+        $"{text.Get("docker.network.driver")}: {details.Driver}",
+        $"{text.Get("docker.table.scope")}: {details.Scope}",
+        FormatSection(text.Get("docker.resource.attached_containers"), details.Containers),
+        FormatSection(text.Get("docker.container.labels"), details.Labels.Select(label => $"{label.Key}={label.Value}"))
     });
-    private static string FormatVolumeDetails(DockerVolumeDetailsDto details)
+    private string FormatVolumeDetails(DockerVolumeDetailsDto details)
     {
         var lines = new List<string>
         {
-            $"{LocalizedText.Get("docker.table.name")}: {details.Name}",
-            $"{LocalizedText.Get("docker.volume.driver")}: {details.Driver}",
-            $"{LocalizedText.Get("docker.table.mount_point")}: {details.Mountpoint}",
+            $"{text.Get("docker.table.name")}: {details.Name}",
+            $"{text.Get("docker.volume.driver")}: {details.Driver}",
+            $"{text.Get("docker.table.mount_point")}: {details.Mountpoint}",
         };
         // Deleting an in-use volume is refused, so this list is the impact the operator has to see
         // before deciding to release the data. A container keeps the volume reserved even when stopped.
         if (details.UsedBy.Count > 0)
-            lines.Add(FormatSection(LocalizedText.Get("docker.resource.attached_containers"), details.UsedBy));
+            lines.Add(FormatSection(text.Get("docker.resource.attached_containers"), details.UsedBy));
         if (details.Labels.Count > 0)
-            lines.Add(FormatSection(LocalizedText.Get("docker.container.labels"), details.Labels.Select(label => $"{label.Key}={label.Value}")));
+            lines.Add(FormatSection(text.Get("docker.container.labels"), details.Labels.Select(label => $"{label.Key}={label.Value}")));
         return string.Join(Environment.NewLine, lines);
     }
     private static string FormatSection(string heading, IEnumerable<string> values) => $"{heading}:{Environment.NewLine}{string.Join(Environment.NewLine, values)}";
@@ -967,11 +963,11 @@ public sealed partial class DockerManagerViewModel(IServerDockerResources resour
 /// Read-only projection of one durable stack operation. The history grid binds to display text, so the
 /// kind and the state are localized in one place instead of leaking enum names onto the screen.
 /// </summary>
-public sealed class StackOperationRow(DockerStackOperationDto operation)
+public sealed class StackOperationRow(DockerStackOperationDto operation, string kindLabel, string stateLabel)
 {
     public Guid OperationId { get; } = operation.OperationId;
-    public string Operation { get; } = DockerManagerViewModel.OperationTextFor(operation.Kind);
-    public string Result { get; } = DockerManagerViewModel.StateText(operation.State);
+    public string Operation { get; } = kindLabel;
+    public string Result { get; } = stateLabel;
     /// <summary>Empty for a success; the stable code is shown verbatim because it is what a support
     /// request or a bug report has to name.</summary>
     public string Problem { get; } = operation.ProblemCode ?? string.Empty;

@@ -1,5 +1,7 @@
+using RelaxKonOS.App.Docker;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using RelaxKonOS.Client.Apps.ComponentCenter;
 
 namespace RelaxKonOS.Client.Apps.Docker.Views;
 
@@ -15,6 +17,7 @@ internal partial class DockerManagerWorkspace : UserControl
     private readonly DockerManagerViewModel _viewModel;
     private readonly DockerProxyViewModel _proxyViewModel;
     private readonly DockerImageMirrorsViewModel _imageMirrorsViewModel;
+    private readonly ComponentDependencySettingsViewModel? _dependency;
     private readonly Func<Task> _showCreateContainer;
     private readonly Func<Task> _showDeployStack;
     private readonly Func<Task> _showPullImage;
@@ -22,11 +25,12 @@ internal partial class DockerManagerWorkspace : UserControl
     private readonly Func<Task> _showCreateVolume;
     private Button? _selectedButton;
 
-    private DockerManagerWorkspace(DockerManagerViewModel viewModel, DockerProxyViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume)
+    private DockerManagerWorkspace(DockerManagerViewModel viewModel, DockerProxyViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, ComponentDependencySettingsViewModel? dependency)
     {
         _viewModel = viewModel;
         _proxyViewModel = proxyViewModel;
         _imageMirrorsViewModel = imageMirrorsViewModel;
+        _dependency = dependency;
         _showCreateContainer = showCreateContainer;
         _showDeployStack = showDeployStack;
         _showPullImage = showPullImage;
@@ -39,8 +43,8 @@ internal partial class DockerManagerWorkspace : UserControl
         ShowPage("overview", OverviewButton);
     }
 
-    public static DockerManagerWorkspace Create(DockerManagerViewModel viewModel, DockerProxyViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume) =>
-        new DockerManagerWorkspace(viewModel, proxyViewModel, imageMirrorsViewModel, showCreateContainer, showDeployStack, showPullImage, showCreateNetwork, showCreateVolume);
+    public static DockerManagerWorkspace Create(DockerManagerViewModel viewModel, DockerProxyViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume, ComponentDependencySettingsViewModel? dependency = null) =>
+        new DockerManagerWorkspace(viewModel, proxyViewModel, imageMirrorsViewModel, showCreateContainer, showDeployStack, showPullImage, showCreateNetwork, showCreateVolume, dependency);
 
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)
     {
@@ -59,7 +63,7 @@ internal partial class DockerManagerWorkspace : UserControl
         button.Classes.Add("nav-selected");
         if (section == "proxy") _ = _proxyViewModel.LoadAsync();
         if (section == "mirrors") _ = _imageMirrorsViewModel.LoadAsync();
-        if (_viewModel.Dependency is { } dependency) _ = dependency.RefreshAsync();
+        if (_dependency is not null) _ = _dependency.RefreshAsync();
         Control page = section switch
         {
             "containers" => new DockerContainersView(_showCreateContainer),
@@ -71,7 +75,7 @@ internal partial class DockerManagerWorkspace : UserControl
             "volumes" => new DockerVolumesView(_showCreateVolume),
             "settings" => new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView
             {
-                DataContext = _viewModel.Dependency
+                DataContext = _dependency
             },
             _ => new DockerOverviewView()
         };
