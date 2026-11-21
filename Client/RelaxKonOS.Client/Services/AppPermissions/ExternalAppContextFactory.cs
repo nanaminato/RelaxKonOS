@@ -57,6 +57,7 @@ public sealed class ExternalAppContextFactory
     private readonly ClientPresentationPreferences? _presentationPreferences;
     private readonly IBrowserData? _browserData;
     private readonly DesktopDevicePreferences? _devicePreferences;
+    private readonly RelaxKonOS.Client.Apps.Terminal.ITerminalSettingsClient? _terminalSettings;
     private readonly RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsService? _diagnostics;
 
     public ExternalAppContextFactory(
@@ -87,7 +88,8 @@ public sealed class ExternalAppContextFactory
         ClientPresentationPreferences? presentationPreferences = null,
         IBrowserData? browserData = null,
         RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsService? diagnostics = null,
-        DesktopDevicePreferences? devicePreferences = null)
+        DesktopDevicePreferences? devicePreferences = null,
+        RelaxKonOS.Client.Apps.Terminal.ITerminalSettingsClient? terminalSettings = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -117,6 +119,7 @@ public sealed class ExternalAppContextFactory
         _browserData = browserData;
         _diagnostics = diagnostics;
         _devicePreferences = devicePreferences;
+        _terminalSettings = terminalSettings;
     }
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
@@ -143,6 +146,9 @@ public sealed class ExternalAppContextFactory
             ? new ExternalTerminalSessionDiscovery(connection, _diagnostics) : null,
         appId.Value == "relaxkonos.terminal" && (sshEndpoint is null ? _devicePreferences : _sshSession.DevicePreferences) is { } terminalDevice
             ? new ExternalTerminalDevicePreferences(terminalDevice) : null,
+        appId.Value == "relaxkonos.terminal" && sshEndpoint is null && connection.IsCurrent
+            && _presentationPreferences is not null && _terminalSettings is not null
+            ? new ExternalTerminalWorkspacePreferences(connection, _presentationPreferences, _terminalSettings) : null,
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -177,6 +183,7 @@ public sealed class ExternalAppContextFactory
         IBrowserData? BrowserData,
         ITerminalSessionDiscovery? TerminalSessions,
         ITerminalDevicePreferences? TerminalDevicePreferences,
+        ITerminalWorkspacePreferences? TerminalWorkspacePreferences,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,

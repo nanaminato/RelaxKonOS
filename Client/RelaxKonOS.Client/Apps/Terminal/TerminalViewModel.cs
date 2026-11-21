@@ -22,21 +22,20 @@ public partial class TerminalViewModel : TerminalTabViewModel
     private readonly ITerminalDevicePreferences? _devicePreferences;
     protected override void OnVtEngineEdited(string value) =>
         _devicePreferences?.SetVtEngine(value);
-    private readonly RelaxKonOS.Client.Services.ClientPresentationPreferences? _preferences;
-    public override RelaxKonOS.Protocol.Registry.TerminalPaddingSettings Padding => _preferences?.TerminalPadding ?? RelaxKonOS.Protocol.Registry.TerminalPaddingSettings.Default;
-    private void OnPreferencesChanged(object? sender, EventArgs args)
+    private readonly ITerminalWorkspacePreferences? _preferences;
+    private IDisposable? _preferenceObservation;
+    public override RelaxKonOS.Protocol.Registry.TerminalPaddingSettings Padding => _preferences?.Padding ?? RelaxKonOS.Protocol.Registry.TerminalPaddingSettings.Default;
+    private void OnPreferencesChanged()
     {
-        if (_session?.State != AuthSessionState.Authenticated) return;
         OnPropertyChanged(nameof(Padding));
-        if (_preferences is null || Appearance == _preferences.Terminal) return;
-        ApplyAppearance(_preferences.Terminal);
+        if (_preferences is null || Appearance == _preferences.Appearance) return;
+        ApplyAppearance(_preferences.Appearance);
         _surface?.ApplyAppearance(Appearance);
     }
     private const int Columns = 80;
     private const int Rows = 24;
 
     private readonly IAuthSession? _session;
-    private readonly ITerminalSettingsClient _settingsClient;
     private readonly string? _initialSessionId;
     private string? _reservedSessionId;
     private readonly string? _initialWorkingDirectory;
@@ -82,21 +81,19 @@ public partial class TerminalViewModel : TerminalTabViewModel
 
     public TerminalViewModel(
         IAuthSession? session,
-        ITerminalSettingsClient settingsClient,
         NetworkDiagnosticsService? diagnostics,
         SshDesktopSession? sshDesktop = null,
         string? initialSessionId = null,
         string? initialWorkingDirectory = null,
         bool isAdministrator = false,
-        RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null,
+        ITerminalWorkspacePreferences? preferences = null,
         ITerminalDevicePreferences? devicePreferences = null)
         : base(App.Services?.GetService<LocalizationService>(),
             devicePreferences?.VtEngine ?? "Auto")
     {
         _devicePreferences = devicePreferences;
-        _preferences = session is { State: AuthSessionState.Authenticated } && sshDesktop?.IsConnected != true ? preferences : null;
+        _preferences = preferences;
         _session = session;
-        _settingsClient = settingsClient;
         _connectionOptions = new(session, sshDesktop, diagnostics);
         _sshDesktop = sshDesktop;
         _initialSessionId = initialSessionId;
@@ -115,13 +112,11 @@ public partial class TerminalViewModel : TerminalTabViewModel
 
         if (_preferences is not null)
         {
-            _preferences.Changed += OnPreferencesChanged;
-            _preferences.Activate();
-            try { await _preferences.EnsureLoadedAsync(); }
+            _preferenceObservation = _preferences.Observe(OnPreferencesChanged);
+            try { await _preferences.LoadAsync(); }
             catch { /* Keep the last valid appearance; connecting the PTY reports its own connection failure. */ }
-            OnPreferencesChanged(null, EventArgs.Empty);
+            if (generation == _attachmentGeneration) OnPreferencesChanged();
         }
-        else await LoadAppearanceAsync();
         if (!_attached || generation != _attachmentGeneration) return;
 
         try
@@ -152,11 +147,8 @@ public partial class TerminalViewModel : TerminalTabViewModel
         if (!_attached) return;
         _attached = false;
         ++_attachmentGeneration;
-        if (_preferences is not null)
-        {
-            _preferences.Changed -= OnPreferencesChanged;
-            _preferences.Deactivate();
-        }
+        _preferenceObservation?.Dispose();
+        _preferenceObservation = null;
         if (_surface is null) { _surfaceFactory = null; return; }
 
         var kill = _session is { State: AuthSessionState.Authenticated };
@@ -239,22 +231,6 @@ public partial class TerminalViewModel : TerminalTabViewModel
         TerminalSessionReservations.Release(id);
     }
 
-    private async Task LoadAppearanceAsync()
-    {
-        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
-            return;
-
-        try
-        {
-            var settings = await _settingsClient.GetAsync(url, tokens.AccessToken, workspace.Id);
-            ApplyAppearance(settings);
-        }
-        catch
-        {
-            // A terminal remains usable with defaults if an older server has no settings endpoint.
-        }
-    }
-
     protected override void OnAppearanceEdited(TerminalSettingsDto settings)
     {
         _surface?.ApplyAppearance(settings);
@@ -263,10 +239,8 @@ public partial class TerminalViewModel : TerminalTabViewModel
 
     private async Task SaveAppearanceAsync(TerminalSettingsDto settings)
     {
-        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
-            return;
-
-        try { await _settingsClient.SaveAsync(url, tokens.AccessToken, workspace.Id, settings); }
+        if (_preferences is null) return;
+        try { await _preferences.SaveAsync(settings); }
         catch { /* retain the local setting; a later change can retry */ }
     }
 

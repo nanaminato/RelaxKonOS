@@ -71,11 +71,10 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
     {
         var services = context.Services;
         var sdk = services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest);
-        var settingsClient = services.GetRequiredService<ITerminalSettingsClient>();
         TerminalWorkspace.Open(sdk, Manifest.IconGlyph,
-            (restoredId, directory, administrator) => new TerminalViewModel(session, settingsClient, diagnostics,
+            (restoredId, directory, administrator) => new TerminalViewModel(session, diagnostics,
                 services.GetService<SshDesktopSession>(), restoredId, directory, administrator,
-                services.GetRequiredService<ClientPresentationPreferences>(), sdk.TerminalDevicePreferences),
+                sdk.TerminalWorkspacePreferences, sdk.TerminalDevicePreferences),
             services.GetRequiredService<ISettingsNavigation>().OpenEnvironmentAsync,
             directory => OpenWindow(context, session, diagnostics, null, directory, isAdministrator: true),
             sessionId, workingDirectory, isAdministrator);

@@ -18,8 +18,8 @@ internal static class TerminalWorkspaceChecks
     public static void Run(ShellSettings shellSettings)
     {
         var workspace = new TerminalWorkspaceView();
-        var first = new TerminalViewModel(null, new Settings(), null);
-        var second = new TerminalViewModel(null, new Settings(), null);
+        var first = new TerminalViewModel(null, null);
+        var second = new TerminalViewModel(null, null);
         first.Title = @"C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe";
         Check(first.DisplayTitle == "powershell.exe", "Executable paths should have compact labels while preserving their full title.");
         first.Title = "user@host: ~/project";
@@ -70,7 +70,7 @@ internal static class TerminalWorkspaceChecks
         Dispatcher.UIThread.RunJobs();
         for (var index = 0; index < 6; index++)
         {
-            var model = new TerminalViewModel(null, new Settings(), null);
+            var model = new TerminalViewModel(null, null);
             crowded.AddTab(model, new TerminalView { DataContext = model });
         }
         Dispatcher.UIThread.RunJobs();
@@ -96,6 +96,7 @@ internal static class TerminalWorkspaceChecks
         Dispatcher.UIThread.RunJobs();
         CheckEngineMigration(shellSettings);
         CheckSdkWorkspace();
+        CheckWorkspacePreferenceScope();
         CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference.Managed);
         if (new RoyalTerminal.Terminal.GhosttyVtProcessorProvider().IsAvailable)
             CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference.Native);
@@ -115,7 +116,7 @@ internal static class TerminalWorkspaceChecks
         TerminalWorkspace.Open(context, "T", (sessionId, directory, _) =>
         {
             sessions.Add((sessionId, directory));
-            return new TerminalViewModel(null, new Settings(), null, initialSessionId: sessionId);
+            return new TerminalViewModel(null, null, initialSessionId: sessionId);
         }, () => Task.CompletedTask, _ => { }, "restored", "/workspace", false);
 
         var window = windows.Windows.Single();
@@ -158,6 +159,38 @@ internal static class TerminalWorkspaceChecks
                 [new("sdk-new", DateTimeOffset.UnixEpoch.AddMinutes(1), false, true),
                  new("sdk-exited", DateTimeOffset.UnixEpoch, true, false),
                  new("sdk-old", DateTimeOffset.UnixEpoch, false, false)]);
+    }
+
+    private static void CheckWorkspacePreferenceScope()
+    {
+        var auth = DispatchProxy.Create<RelaxKonOS.Client.Services.Auth.IAuthSession, EventAlertsAuthFixture>();
+        var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "terminal-memory.json"));
+        using var preferences = new ClientPresentationPreferences(null!, auth, new PresentationSettingsChanges());
+        var client = new TerminalSettingsProbe();
+        var sdk = new ExternalTerminalWorkspacePreferences(new ExternalServerConnection(memory.Capture(auth)), preferences, client);
+        var appearance = TerminalSettingsDto.Default with { FontSize = 18 };
+        sdk.SaveAsync(appearance).GetAwaiter().GetResult();
+        Check(client.Saved == appearance && client.Writes == 1, "Terminal appearance writes through the scoped SDK");
+        ((EventAlertsAuthFixture)(object)auth).ServiceId = "https://replacement.invalid";
+        sdk.SaveAsync(appearance with { FontSize = 20 }).GetAwaiter().GetResult();
+        Check(client.Writes == 1, "A stale Terminal SDK cannot save settings to a replacement server");
+    }
+
+    private sealed class TerminalSettingsProbe : ITerminalSettingsClient
+    {
+        public int Writes { get; private set; }
+        public TerminalSettingsDto? Saved { get; private set; }
+
+        public Task<TerminalSettingsDto> GetAsync(string serverUrl, string accessToken, Guid workspaceId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<TerminalSettingsDto> SaveAsync(string serverUrl, string accessToken, Guid workspaceId,
+            TerminalSettingsDto settings, CancellationToken ct = default)
+        {
+            Writes++;
+            Saved = settings;
+            return Task.FromResult(settings);
+        }
     }
 
     private static void CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference preference)
@@ -270,7 +303,7 @@ internal static class TerminalWorkspaceChecks
 
         // The desktop does not consume the request: it renders RoyalTerminal either way and rewrites
         // the stored token on the next appearance change, so a legacy document migrates by itself.
-        var migrated = new TerminalViewModel(null, new Settings(), null);
+        var migrated = new TerminalViewModel(null, null);
         migrated.Appearance = TerminalSettingsDto.Default with { Backend = TerminalBackends.XtermJs };
         migrated.FontSize = TerminalSettingsDto.Default.FontSize + 1;
         Check(migrated.Appearance.Backend == TerminalBackends.BuiltIn,
@@ -292,7 +325,7 @@ internal static class TerminalWorkspaceChecks
                 $"The terminal view-model must not expose the retired '{member}' engine member");
         }
 
-        var settings = new TerminalSettingsView { DataContext = new TerminalViewModel(null, new Settings(), null) };
+        var settings = new TerminalSettingsView { DataContext = new TerminalViewModel(null, null) };
         var host = new Window { Width = 460, Height = 420, Content = settings };
         host.Show();
         Dispatcher.UIThread.RunJobs();
@@ -323,12 +356,12 @@ internal static class TerminalWorkspaceChecks
         try
         {
             var preferences = new RelaxKonOS.Client.Services.DesktopDevicePreferences(path);
-            var model = new TerminalViewModel(null, new Settings(), null, devicePreferences: new ExternalTerminalDevicePreferences(preferences));
+            var model = new TerminalViewModel(null, null, devicePreferences: new ExternalTerminalDevicePreferences(preferences));
             Check(model.VtEngines.SequenceEqual(new[] { "Auto", "Managed", "Native" }), "All VT modes are selectable");
             model.VtEngine = "Native";
             var reloaded = new RelaxKonOS.Client.Services.DesktopDevicePreferences(path);
             Check(reloaded.Value.TerminalVtEngine == "Native", "VT preference survives device settings reload");
-            Check(new TerminalViewModel(null, new Settings(), null, devicePreferences: new ExternalTerminalDevicePreferences(reloaded)).VtEngine == "Native",
+            Check(new TerminalViewModel(null, null, devicePreferences: new ExternalTerminalDevicePreferences(reloaded)).VtEngine == "Native",
                 "New terminal reads the saved VT preference");
         }
         finally { File.Delete(path); }
@@ -337,11 +370,5 @@ internal static class TerminalWorkspaceChecks
 
     private static void Check(bool condition, string message)
     { if (!condition) throw new InvalidOperationException(message); }
-    private sealed class Settings : ITerminalSettingsClient
-    {
-        public Task<TerminalSettingsDto> GetAsync(string serverUrl, string accessToken, Guid workspaceId, CancellationToken ct = default)
-            => Task.FromResult(TerminalSettingsDto.Default);
-        public Task<TerminalSettingsDto> SaveAsync(string serverUrl, string accessToken, Guid workspaceId, TerminalSettingsDto settings, CancellationToken ct = default)
-            => Task.FromResult(settings);
-    }
+
 }

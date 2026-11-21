@@ -47,6 +47,7 @@ public interface IExternalAppContext
     /// <summary>Server PTY discovery for the official Terminal application.</summary>
     ITerminalSessionDiscovery? TerminalSessions { get; }
     ITerminalDevicePreferences? TerminalDevicePreferences { get; }
+    ITerminalWorkspacePreferences? TerminalWorkspacePreferences { get; }
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
     IServerDockerImageMirrors DockerImageMirrors { get; }
@@ -80,6 +81,15 @@ public interface ITerminalDevicePreferences
 {
     string VtEngine { get; }
     void SetVtEngine(string value);
+}
+
+public interface ITerminalWorkspacePreferences
+{
+    RelaxKonOS.Protocol.Workspace.TerminalSettingsDto Appearance { get; }
+    RelaxKonOS.Protocol.Registry.TerminalPaddingSettings Padding { get; }
+    IDisposable Observe(Action changed);
+    Task LoadAsync();
+    Task SaveAsync(RelaxKonOS.Protocol.Workspace.TerminalSettingsDto appearance);
 }
 
 /// <summary>Observes the authenticated server connection captured for an application launch.</summary>
