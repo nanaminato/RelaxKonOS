@@ -1,9 +1,11 @@
+using RelaxKonOS.App.FileServices;
 using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices;
+using RelaxKonOS.Client.Apps.FileServices.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
@@ -17,7 +19,7 @@ internal static class FileShareDialogChecks
     public static void Run()
     {
         CheckCapabilityAsync().GetAwaiter().GetResult();
-        var vm = new FileServicesViewModel(DispatchProxy.Create<IServerFileServices, ShareDialogClient>(), new FirewallTestPermissions(), () => true);
+        var vm = new FileServicesViewModel(DispatchProxy.Create<IServerFileServices, ShareDialogClient>(), new FirewallTestPermissions(), () => true, RelaxKonOS.Client.Localization.LocalizedText.Get);
         vm.StartAsync().GetAwaiter().GetResult();
         vm.ShareName = "test-share";
         vm.SharePath = "/test/share";
@@ -31,8 +33,7 @@ internal static class FileShareDialogChecks
         var result = manager.ShowDialogAsync<bool>(owner, "Share", dialog =>
         {
             handle = dialog;
-            var type = typeof(FileServicesViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.FileServices.Views.FileServicesShareDialogView")!;
-            return (Control)Activator.CreateInstance(type, [vm, dialog, false])!;
+            return new FileServicesShareDialogView(vm, dialog, false);
         });
         vm.SharePermissions[0].SelectedAccess = vm.SharePermissions[0].AccessOptions.Single(option => option.Value == FileShareAccess.ReadWrite);
         handle!.Cancel();

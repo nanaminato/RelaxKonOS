@@ -1,3 +1,4 @@
+using RelaxKonOS.App.FileServices;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -14,12 +15,14 @@ internal partial class FileServicesWorkspace : UserControl
     }
 
     private readonly FileServicesViewModel _viewModel;
+    private readonly Func<Control>? _createSettings;
     private Button? _selectedButton;
 
-    public FileServicesWorkspace(FileServicesViewModel viewModel)
+    public FileServicesWorkspace(FileServicesViewModel viewModel, Func<Control>? createSettings = null)
     {
         InitializeComponent();
         _viewModel = viewModel;
+        _createSettings = createSettings;
         DataContext = viewModel;
         ShowPage("overview", OverviewButton);
         SizeChanged += (_, _) => ApplyResponsiveLayout();
@@ -66,19 +69,17 @@ internal partial class FileServicesWorkspace : UserControl
         _selectedButton?.Classes.Remove("nav-selected");
         _selectedButton = button;
         button.Classes.Add("nav-selected");
-        if (page == "settings" && _viewModel.Dependency is { } dependency) _ = dependency.RefreshAsync();
         Control pageContent = page switch
         {
             "shares" => new FileServicesSharesView(),
             "users" => new FileServicesUsersView(),
-            "settings" => new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView
+            "settings" => new ScrollViewer
             {
-                DataContext = _viewModel.Dependency
+                Content = _createSettings?.Invoke(),
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
             },
             _ => new FileServicesOverviewView()
         };
-        ContentHost.Content = pageContent is RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView settings
-            ? new ScrollViewer { Content = settings, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled }
-            : pageContent;
+        ContentHost.Content = pageContent;
     }
 }

@@ -1,3 +1,4 @@
+using RelaxKonOS.App.FileServices;
 using RelaxKonOS.App.Git.Views;
 using RelaxKonOS.App.Git;
 using RelaxKonOS.Client.Localization;
@@ -70,7 +71,7 @@ internal static class FusedWorkspaceChecks
         var certificateModel = new CertificateManagerViewModel(null!, permissions, RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>());
         var webModel = new WebServerManagerViewModel(null!, null!, new WebServerWindowConnection(auth), auth.CurrentServer?.Platform, permissions, null!, CurrentNginxChecks.Language);
         var deploymentModel = new ApplicationDeploymentsViewModel(null!, permissions);
-        var filesModel = new FileServicesViewModel(null!, permissions, () => true);
+        var filesModel = new FileServicesViewModel(null!, permissions, () => true, RelaxKonOS.Client.Localization.LocalizedText.Get);
         using var notepadModel = new NotepadViewModel(new NotepadText(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>()), null, null);
         using var imageModel = new ImageViewerViewModel(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), null);
         var tasksModel = new TaskManagerViewModel(null!, null!, null!, RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>());

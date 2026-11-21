@@ -1,9 +1,9 @@
 <UserControl xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
+             xmlns:fsApp="clr-namespace:RelaxKonOS.App.FileServices;assembly=RelaxKonOS.App.FileServices" xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
-             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesWorkspace" x:DataType="fs:FileServicesViewModel" Classes="builtin-app">
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesWorkspace" x:DataType="fsApp:FileServicesViewModel" Classes="builtin-app">
     <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto" Margin="20">
         <Grid x:Name="HeaderHost" ColumnDefinitions="*,Auto">
             <wm:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc file_services.title}" Subtitle="{Binding PlatformText}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/file-services.png" />

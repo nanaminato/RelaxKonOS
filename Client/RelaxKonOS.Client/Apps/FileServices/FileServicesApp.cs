@@ -1,3 +1,4 @@
+using RelaxKonOS.App.FileServices;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
@@ -33,8 +34,14 @@ public sealed class FileServicesApp : RemoteApplicationBase
             && session.ServiceId == windowService && windowUser is not null && windowSession is not null
             && ReferenceEquals(session.CurrentUser, windowUser) && ReferenceEquals(session.CurrentSession, windowSession);
         var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.file-services");
-        var vm = new FileServicesViewModel(client, context.Permissions, IsWindowSessionCurrent) { Dependency = dependency };
-        var workspace = new FileServicesWorkspace(vm);
+        var vm = new FileServicesViewModel(client, context.Permissions, IsWindowSessionCurrent, LocalizedText.Get);
+        var workspace = new FileServicesWorkspace(vm, () =>
+        {
+            _ = dependency.RefreshAsync();
+            return new ComponentCenter.ComponentDependencySettingsView { DataContext = dependency };
+        });
+        var localization = context.Services.GetService(typeof(LocalizationService)) as LocalizationService;
+        void LanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => vm.RefreshLocalization();
         void SessionChanged(object? sender, AuthSessionStateChangedEventArgs args)
         {
             void Check() { if (!IsWindowSessionCurrent()) vm.InvalidateWindowSession(); }
@@ -45,9 +52,15 @@ public sealed class FileServicesApp : RemoteApplicationBase
         {
             session.StateChanged -= SessionChanged;
             session.StateChanged += SessionChanged;
+            if (localization is not null) localization.LanguageChanged += LanguageChanged;
             if (!IsWindowSessionCurrent()) vm.InvalidateWindowSession();
         };
-        workspace.DetachedFromVisualTree += (_, _) => { session.StateChanged -= SessionChanged; dependency.Dispose(); };
+        workspace.DetachedFromVisualTree += (_, _) =>
+        {
+            session.StateChanged -= SessionChanged;
+            if (localization is not null) localization.LanguageChanged -= LanguageChanged;
+            dependency.Dispose();
+        };
         var window = context.ShowWindow(LocalizedText.Get("file_services.title"), workspace, new Rect(90, 80, 960, 720), Manifest.IconGlyph);
         workspace.AttachWindowHeader(window);
         vm.RequestHostAdministratorCredentialsAsync = async error =>

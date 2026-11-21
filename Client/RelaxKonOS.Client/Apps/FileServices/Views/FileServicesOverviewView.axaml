@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
+             xmlns:fsApp="clr-namespace:RelaxKonOS.App.FileServices;assembly=RelaxKonOS.App.FileServices" xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
-             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesOverviewView" x:DataType="fs:FileServicesViewModel" Classes="builtin-app">
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesOverviewView" x:DataType="fsApp:FileServicesViewModel" Classes="builtin-app">
     <ScrollViewer>
         <StackPanel Spacing="16">
             <TextBlock Text="{Binding PlatformHelp}" TextWrapping="Wrap" />

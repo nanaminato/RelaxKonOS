@@ -1,3 +1,4 @@
+using RelaxKonOS.App.FileServices;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.FileServices;
 using RelaxKonOS.Protocol.FileServices;
@@ -20,7 +21,7 @@ if (args.Contains("--editor-write-only")) return;
 
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 var client = new FakeClient();
-var vm = new FileServicesViewModel(client, new Permissions(), () => true) { RequestHostAdministratorCredentialsAsync = _ => Task.FromResult<HostAdministratorCredentials?>(new("host-admin", "test")) };
+var vm = new FileServicesViewModel(client, new Permissions(), () => true, RelaxKonOS.Client.Localization.LocalizedText.Get) { RequestHostAdministratorCredentialsAsync = _ => Task.FromResult<HostAdministratorCredentials?>(new("host-admin", "test")) };
 Check(!vm.NewShareCommand.CanExecute(null), "No mutations before discovery");
 await vm.StartAsync();
 Check(!vm.SupportsSambaCredentials && client.UserReads == 0, "Windows capabilities");
@@ -94,7 +95,7 @@ await ReadRecoveryChecks.RunAsync();
 var originalShare = new FileShareDto("original", "original", "/srv/relaxkonos-shares/original", null, false, true, false, [new("nanami", FileShareAccess.Read)], true);
 var otherShare = originalShare with { Id = "other", Name = "other" };
 var targetClient = new FakeClient { Linux = true, ShareData = [originalShare, otherShare] };
-var targetVm = new FileServicesViewModel(targetClient, new Permissions(), () => true)
+var targetVm = new FileServicesViewModel(targetClient, new Permissions(), () => true, RelaxKonOS.Client.Localization.LocalizedText.Get)
 { RequestHostAdministratorCredentialsAsync = _ => Task.FromResult<HostAdministratorCredentials?>(new("admin", "test")) };
 await targetVm.StartAsync();
 targetVm.SelectedShare = originalShare;
@@ -173,7 +174,7 @@ Check(!FileServicesViewModel.RequiresSharePathWarning("/srv/relaxkonos-shares/fo
 foreach (var linux in new[] { false, true })
 {
     var warningClient = new FakeClient { Linux = linux };
-    var warningVm = new FileServicesViewModel(warningClient, new Permissions(), () => true);
+    var warningVm = new FileServicesViewModel(warningClient, new Permissions(), () => true, RelaxKonOS.Client.Localization.LocalizedText.Get);
     await warningVm.StartAsync();
     warningVm.ShareName = "共享"; warningVm.SharePath = linux ? "/mnt/data" : @"E:\Test";
     var passwordRequests = 0;
@@ -189,7 +190,7 @@ foreach (var linux in new[] { false, true })
     Check(await warningVm.SaveShareAsync(false) && warningClient.Writes == 1 && passwordRequests == 1, "Confirmed non-default path is shared");
 }
 var retryClient = new FakeClient { InvalidElevationAttempts = 1 };
-var retryVm = new FileServicesViewModel(retryClient, new Permissions(), () => true);
+var retryVm = new FileServicesViewModel(retryClient, new Permissions(), () => true, RelaxKonOS.Client.Localization.LocalizedText.Get);
 await retryVm.StartAsync();
 var promptErrors = new List<string?>();
 retryVm.RequestHostAdministratorCredentialsAsync = error =>
@@ -202,7 +203,7 @@ Check(promptErrors.Count == 2 && promptErrors[0] is null && !string.IsNullOrWhit
     && retryClient.ElevationCredentials.SequenceEqual([new("host-admin", "incorrect"), new("host-admin", "correct")]) && retryClient.Writes == 1,
     "An invalid host administrator credential shows an error and requests a replacement before the operation runs");
 var nonAdministratorClient = new FakeClient { NonAdministratorElevationAttempts = 1 };
-var nonAdministratorVm = new FileServicesViewModel(nonAdministratorClient, new Permissions(), () => true);
+var nonAdministratorVm = new FileServicesViewModel(nonAdministratorClient, new Permissions(), () => true, RelaxKonOS.Client.Localization.LocalizedText.Get);
 await nonAdministratorVm.StartAsync();
 var nonAdministratorErrors = new List<string?>();
 nonAdministratorVm.RequestHostAdministratorCredentialsAsync = error =>
