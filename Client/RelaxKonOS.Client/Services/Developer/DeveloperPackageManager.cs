@@ -384,7 +384,11 @@ public sealed partial class DeveloperPackageManager
                 throw new InvalidOperationException($"The package is required by {string.Join(", ", requiredBy)}.");
             if (!await CanRetireWindowsAsync(new AppId(appId)))
                 throw new InvalidOperationException("Application windows are busy or have unsaved changes.");
-            File.Delete(CurrentPath(appId));
+            try { File.Delete(CurrentPath(appId)); }
+            catch (DirectoryNotFoundException)
+            {
+                // A missing package directory already has no active pointer to remove.
+            }
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 UnregisterAndUnload(appId);
