@@ -33,10 +33,11 @@ internal static class JointDeploymentAcceptance
     private const string ModuleId = "fixture-module";
     private const string AppIdText = "relaxkonos.welcome";
 
-    public static void Run(string archive)
+    public static void Run(string archive, string? certificatesArchive)
     {
         AppBuilder.Configure<Application>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
-        var task = RunAsync(Path.GetFullPath(archive));
+        var task = RunAsync(Path.GetFullPath(archive),
+            certificatesArchive is null ? null : Path.GetFullPath(certificatesArchive));
         var deadline = DateTime.UtcNow.AddMinutes(2);
         while (!task.IsCompleted && DateTime.UtcNow < deadline)
         {
@@ -47,7 +48,7 @@ internal static class JointDeploymentAcceptance
         task.GetAwaiter().GetResult();
     }
 
-    private static async Task RunAsync(string archive)
+    private static async Task RunAsync(string archive, string? certificatesArchive)
     {
         var parent = Path.Combine(AppContext.BaseDirectory, "test-data");
         var root = Directory.CreateDirectory(Path.Combine(parent, "joint-deployment-" + Guid.NewGuid().ToString("N"))).FullName;
@@ -274,6 +275,29 @@ internal static class JointDeploymentAcceptance
                 Require(activationInstalled.Id == "fixture.bundled" && applications.IsRegistered(new AppId("fixture.bundled")),
                     "restart activates the installed dependency and permits desktop application registration");
                 await packages.UninstallAsync("fixture.bundled");
+            }
+
+            if (certificatesArchive is not null)
+            {
+                var certificateId = ServerModules.CertificatesId;
+                var certificatePackagePath = Path.Combine(official, certificateId + ".roapp");
+                File.Copy(certificatesArchive, certificatePackagePath);
+                File.Copy(certificatesArchive + ".sha256", certificatePackagePath + ".sha256");
+                var certificateCandidate = await installer.InspectLocalAsync(certificatePackagePath);
+                var certificateReview = await joint.PrepareAsync(certificateCandidate, [], default);
+                Require(certificateReview.Plan.PreparedSteps.IsEmpty
+                    && certificateReview.Plan.OrderedReleases is
+                        [{ Package.Kind: DeploymentPackageKind.ServerModule, Satisfied: true } module,
+                         { Package.Kind: DeploymentPackageKind.Application } app]
+                    && module.Package.Id == certificateId && app.Package.Id == certificateId,
+                    "the Certificates package reuses the effective server module with the same ID");
+                var operationsBefore = ModulePackageOperationStore.Read(serverRoot).Count;
+                var installedCertificates = await joint.ExecuteAsync(certificateReview, default);
+                Require(installedCertificates.Id == certificateId
+                    && applications.IsRegistered(new AppId(certificateId))
+                    && ModulePackageOperationStore.Read(serverRoot).Count == operationsBefore,
+                    "the official Certificates archive installs through the coordinator without mutating the existing module");
+                await packages.UninstallAsync(certificateId);
             }
 
             // Use the original desktop archive as a local prerequisite without a server dependency.

@@ -35,7 +35,7 @@
 | squid | Squid | 否 / 否 | 是 | GatewayProxy capability；组件中心管理 Squid | 可选 | 待验 |
 | file-services | FileServices | 否 / 否 | 是 | FileServices capability 与主机 SMB | 可选 | 待验 |
 | port-forwarding | PortForwarding | 否 / 否 | 是 | 连接会话与隧道 | 可选 | 待验 |
-| certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期已验，真实模块联动待验 |
+| certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期及隔离宿主模块复用已验，真实证书服务待验 |
 | webservers | WebServers | 否 / 否 | 是 | WebServer 模块与宿主权限边界 | 可选 | 待验 |
 | git | Git | 否 / 否 | 是 | Git 模块与远程文件 API | 可选 | 待验 |
 | tunnels | Tunnels | 否 / 否 | 是 | Tunnels capability；组件中心管理 FRP | 可选 | 待验 |
@@ -61,6 +61,8 @@
 5. 恢复时从本分支运行 `dotnet build Shared/RelaxKonOS.Deployment -m:1`，查看当前差异与最新提交，再从第 3 项继续。部署存续期间须先观察现有服务端回执，再决定是否重试，保留共享依赖。
 
 ## 测试证据
+
+- Windows Release 双归档联合部署验收使用实际 Certificate Manager 官方归档。协调器通过隔离服务端的模块管理 HTTP 接口确认已启用的同名 Certificates 模块满足依赖，未创建模块安装计划或增加包操作回执，客户端完成安装与注册。隔离宿主未挂载证书业务 HTTP 端点，真实证书服务联调仍待执行。
 
 - 证书管理器已移除内置登记，桌面发行将 `relaxkonos.certificates.roapp` 纳入官方来源，Developer 配置将它列为交互安装项。清单要求 Certificates 模块及其能力。Windows Release 使用 DevCli 生成的实际归档验证可信来源、直接安装拒绝、交互审阅、安装后启动、更新、失败保留、重启发现和卸载。客户端生命周期测试使用模块验证替身，真实服务端模块联动和完整桌面发行发布尚待验收。
 
