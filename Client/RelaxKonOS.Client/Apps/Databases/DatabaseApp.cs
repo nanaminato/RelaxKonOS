@@ -4,7 +4,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices;
-using RelaxKonOS.Client.Localization;
+using RelaxKonOS.App.Databases;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.AppSettings;
@@ -25,6 +25,8 @@ public sealed class DatabaseApp : RemoteApplicationBase
     {
         var session = context.Services.GetRequiredService<IAuthSession>();
         if (session.State != AuthSessionState.Authenticated) return;
+        var language = context.Services.GetRequiredService<ISystemLanguage>();
+        string Text(string key) => DatabaseLocalization.Resolve(language, key, $"[missing: {key}]");
         var connection = new ExternalServerConnection(context.Services.GetRequiredService<UsageMemoryStore>().Capture(session));
         var dependency = ComponentDependencySettingsViewModel.Create(context, Manifest.Id.Value);
         var settings = new ExternalAppSettings(Manifest.Id, context.Services.GetRequiredService<IAppSettingsClient>());
@@ -37,7 +39,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
             .GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>()
             .RequestGrantAsync(InstallationClient.ElevationCapability(service), service.ToString().ToLowerInvariant());
         var view = new Views.DatabaseWorkspace();
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.database.display_name"), view, new Rect(90, 60, 980, 700), Manifest.IconGlyph);
+        var window = context.ShowWindow(Text("application.relaxkonos.database.display_name"), view, new Rect(90, 60, 980, 700), Manifest.IconGlyph);
         model.Installation = new(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.PostgreSql, "relaxkonos.database", model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSql));
@@ -56,7 +58,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
             InstallationServiceId.MySqlAccounts, "relaxkonos.database", mysql.RefreshAsync, MySqlElevationAsync, "mysql-accounts-installation");
         mysql.AccountInstallation.PropertyChanged += (_, _) => mysql.Notify();
         mysql.ConfirmAccountAsync = (action, account) => Confirm("database.accounts_confirm",
-            LocalizedText.Get("database.account_action." + action) + " · " + account.Database +
+            Text("database.account_action." + action) + " · " + account.Database +
             (account.User is null ? "" : " · " + account.User + "@" + account.Host));
         mysql.AuthorizeAccountsAsync = MySqlElevationAsync;
         _ = mysql.AccountInstallation.RestoreAsync();
@@ -75,7 +77,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
             InstallationServiceId.MySqlMaintenance, "relaxkonos.database", mysql.RefreshAsync, () => AuthorizeInstallationAsync(InstallationServiceId.MySqlMaintenance), "mysql-maintenance-installation");
         mysql.MaintenanceInstallation.PropertyChanged += (_, _) => mysql.Notify();
         mysql.ConfirmMaintenanceAsync = command => Confirm("database.maintenance_confirm",
-            command is null ? LocalizedText.Get("database.recover") : LocalizedText.Get("database.maintenance_action." + command.Action) + " · " + command.Version);
+            command is null ? Text("database.recover") : Text("database.maintenance_action." + command.Action) + " · " + command.Version);
         _ = mysql.MaintenanceInstallation.RestoreAsync();
         model.MySql = mysql;
         _ = mysql.Installation.RestoreAsync();
@@ -98,8 +100,8 @@ public sealed class DatabaseApp : RemoteApplicationBase
         model.AccountManager = new(context.Services.GetRequiredService<IServerPostgreSql>(), accountsTask)
         { CanManage = model.CanManage, LifecycleBusy = () => model.MaintenanceBusy || model.Busy || model.Installation.IsActive || model.CanResume || model.AdminRecoveryInstallation.IsActive || model.CanResumeAdminRecovery || model.RemoteManager.Busy || model.RemoteManager.HasPending || remoteTask.IsActive };
         model.AccountManager.ConfirmAsync = command => Confirm("database.accounts_confirm",
-            LocalizedText.Get("database.account_action." + command.Action) + " · " + command.Database + " · " + (command.Account ?? "—") + " · "
-                + (command.Permission is { } permission ? LocalizedText.Get("database.permission." + permission) : ""));
+            Text("database.account_action." + command.Action) + " · " + command.Database + " · " + (command.Account ?? "—") + " · "
+                + (command.Permission is { } permission ? Text("database.permission." + permission) : ""));
         model.AccountManager.ConfirmRecoveryAsync = () => Confirm("database.confirm.Recover");
         model.AccountManager.AuthorizeAsync = () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlAccounts);
         accountsTask.PropertyChanged += (_, _) => { model.AccountManager.Notify(); model.NotifyState(); };
@@ -108,7 +110,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
             InstallationServiceId.PostgreSqlMaintenance,"relaxkonos.database",model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlMaintenance),"maintenance-installation");
         model.MaintenanceManager=new(context.Services.GetRequiredService<IServerPostgreSql>(),maintenanceTask)
-        {CanManage=model.CanManage,ConfirmAsync=command=>Confirm(command?.Action==RelaxKonOS.Protocol.Databases.PostgreSqlMaintenanceAction.DeleteInstance?"database.delete_instance_confirm":command?.Action==RelaxKonOS.Protocol.Databases.PostgreSqlMaintenanceAction.MigrateMajor?"database.migration_confirm":command?.Action==RelaxKonOS.Protocol.Databases.PostgreSqlMaintenanceAction.DeleteBackup?"database.backup_delete_confirm":"database.maintenance_confirm",command is null?LocalizedText.Get("database.recover"):LocalizedText.Get("database.maintenance_action."+command.Action)+" · "+(command.Target?.Version??command.BackupId?.ToString()??command.InstanceId.ToString())),
+        {CanManage=model.CanManage,ConfirmAsync=command=>Confirm(command?.Action==RelaxKonOS.Protocol.Databases.PostgreSqlMaintenanceAction.DeleteInstance?"database.delete_instance_confirm":command?.Action==RelaxKonOS.Protocol.Databases.PostgreSqlMaintenanceAction.MigrateMajor?"database.migration_confirm":command?.Action==RelaxKonOS.Protocol.Databases.PostgreSqlMaintenanceAction.DeleteBackup?"database.backup_delete_confirm":"database.maintenance_confirm",command is null?Text("database.recover"):Text("database.maintenance_action."+command.Action)+" · "+(command.Target?.Version??command.BackupId?.ToString()??command.InstanceId.ToString())),
             OtherBusy=()=>model.Busy||model.CanResume||model.Installation.IsActive||model.AdminRecoveryInstallation.IsActive||model.CanResumeAdminRecovery||model.RemoteManager.Busy||model.RemoteManager.HasPending||remoteTask.IsActive||model.AccountManager.Busy||model.AccountManager.HasPendingRequest||accountsTask.IsActive};
         maintenanceTask.PropertyChanged+=(_,_)=>{model.MaintenanceManager.Notify();model.NotifyState();model.AccountManager.Notify();model.RemoteManager.Notify();};
         model.MaintenanceManager.PropertyChanged+=(_,_)=>{model.NotifyState();model.AccountManager.Notify();model.RemoteManager.Notify();};
@@ -117,7 +119,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlBackupAutomation),"backup-policy-installation");
         model.MaintenanceManager.ScheduleInstallation=backupPolicyTask;
         model.MaintenanceManager.ConfirmScheduleAsync=policy=>Confirm("database.backup_schedule_confirm",
-            LocalizedText.Get(policy.Enabled?"database.backup_schedule_enabled":"database.backup_schedule_disabled")+" · "+policy.IntervalHours+" h · "+policy.KeepLast+" · "+LocalizedText.Get(policy.AllowDowntime?"database.backup_schedule_downtime":"database.backup_schedule_stopped_only"));
+            Text(policy.Enabled?"database.backup_schedule_enabled":"database.backup_schedule_disabled")+" · "+policy.IntervalHours+" h · "+policy.KeepLast+" · "+Text(policy.AllowDowntime?"database.backup_schedule_downtime":"database.backup_schedule_stopped_only"));
         backupPolicyTask.PropertyChanged+=(_,_)=>{model.MaintenanceManager.Notify();model.NotifyState();model.AccountManager.Notify();model.RemoteManager.Notify();};
         _=backupPolicyTask.RestoreAsync();
         _=maintenanceTask.RestoreAsync();
@@ -125,7 +127,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
         model.Installation.PropertyChanged += (_, _) => { model.NotifyState(); model.AccountManager.Notify(); };
         model.ChoosePortAsync = async () =>
         {
-            var port = await context.ShowDialogAsync<int>(window, LocalizedText.Get("database.initialize"),
+            var port = await context.ShowDialogAsync<int>(window, Text("database.initialize"),
                 dialog => new Views.DatabaseInitializeDialog(value => dialog.Close(value)), new Size(520, 340));
             return port is >= 1024 and <= 65535 ? port : null;
         };
@@ -134,8 +136,8 @@ public sealed class DatabaseApp : RemoteApplicationBase
         async Task<bool> Confirm(string key, string? detail = null)
         {
             var accepted = false;
-            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("application.relaxkonos.database.display_name"), dialog => new ConfirmDialogView
-            { DataContext = new ConfirmDialogViewModel(LocalizedText.Get(key) + (detail is null ? "" : "\n\n" + detail), value => { accepted = value; dialog.Close(value); }) }, new Size(540, 280));
+            await context.ShowDialogAsync<bool>(window, Text("application.relaxkonos.database.display_name"), dialog => new ConfirmDialogView
+            { DataContext = new ConfirmDialogViewModel(Text(key) + (detail is null ? "" : "\n\n" + detail), value => { accepted = value; dialog.Close(value); }) }, new Size(540, 280));
             return accepted;
         }
         var observation = connection.ObserveInvalidation(() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>

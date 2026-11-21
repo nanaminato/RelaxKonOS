@@ -3,6 +3,8 @@ using IServerPostgreSql = RelaxKonOS.AppSDK.IServerPostgreSql;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
+using RelaxKonOS.App.Databases;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
@@ -21,7 +23,7 @@ using RelaxKonOS.Protocol.Installations;
 
 internal static class DatabaseWorkspaceChecks
 {
-    public static void Run(ShellSettings settings)
+    public static void Run(ShellSettings settings, LocalizationService localization)
     {
         void Check(bool ok,string label) { if(!ok)throw new Exception(label);Console.WriteLine("PASS Database "+label); }
         var fake=new Client();
@@ -43,6 +45,10 @@ internal static class DatabaseWorkspaceChecks
         foreach(var language in new[]{"zh-CN","en-US","ja-JP"})
         {
             settings.Language=language;Dispatcher.UIThread.RunJobs();
+            const string confirmation = "database.mysql_remote_confirm";
+            var appText = DatabaseLocalization.Resolve(localization, confirmation, "[missing]");
+            Check(appText != "[missing]" && appText == localization.Get(confirmation, "[missing]"),
+                "application confirmation text matches the desktop resource in " + language);
             foreach(var size in new[]{new PixelSize(980,700),new PixelSize(760,580)})
             {
                 var view=new DatabaseWorkspace { DataContext=model };

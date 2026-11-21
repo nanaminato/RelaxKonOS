@@ -20,6 +20,8 @@
         <AvaloniaResource Include="..\..\LICENSE" Link="Assets\Legal\LICENSE.txt" />
         <AvaloniaResource Include="..\..\THIRD_PARTY_NOTICES.md" Link="Assets\Legal\THIRD_PARTY_NOTICES.md" />
         <Content Include="Localization\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="../../Applications/RelaxKonOS.App.Databases/Localization/*.json"
+                 Link="Localization/%(Filename)/database.json" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="../../Applications/RelaxKonOS.App.ProxyServer/Localization/Shared/*.json"
                  Link="Localization/%(Filename)/proxy_server_shared.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
@@ -62,6 +64,7 @@
       <ProjectReference Include="..\..\Framework\RelaxKonOS.App.SDK\RelaxKonOS.App.SDK.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.Runtime\RelaxKonOS.Runtime.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.UI\RelaxKonOS.UI.csproj" />
+      <ProjectReference Include="../../Applications/RelaxKonOS.App.Databases/RelaxKonOS.App.Databases.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.Terminal\RelaxKonOS.App.Terminal.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.CodeEditor\RelaxKonOS.App.CodeEditor.csproj" />
       <ProjectReference Include="..\..\Applications\RelaxKonOS.App.Git\RelaxKonOS.App.Git.csproj" />
