@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -9,19 +10,13 @@ using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Client.Services.Installation;
 
-public sealed class InstallationApiException(string code, HttpStatusCode status) : Exception(code)
-{
-    public string ProblemCode { get; } = code;
-    public HttpStatusCode Status { get; } = status;
-}
-
-public sealed class InstallationClient(HttpClient http, IAuthSession session, IHttpClientFactory? httpClients = null)
+public sealed class InstallationClient(HttpClient http, IAuthSession session, IHttpClientFactory? httpClients = null) : IInstallationPackageOperations
 {
     private readonly object? login = session.CurrentSession;
     private readonly string? baseUrl = session.EffectiveBaseUrl;
     private void VerifySession()
     {
-        if (login is null || !ReferenceEquals(login, session.CurrentSession) || session.EffectiveBaseUrl != baseUrl
+        if (login is null || baseUrl is null || !ReferenceEquals(login, session.CurrentSession) || session.EffectiveBaseUrl != baseUrl
             || session.State != AuthSessionState.Authenticated)
             throw new InstallationApiException("installation.signed_out", HttpStatusCode.Unauthorized);
     }
@@ -121,7 +116,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session, IH
     private async Task<T?> SendAsync<T>(HttpMethod method, string route, object? body, string? key, CancellationToken ct)
     {
         VerifySession();
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(baseUrl!), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: ct));
         VerifySession();
         if (key is not null) request.Headers.Add("Idempotency-Key", key);

@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,9 +11,12 @@ using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Client.Services.Installation;
 
-public sealed partial class InstallationTaskViewModel(InstallationClient client, IAppSettingsClient settings,
+public sealed partial class InstallationTaskViewModel(IInstallationOperations client, IAppSettingsClient settings,
     InstallationServiceId service, string appId, Func<Task> refresh, Func<Task<bool>> requestElevation, string workspaceKey = "installation") : ObservableObject, IDisposable
 {
+    private IInstallationPackageOperations PackageOperations => client as IInstallationPackageOperations
+        ?? throw new NotSupportedException("Package staging is unavailable for this installation task.");
+
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim submitGate = new(1, 1);
     private Task? observation;
@@ -122,7 +126,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     {
         try
         {
-            var reference = await client.CreateFileReferenceAsync(service, path, lifetime.Token);
+            var reference = await PackageOperations.CreateFileReferenceAsync(service, path, lifetime.Token);
             ConnectionText = string.Empty;
             return reference?.Id;
         }
@@ -140,7 +144,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     /// archive to the server's actor-bound installation staging area.</summary>
     public async Task<string?> DownloadAndUploadPackageAsync(string url, string fileName)
         => await TransferPackageAsync(InstallationStage.Downloading,
-            token => client.DownloadAndUploadPackageAsync(service, url, fileName, token));
+            token => PackageOperations.DownloadAndUploadPackageAsync(service, url, fileName, token));
 
     private async Task<string?> TransferPackageAsync(InstallationStage stage,
         Func<CancellationToken, Task<InstallationFileReferenceDto?>> transfer)
@@ -177,7 +181,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
 
     public async Task<string?> UploadPackageAsync(string fileName, Stream content)
         => await TransferPackageAsync(InstallationStage.Copying,
-            token => client.UploadPackageAsync(service, fileName, content, token));
+            token => PackageOperations.UploadPackageAsync(service, fileName, content, token));
 
     public async Task RestoreAsync()
     {

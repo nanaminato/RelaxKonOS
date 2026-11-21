@@ -333,6 +333,7 @@ public static class Bootstrapper
         services.AddSingleton<ExternalAppContextFactory>();
         services.AddSingleton<Func<IServerPostgreSql>>(provider => () => provider.GetRequiredService<IServerPostgreSql>());
         services.AddSingleton<Func<IServerMySql>>(provider => () => provider.GetRequiredService<IServerMySql>());
+        services.AddSingleton<Func<IInstallationOperations>>(provider => () => provider.GetRequiredService<Installation.InstallationClient>());
         services.AddSingleton<DeveloperPackageManager>();
         services.AddSingleton(_ => new RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-catalog-sources"), "desktop-user"));

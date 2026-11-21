@@ -530,7 +530,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                     ? "webservers.service_stop.stopped" : "webservers.service_stop.failed");
             }
             catch (Exception error) when (error is HttpRequestException or InvalidOperationException or OperationCanceledException
-                or RelaxKonOS.Client.Services.Installation.InstallationApiException or RelaxKonOSAuthException)
+                or InstallationApiException or RelaxKonOSAuthException)
             {
                 if (IsCurrent()) task.ConnectionText = LocalizedText.Get("webservers.service_stop.failed");
             }

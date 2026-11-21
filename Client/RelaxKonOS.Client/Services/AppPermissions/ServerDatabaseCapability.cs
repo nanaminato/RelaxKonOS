@@ -2,14 +2,15 @@ using System.Net;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Databases;
+using RelaxKonOS.Protocol.Installations;
 using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
 
 namespace RelaxKonOS.Client.Services.AppPermissions;
 
 internal sealed class ServerDatabaseCapability(AppId appId, IAppPermissionManager permissions,
     ExternalServerConnection connection, Func<IServerPostgreSql>? createClient, CancellationToken lifetime,
-    Func<IServerMySql>? createMySqlClient)
-    : IServerPostgreSql, IServerMySql
+    Func<IServerMySql>? createMySqlClient, Func<IInstallationOperations>? createInstallationClient)
+    : IServerPostgreSql, IServerMySql, IInstallationOperations
 {
     public Task<PostgreSqlState> ReadAsync(CancellationToken cancellationToken, Guid? instance = null) =>
         InvokeAsync(createClient, (client, token) => client.ReadAsync(token, instance), manage: false, cancellationToken);
@@ -32,6 +33,50 @@ internal sealed class ServerDatabaseCapability(AppId appId, IAppPermissionManage
 
     Task<HttpStatusCode> IServerMySql.StageCredentialAsync(PostgreSqlCredentialRequest request, CancellationToken cancellationToken) =>
         InvokeAsync(createMySqlClient, (client, token) => client.StageCredentialAsync(request, token), manage: true, cancellationToken);
+
+    public Task<InstallationOperationDto?> StartAsync(InstallationServiceId service, InstallationOperationKind kind,
+        object options, string key, CancellationToken cancellationToken)
+    {
+        VerifyInstallationService(service);
+        return InvokeAsync(createInstallationClient, (client, token) => client.StartAsync(service, kind, options, key, token),
+            manage: true, cancellationToken);
+    }
+
+    public Task<InstallationOperationDto?> GetActiveAsync(InstallationServiceId service, CancellationToken cancellationToken)
+    {
+        VerifyInstallationService(service);
+        return InvokeAsync(createInstallationClient, (client, token) => client.GetActiveAsync(service, token),
+            manage: false, cancellationToken);
+    }
+
+    public Task<InstallationOperationDto?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        InvokeAsync(createInstallationClient, async (client, token) =>
+        {
+            var operation = await client.GetAsync(id, token);
+            return operation is not null && operation.OperationId == id && IsDatabaseInstallationService(operation.Service) ? operation : null;
+        }, manage: false, cancellationToken);
+
+    public Task<InstallationOperationDto?> CancelAsync(Guid id, CancellationToken cancellationToken) =>
+        InvokeAsync(createInstallationClient, async (client, token) =>
+        {
+            var operation = await client.GetAsync(id, token);
+            if (operation is null || operation.OperationId != id) return null;
+            VerifyInstallationService(operation.Service);
+            VerifyAccess(manage: true);
+            token.ThrowIfCancellationRequested();
+            return await client.CancelAsync(id, token);
+        }, manage: true, cancellationToken);
+
+    private static void VerifyInstallationService(InstallationServiceId service)
+    {
+        if (!IsDatabaseInstallationService(service)) throw new UnauthorizedAccessException();
+    }
+
+    private static bool IsDatabaseInstallationService(InstallationServiceId service) => service is
+        InstallationServiceId.PostgreSql or InstallationServiceId.PostgreSqlAccounts or InstallationServiceId.PostgreSqlAdminRecovery
+        or InstallationServiceId.PostgreSqlRemoteAccess or InstallationServiceId.PostgreSqlMaintenance or InstallationServiceId.PostgreSqlBackupAutomation
+        or InstallationServiceId.MySql or InstallationServiceId.MySqlAccounts or InstallationServiceId.MySqlAdminRecovery
+        or InstallationServiceId.MySqlRemoteAccess or InstallationServiceId.MySqlMaintenance;
 
     private async Task<T> InvokeAsync<TClient, T>(Func<TClient>? createClient,
         Func<TClient, CancellationToken, Task<T>> operation,

@@ -31,7 +31,7 @@ public sealed class PostgreSqlClient(HttpClient http, IAuthSession session) : IS
                     && reported.StartsWith("database.", StringComparison.Ordinal)) code = reported;
             }
             catch (System.Text.Json.JsonException) { }
-            throw new RelaxKonOS.Client.Services.Installation.InstallationApiException(code, response.StatusCode);
+            throw new InstallationApiException(code, response.StatusCode);
         }
         var state = await response.Content.ReadFromJsonAsync<PostgreSqlState>(RelaxKonOSJsonOptions.Default, ct)
             ?? throw new InvalidDataException("database.state_unavailable");
@@ -51,7 +51,7 @@ public sealed class PostgreSqlClient(HttpClient http, IAuthSession session) : IS
             try { using var json = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
                 if (json.RootElement.TryGetProperty("title", out var title) && title.GetString() == "elevation-required") code = "elevation-required"; }
             catch (System.Text.Json.JsonException) { }
-            throw new RelaxKonOS.Client.Services.Installation.InstallationApiException(code, response.StatusCode);
+            throw new InstallationApiException(code, response.StatusCode);
         }
         var reference = await response.Content.ReadFromJsonAsync<PostgreSqlCredentialReference>(RelaxKonOSJsonOptions.Default, ct);
         if (reference?.Reference != value.Reference) throw new InvalidDataException("database.credential_unavailable");

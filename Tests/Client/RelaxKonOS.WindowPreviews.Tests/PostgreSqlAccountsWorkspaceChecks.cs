@@ -1,3 +1,4 @@
+using InstallationApiException = RelaxKonOS.AppSDK.InstallationApiException;
 using IServerPostgreSql = RelaxKonOS.AppSDK.IServerPostgreSql;
 using System.Net;
 using System.Net.Http.Json;

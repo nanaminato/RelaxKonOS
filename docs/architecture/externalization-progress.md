@@ -335,3 +335,4 @@
 - Windows Release Databases 桌面专项通过，覆盖 PostgreSQL 操作恢复、凭据暂存和 MySQL 页面回归。
 - PostgreSQL SDK 已接入外置上下文。Windows Release 专项验证读取授权、凭据暂存的应用授权和控制端角色，以及切换主机时取消请求并拒绝迟到结果。Databases 桌面回归通过。
 - MySQL 已通过 SDK 查询状态和暂存凭据，桌面视图模型改用类型化宿主传输。MySQL 和 PostgreSQL 共用应用授权、控制端角色和连接失效门禁。Windows Release 数据库作用域专项和桌面回归通过；受管安装任务与官方包仍待迁移。
+- 数据库外置上下文已提供安装任务提交、查询和取消，限定 PostgreSQL 和 MySQL 服务，并沿用原幂等键和宿主安装台账。Windows Release 验证了拒绝跨服务提交、读取和取消、Databases 桌面回归，以及共享安装任务的授权取消与同键重试。桌面入口仍需接入作用域设置和提权。
