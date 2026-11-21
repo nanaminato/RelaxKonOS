@@ -8,22 +8,26 @@ namespace RelaxKonOS.Client.Services.AppPermissions;
 
 public interface IRemoteEventAlertClient
 {
-    Task<EventAlertSummaryDto> SummaryAsync(CancellationToken cancellationToken = default);
-    Task<EventAlertPageDto<OperationalAlertDto>> ListAlertsAsync(CancellationToken cancellationToken = default);
+    Task<EventAlertSummaryDto> SummaryAsync(UsageMemoryScope connection, CancellationToken cancellationToken);
+    Task<EventAlertPageDto<OperationalAlertDto>> ListAlertsAsync(UsageMemoryScope connection, CancellationToken cancellationToken);
 }
 
 /// <summary>Read-only first desktop surface; mutating controls remain explicitly permission-gated.</summary>
 public sealed class RemoteEventAlertClient(HttpClient http, IAuthSession session) : IRemoteEventAlertClient
 {
-    public Task<EventAlertSummaryDto> SummaryAsync(CancellationToken cancellationToken = default) => GetAsync<EventAlertSummaryDto>(EventAlertApiRoutes.Summary, cancellationToken);
-    public Task<EventAlertPageDto<OperationalAlertDto>> ListAlertsAsync(CancellationToken cancellationToken = default) => GetAsync<EventAlertPageDto<OperationalAlertDto>>(EventAlertApiRoutes.Alerts, cancellationToken);
+    public Task<EventAlertSummaryDto> SummaryAsync(UsageMemoryScope connection, CancellationToken cancellationToken) =>
+        GetAsync<EventAlertSummaryDto>(connection, EventAlertApiRoutes.Summary, cancellationToken);
+    public Task<EventAlertPageDto<OperationalAlertDto>> ListAlertsAsync(UsageMemoryScope connection, CancellationToken cancellationToken) =>
+        GetAsync<EventAlertPageDto<OperationalAlertDto>>(connection, EventAlertApiRoutes.Alerts, cancellationToken);
 
-    private async Task<T> GetAsync<T>(string route, CancellationToken cancellationToken)
+    private async Task<T> GetAsync<T>(UsageMemoryScope connection, string route, CancellationToken cancellationToken)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
-            throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
+        var baseUrl = session.EffectiveBaseUrl;
+        var tokens = session.Tokens;
+        if (!connection.IsCurrent || session.State != AuthSessionState.Authenticated || tokens is null || baseUrl is null)
+            throw new InvalidOperationException("The alert connection is unavailable.");
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(baseUrl), route.TrimStart('/')));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken)

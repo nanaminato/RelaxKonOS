@@ -78,4 +78,5 @@
 - Windows 模块包回归验证了随宿主编译的 Git 模块也受依赖版本区间约束，兼容区间通过，要求更高版本的包被拒绝。
 - Windows Release 使用实际 Welcome .roapp 验证配置集通过统一部署协调器离线预装并写入部署回执。回归覆盖 Standard 默认选择、Minimal、排除应用、避免重复安装、保留卸载决定，以及暂缓带服务端要求的包。
 - Windows Release 使用 DevCli 打包 Event & Alert Center，验证可信来源、只读权限声明、安装与登记、更新失败保留活动版本、重启发现及卸载。真实服务端告警读取和 Linux 桌面验证待完成。
+- Windows 桌面 `--event-alerts-capability-only` 使用 SDK 上下文和实际 HTTP 客户端连接测试传输层，验证告警摘要和列表的认证请求、未授权时阻止请求、撤销权限后停止后续读取，以及切换服务器时丢弃旧响应并阻止旧窗口向新服务器发送请求。服务端 `--event-alerts-only` 的投影和恢复回归通过。
 - 独立部署设备和 Linux 双包验收、Android 和全应用三语言界面验收均待执行。

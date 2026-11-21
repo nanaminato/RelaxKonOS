@@ -141,12 +141,12 @@ public sealed class ExternalAppContextFactory
 
             try
             {
-                var summary = await alerts.SummaryAsync(cancellationToken);
+                var summary = await alerts.SummaryAsync(connection, cancellationToken);
                 if (!IsConnected())
                     return new(AppCapabilityResult.Unavailable);
                 if (!permissions.IsGranted(appId, CoreAppPermissions.ServerEventAlertsRead))
                     return new(AppCapabilityResult.PermissionDenied);
-                var page = await alerts.ListAlertsAsync(cancellationToken);
+                var page = await alerts.ListAlertsAsync(connection, cancellationToken);
                 if (!IsConnected())
                     return new(AppCapabilityResult.Unavailable);
                 if (!permissions.IsGranted(appId, CoreAppPermissions.ServerEventAlertsRead))
