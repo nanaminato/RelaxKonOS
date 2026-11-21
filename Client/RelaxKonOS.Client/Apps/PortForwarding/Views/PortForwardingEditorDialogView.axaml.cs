@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using RelaxKonOS.Client.Apps.PortForwarding.ViewModels;
+using RelaxKonOS.App.PortForwarding;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.WindowManager;
 

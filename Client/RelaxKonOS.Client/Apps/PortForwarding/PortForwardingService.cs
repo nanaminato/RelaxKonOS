@@ -1,3 +1,4 @@
+using RelaxKonOS.App.PortForwarding;
 using RelaxKonOS.AppSDK;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -53,7 +54,7 @@ public sealed class PortForwardingService : IPortForwardingService
     private async Task<PortForwardInfo> StartCoreAsync(PortForwardRequest request, string? password, CancellationToken cancellationToken, bool reuseExisting)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ValidateRequest(request);
+        PortForwardRequest.Validate(request, LocalizedText.Get);
         var server = ResolveSshServer();
         var existing = _forwards.Values.FirstOrDefault(forward =>
             forward.Server == server && forward.Info.RemotePort == request.RemotePort
@@ -129,7 +130,7 @@ public sealed class PortForwardingService : IPortForwardingService
     public async Task<PortForwardInfo> UpdateAsync(Guid id, PortForwardRequest request, string? password, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ValidateRequest(request);
+        PortForwardRequest.Validate(request, LocalizedText.Get);
         if (!_forwards.TryGetValue(id, out var original))
             throw new InvalidOperationException(LocalizedText.Get("port_forwarding.error.target_changed"));
         if (original.Server == ResolveSshServer() && original.Info.RemoteHost.Equals(request.RemoteHost, StringComparison.OrdinalIgnoreCase)
@@ -287,26 +288,6 @@ public sealed class PortForwardingService : IPortForwardingService
         }
         catch (SocketException) { return false; }
         finally { listener?.Stop(); }
-    }
-
-    internal static void ValidateRequest(PortForwardRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var isLoopbackTarget = request.RemoteHost?.Equals("localhost", StringComparison.OrdinalIgnoreCase) == true
-                               || request.RemoteHost?.Equals("127.0.0.1", StringComparison.Ordinal) == true;
-        if (!isLoopbackTarget)
-            throw new ArgumentException(LocalizedText.Get("port_forwarding.error.remote_loopback_only"), nameof(request));
-        if (request.RemotePort is < 1 or > 65535)
-            throw new ArgumentOutOfRangeException(nameof(request), LocalizedText.Get("port_forwarding.error.remote_port_invalid"));
-        if (request.PreferredLocalPort is < 1 or > 65535)
-            throw new ArgumentOutOfRangeException(nameof(request), LocalizedText.Get("port_forwarding.error.local_port_invalid"));
-        var isWebScheme = request.Scheme?.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) == true
-                          || request.Scheme?.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) == true;
-        if (!isWebScheme)
-            throw new ArgumentException(LocalizedText.Get("port_forwarding.error.web_scheme_only"), nameof(request));
-        if (string.IsNullOrWhiteSpace(request.PathAndQuery)
-            || !request.PathAndQuery.StartsWith("/", StringComparison.Ordinal))
-            throw new ArgumentException(LocalizedText.Get("port_forwarding.error.path_invalid"), nameof(request));
     }
 
     private static string DescribeSshStartupFailure(string standardError)

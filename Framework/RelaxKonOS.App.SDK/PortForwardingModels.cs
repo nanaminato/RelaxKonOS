@@ -11,6 +11,26 @@ public sealed record PortForwardRequest(
 {
     public static PortForwardRequest Localhost(int remotePort, int? preferredLocalPort = null, string scheme = "http")
         => new("localhost", remotePort, scheme, preferredLocalPort);
+
+    public static void Validate(PortForwardRequest request, Func<string, string> localize)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var isLoopbackTarget = request.RemoteHost?.Equals("localhost", StringComparison.OrdinalIgnoreCase) == true
+                               || request.RemoteHost?.Equals("127.0.0.1", StringComparison.Ordinal) == true;
+        if (!isLoopbackTarget)
+            throw new ArgumentException(localize("port_forwarding.error.remote_loopback_only"), nameof(request));
+        if (request.RemotePort is < 1 or > 65535)
+            throw new ArgumentOutOfRangeException(nameof(request), localize("port_forwarding.error.remote_port_invalid"));
+        if (request.PreferredLocalPort is < 1 or > 65535)
+            throw new ArgumentOutOfRangeException(nameof(request), localize("port_forwarding.error.local_port_invalid"));
+        var isWebScheme = request.Scheme?.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) == true
+                          || request.Scheme?.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) == true;
+        if (!isWebScheme)
+            throw new ArgumentException(localize("port_forwarding.error.web_scheme_only"), nameof(request));
+        if (string.IsNullOrWhiteSpace(request.PathAndQuery)
+            || !request.PathAndQuery.StartsWith("/", StringComparison.Ordinal))
+            throw new ArgumentException(localize("port_forwarding.error.path_invalid"), nameof(request));
+    }
 }
 
 /// <summary>Runtime state for one locally owned SSH process. It is intentionally not synchronized.</summary>

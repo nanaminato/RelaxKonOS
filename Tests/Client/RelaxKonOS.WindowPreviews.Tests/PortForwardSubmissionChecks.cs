@@ -1,7 +1,7 @@
 using RelaxKonOS.AppSDK;
 using System.Reflection;
 using RelaxKonOS.Client.Apps.PortForwarding;
-using RelaxKonOS.Client.Apps.PortForwarding.ViewModels;
+using RelaxKonOS.App.PortForwarding;
 using RelaxKonOS.Client.Apps.PortForwarding.Views;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.WindowManager;
@@ -47,7 +47,7 @@ internal static class PortForwardSubmissionChecks
         finally { File.Delete(blocker); File.Delete(successfulPath); if (Directory.Exists(replacementBlocker)) Directory.Delete(replacementBlocker); Directory.Delete(temporary); }
         var service = DispatchProxy.Create<IPortForwardingService, PendingForwardService>();
         var fake = (PendingForwardService)service;
-        using var vm = new PortForwardingViewModel(service) { TargetAddress = "localhost:80", PreferredLocalPortText = "7300" };
+        using var vm = new PortForwardingViewModel(service, RelaxKonOS.Client.Localization.LocalizedText.Get) { TargetAddress = "localhost:80", PreferredLocalPortText = "7300" };
         foreach (var invalid in new[] { "http://remote.test:80", "ftp://localhost:80", "http://test:test@localhost:80", "http://localhost:80/#section" })
         {
             vm.TargetAddress = invalid;
@@ -70,7 +70,7 @@ internal static class PortForwardSubmissionChecks
         vm.SshPassword = "test-only-secret";
         vm.StartCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         if (fake.Starts != 1 || vm.IsBusy || vm.SshHost != "unsaved-host" || vm.SshPassword != "test-only-secret"
-            || vm.StatusText.Resolve() != "test settings refusal") throw new Exception("Settings failure was not retained locally before forward submission.");
+            || vm.StatusText != "test settings refusal") throw new Exception("Settings failure was not retained locally before forward submission.");
         Console.WriteLine("PASS: Forward submission blocks duplicate settings writes and draft resets, and retains rejected input.");
         fake.FailSave = false;
         var original = new PortForwardInfo(Guid.NewGuid(), "localhost", 80, 7300, "http", "/", DateTimeOffset.UtcNow, "Running");
@@ -98,7 +98,7 @@ internal static class PortForwardSubmissionChecks
             var before = fake.Saves;
             await vm.UpdateSelectedCommand.ExecuteAsync(null);
             if (fake.Saves != before || vm.TargetAddress != "http://localhost:90"
-                || vm.StatusText.Resolve() != RelaxKonOS.Client.Localization.LocalizedText.Get("port_forwarding.error.target_changed"))
+                || vm.StatusText != RelaxKonOS.Client.Localization.LocalizedText.Get("port_forwarding.error.target_changed"))
                 throw new Exception("Missing original forward changed settings/draft or lacked recovery feedback.");
         };
         vm.OpenEditForwardCommand.ExecuteAsync(original).GetAwaiter().GetResult();
@@ -133,7 +133,7 @@ internal static class PortForwardSubmissionChecks
         Console.WriteLine("PASS: Forward modal retains kept drafts, blocks busy closing and supports confirmed discard.");
         var lateService = DispatchProxy.Create<IPortForwardingService, PendingForwardService>();
         var lateFake = (PendingForwardService)lateService;
-        using var lateVm = new PortForwardingViewModel(lateService) { TargetAddress = "localhost:80" };
+        using var lateVm = new PortForwardingViewModel(lateService, RelaxKonOS.Client.Localization.LocalizedText.Get) { TargetAddress = "localhost:80" };
         var closeCalls = 0;
         lateVm.CloseForwardEditorAsync = () => { closeCalls++; return Task.CompletedTask; };
         var latePending = lateVm.StartCommand.ExecuteAsync(null);
@@ -145,24 +145,24 @@ internal static class PortForwardSubmissionChecks
             throw new Exception("Late forwarding result changed or closed a disposed window.");
         var failedService = DispatchProxy.Create<IPortForwardingService, PendingForwardService>();
         var failedFake = (PendingForwardService)failedService;
-        using var failedVm = new PortForwardingViewModel(failedService) { TargetAddress = "localhost:80" };
+        using var failedVm = new PortForwardingViewModel(failedService, RelaxKonOS.Client.Localization.LocalizedText.Get) { TargetAddress = "localhost:80" };
         var failedPending = failedVm.StartCommand.ExecuteAsync(null);
-        var beforeFailedStatus = failedVm.StatusText.Resolve();
+        var beforeFailedStatus = failedVm.StatusText;
         failedVm.Dispose();
         failedFake.Pending.SetException(new IOException("late test failure"));
         failedPending.GetAwaiter().GetResult();
-        if (failedVm.StatusText.Resolve() != beforeFailedStatus) throw new Exception("Late failure replaced a disposed window's status.");
+        if (failedVm.StatusText != beforeFailedStatus) throw new Exception("Late failure replaced a disposed window's status.");
         using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
         listener.Start();
         var probePort = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        using var probeVm = new PortForwardingViewModel(failedService) { SelectedForward = original with { LocalPort = probePort } };
-        var beforeProbeStatus = probeVm.StatusText.Resolve();
+        using var probeVm = new PortForwardingViewModel(failedService, RelaxKonOS.Client.Localization.LocalizedText.Get) { SelectedForward = original with { LocalPort = probePort } };
+        var beforeProbeStatus = probeVm.StatusText;
         var probe = probeVm.TestSelectedCommand.ExecuteAsync(null);
         using var accepted = listener.AcceptTcpClientAsync().WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
         probeVm.Dispose();
         Pump(() => probe.IsCompleted);
         probe.GetAwaiter().GetResult();
-        if (probeVm.StatusText.Resolve() != beforeProbeStatus) throw new Exception("Closed probe changed the disposed window's status.");
+        if (probeVm.StatusText != beforeProbeStatus) throw new Exception("Closed probe changed the disposed window's status.");
     }
     private static void Pump(Func<bool> done)
     {
