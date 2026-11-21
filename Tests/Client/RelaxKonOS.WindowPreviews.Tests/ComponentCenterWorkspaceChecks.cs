@@ -399,7 +399,7 @@ internal static class ComponentCenterWorkspaceChecks
                     bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light-") + "ActiveTask.png"), new PngBitmapEncoderOptions());
                 }
                 activeWindow.Close(); Dispatcher.UIThread.RunJobs();
-                activeModel.Navigate(ComponentCenterPage.All);
+                activeModel.Locate(new("host-a", "relaxkonos.proxy-server", "sing-box", null, ComponentCenterPage.All));
                 activeModel.InspectCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                 var inspectionView = new ComponentCenterTasksView(activeModel);
                 var inspectionWindow = new Window { Width = 1060, Height = 800, Content = inspectionView };
