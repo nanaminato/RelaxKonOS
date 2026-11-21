@@ -6,7 +6,7 @@
 
 ## 1. 应用范围与边界
 
-首轮交付一个宿主机全局的 `relaxkonos.file-services` 内置管理应用。它发现、配置和管理**由 Samba 或 Windows SMB Server 实际提供**的 SMB 服务，并呈现真实状态、共享、账户能力和连接信息。
+`relaxkonos.file-services` 通过官方桌面包安装，Developer 配置提供交互式安装入口。该应用发现、配置和管理**由 Samba 或 Windows SMB Server 实际提供**的宿主机 SMB 服务，并呈现状态、共享、账户能力和连接信息。归档要求服务器公布 `server.file-services` 宿主能力。
 
 数据面必须始终保持在 RelaxKonOS 之外：
 
@@ -144,7 +144,7 @@ PUT    /api/v1.0/file-services/smb/users/{username}/password
 GET    /api/v1.0/file-services/smb/connection
 ```
 
-读操作要求 `FileServicesRead`，变更要求 `FileServicesManage`；安装、服务生命周期、配置/共享和凭据变更还必须验证当前 JWT `jti` 的精确 `HostElevationCapability.SmbManage`、目标 `smb:managed` 的五分钟授权。扩展现有 elevation enum、Endpoint 和 session-store 测试时，应直接迁移当前契约，不增加独立密码确认或宽泛“file services admin”票据。App permission 仅控制内置 App 的客户端入口，不能成为 HTTP 授权依据。
+读操作要求 `FileServicesRead`，变更要求 `FileServicesManage`；安装、服务生命周期、配置/共享和凭据变更还必须验证当前 JWT `jti` 的精确 `HostElevationCapability.SmbManage`、目标 `smb:managed` 的五分钟授权。扩展现有 elevation enum、Endpoint 和 session-store 测试时，应直接迁移当前契约，不增加独立密码确认或宽泛“file services admin”票据。应用权限控制客户端 SDK 调用，HTTP 端点独立执行服务器授权。
 
 密码更新请求只在 Linux Samba capability 启用时存在；它在 TLS 请求体中短暂存在，映射为 Helper 的一次性强类型请求后立即丢弃。Windows 不提供密码相关 Endpoint 或 UI。密码不得进入日志、审计、异常 detail、DTO、持久化实体、operation replay payload 或 UI state。
 

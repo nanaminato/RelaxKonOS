@@ -45,7 +45,9 @@ internal static class OfficialRoappChecks
         var isCertificates = applicationId == "relaxkonos.certificates";
         var isWebServers = applicationId == "relaxkonos.webservers";
         var isGit = applicationId == "relaxkonos.git";
+        var isFileServices = applicationId == "relaxkonos.file-services";
         var requiresModule = isDocker || isCertificates || isWebServers || isGit;
+        var interactive = requiresModule || isFileServices;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -164,6 +166,12 @@ internal static class OfficialRoappChecks
                     "Git review exposes the Git module, capability and scoped grants.");
                 await RejectAsync(() => installer.InstallAsync(candidate), "Git without joint deployment");
             }
+            if (isFileServices)
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerFileServicesRead,
+                    AppPermissions.ServerFileServicesManage, AppPermissions.ServerComponentsRead, AppPermissions.ServerFilesRead]
+                    && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.file-services"]
+                    && candidate.Manifest.Dependencies?.Required is null or [],
+                    "File Services review exposes the host capability and scoped grants without a server module dependency.");
             var provisioner = new BundledApplicationProvisioner(packages, installer,
                 new JointAppDeploymentService(null!, null!, installer, packages, applications, journal), drive);
             await WriteProfileAsync("interactive");
@@ -192,15 +200,15 @@ internal static class OfficialRoappChecks
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "An excluded application stays uninstalled on restart.");
             compatibility.TaskManagerServerAvailable = !isTaskManager;
-            if (requiresModule)
+            if (interactive)
                 await WriteProfileAsync("interactive");
             await provisioner.RunAsync(["--installation-profile=developer"]);
-            if (requiresModule)
+            if (interactive)
                 Check(packages.FindInstalled(applicationId) is null, "The server-dependent application stays optional in Developer.");
-            var first = requiresModule
+            var first = interactive
                 ? await InstallForLifecycleCheckAsync(installer, await installer.InspectLocalAsync(path))
                 : packages.FindInstalled(applicationId) ?? throw new InvalidOperationException("The bundled default did not install.");
-            if (!requiresModule)
+            if (!interactive)
                 Check(File.Exists(Path.Combine(first.InstallationPath, "deployment-receipt.json")),
                     "Profile provisioning must commit the unified deployment receipt.");
             await provisioner.RunAsync();
@@ -214,7 +222,7 @@ internal static class OfficialRoappChecks
             if (isTaskManager)
                 Check(!await packages.LaunchAsync(applicationId), "The preinstalled Task Manager must refuse launch without server capabilities.");
             compatibility.TaskManagerServerAvailable = true;
-            if (requiresModule || isTaskManager || isRegistry || isBrowser || isTerminal)
+            if (interactive || isTaskManager || isRegistry || isBrowser || isTerminal)
             {
                 windows.Attach(new Canvas { Width = 1100, Height = 800 });
                 Check(await packages.LaunchAsync(applicationId), "The application must launch from its installed package.");
@@ -230,6 +238,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.certificates" => "RelaxKonOS.App.Certificates.Views.CertificateManagerWorkspace",
                     "relaxkonos.webservers" => "RelaxKonOS.App.WebServers.Views.WebServerManagerWorkspace",
                     "relaxkonos.git" => "RelaxKonOS.App.Git.Views.GitClientWorkspace",
+                    "relaxkonos.file-services" => "RelaxKonOS.App.FileServices.Views.FileServicesWorkspace",
                     _ => "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
                 };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
@@ -378,13 +387,16 @@ internal static class OfficialRoappChecks
             var webServers = isWebServers ? DispatchProxy.Create<IServerWebServers, CurrentNginxClient>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerGitRead);
             appPermissions.Granted.Add(AppPermissions.ServerGitManage);
+            appPermissions.Granted.Add(AppPermissions.ServerFileServicesRead);
             var git = isGit ? DispatchProxy.Create<RelaxKonOS.AppSDK.IServerGit, OfficialGitFixture>() : null;
-            var scopedPermissions = isCertificates || isWebServers || isGit;
+            var fileServices = isFileServices ? DispatchProxy.Create<RelaxKonOS.AppSDK.IServerFileServices, ShareDialogClient>() : null;
+            var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices;
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
                 null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
-                browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git);
+                browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
+                fileServices: fileServices);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 

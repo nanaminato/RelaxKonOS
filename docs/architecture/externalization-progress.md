@@ -33,7 +33,7 @@
 | proxy | Proxy | 否 / 否 | 是 | Proxy 模块；组件中心管理 mihomo | 可选 | 待验 |
 | proxy-server | ProxyServer | 否 / 否 | 是 | ProxyServer capability；组件中心管理 sing-box | 可选 | 待验 |
 | squid | Squid | 否 / 否 | 是 | GatewayProxy capability；组件中心管理 Squid | 可选 | 待验 |
-| file-services | FileServices | 否 / 否 | 是 | `IServerFileServices` SDK 与主机 SMB | 可选 | SDK 权限及会话边界已验，应用包待迁移 |
+| file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
 | port-forwarding | PortForwarding | 否 / 否 | 是 | 连接会话与隧道 | 可选 | 待验 |
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期及隔离宿主模块复用已验，真实证书服务待验 |
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows 包生命周期及 Windows、Linux 隔离模块复用已验，Nginx 业务联调待验 |
@@ -44,7 +44,7 @@
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。桌面发行构建将 Browser、Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager、Registry、Terminal、Code Editor、Docker、Certificate Manager、Web Server Manager 和 Git 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装前八个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。Developer 将 Docker、Certificate Manager、Web Server Manager 和 Git 声明为交互式安装项，可从官方商店审阅和确认联合部署。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。桌面发行构建将 Browser、Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager、Registry、Terminal、Code Editor、Docker、Certificate Manager、Web Server Manager、Git 和 File Services 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装前八个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。Developer 将 Docker、Certificate Manager、Web Server Manager、Git 和 File Services 声明为交互式安装项，可从官方商店审阅和确认联合部署。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 ## 复用边界
 
@@ -262,3 +262,4 @@
 - File Services 主界面及概览、共享、用户三页已迁入应用程序集，标题栏使用包内图标和应用文案。Windows Release 共享页面与对话框回归通过，验证了权限列及行文案；融合窗口验收通过三种窗口样式、语言及宽度。宿主对话框接线、外置入口和发行包待完成。
 - File Services 的共享编辑、密码、删除及路径警告对话框已迁入应用程序集。宿主提供草稿关闭保护策略，应用保留字段和权限变更检测。Windows Release 构建与共享页面、草稿关闭和权限回归通过。
 - File Services 已具备外置激活入口，使用 SMB SDK、会话失效观察和应用窗口。组件设置及管理员授权提示由宿主提供，目录选择可挂在共享编辑模态窗口下。Windows Release 构建、外置入口加载 SMB 状态、只读授权禁止打开提权提示及共享对话框回归通过。官方包及内置入口切换待完成。
+- File Services 1.0.0 已接入官方桌面发行、目录与 Developer 交互安装，桌面宿主内置入口已移除。归档要求服务端 host capability server.file-services。Windows Release 通过实际归档验证来源、完整性、安装、隔离启动、升级、失败保留版本、重启发现和卸载。真实 SMB 主机业务联调待验。

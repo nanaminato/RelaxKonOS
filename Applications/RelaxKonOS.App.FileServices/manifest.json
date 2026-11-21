@@ -1,0 +1,23 @@
+{
+  "id": "relaxkonos.file-services",
+  "displayName": "File Services",
+  "description": "Manage the host SMB control plane",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.FileServices.dll",
+  "entryType": "RelaxKonOS.App.FileServices.FileServicesPackageApp",
+  "iconGlyph": "🗄",
+  "iconPath": "Assets/file-services.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": [
+    "server.file-services.read",
+    "server.file-services.manage",
+    "server.components.read",
+    "server.files.read"
+  ],
+  "serverRequirements": { "capabilities": ["server.file-services"] },
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "文件服务", "description": "管理主机 SMB 控制平面" },
+    "ja-JP": { "displayName": "ファイル サービス", "description": "ホストの SMB コントロール プレーンを管理します" }
+  }
+}
