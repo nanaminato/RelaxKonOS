@@ -3,7 +3,7 @@ using Avalonia.Interactivity;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Protocol.Tailscale;
-namespace RelaxKonOS.Client.Apps.Tailscale.Views;
+namespace RelaxKonOS.App.Tailscale.Views;
 public partial class TailscaleRecoveryDialog : UserControl
 {
     private readonly Action<bool> _complete;

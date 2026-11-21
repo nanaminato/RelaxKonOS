@@ -205,7 +205,10 @@
     "tailscale.menu.exit": "退出",
     "tailscale.about.title": "关于 Tailscale 管理器",
     "tailscale.about.summary_format": "管理器版本：{0}\n宿主：{1}\nTailscale 版本：{2}\n设备：{3}\n网络：{4}\n账户：{5}",
-    "tailscale.about.detail": "此管理器通过宿主 Helper 执行固定的官方 CLI 操作，不代理流量，也不保存登录链接或账户凭据。"
+    "tailscale.about.detail": "此管理器通过宿主 Helper 执行固定的官方 CLI 操作，不代理流量，也不保存登录链接或账户凭据。",
+    "common.cancel": "取消",
+    "common.close": "关闭",
+    "common.view": "查看"
   },
   "Culture": "zh-CN"
 }

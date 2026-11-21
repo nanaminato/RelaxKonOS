@@ -1,3 +1,5 @@
+using RelaxKonOS.App.Tailscale;
+using RelaxKonOS.App.Tailscale.Views;
 using ITailscaleOperationReferences = RelaxKonOS.AppSDK.ITailscaleOperationReferences;
 using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
 using IServerTailscale = RelaxKonOS.AppSDK.IServerTailscale;
@@ -38,7 +40,7 @@ async Task RunChecksAsync()
 {
 var checks = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); checks++; }
-var text = new TailscaleText(language, language.Get);
+var text = new TailscaleText(language, (key, fallback) => TailscaleLocalization.Resolve(language, key, fallback));
 var emptyPreferences = new TailscalePreferences(true, false, false, null, false, false, false, false);
 var emptyEditor = new TailscalePreferencesEditor(emptyPreferences, [], "linux", false, text);
 Check(emptyEditor.NoCandidates && !emptyEditor.PeersRestricted, "authorized empty exit-node list is not a permission failure");
@@ -53,7 +55,7 @@ try
     var client = new FakeClient();
     var broker = new Broker();
     var store = new TailscaleOperationReferences(Path.Combine(folder.FullName, "refs.json"));
-    var model = new TailscaleViewModel(client, store, broker, language, language.Get);
+    var model = new TailscaleViewModel(client, store, broker, language, text.Get);
     await model.ActivateAsync();
     Check(model.Peers.Count == 1 && !model.CanConnect && client.ControlReads == 0 && broker.Calls == 0, "launch only observes status");
     await model.LoadControlAsync();
@@ -74,7 +76,7 @@ try
         return Task.FromResult(true);
     };
     await model.ConnectAsync();
-    Check(client.Executions == 1 && !model.CanConnect && model.OperationText == language.Get("tailscale.operation_state.Applied", ""), "verified receipt without optimistic control baseline");
+    Check(client.Executions == 1 && !model.CanConnect && model.OperationText == text.Get("tailscale.operation_state.Applied", ""), "verified receipt without optimistic control baseline");
     Check(model.CanDisconnect && model.HasControl, "applied change re-reads the live baseline");
     await model.LoadControlAsync();
     Check(model.CanDisconnect && !model.CanConnect, "fresh connected baseline");
@@ -118,7 +120,7 @@ try
     await model.LoadControlAsync();
     client.LoseResponse = true;
     await model.DisconnectAsync();
-    Check(model.OperationText == language.Get("tailscale.awaiting_receipt", "") && !model.CanDisconnect, "lost reply stays unproven");
+    Check(model.OperationText == text.Get("tailscale.awaiting_receipt", "") && !model.CanDisconnect, "lost reply stays unproven");
     var executed = client.Executions;
     var pendingReference = model.SelectedReference;
     model.SelectedReference = model.Operations.Last();
@@ -129,13 +131,13 @@ try
     Check(!model.CanConnect && !model.CanDisconnect,"prepared observation cannot settle a lost submission");
     client.PreparedRead = false;
     await model.ReopenAsync();
-    Check(client.Executions == executed && model.OperationText == language.Get("tailscale.operation_state.Applied", ""), "reopen reads original evidence only");
+    Check(client.Executions == executed && model.OperationText == text.Get("tailscale.operation_state.Applied", ""), "reopen reads original evidence only");
     model.Deactivate();
-    var reopened = new TailscaleViewModel(client, new TailscaleOperationReferences(Path.Combine(folder.FullName, "refs.json")), broker, language, language.Get);
+    var reopened = new TailscaleViewModel(client, new TailscaleOperationReferences(Path.Combine(folder.FullName, "refs.json")), broker, language, text.Get);
     await reopened.ActivateAsync();
-    Check(reopened.Operations.Count > 0 && reopened.OperationText == language.Get("tailscale.operation_empty", ""), "new window loads references without cached outcome");
+    Check(reopened.Operations.Count > 0 && reopened.OperationText == text.Get("tailscale.operation_empty", ""), "new window loads references without cached outcome");
     await reopened.ReopenAsync();
-    Check(reopened.OperationText == language.Get("tailscale.operation_state.Applied", ""), "new window reads original receipt");
+    Check(reopened.OperationText == text.Get("tailscale.operation_state.Applied", ""), "new window reads original receipt");
     Check(store.Read(original with { UserId = Guid.NewGuid() }).Count == 0 && store.Read(original with { ServiceId = "another-host" }).Count == 0, "references isolate host and user");
     Check(store.Read(original with { SessionId = Guid.NewGuid() }).Count > 0, "same user can reopen after a new login");
     await reopened.LoadControlAsync();
@@ -157,9 +159,9 @@ try
         && reopened.Operations.Count == 0, "late response cannot update new host");
     reopened.Deactivate();
     // A persistence failure must stop the mutation before it is submitted.
-    var blocked = new TailscaleViewModel(client, new BrokenReferences(), broker, language, language.Get) { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
+    var blocked = new TailscaleViewModel(client, new BrokenReferences(), broker, language, text.Get) { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
     await blocked.ActivateAsync(); await blocked.LoadControlAsync(); await blocked.ConnectAsync();
-    Check(client.Executions == executed && blocked.StatusText == language.Get("tailscale.operation_reference_failed", ""), "unpersisted reference blocks execute");
+    Check(client.Executions == executed && blocked.StatusText == text.Get("tailscale.operation_reference_failed", ""), "unpersisted reference blocks execute");
     blocked.Deactivate();
     // A cancelled old window cannot publish a later reply into a reattached view model.
     await model.ActivateAsync(); await model.LoadControlAsync();
@@ -169,10 +171,10 @@ try
     Check(model.IsBusy, "pending execute busy");
     model.Deactivate(); client.HoldExecute.SetResult(client.LastResult!); await waiting; client.HoldExecute = null;
     await model.ActivateAsync();
-    Check(model.OperationText == language.Get("tailscale.operation_empty", "") && !model.IsBusy, "closed window response discarded");
+    Check(model.OperationText == text.Get("tailscale.operation_empty", "") && !model.IsBusy, "closed window response discarded");
     model.Deactivate();
     var recoveryClient = new FakeClient { UnknownResult = true };
-    var recoveryModel = new TailscaleViewModel(recoveryClient, new TailscaleOperationReferences(Path.Combine(folder.FullName,"recovery.json")),broker,language, language.Get)
+    var recoveryModel = new TailscaleViewModel(recoveryClient, new TailscaleOperationReferences(Path.Combine(folder.FullName,"recovery.json")),broker,language, text.Get)
         { ConfirmAsync = (_,_,_) => Task.FromResult(true) };
     await recoveryModel.ActivateAsync(); await recoveryModel.LoadControlAsync(); await recoveryModel.ConnectAsync();
     Check(recoveryModel.CanInspectRecovery && !recoveryModel.CanCloseRecovery,"unknown receipt enables inspection only");
@@ -189,21 +191,21 @@ try
         return Task.FromResult(true);
     };
     await recoveryModel.CloseRecoveryAsync();
-    Check(recoveryClient.CloseCalls==1 && recoveryClient.Executions==1 && recoveryModel.OperationText==language.Get("tailscale.recovery.closed",""),"closure preserves unknown outcome and never replays native action");
+    Check(recoveryClient.CloseCalls==1 && recoveryClient.Executions==1 && recoveryModel.OperationText==text.Get("tailscale.recovery.closed",""),"closure preserves unknown outcome and never replays native action");
     await recoveryModel.LoadControlAsync(); await recoveryModel.DisconnectAsync(); await recoveryModel.InspectRecoveryAsync();
     recoveryClient.LoseCloseResponse=true; await recoveryModel.CloseRecoveryAsync();
-    Check(recoveryModel.OperationText==language.Get("tailscale.recovery.awaiting_receipt",""),"lost closure response remains unproven");
+    Check(recoveryModel.OperationText==text.Get("tailscale.recovery.awaiting_receipt",""),"lost closure response remains unproven");
     recoveryClient.SuppressClosure=true; await recoveryModel.ReopenAsync();
-    Check(recoveryModel.OperationText==language.Get("tailscale.recovery.awaiting_receipt",""),"missing original closure cannot settle pending acknowledgement");
+    Check(recoveryModel.OperationText==text.Get("tailscale.recovery.awaiting_receipt",""),"missing original closure cannot settle pending acknowledgement");
     recoveryClient.SuppressClosure=false;
     recoveryClient.BadClosure=true; await recoveryModel.ReopenAsync();
-    Check(recoveryModel.OperationText==language.Get("tailscale.recovery.awaiting_receipt",""),"foreign actor closure cannot clear pending acknowledgement");
+    Check(recoveryModel.OperationText==text.Get("tailscale.recovery.awaiting_receipt",""),"foreign actor closure cannot clear pending acknowledgement");
     recoveryClient.BadClosure=false; recoveryClient.BadClosureTimestamp=true; await recoveryModel.ReopenAsync();
-    Check(recoveryModel.OperationText==language.Get("tailscale.recovery.awaiting_receipt",""),"incomplete closure cannot clear pending acknowledgement");
+    Check(recoveryModel.OperationText==text.Get("tailscale.recovery.awaiting_receipt",""),"incomplete closure cannot clear pending acknowledgement");
     recoveryClient.BadClosureTimestamp=false; await recoveryModel.InspectRecoveryAsync();
-    Check(recoveryClient.CloseCalls==2 && recoveryModel.OperationText==language.Get("tailscale.recovery.closed",""),"inspection reconciles a recorded closure without resubmitting it");
+    Check(recoveryClient.CloseCalls==2 && recoveryModel.OperationText==text.Get("tailscale.recovery.closed",""),"inspection reconciles a recorded closure without resubmitting it");
     await recoveryModel.ReopenAsync();
-    Check(recoveryClient.CloseCalls==2 && recoveryModel.OperationText==language.Get("tailscale.recovery.closed",""),"reopening reconciles closure without repeating it");
+    Check(recoveryClient.CloseCalls==2 && recoveryModel.OperationText==text.Get("tailscale.recovery.closed",""),"reopening reconciles closure without repeating it");
     recoveryModel.Deactivate();
     // Finite, de-duplicated references contain no operation results.
     for (var i = 0; i < 35; i++) store.Remember(original, Guid.NewGuid());
@@ -216,50 +218,50 @@ try
     var logoutClient = new FakeClient();
     var logoutBroker = new Broker();
     var logoutModel = new TailscaleViewModel(logoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "logout.json")),
-        logoutBroker, language, language.Get) { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
+        logoutBroker, language, text.Get) { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
     await logoutModel.ActivateAsync(); await logoutModel.LoadControlAsync();
-    Check(logoutModel.CanLogout && logoutModel.ConnectionStateText == language.Get("tailscale.disconnected", ""), "signed-in host offers logout");
+    Check(logoutModel.CanLogout && logoutModel.ConnectionStateText == text.Get("tailscale.disconnected", ""), "signed-in host offers logout");
     await logoutModel.LogoutAsync();
     Check(logoutClient.LoggedOut && !logoutModel.CanLogout && !logoutModel.CanConnect
-        && logoutModel.ConnectionStateText == language.Get("tailscale.backend.NeedsLogin", "")
-        && logoutModel.ConnectionHint == language.Get("tailscale.login_required", ""), "logout leaves the host signed out and points to login");
+        && logoutModel.ConnectionStateText == text.Get("tailscale.backend.NeedsLogin", "")
+        && logoutModel.ConnectionHint == text.Get("tailscale.login_required", ""), "logout leaves the host signed out and points to login");
     logoutModel.Deactivate();
 
     // The connection page reads itself, keeps the last snapshot when a background refresh fails,
     // and never asks for a mutation grant just to observe.
     var probeClient = new FakeClient();
     var probeBroker = new Broker();
-    var probe = new TailscaleViewModel(probeClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "probe.json")), probeBroker, language, language.Get);
+    var probe = new TailscaleViewModel(probeClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "probe.json")), probeBroker, language, text.Get);
     await probe.ActivateAsync();
     probe.SetVisiblePage("control");
     await probe.EnsureControlAsync();
     Check(probe.HasControl && probeClient.ControlReads == 1 && probeBroker.Calls == 0 && probeBroker.GrantCalls == 0, "connection page loads itself without elevation");
     probeClient.StatusError = true;
     await probe.AutoRefreshOnceAsync();
-    Check(probe.HasControl && probe.Peers.Count == 1 && probe.StatusText == language.Get("tailscale.auto_refresh_failed", ""), "failed background refresh keeps the last snapshot");
+    Check(probe.HasControl && probe.Peers.Count == 1 && probe.StatusText == text.Get("tailscale.auto_refresh_failed", ""), "failed background refresh keeps the last snapshot");
     probeClient.StatusError = false;
     await probe.AutoRefreshOnceAsync();
-    Check(probe.StatusText == language.Get("tailscale.state.observed", ""), "recovered background refresh clears the failure");
+    Check(probe.StatusText == text.Get("tailscale.state.observed", ""), "recovered background refresh clears the failure");
     probe.Deactivate();
     var unreachable = new TailscaleViewModel(new FakeClient { ControlError = true },
-        new TailscaleOperationReferences(Path.Combine(folder.FullName, "unreachable.json")), new Broker(), language, language.Get);
+        new TailscaleOperationReferences(Path.Combine(folder.FullName, "unreachable.json")), new Broker(), language, text.Get);
     await unreachable.ActivateAsync();
     await unreachable.EnsureControlAsync();
     Check(!unreachable.HasControl && unreachable.ControlUnavailable && unreachable.HasControlProblem, "unreachable control read is reported instead of prompting");
-    Check(unreachable.ConnectionHint == language.Get("tailscale.control_unavailable", ""), "unreachable control read explains itself");
+    Check(unreachable.ConnectionHint == text.Get("tailscale.control_unavailable", ""), "unreachable control read explains itself");
     unreachable.Deactivate();
 
     // Device identities stay grant-gated, but the page grants itself only after an explicit action.
     var peersClient = new FakeClient { Restricted = true };
     var peersBroker = new Broker();
-    var peers = new TailscaleViewModel(peersClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "peers.json")), peersBroker, language, language.Get);
+    var peers = new TailscaleViewModel(peersClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "peers.json")), peersBroker, language, text.Get);
     await peers.ActivateAsync();
     Check(peers.PeersRestricted && peers.CanAuthorizePeers, "restricted device list offers explicit authorization");
     peersClient.Restricted = false;
     await peers.AuthorizePeersAsync();
     Check(peersBroker.GrantCalls == 1 && peersBroker.Capability == HostElevationCapability.HostNetworkChange
         && peersBroker.Target == TailscaleAccess.Resource && !peers.PeersRestricted
-        && peers.StatusText == language.Get("tailscale.authorization_granted", ""), "authorization refreshes the device list");
+        && peers.StatusText == text.Get("tailscale.authorization_granted", ""), "authorization refreshes the device list");
     peers.PeerFilter = "no-such-device";
     Check(peers.FilteredPeers.Count == 0 && peers.NoMatchingPeers, "device filter hides non-matches");
     peers.PeerFilter = "host";
@@ -278,8 +280,8 @@ try
         Check(language.Get("application.relaxkonos.tailscale.display_name", "") == (culture switch { "zh-CN" => "Tailscale 管理器", "ja-JP" => "Tailscale マネージャー", _ => "Tailscale Manager" }), "localized launch guard application name");
         settings.Appearance = settings.Appearance with { Mode = RelaxKonOS.Protocol.Desktop.ThemeKind.Light }; Dispatcher.UIThread.RunJobs();
         var layoutClient = new FakeClient();
-        var layout = new TailscaleViewModel(layoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "layout.json")), broker, language, language.Get);
-        var loginLayout = new TailscaleLoginViewModel(new LoginFake { Connection = layoutClient.Connection }, new TailscaleOperationReferences(Path.Combine(folder.FullName, "login-layout.json")), broker, language, language.Get)
+        var layout = new TailscaleViewModel(layoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "layout.json")), broker, language, text.Get);
+        var loginLayout = new TailscaleLoginViewModel(new LoginFake { Connection = layoutClient.Connection }, new TailscaleOperationReferences(Path.Combine(folder.FullName, "login-layout.json")), broker, language, text.Get)
             { AccountLineProvider = () => layout.AccountLine };
         var workspace = new TailscaleWorkspace(layout, loginLayout);
         var window = new Window { Content = workspace, Width = 980, Height = 640 }; window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();

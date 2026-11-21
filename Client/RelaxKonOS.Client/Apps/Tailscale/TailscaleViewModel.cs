@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Tailscale;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia.Threading;
@@ -704,11 +705,6 @@ public sealed record TailscaleOperationItem(Guid Id)
     public override string ToString() => Id.ToString("D");
 }
 public sealed record TailscalePreferenceRow(string Label, string Value);
-public sealed record TailscaleExitNodeItem(string Ip, string HostName, string Addresses)
-{
-    public string Label => HostName.Length > 0 ? HostName + " · " + Addresses : Ip;
-    public override string ToString() => Label;
-}
 public sealed class TailscalePeerItem(TailscalePeerDto peer, Func<string, string, string> localize, bool self) : ObservableObject
 {
     public string Id => peer.Id;

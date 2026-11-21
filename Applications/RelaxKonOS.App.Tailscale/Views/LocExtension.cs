@@ -3,7 +3,7 @@ using Avalonia.Data;
 using Avalonia.Data.Converters;
 using Avalonia.Markup.Xaml;
 
-namespace RelaxKonOS.Client.Apps.Tailscale.Views;
+namespace RelaxKonOS.App.Tailscale.Views;
 
 public sealed class LocExtension(string key) : MarkupExtension
 {
@@ -12,8 +12,8 @@ public sealed class LocExtension(string key) : MarkupExtension
     public override object ProvideValue(IServiceProvider serviceProvider) =>
         CreateBinding(((IRootObjectProvider)serviceProvider.GetService(typeof(IRootObjectProvider))!).RootObject, key);
 
-    internal static Binding CreateBinding(object root, string key) =>
-        new($"DataContext.{nameof(TailscaleViewModel.Labels)}")
+    public static Binding CreateBinding(object root, string key) =>
+        new($"DataContext.{nameof(TailscaleText.Labels)}")
         {
             Source = root,
             Converter = Converter,

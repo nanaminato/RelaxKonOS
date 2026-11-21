@@ -4,7 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Protocol.Tailscale;
 
-namespace RelaxKonOS.Client.Apps.Tailscale.Views;
+namespace RelaxKonOS.App.Tailscale.Views;
 
 /// <summary>Editor for the closed official preference set. The risk confirmation follows on apply.</summary>
 public partial class TailscalePreferencesDialog : UserControl

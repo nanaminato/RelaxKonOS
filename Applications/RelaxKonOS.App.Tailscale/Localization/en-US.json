@@ -205,7 +205,10 @@
     "tailscale.menu.exit": "Exit",
     "tailscale.about.title": "About Tailscale Manager",
     "tailscale.about.summary_format": "Manager version: {0}\nHost: {1}\nTailscale version: {2}\nDevice: {3}\nNetwork: {4}\nAccount: {5}",
-    "tailscale.about.detail": "This manager runs fixed official CLI actions through the host Helper. It does not proxy traffic or store login links or account credentials."
+    "tailscale.about.detail": "This manager runs fixed official CLI actions through the host Helper. It does not proxy traffic or store login links or account credentials.",
+    "common.cancel": "Cancel",
+    "common.close": "Close",
+    "common.view": "View"
   },
   "Culture": "en-US"
 }

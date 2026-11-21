@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.AppSDK;
-namespace RelaxKonOS.Client.Apps.Tailscale.Views;
+namespace RelaxKonOS.App.Tailscale.Views;
 public partial class TailscaleLoginDialog : UserControl
 {
     private readonly Action<bool> _complete;

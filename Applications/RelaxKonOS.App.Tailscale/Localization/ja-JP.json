@@ -205,7 +205,10 @@
     "tailscale.menu.exit": "終了",
     "tailscale.about.title": "Tailscale マネージャーについて",
     "tailscale.about.summary_format": "マネージャーのバージョン：{0}\nホスト：{1}\nTailscale のバージョン：{2}\n端末：{3}\nネットワーク：{4}\nアカウント：{5}",
-    "tailscale.about.detail": "このマネージャーはホスト Helper 経由で固定の公式 CLI 操作のみを実行します。通信の代理や、ログインリンク・アカウント認証情報の保存は行いません。"
+    "tailscale.about.detail": "このマネージャーはホスト Helper 経由で固定の公式 CLI 操作のみを実行します。通信の代理や、ログインリンク・アカウント認証情報の保存は行いません。",
+    "common.cancel": "キャンセル",
+    "common.close": "閉じる",
+    "common.view": "表示"
   },
   "Culture": "ja-JP"
 }

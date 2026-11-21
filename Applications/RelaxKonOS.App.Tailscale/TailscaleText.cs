@@ -1,6 +1,6 @@
 using RelaxKonOS.AppSDK;
 
-namespace RelaxKonOS.Client.Apps.Tailscale;
+namespace RelaxKonOS.App.Tailscale;
 
 public sealed class TailscaleText(ISystemLanguage language, Func<string, string, string> localize)
 {

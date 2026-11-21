@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Tailscale.Views;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;

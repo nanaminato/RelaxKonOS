@@ -14,10 +14,11 @@ internal static class LoginChecks
         var count = 0;
         void Check(bool value) { if (!value) throw new Exception("Login client assertion " + count); count++; }
         void Check2(bool value, string message) { if (!value) throw new Exception("Login client assertion " + count + ": " + message); count++; }
+        string Localize(string key, string fallback) => RelaxKonOS.App.Tailscale.TailscaleLocalization.Resolve(language, key, fallback);
         var client = new LoginFake(); var broker = new Broker();
         var path = Path.Combine(folder, "login-checks.json");
         var store = new TailscaleOperationReferences(path);
-        var model = new TailscaleLoginViewModel(client, store, broker, language, language.Get);
+        var model = new TailscaleLoginViewModel(client, store, broker, language, Localize);
         model.Activate();
         Check(model.CanStart && client.Prepares == 0);
         await model.StartAsync();
@@ -54,63 +55,63 @@ internal static class LoginChecks
         // A failed durable reference stops the login before any native action; a lost response
         // would otherwise have no way back to the original operation.
         var brokenClient = new LoginFake();
-        var broken = new TailscaleLoginViewModel(brokenClient, new BrokenReferences(), broker, language, language.Get)
+        var broken = new TailscaleLoginViewModel(brokenClient, new BrokenReferences(), broker, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         broken.Activate(); await broken.StartAsync();
-        Check(brokenClient.Executes == 0 && broken.Message == language.Get("tailscale.operation_reference_failed", ""));
+        Check(brokenClient.Executes == 0 && broken.Message == Localize("tailscale.operation_reference_failed", ""));
         broken.Deactivate();
 
         // A confirmed start hands the challenge to this device's browser in the same action.
         var openClient = new LoginFake();
         var openStore = new TailscaleOperationReferences(Path.Combine(folder, "login-open.json"));
-        var open = new TailscaleLoginViewModel(openClient, openStore, broker, language, language.Get)
+        var open = new TailscaleLoginViewModel(openClient, openStore, broker, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         open.Activate();
         var openedUrl = "";
         open.OpenBrowserAsync = uri => { openedUrl = uri.OriginalString; return Task.FromResult(true); };
         await open.StartAsync();
         Check(openClient.Challenges == 1 && openedUrl == LoginFake.Url && openClient.Executes == 1 && open.CanOpen);
-        Check(open.Message == language.Get("tailscale.login.browser_opened", "") && openStore.Read(openClient.Connection).Count > 0);
+        Check(open.Message == Localize("tailscale.login.browser_opened", "") && openStore.Read(openClient.Connection).Count > 0);
         open.Deactivate();
 
         // Login availability follows the host state instead of failing with a generic error.
         var state = "NeedsLogin";
         var completionClient = new LoginFake();
-        var completion = new TailscaleLoginViewModel(completionClient, new TailscaleOperationReferences(Path.Combine(folder, "login-completion.json")), broker, language, language.Get)
+        var completion = new TailscaleLoginViewModel(completionClient, new TailscaleOperationReferences(Path.Combine(folder, "login-completion.json")), broker, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true), ReadBackendStateAsync = _ => Task.FromResult<string?>(state) };
         completion.Activate(); await completion.ObserveAsync();
-        Check(completion.CanStart && completion.AvailabilityText == language.Get("tailscale.login.need_login", ""));
+        Check(completion.CanStart && completion.AvailabilityText == Localize("tailscale.login.need_login", ""));
         await completion.StartAsync();
         Check(completionClient.Executes == 1 && completion.CanInspect && !completion.CompletionDetected);
         state = "Running";
         var reads = completionClient.Gets;
         await completion.ObserveAsync();
         Check2(completion.CompletionDetected && completionClient.Gets > reads
-            && completion.Message == language.Get("tailscale.login.completed_detected", ""), "browser authorization is detected and re-read");
+            && completion.Message == Localize("tailscale.login.completed_detected", ""), "browser authorization is detected and re-read");
         await completion.FinishAsync();
         Check2(completionClient.Closes == 1 && !completion.CompletionDetected
-            && completion.Message == language.Get("tailscale.login.closed", ""), "one confirmation inspects and closes the finished login");
+            && completion.Message == Localize("tailscale.login.closed", ""), "one confirmation inspects and closes the finished login");
         completion.Deactivate();
 
-        var signedIn = new TailscaleLoginViewModel(new LoginFake(), new TailscaleOperationReferences(Path.Combine(folder, "login-signed-in.json")), broker, language, language.Get)
+        var signedIn = new TailscaleLoginViewModel(new LoginFake(), new TailscaleOperationReferences(Path.Combine(folder, "login-signed-in.json")), broker, language, Localize)
             { ReadBackendStateAsync = _ => Task.FromResult<string?>("Running") };
         signedIn.Activate();
-        Check2(!signedIn.CanStart && signedIn.AvailabilityText == language.Get("tailscale.login.already_connected", ""), "signed-in host explains why login is unnecessary");
+        Check2(!signedIn.CanStart && signedIn.AvailabilityText == Localize("tailscale.login.already_connected", ""), "signed-in host explains why login is unnecessary");
         signedIn.Deactivate();
 
         var refused = new LoginFake { PrepareFailure = "tailscale.login.not_available" };
-        var refusedModel = new TailscaleLoginViewModel(refused, new TailscaleOperationReferences(Path.Combine(folder, "login-refused.json")), broker, language, language.Get)
+        var refusedModel = new TailscaleLoginViewModel(refused, new TailscaleOperationReferences(Path.Combine(folder, "login-refused.json")), broker, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         refusedModel.Activate(); await refusedModel.StartAsync();
-        Check2(refusedModel.Message == language.Get("tailscale.login.not_available", "") && refused.Executes == 0, "login refusal is shown with its own reason");
+        Check2(refusedModel.Message == Localize("tailscale.login.not_available", "") && refused.Executes == 0, "login refusal is shown with its own reason");
         refusedModel.Deactivate();
 
         // Opening the page reads the selected original receipt without elevation.
         var showClient = new LoginFake();
         var showStore = new TailscaleOperationReferences(Path.Combine(folder, "login-show.json"));
-        var seed = new TailscaleLoginViewModel(showClient, showStore, broker, language, language.Get);
+        var seed = new TailscaleLoginViewModel(showClient, showStore, broker, language, Localize);
         seed.Activate(); await seed.StartAsync(); seed.Deactivate();
-        var shown = new TailscaleLoginViewModel(showClient, showStore, broker, language, language.Get);
+        var shown = new TailscaleLoginViewModel(showClient, showStore, broker, language, Localize);
         shown.Activate();
         var gets = showClient.Gets;
         shown.SetVisible(true);
@@ -119,7 +120,7 @@ internal static class LoginChecks
 
         var recoveryClient = new LoginFake();
         var recoveryStore = new TailscaleOperationReferences(Path.Combine(folder, "login-recovery.json"));
-        var recovery = new TailscaleLoginViewModel(recoveryClient, recoveryStore, broker, language, language.Get)
+        var recovery = new TailscaleLoginViewModel(recoveryClient, recoveryStore, broker, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         recovery.Activate(); await recovery.StartAsync();
         Check(recovery.CanOpen && recovery.CanInspect && !recovery.CanClose);
@@ -139,7 +140,7 @@ internal static class LoginChecks
         recovery.Deactivate();
 
         var approvalClient = new LoginFake { ResultState = TailscaleLoginState.ApprovalRequired };
-        var approvalModel = new TailscaleLoginViewModel(approvalClient, store, broker, language, language.Get)
+        var approvalModel = new TailscaleLoginViewModel(approvalClient, store, broker, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         approvalModel.Activate(); await approvalModel.StartAsync();
         Check(!approvalModel.CanOpen && approvalModel.CanInspect);
@@ -148,7 +149,7 @@ internal static class LoginChecks
         approvalModel.Deactivate();
 
         var heldClient = new LoginFake { HoldPrepare = new() };
-        var held = new TailscaleLoginViewModel(heldClient, store, broker, language, language.Get)
+        var held = new TailscaleLoginViewModel(heldClient, store, broker, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         held.Activate(); var waiting = held.StartAsync(); held.Deactivate();
         heldClient.HoldPrepare.SetResult(heldClient.Last!); await waiting;
