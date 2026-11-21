@@ -1,16 +1,15 @@
-using RelaxKonOS.App.FileServices;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.FileServices.Views;
+namespace RelaxKonOS.App.FileServices.Views;
 
-internal partial class FileServicesShareDialogView : UserControl
+public partial class FileServicesShareDialogView : UserControl
 {
     private readonly FileServicesViewModel _viewModel;
     private readonly ModalDialog<bool> _dialog;
     private readonly bool _editing;
-    public FileServicesShareDialogView(FileServicesViewModel viewModel, ModalDialog<bool> dialog, bool editing)
+    public FileServicesShareDialogView(FileServicesViewModel viewModel, ModalDialog<bool> dialog, bool editing, Action<ModalDialog<bool>, Func<bool>, Func<bool>> attachDraftGuard)
     {
         _viewModel = viewModel;
         _dialog = dialog;
@@ -20,7 +19,7 @@ internal partial class FileServicesShareDialogView : UserControl
         var initial = (viewModel.ShareName, viewModel.SharePath, viewModel.ShareDescription,
             viewModel.ShareReadOnly, viewModel.ShareEnabled, viewModel.ShareGuestAllowed);
         var permissions = viewModel.SharePermissions.Select(permission => (permission.Principal, permission.SelectedAccess.Value)).ToArray();
-        RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => !viewModel.CanCloseShareDraft,
+        attachDraftGuard(dialog, () => !viewModel.CanCloseShareDraft,
             () => initial != (viewModel.ShareName, viewModel.SharePath, viewModel.ShareDescription,
                 viewModel.ShareReadOnly, viewModel.ShareEnabled, viewModel.ShareGuestAllowed)
                 || !permissions.SequenceEqual(viewModel.SharePermissions.Select(permission => (permission.Principal, permission.SelectedAccess.Value))));

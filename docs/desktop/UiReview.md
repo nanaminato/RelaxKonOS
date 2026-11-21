@@ -591,12 +591,12 @@ D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「�
 
 | 编号 / 界面 | 结构证据 | 分别审查的重点 | 状态 |
 |---|---|---|---|
-| UI-044 [FileServicesDeleteDialogView](../../Client/RelaxKonOS.Client/Apps/FileServices/Views/FileServicesDeleteDialogView.axaml) | 入口：Cancel_Click、Delete_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-044 [FileServicesDeleteDialogView](../../Applications/RelaxKonOS.App.FileServices/Views/FileServicesDeleteDialogView.axaml) | 入口：Cancel_Click、Delete_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
 | UI-045 [FileServicesLoginRequiredView](../../Client/RelaxKonOS.Client/Apps/FileServices/Views/FileServicesLoginRequiredView.axaml) | 展示/容器，随父入口联审 | 认证入口、能力/权限区别；重登录返回原任务 | 结构初查完成，待流程深审与运行验收 |
 | UI-046 [FileServicesOverviewView](../../Applications/RelaxKonOS.App.FileServices/Views/FileServicesOverviewView.axaml) | ScrollViewer；入口：StartServiceCommand、StopCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
-| UI-047 [FileServicesPasswordDialogView](../../Client/RelaxKonOS.Client/Apps/FileServices/Views/FileServicesPasswordDialogView.axaml) | TextBox；入口：Cancel_Click、Confirm_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
-| UI-048 [FileServicesPathWarningDialogView](../../Client/RelaxKonOS.Client/Apps/FileServices/Views/FileServicesPathWarningDialogView.axaml) | 入口：Cancel_Click、Continue_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
-| UI-049 [FileServicesShareDialogView](../../Client/RelaxKonOS.Client/Apps/FileServices/Views/FileServicesShareDialogView.axaml) | ScrollViewer；TextBox；入口：BrowsePath_Click、AddPermission_Click、RemovePermission_Click、RefreshCommand | 草稿关闭、等待输入/提交门禁与读取重试已修复；继续目标恢复 | 实际视图受控回归通过，完整流程及原生验收待完成 |
+| UI-047 [FileServicesPasswordDialogView](../../Applications/RelaxKonOS.App.FileServices/Views/FileServicesPasswordDialogView.axaml) | TextBox；入口：Cancel_Click、Confirm_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-048 [FileServicesPathWarningDialogView](../../Applications/RelaxKonOS.App.FileServices/Views/FileServicesPathWarningDialogView.axaml) | 入口：Cancel_Click、Continue_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-049 [FileServicesShareDialogView](../../Applications/RelaxKonOS.App.FileServices/Views/FileServicesShareDialogView.axaml) | ScrollViewer；TextBox；入口：BrowsePath_Click、AddPermission_Click、RemovePermission_Click、RefreshCommand | 草稿关闭、等待输入/提交门禁与读取重试已修复；继续目标恢复 | 实际视图受控回归通过，完整流程及原生验收待完成 |
 | UI-050 [FileServicesSharesView](../../Applications/RelaxKonOS.App.FileServices/Views/FileServicesSharesView.axaml) | DataGrid；入口：NewShareCommand、EditShareCommand、DeleteShareCommand | 选择目标与刷新一致；空/失败/旧事实；危险确认；长列及键盘选择 | 结构初查完成，待流程深审与运行验收 |
 | UI-051 [FileServicesUsersView](../../Applications/RelaxKonOS.App.FileServices/Views/FileServicesUsersView.axaml) | DataGrid；入口：ToggleUserCommand、SetSambaPasswordCommand | 选择目标与刷新一致；空/失败/旧事实；危险确认；长列及键盘选择 | 结构初查完成，待流程深审与运行验收 |
 | UI-052 [FileServicesWorkspace](../../Applications/RelaxKonOS.App.FileServices/Views/FileServicesWorkspace.axaml) | ContentControl；入口：RefreshCommand、Navigation_Click | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |

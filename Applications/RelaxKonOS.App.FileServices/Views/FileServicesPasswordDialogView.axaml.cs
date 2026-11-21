@@ -2,15 +2,16 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.FileServices.Views;
+namespace RelaxKonOS.App.FileServices.Views;
 
-internal partial class FileServicesPasswordDialogView : UserControl
+public partial class FileServicesPasswordDialogView : UserControl
 {
     private readonly ModalDialog<string?> _dialog;
-    public FileServicesPasswordDialogView(ModalDialog<string?> dialog, string? message, string? errorMessage = null)
+    public FileServicesPasswordDialogView(ModalDialog<string?> dialog, Func<string, string> localize, string? message, string? errorMessage = null)
     {
         _dialog = dialog;
         InitializeComponent();
+        DataContext = new DialogLabels(localize);
         MessageText.Text = message;
         MessageText.IsVisible = !string.IsNullOrEmpty(message);
         ErrorText.Text = errorMessage;

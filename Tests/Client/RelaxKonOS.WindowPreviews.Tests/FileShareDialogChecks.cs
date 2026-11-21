@@ -8,7 +8,7 @@ using Avalonia.VisualTree;
 using RelaxKonOS.App.FileServices.Views;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices;
-using RelaxKonOS.Client.Apps.FileServices.Views;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
@@ -51,7 +51,7 @@ internal static class FileShareDialogChecks
         var result = manager.ShowDialogAsync<bool>(owner, "Share", dialog =>
         {
             handle = dialog;
-            return new FileServicesShareDialogView(vm, dialog, false);
+            return new FileServicesShareDialogView(vm, dialog, false, DraftDialogGuard.Attach);
         });
         vm.SharePermissions[0].SelectedAccess = vm.SharePermissions[0].AccessOptions.Single(option => option.Value == FileShareAccess.ReadWrite);
         handle!.Cancel();

@@ -1,3 +1,5 @@
+using RelaxKonOS.App.FileServices.Views;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.App.FileServices;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Localization;
@@ -15,7 +17,7 @@ namespace RelaxKonOS.Client.Apps.FileServices.Views;
 internal static class FileServicesDialogs
 {
     public static Task<string?> RequestPasswordAsync(AppContext context, ManagedWindow owner, string title, string? message = null) =>
-        context.ShowDialogAsync<string?>(owner, title, dialog => new FileServicesPasswordDialogView(dialog, message), new Size(460, message is null ? 160 : 230));
+        context.ShowDialogAsync<string?>(owner, title, dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get, message), new Size(460, message is null ? 160 : 230));
 
     public static async Task ShowShareEditorAsync(AppContext context, ManagedWindow owner, FileServicesViewModel vm, bool editing)
     {
@@ -27,7 +29,7 @@ internal static class FileServicesDialogs
                 dialog =>
                 {
                     vm.ConfirmSharePathAsync = path => dialog.ShowDialogAsync<bool>(LocalizedText.Get("file_services.path_warning_title"),
-                        warning => new FileServicesPathWarningDialogView(path, warning));
+                        warning => new FileServicesPathWarningDialogView(path, warning, LocalizedText.Get));
                     vm.ShowSharePathPickerAsync = () => context.Services.GetService(typeof(IExplorerClient)) is not IExplorerClient files
                         ? Task.FromResult<string?>(null)
                         : dialog.ShowDialogAsync<string?>(LocalizedText.Get("file_services.select_folder"), pickerDialog =>
@@ -38,12 +40,12 @@ internal static class FileServicesDialogs
                             _ = picker.LoadRootAsync();
                             return new ExplorerMainView { DataContext = picker };
                         });
-                    return new FileServicesShareDialogView(vm, dialog, editing);
+                    return new FileServicesShareDialogView(vm, dialog, editing, DraftDialogGuard.Attach);
                 }, size);
         }
         finally { vm.ConfirmSharePathAsync = null; vm.ShowSharePathPickerAsync = null; }
     }
 
     public static Task<bool> ConfirmDeleteAsync(AppContext context, ManagedWindow owner, string name) =>
-        context.ShowDialogAsync<bool>(owner, LocalizedText.Get("file_services.delete"), dialog => new FileServicesDeleteDialogView(name, dialog), new Size(440, 220));
+        context.ShowDialogAsync<bool>(owner, LocalizedText.Get("file_services.delete"), dialog => new FileServicesDeleteDialogView(name, dialog, LocalizedText.Get), new Size(440, 220));
 }

@@ -231,7 +231,8 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             target.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
             target.PasswordPromptAsync = () => ShowOwnedAsync<string?>(
                 LocalizedText.Get("installation.elevation_title"),
-                dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
+                dialog => new RelaxKonOS.App.FileServices.Views.FileServicesPasswordDialogView(dialog, LocalizedText.Get,
+                    LocalizedText.Get("installation.elevation_message")),
                 new Size(460, 230));
         }
         if (context.Services.GetService(typeof(RelaxKonOS.Client.Services.Installation.InstallationClient))
