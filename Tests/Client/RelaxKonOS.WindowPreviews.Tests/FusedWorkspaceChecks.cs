@@ -89,6 +89,15 @@ internal static class FusedWorkspaceChecks
             Check(gitWindow.CanCloseAsync?.Invoke().GetAwaiter().GetResult() == false,
                 "Git prevents closing the bound window while a Git operation is active.");
             git.IsBusy = false;
+            var gitDialogs = new GitClientDialogs(new GitDialogPresenter(manager), LocalizedText.Get);
+            var push = gitDialogs.ShowPushDialogAsync(gitWindow, git);
+            Pump();
+            var pushWindow = manager.Windows.Single(window => window.IsModalDialog);
+            Check(pushWindow.View.Content is Control pushContent && pushContent.GetVisualDescendants().OfType<TextBlock>()
+                .Any(text => text.Text == LocalizedText.Format("git.dialog.push.n_commits_format", git.PushCommitCount)),
+                "The Git push dialog displays the application's localized commit count.");
+            manager.ForceClose(pushWindow);
+            Check(push.IsCompleted, "Closing the Git push dialog completes the presenter task.");
             var samples = new List<(ManagedWindow window, UserControl view, string name)> { (serverWindow, serverView, "server-center"), (gitWindow, gitView, "git") };
             Add(new DockerManagerWorkspace(dockerModel, new DockerProxyStatusViewModel(null!, DockerLocalization.ForLanguage(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>())), new DockerImageMirrorsViewModel(null!, DockerLocalization.ForLanguage(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>())), Done, Done, Done, Done, Done), "docker", (view, window) => view.AttachWindowHeader(window));
             Add(new ProxyManagerWorkspace(proxyModel), "proxy", (view, window) => view.AttachWindowHeader(window));
@@ -186,6 +195,13 @@ internal static class FusedWorkspaceChecks
         }
         finally { browserView.ClosePlatformBrowser(); host.Close(); tasksModel.DisposeAsync().AsTask().GetAwaiter().GetResult(); settings.Apply(original); Pump(); }
     }
+    private sealed class GitDialogPresenter(IWindowManager windows) : IGitDialogPresenter
+    {
+        public Task<TResult?> ShowDialogAsync<TResult>(ManagedWindow owner, string title,
+            Func<ModalDialog<TResult>, Control> content, RelaxKonOS.Core.Primitives.Size preferredSize) =>
+            windows.ShowDialogAsync(owner, title, content, preferredSize);
+    }
+
     private static void Pump() => Dispatcher.UIThread.RunJobs();
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
 }

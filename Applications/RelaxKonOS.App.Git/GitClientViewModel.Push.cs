@@ -97,7 +97,9 @@ public sealed partial class GitClientViewModel
             PushIsLoading = false;
             OnPropertyChanged(nameof(PushBranchLineText));
             OnPropertyChanged(nameof(PushFileCount));
+            OnPropertyChanged(nameof(PushFileCountLabel));
             OnPropertyChanged(nameof(PushCommitCount));
+            OnPropertyChanged(nameof(PushCommitCountLabel));
             OnPropertyChanged(nameof(PushHasCommits));
         }
     }
@@ -185,6 +187,7 @@ public sealed partial class GitClientViewModel
         PushChangedFiles.Clear();
         PushFileTree.Clear();
         OnPropertyChanged(nameof(PushFileCount));
+        OnPropertyChanged(nameof(PushFileCountLabel));
     }
 
     private void SetPushFilePreview(IEnumerable<GitFileChangeDto> files, IReadOnlyDictionary<string, string>? fileCommitReferences = null)
@@ -216,6 +219,7 @@ public sealed partial class GitClientViewModel
 
         SortPushFileTree(PushFileTree);
         OnPropertyChanged(nameof(PushFileCount));
+        OnPropertyChanged(nameof(PushFileCountLabel));
     }
 
     private static void SortPushFileTree(ObservableCollection<PushFileTreeNode> nodes)

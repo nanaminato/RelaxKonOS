@@ -152,7 +152,9 @@ public sealed partial class GitClientViewModel(IServerGit client, Func<string, s
     public ObservableCollection<GitFileChangeDto> PushChangedFiles { get; } = [];
     public ObservableCollection<PushFileTreeNode> PushFileTree { get; } = [];
 
-    [ObservableProperty] private GitCommitDto? _pushSelectedCommit;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PushSelectedCommitLabel))]
+    private GitCommitDto? _pushSelectedCommit;
     [ObservableProperty] private string _pushSelectedRemote = string.Empty;
     [ObservableProperty] private string _pushSelectedBranch = string.Empty;
     [ObservableProperty] private string _pushLocalBranchName = string.Empty;
@@ -163,6 +165,11 @@ public sealed partial class GitClientViewModel(IServerGit client, Func<string, s
 
     /// <summary>Whether the preview is focused on a concrete commit rather than the aggregate "all commits" item.</summary>
     public bool PushHasSelectedCommit => PushSelectedCommit is not null;
+
+    public string PushSelectedCommitLabel => PushSelectedCommit is { } commit
+        ? $"{commit.ShortSha} {(string.IsNullOrWhiteSpace(commit.Author) ? "unknown" : commit.Author)}"
+            + (string.IsNullOrWhiteSpace(commit.AuthorDate) ? string.Empty : $", {commit.AuthorDate}")
+        : string.Empty;
     public bool PushAllCommitsActive => !PushHasSelectedCommit;
     public string PushBranchLineText => string.IsNullOrWhiteSpace(PushSelectedRemote) || string.IsNullOrWhiteSpace(PushSelectedBranch)
         ? string.Empty
@@ -170,6 +177,8 @@ public sealed partial class GitClientViewModel(IServerGit client, Func<string, s
     public int PushFileCount => PushChangedFiles.Count;
     /// <summary>Ahead total reported by the server; the materialized <see cref="PushCommits"/> list is capped.</summary>
     public int PushCommitCount => _pushAheadCount;
+    public string PushCommitCountLabel => FormatLabel("git.dialog.push.n_commits_format", PushCommitCount);
+    public string PushFileCountLabel => FormatLabel("git.dialog.push.n_files_format", PushFileCount);
     public bool PushHasCommits => PushCommits.Count > 0;
 
     // ── 项目选择器状态：IsPickerMode=true 时显示项目选择视图而非工作区 ──

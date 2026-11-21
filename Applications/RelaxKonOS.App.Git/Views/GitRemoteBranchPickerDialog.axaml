@@ -1,8 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git" xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitRemoteBranchPickerDialog"
+             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git" xmlns:git="clr-namespace:RelaxKonOS.App.Git"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Git.Views"
+             x:Class="RelaxKonOS.App.Git.Views.GitRemoteBranchPickerDialog"
              x:DataType="gitApp:GitClientViewModel" Classes="builtin-app">
     <StackPanel Margin="16" Spacing="12">
         <TextBlock Text="{loc:Loc git.dialog.push.select_remote}" FontSize="13"/>

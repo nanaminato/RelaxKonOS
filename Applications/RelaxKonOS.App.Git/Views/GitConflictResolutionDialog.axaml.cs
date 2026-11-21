@@ -1,10 +1,9 @@
-using RelaxKonOS.App.Git;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using System.ComponentModel;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
 /// <summary>Modal host for a multi-file conflict session.  It closes after continue/abort completes.</summary>
 internal partial class GitConflictResolutionDialog : UserControl

@@ -130,6 +130,8 @@ public sealed partial class GitClientViewModel
         RebuildLogBranchOptions();
         RebuildLogAuthorOptions();
         OnPropertyChanged(nameof(Labels));
+        OnPropertyChanged(nameof(PushCommitCountLabel));
+        OnPropertyChanged(nameof(PushFileCountLabel));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(Status));
         OnPropertyChanged(nameof(CommitChangedFiles));

@@ -1,10 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
-             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:git="clr-namespace:RelaxKonOS.App.Git"
+             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Git.Views"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
-             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitPushDialog"
+             x:Class="RelaxKonOS.App.Git.Views.GitPushDialog"
              x:DataType="gitApp:GitClientViewModel" Classes="builtin-app">
     <Grid Margin="12" RowDefinitions="Auto,*,Auto" RowSpacing="8">
         <!-- Row 0: Branch line + commit count -->
@@ -19,7 +19,7 @@
             <TextBlock FontSize="12"
                        Foreground="{DynamicResource TextPrimaryBrush}"
                        Margin="8,0,0,0"
-                       Text="{Binding PushCommitCount, Converter={x:Static git:GitPickerConverters.LocalizedFormat}, ConverterParameter='git.dialog.push.n_commits_format'}"/>
+                       Text="{Binding PushCommitCountLabel}"/>
             <TextBlock FontSize="12"
                        Foreground="{DynamicResource TextPrimaryBrush}"
                        Margin="8,0,0,0"
@@ -96,7 +96,7 @@
                     <TextBlock FontSize="11"
                                Foreground="{DynamicResource TextPrimaryBrush}"
                                Margin="0,4,0,0"
-                               Text="{Binding PushFileCount, Converter={x:Static git:GitPickerConverters.LocalizedFormat}, ConverterParameter='git.dialog.push.n_files_format'}"/>
+                               Text="{Binding PushFileCountLabel}"/>
 
                     <TreeView Grid.Row="1"
                               x:Name="PushFileTreeView"
@@ -150,7 +150,7 @@
                             <TextBlock FontSize="11"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        Margin="0,4,0,0"
-                                       Text="{Binding PushSelectedCommit, Converter={x:Static git:GitPickerConverters.CommitMeta}}"/>
+                                       Text="{Binding PushSelectedCommitLabel}"/>
                         </StackPanel>
                     </Border>
                 </Grid>

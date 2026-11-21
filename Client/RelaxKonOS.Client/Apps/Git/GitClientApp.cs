@@ -54,6 +54,7 @@ public sealed class GitClientApp : RemoteApplicationBase
             session.CurrentServer?.Platform != HostPlatformKind.Windows, encodings?.CodeEditorDefaultEncoding ?? "UTF-8",
             files is null ? null : async (path, token) => await files.GetInfoAsync(path, token) is not null);
         ManagedWindow? window = null;
+        var dialogs = new GitClientDialogs(new DesktopGitDialogPresenter(context), LocalizedText.Get);
 
         // Wire dialog callbacks — the VM commands call these and handle the returned request objects.
         vm.RequestOpenHostingUriAsync = uri =>
@@ -61,18 +62,18 @@ public sealed class GitClientApp : RemoteApplicationBase
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
             return Task.CompletedTask;
         };
-        vm.ShowWorkspaceInputAsync = (key, fields) => GitClientDialogs.ShowWorkspaceInputAsync(context, window!, key, fields);
-        vm.ShowCommitDialogAsync = () => GitClientDialogs.ShowCommitDialogAsync(context, window!, vm);
-        vm.ShowCreateBranchDialogAsync = source => GitClientDialogs.ShowCreateBranchDialogAsync(context, window!, vm, source);
-        vm.ShowPullDialogAsync = () => GitClientDialogs.ShowPullDialogAsync(context, window!, vm);
-        vm.ShowConflictResolutionDialogAsync = owner => GitClientDialogs.ShowConflictResolutionDialogAsync(context, owner ?? window!, vm);
-        vm.ShowPushRejectedDialogAsync = owner => GitClientDialogs.ShowPushRejectedDialogAsync(context, owner ?? window!);
-        vm.ShowRegisterRepositoryDialogAsync = () => GitClientDialogs.ShowRegisterRepositoryDialogAsync(context, window!, vm);
-        vm.ShowConfirmAsync = message => GitClientDialogs.ShowConfirmAsync(context, window!, message);
-        vm.ShowMessageAsync = message => GitClientDialogs.ShowMessageAsync(context, window!, message);
+        vm.ShowWorkspaceInputAsync = (key, fields) => dialogs.ShowWorkspaceInputAsync(window!, key, fields);
+        vm.ShowCommitDialogAsync = () => dialogs.ShowCommitDialogAsync(window!, vm);
+        vm.ShowCreateBranchDialogAsync = source => dialogs.ShowCreateBranchDialogAsync(window!, vm, source);
+        vm.ShowPullDialogAsync = () => dialogs.ShowPullDialogAsync(window!, vm);
+        vm.ShowConflictResolutionDialogAsync = owner => dialogs.ShowConflictResolutionDialogAsync(owner ?? window!, vm);
+        vm.ShowPushRejectedDialogAsync = owner => dialogs.ShowPushRejectedDialogAsync(owner ?? window!);
+        vm.ShowRegisterRepositoryDialogAsync = () => dialogs.ShowRegisterRepositoryDialogAsync(window!, vm);
+        vm.ShowConfirmAsync = message => dialogs.ShowConfirmAsync(window!, message);
+        vm.ShowMessageAsync = message => dialogs.ShowMessageAsync(window!, message);
         vm.ShowGitUnavailableAsync = async () =>
         {
-            await GitClientDialogs.ShowGitUnavailableAsync(context, window!, vm);
+            await dialogs.ShowGitUnavailableAsync(window!, vm);
         };
 
         // 远程文件夹选择：直接复用内置 Explorer（ExplorerPickerMode.SelectFolder），
@@ -90,26 +91,26 @@ public sealed class GitClientApp : RemoteApplicationBase
                 _ = picker.LoadRootAsync();
                 return new ExplorerMainView { DataContext = picker };
             }, GetFolderPickerBounds(window!));
-        vm.ShowInitConfirmAsync = path => GitClientDialogs.ShowInitConfirmAsync(context, window!, path);
-        vm.ShowRemoteDialogAsync = existing => GitClientDialogs.ShowRemoteDialogAsync(context, window!, existing);
-        vm.ShowRenameBranchDialogAsync = branch => GitClientDialogs.ShowRenameBranchDialogAsync(context, window!, branch);
-        vm.ShowMergeDialogAsync = branch => GitClientDialogs.ShowMergeDialogAsync(context, window!, branch, vm);
-        vm.ShowSetTrackingDialogAsync = branch => GitClientDialogs.ShowSetTrackingDialogAsync(context, window!, branch, vm);
-        vm.ShowPushDialogAsync = () => GitClientDialogs.ShowPushDialogAsync(context, window!, vm);
-        vm.ShowFileDiffAsync = (owner, diff) => GitClientDialogs.ShowFileDiffAsync(context, owner ?? window!, diff);
-        vm.ShowCredentialAccountsAsync = () => GitClientDialogs.ShowCredentialAccountsAsync(context, window!, vm);
-        vm.ShowGitCredentialsDialogAsync = (owner, host) => GitClientDialogs.ShowGitCredentialsDialogAsync(context, owner ?? window!, host);
-        vm.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => GitClientDialogs.ShowRemoteBranchPickerDialogAsync(context, owner ?? window!, remote, branch, vm);
+        vm.ShowInitConfirmAsync = path => dialogs.ShowInitConfirmAsync(window!, path);
+        vm.ShowRemoteDialogAsync = existing => dialogs.ShowRemoteDialogAsync(window!, existing);
+        vm.ShowRenameBranchDialogAsync = branch => dialogs.ShowRenameBranchDialogAsync(window!, branch);
+        vm.ShowMergeDialogAsync = branch => dialogs.ShowMergeDialogAsync(window!, branch, vm);
+        vm.ShowSetTrackingDialogAsync = branch => dialogs.ShowSetTrackingDialogAsync(window!, branch, vm);
+        vm.ShowPushDialogAsync = () => dialogs.ShowPushDialogAsync(window!, vm);
+        vm.ShowFileDiffAsync = (owner, diff) => dialogs.ShowFileDiffAsync(owner ?? window!, diff, vm);
+        vm.ShowCredentialAccountsAsync = () => dialogs.ShowCredentialAccountsAsync(window!, vm);
+        vm.ShowGitCredentialsDialogAsync = (owner, host) => dialogs.ShowGitCredentialsDialogAsync(owner ?? window!, host);
+        vm.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => dialogs.ShowRemoteBranchPickerDialogAsync(owner ?? window!, remote, branch, vm);
         vm.ConfigureLogSession = log =>
         {
-            log.ShowCredentialAccountsAsync = () => GitClientDialogs.ShowCredentialAccountsAsync(context, window!, log);
-            log.ShowPushDialogAsync = () => GitClientDialogs.ShowPushDialogAsync(context, window!, log);
-            log.ShowCreateBranchDialogAsync = branch => GitClientDialogs.ShowCreateBranchDialogAsync(context, window!, log, branch);
-            log.ShowPullDialogAsync = () => GitClientDialogs.ShowPullDialogAsync(context, window!, log);
-            log.ShowMergeDialogAsync = branch => GitClientDialogs.ShowMergeDialogAsync(context, window!, branch, log);
-            log.ShowSetTrackingDialogAsync = branch => GitClientDialogs.ShowSetTrackingDialogAsync(context, window!, branch, log);
-            log.ShowConflictResolutionDialogAsync = owner => GitClientDialogs.ShowConflictResolutionDialogAsync(context, owner ?? window!, log);
-            log.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => GitClientDialogs.ShowRemoteBranchPickerDialogAsync(context, owner ?? window!, remote, branch, log);
+            log.ShowCredentialAccountsAsync = () => dialogs.ShowCredentialAccountsAsync(window!, log);
+            log.ShowPushDialogAsync = () => dialogs.ShowPushDialogAsync(window!, log);
+            log.ShowCreateBranchDialogAsync = branch => dialogs.ShowCreateBranchDialogAsync(window!, log, branch);
+            log.ShowPullDialogAsync = () => dialogs.ShowPullDialogAsync(window!, log);
+            log.ShowMergeDialogAsync = branch => dialogs.ShowMergeDialogAsync(window!, branch, log);
+            log.ShowSetTrackingDialogAsync = branch => dialogs.ShowSetTrackingDialogAsync(window!, branch, log);
+            log.ShowConflictResolutionDialogAsync = owner => dialogs.ShowConflictResolutionDialogAsync(owner ?? window!, log);
+            log.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => dialogs.ShowRemoteBranchPickerDialogAsync(owner ?? window!, remote, branch, log);
         };
 
 
@@ -148,6 +149,13 @@ public sealed class GitClientApp : RemoteApplicationBase
         context.WindowManager.WindowClosed += closed;
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         _ = vm.StartAsync();
+    }
+
+    private sealed class DesktopGitDialogPresenter(AppContext context) : IGitDialogPresenter
+    {
+        public Task<TResult?> ShowDialogAsync<TResult>(ManagedWindow owner, string title,
+            Func<ModalDialog<TResult>, Avalonia.Controls.Control> content, Size preferredSize) =>
+            context.ShowDialogAsync(owner, title, content, preferredSize);
     }
 
     /// <summary>计算文件夹选择对话框的窗口边界（与 Code Editor 的 GetFilePickerBounds 一致）。</summary>

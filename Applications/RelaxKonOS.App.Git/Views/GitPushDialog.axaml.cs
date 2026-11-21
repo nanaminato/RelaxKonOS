@@ -1,11 +1,10 @@
-using RelaxKonOS.App.Git;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
 internal partial class GitPushDialog : UserControl
 {
