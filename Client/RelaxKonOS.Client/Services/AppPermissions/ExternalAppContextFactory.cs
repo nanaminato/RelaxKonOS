@@ -56,6 +56,7 @@ public sealed class ExternalAppContextFactory
     private readonly IServerRegistry? _registry;
     private readonly ClientPresentationPreferences? _presentationPreferences;
     private readonly IBrowserData? _browserData;
+    private readonly DesktopDevicePreferences? _devicePreferences;
     private readonly RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsService? _diagnostics;
 
     public ExternalAppContextFactory(
@@ -85,7 +86,8 @@ public sealed class ExternalAppContextFactory
         IServerRegistry? registry = null,
         ClientPresentationPreferences? presentationPreferences = null,
         IBrowserData? browserData = null,
-        RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsService? diagnostics = null)
+        RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsService? diagnostics = null,
+        DesktopDevicePreferences? devicePreferences = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -114,6 +116,7 @@ public sealed class ExternalAppContextFactory
         _presentationPreferences = presentationPreferences;
         _browserData = browserData;
         _diagnostics = diagnostics;
+        _devicePreferences = devicePreferences;
     }
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
@@ -138,6 +141,8 @@ public sealed class ExternalAppContextFactory
         appId.Value == "relaxkonos.browser" && _browserData is not null ? new ExternalBrowserData(_browserData, connection) : null,
         appId.Value == "relaxkonos.terminal" && sshEndpoint is null && connection.IsCurrent
             ? new ExternalTerminalSessionDiscovery(connection, _diagnostics) : null,
+        appId.Value == "relaxkonos.terminal" && (sshEndpoint is null ? _devicePreferences : _sshSession.DevicePreferences) is { } terminalDevice
+            ? new ExternalTerminalDevicePreferences(terminalDevice) : null,
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -171,6 +176,7 @@ public sealed class ExternalAppContextFactory
         IRegistryAppearancePreferences? RegistryAppearance,
         IBrowserData? BrowserData,
         ITerminalSessionDiscovery? TerminalSessions,
+        ITerminalDevicePreferences? TerminalDevicePreferences,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,

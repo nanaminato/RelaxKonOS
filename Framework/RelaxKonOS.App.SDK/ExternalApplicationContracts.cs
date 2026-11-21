@@ -46,6 +46,7 @@ public interface IExternalAppContext
     IBrowserData? BrowserData { get; }
     /// <summary>Server PTY discovery for the official Terminal application.</summary>
     ITerminalSessionDiscovery? TerminalSessions { get; }
+    ITerminalDevicePreferences? TerminalDevicePreferences { get; }
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
     IServerDockerImageMirrors DockerImageMirrors { get; }
@@ -73,6 +74,12 @@ public interface ITerminalSessionDiscovery
 {
     bool IsCurrent { get; }
     Task<IReadOnlyList<RelaxKonOS.Protocol.Hubs.TerminalSessionInfo>> ListAsync(CancellationToken cancellationToken);
+}
+
+public interface ITerminalDevicePreferences
+{
+    string VtEngine { get; }
+    void SetVtEngine(string value);
 }
 
 /// <summary>Observes the authenticated server connection captured for an application launch.</summary>

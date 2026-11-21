@@ -1,4 +1,5 @@
 using RelaxKonOS.App.Terminal;
+using RelaxKonOS.AppSDK;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Localization;
@@ -18,9 +19,9 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 /// </summary>
 public partial class TerminalViewModel : TerminalTabViewModel
 {
-    private readonly RelaxKonOS.Client.Services.DesktopDevicePreferences? _devicePreferences;
+    private readonly ITerminalDevicePreferences? _devicePreferences;
     protected override void OnVtEngineEdited(string value) =>
-        _devicePreferences?.Update(options => options with { TerminalVtEngine = value });
+        _devicePreferences?.SetVtEngine(value);
     private readonly RelaxKonOS.Client.Services.ClientPresentationPreferences? _preferences;
     public override RelaxKonOS.Protocol.Registry.TerminalPaddingSettings Padding => _preferences?.TerminalPadding ?? RelaxKonOS.Protocol.Registry.TerminalPaddingSettings.Default;
     private void OnPreferencesChanged(object? sender, EventArgs args)
@@ -88,11 +89,11 @@ public partial class TerminalViewModel : TerminalTabViewModel
         string? initialWorkingDirectory = null,
         bool isAdministrator = false,
         RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null,
-        RelaxKonOS.Client.Services.DesktopDevicePreferences? devicePreferences = null)
+        ITerminalDevicePreferences? devicePreferences = null)
         : base(App.Services?.GetService<LocalizationService>(),
-            (sshDesktop?.IsConnected == true ? sshDesktop.DevicePreferences : devicePreferences)?.Value.TerminalVtEngine ?? "Auto")
+            devicePreferences?.VtEngine ?? "Auto")
     {
-        _devicePreferences = sshDesktop?.IsConnected == true ? sshDesktop.DevicePreferences : devicePreferences;
+        _devicePreferences = devicePreferences;
         _preferences = session is { State: AuthSessionState.Authenticated } && sshDesktop?.IsConnected != true ? preferences : null;
         _session = session;
         _settingsClient = settingsClient;
@@ -171,7 +172,7 @@ public partial class TerminalViewModel : TerminalTabViewModel
         if (_surfaceFactory is not { } factory)
             return;
 
-        var engine = _devicePreferences?.Value.TerminalVtEngine ?? VtEngine;
+        var engine = _devicePreferences?.VtEngine ?? VtEngine;
         var surface = factory.Create(Enum.Parse<VtProcessorPreference>(engine));
         surface.ProcessExited += OnProcessExited;
         surface.TitleChanged += OnTitleChanged;

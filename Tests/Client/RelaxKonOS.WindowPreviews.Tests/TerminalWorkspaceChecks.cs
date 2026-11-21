@@ -9,6 +9,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Client.Apps.Terminal;
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Protocol.Workspace;
 
@@ -322,12 +323,12 @@ internal static class TerminalWorkspaceChecks
         try
         {
             var preferences = new RelaxKonOS.Client.Services.DesktopDevicePreferences(path);
-            var model = new TerminalViewModel(null, new Settings(), null, devicePreferences: preferences);
+            var model = new TerminalViewModel(null, new Settings(), null, devicePreferences: new ExternalTerminalDevicePreferences(preferences));
             Check(model.VtEngines.SequenceEqual(new[] { "Auto", "Managed", "Native" }), "All VT modes are selectable");
             model.VtEngine = "Native";
             var reloaded = new RelaxKonOS.Client.Services.DesktopDevicePreferences(path);
             Check(reloaded.Value.TerminalVtEngine == "Native", "VT preference survives device settings reload");
-            Check(new TerminalViewModel(null, new Settings(), null, devicePreferences: reloaded).VtEngine == "Native",
+            Check(new TerminalViewModel(null, new Settings(), null, devicePreferences: new ExternalTerminalDevicePreferences(reloaded)).VtEngine == "Native",
                 "New terminal reads the saved VT preference");
         }
         finally { File.Delete(path); }
