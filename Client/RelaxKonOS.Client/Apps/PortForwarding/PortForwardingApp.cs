@@ -2,7 +2,6 @@ using Avalonia.Utilities;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.App.PortForwarding;
 using RelaxKonOS.App.PortForwarding.Views;
-using RelaxKonOS.Client.Localization;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
@@ -25,11 +24,12 @@ public sealed class PortForwardingApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var localization = context.Services.GetRequiredService<LocalizationService>();
-        var viewModel = new PortForwardingViewModel(context.Services.GetRequiredService<IPortForwardingService>(), LocalizedText.Get);
+        string Label(string key) => PortForwardingLocalization.Resolve(localization, key, key);
+        var viewModel = new PortForwardingViewModel(context.Services.GetRequiredService<IPortForwardingService>(), Label);
         WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, PortForwardingViewModel>(
             localization, nameof(LocalizationService.LanguageChanged), viewModel.OnLanguageChanged);
         var view = new PortForwardingMainView { DataContext = viewModel };
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.port-forwarding.display_name"), view,
+        var window = context.ShowWindow(Label("application.relaxkonos.port-forwarding.display_name"), view,
             bounds: new Rect(160, 100, 760, 650), iconGlyph: Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         viewModel.ShowForwardEditorAsync = async forward =>
@@ -37,7 +37,7 @@ public sealed class PortForwardingApp : RemoteApplicationBase
             try
             {
                 await context.ShowDialogAsync<bool>(window,
-                    RelaxKonOS.Client.Localization.LocalizedText.Get(forward is null ? "port_forwarding.new_forward" : "port_forwarding.edit"), dialog =>
+                    Label(forward is null ? "port_forwarding.new_forward" : "port_forwarding.edit"), dialog =>
                     {
                         viewModel.CloseForwardEditorAsync = () =>
                         {

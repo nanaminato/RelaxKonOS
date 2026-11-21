@@ -1,0 +1,11 @@
+{
+  "Strings": {
+    "application.relaxkonos.port-forwarding.display_name": "端口转发",
+    "common.refresh": "刷新",
+    "common.cancel": "取消",
+    "common.view": "查看",
+    "common.discard": "放弃修改",
+    "common.discard_title": "放弃修改？",
+    "common.discard_message": "放弃未保存的修改并关闭编辑器？"
+  }
+}

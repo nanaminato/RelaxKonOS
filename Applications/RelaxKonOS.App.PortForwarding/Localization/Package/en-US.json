@@ -1,0 +1,11 @@
+{
+  "Strings": {
+    "application.relaxkonos.port-forwarding.display_name": "Port Forwarding",
+    "common.refresh": "Refresh",
+    "common.cancel": "Cancel",
+    "common.view": "View",
+    "common.discard": "Discard",
+    "common.discard_title": "Discard changes?",
+    "common.discard_message": "Discard unsaved changes and close this editor?"
+  }
+}

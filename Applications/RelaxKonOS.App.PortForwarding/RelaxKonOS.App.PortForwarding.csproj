@@ -8,5 +8,7 @@
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
         <AvaloniaResource Include="Assets/port-forwarding.png" />
+        <EmbeddedResource Include="Localization/*.json" LogicalName="PortForwarding.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Package/*.json" LogicalName="PortForwarding.PackageLocalization.%(Filename).json" />
     </ItemGroup>
 </Project>

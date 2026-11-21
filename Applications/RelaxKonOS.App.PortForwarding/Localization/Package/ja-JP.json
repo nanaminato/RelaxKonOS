@@ -1,0 +1,11 @@
+{
+  "Strings": {
+    "application.relaxkonos.port-forwarding.display_name": "ポート フォワーディング",
+    "common.refresh": "更新",
+    "common.cancel": "キャンセル",
+    "common.view": "表示",
+    "common.discard": "破棄",
+    "common.discard_title": "変更を破棄しますか？",
+    "common.discard_message": "未保存の変更を破棄してエディターを閉じますか？"
+  }
+}

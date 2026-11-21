@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using RelaxKonOS.App.FileServices;
 using RelaxKonOS.App.Firewall;
 using RelaxKonOS.App.Git;
+using RelaxKonOS.App.PortForwarding;
 using RelaxKonOS.App.ProcessGuardian;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
@@ -20,13 +21,14 @@ internal static class LocalizationResourceChecks
             var files = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Localization", culture), "*.json");
             if (files.Length == 0) throw new Exception("No shipped localization files for " + culture);
             foreach (var file in files.Concat([$"Git.Localization.{culture}.json", $"FileServices.Localization.{culture}.json",
-                $"Firewall.Localization.{culture}.json", $"ProcessGuardian.Localization.{culture}.json"]))
+                $"Firewall.Localization.{culture}.json", $"ProcessGuardian.Localization.{culture}.json", $"PortForwarding.Localization.{culture}.json"]))
             {
                 using var source = Path.IsPathRooted(file) ? File.OpenRead(file)
                     : file.StartsWith("Git.", StringComparison.Ordinal) ? GitLocalization.Open(file)
                     : file.StartsWith("FileServices.", StringComparison.Ordinal) ? FileServicesLocalization.Open(file)
                     : file.StartsWith("Firewall.", StringComparison.Ordinal) ? FirewallLocalization.Open(file)
-                    : ProcessGuardianLocalization.Open(file);
+                    : file.StartsWith("ProcessGuardian.", StringComparison.Ordinal) ? ProcessGuardianLocalization.Open(file)
+                    : PortForwardingLocalization.Open(file);
                 using var json = JsonDocument.Parse(source);
                 var root = json.RootElement;
                 var rootKeys = new HashSet<string>();
@@ -93,6 +95,11 @@ internal static class LocalizationResourceChecks
                 foreach (var key in new[] { "common.refresh", "common.cancel", "application.relaxkonos.processguardian.display_name" })
                     if (ProcessGuardianLocalization.Resolve(localization, key) != tables[culture][key])
                         throw new Exception("Incorrect Guardian package translation " + culture + ": " + key);
+                foreach (var key in tables[culture].Keys.Where(key => key.StartsWith("port_forwarding.", StringComparison.Ordinal))
+                    .Concat(["common.refresh", "common.view", "application.relaxkonos.port-forwarding.display_name"]))
+                    if (PortForwardingLocalization.Resolve(localization, key, key) != tables[culture][key]
+                        || LocalizedText.Get(key) != tables[culture][key])
+                        throw new Exception("Incorrect port forwarding translation " + culture + ": " + key);
                 _ = LocalizedText.Format("code_editor.context.delete_confirm", "/work/example");
                 _ = LocalizedText.Format("code_editor.context.operation_failed", "failure");
             }
