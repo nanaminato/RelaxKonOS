@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
@@ -47,7 +48,7 @@ public sealed class GitClientApp : RemoteApplicationBase
         // 复用 Explorer 的 IExplorerClient，用于远程文件夹选择对话框（与 Code Editor 同一模式）
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.git");
-        var vm = new GitClientViewModel(client) { Dependency = dependency };
+        var vm = new GitClientViewModel(client, LocalizedText.Get);
         var encodings = context.Services.GetService(typeof(TextEditorEncodingSettings)) as TextEditorEncodingSettings;
         var project = new ProjectEditorViewModel(vm, client, files,
             session.CurrentServer?.Platform != HostPlatformKind.Windows, encodings?.CodeEditorDefaultEncoding ?? "UTF-8");

@@ -1,11 +1,9 @@
-using RelaxKonOS.App.Git;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -57,8 +55,8 @@ public sealed partial class GitClientViewModel
     public bool CanResolveConflict => ConflictDetail is not null && !ConflictBusy && !IsBusy;
     public bool CanContinueConflict => ConflictOperation is not null && ConflictPaths.Count == 0 && !ConflictBusy && !IsBusy;
     public bool CanAbortConflict => ConflictOperation is not null && !ConflictBusy && !IsBusy;
-    public string ConflictOperationLabel => ConflictOperation is null ? LocalizedText.Get("git.conflicts.no_operation") :
-        LocalizedText.Format("git.conflicts.operation", ConflictOperation);
+    public string ConflictOperationLabel => ConflictOperation is null ? localize("git.conflicts.no_operation") :
+        FormatLabel("git.conflicts.operation", ConflictOperation);
     private int _conflictLoad;
 
     partial void OnConflictBusyChanged(bool value) => UpdateConflictCommands();
@@ -139,7 +137,7 @@ public sealed partial class GitClientViewModel
     {
         if (ConflictBusy || IsBusy) return;
         if (ConflictDetail is not null && ConflictResult != (ConflictDetail.Result ?? "") &&
-            (ShowConfirmAsync is null || !await ShowConfirmAsync(LocalizedText.Get("git.conflicts.discard")))) return;
+            (ShowConfirmAsync is null || !await ShowConfirmAsync(localize("git.conflicts.discard")))) return;
         if (SelectedRepository is not null && SelectedConflictPath is not null)
             _conflictDrafts.Remove((SelectedRepository.Id, SelectedConflictPath));
         ConflictDetail = null;
@@ -156,7 +154,7 @@ public sealed partial class GitClientViewModel
         var detail = ConflictDetail;
         var repo = SelectedRepository.Id;
         if (choice != "edited" && (ShowConfirmAsync is null ||
-            !await ShowConfirmAsync(LocalizedText.Get("git.conflicts.confirm_replace")))) return;
+            !await ShowConfirmAsync(localize("git.conflicts.confirm_replace")))) return;
         if (!await PrepareEditorAsync()) return;
         ConflictBusy = true;
         IsBusy = true;
@@ -170,7 +168,7 @@ public sealed partial class GitClientViewModel
                 ConflictResult = "";
             }
             await RefreshAllAsync();
-            if (!result.Success) await NotifyAsync(result.Message ?? LocalizedText.Get("git.conflicts.failed"));
+            if (!result.Success) await NotifyAsync(result.Message ?? localize("git.conflicts.failed"));
         }
         catch (Exception ex) { await NotifyAsync(ex.Message); }
         finally { IsBusy = false; ConflictBusy = false; }
@@ -186,7 +184,7 @@ public sealed partial class GitClientViewModel
         var repo = SelectedRepository.Id;
         var operation = ConflictOperation;
         if (action == "abort" && (ShowConfirmAsync is null ||
-            !await ShowConfirmAsync(LocalizedText.Get("git.conflicts.confirm_abort")))) return;
+            !await ShowConfirmAsync(localize("git.conflicts.confirm_abort")))) return;
         if (!await PrepareEditorAsync()) return;
         ConflictBusy = true;
         IsBusy = true;
@@ -200,7 +198,7 @@ public sealed partial class GitClientViewModel
                 ConflictResult = "";
             }
             await RefreshAllAsync();
-            if (!result.Success) await NotifyAsync(result.Message ?? LocalizedText.Get("git.conflicts.failed"));
+            if (!result.Success) await NotifyAsync(result.Message ?? localize("git.conflicts.failed"));
         }
         catch (Exception ex) { await NotifyAsync(ex.Message); }
         finally { IsBusy = false; ConflictBusy = false; }

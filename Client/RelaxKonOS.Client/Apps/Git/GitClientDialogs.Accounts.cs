@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;

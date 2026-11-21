@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:fileIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+ xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git" xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
  xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls" xmlns:explorer="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
  xmlns:gitViews="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
  xmlns:gitAppViews="clr-namespace:RelaxKonOS.App.Git.Views;assembly=RelaxKonOS.App.Git"
- x:Class="RelaxKonOS.Client.Apps.Git.Views.GitLogView" x:Name="LogViewRoot" x:DataType="git:GitClientViewModel"
+ x:Class="RelaxKonOS.Client.Apps.Git.Views.GitLogView" x:Name="LogViewRoot" x:DataType="gitApp:GitClientViewModel"
  x:CompileBindings="False" Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
  <UserControl.Styles>
   <!-- An unfocused log still marks the commit it is showing. Keeping it a desaturated tint of the

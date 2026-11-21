@@ -1,19 +1,15 @@
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -52,7 +48,7 @@ public sealed partial class GitClientViewModel
             if (ShowFileDiffAsync is not null)
                 await ShowFileDiffAsync(owner, FileDiff);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.diff_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.diff_failed_format", ex.Message)); }
     }
 
     [RelayCommand]
@@ -68,7 +64,7 @@ public sealed partial class GitClientViewModel
     {
         file ??= SelectedFile;
         if (file is null || SelectedRepository is null) return;
-        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.revert_file_confirm_format", file.Path)))
+        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(FormatLabel("git.vm.revert_file_confirm_format", file.Path)))
             return;
         if (!await PrepareEditorAsync()) return;
         IsBusy = true;
@@ -76,12 +72,12 @@ public sealed partial class GitClientViewModel
         {
             var result = await client.RestoreAsync(SelectedRepository.Id, new GitRestoreRequest([file.Path]));
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.revert_file_success_format", file.Path);
+                SetStatus("git.vm.revert_file_success_format", file.Path);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.revert_file_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.revert_file_failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.revert_file_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.revert_file_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -104,12 +100,12 @@ public sealed partial class GitClientViewModel
         {
             var result = await client.UnstageAsync(SelectedRepository.Id, new GitUnstageRequest([file.Path]));
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.unstaged_format", file.Path);
+                SetStatus("git.vm.unstaged_format", file.Path);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.unstage_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.unstage_failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.unstage_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.unstage_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -135,11 +131,11 @@ public sealed partial class GitClientViewModel
         try
         {
             var diff = await client.GetDiffAsync(repo.Id, file.Path, file.Staged, SelectedCommit?.Sha);
-            if (diff.Binary || diff.Truncated) { await NotifyAsync(LocalizedText.Get("git.editor.readonly_large")); return; }
-            if (string.IsNullOrEmpty(diff.Patch)) { await NotifyAsync(LocalizedText.Get("git.workspace.no_patch")); return; }
+            if (diff.Binary || diff.Truncated) { await NotifyAsync(localize("git.editor.readonly_large")); return; }
+            if (string.IsNullOrEmpty(diff.Patch)) { await NotifyAsync(localize("git.workspace.no_patch")); return; }
             await OpenPatchAsync(diff.Patch);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 }

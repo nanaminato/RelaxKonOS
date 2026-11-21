@@ -80,7 +80,7 @@ index 4bee98b..9a1c2f0 100644
         foreach (var variant in new[] { ThemeVariant.Light, ThemeVariant.Dark })
         {
             ApplyPalette(variant);
-            var accountsVm = new GitClientViewModel(null!);
+            var accountsVm = new GitClientViewModel(null!, LocalizedText.Get);
             accountsVm.CredentialAccounts.Add(new("first", "github.com", "alice", true));
             accountsVm.CredentialAccounts.Add(new("second", "gitlab.example.com:8443", "work-account", true));
             accountsVm.SelectedCredentialAccount = accountsVm.CredentialAccounts[1];
@@ -216,7 +216,7 @@ index 4bee98b..9a1c2f0 100644
 
         // The log page hosts the same pane in a real column. Only a render shows whether that column
         // actually opens next to the file tree, which is the whole point of not opening a window.
-        var logViewModel = new GitClientViewModel(null!) { InlineDiff = presentation, IsInlineDiffOpen = true };
+        var logViewModel = new GitClientViewModel(null!, LocalizedText.Get) { InlineDiff = presentation, IsInlineDiffOpen = true };
         var logView = new GitLogView(logViewModel);
         var logWindow = new Window { Width = 1400, Height = 800, Content = logView };
         logWindow.Show();

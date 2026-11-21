@@ -1,19 +1,15 @@
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -30,7 +26,7 @@ public sealed partial class GitClientViewModel
                 if (topLevel?.Clipboard is not null)
                 {
                     await topLevel.Clipboard.SetTextAsync(commit.Sha);
-                    StatusText = LocalizedText.Ref("git.vm.copy_sha_format", commit.ShortSha);
+                    SetStatus("git.vm.copy_sha_format", commit.ShortSha);
                     return;
                 }
             }
@@ -40,9 +36,9 @@ public sealed partial class GitClientViewModel
                 var tl = Avalonia.Controls.TopLevel.GetTopLevel((Avalonia.Visual?)null);
                 if (tl?.Clipboard is not null) await tl.Clipboard.SetTextAsync(commit.Sha);
             });
-            StatusText = LocalizedText.Ref("git.vm.sha_no_toplevel_format", commit.ShortSha);
+            SetStatus("git.vm.sha_no_toplevel_format", commit.ShortSha);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.copy_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.copy_failed_format", ex.Message)); }
     }
 
     [RelayCommand]
@@ -58,13 +54,13 @@ public sealed partial class GitClientViewModel
                 if (topLevel?.Clipboard is not null)
                 {
                     await topLevel.Clipboard.SetTextAsync(commit.ShortSha);
-                    StatusText = LocalizedText.Ref("git.vm.copied_short_sha_format", commit.ShortSha);
+                    SetStatus("git.vm.copied_short_sha_format", commit.ShortSha);
                     return;
                 }
             }
-            StatusText = LocalizedText.Ref("git.vm.short_sha_format", commit.ShortSha);
+            SetStatus("git.vm.short_sha_format", commit.ShortSha);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.copy_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.copy_failed_format", ex.Message)); }
     }
 
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -72,7 +68,7 @@ public sealed partial class GitClientViewModel
     {
         commit ??= SelectedCommit;
         if (commit is null || SelectedRepository is null) return;
-        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.checkout_commit_confirm_format", commit.ShortSha)))
+        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(FormatLabel("git.vm.checkout_commit_confirm_format", commit.ShortSha)))
             return;
         if (!await PrepareEditorAsync()) return;
         IsBusy = true;
@@ -80,12 +76,12 @@ public sealed partial class GitClientViewModel
         {
             var result = await client.CheckoutAsync(SelectedRepository.Id, new GitCheckoutRequest(commit.Sha));
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.checked_out_format", commit.ShortSha);
+                SetStatus("git.vm.checked_out_format", commit.ShortSha);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.checkout_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.checkout_failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.checkout_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.checkout_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -94,7 +90,7 @@ public sealed partial class GitClientViewModel
     {
         commit ??= SelectedCommit;
         if (commit is null || SelectedRepository is null) return;
-        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.reset_confirm_format", commit.ShortSha)))
+        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(FormatLabel("git.vm.reset_confirm_format", commit.ShortSha)))
             return;
         if (!await PrepareEditorAsync()) return;
         IsBusy = true;
@@ -103,12 +99,12 @@ public sealed partial class GitClientViewModel
             // Mixed reset retains working-tree content and is the safest useful reset mode for this UI.
             var result = await client.ResetAsync(SelectedRepository.Id, new GitResetRequest(commit.Sha, "mixed"));
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.reset_success_format", commit.ShortSha);
+                SetStatus("git.vm.reset_success_format", commit.ShortSha);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.reset_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.reset_failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.reset_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.reset_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -128,10 +124,10 @@ public sealed partial class GitClientViewModel
         var head = Commits.FirstOrDefault();
         if (head is null || !string.Equals(head.Sha, commit.Sha, StringComparison.OrdinalIgnoreCase))
         {
-            await NotifyAsync(LocalizedText.Get("git.vm.undo_only_head"));
+            await NotifyAsync(localize("git.vm.undo_only_head"));
             return;
         }
-        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.undo_confirm_format", commit.ShortSha)))
+        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(FormatLabel("git.vm.undo_confirm_format", commit.ShortSha)))
             return;
         if (!await PrepareEditorAsync()) return;
         IsBusy = true;
@@ -140,12 +136,12 @@ public sealed partial class GitClientViewModel
             // Soft reset removes only HEAD while preserving every file and its staged state.
             var result = await client.ResetAsync(SelectedRepository.Id, new GitResetRequest("HEAD^", "soft"));
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.undo_success_format", commit.ShortSha);
+                SetStatus("git.vm.undo_success_format", commit.ShortSha);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.undo_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.undo_failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.undo_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.undo_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -162,7 +158,7 @@ public sealed partial class GitClientViewModel
     {
         commit ??= SelectedCommit;
         if (commit is null) return;
-        if (ShowConfirmAsync is null || !await ShowConfirmAsync(LocalizedText.Format("git.workspace.cherry_pick_confirm", commit.ShortSha))) return;
+        if (ShowConfirmAsync is null || !await ShowConfirmAsync(FormatLabel("git.workspace.cherry_pick_confirm", commit.ShortSha))) return;
         await ExecuteWorkspaceOperationAsync(SelectedRepository, id => client.CherryPickAsync(id, new(commit.Sha)));
     }
 
@@ -171,7 +167,7 @@ public sealed partial class GitClientViewModel
     {
         commit ??= SelectedCommit;
         if (commit is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.rebase_interactive_unimplemented_format", commit.ShortSha));
+        await NotifyAsync(FormatLabel("git.vm.rebase_interactive_unimplemented_format", commit.ShortSha));
     }
 
     [RelayCommand]
@@ -179,7 +175,7 @@ public sealed partial class GitClientViewModel
     {
         commit ??= SelectedCommit;
         if (commit is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.squash_unimplemented_format", commit.ShortSha));
+        await NotifyAsync(FormatLabel("git.vm.squash_unimplemented_format", commit.ShortSha));
     }
 
     [RelayCommand]
@@ -187,7 +183,7 @@ public sealed partial class GitClientViewModel
     {
         commit ??= SelectedCommit;
         if (commit is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.edit_message_unimplemented_format", commit.ShortSha));
+        await NotifyAsync(FormatLabel("git.vm.edit_message_unimplemented_format", commit.ShortSha));
     }
 
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -195,7 +191,7 @@ public sealed partial class GitClientViewModel
     {
         commit ??= SelectedCommit;
         if (commit is null) return;
-        await NotifyAsync(LocalizedText.Format("git.vm.push_before_unimplemented_format", commit.ShortSha));
+        await NotifyAsync(FormatLabel("git.vm.push_before_unimplemented_format", commit.ShortSha));
     }
 
     [RelayCommand]
@@ -222,12 +218,12 @@ public sealed partial class GitClientViewModel
             var result = await client.CreateBranchAsync(SelectedRepository.Id,
                 request with { StartPoint = startPoint });
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.branch_created_at_format", request.Name, commit.ShortSha);
+                SetStatus("git.vm.branch_created_at_format", request.Name, commit.ShortSha);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.create_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.create_failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.create_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.create_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 

@@ -1,11 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
-             xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git" xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitProjectPickerView"
-             x:DataType="git:GitClientViewModel" Background="{DynamicResource SurfaceSunkenBrush}" Classes="builtin-app">
+             x:DataType="gitApp:GitClientViewModel" Background="{DynamicResource SurfaceSunkenBrush}" Classes="builtin-app">
     <UserControl.Styles>
         <Style Selector="Button.project-card"><Setter Property="Background" Value="{DynamicResource SurfaceBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="8" /></Style>
         <Style Selector="Button.project-card:pointerover"><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" /><Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" /></Style>

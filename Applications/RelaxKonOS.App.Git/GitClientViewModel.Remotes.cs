@@ -1,19 +1,15 @@
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -39,7 +35,7 @@ public sealed partial class GitClientViewModel
         }
         catch (Exception ex)
         {
-            await NotifyAsync(LocalizedText.Format("git.vm.load_remotes_failed_format", ex.Message));
+            await NotifyAsync(FormatLabel("git.vm.load_remotes_failed_format", ex.Message));
             Log($"RefreshRemotesAsync 异常：{ex.GetType().Name} {ex.Message}\n{ex.StackTrace}");
         }
     }
@@ -54,12 +50,12 @@ public sealed partial class GitClientViewModel
         {
             var result = await client.AddRemoteAsync(SelectedRepository.Id, request);
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.add_remote_format", request.Name);
+                SetStatus("git.vm.add_remote_format", request.Name);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.add_remote_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.add_remote_failed_format", result.Message));
             await RefreshRemotesAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.add_remote_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.add_remote_failed_format", ex.Message)); }
     }
 
     [RelayCommand(CanExecute = nameof(CanManageRemotes))]
@@ -72,30 +68,30 @@ public sealed partial class GitClientViewModel
         {
             var result = await client.UpdateRemoteAsync(SelectedRepository.Id, remote.Name, request);
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.update_remote_format", request.Name);
+                SetStatus("git.vm.update_remote_format", request.Name);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.update_remote_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.update_remote_failed_format", result.Message));
             await RefreshRemotesAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.update_remote_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.update_remote_failed_format", ex.Message)); }
     }
 
     [RelayCommand(CanExecute = nameof(CanManageRemotes))]
     private async Task RemoveRemoteAsync(GitRemoteDto remote)
     {
         if (SelectedRepository is null || remote is null) return;
-        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.delete_remote_confirm_format", remote.Name)))
+        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(FormatLabel("git.vm.delete_remote_confirm_format", remote.Name)))
             return;
         try
         {
             var result = await client.RemoveRemoteAsync(SelectedRepository.Id, remote.Name);
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.delete_remote_format", remote.Name);
+                SetStatus("git.vm.delete_remote_format", remote.Name);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.delete_remote_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.delete_remote_failed_format", result.Message));
             await RefreshRemotesAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.delete_remote_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.delete_remote_failed_format", ex.Message)); }
     }
 
     // ── 选中提交变化：加载提交详情（含变更文件列表）──

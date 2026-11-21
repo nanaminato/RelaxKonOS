@@ -1,20 +1,15 @@
-using RelaxKonOS.App.Git;
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -68,7 +63,7 @@ public sealed partial class GitClientViewModel
         if (SelectedRepository is null) return;
 
         PushIsLoading = true;
-        PushStatusMessage = LocalizedText.Get("git.dialog.push.loading_commits");
+        PushStatusMessage = localize("git.dialog.push.loading_commits");
 
         try
         {
@@ -84,17 +79,17 @@ public sealed partial class GitClientViewModel
             foreach (var commit in preview.Commits) PushCommits.Add(commit);
 
             PushStatusMessage = !preview.RemoteBranchExists
-                ? LocalizedText.Format("git.dialog.push.new_remote_branch_format", $"{preview.Remote}/{preview.RemoteBranch}")
+                ? FormatLabel("git.dialog.push.new_remote_branch_format", $"{preview.Remote}/{preview.RemoteBranch}")
                 : preview.AheadCount == 0
-                    ? LocalizedText.Get("git.dialog.push.no_commits_ahead")
-                    : LocalizedText.Format("git.vm.push_n_commits_ahead_format", preview.AheadCount);
+                    ? localize("git.dialog.push.no_commits_ahead")
+                    : FormatLabel("git.vm.push_n_commits_ahead_format", preview.AheadCount);
 
             var selectionVersion = BeginPushSelection();
             await LoadAllPushChangesAsync(selectionVersion);
         }
         catch (Exception ex)
         {
-            PushStatusMessage = LocalizedText.Format("git.vm.push_dialog_prepare_failed", ex.Message);
+            PushStatusMessage = FormatLabel("git.vm.push_dialog_prepare_failed", ex.Message);
             Log($"LoadPushPreviewAsync 异常：{ex.GetType().Name} {ex.Message}");
         }
         finally
@@ -259,12 +254,12 @@ public sealed partial class GitClientViewModel
         if (SelectedRepository is null) return;
         if (SelectedCount == 0)
         {
-            await NotifyAsync(LocalizedText.Get("git.status.no_files_selected"));
+            await NotifyAsync(localize("git.status.no_files_selected"));
             return;
         }
         if (string.IsNullOrWhiteSpace(CommitMessage))
         {
-            await NotifyAsync(LocalizedText.Get("git.status.commit_message_required"));
+            await NotifyAsync(localize("git.status.commit_message_required"));
             return;
         }
 
@@ -277,7 +272,7 @@ public sealed partial class GitClientViewModel
             var result = await client.CommitAsync(SelectedRepository.Id, request);
             if (result.Success)
             {
-                StatusText = LocalizedText.Ref("git.status.committed");
+                SetStatus("git.status.committed");
                 CommitMessage = string.Empty;
                 await RefreshAllAsync();
 
@@ -290,11 +285,11 @@ public sealed partial class GitClientViewModel
             }
             else
             {
-                await NotifyAsync(LocalizedText.Format("git.status.commit_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.status.commit_failed_format", result.Message));
                 await RefreshAllAsync();
             }
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -312,8 +307,8 @@ public sealed partial class GitClientViewModel
     public async Task<bool> ExecutePushFromDialogAsync(ManagedWindow? owner)
     {
         if (SelectedRepository is null) return false;
-        StatusText = LocalizedText.Ref("git.vm.push_progress");
-        PushStatusMessage = LocalizedText.Get("git.dialog.push.pushing");
+        SetStatus("git.vm.push_progress");
+        PushStatusMessage = localize("git.dialog.push.pushing");
         try
         {
             var pushRequest = new GitPushRequest(
@@ -328,7 +323,7 @@ public sealed partial class GitClientViewModel
                 var credentials = await ShowGitCredentialsDialogAsync(owner, result.CredentialHost);
                 if (credentials is null)
                 {
-                    PushStatusMessage = LocalizedText.Get("git.dialog.credentials.canceled");
+                    PushStatusMessage = localize("git.dialog.credentials.canceled");
                     return false;
                 }
                 result = await client.PushAsync(SelectedRepository.Id, pushRequest with
@@ -340,8 +335,8 @@ public sealed partial class GitClientViewModel
 
             if (result.Success)
             {
-                StatusText = LocalizedText.Ref("git.vm.pushed");
-                PushStatusMessage = LocalizedText.Get("git.vm.pushed");
+                SetStatus("git.vm.pushed");
+                PushStatusMessage = localize("git.vm.pushed");
                 await RefreshAllAsync();
                 return true;
             }
@@ -355,7 +350,7 @@ public sealed partial class GitClientViewModel
                 if (integration is not null)
                 {
                     if (!await PrepareEditorAsync()) return false;
-                    PushStatusMessage = LocalizedText.Get("git.dialog.push_rejected.updating");
+                    PushStatusMessage = localize("git.dialog.push_rejected.updating");
                     var pull = await PullWithCredentialsAsync(integration with
                     {
                         Remote = pushRequest.Remote,
@@ -364,29 +359,29 @@ public sealed partial class GitClientViewModel
                     await RefreshAllAsync();
                     if (pull.Conflicts is { Count: > 0 })
                     {
-                        PushStatusMessage = LocalizedText.Get("git.dialog.push_rejected.resolve_conflicts");
+                        PushStatusMessage = localize("git.dialog.push_rejected.resolve_conflicts");
                         await PresentConflictResolutionAsync(owner);
                     }
                     else if (pull.Success)
                     {
-                        PushStatusMessage = LocalizedText.Get("git.dialog.push_rejected.ready_to_retry");
+                        PushStatusMessage = localize("git.dialog.push_rejected.ready_to_retry");
                     }
                     else
                     {
-                        PushStatusMessage = LocalizedText.Format("git.vm.pull_failed_format", pull.Message);
+                        PushStatusMessage = FormatLabel("git.vm.pull_failed_format", pull.Message);
                     }
                     return false;
                 }
             }
 
             PushStatusMessage = result.RequiresCredentials
-                ? LocalizedText.Get("git.dialog.credentials.failed")
-                : LocalizedText.Format("git.vm.push_failed_format", result.Message);
+                ? localize("git.dialog.credentials.failed")
+                : FormatLabel("git.vm.push_failed_format", result.Message);
             return false;
         }
         catch (Exception ex)
         {
-            PushStatusMessage = LocalizedText.Format("git.status.error_format", ex.Message);
+            PushStatusMessage = FormatLabel("git.status.error_format", ex.Message);
             return false;
         }
     }

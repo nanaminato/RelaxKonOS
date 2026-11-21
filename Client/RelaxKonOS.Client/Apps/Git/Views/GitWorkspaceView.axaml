@@ -4,7 +4,7 @@
              xmlns:gitApp="clr-namespace:RelaxKonOS.App.Git;assembly=RelaxKonOS.App.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitWorkspaceView"
-             x:DataType="git:GitClientViewModel" Classes="builtin-app">
+             x:DataType="gitApp:GitClientViewModel" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto" MinHeight="400">
         <!-- Toolbar -->
         <Border Grid.Row="0" Padding="12" Margin="0,0,0,8" Classes="app-panel">

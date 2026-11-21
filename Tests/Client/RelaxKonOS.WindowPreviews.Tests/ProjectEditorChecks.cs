@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.App.CodeEditor;
 using System.Reflection;
@@ -51,7 +52,7 @@ internal static class ProjectEditorChecks
         store.Files["/work/app.cs"] = Encoding.UTF8.GetBytes("class App {}\r\n");
         var api = DispatchProxy.Create<IServerGit, ProjectGit>();
         var remote = (ProjectGit)(object)api;
-        var git = new GitClientViewModel(api);
+        var git = new GitClientViewModel(api, LocalizedText.Get);
         using var project = new ProjectEditorViewModel(git, api, files, true);
         // Mount while still in the picker: bindings must follow repository selection.
         var view = GitClientWorkspace.Create(git, project);
@@ -424,7 +425,7 @@ internal static class ProjectEditorChecks
             "Late project responses cannot replace the newly selected project's status or title.");
         host.Close();
 
-        var plainGit = new GitClientViewModel(api);
+        var plainGit = new GitClientViewModel(api, LocalizedText.Get);
         using var plain = new ProjectEditorViewModel(plainGit, api, files, true);
         var pickCount = 0;
         plainGit.ShowRemotePathPickerAsync = () => { pickCount++; return Task.FromResult<string?>("/work"); };

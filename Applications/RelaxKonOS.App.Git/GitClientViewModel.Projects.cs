@@ -1,19 +1,15 @@
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -30,7 +26,7 @@ public sealed partial class GitClientViewModel
             IsPickerMode = false;
             SelectedRepository = repo;
             ActivePage = GitClientPage.Overview;
-            StatusText = LocalizedText.Ref("git.vm.loading_project_format", repo.Name);
+            SetStatus("git.vm.loading_project_format", repo.Name);
 
             Log("调用 RefreshAllAsync（并行 status/branches/log）…");
             await RefreshAllAsync();
@@ -46,11 +42,11 @@ public sealed partial class GitClientViewModel
             await RefreshRemotesAsync();
             if (SelectedRepository?.Id != repo.Id) return;
             Log($"OpenProjectAsync 结束，Remotes={Remotes.Count}，Ready");
-            StatusText = LocalizedText.Ref("git.vm.ready_project_branch_format", repo.Name, Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
+            SetStatus("git.vm.ready_project_branch_format", repo.Name, Status?.Branch ?? localize("git.status.unknown_branch"));
         }
         catch (Exception ex)
         {
-            await NotifyAsync(LocalizedText.Format("git.vm.open_project_failed_format", ex.Message));
+            await NotifyAsync(FormatLabel("git.vm.open_project_failed_format", ex.Message));
             Log($"OpenProjectAsync 异常：{ex.GetType().Name} {ex.Message}\n{ex.StackTrace}");
         }
     }
@@ -63,7 +59,7 @@ public sealed partial class GitClientViewModel
         Log("OpenFolderAsync 开始");
         if (ShowRemotePathPickerAsync is null)
         {
-            await NotifyAsync(LocalizedText.Get("git.vm.path_picker_unavailable"));
+            await NotifyAsync(localize("git.vm.path_picker_unavailable"));
             Log("ShowRemotePathPickerAsync 委托未设置");
             return;
         }
@@ -95,10 +91,10 @@ public sealed partial class GitClientViewModel
             var dto = await client.RegisterRepositoryAsync(registration);
             if (!Repositories.Contains(dto))
                 Repositories.Add(dto);
-            StatusText = LocalizedText.Ref("git.vm.registered_format", dto.Name);
+            SetStatus("git.vm.registered_format", dto.Name);
             await OpenProjectCommand.ExecuteAsync(dto);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.register_failed_format", ex.Message)); Log(ex.ToString()); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.register_failed_format", ex.Message)); Log(ex.ToString()); }
     }
 
     private async Task ProbeAndOpenAsync(string path)
@@ -106,7 +102,7 @@ public sealed partial class GitClientViewModel
         Log($"ProbeAndOpenAsync path={path}");
         IsProbing = true;
         IsBusy = true;
-        ProbeHint = LocalizedText.Format("git.picker.probing_format", path);
+        ProbeHint = FormatLabel("git.picker.probing_format", path);
         try
         {
             Log("调用 client.ProbeRepositoryAsync …");
@@ -148,7 +144,7 @@ public sealed partial class GitClientViewModel
             if (existing is not null)
             {
                 Log($"路径已注册为「{existing.Name}」，直接打开");
-                StatusText = LocalizedText.Ref("git.vm.project_exists_format", existing.Name);
+                SetStatus("git.vm.project_exists_format", existing.Name);
                 await OpenProjectCommand.ExecuteAsync(existing);
                 return;
             }
@@ -164,7 +160,7 @@ public sealed partial class GitClientViewModel
             }
             catch (Exception ex)
             {
-                var message = LocalizedText.Format("git.vm.register_failed_format", ex.Message);
+                var message = FormatLabel("git.vm.register_failed_format", ex.Message);
                 ProbeHint = message;
                 await NotifyAsync(message);
                 Log($"注册异常：{ex.GetType().Name} {ex.Message}");
@@ -172,13 +168,13 @@ public sealed partial class GitClientViewModel
             }
             if (!Repositories.Contains(dto))
                 Repositories.Add(dto);
-            StatusText = LocalizedText.Ref("git.vm.project_registered_format", dto.Name);
+            SetStatus("git.vm.project_registered_format", dto.Name);
             await OpenProjectCommand.ExecuteAsync(dto);
         }
         catch (Exception ex)
         {
-            await NotifyAsync(LocalizedText.Format("git.vm.probe_failed_format", ex.Message));
-            ProbeHint = LocalizedText.Format("git.vm.probe_failed_format", ex.Message);
+            await NotifyAsync(FormatLabel("git.vm.probe_failed_format", ex.Message));
+            ProbeHint = FormatLabel("git.vm.probe_failed_format", ex.Message);
             Log($"ProbeAndOpenAsync 异常：{ex.GetType().Name} {ex.Message}\n{ex.StackTrace}");
         }
         finally
@@ -196,12 +192,12 @@ public sealed partial class GitClientViewModel
 
     /// <summary>"Not a repository" and "git refused to open this repository" are different answers, and
     /// only the second one tells the user to fix permissions or ownership instead of initialising.</summary>
-    private static string DescribeNotRepository(GitRepositoryProbeDto probe)
+    private string DescribeNotRepository(GitRepositoryProbeDto probe)
         => probe.Problem?.Contains("detected dubious ownership", StringComparison.OrdinalIgnoreCase) == true
-            ? LocalizedText.Get("git.vm.ownership_mismatch")
+            ? localize("git.vm.ownership_mismatch")
             : string.IsNullOrWhiteSpace(probe.Problem)
-            ? LocalizedText.Get("git.vm.not_repo")
-            : LocalizedText.Format("git.vm.not_repo_reason_format", probe.Problem);
+            ? localize("git.vm.not_repo")
+            : FormatLabel("git.vm.not_repo_reason_format", probe.Problem);
 
     private async Task<bool> ConfirmInitAsync(string path)
     {
@@ -218,17 +214,17 @@ public sealed partial class GitClientViewModel
             Log($"git init 返回: Success={initResult.Success} Message={initResult.Message}");
             if (!initResult.Success)
             {
-                var message = LocalizedText.Format("git.vm.init_failed_format", initResult.Message);
+                var message = FormatLabel("git.vm.init_failed_format", initResult.Message);
                 ProbeHint = message;
                 await NotifyAsync(message);
                 return false;
             }
-            StatusText = LocalizedText.Ref("git.vm.initialized");
+            SetStatus("git.vm.initialized");
             return true;
         }
         catch (Exception ex)
         {
-            var message = LocalizedText.Format("git.vm.init_failed_format", ex.Message);
+            var message = FormatLabel("git.vm.init_failed_format", ex.Message);
             ProbeHint = message;
             await NotifyAsync(message);
             Log($"init 异常：{ex.GetType().Name} {ex.Message}");

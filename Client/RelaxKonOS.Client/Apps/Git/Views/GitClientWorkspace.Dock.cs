@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git;
 using RelaxKonOS.App.Git.Views;
 using System.Collections.ObjectModel;
 using System.ComponentModel;

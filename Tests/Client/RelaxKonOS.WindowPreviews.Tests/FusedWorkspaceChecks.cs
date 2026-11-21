@@ -1,3 +1,5 @@
+using RelaxKonOS.App.Git;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.App.WebServers;
 using RelaxKonOS.App.Certificates;
 using RelaxKonOS.App.Docker;
@@ -54,7 +56,7 @@ internal static class FusedWorkspaceChecks
         var original = settings.ToPreferences();
         var login = new LoginLocalizationService(new LocalLanguageStore());
         var server = new ServerCenterViewModel(null!, null!, null!, null!, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), null!, null!, login);
-        var git = new GitClientViewModel(null!) { IsPickerMode = false };
+        var git = new GitClientViewModel(null!, LocalizedText.Get) { IsPickerMode = false };
         var serverView = new ServerCenterWorkspace { DataContext = server };
         using var gitProject = new ProjectEditorViewModel(git, null!, null, true);
         var gitView = GitClientWorkspace.Create(git, gitProject);

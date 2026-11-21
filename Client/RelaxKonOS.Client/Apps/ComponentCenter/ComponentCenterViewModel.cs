@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -327,7 +328,7 @@ public partial class ComponentCenterViewModel : ObservableObject, IDisposable
     public RelaxKonOS.App.WebServers.WebServerManagerViewModel? NginxSelection { get; set; }
     public bool ShowNginxSelection => SelectedDefinition?.ComponentId == "nginx" && NginxSelection is not null;
 
-    public RelaxKonOS.Client.Apps.Git.GitClientViewModel? GitEngine { get; set; }
+    public RelaxKonOS.App.Git.GitClientViewModel? GitEngine { get; set; }
     public bool ShowGitInstallation => SelectedDefinition?.ComponentId == "git" && HostPlatform == "windows" && GitEngine is not null;
     public LocalizedStatus GitStatusText => LocalizedStatus.Key(GitEngine?.IsGitAvailable == true
         ? "component_center.domain.available" : GitEngine?.IsGitInstallRequired == true

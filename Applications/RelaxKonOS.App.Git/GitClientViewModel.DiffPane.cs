@@ -1,10 +1,8 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.App.Git;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 /// <summary>
 /// The log page shows a file's diff beside the commit list instead of opening a window, so the
@@ -54,13 +52,13 @@ public sealed partial class GitClientViewModel
             var diff = await client.GetDiffAsync(SelectedRepository.Id, file.Path, staged: false, @ref: SelectedCommit.Sha);
             if (request != _inlineDiffRequest) return;
             FileDiff = diff;
-            InlineDiff = new GitDiffPresentation(diff, LocalizedText.Get);
+            InlineDiff = new GitDiffPresentation(diff, localize);
         }
         catch (Exception ex)
         {
             if (request != _inlineDiffRequest) return;
             CloseInlineDiff();
-            await NotifyAsync(LocalizedText.Format("git.vm.diff_failed_format_v2", ex.Message));
+            await NotifyAsync(FormatLabel("git.vm.diff_failed_format_v2", ex.Message));
             return;
         }
         finally

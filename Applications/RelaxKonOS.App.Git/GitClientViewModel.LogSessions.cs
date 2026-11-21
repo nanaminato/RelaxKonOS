@@ -1,8 +1,7 @@
 using System.Collections.ObjectModel;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -10,17 +9,17 @@ public sealed partial class GitClientViewModel
     private int _graphRequestVersion;
     public ObservableCollection<GitGraphCommitDto> GraphCommits { get; } = [];
     public Func<string, Task>? OpenFileHistoryTabAsync { get; set; }
-    internal Task<IReadOnlyList<GitConsoleEntryDto>> ReadConsoleAsync(long after, CancellationToken ct)
+    public Task<IReadOnlyList<GitConsoleEntryDto>> ReadConsoleAsync(long after, CancellationToken ct)
         => SelectedRepository is { } repo ? client.GetConsoleAsync(repo.Id, after, ct) : Task.FromResult<IReadOnlyList<GitConsoleEntryDto>>([]);
 
-    internal void CloseLogSession()
+    public void CloseLogSession()
     {
         Stop(); CloseInlineDiffCommand.Execute(null); SelectedRepository = null;
     }
 
-    internal GitClientViewModel CreateLogSession()
+    public GitClientViewModel CreateLogSession()
     {
-        var session = new GitClientViewModel(client)
+        var session = new GitClientViewModel(client, localize)
         {
             IsStarting = false, IsPickerMode = false, HasLoadedRepositories = true,
             RepositoryPathComparison = RepositoryPathComparison,
@@ -45,7 +44,7 @@ public sealed partial class GitClientViewModel
         session.RefreshEditorLocalization();
         return session;
     }
-    internal void CopyLogFiltersFrom(GitClientViewModel source)
+    public void CopyLogFiltersFrom(GitClientViewModel source)
     {
         _updatingLogFilterOptions = true;
         try
@@ -67,7 +66,7 @@ public sealed partial class GitClientViewModel
         try { await Task.WhenAll(graphTask, tagsTask); }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            throw new InvalidOperationException(LocalizedText.Get("git.log.metadata_unavailable"), ex);
+            throw new InvalidOperationException(localize("git.log.metadata_unavailable"), ex);
         }
         if (SelectedRepository?.Id != repository || SelectedLogBranch?.Value != reference || request != Volatile.Read(ref _graphRequestVersion)) return;
         GraphCommits.Clear(); foreach (var item in await graphTask) GraphCommits.Add(item);

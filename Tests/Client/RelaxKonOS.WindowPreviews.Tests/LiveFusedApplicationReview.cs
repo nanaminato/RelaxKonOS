@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
@@ -161,8 +162,8 @@ internal static class LiveFusedApplicationReview
         var gitWindow = windows.Windows.FirstOrDefault(window => window.Info.OwnerAppId.Value == "relaxkonos.git");
         if (gitWindow?.View.Content is Control gitRoot)
         {
-            var gitModel = gitRoot.DataContext as RelaxKonOS.Client.Apps.Git.GitClientViewModel
-                ?? gitRoot.GetVisualDescendants().OfType<Control>().Select(control => control.DataContext).OfType<RelaxKonOS.Client.Apps.Git.GitClientViewModel>().FirstOrDefault();
+            var gitModel = gitRoot.DataContext as RelaxKonOS.App.Git.GitClientViewModel
+                ?? gitRoot.GetVisualDescendants().OfType<Control>().Select(control => control.DataContext).OfType<RelaxKonOS.App.Git.GitClientViewModel>().FirstOrDefault();
             if (gitModel is { IsPickerMode: true } && gitModel.Repositories.FirstOrDefault() is { } repository)
             {
                 // Only open an existing registered repository; never create or modify one for QA.

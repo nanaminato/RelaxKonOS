@@ -1,20 +1,15 @@
-using RelaxKonOS.App.Git;
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -24,18 +19,18 @@ public sealed partial class GitClientViewModel
         if (SelectedRepository is null || branch is null) return;
         if (!await PrepareEditorAsync()) return;
         IsBusy = true;
-        StatusText = LocalizedText.Ref("git.vm.checkout_progress_format", branch.Name);
+        SetStatus("git.vm.checkout_progress_format", branch.Name);
         try
         {
             var result = await client.CheckoutAsync(SelectedRepository.Id, new GitCheckoutRequest(branch.Name));
             if (result.Success)
             {
-                StatusText = LocalizedText.Ref("git.vm.switched_to_format", branch.Name);
+                SetStatus("git.vm.switched_to_format", branch.Name);
                 await RefreshAllAsync();
             }
             else
             {
-                await NotifyAsync(LocalizedText.Format("git.vm.checkout_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.checkout_failed_format", result.Message));
                 if (result.Conflicts is not null && result.Conflicts.Count > 0)
                 {
                     await RefreshAllAsync();
@@ -43,7 +38,7 @@ public sealed partial class GitClientViewModel
                 }
             }
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -59,12 +54,12 @@ public sealed partial class GitClientViewModel
         {
             var result = await client.CreateBranchAsync(SelectedRepository.Id, request);
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.branch_created_format", request.Name);
+                SetStatus("git.vm.branch_created_format", request.Name);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -72,19 +67,19 @@ public sealed partial class GitClientViewModel
     private async Task DeleteBranchAsync(GitBranchDto branch)
     {
         if (SelectedRepository is null || branch is null || branch.IsCurrent) return;
-        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.delete_confirm_format", branch.Name)))
+        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(FormatLabel("git.vm.delete_confirm_format", branch.Name)))
             return;
         IsBusy = true;
         try
         {
             var result = await client.DeleteBranchAsync(SelectedRepository.Id, branch.Name);
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.branch_deleted_format", branch.Name);
+                SetStatus("git.vm.branch_deleted_format", branch.Name);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -112,25 +107,25 @@ public sealed partial class GitClientViewModel
                 var result = await client.CommitAsync(SelectedRepository.Id, request);
                 if (result.Success)
                 {
-                    StatusText = LocalizedText.Ref("git.status.committed");
+                    SetStatus("git.status.committed");
                     CommitMessage = string.Empty;
                     await RefreshAllAsync();
                     await ShowPushDialogAfterCommitAsync();
                 }
                 else
                 {
-                    await NotifyAsync(LocalizedText.Format("git.status.commit_failed_format", result.Message));
+                    await NotifyAsync(FormatLabel("git.status.commit_failed_format", result.Message));
                 }
             }
-            catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+            catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
             finally { IsBusy = false; }
         }
         else
         {
             if (SelectedCount == 0)
-                await NotifyAsync(LocalizedText.Get("git.status.no_files_selected"));
+                await NotifyAsync(localize("git.status.no_files_selected"));
             else if (string.IsNullOrWhiteSpace(CommitMessage))
-                await NotifyAsync(LocalizedText.Get("git.status.commit_message_required"));
+                await NotifyAsync(localize("git.status.commit_message_required"));
         }
     }
 
@@ -141,12 +136,12 @@ public sealed partial class GitClientViewModel
         if (SelectedRepository is null) return;
         if (SelectedCount == 0)
         {
-            await NotifyAsync(LocalizedText.Get("git.status.no_files_selected"));
+            await NotifyAsync(localize("git.status.no_files_selected"));
             return;
         }
         if (string.IsNullOrWhiteSpace(CommitMessage))
         {
-            await NotifyAsync(LocalizedText.Get("git.status.commit_message_required"));
+            await NotifyAsync(localize("git.status.commit_message_required"));
             return;
         }
         if (!await PrepareEditorAsync()) return;
@@ -157,17 +152,17 @@ public sealed partial class GitClientViewModel
             var result = await client.CommitAsync(SelectedRepository.Id, request);
             if (result.Success)
             {
-                StatusText = LocalizedText.Ref("git.status.committed");
+                SetStatus("git.status.committed");
                 CommitMessage = string.Empty;
                 await RefreshAllAsync();
                 await ShowPushDialogAfterCommitAsync();
             }
             else
             {
-                await NotifyAsync(LocalizedText.Format("git.status.commit_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.status.commit_failed_format", result.Message));
             }
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -190,27 +185,27 @@ public sealed partial class GitClientViewModel
         if (request is null) return;
         if (!await PrepareEditorAsync()) return;
         IsBusy = true;
-        StatusText = LocalizedText.Ref("git.vm.pull_progress");
+        SetStatus("git.vm.pull_progress");
         try
         {
             var result = await PullWithCredentialsAsync(request);
             if (result.Conflicts is { Count: > 0 })
             {
                 await RefreshAllAsync();
-                StatusText = LocalizedText.Ref("git.vm.merge_conflicts_format", result.Conflicts.Count);
+                SetStatus("git.vm.merge_conflicts_format", result.Conflicts.Count);
                 await PresentConflictResolutionAsync();
             }
             else if (result.RequiresCredentials)
-                await NotifyAsync(LocalizedText.Get("git.vm.credentials_required"));
+                await NotifyAsync(localize("git.vm.credentials_required"));
             else if (result.Success)
             {
                 await RefreshAllAsync();
-                StatusText = LocalizedText.Ref("git.vm.pulled");
+                SetStatus("git.vm.pulled");
             }
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.pull_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.pull_failed_format", result.Message));
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -232,7 +227,7 @@ public sealed partial class GitClientViewModel
                 await ExecutePushFromDialogAsync(null);
             }
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -246,7 +241,7 @@ public sealed partial class GitClientViewModel
             var remotes = await client.ListRemotesAsync(SelectedRepository.Id);
             if (remotes.Count == 0)
             {
-                await NotifyAsync(LocalizedText.Get("git.remotes.empty"));
+                await NotifyAsync(localize("git.remotes.empty"));
                 return;
             }
             var succeeded = true;
@@ -255,13 +250,13 @@ public sealed partial class GitClientViewModel
                 var result = await FetchWithCredentialsAsync(new(remote.Name));
                 if (result.Success) continue;
                 succeeded = false;
-                await NotifyAsync(LocalizedText.Format("git.vm.failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.failed_format", result.Message));
                 break;
             }
-            if (succeeded) StatusText = LocalizedText.Ref("git.vm.fetched");
+            if (succeeded) SetStatus("git.vm.fetched");
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -284,14 +279,14 @@ public sealed partial class GitClientViewModel
             if (ShowFileDiffAsync is not null)
                 await ShowFileDiffAsync(owner, FileDiff);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.diff_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.diff_failed_format", ex.Message)); }
     }
 
     [RelayCommand(CanExecute = nameof(CanManage))]
     private async Task RevertAsync(GitCommitDto commit)
     {
         if (SelectedRepository is null || commit is null) return;
-        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.revert_confirm_format", commit.ShortSha)))
+        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(FormatLabel("git.vm.revert_confirm_format", commit.ShortSha)))
             return;
         if (!await PrepareEditorAsync()) return;
         IsBusy = true;
@@ -299,17 +294,17 @@ public sealed partial class GitClientViewModel
         {
             var result = await client.RevertAsync(SelectedRepository.Id, new GitRevertRequest(commit.Sha));
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.reverted");
+                SetStatus("git.vm.reverted");
             if (result.Conflicts is not null && result.Conflicts.Count > 0)
             {
                 await RefreshAllAsync();
                 await PresentConflictResolutionAsync();
             }
             else if (!result.Success)
-                await NotifyAsync(LocalizedText.Format("git.vm.revert_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.revert_failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -323,12 +318,12 @@ public sealed partial class GitClientViewModel
         {
             var result = await client.StageAsync(SelectedRepository.Id, new GitStageRequest([file.Path]));
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.staged_format", file.Path);
+                SetStatus("git.vm.staged_format", file.Path);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.stage_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.stage_failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.stage_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.stage_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -376,7 +371,7 @@ public sealed partial class GitClientViewModel
     private async Task RefreshChangesAsync()
     {
         await RefreshStatusAsync();
-        StatusText = LocalizedText.Ref("git.status.refreshed_changes", Changes.Count);
+        SetStatus("git.status.refreshed_changes", Changes.Count);
     }
 
     /// <summary>Rebuilds the Changes list from UnstagedFiles + UntrackedFiles, preserving selection state.</summary>

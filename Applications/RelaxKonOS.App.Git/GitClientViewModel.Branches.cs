@@ -1,19 +1,15 @@
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -56,12 +52,12 @@ public sealed partial class GitClientViewModel
             var result = await client.CreateBranchAsync(SelectedRepository.Id,
                 request with { StartPoint = startPoint });
             if (result.Success)
-                StatusText = LocalizedText.Ref("git.vm.branch_created_format", request.Name);
+                SetStatus("git.vm.branch_created_format", request.Name);
             else
-                await NotifyAsync(LocalizedText.Format("git.vm.create_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.create_failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.create_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.create_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -78,7 +74,7 @@ public sealed partial class GitClientViewModel
     {
         branch ??= SelectedBranch;
         if (branch is null || SelectedRepository is null) return;
-        if (branch.IsRemote) { await NotifyAsync(LocalizedText.Get("git.vm.rename_remote_branch")); return; }
+        if (branch.IsRemote) { await NotifyAsync(localize("git.vm.rename_remote_branch")); return; }
 
         // 弹输入框取新名称；对话框未接入壳时走二次确认+占位提示（服务端接口已就绪）
         string? newName = null;
@@ -87,7 +83,7 @@ public sealed partial class GitClientViewModel
         else if (ShowConfirmAsync is not null)
         {
             // 壳暂未注入重命名输入对话框时，降级为直接尝试一个合理默认行为：追加 "-2" 后缀（便于先跑通接口链路）
-            if (!await ShowConfirmAsync(LocalizedText.Format("git.vm.rename_confirm_format", branch.Name)))
+            if (!await ShowConfirmAsync(FormatLabel("git.vm.rename_confirm_format", branch.Name)))
                 return;
             newName = $"{branch.Name}-2";
         }
@@ -100,15 +96,15 @@ public sealed partial class GitClientViewModel
                 new GitBranchRenameRequest(newName));
             if (result.Success)
             {
-                StatusText = LocalizedText.Ref("git.vm.renamed_format", branch.Name, newName);
+                SetStatus("git.vm.renamed_format", branch.Name, newName);
                 await RefreshAllAsync();
             }
             else
             {
-                await NotifyAsync(LocalizedText.Format("git.vm.rename_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.rename_failed_format", result.Message));
             }
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.rename_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.rename_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -129,7 +125,7 @@ public sealed partial class GitClientViewModel
             // 默认策略：普通 merge（非 ff-only / squash），让 git 根据仓库配置决定是否生成合并提交
             request = new GitMergeRequest(branch.Name);
             if (ShowConfirmAsync is not null
-                && !await ShowConfirmAsync(LocalizedText.Format("git.vm.merge_confirm_format", branch.Name)))
+                && !await ShowConfirmAsync(FormatLabel("git.vm.merge_confirm_format", branch.Name)))
                 return;
         }
 
@@ -141,22 +137,22 @@ public sealed partial class GitClientViewModel
             var result = await client.MergeBranchAsync(SelectedRepository.Id, request);
             if (result.Conflicts is not null && result.Conflicts.Count > 0)
             {
-                StatusText = LocalizedText.Ref("git.vm.merge_conflicts_format", result.Conflicts.Count);
+                SetStatus("git.vm.merge_conflicts_format", result.Conflicts.Count);
                 HasConflicts = true;
                 await RefreshAllAsync();
                 await PresentConflictResolutionAsync();
             }
             else if (result.Success)
             {
-                StatusText = LocalizedText.Ref("git.vm.merged_format", request.Source);
+                SetStatus("git.vm.merged_format", request.Source);
                 await RefreshAllAsync();
             }
             else
             {
-                await NotifyAsync(LocalizedText.Format("git.vm.merge_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.merge_failed_format", result.Message));
             }
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.merge_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.merge_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -179,12 +175,12 @@ public sealed partial class GitClientViewModel
                 string.Empty,
                 string.Empty,
                 string.Empty,
-                LocalizedText.Format("git.vm.branch_comparison_title_format", comparison.Branch),
+                FormatLabel("git.vm.branch_comparison_title_format", comparison.Branch),
                 [],
                 comparison.ChangedFiles);
-            StatusText = LocalizedText.Ref("git.vm.branch_comparison_loaded_format", comparison.Branch, comparison.ChangedFiles.Count);
+            SetStatus("git.vm.branch_comparison_loaded_format", comparison.Branch, comparison.ChangedFiles.Count);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.branch_comparison_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.branch_comparison_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -201,7 +197,7 @@ public sealed partial class GitClientViewModel
     {
         branch ??= SelectedBranch;
         if (branch is null) return;
-        if (branch.IsRemote) { await NotifyAsync(LocalizedText.Get("git.vm.cannot_push_remote")); return; }
+        if (branch.IsRemote) { await NotifyAsync(localize("git.vm.cannot_push_remote")); return; }
         IsBusy = true;
         try
         {
@@ -211,7 +207,7 @@ public sealed partial class GitClientViewModel
             else
                 await ExecutePushFromDialogAsync(null);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -240,15 +236,15 @@ public sealed partial class GitClientViewModel
                 }
                 else if (result.Success)
                 {
-                    StatusText = LocalizedText.Ref("git.vm.pulled");
+                    SetStatus("git.vm.pulled");
                     await RefreshAllAsync();
                 }
                 else
                 {
-                    await NotifyAsync(LocalizedText.Format("git.vm.pull_failed_format", result.Message));
+                    await NotifyAsync(FormatLabel("git.vm.pull_failed_format", result.Message));
                 }
             }
-            catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.pull_failed_format", ex.Message)); }
+            catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.pull_failed_format", ex.Message)); }
             finally { IsBusy = false; }
             return;
         }
@@ -256,7 +252,7 @@ public sealed partial class GitClientViewModel
         var slash = branch.Name.IndexOf('/');
         if (slash <= 0 || slash == branch.Name.Length - 1)
         {
-            await NotifyAsync(LocalizedText.Get("git.vm.invalid_remote_branch"));
+            await NotifyAsync(localize("git.vm.invalid_remote_branch"));
             return;
         }
 
@@ -274,7 +270,7 @@ public sealed partial class GitClientViewModel
                 request with { Remote = branch.Name[..slash], Refspec = branch.Name[(slash + 1)..] });
             if (result.Success)
             {
-                StatusText = LocalizedText.Ref("git.vm.pulled");
+                SetStatus("git.vm.pulled");
                 await RefreshAllAsync();
             }
             else if (result.Conflicts is not null && result.Conflicts.Count > 0)
@@ -285,10 +281,10 @@ public sealed partial class GitClientViewModel
             }
             else
             {
-                await NotifyAsync(LocalizedText.Format("git.vm.pull_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.pull_failed_format", result.Message));
             }
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.pull_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.pull_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -300,7 +296,7 @@ public sealed partial class GitClientViewModel
     {
         branch ??= SelectedBranch;
         if (branch is null || SelectedRepository is null) return;
-        if (branch.IsRemote) { await NotifyAsync(LocalizedText.Get("git.vm.cannot_set_tracking_remote")); return; }
+        if (branch.IsRemote) { await NotifyAsync(localize("git.vm.cannot_set_tracking_remote")); return; }
 
         GitBranchTrackingRequest? request;
         if (ShowSetTrackingDialogAsync is not null)
@@ -311,7 +307,7 @@ public sealed partial class GitClientViewModel
         else
         {
             // 默认：若分支名形式为 "origin/foo" 则尝试匹配远程分支；否则自动绑定 origin/<same-name>
-            if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.vm.set_tracking_confirm_format", branch.Name)))
+            if (ShowConfirmAsync is not null && !await ShowConfirmAsync(FormatLabel("git.vm.set_tracking_confirm_format", branch.Name)))
                 return;
             request = new GitBranchTrackingRequest(Remote: "origin", Branch: branch.Name);
         }
@@ -326,17 +322,17 @@ public sealed partial class GitClientViewModel
                             && string.IsNullOrWhiteSpace(request.Remote)
                             && string.IsNullOrWhiteSpace(request.Branch);
                 StatusText = unset
-                    ? LocalizedText.Format("git.vm.tracking_unset_format", branch.Name)
-                    : LocalizedText.Format("git.vm.tracking_set_format", branch.Name,
+                    ? FormatLabel("git.vm.tracking_unset_format", branch.Name)
+                    : FormatLabel("git.vm.tracking_set_format", branch.Name,
                         string.IsNullOrWhiteSpace(request.Upstream) ? $"{request.Remote}/{request.Branch}" : request.Upstream);
                 await RefreshAllAsync();
             }
             else
             {
-                await NotifyAsync(LocalizedText.Format("git.vm.set_tracking_failed_format", result.Message));
+                await NotifyAsync(FormatLabel("git.vm.set_tracking_failed_format", result.Message));
             }
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.set_tracking_failed_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.vm.set_tracking_failed_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 

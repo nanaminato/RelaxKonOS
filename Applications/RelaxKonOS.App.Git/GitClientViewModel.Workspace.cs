@@ -1,9 +1,8 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed record GitInputField(string LabelKey, string Value = "", bool Required = true);
 
@@ -54,7 +53,7 @@ public sealed partial class GitClientViewModel
             Stashes.Clear(); foreach (var stash in await stashes) Stashes.Add(stash);
             Worktrees.Clear(); foreach (var tree in await trees) Worktrees.Add(tree);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
     }
 
     public async Task RefreshBranchReferencesAsync()
@@ -75,7 +74,7 @@ public sealed partial class GitClientViewModel
         catch (Exception ex)
         {
             if (ReferenceEquals(SelectedRepository, repo))
-                await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message));
+                await NotifyAsync(FormatLabel("git.status.error_format", ex.Message));
         }
     }
 
@@ -88,13 +87,13 @@ public sealed partial class GitClientViewModel
         try
         {
             var result = await action(repo.Id);
-            if (!result.Success) await NotifyAsync(LocalizedText.Format("git.vm.failed_format", result.Message));
-            else StatusText = LocalizedText.Ref("git.workspace.completed");
+            if (!result.Success) await NotifyAsync(FormatLabel("git.vm.failed_format", result.Message));
+            else SetStatus("git.workspace.completed");
             await RefreshAllAsync();
             await RefreshWorkspaceReferencesAsync();
             if (result.Conflicts is { Count: > 0 }) await PresentConflictResolutionAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
@@ -126,7 +125,7 @@ public sealed partial class GitClientViewModel
     }
     private async Task RebaseReferenceAsync(GitRepositoryDto? repo, string reference)
     {
-        if (ShowConfirmAsync is null || !await ShowConfirmAsync(LocalizedText.Format("git.workspace.rebase_confirm", reference))) return;
+        if (ShowConfirmAsync is null || !await ShowConfirmAsync(FormatLabel("git.workspace.rebase_confirm", reference))) return;
         await ExecuteWorkspaceOperationAsync(repo, id => client.RebaseAsync(id, new(reference)));
     }
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -143,7 +142,7 @@ public sealed partial class GitClientViewModel
         var repo = SelectedRepository;
         var values = await InputAsync("git.workspace.reset", new GitInputField("git.workspace.reference", "HEAD"), new GitInputField("git.workspace.reset_mode", "mixed"));
         if (values is null || values[1] is not ("soft" or "mixed")) return;
-        if (ShowConfirmAsync is null || !await ShowConfirmAsync(LocalizedText.Format("git.vm.reset_confirm_format", values[0]))) return;
+        if (ShowConfirmAsync is null || !await ShowConfirmAsync(FormatLabel("git.vm.reset_confirm_format", values[0]))) return;
         await ExecuteWorkspaceOperationAsync(repo, id => client.ResetAsync(id, new(values[0], values[1])));
     }
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -157,7 +156,7 @@ public sealed partial class GitClientViewModel
     private async Task RemoveWorktreeAsync(GitWorktreeDto? tree)
     {
         var repo = SelectedRepository;
-        if (tree is null || ShowConfirmAsync is null || !await ShowConfirmAsync(LocalizedText.Format("git.workspace.remove_worktree_confirm", tree.Path))) return;
+        if (tree is null || ShowConfirmAsync is null || !await ShowConfirmAsync(FormatLabel("git.workspace.remove_worktree_confirm", tree.Path))) return;
         await ExecuteWorkspaceOperationAsync(repo, id => client.RemoveWorktreeAsync(id, new(tree.Path)), false);
     }
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -177,7 +176,7 @@ public sealed partial class GitClientViewModel
     {
         var repo = SelectedRepository;
         if (stash is null) return;
-        if (action == "drop" && (ShowConfirmAsync is null || !await ShowConfirmAsync(LocalizedText.Format("git.workspace.stash_drop_confirm", stash.Message)))) return;
+        if (action == "drop" && (ShowConfirmAsync is null || !await ShowConfirmAsync(FormatLabel("git.workspace.stash_drop_confirm", stash.Message)))) return;
         await ExecuteWorkspaceOperationAsync(repo, id => client.StashAsync(id, new(action, stash.Sha)), action != "drop");
     }
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -198,10 +197,10 @@ public sealed partial class GitClientViewModel
         try
         {
             var patch = await client.ExportPatchAsync(repo.Id, request);
-            if (string.IsNullOrEmpty(patch.Patch)) { await NotifyAsync(LocalizedText.Get("git.workspace.no_patch")); return; }
+            if (string.IsNullOrEmpty(patch.Patch)) { await NotifyAsync(localize("git.workspace.no_patch")); return; }
             await OpenPatchAsync(patch.Patch);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
     [RelayCommand(CanExecute = nameof(CanOpenProject))]
@@ -212,7 +211,7 @@ public sealed partial class GitClientViewModel
         if (values is null || !CanOpenProject || !await PrepareEditorAsync()) return;
         IsBusy = true;
         try { await CreatePlainProjectAsync(values[0]); }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
     [RelayCommand(CanExecute = nameof(CanOpenProject))]
@@ -233,13 +232,13 @@ public sealed partial class GitClientViewModel
             }
             if (!result.Result.Success || result.Repository is null)
             {
-                await NotifyAsync(LocalizedText.Format("git.vm.failed_format", result.Result.Message));
+                await NotifyAsync(FormatLabel("git.vm.failed_format", result.Result.Message));
                 return;
             }
             repo = result.Repository;
             if (!Repositories.Any(item => item.Id == repo.Id)) Repositories.Add(repo);
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
         if (repo is not null) await OpenProjectAsync(repo);
     }

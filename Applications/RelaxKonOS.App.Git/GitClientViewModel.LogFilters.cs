@@ -1,19 +1,15 @@
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -36,7 +32,7 @@ public sealed partial class GitClientViewModel
         catch (Exception ex)
         {
             if (requestVersion == Volatile.Read(ref _logFilterRequestVersion))
-                StatusText = LocalizedText.Ref("git.vm.refresh_failed_format", ex.Message);
+                SetStatus("git.vm.refresh_failed_format", ex.Message);
         }
     }
 
@@ -67,7 +63,7 @@ public sealed partial class GitClientViewModel
         try
         {
             LogBranchOptions.Clear();
-            LogBranchOptions.Add(new GitLogFilterOption(string.Empty, LocalizedText.Get("git.log.all_values")));
+            LogBranchOptions.Add(new GitLogFilterOption(string.Empty, localize("git.log.all_values")));
             foreach (var branch in Branches.OrderBy(branch => branch.IsRemote).ThenBy(branch => branch.Name, StringComparer.OrdinalIgnoreCase))
                 LogBranchOptions.Add(new GitLogFilterOption(branch.Name, branch.Name));
             foreach (var tag in Tags.OrderBy(tag => tag.Name, StringComparer.OrdinalIgnoreCase)) LogBranchOptions.Add(new("refs/tags/" + tag.Name, tag.Name));
@@ -90,7 +86,7 @@ public sealed partial class GitClientViewModel
         try
         {
             LogAuthorOptions.Clear();
-            LogAuthorOptions.Add(new GitLogFilterOption(string.Empty, LocalizedText.Get("git.log.all_values")));
+            LogAuthorOptions.Add(new GitLogFilterOption(string.Empty, localize("git.log.all_values")));
             foreach (var author in knownAuthors)
                 LogAuthorOptions.Add(new GitLogFilterOption(author, author));
             SelectedLogAuthor = LogAuthorOptions.FirstOrDefault(option => option.Value == selectedValue)
@@ -125,7 +121,7 @@ public sealed partial class GitClientViewModel
         {
             LogDateOptions.Clear();
             foreach (var range in new[] { "all", "today", "week", "month" })
-                LogDateOptions.Add(new(range, LocalizedText.Get($"git.editor.date_{range}")));
+                LogDateOptions.Add(new(range, localize($"git.editor.date_{range}")));
             SelectedLogDate = LogDateOptions.First(item => item.Value == date);
         }
         finally { _updatingLogFilterOptions = false; }

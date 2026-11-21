@@ -1,21 +1,17 @@
-using RelaxKonOS.App.Git;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public enum GitClientPage { Overview, Workspace, Log, Remotes }
 
@@ -24,11 +20,8 @@ public sealed record GitLogFilterOption(string Value, string Label);
 
 /// <summary>State and typed operations for the Git RelaxKonOS.Client. Uses DispatcherTimer (10s) for status refresh with Interlocked reentrancy guard.
 /// Each window owns its own ViewModel instance — supports multiple projects open simultaneously (MultiWindow instance policy).</summary>
-public sealed partial class GitClientViewModel(IServerGit client) : ObservableObject
+public sealed partial class GitClientViewModel(IServerGit client, Func<string, string> localize) : ObservableObject
 {
-    /// <summary>Git installation lives in Component Center; settings only observes and navigates.</summary>
-    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
-
     public Func<GitRepositoryDto, Task<bool>>? OpenEditorProjectAsync { get; set; }
     public Func<string, Task>? OpenPlainFolderAsync { get; set; }
     public Func<Task<bool>>? PrepareEditorOperationAsync { get; set; }
@@ -63,7 +56,7 @@ public sealed partial class GitClientViewModel(IServerGit client) : ObservableOb
     public ObservableCollection<GitLogFilterOption> LogAuthorOptions { get; } = [];
     public ObservableCollection<GitLogFilterOption> LogDateOptions { get; } =
         [.. new[] { "all", "today", "week", "month" }
-            .Select(range => new GitLogFilterOption(range, LocalizedText.Get($"git.editor.date_{range}")))];
+            .Select(range => new GitLogFilterOption(range, localize($"git.editor.date_{range}")))];
 
     /// <summary>Files shown in the Changes list (union of unstaged + untracked, excluding .gitignored).</summary>
     public ObservableCollection<GitFileChangeItem> Changes { get; } = [];
@@ -100,7 +93,29 @@ public sealed partial class GitClientViewModel(IServerGit client) : ObservableOb
     [ObservableProperty] private GitFileChangeDto? _selectedFile;
     [ObservableProperty] private GitDiffDto? _fileDiff;
     [ObservableProperty] private GitRemoteDto? _selectedRemote;
-    [ObservableProperty] private LocalizedStatus _statusText;
+    private string _literalStatus = string.Empty;
+    private (string Key, object?[] Arguments)? _localizedStatus;
+
+    public string StatusText
+    {
+        get => _localizedStatus is { } status ? FormatLabel(status.Key, status.Arguments) : _literalStatus;
+        set
+        {
+            _localizedStatus = null;
+            _literalStatus = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private void SetStatus(string key, params object?[] arguments)
+    {
+        _localizedStatus = (key, arguments);
+        OnPropertyChanged(nameof(StatusText));
+    }
+
+    private string FormatLabel(string key, params object?[] arguments) => arguments.Length == 0
+        ? localize(key)
+        : string.Format(CultureInfo.CurrentCulture, localize(key), arguments);
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanManage), nameof(CanOpenProject))]
     [NotifyCanExecuteChangedFor(nameof(ApplyPatchFileCommand), nameof(CheckoutReferenceCommand), nameof(OpenWorktreeCommand), nameof(NewTagCommand), nameof(RebaseOntoCommand), nameof(MergeIntoHeadCommand), nameof(ResetHeadCommand), nameof(NewWorktreeCommand), nameof(RemoveWorktreeCommand), nameof(SaveStashCommand), nameof(ApplyStashCommand), nameof(PopStashCommand), nameof(DropStashCommand), nameof(ExportWorkingPatchCommand), nameof(CloneRepositoryCommand), nameof(NewProjectCommand), nameof(OpenProjectCommand), nameof(OpenFolderCommand), nameof(RegisterRepositoryCommand))]
@@ -144,7 +159,7 @@ public sealed partial class GitClientViewModel(IServerGit client) : ObservableOb
     public bool PushAllCommitsActive => !PushHasSelectedCommit;
     public string PushBranchLineText => string.IsNullOrWhiteSpace(PushSelectedRemote) || string.IsNullOrWhiteSpace(PushSelectedBranch)
         ? string.Empty
-        : LocalizedText.Format("git.dialog.push.branch_line_format", PushLocalBranchName, PushSelectedRemote, PushSelectedBranch);
+        : FormatLabel("git.dialog.push.branch_line_format", PushLocalBranchName, PushSelectedRemote, PushSelectedBranch);
     public int PushFileCount => PushChangedFiles.Count;
     /// <summary>Ahead total reported by the server; the materialized <see cref="PushCommits"/> list is capped.</summary>
     public int PushCommitCount => _pushAheadCount;
@@ -246,7 +261,7 @@ public sealed partial class GitClientViewModel(IServerGit client) : ObservableOb
             if (!IsGitAvailable)
             {
                 IsGitInstallRequired = IsInstallRequired(IsGitAvailable, ProblemCode);
-                StatusText = LocalizedText.Ref("git.vm.git_unavailable");
+                SetStatus("git.vm.git_unavailable");
                 if (ShowGitUnavailableAsync is not null)
                     await ShowGitUnavailableAsync();
                 if (!IsGitAvailable) return; // still unavailable after dialog → stop further init
@@ -255,9 +270,9 @@ public sealed partial class GitClientViewModel(IServerGit client) : ObservableOb
             await RefreshRepositoriesAsync();
             Log($"项目列表: Repositories.Count={Repositories.Count} IsPickerMode={IsPickerMode}");
             if (RepositoryLoadError is null)
-                StatusText = IsPickerMode
-                ? (Repositories.Count > 0 ? LocalizedText.Ref("git.status.select_project") : LocalizedText.Ref("git.status.click_open_folder"))
-                : LocalizedText.Ref("git.status.ready");
+                SetStatus(IsPickerMode
+                    ? Repositories.Count > 0 ? "git.status.select_project" : "git.status.click_open_folder"
+                    : "git.status.ready");
 
             if (!IsPickerMode && IsAutoRefresh)
                 StartStatusTimer();
@@ -300,8 +315,8 @@ public sealed partial class GitClientViewModel(IServerGit client) : ObservableOb
         }
         catch (Exception ex)
         {
-            RepositoryLoadError = LocalizedText.Format("git.vm.load_repositories_failed_format", ex.Message);
-            StatusText = LocalizedText.Ref("git.vm.load_repositories_failed_format", ex.Message);
+            RepositoryLoadError = FormatLabel("git.vm.load_repositories_failed_format", ex.Message);
+            SetStatus("git.vm.load_repositories_failed_format", ex.Message);
             Log($"RefreshRepositoriesAsync 异常：{ex.GetType().Name} {ex.Message}\n{ex.StackTrace}");
         }
         finally { IsLoadingRepositories = false; }
@@ -361,11 +376,11 @@ public sealed partial class GitClientViewModel(IServerGit client) : ObservableOb
             await RefreshLogMetadataAsync(repository.Id);
             await RefreshConflictStateAsync();
             RebuildChangesList();
-            StatusText = LocalizedText.Ref("git.status.ready_branch_format", Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
+            SetStatus("git.status.ready_branch_format", Status?.Branch ?? localize("git.status.unknown_branch"));
         }
         catch (Exception ex)
         {
-            StatusText = LocalizedText.Ref("git.vm.refresh_failed_format", ex.Message);
+            SetStatus("git.vm.refresh_failed_format", ex.Message);
             Log($"RefreshAllAsync 异常：{ex.GetType().Name} {ex.Message}\n{ex.StackTrace}");
         }
         finally
@@ -425,7 +440,7 @@ public sealed partial class GitClientViewModel(IServerGit client) : ObservableOb
             EngineVersion = "—";
             EnginePath = "—";
             IsGitInstallRequired = false;
-            StatusText = LocalizedText.Ref("git.vm.engine_check_failed_format", ex.Message);
+            SetStatus("git.vm.engine_check_failed_format", ex.Message);
         }
     }
 
@@ -444,7 +459,7 @@ public sealed partial class GitClientViewModel(IServerGit client) : ObservableOb
     }
 
     /// <summary>Writes [TRACE] logs to the Debug Output window only — does not touch user-facing StatusText.
-    /// StatusText should be set via LocalizedText.Get/Format so it remains localized and stable.</summary>
+    /// Use SetStatus for messages that follow display-language changes.</summary>
     private void Log(string message)
     {
         System.Diagnostics.Debug.WriteLine($"[TRACE] {message}");
@@ -465,7 +480,7 @@ public sealed partial class GitClientViewModel(IServerGit client) : ObservableOb
         catch (Exception ex)
         {
             // Keep the history list usable if this individual detail request fails.
-            StatusText = LocalizedText.Ref("git.vm.load_commit_detail_failed_format", ex.Message);
+            SetStatus("git.vm.load_commit_detail_failed_format", ex.Message);
         }
     }
 

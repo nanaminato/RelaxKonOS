@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git;
 using RelaxKonOS.App.Git.Views;
 using RelaxKonOS.AppSDK;
 using Avalonia.Headless;
@@ -34,7 +35,7 @@ internal static class GitDockChecks
         var remote = (DockGitClient)(object)api;
         var files = DispatchProxy.Create<IExplorerClient, ProjectFiles>();
         ((ProjectFiles)(object)files).Directories.Add("/dock");
-        var vm = new GitClientViewModel(api) { IsStarting = false, HasLoadedRepositories = true };
+        var vm = new GitClientViewModel(api, LocalizedText.Get) { IsStarting = false, HasLoadedRepositories = true };
         using var project = new ProjectEditorViewModel(vm, api, files, true);
         var view = GitClientWorkspace.Create(vm, project);
         var host = new Window { Width = 1475, Height = 670, Content = view };

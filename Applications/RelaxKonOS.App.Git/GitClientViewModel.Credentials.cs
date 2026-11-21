@@ -1,11 +1,10 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 public sealed partial class GitClientViewModel
 {
@@ -76,7 +75,7 @@ public sealed partial class GitClientViewModel
             var account = await client.SaveCredentialAccountAsync(new(CredentialHost, CredentialUsername,
                 token.Length == 0 ? null : token, CredentialDefault));
             await LoadCredentialAccountsAsync(account.Id);
-            CredentialAccountsMessage = LocalizedText.Get("git.accounts.saved");
+            CredentialAccountsMessage = localize("git.accounts.saved");
         }
         catch (Exception ex) { CredentialAccountsMessage = ex.Message; }
         finally { CredentialAccountsBusy = false; }
@@ -92,7 +91,7 @@ public sealed partial class GitClientViewModel
         {
             await client.SaveCredentialAccountAsync(new(account.Host, account.Username, IsDefault: true));
             await LoadCredentialAccountsAsync(account.Id);
-            CredentialAccountsMessage = LocalizedText.Get("git.accounts.saved");
+            CredentialAccountsMessage = localize("git.accounts.saved");
         }
         catch (Exception ex) { CredentialAccountsMessage = ex.Message; }
         finally { CredentialAccountsBusy = false; }
@@ -103,14 +102,14 @@ public sealed partial class GitClientViewModel
     {
         var account = SelectedCredentialAccount;
         if (account is null || CredentialAccountsBusy) return;
-        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(LocalizedText.Format("git.accounts.delete_confirm", account.Username, account.Host))) return;
+        if (ShowConfirmAsync is not null && !await ShowConfirmAsync(FormatLabel("git.accounts.delete_confirm", account.Username, account.Host))) return;
         CredentialAccountsBusy = true;
         try
         {
             await client.DeleteCredentialAccountAsync(account.Id);
             await LoadCredentialAccountsAsync();
             NewCredentialAccount();
-            CredentialAccountsMessage = LocalizedText.Get("git.accounts.deleted");
+            CredentialAccountsMessage = localize("git.accounts.deleted");
         }
         catch (Exception ex) { CredentialAccountsMessage = ex.Message; }
         finally { CredentialAccountsBusy = false; }
@@ -125,11 +124,11 @@ public sealed partial class GitClientViewModel
         try
         {
             var result = await FetchWithCredentialsAsync(new(remote.Name));
-            if (result.Success) StatusText = LocalizedText.Ref("git.vm.fetched");
-            else await NotifyAsync(LocalizedText.Format("git.vm.failed_format", result.Message));
+            if (result.Success) SetStatus("git.vm.fetched");
+            else await NotifyAsync(FormatLabel("git.vm.failed_format", result.Message));
             await RefreshAllAsync();
         }
-        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
+        catch (Exception ex) { await NotifyAsync(FormatLabel("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
     }
 
