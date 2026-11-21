@@ -1,3 +1,4 @@
+using RelaxKonOS.UI.Imaging;
 using System.Reflection;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Models;

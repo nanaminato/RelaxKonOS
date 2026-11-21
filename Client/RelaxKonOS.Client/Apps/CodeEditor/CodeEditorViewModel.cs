@@ -431,11 +431,11 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             }
             // A missing file leaves every open tab untouched instead of clearing the editor.
             if (bytes is null) { StatusText = LocalizedText.Ref("code_editor.status.file_missing"); return; }
-            var encoding = existing?.EncodingName ?? CodeEditorFileContent.DetectEncoding(bytes, DefaultEncodingName);
+            var encoding = existing?.EncodingName ?? EditorFileContent.DetectEncoding(bytes, DefaultEncodingName);
             IImage? image = null;
             var text = string.Empty;
             var contentKind = CodeEditorContentKind.Text;
-            if (CodeEditorFileContent.IsImage(path))
+            if (EditorFileContent.IsImage(path))
             {
                 var svg = string.Equals(Path.GetExtension(path), ".svg", StringComparison.OrdinalIgnoreCase);
                 try
@@ -453,7 +453,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
             else
             {
                 text = TextFileEncodings.Decode(bytes, encoding);
-                if (CodeEditorFileContent.IsBinary(path, text))
+                if (EditorFileContent.IsBinary(path, text))
                 {
                     contentKind = CodeEditorContentKind.Binary;
                     text = string.Empty;
@@ -716,7 +716,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
                 if (bytes is not null && !document.IsDirty && document.ContentKind == CodeEditorContentKind.Text)
                 {
                     var text = TextFileEncodings.Decode(bytes, document.EncodingName);
-                    if (CodeEditorFileContent.IsBinary(path, text)) document.IsReadOnly = true;
+                    if (EditorFileContent.IsBinary(path, text)) document.IsReadOnly = true;
                     else
                     {
                         document.Text = text;

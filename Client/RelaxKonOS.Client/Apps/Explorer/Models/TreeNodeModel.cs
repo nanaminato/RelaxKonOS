@@ -1,3 +1,4 @@
+using RelaxKonOS.UI.Imaging;
 // 懒加载 + dummy child 模式移植自 Jaya TreeNodeModel（BSD-3）。
 // Copyright (c) 2020, Rubal Walia. 原始许可见 LICENSE-jaya.txt 与 THIRD_PARTY_NOTICES.md。
 using System.Collections.ObjectModel;

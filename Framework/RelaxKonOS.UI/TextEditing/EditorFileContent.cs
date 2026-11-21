@@ -1,11 +1,9 @@
-using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.UI.Imaging;
-using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.UI.TextEditing;
 
-internal static class CodeEditorFileContent
+public static class EditorFileContent
 {
     public static bool IsImage(string path) => ImageDecoder.SupportedExtensions.Contains(
         Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);

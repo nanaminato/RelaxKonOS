@@ -1,6 +1,6 @@
 using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.Client.Apps.Explorer.Models;
+namespace RelaxKonOS.UI.Imaging;
 
 /// <summary>Visual categories used by Explorer's extension-aware vector icons.</summary>
 public enum ExplorerFileIconKind
@@ -36,7 +36,8 @@ public static class ExplorerFileIconKindResolver
         if (type == FileSystemEntryType.Drive) return ExplorerFileIconKind.Drive;
         if (type == FileSystemEntryType.Directory) return ExplorerFileIconKind.Folder;
 
-        var extension = ExplorerPath.Extension(name ?? string.Empty).ToLowerInvariant();
+        var dot = name?.LastIndexOf('.') ?? -1;
+        var extension = dot < 0 ? string.Empty : name![dot..].ToLowerInvariant();
         return extension switch
         {
             // Office and reading

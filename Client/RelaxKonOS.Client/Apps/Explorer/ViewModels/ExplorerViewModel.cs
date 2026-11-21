@@ -1,3 +1,4 @@
+using RelaxKonOS.UI.Imaging;
 // 数据流移植自 Jaya ExplorerViewModel / NavigationViewModel / AddressbarViewModel / ToolbarViewModel /
 // StatusbarViewModel（BSD-3），合并为单一 VM 适配 RelaxKonOS DI 约定（去 ServiceLocator/EventAggregator）。
 // Copyright (c) 2020, Rubal Walia. 原始许可见 LICENSE-jaya.txt 与 THIRD_PARTY_NOTICES.md。
