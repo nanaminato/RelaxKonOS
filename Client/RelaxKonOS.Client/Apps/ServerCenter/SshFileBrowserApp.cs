@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.ServerCenter.Views;
 using RelaxKonOS.Client.Services.ServerCenter;
-using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
@@ -23,13 +22,21 @@ public sealed class SshFileBrowserApp : RemoteApplicationBase
     {
         var session = context.Services.GetRequiredService<SshDesktopSession>();
         if (!session.IsConnected) return;
-        var codeEditor = context.Services.GetRequiredService<CodeEditorApp>();
         var applications = context.Services.GetRequiredService<ApplicationManager>();
         var imageViewerId = new AppId("relaxkonos.imageviewer");
+        var codeEditorId = new AppId("relaxkonos.codeeditor");
+
+        AppId? FindFileHandler(string path)
+        {
+            if (applications.SupportsFile(imageViewerId, path)) return imageViewerId;
+            if (applications.SupportsFile(codeEditorId, path)) return codeEditorId;
+            return null;
+        }
+
         var view = new SshFileBrowserView(session,
-                path => codeEditor.Manifest.SupportsFile(path) || applications.SupportsFile(imageViewerId, path),
-                path => context.Activations.Activate(RelaxKonOSActivationUris.OpenFile(
-                    applications.SupportsFile(imageViewerId, path) ? imageViewerId : codeEditor.Manifest.Id, path)).Succeeded);
+            path => FindFileHandler(path) is not null,
+            path => FindFileHandler(path) is { } handler
+                && context.Activations.Activate(RelaxKonOSActivationUris.OpenFile(handler, path)).Succeeded);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.ssh-files.display_name", "SSH files"), view,
             bounds: new Rect(150, 100, 860, 580), iconGlyph: Manifest.IconGlyph);
         view.AttachWindowHeader(window);

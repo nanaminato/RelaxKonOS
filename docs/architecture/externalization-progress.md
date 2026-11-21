@@ -80,4 +80,5 @@
 - Windows Release 使用 DevCli 打包 Event & Alert Center，验证可信来源、只读权限声明、安装与登记、更新失败保留活动版本、重启发现及卸载。真实服务端告警读取和 Linux 桌面验证待完成。
 - Windows 桌面 `--event-alerts-capability-only` 使用 SDK 上下文和实际 HTTP 客户端连接测试传输层，验证告警摘要和列表的认证请求、未授权时阻止请求、撤销权限后停止后续读取，以及切换服务器时丢弃旧响应并阻止旧窗口向新服务器发送请求。服务端 `--event-alerts-only` 的投影和恢复回归通过。
 - 配置集 schemaVersion 2 显式声明离线或交互安装策略。Windows Release 使用实际 Event & Alert Center .roapp 验证交互条目在启动时不安装，官方商店可以审阅同一摘要的随包制品。当前发行配置的四个应用都声明离线安装。
+- SSH 文件管理器通过应用注册表和激活路由调用已登记的图像查看器或代码编辑器。Git 项目编辑器的共享文件选择器使用独立于 Code Editor 启动类的文件类型表。Code Editor 与 Git 的界面和 SDK 迁移仍待完成。
 - 独立部署设备和 Linux 双包验收、Android 和全应用三语言界面验收均待执行。

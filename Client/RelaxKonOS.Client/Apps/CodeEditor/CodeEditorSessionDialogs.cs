@@ -58,8 +58,8 @@ internal static class CodeEditorSessionDialogs
             {
                 var picker = new ExplorerViewModel(files,
                     new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, Filters: [
-                        new ExplorerFileFilter(LocalizedText.Get("code_editor.source_file_filter"), CodeEditorApp.SupportedExtensions.Select(extension => $"*{extension}")
-                            .Concat(CodeEditorApp.SupportedFileNames).ToArray()),
+                        new ExplorerFileFilter(LocalizedText.Get("code_editor.source_file_filter"), CodeEditorFileTypes.SupportedExtensions.Select(extension => $"*{extension}")
+                            .Concat(CodeEditorFileTypes.SupportedFileNames).ToArray()),
                         new ExplorerFileFilter(LocalizedText.Get("code_editor.preview.image_filter"), ImageDecoder.SupportedExtensions.Select(extension => $"*{extension}").ToArray()),
                         new ExplorerFileFilter(LocalizedText.Get("code_editor.preview.all_files"), ["*"]),
                     ]),
@@ -91,8 +91,8 @@ internal static class CodeEditorSessionDialogs
         {
             var picker = new ExplorerViewModel(files,
                 new ExplorerPickerOptions(ExplorerPickerMode.SaveFile, Filters: [
-                    new ExplorerFileFilter(LocalizedText.Get("code_editor.source_file_filter"), CodeEditorApp.SupportedExtensions.Select(extension => $"*{extension}")
-                        .Concat(CodeEditorApp.SupportedFileNames).ToArray()),
+                    new ExplorerFileFilter(LocalizedText.Get("code_editor.source_file_filter"), CodeEditorFileTypes.SupportedExtensions.Select(extension => $"*{extension}")
+                        .Concat(CodeEditorFileTypes.SupportedFileNames).ToArray()),
                 ], DefaultFileName: defaultName),
                 paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "CodeEditor.save-file")
             {
