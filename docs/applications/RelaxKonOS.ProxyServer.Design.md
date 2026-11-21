@@ -401,4 +401,6 @@ Windows Release 的生命周期回归使用符合平台的 `sing-box.exe` 测试
 
 导出格式查询、凭据导出及订阅签发使用同一管理代次的前台作用域。签发令牌仅在首次响应交付，同键读回原订阅元数据。匿名下载仍按令牌校验授权和已应用配置。管理代次因清理失败隔离时，已签发的令牌可以继续下载。Server 重启后同键读取原签发元数据，原令牌仍可使用。[导出和签发实测](../architecture/server-module-evidence/Proxy-Publication.md#入站凭据导出与订阅签发的前台作用域)
 
-桌面 Proxy Server 使用独立的 server.proxy-server.read、server.proxy-server.manage 和 server.proxy-server.export 授权。外置 SDK 在管理与导出时分别核对对应应用权限和控制设备角色，在会话切换时取消关联的请求。
+桌面 Proxy Server 使用独立的 `server.proxy-server.read`、`server.proxy-server.manage` 和 `server.proxy-server.export` 授权。外置 SDK 在管理与导出时分别核对对应应用权限和控制设备角色，在会话切换时取消关联的请求。
+
+桌面应用商店提供官方可选包 `relaxkonos.proxy-server`。联合部署检查 `relaxkonos.proxy` 模块及其 `server.proxy-server` 能力，启动时继续检查当前服务器和 sing-box 组件状态。组件中心负责受管运行时安装与修复。

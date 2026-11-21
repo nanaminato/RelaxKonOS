@@ -9,6 +9,7 @@ internal sealed class ExternalServerConnection(UsageMemoryScope scope) : IExtern
     private readonly string? _server = scope.Session.ServiceId;
     private readonly bool _authenticated = scope.Session.State == AuthSessionState.Authenticated;
     internal IAuthSession Session => scope.Session;
+    public bool IsController => IsCurrent && scope.Session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller;
     public HostPlatformKind? Platform => IsCurrent ? scope.Session.CurrentServer?.Platform : null;
 
     public IReadOnlyList<string> Capabilities => IsCurrent ? scope.Session.CurrentServer?.Capabilities.ToArray() ?? [] : [];

@@ -9,6 +9,7 @@
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Headless" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Docker/RelaxKonOS.App.Docker.csproj" />
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProxyServer/RelaxKonOS.App.ProxyServer.csproj" />
     <ProjectReference Include="../../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
   </ItemGroup>
 </Project>

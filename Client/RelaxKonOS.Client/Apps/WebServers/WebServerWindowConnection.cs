@@ -11,6 +11,7 @@ internal sealed class WebServerWindowConnection(IAuthSession session) : IExterna
     private readonly object? _login = session.CurrentSession;
     private readonly object? _user = session.CurrentUser;
     private readonly bool _authenticated = session.State == AuthSessionState.Authenticated;
+    public bool IsController => IsCurrent && session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller;
     public HostPlatformKind? Platform { get; } = session.CurrentServer?.Platform;
 
     public IReadOnlyList<string> Capabilities => IsCurrent ? session.CurrentServer?.Capabilities.ToArray() ?? [] : [];

@@ -2,7 +2,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
-using RelaxKonOS.Protocol.Workspace;
+
 using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
 
 namespace RelaxKonOS.Client.Services.AppPermissions;
@@ -97,7 +97,7 @@ internal sealed class ServerProxyServerCapability(AppId appId, IAppPermissionMan
             throw new InvalidOperationException("The application's Proxy Server connection has changed.");
         if (!permissions.IsGranted(appId, CoreAppPermissions.ServerProxyServerRead)
             || elevatedPermission is not null && (!permissions.IsGranted(appId, elevatedPermission)
-                || connection.Session.AssignedRole != DeviceRole.Controller))
+                || !connection.IsController))
             throw new UnauthorizedAccessException();
     }
 }

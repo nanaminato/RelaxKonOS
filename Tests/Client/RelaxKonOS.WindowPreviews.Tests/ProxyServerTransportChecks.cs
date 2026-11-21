@@ -74,6 +74,18 @@ internal static class ProxyServerTransportChecks
         auth.Role = DeviceRole.Observer;
         await RejectAsync<UnauthorizedAccessException>(() => scoped.ExportAsync(credential, "uri", default));
 
+        using (var model = new ProxyServerViewModel(scoped, (key, _) => key)
+        {
+            CanRead = true,
+            CanManage = true,
+            ConfirmAsync = (_, _) => Task.FromResult(true),
+        })
+        {
+            await model.ApplyCommand.ExecuteAsync(null);
+            if (model.OutcomeText.Resolve() != "proxy_server.problem.permission_denied")
+                throw new InvalidOperationException("A revoked grant must produce a workspace outcome instead of escaping the command.");
+        }
+
         var pending = scoped.StatusAsync(default);
         auth.ServiceId = "https://replacement.invalid";
         auth.NotifyStateChanged();
@@ -176,7 +188,9 @@ public class ProxyServerScopeTransport : DispatchProxy
 {
     protected override object Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
-        nameof(IServerProxyServer.ReadAsync) => Task.FromResult<ProxyServerSnapshot>(null!),
+        nameof(IServerProxyServer.ReadAsync) => Task.FromResult(new ProxyServerSnapshot(new(0, [], null), [], [], [],
+            new(true, true, true, false, "fixture", null, true, null),
+            new(true, "linux", "x64", "fixture", [], false, false, true, true, true, true), 0, null)),
         nameof(IServerProxyServer.ApplyAsync) => Task.FromResult(new ProxyOperationAcceptedDto(Guid.NewGuid())),
         nameof(IServerProxyServer.ExportAsync) => Task.FromResult(new ProxyServerExport("uri", "fixture")),
         nameof(IServerProxyServer.StatusAsync) => WaitForCancellationAsync((CancellationToken)args![0]!),

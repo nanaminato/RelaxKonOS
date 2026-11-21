@@ -490,6 +490,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client, Func<string
         NotifyDerived();
         try { await action(); }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (UnauthorizedAccessException) { OutcomeText = ProblemText("proxy_server.permission_denied"); }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or InvalidDataException or FormatException)
         { OutcomeText = ProblemText(ex.Message); }
         finally { IsBusy = false; NotifyDerived(); }

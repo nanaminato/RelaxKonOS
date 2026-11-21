@@ -111,6 +111,7 @@ public interface ITerminalWorkspacePreferences
 public interface IExternalServerConnection
 {
     bool IsCurrent { get; }
+    bool IsController { get; }
     HostPlatformKind? Platform { get; }
     IReadOnlyList<string> Capabilities { get; }
     IDisposable ObserveInvalidation(Action invalidated);

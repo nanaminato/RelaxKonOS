@@ -54,7 +54,6 @@
     </ItemGroup>
 
     <ItemGroup>
-    <ProjectReference Include="../../Applications/RelaxKonOS.App.ProxyServer/RelaxKonOS.App.ProxyServer.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.Core\RelaxKonOS.Core.csproj" />
       <ProjectReference Include="..\..\Shared\RelaxKonOS.ModuleHost.Protocol\RelaxKonOS.ModuleHost.Protocol.csproj" />
       <ProjectReference Include="..\..\Shared\RelaxKonOS.Protocol\RelaxKonOS.Protocol.csproj" />

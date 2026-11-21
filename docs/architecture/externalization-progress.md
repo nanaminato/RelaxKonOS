@@ -31,7 +31,7 @@
 | processguardian | RelaxKonOS.App.ProcessGuardian | 是 / 是 | 否 | Guardian API 与独立 Agent | 官方可选包 | Windows Release 包生命周期已验，真实 Agent 待验 |
 | firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows Release 包生命周期和隔离宿主联合部署已验，真实防火墙操作待验 |
 | proxy | Proxy | 否 / 否 | 是 | Proxy 模块；组件中心管理 mihomo | 可选 | 待验 |
-| proxy-server | ProxyServer | 否 / 否 | 是 | ProxyServer capability；组件中心管理 sing-box | 可选 | 待验 |
+| proxy-server | RelaxKonOS.App.ProxyServer | 是 / 是 | 否 | Proxy 模块与 ProxyServer capability；组件中心管理 sing-box | 官方可选包 | Windows Release 包生命周期及启动守卫已验，真实 sing-box 待验 |
 | squid | RelaxKonOS.App.Squid | 是 / 是 | 否 | Proxy 模块与 GatewayProxy capability；组件中心管理 Squid | 官方可选包 | Windows Release 包生命周期已验，真实 Squid 待验 |
 | file-services | RelaxKonOS.App.FileServices | 是 / 是 | 否 | SDK 与主机 SMB 能力 | 官方可选包 | Windows 隔离包生命周期已验，真实 SMB 服务待验 |
 | port-forwarding | RelaxKonOS.App.PortForwarding | 是 / 是 | 否 | 宿主 SSH 连接与环回转发 | 官方可选包 | Windows Release 生命周期已验，真实 SSH 待验 |
@@ -308,8 +308,9 @@
 - Squid 工作区通过宿主提供的设置页工厂和组件管理命令接入组件中心。视图及视图模型已移除对组件中心具体类型的依赖。Windows Release Squid 工作区和 SDK 回归通过。
 - Squid 工作区视图模型已迁入独立应用项目。本地化通过可注入的查询函数在显示时解析，原桌面入口继续提供当前语言。Windows Release 构建、Squid 工作区和 SDK 回归通过。
 - Squid 工作区视图、图标与中英日本地化资源已迁入应用程序集。弹窗内容搬移复用窗口管理框架，宿主入口提供标题、确认和组件依赖页。Windows Release Squid 工作区和 SDK 回归通过。
-- Squid Gateway 已改为官方可选包，桌面宿主移除了内置注册与应用项目引用。清单通过联合协调器要求 Proxy 模块及网关能力。Windows Release 使用实际 DevCli 归档验证了来源、拒绝绕过联合部署、只读激活、升级、重启发现与卸载。模块执行使用隔离夹具，真实 Squid 和完整桌面发行待验。
+- Squid Gateway 已改为官方可选包，桌面宿主移除了内置注册与应用项目引用。清单通过联合协调器要求 Proxy 模块及网关能力。Windows Release 使用实际 DevCli 归档验证了来源、拒绝绕过联合部署、只读激活、升级、重启发现与卸载。模块执行使用隔离夹具。Windows x64 完整发行的 20 个官方包均已核对 SHA-256，发行中的 Squid Gateway 通过官方包生命周期回归。真实 Squid 待验。
 - Proxy Server 已改用独立 SDK 的类型化配置、账号、凭据、订阅与运行控制契约。界面不再拼接 HTTP 方法和路径，传输绑定打开窗口时的服务器地址。运行控制只接受工作区公开的启动、停止、重启和开机设置。Windows Release 代理工作区、类型化路由、幂等键和端点切换回归通过。下一步接入外置上下文的授权与会话边界。
 - Proxy Server 外置上下文已接入读取、管理、凭据导出三个权限。管理和导出分别核对控制设备角色，切换连接会取消在途请求。Windows Release 专项验证仅管理授权不能导出、仅导出授权可读凭据、Observer 无法导出以及连接切换与应用结束。
 - Proxy Server 工作区视图模型已迁入独立应用项目，通过注入的本地化查询和组件依赖页工厂接入宿主。组件中心的 sing-box 安装工作区仍由宿主负责。Windows Release 构建、代理专项和 Squid 共享编辑器回归通过。
 - Proxy Server 工作区、图标及中英日资源已进入独立程序集。组件中心保留安装工作区和运行时资源，双方复用共同的状态文案。Windows Release 工作区实时切换中英日、代理授权和 Squid 回归通过。组件中心完整窗口测试在只读计划对话框的步骤数断言处中止，应用目录检查通过。
+- Proxy Server 已改为官方可选包，移除桌面内置注册和应用项目引用。与 Squid 共用 Proxy 模块依赖，各自核对对应能力。Windows Release 使用实际 DevCli 归档验证拒绝绕过联合部署、只读激活、权限撤销后的窗口反馈、升级、重启发现和卸载。组件启动守卫专项通过。真实 sing-box 和包含此包的完整桌面发行待验。
