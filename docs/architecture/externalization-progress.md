@@ -274,3 +274,4 @@
 - Process Guardian 的工作负载接口已迁入 SDK。外置上下文分别验证读取和管理权限，并在调用前后检查连接与应用生命周期。Windows Release 构建与权限回归通过。桌面入口与视图尚待外置。
 - Process Guardian 的主视图模型和工作负载定义编辑逻辑已迁入独立项目。桌面入口提供当前用户、平台、本地化及 Helper 诊断。Windows Release 构建、SDK 权限测试及 24 项 Guardian 读取和定义回归通过，覆盖参数、健康检查及账户标识的保留。
 - Process Guardian 实时日志窗口模型已迁入应用项目，SignalR、证书信任和认证令牌由桌面宿主管理。SDK 日志流使用读取授权，在会话失效、应用结束或查看器关闭时终止。Windows Release 构建和 SDK 模拟日志流回归通过，真实 Agent 的断线重连待验。
+- Process Guardian 的工作区、工作负载编辑器及日志视图已迁入应用程序集。桌面入口仍承载文件选取和管理员批准。Windows Release 构建与无头回归通过，验证独立视图绑定工作负载表格，并将可执行文件选取交给宿主。

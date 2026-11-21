@@ -1,3 +1,6 @@
+using Avalonia.Controls;
+using Avalonia.LogicalTree;
+using RelaxKonOS.App.ProcessGuardian;
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using RelaxKonOS.AppSDK;
@@ -9,6 +12,25 @@ using RelaxKonOS.Protocol.ProcessGuardian;
 
 internal static class GuardianCapabilityChecks
 {
+    public static void VerifyViews()
+    {
+        var guardian = DispatchProxy.Create<IServerGuardian, GuardianCapabilityClient>();
+        var views = new ProcessGuardianViews(key => key);
+        var model = new ProcessGuardianViewModel(guardian, () => "fixture", () => true, key => key, _ => null);
+        var workspace = views.CreateWorkspace(model);
+        var table = workspace.GetLogicalDescendants().OfType<DataGrid>().Single();
+        if (!ReferenceEquals(table.ItemsSource, model.Workloads) || table.Columns.Count != 8)
+            throw new InvalidOperationException("Guardian workspace did not bind the workload table.");
+
+        var pickedExecutable = false;
+        var editor = views.CreateEditor(model, () => { },
+            () => { pickedExecutable = true; return Task.CompletedTask; }, () => Task.CompletedTask);
+        var picker = editor.GetLogicalDescendants().OfType<Button>().First(button => Equals(button.Content, "guardian.create.browse"));
+        picker.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        if (!pickedExecutable) throw new InvalidOperationException("Guardian editor did not delegate executable selection.");
+        Console.WriteLine("Guardian application workspace and editor checks passed.");
+    }
+
     public static async Task RunAsync()
     {
         var id = new AppId("relaxkonos.processguardian");
