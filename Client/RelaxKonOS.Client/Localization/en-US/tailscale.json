@@ -1,5 +1,7 @@
 {
   "Strings": {
+    "tailscale.permission_denied": "This application does not have permission to use Tailscale.",
+    "tailscale.authorization_unavailable": "Host authorization is unavailable.",
     "tailscale.peers_restricted": "Tailnet device list requires host network authorization.",
     "tailscale.title": "Tailscale Manager",
     "tailscale.workspace": "WORKSPACE",

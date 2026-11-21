@@ -323,3 +323,4 @@
 - Tailscale 控制与登录契约及其共享主机连接标识已迁入应用 SDK。桌面传输继续区分稳定登录身份与当前地址，事件桥接隐藏宿主认证实现。Windows Release 246 项 Tailscale 行为、传输和布局检查通过，设置三语交互检查通过。
 - Tailscale 外置上下文已接入读取、管理及按连接绑定的登录。只读状态会隐藏账号和节点详情，原生授权限于 HostNetworkChange 的 Tailscale 目标。Windows Release 验证了只读遮蔽、登录挑战和授权期间切换服务器。现有桌面入口仍在迁移。
 - Tailscale 外置 SDK 区分被动刷新与用户主动打开控制设置。被动读取不会触发宿主授权，显式读取仍通过原生授权代理。Windows Release 授权专项覆盖这两条路径。
+- Tailscale 控制、登录及对等节点显示通过 SDK 的语言事件和注入的文案查询更新。主机没有授权代理时返回明确状态。Windows Release 的 246 项 Tailscale 行为、传输和布局检查通过。

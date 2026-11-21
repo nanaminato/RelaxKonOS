@@ -3,7 +3,6 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.HostSettings;
 using RelaxKonOS.Client.Services.Privileged;
@@ -18,7 +17,7 @@ namespace RelaxKonOS.Client.Apps.Tailscale;
 /// explained instead of failing a login attempt with a generic error.
 /// </summary>
 public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client, ITailscaleOperationReferences references,
-    IHostElevationBroker elevation, LocalizationService language) : ObservableObject
+    IHostElevationBroker elevation, ISystemLanguage language, Func<string, string, string> localize) : ObservableObject
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan ReadFreshness = TimeSpan.FromSeconds(10);
@@ -58,20 +57,20 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
     public string Message => _message.Length == 0 ? "" : ProblemText(_message);
     public bool MessageIsError => _message.Length > 0 && !InformationalMessages.Contains(_message);
     public bool MessageIsInfo => _message.Length > 0 && InformationalMessages.Contains(_message);
-    public string Result => _pending is not null && _pending == Selected?.Id ? language.Get("tailscale.awaiting_receipt", "")
-        : _operation?.Closure is not null ? language.Get("tailscale.login.closed", "")
-        : _operation is null ? "" : language.Get("tailscale.login.state." + _operation.State, "");
+    public string Result => _pending is not null && _pending == Selected?.Id ? localize("tailscale.awaiting_receipt", "")
+        : _operation?.Closure is not null ? localize("tailscale.login.closed", "")
+        : _operation is null ? "" : localize("tailscale.login.state." + _operation.State, "");
     public string Observation => _recovery?.Observation is { } observation
-        ? language.Get("tailscale.backend." + observation.BackendState, language.Get("tailscale.backend_unknown", "")) : "";
+        ? localize("tailscale.backend." + observation.BackendState, localize("tailscale.backend_unknown", "")) : "";
     public string ObservedBackendState => _recovery?.Observation?.BackendState ?? "";
     public string AvailabilityText => _backendState switch
     {
-        "NeedsLogin" => language.Get("tailscale.login.need_login", ""),
-        "NeedsMachineAuth" => language.Get("tailscale.login.device_approval", ""),
-        "Running" => language.Get("tailscale.login.already_connected", ""),
-        "Stopped" => language.Get("tailscale.login.already_stopped", ""),
-        "Starting" => language.Get("tailscale.login.starting", ""),
-        _ => language.Get("tailscale.login.status_unknown", ""),
+        "NeedsLogin" => localize("tailscale.login.need_login", ""),
+        "NeedsMachineAuth" => localize("tailscale.login.device_approval", ""),
+        "Running" => localize("tailscale.login.already_connected", ""),
+        "Stopped" => localize("tailscale.login.already_stopped", ""),
+        "Starting" => localize("tailscale.login.starting", ""),
+        _ => localize("tailscale.login.status_unknown", ""),
     };
     public bool HasOperations => Operations.Count > 0;
     public bool NoOperations => Operations.Count == 0;
@@ -146,7 +145,7 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
     private Task<T> Elevated<T>(Func<Task<T>> action, CancellationToken ct) => elevation.ExecuteAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, action, ct);
     private static bool Handled(Exception exception) => exception is IOException or InvalidDataException or HttpRequestException or RelaxKonOSAuthException
         or InvalidOperationException or UnauthorizedAccessException or System.Text.Json.JsonException or OperationCanceledException;
-    private string ProblemText(string code) => language.Get(code, "").Length > 0 ? language.Get(code, "") : language.Get("tailscale.error", "");
+    private string ProblemText(string code) => localize(code, "").Length > 0 ? localize(code, "") : localize("tailscale.error", "");
     private static string? ProblemCode(Exception exception) => exception switch
     {
         RelaxKonOSAuthException auth when auth.Title.StartsWith("tailscale.", StringComparison.Ordinal) => auth.Title,
@@ -165,7 +164,7 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
         catch (Exception ex) when (Handled(ex))
         {
             if (Current(generation, connection, ct))
-                _message = ProblemCode(ex) is { } code && language.Get(code, "").Length > 0 ? code : "tailscale.error";
+                _message = ProblemCode(ex) is { } code && localize(code, "").Length > 0 ? code : "tailscale.error";
         }
         finally { if (generation == _generation) { IsBusy = false; Notify(); } }
     }

@@ -11,10 +11,11 @@ namespace RelaxKonOS.Client.Services.AppPermissions;
 
 internal sealed class ServerTailscaleCapability(AppId appId, IAppPermissionManager permissions,
     ExternalServerConnection connection, IServerTailscale? controlClient, IServerTailscaleLogin? loginClient,
-    IHostElevationBroker elevation, CancellationToken lifetime) : IExternalTailscale, IServerTailscaleLogin
+    IHostElevationBroker? elevation, CancellationToken lifetime) : IExternalTailscale, IServerTailscaleLogin
 {
     private IServerTailscale Control => controlClient ?? throw new InvalidOperationException("Tailscale is unavailable.");
     private IServerTailscaleLogin Login => loginClient ?? throw new InvalidOperationException("Tailscale login is unavailable.");
+    private IHostElevationBroker Elevation => elevation ?? throw Problem(503, "tailscale.authorization_unavailable");
 
     public event EventHandler? SessionChanged
     {
@@ -51,7 +52,7 @@ internal sealed class ServerTailscaleCapability(AppId appId, IAppPermissionManag
     }
 
     public Task<bool> RequestPeerAccessAsync(HostSettingsConnection target, CancellationToken ct) =>
-        InvokeAsync(target, token => elevation.RequestGrantAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, token),
+        InvokeAsync(target, token => Elevation.RequestGrantAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, token),
             manage: true, elevate: false, ct);
 
     public Task<TailscaleControlSnapshot> GetControlAsync(HostSettingsConnection target, CancellationToken ct) =>
@@ -106,7 +107,7 @@ internal sealed class ServerTailscaleCapability(AppId appId, IAppPermissionManag
         CheckAccess(target, manage, token);
         using var observation = connection.ObserveInvalidation(linked.Cancel);
         var result = elevate
-            ? await elevation.ExecuteAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, RunAsync, token)
+            ? await Elevation.ExecuteAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, RunAsync, token)
             : await RunAsync();
         CheckAccess(target, manage, token);
         return result;

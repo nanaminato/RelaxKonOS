@@ -1,5 +1,7 @@
 {
   "Strings": {
+    "tailscale.permission_denied": "このアプリには Tailscale を使用する権限がありません。",
+    "tailscale.authorization_unavailable": "ホストの認可サービスを利用できません。",
     "tailscale.peers_restricted": "ネットワーク内の端末一覧にはホストネットワークの認証が必要です。",
     "tailscale.title": "Tailscale マネージャー",
     "tailscale.workspace": "ワークスペース",

@@ -1,5 +1,7 @@
 {
   "Strings": {
+    "tailscale.permission_denied": "此应用没有使用 Tailscale 的权限。",
+    "tailscale.authorization_unavailable": "主机授权服务不可用。",
     "tailscale.peers_restricted": "查看组网设备列表需要宿主网络授权。",
     "tailscale.title": "Tailscale 管理器",
     "tailscale.workspace": "工作区",

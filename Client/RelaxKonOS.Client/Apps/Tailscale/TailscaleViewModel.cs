@@ -4,7 +4,6 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.HostSettings;
 using RelaxKonOS.Client.Services.Privileged;
@@ -27,7 +26,8 @@ public sealed partial class TailscaleViewModel : ObservableObject
     private readonly IServerTailscale _client;
     private readonly ITailscaleOperationReferences _references;
     private readonly IHostElevationBroker _elevation;
-    private readonly LocalizationService _language;
+    private readonly ISystemLanguage _language;
+    private readonly Func<string, string, string> _localize;
     private CancellationTokenSource? _lifetime;
     private HostSettingsConnection? _connection;
     private DispatcherTimer? _timer;
@@ -51,8 +51,8 @@ public sealed partial class TailscaleViewModel : ObservableObject
     private bool _syncingPreferences;
 
     public TailscaleViewModel(IServerTailscale client, ITailscaleOperationReferences references,
-        IHostElevationBroker elevation, LocalizationService language)
-    { _client = client; _references = references; _elevation = elevation; _language = language; }
+        IHostElevationBroker elevation, ISystemLanguage language, Func<string, string, string> localize)
+    { _client = client; _references = references; _elevation = elevation; _language = language; _localize = localize; }
 
     public Func<TailscaleOperation, TailscaleControlSnapshot, string, Task<bool>>? ConfirmAsync { get; set; }
     public Func<TailscaleRecoverySnapshot, string, Task<bool>>? ConfirmCloseAsync { get; set; }
@@ -179,7 +179,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
     public bool HasControl => _control is not null;
     public bool ControlUnavailable => _controlUnavailable;
     public bool HasControlProblem => _controlProblem is not null;
-    public string ControlProblem => _controlProblem is { } code && _language.Get(code, "").Length > 0 ? Text(code) : "";
+    public string ControlProblem => _controlProblem is { } code && _localize(code, "").Length > 0 ? Text(code) : "";
     public string ConnectionHint => _control is { } control
         ? !control.Authenticated ? Text("tailscale.login_required")
         : !control.CanControl ? (ControlProblem.Length > 0 ? ControlProblem : Text("tailscale.control_unavailable"))
@@ -280,16 +280,16 @@ public sealed partial class TailscaleViewModel : ObservableObject
         foreach (var peer in Peers) peer.RefreshLanguage();
         Notify();
     }
-    private string Text(string key) => _language.Get(key, key);
+    private string Text(string key) => _localize(key, key);
     private string StateText(string state)
     {
         var key = "tailscale.state." + state;
-        return _language.Get(key, "").Length > 0 ? Text(key) : Text("tailscale.error");
+        return _localize(key, "").Length > 0 ? Text(key) : Text("tailscale.error");
     }
-    private string BackendText(string? state) => state is { Length: > 0 } && _language.Get("tailscale.backend." + state, "").Length > 0
+    private string BackendText(string? state) => state is { Length: > 0 } && _localize("tailscale.backend." + state, "").Length > 0
         ? Text("tailscale.backend." + state) : Text("tailscale.backend_unknown");
-    private string ProblemText(string key) => _language.Get(key, "").Length > 0 ? Text(key) : Text("tailscale.error");
-    private string ProblemOrGeneric(string? code) => code is not null && _language.Get(code, "").Length > 0 ? code : "tailscale.error";
+    private string ProblemText(string key) => _localize(key, "").Length > 0 ? Text(key) : Text("tailscale.error");
+    private string ProblemOrGeneric(string? code) => code is not null && _localize(code, "").Length > 0 ? code : "tailscale.error";
     private void Clear()
     {
         _connection = null; _status = null; _statusReadAt = null; _control = null; _controlReadAt = null;
@@ -335,8 +335,8 @@ public sealed partial class TailscaleViewModel : ObservableObject
         _statusReadAt = DateTimeOffset.UtcNow;
         var selected = SelectedPeer?.Id;
         Peers.Clear();
-        if (status.Self is { } self) Peers.Add(new(self, _language, true));
-        foreach (var peer in status.Peers ?? []) Peers.Add(new(peer, _language, false));
+        if (status.Self is { } self) Peers.Add(new(self, _localize, true));
+        foreach (var peer in status.Peers ?? []) Peers.Add(new(peer, _localize, false));
         SelectedPeer = selected is null ? null : Peers.FirstOrDefault(peer => peer.Id == selected);
         ApplyFilter();
         Notify();
@@ -706,7 +706,7 @@ public sealed record TailscaleExitNodeItem(string Ip, string HostName, string Ad
     public string Label => HostName.Length > 0 ? HostName + " · " + Addresses : Ip;
     public override string ToString() => Label;
 }
-public sealed class TailscalePeerItem(TailscalePeerDto peer, LocalizationService language, bool self) : ObservableObject
+public sealed class TailscalePeerItem(TailscalePeerDto peer, Func<string, string, string> localize, bool self) : ObservableObject
 {
     public string Id => peer.Id;
     public string HostName => peer.HostName;
@@ -722,12 +722,12 @@ public sealed class TailscalePeerItem(TailscalePeerDto peer, LocalizationService
         { Length: > 0 } os => os, _ => "",
     };
     public string Tags => string.Join("  ", (peer.Tags ?? []).Select(tag => "#" + tag));
-    public string Status => peer.Expired ? language.Get("tailscale.key_expired", "") : language.Get(peer.Online ? "tailscale.online" : "tailscale.offline", "");
-    public string Role => language.Get(self ? "tailscale.role_self" : peer.ExitNode ? "tailscale.role_exit_node"
+    public string Status => peer.Expired ? localize("tailscale.key_expired", "") : localize(peer.Online ? "tailscale.online" : "tailscale.offline", "");
+    public string Role => localize(self ? "tailscale.role_self" : peer.ExitNode ? "tailscale.role_exit_node"
         : peer.ExitNodeOption ? "tailscale.role_exit_node_option" : "tailscale.role_peer", "");
-    public string LastSeenText => peer.Online ? language.Get("tailscale.last_seen_now", "")
+    public string LastSeenText => peer.Online ? localize("tailscale.last_seen_now", "")
         : peer.LastSeen is { } seen ? string.Format(System.Globalization.CultureInfo.CurrentCulture,
-            language.Get("tailscale.last_seen_format", ""), seen.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture)) : "";
+            localize("tailscale.last_seen_format", ""), seen.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture)) : "";
     public string KeyExpiryText => peer.KeyExpiry is { } expiry
         ? expiry.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture) : "";
     public bool Online => peer.Online;
