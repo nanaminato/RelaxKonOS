@@ -9,7 +9,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Firewall;
-using RelaxKonOS.Client.Apps.Firewall.Views;
+using RelaxKonOS.App.Firewall.Views;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Core.Applications;
@@ -29,6 +29,10 @@ internal static class FirewallWorkspaceChecks
             settings.Language = "en-US";
             Dispatcher.UIThread.RunJobs();
             var model = Model(out _);
+            var workspace = new FirewallWorkspace(model);
+            var header = workspace.FindControl<RelaxKonOS.WindowManager.WorkspaceWindowHeader>("Header")!;
+            Dispatcher.UIThread.RunJobs();
+            var title = header.Title;
             var policy = model.Policies.First(option => option.Value == "allow");
             model.SelectedIncomingPolicy = policy;
             var row = model.Rules[0];
@@ -41,6 +45,8 @@ internal static class FirewallWorkspaceChecks
             Check(rowRefreshed && policy.Label != label && row.Sentence != sentence
                 && ReferenceEquals(model.SelectedIncomingPolicy, policy) && ReferenceEquals(model.Rules[0], row),
                 "Changing language refreshes application-owned rule and policy labels without replacing the selection.");
+            Check(title == "Firewall" && header.Title == LocalizedText.Get("application.relaxkonos.firewall.display_name")
+                && header.Title != title, "The application workspace header updates when the display language changes.");
             foreach (var language in new[] { "zh-CN", "en-US", "ja-JP" })
             {
                 settings.Language = language;

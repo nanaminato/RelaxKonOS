@@ -1,8 +1,7 @@
-using RelaxKonOS.App.Firewall;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.Firewall.Views;
+namespace RelaxKonOS.App.Firewall.Views;
 
 /// <summary>
 /// Firewall workspace. One host reading feeds both pages; the rules page keeps the table elastic so
@@ -15,7 +14,8 @@ public partial class FirewallWorkspace : UserControl
     public FirewallWorkspace()
     {
         InitializeComponent();
-        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        RelaxKonOS.WindowManager.CompactWorkspaceNavigation.Install(this, WorkspaceBody,
+            LocExtension.CreateBinding(this, "common.view"));
         ShowPage(0);
     }
 

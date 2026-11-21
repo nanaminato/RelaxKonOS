@@ -7,6 +7,8 @@
     <ItemGroup>
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
+        <PackageReference Include="Avalonia.Controls.DataGrid" />
+        <AvaloniaResource Include="Assets/firewall.png" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="Firewall.Localization.%(Filename).json" />
     </ItemGroup>
 </Project>

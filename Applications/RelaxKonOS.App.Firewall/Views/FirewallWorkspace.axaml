@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:fwApp="clr-namespace:RelaxKonOS.App.Firewall;assembly=RelaxKonOS.App.Firewall"
-             x:Class="RelaxKonOS.Client.Apps.Firewall.Views.FirewallWorkspace"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Firewall.Views"
+             xmlns:fwApp="clr-namespace:RelaxKonOS.App.Firewall"
+             x:Class="RelaxKonOS.App.Firewall.Views.FirewallWorkspace"
              x:DataType="fwApp:FirewallViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
   <UserControl.Styles>
@@ -90,7 +90,7 @@
          for embedded/preview rendering. -->
     <Grid x:Name="HeaderHost" ColumnDefinitions="*,Auto">
       <wm:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.firewall.display_name}"
-                                    Subtitle="{loc:Loc firewall.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/firewall.png" />
+                                    Subtitle="{loc:Loc firewall.intro}" IconAsset="avares://RelaxKonOS.App.Firewall/Assets/firewall.png" />
       <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}"
               ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" VerticalAlignment="Center" />
     </Grid>

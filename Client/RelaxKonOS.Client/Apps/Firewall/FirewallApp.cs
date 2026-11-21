@@ -5,7 +5,7 @@ using RelaxKonOS.Client.Services;
 using Avalonia.Controls;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
-using RelaxKonOS.Client.Apps.Firewall.Views;
+using RelaxKonOS.App.Firewall.Views;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Dialogs;

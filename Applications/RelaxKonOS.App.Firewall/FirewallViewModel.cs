@@ -72,6 +72,8 @@ public sealed partial class FirewallViewModel : ObservableObject
     private FirewallMessage Message(string key, params object?[] arguments) =>
         new(() => arguments.Length == 0 ? _localize(key, key) : Format(key, arguments));
 
+    public Func<string, string> Labels => key => _localize(key, key);
+
     public ObservableCollection<FirewallRuleRow> Rules { get; } = [];
     public ObservableCollection<FirewallOption> Policies { get; } = [];
     public ObservableCollection<FirewallOption> Actions { get; } = [];

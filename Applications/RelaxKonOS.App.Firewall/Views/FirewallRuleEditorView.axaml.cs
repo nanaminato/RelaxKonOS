@@ -1,7 +1,6 @@
-using RelaxKonOS.App.Firewall;
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.Firewall.Views;
+namespace RelaxKonOS.App.Firewall.Views;
 
 /// <summary>The rule dialog owns the draft and the submit decision; the page only reads it back.</summary>
 public partial class FirewallRuleEditorView : UserControl
