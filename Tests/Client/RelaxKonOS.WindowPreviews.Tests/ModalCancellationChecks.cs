@@ -1,10 +1,61 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
+using RelaxKonOS.App.Docker;
+using RelaxKonOS.App.Docker.Views;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.Explorer.Dialogs;
+using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
+using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Core.Applications;
 using RelaxKonOS.WindowManager;
+using System.Reflection;
 using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
 
 internal static class ModalCancellationChecks
 {
+    public static void RunDocker(ShellSettings settings, ISystemLanguage language)
+    {
+        var manager = new WindowManagerService();
+        manager.Attach(new Canvas { Width = 1100, Height = 800 });
+        var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+        using var http = new HttpClient();
+        var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "docker-dialog-memory.json"));
+        var factory = new ExternalAppContextFactory(null!, null!, language, settings, null!, auth,
+            null!, manager, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
+            null!, null!, null!, null!, null!, memory, null!, null!, null!, null!);
+        var manifest = new ApplicationManifest(new AppId("relaxkonos.docker"), "Docker Manager", "1.0.0");
+        var context = factory.Create(manifest);
+        var owner = context.Windows.ShowWindow("Docker", new TextBlock());
+        var model = new DockerManagerViewModel(context.DockerResources, new DockerText(LocalizedText.Get));
+        var result = DockerManagerDialogs.ShowDeployStackAsync(owner, model);
+        var draft = manager.Windows.Last();
+        model.ComposeYaml = "services: {}";
+        model.IsLoading = true;
+        manager.Close(draft);
+        Check(manager.Windows.Count == 2 && !result.IsCompleted, "A busy Docker Compose draft ignores cancel.");
+        model.IsLoading = false;
+
+        manager.Close(draft);
+        Check(manager.Windows.Count == 3 && !result.IsCompleted, "Cancel opens a nested confirmation for the Docker Compose draft.");
+        var confirm = (ConfirmDialogViewModel)((Control)manager.Windows.Last().View.Content!).DataContext!;
+        confirm.NoCommand.Execute(null);
+        SpinWait.SpinUntil(() => { Dispatcher.UIThread.RunJobs(); return manager.Windows.Count == 2; }, 2000);
+        Check(!result.IsCompleted && model.ComposeYaml == "services: {}", "Keeping the Docker Compose draft retains its YAML.");
+
+        manager.Close(draft);
+        Check(manager.Windows.Count == 3, "The Docker Compose draft can request confirmation again.");
+        confirm = (ConfirmDialogViewModel)((Control)manager.Windows.Last().View.Content!).DataContext!;
+        confirm.YesCommand.Execute(null);
+        SpinWait.SpinUntil(() => { Dispatcher.UIThread.RunJobs(); return manager.Windows.Count == 1; }, 2000);
+        Check(result.IsCompleted && manager.Windows.Count == 1, "Discarding the Docker Compose draft closes both modals.");
+        manager.Close(owner.Window);
+        Console.WriteLine("Docker Compose modal cancellation checks passed.");
+    }
+
     public static void Run()
     {
         var manager = new WindowManagerService();

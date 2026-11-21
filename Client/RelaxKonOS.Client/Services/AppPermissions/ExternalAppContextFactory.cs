@@ -318,10 +318,18 @@ public sealed class ExternalAppContextFactory
         }
 
         public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) =>
-            ShowDialogAsync<bool>(title, dialog => new ConfirmDialogView
-            {
-                DataContext = new ConfirmDialogViewModel(message, dialog.Close, confirmLabel),
-            }, new Size(460, 320));
+            ShowDialogAsync<bool>(title, dialog => CreateConfirmation(dialog, message, confirmLabel), new Size(460, 320));
+
+        public Task<bool> ConfirmNestedAsync<T>(ModalDialog<T> owner, string title, string message, string confirmLabel)
+        {
+            if (owner.Window is not { } modal || modal.Info.OwnerAppId != Window.Info.OwnerAppId
+                || !_windowManager.Windows.Contains(modal) || !_windowManager.Windows.Contains(Window))
+                return Task.FromResult(false);
+            return owner.ShowDialogAsync<bool>(title, dialog => CreateConfirmation(dialog, message, confirmLabel), new Size(460, 320));
+        }
+
+        private static ConfirmDialogView CreateConfirmation(ModalDialog<bool> dialog, string message, string confirmLabel) =>
+            new() { DataContext = new ConfirmDialogViewModel(message, dialog.Close, confirmLabel) };
     }
 
     private sealed class ExternalFileApiAccess(

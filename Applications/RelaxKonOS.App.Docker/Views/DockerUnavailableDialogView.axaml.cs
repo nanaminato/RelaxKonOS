@@ -1,17 +1,15 @@
-using RelaxKonOS.App.Docker;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Docker.Views;
+namespace RelaxKonOS.App.Docker.Views;
 
-/// <summary>In-product guidance for a Windows host that runs Linux containers through Docker Desktop.</summary>
-internal partial class DockerWindowsSetupGuideDialogView : UserControl
+internal partial class DockerUnavailableDialogView : UserControl
 {
     private readonly DockerManagerViewModel _viewModel;
     private readonly ModalDialog<bool> _dialog;
 
-    public DockerWindowsSetupGuideDialogView(DockerManagerViewModel viewModel, ModalDialog<bool> dialog)
+    public DockerUnavailableDialogView(DockerManagerViewModel viewModel, ModalDialog<bool> dialog)
     {
         _viewModel = viewModel;
         _dialog = dialog;

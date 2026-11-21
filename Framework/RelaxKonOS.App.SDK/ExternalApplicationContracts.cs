@@ -136,6 +136,9 @@ public interface IExternalAppWindowHandle
     void ExitFullScreen();
     Task<TResult?> ShowDialogAsync<TResult>(string title, Func<ModalDialog<TResult>, Control> content, Size preferredSize);
     Task<bool> ConfirmAsync(string title, string message, string confirmLabel);
+
+    /// <summary>Opens a confirmation owned by an active dialog belonging to the same application.</summary>
+    Task<bool> ConfirmNestedAsync<T>(ModalDialog<T> owner, string title, string message, string confirmLabel);
 }
 
 public interface IExternalTextEditorPreferences

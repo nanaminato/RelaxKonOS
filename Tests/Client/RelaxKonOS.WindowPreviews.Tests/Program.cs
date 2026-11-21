@@ -171,6 +171,12 @@ if (args.Contains("--file-operations-window-only"))
     FileOperationWindowChecks.Run(settings);
     return;
 }
+if (args.Contains("--docker-dialogs-only"))
+{
+    ModalCancellationChecks.Run();
+    ModalCancellationChecks.RunDocker(settings, localization);
+    return;
+}
 if (args.Contains("--fused-apps-only"))
 {
     FusedWindowHeaderChecks.Run(settings);
@@ -221,6 +227,7 @@ foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
 WelcomeWorkspaceChecks.Run(settings, localization, services);
 Console.WriteLine("PASS: Image viewer, browser and welcome window titles follow three languages and unsubscribe on close.");
 ModalCancellationChecks.Run();
+ModalCancellationChecks.RunDocker(settings, localization);
 DockerSubmissionChecks.Run();
 FirewallSubmissionChecks.Run();
 ServerCenterDialogChecks.Run();

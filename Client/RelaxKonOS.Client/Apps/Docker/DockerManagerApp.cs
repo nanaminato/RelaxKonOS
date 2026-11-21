@@ -1,17 +1,12 @@
 using RelaxKonOS.App.Docker;
 using RelaxKonOS.App.Docker.Views;
-using RelaxKonOS.Client.Apps.Docker.Views;
-using RelaxKonOS.Client.Services.Installation;
-using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Client.Services.AppPermissions;
-using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
-using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.WindowManager;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,35 +21,35 @@ public sealed class DockerManagerApp : RemoteApplicationBase
 
     public override void Activate(AppContext context)
     {
+        var sdk = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest);
+        var text = new DockerText(LocalizedText.Get);
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         if (session?.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"),
-                new DockerLoginRequiredView(),
+            sdk.Windows.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"),
+                new DockerLoginRequiredView(text, sdk.SystemLanguage),
                 new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
 
         var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.docker");
-        var sdk = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest);
-        var text = new DockerText(LocalizedText.Get);
         var vm = new DockerManagerViewModel(sdk.DockerResources, text);
         var proxyViewModel = new DockerProxyStatusViewModel(sdk.DockerResources, text);
         var imageMirrorsViewModel = new DockerImageMirrorsViewModel(sdk.DockerImageMirrors, text);
-        ManagedWindow? window = null;
+        IExternalAppWindowHandle? window = null;
         var view = new DockerManagerWorkspace(vm, proxyViewModel, imageMirrorsViewModel,
-            () => DockerManagerDialogs.ShowCreateContainerAsync(context, window!, vm),
-            () => DockerManagerDialogs.ShowDeployStackAsync(context, window!, vm),
-            () => DockerManagerDialogs.ShowPullImageAsync(context, window!, vm),
-            () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
-            () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm),
+            () => DockerManagerDialogs.ShowCreateContainerAsync(window!, vm),
+            () => DockerManagerDialogs.ShowDeployStackAsync(window!, vm),
+            () => DockerManagerDialogs.ShowPullImageAsync(window!, vm),
+            () => DockerManagerDialogs.ShowCreateNetworkAsync(window!, vm),
+            () => DockerManagerDialogs.ShowCreateVolumeAsync(window!, vm),
             () =>
             {
                 _ = dependency.RefreshAsync();
                 return new ComponentCenter.ComponentDependencySettingsView { DataContext = dependency };
             });
-        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
-        view.AttachWindowHeader(window);
+        window = sdk.Windows.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        view.AttachWindowHeader(window.Window);
         void LanguageChanged(object? sender, SystemLanguageChangedEventArgs args)
         {
             vm.RefreshLocalization();
@@ -65,7 +60,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         EventHandler<ManagedWindow>? closed = null;
         closed = (_, current) =>
         {
-            if (!ReferenceEquals(current, window)) return;
+            if (!ReferenceEquals(current, window.Window)) return;
             context.WindowManager.WindowClosed -= closed;
             sdk.SystemLanguage.LanguageChanged -= LanguageChanged;
             dependency.Dispose();
@@ -73,30 +68,16 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         context.WindowManager.WindowClosed += closed;
         // Stopping or restarting the engine terminates every running container on the host, so it
         // gets its own confirmation wording instead of the deletion dialog's.
-        vm.RequestEngineConfirmationAsync = async message =>
-        {
-            var confirmed = false;
-            await context.ShowDialogAsync<bool>(window!, LocalizedText.Get("docker.engine.control"), dialog => new ConfirmDialogView
-            {
-                DataContext = new ConfirmDialogViewModel(message, result => { confirmed = result; dialog.Close(result); }, LocalizedText.Get("docker.engine.confirm_continue")),
-            });
-            return confirmed;
-        };
-        vm.ShowDockerUnavailableAsync = () => DockerManagerDialogs.ShowDockerUnavailableAsync(context, window, vm);
-        vm.ShowEditContainerAsync = () => DockerManagerDialogs.ShowEditContainerAsync(context, window!, vm);
-        vm.ShowEditStackAsync = () => DockerManagerDialogs.ShowEditStackAsync(context, window!, vm);
-        vm.ShowContainerDetailsAsync = () => DockerManagerDialogs.ShowContainerDetailsAsync(context, window!, vm);
-        vm.ShowResourceDetailsAsync = () => DockerManagerDialogs.ShowResourceDetailsAsync(context, window!, vm);
-        vm.ShowErrorDialogAsync = message => DockerManagerDialogs.ShowErrorDialogAsync(context, window!, message);
-        vm.RequestDeletionConfirmationAsync = async message =>
-        {
-            var confirmed = false;
-            await context.ShowDialogAsync<bool>(window!, LocalizedText.Get("common.delete"), dialog => new ConfirmDialogView
-            {
-                DataContext = new ConfirmDialogViewModel(message, result => { confirmed = result; dialog.Close(result); }, LocalizedText.Get("common.delete")),
-            });
-            return confirmed;
-        };
+        vm.RequestEngineConfirmationAsync = message =>
+            window.ConfirmAsync(text.Get("docker.engine.control"), message, text.Get("docker.engine.confirm_continue"));
+        vm.ShowDockerUnavailableAsync = () => DockerManagerDialogs.ShowDockerUnavailableAsync(window, vm);
+        vm.ShowEditContainerAsync = () => DockerManagerDialogs.ShowEditContainerAsync(window, vm);
+        vm.ShowEditStackAsync = () => DockerManagerDialogs.ShowEditStackAsync(window, vm);
+        vm.ShowContainerDetailsAsync = () => DockerManagerDialogs.ShowContainerDetailsAsync(window, vm);
+        vm.ShowResourceDetailsAsync = () => DockerManagerDialogs.ShowResourceDetailsAsync(window, vm);
+        vm.ShowErrorDialogAsync = message => DockerManagerDialogs.ShowErrorDialogAsync(window, text, message);
+        vm.RequestDeletionConfirmationAsync = message =>
+            window.ConfirmAsync(text.Get("common.delete"), message, text.Get("common.delete"));
         vm.OpenFileBrowserAtPathAsync = path =>
         {
             var activation = context.Activations.Activate(RelaxKonOSActivationUris.ExplorerPath(path));
