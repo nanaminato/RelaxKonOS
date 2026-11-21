@@ -1,3 +1,4 @@
+using RelaxKonOS.ServerModule.Database;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Hosting;
@@ -16,6 +17,10 @@ internal static class PostgreSqlBackupAutomationChecks
     public static async Task RunAsync()
     {
         var count=0;void Check(bool ok,string label){if(!ok)throw new Exception(label);Console.WriteLine("PASS PostgreSQL automation "+label);count++;}
+        var executionAssembly = typeof(PostgreSqlBackupScheduler).Assembly;
+        Check(executionAssembly.GetName().Name == "RelaxKonOS.ServerModule.Database"
+            && !executionAssembly.GetReferencedAssemblies().Any(reference => reference.Name == "RelaxKonOS.Server"),
+            "scheduler runs in a separate assembly without a Core dependency");
         var root=Path.Combine(Path.GetTempPath(),"rk-db07-"+Guid.NewGuid().ToString("N"));
         var env=new EnvironmentFixture(root);var clock=new Clock();
         var policy=new PostgreSqlBackupSchedule(Guid.NewGuid(),true,24,2,false,"16.15",clock.Now);
@@ -51,7 +56,7 @@ internal static class PostgreSqlBackupAutomationChecks
         var proofRequired=false;try{PostgreSqlBackupSchedulePolicy.Obsolete([future,manual],current.Id,1);}catch(InvalidOperationException){proofRequired=true;}
         Check(proofRequired,"retention cannot run without a newly verified automatic copy");
         var coordinator=new InstallationCoordinator(new(env),[service],new Lifetime());await coordinator.StartAsync(default);
-        using var scheduler=new PostgreSqlBackupScheduler(transport,coordinator,NullLogger<PostgreSqlBackupScheduler>.Instance,clock);
+        using var scheduler=new PostgreSqlBackupScheduler(new PostgreSqlBackupScheduleHost(transport, coordinator),NullLogger<PostgreSqlBackupScheduler>.Instance,clock);
         try
         {
             state=state with {BackupSchedule=policy with {Enabled=false}};
@@ -70,7 +75,7 @@ internal static class PostgreSqlBackupAutomationChecks
             Check(PostgreSqlBackupSchedulePolicy.NextDue(clock.Now.AddDays(8),24)==clock.Now.AddDays(9),"missed intervals coalesce without a backlog");
             await coordinator.StopAsync(default);
             coordinator=new(new(env),[service],new Lifetime());await coordinator.StartAsync(default);
-            using var reopened=new PostgreSqlBackupScheduler(transport,coordinator,NullLogger<PostgreSqlBackupScheduler>.Instance,clock);
+            using var reopened=new PostgreSqlBackupScheduler(new PostgreSqlBackupScheduleHost(transport, coordinator),NullLogger<PostgreSqlBackupScheduler>.Instance,clock);
             Check((await reopened.TickAsync(default))!.OperationId==first.OperationId&&dispatched.Count==1,"reopened Core ledger does not duplicate accepted slot");
             fail=true;state=state with {BackupSchedule=policy with {Id=Guid.NewGuid()}};
             var failed=await reopened.TickAsync(default);await Complete(coordinator,failed!.OperationId);

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+  </ItemGroup>
+  <Target Name="ValidateDatabaseModuleBoundary" BeforeTargets="ResolveReferences">
+    <ItemGroup>
+      <InvalidDatabaseImplementationProject Include="@(ProjectReference)" Condition="'%(ProjectReference.Filename)' != 'RelaxKonOS.Protocol'" />
+    </ItemGroup>
+    <Error Condition="'@(InvalidDatabaseImplementationProject)' != ''" Text="Database execution may reference shared protocol contracts only." />
+  </Target>
+</Project>

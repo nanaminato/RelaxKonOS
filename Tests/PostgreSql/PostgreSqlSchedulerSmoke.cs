@@ -1,3 +1,4 @@
+using RelaxKonOS.ServerModule.Database;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Hosting;
@@ -20,7 +21,7 @@ internal static class PostgreSqlSchedulerSmoke
         var environment=new EnvironmentFixture();var credentials=new PostgreSqlCredentialStore(environment,new EphemeralDataProtectionProvider());
         var service=new PostgreSqlBackupAutomationInstallationService(transport,component,credentials);
         var coordinator=new InstallationCoordinator(new(environment),[service],new Lifetime());await coordinator.StartAsync(default);
-        using var scheduler=new PostgreSqlBackupScheduler(transport,coordinator,NullLogger<PostgreSqlBackupScheduler>.Instance);
+        using var scheduler=new PostgreSqlBackupScheduler(new PostgreSqlBackupScheduleHost(transport, coordinator),NullLogger<PostgreSqlBackupScheduler>.Instance);
         try
         {
             var before=await component.ReadAsync(default);Check(before.Running&&before.PendingOperationId is null,"owned instance starts running");
