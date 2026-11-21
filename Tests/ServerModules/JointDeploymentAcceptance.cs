@@ -150,6 +150,25 @@ internal static class JointDeploymentAcceptance
                 && await joint.FindPendingAsync(candidate, default) is null,
                 "the resumed deployment verifies the running module, Core and desktop application registration");
             await packages.UninstallAsync(AppIdText);
+
+            // Use the original desktop archive as a local prerequisite without a server dependency.
+            File.Copy(archive, packagePath, overwrite: true);
+            await using (var file = File.OpenRead(packagePath))
+                await File.WriteAllTextAsync(packagePath + ".sha256", Convert.ToHexStringLower(await SHA256.HashDataAsync(file)));
+            await installer.InstallAsync(await installer.InspectLocalAsync(packagePath));
+            var offlineArchive = Path.Combine(root, "dependent.roapp");
+            await PrepareDesktopArchiveAsync(archive, offlineArchive, "fixture.offline",
+                new DeploymentPackageKey(DeploymentPackageKind.Application, AppIdText));
+            session.Online = false;
+            var requests = factory.Requests;
+            var offlineCandidate = await installer.InspectLocalAsync(offlineArchive);
+            var offline = await joint.PrepareAsync(offlineCandidate, [], default);
+            var offlineApp = await joint.ExecuteAsync(offline, default);
+            Require(offlineApp.Id == "fixture.offline" && factory.Requests == requests
+                && offline.Plan.OrderedReleases[0].Satisfied,
+                "a real desktop package with a satisfied client-only dependency installs offline without module API calls");
+            await packages.UninstallAsync("fixture.offline");
+            await packages.UninstallAsync(AppIdText);
         }
         finally
         {
@@ -163,7 +182,8 @@ internal static class JointDeploymentAcceptance
         }
     }
 
-    private static async Task PrepareDesktopArchiveAsync(string source, string path)
+    private static async Task PrepareDesktopArchiveAsync(string source, string path,
+        string appId = AppIdText, DeploymentPackageKey? dependency = null)
     {
         File.Copy(source, path);
         using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
@@ -171,9 +191,16 @@ internal static class JointDeploymentAcceptance
             var entry = archive.GetEntry("manifest.json")!;
             JsonNode manifest;
             using (var input = entry.Open()) manifest = JsonNode.Parse(input)!;
-            manifest["dependencies"] = JsonNode.Parse("""
-                { "required": [{ "package": { "kind": 1, "id": "fixture-module" }, "minimumVersion": "1.0.0" }] }
-                """);
+            var package = dependency ?? new DeploymentPackageKey(DeploymentPackageKind.ServerModule, ModuleId);
+            manifest["id"] = appId;
+            manifest["dependencies"] = new JsonObject
+            {
+                ["required"] = new JsonArray(new JsonObject
+                {
+                    ["package"] = new JsonObject { ["kind"] = (int)package.Kind, ["id"] = package.Id },
+                    ["minimumVersion"] = "1.0.0",
+                }),
+            };
             entry.Delete();
             using var output = new StreamWriter(archive.CreateEntry("manifest.json").Open());
             await output.WriteAsync(manifest.ToJsonString());
@@ -263,6 +290,7 @@ internal static class JointDeploymentAcceptance
         private HttpClient? http;
         public IReadOnlyList<string> EnablePreviewKeys => handler.EnablePreviewKeys;
         public int SubmittedEnableApplies => handler.SubmittedEnableApplies;
+        public int Requests => handler.Requests;
         public void DropNextEnableApply(bool afterCommit) => handler.DropAfterCommit = afterCommit;
         public HttpClient CreateClient(string name) => http ??= new(handler);
         public void Dispose() => http?.Dispose();
@@ -274,9 +302,11 @@ internal static class JointDeploymentAcceptance
         public List<string> EnablePreviewKeys { get; } = [];
         public bool? DropAfterCommit { get; set; }
         public int SubmittedEnableApplies { get; private set; }
+        public int Requests { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            Requests++;
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
             if (request.Method == HttpMethod.Post && path == ServerModuleManagementRoutes.Plans)
@@ -313,6 +343,7 @@ internal static class JointDeploymentAcceptance
         private SessionDto login = new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), default, default,
             SessionStatus.Active, Guid.Parse(ModuleTestAuthentication.Admin), "test", default);
         private string url = "";
+        public bool Online { get; set; } = true;
         public string Url
         {
             get => url;
@@ -325,11 +356,11 @@ internal static class JointDeploymentAcceptance
 
         protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
         {
-            "get_State" => AuthSessionState.Authenticated,
-            "get_ServiceId" => "local-joint-test",
+            "get_State" => Online ? AuthSessionState.Authenticated : AuthSessionState.Unauthenticated,
+            "get_ServiceId" => Online ? "local-joint-test" : null,
             "get_EffectiveBaseUrl" => Url,
-            "get_CurrentSession" => login,
-            "get_CurrentUser" => new UserDto(actor, "controller", HostPlatformKind.Windows, "fixture", default, null),
+            "get_CurrentSession" => Online ? login : null,
+            "get_CurrentUser" => Online ? new UserDto(actor, "controller", HostPlatformKind.Windows, "fixture", default, null) : null,
             "get_CurrentServer" => null,
             _ => throw new NotSupportedException(method?.Name),
         };
