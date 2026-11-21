@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Certificates;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
@@ -15,7 +16,7 @@ internal partial class SelfSignedCertificateDialogView : UserControl
         _dialog = dialog;
         InitializeComponent();
         DataContext = viewModel;
-        viewModel.EditorStatus = string.Empty;
+        viewModel.EditorStatus = default;
         var initial = (viewModel.SelfSignedDomains, viewModel.SelfSignedValidityDays, viewModel.SelectedKeyAlgorithm?.Value);
         RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => !viewModel.CanEditCertificateDraft,
             () => initial != (viewModel.SelfSignedDomains, viewModel.SelfSignedValidityDays, viewModel.SelectedKeyAlgorithm?.Value));

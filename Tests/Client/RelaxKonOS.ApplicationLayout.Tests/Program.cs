@@ -124,6 +124,8 @@ if (args.Contains("--modules-only"))
 }
 var cases = 0;
 var dockerOnly = args.Contains("--docker-only");
+var certificatesOnly = args.Contains("--certificates-only");
+if (!certificatesOnly)
 foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
 foreach (var style in new[] { SystemStyleIds.WindowsLike, SystemStyleIds.MacOsLike, SystemStyleIds.UbuntuLike })
@@ -182,7 +184,7 @@ foreach (var page in new[] { "Containers", "Images", "Networks", "Volumes" })
     }
     cases++;
 }
-if (!dockerOnly)
+if (!dockerOnly && !certificatesOnly)
 foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
 foreach (var style in SystemStyleIds.All)
@@ -217,6 +219,7 @@ foreach (var style in SystemStyleIds.All)
     cases++;
 }
 // Operation activity keeps a compact status row; output is opened only on request.
+if (!certificatesOnly)
 foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 {
     settings.Language = culture;
@@ -288,7 +291,7 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
 {
     settings.Language = culture;
     appearance.Apply(mode, AppearancePreferencesDto.Default, SystemStyleIds.WindowsLike);
-    var certificateVm = new RelaxKonOS.Client.Apps.Certificates.CertificateManagerViewModel(null!, new LayoutCertificatePermissions());
+    var certificateVm = new RelaxKonOS.App.Certificates.CertificateManagerViewModel(null!, new LayoutCertificatePermissions(), localization);
     var now = DateTimeOffset.UtcNow;
     var certificate = new RelaxKonOS.Protocol.Certificates.CertificateDto(Guid.NewGuid(), "192.168.1.2", ["192.168.1.2", "server.example.test"], "CN=192.168.1.2", "123", "123", now, now.AddDays(365),
         RelaxKonOS.Protocol.Certificates.CertificateStatus.Active, RelaxKonOS.Protocol.Certificates.CertificateChallengeType.Dns01,
@@ -321,7 +324,7 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
         && !certificateVm.SelectedRenewalText.Contains("{0}") && !certificateVm.SelectedRenewalText.Contains("[missing:"),
         "Renewal failure has localized source, status and formatted times.");
     var historyRequested = false;
-    var renewalView = (Control)Activator.CreateInstance(typeof(RelaxKonOS.Client.Apps.Certificates.CertificateManagerViewModel).Assembly
+    var renewalView = (Control)Activator.CreateInstance(typeof(RelaxKonOS.Client.Apps.Certificates.CertificateManagerApp).Assembly
         .GetType("RelaxKonOS.Client.Apps.Certificates.Views.CertificateListView")!, new object[] { (Func<Task>)(() => Task.CompletedTask), (Func<Task>)(() => Task.CompletedTask), (Action)(() => historyRequested = true) })!;
     renewalView.DataContext = certificateVm;
     host.Content = renewalView; host.Width = 800; host.Height = 650;
@@ -345,6 +348,13 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
         bitmap.Save(Path.Combine(output, $"ServerHttps-{mode}.png"), PngBitmapEncoderOptions.Default);
     }
     cases++;
+}
+
+if (certificatesOnly)
+{
+    host.Close();
+    Console.WriteLine($"PASS: {cases} certificate and HTTPS settings layouts.");
+    return;
 }
 
 // Remaining built-in operations share a one-row footer and opt-in output.

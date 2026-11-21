@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Certificates;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
@@ -15,7 +16,7 @@ internal partial class CertificateRequestDialogView : UserControl
         _dialog = dialog;
         InitializeComponent();
         DataContext = viewModel;
-        viewModel.EditorStatus = string.Empty;
+        viewModel.EditorStatus = default;
         var initial = (viewModel.Domains, viewModel.ContactEmail, viewModel.SelectedChallengeType?.Value,
             viewModel.SelectedKeyAlgorithm?.Value, viewModel.AcceptedTerms, viewModel.PublicReachabilityConfirmed);
         RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => !viewModel.CanEditCertificateDraft,

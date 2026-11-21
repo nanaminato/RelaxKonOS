@@ -1,24 +1,26 @@
 using System.Collections.ObjectModel;
-using RelaxKonOS.Client.Localization;
+using System.Globalization;
+using Avalonia.Utilities;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Certificates;
 
-namespace RelaxKonOS.Client.Apps.Certificates;
+namespace RelaxKonOS.App.Certificates;
 
 /// <summary>
 /// Window-local certificate manager state. Long-running operations are tracked by id and polled
 /// to a terminal state; private keys and ACME account material never leave the server.
 /// </summary>
-public sealed partial class CertificateManagerViewModel : LocalizedObservableObject
+public sealed partial class CertificateManagerViewModel : ObservableObject
 {
     private readonly IServerCertificates _client;
+    private readonly ISystemLanguage _language;
     private readonly IAppPermissionScope _permissions;
     [ObservableProperty] private bool _isOperationLogExpanded;
     [ObservableProperty] private string _operationLog = string.Empty;
-    partial void OnOperationTextChanged(LocalizedStatus value)
+    partial void OnOperationTextChanged(CertificateStatusText value)
     {
         var text = value.Resolve();
         if (string.IsNullOrWhiteSpace(text) || text == _lastOperationLogText) return;
@@ -32,9 +34,13 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     private Guid? _activeOperationId;
     private bool _cancelRequested;
 
-    public CertificateManagerViewModel(IServerCertificates client, IAppPermissionScope permissions)
+    public CertificateManagerViewModel(IServerCertificates client, IAppPermissionScope permissions, ISystemLanguage language)
     {
         _client = client;
+        _language = language;
+        _statusText = Status("certificates.status.loading");
+        WeakEventHandlerManager.Subscribe<ISystemLanguage, SystemLanguageChangedEventArgs, CertificateManagerViewModel>(
+            language, nameof(ISystemLanguage.LanguageChanged), OnLanguageChanged);
         _permissions = permissions;
         ChallengeTypes =
         [
@@ -52,34 +58,34 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     }
 
     public ObservableCollection<CertificateRenewalRunRow> RenewalRuns { get; } = [];
-    [ObservableProperty] private LocalizedStatus _renewalRunsStatus;
+    [ObservableProperty] private CertificateStatusText _renewalRunsStatus;
     [ObservableProperty] private bool _isRenewalRunsLoading;
     [RelayCommand]
     private async Task RefreshRenewalRunsAsync()
     {
         if (!HasReadPermission || IsRenewalRunsLoading) return;
         IsRenewalRunsLoading = true;
-        RenewalRunsStatus = LocalizedText.Ref("certificates.status.loading");
+        RenewalRunsStatus = Status("certificates.status.loading");
         try
         {
             var runs = await _client.ListRenewalRunsAsync();
             RenewalRuns.Clear();
-            foreach (var run in runs) RenewalRuns.Add(new(run));
-            RenewalRunsStatus = runs.Count == 0 ? LocalizedText.Ref("certificates.renewal.empty") : default;
+            foreach (var run in runs) RenewalRuns.Add(new(run, _language));
+            RenewalRunsStatus = runs.Count == 0 ? Status("certificates.renewal.empty") : default;
         }
-        catch (Exception) { RenewalRunsStatus = LocalizedText.Ref("certificates.error.request_failed"); }
+        catch (Exception) { RenewalRunsStatus = Status("certificates.error.request_failed"); }
         finally { IsRenewalRunsLoading = false; }
     }
     public async Task<string> LoadRenewalHistoryAsync(Guid id)
     {
         var attempts = await _client.GetRenewalHistoryAsync(id);
-        if (attempts.Count == 0) return LocalizedText.Get("certificates.renewal.empty");
+        if (attempts.Count == 0) return Text("certificates.renewal.empty");
         return string.Join(Environment.NewLine + Environment.NewLine, attempts.Select(attempt =>
         {
             var op = attempt.Operation;
-            var text = LocalizedText.Format("certificates.renewal.record",
-                LocalizedText.Get(attempt.Automatic ? "certificates.renewal.automatic" : "certificates.renewal.manual"),
-                LocalizedText.Get("certificates.renewal.state." + op.State.ToString().ToLowerInvariant()),
+            var text = Format("certificates.renewal.record",
+                Text(attempt.Automatic ? "certificates.renewal.automatic" : "certificates.renewal.manual"),
+                Text("certificates.renewal.state." + op.State.ToString().ToLowerInvariant()),
                 op.StartedAt?.ToLocalTime().ToString("g") ?? "—", op.CompletedAt?.ToLocalTime().ToString("g") ?? "—");
             return string.IsNullOrWhiteSpace(op.ProblemCode) ? text : text + Environment.NewLine + ProblemText(op.ProblemCode);
         }));
@@ -99,32 +105,32 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     {
         get
         {
-            if (SelectedCertificate is not { } certificate) return LocalizedText.Get("certificates.renewal.select");
-            if (certificate.Kind == CertificateKind.SelfSigned) return LocalizedText.Get("certificates.renewal.self_signed");
-            if (certificate.Renewal is not { } renewal) return LocalizedText.Get("certificates.renewal.unavailable");
-            var lines = new List<string> { LocalizedText.Get(renewal.AutomaticEnabled ? "certificates.renewal.enabled" : "certificates.renewal.disabled") };
+            if (SelectedCertificate is not { } certificate) return Text("certificates.renewal.select");
+            if (certificate.Kind == CertificateKind.SelfSigned) return Text("certificates.renewal.self_signed");
+            if (certificate.Renewal is not { } renewal) return Text("certificates.renewal.unavailable");
+            var lines = new List<string> { Text(renewal.AutomaticEnabled ? "certificates.renewal.enabled" : "certificates.renewal.disabled") };
             if (certificate.RenewalWindowStart is { } start && certificate.RenewalWindowEnd is { } end)
-                lines.Add(LocalizedText.Format("certificates.renewal.window", start.ToLocalTime().ToString("g"), end.ToLocalTime().ToString("g")));
-            if (certificate.LastRenewalAt is { } success) lines.Add(LocalizedText.Format("certificates.renewal.last_success", success.ToLocalTime().ToString("g")));
-            if (renewal.RetryExhausted) lines.Add(LocalizedText.Format("certificates.renewal.exhausted", renewal.ConsecutiveFailures));
-            else if (renewal.RetryAfter is { } retry) lines.Add(LocalizedText.Format("certificates.renewal.retry", retry.ToLocalTime().ToString("g")));
-            if (renewal.Attempts.Count == 0) lines.Add(LocalizedText.Get("certificates.renewal.empty"));
+                lines.Add(Format("certificates.renewal.window", start.ToLocalTime().ToString("g"), end.ToLocalTime().ToString("g")));
+            if (certificate.LastRenewalAt is { } success) lines.Add(Format("certificates.renewal.last_success", success.ToLocalTime().ToString("g")));
+            if (renewal.RetryExhausted) lines.Add(Format("certificates.renewal.exhausted", renewal.ConsecutiveFailures));
+            else if (renewal.RetryAfter is { } retry) lines.Add(Format("certificates.renewal.retry", retry.ToLocalTime().ToString("g")));
+            if (renewal.Attempts.Count == 0) lines.Add(Text("certificates.renewal.empty"));
             foreach (var attempt in renewal.Attempts)
             {
                 var operation = attempt.Operation;
-                lines.Add(LocalizedText.Format("certificates.renewal.record", LocalizedText.Get(attempt.Automatic ? "certificates.renewal.automatic" : "certificates.renewal.manual"),
-                    LocalizedText.Get("certificates.renewal.state." + operation.State.ToString().ToLowerInvariant()), operation.StartedAt?.ToLocalTime().ToString("g") ?? "—", operation.CompletedAt?.ToLocalTime().ToString("g") ?? "—"));
+                lines.Add(Format("certificates.renewal.record", Text(attempt.Automatic ? "certificates.renewal.automatic" : "certificates.renewal.manual"),
+                    Text("certificates.renewal.state." + operation.State.ToString().ToLowerInvariant()), operation.StartedAt?.ToLocalTime().ToString("g") ?? "—", operation.CompletedAt?.ToLocalTime().ToString("g") ?? "—"));
                 if (!string.IsNullOrWhiteSpace(operation.ProblemCode)) lines.Add(ProblemText(operation.ProblemCode));
             }
             return string.Join(Environment.NewLine, lines);
         }
     }
-    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("certificates.status.loading");
+    [ObservableProperty] private CertificateStatusText _statusText;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasEditorStatus))]
-    private LocalizedStatus _editorStatus;
+    private CertificateStatusText _editorStatus;
     public bool HasEditorStatus => !string.IsNullOrWhiteSpace(EditorStatus.Resolve());
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasOperationActivity))]
-    private LocalizedStatus _operationText;
+    private CertificateStatusText _operationText;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(PreflightCommand), nameof(RequestCommand))]
     private bool _isLoading;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(PreflightCommand), nameof(RequestCommand), nameof(DeployCommand), nameof(RenewCommand), nameof(RevokeCommand), nameof(DeleteCommand), nameof(CancelOperationCommand))]
@@ -141,7 +147,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     [ObservableProperty] private string _selfSignedDomains = string.Empty;
     [ObservableProperty] private int _selfSignedValidityDays = 365;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasPreflightResult))]
-    private LocalizedStatus _preflightText;
+    private CertificateStatusText _preflightText;
 
     public bool HasOperationActivity => !string.IsNullOrWhiteSpace(OperationText);
     public bool HasPreflightResult => !string.IsNullOrWhiteSpace(PreflightText);
@@ -155,7 +161,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         {
             Certificates.Clear();
             SelectedCertificate = null;
-            StatusText = LocalizedText.Ref("certificates.permission.read_required");
+            StatusText = Status("certificates.permission.read_required");
             return;
         }
 
@@ -168,13 +174,13 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
             SelectedCertificate = null;
             foreach (var certificate in certificates) Certificates.Add(certificate);
             SelectedCertificate = Certificates.FirstOrDefault(certificate => certificate.Id == selectedId);
-            StatusText = LocalizedText.Ref("certificates.status.ready", certificates.Count);
+            StatusText = Status("certificates.status.ready", certificates.Count);
         }
         catch (Exception)
         {
             Certificates.Clear();
             SelectedCertificate = null;
-            StatusText = LocalizedText.Ref("certificates.status.failed", LocalizedText.Get("certificates.error.request_failed"));
+            StatusText = Status("certificates.status.failed", Text("certificates.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -183,15 +189,15 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     private async Task PreflightAsync()
     {
         if (!CanManage) return;
-        EditorStatus = string.Empty;
-        if (!TryParseDomains(out var domains)) { EditorStatus = StatusText; PreflightText = string.Empty; return; }
+        EditorStatus = default;
+        if (!TryParseDomains(out var domains)) { EditorStatus = StatusText; PreflightText = default; return; }
         if (SelectedChallengeType is not { } challengeType)
         {
-            PreflightText = LocalizedText.Ref("certificates.validation.challenge_required");
+            PreflightText = Status("certificates.validation.challenge_required");
             return;
         }
         IsLoading = true;
-        PreflightText = LocalizedText.Ref("certificates.preflight.running");
+        PreflightText = Status("certificates.preflight.running");
         try
         {
             var result = await _client.PreflightAsync(new CertificatePreflightRequest(domains, challengeType.Value));
@@ -199,11 +205,11 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         }
         catch (CertificateApiException exception)
         {
-            PreflightText = LocalizedText.Ref("certificates.preflight.failed", ProblemText(exception.ProblemCode));
+            PreflightText = Status("certificates.preflight.failed", ProblemText(exception.ProblemCode));
         }
         catch (Exception)
         {
-            PreflightText = LocalizedText.Ref("certificates.preflight.failed", LocalizedText.Get("certificates.error.request_failed"));
+            PreflightText = Status("certificates.preflight.failed", Text("certificates.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -215,24 +221,24 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     public async Task<bool> TryRequestCertificateAsync()
     {
         if (!CanEditCertificateDraft) return false;
-        if (!HasManagePermission) return ReportEditorError(LocalizedText.Ref("certificates.permission.manage_required"));
-        EditorStatus = string.Empty;
+        if (!HasManagePermission) return ReportEditorError(Status("certificates.permission.manage_required"));
+        EditorStatus = default;
         if (!TryParseDomains(out var domains)) { EditorStatus = StatusText; return false; }
         if (SelectedChallengeType is not { } challengeType)
         {
-            return ReportEditorError(LocalizedText.Ref("certificates.validation.challenge_required"));
+            return ReportEditorError(Status("certificates.validation.challenge_required"));
         }
         if (SelectedKeyAlgorithm is not { } keyAlgorithm)
         {
-            return ReportEditorError(LocalizedText.Ref("certificates.validation.key_algorithm_required"));
+            return ReportEditorError(Status("certificates.validation.key_algorithm_required"));
         }
         if (!AcceptedTerms)
         {
-            return ReportEditorError(LocalizedText.Ref("certificates.validation.terms_required"));
+            return ReportEditorError(Status("certificates.validation.terms_required"));
         }
         if (string.IsNullOrWhiteSpace(ContactEmail))
         {
-            return ReportEditorError(LocalizedText.Ref("certificates.validation.email_required"));
+            return ReportEditorError(Status("certificates.validation.email_required"));
         }
 
         var request = new RequestCertificateRequest(
@@ -243,7 +249,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
             keyAlgorithm.Value,
             PublicReachabilityConfirmed);
         return await RunOperationAsync(
-            LocalizedText.Get("certificates.operation.request"),
+            Text("certificates.operation.request"),
             ct => _client.RequestAsync(request, ct),
             onSuccess: async op => { if (op.CertificateId is { } id) await SelectCertificateAsync(id, ct: default); },
             ct: default);
@@ -253,25 +259,25 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     public async Task<bool> TryCreateSelfSignedCertificateAsync()
     {
         if (!CanEditCertificateDraft) return false;
-        if (!HasManagePermission) return ReportEditorError(LocalizedText.Ref("certificates.permission.manage_required"));
-        EditorStatus = string.Empty;
+        if (!HasManagePermission) return ReportEditorError(Status("certificates.permission.manage_required"));
+        EditorStatus = default;
         var parsed = SelfSignedDomains.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(domain => domain.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (parsed.Length == 0)
         {
-            return ReportEditorError(LocalizedText.Ref("certificates.validation.domains_required"));
+            return ReportEditorError(Status("certificates.validation.domains_required"));
         }
         if (SelectedKeyAlgorithm is not { } keyAlgorithm)
         {
-            return ReportEditorError(LocalizedText.Ref("certificates.validation.key_algorithm_required"));
+            return ReportEditorError(Status("certificates.validation.key_algorithm_required"));
         }
         if (SelfSignedValidityDays is < 1 or > 825)
         {
-            return ReportEditorError(LocalizedText.Ref("certificates.validation.validity_days_invalid"));
+            return ReportEditorError(Status("certificates.validation.validity_days_invalid"));
         }
         var request = new CreateSelfSignedCertificateRequest(parsed, keyAlgorithm.Value, SelfSignedValidityDays);
         return await RunOperationAsync(
-            LocalizedText.Get("certificates.operation.create_self_signed"),
+            Text("certificates.operation.create_self_signed"),
             ct => _client.CreateSelfSignedAsync(request, ct),
             onSuccess: async op => { if (op.CertificateId is { } id) await SelectCertificateAsync(id, ct: default); }, ct: default);
     }
@@ -280,7 +286,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     private Task DeployAsync() => RunOperationForSelectedAsync("deploy",
         (id, ct) => _client.DeployKestrelAsync(id, ct));
 
-    private bool ReportEditorError(LocalizedStatus message)
+    private bool ReportEditorError(CertificateStatusText message)
     {
         StatusText = EditorStatus = message;
         return false;
@@ -312,14 +318,14 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
             var operation = await _client.CancelOperationAsync(operationId, observation.Token);
             if (operation is null) throw new InvalidOperationException("Cancellation receipt is unavailable.");
             if (ReferenceEquals(_operationCts, observation) && _activeOperationId == operationId && operation is not null)
-                OperationText = LocalizedText.Ref("certificates.operation.progress", OperationName(operation.Kind), OperationStage(operation.Stage));
+                OperationText = Status("certificates.operation.progress", OperationName(operation.Kind), OperationStage(operation.Stage));
         }
         catch (Exception)
         {
             if (ReferenceEquals(_operationCts, observation) && _activeOperationId == operationId && !observation.IsCancellationRequested)
             {
                 _cancelRequested = false;
-                StatusText = LocalizedText.Ref("certificates.operation.cancel_request_failed");
+                StatusText = Status("certificates.operation.cancel_request_failed");
                 CancelOperationCommand.NotifyCanExecuteChanged();
             }
         }
@@ -329,7 +335,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     {
         if (SelectedCertificate is null) return;
         await RunOperationAsync(
-            LocalizedText.Get($"certificates.operation.{kindKey}"),
+            Text($"certificates.operation.{kindKey}"),
             ct => start(SelectedCertificate.Id, ct),
             onSuccess: async op => { if (op.CertificateId is { } id) await SelectCertificateAsync(id, ct: default); },
             ct: default);
@@ -340,7 +346,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         if (IsLoading || IsOperationRunning) return false;
         if (!HasManagePermission)
         {
-            StatusText = LocalizedText.Ref("certificates.permission.manage_required");
+            StatusText = Status("certificates.permission.manage_required");
             return false;
         }
 
@@ -351,18 +357,18 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         OperationLog = string.Empty;
         _lastOperationLogText = string.Empty;
         IsOperationRunning = true;
-        OperationText = LocalizedText.Ref("certificates.operation.starting", label);
+        OperationText = Status("certificates.operation.starting", label);
         try
         {
             var operation = await start(token);
             if (operation is null)
             {
-                OperationText = LocalizedText.Ref("certificates.operation.not_found");
+                OperationText = Status("certificates.operation.not_found");
                 return false;
             }
             if (operation.OperationId == Guid.Empty)
             {
-                OperationText = LocalizedText.Ref("certificates.operation.rejected", ProblemText(operation.ProblemCode));
+                OperationText = Status("certificates.operation.rejected", ProblemText(operation.ProblemCode));
                 return false;
             }
             _activeOperationId = operation.OperationId;
@@ -370,35 +376,35 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
             operation = await PollOperationAsync(operation, token);
             if (IsPendingRevocation(operation))
             {
-                OperationText = LocalizedText.Ref("certificates.operation.recovery_pending", operation.OperationId, ProblemText(operation.ProblemCode));
+                OperationText = Status("certificates.operation.recovery_pending", operation.OperationId, ProblemText(operation.ProblemCode));
                 return false;
             }
             if (operation.State == CertificateOperationState.Succeeded)
             {
-                OperationText = LocalizedText.Ref("certificates.operation.succeeded", label);
+                OperationText = Status("certificates.operation.succeeded", label);
                 if (onSuccess is not null) await onSuccess(operation);
                 await RefreshAsync();
                 return true;
             }
             else if (operation.State == CertificateOperationState.Cancelled)
-                OperationText = LocalizedText.Ref("certificates.operation.cancelled");
+                OperationText = Status("certificates.operation.cancelled");
             else
-                OperationText = LocalizedText.Ref("certificates.operation.failed", label, ProblemText(operation.ProblemCode));
+                OperationText = Status("certificates.operation.failed", label, ProblemText(operation.ProblemCode));
             return false;
         }
         catch (OperationCanceledException)
         {
-            OperationText = LocalizedText.Ref("certificates.operation.observation_stopped", _activeOperationId?.ToString("D") ?? "—");
+            OperationText = Status("certificates.operation.observation_stopped", _activeOperationId?.ToString("D") ?? "—");
             return false;
         }
         catch (CertificateApiException exception)
         {
-            OperationText = LocalizedText.Ref("certificates.operation.failed", label, ProblemText(exception.ProblemCode));
+            OperationText = Status("certificates.operation.failed", label, ProblemText(exception.ProblemCode));
             return false;
         }
         catch (Exception)
         {
-            OperationText = LocalizedText.Ref("certificates.operation.exception", label, LocalizedText.Get("certificates.error.request_failed"));
+            OperationText = Status("certificates.operation.exception", label, Text("certificates.error.request_failed"));
             return false;
         }
         finally
@@ -414,7 +420,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     {
         while ((operation.State is CertificateOperationState.Queued or CertificateOperationState.Running) && !IsPendingRevocation(operation))
         {
-            OperationText = LocalizedText.Ref("certificates.operation.progress", OperationName(operation.Kind), OperationStage(operation.Stage));
+            OperationText = Status("certificates.operation.progress", OperationName(operation.Kind), OperationStage(operation.Stage));
             await Task.Delay(PollInterval, cancellationToken);
             var updated = await _client.GetOperationAsync(operation.OperationId, cancellationToken);
             if (updated is null) break;
@@ -446,7 +452,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
             .ToArray();
         if (parsed.Length == 0)
         {
-            StatusText = LocalizedText.Ref("certificates.validation.domains_required");
+            StatusText = Status("certificates.validation.domains_required");
             domains = Array.Empty<string>();
             return false;
         }
@@ -458,23 +464,23 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     /// Composes the multi-line preflight report as a decomposable value rather than one resolved
     /// string, so the whole block re-localizes when the display language changes.
     /// </summary>
-    private static LocalizedStatus FormatPreflight(CertificatePreflightResultDto result)
+    private CertificateStatusText FormatPreflight(CertificatePreflightResultDto result)
     {
         if (!result.CanProceed)
-            return LocalizedText.Ref("certificates.preflight.cannot_proceed", ProblemText(result.ProblemCode));
-        var lines = new List<LocalizedStatus> { LocalizedText.Ref("certificates.preflight.can_proceed") };
+            return Status("certificates.preflight.cannot_proceed", ProblemText(result.ProblemCode));
+        var lines = new List<CertificateStatusText> { Status("certificates.preflight.can_proceed") };
         if (result.Port80Available is { } port80)
-            lines.Add(LocalizedText.Ref(port80 ? "certificates.preflight.port80_available" : "certificates.preflight.port80_unavailable"));
+            lines.Add(Status(port80 ? "certificates.preflight.port80_available" : "certificates.preflight.port80_unavailable"));
         if (result.RequiresAdministrator)
-            lines.Add(LocalizedText.Ref("certificates.preflight.requires_admin"));
+            lines.Add(Status("certificates.preflight.requires_admin"));
         foreach (var domain in result.Domains ?? [])
         {
             if (!string.IsNullOrEmpty(domain.ProblemCode))
-                lines.Add(LocalizedText.Ref("certificates.preflight.domain_problem", domain.Domain, ProblemText(domain.ProblemCode)));
+                lines.Add(Status("certificates.preflight.domain_problem", domain.Domain, ProblemText(domain.ProblemCode)));
         }
         if (result.RequiresPublicReachabilityConfirmation)
-            lines.Add(LocalizedText.Ref("certificates.preflight.confirm_reachability"));
-        return LocalizedStatus.Join("\n", lines);
+            lines.Add(Status("certificates.preflight.confirm_reachability"));
+        return CertificateStatusText.Join("\n", lines);
     }
 
     private bool HasReadPermission => _permissions.IsGranted(AppPermissions.ServerCertificatesRead);
@@ -486,57 +492,70 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     private bool CanRenewOrRevokeSelected => CanActOnSelected && SelectedCertificate is { Kind: CertificateKind.Acme } certificate && certificate.Status != CertificateStatus.Revoked;
     private bool CanCancelOperation => IsOperationRunning && _activeOperationId is not null && !_cancelRequested;
 
-    private static string OperationName(string? kind) => kind switch
+    private string OperationName(string? kind) => kind switch
     {
-        "issue" or "request" => LocalizedText.Get("certificates.operation.request"),
-        "create-self-signed" => LocalizedText.Get("certificates.operation.create_self_signed"),
-        "deploy-kestrel" or "deploy" => LocalizedText.Get("certificates.operation.deploy"),
-        "renew" => LocalizedText.Get("certificates.operation.renew"),
-        "revoke" => LocalizedText.Get("certificates.operation.revoke"),
-        "delete" => LocalizedText.Get("certificates.operation.delete"),
-        _ => LocalizedText.Get("certificates.operation.unknown"),
+        "issue" or "request" => Text("certificates.operation.request"),
+        "create-self-signed" => Text("certificates.operation.create_self_signed"),
+        "deploy-kestrel" or "deploy" => Text("certificates.operation.deploy"),
+        "renew" => Text("certificates.operation.renew"),
+        "revoke" => Text("certificates.operation.revoke"),
+        "delete" => Text("certificates.operation.delete"),
+        _ => Text("certificates.operation.unknown"),
     };
 
-    private static string OperationStage(string? stage) => stage switch
+    private string OperationStage(string? stage) => stage switch
     {
-        "queued" => LocalizedText.Get("certificates.operation.stage.queued"),
-        "running" => LocalizedText.Get("certificates.operation.stage.running"),
-        "issue" => LocalizedText.Get("certificates.operation.stage.issuing"),
-        "create-self-signed" => LocalizedText.Get("certificates.operation.stage.creating_self_signed"),
-        "deploy-kestrel" => LocalizedText.Get("certificates.operation.stage.deploying"),
-        "renew" => LocalizedText.Get("certificates.operation.stage.renewing"),
-        "revoke" or "revocation-dispatched" => LocalizedText.Get("certificates.operation.stage.revoking"),
+        "queued" => Text("certificates.operation.stage.queued"),
+        "running" => Text("certificates.operation.stage.running"),
+        "issue" => Text("certificates.operation.stage.issuing"),
+        "create-self-signed" => Text("certificates.operation.stage.creating_self_signed"),
+        "deploy-kestrel" => Text("certificates.operation.stage.deploying"),
+        "renew" => Text("certificates.operation.stage.renewing"),
+        "revoke" or "revocation-dispatched" => Text("certificates.operation.stage.revoking"),
         "revocation-confirmed" or "revocation-cleanup-required" => ProblemText("certificate.revocation_cleanup_required"),
         "revocation-recovery-required" => ProblemText("certificate.revocation_recovery_required"),
-        "delete" => LocalizedText.Get("certificates.operation.stage.deleting"),
-        "cancelled" => LocalizedText.Get("certificates.operation.stage.cancelled"),
-        "cancel-requested" => LocalizedText.Get("certificates.operation.stage.cancel_requested"),
-        "interrupted" => LocalizedText.Get("certificates.operation.stage.interrupted"),
-        _ => LocalizedText.Get("certificates.operation.stage.unknown"),
+        "delete" => Text("certificates.operation.stage.deleting"),
+        "cancelled" => Text("certificates.operation.stage.cancelled"),
+        "cancel-requested" => Text("certificates.operation.stage.cancel_requested"),
+        "interrupted" => Text("certificates.operation.stage.interrupted"),
+        _ => Text("certificates.operation.stage.unknown"),
     };
 
-    private static string ProblemText(string? problemCode)
+    private string ProblemText(string? problemCode)
     {
-        if (problemCode == "elevation-required") return LocalizedText.Get("certificates.problem.elevation_required");
+        if (problemCode == "elevation-required") return Text("certificates.problem.elevation_required");
         if (string.IsNullOrWhiteSpace(problemCode) || !problemCode.StartsWith("certificate.", StringComparison.Ordinal))
-            return LocalizedText.Get("certificates.problem.unknown");
-        return LocalizedText.Get($"certificates.problem.{problemCode["certificate.".Length..]}", LocalizedText.Get("certificates.problem.unknown"));
+            return Text("certificates.problem.unknown");
+        return Text($"certificates.problem.{problemCode["certificate.".Length..]}", Text("certificates.problem.unknown"));
     }
 
-    private static CertificateOption<TValue> Option<TValue>(TValue value, string labelKey) where TValue : struct => new(value, LocalizedText.Get(labelKey));
+    private CertificateOption<TValue> Option<TValue>(TValue value, string labelKey) where TValue : struct => new(value, Status(labelKey));
 
     // ACME issuance can take tens of seconds; poll gently to avoid hammering the host.
+    private string Text(string key, string? fallback = null) => CertificateLocalization.Resolve(_language, key, fallback);
+
+    private string Format(string key, params object?[] arguments) =>
+        string.Format(CultureInfo.CurrentCulture, Text(key), arguments);
+
+    private CertificateStatusText Status(string key, params object?[] arguments) =>
+        new(() => arguments.Length == 0 ? Text(key) : Format(key, arguments));
+
+    private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => OnPropertyChanged(string.Empty);
+
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 }
 
 /// <summary>Strongly-typed choice for a combo box. Keeps the enum value while showing a localized label.</summary>
-public sealed record CertificateOption<TValue>(TValue Value, string Label) where TValue : struct;
+public sealed record CertificateOption<TValue>(TValue Value, CertificateStatusText LocalizedLabel) where TValue : struct
+{
+    public string Label => LocalizedLabel.Resolve();
+}
 
-public sealed record CertificateRenewalRunRow(CertificateRenewalRunDto Run)
+public sealed record CertificateRenewalRunRow(CertificateRenewalRunDto Run, ISystemLanguage Language)
 {
     public DateTimeOffset StartedAt => Run.StartedAt.ToLocalTime();
     public DateTimeOffset? CompletedAt => Run.CompletedAt?.ToLocalTime();
-    public string Source => LocalizedText.Get(Run.Automatic ? "certificates.renewal.automatic" : "certificates.renewal.manual");
+    public string Source => CertificateLocalization.Resolve(Language, Run.Automatic ? "certificates.renewal.automatic" : "certificates.renewal.manual");
     public int Succeeded => Run.Succeeded;
     public int Failed => Run.Failed;
     public int Pending => Run.Pending;

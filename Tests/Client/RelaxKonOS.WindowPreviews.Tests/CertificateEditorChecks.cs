@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Certificates;
 using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Controls;
@@ -11,13 +12,13 @@ using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
 
 internal static class CertificateEditorChecks
 {
-    public static void Run()
+    public static void Run(ISystemLanguage language)
     {
         foreach (var selfSigned in new[] { false, true })
         {
             var client = DispatchProxy.Create<IServerCertificates, CertificateEditorClient>();
             var stub = (CertificateEditorClient)(object)client;
-            var vm = new CertificateManagerViewModel(client, new FirewallTestPermissions())
+            var vm = new CertificateManagerViewModel(client, new FirewallTestPermissions(), language)
             {
                 Domains = "example.test", ContactEmail = "test@example.test", AcceptedTerms = true,
                 SelfSignedDomains = "example.test"
@@ -32,7 +33,7 @@ internal static class CertificateEditorChecks
             {
                 handle = dialog;
                 var name = selfSigned ? "SelfSignedCertificateDialogView" : "CertificateRequestDialogView";
-                var type = typeof(CertificateManagerViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.Certificates.Views." + name)!;
+                var type = typeof(CertificateManagerApp).Assembly.GetType("RelaxKonOS.Client.Apps.Certificates.Views." + name)!;
                 editor = (Control)Activator.CreateInstance(type, [vm, dialog])!;
                 return editor;
             });
@@ -73,16 +74,16 @@ internal static class CertificateEditorChecks
             Check(result.IsCompleted, "Confirmed certificate discard closes the editor.");
             manager.Close(owner);
         }
-        VerifyCancellationObservation();
+        VerifyCancellationObservation(language);
         Console.WriteLine("Certificate editor checks passed.");
     }
-    private static void VerifyCancellationObservation()
+    private static void VerifyCancellationObservation(ISystemLanguage language)
     {
         foreach (var terminal in new[] { CertificateOperationState.Cancelled, CertificateOperationState.Succeeded })
         {
             var client = DispatchProxy.Create<IServerCertificates, CertificateCancellationClient>();
             var stub = (CertificateCancellationClient)(object)client;
-            var vm = new CertificateManagerViewModel(client, new FirewallTestPermissions())
+            var vm = new CertificateManagerViewModel(client, new FirewallTestPermissions(), language)
             { SelfSignedDomains = "example.test" };
             var submitted = vm.TryCreateSelfSignedCertificateAsync();
             Check(vm.IsOperationRunning && vm.CancelOperationCommand.CanExecute(null), "Only a server operation with a known ID can request cancellation.");
@@ -104,7 +105,7 @@ internal static class CertificateEditorChecks
         }
         var disconnectedClient = DispatchProxy.Create<IServerCertificates, CertificateCancellationClient>();
         var disconnected = (CertificateCancellationClient)(object)disconnectedClient;
-        var disconnectedVm = new CertificateManagerViewModel(disconnectedClient, new FirewallTestPermissions())
+        var disconnectedVm = new CertificateManagerViewModel(disconnectedClient, new FirewallTestPermissions(), language)
         { SelfSignedDomains = "example.test" };
         var observation = disconnectedVm.TryCreateSelfSignedCertificateAsync();
         PumpCancellationUntil(() => disconnected.ReadCalls > 0);

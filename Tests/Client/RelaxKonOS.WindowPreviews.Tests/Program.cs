@@ -90,18 +90,24 @@ if (args.Contains("--certificates-only"))
     try
     {
         var labels = new HashSet<string>(StringComparer.Ordinal);
+        var statuses = new HashSet<string>(StringComparer.Ordinal);
+        var certificates = new RelaxKonOS.App.Certificates.CertificateManagerViewModel(
+            null!, new FirewallTestPermissions(), localization);
         foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
         {
             settings.Language = culture;
             var text = localization.Get("certificates.subtitle", "");
             if (string.IsNullOrWhiteSpace(text) || !labels.Add(text))
                 throw new InvalidOperationException($"Missing distinct certificate text for {culture}.");
+            var status = certificates.StatusText.Resolve();
+            if (status != localization.Get("certificates.status.loading", "") || !statuses.Add(status))
+                throw new InvalidOperationException($"Certificate status did not follow the switch to {culture}.");
         }
         Console.WriteLine("Certificate Manager resources resolved in all three languages.");
     }
     finally { settings.Language = previousLanguage; }
     Task.Run(() => CertificateCapabilityChecks.RunAsync(settings, localization)).GetAwaiter().GetResult();
-    CertificateEditorChecks.Run();
+    CertificateEditorChecks.Run(localization);
     return;
 }
 if (args.Contains("--browser-capability-only"))
@@ -246,7 +252,7 @@ WebSiteReadRecoveryChecks.Run();
 CurrentNginxChecks.Run();
 ComponentInstallEntryChecks.Run();
 WebSiteScopeChecks.Run();
-CertificateEditorChecks.Run();
+CertificateEditorChecks.Run(localization);
 FileShareDialogChecks.Run();
 PortForwardSubmissionChecks.Run();
 TopLevelWindowCloseGuardChecks.Run();

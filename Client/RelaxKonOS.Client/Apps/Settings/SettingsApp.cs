@@ -234,8 +234,9 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         };
         systemPage.RequestServerHttpsAsync = async () =>
         {
-            var certificates = new RelaxKonOS.Client.Apps.Certificates.CertificateManagerViewModel(
-                context.Services.GetRequiredService<RelaxKonOS.AppSDK.IServerCertificates>(), context.Permissions);
+            var certificates = new RelaxKonOS.App.Certificates.CertificateManagerViewModel(
+                context.Services.GetRequiredService<RelaxKonOS.AppSDK.IServerCertificates>(), context.Permissions,
+                context.Services.GetRequiredService<ISystemLanguage>());
             await certificates.StartAsync();
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.server_https.title"),
                 dialog => new ServerHttpsDialogView { DataContext = certificates }, new Size(660, 480));

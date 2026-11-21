@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:certificates="clr-namespace:RelaxKonOS.Client.Apps.Certificates"
+             xmlns:certificates="clr-namespace:RelaxKonOS.Client.Apps.Certificates" xmlns:certificateApp="clr-namespace:RelaxKonOS.App.Certificates;assembly=RelaxKonOS.App.Certificates"
              x:Class="RelaxKonOS.Client.Apps.Certificates.Views.CertificateListView"
-             x:DataType="certificates:CertificateManagerViewModel" Classes="builtin-app">
+             x:DataType="certificateApp:CertificateManagerViewModel" Classes="builtin-app">
     <Border Padding="20" Classes="app-panel">
         <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" RowSpacing="12">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
