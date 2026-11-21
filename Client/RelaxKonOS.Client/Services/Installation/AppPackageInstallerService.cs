@@ -76,7 +76,7 @@ public sealed class AppPackageInstallerService
         InstallAsync(candidate, cancellationToken, null);
 
     internal async Task<DeveloperAppInfo> InstallAsync(AppPackageCandidate candidate, CancellationToken cancellationToken,
-        Func<DeveloperPackageManifest, CancellationToken, Task>? verifyDeployment)
+        Func<DeveloperPackageManifest, CancellationToken, Task<Guid>>? verifyDeployment)
     {
         await _installLock.WaitAsync(cancellationToken);
         try

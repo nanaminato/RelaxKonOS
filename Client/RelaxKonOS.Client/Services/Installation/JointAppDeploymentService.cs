@@ -19,6 +19,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<Review> PrepareAsync(AppPackageCandidate candidate, IEnumerable<DeploymentRequirement> selectedOptional,
         CancellationToken cancellationToken)
     {
+        var actor = session.CurrentUser?.Id ?? throw new InvalidOperationException("deployment-account-changed");
+        var connection = session.ServiceId ?? throw new InvalidOperationException("deployment-account-changed");
         var supported = ApplicationPlatformNames.Normalize(candidate.Manifest.ClientPlatforms);
         if (supported.Count > 0 && !supported.Contains(ApplicationCompatibilityService.DetectClientPlatform(), StringComparer.Ordinal))
             throw new InvalidOperationException("deployment-client-platform-unsupported");
@@ -54,7 +56,24 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 && !resolution.OrderedReleases.Any(release => release.Package.Kind == DeploymentPackageKind.ServerModule
                     && release.Capabilities.ContainsKey(capability))))
             throw new InvalidOperationException("deployment-application-incompatible");
+        resolution = resolution with { ClientBinding = new(actor, connection, candidate.ExpectedInstalledPath) };
         return new(await modules.PrepareAsync(resolution, snapshot, cancellationToken), backend);
+    }
+
+    public async Task<Review?> FindPendingAsync(AppPackageCandidate candidate, CancellationToken cancellationToken)
+    {
+        if (session.CurrentUser is not { } user || session.ServiceId is not { } connection
+            || candidate.ExpectedSha256 is not { } digest) return null;
+        var plan = await journal.FindPendingPlanAsync(App(candidate.Manifest.Id), candidate.Manifest.Version,
+            digest, user.Id, connection, cancellationToken);
+        if (plan?.ClientBinding is not { } binding) return null;
+        var client = NewModuleClient();
+        var backend = new Backend(candidate with
+        {
+            InstalledVersion = plan.OrderedReleases[^1].CurrentVersion,
+            ExpectedInstalledPath = binding.InstalledPath,
+        }, installer, packages, applications, new(client), new(client), session);
+        return new(plan, backend);
     }
 
     public async Task<DeveloperAppInfo> ExecuteAsync(Review review, CancellationToken cancellationToken)
@@ -100,8 +119,10 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
 
         public async Task VerifyBeforeExecutionAsync(DeploymentPlan plan, CancellationToken cancellationToken)
         {
-            if (actor is null || session.CurrentUser?.Id != actor || session.ServiceId != connection)
+            if (actor is null || session.CurrentUser?.Id != actor || session.ServiceId != connection
+                || plan.ClientBinding is not { } binding || binding.AccountId != actor || binding.ConnectionIdentity != connection)
                 throw new InvalidOperationException("deployment-account-changed");
+            installed ??= await packages.FindDeploymentResultAsync(candidate.Manifest.Id, plan.Id, cancellationToken);
             if (installed is not null) return;
             VerifyApplicationBaseline();
             foreach (var dependency in plan.OrderedReleases)
@@ -143,6 +164,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 await VerifyDependenciesAsync(plan, ct);
                 if (!applications.EvaluateCompatibility(RuntimeManifest(manifest)).IsCompatible)
                     throw new InvalidOperationException("deployment-application-incompatible");
+                return plan.Id;
             });
         }
 

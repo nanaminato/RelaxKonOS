@@ -20,6 +20,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     private readonly LocalizationService _localization;
     private readonly Queue<AppPackageCandidate> _pending = new();
     private JointAppDeploymentService.Review? _jointReview;
+    private Guid? _expiredJointPlan;
 
     public AppInstallerViewModel(AppPackageInstallerService installer)
     {
@@ -112,6 +113,15 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
             {
                 if (_jointReview is null)
                 {
+                    var pending = await joint.FindPendingAsync(candidate, _storeLifetime.Token);
+                    if (pending is not null && pending.Plan.Id != _expiredJointPlan)
+                    {
+                        if (ConfirmDeploymentAsync is null || !await ConfirmDeploymentAsync(pending.Plan)) return;
+                        _jointReview = pending;
+                    }
+                }
+                if (_jointReview is null)
+                {
                     var optional = dependencies.Optional ?? [];
                     var selected = optional.Count == 0 ? optional
                         : SelectOptionalAsync is { } select ? await select(optional) : null;
@@ -144,7 +154,10 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         {
             if (exception.Message is "deployment-plan-expired" or "deployment-snapshot-changed"
                 or "deployment-module-plan-expired")
+            {
+                _expiredJointPlan = _jointReview?.Plan.Id;
                 _jointReview = null;
+            }
             Status = LocalizedText.Ref("app_installer.status.install_failed", DeploymentProblem(exception.Message));
             await ReportAsync(LocalizedText.Get("app_installer.error.install_title"), Status);
         }
@@ -174,6 +187,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     partial void OnCurrentPackageChanged(AppPackageCandidate? value)
     {
         _jointReview = null;
+        _expiredJointPlan = null;
         (PackageIcon as IDisposable)?.Dispose();
         PackageIcon = null;
         if (value?.IconData is { Length: > 0 } data)

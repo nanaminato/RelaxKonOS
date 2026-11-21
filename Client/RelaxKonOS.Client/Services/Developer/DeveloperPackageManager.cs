@@ -80,6 +80,14 @@ public sealed partial class DeveloperPackageManager
     internal IReadOnlyList<DeploymentRequirement> RequiredDependencies(AppId id) =>
         _catalog.GetValueOrDefault(id.Value)?.Dependencies?.Required ?? [];
 
+    internal async Task<DeveloperAppInfo?> FindDeploymentResultAsync(string appId, Guid planId, CancellationToken cancellationToken)
+    {
+        if (FindInstalled(appId) is not { } installed) return null;
+        var receipt = _drive.ResolveUnder(installed.InstallationPath, "deployment-receipt.json");
+        return File.Exists(receipt) && await _drive.ReadJsonAsync<Guid>(receipt, cancellationToken) == planId
+            ? installed : null;
+    }
+
     public IReadOnlyList<DeveloperAppInfo> Installed => _catalog.Values
         .OrderBy(record => record.DisplayName)
         .Select(record => new DeveloperAppInfo(record.Id, record.DisplayName, record.Version, record.Path))
@@ -193,7 +201,7 @@ public sealed partial class DeveloperPackageManager
         InstallAsync(package, launch, cancellationToken, null);
 
     internal async Task<DeveloperAppInfo> InstallAsync(Stream package, bool launch, CancellationToken cancellationToken,
-        Func<DeveloperPackageManifest, CancellationToken, Task>? verifyDeployment)
+        Func<DeveloperPackageManifest, CancellationToken, Task<Guid>>? verifyDeployment)
     {
         await _mutations.WaitAsync(cancellationToken);
         try
@@ -223,7 +231,7 @@ public sealed partial class DeveloperPackageManager
 
     internal async Task<DeveloperAppInfo> InstallOfficialAsync(Stream package, string path, string appId, string expectedSha256,
         string? installedVersion, CancellationToken cancellationToken, OfficialDesktopRelease? release = null,
-        string? installedPath = null, Func<DeveloperPackageManifest, CancellationToken, Task>? verifyDeployment = null)
+        string? installedPath = null, Func<DeveloperPackageManifest, CancellationToken, Task<Guid>>? verifyDeployment = null)
     {
         await _mutations.WaitAsync(cancellationToken);
         try
@@ -264,7 +272,7 @@ public sealed partial class DeveloperPackageManager
 
     private async Task<DeveloperAppRecord> StageAsync(
         Func<string, CancellationToken, Task<DeveloperPackageManifest>> extract, PackageOrigin origin, CancellationToken cancellationToken,
-        Func<DeveloperPackageManifest, CancellationToken, Task>? verifyDeployment = null)
+        Func<DeveloperPackageManifest, CancellationToken, Task<Guid>>? verifyDeployment = null)
     {
         var staging = _drive.ResolveUnder(_root, $".staging/{Guid.NewGuid():N}");
         string? destination = null;
@@ -273,8 +281,14 @@ public sealed partial class DeveloperPackageManager
             Directory.CreateDirectory(staging);
             var manifest = await extract(staging, cancellationToken);
             ValidateManifest(manifest, origin);
+            var deploymentReceipt = _drive.ResolveUnder(staging, "deployment-receipt.json");
+            if (File.Exists(deploymentReceipt) || Directory.Exists(deploymentReceipt))
+                throw new InvalidDataException("The application package uses a reserved deployment receipt path.");
             if (verifyDeployment is not null)
-                await verifyDeployment(manifest, cancellationToken);
+            {
+                var planId = await verifyDeployment(manifest, cancellationToken);
+                await _drive.WriteJsonAtomicallyAsync(deploymentReceipt, planId, cancellationToken);
+            }
             else if (manifest.Dependencies?.Required is { Count: > 0 })
                 throw new InvalidOperationException("This package requires joint deployment before installation.");
 
