@@ -612,7 +612,7 @@ v2 的 `IModuleContext` 只提供：
 - `InstalledModuleCatalog`：启动时发现已安装模块，按需加载程序集；加载前重新核对 `manifest.json` 与每个文件的长度/SHA-256，篡改文件拒绝加载；共享抽象/Protocol 使用 Host 类型身份；模块可注册 DI 和 Endpoint。
 - `ServerModules` / `ModuleManagementStore` 接入已安装模块目录；默认启用集合与 managed 状态可识别已安装模块。
 - 离线命令：`install-package`、`list-installed`、`list-versions`、`list-package-operations`、`rollback-installed`、`remove-installed`。
-- 只读 HTTP：`/server/module-packages/installed`、`/server/module-packages/{moduleId}/versions`、`/server/module-package-operations`。
+- 只读 HTTP：`/server/module-packages/installed`、`/server/module-packages/{moduleId}/versions`、`/server/module-package-operations`。联合部署按应用操作返回的 ID 调用 `/server/module-package-operations/{operationId}` 核对回执。该接口需要模块管理权限，找不到回执时返回 HTTP 404。
 - 模块搜索/下载 HTTP：`GET /server/module-store/search` 在已接纳签名目录中搜索，`GET /server/module-store/sources` 报告已接纳来源状态，`POST /server/module-store/download` 按来源/发布下载并校验摘要到 staging；不暴露任意下载 URL。
 - 模块健康 HTTP：`GET /server/module-health` 报告内置/已安装模块的启用状态、版本和可选模块自检结果；隔离/加载失败可见，但接口不自动重启或改变启用集合。
 - 健康停机看门狗：配置 `ModuleHealth:Enabled=true`、`ModuleHealth:StopOnUnhealthy=true`、`ModuleHealth:ProbeIntervalSeconds` 和 `ModuleHealth:StopExitCode`（默认 1）后，Host 在启动后周期检查启用模块；发现 `unhealthy`/`load-failed`/`quarantined` 时写 `health-stop.json`、设置非零退出码并请求 `StopApplication`，由外部服务监督器负责重启。Host 不自行重启、不改启用集合。部署示例见[进程监督与健康停机恢复](../services/ServerProcessSupervision.md)。

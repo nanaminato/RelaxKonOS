@@ -12,6 +12,7 @@
     <ProjectReference Include="../../RelaxKonOS.ServerModuleHost/RelaxKonOS.ServerModuleHost.csproj" />
     <ProjectReference Include="../../Applications/RelaxKonOS.App.TaskManager/RelaxKonOS.App.TaskManager.csproj" />
     <ProjectReference Include="../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
+    <ProjectReference Include="../../Applications/RelaxKonOS.App.Terminal/RelaxKonOS.App.Terminal.csproj" />
     <ProjectReference Include="FixtureModule/FixtureModule.csproj" />
     <ProjectReference Include="HostFixture/HostFixture.csproj" />
   </ItemGroup>

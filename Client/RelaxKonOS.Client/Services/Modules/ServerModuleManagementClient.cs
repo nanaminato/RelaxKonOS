@@ -212,14 +212,26 @@ public sealed class ServerModuleManagementClient(HttpClient http, IAuthSession s
     public async Task<ServerPackageOperationPageDto> PackageOperationsAsync(CancellationToken cancellationToken = default)
     {
         var page = await SendAsync<ServerPackageOperationPageDto>(HttpMethod.Get, ServerModuleManagementRoutes.PackageOperations, cancellationToken: cancellationToken);
-        Require(page.Items is { Count: <= 128 }
-            && page.Items.All(operation => operation is not null && operation.OperationId != Guid.Empty
-                && operation.Action is "install" or "rollback" or "update" && ValidIds([operation.ModuleId])
-                && operation.Version is { Length: > 0 and <= 32 } && ValidDigest(operation.ArtifactSha256)
-                && operation.State is "AwaitingRestart" or "Applying" or "Succeeded" or "Failed"
-                && operation.CreatedAt != default && operation.UpdatedAt >= operation.CreatedAt));
+        Require(page.Items is { Count: <= 1000 } && page.Items.All(ValidPackageOperation));
         return page;
     }
+
+    public async Task<ServerPackageOperationDto> ReadPackageOperationAsync(Guid operationId, CancellationToken cancellationToken = default)
+    {
+        Require(operationId != Guid.Empty);
+        var operation = await SendAsync<ServerPackageOperationDto>(HttpMethod.Get,
+            ServerModuleManagementRoutes.PackageOperation.Replace("{operationId:guid}", operationId.ToString("D")),
+            cancellationToken: cancellationToken);
+        Require(ValidPackageOperation(operation) && operation.OperationId == operationId);
+        return operation;
+    }
+
+    private static bool ValidPackageOperation(ServerPackageOperationDto? operation) =>
+        operation is not null && operation.OperationId != Guid.Empty
+        && operation.Action is "install" or "rollback" or "update" && ValidIds([operation.ModuleId])
+        && operation.Version is { Length: > 0 and <= 32 } && ValidDigest(operation.ArtifactSha256)
+        && operation.State is "AwaitingRestart" or "Applying" or "Succeeded" or "Failed"
+        && operation.CreatedAt != default && operation.UpdatedAt >= operation.CreatedAt;
 
     public async Task<ServerModuleStorePageDto> SearchStoreAsync(string? query, string? sourceId = null, int offset = 0, CancellationToken cancellationToken = default)
     {

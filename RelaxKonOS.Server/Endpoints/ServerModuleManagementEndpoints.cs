@@ -169,6 +169,14 @@ internal static class ServerModuleManagementEndpoints
                     .OrderByDescending(operation => operation.UpdatedAt)
                     .Select(OperationDto).ToArray())))))
             .RequireAuthorization(ManagePolicy);
+        group.MapGet(ServerModuleManagementRoutes.PackageOperation, (Guid operationId, ServerModuleContext context) => Respond(() =>
+        {
+            var operation = ModulePackageOperationStore.Read(context.ContentRootPath)
+                .SingleOrDefault(item => item.OperationId == operationId);
+            return Task.FromResult<IResult>(operation is null
+                ? Problem("module-package-operation-not-found", 404)
+                : Results.Ok(OperationDto(operation)));
+        })).RequireAuthorization(ManagePolicy);
         group.MapPost(ServerModuleManagementRoutes.PackageUpload, async (HttpRequest request,
             ServerModuleContext context, CancellationToken cancellationToken) => await Respond(async () =>
         {

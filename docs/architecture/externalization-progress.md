@@ -62,6 +62,8 @@
 
 ## 测试证据
 
+- 联合部署按服务端操作 ID 读取单条模块安装回执，即使历史超过原客户端的 128 条限制也可查询。Windows Release 的模块包 HTTP 测试验证单条回执与历史一致、未知 ID 返回 404。隔离联合部署回归使用实际 Welcome 归档与签名模块包，验证丢失响应和重启后的恢复。
+
 - Browser 的书签、历史记录和工作区设置已通过 SDK 接入，仅官方 Browser 应用上下文提供此能力。请求绑定启动时的服务器会话。
 - Browser 的窗口和原生 WebView 已由独立 SDK 入口承载。Standard 与 Developer 使用同一官方 .roapp 离线预装。Windows Release 使用 DevCli 生成的实际归档验证来源校验、预装、未登录启动窗口跟随中英日语言、关闭后解除语言订阅、更新、失败保留版本、重启发现与卸载。已登录的原生 WebView 实机验收待完成。
 - 桌面发行项目的 `PublishOfficialDesktopApps` 目标在 Windows 上生成九份归档和校验文件。逐包复核 SHA-256 及配置集引用均通过。Browser 的签入无头回归通过，测试数据经 SDK 进入已安装包的工作区。窗口关闭时停止 UI 心跳和后台诊断计时器。

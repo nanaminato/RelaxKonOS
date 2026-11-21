@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -245,6 +246,13 @@ internal static class ModulePackageHttpChecks
                 ServerModuleManagementRoutes.PackageOperations, RelaxKonOSJsonOptions.Default))!;
             check(verified.Items.Single().State == ModulePackageOperationState.Succeeded,
                 "startup verification result remains readable through the package operation API");
+            var receiptRoute = ServerModuleManagementRoutes.PackageOperation.Replace("{operationId:guid}", applied.OperationId.ToString("D"));
+            var receipt = await client.GetFromJsonAsync<ServerPackageOperationDto>(receiptRoute, RelaxKonOSJsonOptions.Default);
+            check(receipt == verified.Items.Single(),
+                "the exact receipt endpoint returns the same verified result as the operation history");
+            using var missingReceipt = await client.GetAsync(ServerModuleManagementRoutes.PackageOperation
+                .Replace("{operationId:guid}", Guid.NewGuid().ToString("D")));
+            check(missingReceipt.StatusCode == HttpStatusCode.NotFound, "an unknown exact receipt returns HTTP 404");
 
             var replayResponse = await client.PostAsync(
                 ServerModuleManagementRoutes.PackagePlanApply.Replace("{planId:guid}", plan.PlanId.ToString()), null);

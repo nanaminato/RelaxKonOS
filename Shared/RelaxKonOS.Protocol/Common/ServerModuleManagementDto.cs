@@ -118,6 +118,7 @@ public static class ServerModuleManagementRoutes
     public const string InstalledPackages = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/installed";
     public const string PackageVersions = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/{moduleId}/versions";
     public const string PackageOperations = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-package-operations";
+    public const string PackageOperation = PackageOperations + "/{operationId:guid}";
     public const string PackageUpload = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/upload";
     public const string PackageInstall = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/install";
     public const string PackagePlans = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-packages/plans";
