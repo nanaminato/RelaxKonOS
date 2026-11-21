@@ -9,6 +9,7 @@ using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes.Catalog;
 using RelaxKonOS.Runtime;
 using WindowManager = RelaxKonOS.WindowManager.WindowManager;
@@ -38,6 +39,7 @@ internal static class OfficialRoappChecks
         var drive = new VirtualSystemDrive(Path.Combine(root, "drive"));
         using var services = new ServiceCollection().BuildServiceProvider();
         using var catalog = new ComponentCatalogSourceStore(Path.Combine(root, "catalog-trust"), "test-desktop");
+        var journal = new FileDeploymentJournal(Path.Combine(root, "deployment-journal"));
         try
         {
             var (packages, applications, windows) = CreateRuntime();
@@ -57,11 +59,19 @@ internal static class OfficialRoappChecks
                     schemaVersion = 1, defaultProfile = "standard",
                     profiles = new { minimal = Array.Empty<object>(), standard = entry, developer = entry },
                 }));
-            var provisioner = new BundledApplicationProvisioner(packages, installer, drive);
+            var provisioner = new BundledApplicationProvisioner(packages, installer,
+                new JointAppDeploymentService(null!, null!, installer, packages, applications, journal), drive);
             await File.AppendAllTextAsync(path, "corrupted distribution package");
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "A broken bundled package must not prevent startup or register an app.");
+            await PublishCandidateAsync(manifest => manifest["serverRequirements"] = new JsonObject
+            {
+                ["capabilities"] = new JsonArray("git"),
+            });
+            await provisioner.RunAsync();
+            Check(packages.FindInstalled(applicationId) is null, "A profile must defer a server-dependent package for interactive deployment.");
             File.Copy(artifact, path, overwrite: true);
+            File.Copy(artifact + ".sha256", path + ".sha256", overwrite: true);
             await provisioner.RunAsync(["--installation-profile=minimal"]);
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "The Minimal choice survives a restart.");
@@ -70,6 +80,8 @@ internal static class OfficialRoappChecks
             Check(packages.FindInstalled(applicationId) is null, "An excluded application stays uninstalled on restart.");
             await provisioner.RunAsync(["--installation-profile=developer"]);
             var first = packages.FindInstalled(applicationId) ?? throw new InvalidOperationException("The bundled default did not install.");
+            Check(File.Exists(Path.Combine(first.InstallationPath, "deployment-receipt.json")),
+                "Profile provisioning must commit the unified deployment receipt.");
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) == first, "Provisioning must not reinstall the same application.");
             var id = new AppId(applicationId);
@@ -136,7 +148,9 @@ internal static class OfficialRoappChecks
                 && !releaseApplications.IsBuiltIn(id), "Release must rediscover the verified package from VSD.");
             Check(await releaseReader.UninstallAsync(applicationId) && !releaseApplications.IsRegistered(id), "Uninstall must unregister the package.");
             await releaseReader.LoadInstalledAsync();
-            await new BundledApplicationProvisioner(releaseReader, new AppPackageInstallerService(releaseReader, null!, catalog), drive).RunAsync();
+            var releaseInstaller = new AppPackageInstallerService(releaseReader, null!, catalog);
+            await new BundledApplicationProvisioner(releaseReader, releaseInstaller,
+                new JointAppDeploymentService(null!, null!, releaseInstaller, releaseReader, releaseApplications, journal), drive).RunAsync();
             Check(releaseReader.FindInstalled(applicationId) is null, "Restart must preserve the explicit uninstall.");
 
             // Retire the original runtime's loaded adapter before removing its DLLs on Windows.

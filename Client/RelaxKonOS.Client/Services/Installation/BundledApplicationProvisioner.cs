@@ -8,7 +8,8 @@ using Drive = RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive;
 namespace RelaxKonOS.Client.Services.AppPackages;
 
 /// <summary>Provisions the selected desktop distribution profile once per app ID.</summary>
-internal sealed class BundledApplicationProvisioner(DeveloperPackageManager packages, AppPackageInstallerService installer, Drive drive)
+internal sealed class BundledApplicationProvisioner(DeveloperPackageManager packages, AppPackageInstallerService installer,
+    JointAppDeploymentService deployment, Drive drive)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -64,7 +65,9 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
                             || candidate.Manifest.Dependencies?.Required is { Count: > 0 })
                             throw new InvalidOperationException("The bundled application requires an interactive deployment.");
 
-                        existing = await installer.InstallAsync(candidate, cancellationToken);
+                        var review = await deployment.FindPendingAsync(candidate, cancellationToken, localOnly: true)
+                            ?? await deployment.PrepareAsync(candidate, [], cancellationToken);
+                        existing = await deployment.ExecuteAsync(review, cancellationToken);
                     }
                     else if (!MeetsVersion(existing.Version, entry.MinimumVersion))
                         throw new InvalidOperationException("The installed application needs an interactive update.");

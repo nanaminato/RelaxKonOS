@@ -75,13 +75,14 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         return new(await modules.PrepareAsync(resolution, snapshot, cancellationToken), backend);
     }
 
-    public async Task<Review?> FindPendingAsync(AppPackageCandidate candidate, CancellationToken cancellationToken)
+    public async Task<Review?> FindPendingAsync(AppPackageCandidate candidate, CancellationToken cancellationToken,
+        bool localOnly = false)
     {
         if (candidate.ExpectedSha256 is not { } digest) return null;
         var key = App(candidate.Manifest.Id);
         var plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
             digest, Guid.Empty, "", cancellationToken);
-        if (plan is null && session.CurrentUser is { } user && session.ServiceId is { } connection)
+        if (!localOnly && plan is null && session.CurrentUser is { } user && session.ServiceId is { } connection)
             plan = await journal.FindPendingPlanAsync(key, candidate.Manifest.Version,
                 digest, user.Id, connection, cancellationToken);
         if (plan?.ClientBinding is not { } binding) return null;
