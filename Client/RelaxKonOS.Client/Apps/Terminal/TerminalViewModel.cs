@@ -37,6 +37,7 @@ public partial class TerminalViewModel : TerminalTabViewModel
     private readonly IAuthSession? _session;
     private readonly ITerminalSettingsClient _settingsClient;
     private readonly string? _initialSessionId;
+    private string? _reservedSessionId;
     private readonly string? _initialWorkingDirectory;
     private readonly TerminalConnectionOptions _connectionOptions;
     private readonly SshDesktopSession? _sshDesktop;
@@ -98,6 +99,7 @@ public partial class TerminalViewModel : TerminalTabViewModel
         _connectionOptions = new(session, sshDesktop, diagnostics);
         _sshDesktop = sshDesktop;
         _initialSessionId = initialSessionId;
+        _reservedSessionId = initialSessionId;
         _initialWorkingDirectory = initialWorkingDirectory;
         IsAdministrator = isAdministrator;
         Title = LocalizedText.Get(isAdministrator ? "terminal.administrator_title" : "application.relaxkonos.terminal.display_name");
@@ -109,9 +111,6 @@ public partial class TerminalViewModel : TerminalTabViewModel
         if (_attached) return;
         _attached = true;
         var generation = ++_attachmentGeneration;
-        var sshDesktop = _sshDesktop ?? App.Services.GetRequiredService<SshDesktopSession>();
-        _surfaceFactory = new TerminalSurfaceFactory(new SshDesktopCredentialProvider(sshDesktop),
-            new RoyalTerminal.Terminal.Transport.Ssh.KnownHostsSshHostKeyValidator());
 
         if (_preferences is not null)
         {
@@ -126,15 +125,19 @@ public partial class TerminalViewModel : TerminalTabViewModel
 
         try
         {
+            var sshDesktop = _sshDesktop ?? App.Services.GetRequiredService<SshDesktopSession>();
+            _surfaceFactory = new TerminalSurfaceFactory(new SshDesktopCredentialProvider(sshDesktop),
+                new RoyalTerminal.Terminal.Transport.Ssh.KnownHostsSshHostKeyValidator());
             CreateSurface();
         }
         catch (Exception ex)
         {
+            ReleaseReservation();
             HasExited = true;
             Status = LocalizedText.Ref("terminal.status.start_failed", ex.Message);
             return;
         }
-        await StartSessionAsync(_initialSessionId);
+        await StartSessionAsync(_initialSessionId, generation);
     }
 
     /// <summary>
@@ -144,6 +147,7 @@ public partial class TerminalViewModel : TerminalTabViewModel
     /// </summary>
     public override void Detach()
     {
+        ReleaseReservation();
         if (!_attached) return;
         _attached = false;
         ++_attachmentGeneration;
@@ -189,25 +193,31 @@ public partial class TerminalViewModel : TerminalTabViewModel
         _surface = null;
     }
 
-    private async Task StartSessionAsync(string? sessionId)
+    private async Task StartSessionAsync(string? sessionId, long generation)
     {
-        if (_surface is null || _surfaceFactory is null)
+        if (_surface is not { } surface || _surfaceFactory is not { } factory)
             return;
 
         HasExited = false;
         var dimensions = new TerminalSessionDimensions(Columns, Rows, WidthPixels: 800, HeightPixels: 480);
-        var (options, remote) = _connectionOptions.Create(dimensions, sessionId, _initialWorkingDirectory, IsAdministrator);
-        Status = LocalizedText.Ref(remote ? "terminal.status.connecting" : "terminal.status.local_fallback");
-
         try
         {
-            await _surface.StartSessionAsync(options, CancellationToken.None);
-            if (_surfaceFactory.TransportFactory.CurrentSessionId is { } id)
-                TerminalSessionReservations.TryReserve(id);
+            var (options, remote) = _connectionOptions.Create(dimensions, sessionId, _initialWorkingDirectory, IsAdministrator);
+            Status = LocalizedText.Ref(remote ? "terminal.status.connecting" : "terminal.status.local_fallback");
+            await surface.StartSessionAsync(options, CancellationToken.None);
+            if (generation != _attachmentGeneration) return;
+            var id = factory.TransportFactory.CurrentSessionId;
+            if (id != _reservedSessionId)
+            {
+                ReleaseReservation();
+                if (id is not null && TerminalSessionReservations.TryReserve(id)) _reservedSessionId = id;
+            }
             Status = LocalizedText.Ref(IsAdministrator ? "terminal.status.administrator_connected" : "terminal.status.connected");
         }
         catch (Exception ex)
         {
+            if (generation != _attachmentGeneration) return;
+            ReleaseReservation();
             HasExited = true;
             Status = LocalizedText.Ref("terminal.status.start_failed", ex.Message);
         }
@@ -218,9 +228,14 @@ public partial class TerminalViewModel : TerminalTabViewModel
         if (_surfaceFactory is null)
             return;
 
-        if (_surfaceFactory.TransportFactory.CurrentSessionId is { } id)
-            TerminalSessionReservations.Release(id);
         _ = kill ? _surfaceFactory.TransportFactory.KillActiveAsync() : _surfaceFactory.TransportFactory.StopActiveAsync();
+    }
+
+    private void ReleaseReservation()
+    {
+        if (_reservedSessionId is not { } id) return;
+        _reservedSessionId = null;
+        TerminalSessionReservations.Release(id);
     }
 
     private async Task LoadAppearanceAsync()

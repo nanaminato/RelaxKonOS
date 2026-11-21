@@ -110,10 +110,11 @@ internal static class TerminalWorkspaceChecks
         var id = new AppId("relaxkonos.terminal");
         ((ImageViewerPackageFixture)(object)context).Initialize(windows, language, id);
         var sessions = new List<(string? Id, string? Directory)>();
+        Check(TerminalSessionReservations.TryReserve("restored"), "The restored session can be reserved before loading the workspace");
         TerminalWorkspace.Open(context, "T", (sessionId, directory, _) =>
         {
             sessions.Add((sessionId, directory));
-            return new TerminalViewModel(null, new Settings(), null);
+            return new TerminalViewModel(null, new Settings(), null, initialSessionId: sessionId);
         }, () => Task.CompletedTask, _ => { }, "restored", "/workspace", false);
 
         var window = windows.Windows.Single();
@@ -123,7 +124,8 @@ internal static class TerminalWorkspaceChecks
             && sessions.SequenceEqual(new (string?, string?)[] { ("restored", "/workspace"), (null, "/workspace") }),
             "SDK workspace keeps ownership, restores the initial session, and passes its directory to new tabs");
         workspace.RequestCloseTabAsync!(workspace.Tabs[0]).GetAwaiter().GetResult();
-        Check(workspace.Tabs.Count == 1, "SDK workspace closes an inactive session tab");
+        Check(workspace.Tabs.Count == 1 && !TerminalSessionReservations.IsOpen("restored"),
+            "Closing an inactive tab releases its restored session even if the view never loaded");
         windows.ForceClose(window);
 
         var discovery = new TerminalDiscoveryFixture();

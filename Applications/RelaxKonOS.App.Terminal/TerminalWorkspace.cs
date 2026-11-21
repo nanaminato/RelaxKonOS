@@ -112,12 +112,19 @@ public static class TerminalWorkspace
             try
             {
                 if (!model.HasLiveSession || await ConfirmCloseAsync("terminal.close_tab.message"))
+                {
                     workspace.RemoveTab(model);
+                    model.Detach();
+                }
             }
             finally { closingTab = false; }
         };
         window.CanCloseAsync = async () => !closingTab && (!workspace.Tabs.Any(model => model.HasLiveSession)
             || await ConfirmCloseAsync("terminal.close_active.message") && !closingTab);
+        owner.Closed.Register(() =>
+        {
+            foreach (var model in workspace.Tabs) model.Detach();
+        });
         AddSession(sessionId);
     }
 }
