@@ -14,6 +14,7 @@
       { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0", "installPolicy": "offline" }
     ],
     "developer": [
+      { "appId": "relaxkonos.git", "minimumVersion": "0.3.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.webservers", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.certificates", "minimumVersion": "1.0.0", "installPolicy": "interactive" },
       { "appId": "relaxkonos.codeeditor", "minimumVersion": "1.0.0", "installPolicy": "offline" },

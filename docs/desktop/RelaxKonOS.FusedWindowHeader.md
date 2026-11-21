@@ -94,7 +94,7 @@
 | # | 窗口 | 视图文件（`Client/RelaxKonOS.Client/`） | 头部右侧内容 | 状态 |
 |---|---|---|---|---|
 | 1 | 服务器中心 | `Apps/ServerCenter/Views/ServerCenterWorkspace.axaml` | 无（仅 `Title`/`Subtitle` 绑定） | **已接入** |
-| 2 | Git | `Apps/Git/Views/GitClientWorkspace.axaml` | 分支胶囊 + 刷新（`IsPickerMode` 时隐藏） | **已接入** |
+| 2 | Git | `Applications/RelaxKonOS.App.Git/Views/GitClientWorkspace.axaml` | 分支胶囊 + 刷新（`IsPickerMode` 时隐藏） | **已接入** |
 | 3 | Docker | `Apps/Docker/Views/DockerManagerWorkspace.axaml` | 状态胶囊按钮（可打开安装向导） | **已接入** |
 | 4 | 代理 | `Apps/Proxy/Views/ProxyManagerWorkspace.axaml` | 刷新按钮 | **已接入** |
 | 5 | 隧道 | `Apps/Tunnels/Views/TunnelManagerView.axaml` | 刷新按钮 | **已接入** |

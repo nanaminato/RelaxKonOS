@@ -57,7 +57,7 @@ GitClient 是项目编辑器的 Git 领域模块；项目壳与共享文件编�
 `GitClientWorkspace` 作为 `UserControl` 嵌入 `RemoteWindow`；中央编辑器持续存在，侧边与底部工具区独立切换：
 
 ```text
-GitClientApp (RemoteApplicationBase)
+GitPackageApp (IExternalRemoteApplication)
     |
     AppContext.ShowWindow("项目编辑器", view, bounds=1180x760)
     |
@@ -69,7 +69,7 @@ GitClientApp (RemoteApplicationBase)
         └── 可收起的 Git 工具区（日志 / 分支 / 远程 / 概览）
 ```
 
-`GitClientApp.Activate` 从组合入口取得 `IAuthSession`、`IServerGit` 与 `IExplorerClient`。桌面入口将远程文件访问适配为 `IEditorWorkspaceFiles`，并提供目标路径存在性检查。Git 应用程序集中的 `GitClientViewModel` 和每窗口一个的 `ProjectEditorViewModel` 使用这些接口。登录后创建工作区（1180×760），由 `StartAsync` 异步加载项目列表。应用入口为共享编辑器对话框、草稿关闭保护、快捷键和语言事件接线，并在窗口关闭时释放项目协调器、编辑资源和 Git 刷新计时器。
+`GitPackageApp.ActivateAsync` 从应用 SDK 取得受权限和会话约束的 Git、文件、语言及窗口能力。项目编辑协调器通过 `IEditorWorkspaceFiles` 访问文件。每个窗口负责自己的项目和编辑会话，窗口关闭后释放协调器、编辑资源和刷新计时器。
 
 ---
 
@@ -242,26 +242,11 @@ Windows 直接执行与 Linux 共用无 BOM、LF 换行的 `#!/bin/sh` askpass �
 - 失败读 `ProblemDetails` 抛 `RelaxKonOSAuthException`（与 `TaskManagerClient` / `DockerClient` 同源模式）。
 - JSON 用 `RelaxKonOSJsonOptions.Default`。
 
-### 5.2 应用入口（`GitClientApp`）
+### 5.2 应用入口（`GitPackageApp`）
 
-`RemoteApplicationBase`：`Manifest`（Id=`relaxkonos.git`，Icon=`🌿`）+ `Activate(AppContext)`。
+`relaxkonos.git.roapp` 声明 Git Server 模块、`server.git` 能力及 Git 和文件权限。Developer 配置提供交互式安装，通过应用安装器审阅并提交联合部署计划。官方包支持多窗口，每个窗口载入独立的工作区。
 
-```csharp
-public sealed class GitClientApp : RemoteApplicationBase
-{
-    public override ApplicationManifest Manifest { get; } = new(
-        new AppId("relaxkonos.git"), "Git Client", "0.1.0", "🌿",
-        "Manage Git repositories on the RelaxKonOS Server",
-        [AppPermissions.ServerGitRead, AppPermissions.ServerGitManage],
-        ServerRequirements: new ApplicationServerRequirements(
-            Capabilities: [ServerCapabilities.Git]),
-        InstancePolicy: ApplicationInstancePolicy.SingleWindow);
-    // ...
-}
-```
-
-- 未登录：弹 `TextBlock` 提示窗（470x180，`canResize/canMinimize/canMaximize=false`），不崩溃。
-- 登录：构造 `GitClientViewModel(client, session, context.Permissions)` + `GitClientWorkspace`，`context.ShowWindow`（bounds 1180x760），注入对话框回调（提交对话框/新建分支对话框/冲突解决对话框/确认对话框），`_ = viewModel.StartAsync()` 异步加载仓库列表。
+未连接 RelaxKonOS Server 或缺少 Git 读取权限时，入口显示本地化提示。连接可用时，入口创建项目选择器并加载已注册仓库，通过 SDK 打开远程文件选择器及模态对话框。
 
 ### 5.3 ViewModel（`GitClientViewModel`）
 
@@ -360,8 +345,8 @@ diff 的解析与渲染与对话框解耦，放在共享控件目录里，不再
 | `DiffView.axaml(.cs)` | 只读渲染宿主：AvaloniaEdit `TextEditor` + 双行号边距 + 全宽行背景 + 行内着色 |
 | `DiffStyle.cs` | 从主题令牌（`SuccessColor`/`DangerColor`/`AccentColor`/`TextTertiaryColor`）解析出带 alpha 的行色带；**不含任何颜色字面量**，令牌缺失时不画带而不是退化成硬编码颜色 |
 | `DiffLineNumberMargin.cs` | 从 `AbstractMargin` 派生的双列行号栏（旧号 / 新号），按改动侧着色 |
-| `Apps/Git/GitDiffPresentation.cs` | 呈现模型（路径、`+N/−M`、二进制/空/截断提示、解析后的 `DiffDocument`），由 `GitDiffPane` 消费 |
-| `Apps/Git/Views/GitDiffPane.axaml` | diff 面板本体（标题栏 + 提示 + `DiffView`），日志页内嵌栏与模态窗口共用；`CanClose` 为真时自带 ✕ 并发 `CloseRequested` |
+| `Applications/RelaxKonOS.App.Git/GitDiffPresentation.cs` | 呈现模型（路径、`+N/−M`、二进制/空/截断提示、解析后的 `DiffDocument`），由 `GitDiffPane` 消费 |
+| `Applications/RelaxKonOS.App.Git/Views/GitDiffPane.axaml` | diff 面板本体（标题栏 + 提示 + `DiffView`），日志页内嵌栏与模态窗口共用；`CanClose` 为真时自带 ✕ 并发 `CloseRequested` |
 
 宿主有两个，同一份面板：日志页的第四栏（`IsInlineDiffOpen` 驱动，关闭时列宽归零）；以及 `GitDiffDialog`——只有工作区页和推送预览这类脱离日志页的场景才弹窗。
 
@@ -526,7 +511,7 @@ GitOperationResult
 1. **数据来源在 Server 实时采集**：仓库状态/分支/历史/diff 均由 `IGitRepositoryService` 以宿主 OS 进程身份调用 `git` 实时读取，**不持久化运行时状态**（仅 `GitRepository` 注册记录落 SQLite）。每次请求返回当下快照。禁止为提交/分支/历史新建数据库表。
 2. **跨平台抽象**：与 `IIdentityProvider` 同模式——`IGitRepositoryService` 接口 + `LocalGitRepositoryService` 实现，平台差异（`git` 可执行路径探测）封装在 `IHostGitCli`。Server 端单一 CLI 实现跨 Ubuntu + Windows Server（`git` 行为一致）。
 3. **Provider 必须 Singleton**：`IGitRepositoryService` 持有按 repoId 缓存的 `SemaphoreSlim` 字典（写操作串行化，避免 index.lock 冲突），必须 Singleton。禁止 Scoped/Transient。
-4. **复用 `IAuthSession` JWT**：`IServerGit` 不持有独立凭据；未登录时 `GitClientApp.Activate` 弹提示窗，不崩溃。`RemoteGitClient` 每请求检查 `State == Authenticated`。
+4. **复用 `IAuthSession` JWT**：`IServerGit` 不持有独立凭据；未登录时 `GitPackageApp.ActivateAsync` 弹提示窗，不崩溃。`RemoteGitClient` 每请求检查 `State == Authenticated`。
 5. **Git 凭据隔离**：HTTPS 凭据不得进入命令行或诊断日志，保存必须尊重用户选择并通过既有 Data Protection 用户/主机范围隔离；不处理 SSH 私钥。有效身份和 Helper 限制见 §4.2。
 6. **不 mutate `HttpClient.BaseAddress`**：每请求用绝对 URI，与 `TaskManagerClient` / `DockerClient` 同模式。
 7. **路由常量共用 `GitApiRoutes`**：Server 注册路由与 Client 拼接 URL 必须用同一常量，`{id}`/`{name}` 用 `Uri.EscapeDataString` 替换，禁止硬编码字符串。

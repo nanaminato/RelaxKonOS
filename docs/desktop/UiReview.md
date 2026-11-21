@@ -606,19 +606,19 @@ D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「�
 
 | 编号 / 界面 | 结构证据 | 分别审查的重点 | 状态 |
 |---|---|---|---|
-| UI-054 [GitBranchesView](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitBranchesView.axaml) | DataGrid；入口：CreateBranchCommand、Checkout_Click、Delete_Click | 选择目标与刷新一致；空/失败/旧事实；危险确认；长列及键盘选择 | 结构初查完成，待流程深审与运行验收 |
-| UI-055 [GitClientWorkspace](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitClientWorkspace.axaml) | ContentControl；入口：RefreshCommand、NavigationButton_Click | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |
-| UI-056 [GitConflictResolutionDialog](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitConflictResolutionDialog.axaml) | 入口：Close_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
-| UI-057 [GitConflictResolutionView](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitConflictResolutionView.axaml) | TextBox；入口：ContinueConflictCommand、AbortConflictCommand、RefreshCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
-| UI-058 [GitDiffDialog](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitDiffDialog.axaml) | 入口：Close_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
-| UI-059 [GitHistoryView](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitHistoryView.axaml) | DataGrid；ScrollViewer；入口：RevertCommand | 时间/阶段/目标；空记录与失败区别；复制与刷新；持续订阅释放 | 结构初查完成，待流程深审与运行验收 |
-| UI-060 [GitLoginRequiredView](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitLoginRequiredView.axaml) | 展示/容器，随父入口联审 | 认证入口、能力/权限区别；重登录返回原任务 | 结构初查完成，待流程深审与运行验收 |
-| UI-061 [GitLogView](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitLogView.axaml) | TreeView；ScrollViewer；TextBox；ContextMenu；入口：CreateBranchCommand、FetchCommand、RefreshCommand | 时间/阶段/目标；空记录与失败区别；复制与刷新；持续订阅释放 | 结构初查完成，待流程深审与运行验收 |
-| UI-062 [GitOverviewView](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitOverviewView.axaml) | ScrollViewer；入口：PullCommand、PushCommand、FetchCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
-| UI-063 [GitProjectPickerView](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitProjectPickerView.axaml) | ScrollViewer；入口：RefreshRepositoriesCommand、OpenProject_Click、OpenFolderCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
-| UI-064 [GitPushDialog](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitPushDialog.axaml) | TreeView；入口：AllCommits_Click、Push_Click、Cancel_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
-| UI-065 [GitRemoteBranchPickerDialog](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitRemoteBranchPickerDialog.axaml) | 入口：Confirm_Click、Cancel_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
-| UI-066 [GitRemotesView](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitRemotesView.axaml) | DataGrid；入口：AddRemoteCommand、RefreshRemotesCommand、Edit_Click | 选择目标与刷新一致；空/失败/旧事实；危险确认；长列及键盘选择 | 结构初查完成，待流程深审与运行验收 |
+| UI-054 [GitBranchesView](../../Applications/RelaxKonOS.App.Git/Views/GitBranchesView.axaml) | DataGrid；入口：CreateBranchCommand、Checkout_Click、Delete_Click | 选择目标与刷新一致；空/失败/旧事实；危险确认；长列及键盘选择 | 结构初查完成，待流程深审与运行验收 |
+| UI-055 [GitClientWorkspace](../../Applications/RelaxKonOS.App.Git/Views/GitClientWorkspace.axaml) | ContentControl；入口：RefreshCommand、NavigationButton_Click | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |
+| UI-056 [GitConflictResolutionDialog](../../Applications/RelaxKonOS.App.Git/Views/GitConflictResolutionDialog.axaml) | 入口：Close_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-057 [GitConflictResolutionView](../../Applications/RelaxKonOS.App.Git/Views/GitConflictResolutionView.axaml) | TextBox；入口：ContinueConflictCommand、AbortConflictCommand、RefreshCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
+| UI-058 [GitDiffDialog](../../Applications/RelaxKonOS.App.Git/Views/GitDiffDialog.axaml) | 入口：Close_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-059 [GitHistoryView](../../Applications/RelaxKonOS.App.Git/Views/GitHistoryView.axaml) | DataGrid；ScrollViewer；入口：RevertCommand | 时间/阶段/目标；空记录与失败区别；复制与刷新；持续订阅释放 | 结构初查完成，待流程深审与运行验收 |
+| UI-060 [Git 登录提示](../../Applications/RelaxKonOS.App.Git/GitPackageApp.cs) | 展示/容器，随父入口联审 | 认证入口、能力/权限区别；重登录返回原任务 | 结构初查完成，待流程深审与运行验收 |
+| UI-061 [GitLogView](../../Applications/RelaxKonOS.App.Git/Views/GitLogView.axaml) | TreeView；ScrollViewer；TextBox；ContextMenu；入口：CreateBranchCommand、FetchCommand、RefreshCommand | 时间/阶段/目标；空记录与失败区别；复制与刷新；持续订阅释放 | 结构初查完成，待流程深审与运行验收 |
+| UI-062 [GitOverviewView](../../Applications/RelaxKonOS.App.Git/Views/GitOverviewView.axaml) | ScrollViewer；入口：PullCommand、PushCommand、FetchCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
+| UI-063 [GitProjectPickerView](../../Applications/RelaxKonOS.App.Git/Views/GitProjectPickerView.axaml) | ScrollViewer；入口：RefreshRepositoriesCommand、OpenProject_Click、OpenFolderCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
+| UI-064 [GitPushDialog](../../Applications/RelaxKonOS.App.Git/Views/GitPushDialog.axaml) | TreeView；入口：AllCommits_Click、Push_Click、Cancel_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-065 [GitRemoteBranchPickerDialog](../../Applications/RelaxKonOS.App.Git/Views/GitRemoteBranchPickerDialog.axaml) | 入口：Confirm_Click、Cancel_Click | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-066 [GitRemotesView](../../Applications/RelaxKonOS.App.Git/Views/GitRemotesView.axaml) | DataGrid；入口：AddRemoteCommand、RefreshRemotesCommand、Edit_Click | 选择目标与刷新一致；空/失败/旧事实；危险确认；长列及键盘选择 | 结构初查完成，待流程深审与运行验收 |
 | UI-067 [GitWorkspaceView](../../Client/RelaxKonOS.Client/Apps/Git/Views/GitWorkspaceView.axaml) | ScrollViewer；TextBox；入口：SelectAll_Click、RefreshChangesCommand、Commit_Click | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |
 
 ### ImageViewer

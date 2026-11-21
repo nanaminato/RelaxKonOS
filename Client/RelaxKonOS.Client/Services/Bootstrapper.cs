@@ -386,7 +386,6 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.FileServices.FileServicesApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Tunnels.TunnelManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Proxy.ProxyManagerApp>();
-        services.AddSingleton<RelaxKonOS.Client.Apps.Git.GitClientApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Tailscale.TailscaleApp>();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleClient>().AddRelaxKonOSAuthentication();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleLoginClient>().AddRelaxKonOSAuthentication();

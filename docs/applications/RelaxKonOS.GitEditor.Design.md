@@ -22,10 +22,10 @@
 
 | 现有位置 | 已实现基础 / 改造点 |
 |---|---|
-| `Apps/Git/GitClientApp.cs` | 多窗口、远程目录选择、Git 对话框与安装面板接线 |
-| `Apps/Git/Views/GitClientWorkspace.axaml(.cs)` | 左侧页面导航，`ContentHost` 切换整页；需要改为持续存在的编辑区和工具区 |
-| `Apps/Git/GitClientViewModel.Files.cs` | `OpenFileInEditorAsync` 仍仅提示占位；需接入本窗口文档会话 |
-| `Apps/Git/Views/GitDiffPane.axaml` | 复用现有 Diff 展示，避免重写补丁解析器 |
+| `Applications/RelaxKonOS.App.Git/GitPackageApp.cs` | 多窗口、远程目录选择、Git 对话框与安装面板接线 |
+| `Applications/RelaxKonOS.App.Git/Views/GitClientWorkspace.axaml(.cs)` | 左侧页面导航，`ContentHost` 切换整页；需要改为持续存在的编辑区和工具区 |
+| `Applications/RelaxKonOS.App.Git/GitClientViewModel.Files.cs` | `OpenFileInEditorAsync` 仍仅提示占位；需接入本窗口文档会话 |
+| `Applications/RelaxKonOS.App.Git/Views/GitDiffPane.axaml` | 复用现有 Diff 展示，避免重写补丁解析器 |
 | `Apps/CodeEditor/CodeEditorViewModel.cs` | 多根文件树、多文档、编码、文本/图片/二进制分类与保存 |
 | `Apps/CodeEditor/CodeEditorApp.cs` | 窗口快捷键、`DraftWindowCloseGuard`、编辑器资源释放 |
 | `Apps/CodeEditor/CodeEditorView.axaml.cs` | 编辑控件与标题栏、侧栏耦合，需拆出可嵌入编辑面板 |
@@ -93,7 +93,7 @@ Git 工具区必须保留现有 fetch、pull、push、分支和远程操作、�
 
 ## 5. 架构、协议与存储
 
-建议结构为 `GitClientApp → ProjectEditorWorkspaceViewModel → EditorSession + GitClientViewModel`。命名为设计建议，实施时可按现有约定调整，但职责必须分离：
+建议结构为 `GitPackageApp → ProjectEditorWorkspaceViewModel → EditorSession + GitClientViewModel`。命名为设计建议，实施时可按现有约定调整，但职责必须分离：
 
 - `EditorSession`：文档、路径身份、草稿、保存、关闭与外部版本状态；从 Code Editor 提取公共能力，独立编辑器同步改用该能力，不复制一份 ViewModel。
 - `EditorPane`：编辑标签与内容，不创建窗口、不拥有另一个应用标题栏；独立编辑器与项目编辑器共享。

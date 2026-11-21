@@ -1,4 +1,3 @@
-using RelaxKonOS.App.Git;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
@@ -10,6 +9,7 @@ using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Protocol.Workspace.SystemStyles;
@@ -162,14 +162,20 @@ internal static class LiveFusedApplicationReview
         var gitWindow = windows.Windows.FirstOrDefault(window => window.Info.OwnerAppId.Value == "relaxkonos.git");
         if (gitWindow?.View.Content is Control gitRoot)
         {
-            var gitModel = gitRoot.DataContext as RelaxKonOS.App.Git.GitClientViewModel
-                ?? gitRoot.GetVisualDescendants().OfType<Control>().Select(control => control.DataContext).OfType<RelaxKonOS.App.Git.GitClientViewModel>().FirstOrDefault();
-            if (gitModel is { IsPickerMode: true } && gitModel.Repositories.FirstOrDefault() is { } repository)
+            // The installed package owns the view model's assembly load context.
+            var gitModel = gitRoot.DataContext;
+            var modelType = gitModel?.GetType();
+            var pickerMode = modelType?.GetProperty("IsPickerMode");
+            if (pickerMode?.GetValue(gitModel) is true
+                && modelType?.GetProperty("Repositories")?.GetValue(gitModel) is IEnumerable<GitRepositoryDto> repositories
+                && repositories.FirstOrDefault() is { } repository
+                && modelType.GetProperty("OpenProjectCommand")?.GetValue(gitModel) is System.Windows.Input.ICommand open
+                && open.CanExecute(repository))
             {
                 // Only open an existing registered repository; never create or modify one for QA.
-                var open = gitModel.OpenProjectCommand.ExecuteAsync(repository);
+                open.Execute(repository);
                 await Task.Delay(500, ct);
-                Console.WriteLine($"LIVE GIT WORKSPACE: existing repository opened; taskCompleted={open.IsCompleted}; fused={gitWindow.View.HasTitleBarContent}.");
+                Console.WriteLine($"LIVE GIT WORKSPACE: existing repository selected; opened={pickerMode.GetValue(gitModel) is false}; fused={gitWindow.View.HasTitleBarContent}.");
             }
             else Console.WriteLine("LIVE GIT PICKER: no existing repository selected; picker boundary is reviewed without creating test data.");
         }

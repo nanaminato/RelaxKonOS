@@ -427,7 +427,7 @@ Check(new RelaxKonOS.App.Terminal.TerminalPackageApp().Manifest.Server.RequiredC
 Check(new RelaxKonOS.App.TaskManager.TaskManagerPackageApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Metrics)
     && new RelaxKonOS.App.TaskManager.TaskManagerPackageApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Processes),
     "desktop task manager requires server metrics and processes capabilities");
-Check(new RelaxKonOS.Client.Apps.Git.GitClientApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Git),
+Check(new RelaxKonOS.App.Git.GitPackageApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Git),
     "desktop project editor requires server git capability");
 
 // Configuration errors must stop startup instead of silently disabling a module.
