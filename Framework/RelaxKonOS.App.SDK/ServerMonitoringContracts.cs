@@ -1,9 +1,15 @@
+using RelaxKonOS.Protocol.SystemMonitor;
+
 namespace RelaxKonOS.AppSDK;
 
 /// <summary>Permission-gated, read-only server monitoring capability for package applications.</summary>
 public interface IServerMonitor
 {
     Task<ServerMetricsResult> GetSnapshotAsync(CancellationToken cancellationToken = default);
+    Task<ServerPerformanceResult<PerformanceInfoDto>> GetPerformanceInfoAsync(CancellationToken cancellationToken = default);
+    Task<ServerPerformanceResult<PerformanceRealtimeSnapshotDto>> GetPerformanceSnapshotAsync(CancellationToken cancellationToken = default);
+    Task<ServerPerformanceResult<IReadOnlyList<PerformanceRealtimeSnapshotDto>>> GetPerformanceHistoryAsync(
+        int seconds = 60, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Streams host-polled snapshots. The host clamps the requested interval to protect the server
@@ -13,6 +19,7 @@ public interface IServerMonitor
 }
 
 public sealed record ServerMetricsResult(AppCapabilityResult Status, ServerMetricsSnapshot? Snapshot);
+public sealed record ServerPerformanceResult<T>(AppCapabilityResult Status, T? Data) where T : class;
 
 /// <summary>Stable SDK representation of aggregate server resource usage.</summary>
 public sealed record ServerMetricsSnapshot(

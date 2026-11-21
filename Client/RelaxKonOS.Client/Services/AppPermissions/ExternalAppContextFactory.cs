@@ -16,7 +16,6 @@ using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Workspace;
-using RelaxKonOS.Protocol.SystemMonitor;
 using RelaxKonOS.Protocol.Capabilities;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Git;
@@ -113,7 +112,7 @@ public sealed class ExternalAppContextFactory
         appId,
         new AppPermissionScope(appId, _permissionRequests),
         new DesktopAppearanceCapability(appId, _permissions, _settings, _settingsClient, _session, _defaultApps),
-        new ServerMonitorCapability(appId, _permissions, _systemMonitor),
+        new ServerMonitorCapability(appId, _permissions, fileSession, _systemMonitor),
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -576,67 +575,6 @@ public sealed class ExternalAppContextFactory
             {
                 return AppCapabilityResult.Unavailable;
             }
-        }
-    }
-
-    private sealed class ServerMonitorCapability(
-        AppId appId,
-        IAppPermissionManager permissions,
-        ITaskManagerClient systemMonitor) : IServerMonitor
-    {
-        public async Task<ServerMetricsResult> GetSnapshotAsync(CancellationToken cancellationToken = default)
-        {
-            if (!permissions.IsGranted(appId, CoreAppPermissions.ServerMetricsRead))
-                return new ServerMetricsResult(AppCapabilityResult.PermissionDenied, null);
-
-            try
-            {
-                var info = await systemMonitor.GetPerformanceInfoAsync(cancellationToken);
-                var snapshot = await systemMonitor.GetPerformanceSnapshotAsync(cancellationToken);
-                return new ServerMetricsResult(AppCapabilityResult.Succeeded, ToSnapshot(info, snapshot));
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch
-            {
-                return new ServerMetricsResult(AppCapabilityResult.Unavailable, null);
-            }
-        }
-
-        public async IAsyncEnumerable<ServerMetricsResult> WatchAsync(TimeSpan? interval = null,
-            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-        {
-            var cadence = interval ?? TimeSpan.FromSeconds(2);
-            cadence = TimeSpan.FromMilliseconds(Math.Clamp(cadence.TotalMilliseconds, 1000, 60000));
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                yield return await GetSnapshotAsync(cancellationToken);
-                await Task.Delay(cadence, cancellationToken);
-            }
-        }
-
-        private static ServerMetricsSnapshot ToSnapshot(PerformanceInfoDto info, PerformanceRealtimeSnapshotDto snapshot)
-        {
-            var filesystemNames = info.Filesystems.ToDictionary(filesystem => filesystem.Id, filesystem => filesystem.Name, StringComparer.Ordinal);
-            var networkNames = info.Networks.ToDictionary(network => network.Id, network => network.Name, StringComparer.Ordinal);
-            return new ServerMetricsSnapshot(
-                snapshot.Timestamp,
-                snapshot.Cpu.TotalPercent,
-                info.Cpu.LogicalProcessorCount,
-                snapshot.Cpu.PerLogicalCpuPercent,
-                snapshot.Memory.TotalBytes,
-                snapshot.Memory.UsedBytes,
-                snapshot.Memory.AvailableBytes,
-                snapshot.Memory.TotalBytes == 0 ? 0 : snapshot.Memory.UsedBytes * 100d / snapshot.Memory.TotalBytes,
-                snapshot.Filesystems.Select(filesystem => new ServerDiskMetric(
-                    filesystemNames.GetValueOrDefault(filesystem.Id, filesystem.Id), filesystem.TotalBytes, filesystem.UsedBytes,
-                    filesystem.AvailableBytes, filesystem.Percent)).ToArray(),
-                snapshot.Networks.Select(network => new ServerNetworkMetric(
-                    networkNames.GetValueOrDefault(network.Id, network.Id), network.SendBytesPerSecond, network.ReceiveBytesPerSecond)).ToArray(),
-                [],
-                snapshot.UptimeSeconds);
         }
     }
 

@@ -27,7 +27,7 @@
 | registry | Registry | 否 / 否 | 是 | Registry API | 基础 | 待验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期已验，真实服务端告警读取待验 |
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
-| docker | Docker | 否 / 否 | 是 | Docker 模块；组件中心管理 Engine | 官方可选包 | 已验证 Release 包安装、启动和生命周期；真实主机待验 |
+| docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | 已验证 Release 包安装、启动和生命周期；真实主机待验 |
 | processguardian | ProcessGuardian | 否 / 否 | 是 | Guardian API 与独立 Agent | 可选 | 待验 |
 | firewall | Firewall | 否 / 否 | 是 | Firewall 模块与宿主权限边界 | 可选 | 待验 |
 | proxy | Proxy | 否 / 否 | 是 | Proxy 模块；组件中心管理 mihomo | 可选 | 待验 |
@@ -61,6 +61,8 @@
 5. 恢复时从本分支运行 `dotnet build Shared/RelaxKonOS.Deployment -m:1`，查看当前差异与最新提交，再从第 3 项继续。部署存续期间须先观察现有服务端回执，再决定是否重试，保留共享依赖。
 
 ## 测试证据
+
+- Task Manager 所需的性能静态信息、实时快照与短期历史已接入只读监控 SDK。读取校验应用权限和捕获的服务器会话，历史采样窗口限定为 1–60 秒。桌面视图与进程管理仍待迁移。
 
 - Docker Manager 的状态、资源详情、Compose 回执、引擎控制和账户镜像源使用 SDK，沿用现有 HTTP 路由。读取要求读授权，变更要求管理授权。SDK 在操作前后检查服务器会话，停止或重启引擎还要求用户确认。
 - Docker Manager 主工作区模型位于 `Applications/RelaxKonOS.App.Docker`。组件依赖页由宿主 SDK 提供。
