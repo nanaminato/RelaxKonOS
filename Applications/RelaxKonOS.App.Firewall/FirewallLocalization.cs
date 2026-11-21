@@ -9,7 +9,7 @@ public static class FirewallLocalization
     private static readonly Lazy<Dictionary<string, string>> Chinese = new(() => Load("zh-CN"));
     private static readonly Lazy<Dictionary<string, string>> Japanese = new(() => Load("ja-JP"));
 
-    internal static string Resolve(ISystemLanguage language, string key, string fallback)
+    public static string Resolve(ISystemLanguage language, string key, string fallback)
     {
         var labels = language.CurrentLanguage.Split('-', 2)[0].ToLowerInvariant() switch
         {

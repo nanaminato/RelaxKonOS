@@ -29,7 +29,7 @@
 | codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
 | docker | RelaxKonOS.App.Docker | 是 / 是 | 否 | Docker 模块；组件中心管理 Engine | 官方可选包 | 已验证 Release 包安装、启动和生命周期；真实主机待验 |
 | processguardian | ProcessGuardian | 否 / 否 | 是 | Guardian API 与独立 Agent | 可选 | 待验 |
-| firewall | Firewall | 否 / 否 | 是 | Firewall 模块与宿主权限边界 | 可选 | 待验 |
+| firewall | RelaxKonOS.App.Firewall | 是 / 是 | 否 | Firewall 模块与宿主权限边界 | 官方可选包 | Windows Release 包生命周期已验，真实主机待验 |
 | proxy | Proxy | 否 / 否 | 是 | Proxy 模块；组件中心管理 mihomo | 可选 | 待验 |
 | proxy-server | ProxyServer | 否 / 否 | 是 | ProxyServer capability；组件中心管理 sing-box | 可选 | 待验 |
 | squid | Squid | 否 / 否 | 是 | GatewayProxy capability；组件中心管理 Squid | 可选 | 待验 |
@@ -268,3 +268,4 @@
 - Firewall 主视图模型现由独立应用项目提供。桌面宿主注入本地化与 Helper 诊断，继续承载窗口和对话框。Windows Release 构建与防火墙回归通过，覆盖提交确认、主机状态回读、权限控制及三语言界面。
 - Firewall 工作区和规则编辑器已迁入独立应用项目，使用应用内的图标和本地化绑定，以及 WindowManager 的窄窗口导航。Windows Release 构建与防火墙回归通过，包括打开的工作区标题随语言切换刷新。
 - Firewall 新增外置入口和包清单，声明 Linux、Windows 与 Firewall 服务端能力，并通过 SDK 请求独立的读取和管理权限。Windows Release 构建、防火墙既有回归和 DevCLI 打包通过。官方目录切换和外置包安装、启动与权限验收待完成。
+- Firewall 已切换为官方可选包，并在开发者安装配置中列为交互安装。清单声明 Firewall 模块硬依赖，旧内置注册和桌面端编译引用已移除。Windows Release 防火墙回归与官方包生命周期验收通过，覆盖单独安装拒绝、包启动、只读权限、更新、重启和卸载。包生命周期测试用测试联合部署回执与模拟服务端，真实 Windows/Linux 模块与防火墙变更待验。

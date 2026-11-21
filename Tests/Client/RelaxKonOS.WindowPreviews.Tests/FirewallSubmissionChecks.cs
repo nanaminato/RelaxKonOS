@@ -1,6 +1,9 @@
+using Avalonia.Utilities;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.App.Firewall;
+using RelaxKonOS.Client.Services.Privileged;
 using System.Reflection;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Apps.Firewall;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
@@ -17,6 +20,17 @@ internal static class FirewallSubmissionChecks
         DraftValidation();
         CapabilityGrantsAsync().GetAwaiter().GetResult();
         Console.WriteLine("Firewall submission checks passed.");
+    }
+
+    internal static FirewallViewModel CreateViewModel(IServerFirewall client, IAppPermissionScope permissions)
+    {
+        var localization = RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>();
+        var model = new FirewallViewModel(client, permissions,
+            (key, fallback) => FirewallLocalization.Resolve(localization, key, fallback),
+            PrivilegedHelperProblemText.FormatOrFallback, code => PrivilegedHelperProblemText.TryFormat(code, out _));
+        WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, FirewallViewModel>(
+            localization, nameof(LocalizationService.LanguageChanged), model.OnLanguageChanged);
+        return model;
     }
 
     private static async Task CapabilityGrantsAsync()
@@ -55,7 +69,7 @@ internal static class FirewallSubmissionChecks
     private static void UpdateFreezesItsTarget()
     {
         var host = Host();
-        var vm = FirewallApp.CreateViewModel(host.Client, new FirewallTestPermissions());
+        var vm = FirewallSubmissionChecks.CreateViewModel(host.Client, new FirewallTestPermissions());
         vm.IsAvailable = true;
         vm.SelectedRule = new(7, "allow", "in", "tcp", "any", "any", "80");
         vm.Port = "8080";
@@ -80,7 +94,7 @@ internal static class FirewallSubmissionChecks
     private static void ConfirmationGates()
     {
         var host = Host();
-        var vm = FirewallApp.CreateViewModel(host.Client, new FirewallTestPermissions());
+        var vm = FirewallSubmissionChecks.CreateViewModel(host.Client, new FirewallTestPermissions());
         vm.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(!vm.DeleteRuleCommand.CanExecute(null), "Nothing can be deleted before a rule is selected.");
         vm.SelectedRow = vm.Rules[0];
@@ -112,7 +126,7 @@ internal static class FirewallSubmissionChecks
     private static void DefaultPolicies()
     {
         var host = Host();
-        var vm = FirewallApp.CreateViewModel(host.Client, new FirewallTestPermissions());
+        var vm = FirewallSubmissionChecks.CreateViewModel(host.Client, new FirewallTestPermissions());
         vm.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(!vm.HasDefaultChanges && !vm.SaveDefaultsCommand.CanExecute(null),
             "Saving is offered only when a policy differs from the host.");
@@ -138,7 +152,7 @@ internal static class FirewallSubmissionChecks
     private static void DraftValidation()
     {
         var host = Host();
-        var vm = FirewallApp.CreateViewModel(host.Client, new FirewallTestPermissions());
+        var vm = FirewallSubmissionChecks.CreateViewModel(host.Client, new FirewallTestPermissions());
         vm.IsAvailable = true;
         vm.Port = "99999";
         Check(!vm.IsDraftValid && vm.PortProblem is not null && !vm.CanSubmitDraft,

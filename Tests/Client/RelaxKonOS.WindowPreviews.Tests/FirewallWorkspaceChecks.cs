@@ -8,7 +8,6 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Apps.Firewall;
 using RelaxKonOS.App.Firewall.Views;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
@@ -80,7 +79,8 @@ internal static class FirewallWorkspaceChecks
 
             Check(view.FindControl<ScrollViewer>("Page0")!.IsVisible && !view.FindControl<Grid>("Page1")!.IsVisible,
                 language + ": the host facts open on the overview page.");
-            Check(vm.StatePillText == LocalizedText.Get("firewall.pill.active") && vm.StatePillOk,
+            var activeLabel = language switch { "zh-CN" => "已启用", "ja-JP" => "有効", _ => "Active" };
+            Check(vm.StatePillText == activeLabel && vm.StatePillOk,
                 language + ": an enabled host reads as active rather than as a generic status line.");
             Check(view.FindControl<Button>("DeleteRuleButton")!.IsEffectivelyEnabled == false,
                 language + ": rule actions stay unavailable until a rule is selected.");
@@ -261,7 +261,7 @@ internal static class FirewallWorkspaceChecks
             finally { window.Close(); }
 
             var client = DispatchProxy.Create<IServerFirewall, FirewallHostStub>();
-            var readOnly = FirewallApp.CreateViewModel(client, new FirewallReadOnlyPermissions());
+            var readOnly = FirewallSubmissionChecks.CreateViewModel(client, new FirewallReadOnlyPermissions());
             readOnly.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             var readOnlyView = new FirewallWorkspace(readOnly);
             var readOnlyWindow = new Window { Width = 1120, Height = 780, Content = readOnlyView };
@@ -323,7 +323,7 @@ internal static class FirewallWorkspaceChecks
     {
         var client = DispatchProxy.Create<IServerFirewall, FirewallHostStub>();
         stub = (FirewallHostStub)(object)client;
-        var vm = FirewallApp.CreateViewModel(client, new FirewallTestPermissions());
+        var vm = FirewallSubmissionChecks.CreateViewModel(client, new FirewallTestPermissions());
         vm.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         return vm;
     }

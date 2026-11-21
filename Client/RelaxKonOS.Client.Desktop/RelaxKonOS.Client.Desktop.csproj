@@ -31,6 +31,7 @@
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Docker" AppId="relaxkonos.docker" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.EventAlerts" AppId="relaxkonos.event-alerts" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.FileServices" AppId="relaxkonos.file-services" />
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Firewall" AppId="relaxkonos.firewall" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Git" AppId="relaxkonos.git" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ImageViewer" AppId="relaxkonos.imageviewer" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Notepad" AppId="relaxkonos.notepad" />

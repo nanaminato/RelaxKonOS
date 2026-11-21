@@ -46,7 +46,8 @@ internal static class OfficialRoappChecks
         var isWebServers = applicationId == "relaxkonos.webservers";
         var isGit = applicationId == "relaxkonos.git";
         var isFileServices = applicationId == "relaxkonos.file-services";
-        var requiresModule = isDocker || isCertificates || isWebServers || isGit;
+        var isFirewall = applicationId == "relaxkonos.firewall";
+        var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall;
         var interactive = requiresModule || isFileServices;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
@@ -166,6 +167,15 @@ internal static class OfficialRoappChecks
                     "Git review exposes the Git module, capability and scoped grants.");
                 await RejectAsync(() => installer.InstallAsync(candidate), "Git without joint deployment");
             }
+            if (isFirewall)
+            {
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerFirewallRead, AppPermissions.ServerFirewallManage]
+                    && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.firewall"]
+                    && candidate.Manifest.Dependencies?.Required is
+                        [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.firewall" }, Capability: "server.firewall" }],
+                    "Firewall review exposes its server module and scoped grants.");
+                await RejectAsync(() => installer.InstallAsync(candidate), "Firewall without joint deployment");
+            }
             if (isFileServices)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerFileServicesRead,
                     AppPermissions.ServerFileServicesManage, AppPermissions.ServerComponentsRead, AppPermissions.ServerFilesRead]
@@ -238,11 +248,20 @@ internal static class OfficialRoappChecks
                     "relaxkonos.certificates" => "RelaxKonOS.App.Certificates.Views.CertificateManagerWorkspace",
                     "relaxkonos.webservers" => "RelaxKonOS.App.WebServers.Views.WebServerManagerWorkspace",
                     "relaxkonos.git" => "RelaxKonOS.App.Git.Views.GitClientWorkspace",
+                    "relaxkonos.firewall" => "RelaxKonOS.App.Firewall.Views.FirewallWorkspace",
                     "relaxkonos.file-services" => "RelaxKonOS.App.FileServices.Views.FileServicesWorkspace",
                     _ => "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
                 };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
                     "The installed entry point must create its own workspace.");
+                if (isFirewall)
+                {
+                    var model = ((Control)workspace.View.Content!).DataContext!;
+                    var modelType = model.GetType();
+                    Check(modelType.GetProperty("IsReadOnly")?.GetValue(model) is true,
+                        "The installed Firewall exposes read access and denies management with only the read grant.");
+                }
+
                 if (isBrowser)
                 {
                     foreach (var (culture, title) in new[]
@@ -390,13 +409,15 @@ internal static class OfficialRoappChecks
             appPermissions.Granted.Add(AppPermissions.ServerFileServicesRead);
             var git = isGit ? DispatchProxy.Create<RelaxKonOS.AppSDK.IServerGit, OfficialGitFixture>() : null;
             var fileServices = isFileServices ? DispatchProxy.Create<RelaxKonOS.AppSDK.IServerFileServices, ShareDialogClient>() : null;
-            var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices;
+            appPermissions.Granted.Add(AppPermissions.ServerFirewallRead);
+            var firewall = isFirewall ? DispatchProxy.Create<IServerFirewall, FirewallHostStub>() : null;
+            var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices || isFirewall;
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
                 null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
-                fileServices: fileServices);
+                fileServices: fileServices, firewall: firewall);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 

@@ -14,6 +14,7 @@
     "platforms": ["linux", "windows"],
     "capabilities": ["server.firewall"]
   },
+  "dependencies": { "required": [{ "package": { "kind": 1, "id": "relaxkonos.firewall" }, "capability": "server.firewall" }] },
   "localizedMetadata": {
     "zh-CN": { "displayName": "防火墙", "description": "管理主机防火墙策略和规则" },
     "ja-JP": { "displayName": "ファイアウォール", "description": "ホストのファイアウォール ポリシーとルールを管理します" }
