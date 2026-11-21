@@ -20,7 +20,9 @@ using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 
 const string helperCode = "proxy.privileged_operation_unavailable";
-if (args.Contains("--component-trust-only") || args.Contains("--installation-elevation-only") || args.FirstOrDefault() is "--component-center-host" or "--component-center-observe-host" or "--component-center-cancel-host")
+if (args.Contains("--component-trust-only") || args.Contains("--installation-elevation-only")
+    || args.Contains("--application-availability-only")
+    || args.FirstOrDefault() is "--component-center-host" or "--component-center-observe-host" or "--component-center-cancel-host")
     AppBuilder.Configure<Application>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
 else
     AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
@@ -35,6 +37,7 @@ if (args.Contains("--component-trust-only")) { ComponentTrustStorageChecks.Run()
 if (args.Contains("--component-refresh-only")) { await ComponentRefreshChecks.RunAsync(); return; }
 if (args.Contains("--component-lifecycle-only")) { await ComponentLifecycleClientChecks.RunAsync(); return; }
 if (args.Contains("--component-selection-only")) { ComponentSelectionChecks.Run(); return; }
+if (args.Contains("--application-availability-only")) { await ApplicationAvailabilityChecks.RunAsync(); return; }
 if (args.Contains("--vsd-install-storage-only")) { VsdInstallStorageChecks.Run(); return; }
 if (args.FirstOrDefault() == "--component-center-host")
 {

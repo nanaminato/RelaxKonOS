@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Deployment;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
@@ -16,14 +17,15 @@ namespace RelaxKonOS.Client.Apps.ComponentCenter;
 public enum ComponentAvailabilityKind { Unknown, Missing, Installed, External, Recovery, Busy, NoPermission, NotRequired }
 
 public sealed record ApplicationAvailability(AppId ApplicationId, string? ServerIdentity, string ComponentId,
-    ComponentAvailabilityKind State, string? ActualHostId = null, Guid? InstallationId = null)
+    ComponentAvailabilityKind State, string? ActualHostId = null, Guid? InstallationId = null,
+    DeploymentPackageKind? PackageKind = null)
 {
     /// <summary>An installed service being stopped or unhealthy is still a reason to open its business console.</summary>
     public bool CanOpen => State is ComponentAvailabilityKind.Installed or ComponentAvailabilityKind.NotRequired
         // An external copy is usable only where the application itself resolves the executable; the
         // catalog owns that closed set so no dependency is waived by accident.
-        || ComponentId == "postgresql" && State is ComponentAvailabilityKind.Recovery or ComponentAvailabilityKind.Busy
-        || State is ComponentAvailabilityKind.External && ComponentCatalog.AllowsExternalLaunch(ComponentId);
+        || PackageKind is null && (ComponentId == "postgresql" && State is ComponentAvailabilityKind.Recovery or ComponentAvailabilityKind.Busy
+        || State is ComponentAvailabilityKind.External && ComponentCatalog.AllowsExternalLaunch(ComponentId));
 }
 
 public interface IApplicationAvailabilityUi
@@ -45,7 +47,7 @@ public sealed record ComponentAvailabilityReading(string ComponentId, ComponentA
     string? ActualHostId = null, Guid? InstallationId = null);
 
 /// <summary>Fresh, permission-gated observation on every launch, including existing-window reuse.</summary>
-public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IApplicationAvailabilityProvider, IDisposable
+public sealed partial class ApplicationAvailabilityService : IApplicationLaunchGuard, IApplicationAvailabilityProvider, IDisposable
 {
     private readonly IAuthSession session;
     private readonly IServiceProvider services;
@@ -61,10 +63,11 @@ public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IA
     private readonly Dictionary<(string Server, Guid User, string Application), ApplicationAvailability> _observations = [];
     public event EventHandler? Changed;
     /// <summary>Every component-backed application is checked through the same generic state route.</summary>
-    public bool RequiresCheck(ApplicationManifest manifest) => ComponentCatalog.LaunchGate(manifest.Id.Value) is not null;
+    public bool RequiresCheck(ApplicationManifest manifest) => ComponentCatalog.LaunchGate(manifest.Id.Value) is not null
+        || InstalledRequiredDependencies(manifest.Id).Count > 0;
     public ApplicationAvailability? GetCached(AppId app)
     {
-        if (ComponentCatalog.LaunchGate(app.Value) is null || session.State != AuthSessionState.Authenticated
+        if (session.State != AuthSessionState.Authenticated
             || session.ServiceId is not { } server || session.CurrentUser is not { } user) return null;
         lock (_cacheLock) return _observations.GetValueOrDefault((server, user.Id, app.Value));
     }
@@ -76,6 +79,27 @@ public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IA
         var user = session.CurrentUser?.Id;
         bool Current() => ReferenceEquals(login, session.CurrentSession) && session.State == AuthSessionState.Authenticated
             && session.ServiceId == server && session.CurrentUser?.Id == user;
+        var required = InstalledRequiredDependencies(context.AppId);
+        if (required.Count > 0)
+        {
+            var dependency = await ObservePackageDependenciesAsync(context.AppId, required);
+            if (dependency is null || dependency.ServerIdentity is not null && !Current()) return false;
+            if (!dependency.CanOpen)
+            {
+                if (await ui.ShowAsync(dependency) && (Current() || dependency.ServerIdentity is null))
+                {
+                    if (dependency.PackageKind == DeploymentPackageKind.ServerModule)
+                    {
+                        if (server is not null)
+                            context.Activations.Activate(ComponentCenterNavigation.ServerModules(server, dependency.ComponentId));
+                    }
+                    else
+                        services.GetService<RelaxKonOS.Runtime.ApplicationManager>()?.Launch(new AppId("relaxkonos.appinstaller"));
+                }
+                return false;
+            }
+            if (ComponentCatalog.LaunchGate(context.AppId.Value) is null) return true;
+        }
         var result = await ObserveAsync(context, requestPermission: true);
         if (result is null || !Current()) return false;
         if (result.CanOpen) return true;
@@ -88,10 +112,17 @@ public sealed class ApplicationAvailabilityService : IApplicationLaunchGuard, IA
     }
 
     /// <summary>Passive display refresh never prompts for permissions, opens an app, or redirects to installation.</summary>
-    public Task<ApplicationAvailability?> RefreshAsync(ApplicationManifest manifest)
+    public async Task<ApplicationAvailability?> RefreshAsync(ApplicationManifest manifest)
     {
-        if (!RequiresCheck(manifest)) return Task.FromResult<ApplicationAvailability?>(null);
-        return ObserveAsync(new AppContext(manifest.Id, services.GetRequiredService<IWindowManager>(), services, manifest), requestPermission: false);
+        var required = InstalledRequiredDependencies(manifest.Id);
+        var hasComponent = ComponentCatalog.LaunchGate(manifest.Id.Value) is not null;
+        if (required.Count > 0)
+        {
+            var result = await ObservePackageDependenciesAsync(manifest.Id, required);
+            if (result is not { CanOpen: true } || !hasComponent) return result;
+        }
+        return hasComponent ? await ObserveAsync(new AppContext(manifest.Id, services.GetRequiredService<IWindowManager>(),
+            services, manifest), requestPermission: false) : null;
     }
 
     private async Task<ApplicationAvailability?> ObserveAsync(AppContext context, bool requestPermission)

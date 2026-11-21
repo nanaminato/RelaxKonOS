@@ -44,8 +44,9 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         foreach (var module in modules)
         {
             var package = installed.SingleOrDefault(item => item.ModuleId == module.Id);
+            var effectiveVersion = EffectivePackageVersion(module);
             if (!module.EffectiveEnabled || module.RecoveryState != "none"
-                || module.RestartRequired || !RuntimeSemanticVersion.TryParse(module.EffectiveVersion, out _))
+                || module.RestartRequired || effectiveVersion is null)
                 continue;
             var identity = package is { Active: true, Quarantined: false } && package.Version == module.EffectiveVersion
                 ? Identity(package.SourceId, package.ReleaseId, package.ArtifactSha256)
@@ -53,7 +54,7 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
             var dependencies = store.TryGetValue(identity, out var signedRelease)
                 ? signedRelease.Dependencies.Select(ToRequirement)
                 : module.Requires.Select(id => new DeploymentRequirement(Key(id)));
-            releases.Add(new(Key(module.Id), module.EffectiveVersion!, identity, true, [..dependencies],
+            releases.Add(new(Key(module.Id), effectiveVersion, identity, true, [..dependencies],
                 Capabilities(module.Capabilities)));
         }
 
@@ -99,6 +100,15 @@ internal sealed class ModuleDeploymentCatalog(ServerModuleManagementClient clien
         Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value)));
 
     private static DeploymentPackageKey Key(string id) => new(DeploymentPackageKind.ServerModule, id);
+
+    internal static string? EffectivePackageVersion(ServerModuleDto module)
+    {
+        if (RuntimeSemanticVersion.TryParse(module.EffectiveVersion, out var version)) return version.Normalized;
+        // Bundled modules advertise the host assembly version. A zero revision has the same
+        // precedence as its three-component package version.
+        return module.Packaging == "bundled" && Version.TryParse(module.EffectiveVersion, out var assembly)
+            && assembly.Revision == 0 ? assembly.ToString(3) : null;
+    }
 
     private static DeploymentRequirement ToRequirement(ServerModuleReleaseDependencyDto dependency) =>
         new(Key(dependency.ModuleId), dependency.MinimumVersion, dependency.MaximumVersionExclusive);

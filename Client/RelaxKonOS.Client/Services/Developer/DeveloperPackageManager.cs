@@ -77,6 +77,8 @@ public sealed partial class DeveloperPackageManager
 
     internal OfficialDesktopPackages OfficialSource => _official;
     internal IReadOnlyList<DeveloperAppRecord> InstalledRecords => _catalog.Values.ToArray();
+    internal IReadOnlyList<DeploymentRequirement> RequiredDependencies(AppId id) =>
+        _catalog.GetValueOrDefault(id.Value)?.Dependencies?.Required ?? [];
 
     public IReadOnlyList<DeveloperAppInfo> Installed => _catalog.Values
         .OrderBy(record => record.DisplayName)
@@ -345,6 +347,12 @@ public sealed partial class DeveloperPackageManager
             if (reviewed is not null && installed != reviewed)
                 throw new InvalidOperationException("component.state_revision_conflict");
             if (installed is null) return false;
+            var requiredBy = _catalog.Values.Where(record => record.Id != appId
+                    && record.Dependencies?.Required?.Any(requirement =>
+                        requirement.Package == new DeploymentPackageKey(DeploymentPackageKind.Application, appId)) == true)
+                .Select(record => record.Id).Order(StringComparer.Ordinal).ToArray();
+            if (requiredBy.Length > 0)
+                throw new InvalidOperationException($"The package is required by {string.Join(", ", requiredBy)}.");
             if (!await CanRetireWindowsAsync(new AppId(appId)))
                 throw new InvalidOperationException("Application windows are busy or have unsaved changes.");
             File.Delete(CurrentPath(appId));

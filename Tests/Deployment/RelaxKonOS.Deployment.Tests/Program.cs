@@ -23,7 +23,15 @@ var withOptional = candidates.Append(Release("optional", "1.0.0") with { Satisfi
 var selected = DeploymentResolver.Resolve(root, withOptional, [optional]);
 Check(selected.Succeeded && selected.OrderedReleases.Single(release => release.Package == optional.Package).Satisfied);
 Check(DeploymentResolver.Resolve(root, withOptional, []).OrderedReleases.All(release => release.Package != optional.Package));
-Check(!DeploymentResolver.Resolve(root, withOptional.Where(release => release.Package != Key("b")), []).Succeeded);
+var blocked = DeploymentResolver.Resolve(root, withOptional.Where(release => release.Package != Key("b")), []);
+Check(!blocked.Succeeded && blocked.ProblemPackage == Key("b"));
+var adminCapability = new DeploymentRequirement(Key("shared"), Capability: "admin", ContractVersion: "2");
+var capable = Release("shared", "1.0.0") with { Capabilities = ImmutableDictionary<string, string>.Empty.Add("admin", "2") };
+Check(DeploymentResolver.Resolve(root, [.. candidates.Where(release => release.Package != Key("shared")), capable],
+    [adminCapability]).Succeeded);
+var unknownContract = capable with { Capabilities = capable.Capabilities.SetItem("admin", "") };
+Check(DeploymentResolver.Resolve(root, [.. candidates.Where(release => release.Package != Key("shared")), unknownContract],
+    [adminCapability]).ProblemPackage == Key("shared"));
 var backend = new Backend();
 var journal = new FileDeploymentJournal(Path.Combine(Path.GetTempPath(), "rk-deployment-" + Guid.NewGuid().ToString("N")));
 var coordinator = new UnifiedDeploymentCoordinator(backend, journal, TimeProvider.System);

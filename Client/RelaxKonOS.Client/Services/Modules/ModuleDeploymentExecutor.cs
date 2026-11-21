@@ -105,7 +105,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
         var identity = release.ArtifactIdentity.Split('/')[^1];
         if (module is not { EffectiveEnabled: true, RestartRequired: false, RecoveryState: "none" }
-            || module.EffectiveVersion != release.Version
+            || ModuleDeploymentCatalog.EffectivePackageVersion(module) != release.Version
             || !release.Capabilities.Keys.All(capability => module.Capabilities.Contains(capability, StringComparer.Ordinal))
             || identity.Length == 64 && module.ArtifactDigest != identity)
             throw new InvalidOperationException("deployment-module-not-effective");

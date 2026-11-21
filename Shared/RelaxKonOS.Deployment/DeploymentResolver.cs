@@ -18,7 +18,8 @@ public sealed record DeploymentRelease(DeploymentPackageKey Package, string Vers
     public string? CurrentVersion { get; init; }
 }
 
-public sealed record DeploymentResolution(ImmutableArray<DeploymentRelease> OrderedReleases, string? Problem)
+public sealed record DeploymentResolution(ImmutableArray<DeploymentRelease> OrderedReleases, string? Problem,
+    DeploymentPackageKey? ProblemPackage = null)
 {
     public bool Succeeded => Problem is null;
 }
@@ -41,6 +42,7 @@ public static class DeploymentResolver
         selected[root.Package] = pinnedRoot;
         var remaining = MaximumSearchSteps;
         var problem = "deployment-dependency-conflict";
+        DeploymentPackageKey? problemPackage = null;
         ImmutableArray<DeploymentRelease> order = [];
 
         bool Search(ImmutableArray<DeploymentRequirement> pending, int index, int depth)
@@ -53,7 +55,11 @@ public static class DeploymentResolver
 
             while (index < pending.Length && selected.TryGetValue(pending[index].Package, out var existing))
             {
-                if (!Matches(existing, pending[index])) return false;
+                if (!Matches(existing, pending[index]))
+                {
+                    problemPackage = pending[index].Package;
+                    return false;
+                }
                 index++;
             }
 
@@ -66,7 +72,11 @@ public static class DeploymentResolver
                 bool Visit(DeploymentRelease release)
                 {
                     if (complete.Contains(release.Package)) return true;
-                    if (!visiting.Add(release.Package)) return false;
+                    if (!visiting.Add(release.Package))
+                    {
+                        problemPackage = release.Package;
+                        return false;
+                    }
                     foreach (var dependency in release.Requires)
                         if (!Visit(selected[dependency.Package])) return false;
                     visiting.Remove(release.Package);
@@ -86,6 +96,7 @@ public static class DeploymentResolver
             }
 
             var requirement = pending[index];
+            problemPackage = requirement.Package;
             foreach (var entry in releases[requirement.Package].Where(entry => Matches(entry.Release, requirement))
                 .OrderByDescending(entry => entry.Release.Satisfied)
                 .ThenByDescending(entry => entry.Version)
@@ -99,7 +110,7 @@ public static class DeploymentResolver
             return false;
         }
 
-        return Search(requirements, 0, 0) ? new(order, null) : new([], problem);
+        return Search(requirements, 0, 0) ? new(order, null) : new([], problem, problemPackage);
     }
 
     private static bool Matches(DeploymentRelease release, DeploymentRequirement requirement)

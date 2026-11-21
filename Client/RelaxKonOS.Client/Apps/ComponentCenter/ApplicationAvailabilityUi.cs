@@ -1,5 +1,6 @@
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Deployment;
 using RelaxKonOS.WindowManager;
 using Size = RelaxKonOS.Core.Primitives.Size;
 
@@ -21,7 +22,8 @@ public sealed class ApplicationAvailabilityUi(IWindowManager windows) : IApplica
         await windows.ShowShellDialogAsync<bool>(title, dialog => new ConfirmDialogView
         {
             DataContext = new ConfirmDialogViewModel(message, value => { accepted = value; dialog.Close(value); },
-                canManage ? LocalizedText.Get("component_center.open") : LocalizedText.Get("common.ok"))
+                canManage ? LocalizedText.Get(availability.PackageKind == DeploymentPackageKind.Application
+                    ? "app_installer.title" : "component_center.open") : LocalizedText.Get("common.ok"))
         }, new Size(560, 260));
         return canManage && accepted;
     }
