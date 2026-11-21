@@ -158,6 +158,27 @@ internal static class NotepadWorkspaceChecks
                 "The SDK preserves separate file picker filters and their order.");
             picker.CancelAction!();
             Wait(filtered);
+            using (var editor = new CodeEditorViewModel(new SdkEditorWorkspaceFiles(context.ServerFiles)))
+            {
+                CodeEditorSessionDialogs.ConfigureSdkPickers(editor, context.ServerFiles, pickerOwner);
+                var chooseSource = editor.RequestFileAsync!();
+                picker = Dialog<ExplorerViewModel>();
+                Check(picker.IsFilePickerMode && !picker.IsSaveFilePickerMode && picker.Filters.Count == 3
+                    && picker.Filters[0].Patterns.Contains("*.cs")
+                    && picker.Filters[1].Patterns.Contains("*.png"), "Code Editor uses the SDK source, image and all-file filters.");
+                picker.CancelAction!();
+                Wait(chooseSource);
+                var chooseSavePath = editor.RequestSavePathAsync!("draft.cs");
+                picker = Dialog<ExplorerViewModel>();
+                Check(picker.IsSaveFilePickerMode && picker.PickerEntryName == "draft.cs", "Code Editor preserves its suggested save name.");
+                picker.CancelAction!();
+                Wait(chooseSavePath);
+                var chooseFolder = editor.RequestFolderAsync!();
+                picker = Dialog<ExplorerViewModel>();
+                Check(picker.IsFolderPickerMode, "Code Editor requests the SDK folder picker.");
+                picker.CancelAction!();
+                Wait(chooseFolder);
+            }
             manager.ForceClose(pickerOwner.Window);
 
             var settingsTask = model.OpenSettingsCommand.ExecuteAsync(null);

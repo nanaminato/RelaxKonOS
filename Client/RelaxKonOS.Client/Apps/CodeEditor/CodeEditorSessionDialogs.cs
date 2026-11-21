@@ -21,7 +21,8 @@ namespace RelaxKonOS.Client.Apps.CodeEditor;
 /// <summary>Shared remote pickers, encoding and settings for both editor applications.</summary>
 internal static class CodeEditorSessionDialogs
 {
-    public static void Configure(AppContext context, RelaxKonOS.WindowManager.ManagedWindow window, CodeEditorViewModel viewModel, IExplorerClient? files)
+    public static void Configure(AppContext context, RelaxKonOS.WindowManager.ManagedWindow window, CodeEditorViewModel viewModel,
+        IExplorerClient? files, IServerFiles? sdkFiles = null, IExternalAppWindowHandle? sdkWindow = null)
     {
         viewModel.ShowTreeOperationErrorAsync = async message =>
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("code_editor.context.operation_error"), dialog =>
@@ -52,6 +53,39 @@ internal static class CodeEditorSessionDialogs
                     LocalizedText.Format("code_editor.context.delete_confirm", path), dialog.Close,
                     LocalizedText.Get("code_editor.context.delete")) }, new Size(460, 200));
 
+        if (sdkFiles is not null && sdkWindow is not null)
+            ConfigureSdkPickers(viewModel, sdkFiles, sdkWindow);
+        else
+            ConfigureExplorerPickers(context, window, viewModel, files);
+
+        ConfigureEditorDialogs(context, window, viewModel);
+    }
+
+    internal static void ConfigureSdkPickers(CodeEditorViewModel viewModel, IServerFiles files, IExternalAppWindowHandle owner)
+    {
+        viewModel.RequestFileAsync = () => PickAsync(new(LocalizedText.Get("code_editor.open_remote_file"),
+            ServerFilePickerMode.OpenFile,
+            [SourceFilter(), new(LocalizedText.Get("code_editor.preview.image_filter"),
+                ImageDecoder.SupportedExtensions.Select(extension => $"*{extension}").ToArray()),
+                new(LocalizedText.Get("code_editor.preview.all_files"), ["*"])]));
+        viewModel.RequestFolderAsync = () => PickAsync(new(LocalizedText.Get("code_editor.open_remote_folder"),
+            ServerFilePickerMode.SelectFolder));
+        viewModel.RequestSavePathAsync = name => PickAsync(new(LocalizedText.Get("code_editor.save_remote_file"),
+            ServerFilePickerMode.SaveFile, [SourceFilter()], name));
+
+        async Task<string?> PickAsync(ServerFilePickerOptions options)
+        {
+            var result = await files.PickAsync(owner, options);
+            return result.Status == AppCapabilityResult.Succeeded ? result.Path : null;
+        }
+
+        static ServerFilePickerFilter SourceFilter() => new(LocalizedText.Get("code_editor.source_file_filter"),
+            CodeEditorFileTypes.SupportedExtensions.Select(extension => $"*{extension}").Concat(CodeEditorFileTypes.SupportedFileNames).ToArray());
+    }
+
+    private static void ConfigureExplorerPickers(AppContext context, RelaxKonOS.WindowManager.ManagedWindow window,
+        CodeEditorViewModel viewModel, IExplorerClient? files)
+    {
         viewModel.RequestFileAsync = () => files is null
             ? Task.FromResult<string?>(null)
             : context.ShowDialogAsync<string>(window, LocalizedText.Get("code_editor.open_remote_file"), dialog =>
@@ -101,6 +135,10 @@ internal static class CodeEditorSessionDialogs
             _ = picker.LoadRootAsync();
             return new ExplorerMainView { DataContext = picker };
         }, GetFilePickerBounds(window));
+    }
+
+    private static void ConfigureEditorDialogs(AppContext context, RelaxKonOS.WindowManager.ManagedWindow window, CodeEditorViewModel viewModel)
+    {
         viewModel.RequestEncodingActionAsync = () => context.ShowDialogAsync<EncodingDialogAction?>(window,
             LocalizedText.Get("common.file_encoding"), dialog =>
                 new EncodingActionDialogView { DataContext = new EncodingActionDialogViewModel(action =>

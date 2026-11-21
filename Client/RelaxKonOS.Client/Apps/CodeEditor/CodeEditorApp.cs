@@ -43,13 +43,14 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
         var sshDesktop = context.Services.GetService(typeof(SshDesktopSession)) as SshDesktopSession;
         IExplorerClient? files = sshDesktop?.IsConnected == true
             ? context.Services.GetService(typeof(SshExplorerClient)) as SshExplorerClient
-            : context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
+            : null;
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var encodingSettings = context.Services.GetService(typeof(TextEditorEncodingSettings)) as TextEditorEncodingSettings;
         var pathCaseSensitive = sshDesktop?.IsConnected == true || session?.CurrentServer?.Platform != HostPlatformKind.Windows;
-        var sdkFiles = sshDesktop?.IsConnected == true ? null :
+        var sdkContext = sshDesktop?.IsConnected == true ? null :
             (context.Services.GetService(typeof(ExternalAppContextFactory)) as ExternalAppContextFactory)
-                ?.Create(Manifest, openedFile: path).ServerFiles;
+                ?.Create(Manifest, openedFile: path);
+        var sdkFiles = sdkContext?.ServerFiles;
         var workspace = sshDesktop?.IsConnected == true ? ExplorerEditorWorkspaceFiles.Wrap(files)
             : sdkFiles is null ? null : new SdkEditorWorkspaceFiles(sdkFiles);
         var viewModel = new CodeEditorViewModel(workspace, sdkFiles?.IsPathCaseSensitive ?? pathCaseSensitive,
@@ -59,9 +60,10 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
         };
         if (string.IsNullOrWhiteSpace(path)) viewModel.NewDocumentCommand.Execute(null);
         var view = new CodeEditorView { DataContext = viewModel };
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.codeeditor.display_name"), view,
-            bounds: new Rect(140, 80, 920, 640),
-            iconGlyph: Manifest.IconGlyph);
+        var title = LocalizedText.Get("application.relaxkonos.codeeditor.display_name");
+        var bounds = new Rect(140, 80, 920, 640);
+        var sdkWindow = sdkContext?.Windows.ShowWindow(title, view, bounds, Manifest.IconGlyph);
+        var window = sdkWindow?.Window ?? context.ShowWindow(title, view, bounds, Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
         closed = (_, closedWindow) =>
@@ -94,7 +96,7 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
             isBusy: () => viewModel.IsSaving || viewModel.IsTreeBusy,
             hasChanges: () => viewModel.HasUnsavedDocuments);
 
-        CodeEditorSessionDialogs.Configure(context, window, viewModel, files);
+        CodeEditorSessionDialogs.Configure(context, window, viewModel, files, sdkFiles, sdkWindow);
 
         if (!string.IsNullOrWhiteSpace(path))
             _ = viewModel.OpenPathAsync(path);
