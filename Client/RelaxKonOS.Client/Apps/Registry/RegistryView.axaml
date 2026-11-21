@@ -54,7 +54,7 @@
               <MenuItem Header="{loc:Loc registry.menu.delete_key}" Command="{Binding DeleteKeyCommand}" IsEnabled="{Binding CanDeleteKey}"/>
             </ContextMenu>
           </TreeView.ContextMenu>
-          <TreeView.ItemTemplate><TreeDataTemplate DataType="registry:RegistryKeyNode" ItemsSource="{Binding Children}"><StackPanel Orientation="Horizontal" Spacing="6"><Image Width="{DynamicResource RegistryIconSize}" Height="{DynamicResource RegistryIconSize}" Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/file-folder.png"/><TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding ToolTipText}" VerticalAlignment="Center"/></StackPanel></TreeDataTemplate></TreeView.ItemTemplate>
+          <TreeView.ItemTemplate><TreeDataTemplate DataType="registry:RegistryKeyNode" ItemsSource="{Binding Children}"><StackPanel Orientation="Horizontal" Spacing="6"><Image Width="{DynamicResource RegistryIconSize}" Height="{DynamicResource RegistryIconSize}" Source="avares://RelaxKonOS.UI/Assets/Icons/Explorer/file-folder.png"/><TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding ToolTipText}" VerticalAlignment="Center"/></StackPanel></TreeDataTemplate></TreeView.ItemTemplate>
         </TreeView>
       </Border>
       <GridSplitter DragCompleted="Sidebar_DragCompleted" Grid.Column="1" Width="3" ResizeDirection="Columns"/>

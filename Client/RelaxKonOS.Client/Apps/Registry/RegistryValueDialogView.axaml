@@ -102,7 +102,7 @@
         <TreeView.ItemTemplate>
           <TreeDataTemplate DataType="registry:RegistryJsonNode" ItemsSource="{Binding Children}">
             <StackPanel Orientation="Horizontal" Spacing="8">
-              <Image IsVisible="{Binding IsContainer}" Width="{DynamicResource RegistryIconSize}" Height="{DynamicResource RegistryIconSize}" Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/file-folder.png"/>
+              <Image IsVisible="{Binding IsContainer}" Width="{DynamicResource RegistryIconSize}" Height="{DynamicResource RegistryIconSize}" Source="avares://RelaxKonOS.UI/Assets/Icons/Explorer/file-folder.png"/>
               <TextBlock Text="{Binding Name}"/>
               <TextBlock Text="{Binding Type}" Opacity="0.5" FontSize="11"/>
               <TextBlock Text="{Binding ValueText}" MaxWidth="260" TextTrimming="CharacterEllipsis" Opacity="0.7"/>

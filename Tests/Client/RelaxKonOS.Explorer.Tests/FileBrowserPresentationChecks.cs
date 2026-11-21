@@ -1,9 +1,11 @@
+using RelaxKonOS.UI.Imaging;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Platform;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -18,6 +20,9 @@ internal static class FileBrowserPresentationChecks
     public static void Run(Action<bool, string> check)
     {
         AppBuilder.Configure<TestApp>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
+        check(AssetLoader.Exists(new Uri("avares://RelaxKonOS.UI/Assets/Icons/Explorer/file-folder.png"))
+            && AssetLoader.Exists(new Uri("avares://RelaxKonOS.UI/Assets/Icons/Explorer/file-csharp.png")),
+            "Shared file icons are embedded in the UI assembly without the desktop host.");
         var entries = new[] { "one", "two", "three" };
         var grid = new DataGrid { ItemsSource = entries, SelectionMode = DataGridSelectionMode.Extended, AutoGenerateColumns = false };
         grid.Columns.Add(new DataGridTemplateColumn

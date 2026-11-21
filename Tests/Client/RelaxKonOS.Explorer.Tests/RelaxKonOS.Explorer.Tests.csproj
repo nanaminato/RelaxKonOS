@@ -19,7 +19,6 @@
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ViewModels/ExplorerViewModel.Archives.cs" Link="ExplorerViewModel.Archives.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ViewModels/ExplorerViewModel.cs" Link="ExplorerViewModel.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
-    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Controls/ExplorerIcon.cs" Link="Controls/ExplorerIcon.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Controls/FileBrowserPresentation.cs" Link="Controls/FileBrowserPresentation.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Converters/EntryConverters.cs" Link="Converters/EntryConverters.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/IExplorerClient.cs" Link="IExplorerClient.cs" />

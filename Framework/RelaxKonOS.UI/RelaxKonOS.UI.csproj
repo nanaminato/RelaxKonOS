@@ -18,6 +18,7 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="RelaxKonOS.GitDiff.Tests" />
+        <AvaloniaResource Include="Assets/Icons/Explorer/*.png" />
     </ItemGroup>
 
     <ItemGroup>

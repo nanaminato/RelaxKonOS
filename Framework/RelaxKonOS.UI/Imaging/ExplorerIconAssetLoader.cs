@@ -1,10 +1,9 @@
-using RelaxKonOS.UI.Imaging;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.Client.Apps.Explorer.Models;
+namespace RelaxKonOS.UI.Imaging;
 
 /// <summary>
 /// Loads the same extension-aware artwork used by Explorer wherever a file-system entry is shown.
@@ -12,7 +11,7 @@ namespace RelaxKonOS.Client.Apps.Explorer.Models;
 /// </summary>
 public static class ExplorerIconAssetLoader
 {
-    private const string AssetPrefix = "avares://RelaxKonOS.Client/Assets/Icons/Explorer/";
+    private const string AssetPrefix = "avares://RelaxKonOS.UI/Assets/Icons/Explorer/";
     private static readonly Dictionary<string, Bitmap> BitmapCache = new(StringComparer.Ordinal);
     private static readonly object BitmapCacheLock = new();
 

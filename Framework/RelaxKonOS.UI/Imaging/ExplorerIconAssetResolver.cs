@@ -1,7 +1,6 @@
-using RelaxKonOS.UI.Imaging;
 using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.Client.Apps.Explorer.Models;
+namespace RelaxKonOS.UI.Imaging;
 
 /// <summary>Resolves Explorer entries to the generated PNG asset that best describes them.</summary>
 public static class ExplorerIconAssetResolver
@@ -33,7 +32,9 @@ public static class ExplorerIconAssetResolver
         };
         if (specialName is not null) return specialName;
 
-        return ExplorerPath.Extension(normalizedName).ToLowerInvariant() switch
+        var dot = normalizedName.LastIndexOf('.');
+        var extension = dot < 0 ? string.Empty : normalizedName[dot..];
+        return extension switch
         {
             ".c" or ".h" => "file-c",
             ".cpp" or ".cxx" or ".cc" or ".hpp" or ".hxx" => "file-cpp",

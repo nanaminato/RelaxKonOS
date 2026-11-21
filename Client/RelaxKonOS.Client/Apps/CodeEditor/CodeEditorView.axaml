@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fileIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:editor="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
              xmlns:codeEditor="clr-namespace:RelaxKonOS.Client.Apps.CodeEditor"
@@ -128,7 +128,7 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="codeEditor:CodeEditorDocument">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6" MinWidth="128" VerticalAlignment="Center" Background="Transparent" ContextRequested="DocumentTab_ContextRequested">
-                                    <explorer:ExplorerIcon Kind="{Binding Kind}" Width="16" Height="16" VerticalAlignment="Center" />
+                                    <fileIcons:ExplorerIcon Kind="{Binding Kind}" Width="16" Height="16" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1" Text="{Binding DisplayName}" MaxWidth="180" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DisplayName}" VerticalAlignment="Center" />
                                     <Ellipse Grid.Column="2" Width="8" Height="8" Fill="{DynamicResource TextPrimaryBrush}" IsVisible="{Binding IsDirty}" VerticalAlignment="Center" />
                                     <Button Grid.Column="3" Classes="tab-close"
@@ -149,7 +149,7 @@
                                      MinWidth="220" MaxHeight="320" SelectionChanged="DocumentPicker_SelectionChanged">
                                 <ListBox.ItemTemplate><DataTemplate x:DataType="codeEditor:CodeEditorDocument">
                                     <DockPanel>
-                                        <explorer:ExplorerIcon DockPanel.Dock="Left" Kind="{Binding Kind}" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                        <fileIcons:ExplorerIcon DockPanel.Dock="Left" Kind="{Binding Kind}" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
                                         <TextBlock Text="{Binding DisplayName}" MaxWidth="300" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                     </DockPanel>
                                 </DataTemplate></ListBox.ItemTemplate>
@@ -210,7 +210,7 @@
                         <TreeView.ItemTemplate>
                             <TreeDataTemplate ItemsSource="{Binding Children}">
                                 <StackPanel x:Name="ProjectNodeHeader" Orientation="Horizontal" Spacing="6" IsVisible="{Binding !IsPlaceholder}" Background="Transparent" ContextRequested="ProjectNode_ContextRequested">
-                                    <explorer:ExplorerIcon Kind="{Binding Kind}" Width="18" Height="18" VerticalAlignment="Center" />
+                                    <fileIcons:ExplorerIcon Kind="{Binding Kind}" Width="18" Height="18" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" MaxWidth="190" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
                                 </StackPanel>
                             </TreeDataTemplate>
@@ -276,7 +276,7 @@
                     <Border Margin="24" Padding="28" MaxWidth="460" HorizontalAlignment="Center" VerticalAlignment="Center"
                             Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="12">
                         <StackPanel Spacing="12">
-                            <explorer:ExplorerIcon Kind="{Binding ActiveDocument.Kind}" Width="56" Height="56" HorizontalAlignment="Center" />
+                            <fileIcons:ExplorerIcon Kind="{Binding ActiveDocument.Kind}" Width="56" Height="56" HorizontalAlignment="Center" />
                             <TextBlock Text="{Binding DocumentName}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" />
                             <TextBlock Text="{Binding FileSizeText}" Foreground="{DynamicResource TextTertiaryBrush}" TextAlignment="Center" />
                             <TextBlock Text="{loc:Loc code_editor.preview.binary_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" />

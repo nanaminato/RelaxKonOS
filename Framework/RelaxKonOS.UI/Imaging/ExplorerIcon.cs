@@ -1,11 +1,9 @@
-using RelaxKonOS.UI.Imaging;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
-using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.Client.Apps.Explorer.Controls;
+namespace RelaxKonOS.UI.Imaging;
 
 /// <summary>Draws the generated, extension-aware Explorer PNG assets at the requested UI size.</summary>
 public sealed class ExplorerIcon : Control

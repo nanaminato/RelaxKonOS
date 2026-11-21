@@ -1,7 +1,7 @@
 <!-- 布局结构移植自 Jaya Views/Windows/MainView.xaml（BSD-3）。
      Copyright (c) 2020, Rubal Walia. 原始许可见 LICENSE-jaya.txt 与 THIRD_PARTY_NOTICES.md。 -->
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fileIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:c="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Converters"
              xmlns:controls="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
@@ -71,7 +71,7 @@
                              row, so a strip that fills up narrows every tab rather than hiding any. -->
                         <ListBox.ItemTemplate><DataTemplate x:DataType="models:ExplorerTab">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Width="{Binding #Root.TabContentWidth}" VerticalAlignment="Center">
-                                <controls:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="16" Height="16" VerticalAlignment="Center" />
+                                <fileIcons:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="16" Height="16" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="1" Text="{Binding Title}" IsVisible="{Binding !IsComputer}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
                                 <TextBlock Grid.Column="1" Text="{loc:Loc explorer.computer}" IsVisible="{Binding IsComputer}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 <Button Grid.Column="2" Classes="tab-close"
@@ -403,7 +403,7 @@
                              resized pane width and a star column can visually separate icon/text. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left"
                                     IsVisible="{Binding !IsPlaceholder}">
-                            <controls:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="20" Height="20" />
+                            <fileIcons:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="20" Height="20" />
                             <TextBlock Text="{Binding Label}" MaxWidth="170" MaxLines="1"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
@@ -521,7 +521,7 @@
                                             <Binding Path="#Root.DataContext.CutEntryPaths" />
                                         </MultiBinding>
                                     </Grid.Opacity>
-                                    <controls:ExplorerIcon EntryType="{Binding Type}" FileName="{Binding Name}" Width="22" Height="22" />
+                                    <fileIcons:ExplorerIcon EntryType="{Binding Type}" FileName="{Binding Name}" Width="22" Height="22" />
                                     <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" MaxLines="1" VerticalAlignment="Center">
                                         <TextBlock.IsVisible>
                                             <MultiBinding Converter="{StaticResource EntryIsEditingConverter}" ConverterParameter="inverse">

@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fileIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:explorer="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
              xmlns:explorerModels="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Models"
@@ -22,7 +22,7 @@
                         <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
                         <ListBox.ItemTemplate><DataTemplate DataType="ssh:SshFileBrowserTab">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Width="{Binding #Root.TabContentWidth}" VerticalAlignment="Center">
-                                <explorer:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="16" Height="16" VerticalAlignment="Center" />
+                                <fileIcons:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="16" Height="16" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="1" Text="{Binding Title}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
                                 <Button Grid.Column="2" Classes="tab-close" Tag="{Binding}" Click="CloseTab_Click" ToolTip.Tip="{loc:Loc explorer.close_tab}" AutomationProperties.Name="{loc:Loc explorer.close_tab}">
                                     <PathIcon Width="11" Height="11" Data="{StaticResource ChromeCloseIcon}" />
@@ -180,7 +180,7 @@
                         <TreeDataTemplate DataType="explorerModels:TreeNodeModel" ItemsSource="{Binding Children}">
                             <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left"
                                         IsVisible="{Binding !IsPlaceholder}">
-                                <explorer:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="20" Height="20" />
+                                <fileIcons:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="20" Height="20" />
                                 <TextBlock Text="{Binding Label}" MaxWidth="165" MaxLines="1"
                                            TextTrimming="CharacterEllipsis" />
                             </StackPanel>
@@ -253,7 +253,7 @@
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:CompileBindings="False">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="12,2" Opacity="{Binding CutOpacity}">
-                                    <explorer:ExplorerIcon EntryType="{Binding EntryType}" FileName="{Binding Name}"
+                                    <fileIcons:ExplorerIcon EntryType="{Binding EntryType}" FileName="{Binding Name}"
                                                            Link="{Binding IsLink}" Width="20" Height="20"
                                                            VerticalAlignment="Center" />
                                     <TextBox Grid.Column="1" Classes="inline-rename" IsVisible="{Binding IsEditing}"

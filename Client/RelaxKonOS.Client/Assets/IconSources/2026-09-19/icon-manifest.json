@@ -20,7 +20,7 @@
         "right": 128,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/app-file-services.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/app-file-services.png",
       "assetName": "app-file-services"
     },
     {
@@ -32,7 +32,7 @@
         "right": 234,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/navigation-home.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/navigation-home.png",
       "assetName": "navigation-home"
     },
     {
@@ -44,7 +44,7 @@
         "right": 343,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/navigation-desktop.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/navigation-desktop.png",
       "assetName": "navigation-desktop"
     },
     {
@@ -56,7 +56,7 @@
         "right": 431,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/navigation-computer.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/navigation-computer.png",
       "assetName": "navigation-computer"
     },
     {
@@ -68,7 +68,7 @@
         "right": 549,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/navigation-drive.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/navigation-drive.png",
       "assetName": "navigation-drive"
     },
     {
@@ -80,7 +80,7 @@
         "right": 652,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/navigation-network.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/navigation-network.png",
       "assetName": "navigation-network"
     },
     {
@@ -92,7 +92,7 @@
         "right": 759,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/file-folder.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-folder.png",
       "assetName": "file-folder"
     },
     {
@@ -104,7 +104,7 @@
         "right": 869,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-new-folder.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-new-folder.png",
       "assetName": "toolbar-new-folder"
     },
     {
@@ -116,7 +116,7 @@
         "right": 972,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/navigation-documents.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/navigation-documents.png",
       "assetName": "navigation-documents"
     },
     {
@@ -128,7 +128,7 @@
         "right": 1087,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/navigation-pictures.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/navigation-pictures.png",
       "assetName": "navigation-pictures"
     },
     {
@@ -140,7 +140,7 @@
         "right": 1196,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/navigation-music.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/navigation-music.png",
       "assetName": "navigation-music"
     },
     {
@@ -152,7 +152,7 @@
         "right": 1306,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/navigation-videos.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/navigation-videos.png",
       "assetName": "navigation-videos"
     },
     {
@@ -164,7 +164,7 @@
         "right": 1409,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/file-generic.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-generic.png",
       "assetName": "file-generic"
     },
     {
@@ -176,7 +176,7 @@
         "right": 1521,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/file-text.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-text.png",
       "assetName": "file-text"
     },
     {
@@ -188,7 +188,7 @@
         "right": 1625,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/file-spreadsheet.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-spreadsheet.png",
       "assetName": "file-spreadsheet"
     },
     {
@@ -200,7 +200,7 @@
         "right": 1730,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/file-presentation.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-presentation.png",
       "assetName": "file-presentation"
     },
     {
@@ -212,7 +212,7 @@
         "right": 1838,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/file-generic-alt.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-generic-alt.png",
       "assetName": "file-generic-alt"
     },
     {
@@ -224,7 +224,7 @@
         "right": 1947,
         "bottom": 159
       },
-      "assetPath": "Assets/Icons/Explorer/file-presentation-alt.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-presentation-alt.png",
       "assetName": "file-presentation-alt"
     },
     {
@@ -236,7 +236,7 @@
         "right": 115,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-cut.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-cut.png",
       "assetName": "toolbar-cut"
     },
     {
@@ -248,7 +248,7 @@
         "right": 230,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-copy.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-copy.png",
       "assetName": "toolbar-copy"
     },
     {
@@ -260,7 +260,7 @@
         "right": 334,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-paste.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-paste.png",
       "assetName": "toolbar-paste"
     },
     {
@@ -272,7 +272,7 @@
         "right": 440,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-rename.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-rename.png",
       "assetName": "toolbar-rename"
     },
     {
@@ -284,7 +284,7 @@
         "right": 540,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-delete.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-delete.png",
       "assetName": "toolbar-delete"
     },
     {
@@ -296,7 +296,7 @@
         "right": 645,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-more.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-more.png",
       "assetName": "toolbar-more"
     },
     {
@@ -308,7 +308,7 @@
         "right": 759,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-sort.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-sort.png",
       "assetName": "toolbar-sort"
     },
     {
@@ -320,7 +320,7 @@
         "right": 862,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-back.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-back.png",
       "assetName": "toolbar-back"
     },
     {
@@ -332,7 +332,7 @@
         "right": 973,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-forward.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-forward.png",
       "assetName": "toolbar-forward"
     },
     {
@@ -344,7 +344,7 @@
         "right": 1075,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-up.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-up.png",
       "assetName": "toolbar-up"
     },
     {
@@ -356,7 +356,7 @@
         "right": 1194,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-refresh.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-refresh.png",
       "assetName": "toolbar-refresh"
     },
     {
@@ -368,7 +368,7 @@
         "right": 1306,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-search.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-search.png",
       "assetName": "toolbar-search"
     },
     {
@@ -380,7 +380,7 @@
         "right": 1417,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-settings.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-settings.png",
       "assetName": "toolbar-settings"
     },
     {
@@ -392,7 +392,7 @@
         "right": 1521,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-info.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-info.png",
       "assetName": "toolbar-info"
     },
     {
@@ -404,7 +404,7 @@
         "right": 1620,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-grid-view.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-grid-view.png",
       "assetName": "toolbar-grid-view"
     },
     {
@@ -416,7 +416,7 @@
         "right": 1724,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-list-view.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-list-view.png",
       "assetName": "toolbar-list-view"
     },
     {
@@ -428,7 +428,7 @@
         "right": 1837,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/toolbar-filter.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-filter.png",
       "assetName": "toolbar-filter"
     },
     {
@@ -440,7 +440,7 @@
         "right": 1948,
         "bottom": 290
       },
-      "assetPath": "Assets/Icons/Explorer/app-terminal.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/app-terminal.png",
       "assetName": "app-terminal"
     },
     {
@@ -452,7 +452,7 @@
         "right": 123,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-archive.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-archive.png",
       "assetName": "file-archive"
     },
     {
@@ -464,7 +464,7 @@
         "right": 226,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-generic-light.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-generic-light.png",
       "assetName": "file-generic-light"
     },
     {
@@ -476,7 +476,7 @@
         "right": 330,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-text-alt.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-text-alt.png",
       "assetName": "file-text-alt"
     },
     {
@@ -488,7 +488,7 @@
         "right": 435,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-document.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-document.png",
       "assetName": "file-document"
     },
     {
@@ -500,7 +500,7 @@
         "right": 536,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-spreadsheet-alt.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-spreadsheet-alt.png",
       "assetName": "file-spreadsheet-alt"
     },
     {
@@ -512,7 +512,7 @@
         "right": 641,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-presentation-alt-2.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-presentation-alt-2.png",
       "assetName": "file-presentation-alt-2"
     },
     {
@@ -524,7 +524,7 @@
         "right": 746,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-pdf.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-pdf.png",
       "assetName": "file-pdf"
     },
     {
@@ -536,7 +536,7 @@
         "right": 852,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-image.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-image.png",
       "assetName": "file-image"
     },
     {
@@ -548,7 +548,7 @@
         "right": 959,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-audio.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-audio.png",
       "assetName": "file-audio"
     },
     {
@@ -560,7 +560,7 @@
         "right": 1065,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-video.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-video.png",
       "assetName": "file-video"
     },
     {
@@ -572,7 +572,7 @@
         "right": 1178,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-generic-gray.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-generic-gray.png",
       "assetName": "file-generic-gray"
     },
     {
@@ -584,7 +584,7 @@
         "right": 1288,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-config.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-config.png",
       "assetName": "file-config"
     },
     {
@@ -596,7 +596,7 @@
         "right": 1398,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-database.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-database.png",
       "assetName": "file-database"
     },
     {
@@ -608,7 +608,7 @@
         "right": 1509,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-application.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-application.png",
       "assetName": "file-application"
     },
     {
@@ -620,7 +620,7 @@
         "right": 1622,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-disk-image.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-disk-image.png",
       "assetName": "file-disk-image"
     },
     {
@@ -632,7 +632,7 @@
         "right": 1729,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-font.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-font.png",
       "assetName": "file-font"
     },
     {
@@ -644,7 +644,7 @@
         "right": 1838,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-code-generic.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-code-generic.png",
       "assetName": "file-code-generic"
     },
     {
@@ -656,7 +656,7 @@
         "right": 1946,
         "bottom": 430
       },
-      "assetPath": "Assets/Icons/Explorer/file-json.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-json.png",
       "assetName": "file-json"
     },
     {
@@ -668,7 +668,7 @@
         "right": 117,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-c.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-c.png",
       "assetName": "file-c"
     },
     {
@@ -680,7 +680,7 @@
         "right": 249,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-cpp.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-cpp.png",
       "assetName": "file-cpp"
     },
     {
@@ -692,7 +692,7 @@
         "right": 353,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-csharp.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-csharp.png",
       "assetName": "file-csharp"
     },
     {
@@ -704,7 +704,7 @@
         "right": 463,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-fsharp.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-fsharp.png",
       "assetName": "file-fsharp"
     },
     {
@@ -716,7 +716,7 @@
         "right": 582,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-visual-basic.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-visual-basic.png",
       "assetName": "file-visual-basic"
     },
     {
@@ -728,7 +728,7 @@
         "right": 681,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-java.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-java.png",
       "assetName": "file-java"
     },
     {
@@ -740,7 +740,7 @@
         "right": 798,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-kotlin.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-kotlin.png",
       "assetName": "file-kotlin"
     },
     {
@@ -752,7 +752,7 @@
         "right": 920,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-go.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-go.png",
       "assetName": "file-go"
     },
     {
@@ -764,7 +764,7 @@
         "right": 1045,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-rust.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-rust.png",
       "assetName": "file-rust"
     },
     {
@@ -776,7 +776,7 @@
         "right": 1167,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-python.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-python.png",
       "assetName": "file-python"
     },
     {
@@ -788,7 +788,7 @@
         "right": 1288,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-javascript.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-javascript.png",
       "assetName": "file-javascript"
     },
     {
@@ -800,7 +800,7 @@
         "right": 1407,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-typescript.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-typescript.png",
       "assetName": "file-typescript"
     },
     {
@@ -812,7 +812,7 @@
         "right": 1524,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-react.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-react.png",
       "assetName": "file-react"
     },
     {
@@ -824,7 +824,7 @@
         "right": 1623,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-html.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-html.png",
       "assetName": "file-html"
     },
     {
@@ -836,7 +836,7 @@
         "right": 1726,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-css.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-css.png",
       "assetName": "file-css"
     },
     {
@@ -848,7 +848,7 @@
         "right": 1829,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-css-alt.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-css-alt.png",
       "assetName": "file-css-alt"
     },
     {
@@ -860,7 +860,7 @@
         "right": 1942,
         "bottom": 582
       },
-      "assetPath": "Assets/Icons/Explorer/file-sass.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-sass.png",
       "assetName": "file-sass"
     },
     {
@@ -872,7 +872,7 @@
         "right": 135,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-php.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-php.png",
       "assetName": "file-php"
     },
     {
@@ -884,7 +884,7 @@
         "right": 228,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-ruby.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-ruby.png",
       "assetName": "file-ruby"
     },
     {
@@ -896,7 +896,7 @@
         "right": 329,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-swift.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-swift.png",
       "assetName": "file-swift"
     },
     {
@@ -908,7 +908,7 @@
         "right": 430,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-dart.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-dart.png",
       "assetName": "file-dart"
     },
     {
@@ -920,7 +920,7 @@
         "right": 535,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-shell.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-shell.png",
       "assetName": "file-shell"
     },
     {
@@ -932,7 +932,7 @@
         "right": 637,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-powershell.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-powershell.png",
       "assetName": "file-powershell"
     },
     {
@@ -944,7 +944,7 @@
         "right": 730,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-sql.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-sql.png",
       "assetName": "file-sql"
     },
     {
@@ -956,7 +956,7 @@
         "right": 835,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-xml.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-xml.png",
       "assetName": "file-xml"
     },
     {
@@ -968,7 +968,7 @@
         "right": 927,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-yaml.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-yaml.png",
       "assetName": "file-yaml"
     },
     {
@@ -980,7 +980,7 @@
         "right": 1033,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-toml.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-toml.png",
       "assetName": "file-toml"
     },
     {
@@ -992,7 +992,7 @@
         "right": 1134,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-env.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-env.png",
       "assetName": "file-env"
     },
     {
@@ -1004,7 +1004,7 @@
         "right": 1264,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-dockerfile.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-dockerfile.png",
       "assetName": "file-dockerfile"
     },
     {
@@ -1016,7 +1016,7 @@
         "right": 1365,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-makefile.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-makefile.png",
       "assetName": "file-makefile"
     },
     {
@@ -1028,7 +1028,7 @@
         "right": 1471,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-cmake.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-cmake.png",
       "assetName": "file-cmake"
     },
     {
@@ -1040,7 +1040,7 @@
         "right": 1604,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-dotnet-project.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-dotnet-project.png",
       "assetName": "file-dotnet-project"
     },
     {
@@ -1052,7 +1052,7 @@
         "right": 1721,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-package.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-package.png",
       "assetName": "file-package"
     },
     {
@@ -1064,7 +1064,7 @@
         "right": 1838,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-git-config.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-git-config.png",
       "assetName": "file-git-config"
     },
     {
@@ -1076,7 +1076,7 @@
         "right": 1945,
         "bottom": 712
       },
-      "assetPath": "Assets/Icons/Explorer/file-config-alt.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-config-alt.png",
       "assetName": "file-config-alt"
     },
     {
@@ -1084,7 +1084,7 @@
       "file": null,
       "sourceBounds": null,
       "origin": "authored",
-      "assetPath": "Assets/Icons/Explorer/toolbar-upload.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-upload.png",
       "assetName": "toolbar-upload"
     },
     {
@@ -1092,7 +1092,7 @@
       "file": null,
       "sourceBounds": null,
       "origin": "authored",
-      "assetPath": "Assets/Icons/Explorer/toolbar-download.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-download.png",
       "assetName": "toolbar-download"
     },
     {
@@ -1100,7 +1100,7 @@
       "file": null,
       "sourceBounds": null,
       "origin": "authored",
-      "assetPath": "Assets/Icons/Explorer/toolbar-upload-folder.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/toolbar-upload-folder.png",
       "assetName": "toolbar-upload-folder"
     },
     {
@@ -1108,7 +1108,7 @@
       "file": null,
       "sourceBounds": null,
       "origin": "authored",
-      "assetPath": "Assets/Icons/Explorer/file-link.png",
+      "assetPath": "Framework/RelaxKonOS.UI/Assets/Icons/Explorer/file-link.png",
       "assetName": "file-link"
     }
   ],
