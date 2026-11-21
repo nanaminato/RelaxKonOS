@@ -27,6 +27,15 @@ public interface IModuleHostContext
     IModuleHostStorage Storage { get; }
     ILogger Logger { get; }
     IModulePrivilegeBroker Privileges { get; }
+    ICloudWebDavProvider WebDav { get; }
+}
+
+public interface ICloudWebDavProvider
+{
+    ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken);
+    /// <summary>The caller owns the returned response and its content stream.</summary>
+    ValueTask<HttpResponseMessage> SendAsync(RelaxKonOS.ModuleHost.Protocol.CloudWebDavRequest request,
+        Stream? content, CancellationToken cancellationToken);
 }
 
 /// <summary>Bounded, path-confined storage owned by one ModuleHost process.</summary>

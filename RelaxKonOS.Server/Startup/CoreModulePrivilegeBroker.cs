@@ -37,6 +37,7 @@ internal sealed class CoreModulePrivilegeBroker(IHostEnvironment environment, IC
             options.Limits.MaxRequestBodySize = 8192;
         });
         _application = builder.Build();
+        CloudWebDavRelay.Map(_application, services);
         _application.MapPost("/background", async (ModulePrivilegeBackgroundRequest request, HttpContext http) => await Respond(async () =>
         {
             using var connection = services.GetRequiredService<ModuleHostSupervisor>()

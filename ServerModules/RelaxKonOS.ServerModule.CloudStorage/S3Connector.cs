@@ -1,3 +1,4 @@
+using RelaxKonOS.CloudStorage.Transport;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;

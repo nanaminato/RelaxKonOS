@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging.Abstractions;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModuleHost.Sdk;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
@@ -218,9 +219,10 @@ sealed class TestStorage : IModuleHostContext, IModuleHostStorage
     public Dictionary<string, byte[]> Files { get; } = new();
     public string ModuleId => CloudStorageApi.ModuleId;
     public string ModuleDataPath => Path.GetTempPath();
-    public string HostApiVersion => "2.0.0";
+    public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
     public IModuleHostStorage Storage => this;
     public ILogger Logger => NullLogger.Instance;
+    public ICloudWebDavProvider WebDav => throw new NotSupportedException();
     public IModulePrivilegeBroker Privileges => throw new NotSupportedException();
     public ValueTask<byte[]?> ReadAsync(string path, int maximumBytes, CancellationToken ct) => ValueTask.FromResult(Files.GetValueOrDefault(path));
     public ValueTask WriteAsync(string path, ReadOnlyMemory<byte> bytes, CancellationToken ct) { Files[path] = bytes.ToArray(); return ValueTask.CompletedTask; }

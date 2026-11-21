@@ -1,3 +1,4 @@
+using RelaxKonOS.CloudStorage.Transport;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
@@ -68,7 +69,8 @@ internal sealed class CloudUploadSessions(string dataPath)
 
     internal async Task<IResult> HandleAsync(HttpContext http, Guid owner, Guid connection, string revision, string id,
         string action, long? offset, long? length, string? contentHash,
-        Func<string, Stream, bool, CancellationToken, Task> publish)
+        Func<string, Stream, bool, CancellationToken, Task> publish,
+        Func<CancellationToken, ValueTask<bool>>? canPublish = null)
     {
         var ct = http.RequestAborted;
         await _gate.WaitAsync(ct);
@@ -129,6 +131,7 @@ internal sealed class CloudUploadSessions(string dataPath)
             if (contentHash is not null && (contentHash.Length != 64 || !contentHash.All(char.IsAsciiHexDigit)))
                 return Problem(400, "cloud-upload-invalid-hash");
             if (_publishing.Count >= 4) return Problem(429, FileUploadProblemCodes.TooManyUploads);
+            if (canPublish is not null && !await canPublish(ct)) return Problem(503, CloudStorageApi.ProviderUnavailable);
             session = session with { State = "publishing", ExpiresAt = DateTimeOffset.UtcNow + Lifetime };
             await SaveAsync(session, ct);
             var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);

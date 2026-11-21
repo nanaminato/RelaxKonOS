@@ -33,7 +33,7 @@ internal static class ModulePackageStore
                     if (!Matches(manifest, query, moduleIdQuery)) continue;
                     var revoked = revokedIds.Contains(manifest.ReleaseId) || revokedDigests.Contains(release.ArchiveSha256);
                     var rid = string.Equals(manifest.Rid, context.Rid, StringComparison.Ordinal);
-                    var hostApi = manifest.Runtime == "module-host" ? "2.0.0" : context.HostApiVersion;
+                    var hostApi = manifest.Runtime == "module-host" ? RelaxKonOS.ModuleHost.Protocol.ModuleHostProtocol.HostApiVersion : context.HostApiVersion;
                     var api = ParseVersion(manifest.HostApiMinimum) <= ParseVersion(hostApi)
                         && ParseVersion(hostApi) < ParseVersion(manifest.HostApiMaximumExclusive);
                     List<ServerModuleBlocker> blockers = [];

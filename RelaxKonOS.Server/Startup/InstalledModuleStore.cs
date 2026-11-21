@@ -155,7 +155,7 @@ internal static class InstalledModuleStore
 
     /// <summary>Re-hashes the installed files before an enabled module is loaded. Installation state is
     /// not trusted as proof of the bytes currently on disk.</summary>
-    internal static void VerifyPackage(string contentRoot, InstalledModuleRecord record)
+    internal static ModulePackageManifest VerifyPackage(string contentRoot, InstalledModuleRecord record)
     {
         var root = ResolvePackageRoot(contentRoot, record.PackagePath);
         var manifestPath = Path.Combine(root, "manifest.json");
@@ -192,6 +192,7 @@ internal static class InstalledModuleStore
             var digest = Convert.ToHexStringLower(SHA256.HashData(stream));
             if (digest != file.Sha256) throw new ModulePackageException("module-package-installed-integrity");
         }
+        return manifest;
     }
 
     private static bool Valid(InstalledModuleRecord module) =>

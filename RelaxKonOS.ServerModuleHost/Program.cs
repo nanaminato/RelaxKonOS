@@ -24,7 +24,7 @@ namespace RelaxKonOS.ServerModuleHost;
 /// </summary>
 public static class ModuleHostProgram
 {
-    private const string HostApiVersion = "2.0.0";
+    private const string HostApiVersion = ModuleHostProtocol.HostApiVersion;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = false };
 
     public static async Task<int> Main(string[] args)
@@ -63,9 +63,10 @@ public static class ModuleHostProgram
             using var loggerFactory = LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Information)
                 .AddProvider(new StderrLoggerProvider()));
             var accessor = new HttpContextAccessor();
+            var broker = Environment.GetEnvironmentVariable(ModulePrivilegeProtocol.BrokerEnvironment);
             var context = new Context(moduleId, dataPath, new ModuleHostStorage(dataPath),
-                loggerFactory.CreateLogger(moduleId), new ModuleHostPrivilegeClient(
-                    Environment.GetEnvironmentVariable(ModulePrivilegeProtocol.BrokerEnvironment), serviceToken, accessor));
+                loggerFactory.CreateLogger(moduleId), new ModuleHostPrivilegeClient(broker, serviceToken, accessor),
+                new CloudWebDavProviderClient(broker, serviceToken));
             await entry.StartAsync(context, CancellationToken.None);
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = root });
             builder.Logging.ClearProviders();
@@ -214,10 +215,9 @@ public static class ModuleHostProgram
     }
 
     private sealed record Context(string ModuleId, string ModuleDataPath, IModuleHostStorage Storage,
-        ILogger Logger, IModulePrivilegeBroker Privileges) : IModuleHostContext
+        ILogger Logger, IModulePrivilegeBroker Privileges, ICloudWebDavProvider WebDav) : IModuleHostContext
     {
-        public string HostApiVersion => HostApiVersionValue;
-        private const string HostApiVersionValue = "2.0.0";
+        public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
     }
     private sealed class LoadContext(string entry) : AssemblyLoadContext("module-host")
     {

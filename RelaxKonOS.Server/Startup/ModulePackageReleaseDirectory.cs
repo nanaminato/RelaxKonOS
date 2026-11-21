@@ -29,7 +29,7 @@ internal static class ModulePackageReleaseDirectory
             var m = release.Manifest;
             var revoked = revokedIds.Contains(m.ReleaseId) || revokedDigests.Contains(release.ArchiveSha256);
             var rid = m.Rid == context.Rid;
-            var runtimeApi = m.Runtime == "module-host" ? new Version(2, 0, 0) : hostVersion;
+            var runtimeApi = m.Runtime == "module-host" ? Version.Parse(RelaxKonOS.ModuleHost.Protocol.ModuleHostProtocol.HostApiVersion) : hostVersion;
             var api = runtimeApi >= Version.Parse(m.HostApiMinimum) && runtimeApi < Version.Parse(m.HostApiMaximumExclusive);
             List<ServerModuleBlocker> blockers = [new("module-package-artifact-verification-required", moduleId)];
             if (revoked) blockers.Add(new("module-package-release-revoked", moduleId));

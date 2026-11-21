@@ -103,6 +103,12 @@ if (args is ["--cloud-webdav-connector-acceptance"])
     return;
 }
 
+if (args is ["--cloud-webdav-package-acceptance", var cloudPublish, var davPublish])
+{
+    await CloudWebDavPackageAcceptance.RunAsync(cloudPublish, davPublish);
+    return;
+}
+
 if (args is ["--cloud-aws-connector-acceptance"])
 {
     await CloudR2ConditionalDeleteAcceptance.RunAwsAsync();

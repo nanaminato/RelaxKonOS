@@ -133,3 +133,12 @@ public sealed class FixtureUnhealthyHostEntry : FixtureHostEntry
     public override ValueTask<ModuleHostHealth> CheckHealthAsync(CancellationToken cancellationToken) =>
         ValueTask.FromResult(new ModuleHostHealth(false, "fixture-unhealthy"));
 }
+
+public sealed class FixtureUnhealthyWebDavEntry : IModuleHostEntry, IModuleHostHealth
+{
+    public string Id => RelaxKonOS.ModuleHost.Protocol.CloudWebDavProtocol.ProviderModuleId;
+    public ValueTask StartAsync(IModuleHostContext context, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    public ValueTask StopAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    public ValueTask<ModuleHostHealth> CheckHealthAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new ModuleHostHealth(false, "fixture-webdav-unhealthy"));
+}

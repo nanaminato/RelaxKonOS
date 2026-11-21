@@ -6,11 +6,11 @@ using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 
-namespace RelaxKonOS.ServerModule.CloudStorage;
+namespace RelaxKonOS.CloudStorage.Transport;
 
-internal static class CloudTransport
+public static class CloudTransport
 {
-    internal static HttpClient Create(Uri endpoint, bool allowPrivate = false) => new(
+    public static HttpClient Create(Uri endpoint, bool allowPrivate = false) => new(
         new OriginHandler(endpoint, new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
@@ -55,7 +55,7 @@ internal static class CloudTransport
         throw new HttpRequestException("cloud-storage-address");
     }
 
-    internal static bool Allowed(IPAddress address, bool allowPrivate)
+    public static bool Allowed(IPAddress address, bool allowPrivate)
     {
         address = Normalize(address);
         var bytes = address.GetAddressBytes();
@@ -75,7 +75,7 @@ internal static class CloudTransport
 
     private static IPAddress Normalize(IPAddress address) => address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
 
-    internal static async Task<XDocument> ReadXmlAsync(HttpResponseMessage response, CancellationToken ct)
+    public static async Task<XDocument> ReadXmlAsync(HttpResponseMessage response, CancellationToken ct)
     {
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = XmlReader.Create(stream, new XmlReaderSettings
@@ -85,16 +85,16 @@ internal static class CloudTransport
         return await XDocument.LoadAsync(reader, LoadOptions.None, ct);
     }
 
-    internal static long? Size(string? value) => long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var size) ? size : null;
+    public static long? Size(string? value) => long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var size) ? size : null;
 
-    internal static DateTimeOffset? Date(string? value) => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
+    public static DateTimeOffset? Date(string? value) => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
         DateTimeStyles.AssumeUniversal, out var date) ? date : null;
 
-    internal static string EscapePath(string path) => string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
+    public static string EscapePath(string path) => string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
 
-    internal static string Reference(string path) => Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(path));
+    public static string Reference(string path) => Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(path));
 
-    internal static string PathFrom(string? reference)
+    public static string PathFrom(string? reference)
     {
         if (string.IsNullOrEmpty(reference)) return "";
         if (reference.Length > 8192) throw new ArgumentException("reference");
@@ -103,7 +103,7 @@ internal static class CloudTransport
         return path;
     }
 
-    internal static bool ValidPath(string path) => path.Length == 0 || path.Length <= 4096
+    public static bool ValidPath(string path) => path.Length == 0 || path.Length <= 4096
         && !path.Any(c => char.IsControl(c) || c is '\\')
         && path.TrimEnd('/').Split('/').All(segment => segment is not ("" or "." or ".."));
 }

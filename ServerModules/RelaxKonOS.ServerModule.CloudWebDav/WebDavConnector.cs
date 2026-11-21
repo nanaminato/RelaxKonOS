@@ -3,10 +3,12 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Xml.Linq;
 using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.CloudStorage.Transport;
+using RelaxKonOS.ModuleHost.Protocol;
 
-namespace RelaxKonOS.ServerModule.CloudStorage;
+namespace RelaxKonOS.ServerModule.CloudWebDav;
 
-internal sealed class WebDavConnector(CloudConnectionRequest connection, HttpClient http)
+internal sealed class WebDavConnector(CloudWebDavRequest connection, HttpClient http)
 {
     private static readonly XNamespace Dav = "DAV:";
     private readonly Uri _root = new(connection.Endpoint.TrimEnd('/') + "/");
@@ -80,6 +82,7 @@ internal sealed class WebDavConnector(CloudConnectionRequest connection, HttpCli
         using var put = CreateRequest(HttpMethod.Put, staging);
         put.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Any);
         put.Content = new StreamContent(stream);
+        put.Content.Headers.ContentLength = connection.UploadLength;
         var cleanupNeeded = true;
         try
         {
@@ -113,6 +116,7 @@ internal sealed class WebDavConnector(CloudConnectionRequest connection, HttpCli
         using var request = CreateRequest(HttpMethod.Put, path);
         request.Headers.IfMatch.Add(etag);
         request.Content = new StreamContent(stream);
+        request.Content.Headers.ContentLength = connection.UploadLength;
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         EnsureMutationSucceeded(response);
     }

@@ -1,7 +1,9 @@
 using System.Net;
 using System.Text;
+using RelaxKonOS.CloudStorage.Transport;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.Protocol.Files;
-using RelaxKonOS.ServerModule.CloudStorage;
+using RelaxKonOS.ServerModule.CloudWebDav;
 
 internal static class CloudWebDavConnectorAcceptance
 {
@@ -15,7 +17,8 @@ internal static class CloudWebDavConnectorAcceptance
         var settings = new CloudConnectionRequest("WebDAV acceptance", "webdav",
             endpoint.AbsoluteUri, null, null, null, Required("USER"), Required("SECRET"), AllowPrivateWebDav: allowPrivate,
             EnableWrites: true);
-        var connector = new WebDavConnector(settings, http);
+        var connector = new WebDavConnector(new(CloudWebDavAction.List, settings.Endpoint, settings.UserName, settings.Secret,
+            settings.AllowPrivateWebDav, ""), http);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         var ct = deadline.Token;
         var parent = $"relaxkonos-dav-{Guid.NewGuid():N}/";

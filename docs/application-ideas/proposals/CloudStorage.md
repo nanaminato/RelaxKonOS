@@ -1,6 +1,6 @@
 # APP-008 云存储与内置文件浏览器
 
-状态：已实现可选 ModuleHost 模块与桌面 Explorer 接入。真实 WebDAV 和 Cloudflare R2 已通过 Ubuntu 实机 ModuleHost 读写验收。真实 AWS S3 端点验收待执行。
+状态：已实现可选 ModuleHost 模块与桌面 Explorer 接入。WebDAV Provider 已拆为独立的 `cloud-webdav` 服务端包。拆分前的 CloudStorage 已在 Ubuntu 实机通过真实 WebDAV 和 Cloudflare R2 读写验收。真实 AWS S3 端点验收待执行。
 
 ## 首版范围
 
@@ -37,7 +37,7 @@
 
 ## 安装与连接
 
-云存储作为可选的服务端 `.rkmodule`，运行在隔离的 ModuleHost。用户可跳过安装。组件中心管理模块的安装、停止、重启和版本，连接管理负责各账户的授权和撤销。首版用一个模块交付 WebDAV 和 S3 兼容连接器，用户选择需要的连接。以后可按发布和依赖边界拆分成独立模块。
+云存储由可选的 `cloud-storage` 服务端 `.rkmodule` 提供。组件中心管理模块安装、停止、重启和版本。`cloud-storage` 持有连接配置、加密凭据、用户授权和上传会话，S3 及网盘协议继续随该模块运行。`cloud-webdav` 作为独立的 `.rkmodule` 执行 WebDAV 协议请求，按需安装。停用或卸载 Provider 后，连接记录和 ID 仍保留，WebDAV 操作返回 `cloud-storage-provider-unavailable`。重新启用兼容的 Provider 即可复用连接。
 
 桌面 Explorer 通过认证代理发现 `cloud-storage` 模块。模块可用时，侧栏显示「云存储」和当前用户的各个连接根。窄窗口可从云存储面板内切换连接。模块暂不可用时，打开的面板保留导航上下文。撤销连接后移除对应入口。连接按所有者隔离。WebDAV 用 HTTPS 端点中的目录作为根，S3 用桶与键前缀作为根。
 
@@ -59,6 +59,8 @@ Server 将上传按块提交给 ModuleHost。模块将暂存会话限定到连�
 
 WebDAV 使用 HTTPS Basic 认证，S3 使用 AWS SDK 签名，支持静态访问密钥和可选会话令牌。连接凭据由模块保存在私有目录的 AES-GCM 加密记录中，密钥文件由同一隔离目录的 OS 权限保护。备份和还原时需同时保护这两个文件。客户端只能读取连接摘要。出站连接限定到配置的 HTTPS 源并拒绝重定向、环回和元数据地址。本机接口默认拒绝。控制者显式启用内网 WebDAV 并填写本机私有 IPv4 字面地址时，可连接该地址和指定端口，继续执行默认 TLS 校验。撤销阻止新的请求，已开始的流可结束，上传暂存完成时会再次检查连接。
 
+Core 仅在 ModuleHost 私有通道中向获准的 `cloud-storage` 实例开放固定的 Provider 路由，按运行代际核验令牌，并只转发给获准的 `cloud-webdav` 实例。授权以宿主配置的来源、发布者和模块 ID 为准。Provider 在请求执行期间使用所需的连接信息和数据流，持久化凭据仍由 `cloud-storage` 管理。Explorer 保留原有服务端代理、文件读写权限和连接所有者校验。
+
 文件级上传和下载已使用服务端任务。桌面 Explorer 的可写云连接可以剪切条目，再到同一连接的目标目录粘贴。移动不覆盖目标。删除需要再次确认，删除目录会包含其内容。模块拒绝移动或删除连接根目录，WebDAV 返回部分失败时向客户端报错。
 
 桌面 Explorer 可以选择宿主目录上传，或将选中的云目录下载到宿主目标目录。服务端按目录逐级复制，保留空目录。下载使用同级临时目录，复制完成后再发布。上传中断后，已创建的云端目录和文件可能保留。
@@ -71,7 +73,7 @@ S3 兼容连接也提供移动与删除。目录操作先列出选中前缀中�
 
 发布 `ServerModules/RelaxKonOS.ServerModule.CloudStorage/RelaxKonOS.ServerModule.CloudStorage.csproj`，指定目标 RID 并使用框架依赖发布。按[模块打包说明](../../architecture/RelaxKonOS.ServerModulePackage.Format.md#离线打包命令)打包发布目录，使用下列参数。模块不声明宿主提权能力。
 
-发布者工作台可通过项目目录内的 `module-release.json` 自动发现 CloudStorage，按所选 RID 批量构建并签发统一目录。
+发布者工作台可通过项目目录内的 `module-release.json` 发现 CloudStorage 和 WebDAV Provider，按所选 RID 批量构建并签发目录。独立 Provider 使用模块 ID `cloud-webdav`、入口程序集 `RelaxKonOS.ServerModule.CloudWebDav.dll` 和入口类型 `RelaxKonOS.ServerModule.CloudWebDav.CloudWebDavModule`。两个包均要求 ModuleHost ABI 2.1.0，沿用现有签名模块包来源策略，无需宿主提权能力。自定义来源需授权所分发的模块 ID。已有来源调整授权项时更新来源策略版本。
 
 | 参数 | 值 |
 | --- | --- |
@@ -80,7 +82,7 @@ S3 兼容连接也提供移动与删除。目录操作先列出选中前缀中�
 | `--entry-assembly` | `RelaxKonOS.ServerModule.CloudStorage.dll` |
 | `--entry-type` | `RelaxKonOS.ServerModule.CloudStorage.CloudStorageModule` |
 
-部署服务端传输需更新 Core、CloudStorage ModuleHost 包和桌面客户端。仅修改连接器时优先走模块包在线更新。传输要求现有 ModuleHost 访问权限和文件读写、管理权限，宿主文件访问继续按登录用户的 OS 权限执行。真机测试沿用目标机器已接纳的测试来源和预配置连接，测试证据仅记录目标、版本、操作和结果。
+首次部署独立 Provider 时更新 Core 和 ModuleHost，并安装兼容的 `cloud-storage` 与 `cloud-webdav` 包。升级过程中保留 CloudStorage 数据目录，Explorer 沿用已有路由和连接。后续单独更新 Provider 时走模块包在线更新，启动验证失败由现有机制恢复上一版。卸载按组件中心现有的停止、停用、重启 Core 和移除流程执行。真机测试沿用目标机器已接纳的测试来源和预配置连接，测试证据仅记录版本、操作和结果。
 
 本地回归入口为 `Tests/ServerModules` 的 `--cloud-storage-checks`。覆盖块内 TCP 断开、偏移续传、S3/R2 分片完成时的不覆盖条件、模拟百度网盘操作，以及 Server 文件任务对 WebDAV 的双向传输、下载替换、上传保留两份和取消。宿主文件上传的 98 项检查也通过。Windows 本地使用临时签名包验证 ModuleHost 加载。
 
@@ -92,6 +94,8 @@ S3 兼容连接也提供移动与删除。目录操作先列出选中前缀中�
 - 2026-11-15 使用 `--cloud-r2-connector-acceptance` 通过真实 R2 连接器验收。测试在随机前缀创建目录和空子目录，覆盖文件，移动整棵目录并核对替换后的内容和空子目录，最后删除目标目录并确认前缀为空。此命令使用与条件删除探针相同的环境变量。
 - 同一验收命令通过本机 Server 文件任务和真实 R2 进行宿主 → 云端 → 宿主整目录往返，核对文件内容与空子目录，确认下载暂存目录和云端测试前缀均已清理。
 - WebDAV 可使用 `Tests/ServerModules` 的 `--cloud-webdav-connector-acceptance` 验证。通过环境变量设置 `RELAXKONOS_WEBDAV_ENDPOINT`、`RELAXKONOS_WEBDAV_USER` 和 `RELAXKONOS_WEBDAV_SECRET`。私有 IPv4 端点可显式设置 `RELAXKONOS_WEBDAV_ALLOW_PRIVATE=1`，仍需受信任的 TLS 证书。测试在指定根下创建和清理一个随机目录，覆盖替换、移动、删除和双向整目录复制。
+- `--cloud-webdav-package-acceptance <CloudStorage 发布目录> <CloudWebDav 发布目录>` 复用同一组环境变量，在临时 Core 服务中通过正式模块包接口验证签名包安装、在线更新、失败回滚和卸载。测试使用两个真实的 ModuleHost 进程，对 HTTPS WebDAV 执行目录列举、上传及下载校验，并清理随机测试目录。
+- 2026-11-21 在 Windows 临时 Core 上使用已接纳的签名测试目录安装两包，连接真实 HTTPS WebDAV。Provider 在线从 `1.0.0` 更新到 `1.1.0`，`1.2.0` 候选包启动健康检查失败后回滚至 `1.1.0`。原连接仍能列举和下载同一文件，Core 与 CloudStorage 的运行代际保持稳定。经停用、重启并移除 Provider 后，原连接配置仍可查看，WebDAV 操作返回 503。临时目录已清理。测试使用开发启动器运行 ModuleHost 子进程。
 - 2026-11-15 使用本地已授权的读写 WebDAV 连接通过真实验收。验证文件替换、目录移动与删除，以及本机 Server 文件任务的双向整目录复制。文件内容与空子目录均保留，清理后确认随机测试目录已不存在。
 - AWS S3 可使用 `Tests/ServerModules` 的 `--cloud-aws-connector-acceptance` 验证。通过环境变量设置 `RELAXKONOS_AWS_REGION`、`RELAXKONOS_AWS_BUCKET`、`RELAXKONOS_AWS_TEST_PREFIX`、`RELAXKONOS_AWS_KEY_ID` 和 `RELAXKONOS_AWS_SECRET`。临时凭据还须设置 `RELAXKONOS_AWS_SESSION_TOKEN`。测试在专用测试前缀下验证替换、原生分片复制后移动、删除和双向整目录复制，并清理本次创建的对象。
 - 百度网盘可使用 `Tests/ServerModules` 的 `--cloud-baidu-connector-acceptance` 验证。通过环境变量设置 `RELAXKONOS_BAIDU_CLIENT_ID`、`RELAXKONOS_BAIDU_CLIENT_SECRET`、`RELAXKONOS_BAIDU_REFRESH_TOKEN` 和 `RELAXKONOS_BAIDU_TEST_PARENT`。使用具有写权限的测试账号和专用父目录。测试在随机目录内验证替换、移动、删除和双向整目录复制，并清理该目录。

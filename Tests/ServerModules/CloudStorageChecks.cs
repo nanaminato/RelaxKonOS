@@ -5,9 +5,13 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging.Abstractions;
+using RelaxKonOS.CloudStorage.Transport;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.ModuleHost.Sdk;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.ServerModule.CloudStorage;
+using RelaxKonOS.ServerModule.CloudWebDav;
+using RelaxKonOS.ServerModuleHost;
 
 internal static class CloudStorageChecks
 {
@@ -15,6 +19,8 @@ internal static class CloudStorageChecks
         string? parentReference = null)
     {
         var context = new TestContext(root);
+        await using var webDav = settings.Protocol == "webdav"
+            ? await StartProviderAsync(context, new CloudWebDavModule(), ct) : null;
         var module = new CloudStorageModule();
         await module.StartAsync(context, ct);
         try
@@ -56,6 +62,8 @@ internal static class CloudStorageChecks
         {
             var context = new TestContext(root);
             var upstream = new Upstream(check);
+            await using var webDav = await StartProviderAsync(context,
+                new CloudWebDavModule((_, _) => new HttpClient(upstream, disposeHandler: false)), default);
             var module = new CloudStorageModule((_, _) => new HttpClient(upstream, disposeHandler: false));
             await module.StartAsync(context, default);
             var builder = WebApplication.CreateSlimBuilder();
@@ -760,8 +768,9 @@ internal static class CloudStorageChecks
         internal Dictionary<string, byte[]> Files { get; } = new(StringComparer.Ordinal);
         public string ModuleId => CloudStorageApi.ModuleId;
         public string ModuleDataPath => root;
-        public string HostApiVersion => "2.0.0";
+        public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
         public IModuleHostStorage Storage => this;
+        public ICloudWebDavProvider WebDav { get; set; } = null!;
         public ILogger Logger => NullLogger.Instance;
         public IModulePrivilegeBroker Privileges => throw new NotSupportedException();
         public ValueTask<byte[]?> ReadAsync(string path, int maximumBytes, CancellationToken ct) =>
@@ -772,5 +781,18 @@ internal static class CloudStorageChecks
             return ValueTask.CompletedTask;
         }
         public bool Delete(string path) => Files.Remove(path);
+    }
+
+    private static async Task<WebApplication> StartProviderAsync(TestContext context, CloudWebDavModule module, CancellationToken ct)
+    {
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        var provider = builder.Build();
+        provider.MapGet(CloudWebDavProtocol.RequestPath, () => Results.NoContent());
+        module.MapEndpoints(provider, context);
+        await provider.StartAsync(ct);
+        context.WebDav = new CloudWebDavProviderClient(provider.Urls.Single(), new string('a', 64));
+        return provider;
     }
 }

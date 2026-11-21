@@ -28,7 +28,7 @@ payload 为 `ModulePackageCatalog`，包含 sourceId、严格递增序号、UTC 
 
 ### 启用官方来源
 
-Server 的默认配置声明了 `official-modules`，目录地址为 `https://modules.relaxkon.com/stable/catalog.json`，初始授权模块为 `cloud-storage`。拿到发布方通过独立可信渠道交付的 ECDSA P-256 公钥后，在服务内容根目录的 `appsettings.host.json` 合并以下配置。键名须与发布工具的签名 KeyId 一致。
+Server 的默认配置声明了 `official-modules`，目录地址为 `https://modules.relaxkon.com/stable/catalog.json`。默认策略修订 2 授权 `cloud-storage` 和 `cloud-webdav`。拿到发布方通过独立可信渠道交付的 ECDSA P-256 公钥后，在服务内容根目录的 `appsettings.host.json` 合并以下配置。键名须与发布工具的签名 KeyId 一致。
 
 ```json
 {
@@ -178,7 +178,7 @@ remove-installed 只移除 `installed.json` 记录，默认保留版本文件；
 `ModulePackageManifest` 只接受 schemaVersion=3，必填 `runtime`、`privileges`、`ui`。旧 v1/v2 清单、缺字段、未知运行模式、未知能力类别或未知字段都拒绝；不保留双解析。发布者身份继续使用 `publisherId`，不接收 `publisher` 别名。签名目录 envelope/payload、来源策略仍是其各自的 schemaVersion=1 与 `ServerModuleCatalog.v1` 签名域；它们不是模块清单版本。
 
 - `runtime=in-process` 只接受 `purpose=official`，继续使用进程内 ABI 1.0.0。
-- `runtime=module-host` 使用 ModuleHost ABI 2.0.0，不能公布 Core capabilities；来源可为 Host 授权的 `third-party`、`development` 或 `official`。开发来源仍需绑定服务身份与开发环境；第三方不得使用 `relaxkonos.*` 前缀。module-host 允许不声明任何提权能力。
+- `runtime=module-host` 当前使用 ModuleHost ABI 2.1.0，不能公布 Core capabilities；来源可为 Host 授权的 `third-party`、`development` 或 `official`。开发来源仍需绑定服务身份与开发环境；第三方不得使用 `relaxkonos.*` 前缀。module-host 允许不声明任何提权能力。使用独立 WebDAV Provider 的 `cloud-storage` 与 `cloud-webdav` 包均声明 `hostApiMinimum=2.1.0`。
 - `privileges` 是 **能力类别 + 类型化资源范围** 的数组，最多 64 项，由 `kind` 判别。类别、字段、动作枚举和范围都按共享 `ModuleCapabilityCatalog` 校验；未知类别或未知字段直接拒绝。
   - 每个声明必须带 `platforms`（`linux`/`windows`/`macos`），且必须包含清单 `rid` 对应的平台。
   - `service.manage`：`services[{serviceId, actions}]`，动作限 `start`/`stop`/`restart`。已验证可执行的类别。

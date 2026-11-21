@@ -93,6 +93,7 @@ internal static class ServerModuleManagementEndpoints
         group.Map(ServerModuleManagementRoutes.ModuleHostProxy, async (string moduleId, string? path,
             HttpContext http, ServerModuleContext context, [FromServices] ModuleHostSupervisor hosts) =>
         {
+            if (moduleId == CloudWebDavProtocol.ProviderModuleId) return Results.NotFound();
             if (!hosts.Exists(moduleId)) return Results.NotFound();
             if (!hosts.CanAccess(moduleId, http.User))
                 return Results.StatusCode(StatusCodes.Status403Forbidden);

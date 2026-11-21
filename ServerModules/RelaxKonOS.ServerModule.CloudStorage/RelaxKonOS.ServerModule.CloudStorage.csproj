@@ -11,5 +11,6 @@
     <PackageReference Include="AWSSDK.S3" />
     <ProjectReference Include="../../Shared/RelaxKonOS.ModuleHost.Sdk/RelaxKonOS.ModuleHost.Sdk.csproj" Private="false" />
     <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+    <ProjectReference Include="../../Shared/RelaxKonOS.CloudStorage.Transport/RelaxKonOS.CloudStorage.Transport.csproj" />
   </ItemGroup>
 </Project>

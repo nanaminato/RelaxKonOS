@@ -45,22 +45,24 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         }
     }
 
-    internal ModuleHostConnection? AcquireConnection(string moduleId)
+    internal ModuleHostConnection? AcquireConnection(string moduleId, bool trustedProvider = false)
     {
         lock (_gate)
         {
             var entry = _entries.FirstOrDefault(entry => entry.ModuleId == moduleId);
-            if (!_stopping && entry is { Status: "running", Generation: not null } && IsTrusted(entry))
+            if (!_stopping && entry is { Status: "running", Generation: not null } && IsTrusted(entry)
+                && (!trustedProvider || IsTrustedProviderSource(entry)))
                 return entry.Generation.TryAcquire();
         }
         return null;
     }
 
-    internal ModuleHostConnection? AcquireAuthenticated(string token)
+    internal ModuleHostConnection? AcquireAuthenticated(string token, string? trustedProviderCaller = null)
     {
         if (token is not { Length: 64 }) return null;
         lock (_gate)
             return _stopping ? null : _entries.FirstOrDefault(entry => entry.Status == "running" && entry.Generation is not null && IsTrusted(entry)
+                && (trustedProviderCaller is null || entry.ModuleId == trustedProviderCaller && IsTrustedProviderSource(entry))
                 && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
                     System.Text.Encoding.ASCII.GetBytes(entry.Generation.ServiceToken), System.Text.Encoding.ASCII.GetBytes(token)))?.Generation?.TryAcquire();
     }
@@ -210,12 +212,13 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         try
         {
             work = await workLeases.AcquireAsync(entry.ModuleId, stoppingToken);
+            string? packagePurpose = null;
             if (entry.Installed is { } installed)
             {
                 var consent = ModuleTrustStore.Read(environment.ContentRootPath, installed);
                 if (consent?.Trusted != true) throw new ModulePackageException("module-host-trust-revoked");
                 entry.TrustRevision = consent.Revision;
-                VerifyLaunchPackage(installed);
+                packagePurpose = VerifyLaunchPackage(installed).Purpose;
             }
             var client = _launchClient?.Invoke(entry.PackageRoot, entry.ModuleId, entry.DataPath, entry.Installed)
                 ?? new ModuleHostProcessClient(entry.PackageRoot, entry.ModuleId, entry.DataPath,
@@ -254,6 +257,7 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
                     throw new ModulePackageException("module-host-stopping");
                 entry.Version = ready.Version;
                 entry.HostApiVersion = ready.HostApiVersion;
+                entry.PackagePurpose = packagePurpose;
                 entry.Status = "running";
                 entry.ProblemCode = null;
             }
@@ -327,13 +331,13 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         finally { entry.Lifecycle.Release(); }
     }
 
-    private void VerifyLaunchPackage(InstalledModuleRecord installed)
+    private ModulePackageManifest VerifyLaunchPackage(InstalledModuleRecord installed)
     {
         var root = environment.ContentRootPath;
         var serviceId = ModuleManagementStore.ReadRecoveryReport(root).ServiceId;
         var catalogs = ModulePackageCatalogStore.Read(root, serviceId);
         ModulePackageCatalogStore.EnsureNotRevoked(catalogs, installed.ReleaseId, installed.ArtifactSha256);
-        InstalledModuleStore.VerifyPackage(root, installed);
+        return InstalledModuleStore.VerifyPackage(root, installed);
     }
 
     private Entry FindEntry(string moduleId)
@@ -454,6 +458,22 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         catch (Exception error) when (error is ModulePackageException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return false; }
     }
 
+    private bool IsTrustedProviderSource(Entry entry)
+    {
+        if (entry.Installed is not { } installed) return false;
+        try
+        {
+            var policy = ModulePackageHostConfiguration.Source(configuration, installed.SourceId);
+            return policy.Enabled && policy.PublisherId == installed.PublisherId
+                && policy.Purpose == entry.PackagePurpose
+                && policy.AuthorizedModuleIds?.Contains(entry.ModuleId, StringComparer.Ordinal) == true
+                && (policy.Purpose == "official"
+                    || policy.Purpose == "development" && environment.IsDevelopment()
+                    && configuration.GetValue<bool>("ModulePackages:DevelopmentInstance"));
+        }
+        catch (Exception error) when (error is ModulePackageException or ArgumentException) { return false; }
+    }
+
     private sealed class Entry(string moduleId, HashSet<string> allowedUsers, InstalledModuleRecord? installed,
         string packageRoot, string dataPath)
     {
@@ -463,6 +483,7 @@ internal sealed class ModuleHostSupervisor(IHostEnvironment environment, IConfig
         internal string DataPath { get; } = dataPath;
         internal SemaphoreSlim Lifecycle { get; } = new(1, 1);
         internal string? TrustRevision { get; set; }
+        internal string? PackagePurpose { get; set; }
         internal HashSet<string> AllowedUsers { get; } = allowedUsers;
         internal string Status { get; set; } = "starting";
         internal string? Version { get; set; }

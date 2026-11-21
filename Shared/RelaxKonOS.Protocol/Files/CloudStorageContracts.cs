@@ -6,6 +6,7 @@ public static class CloudStorageApi
 {
     public const string UploadReplaceAvailable = "cloud-upload-replace-available";
     public const string CredentialsRejected = "cloud-storage-credentials-rejected";
+    public const string ProviderUnavailable = "cloud-storage-provider-unavailable";
     public const string CredentialsRejectedProblem = "https://relaxkonos.app/problems/" + CredentialsRejected;
     public const string ModuleId = "cloud-storage";
     public const string Route = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/server/module-hosts/" + ModuleId + "/cloud";

@@ -1,0 +1,11 @@
+{
+  "moduleId": "cloud-webdav",
+  "name": "WebDAV Provider",
+  "project": "RelaxKonOS.ServerModule.CloudWebDav.csproj",
+  "entryAssembly": "RelaxKonOS.ServerModule.CloudWebDav.dll",
+  "entryType": "RelaxKonOS.ServerModule.CloudWebDav.CloudWebDavModule",
+  "runtime": "module-host",
+  "rids": ["win-x64", "win-arm64", "linux-x64", "linux-arm64"],
+  "hostApiMinimum": "2.1.0",
+  "hostApiMaximumExclusive": "3.0.0"
+}

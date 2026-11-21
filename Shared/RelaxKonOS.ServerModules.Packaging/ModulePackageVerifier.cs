@@ -123,7 +123,7 @@ public static class ModulePackageVerifier
         Require(!verified.NextHistory.RevokedReleaseIds.Contains(releaseId, StringComparer.Ordinal)
             && !verified.NextHistory.RevokedDigests.Contains(release.ArchiveSha256, StringComparer.Ordinal), "release-revoked");
         Require(m.Rid == context.Rid, "rid-mismatch");
-        var hostVersion = Version(release.Manifest.Runtime == "module-host" ? "2.0.0" : context.HostApiVersion);
+        var hostVersion = Version(release.Manifest.Runtime == "module-host" ? RelaxKonOS.ModuleHost.Protocol.ModuleHostProtocol.HostApiVersion : context.HostApiVersion);
         Require(hostVersion >= Version(m.HostApiMinimum) && hostVersion < Version(m.HostApiMaximumExclusive), "host-api-incompatible");
         Require(archive.CanRead && archive.CanSeek && archive.Length == release.ArchiveBytes, "archive-size");
         archive.Position = 0;
