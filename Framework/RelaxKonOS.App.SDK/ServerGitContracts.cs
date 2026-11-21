@@ -1,9 +1,9 @@
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.AppSDK;
 
-/// <summary>Typed JWT client for the server's Git repository facade.</summary>
-public interface IRemoteGitClient
+/// <summary>Typed contract for the server's Git repository service.</summary>
+public interface IServerGit
 {
     Task<IReadOnlyList<GitGraphCommitDto>> GetGraphAsync(string id, string? reference = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GitConsoleEntryDto>> GetConsoleAsync(string id, long after = 0, CancellationToken cancellationToken = default);

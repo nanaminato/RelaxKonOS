@@ -236,3 +236,4 @@
 - 桌面宿主在 Windows 成功交叉发布到 `linux-x64`，此次交叉发布仅验证宿主产物。在 WSL 单独使用实际 Welcome 与 Browser 官方归档验证无头包生命周期，包括 Welcome 配置集升级、Browser 签入工作区和卸载。修复了包目录已移除时 Linux 卸载清理仍试图删除活动指针的问题。Windows Welcome 回归通过。
 - Android Debug 离线构建与 1,904 项 JVM 单元测试通过。只读模拟器使用生产应用宿主冷启动 Debug APK，并通过包来源选择与工作区导航的 10 项设备测试。
 - 独立部署设备、Linux 图形桌面、Android 真实服务端联调和全应用三语言界面验收仍待执行。
+- Git 的服务器操作由 SDK 中的 `IServerGit` 声明，桌面宿主仍负责提供远程实现。Windows Release 编译和 Git Dock 回归通过。项目编辑器回归在资源预检中因现有 `registry.error.empty_response` 翻译为空而中断。Git 界面和独立发行包待迁移。

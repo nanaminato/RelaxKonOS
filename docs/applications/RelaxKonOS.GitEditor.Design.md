@@ -98,9 +98,9 @@ Git 工具区必须保留现有 fetch、pull、push、分支和远程操作、�
 - `EditorSession`：文档、路径身份、草稿、保存、关闭与外部版本状态；从 Code Editor 提取公共能力，独立编辑器同步改用该能力，不复制一份 ViewModel。
 - `EditorPane`：编辑标签与内容，不创建窗口、不拥有另一个应用标题栏；独立编辑器与项目编辑器共享。
 - 项目协调层：打开项目、工具窗口、文件定位、保存后刷新、Git 操作前的草稿检查；不把所有逻辑继续塞入 `GitClientViewModel`。
-- Git 领域层保留 `IRemoteGitClient`、现有服务、Diff 和冲突模型。跨区域事件采用可取消的显式回调/接口；不依赖全局事件总线。
+- Git 领域层保留 `IServerGit`、现有服务、Diff 和冲突模型。跨区域事件采用可取消的显式回调/接口；不依赖全局事件总线。
 
-Client 只负责 UI 与窗口会话；所有远程文件访问经 `IExplorerClient`，Git 经 `IRemoteGitClient`；Server 保持认证、有效宿主身份、权限、规范化路径与边界检查。路径组合、符号链接/重解析点逃逸、大小限制不能只在 Client 检查。Git 进程继续传递结构化参数，不拼接 shell。
+Client 只负责 UI 与窗口会话；所有远程文件访问经 `IExplorerClient`，Git 经 `IServerGit`；Server 保持认证、有效宿主身份、权限、规范化路径与边界检查。路径组合、符号链接/重解析点逃逸、大小限制不能只在 Client 检查。Git 进程继续传递结构化参数，不拼接 shell。
 
 首版新增 Files 条件字节写入契约及其验证；DTO、版本字段、路由使用 `Shared/RelaxKonOS.Protocol` 定义。读取沿用原始字节 API，客户端从同一份字节计算版本；保存返回新版本。没有改动已有 Files/Android 契约，新增 API 的所有调用者使用同一格式，不添加双格式解析或旧 API 适配；后续若演进已有接口，须同步全部桌面、Android、服务端、测试和示例调用者。
 

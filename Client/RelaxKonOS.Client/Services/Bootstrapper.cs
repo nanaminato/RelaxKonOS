@@ -248,7 +248,7 @@ public static class Bootstrapper
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "proxy"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
-        services.AddHttpClient<RelaxKonOS.Client.Apps.Git.IRemoteGitClient, RelaxKonOS.Client.Apps.Git.RemoteGitClient>()
+        services.AddHttpClient<RelaxKonOS.AppSDK.IServerGit, RelaxKonOS.Client.Apps.Git.RemoteGitClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "git"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddHttpMessageHandler<AcceptLanguageHandler>()

@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
@@ -22,7 +23,7 @@ public sealed record GitLogFilterOption(string Value, string Label);
 
 /// <summary>State and typed operations for the Git RelaxKonOS.Client. Uses DispatcherTimer (10s) for status refresh with Interlocked reentrancy guard.
 /// Each window owns its own ViewModel instance — supports multiple projects open simultaneously (MultiWindow instance policy).</summary>
-public sealed partial class GitClientViewModel(IRemoteGitClient client) : ObservableObject
+public sealed partial class GitClientViewModel(IServerGit client) : ObservableObject
 {
     /// <summary>Git installation lives in Component Center; settings only observes and navigates.</summary>
     public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }

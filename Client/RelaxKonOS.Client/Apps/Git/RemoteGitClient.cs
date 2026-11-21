@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -9,7 +10,7 @@ namespace RelaxKonOS.Client.Apps.Git;
 
 /// <summary>Typed JWT client for the server's Git repository facade. Uses absolute URIs per request (no BaseAddress mutation).
 /// Routes use <see cref="GitApiRoutes"/> constants; {id}/{name} are escaped via <see cref="Uri.EscapeDataString"/>.</summary>
-public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRemoteGitClient
+public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IServerGit
 {
     public Task<IReadOnlyList<GitGraphCommitDto>> GetGraphAsync(string id, string? reference = null, CancellationToken cancellationToken = default)
         => SendAsync<IReadOnlyList<GitGraphCommitDto>>(HttpMethod.Get, GitApiRoutes.Graph.Replace("{id}", Uri.EscapeDataString(id)) + (string.IsNullOrEmpty(reference) ? "" : "?reference=" + Uri.EscapeDataString(reference)), null, cancellationToken);

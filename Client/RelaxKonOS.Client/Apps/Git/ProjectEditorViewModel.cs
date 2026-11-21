@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.App.CodeEditor;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,7 +15,7 @@ public enum EditorDraftAction { Cancel, Save, Discard }
 /// <summary>Window-owned coordinator. File buffers survive tool-window navigation and Git refreshes.</summary>
 public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposable
 {
-    private readonly IRemoteGitClient _client;
+    private readonly IServerGit _client;
     private bool _disposed;
     private bool _preparing;
     private bool _refreshing;
@@ -24,7 +25,7 @@ public sealed partial class ProjectEditorViewModel : ObservableObject, IDisposab
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, (GitFileChangeDto File, string? Commit)> _diffs = [];
 
-    public ProjectEditorViewModel(GitClientViewModel git, IRemoteGitClient client, IExplorerClient? files,
+    public ProjectEditorViewModel(GitClientViewModel git, IServerGit client, IExplorerClient? files,
         bool pathCaseSensitive, string defaultEncoding = "UTF-8")
     {
         Git = git;

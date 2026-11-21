@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using Avalonia.Headless;
 using System.Reflection;
 using Avalonia;
@@ -28,7 +29,7 @@ internal static class GitDockChecks
     }
     public static async Task RunAsync(ShellSettings settings)
     {
-        var api = DispatchProxy.Create<IRemoteGitClient, DockGitClient>();
+        var api = DispatchProxy.Create<IServerGit, DockGitClient>();
         var remote = (DockGitClient)(object)api;
         var files = DispatchProxy.Create<IExplorerClient, ProjectFiles>();
         ((ProjectFiles)(object)files).Directories.Add("/dock");
@@ -137,7 +138,7 @@ internal static class GitDockChecks
             "The Git dock maximizes to the available workspace height.");
         view.ToggleGitTool(); view.ToggleGitTool(); Dispatcher.UIThread.RunJobs();
         Check(view.SelectedGitTab == primary && vm.SelectedCommit?.Sha == DockGitClient.A, "Hiding and restoring the dock preserves tabs and selection.");
-        var outputDir = Path.Combine(AppContext.BaseDirectory, "preview-qa", "git-dock"); Directory.CreateDirectory(outputDir);
+        var outputDir = Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "git-dock"); Directory.CreateDirectory(outputDir);
         var oldLanguage = settings.Language; var oldAppearance = settings.Appearance;
         try
         {
@@ -275,23 +276,23 @@ public class DockGitClient : DispatchProxy
     {
         switch (method!.Name)
         {
-            case nameof(IRemoteGitClient.GetStatusAsync): return Task.FromResult(new GitStatusDto("main", [], [], [], [], "v"));
-            case nameof(IRemoteGitClient.ListBranchesAsync): return Task.FromResult<IReadOnlyList<GitBranchDto>>([new("main", A, IsCurrent: true), new("feature/ui", B), new("origin/main", A, IsRemote: true)]);
-            case nameof(IRemoteGitClient.GetGraphAsync): return Task.FromResult<IReadOnlyList<GitGraphCommitDto>>(new GitGraphCommitDto[] { new(A, [B, C], true), new(B, [D], false), new(C, [D], false), new(D, [ExtraSha(0)], false) }.Concat(Enumerable.Range(0, 20).Select(index => new GitGraphCommitDto(ExtraSha(index), index == 19 ? [] : [ExtraSha(index + 1)], false))).ToArray());
-            case nameof(IRemoteGitClient.ListTagsAsync): return Task.FromResult<IReadOnlyList<GitTagDto>>([new("v1.0", D)]);
-            case nameof(IRemoteGitClient.ListRemotesAsync): return Task.FromResult<IReadOnlyList<GitRemoteDto>>([]);
-            case nameof(IRemoteGitClient.GetConflictStateAsync): return Task.FromResult(new GitConflictStateDto(null, []));
-            case nameof(IRemoteGitClient.GetConsoleAsync): return PendingConsole?.Task ?? Task.FromResult<IReadOnlyList<GitConsoleEntryDto>>(ConsoleEntries.Where(entry => entry.Sequence > (long)args![1]!).ToArray());
-            case nameof(IRemoteGitClient.GetLogAsync):
+            case nameof(IServerGit.GetStatusAsync): return Task.FromResult(new GitStatusDto("main", [], [], [], [], "v"));
+            case nameof(IServerGit.ListBranchesAsync): return Task.FromResult<IReadOnlyList<GitBranchDto>>([new("main", A, IsCurrent: true), new("feature/ui", B), new("origin/main", A, IsRemote: true)]);
+            case nameof(IServerGit.GetGraphAsync): return Task.FromResult<IReadOnlyList<GitGraphCommitDto>>(new GitGraphCommitDto[] { new(A, [B, C], true), new(B, [D], false), new(C, [D], false), new(D, [ExtraSha(0)], false) }.Concat(Enumerable.Range(0, 20).Select(index => new GitGraphCommitDto(ExtraSha(index), index == 19 ? [] : [ExtraSha(index + 1)], false))).ToArray());
+            case nameof(IServerGit.ListTagsAsync): return Task.FromResult<IReadOnlyList<GitTagDto>>([new("v1.0", D)]);
+            case nameof(IServerGit.ListRemotesAsync): return Task.FromResult<IReadOnlyList<GitRemoteDto>>([]);
+            case nameof(IServerGit.GetConflictStateAsync): return Task.FromResult(new GitConflictStateDto(null, []));
+            case nameof(IServerGit.GetConsoleAsync): return PendingConsole?.Task ?? Task.FromResult<IReadOnlyList<GitConsoleEntryDto>>(ConsoleEntries.Where(entry => entry.Sequence > (long)args![1]!).ToArray());
+            case nameof(IServerGit.GetLogAsync):
                 var query = args![3] as GitLogQuery;
                 if (query?.Search == "slow" && PendingLog is not null) return PendingLog.Task;
                 return Task.FromResult<IReadOnlyList<GitCommitDto>>(query?.Path is { Length: > 0 } ? [Commits[2], Commits[3]] : query?.Reference == "feature/ui" ? [Commits[1], Commits[3]] : Commits);
-            case nameof(IRemoteGitClient.GetCommitDetailAsync):
+            case nameof(IServerGit.GetCommitDetailAsync):
                 var commit = Commits.Single(commit => commit.Sha == (string)args![1]!);
                 return Task.FromResult(new GitCommitDetailDto(commit.Sha, commit.Author, commit.AuthorDate, commit.Subject, [B, C], [new("Client/Views/Workspace.axaml"), new("Client/Views/Workspace.axaml.cs"), new("Client/ViewModels/GitLog.cs"), new("docs/Git.md")], commit.Body));
-            case nameof(IRemoteGitClient.GetDiffAsync): return Task.FromResult(new GitDiffDto((string)args![1]!, "v", Patch: "diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new\n"));
-            case nameof(IRemoteGitClient.GetPushPreviewAsync): return Task.FromResult(new GitPushPreviewDto("main", "origin", "main", true, 1, [Commits[0]]));
-            case nameof(IRemoteGitClient.CheckoutAsync): return PendingCheckout?.Task ?? Task.FromResult(new GitOperationResult(true));
+            case nameof(IServerGit.GetDiffAsync): return Task.FromResult(new GitDiffDto((string)args![1]!, "v", Patch: "diff --git a/file b/file\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new\n"));
+            case nameof(IServerGit.GetPushPreviewAsync): return Task.FromResult(new GitPushPreviewDto("main", "origin", "main", true, 1, [Commits[0]]));
+            case nameof(IServerGit.CheckoutAsync): return PendingCheckout?.Task ?? Task.FromResult(new GitOperationResult(true));
             default: throw new NotSupportedException(method.Name);
         }
     }

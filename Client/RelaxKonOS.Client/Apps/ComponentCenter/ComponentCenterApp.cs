@@ -73,7 +73,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             (context.Services.GetService(typeof(IEnumerable<IComponentHostObserver>)) as IEnumerable<IComponentHostObserver>)?.ToArray(),
             context.Services.GetService(typeof(IComponentLifecycleClient)) as IComponentLifecycleClient,
             hostPlatform: session.CurrentServer?.Platform switch { HostPlatformKind.Windows => "windows", HostPlatformKind.Linux => "linux", _ => null });
-        if (context.Services.GetService(typeof(RelaxKonOS.Client.Apps.Git.IRemoteGitClient)) is RelaxKonOS.Client.Apps.Git.IRemoteGitClient git)
+        if (context.Services.GetService(typeof(RelaxKonOS.AppSDK.IServerGit)) is RelaxKonOS.AppSDK.IServerGit git)
         {
             model.GitEngine = new(git);
             model.GitEngine.PropertyChanged += (_, _) => model.RefreshGitState();

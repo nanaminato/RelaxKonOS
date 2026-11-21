@@ -35,7 +35,7 @@ public sealed class GitClientApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var client = context.Services.GetService(typeof(IRemoteGitClient)) as IRemoteGitClient;
+        var client = context.Services.GetService(typeof(IServerGit)) as IServerGit;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),

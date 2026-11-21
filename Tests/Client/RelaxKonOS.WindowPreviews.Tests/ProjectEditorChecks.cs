@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.App.CodeEditor;
 using System.Reflection;
 using System.Text;
@@ -48,7 +49,7 @@ internal static class ProjectEditorChecks
         var files = DispatchProxy.Create<IExplorerClient, ProjectFiles>();
         var store = (ProjectFiles)(object)files;
         store.Files["/work/app.cs"] = Encoding.UTF8.GetBytes("class App {}\r\n");
-        var api = DispatchProxy.Create<IRemoteGitClient, ProjectGit>();
+        var api = DispatchProxy.Create<IServerGit, ProjectGit>();
         var remote = (ProjectGit)(object)api;
         var git = new GitClientViewModel(api);
         using var project = new ProjectEditorViewModel(git, api, files, true);
@@ -230,7 +231,7 @@ internal static class ProjectEditorChecks
         Popup? gitMenuPopup = null;
         var detailedGitMenu = view.FindControl<MenuItem>("GitMenu")!;
         detailedGitMenu.TemplateApplied += (_, args) => gitMenuPopup = args.NameScope.Find<Popup>("PART_Popup");
-        var output = Path.Combine(AppContext.BaseDirectory, "preview-qa", "project-editor");
+        var output = Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "project-editor");
         Directory.CreateDirectory(output);
         void SavePopup(Control popup, string name, double maximumHeight = 620)
         {
@@ -546,52 +547,52 @@ public class ProjectGit : DispatchProxy
     {
         switch (method!.Name)
         {
-            case nameof(IRemoteGitClient.ListCredentialAccountsAsync): return Task.FromResult<IReadOnlyList<GitCredentialAccountDto>>(Accounts.ToArray());
-            case nameof(IRemoteGitClient.SaveCredentialAccountAsync):
+            case nameof(IServerGit.ListCredentialAccountsAsync): return Task.FromResult<IReadOnlyList<GitCredentialAccountDto>>(Accounts.ToArray());
+            case nameof(IServerGit.SaveCredentialAccountAsync):
                 var account = (GitCredentialAccountRequest)args![0]!; AccountRequests.Add(account);
                 if (RejectAccountSave) throw new HttpRequestException("Account save rejected");
                 var dto = new GitCredentialAccountDto("account", account.Host, account.Username, account.IsDefault);
                 Accounts.Clear(); Accounts.Add(dto); return Task.FromResult(dto);
-            case nameof(IRemoteGitClient.DeleteCredentialAccountAsync): Accounts.Clear(); return Task.FromResult(true);
-            case nameof(IRemoteGitClient.FetchAsync):
+            case nameof(IServerGit.DeleteCredentialAccountAsync): Accounts.Clear(); return Task.FromResult(true);
+            case nameof(IServerGit.FetchAsync):
                 var fetch = (GitFetchRequest)args![1]!; FetchRequests.Add(fetch);
                 return Task.FromResult(new GitOperationResult(fetch.Credentials is not null, "fetch", RequiresCredentials: fetch.Credentials is null,
                     CredentialHost: fetch.Remote == "mirror" ? "gitee.com" : "github.com"));
-            case nameof(IRemoteGitClient.PullAsync):
+            case nameof(IServerGit.PullAsync):
                 var pull = (GitPullRequest)args![1]!; PullRequests.Add(pull);
                 return Task.FromResult(new GitOperationResult(pull.Credentials is not null, "pull", RequiresCredentials: pull.Credentials is null, CredentialHost: "gitee.com"));
-            case nameof(IRemoteGitClient.CreateTagAsync):
-            case nameof(IRemoteGitClient.RebaseAsync):
-            case nameof(IRemoteGitClient.StashAsync):
-            case nameof(IRemoteGitClient.ApplyPatchAsync):
+            case nameof(IServerGit.CreateTagAsync):
+            case nameof(IServerGit.RebaseAsync):
+            case nameof(IServerGit.StashAsync):
+            case nameof(IServerGit.ApplyPatchAsync):
                 LastWorkspaceRequest = args![1]; return Task.FromResult(new GitOperationResult(true));
-            case nameof(IRemoteGitClient.ExportPatchAsync): return Task.FromResult(new GitPatchDto("exported patch\n"));
-            case nameof(IRemoteGitClient.CloneAsync):
+            case nameof(IServerGit.ExportPatchAsync): return Task.FromResult(new GitPatchDto("exported patch\n"));
+            case nameof(IServerGit.CloneAsync):
                 var request = (GitCloneRequest)args![0]!; CloneRequests.Add(request);
                 return Task.FromResult(request.Credentials is null
                     ? new GitCloneResult(new(false, "clone", RequiresCredentials: true))
                     : new GitCloneResult(new(true, "clone"), new("cloned", "Cloned", request.Path)));
-            case nameof(IRemoteGitClient.GetStatusAsync): return PendingStatuses.TryGetValue((string)args![0]!, out var pendingStatus) ? pendingStatus.Task : Task.FromResult(new GitStatusDto("main", [new("app.cs", Staged: true)], [new("app.cs")], [], [], "v"));
-            case nameof(IRemoteGitClient.ListBranchesAsync): return Task.FromResult<IReadOnlyList<GitBranchDto>>([new("main", "abc", IsCurrent: true)]);
-            case nameof(IRemoteGitClient.GetGraphAsync): return Task.FromResult<IReadOnlyList<GitGraphCommitDto>>([]);
-            case nameof(IRemoteGitClient.GetConsoleAsync): return Task.FromResult<IReadOnlyList<GitConsoleEntryDto>>([]);
-            case nameof(IRemoteGitClient.GetLogAsync): return Task.FromResult<IReadOnlyList<GitCommitDto>>([]);
-            case nameof(IRemoteGitClient.ListTagsAsync): return Task.FromResult<IReadOnlyList<GitTagDto>>([new("v1-preview", "abc")]);
-            case nameof(IRemoteGitClient.ListStashesAsync):
+            case nameof(IServerGit.GetStatusAsync): return PendingStatuses.TryGetValue((string)args![0]!, out var pendingStatus) ? pendingStatus.Task : Task.FromResult(new GitStatusDto("main", [new("app.cs", Staged: true)], [new("app.cs")], [], [], "v"));
+            case nameof(IServerGit.ListBranchesAsync): return Task.FromResult<IReadOnlyList<GitBranchDto>>([new("main", "abc", IsCurrent: true)]);
+            case nameof(IServerGit.GetGraphAsync): return Task.FromResult<IReadOnlyList<GitGraphCommitDto>>([]);
+            case nameof(IServerGit.GetConsoleAsync): return Task.FromResult<IReadOnlyList<GitConsoleEntryDto>>([]);
+            case nameof(IServerGit.GetLogAsync): return Task.FromResult<IReadOnlyList<GitCommitDto>>([]);
+            case nameof(IServerGit.ListTagsAsync): return Task.FromResult<IReadOnlyList<GitTagDto>>([new("v1-preview", "abc")]);
+            case nameof(IServerGit.ListStashesAsync):
                 MaintenanceReads++;
                 if (FailMaintenanceReads) throw new HttpRequestException("Not Found", null, System.Net.HttpStatusCode.NotFound);
                 return Task.FromResult<IReadOnlyList<GitStashDto>>([]);
-            case nameof(IRemoteGitClient.ListWorktreesAsync):
+            case nameof(IServerGit.ListWorktreesAsync):
                 MaintenanceReads++;
                 if (FailMaintenanceReads) throw new HttpRequestException("Not Found", null, System.Net.HttpStatusCode.NotFound);
                 return Task.FromResult<IReadOnlyList<GitWorktreeDto>>([]);
-            case nameof(IRemoteGitClient.ListRemotesAsync): return Task.FromResult(Remotes);
-            case nameof(IRemoteGitClient.GetConflictStateAsync): return Task.FromResult(new GitConflictStateDto(null, []));
-            case nameof(IRemoteGitClient.GetDiffAsync): return PendingDiff?.Task ?? Task.FromResult(new GitDiffDto((string)args![1]!, "v", Patch: "@@ -1 +1 @@\n-old\n+new\n"));
-            case nameof(IRemoteGitClient.CheckoutAsync): Checkouts++; return Task.FromResult(new GitOperationResult(true));
-            case nameof(IRemoteGitClient.CommitAsync): LastCommit = (GitCommitRequest)args![1]!; return Task.FromResult(new GitOperationResult(true));
-            case nameof(IRemoteGitClient.ProbeRepositoryAsync): return Task.FromResult(new GitRepositoryProbeDto(false));
-            case nameof(IRemoteGitClient.InitRepositoryAsync): Initializations++; return Task.FromResult(new GitOperationResult(true));
+            case nameof(IServerGit.ListRemotesAsync): return Task.FromResult(Remotes);
+            case nameof(IServerGit.GetConflictStateAsync): return Task.FromResult(new GitConflictStateDto(null, []));
+            case nameof(IServerGit.GetDiffAsync): return PendingDiff?.Task ?? Task.FromResult(new GitDiffDto((string)args![1]!, "v", Patch: "@@ -1 +1 @@\n-old\n+new\n"));
+            case nameof(IServerGit.CheckoutAsync): Checkouts++; return Task.FromResult(new GitOperationResult(true));
+            case nameof(IServerGit.CommitAsync): LastCommit = (GitCommitRequest)args![1]!; return Task.FromResult(new GitOperationResult(true));
+            case nameof(IServerGit.ProbeRepositoryAsync): return Task.FromResult(new GitRepositoryProbeDto(false));
+            case nameof(IServerGit.InitRepositoryAsync): Initializations++; return Task.FromResult(new GitOperationResult(true));
             default: throw new NotSupportedException(method.Name);
         }
     }

@@ -69,7 +69,7 @@ GitClientApp (RemoteApplicationBase)
         └── 可收起的 Git 工具区（日志 / 分支 / 远程 / 概览）
 ```
 
-`GitClientApp.Activate` 从组合入口取得 `IAuthSession`、`IRemoteGitClient` 与 `IExplorerClient`，构造 `GitClientViewModel` 和窗口独有的 `ProjectEditorViewModel`，再创建工作区（1180×760）。登录检查保留；`StartAsync` 异步加载项目列表。共享编辑器对话框、草稿关闭保护、快捷键和语言事件由应用入口接线；窗口关闭时释放项目协调器、编辑资源和 Git 刷新计时器。
+`GitClientApp.Activate` 从组合入口取得 `IAuthSession`、`IServerGit` 与 `IExplorerClient`，构造 `GitClientViewModel` 和窗口独有的 `ProjectEditorViewModel`，再创建工作区（1180×760）。登录检查保留；`StartAsync` 异步加载项目列表。共享编辑器对话框、草稿关闭保护、快捷键和语言事件由应用入口接线；窗口关闭时释放项目协调器、编辑资源和 Git 刷新计时器。
 
 ---
 
@@ -233,9 +233,9 @@ Windows 直接执行与 Linux 共用无 BOM、LF 换行的 `#!/bin/sh` askpass �
 
 ## 5. 客户端
 
-### 5.1 客户端 HTTP（`IRemoteGitClient` / `RemoteGitClient`）
+### 5.1 客户端 HTTP（`IServerGit` / `RemoteGitClient`）
 
-- typed HttpClient（`Bootstrapper` 注册 `services.AddHttpClient<IRemoteGitClient, RemoteGitClient>()` + NetworkDiagnosticsHandler + AcceptLanguageHandler）。
+- typed HttpClient（`Bootstrapper` 注册 `services.AddHttpClient<IServerGit, RemoteGitClient>()` + NetworkDiagnosticsHandler + AcceptLanguageHandler）。
 - **不 mutate `HttpClient.BaseAddress`**（避免共享实例并发竞态），每请求用 `IAuthSession.ServerUrl` 构造绝对 URI。
 - `Authorization: Bearer {AccessToken}` 从 `IAuthSession.Tokens` 取；未登录抛 `InvalidOperationException`。
 - 路由常量共用 `GitApiRoutes`，`{id}`/`{name}` 用 `Uri.EscapeDataString` 替换，禁止硬编码字符串。
@@ -526,7 +526,7 @@ GitOperationResult
 1. **数据来源在 Server 实时采集**：仓库状态/分支/历史/diff 均由 `IGitRepositoryService` 以宿主 OS 进程身份调用 `git` 实时读取，**不持久化运行时状态**（仅 `GitRepository` 注册记录落 SQLite）。每次请求返回当下快照。禁止为提交/分支/历史新建数据库表。
 2. **跨平台抽象**：与 `IIdentityProvider` 同模式——`IGitRepositoryService` 接口 + `LocalGitRepositoryService` 实现，平台差异（`git` 可执行路径探测）封装在 `IHostGitCli`。Server 端单一 CLI 实现跨 Ubuntu + Windows Server（`git` 行为一致）。
 3. **Provider 必须 Singleton**：`IGitRepositoryService` 持有按 repoId 缓存的 `SemaphoreSlim` 字典（写操作串行化，避免 index.lock 冲突），必须 Singleton。禁止 Scoped/Transient。
-4. **复用 `IAuthSession` JWT**：`IRemoteGitClient` 不持有独立凭据；未登录时 `GitClientApp.Activate` 弹提示窗，不崩溃。`RemoteGitClient` 每请求检查 `State == Authenticated`。
+4. **复用 `IAuthSession` JWT**：`IServerGit` 不持有独立凭据；未登录时 `GitClientApp.Activate` 弹提示窗，不崩溃。`RemoteGitClient` 每请求检查 `State == Authenticated`。
 5. **Git 凭据隔离**：HTTPS 凭据不得进入命令行或诊断日志，保存必须尊重用户选择并通过既有 Data Protection 用户/主机范围隔离；不处理 SSH 私钥。有效身份和 Helper 限制见 §4.2。
 6. **不 mutate `HttpClient.BaseAddress`**：每请求用绝对 URI，与 `TaskManagerClient` / `DockerClient` 同模式。
 7. **路由常量共用 `GitApiRoutes`**：Server 注册路由与 Client 拼接 URL 必须用同一常量，`{id}`/`{name}` 用 `Uri.EscapeDataString` 替换，禁止硬编码字符串。
