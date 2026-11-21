@@ -4,7 +4,9 @@
 
 > MB-05A（2026-11-04）：Compose 栈协调器已采用同一驻留协调器的 resident 工作 owner。异步准入在持久 queued 之前取得真实租约，任务先登记再启动，覆盖 Compose、观察和终态持久化；Stop 关闭准入并等待真实 Task，等待超时不清除保护。未知终态写入失败隔离该代 owner 并阻止新副作用，不自动重放 Compose。Core Engine/安装/代理端口和外部容器不随管理生命周期停止。此阶段不是动态休眠、程序集卸载或生产内存收益验收，真实 Engine 的部署/观察/修复/幂等/卷生命周期和工作排空已验收，重启与故障联合矩阵仍开放；整体进展由[模块边界设计](../architecture/RelaxKonOS.ServerModuleBoundaries.Design.md)拥有。
 
-> 内置 Docker 管理器。它管理 **RelaxKonOS.Server 所在宿主机** 的本地 Docker Engine；客户端只负责本地 UI 渲染，不直连 Docker socket、不保存 Docker 凭据，也不将守护进程 API 暴露到网络。
+> Docker Manager 是桌面官方应用，管理 **RelaxKonOS.Server 所在宿主机** 的本地 Docker Engine。桌面通过 SDK 调用服务端 Docker 管理 API。
+
+Developer 配置将 Docker Manager 列为交互式安装项。用户从应用安装器的官方应用列表获取归档并确认联合部署计划。应用包要求服务端 `relaxkonos.docker` 模块提供 `server.docker`。已启用且健康的兼容模块可复用。若服务端没有兼容模块，也没有可用的可信模块制品，计划会报告缺少依赖。Docker Engine 的运行时安装由组件中心单独处理。
 
 桌面 Docker Manager 通过 SDK 控制已安装引擎、读取代理状态和管理当前账户的镜像源。停止和重启仍需确认。运行时安装由组件中心处理，主机代理写入由桌面设置处理。
 

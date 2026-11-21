@@ -13,7 +13,7 @@ public sealed class DockerPackageApp : IExternalRemoteApplication
     private const string TitleKey = "application.relaxkonos.docker.display_name";
 
     public ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.docker"), "Docker Manager",
-        "0.2.0", "🐳", "Manage the local Docker Engine on the RelaxKonOS Server",
+        "0.3.0", "🐳", "Manage the local Docker Engine on the RelaxKonOS Server",
         [AppPermissions.ServerDockerRead, AppPermissions.ServerDockerManage, AppPermissions.ServerComponentsRead],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Docker]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);

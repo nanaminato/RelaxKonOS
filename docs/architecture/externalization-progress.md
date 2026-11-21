@@ -44,7 +44,7 @@
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。桌面发行构建将 Browser、Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager、Registry、Code Editor 和 Docker 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装前七个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。Docker 可从官方商店按需安装。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。桌面发行构建将 Browser、Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager、Registry、Code Editor 和 Docker 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装前七个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。Developer 将 Docker 声明为交互式安装项，可从官方商店审阅和确认联合部署。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 ## 复用边界
 
@@ -88,7 +88,8 @@
 - Docker 账户镜像源页面、模型和三种语言资源已迁入应用项目。页面通过 SDK 读取和保存当前账户的镜像源选择。
 - Docker 概览、容器、镜像、网络、卷、Compose 栈、操作日志和工作区外壳已迁入应用项目。外壳使用共享的窄窗口导航，组件依赖页仍由宿主提供。
 - Docker 对话框已迁入应用项目，由 SDK 创建和确认。Compose 提交期间禁止取消，放弃修改需经当前对话框的子窗口确认。
-- Docker 独立入口使用 SDK 打开窗口、显示组件依赖和跳转文件浏览器，自带中英日界面文案。Docker 已从桌面内置注册移除，作为官方商店可选 `.roapp` 随桌面发行物发布，各默认档位均不预装。真实 Docker 主机验收仍待执行。
+- Docker 独立入口使用 SDK 打开窗口、显示组件依赖和跳转文件浏览器，自带中英日界面文案。Docker 已从桌面内置注册移除，作为官方商店可选 `.roapp` 随桌面发行物发布。Developer 声明交互式安装，启动时不安装。真实 Docker 主机验收仍待执行。
+- Docker Manager 0.3.0 在清单中要求 `relaxkonos.docker` 服务端模块及 `server.docker` 能力。Windows Release 使用实际归档验证官方商店审查、拒绝绕过联合部署、Developer 交互条目跳过启动安装，以及隔离的客户端包生命周期。发行配置中的最低版本与归档一致。客户端生命周期测试使用模拟部署回执，Docker 模块与 Engine 实机验收待完成。
 - Docker 代理状态页已迁入应用项目，通过 SDK 读取引擎、构建与 Docker Desktop 的代理状态。系统设置负责主机级代理配置的写入和清除。
 
 - 本地 SDK 10.0.300。部署库独立构建通过，零警告、零错误。桌面 Client 构建通过，NuGet 漏洞索引不可达，项目还报告了原有编译警告。

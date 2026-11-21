@@ -75,9 +75,14 @@ internal static class OfficialRoappChecks
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerEventAlertsRead],
                     "The official alert package must request only permission to read alerts.");
             if (isDocker)
+            {
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerDockerRead, AppPermissions.ServerDockerManage, AppPermissions.ServerComponentsRead]
-                    && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.docker"],
-                    "Docker review exposes the required server capability and all three permissions.");
+                    && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.docker"]
+                    && candidate.Manifest.Dependencies?.Required is
+                        [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.docker" }, Capability: "server.docker" }],
+                    "Docker review exposes the required server module, capability and all three permissions.");
+                await RejectAsync(() => installer.InstallAsync(candidate), "Docker without joint deployment");
+            }
             if (isRegistry)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerRegistryRead, AppPermissions.ServerRegistryWrite],
                     "Registry review exposes separate read and write grants.");
@@ -109,11 +114,13 @@ internal static class OfficialRoappChecks
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "An excluded application stays uninstalled on restart.");
             compatibility.TaskManagerServerAvailable = !isTaskManager;
+            if (isDocker)
+                await WriteProfileAsync("interactive");
             await provisioner.RunAsync(["--installation-profile=developer"]);
             if (isDocker)
                 Check(packages.FindInstalled(applicationId) is null, "Docker stays optional even in the Developer profile.");
             var first = isDocker
-                ? await installer.InstallAsync(await installer.InspectLocalAsync(path))
+                ? await InstallForLifecycleCheckAsync(installer, await installer.InspectLocalAsync(path))
                 : packages.FindInstalled(applicationId) ?? throw new InvalidOperationException("The bundled default did not install.");
             if (!isDocker)
                 Check(File.Exists(Path.Combine(first.InstallationPath, "deployment-receipt.json")),
@@ -187,7 +194,7 @@ internal static class OfficialRoappChecks
                 manifest["version"] = "1.1.0";
                 manifest["entryType"] = "Fixture.DoesNotExist";
             });
-            await RejectAsync(async () => await installer.InstallAsync(await installer.InspectLocalAsync(path)), "Invalid entry type");
+            await RejectAsync(async () => await InstallForLifecycleCheckAsync(installer, await installer.InspectLocalAsync(path)), "Invalid entry type");
             Check(packages.FindInstalled(applicationId) == first && applications.IsRegistered(id), "A failed candidate must keep the registered version.");
 
             await PublishCandidateAsync(manifest =>
@@ -214,7 +221,7 @@ internal static class OfficialRoappChecks
                     "Update and uninstall vetoes must preserve the active version and draft window.");
                 guarded.CanCloseAsync = () => Task.FromResult(true);
             }
-            var upgraded = await installer.InstallAsync(await installer.InspectLocalAsync(path));
+            var upgraded = await InstallForLifecycleCheckAsync(installer, await installer.InspectLocalAsync(path));
             if (guarded is not null)
                 Check(!windows.Windows.Contains(guarded), "The accepted update should retire the old window.");
             Check(upgraded.Version == "1.1.0" && upgraded.InstallationPath != first.InstallationPath && Directory.Exists(first.InstallationPath),
@@ -285,9 +292,14 @@ internal static class OfficialRoappChecks
             await File.WriteAllTextAsync(path + ".sha256", Convert.ToHexStringLower(await SHA256.HashDataAsync(file)));
         }
 
+        // This fixture isolates the client package lifecycle from the server module executor.
+        Task<DeveloperAppInfo> InstallForLifecycleCheckAsync(AppPackageInstallerService installer, AppPackageCandidate candidate) => isDocker
+            ? installer.InstallAsync(candidate, default, (_, _) => Task.FromResult(Guid.NewGuid()))
+            : installer.InstallAsync(candidate);
+
         Task WriteProfileAsync(string policy)
         {
-            var entry = new[] { new { appId = applicationId, minimumVersion = isDocker ? "0.2.0" : "1.0.0", installPolicy = policy } };
+            var entry = new[] { new { appId = applicationId, minimumVersion = isDocker ? "0.3.0" : "1.0.0", installPolicy = policy } };
             return File.WriteAllTextAsync(Path.Combine(source, "installation-profiles.json"),
                 System.Text.Json.JsonSerializer.Serialize(new
                 {
