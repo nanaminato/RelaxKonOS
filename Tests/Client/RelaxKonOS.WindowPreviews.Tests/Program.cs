@@ -202,6 +202,7 @@ if (args.Contains("--firewall-only"))
     FirewallWorkspaceChecks.Run(settings);
     return;
 }
+if (args.Contains("--postgresql-scope-only")) { Task.Run(PostgreSqlScopeChecks.RunAsync).GetAwaiter().GetResult(); return; }
 if (args.Contains("--tailscale-scope-only")) { Task.Run(TailscaleScopeChecks.RunAsync).GetAwaiter().GetResult(); return; }
 if (args.Contains("--tunnels-scope-only")) { Task.Run(TunnelCapabilityChecks.RunAsync).GetAwaiter().GetResult(); return; }
 if (args.Contains("--deployments-only"))

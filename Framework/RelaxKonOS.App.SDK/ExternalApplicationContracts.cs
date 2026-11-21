@@ -54,6 +54,7 @@ public interface IExternalAppContext
     IServerProxy Proxy { get; }
     IExternalTailscale Tailscale { get; }
     IServerTailscaleLogin TailscaleLogin { get; }
+    IServerPostgreSql PostgreSql { get; }
     IServerApplicationDeployments ApplicationDeployments { get; }
     IGuardianHostInteraction? GuardianHost { get; }
     IPortForwardingService? PortForwarding { get; }

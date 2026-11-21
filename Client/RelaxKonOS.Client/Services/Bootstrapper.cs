@@ -331,6 +331,7 @@ public static class Bootstrapper
             .AddRelaxKonOSAuthentication();
         services.AddSingleton<ISettingsNavigation, SettingsNavigationService>();
         services.AddSingleton<ExternalAppContextFactory>();
+        services.AddSingleton<Func<IServerPostgreSql>>(provider => () => provider.GetRequiredService<IServerPostgreSql>());
         services.AddSingleton<DeveloperPackageManager>();
         services.AddSingleton(_ => new RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-catalog-sources"), "desktop-user"));
