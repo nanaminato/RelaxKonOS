@@ -2,7 +2,6 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Core.Applications;
-using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
 using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
@@ -106,11 +105,18 @@ internal sealed class ServerTailscaleCapability(AppId appId, IAppPermissionManag
         var token = linked.Token;
         CheckAccess(target, manage, token);
         using var observation = connection.ObserveInvalidation(linked.Cancel);
-        var result = elevate
-            ? await Elevation.ExecuteAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, RunAsync, token)
-            : await RunAsync();
-        CheckAccess(target, manage, token);
-        return result;
+        try
+        {
+            var result = elevate
+                ? await Elevation.ExecuteAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, RunAsync, token)
+                : await RunAsync();
+            CheckAccess(target, manage, token);
+            return result;
+        }
+        catch (RelaxKonOSAuthException problem)
+        {
+            throw new TailscaleRequestException(problem.Title, problem.Status);
+        }
 
         Task<T> RunAsync()
         {
@@ -127,6 +133,5 @@ internal sealed class ServerTailscaleCapability(AppId appId, IAppPermissionManag
             throw Problem(403, "tailscale.permission_denied");
     }
 
-    private static RelaxKonOSAuthException Problem(int status, string code) =>
-        new(new ProblemDetails("https://relaxkonos.app/problems/" + code, code, status, null, null));
+    private static TailscaleRequestException Problem(int status, string code) => new(code, status);
 }

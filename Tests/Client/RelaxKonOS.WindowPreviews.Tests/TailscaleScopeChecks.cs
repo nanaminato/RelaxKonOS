@@ -26,16 +26,25 @@ internal static class TailscaleScopeChecks
         var scoped = new ServerTailscaleCapability(id, permissions, new ExternalServerConnection(memory.Capture(session)),
             control, login, broker, lifetime.Token);
         IServerTailscaleLogin scopedLogin = scoped;
-        await RejectAsync<RelaxKonOSAuthException>(() => Task.FromResult(scoped.CaptureConnection()));
+        await RejectAsync<TailscaleRequestException>(() => Task.FromResult(scoped.CaptureConnection()));
 
         permissions.Granted.Add(AppPermissions.ServerTailscaleRead);
         var identity = scoped.CaptureConnection();
         var status = await scoped.GetStatusAsync(identity, default);
         if (status.Account is not null || status.TailnetName is not null || !status.PeersRestricted)
             throw new InvalidOperationException("Tailscale read-only scope returned restricted account or tailnet details.");
-        await RejectAsync<RelaxKonOSAuthException>(() => scopedLogin.ChallengeAsync(identity, Guid.NewGuid(), default));
+        await RejectAsync<TailscaleRequestException>(() => scopedLogin.ChallengeAsync(identity, Guid.NewGuid(), default));
 
         permissions.Granted.Add(AppPermissions.ServerTailscaleManage);
+        var controlFixture = (TailscaleScopeTransport)(object)control;
+        controlFixture.RequireGrant = true;
+        try
+        {
+            await scoped.GetControlAsync(identity, default);
+            throw new InvalidOperationException("The passive control read unexpectedly obtained a host grant.");
+        }
+        catch (TailscaleRequestException problem) when (problem.Status == 403 && problem.Code == "tailscale.elevation_required") { }
+        controlFixture.RequireGrant = false;
         await scoped.GetControlAsync(identity, default);
         if (broker.Elevations != 0)
             throw new InvalidOperationException("Passive Tailscale refresh must never request native authorization.");
@@ -108,11 +117,14 @@ public class TailscaleScopeAuthFixture : ProxyServerScopeAuthFixture
 public class TailscaleScopeTransport : DispatchProxy
 {
     public int ChallengeReads { get; private set; }
+    public bool RequireGrant { get; set; }
 
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
         nameof(IServerTailscale.GetStatusAsync) => Task.FromResult(new TailscaleStatusDto("observed",
             TailnetName: "tailnet-fixture", Account: new("account", "Account"))),
+        nameof(IServerTailscale.GetControlAsync) when RequireGrant => Task.FromException<TailscaleControlSnapshot>(
+            new RelaxKonOSAuthException(new("https://relaxkonos.app/problems/elevation-required", "tailscale.elevation_required", 403, null, null))),
         nameof(IServerTailscale.GetControlAsync) => Task.FromResult(new TailscaleControlSnapshot("fixture", true, true, new(true, true), true)),
         nameof(IServerTailscaleLogin.ChallengeAsync) => ReadChallenge((Guid)args![1]!),
         _ => throw new NotSupportedException(method?.Name),
