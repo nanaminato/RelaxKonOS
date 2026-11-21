@@ -25,7 +25,8 @@ internal static class ApplicationReadinessShellChecks
         windows.Attach(new Canvas { Width = 1000, Height = 720 });
         var applications = new ApplicationManager(windows, services);
         const string installerId = "relaxkonos.appinstaller";
-        foreach (var id in new[] { "relaxkonos.proxy-server", "relaxkonos.component-center", "relaxkonos.settings", installerId, "test.no-component" })
+        const string packageId = "test.package-with-dependency";
+        foreach (var id in new[] { "relaxkonos.proxy-server", "relaxkonos.component-center", "relaxkonos.settings", installerId, "test.no-component", packageId })
             applications.Register(new ReadinessApplication(id));
         var availability = new ReadinessProvider();
         var session = DispatchProxy.Create<IAuthSession, UnusedPreviewServices>();
@@ -49,6 +50,9 @@ internal static class ApplicationReadinessShellChecks
             settings.OnlyReadyApplications = true; Dispatcher.UIThread.RunJobs();
             Check(!vm.StartApps.Any(app => app.Id == appId) && !vm.DesktopIcons.Any(app => app.Id == appId),
                 "Ready-only mode filters both launch lists and desktop icons");
+            Check(!vm.StartApps.Any(app => app.Id.Value == packageId)
+                && vm.AllApplications.Single(app => app.Id.Value == packageId).HasAvailabilityBadge,
+                "Ready-only mode filters an external package with an unavailable manifest dependency");
             Check(vm.StartApps.Any(app => app.Id.Value == "relaxkonos.component-center")
                 && vm.StartApps.Any(app => app.Id.Value == "relaxkonos.settings")
                 && vm.StartApps.Any(app => app.Id.Value == "test.no-component"),
@@ -59,6 +63,8 @@ internal static class ApplicationReadinessShellChecks
             Check(!vm.StartSearchResults.Any(app => app.Id == appId), "Application search follows readiness filtering");
             availability.Set(ComponentAvailabilityKind.Installed); Dispatcher.UIThread.RunJobs();
             Check(vm.StartApps.Any(app => app.Id == appId), "An installed component returns to the ready list");
+            Check(vm.StartApps.Any(app => app.Id.Value == packageId),
+                "A satisfied manifest dependency returns the external package to the ready list");
             availability.Set(ComponentAvailabilityKind.NotRequired); Dispatcher.UIThread.RunJobs();
             Check(vm.StartApps.Any(app => app.Id == appId)
                 && !vm.AllApplications.Single(app => app.Id == appId).HasAvailabilityBadge,
@@ -114,8 +120,16 @@ internal static class ApplicationReadinessShellChecks
     {
         private ApplicationAvailability? _value;
         public event EventHandler? Changed;
-        public bool RequiresCheck(ApplicationManifest manifest) => manifest.Id.Value == "relaxkonos.proxy-server";
-        public ApplicationAvailability? GetCached(AppId app) => app.Value == "relaxkonos.proxy-server" ? _value : null;
+        public bool RequiresCheck(ApplicationManifest manifest) => manifest.Id.Value is "relaxkonos.proxy-server" or "test.package-with-dependency";
+        public ApplicationAvailability? GetCached(AppId app) => app.Value switch
+        {
+            "relaxkonos.proxy-server" => _value,
+            "test.package-with-dependency" when _value is { } value => value with
+            {
+                ApplicationId = app, ComponentId = "test-module", PackageKind = RelaxKonOS.Deployment.DeploymentPackageKind.ServerModule,
+            },
+            _ => null,
+        };
         public Task<ApplicationAvailability?> RefreshAsync(ApplicationManifest manifest) => Task.FromResult(_value);
         public void Set(ComponentAvailabilityKind? state)
         {

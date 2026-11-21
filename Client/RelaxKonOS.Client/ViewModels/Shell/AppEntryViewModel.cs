@@ -17,7 +17,7 @@ public partial class AppEntryViewModel : ObservableObject, IDisposable
     private readonly string _version;
     private bool _disposed;
 
-    public AppEntryViewModel(ApplicationInfo info, ApplicationManager applications)
+    public AppEntryViewModel(ApplicationInfo info, ApplicationManager applications, bool requiresAvailabilityCheck = false)
     {
         _applications = applications;
         _iconPath = info.IconPath;
@@ -27,6 +27,7 @@ public partial class AppEntryViewModel : ObservableObject, IDisposable
         IconGlyph = info.IconGlyph;
         IconImage = AppIconImageLoader.Load(info.IconPath);
         Description = info.Description;
+        HasComponentDependency = requiresAvailabilityCheck;
     }
 
     public AppId Id { get; }
@@ -37,11 +38,9 @@ public partial class AppEntryViewModel : ObservableObject, IDisposable
     public string? Description { get; }
     private ApplicationAvailability? _availability;
     /// <summary>
-    /// Launch readiness is enforced for every application the catalog relates to a component. An
-    /// application whose component the connected host cannot provide at all is ready without a badge
-    /// instead of looking broken.
+    /// Launch readiness comes from the host guard for component and package dependencies.
     /// </summary>
-    public bool HasComponentDependency => ComponentCatalog.LaunchGate(Id.Value) is not null;
+    public bool HasComponentDependency { get; }
     public bool IsReady => !HasComponentDependency || _availability?.CanOpen == true;
     public bool HasAvailabilityBadge => HasComponentDependency && _availability?.State != ComponentAvailabilityKind.NotRequired;
     public string? AvailabilityState => HasComponentDependency ? (_availability?.State ?? ComponentAvailabilityKind.Unknown).ToString() : null;
@@ -57,7 +56,8 @@ public partial class AppEntryViewModel : ObservableObject, IDisposable
     }
     [ObservableProperty] private bool _isDesktopSelected;
 
-    internal bool Matches(ApplicationInfo info) => !_disposed && Id == info.Id && DisplayName == info.DisplayName
+    internal bool Matches(ApplicationInfo info, bool requiresAvailabilityCheck) =>
+        !_disposed && HasComponentDependency == requiresAvailabilityCheck && Id == info.Id && DisplayName == info.DisplayName
         && Description == info.Description && IconGlyph == info.IconGlyph && _iconPath == info.IconPath && _version == info.Version;
 
     public void Dispose()

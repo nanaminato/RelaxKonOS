@@ -246,8 +246,10 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
             .Select(i =>
             {
                 var info = Localize(i);
-                var entry = previousEntries.TryGetValue(info.Id, out var existing) && existing.Matches(info)
-                    ? existing : new AppEntryViewModel(info, _applications);
+                var requiresAvailability = _applications.GetManifest(info.Id) is { } manifest
+                    && (_availability?.RequiresCheck(manifest) ?? ComponentCatalog.LaunchGate(info.Id.Value) is not null);
+                var entry = previousEntries.TryGetValue(info.Id, out var existing) && existing.Matches(info, requiresAvailability)
+                    ? existing : new AppEntryViewModel(info, _applications, requiresAvailability);
                 entry.RefreshAvailability(_availability?.GetCached(entry.Id));
                 return entry;
             })
