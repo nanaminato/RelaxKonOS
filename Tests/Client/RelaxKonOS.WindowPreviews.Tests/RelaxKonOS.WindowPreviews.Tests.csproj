@@ -18,6 +18,7 @@
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Firewall/RelaxKonOS.App.Firewall.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProcessGuardian/RelaxKonOS.App.ProcessGuardian.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.PortForwarding/RelaxKonOS.App.PortForwarding.csproj" />
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.ApplicationDeployments/RelaxKonOS.App.ApplicationDeployments.csproj" />
     <PackageReference Include="Avalonia.Headless" />
     <PackageReference Include="Avalonia.Desktop" />
   </ItemGroup>

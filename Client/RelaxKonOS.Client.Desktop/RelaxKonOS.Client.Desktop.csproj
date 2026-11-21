@@ -26,6 +26,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ApplicationDeployments" AppId="relaxkonos.application-deployments" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Browser" AppId="relaxkonos.browser" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.CodeEditor" AppId="relaxkonos.codeeditor" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Docker" AppId="relaxkonos.docker" />

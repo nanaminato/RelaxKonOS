@@ -50,7 +50,8 @@ internal static class OfficialRoappChecks
         var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall;
         var isGuardian = applicationId == "relaxkonos.processguardian";
         var isPortForwarding = applicationId == "relaxkonos.port-forwarding";
-        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding;
+        var isApplicationDeployments = applicationId == "relaxkonos.application-deployments";
+        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding || isApplicationDeployments;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -178,6 +179,12 @@ internal static class OfficialRoappChecks
                     "Firewall review exposes its server module and scoped grants.");
                 await RejectAsync(() => installer.InstallAsync(candidate), "Firewall without joint deployment");
             }
+            if (isApplicationDeployments)
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerApplicationDeploymentsRead,
+                    AppPermissions.ServerApplicationDeploymentsManage, AppPermissions.ServerFilesRead]
+                    && candidate.Manifest.ServerRequirements?.RequiredCapabilities is ["server.application-deployments"]
+                    && candidate.Manifest.Dependencies?.Required is null or [],
+                    "Application Deployments review exposes the deployment and file grants and required server capability.");
             if (isPortForwarding)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.DesktopPortForwardingManage]
                     && candidate.Manifest.Dependencies?.Required is null or [],
@@ -259,6 +266,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.certificates" => "RelaxKonOS.App.Certificates.Views.CertificateManagerWorkspace",
                     "relaxkonos.webservers" => "RelaxKonOS.App.WebServers.Views.WebServerManagerWorkspace",
                     "relaxkonos.git" => "RelaxKonOS.App.Git.Views.GitClientWorkspace",
+                    "relaxkonos.application-deployments" => "RelaxKonOS.App.ApplicationDeployments.Views.ApplicationDeploymentsWorkspace",
                     "relaxkonos.port-forwarding" => "RelaxKonOS.App.PortForwarding.Views.PortForwardingMainView",
                     "relaxkonos.processguardian" => typeof(DockPanel).FullName,
                     "relaxkonos.firewall" => "RelaxKonOS.App.Firewall.Views.FirewallWorkspace",
@@ -267,6 +275,13 @@ internal static class OfficialRoappChecks
                 };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
                     "The installed entry point must create its own workspace.");
+                if (isApplicationDeployments)
+                {
+                    var model = ((Control)workspace.View.Content!).DataContext!;
+                    Check(model.GetType().FullName == "RelaxKonOS.App.ApplicationDeployments.ApplicationDeploymentsViewModel"
+                        && model.GetType().GetProperty("CanManage")?.GetValue(model) is false,
+                        "The installed deployment workspace honors a read-only grant.");
+                }
                 if (isGuardian)
                 {
                     var model = ((Control)workspace.View.Content!).DataContext!;
@@ -435,13 +450,18 @@ internal static class OfficialRoappChecks
             var guardian = isGuardian ? DispatchProxy.Create<IServerGuardian, GuardianCapabilityClient>() : null;
             appPermissions.Granted.Add(AppPermissions.DesktopPortForwardingManage);
             var forwarding = isPortForwarding ? DispatchProxy.Create<IPortForwardingService, PendingForwardService>() : null;
-            var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices || isFirewall || isGuardian || isPortForwarding;
+            appPermissions.Granted.Add(AppPermissions.ServerApplicationDeploymentsRead);
+            var deployments = isApplicationDeployments
+                ? DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>() : null;
+            if (deployments is not null) ((DeploymentHostStub)(object)deployments).Seed();
+            var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices || isFirewall
+                || isGuardian || isPortForwarding || isApplicationDeployments;
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
                 null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
-                fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding);
+                fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding, applicationDeployments: deployments);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 

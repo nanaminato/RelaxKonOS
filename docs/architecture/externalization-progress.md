@@ -39,7 +39,7 @@
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows 包生命周期及 Windows、Linux 隔离模块复用已验，Nginx 业务联调待验 |
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，真实设备业务联调待验 |
 | tunnels | Tunnels | 否 / 否 | 是 | Tunnels capability；组件中心管理 FRP | 可选 | 待验 |
-| application-deployments | ApplicationDeployments | 否 / 否 | 是 | ApplicationDeployments capability | 可选 | 待验 |
+| application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows Release 包生命周期已验，真实部署待验 |
 | database | Databases | 否 / 否 | 是 | 数据库引擎与组件中心 | 可选 | 待验 |
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
@@ -294,3 +294,4 @@
 - 应用目录安装和升级对话框已迁入应用程序集，由宿主注入本地化与服务器能力信息。Windows Release 构建和模拟服务器工作区回归通过，覆盖拓扑预览、修改端口后撤销确认及升级目标筛选。
 - 应用部署的中、英、日界面资源与未登录提示已迁入应用程序集。宿主保留两条 HTTP 传输错误文案。Windows Release 构建、工作区和三语资源回归通过。
 - 应用部署外置入口与包清单已实现。入口使用部署 SDK、服务端文件选择授权、宿主窗口以及 Avalonia 原生文件选择和剪贴板，目录安装使用当前连接的能力描述。Windows Release 构建、部署工作区回归和 DevCLI 打包通过。官方分发切换及包启动验收待完成。
+- 应用部署管理器已切换为官方可选包，开发者配置采用交互安装。桌面内置注册与应用程序集引用均已移除。Windows Release 工作区和发行包生命周期验收通过，覆盖安装后启动、只读授权、更新、重启及卸载。测试使用模拟部署服务，真实容器部署待验。
