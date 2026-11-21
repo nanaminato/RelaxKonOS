@@ -1,0 +1,72 @@
+using Avalonia;
+using Avalonia.Controls;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Core.Primitives;
+using Rect = RelaxKonOS.Core.Primitives.Rect;
+using Size = RelaxKonOS.Core.Primitives.Size;
+
+namespace RelaxKonOS.App.Registry;
+
+/// <summary>Registry package editor for the current user's RelaxKonOS configuration hive.</summary>
+public sealed class RegistryPackageApp : IExternalRemoteApplication
+{
+    public ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.registry"), "Registry", "1.0.0", "⚙", "Browse supported RelaxKonOS configuration values", [AppPermissions.ServerRegistryRead, AppPermissions.ServerRegistryWrite], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+
+    public Task ActivateAsync(IExternalAppContext sdk, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var text = new RegistryText(sdk.SystemLanguage);
+        if (!sdk.HasAuthenticatedServer)
+        {
+            sdk.Windows.ShowWindow(text.Get("application.relaxkonos.registry.display_name", "Registry"), new TextBlock { Text = text.Get("registry.error.sign_in", "Sign in to browse the configuration registry."), Margin = new Thickness(24) }, new Rect(200, 160, 460, 180), Manifest.IconGlyph, false, false, false);
+            return Task.CompletedTask;
+        }
+        var client = sdk.Registry;
+        var view = new RegistryView();
+        var window = sdk.Windows.ShowWindow(text.Get("application.relaxkonos.registry.display_name", "Registry"), view, new Rect(80, 60, 1120, 700), Manifest.IconGlyph);
+        var viewModel = new RegistryViewModel(client, sdk.RegistryAppearance,
+            sdk.Permissions, window.Closed, sdk.SystemLanguage);
+        view.DataContext = viewModel;
+        viewModel.ShowEditDialogAsync = async row =>
+        {
+            if (!await viewModel.EnsurePermissionAsync(write: true) || !sdk.ServerConnection.IsCurrent) return;
+            await window.ShowDialogAsync<bool>(text.Get("registry.dialog.edit", "Edit Registry Value"), dialog => new RegistryValueDialogView
+            {
+                AppearancePreferences = sdk.RegistryAppearance,
+                DataContext = new RegistryValueDialogViewModel(row, row.Source.Scope == RelaxKonOS.Protocol.Registry.RegistryScope.Server ? client.ForServer(row.Source.Address.ScopeId) : client.ForUser(row.Source.Address.OwnerUserId!.Value), dialog.Close, entry => viewModel.ApplySaved(entry)),
+            }, row.Source.ValueType == RelaxKonOS.Protocol.Registry.RegistryValueType.Number ? new Size(600, 320) : new Size(720, 520));
+        };
+        viewModel.ShowRenameDialogAsync = async row =>
+        {
+            if (!await viewModel.EnsurePermissionAsync(write: true) || !sdk.ServerConnection.IsCurrent) return;
+            await window.ShowDialogAsync<bool>(text.Get("registry.dialog.rename", "Rename Registry Value"), dialog => new RegistryRenameDialogView
+            {
+                DataContext = new RegistryRenameDialogViewModel(row, row.Source.Scope == RelaxKonOS.Protocol.Registry.RegistryScope.Server ? client.ForServer(row.Source.Address.ScopeId) : client.ForUser(row.Source.Address.OwnerUserId!.Value), dialog.Close, viewModel.ApplyRenamed),
+            }, new Size(560, 320));
+        };
+        viewModel.ShowNewValueDialogAsync = async (scope, path) =>
+        {
+            if (viewModel.SelectedKey?.TargetUserId is not { } owner
+                || !await viewModel.EnsurePermissionAsync(write: true) || !sdk.ServerConnection.IsCurrent) return;
+            var ownedClient = client.ForUser(owner);
+            await window.ShowDialogAsync<bool>(text.Get("registry.dialog.new", "New Registry Value"), dialog => new RegistryValueDialogView
+            {
+                AppearancePreferences = sdk.RegistryAppearance,
+                DataContext = new RegistryValueDialogViewModel(scope, path, ownedClient, dialog.Close, entry => viewModel.ApplySaved(entry), sdk.SystemLanguage),
+            }, new Size(720, 520));
+        };
+        viewModel.ShowNewKeyDialogAsync = async (scope, parentPath) =>
+        {
+            if (viewModel.SelectedKey?.TargetUserId is not { } owner
+                || !await viewModel.EnsurePermissionAsync(write: true) || !sdk.ServerConnection.IsCurrent) return;
+            var ownedClient = client.ForUser(owner);
+            await window.ShowDialogAsync<bool>(text.Get("registry.menu.new_key"), dialog => new RegistryKeyDialogView
+            {
+                DataContext = new RegistryKeyDialogViewModel(scope, parentPath, ownedClient, dialog.Close, viewModel.ApplyCreatedKey, sdk.SystemLanguage),
+            }, new Size(460, 300));
+        };
+        _ = viewModel.RefreshAsync();
+        return Task.CompletedTask;
+    }
+}

@@ -1,0 +1,26 @@
+{
+  "id": "relaxkonos.registry",
+  "displayName": "Registry",
+  "description": "Browse supported RelaxKonOS configuration values",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.Registry.dll",
+  "entryType": "RelaxKonOS.App.Registry.RegistryPackageApp",
+  "iconGlyph": "⚙",
+  "iconPath": "Assets/registry.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": [
+    "server.registry.read",
+    "server.registry.write"
+  ],
+  "localizedMetadata": {
+    "zh-CN": {
+      "displayName": "注册表",
+      "description": "浏览支持的 RelaxKonOS 配置值"
+    },
+    "ja-JP": {
+      "displayName": "レジストリ",
+      "description": "対応する RelaxKonOS の構成値を参照します"
+    }
+  }
+}

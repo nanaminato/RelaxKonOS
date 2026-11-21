@@ -231,6 +231,11 @@ internal static class RegistryChecks
         var window = new Window { Width = 700, Height = 380, Content = view };
         window.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var grid = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<DataGrid>().Single();
+        Check(grid.Columns.Select(column => column.Header).SequenceEqual(new[]
+        {
+            vm.Text.Get("registry.column.name"), vm.Text.Get("registry.column.type"), vm.Text.Get("registry.column.data")
+        }), "Packaged Registry column headings must resolve through the workspace model.");
         var tree = view.FindControl<TreeView>("RegistryTree")!;
         var bars = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(tree).OfType<Avalonia.Controls.Primitives.ScrollBar>().ToArray();
         var vertical = bars.Single(bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical);

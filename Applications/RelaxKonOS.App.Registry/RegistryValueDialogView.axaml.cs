@@ -1,9 +1,8 @@
-using RelaxKonOS.App.Registry;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.AppSDK;
 
-namespace RelaxKonOS.Client.Apps.Registry;
+namespace RelaxKonOS.App.Registry;
 
 public partial class RegistryValueDialogView : UserControl
 {

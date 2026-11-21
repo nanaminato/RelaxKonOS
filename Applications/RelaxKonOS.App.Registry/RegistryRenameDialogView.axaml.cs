@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.Registry;
+namespace RelaxKonOS.App.Registry;
 
 public partial class RegistryRenameDialogView : UserControl
 {

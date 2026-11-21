@@ -9,6 +9,8 @@ namespace RelaxKonOS.Client.Services.AppPermissions;
 internal sealed class ServerRegistryCapability(AppId appId, IAppPermissionManager permissions,
     ExternalServerConnection connection, IServerRegistry? client) : IServerRegistry
 {
+    private readonly Guid? _deviceId = connection.Session.CurrentDevice?.Id;
+    private bool IsCurrent => connection.IsCurrent && connection.Session.CurrentDevice?.Id == _deviceId;
     private IServerRegistry Client => client ?? throw new InvalidOperationException("The registry client is unavailable.");
 
     public IServerRegistry ForUser(Guid targetUserId) => Bind(registry => registry.ForUser(targetUserId));
@@ -16,7 +18,7 @@ internal sealed class ServerRegistryCapability(AppId appId, IAppPermissionManage
 
     private IServerRegistry Bind(Func<IServerRegistry, IServerRegistry> bind)
     {
-        if (!connection.IsCurrent) throw new InvalidOperationException("The application's server connection has changed.");
+        if (!IsCurrent) throw new InvalidOperationException("The application's registry context has changed.");
         return new ServerRegistryCapability(appId, permissions, connection, bind(Client));
     }
 
@@ -65,6 +67,6 @@ internal sealed class ServerRegistryCapability(AppId appId, IAppPermissionManage
     {
         token.ThrowIfCancellationRequested();
         if (!permissions.IsGranted(appId, permission)) throw new UnauthorizedAccessException();
-        if (!connection.IsCurrent) throw new InvalidOperationException("The application's server connection has changed.");
+        if (!IsCurrent) throw new InvalidOperationException("The application's registry context has changed.");
     }
 }

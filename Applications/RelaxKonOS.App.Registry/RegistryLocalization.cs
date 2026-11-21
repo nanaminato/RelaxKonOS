@@ -60,13 +60,12 @@ public abstract class RegistryLocalizedObject : ObservableObject
     protected RegistryLocalizedObject(ISystemLanguage? language)
     {
         Language = language;
-        Text = new RegistryText(language);
         if (language is not null)
             WeakEventHandlerManager.Subscribe<ISystemLanguage, SystemLanguageChangedEventArgs, RegistryLocalizedObject>(
                 language, nameof(ISystemLanguage.LanguageChanged), OnLanguageChanged);
     }
 
-    public RegistryText Text { get; }
+    public RegistryText Text => new(Language);
     protected ISystemLanguage? Language { get; }
 
     private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => OnPropertyChanged(string.Empty);

@@ -49,7 +49,7 @@ ICONS = (
     IconSpec("proxy-manager.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/proxy.png")),
     IconSpec("git-client.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/git.png")),
     IconSpec("app-installer.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/appinstaller.png")),
-    IconSpec("registry.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/registry.png")),
+    IconSpec("registry.png", Path("Applications/RelaxKonOS.App.Registry/Assets/registry.png")),
     IconSpec("video-player.png", Path("examples/VideoPlayer/assets/icon.png")),
     IconSpec("server-monitor.png", Path("examples/ServerMonitor/assets/icon.png")),
     IconSpec("help-center.png", Path("examples/HelpCenter/assets/icon.png")),
