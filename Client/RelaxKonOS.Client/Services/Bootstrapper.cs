@@ -383,7 +383,6 @@ public static class Bootstrapper
             .RemoveAllLoggers();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Squid.ISquidClient, RelaxKonOS.Client.Apps.Squid.RemoteSquidClient>()
             .AddHttpMessageHandler<AcceptLanguageHandler>();
-        services.AddSingleton<RelaxKonOS.Client.Apps.WebServers.WebServerManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.FileServices.FileServicesApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Tunnels.TunnelManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Proxy.ProxyManagerApp>();

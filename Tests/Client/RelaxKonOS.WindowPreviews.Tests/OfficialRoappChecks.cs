@@ -43,7 +43,8 @@ internal static class OfficialRoappChecks
         var isCodeEditor = applicationId == "relaxkonos.codeeditor";
         var isDocker = applicationId == "relaxkonos.docker";
         var isCertificates = applicationId == "relaxkonos.certificates";
-        var requiresModule = isDocker || isCertificates;
+        var isWebServers = applicationId == "relaxkonos.webservers";
+        var requiresModule = isDocker || isCertificates || isWebServers;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -142,6 +143,16 @@ internal static class OfficialRoappChecks
                     "Certificate review exposes the required module and separate read and manage grants.");
                 await RejectAsync(() => installer.InstallAsync(candidate), "Certificate Manager without joint deployment");
             }
+            if (isWebServers)
+            {
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerWebServersRead,
+                    AppPermissions.ServerWebServersManage, AppPermissions.ServerComponentsRead,
+                    AppPermissions.ServerCertificatesRead, AppPermissions.ServerFilesRead]
+                    && candidate.Manifest.Dependencies?.Required is
+                        [{ Package: { Kind: DeploymentPackageKind.ServerModule, Id: "relaxkonos.webserver" }, Capability: "server.web-server" }],
+                    "Web Server review exposes the required module and scoped app capabilities.");
+                await RejectAsync(() => installer.InstallAsync(candidate), "Web Server Manager without joint deployment");
+            }
             var provisioner = new BundledApplicationProvisioner(packages, installer,
                 new JointAppDeploymentService(null!, null!, installer, packages, applications, journal), drive);
             await WriteProfileAsync("interactive");
@@ -206,6 +217,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.browser" => typeof(TextBlock).FullName,
                     "relaxkonos.terminal" => "RelaxKonOS.App.Terminal.TerminalWorkspaceView",
                     "relaxkonos.certificates" => "RelaxKonOS.App.Certificates.Views.CertificateManagerWorkspace",
+                    "relaxkonos.webservers" => "RelaxKonOS.App.WebServers.Views.WebServerManagerWorkspace",
                     _ => "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
                 };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
@@ -347,14 +359,17 @@ internal static class OfficialRoappChecks
                 browserAuth.State = AuthSessionState.Unauthenticated;
             }
             var memory = new UsageMemoryStore(Path.Combine(root, "usage-memory.json"));
-            var certificatePermissions = new CertificateCapabilityChecks.Permission();
-            certificatePermissions.Granted.Add(AppPermissions.ServerCertificatesRead);
+            var appPermissions = new CertificateCapabilityChecks.Permission(applicationId);
+            appPermissions.Granted.Add(AppPermissions.ServerCertificatesRead);
+            appPermissions.Granted.Add(AppPermissions.ServerWebServersRead);
             var certificates = isCertificates ? DispatchProxy.Create<IServerCertificates, CertificateCapabilityClient>() : null;
-            var context = new ExternalAppContextFactory(isCertificates ? certificatePermissions : permissions,
-                isCertificates ? certificatePermissions : null!, language, settings, null!, auth, null!,
+            var webServers = isWebServers ? DispatchProxy.Create<IServerWebServers, CurrentNginxClient>() : null;
+            var scopedPermissions = isCertificates || isWebServers;
+            var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
+                scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
                 null!, DispatchProxy.Create<ISettingsNavigation, UnusedPreviewServices>(), null!, null!, null!, memory, null!, null!, null!, null!,
-                browserData: isBrowser ? browserData : null, certificates: certificates);
+                browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 

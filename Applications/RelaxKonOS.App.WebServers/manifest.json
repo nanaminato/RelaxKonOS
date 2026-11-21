@@ -17,6 +17,11 @@
     "server.files.read"
   ],
   "serverRequirements": { "capabilities": ["server.web-server"] },
+  "dependencies": {
+    "required": [
+      { "package": { "kind": 1, "id": "relaxkonos.webserver" }, "capability": "server.web-server" }
+    ]
+  },
   "localizedMetadata": {
     "zh-CN": { "displayName": "Web 服务器管理器", "description": "管理 RelaxKonOS Server 上的 Web 服务器" },
     "ja-JP": { "displayName": "Web サーバーマネージャー", "description": "RelaxKonOS Server の Web サーバーを管理します" }
