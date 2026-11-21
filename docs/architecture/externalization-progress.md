@@ -62,6 +62,10 @@
 
 ## 测试证据
 
+- Windows 完整桌面 Release 发布通过。核对 `OfficialApps` 的全部 12 个归档及其 SHA-256，确认 Developer 保留 Web Server Manager 的交互安装条目。使用完整发行产出的 Web Server Manager 归档再次通过官方来源、安装、启动、更新、失败保留、重启发现与卸载。
+
+- Linux x64 的 .NET 10 无头容器使用实际 Web Server Manager 归档通过来源校验、安装、启动、更新、失败保留、重启发现和卸载回归。网站专项也通过，覆盖三语资源、站点草稿、授权范围和连接切换。真实 Nginx 业务联调和 Linux 图形会话仍待验收。
+
 - Windows Release 和 Linux x64 隔离联合部署验收使用实际 Web Server Manager 归档。安装计划依次复用已启用的 Certificates 与 WebServer 模块，再安装并注册应用。测试确认无新增模块包操作。Nginx 业务联调和 Linux 桌面包生命周期仍待执行。
 
 - Web Server Manager 已移除桌面内置登记，作为官方归档进入桌面发行和 Developer 交互配置。清单要求 `relaxkonos.webserver` 模块及 `server.web-server` 能力。Windows Release 使用实际 DevCli 归档验证官方来源、拒绝绕过联合部署、交互审阅、安装后启动、更新、失败保留、重启发现和卸载。客户端生命周期测试使用模块验证替身，实际模块联动与完整桌面发布待验收。
