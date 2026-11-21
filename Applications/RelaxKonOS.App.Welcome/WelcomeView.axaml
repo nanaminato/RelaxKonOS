@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RelaxKonOS.App.Welcome.WelcomeView"
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="28">
+        <StackPanel Grid.Row="0" Spacing="6">
+            <TextBlock Tag="welcome.title" FontSize="28" FontWeight="Bold" />
+            <TextBlock Tag="welcome.tagline" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="13" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Classes="card" Margin="0,18,0,0">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12">
+                <TextBlock Tag="welcome.overview" Classes="title" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.9"
+                           Tag="welcome.feature.window_manager" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.9"
+                           Tag="welcome.feature.desktop" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.9"
+                           Tag="welcome.feature.local_apps" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.9"
+                           Tag="welcome.feature.built_in_apps" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.9"
+                           Tag="welcome.feature.server" />
+            </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="OpenNotebookButton" Classes="primary" Tag="welcome.open_notepad" />
+        </StackPanel>
+    </Grid>
+</UserControl>
+

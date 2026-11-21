@@ -1,0 +1,15 @@
+{
+  "id": "relaxkonos.welcome",
+  "displayName": "Welcome",
+  "description": "Get started with RelaxKonOS",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.Welcome.dll",
+  "entryType": "RelaxKonOS.App.Welcome.WelcomeApp",
+  "iconGlyph": "🏠",
+  "iconPath": "Assets/welcome.png",
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "欢迎", "description": "开始使用 RelaxKonOS" },
+    "ja-JP": { "displayName": "ようこそ", "description": "RelaxKonOS を始める" }
+  }
+}

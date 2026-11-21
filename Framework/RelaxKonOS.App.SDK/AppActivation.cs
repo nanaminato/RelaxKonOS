@@ -109,6 +109,13 @@ public static class RelaxKonOSActivationUris
     public static Uri SettingsEnvironment { get; } = new("relaxkonos://settings/system/environment");
     public static Uri SettingsAbout { get; } = new("relaxkonos://settings/about");
 
+    /// <summary>Launches an installed application through the ordinary compatibility and permission checks.</summary>
+    public static Uri LaunchApplication(AppId appId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(appId.Value);
+        return new Uri($"relaxkonos://applications/{Uri.EscapeDataString(appId.Value)}");
+    }
+
     public static Uri SettingsAppPermissions(AppId appId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(appId.Value);

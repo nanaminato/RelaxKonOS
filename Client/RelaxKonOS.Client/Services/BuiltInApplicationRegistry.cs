@@ -2,7 +2,6 @@ using RelaxKonOS.Client.Apps;
 using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Apps.Terminal;
-using RelaxKonOS.Client.Apps.Welcome;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
@@ -19,7 +18,6 @@ public sealed class BuiltInApplicationRegistry : IBuiltInApplicationFactoryRegis
         _inner = new BuiltInApplicationFactoryRegistry(new[]
         {
             Define<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>("component-center", "relaxkonos.component-center", services),
-            Define<WelcomeApp>("welcome", "relaxkonos.welcome", services),
             Define<CodeEditorApp>("codeeditor", "relaxkonos.codeeditor", services),
             Define<SettingsApp>("settings", "relaxkonos.settings", services),
             Define<TerminalApp>("terminal", "relaxkonos.terminal", services),

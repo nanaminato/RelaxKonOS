@@ -117,6 +117,7 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
     public AppPermissionStatus ReadPermission { get; set; } = AppPermissionStatus.Granted;
     public int PermissionRequests { get; private set; }
     public bool IsSshSession { get; set; }
+    public IAppActivation? Activations { get; set; }
 
     internal void Initialize(IWindowManager manager, ISystemLanguage language, AppId id)
     {
@@ -129,6 +130,7 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
     {
         "get_ServerFiles" or "get_Windows" or "get_Permissions" => this,
         "get_SystemLanguage" => _language,
+        "get_Activations" when Activations is not null => Activations,
         _ => throw new NotSupportedException(method?.Name),
     };
 

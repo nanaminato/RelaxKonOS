@@ -81,6 +81,7 @@ if (args.Contains("--component-download-preview"))
 if (args.Contains("--database-only")) { DatabaseWorkspaceChecks.Run(settings); PostgreSqlAccountsWorkspaceChecks.Run(settings); return; }
 if (args.Contains("--component-installs-only")) { ComponentInstallEntryChecks.Run(); return; }
 if (args.Contains("--image-viewer-only")) { ImageViewerWorkspaceChecks.Run(settings, localization); return; }
+if (args.Contains("--welcome-only")) { WelcomeWorkspaceChecks.Run(settings, localization, services); return; }
 if (args.Contains("--notepad-only")) { NotepadWorkspaceChecks.Run(settings, localization); EditorDraftStateChecks.Run(); return; }
 if (args is ["--official-roapp-only", var artifact]) { OfficialRoappChecks.Run(artifact); return; }
 if (args is ["--official-store-only", var storeArtifact]) { OfficialStoreChecks.Run(storeArtifact); return; }
@@ -183,8 +184,7 @@ if (args.Contains("--forward-runtime-only"))
 // Check the actual activation paths, including the browser's signed-out window.
 foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
 {
-    new RelaxKonOS.Client.Apps.Browser.BrowserApp(),
-    new RelaxKonOS.Client.Apps.Welcome.WelcomeApp()
+    new RelaxKonOS.Client.Apps.Browser.BrowserApp()
 })
 {
     var titleWindows = new WindowManagerService();
@@ -208,6 +208,7 @@ foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
     if (titleWindow.Title != closedTitle)
         throw new InvalidOperationException("Closed window retained its language subscription.");
 }
+WelcomeWorkspaceChecks.Run(settings, localization, services);
 Console.WriteLine("PASS: Image viewer, browser and welcome window titles follow three languages and unsubscribe on close.");
 ModalCancellationChecks.Run();
 DockerSubmissionChecks.Run();

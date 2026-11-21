@@ -29,6 +29,7 @@ internal static class OfficialRoappChecks
     {
         var applicationId = Path.GetFileNameWithoutExtension(artifact);
         var isNotepad = applicationId == "relaxkonos.notepad";
+        var opensFiles = applicationId != "relaxkonos.welcome";
         var samplePath = isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
         var root = Path.Combine(parent, "official-apps-" + Guid.NewGuid().ToString("N"));
@@ -60,7 +61,8 @@ internal static class OfficialRoappChecks
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) == first, "Provisioning must not reinstall the same application.");
             var id = new AppId(applicationId);
-            Check(applications.SupportsFile(id, samplePath) && !applications.IsBuiltIn(id), "Official app should register only as a package.");
+            Check(applications.IsRegistered(id) && applications.SupportsFile(id, samplePath) == opensFiles
+                && !applications.IsBuiltIn(id), "Official app should register as a package with its declared file behavior.");
 
             Check(applications.TextFileOpeners.Any(app => app.Id == id) == isNotepad,
                 "Package text fallback must match the manifest.");
@@ -78,7 +80,7 @@ internal static class OfficialRoappChecks
                 manifest["entryType"] = "Fixture.DoesNotExist";
             });
             await RejectAsync(async () => await installer.InstallAsync(await installer.InspectLocalAsync(path)), "Invalid entry type");
-            Check(packages.FindInstalled(applicationId) == first && applications.SupportsFile(id, samplePath), "A failed candidate must keep the registered version.");
+            Check(packages.FindInstalled(applicationId) == first && applications.IsRegistered(id), "A failed candidate must keep the registered version.");
 
             await PublishCandidateAsync(manifest =>
             {
@@ -117,7 +119,8 @@ internal static class OfficialRoappChecks
             Check(!releaseApplications.IsRegistered(id), "Release must reject a Direct Deploy receipt in its VSD.");
             await File.WriteAllTextAsync(receipt, "\"officialDistribution\"");
             await releaseReader.LoadInstalledAsync();
-            Check(releaseReader.FindInstalled(applicationId) == upgraded && releaseApplications.SupportsFile(id, samplePath)
+            Check(releaseReader.FindInstalled(applicationId) == upgraded && releaseApplications.IsRegistered(id)
+                && releaseApplications.SupportsFile(id, samplePath) == opensFiles
                 && !releaseApplications.IsBuiltIn(id), "Release must rediscover the verified package from VSD.");
             Check(await releaseReader.UninstallAsync(applicationId) && !releaseApplications.IsRegistered(id), "Uninstall must unregister the package.");
             await releaseReader.LoadInstalledAsync();

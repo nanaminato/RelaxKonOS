@@ -220,6 +220,16 @@ public sealed class ApplicationManager : IAppActivationService
             && uri.AbsolutePath.Equals("/open", StringComparison.OrdinalIgnoreCase))
             return ActivateFileOpen(request);
 
+        if (uri.Host.Equals("applications", StringComparison.OrdinalIgnoreCase))
+        {
+            var id = Uri.UnescapeDataString(uri.AbsolutePath[1..]);
+            if (uri.Query.Length != 0 || uri.Fragment.Length != 0
+                || !RelaxKonOS.Core.VirtualSystemDrive.ApplicationDescriptorValidator.IsValidAppId(id))
+                return new(AppActivationStatus.InvalidUri);
+            return _apps.TryGetValue(new AppId(id), out var registered)
+                ? ActivateApplication(registered, null) : new(AppActivationStatus.RouteNotFound);
+        }
+
         var matches = _apps.Values
             .Where(app => app is IAppActivationHandler handler && handler.CanHandleActivation(uri))
             .ToArray();

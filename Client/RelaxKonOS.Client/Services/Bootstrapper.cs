@@ -6,7 +6,6 @@ using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Client.Apps.Docker;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Apps.Terminal;
-using RelaxKonOS.Client.Apps.Welcome;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.AppSettings;
@@ -352,7 +351,6 @@ public static class Bootstrapper
         services.AddSingleton<WorkspacePreferencesEditor>();
 
         // Built-in applications.
-        services.AddSingleton<WelcomeApp>();
         services.AddSingleton<CodeEditorApp>();
         services.AddSingleton<SettingsApp>();
         services.AddSingleton<TerminalApp>();

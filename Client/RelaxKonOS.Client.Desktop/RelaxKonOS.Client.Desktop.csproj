@@ -28,6 +28,7 @@
     <ItemGroup>
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ImageViewer" AppId="relaxkonos.imageviewer" DefaultInstall="true" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Notepad" AppId="relaxkonos.notepad" DefaultInstall="true" />
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Welcome" AppId="relaxkonos.welcome" DefaultInstall="true" />
     </ItemGroup>
 
     <Target Name="PublishOfficialDesktopApps" AfterTargets="Publish" Condition="'$(IncludeOfficialApps)' != 'false'">

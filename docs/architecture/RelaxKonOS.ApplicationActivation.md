@@ -23,6 +23,7 @@
 relaxkonos://settings/personalization
 relaxkonos://settings/apps
 relaxkonos://settings/apps/{appId}/permissions
+relaxkonos://applications/{appId}
 relaxkonos://file/open?appId={appId}&path={encodedPath}
 relaxkonos://components/{componentId}?hostId={serverIdentity}&appId={associatedAppId}
 ```
@@ -30,6 +31,9 @@ relaxkonos://components/{componentId}?hostId={serverIdentity}&appId={associatedA
 文件打开路线允许 Shell、`relaxkonos.explorer` 和 `relaxkonos.ssh-files` 作为来源；外置包不能用它
 传递宿主路径，而应使用其受限的文件 capability。调用方应使用
 `RelaxKonOSActivationUris`，不能手工拼接字符串。
+
+应用启动路线接收已注册的应用 ID，并沿用窗口实例策略、兼容性和启动守卫。调用方可使用
+`RelaxKonOSActivationUris.LaunchApplication`。Welcome 从这一入口打开记事本，记事本不可用时打开应用安装器。
 
 未匹配、歧义或不合法的 URI 分别得到 `RouteNotFound` 或 `InvalidUri`；应用不应猜测目标或
 降级为直接调用另一个应用。

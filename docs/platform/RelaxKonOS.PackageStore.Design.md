@@ -1,6 +1,6 @@
 # RelaxKonOS 包商店来源设计
 
-> 2026-11-21：桌面应用安装程序内已接入「官方应用」。客户端使用发行版预配置的 `OfficialApps` HTTPS 目录与随包发行的官方制品，复用 AppInstaller 审查、VSD 切换和 ApplicationManager 注册。首批支持 Image Viewer 与 Notepad。详见[轻量官方桌面商店](#轻量官方桌面商店)。服务端模块的来源和签名规则继续适用。
+> 2026-11-21：桌面应用安装程序内已接入「官方应用」。客户端使用发行版预配置的 `OfficialApps` HTTPS 目录与随包发行的官方制品，复用 AppInstaller 审查、VSD 切换和 ApplicationManager 注册。当前支持 Welcome、Image Viewer 与 Notepad。详见[轻量官方桌面商店](#轻量官方桌面商店)。服务端模块的来源和签名规则继续适用。
 
 > 2026-11-02：[组件目录](RelaxKonOS.ComponentCatalog.Design.md) 已实现可选签名 HTTPS 来源与桌面用户显式信任确认，复用模块包 P-256 验证原语和本文撤销/反回退边界；`.roapp` 仍经原安装审查，不授予 BuiltIn、权限或 Helper 授权。组件来源日志与服务端模块来源配置分别属于各自用户/部署，未实现统一配置迁移、完整商店服务或跨设备同步。
 

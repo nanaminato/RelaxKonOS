@@ -11,7 +11,10 @@ public static class OfficialDesktopCatalogRules
     public const int MaximumReleases = 128;
     public const int MaximumCatalogBytes = 128 * 1024;
     public const long MaximumPackageBytes = 128 * 1024 * 1024;
-    public static IReadOnlyList<string> ApplicationIds { get; } = Array.AsReadOnly(new[] { "relaxkonos.imageviewer", "relaxkonos.notepad" });
+    public static IReadOnlyList<string> ApplicationIds { get; } = Array.AsReadOnly(new[]
+    {
+        "relaxkonos.imageviewer", "relaxkonos.notepad", "relaxkonos.welcome"
+    });
 
     public static bool ValidVersion(string? value) => Version.TryParse(value, out var version)
         && version.Build >= 0 && version.Revision == -1 && version.ToString(3) == value;
