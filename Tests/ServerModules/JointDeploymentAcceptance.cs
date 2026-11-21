@@ -120,16 +120,15 @@ internal static class JointDeploymentAcceptance
             session.Url = host.Url;
             joint = Service();
             review = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Missing pending deployment.");
-            factory.DropNextEnableApply();
-            try
-            {
-                await joint.ExecuteAsync(review, default);
-                throw new InvalidOperationException("Expected the enable request to be interrupted.");
-            }
-            catch (HttpRequestException error) when (error.Message == "fixture-enable-apply-interrupted") { }
-            await ExpectRestartAsync(joint, review);
+            factory.DropNextEnableApply(afterCommit: false);
+            await ExpectInterruptedEnableAsync(joint, review);
+            factory.DropNextEnableApply(afterCommit: true);
+            await ExpectInterruptedEnableAsync(joint, review);
             Require(factory.EnablePreviewKeys.Distinct(StringComparer.Ordinal).Count() == 2,
                 "retry after an interrupted enable requests a fresh server preview");
+            await ExpectRestartAsync(joint, review);
+            Require(factory.EnablePreviewKeys.Count == 2 && factory.SubmittedEnableApplies == 1,
+                "a lost enable response is reconciled from the pending server state without submitting enable again");
             Require(!applications.IsRegistered(new AppId(AppIdText)), "the desktop stays pending while module enable awaits restart");
 
             await host.DisposeAsync();
@@ -188,6 +187,13 @@ internal static class JointDeploymentAcceptance
         try { await service.ExecuteAsync(review, default); }
         catch (InvalidOperationException error) when (error.Message == "deployment-module-AwaitingRestart") { return; }
         throw new InvalidOperationException("The installation should wait for a server restart.");
+    }
+
+    private static async Task ExpectInterruptedEnableAsync(JointAppDeploymentService service, JointAppDeploymentService.Review review)
+    {
+        try { await service.ExecuteAsync(review, default); }
+        catch (HttpRequestException error) when (error.Message == "fixture-enable-apply-interrupted") { return; }
+        throw new InvalidOperationException("Expected the enable request to be interrupted.");
     }
 
     private static void Require(bool passed, string message)
@@ -256,7 +262,8 @@ internal static class JointDeploymentAcceptance
         private readonly ArchiveUploadHandler handler = new(signedArchive);
         private HttpClient? http;
         public IReadOnlyList<string> EnablePreviewKeys => handler.EnablePreviewKeys;
-        public void DropNextEnableApply() => handler.DropNextEnableApply = true;
+        public int SubmittedEnableApplies => handler.SubmittedEnableApplies;
+        public void DropNextEnableApply(bool afterCommit) => handler.DropAfterCommit = afterCommit;
         public HttpClient CreateClient(string name) => http ??= new(handler);
         public void Dispose() => http?.Dispose();
     }
@@ -265,7 +272,8 @@ internal static class JointDeploymentAcceptance
     private sealed class ArchiveUploadHandler(byte[] signedArchive) : DelegatingHandler(new HttpClientHandler { UseProxy = false })
     {
         public List<string> EnablePreviewKeys { get; } = [];
-        public bool DropNextEnableApply { get; set; }
+        public bool? DropAfterCommit { get; set; }
+        public int SubmittedEnableApplies { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -277,11 +285,17 @@ internal static class JointDeploymentAcceptance
                     RelaxKonOSJsonOptions.Default, cancellationToken);
                 if (plan?.Action == ServerModuleAction.Enable) EnablePreviewKeys.Add(plan.IdempotencyKey);
             }
-            if (DropNextEnableApply && request.Method == HttpMethod.Post
+            if (request.Method == HttpMethod.Post
                 && path?.StartsWith(ServerModuleManagementRoutes.Plans + "/", StringComparison.Ordinal) == true
                 && path.EndsWith("/apply", StringComparison.Ordinal))
             {
-                DropNextEnableApply = false;
+                var drop = DropAfterCommit;
+                DropAfterCommit = null;
+                if (drop == false) throw new HttpRequestException("fixture-enable-apply-interrupted");
+                SubmittedEnableApplies++;
+                var applied = await base.SendAsync(request, cancellationToken);
+                if (drop is null) return applied;
+                using (applied) applied.EnsureSuccessStatusCode();
                 throw new HttpRequestException("fixture-enable-apply-interrupted");
             }
             if (request.RequestUri?.AbsolutePath != ServerModuleManagementRoutes.ModuleStoreDownload)
