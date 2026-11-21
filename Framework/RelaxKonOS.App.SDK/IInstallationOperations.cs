@@ -13,6 +13,11 @@ public interface IInstallationOperations
     Task<InstallationOperationDto?> CancelAsync(Guid id, CancellationToken cancellationToken);
 }
 
+public interface IDatabaseInstallationOperations : IInstallationOperations
+{
+    Task<bool> RequestAuthorizationAsync(InstallationServiceId service, CancellationToken cancellationToken = default);
+}
+
 public interface IInstallationPackageOperations : IInstallationOperations
 {
     Task<InstallationFileReferenceDto?> CreateFileReferenceAsync(InstallationServiceId service, string path,

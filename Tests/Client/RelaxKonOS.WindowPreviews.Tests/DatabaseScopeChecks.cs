@@ -4,9 +4,11 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Workspace;
 
 internal static class DatabaseScopeChecks
@@ -19,10 +21,11 @@ internal static class DatabaseScopeChecks
         var auth = (TailscaleScopeAuthFixture)(object)session;
         var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "database-sdk-memory.json"));
         var transport = new Transport();
+        var broker = new Broker();
         using var lifetime = new CancellationTokenSource();
         var scoped = new ServerDatabaseCapability(id, permissions, new ExternalServerConnection(memory.Capture(session)),
-            () => transport, lifetime.Token, () => transport, () => transport);
-        IInstallationOperations installation = scoped;
+            () => transport, lifetime.Token, () => transport, () => transport, broker);
+        IDatabaseInstallationOperations installation = scoped;
         object options = new { };
         IServerMySql mysql = scoped;
         var request = new PostgreSqlCredentialRequest(Guid.NewGuid(), Guid.NewGuid(), "test-only");
@@ -40,7 +43,12 @@ internal static class DatabaseScopeChecks
         await RejectAsync<UnauthorizedAccessException>(() => mysql.StageCredentialAsync(request, default));
         await RejectAsync<UnauthorizedAccessException>(() => installation.StartAsync(
             InstallationServiceId.MySql, InstallationOperationKind.Configure, options, "observer-key", default));
+        await RejectAsync<UnauthorizedAccessException>(() => installation.RequestAuthorizationAsync(InstallationServiceId.MySqlAccounts));
         auth.Role = DeviceRole.Controller;
+        await RejectAsync<UnauthorizedAccessException>(() => installation.RequestAuthorizationAsync(InstallationServiceId.Nginx));
+        if (!await installation.RequestAuthorizationAsync(InstallationServiceId.MySqlAccounts)
+            || broker.LastGrant != (HostElevationCapability.DatabaseAccountsManage, "mysqlaccounts") || broker.RequestCount != 1)
+            throw new InvalidOperationException("The database authorization request escaped the selected installation service.");
         await RejectAsync<UnauthorizedAccessException>(() => installation.StartAsync(
             InstallationServiceId.Nginx, InstallationOperationKind.Configure, options, "foreign-key", default));
         var foreign = Guid.NewGuid();
@@ -60,11 +68,17 @@ internal static class DatabaseScopeChecks
             throw new InvalidOperationException("PostgreSQL scope dispatched an unauthorized write or changed the selected instance.");
 
         var pending = scoped.MaintenancePlanAsync(default);
+        broker.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pendingGrant = installation.RequestAuthorizationAsync(InstallationServiceId.PostgreSqlMaintenance);
         auth.ServiceId = "https://replacement.invalid";
         auth.NotifyStateChanged();
         if (!transport.PendingToken.IsCancellationRequested)
             throw new InvalidOperationException("The previous PostgreSQL request token was not cancelled.");
         transport.Pending.SetResult(null!);
+        if (!broker.PendingToken.IsCancellationRequested)
+            throw new InvalidOperationException("The previous server authorization was not cancelled.");
+        broker.Pending.SetResult(true);
+        await RejectAsync<OperationCanceledException>(() => pendingGrant);
         await RejectAsync<OperationCanceledException>(() => pending);
         await RejectAsync<InvalidOperationException>(() => scoped.ReadAsync(default));
         await RejectAsync<InvalidOperationException>(() => mysql.ReadAsync(default));
@@ -76,6 +90,26 @@ internal static class DatabaseScopeChecks
         try { await operation(); }
         catch (T) { return; }
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+    }
+
+    private sealed class Broker : IHostElevationBroker
+    {
+        public (HostElevationCapability, string) LastGrant { get; private set; }
+        public int RequestCount { get; private set; }
+        public CancellationToken PendingToken { get; private set; }
+        public TaskCompletionSource<bool>? Pending { get; set; }
+
+        public Task<bool> RequestGrantAsync(HostElevationCapability capability, string target,
+            CancellationToken cancellationToken = default)
+        {
+            LastGrant = (capability, target);
+            RequestCount++;
+            PendingToken = cancellationToken;
+            return Pending?.Task ?? Task.FromResult(true);
+        }
+
+        public Task<T> ExecuteAsync<T>(HostElevationCapability capability, string target, Func<Task<T>> operation,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class Transport : IServerPostgreSql, IServerMySql, IInstallationOperations

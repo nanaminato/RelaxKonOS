@@ -192,7 +192,7 @@ public sealed class ExternalAppContextFactory
         var docker = new ServerDockerResourcesCapability(appId, _permissions, fileSession, _docker, _dockerMirrors);
         var tailscale = new ServerTailscaleCapability(appId, _permissions, connection, _tailscale, _tailscaleLogin, _elevationBroker, lifetime,
             _tailscaleReferences, _tailscaleLoginReferences);
-        var databases = new ServerDatabaseCapability(appId, _permissions, connection, _createPostgreSqlClient, lifetime, _createMySqlClient, _createInstallationClient);
+        var databases = new ServerDatabaseCapability(appId, _permissions, connection, _createPostgreSqlClient, lifetime, _createMySqlClient, _createInstallationClient, _elevationBroker);
         return new ExternalAppContext(
         appId,
         new AppPermissionScope(appId, _permissionRequests),
@@ -278,7 +278,7 @@ public sealed class ExternalAppContextFactory
         IServerApplicationDeployments ApplicationDeployments,
         IServerPostgreSql PostgreSql,
         IServerMySql MySql,
-        IInstallationOperations DatabaseInstallation,
+        IDatabaseInstallationOperations DatabaseInstallation,
         IGuardianHostInteraction? GuardianHost,
         IPortForwardingService? PortForwarding,
         IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt,

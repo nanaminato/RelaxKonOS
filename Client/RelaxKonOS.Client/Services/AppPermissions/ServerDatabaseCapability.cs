@@ -1,5 +1,7 @@
 using System.Net;
 using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
@@ -9,8 +11,9 @@ namespace RelaxKonOS.Client.Services.AppPermissions;
 
 internal sealed class ServerDatabaseCapability(AppId appId, IAppPermissionManager permissions,
     ExternalServerConnection connection, Func<IServerPostgreSql>? createClient, CancellationToken lifetime,
-    Func<IServerMySql>? createMySqlClient, Func<IInstallationOperations>? createInstallationClient)
-    : IServerPostgreSql, IServerMySql, IInstallationOperations
+    Func<IServerMySql>? createMySqlClient, Func<IInstallationOperations>? createInstallationClient,
+    IHostElevationBroker? elevationBroker)
+    : IServerPostgreSql, IServerMySql, IDatabaseInstallationOperations
 {
     public Task<PostgreSqlState> ReadAsync(CancellationToken cancellationToken, Guid? instance = null) =>
         InvokeAsync(createClient, (client, token) => client.ReadAsync(token, instance), manage: false, cancellationToken);
@@ -66,6 +69,22 @@ internal sealed class ServerDatabaseCapability(AppId appId, IAppPermissionManage
             token.ThrowIfCancellationRequested();
             return await client.CancelAsync(id, token);
         }, manage: true, cancellationToken);
+
+    public async Task<bool> RequestAuthorizationAsync(InstallationServiceId service, CancellationToken cancellationToken = default)
+    {
+        VerifyInstallationService(service);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime, cancellationToken);
+        using var invalidation = connection.ObserveInvalidation(cancellation.Cancel);
+        VerifyAccess(manage: true);
+        cancellation.Token.ThrowIfCancellationRequested();
+        if (elevationBroker is null) return false;
+
+        var granted = await elevationBroker.RequestGrantAsync(InstallationClient.ElevationCapability(service),
+            service.ToString().ToLowerInvariant(), cancellation.Token);
+        cancellation.Token.ThrowIfCancellationRequested();
+        VerifyAccess(manage: true);
+        return granted;
+    }
 
     private static void VerifyInstallationService(InstallationServiceId service)
     {
