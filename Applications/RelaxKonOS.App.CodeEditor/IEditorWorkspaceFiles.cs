@@ -1,6 +1,6 @@
 using RelaxKonOS.AppSDK;
 
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.App.CodeEditor;
 
 public interface IEditorWorkspaceFiles
 {

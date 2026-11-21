@@ -90,4 +90,5 @@
 - Code Editor 使用 `RelaxKonOS.UI` 中的文件内容检测、图标分类、图标控件和 PNG 资源。原有 93 个资源逐个验证内容一致。Android 图标同步脚本指向共享资源目录，现有 Android 资源字节保持原样。本机缺少 Pillow，尚未完成同步脚本的 `--check` 验证。编辑器视图仍在桌面宿主。
 - Code Editor 和 Git 的差异视图、补丁解析和渲染器统一由 `RelaxKonOS.UI` 提供。两个应用沿用同一套主题资源和显示规则。
 - `Applications/RelaxKonOS.App.CodeEditor` 独立项目保存文件关联规则和中、英、日三语资源。桌面宿主从该程序集加载同一份文案，供当前 Code Editor 和 Git 共用。应用入口、视图及发行包仍待迁移。
+- Code Editor 项目还提供文档、标签页状态、目录树模型和工作区文件契约。独立编辑器与 Git 项目编辑器共用这些类型。Code Editor 项目通过 SDK 与共享 UI 编译，桌面宿主继续提供视图和工作区接线。
 - 独立部署设备和 Linux 双包验收、Android 和全应用三语言界面验收均待执行。

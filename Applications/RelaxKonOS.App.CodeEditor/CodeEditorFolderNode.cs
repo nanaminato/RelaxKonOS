@@ -3,7 +3,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.App.CodeEditor;
 
 /// <summary>Lazy node in a Code Editor workspace folder tree.</summary>
 public sealed partial class CodeEditorFolderNode : ObservableObject

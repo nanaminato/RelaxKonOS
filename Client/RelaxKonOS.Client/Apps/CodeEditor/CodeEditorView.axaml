@@ -2,6 +2,7 @@
              xmlns:fileIcons="clr-namespace:RelaxKonOS.UI.Imaging;assembly=RelaxKonOS.UI" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:editor="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
+             xmlns:codeEditorApp="clr-namespace:RelaxKonOS.App.CodeEditor;assembly=RelaxKonOS.App.CodeEditor"
              xmlns:codeEditor="clr-namespace:RelaxKonOS.Client.Apps.CodeEditor"
              xmlns:explorer="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
              xmlns:diff="clr-namespace:RelaxKonOS.UI.TextEditing.Diff;assembly=RelaxKonOS.UI"
@@ -126,7 +127,7 @@
                              for that name, so the same file carries the same mark in the explorer's
                              list and on the editor tab that has it open. -->
                         <ListBox.ItemTemplate>
-                            <DataTemplate DataType="codeEditor:CodeEditorDocument">
+                            <DataTemplate DataType="codeEditorApp:CodeEditorDocument">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6" MinWidth="128" VerticalAlignment="Center" Background="Transparent" ContextRequested="DocumentTab_ContextRequested">
                                     <fileIcons:ExplorerIcon Kind="{Binding Kind}" Width="16" Height="16" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1" Text="{Binding DisplayName}" MaxWidth="180" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DisplayName}" VerticalAlignment="Center" />
@@ -147,7 +148,7 @@
                         <Button.Flyout><Flyout>
                             <ListBox ItemsSource="{Binding OpenDocuments}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}"
                                      MinWidth="220" MaxHeight="320" SelectionChanged="DocumentPicker_SelectionChanged">
-                                <ListBox.ItemTemplate><DataTemplate x:DataType="codeEditor:CodeEditorDocument">
+                                <ListBox.ItemTemplate><DataTemplate x:DataType="codeEditorApp:CodeEditorDocument">
                                     <DockPanel>
                                         <fileIcons:ExplorerIcon DockPanel.Dock="Left" Kind="{Binding Kind}" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
                                         <TextBlock Text="{Binding DisplayName}" MaxWidth="300" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />

@@ -1,3 +1,4 @@
+using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Localization;

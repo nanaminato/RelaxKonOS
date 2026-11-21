@@ -5,7 +5,7 @@ using Avalonia.Media;
 using RelaxKonOS.UI.TextEditing.Diff;
 using AvaloniaEdit.Document;
 
-namespace RelaxKonOS.Client.Apps.CodeEditor;
+namespace RelaxKonOS.App.CodeEditor;
 
 /// <summary>In-memory state for one editor tab. Content is never persisted by the client.</summary>
 public sealed partial class CodeEditorDocument : ObservableObject, IDisposable

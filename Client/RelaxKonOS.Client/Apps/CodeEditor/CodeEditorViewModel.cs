@@ -1,3 +1,4 @@
+using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.UI.TextEditing;
 using System.Collections.ObjectModel;
 using RelaxKonOS.AppSDK;
