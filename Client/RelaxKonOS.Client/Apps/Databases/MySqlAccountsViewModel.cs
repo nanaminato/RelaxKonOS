@@ -54,7 +54,7 @@ public sealed partial class MySqlViewModel
         {
             if (ConfirmAccountAsync is null || !await ConfirmAccountAsync(action, account) || invalid) return;
             if (reference is { } id && !await StageAccountSecretAsync(new(id, instance, secret!))) return;
-            if (invalid || !ReferenceEquals(login, session.CurrentSession)) return;
+            if (invalid || !connection.IsCurrent) return;
             submission = new(true, action, snapshot.Revision, Account: account);
             submissionTask = AccountInstallation;
             await SendAsync();
@@ -72,7 +72,7 @@ public sealed partial class MySqlViewModel
 
     private async Task<bool> StageAccountSecretAsync(PostgreSqlCredentialRequest value)
     {
-        Task<HttpStatusCode> Stage() => invalid || !ReferenceEquals(login, session.CurrentSession)
+        Task<HttpStatusCode> Stage() => invalid || !connection.IsCurrent
             ? Task.FromResult(HttpStatusCode.Unauthorized)
             : client.StageCredentialAsync(value, lifetime.Token);
         var status = await Stage();

@@ -2,16 +2,14 @@ using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Client.Apps.Databases;
 
-public sealed partial class MySqlViewModel(IServerMySql client, IAuthSession session) : ObservableObject, IDisposable
+public sealed partial class MySqlViewModel(IServerMySql client, IExternalServerConnection connection) : ObservableObject, IDisposable
 {
-    private readonly object? login = session.CurrentSession;
     private readonly CancellationTokenSource lifetime = new();
     private bool invalid;
     private bool reading;
@@ -70,7 +68,7 @@ public sealed partial class MySqlViewModel(IServerMySql client, IAuthSession ses
         try
         {
             var current = await client.ReadAsync(lifetime.Token);
-            if (!invalid && ReferenceEquals(login, session.CurrentSession))
+            if (!invalid && connection.IsCurrent)
             {
                 State = current;
                 Notice = LocalizedStatus.Literal("");
@@ -110,7 +108,7 @@ public sealed partial class MySqlViewModel(IServerMySql client, IAuthSession ses
             var maintenance = action is null && snapshot.PendingMaintenance is not null;
             Func<Task<bool>>? confirm = maintenance ? ConfirmMaintenanceAsync is { } ask ? () => ask(null) : null
                 : remote ? ConfirmRemoteAsync : administrator ? ConfirmAdministratorAsync : ConfirmAsync;
-            if (confirm is null || !await confirm() || invalid || !ReferenceEquals(login, session.CurrentSession)) return;
+            if (confirm is null || !await confirm() || invalid || !connection.IsCurrent) return;
             submission = action is null ? new(true, RecoverOperationId: snapshot.PendingOperationId)
                 : new(true, action, snapshot.Revision, AdministratorInstanceId: administrator ? snapshot.InstanceId : null);
             submissionTask = maintenance ? MaintenanceInstallation : remote ? RemoteInstallation : administrator ? AdministratorInstallation : action is null && snapshot.PendingAccount is not null ? AccountInstallation : Installation;

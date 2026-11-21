@@ -50,7 +50,7 @@ public sealed partial class MySqlViewModel
         Busy = true;
         try
         {
-            if (ConfirmMaintenanceAsync is null || !await ConfirmMaintenanceAsync(command) || invalid || !ReferenceEquals(login, session.CurrentSession)) return;
+            if (ConfirmMaintenanceAsync is null || !await ConfirmMaintenanceAsync(command) || invalid || !connection.IsCurrent) return;
             submission = new(true, MySqlAction.Maintain, state.Revision, Maintenance: command);
             submissionTask = MaintenanceInstallation;
             await SendAsync();

@@ -5,12 +5,13 @@ using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.AppSettings;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
-using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Installations;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
@@ -24,11 +25,13 @@ public sealed class DatabaseApp : RemoteApplicationBase
     {
         var session = context.Services.GetRequiredService<IAuthSession>();
         if (session.State != AuthSessionState.Authenticated) return;
+        var connection = new ExternalServerConnection(context.Services.GetRequiredService<UsageMemoryStore>().Capture(session));
+        var dependency = ComponentDependencySettingsViewModel.Create(context, Manifest.Id.Value);
         var settings = new ExternalAppSettings(Manifest.Id, context.Services.GetRequiredService<IAppSettingsClient>());
         var model = new DatabaseViewModel(context.Services.GetRequiredService<IServerPostgreSql>())
         {
-            Dependency = ComponentDependencySettingsViewModel.Create(context, "relaxkonos.database"),
-            CanManage = session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller
+            DependencySettings = new ComponentDependencySettingsView { DataContext = dependency },
+            CanManage = connection.IsController
         };
         Task<bool> AuthorizeInstallationAsync(InstallationServiceId service) => context.Services
             .GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>()
@@ -38,7 +41,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
         model.Installation = new(context.Services.GetRequiredService<InstallationClient>(), settings,
             InstallationServiceId.PostgreSql, "relaxkonos.database", model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSql));
-        var mysql = new MySqlViewModel(context.Services.GetRequiredService<IServerMySql>(), session)
+        var mysql = new MySqlViewModel(context.Services.GetRequiredService<IServerMySql>(), connection)
         {
             CanManage = model.CanManage,
             ConfirmAsync = () => Confirm("database.mysql_confirm")
@@ -135,20 +138,24 @@ public sealed class DatabaseApp : RemoteApplicationBase
             { DataContext = new ConfirmDialogViewModel(LocalizedText.Get(key) + (detail is null ? "" : "\n\n" + detail), value => { accepted = value; dialog.Close(value); }) }, new Size(540, 280));
             return accepted;
         }
-        var login = session.CurrentSession;
-        EventHandler<AuthSessionStateChangedEventArgs> changed = (_, _) =>
-        { if (!ReferenceEquals(login, session.CurrentSession) || session.State != AuthSessionState.Authenticated) Avalonia.Threading.Dispatcher.UIThread.Post(model.Invalidate); };
-        session.StateChanged += changed;
+        var observation = connection.ObserveInvalidation(() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (context.WindowManager.Windows.Contains(window))
+                model.Invalidate();
+        }));
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
         closed = (_, current) =>
         {
             if (!ReferenceEquals(current, window)) return;
-            session.StateChanged -= changed; context.WindowManager.WindowClosed -= closed; model.Dispose();
+            context.WindowManager.WindowClosed -= closed;
+            observation.Dispose();
+            dependency.Dispose();
+            model.Dispose();
         };
         context.WindowManager.WindowClosed += closed;
         _ = accountsTask.RestoreAsync();
         _ = remoteTask.RestoreAsync(); _ = model.RemoteManager.RefreshCertificatesAsync();
         _ = model.AdminRecoveryInstallation.RestoreAsync();
-        _ = model.RefreshAsync(); _ = model.Installation.RestoreAsync(); _ = model.Dependency.RefreshCommand.ExecuteAsync(null);
+        _ = model.RefreshAsync(); _ = model.Installation.RestoreAsync(); _ = dependency.RefreshCommand.ExecuteAsync(null);
     }
 }

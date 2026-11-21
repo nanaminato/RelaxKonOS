@@ -3,6 +3,8 @@ using IServerPostgreSql = RelaxKonOS.AppSDK.IServerPostgreSql;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Databases;
 using RelaxKonOS.Client.Services.Installation;
@@ -14,7 +16,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.Databases;
 using RelaxKonOS.Client.Apps.Databases.Views;
-using RelaxKonOS.Client.Services;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 
@@ -231,8 +232,10 @@ internal static class DatabaseWorkspaceChecks
         Check(selectionClient.LastInstance is null && selectionModel.Snapshot?.InstanceId == primary
             && selectionModel.SelectedInstance is null, "refresh falls back to primary after secondary deletion");
         using var mysqlHttp = new HttpClient();
-        var mysqlSession = DispatchProxy.Create<IAuthSession,EntrySession>();
-        using var mysql = new MySqlViewModel(new MySqlClient(mysqlHttp, mysqlSession), mysqlSession)
+        var mysqlSession = DispatchProxy.Create<IAuthSession, TailscaleScopeAuthFixture>();
+        var memory = new UsageMemoryStore(Path.Combine(AppContext.BaseDirectory, "preview-qa", "database-workspace-memory.json"));
+        var mysqlConnection = new ExternalServerConnection(memory.Capture(mysqlSession));
+        using var mysql = new MySqlViewModel(new MySqlClient(mysqlHttp, mysqlSession), mysqlConnection)
         {
             CanManage = true,
             State = new(true, 1, false, null, false, false, null, null, null),
@@ -288,7 +291,10 @@ internal static class DatabaseWorkspaceChecks
         mysqlWindow.Close();
         mysql.State = mysql.State with { PendingOperationId = Guid.NewGuid(), ProblemCode = "database.recovery_required" };
         Check(mysql.CanRecover && !mysql.CanStop, "MySQL pending operation exposes only recovery");
-        mysql.Invalidate();
+        using var mysqlConnectionObserver = mysqlConnection.ObserveInvalidation(mysql.Invalidate);
+        var mysqlAuth = (TailscaleScopeAuthFixture)(object)mysqlSession;
+        mysqlAuth.ServiceId = "https://replacement.invalid";
+        mysqlAuth.NotifyStateChanged();
         Check(!mysql.CanRecover, "MySQL invalidated session cannot mutate");
         model.Invalidate();Check(!model.CanStart && !model.CanRecover,"session invalidation disables stale window");
         Console.WriteLine("Database previews: "+output);

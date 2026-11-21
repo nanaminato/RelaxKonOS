@@ -1,7 +1,7 @@
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Apps.ComponentCenter;
+using Avalonia.Controls;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Databases;
@@ -65,7 +65,7 @@ public sealed partial class DatabaseViewModel(IServerPostgreSql client) : Observ
     public InstallationTaskViewModel? AdminRecoveryInstallation { get; set; }
     public Func<Task<bool>>? ConfirmAdminRecoveryAsync { get; set; }
     private PostgreSqlInstallationRequest? adminSubmission;
-    public ComponentDependencySettingsViewModel Dependency { get; set; } = null!;
+    public Control? DependencySettings { get; init; }
     public bool CanManage { get; set; }
     public PostgreSqlAccountsViewModel? AccountManager { get; set; }
     public PostgreSqlMaintenanceViewModel? MaintenanceManager { get; set; }
@@ -197,5 +197,5 @@ public sealed partial class DatabaseViewModel(IServerPostgreSql client) : Observ
         finally { Busy = false; }
     }
     public void Invalidate() { MySql?.Invalidate(); invalid = true; lifetime.Cancel(); MaintenanceManager?.Invalidate(); AccountManager?.Invalidate(); RemoteManager?.Invalidate(); Snapshot = null; Notice = LocalizedStatus.Key("database.session_changed"); NotifyState(); }
-    public void Dispose() { Invalidate(); MySql?.Dispose(); lifetime.Dispose(); Installation?.Dispose(); AdminRecoveryInstallation?.Dispose(); Dependency?.Dispose(); MaintenanceManager?.Dispose(); AccountManager?.Dispose(); RemoteManager?.Dispose(); }
+    public void Dispose() { Invalidate(); MySql?.Dispose(); lifetime.Dispose(); Installation?.Dispose(); AdminRecoveryInstallation?.Dispose(); MaintenanceManager?.Dispose(); AccountManager?.Dispose(); RemoteManager?.Dispose(); }
 }

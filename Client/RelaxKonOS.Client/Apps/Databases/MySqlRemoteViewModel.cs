@@ -1,7 +1,6 @@
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Certificates;
@@ -67,7 +66,7 @@ public sealed partial class MySqlViewModel
         Busy = true;
         try
         {
-            if (ConfirmRemoteAsync is null || !await ConfirmRemoteAsync() || invalid || !ReferenceEquals(login, session.CurrentSession)) return;
+            if (ConfirmRemoteAsync is null || !await ConfirmRemoteAsync() || invalid || !connection.IsCurrent) return;
             submission = new(true, MySqlAction.ConfigureRemote, state.Revision, Remote: new(id, policy));
             submissionTask = RemoteInstallation;
             await SendAsync();
