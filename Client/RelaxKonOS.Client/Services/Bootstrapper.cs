@@ -337,6 +337,7 @@ public static class Bootstrapper
         services.AddSingleton(_ => new RelaxKonOS.ManagedRuntimes.Catalog.ComponentCatalogSourceStore(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "component-catalog-sources"), "desktop-user"));
         services.AddSingleton<AppPackageInstallerService>();
+        services.AddSingleton<BundledApplicationProvisioner>();
         services.AddSingleton(_ => new RelaxKonOS.Deployment.FileDeploymentJournal(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "joint-deployment")));
         services.AddSingleton<JointAppDeploymentService>();
@@ -458,6 +459,7 @@ public static class Bootstrapper
 
         // Development packages follow the same runtime registry as built-in applications.
         await provider.GetRequiredService<DeveloperPackageManager>().LoadInstalledAsync();
+        await provider.GetRequiredService<BundledApplicationProvisioner>().RunAsync();
         provider.GetRequiredService<DeveloperBridgeService>();
 
         // Build the desktop / start menu entries.

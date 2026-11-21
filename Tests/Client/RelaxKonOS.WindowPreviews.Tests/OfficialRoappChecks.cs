@@ -49,7 +49,16 @@ internal static class OfficialRoappChecks
 
             var candidate = await installer.InspectLocalAsync(path);
             Check(candidate.IconData is { Length: > 0 } && candidate.ExpectedSha256 is not null, "Review should contain an icon and a frozen digest.");
-            var first = await installer.InstallAsync(candidate);
+            await File.WriteAllTextAsync(Path.Combine(source, "defaults.txt"), applicationId + Environment.NewLine);
+            var provisioner = new BundledApplicationProvisioner(packages, installer, drive);
+            await File.AppendAllTextAsync(path, "corrupted distribution package");
+            await provisioner.RunAsync();
+            Check(packages.FindInstalled(applicationId) is null, "A broken bundled package must not prevent startup or register an app.");
+            File.Copy(artifact, path, overwrite: true);
+            await provisioner.RunAsync();
+            var first = packages.FindInstalled(applicationId) ?? throw new InvalidOperationException("The bundled default did not install.");
+            await provisioner.RunAsync();
+            Check(packages.FindInstalled(applicationId) == first, "Provisioning must not reinstall the same application.");
             var id = new AppId(applicationId);
             Check(applications.SupportsFile(id, samplePath) && !applications.IsBuiltIn(id), "Official app should register only as a package.");
 
@@ -112,6 +121,7 @@ internal static class OfficialRoappChecks
                 && !releaseApplications.IsBuiltIn(id), "Release must rediscover the verified package from VSD.");
             Check(await releaseReader.UninstallAsync(applicationId) && !releaseApplications.IsRegistered(id), "Uninstall must unregister the package.");
             await releaseReader.LoadInstalledAsync();
+            await new BundledApplicationProvisioner(releaseReader, new AppPackageInstallerService(releaseReader, null!, catalog), drive).RunAsync();
             Check(releaseReader.FindInstalled(applicationId) is null, "Restart must preserve the explicit uninstall.");
 
             // Retire the original runtime's loaded adapter before removing its DLLs on Windows.

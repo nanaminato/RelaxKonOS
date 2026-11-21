@@ -26,8 +26,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ImageViewer" AppId="relaxkonos.imageviewer" />
-        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Notepad" AppId="relaxkonos.notepad" />
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ImageViewer" AppId="relaxkonos.imageviewer" DefaultInstall="true" />
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Notepad" AppId="relaxkonos.notepad" DefaultInstall="true" />
     </ItemGroup>
 
     <Target Name="PublishOfficialDesktopApps" AfterTargets="Publish" Condition="'$(IncludeOfficialApps)' != 'false'">
@@ -41,6 +41,10 @@
             <Output TaskParameter="Items" ItemName="OfficialDesktopPackage" />
         </GetFileHash>
         <WriteLinesToFile File="%(OfficialDesktopPackage.Identity).sha256" Lines="%(OfficialDesktopPackage.FileHash)" Overwrite="true" />
+        <ItemGroup>
+            <DefaultDesktopApp Include="@(OfficialDesktopApp->WithMetadataValue('DefaultInstall', 'true'))" />
+        </ItemGroup>
+        <WriteLinesToFile File="$(OfficialAppSource)defaults.txt" Lines="@(DefaultDesktopApp->'%(AppId)')" Overwrite="true" />
     </Target>
 
     <Target Name="ConfigureOfficialDesktopCatalog" AfterTargets="Publish" Condition="'$(OfficialDesktopCatalogUri)' != ''">
