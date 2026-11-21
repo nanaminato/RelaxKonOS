@@ -50,6 +50,7 @@ public interface IExternalAppContext
     IServerGuardian Guardian { get; }
     IServerTunnels Tunnels { get; }
     IServerSquid Squid { get; }
+    IServerProxyServer ProxyServer { get; }
     IServerApplicationDeployments ApplicationDeployments { get; }
     IGuardianHostInteraction? GuardianHost { get; }
     IPortForwardingService? PortForwarding { get; }

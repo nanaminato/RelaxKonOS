@@ -1,3 +1,7 @@
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
+using RelaxKonOS.Core.Applications;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -35,6 +39,44 @@ internal static class ProxyServerTransportChecks
         if (handler.Requests.Count != 3)
             throw new InvalidOperationException("An unsupported action or replaced endpoint reached the transport.");
         Console.WriteLine("Proxy Server typed routes, idempotency, and endpoint binding passed.");
+    }
+
+    public static async Task VerifyScopeAsync()
+    {
+        var id = new AppId("relaxkonos.proxy-server");
+        var permissions = new CertificateCapabilityChecks.Permission(id.Value);
+        var session = DispatchProxy.Create<IAuthSession, ProxyServerScopeAuthFixture>();
+        var auth = (ProxyServerScopeAuthFixture)(object)session;
+        var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "proxy-server-sdk-memory.json"));
+        var transport = DispatchProxy.Create<IServerProxyServer, ProxyServerScopeTransport>();
+        using var lifetime = new CancellationTokenSource();
+        var scoped = new ServerProxyServerCapability(id, permissions, new ExternalServerConnection(memory.Capture(session)),
+            () => transport, lifetime.Token);
+        var credential = Guid.NewGuid();
+
+        permissions.Granted.Add(AppPermissions.ServerProxyRead);
+        await RejectAsync<UnauthorizedAccessException>(() => scoped.ReadAsync(default));
+        permissions.Granted.Add(AppPermissions.ServerProxyServerRead);
+        await scoped.ReadAsync(default);
+        await RejectAsync<UnauthorizedAccessException>(() => scoped.ApplyAsync("key", default));
+        await RejectAsync<UnauthorizedAccessException>(() => scoped.ExportAsync(credential, "uri", default));
+        permissions.Granted.Add(AppPermissions.ServerProxyServerManage);
+        await scoped.ApplyAsync("key", default);
+        await RejectAsync<UnauthorizedAccessException>(() => scoped.ExportAsync(credential, "uri", default));
+        permissions.Granted.Add(AppPermissions.ServerProxyServerExport);
+        permissions.Granted.Remove(AppPermissions.ServerProxyServerManage);
+        await scoped.ExportAsync(credential, "uri", default);
+        auth.Role = DeviceRole.Observer;
+        await RejectAsync<UnauthorizedAccessException>(() => scoped.ExportAsync(credential, "uri", default));
+
+        var pending = scoped.StatusAsync(default);
+        auth.ServiceId = "https://replacement.invalid";
+        auth.NotifyStateChanged();
+        await RejectAsync<OperationCanceledException>(() => pending.WaitAsync(TimeSpan.FromSeconds(5)));
+        await RejectAsync<InvalidOperationException>(() => scoped.ReadAsync(default));
+        lifetime.Cancel();
+        await RejectAsync<OperationCanceledException>(() => scoped.ReadAsync(default));
+        Console.WriteLine("Proxy Server SDK read, management, export, and session scope passed.");
     }
 
     private static async Task RejectAsync<T>(Func<Task> operation) where T : Exception
@@ -76,4 +118,30 @@ public class ProxyServerTransportAuthFixture : DispatchProxy
         "GetAccessTokenAsync" => Task.FromResult("fixture-access"),
         _ => throw new NotSupportedException(method?.Name),
     };
+}
+
+public class ProxyServerScopeAuthFixture : EventAlertsAuthFixture
+{
+    public DeviceRole Role { get; set; } = DeviceRole.Controller;
+
+    protected override object? Invoke(MethodInfo? method, object?[]? args) =>
+        method?.Name == "get_AssignedRole" ? Role : base.Invoke(method, args);
+}
+
+public class ProxyServerScopeTransport : DispatchProxy
+{
+    protected override object Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
+    {
+        nameof(IServerProxyServer.ReadAsync) => Task.FromResult<ProxyServerSnapshot>(null!),
+        nameof(IServerProxyServer.ApplyAsync) => Task.FromResult(new ProxyOperationAcceptedDto(Guid.NewGuid())),
+        nameof(IServerProxyServer.ExportAsync) => Task.FromResult(new ProxyServerExport("uri", "fixture")),
+        nameof(IServerProxyServer.StatusAsync) => WaitForCancellationAsync((CancellationToken)args![0]!),
+        _ => throw new NotSupportedException(method?.Name),
+    };
+
+    private static async Task<ProxyServerStatus> WaitForCancellationAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        throw new InvalidOperationException("The old request must be cancelled.");
+    }
 }

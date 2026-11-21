@@ -40,6 +40,8 @@ public static class AppPermissions
     public const string ServerComponentsRead = "server.components.read";
     public const string ServerComponentsManage = "server.components.manage";
     public const string ServerProxyRead = "server.proxy.read";
+    public const string ServerProxyServerRead = "server.proxy-server.read";
+    public const string ServerProxyServerManage = "server.proxy-server.manage";
     public const string ServerProxyServerExport = "server.proxy-server.export";
     public const string ServerProxyManage = "server.proxy.manage";
     public const string ServerProxyProfileRead = "server.proxy.profile.read";
@@ -95,6 +97,8 @@ public static class AppPermissions
         new(ServerComponentsRead, "Read host components", "View component installation state, approved versions and operation records.", "server_management"),
         new(ServerComponentsManage, "Manage host components", "Plan and submit authorized component installations and recovery actions.", "server_management"),
         new(ServerProxyRead, "Read proxy status", "View safe proxy runtime, health, and sanitized diagnostics.", "server_network"),
+        new(ServerProxyServerRead, "Read Proxy Server configuration", "View sing-box gateway configuration, status, and credential metadata.", "server_network"),
+        new(ServerProxyServerManage, "Manage Proxy Server", "Manage the sing-box gateway, principals, credentials, and service lifecycle.", "server_network"),
         new(ServerProxyServerExport, "Export proxy credentials", "Reveal proxy server connection credentials and client configurations.", "server_network"),
         new(ServerProxyManage, "Manage proxy", "Manage proxy lifecycle and safe engine configuration.", "server_network"),
         new(ServerProxyProfileRead, "Read proxy profiles", "View proxy profile metadata without configuration content.", "server_network"),

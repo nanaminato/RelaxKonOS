@@ -17,7 +17,7 @@ namespace RelaxKonOS.Client.Apps.ProxyServer;
 public sealed class ProxyServerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.proxy-server"), "Proxy Server", "1.0.0", "⇄", "sing-box proxy server",
-        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyServerExport,
+        [AppPermissions.ServerProxyServerRead, AppPermissions.ServerProxyServerManage, AppPermissions.ServerProxyServerExport,
             AppPermissions.ServerComponentsRead],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.ProxyServer]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow,
@@ -63,7 +63,7 @@ public sealed class ProxyServerApp : RemoteApplicationBase
         _ = InitializeAsync();
         async Task InitializeAsync()
         {
-            var read = await PermissionAsync(AppPermissions.ServerProxyRead);
+            var read = await PermissionAsync(AppPermissions.ServerProxyServerRead);
             vm.CanRead = read;
             if (!read) return;
             await vm.RefreshCommand.ExecuteAsync(null);
@@ -71,7 +71,7 @@ public sealed class ProxyServerApp : RemoteApplicationBase
             if (vm.Snapshot?.Capabilities.Supported != true) return;
             var controller = session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller;
             if (!controller || !ReferenceEquals(login, session.CurrentSession)) return;
-            vm.CanManage = await PermissionAsync(AppPermissions.ServerProxyManage);
+            vm.CanManage = await PermissionAsync(AppPermissions.ServerProxyServerManage);
             vm.CanExport = await PermissionAsync(AppPermissions.ServerProxyServerExport);
             if (vm.SelectedCredential is null && vm.Credentials.Count > 0) vm.SelectedCredential = vm.Credentials[0];
         }
