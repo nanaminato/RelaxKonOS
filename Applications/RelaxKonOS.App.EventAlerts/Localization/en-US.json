@@ -1,0 +1,9 @@
+{
+  "title": "Event & Alert Center",
+  "refresh": "Refresh",
+  "grant": "Request access",
+  "summary": "Open: {0}    Acknowledged: {1}    Critical: {2}",
+  "denied": "Allow this app to read operational alerts.",
+  "empty": "No alerts match the current view.",
+  "unavailable": "Alert data is unavailable. Sign in to a server and try again."
+}

@@ -30,7 +30,8 @@ internal static class OfficialRoappChecks
     {
         var applicationId = Path.GetFileNameWithoutExtension(artifact);
         var isNotepad = applicationId == "relaxkonos.notepad";
-        var opensFiles = applicationId != "relaxkonos.welcome";
+        var isEventAlerts = applicationId == "relaxkonos.event-alerts";
+        var opensFiles = applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
         var samplePath = isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
         var root = Path.Combine(parent, "official-apps-" + Guid.NewGuid().ToString("N"));
@@ -51,7 +52,11 @@ internal static class OfficialRoappChecks
                 await RejectAsync(() => packages.InstallAsync(unsigned, launch: false), "Reserved ID via the generic install path");
 
             var candidate = await installer.InspectLocalAsync(path);
-            Check(candidate.IconData is { Length: > 0 } && candidate.ExpectedSha256 is not null, "Review should contain an icon and a frozen digest.");
+            Check((isEventAlerts || candidate.IconData is { Length: > 0 }) && candidate.ExpectedSha256 is not null,
+                "Review should freeze the digest and load any packaged icon.");
+            if (isEventAlerts)
+                Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerEventAlertsRead],
+                    "The official alert package must request only permission to read alerts.");
             var entry = new[] { new { appId = applicationId, minimumVersion = "1.0.0" } };
             await File.WriteAllTextAsync(Path.Combine(source, "installation-profiles.json"),
                 System.Text.Json.JsonSerializer.Serialize(new

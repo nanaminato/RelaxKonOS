@@ -4,11 +4,13 @@
   "profiles": {
     "minimal": [],
     "standard": [
+      { "appId": "relaxkonos.event-alerts", "minimumVersion": "1.0.0" },
       { "appId": "relaxkonos.imageviewer", "minimumVersion": "1.0.0" },
       { "appId": "relaxkonos.notepad", "minimumVersion": "1.0.0" },
       { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0" }
     ],
     "developer": [
+      { "appId": "relaxkonos.event-alerts", "minimumVersion": "1.0.0" },
       { "appId": "relaxkonos.imageviewer", "minimumVersion": "1.0.0" },
       { "appId": "relaxkonos.notepad", "minimumVersion": "1.0.0" },
       { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0" }

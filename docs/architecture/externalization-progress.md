@@ -25,7 +25,7 @@
 | browser | Browser | 否 / 否 | 是 | 本地 WebView 与浏览器宿主服务 | 基础 | 待验 |
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | 待验 |
 | registry | Registry | 否 / 否 | 是 | Registry API | 基础 | 待验 |
-| event-alerts | EventAlerts | 否 / 否 | 是 | 可观测事件 API | 基础 | 待验 |
+| event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期已验，真实服务端告警读取待验 |
 | codeeditor | CodeEditor | 否 / 否 | 是 | 远程文件与编辑器 API | 可选 | 待验 |
 | docker | Docker | 否 / 否 | 是 | Docker 模块；组件中心管理 Engine | 可选 | 待验 |
 | processguardian | ProcessGuardian | 否 / 否 | 是 | Guardian API 与独立 Agent | 可选 | 待验 |
@@ -44,7 +44,7 @@
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前第三个独立包 Welcome 已从桌面宿主移出。桌面发行构建将 Welcome、Notepad 和 Image Viewer 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装这三个应用，Minimal 跳过预装并保留应用安装器入口，Developer 暂与 Standard 同集，等开发者应用外置后扩充。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。包含服务端要求或必需依赖的包须经交互部署。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前 Welcome 和 Event & Alert Center 已迁出桌面宿主。桌面发行构建将 Welcome、Notepad、Image Viewer 和 Event & Alert Center 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装这四个应用，Minimal 跳过预装并保留应用安装器入口，Developer 暂与 Standard 同集，等开发者应用外置后扩充。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。包含服务端要求或必需依赖的包须经交互部署。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 ## 复用边界
 
@@ -77,4 +77,5 @@
 - 服务端替换或回退模块活动版本时，从依赖方的已安装清单校验版本约束。Windows HTTP 签名包回归证实排他上界阻止升级并保留原版本，包完整性与热替换回归通过。手动回退会重新检查归档版本的前置依赖。缺少依赖时保留当前版本，自动启动恢复会隔离失败更新并留下回执，避免激活不兼容的旧包。两条路径均通过 Windows 测试。
 - Windows 模块包回归验证了随宿主编译的 Git 模块也受依赖版本区间约束，兼容区间通过，要求更高版本的包被拒绝。
 - Windows Release 使用实际 Welcome .roapp 验证配置集通过统一部署协调器离线预装并写入部署回执。回归覆盖 Standard 默认选择、Minimal、排除应用、避免重复安装、保留卸载决定，以及暂缓带服务端要求的包。
+- Windows Release 使用 DevCli 打包 Event & Alert Center，验证可信来源、只读权限声明、安装与登记、更新失败保留活动版本、重启发现及卸载。真实服务端告警读取和 Linux 桌面验证待完成。
 - 独立部署设备和 Linux 双包验收、Android 和全应用三语言界面验收均待执行。

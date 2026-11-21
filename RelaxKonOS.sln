@@ -88,6 +88,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.Deployment.Tests
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.Welcome", "Applications\RelaxKonOS.App.Welcome\RelaxKonOS.App.Welcome.csproj", "{EDBDF72E-774F-4C42-993E-20316DF07257}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.EventAlerts", "Applications\RelaxKonOS.App.EventAlerts\RelaxKonOS.App.EventAlerts.csproj", "{63644019-AF28-4235-B77A-B6FDF4309CE1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -578,6 +580,18 @@ Global
 		{EDBDF72E-774F-4C42-993E-20316DF07257}.Release|x64.Build.0 = Release|Any CPU
 		{EDBDF72E-774F-4C42-993E-20316DF07257}.Release|x86.ActiveCfg = Release|Any CPU
 		{EDBDF72E-774F-4C42-993E-20316DF07257}.Release|x86.Build.0 = Release|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Debug|x64.Build.0 = Debug|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Debug|x86.Build.0 = Debug|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Release|x64.ActiveCfg = Release|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Release|x64.Build.0 = Release|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Release|x86.ActiveCfg = Release|Any CPU
+		{63644019-AF28-4235-B77A-B6FDF4309CE1}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -608,5 +622,6 @@ Global
 		{B0ED70FB-8D17-4405-A991-486E69120C98} = {4F52FD11-658E-A102-6CD3-7D7C16FFA15B}
 		{D321F6E5-6ADC-4007-AC41-2DA115624535} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{EDBDF72E-774F-4C42-993E-20316DF07257} = {A10A91C2-6485-6656-963B-F6FCBC812542}
+		{63644019-AF28-4235-B77A-B6FDF4309CE1} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 	EndGlobalSection
 EndGlobal

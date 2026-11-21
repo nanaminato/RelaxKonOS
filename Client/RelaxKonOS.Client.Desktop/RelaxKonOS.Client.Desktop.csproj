@@ -26,6 +26,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.EventAlerts" AppId="relaxkonos.event-alerts" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ImageViewer" AppId="relaxkonos.imageviewer" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Notepad" AppId="relaxkonos.notepad" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Welcome" AppId="relaxkonos.welcome" />

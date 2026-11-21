@@ -1,0 +1,16 @@
+{
+  "id": "relaxkonos.event-alerts",
+  "displayName": "Event & Alert Center",
+  "description": "View operational alerts on the connected server",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.EventAlerts.dll",
+  "entryType": "RelaxKonOS.App.EventAlerts.EventAlertCenterApp",
+  "iconGlyph": "⚠",
+  "instancePolicy": "singleWindow",
+  "requestedPermissions": ["server.event-alerts.read"],
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "事件与告警中心", "description": "查看所连接服务器的运维告警" },
+    "ja-JP": { "displayName": "イベントとアラート センター", "description": "接続中のサーバーの運用アラートを表示" }
+  }
+}

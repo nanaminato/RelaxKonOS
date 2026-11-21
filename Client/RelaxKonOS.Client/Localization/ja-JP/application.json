@@ -47,11 +47,6 @@
         "application.relaxkonos.squid.display_name": "Squid ゲートウェイ",
         "application.relaxkonos.squid.description": "Linux サーバーの HTTP/CONNECT ゲートウェイを管理します。リストは 1 行 1 項目です。HTTPS は復号しません。",
         "application.relaxkonos.application-deployments.display_name": "アプリケーション配置",
-        "application.relaxkonos.application-deployments.description": "RelaxKonOS Server 上でコンテナ化アプリケーションを配置・管理します",
-        "application.relaxkonos.event-alerts.display_name": "イベントとアラート センター",
-        "application.relaxkonos.event-alerts.description": "RelaxKonOS Server の安全な運用イベントと現在のアラートを参照します",
-        "event_alerts.sign_in": "運用アラートを表示するにはサインインしてください。",
-        "event_alerts.empty": "現在の表示に一致するアラートはありません。",
-        "event_alerts.load_failed": "アラート データは現在利用できません。しばらくしてから再試行してください。"
+        "application.relaxkonos.application-deployments.description": "RelaxKonOS Server 上でコンテナ化アプリケーションを配置・管理します"
     }
 }

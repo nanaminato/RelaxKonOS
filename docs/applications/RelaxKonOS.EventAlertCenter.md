@@ -16,7 +16,7 @@
 -  基础受控动作：确认、允许类型的人工关闭、期限抑制和解除抑制；说明限制为 1–512 字符并在持久化前净化。
 - 审计失败关闭：详情读取及所有处理动作均先写 Security Audit；审计不可写时不执行处理动作。
 - 实时失效通知：独立、授权的 SignalR hub 只传递 alert ID、版本、状态、严重性和次数；客户端必须重新读取 REST 数据。
-- 最小读取体验：注册只声明读取权限的 `relaxkonos.event-alerts` 内置应用，读/管权限定义、三语文案和摘要/告警列表刷新界面；摘要现已跟随语言切换，列表复用共享视觉角色。
+- 最小读取体验：官方 `relaxkonos.event-alerts.roapp` 只声明读取权限。应用使用 SDK 读取摘要与告警列表，提供三语界面和手动刷新。Standard 和 Developer 随发行包提供该应用。
 - 新应用权限及 Server `EventsRead`、`EventsManage`、`EventsCriticalSuppress` policy 已接入。
 - 部署失败最小接入：`ApplicationDeploymentCoordinator` 在其 terminal ledger 已持久化后发布失败或成功恢复信号；中心失败不会回滚部署。
 - Compose 操作最小接入：`DockerStackOperationCoordinator` 在持久终态写入后按项目稳定身份发布失败、部分失败及经观察的成功恢复；取消和中断不发布恢复，幂等重放不产生第二事件。
@@ -218,7 +218,7 @@ Guardian 自身崩溃/管道断开由 Server 的 `GuardianAvailabilityMonitor` �
 
 ## 11. 桌面体验与跳转
 
-新内置应用 ID 为 `relaxkonos.event-alerts`，单窗口、最小权限声明为读权限；只有用户请求处理动作时再走现有应用权限流程。应用包含：
+独立桌面应用 ID 为 `relaxkonos.event-alerts`，单窗口、最小权限声明为读权限；只有用户请求处理动作时再走现有应用权限流程。应用包含：
 
 - 顶部概览：打开、已确认、Critical 计数与最后刷新时间；不是“系统健康百分比”。
 - 告警列表：严重性、来源、稳定摘要、持续时间、次数、状态和确认人安全显示名（无权限时不显示）。默认把 Open Critical/Error 放在前面；筛选与排序全部由 Server 支持。

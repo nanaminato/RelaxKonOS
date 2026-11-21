@@ -47,11 +47,6 @@
         "application.relaxkonos.squid.display_name": "Squid Gateway",
         "application.relaxkonos.squid.description": "Manage the Linux server HTTP/CONNECT gateway. Lists accept one entry per line. HTTPS is tunneled without decryption.",
         "application.relaxkonos.application-deployments.display_name": "Application Deployments",
-        "application.relaxkonos.application-deployments.description": "Deploy and manage containerized applications on the RelaxKonOS Server",
-        "application.relaxkonos.event-alerts.display_name": "Event & Alert Center",
-        "application.relaxkonos.event-alerts.description": "Browse safe operational events and current alerts on the RelaxKonOS Server",
-        "event_alerts.sign_in": "Sign in to view operational alerts.",
-        "event_alerts.empty": "No alerts match the current view.",
-        "event_alerts.load_failed": "Alert data is currently unavailable. Try again shortly."
+        "application.relaxkonos.application-deployments.description": "Deploy and manage containerized applications on the RelaxKonOS Server"
     }
 }

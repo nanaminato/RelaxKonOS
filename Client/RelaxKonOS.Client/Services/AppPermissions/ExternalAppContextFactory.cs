@@ -34,6 +34,7 @@ public sealed class ExternalAppContextFactory
     private readonly DefaultAppRegistry _defaultApps;
     private readonly IWindowManager _windowManager;
     private readonly ITaskManagerClient _systemMonitor;
+    private readonly IRemoteEventAlertClient _alerts;
     private readonly IExplorerClient _files;
     private readonly SshDesktopSession _sshSession;
     private readonly SshExplorerClient _sshFiles;
@@ -62,7 +63,8 @@ public sealed class ExternalAppContextFactory
         IAppSettingsClient appSettings,
         IAppActivationService activations,
         UsageMemoryStore usageMemory,
-        TextEditorEncodingSettings textEncoding)
+        TextEditorEncodingSettings textEncoding,
+        IRemoteEventAlertClient alerts)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -73,6 +75,7 @@ public sealed class ExternalAppContextFactory
         _defaultApps = defaultApps;
         _windowManager = windowManager;
         _systemMonitor = systemMonitor;
+        _alerts = alerts;
         _files = files;
         _sshSession = sshSession;
         _sshFiles = sshFiles;
@@ -95,6 +98,7 @@ public sealed class ExternalAppContextFactory
         new AppPermissionScope(appId, _permissionRequests),
         new DesktopAppearanceCapability(appId, _permissions, _settings, _settingsClient, _session, _defaultApps),
         new ServerMonitorCapability(appId, _permissions, _systemMonitor),
+        new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         new ServerFilesCapability(appId, _permissions,
             sshEndpoint is null ? _files.DownloadAsync : (path, ct) => _sshFiles.DownloadAsync(path, sshEndpoint, ct),
             sshEndpoint is not null, openedFile, _files, fileSession, _windowManager),
@@ -113,6 +117,7 @@ public sealed class ExternalAppContextFactory
         IAppPermissionScope Permissions,
         IDesktopAppearance DesktopAppearance,
         IServerMonitor ServerMonitor,
+        IServerAlerts ServerAlerts,
         IServerFiles ServerFiles,
         IExternalTextEditorPreferences? TextEditorPreferences,
         IExternalFileApiAccess FileApi,
@@ -122,6 +127,44 @@ public sealed class ExternalAppContextFactory
         IAppActivation Activations,
         ISettingsNavigation Settings,
         IExternalAppWindowService Windows) : IExternalAppContext;
+
+    private sealed class ServerAlertsCapability(AppId appId, IAppPermissionManager permissions,
+        IAuthSession session, UsageMemoryScope connection, IRemoteEventAlertClient alerts) : IServerAlerts
+    {
+        public async Task<ServerAlertsResult> ReadAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!permissions.IsGranted(appId, CoreAppPermissions.ServerEventAlertsRead))
+                return new(AppCapabilityResult.PermissionDenied);
+            if (!IsConnected())
+                return new(AppCapabilityResult.Unavailable);
+
+            try
+            {
+                var summary = await alerts.SummaryAsync(cancellationToken);
+                if (!IsConnected())
+                    return new(AppCapabilityResult.Unavailable);
+                if (!permissions.IsGranted(appId, CoreAppPermissions.ServerEventAlertsRead))
+                    return new(AppCapabilityResult.PermissionDenied);
+                var page = await alerts.ListAlertsAsync(cancellationToken);
+                if (!IsConnected())
+                    return new(AppCapabilityResult.Unavailable);
+                if (!permissions.IsGranted(appId, CoreAppPermissions.ServerEventAlertsRead))
+                    return new(AppCapabilityResult.PermissionDenied);
+                return new(AppCapabilityResult.Succeeded,
+                    new(summary.OpenCount, summary.AcknowledgedCount, summary.UnacknowledgedCriticalCount,
+                        page.Items.Select(alert => new ServerAlert(alert.Severity.ToString(), alert.Type, alert.ProblemCode,
+                            alert.Status.ToString(), alert.OccurrenceCount)).ToArray()));
+            }
+            catch (Exception error) when (!cancellationToken.IsCancellationRequested
+                && error is HttpRequestException or InvalidOperationException or System.Text.Json.JsonException or OperationCanceledException)
+            {
+                return new(AppCapabilityResult.Unavailable);
+            }
+        }
+
+        private bool IsConnected() => connection.IsCurrent && session.State == AuthSessionState.Authenticated;
+    }
 
     private sealed class NotepadEncodingPreferences(TextEditorEncodingSettings settings, UsageMemoryScope session) : IExternalTextEditorPreferences
     {

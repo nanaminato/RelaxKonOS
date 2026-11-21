@@ -4,7 +4,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.EventAlerts;
 
-namespace RelaxKonOS.Client.Apps.EventAlerts;
+namespace RelaxKonOS.Client.Services.AppPermissions;
 
 public interface IRemoteEventAlertClient
 {
