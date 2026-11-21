@@ -134,6 +134,7 @@ public class TailscaleScopeTransport : DispatchProxy
 
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
+        "add_SessionChanged" or "remove_SessionChanged" => null,
         nameof(IServerTailscale.GetStatusAsync) => Task.FromResult(new TailscaleStatusDto("observed",
             TailnetName: "tailnet-fixture", Account: new("account", "Account"))),
         nameof(IServerTailscale.GetControlAsync) when RequireGrant => Task.FromException<TailscaleControlSnapshot>(

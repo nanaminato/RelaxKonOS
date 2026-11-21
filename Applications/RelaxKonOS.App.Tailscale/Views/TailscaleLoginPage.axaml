@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:loc="clr-namespace:RelaxKonOS.App.Tailscale.Views;assembly=RelaxKonOS.App.Tailscale" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tailscale"
- x:Class="RelaxKonOS.Client.Apps.Tailscale.Views.TailscaleLoginPage" x:DataType="vm:TailscaleLoginViewModel">
+ xmlns:loc="clr-namespace:RelaxKonOS.App.Tailscale.Views" xmlns:vm="clr-namespace:RelaxKonOS.App.Tailscale"
+ x:Class="RelaxKonOS.App.Tailscale.Views.TailscaleLoginPage" x:DataType="vm:TailscaleLoginViewModel">
  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
   <StackPanel Spacing="16">
    <Border Classes="app-panel" Padding="20">

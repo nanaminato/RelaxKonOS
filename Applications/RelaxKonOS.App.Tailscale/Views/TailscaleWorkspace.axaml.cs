@@ -1,9 +1,8 @@
-using RelaxKonOS.App.Tailscale.Views;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.Tailscale.Views;
+namespace RelaxKonOS.App.Tailscale.Views;
 
 /// <summary>Tailscale workspace shell. Page switching and lifecycle live here, not in AXAML.</summary>
 public partial class TailscaleWorkspace : UserControl

@@ -50,7 +50,8 @@ internal static class OfficialRoappChecks
         var isSquid = applicationId == "relaxkonos.squid";
         var isProxyManager = applicationId == "relaxkonos.proxy";
         var isProxyServer = applicationId == "relaxkonos.proxy-server";
-        var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer || isProxyManager;
+        var isTailscale = applicationId == "relaxkonos.tailscale";
+        var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer || isProxyManager || isTailscale;
         var isGuardian = applicationId == "relaxkonos.processguardian";
         var isPortForwarding = applicationId == "relaxkonos.port-forwarding";
         var isApplicationDeployments = applicationId == "relaxkonos.application-deployments";
@@ -310,6 +311,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.port-forwarding" => "RelaxKonOS.App.PortForwarding.Views.PortForwardingMainView",
                     "relaxkonos.processguardian" => typeof(DockPanel).FullName,
                     "relaxkonos.tunnels" => "RelaxKonOS.App.Tunnels.Views.TunnelManagerView",
+                    "relaxkonos.tailscale" => "RelaxKonOS.App.Tailscale.Views.TailscaleWorkspace",
                     "relaxkonos.squid" => "RelaxKonOS.App.Squid.Views.SquidWorkspace",
                     "relaxkonos.proxy-server" => "RelaxKonOS.App.ProxyServer.Views.ProxyServerWorkspace",
                     "relaxkonos.proxy" => "RelaxKonOS.App.ProxyManager.Views.ProxyManagerWorkspace",
@@ -502,7 +504,7 @@ internal static class OfficialRoappChecks
             var windows = new WindowManager();
             var apps = new ApplicationManager(windows, services);
             var permissions = new RoappCatalogChecks.Permissions();
-            var auth = isProxyServer || isProxyManager
+            var auth = isTailscale ? DispatchProxy.Create<IAuthSession, TailscaleScopeAuthFixture>() : isProxyServer || isProxyManager
                 ? DispatchProxy.Create<IAuthSession, ProxyServerScopeAuthFixture>()
                 : DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
             if (isTerminal)
@@ -541,8 +543,10 @@ internal static class OfficialRoappChecks
             var proxyServer = isProxyServer ? DispatchProxy.Create<IServerProxyServer, ProxyServerScopeTransport>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerProxyRead);
             var proxyManager = isProxyManager ? new ProxyWorkspaceChecks.ProxyRepositoryFixture() : null;
+            appPermissions.Granted.Add(AppPermissions.ServerTailscaleRead);
+            var tailscale = isTailscale ? DispatchProxy.Create<IServerTailscale, TailscaleScopeTransport>() : null;
             var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices || isFirewall
-                || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels || isSquid || isProxyServer || isProxyManager;
+                || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels || isSquid || isProxyServer || isProxyManager || isTailscale;
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
@@ -550,7 +554,7 @@ internal static class OfficialRoappChecks
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
                 fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding, applicationDeployments: deployments, tunnels: tunnels, createSquidClient: squid is null ? null : () => squid,
                 createProxyServerClient: proxyServer is null ? null : () => proxyServer,
-                createProxyClient: proxyManager is null ? null : () => proxyManager);
+                createProxyClient: proxyManager is null ? null : () => proxyManager, tailscale: tailscale);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 

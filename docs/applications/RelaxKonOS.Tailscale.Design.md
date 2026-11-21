@@ -1,5 +1,7 @@
 # Tailscale 管理器
 
+桌面工作区由可选官方包 `relaxkonos.tailscale` 提供，包清单要求同 ID 的服务端模块。工作区通过应用 SDK 读取状态、执行控制、处理登录并保存操作引用。Windows Release 已验证官方包生命周期和 SDK 授权。真实设备验收另行记录。
+
 ## TS-01：对象代次与持久操作边界（2026-11-05）
 
 状态、控制与首次登录三个 Host 代理共用同一 Tailscale 对象 runtime；代理覆盖真实方法/IPC Task 完成，排空前不释放该代图。控制 Applying 与登录 Applying/ClosingRequest 已耐久提交后，原 Helper 调用独立于 HTTP 取消并等待实际调用结束；不另建后台 actor，也不让浏览器交接或模块休眠重放原生命令。

@@ -13,7 +13,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client.Apps.Tailscale;
-using RelaxKonOS.Client.Apps.Tailscale.Views;
+
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.HostSettings;
@@ -46,16 +46,17 @@ var emptyEditor = new TailscalePreferencesEditor(emptyPreferences, [], "linux", 
 Check(emptyEditor.NoCandidates && !emptyEditor.PeersRestricted, "authorized empty exit-node list is not a permission failure");
 var restrictedEditor = new TailscalePreferencesEditor(emptyPreferences, [], "linux", true, text);
 Check(!restrictedEditor.NoCandidates && restrictedEditor.PeersRestricted, "restricted exit-node list has a distinct explanation");
-Check(new TailscaleApp().Manifest.IconPath?.EndsWith("/tailscale.png") == true, "Tailscale uses a packaged application icon");
+Check(new TailscalePackageApp().Manifest.IconPath?.EndsWith("/tailscale.png") == true, "Tailscale uses a packaged application icon");
 
 var folder = Directory.CreateTempSubdirectory("relaxkonos-tailscale-client-");
 try
 {
-    Check(new TailscaleApp().Manifest.Permissions.Contains(RelaxKonOS.Core.Applications.AppPermissions.ServerComponentsRead), "launch dependency inspection permission is declared");
+    Check(new TailscalePackageApp().Manifest.Permissions.Contains(RelaxKonOS.Core.Applications.AppPermissions.ServerComponentsRead), "launch dependency inspection permission is declared");
     var client = new FakeClient();
     var broker = new Broker();
     var store = new TailscaleOperationReferences(Path.Combine(folder.FullName, "refs.json"));
-    var model = new TailscaleViewModel(client, store, broker, language, text.Get);
+    client.Broker = broker;
+    var model = new TailscaleViewModel(client, store, language, text.Get);
     await model.ActivateAsync();
     Check(model.Peers.Count == 1 && !model.CanConnect && client.ControlReads == 0 && broker.Calls == 0, "launch only observes status");
     await model.LoadControlAsync();
@@ -133,7 +134,7 @@ try
     await model.ReopenAsync();
     Check(client.Executions == executed && model.OperationText == text.Get("tailscale.operation_state.Applied", ""), "reopen reads original evidence only");
     model.Deactivate();
-    var reopened = new TailscaleViewModel(client, new TailscaleOperationReferences(Path.Combine(folder.FullName, "refs.json")), broker, language, text.Get);
+    var reopened = new TailscaleViewModel(client, new TailscaleOperationReferences(Path.Combine(folder.FullName, "refs.json")), language, text.Get);
     await reopened.ActivateAsync();
     Check(reopened.Operations.Count > 0 && reopened.OperationText == text.Get("tailscale.operation_empty", ""), "new window loads references without cached outcome");
     await reopened.ReopenAsync();
@@ -159,7 +160,7 @@ try
         && reopened.Operations.Count == 0, "late response cannot update new host");
     reopened.Deactivate();
     // A persistence failure must stop the mutation before it is submitted.
-    var blocked = new TailscaleViewModel(client, new BrokenReferences(), broker, language, text.Get) { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
+    var blocked = new TailscaleViewModel(client, new BrokenReferences(), language, text.Get) { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
     await blocked.ActivateAsync(); await blocked.LoadControlAsync(); await blocked.ConnectAsync();
     Check(client.Executions == executed && blocked.StatusText == text.Get("tailscale.operation_reference_failed", ""), "unpersisted reference blocks execute");
     blocked.Deactivate();
@@ -174,7 +175,7 @@ try
     Check(model.OperationText == text.Get("tailscale.operation_empty", "") && !model.IsBusy, "closed window response discarded");
     model.Deactivate();
     var recoveryClient = new FakeClient { UnknownResult = true };
-    var recoveryModel = new TailscaleViewModel(recoveryClient, new TailscaleOperationReferences(Path.Combine(folder.FullName,"recovery.json")),broker,language, text.Get)
+    var recoveryModel = new TailscaleViewModel(recoveryClient, new TailscaleOperationReferences(Path.Combine(folder.FullName,"recovery.json")), language, text.Get)
         { ConfirmAsync = (_,_,_) => Task.FromResult(true) };
     await recoveryModel.ActivateAsync(); await recoveryModel.LoadControlAsync(); await recoveryModel.ConnectAsync();
     Check(recoveryModel.CanInspectRecovery && !recoveryModel.CanCloseRecovery,"unknown receipt enables inspection only");
@@ -217,8 +218,7 @@ try
     // Logout is an explicit, journaled action; the host becomes signed out and must log in again.
     var logoutClient = new FakeClient();
     var logoutBroker = new Broker();
-    var logoutModel = new TailscaleViewModel(logoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "logout.json")),
-        logoutBroker, language, text.Get) { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
+    var logoutModel = new TailscaleViewModel(logoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "logout.json")), language, text.Get) { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
     await logoutModel.ActivateAsync(); await logoutModel.LoadControlAsync();
     Check(logoutModel.CanLogout && logoutModel.ConnectionStateText == text.Get("tailscale.disconnected", ""), "signed-in host offers logout");
     await logoutModel.LogoutAsync();
@@ -231,7 +231,7 @@ try
     // and never asks for a mutation grant just to observe.
     var probeClient = new FakeClient();
     var probeBroker = new Broker();
-    var probe = new TailscaleViewModel(probeClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "probe.json")), probeBroker, language, text.Get);
+    var probe = new TailscaleViewModel(probeClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "probe.json")), language, text.Get);
     await probe.ActivateAsync();
     probe.SetVisiblePage("control");
     await probe.EnsureControlAsync();
@@ -244,7 +244,7 @@ try
     Check(probe.StatusText == text.Get("tailscale.state.observed", ""), "recovered background refresh clears the failure");
     probe.Deactivate();
     var unreachable = new TailscaleViewModel(new FakeClient { ControlError = true },
-        new TailscaleOperationReferences(Path.Combine(folder.FullName, "unreachable.json")), new Broker(), language, text.Get);
+        new TailscaleOperationReferences(Path.Combine(folder.FullName, "unreachable.json")), language, text.Get);
     await unreachable.ActivateAsync();
     await unreachable.EnsureControlAsync();
     Check(!unreachable.HasControl && unreachable.ControlUnavailable && unreachable.HasControlProblem, "unreachable control read is reported instead of prompting");
@@ -254,7 +254,8 @@ try
     // Device identities stay grant-gated, but the page grants itself only after an explicit action.
     var peersClient = new FakeClient { Restricted = true };
     var peersBroker = new Broker();
-    var peers = new TailscaleViewModel(peersClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "peers.json")), peersBroker, language, text.Get);
+    peersClient.Broker = peersBroker;
+    var peers = new TailscaleViewModel(peersClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "peers.json")), language, text.Get);
     await peers.ActivateAsync();
     Check(peers.PeersRestricted && peers.CanAuthorizePeers, "restricted device list offers explicit authorization");
     peersClient.Restricted = false;
@@ -280,8 +281,8 @@ try
         Check(language.Get("application.relaxkonos.tailscale.display_name", "") == (culture switch { "zh-CN" => "Tailscale 管理器", "ja-JP" => "Tailscale マネージャー", _ => "Tailscale Manager" }), "localized launch guard application name");
         settings.Appearance = settings.Appearance with { Mode = RelaxKonOS.Protocol.Desktop.ThemeKind.Light }; Dispatcher.UIThread.RunJobs();
         var layoutClient = new FakeClient();
-        var layout = new TailscaleViewModel(layoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "layout.json")), broker, language, text.Get);
-        var loginLayout = new TailscaleLoginViewModel(new LoginFake { Connection = layoutClient.Connection }, new TailscaleOperationReferences(Path.Combine(folder.FullName, "login-layout.json")), broker, language, text.Get)
+        var layout = new TailscaleViewModel(layoutClient, new TailscaleOperationReferences(Path.Combine(folder.FullName, "layout.json")), language, text.Get);
+        var loginLayout = new TailscaleLoginViewModel(new LoginFake { Connection = layoutClient.Connection }, new TailscaleOperationReferences(Path.Combine(folder.FullName, "login-layout.json")), language, text.Get)
             { AccountLineProvider = () => layout.AccountLine };
         var workspace = new TailscaleWorkspace(layout, loginLayout);
         var window = new Window { Content = workspace, Width = 980, Height = 640 }; window.Show(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
@@ -371,8 +372,16 @@ sealed class BrokenReferences : ITailscaleOperationReferences
     public IReadOnlyList<Guid> Read(HostSettingsConnection connection) => [];
     public void Remember(HostSettingsConnection connection, Guid operationId) => throw new IOException("private local path");
 }
-sealed class FakeClient : IServerTailscale
+sealed class FakeClient : RelaxKonOS.AppSDK.IExternalTailscale
 {
+    internal Broker Broker { get; set; } = new();
+    public RelaxKonOS.AppSDK.ITailscaleOperationReferences OperationReferences => throw new NotSupportedException();
+    public RelaxKonOS.AppSDK.ITailscaleOperationReferences LoginReferences => throw new NotSupportedException();
+    public Task<bool> RequestPeerAccessAsync(HostSettingsConnection connection, CancellationToken ct) =>
+        Broker.RequestGrantAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, ct);
+    public Task<TailscaleControlSnapshot> ReadAuthorizedControlAsync(HostSettingsConnection connection, CancellationToken ct) =>
+        Broker.ExecuteAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, () => GetControlAsync(connection, ct), ct);
+
     public event EventHandler? SessionChanged;
     public HostSettingsConnection Connection = new("test-host", Guid.NewGuid(), Guid.NewGuid());
     public TailscaleControlSnapshot Control = new(new('A',64), false, true, new(true,false),true,

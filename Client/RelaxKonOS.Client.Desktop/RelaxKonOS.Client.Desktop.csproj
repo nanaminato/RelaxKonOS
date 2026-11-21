@@ -39,6 +39,7 @@
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.PortForwarding" AppId="relaxkonos.port-forwarding" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ProcessGuardian" AppId="relaxkonos.processguardian" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ProxyManager" AppId="relaxkonos.proxy" />
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Tailscale" AppId="relaxkonos.tailscale" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ProxyServer" AppId="relaxkonos.proxy-server" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Tunnels" AppId="relaxkonos.tunnels" />
         <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Registry" AppId="relaxkonos.registry" />

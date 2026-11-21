@@ -1,17 +1,12 @@
-using RelaxKonOS.App.Tailscale;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Services.Auth;
-using RelaxKonOS.Client.Services.HostSettings;
-using RelaxKonOS.Client.Services.Privileged;
-using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
 
-namespace RelaxKonOS.Client.Apps.Tailscale;
+namespace RelaxKonOS.App.Tailscale;
 
 /// <summary>
 /// Live view of one host's Tailscale daemon. The read-only snapshot is loaded automatically when
@@ -26,9 +21,8 @@ public sealed partial class TailscaleViewModel : ObservableObject
     private static readonly TimeSpan ControlRefreshInterval = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ControlFreshness = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan OperationFreshness = TimeSpan.FromSeconds(10);
-    private readonly IServerTailscale _client;
+    private readonly IExternalTailscale _client;
     private readonly ITailscaleOperationReferences _references;
-    private readonly IHostElevationBroker _elevation;
     private readonly ISystemLanguage _language;
     private readonly Func<string, string, string> _localize;
     private CancellationTokenSource? _lifetime;
@@ -53,9 +47,9 @@ public sealed partial class TailscaleViewModel : ObservableObject
     private string _peerFilter = "";
     private bool _syncingPreferences;
 
-    public TailscaleViewModel(IServerTailscale client, ITailscaleOperationReferences references,
-        IHostElevationBroker elevation, ISystemLanguage language, Func<string, string, string> localize)
-    { _client = client; _references = references; _elevation = elevation; _language = language; _localize = localize; }
+    public TailscaleViewModel(IExternalTailscale client, ITailscaleOperationReferences references,
+        ISystemLanguage language, Func<string, string, string> localize)
+    { _client = client; _references = references; _language = language; _localize = localize; }
 
     public Func<TailscaleOperation, TailscaleControlSnapshot, string, Task<bool>>? ConfirmAsync { get; set; }
     public Func<TailscaleRecoverySnapshot, string, Task<bool>>? ConfirmCloseAsync { get; set; }
@@ -362,7 +356,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
         _controlProblem = control.ProblemCode;
         Notify();
     }
-    private static bool Handled(Exception exception) => exception is HttpRequestException or RelaxKonOSAuthException or InvalidOperationException
+    private static bool Handled(Exception exception) => exception is HttpRequestException or TailscaleRequestException or InvalidOperationException
         or System.Text.Json.JsonException or IOException or InvalidDataException or UnauthorizedAccessException or OperationCanceledException;
     private void Failure(Exception exception)
     {
@@ -379,7 +373,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
     }
     private static string? ProblemCode(Exception exception) => exception switch
     {
-        RelaxKonOSAuthException auth when auth.Title.StartsWith("tailscale.", StringComparison.Ordinal) => auth.Title,
+        TailscaleRequestException auth when auth.Code.StartsWith("tailscale.", StringComparison.Ordinal) => auth.Code,
         HttpRequestException error when error.Message.StartsWith("tailscale.", StringComparison.Ordinal) => error.Message,
         InvalidOperationException error when error.Message.StartsWith("tailscale.", StringComparison.Ordinal) => error.Message,
         InvalidDataException error when error.Message.StartsWith("tailscale.", StringComparison.Ordinal) => error.Message,
@@ -422,7 +416,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
             _controlUnavailable = false;
             return true;
         }
-        catch (RelaxKonOSAuthException error) when (error.Status == 403 && error.Type.EndsWith("/elevation-required", StringComparison.Ordinal))
+        catch (TailscaleRequestException error) when (error.Status == 403 && error.Code == "tailscale.elevation_required")
         { if (Current(generation, connection, ct)) { _controlProblem = "tailscale.elevation_required"; Notify(); } return false; }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { return false; }
         catch (Exception ex) when (Handled(ex))
@@ -498,14 +492,12 @@ public sealed partial class TailscaleViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     public Task LoadControlAsync() => RunAsync(async (generation, connection, ct) =>
     {
-        var control = await Elevated(() => _client.GetControlAsync(connection, ct), ct);
+        var control = await _client.ReadAuthorizedControlAsync(connection, ct);
         if (!Current(generation, connection, ct)) return;
         ApplyControl(control); _controlUnavailable = false;
         _statusKey = control.CanControl ? "tailscale.control_ready" : "tailscale.control_unavailable";
         Notify();
     });
-    private Task<T> Elevated<T>(Func<Task<T>> action, CancellationToken ct) => _elevation.ExecuteAsync(
-        HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, action, ct);
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     public Task ConnectAsync() => ChangeAsync(TailscaleAction.Connect);
@@ -560,7 +552,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
             if (action == TailscaleAction.Configure && configuration is null) return;
             if (action == TailscaleAction.ConfigurePreferences && preferences is null) return;
             var request = new TailscalePrepareRequest(Guid.NewGuid(), baseline.Revision, action, configuration, preferences);
-            var plan = await Elevated(() => _client.PrepareAsync(connection, request, ct), ct);
+            var plan = await _client.PrepareAsync(connection, request, ct);
             if (!Current(generation, connection, ct)) return;
             Verify(plan, request);
             if (plan.State != TailscaleOperationState.Prepared || plan.ExpiresAt <= DateTimeOffset.UtcNow) throw new InvalidDataException("tailscale.invalid_response");
@@ -571,7 +563,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
             if (ConfirmAsync is null || !await ConfirmAsync(plan, baseline, connection.ServiceId) || !Current(generation, connection, ct)) return;
             if (plan.ExpiresAt <= DateTimeOffset.UtcNow) { _statusKey = "tailscale.plan_expired"; Notify(); return; }
             _pendingReceipt = plan.OperationId; _statusKey = "tailscale.awaiting_receipt"; Notify();
-            var result = await Elevated(() => _client.ExecuteAsync(connection, plan.OperationId, ct), ct);
+            var result = await _client.ExecuteAsync(connection, plan.OperationId, ct);
             if (!Current(generation, connection, ct)) return;
             Verify(result, request);
             _operation = result; if (result.State != TailscaleOperationState.Prepared) _pendingReceipt = null;
@@ -607,7 +599,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
         {
             if (connection != target || !Current(generation, connection, ct)) return;
             _recovery = null; Notify();
-            var recovery = await Elevated(() => _client.ReadRecoveryAsync(connection, id, ct), ct);
+            var recovery = await _client.ReadRecoveryAsync(connection, id, ct);
             if (!Current(generation, connection, ct) || SelectedReference?.Id != id) return;
             if (recovery.OperationId != id || recovery.Observation is { Configuration: null } || recovery.CanClose && (recovery.Observation is null || recovery.ExpiresAt is null)
                 || recovery.Closure is { } closure && (closure.OperationId != id || closure.Actor != connection.UserId.ToString("D")
@@ -639,7 +631,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
             if (preview.ExpiresAt <= DateTimeOffset.UtcNow) { _recovery = null; _statusKey = "tailscale.plan_expired"; Notify(); return; }
             var request = new TailscaleCloseRequest(id, preview.Observation!.Revision, true);
             _pendingClosure = id; _recovery = null; _statusKey = "tailscale.recovery.awaiting_receipt"; Notify();
-            var result = await Elevated(() => _client.CloseAsync(connection, request, ct), ct);
+            var result = await _client.CloseAsync(connection, request, ct);
             if (!Current(generation, connection, ct) || SelectedReference?.Id != id) return;
             VerifyIdentity(result, id, connection);
             if (result.OperationId != id || result.State != TailscaleOperationState.Unknown || result.Closure is not { } closure
@@ -679,7 +671,7 @@ public sealed partial class TailscaleViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanAuthorizePeers))]
     public Task AuthorizePeersAsync() => RunAsync(async (generation, connection, ct) =>
     {
-        var granted = await _elevation.RequestGrantAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, ct);
+        var granted = await _client.RequestPeerAccessAsync(connection, ct);
         if (!granted) { if (Current(generation, connection, ct)) { _statusKey = "tailscale.authorization_required"; Notify(); } return; }
         if (!Current(generation, connection, ct)) return;
         await ReadStatusCoreAsync(generation, connection, ct, updateMessage: false);

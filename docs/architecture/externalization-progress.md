@@ -41,7 +41,7 @@
 | tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows Release 包生命周期已验，真实 FRP 待验 |
 | application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows Release 包生命周期已验，真实部署待验 |
 | database | Databases | 否 / 否 | 是 | 数据库引擎与组件中心 | 可选 | 待验 |
-| tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
+| tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows Release 包生命周期及授权验证通过，实机待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
 基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。桌面发行构建将 Browser、Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager、Registry、Terminal、Code Editor、Docker、Certificate Manager、Web Server Manager、Git 和 File Services 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装前八个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。Developer 将 Docker、Certificate Manager、Web Server Manager、Git 和 File Services 声明为交互式安装项，可从官方商店审阅和确认联合部署。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
@@ -329,3 +329,5 @@
 - Tailscale 连接与登录的操作引用通过 SDK 提供，沿用设备上独立的现有存储文件。读取和保存分别验证当前连接及相应应用权限。Windows Release 专项验证两个存储独立、只读拒绝保存以及服务器切换后拒绝读取旧连接；既有 246 项桌面检查通过。
 - Tailscale 的页面标签、确认和偏好对话框改用 SDK 语言事件和应用自己的文案绑定。Windows Release 的 246 项桌面回归通过。独立应用项目和官方入口仍待切换。
 - Tailscale 已建立独立应用项目，五类对话框、出口节点显示模型和中英日资源由该项目提供。现有桌面入口和工作区已接入独立项目，Windows Release 的 246 项桌面行为、传输和布局检查通过。主工作区与包入口仍待迁移。
+
+- Tailscale 桌面工作区已随可选官方 .roapp 发布，包清单声明 Tailscale 服务端模块依赖。Windows Release 验证了 246 项桌面检查、SDK 授权，以及官方包的来源、完整性、更新、安装失败、重启和卸载。真实 Tailscale daemon 和设备验收仍待完成。

@@ -3,13 +3,9 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Services.Auth;
-using RelaxKonOS.Client.Services.HostSettings;
-using RelaxKonOS.Client.Services.Privileged;
-using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Tailscale;
 
-namespace RelaxKonOS.Client.Apps.Tailscale;
+namespace RelaxKonOS.App.Tailscale;
 
 /// <summary>
 /// Holds operation identities, never a browser challenge URL. Reopening only reads original
@@ -17,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.Tailscale;
 /// explained instead of failing a login attempt with a generic error.
 /// </summary>
 public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client, ITailscaleOperationReferences references,
-    IHostElevationBroker elevation, ISystemLanguage language, Func<string, string, string> localize) : ObservableObject
+    ISystemLanguage language, Func<string, string, string> localize) : ObservableObject
 {
     public Func<string, string> Labels => key => localize(key, key);
 
@@ -95,7 +91,7 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
         if (_lifetime is not null) return;
         _lifetime = new(); client.SessionChanged += SessionChanged; language.LanguageChanged += LanguageChanged;
         try { _connection = client.CaptureConnection(); Reload(); }
-        catch (RelaxKonOSAuthException) { _message = "tailscale.session_changed"; }
+        catch (TailscaleRequestException) { _message = "tailscale.session_changed"; }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or System.Text.Json.JsonException)
         { _connection = null; _message = "tailscale.operation_reference_failed"; }
         Notify();
@@ -148,13 +144,12 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
     }
     private bool Current(int generation, HostSettingsConnection connection, CancellationToken ct)
         => generation == _generation && _lifetime is not null && !ct.IsCancellationRequested && client.IsCurrent(connection);
-    private Task<T> Elevated<T>(Func<Task<T>> action, CancellationToken ct) => elevation.ExecuteAsync(HostElevationCapability.HostNetworkChange, TailscaleAccess.Resource, action, ct);
-    private static bool Handled(Exception exception) => exception is IOException or InvalidDataException or HttpRequestException or RelaxKonOSAuthException
+    private static bool Handled(Exception exception) => exception is IOException or InvalidDataException or HttpRequestException or TailscaleRequestException
         or InvalidOperationException or UnauthorizedAccessException or System.Text.Json.JsonException or OperationCanceledException;
     private string ProblemText(string code) => localize(code, "").Length > 0 ? localize(code, "") : localize("tailscale.error", "");
     private static string? ProblemCode(Exception exception) => exception switch
     {
-        RelaxKonOSAuthException auth when auth.Title.StartsWith("tailscale.", StringComparison.Ordinal) => auth.Title,
+        TailscaleRequestException auth when auth.Code.StartsWith("tailscale.", StringComparison.Ordinal) => auth.Code,
         HttpRequestException error when error.Message.StartsWith("tailscale.", StringComparison.Ordinal) => error.Message,
         InvalidOperationException error when error.Message.StartsWith("tailscale.", StringComparison.Ordinal) => error.Message,
         InvalidDataException error when error.Message.StartsWith("tailscale.", StringComparison.Ordinal) => error.Message,
@@ -196,7 +191,7 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
         {
             _message = ""; _completionDetected = false; _completionRead = false; Notify();
             var id = Guid.NewGuid();
-            var plan = await Elevated(() => client.PrepareAsync(connection, id, ct), ct);
+            var plan = await client.PrepareAsync(connection, id, ct);
             if (!Current(generation, connection, ct)) return;
             Verify(plan, id, connection);
             if (plan.State != TailscaleLoginState.Prepared || plan.ExpiresAt <= DateTimeOffset.UtcNow) throw new InvalidDataException("tailscale.invalid_response");
@@ -209,7 +204,7 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
             if (ConfirmAsync is null || !await ConfirmAsync(connection.ServiceId, id, false) || !Current(generation, connection, ct)) return;
             if (plan.ExpiresAt <= DateTimeOffset.UtcNow) { _message = "tailscale.plan_expired"; Notify(); return; }
             _pending = id; _closingPending = false; _recovery = null; HostMayHaveChanged?.Invoke(); Notify();
-            var result = await Elevated(() => client.ExecuteAsync(connection, id, ct), ct);
+            var result = await client.ExecuteAsync(connection, id, ct);
             if (!Current(generation, connection, ct)) return;
             Verify(result, id, connection);
             if (result.ExpectedRevision != plan.ExpectedRevision || result.ExpiresAt != plan.ExpiresAt) throw new InvalidDataException("tailscale.invalid_response");
@@ -248,7 +243,7 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
     private async Task OpenBrowserCoreAsync(int generation, HostSettingsConnection connection, CancellationToken ct)
     {
         if (OpenBrowserAsync is null || _operation is not { } operation) return;
-        var challenge = await Elevated(() => client.ChallengeAsync(connection, operation.OperationId, ct), ct);
+        var challenge = await client.ChallengeAsync(connection, operation.OperationId, ct);
         if (!Current(generation, connection, ct) || Selected?.Id != operation.OperationId) return;
         if (challenge.OperationId != operation.OperationId || challenge.ExpiresAt != operation.ExpiresAt
             || challenge.ExpiresAt <= DateTimeOffset.UtcNow || !TailscaleLoginUrl.IsOfficial(challenge.AuthenticationUrl))
@@ -267,7 +262,7 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
         return Run(async (generation, connection, ct) =>
         {
             _recovery = null;
-            var preview = await Elevated(() => client.RecoveryAsync(connection, id, ct), ct);
+            var preview = await client.RecoveryAsync(connection, id, ct);
             if (!Current(generation, connection, ct) || Selected?.Id != id) return;
             if (preview.OperationId != id || preview.CanClose && (preview.Observation is null || !Revision(preview.Observation.Revision)
                 || preview.ExpiresAt is null || preview.ExpiresAt <= DateTimeOffset.UtcNow)) throw new InvalidDataException("tailscale.invalid_response");
@@ -293,7 +288,7 @@ public sealed partial class TailscaleLoginViewModel(IServerTailscaleLogin client
                 || !Current(generation, connection, ct) || Selected?.Id != preview.OperationId) return;
             if (preview.ExpiresAt <= DateTimeOffset.UtcNow) { _recovery = null; _message = "tailscale.plan_expired"; return; }
             _pending = preview.OperationId; _closingPending = true; _recovery = null; HostMayHaveChanged?.Invoke(); Notify();
-            var result = await Elevated(() => client.CloseAsync(connection, new(preview.OperationId, preview.Observation!.Revision, true), ct), ct);
+            var result = await client.CloseAsync(connection, new(preview.OperationId, preview.Observation!.Revision, true), ct);
             if (!Current(generation, connection, ct) || Selected?.Id != preview.OperationId) return;
             Verify(result, preview.OperationId, connection);
             if (result.Closure?.Observation.Revision != preview.Observation!.Revision) throw new InvalidDataException("tailscale.invalid_response");

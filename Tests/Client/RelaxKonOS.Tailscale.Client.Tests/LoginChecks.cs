@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Tailscale;
 using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
 using IServerTailscaleLogin = RelaxKonOS.AppSDK.IServerTailscaleLogin;
 using RelaxKonOS.Client.Apps.Tailscale;
@@ -15,10 +16,10 @@ internal static class LoginChecks
         void Check(bool value) { if (!value) throw new Exception("Login client assertion " + count); count++; }
         void Check2(bool value, string message) { if (!value) throw new Exception("Login client assertion " + count + ": " + message); count++; }
         string Localize(string key, string fallback) => RelaxKonOS.App.Tailscale.TailscaleLocalization.Resolve(language, key, fallback);
-        var client = new LoginFake(); var broker = new Broker();
+        var client = new LoginFake();
         var path = Path.Combine(folder, "login-checks.json");
         var store = new TailscaleOperationReferences(path);
-        var model = new TailscaleLoginViewModel(client, store, broker, language, Localize);
+        var model = new TailscaleLoginViewModel(client, store, language, Localize);
         model.Activate();
         Check(model.CanStart && client.Prepares == 0);
         await model.StartAsync();
@@ -55,7 +56,7 @@ internal static class LoginChecks
         // A failed durable reference stops the login before any native action; a lost response
         // would otherwise have no way back to the original operation.
         var brokenClient = new LoginFake();
-        var broken = new TailscaleLoginViewModel(brokenClient, new BrokenReferences(), broker, language, Localize)
+        var broken = new TailscaleLoginViewModel(brokenClient, new BrokenReferences(), language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         broken.Activate(); await broken.StartAsync();
         Check(brokenClient.Executes == 0 && broken.Message == Localize("tailscale.operation_reference_failed", ""));
@@ -64,7 +65,7 @@ internal static class LoginChecks
         // A confirmed start hands the challenge to this device's browser in the same action.
         var openClient = new LoginFake();
         var openStore = new TailscaleOperationReferences(Path.Combine(folder, "login-open.json"));
-        var open = new TailscaleLoginViewModel(openClient, openStore, broker, language, Localize)
+        var open = new TailscaleLoginViewModel(openClient, openStore, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         open.Activate();
         var openedUrl = "";
@@ -77,7 +78,7 @@ internal static class LoginChecks
         // Login availability follows the host state instead of failing with a generic error.
         var state = "NeedsLogin";
         var completionClient = new LoginFake();
-        var completion = new TailscaleLoginViewModel(completionClient, new TailscaleOperationReferences(Path.Combine(folder, "login-completion.json")), broker, language, Localize)
+        var completion = new TailscaleLoginViewModel(completionClient, new TailscaleOperationReferences(Path.Combine(folder, "login-completion.json")), language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true), ReadBackendStateAsync = _ => Task.FromResult<string?>(state) };
         completion.Activate(); await completion.ObserveAsync();
         Check(completion.CanStart && completion.AvailabilityText == Localize("tailscale.login.need_login", ""));
@@ -93,14 +94,14 @@ internal static class LoginChecks
             && completion.Message == Localize("tailscale.login.closed", ""), "one confirmation inspects and closes the finished login");
         completion.Deactivate();
 
-        var signedIn = new TailscaleLoginViewModel(new LoginFake(), new TailscaleOperationReferences(Path.Combine(folder, "login-signed-in.json")), broker, language, Localize)
+        var signedIn = new TailscaleLoginViewModel(new LoginFake(), new TailscaleOperationReferences(Path.Combine(folder, "login-signed-in.json")), language, Localize)
             { ReadBackendStateAsync = _ => Task.FromResult<string?>("Running") };
         signedIn.Activate();
         Check2(!signedIn.CanStart && signedIn.AvailabilityText == Localize("tailscale.login.already_connected", ""), "signed-in host explains why login is unnecessary");
         signedIn.Deactivate();
 
         var refused = new LoginFake { PrepareFailure = "tailscale.login.not_available" };
-        var refusedModel = new TailscaleLoginViewModel(refused, new TailscaleOperationReferences(Path.Combine(folder, "login-refused.json")), broker, language, Localize)
+        var refusedModel = new TailscaleLoginViewModel(refused, new TailscaleOperationReferences(Path.Combine(folder, "login-refused.json")), language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         refusedModel.Activate(); await refusedModel.StartAsync();
         Check2(refusedModel.Message == Localize("tailscale.login.not_available", "") && refused.Executes == 0, "login refusal is shown with its own reason");
@@ -109,9 +110,9 @@ internal static class LoginChecks
         // Opening the page reads the selected original receipt without elevation.
         var showClient = new LoginFake();
         var showStore = new TailscaleOperationReferences(Path.Combine(folder, "login-show.json"));
-        var seed = new TailscaleLoginViewModel(showClient, showStore, broker, language, Localize);
+        var seed = new TailscaleLoginViewModel(showClient, showStore, language, Localize);
         seed.Activate(); await seed.StartAsync(); seed.Deactivate();
-        var shown = new TailscaleLoginViewModel(showClient, showStore, broker, language, Localize);
+        var shown = new TailscaleLoginViewModel(showClient, showStore, language, Localize);
         shown.Activate();
         var gets = showClient.Gets;
         shown.SetVisible(true);
@@ -120,7 +121,7 @@ internal static class LoginChecks
 
         var recoveryClient = new LoginFake();
         var recoveryStore = new TailscaleOperationReferences(Path.Combine(folder, "login-recovery.json"));
-        var recovery = new TailscaleLoginViewModel(recoveryClient, recoveryStore, broker, language, Localize)
+        var recovery = new TailscaleLoginViewModel(recoveryClient, recoveryStore, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         recovery.Activate(); await recovery.StartAsync();
         Check(recovery.CanOpen && recovery.CanInspect && !recovery.CanClose);
@@ -140,7 +141,7 @@ internal static class LoginChecks
         recovery.Deactivate();
 
         var approvalClient = new LoginFake { ResultState = TailscaleLoginState.ApprovalRequired };
-        var approvalModel = new TailscaleLoginViewModel(approvalClient, store, broker, language, Localize)
+        var approvalModel = new TailscaleLoginViewModel(approvalClient, store, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         approvalModel.Activate(); await approvalModel.StartAsync();
         Check(!approvalModel.CanOpen && approvalModel.CanInspect);
@@ -149,7 +150,7 @@ internal static class LoginChecks
         approvalModel.Deactivate();
 
         var heldClient = new LoginFake { HoldPrepare = new() };
-        var held = new TailscaleLoginViewModel(heldClient, store, broker, language, Localize)
+        var held = new TailscaleLoginViewModel(heldClient, store, language, Localize)
             { ConfirmAsync = (_, _, _) => Task.FromResult(true) };
         held.Activate(); var waiting = held.StartAsync(); held.Deactivate();
         heldClient.HoldPrepare.SetResult(heldClient.Last!); await waiting;
@@ -177,7 +178,7 @@ internal sealed class LoginFake : IServerTailscaleLogin
     {
         Prepares++;
         if (PrepareFailure is { } failure)
-            throw new RelaxKonOSAuthException(new ProblemDetails("https://relaxkonos.app/problems/" + failure, failure, 409, null, null));
+            throw new RelaxKonOS.AppSDK.TailscaleRequestException(failure, 409);
         Last = new(id,TailscaleLoginState.Prepared,new('A',64),DateTimeOffset.UtcNow.AddMinutes(5),DateTimeOffset.UtcNow);
         _records[id] = Last;
         return HoldPrepare?.Task ?? Task.FromResult(BadPlan ? Last with { OperationId = Guid.NewGuid() } : Last);
