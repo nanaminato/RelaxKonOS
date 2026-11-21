@@ -24,12 +24,14 @@ internal static class ApplicationReadinessShellChecks
         var windows = new RelaxKonOS.WindowManager.WindowManager();
         windows.Attach(new Canvas { Width = 1000, Height = 720 });
         var applications = new ApplicationManager(windows, services);
-        foreach (var id in new[] { "relaxkonos.proxy-server", "relaxkonos.component-center", "relaxkonos.settings", "test.no-component" })
+        const string installerId = "relaxkonos.appinstaller";
+        foreach (var id in new[] { "relaxkonos.proxy-server", "relaxkonos.component-center", "relaxkonos.settings", installerId, "test.no-component" })
             applications.Register(new ReadinessApplication(id));
         var availability = new ReadinessProvider();
         var session = DispatchProxy.Create<IAuthSession, UnusedPreviewServices>();
+        var ssh = new SshDesktopSession(null!, new ShellSettings(null!));
         var vm = new DesktopShellViewModel(windows, applications, settings, localization, session,
-            new SshDesktopSession(null!, new ShellSettings(null!)), () => { },
+            ssh, () => { },
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, availability);
         var state = new ShellStateStore(); state.Publish(vm);
         using var adapter = new DesktopShellStateAdapter(vm, state, new NoShellCatalog());
@@ -69,6 +71,13 @@ internal static class ApplicationReadinessShellChecks
                 "Ready-only state is projected to the workspace preference contract");
             availability.Set(ComponentAvailabilityKind.Missing); vm.StartSearchQuery = ""; Dispatcher.UIThread.RunJobs();
             Render(vm, settings, state, windows);
+            typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.Endpoint))!.SetValue(ssh,
+                ServerCenterSshEndpoint.Create("fixture.invalid", 22, "fixture"));
+            settings.OnlyReadyApplications = true;
+            vm.PopulateDesktop();
+            Check(vm.StartApps.Any(app => app.Id.Value == installerId)
+                && !vm.StartApps.Any(app => app.Id == appId),
+                "An SSH desktop with no external packages still lists App Installer in ready-only mode");
         }
         finally { settings.Apply(previous); Dispatcher.UIThread.RunJobs(); }
     }

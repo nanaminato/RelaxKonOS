@@ -241,7 +241,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
                 && _applications.EvaluateCompatibility(manifest).IsCompatible
                 && (_sshDesktop.IsConnected
                     ? application.Id.Value is "relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
-                        or "relaxkonos.codeeditor" or "relaxkonos.imageviewer" or "relaxkonos.settings"
+                        or "relaxkonos.codeeditor" or "relaxkonos.imageviewer" or "relaxkonos.settings" or "relaxkonos.appinstaller"
                     : application.Id.Value is not ("relaxkonos.server-center" or "relaxkonos.ssh-files")))
             .Select(i =>
             {
@@ -290,7 +290,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     }
 
     private bool ShouldShowApplication(AppEntryViewModel entry) => !_settings.OnlyReadyApplications || entry.IsReady
-        || entry.Id.Value is "relaxkonos.component-center" or "relaxkonos.settings" or "relaxkonos.server-center";
+        || entry.Id.Value is "relaxkonos.component-center" or "relaxkonos.settings" or "relaxkonos.server-center" or "relaxkonos.appinstaller";
 
     public async Task RefreshApplicationAvailabilityAsync(bool force)
     {
