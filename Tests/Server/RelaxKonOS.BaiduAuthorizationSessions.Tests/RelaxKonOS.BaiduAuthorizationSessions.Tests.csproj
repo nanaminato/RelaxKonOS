@@ -5,6 +5,9 @@
     <AssemblyName>RelaxKonOS.ServerModules.Tests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../BaiduProviderFixture.cs" Link="BaiduProviderFixture.cs" />
+    <ProjectReference Include="../../../ServerModules/RelaxKonOS.ServerModule.CloudBaidu/RelaxKonOS.ServerModule.CloudBaidu.csproj" />
+    <ProjectReference Include="../../../RelaxKonOS.ServerModuleHost/RelaxKonOS.ServerModuleHost.csproj" />
     <ProjectReference Include="../../../ServerModules/RelaxKonOS.ServerModule.CloudStorage/RelaxKonOS.ServerModule.CloudStorage.csproj" />
     <ProjectReference Include="../../../Shared/RelaxKonOS.ModuleHost.Sdk/RelaxKonOS.ModuleHost.Sdk.csproj" />
   </ItemGroup>

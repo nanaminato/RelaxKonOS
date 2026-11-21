@@ -33,6 +33,7 @@ public sealed class CloudS3Module : IModuleHostEntry, IModuleHostHttp
 
     private static bool Validate(CloudProviderRequest request, Uri endpoint) =>
         !request.AllowPrivate && endpoint.AbsolutePath == "/"
+        && request.UserName is { Length: > 0 and <= 256 } && request.Secret.Length > 0 && request.Action <= CloudProviderAction.Upload
         && request.Region is { Length: > 0 and <= 64 } region && Regex.IsMatch(region, "^[a-z0-9-]+$")
         && request.Bucket is { Length: >= 3 and <= 63 } bucket && Regex.IsMatch(bucket, "^[a-z0-9][a-z0-9.-]+[a-z0-9]$")
         && (request.Prefix is null || CloudTransport.ValidPath(request.Prefix))

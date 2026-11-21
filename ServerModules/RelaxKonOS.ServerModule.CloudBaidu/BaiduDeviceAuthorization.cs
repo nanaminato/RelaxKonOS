@@ -1,7 +1,8 @@
 using System.Net;
 using System.Text.Json;
+using RelaxKonOS.ModuleHost.Protocol;
 
-namespace RelaxKonOS.ServerModule.CloudStorage;
+namespace RelaxKonOS.ServerModule.CloudBaidu;
 
 /// <summary>Baidu's device_token flow. Device codes and credentials never belong in public DTOs.</summary>
 internal sealed class BaiduDeviceAuthorization(Func<Uri, bool, HttpClient> transport)
@@ -9,20 +10,7 @@ internal sealed class BaiduDeviceAuthorization(Func<Uri, bool, HttpClient> trans
     private const string OAuthOrigin = "https://openapi.baidu.com";
     private const int MaximumResponseBytes = 64 * 1024;
 
-    internal sealed record DeviceGrant(string DeviceCode, string UserCode, Uri VerificationUri,
-        Uri? QrCodeUri, int ExpiresIn, int Interval)
-    {
-        public override string ToString() => "Baidu device grant [redacted]";
-    }
-
-    internal enum PollStatus { Pending, SlowDown, Denied, Expired, Failed, Authorized }
-    internal sealed record TokenGrant(string AccessToken, string RefreshToken, int ExpiresIn)
-    {
-        public override string ToString() => "Baidu token grant [redacted]";
-    }
-    internal sealed record PollResult(PollStatus Status, TokenGrant? Tokens = null);
-
-    internal async Task<DeviceGrant> StartAsync(string clientId, CancellationToken cancellationToken)
+    internal async Task<CloudBaiduDeviceGrant> StartAsync(string clientId, CancellationToken cancellationToken)
     {
         ValidateCredential(clientId);
         using var response = await GetAsync("/oauth/2.0/device/code", new()
@@ -33,7 +21,7 @@ internal sealed class BaiduDeviceAuthorization(Func<Uri, bool, HttpClient> trans
         {
             var root = response.RootElement;
             if (root.TryGetProperty("error", out _)) throw InvalidResponse();
-            return new DeviceGrant(RequiredString(root, "device_code", 8192),
+            return new CloudBaiduDeviceGrant(RequiredString(root, "device_code", 8192),
                 RequiredString(root, "user_code", 128),
                 BrowserUri(RequiredString(root, "verification_url", 4096)),
                 root.TryGetProperty("qrcode_url", out var qr) && qr.ValueKind != JsonValueKind.Null
@@ -44,7 +32,7 @@ internal sealed class BaiduDeviceAuthorization(Func<Uri, bool, HttpClient> trans
         { throw InvalidResponse(); }
     }
 
-    internal async Task<PollResult> PollAsync(string clientId, string clientSecret, string deviceCode,
+    internal async Task<CloudBaiduPollResult> PollAsync(string clientId, string clientSecret, string deviceCode,
         CancellationToken cancellationToken)
     {
         ValidateCredential(clientId);
@@ -61,15 +49,15 @@ internal sealed class BaiduDeviceAuthorization(Func<Uri, bool, HttpClient> trans
         {
             var root = response.RootElement;
             if (root.TryGetProperty("error", out var error))
-                return new PollResult(error.ValueKind == JsonValueKind.String ? error.GetString() switch
+                return new CloudBaiduPollResult(error.ValueKind == JsonValueKind.String ? error.GetString() switch
                 {
-                    "authorization_pending" => PollStatus.Pending,
-                    "slow_down" => PollStatus.SlowDown,
-                    "authorization_declined" or "access_denied" => PollStatus.Denied,
-                    "expired_token" => PollStatus.Expired,
-                    _ => PollStatus.Failed
-                } : PollStatus.Failed);
-            return new PollResult(PollStatus.Authorized, new TokenGrant(
+                    "authorization_pending" => CloudBaiduPollStatus.Pending,
+                    "slow_down" => CloudBaiduPollStatus.SlowDown,
+                    "authorization_declined" or "access_denied" => CloudBaiduPollStatus.Denied,
+                    "expired_token" => CloudBaiduPollStatus.Expired,
+                    _ => CloudBaiduPollStatus.Failed
+                } : CloudBaiduPollStatus.Failed);
+            return new CloudBaiduPollResult(CloudBaiduPollStatus.Authorized, new CloudBaiduTokenGrant(
                 RequiredString(root, "access_token", 8192), RequiredString(root, "refresh_token", 8192),
                 PositiveInt(root, "expires_in", 31536000)));
         }

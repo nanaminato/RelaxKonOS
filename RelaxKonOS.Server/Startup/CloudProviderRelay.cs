@@ -54,6 +54,8 @@ internal static class CloudProviderRelay
             http.Response.StatusCode = (int)response.StatusCode;
             http.Response.ContentLength = response.Content.Headers.ContentLength;
             http.Response.ContentType = response.Content.Headers.ContentType?.ToString();
+            if (response.Content.Headers.ContentDisposition is { } disposition)
+                http.Response.Headers.ContentDisposition = disposition.ToString();
             await response.Content.CopyToAsync(http.Response.Body, stopping.Token);
         }
         catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException)

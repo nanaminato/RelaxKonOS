@@ -2,6 +2,8 @@
 
 百度网盘授权在**用户自己的浏览器**完成。远程 RelaxKonOS 服务端只申请短期设备会话、按提供方要求轮询并保存加密凭据。无需在远程服务器弹出浏览器，也无需用户复制 refresh token、在客户端填写应用 Secret 或配置公网回调地址。
 
+组件中心单独管理 `cloud-baidu` 签名模块。CloudStorage 管理用户会话、轮询节流、取消、连接 ID 和加密令牌。百度设备码、token 交换、刷新和文件请求通过受信任 ModuleHost 私有通道由 Provider 执行。普通文件请求只把当前访问令牌传给 Provider。停用或卸载 Provider 后，既有连接和应用配置保留，在线授权和文件请求暂不可用。
+
 ## 管理员配置
 
 1. 在百度网盘开放平台创建并审核自己的应用，取得应用 AppKey（Client ID）及 SecretKey（Client Secret）。所需权限为 `basic,netdisk`。
@@ -34,6 +36,8 @@
 ## 测试边界
 
 `BaiduDeviceAuthorizationChecks` 使用模拟 HTTP 上游验证官方请求参数、编码、错误状态、间隔/有效期数据、官方 URL 校验、响应大小、格式错误、取消和敏感信息脱敏。`Tests/Server/RelaxKonOS.BaiduAuthorizationSessions.Tests` 通过真实模块 HTTP 路由与模拟提供方验证用户隔离、管理员配置、加密存储、间隔与 `slow_down`、取消/保存竞态、请求途中过期、配置轮换和待授权限额。不访问真实百度账号，不使用私有生产数据。不把模拟协议验证等同于真实平台授权验收。
+
+2026-11-21 通过真实百度账号设备码授权，更新了临时宿主中的已有连接。授权后的文件读写及包生命周期见[云存储验收记录](../application-ideas/proposals/CloudStorage.md#验收)。
 
 官方接口来源：
 - https://github.com/baidu-netdisk/baidu-drive-sdk-go/blob/main/baidudriver/api/auth_device_code.go

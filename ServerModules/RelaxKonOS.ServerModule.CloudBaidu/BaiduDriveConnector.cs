@@ -2,24 +2,23 @@ using RelaxKonOS.CloudStorage.Transport;
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using RelaxKonOS.ModuleHost.Protocol;
 using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.ServerModule.CloudStorage;
+namespace RelaxKonOS.ServerModule.CloudBaidu;
 
-internal sealed partial class OAuthDriveConnector(string token, Func<Uri, bool, HttpClient> transport)
+internal sealed partial class BaiduDriveConnector(string token, Func<Uri, bool, HttpClient> transport)
 {
     private const string Baidu = "https://pan.baidu.com/rest/2.0/xpan/";
     private const int PageSize = 200;
 
-    internal static bool Supports(string protocol) => protocol == "baidu-netdisk";
-
-    internal static async Task<(string Access, string Refresh, DateTimeOffset Expires)> RefreshAsync(
-        CloudConnectionRequest settings, Func<Uri, bool, HttpClient> transport, CancellationToken ct)
+    internal static async Task<CloudBaiduRefreshGrant> RefreshAsync(
+        string clientId, string secret, string refreshToken, Func<Uri, bool, HttpClient> transport, CancellationToken ct)
     {
         var form = new Dictionary<string, string>
         {
-            ["grant_type"] = "refresh_token", ["refresh_token"] = settings.SessionToken!,
-            ["client_id"] = settings.UserName, ["client_secret"] = settings.Secret,
+            ["grant_type"] = "refresh_token", ["refresh_token"] = refreshToken,
+            ["client_id"] = clientId, ["client_secret"] = secret,
         };
         var uri = Query("https://openapi.baidu.com/oauth/2.0/token", form);
         using var client = transport(uri, false);
@@ -40,10 +39,10 @@ internal sealed partial class OAuthDriveConnector(string token, Func<Uri, bool, 
         if (string.IsNullOrEmpty(access) || access.Length > 8192 || access.Any(char.IsControl)
             || Number(root, "expires_in") is not > 0)
             throw new InvalidDataException("cloud-oauth-token");
-        var refresh = Read(root, "refresh_token") ?? settings.SessionToken!;
+        var refresh = Read(root, "refresh_token") ?? refreshToken;
         if (refresh.Length is 0 or > 8192 || refresh.Any(char.IsControl))
             throw new InvalidDataException("cloud-oauth-refresh");
-        return (access, refresh, DateTimeOffset.UtcNow.AddSeconds(Math.Min(Number(root, "expires_in")!.Value, 86400)));
+        return new(access, refresh, DateTimeOffset.UtcNow.AddSeconds(Math.Min(Number(root, "expires_in")!.Value, 86400)));
     }
 
     private static void ThrowIfRefreshRejected(JsonElement result)

@@ -147,3 +147,8 @@ public sealed class FixtureUnhealthyS3Entry : FixtureUnhealthyWebDavEntry
 {
     public override string Id => RelaxKonOS.ModuleHost.Protocol.CloudProviderProtocol.S3ModuleId;
 }
+
+public sealed class FixtureUnhealthyBaiduEntry : FixtureUnhealthyWebDavEntry
+{
+    public override string Id => RelaxKonOS.ModuleHost.Protocol.CloudProviderProtocol.BaiduModuleId;
+}

@@ -17,8 +17,13 @@ public static class ModulePackageVerifier
         var isolated = manifest.Runtime == "module-host";
         var host = Version(isolated ? ModuleHostProtocol.HostApiVersion : inProcessApiVersion);
         var minimum = Version(manifest.HostApiMinimum);
-        if (isolated && (manifest.ModuleId == CloudProviderProtocol.CallerModuleId || CloudProviderProtocol.IsProviderModule(manifest.ModuleId))
-            && minimum < Version(CloudProviderProtocol.HostApiMinimum))
+        var required = manifest.ModuleId switch
+        {
+            CloudProviderProtocol.CallerModuleId or CloudProviderProtocol.BaiduModuleId => CloudProviderProtocol.BaiduHostApiMinimum,
+            CloudProviderProtocol.WebDavModuleId or CloudProviderProtocol.S3ModuleId => CloudProviderProtocol.HostApiMinimum,
+            _ => null,
+        };
+        if (isolated && required is not null && minimum < Version(required))
             return false;
         return host >= minimum && host < Version(manifest.HostApiMaximumExclusive);
     }

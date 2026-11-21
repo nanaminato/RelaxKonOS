@@ -5,7 +5,7 @@ namespace RelaxKonOS.ModuleHost.Protocol;
 /// <summary>Line-oriented v2 ModuleHost control protocol. It is deliberately not an HTTP or privilege surface.</summary>
 public static class ModuleHostProtocol
 {
-    public const string HostApiVersion = "2.2.0";
+    public const string HostApiVersion = "2.3.0";
     public const string Health = "health";
     public const string Shutdown = "shutdown";
     public const string ServiceTokenHeader = "X-RelaxKonOS-Module-Token";

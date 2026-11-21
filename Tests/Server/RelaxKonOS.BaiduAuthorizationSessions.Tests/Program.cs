@@ -15,7 +15,9 @@ var count = 0;
 void Check(bool condition, string name) { if (!condition) throw new Exception(name); count++; }
 var storage = new TestStorage();
 var upstream = new Upstream();
-var module = new CloudStorageModule((_, _) => new HttpClient(upstream, false));
+await using var provider = await BaiduProviderFixture.StartAsync(storage, upstream);
+storage.CloudProviders = provider.Client;
+var module = new CloudStorageModule();
 await module.StartAsync(storage, default);
 var builder = WebApplication.CreateSlimBuilder();
 builder.Logging.ClearProviders();
@@ -222,7 +224,7 @@ sealed class TestStorage : IModuleHostContext, IModuleHostStorage
     public string HostApiVersion => ModuleHostProtocol.HostApiVersion;
     public IModuleHostStorage Storage => this;
     public ILogger Logger => NullLogger.Instance;
-    public ICloudFileProviders CloudProviders => throw new NotSupportedException();
+    public ICloudFileProviders CloudProviders { get; set; } = null!;
     public IModulePrivilegeBroker Privileges => throw new NotSupportedException();
     public ValueTask<byte[]?> ReadAsync(string path, int maximumBytes, CancellationToken ct) => ValueTask.FromResult(Files.GetValueOrDefault(path));
     public ValueTask WriteAsync(string path, ReadOnlyMemory<byte> bytes, CancellationToken ct) { Files[path] = bytes.ToArray(); return ValueTask.CompletedTask; }

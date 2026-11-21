@@ -1,6 +1,6 @@
 # APP-008 云存储与内置文件浏览器
 
-状态：已实现可选 ModuleHost 模块与桌面 Explorer 接入。WebDAV 和 S3 兼容 Provider 分别由独立服务端包 `cloud-webdav` 和 `cloud-s3` 提供。真实 AWS S3 端点验收待执行。
+状态：已实现可选 ModuleHost 模块与桌面 Explorer 接入。WebDAV、S3 兼容和百度网盘分别由独立服务端包 `cloud-webdav`、`cloud-s3` 和 `cloud-baidu` 提供。真实 AWS S3 端点验收待执行。
 
 ## 首版范围
 
@@ -16,7 +16,7 @@
 
 ## OAuth 网盘和后续候选
 
-百度网盘已接入目录浏览、下载、新建目录和上传。连接默认只读，只有在应用和用户授权允许写入时才启用上传与新建目录。首轮使用注册应用的客户端 ID、客户端密钥和已签发的刷新令牌，由 ModuleHost 自动刷新访问令牌，并将轮换后的刷新令牌写入加密连接记录。百度设备码授权已实现，供应商账户验收和 OneDrive 接入仍待完成。Explorer 中的撤销移除本地连接，应用授权也可在供应商账户设置中撤销。
+百度网盘已接入目录浏览、下载、新建目录和上传。连接默认只读，应用和用户授权允许写入时可启用上传与新建目录。支持百度设备码授权和刷新令牌续期，轮换后的刷新令牌写入加密连接记录。真实设备授权及文件读写已通过签名包验收。Explorer 中的撤销移除本地连接，百度应用授权也可在账号设置中撤销。OneDrive 接入待完成。
 
 ### 百度网盘
 
@@ -37,7 +37,7 @@
 
 ## 安装与连接
 
-云存储由可选的 `cloud-storage` 服务端 `.rkmodule` 提供。组件中心管理模块安装、停止、重启和版本。`cloud-storage` 持有连接配置、加密凭据、用户授权和上传会话，网盘协议继续随该模块运行。`cloud-webdav` 执行 WebDAV 请求，`cloud-s3` 执行兼容 S3 的请求，包括 Cloudflare R2。停用或卸载 Provider 后，连接记录和 ID 仍保留，对应协议的文件操作返回 `cloud-storage-provider-unavailable`。重新启用兼容的 Provider 即可复用连接。
+云存储由可选的 `cloud-storage` 服务端 `.rkmodule` 提供。组件中心管理模块安装、停止、重启和版本。`cloud-storage` 持有连接配置、加密凭据、用户授权和上传会话。`cloud-webdav` 执行 WebDAV 请求，`cloud-s3` 执行兼容 S3 的请求（包括 Cloudflare R2），`cloud-baidu` 执行百度网盘文件和 OAuth 请求。停用或卸载 Provider 后，连接记录和 ID 仍保留，对应请求返回 `cloud-storage-provider-unavailable`。重新启用兼容的 Provider 即可复用连接。
 
 桌面 Explorer 通过认证代理发现 `cloud-storage` 模块。模块可用时，侧栏显示「云存储」和当前用户的各个连接根。窄窗口可从云存储面板内切换连接。模块暂不可用时，打开的面板保留导航上下文。撤销连接后移除对应入口。连接按所有者隔离。WebDAV 用 HTTPS 端点中的目录作为根，S3 用桶与键前缀作为根。
 
@@ -75,7 +75,7 @@ S3 兼容连接也提供移动与删除。目录操作先列出选中前缀中�
 
 发布 `ServerModules/RelaxKonOS.ServerModule.CloudStorage/RelaxKonOS.ServerModule.CloudStorage.csproj`，指定目标 RID 并使用框架依赖发布。按[模块打包说明](../../architecture/RelaxKonOS.ServerModulePackage.Format.md#离线打包命令)打包发布目录，使用下列参数。模块不声明宿主提权能力。
 
-发布者工作台可通过项目目录内的 `module-release.json` 发现 CloudStorage 和两个 Provider，按所选 RID 批量构建并签发目录。WebDAV 包入口为 `RelaxKonOS.ServerModule.CloudWebDav.CloudWebDavModule`，S3 包入口为 `RelaxKonOS.ServerModule.CloudS3.CloudS3Module`。三个包均要求 ModuleHost ABI 2.2.0，沿用现有签名模块包来源策略。自定义来源需授权所分发的模块 ID。已有来源调整授权项时更新来源策略版本。
+发布者工作台通过项目目录内的 `module-release.json` 发现 CloudStorage 和各 Provider，按 RID 构建并签发目录。百度网盘包入口为 `RelaxKonOS.ServerModule.CloudBaidu.CloudBaiduModule`。`cloud-storage` 与 `cloud-baidu` 要求 ModuleHost ABI 2.3.0，WebDAV 和 S3 Provider 的最低要求仍为 2.2.0。自定义来源需授权所分发的模块 ID，调整授权项时更新来源策略版本。
 
 | 参数 | 值 |
 | --- | --- |
@@ -84,7 +84,7 @@ S3 兼容连接也提供移动与删除。目录操作先列出选中前缀中�
 | `--entry-assembly` | `RelaxKonOS.ServerModule.CloudStorage.dll` |
 | `--entry-type` | `RelaxKonOS.ServerModule.CloudStorage.CloudStorageModule` |
 
-跨 ABI 升级时先停用已部署的云存储模块及 Provider，再更新 Core 和 ModuleHost，安装 ABI 2.2.0 的 `cloud-storage` 和所需 Provider 后重新启用。升级过程中保留 CloudStorage 数据目录，Explorer 沿用已有路由和连接。后续单独更新 Provider 时走模块包在线更新，启动验证失败由现有机制恢复上一版。卸载按组件中心现有的停止、停用、重启 Core 和移除流程执行。真机测试沿用目标机器已接纳的测试来源和预配置连接，测试证据仅记录版本、操作和结果。
+升级时先停用 `cloud-storage`，更新 Core 和 ModuleHost 至 ABI 2.3.0，再安装新版 `cloud-storage` 和所需 Provider 后重新启用。升级过程中保留 CloudStorage 数据目录，Explorer 沿用已有路由和连接。后续单独更新 Provider 时走模块包在线更新，启动验证失败由现有机制恢复上一版。卸载按组件中心现有的停止、停用、重启 Core 和移除流程执行。
 
 本地回归入口为 `Tests/ServerModules` 的 `--cloud-storage-checks`。覆盖块内 TCP 断开、偏移续传、S3/R2 分片完成时的不覆盖条件、模拟百度网盘操作，以及 Server 文件任务对 WebDAV 的双向传输、下载替换、上传保留两份和取消。宿主文件上传的 98 项检查也通过。Windows 本地使用临时签名包验证 ModuleHost 加载。
 
@@ -104,6 +104,9 @@ S3 兼容连接也提供移动与删除。目录操作先列出选中前缀中�
 - 2026-11-15 使用本地已授权的读写 WebDAV 连接通过真实验收。验证文件替换、目录移动与删除，以及本机 Server 文件任务的双向整目录复制。文件内容与空子目录均保留，清理后确认随机测试目录已不存在。
 - AWS S3 可使用 `Tests/ServerModules` 的 `--cloud-aws-connector-acceptance` 验证。通过环境变量设置 `RELAXKONOS_AWS_REGION`、`RELAXKONOS_AWS_BUCKET`、`RELAXKONOS_AWS_TEST_PREFIX`、`RELAXKONOS_AWS_KEY_ID` 和 `RELAXKONOS_AWS_SECRET`。临时凭据还须设置 `RELAXKONOS_AWS_SESSION_TOKEN`。测试在专用测试前缀下验证替换、原生分片复制后移动、删除和双向整目录复制，并清理本次创建的对象。
 - 百度网盘可使用 `Tests/ServerModules` 的 `--cloud-baidu-connector-acceptance` 验证。通过环境变量设置 `RELAXKONOS_BAIDU_CLIENT_ID`、`RELAXKONOS_BAIDU_CLIENT_SECRET`、`RELAXKONOS_BAIDU_REFRESH_TOKEN` 和 `RELAXKONOS_BAIDU_TEST_PARENT`。使用具有写权限的测试账号和专用父目录。测试在随机目录内验证替换、移动、删除和双向整目录复制，并清理该目录。
+- `--cloud-baidu-package-checks <CloudStorage 发布目录> <CloudBaidu 发布目录>` 在临时 Core 和两个实际 ModuleHost 进程上验证签名包安装、在线更新、启动健康检查失败后的回滚和卸载，同时验证连接 ID、加密的 OAuth 应用配置和暂存会话保留。
+- `--cloud-baidu-package-acceptance <CloudStorage 发布目录> <CloudBaidu 发布目录>` 使用同一应用 ID、Secret 和可选测试父目录，通过原 CloudStorage 授权接口为已有连接发起设备授权，完成后验证真实文件浏览、上传、下载和版本切换。测试只使用本次创建的随机目录。
+- 2026-11-21 在 Windows 临时 Core 和两个实际 ModuleHost 进程上完成百度 Provider 签名包与真实账号验收。设备码授权更新了已有连接。通过 Explorer 文件接口列举测试目录，上传并逐字节核对 65,539 字节的下载，下载文件名一致。在线从 `1.0.0` 更新到 `1.1.0`，`1.2.0` 启动健康检查失败后回滚至 `1.1.0`，两次切换后同一连接仍能下载相同内容。Core 与 CloudStorage 的运行代际保持稳定。测试目录已清理。移除 Provider 后连接与 OAuth 应用配置保留。
 
 - 2026-11-12 Ubuntu 26.04 实机将 Core 升级至 `0.2.8-dev.1456cb5b7`，因为服务端云传输引入了 Core 文件任务契约。CloudStorage 随后通过现有签名测试来源在线从 `0.2.8` 更新至 `0.2.9`，操作回执 `87acb99e-ed15-4c04-b054-8e72424fec7d` 成功，模块健康，Core PID 和终端模块状态在模块更新前后相同。首次在线更新因旧包父目录归 root 所有而无法暂存，修正父目录属主后重试成功，旧版本目录未改动。
 - 通过 Windows 上的验收客户端调用文件任务 API，使用真实 WebDAV 在 Ubuntu 与云端往返传输 16 MiB。分别从 Ubuntu 文件和 WebDAV 对象计算 SHA-256，三份内容的摘要一致。352 个客户端 HTTP 请求只交换 JSON 控制数据，请求正文合计 2,339 字节，响应正文合计 189,119 字节，最大单个响应 3,123 字节。上传和下载的同名测试都选择保留两份，验证了原文件和编号副本。另用 128 MiB 文件，在上传确认 8 MiB、下载写入 1 MiB 时分别取消，两项任务均进入取消状态，未生成目标文件，下载暂存文件已清理。Ubuntu 与 WebDAV 的临时测试文件均已清理。

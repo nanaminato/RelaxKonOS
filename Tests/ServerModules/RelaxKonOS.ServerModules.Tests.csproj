@@ -27,6 +27,7 @@
     <ProjectReference Include="../../ServerModules/RelaxKonOS.ServerModule.CloudStorage/RelaxKonOS.ServerModule.CloudStorage.csproj" />
     <ProjectReference Include="../../ServerModules/RelaxKonOS.ServerModule.CloudWebDav/RelaxKonOS.ServerModule.CloudWebDav.csproj" />
     <ProjectReference Include="../../ServerModules/RelaxKonOS.ServerModule.CloudS3/RelaxKonOS.ServerModule.CloudS3.csproj" />
+    <ProjectReference Include="../../ServerModules/RelaxKonOS.ServerModule.CloudBaidu/RelaxKonOS.ServerModule.CloudBaidu.csproj" />
     <ProjectReference Include="../../ServerModules/RelaxKonOS.ServerModule.Git/RelaxKonOS.ServerModule.Git.csproj" />
   </ItemGroup>
 </Project>

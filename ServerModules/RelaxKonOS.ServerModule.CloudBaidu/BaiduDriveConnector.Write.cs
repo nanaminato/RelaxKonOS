@@ -4,9 +4,9 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Files;
 
-namespace RelaxKonOS.ServerModule.CloudStorage;
+namespace RelaxKonOS.ServerModule.CloudBaidu;
 
-internal sealed partial class OAuthDriveConnector
+internal sealed partial class BaiduDriveConnector
 {
     internal async Task CreateFolderAsync(string path, CancellationToken ct)
     {
@@ -94,8 +94,14 @@ internal sealed partial class OAuthDriveConnector
                 ["partseq"] = index.ToString(CultureInfo.InvariantCulture), ["access_token"] = token,
             });
             using var body = new MultipartFormDataContent();
-            body.Add(new ByteArrayContent(buffer, 0, length), "file", "file");
-            var response = await BaiduPostAsync(uri, body, ct);
+            var file = new ByteArrayContent(buffer, 0, length);
+            file.Headers.ContentType = new("application/octet-stream");
+            body.Add(file, "file", "file");
+            var response = await PostJsonAsync(uri, body, ct);
+            if (response.ValueKind != JsonValueKind.Object
+                || response.TryGetProperty("errno", out _) && Number(response, "errno") != 0
+                || response.TryGetProperty("error_code", out _) && Number(response, "error_code") != 0)
+                throw new InvalidDataException("cloud-baidu-upload-part-rejected");
             if (!string.Equals(Read(response, "md5"), hashes[index], StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("cloud-baidu-upload-hash");
         }
@@ -128,13 +134,18 @@ internal sealed partial class OAuthDriveConnector
 
     private async Task<JsonElement> BaiduPostAsync(Uri uri, HttpContent body, CancellationToken ct)
     {
-        using var client = transport(uri, false);
-        using var request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = body };
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        var result = await JsonAsync(response, ct);
+        var result = await PostJsonAsync(uri, body, ct);
         if (Number(result, "errno") is { } code && code == 0) return result;
         if (Number(result, "errno") == -8)
             throw new HttpRequestException("cloud-storage-conflict", null, HttpStatusCode.Conflict);
         throw new InvalidDataException("cloud-baidu-write");
+    }
+
+    private async Task<JsonElement> PostJsonAsync(Uri uri, HttpContent body, CancellationToken ct)
+    {
+        using var client = transport(uri, false);
+        using var request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = body };
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        return await JsonAsync(response, ct);
     }
 }

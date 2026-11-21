@@ -24,7 +24,7 @@ RemoteExplorer 是 RelaxKonOS 的内置文件管理器，用于浏览与操作**
 
 **实现范围**：浏览（驱动器/目录/文件）+ 基本操作（新建文件夹/删除/重命名/复制/剪切/粘贴/上传/下载）+ 文件打开（默认程序或“打开方式”）+ 文件/目录属性查看（Linux 可编辑 POSIX 权限）。上传支持多文件与递归文件夹；客户端宿主机剪贴板中的文件/文件夹可直接粘贴到当前远端目录。
 
-Explorer 的「云存储」复用服务端 `cloud-storage` 模块的连接和文件接口。组件中心管理独立的 WebDAV 和 S3 兼容 Provider，连接配置仍在原云存储界面管理。停用 Provider 后，原连接仍可查看，对应协议的文件操作暂不可用。部署与更新步骤见[云存储管理](../application-ideas/proposals/CloudStorage.md)。
+Explorer 的「云存储」复用服务端 `cloud-storage` 的连接、文件和授权接口。组件中心管理独立的 WebDAV、S3 兼容和百度网盘 Provider，连接配置和百度授权继续在原云存储界面管理。停用 Provider 后，原连接仍可查看，对应操作暂不可用。部署与更新步骤见[云存储管理](../application-ideas/proposals/CloudStorage.md)。
 
 ---
 

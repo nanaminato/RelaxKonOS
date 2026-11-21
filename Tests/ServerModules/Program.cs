@@ -122,6 +122,13 @@ if (args is ["--cloud-s3-package-checks", var s3CloudPublish, var s3ProviderPubl
     return;
 }
 
+if (args is ["--cloud-baidu-package-acceptance" or "--cloud-baidu-package-checks", var baiduCloudPublish, var baiduProviderPublish])
+{
+    await CloudProviderPackageAcceptance.RunAsync(RelaxKonOS.ModuleHost.Protocol.CloudFileProvider.Baidu,
+        baiduCloudPublish, baiduProviderPublish, liveService: args[0] == "--cloud-baidu-package-acceptance");
+    return;
+}
+
 if (args is ["--cloud-aws-connector-acceptance"])
 {
     await CloudR2ConditionalDeleteAcceptance.RunAwsAsync();

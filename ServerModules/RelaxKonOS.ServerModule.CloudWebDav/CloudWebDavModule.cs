@@ -20,7 +20,8 @@ public sealed class CloudWebDavModule : IModuleHostEntry, IModuleHostHttp
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, IModuleHostContext context) =>
         CloudProviderEndpoint.Map(endpoints, CloudFileProvider.WebDav,
-            (request, _) => !request.UserName.Contains(':'), ExecuteAsync);
+            (request, _) => request.UserName is { Length: > 0 and <= 256 } && request.Secret.Length > 0
+                && !request.UserName.Contains(':') && request.Action <= CloudProviderAction.Upload, ExecuteAsync);
 
     private async Task<IResult> ExecuteAsync(CloudProviderRequest request, Uri endpoint, Stream? content, HttpContext http)
     {

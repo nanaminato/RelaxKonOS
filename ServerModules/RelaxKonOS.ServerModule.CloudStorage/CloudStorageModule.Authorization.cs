@@ -1,3 +1,4 @@
+using RelaxKonOS.ModuleHost.Protocol;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -39,7 +40,7 @@ public sealed partial class CloudStorageModule
             aes.Decrypt(bytes.AsSpan(1, NonceSize), bytes.AsSpan(EnvelopeSize), bytes.AsSpan(1 + NonceSize, TagSize), clear);
             _authorizationConfigurations = JsonSerializer.Deserialize<Dictionary<string, AuthorizationConfiguration>>(clear)
                 ?? throw new InvalidDataException(AuthorizationStore);
-            foreach (var protocol in _authorizationConfigurations.Keys.Where(protocol => !OAuthDriveConnector.Supports(protocol)).ToArray())
+            foreach (var protocol in _authorizationConfigurations.Keys.Where(protocol => protocol != CloudProviderProtocol.BaiduProtocol).ToArray())
                 _authorizationConfigurations.Remove(protocol);
         } finally { CryptographicOperations.ZeroMemory(clear); }
     }
@@ -66,7 +67,7 @@ public sealed partial class CloudStorageModule
         })));
         group.MapPut("/authorization/configuration/{protocol}", (string protocol, CloudAuthorizationConfigurationRequest request, HttpContext http) => WithUser(http, async user => {
             if (!IsController(http)) return Results.StatusCode(403);
-            if (!OAuthDriveConnector.Supports(protocol) || !ValidValue(request.ClientId, 512) || !ValidValue(request.ClientSecret, 2048)) return Results.BadRequest();
+            if (protocol != CloudProviderProtocol.BaiduProtocol || !ValidValue(request.ClientId, 512) || !ValidValue(request.ClientSecret, 2048)) return Results.BadRequest();
             await _authorizationGate.WaitAsync(http.RequestAborted);
             try {
                 var configs = new Dictionary<string, AuthorizationConfiguration>(_authorizationConfigurations) {
@@ -78,7 +79,7 @@ public sealed partial class CloudStorageModule
             } finally { _authorizationGate.Release(); }
         }));
         group.MapPost("/authorization/sessions", (CloudAuthorizationStartRequest request, HttpContext http) => WithUser(http, async user => {
-            if (!OAuthDriveConnector.Supports(request.Protocol) || !ValidValue(request.Name, 100)) return Results.BadRequest();
+            if (request.Protocol != CloudProviderProtocol.BaiduProtocol || !ValidValue(request.Name, 100)) return Results.BadRequest();
             await _authorizationGate.WaitAsync(http.RequestAborted);
             try {
                 SweepAuthorization();

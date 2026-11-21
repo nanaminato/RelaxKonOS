@@ -1,7 +1,7 @@
 using RelaxKonOS.CloudStorage.Transport;
 using System.Text;
 using RelaxKonOS.Protocol.Files;
-using RelaxKonOS.ServerModule.CloudStorage;
+using RelaxKonOS.ServerModule.CloudBaidu;
 
 internal static class CloudBaiduConnectorAcceptance
 {
@@ -14,8 +14,8 @@ internal static class CloudBaiduConnectorAcceptance
             null, null, Required("CLIENT_ID"), Required("CLIENT_SECRET"), Required("REFRESH_TOKEN"), EnableWrites: true);
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         var ct = deadline.Token;
-        var grant = await OAuthDriveConnector.RefreshAsync(settings, CloudTransport.Create, ct);
-        var connector = new OAuthDriveConnector(grant.Access, CloudTransport.Create);
+        var grant = await BaiduDriveConnector.RefreshAsync(settings.UserName, settings.Secret, settings.SessionToken!, CloudTransport.Create, ct);
+        var connector = new BaiduDriveConnector(grant.Access, CloudTransport.Create);
         var root = $"{parent}/relaxkonos-baidu-{Guid.NewGuid():N}/";
         await connector.CreateFolderAsync(root, ct);
         try

@@ -11,6 +11,7 @@ using RelaxKonOS.ModuleHost.Sdk;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.ServerModule.CloudStorage;
 using RelaxKonOS.ServerModule.CloudS3;
+using RelaxKonOS.ServerModule.CloudBaidu;
 using RelaxKonOS.ServerModule.CloudWebDav;
 using RelaxKonOS.ServerModuleHost;
 
@@ -21,8 +22,14 @@ internal static class CloudStorageChecks
     {
         var context = new TestContext(root);
         var kind = CloudProviderConnection.Kind(settings.Protocol);
-        await using var provider = kind is null ? null : await StartProvidersAsync(context, ct,
-            (kind.Value, kind == CloudFileProvider.WebDav ? new CloudWebDavModule() : new CloudS3Module()));
+        var entry = kind switch
+        {
+            CloudFileProvider.WebDav => (IModuleHostHttp)new CloudWebDavModule(),
+            CloudFileProvider.S3 => new CloudS3Module(),
+            CloudFileProvider.Baidu => new CloudBaiduModule(),
+            _ => throw new ArgumentException("Unsupported fixture protocol.")
+        };
+        await using var provider = await StartProvidersAsync(context, ct, (kind!.Value, entry));
         var module = new CloudStorageModule();
         await module.StartAsync(context, ct);
         try
@@ -66,8 +73,9 @@ internal static class CloudStorageChecks
             var upstream = new Upstream(check);
             await using var providers = await StartProvidersAsync(context, default,
                 (CloudFileProvider.WebDav, new CloudWebDavModule((_, _) => new HttpClient(upstream, disposeHandler: false))),
-                (CloudFileProvider.S3, new CloudS3Module((_, _) => new HttpClient(upstream, disposeHandler: false))));
-            var module = new CloudStorageModule((_, _) => new HttpClient(upstream, disposeHandler: false));
+                (CloudFileProvider.S3, new CloudS3Module((_, _) => new HttpClient(upstream, disposeHandler: false))),
+                (CloudFileProvider.Baidu, new CloudBaiduModule((_, _) => new HttpClient(upstream, disposeHandler: false))));
+            var module = new CloudStorageModule();
             await module.StartAsync(context, default);
             var builder = WebApplication.CreateSlimBuilder();
             builder.Logging.ClearProviders();
@@ -258,8 +266,8 @@ internal static class CloudStorageChecks
                     "a staged upload preserves provider credential rejection through commit polling");
             }
             upstream.RejectDavUpload = false;
-            check(!OAuthDriveConnector.AllowedBaiduDownload(new Uri("https://baidupcs.com.attacker.invalid/file"))
-                && !OAuthDriveConnector.AllowedBaiduDownload(new Uri("http://d.pcs.baidu.com/file")),
+            check(!BaiduDriveConnector.AllowedBaiduDownload(new Uri("https://baidupcs.com.attacker.invalid/file"))
+                && !BaiduDriveConnector.AllowedBaiduDownload(new Uri("http://d.pcs.baidu.com/file")),
                 "Baidu downloads reject arbitrary domains and insecure redirect targets");
 
             using (var revoked = await client.DeleteAsync(route)) revoked.EnsureSuccessStatusCode();
@@ -598,8 +606,9 @@ internal static class CloudStorageChecks
                 {
                     var form = (MultipartFormDataContent)request.Content!;
                     check(QueryHelpers.ParseQuery(uri.Query)["partseq"] == "0"
+                        && form.Single().Headers.ContentType?.MediaType == "application/octet-stream"
                         && await form.Single().ReadAsStringAsync(ct) == "new", "Baidu uploads the expected multipart bytes");
-                    return Json("""{"errno":0,"md5":"22af645d1859cb5ca6da0c484f1f37ea"}""");
+                    return Json("""{"md5":"22af645d1859cb5ca6da0c484f1f37ea"}""");
                 }
                 check(QueryHelpers.ParseQuery(uri.Query)["access_token"] == "access-test"
                     && request.Headers.UserAgent.ToString() == "pan.baidu.com", "Baidu dlink uses its required download identity");
@@ -807,6 +816,7 @@ internal static class CloudStorageChecks
         var provider = builder.Build();
         foreach (var entry in entries)
         {
+            if (entry.Module is IModuleHostEntry lifetime) await lifetime.StartAsync(context, ct);
             provider.MapGet(CloudProviderProtocol.RequestPath(entry.Kind), () => Results.NoContent());
             entry.Module.MapEndpoints(provider, context);
         }

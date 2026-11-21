@@ -27,11 +27,6 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
     private readonly SemaphoreSlim[] _oauthGates = Enumerable.Range(0, 32).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
     private readonly ConcurrentDictionary<Guid, (CloudConnectionRequest Settings, string Token, DateTimeOffset Expires)> _oauthTokens = new();
     private CloudUploadSessions _uploads = null!;
-    private readonly Func<Uri, bool, HttpClient> _transport;
-
-    public CloudStorageModule() : this(CloudTransport.Create) { }
-
-    internal CloudStorageModule(Func<Uri, bool, HttpClient> transport) => _transport = transport;
     private StoredConnection[] _connections = [];
     private byte[] _key = [];
 
@@ -59,7 +54,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             using var cipher = new AesGcm(_key, TagSize);
             cipher.Decrypt(bytes.AsSpan(1, NonceSize), bytes.AsSpan(EnvelopeSize), bytes.AsSpan(1 + NonceSize, TagSize), plaintext);
             _connections = (JsonSerializer.Deserialize<StoredConnection[]>(plaintext) ?? throw new InvalidDataException(Store))
-                .Where(item => item.Settings.Protocol is "webdav" or "s3" || OAuthDriveConnector.Supports(item.Settings.Protocol)).ToArray();
+                .Where(item => CloudProviderConnection.Kind(item.Settings.Protocol) is not null).ToArray();
         }
         finally { CryptographicOperations.ZeroMemory(plaintext); }
     }
@@ -103,59 +98,59 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             return Results.NoContent();
         }));
         group.MapGet("/connections/{id:guid}/entries", (Guid id, string? reference, string? cursor, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, path, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, path, ct, token) =>
             {
                 if (cursor?.Length > 8192) throw new ArgumentException("cursor");
-                var listing = oauth is not null ? await oauth.ListAsync(path, cursor, ct)
-                    : await ConnectProvider(settings).ListAsync(path, cursor, ct);
+                var listing = await ConnectProvider(settings, token).ListAsync(path, cursor, ct);
                 return Results.Ok(listing);
             }));
         group.MapGet("/connections/{id:guid}/info", (Guid id, string? reference, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, path, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, path, ct, token) =>
             {
-                var entry = oauth is not null ? await oauth.InfoAsync(path, ct)
-                    : await ConnectProvider(settings).InfoAsync(path, ct);
+                var entry = await ConnectProvider(settings, token).InfoAsync(path, ct);
                 return entry is null ? Results.NotFound() : Results.Ok(entry);
             }));
         group.MapPost("/connections/{id:guid}/folders", (Guid id, string? reference, string name, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, parent, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, parent, ct, token) =>
             {
                 if (!settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
                 var path = ChildPath(parent, name) + "/";
-                if (oauth is not null)
-                    await WithOAuthWriteAsync(id, () => oauth.CreateFolderAsync(path, ct), ct);
+                var provider = ConnectProvider(settings, token);
+                if (token is not null)
+                    await WithOAuthWriteAsync(id, () => provider.CreateFolderAsync(path, ct), ct);
                 else
-                    await ConnectProvider(settings).CreateFolderAsync(path, ct);
+                    await provider.CreateFolderAsync(path, ct);
                 return Results.Ok(new CloudCreatedFolder(CloudTransport.Reference(path)));
             }));
         group.MapPost("/connections/{id:guid}/entries/move", (Guid id, string reference, CloudMoveRequest request, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, source, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, source, ct, token) =>
             {
                 if (!settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
                 if (source.Length == 0) throw new ArgumentException("source");
-                if (oauth is not null) source = await oauth.ResolveMutationPathAsync(source, ct);
+                var provider = ConnectProvider(settings, token);
+                if (token is not null) source = await provider.ResolveMutationPathAsync(source, ct);
                 var parent = CloudTransport.PathFrom(request.DestinationDirectory);
                 var directory = source.EndsWith('/');
                 var destination = ChildPath(parent, request.Name) + (directory ? "/" : "");
                 if (destination == source) throw new ArgumentException("destination");
                 if (directory && destination.StartsWith(source, StringComparison.OrdinalIgnoreCase))
                     throw new ArgumentException("destination");
-                if (oauth is not null)
-                    await WithOAuthWriteAsync(id, () => oauth.MoveAsync(source, destination, ct), ct);
+                if (token is not null)
+                    await WithOAuthWriteAsync(id, () => provider.MoveAsync(source, destination, ct), ct);
                 else
-                    await ConnectProvider(settings).MoveAsync(source, destination, ct);
+                    await provider.MoveAsync(source, destination, ct);
                 return Results.NoContent();
             }));
         group.MapDelete("/connections/{id:guid}/entries", (Guid id, string reference, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, path, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, path, ct, token) =>
             {
                 if (!settings.EnableWrites) return Results.StatusCode(StatusCodes.Status403Forbidden);
                 if (path.Length == 0) throw new ArgumentException("reference");
-                if (oauth is not null)
-                    await WithOAuthWriteAsync(id, async () =>
-                        await oauth.DeleteAsync(await oauth.ResolveMutationPathAsync(path, ct), ct), ct);
+                var provider = ConnectProvider(settings, token);
+                if (token is not null)
+                    await WithOAuthWriteAsync(id, () => provider.DeleteAsync(path, ct), ct);
                 else
-                    await ConnectProvider(settings).DeleteAsync(path, ct);
+                    await provider.DeleteAsync(path, ct);
                 return Results.NoContent();
             }));
         const string uploads = "/connections/{id:guid}/uploads";
@@ -173,22 +168,13 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
         group.MapPost(uploads + "/{uploadId}/commit", (Guid id, string uploadId, CommitUploadRequest? request, HttpContext http) =>
             UploadOperation(http, id, uploadId, "commit", contentHash: request?.ContentHash));
         group.MapGet("/connections/{id:guid}/download", (Guid id, string? reference, HttpContext http) =>
-            WithConnection(http, id, reference, async (settings, path, ct, oauth) =>
+            WithConnection(http, id, reference, async (settings, path, ct, token) =>
             {
-                if (oauth is not null)
-                {
-                    await oauth.DownloadAsync(path, (fileName, content, length) =>
-                    {
-                        http.Response.ContentLength = length;
-                        return Results.Stream(content, "application/octet-stream", fileName).ExecuteAsync(http);
-                    }, ct);
-                    return Results.Empty;
-                }
-                var name = path.Split('/')[^1];
-                using var response = await ConnectProvider(settings).DownloadAsync(path, ct);
+                using var response = await ConnectProvider(settings, token).DownloadAsync(path, ct);
                 response.EnsureSuccessStatusCode();
                 await using var stream = await response.Content.ReadAsStreamAsync(ct);
                 http.Response.ContentLength = response.Content.Headers.ContentLength;
+                var name = response.Content.Headers.ContentDisposition?.FileNameStar ?? path.Split('/')[^1];
                 await Results.Stream(stream, "application/octet-stream", name).ExecuteAsync(http);
                 return Results.Empty;
             }));
@@ -204,12 +190,13 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             if (requiresProvider && CloudProviderConnection.Kind(item.Settings.Protocol) is { } provider
                 && !await ProviderAvailableAsync(provider, http.RequestAborted))
                 return Results.Problem(statusCode: 503, title: CloudStorageApi.ProviderUnavailable);
-            var revision = OAuthDriveConnector.Supports(item.Settings.Protocol) ? item.Revision.ToString("N")
+            var revision = item.Settings.Protocol == CloudProviderProtocol.BaiduProtocol ? item.Revision.ToString("N")
                 : Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(item.Settings)));
             return await action(item, revision);
         });
 
-    private CloudProviderConnection ConnectProvider(CloudConnectionRequest settings) => new(settings, _context.CloudProviders);
+    private CloudProviderConnection ConnectProvider(CloudConnectionRequest settings, string? token = null) =>
+        new(settings, _context.CloudProviders, token);
 
     private async ValueTask<bool> ProviderAvailableAsync(CloudFileProvider provider, CancellationToken ct)
     {
@@ -230,12 +217,12 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stopping);
                 deadline.CancelAfter(TimeSpan.FromHours(2));
                 var settings = item.Settings;
-                if (OAuthDriveConnector.Supports(settings.Protocol))
+                if (settings.Protocol == CloudProviderProtocol.BaiduProtocol)
                 {
                     await WithOAuthWriteAsync(id, async () =>
                     {
                         var token = await GetOAuthTokenAsync(id, item.Owner, settings.Protocol, item.Revision, deadline.Token);
-                        await new OAuthDriveConnector(token, _transport).UploadAsync(path, stream, deadline.Token, replace);
+                        await ConnectProvider(settings, token).UploadAsync(path, stream, deadline.Token, replace);
                     }, deadline.Token);
                     return;
                 }
@@ -244,7 +231,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
                 ? ct => ProviderAvailableAsync(provider, ct) : null));
 
     private Task<IResult> WithConnection(HttpContext http, Guid id, string? reference,
-        Func<CloudConnectionRequest, string, CancellationToken, OAuthDriveConnector?, Task<IResult>> action) =>
+        Func<CloudConnectionRequest, string, CancellationToken, string?, Task<IResult>> action) =>
         WithUser(http, async user =>
         {
             var item = Volatile.Read(ref _connections).FirstOrDefault(connection => connection.Id == id && connection.Owner == user);
@@ -253,13 +240,11 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             if (!http.Request.Path.Value!.EndsWith("/download", StringComparison.Ordinal))
                 deadline.CancelAfter(TimeSpan.FromSeconds(30));
             var path = CloudTransport.PathFrom(reference);
-            OAuthDriveConnector? oauth = null;
-            if (OAuthDriveConnector.Supports(item.Settings.Protocol) && (HttpMethods.IsGet(http.Request.Method) || item.Settings.EnableWrites))
-            {
-                var token = await GetOAuthTokenAsync(id, user, item.Settings.Protocol, item.Revision, deadline.Token);
-                oauth = new OAuthDriveConnector(token, _transport);
-            }
-            return await action(item.Settings, path, deadline.Token, oauth);
+            string? token = null;
+            if (item.Settings.Protocol == CloudProviderProtocol.BaiduProtocol &&
+                (HttpMethods.IsGet(http.Request.Method) || item.Settings.EnableWrites))
+                token = await GetOAuthTokenAsync(id, user, item.Settings.Protocol, item.Revision, deadline.Token);
+            return await action(item.Settings, path, deadline.Token, token);
         });
 
     private async Task WithOAuthWriteAsync(Guid connection, Func<Task> write, CancellationToken ct)
@@ -289,7 +274,8 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
             if (_oauthTokens.TryGetValue(id, out var cached) && ReferenceEquals(cached.Settings, settings)
                 && cached.Expires > DateTimeOffset.UtcNow.AddSeconds(30))
                 return cached.Token;
-            var (token, refresh, expires) = await OAuthDriveConnector.RefreshAsync(settings, _transport, ct);
+            var (token, refresh, expires) = await RequestBaiduAuthorizationAsync<CloudBaiduRefreshGrant>(CloudProviderAction.Refresh,
+                settings.UserName, settings.Secret, settings.SessionToken, ct);
             if (refresh != settings.SessionToken)
             {
                 settings = settings with { SessionToken = refresh };
@@ -384,7 +370,7 @@ public sealed partial class CloudStorageModule : IModuleHostEntry, IModuleHostHt
 
     private static CloudConnectionRequest Validate(CloudConnectionRequest input, bool controller)
     {
-        if (OAuthDriveConnector.Supports(input.Protocol))
+        if (input.Protocol == CloudProviderProtocol.BaiduProtocol)
         {
             if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 100 || input.Name.Any(char.IsControl)
                 || !ValidOAuthField(input.UserName, 512) || !ValidOAuthField(input.Secret, 2048)

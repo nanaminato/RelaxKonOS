@@ -32,8 +32,13 @@ internal static class CloudProviderPackageAcceptance
         var providerId = CloudProviderProtocol.ModuleId(kind);
         var providerRoute = CloudProviderProtocol.RequestPath(kind);
         var webDav = kind == CloudFileProvider.WebDav;
-        var protocolName = webDav ? "WebDAV" : "R2";
-        var config = !liveService
+        var baidu = kind == CloudFileProvider.Baidu;
+        var protocolName = baidu ? "Baidu Netdisk" : webDav ? "WebDAV" : "R2";
+        var config = baidu
+            ? new CloudConnectionRequest("Baidu package acceptance", CloudProviderProtocol.BaiduProtocol, "https://pan.baidu.com",
+                null, null, null, liveService ? Required("BAIDU", "CLIENT_ID") : "fixture-key",
+                liveService ? Required("BAIDU", "CLIENT_SECRET") : "fixture-secret", "pending-authorization", EnableWrites: true)
+            : !liveService
             ? new CloudConnectionRequest("Local S3 package checks", "s3", "https://s3.invalid/", "auto",
                 "fixture-bucket", "fixture-prefix", "fixture-key", "fixture-secret", EnableWrites: true)
             : webDav ? new CloudConnectionRequest("WebDAV package acceptance", "webdav",
@@ -43,7 +48,11 @@ internal static class CloudProviderPackageAcceptance
         var work = Directory.CreateTempSubdirectory("relaxkonos-cloud-provider-packages-");
         var root = work.FullName;
         var keyPath = Path.Combine(root, "acceptance-key.pem");
-        var remotePath = $"relaxkonos-provider-package-{Guid.NewGuid():N}/";
+        var parent = baidu ? (Environment.GetEnvironmentVariable("RELAXKONOS_BAIDU_TEST_PARENT") ?? "").Trim('/') : "";
+        if (!CloudTransport.ValidPath(parent)) throw new ArgumentException("Invalid dedicated acceptance parent.");
+        if (parent.Length > 0) parent += "/";
+        var remoteName = $"relaxkonos-provider-package-{Guid.NewGuid():N}";
+        var remotePath = parent + remoteName + "/";
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = deadline.Token;
         var remoteCreated = false;
@@ -54,9 +63,9 @@ internal static class CloudProviderPackageAcceptance
             var faultFixture = Directory.CreateDirectory(Path.Combine(root, "unhealthy-fixture"));
             File.Copy(Path.Combine(AppContext.BaseDirectory, "HostFixture.dll"), Path.Combine(faultFixture.FullName, "HostFixture.dll"));
             const string cloudAssembly = "RelaxKonOS.ServerModule.CloudStorage";
-            var module = webDav ? "CloudWebDav" : "CloudS3";
+            var module = baidu ? "CloudBaidu" : webDav ? "CloudWebDav" : "CloudS3";
             var assembly = "RelaxKonOS.ServerModule." + module;
-            var fixture = webDav ? "FixtureUnhealthyWebDavEntry" : "FixtureUnhealthyS3Entry";
+            var fixture = baidu ? "FixtureUnhealthyBaiduEntry" : webDav ? "FixtureUnhealthyWebDavEntry" : "FixtureUnhealthyS3Entry";
             var compiled = new[]
             {
                 await BuildAsync(cloudPublish, Cloud, "1.0.0", cloudAssembly, cloudAssembly + ".CloudStorageModule"),
@@ -112,6 +121,12 @@ internal static class CloudProviderPackageAcceptance
             {
                 await RunningAsync(cloudOnly, Cloud, "1.0.0");
                 connection = (await PostAsync<CloudConnectionDto>(cloudOnly.Client, entries, config)).Id;
+                if (baidu)
+                {
+                    using var configured = await cloudOnly.Client.PutAsJsonAsync(CloudStorageApi.Route + "/authorization/configuration/"
+                        + config.Protocol, new CloudAuthorizationConfigurationRequest(config.UserName, config.Secret), ct);
+                    configured.EnsureSuccessStatusCode();
+                }
                 await VerifyOfflineAsync(cloudOnly.Client, connection);
             }
             SeedDeployment(configuration, [Cloud, providerId]);
@@ -124,114 +139,133 @@ internal static class CloudProviderPackageAcceptance
                 var siblingGeneration = Generation(runtime, Cloud);
                 var coreGeneration = runtime.Store.ProcessGeneration;
                 var route = $"{entries}/{connection:D}";
-                var payload = new byte[liveService ? 64 * 1024 + 3 : 0];
-                string? completedUpload = null;
-                if (liveService)
-                {
-                    if (!webDav)
-                    {
-                        var rootListing = await runtime.Client.GetFromJsonAsync<CloudDirectoryDto>(route + "/entries", ct);
-                        Check(rootListing is { Entries.Count: 0 }, "R2 lists the dedicated connection prefix before writing");
-                    }
-                    remoteCreated = true;
-                    await PostAsync<CloudCreatedFolder>(runtime.Client, route + "/folders?name=" + remotePath.TrimEnd('/'), null);
-                    RandomNumberGenerator.Fill(payload);
-                    completedUpload = await StageUploadAsync(runtime.Client, route, payload, "provider-acceptance");
-                    await CommitAsync(runtime.Client, completedUpload, payload, HttpStatusCode.OK);
-                    if (!webDav)
-                    {
-                        var conflict = new byte[] { 1, 2, 3 };
-                        var duplicate = await StageUploadAsync(runtime.Client, route, conflict, "provider-duplicate");
-                        await CommitAsync(runtime.Client, duplicate, conflict, HttpStatusCode.Conflict);
-                        var multipart = new byte[16 * 1024 * 1024 + 3];
-                        RandomNumberGenerator.Fill(multipart);
-                        var multipartUpload = await StageUploadAsync(runtime.Client, route, multipart, "provider-multipart", "multipart.bin");
-                        await CommitAsync(runtime.Client, multipartUpload, multipart, HttpStatusCode.OK);
-                        Report("real R2 completed the 16777219-byte multipart publication");
-                        await VerifyProviderAsync(runtime, route, multipart, "multipart.bin");
-                    }
-                }
-                await VerifyProviderAsync(runtime, route, payload);
-                Report(liveService
-                    ? $"signed initial install and real {protocolName} list/upload/download through the existing Explorer routes"
-                    : "signed initial install and local Explorer upload-session creation through the existing routes");
-
-                using (var foreign = new HttpRequestMessage(HttpMethod.Get, route + "/entries"))
-                {
-                    foreign.Headers.Add("test-subject", ForeignActor);
-                    using var denied = await runtime.Client.SendAsync(foreign, ct);
-                    Check(denied.StatusCode == HttpStatusCode.NotFound, "foreign connection is hidden");
-                }
-                using (var readOnly = new HttpRequestMessage(HttpMethod.Post, route + "/folders?name=must-not-be-created"))
-                {
-                    readOnly.Headers.Add("test-file-access", "read-only");
-                    using var denied = await runtime.Client.SendAsync(readOnly, ct);
-                    Check(denied.StatusCode == HttpStatusCode.Forbidden, "the Core file write policy applies before proxying");
-                }
-                using (var publicProvider = await runtime.Client.PostAsync(ServerModuleManagementRoutes.ModuleHosts + "/" + providerId
-                    + providerRoute, null, ct))
-                    Check(publicProvider.StatusCode == HttpStatusCode.NotFound, "provider does not expose a public credential-taking route");
-                var brokerRoute = new Uri(new Uri(runtime.Broker.Url!), providerRoute);
-                using (var directBroker = await runtime.Client.GetAsync(brokerRoute, ct))
-                    Check(directBroker.StatusCode == HttpStatusCode.Forbidden, "private relay requires an authenticated ModuleHost");
-                using (var provider = runtime.Hosts.AcquireConnection(providerId)!)
-                using (var privateProbe = new HttpRequestMessage(HttpMethod.Get, brokerRoute))
-                {
-                    privateProbe.Headers.Add(ModuleHostProtocol.ServiceTokenHeader, provider.ServiceToken);
-                    using var denied = await runtime.Client.SendAsync(privateProbe, ct);
-                    Check(denied.StatusCode == HttpStatusCode.Forbidden, "the provider's own ModuleHost token cannot invoke the relay");
-                }
-                configuration[prefix + "Purpose"] = "third-party";
                 try
                 {
-                    using var denied = await runtime.Client.GetAsync(route + "/entries", ct);
-                    Check(denied.StatusCode == HttpStatusCode.Forbidden, "a source policy mismatch cannot forward stored credentials");
-                }
-                finally { configuration[prefix + "Purpose"] = "official"; }
+                    var payload = new byte[liveService ? 64 * 1024 + 3 : 0];
+                    string? completedUpload = null;
+                    if (liveService)
+                    {
+                        if (baidu) await AuthorizeBaiduAsync(runtime.Client, connection);
+                        else if (!webDav)
+                        {
+                            var rootListing = await runtime.Client.GetFromJsonAsync<CloudDirectoryDto>(route + "/entries", ct);
+                            Check(rootListing is { Entries.Count: 0 }, "R2 lists the dedicated connection prefix before writing");
+                        }
+                        remoteCreated = true;
+                        await PostAsync<CloudCreatedFolder>(runtime.Client,
+                            route + "/folders?reference=" + CloudTransport.Reference(parent) + "&name=" + remoteName, null);
+                        RandomNumberGenerator.Fill(payload);
+                        completedUpload = await StageUploadAsync(runtime.Client, route, payload, "provider-acceptance");
+                        await CommitAsync(runtime.Client, completedUpload, payload, HttpStatusCode.OK);
+                        if (!webDav && !baidu)
+                        {
+                            var conflict = new byte[] { 1, 2, 3 };
+                            var duplicate = await StageUploadAsync(runtime.Client, route, conflict, "provider-duplicate");
+                            await CommitAsync(runtime.Client, duplicate, conflict, HttpStatusCode.Conflict);
+                            var multipart = new byte[16 * 1024 * 1024 + 3];
+                            RandomNumberGenerator.Fill(multipart);
+                            var multipartUpload = await StageUploadAsync(runtime.Client, route, multipart, "provider-multipart", "multipart.bin");
+                            await CommitAsync(runtime.Client, multipartUpload, multipart, HttpStatusCode.OK);
+                            Report("real R2 completed the 16777219-byte multipart publication");
+                            await VerifyProviderAsync(runtime, route, multipart, "multipart.bin");
+                        }
+                    }
+                    await VerifyProviderAsync(runtime, route, payload);
+                    Report(liveService
+                        ? $"signed initial install and real {protocolName} list/upload/download through the existing Explorer routes"
+                        : "signed initial install and local Explorer upload-session creation through the existing routes");
 
-                var update = await InstallAsync(runtime.Client, compiled[2]);
-                await RequireReceiptAsync(runtime.Client, update.OperationId, "Succeeded", null);
-                await RunningAsync(runtime, providerId, "1.1.0");
-                await VerifyProviderAsync(runtime, route, payload);
-                var broken = await InstallAsync(runtime.Client, compiled[3]);
-                await RequireReceiptAsync(runtime.Client, broken.OperationId, "Failed", "module-host-update-rolled-back");
-                await RunningAsync(runtime, providerId, "1.1.0");
-                await VerifyProviderAsync(runtime, route, payload);
-                Check(Generation(runtime, Cloud) == siblingGeneration && runtime.Store.ProcessGeneration == coreGeneration
-                    && await runtime.Client.GetStringAsync("/acceptance-core", ct) == "ready", "Core and CloudStorage generations remain running");
-                Report(liveService
-                    ? "online update and startup health-check rollback; the previous provider serves the same connection and bytes"
-                    : "online update and startup health-check rollback; the previous provider serves the same connection");
+                    using (var foreign = new HttpRequestMessage(HttpMethod.Get, route + "/entries"))
+                    {
+                        foreign.Headers.Add("test-subject", ForeignActor);
+                        using var denied = await runtime.Client.SendAsync(foreign, ct);
+                        Check(denied.StatusCode == HttpStatusCode.NotFound, "foreign connection is hidden");
+                    }
+                    using (var readOnly = new HttpRequestMessage(HttpMethod.Post, route + "/folders?name=must-not-be-created"))
+                    {
+                        readOnly.Headers.Add("test-file-access", "read-only");
+                        using var denied = await runtime.Client.SendAsync(readOnly, ct);
+                        Check(denied.StatusCode == HttpStatusCode.Forbidden, "the Core file write policy applies before proxying");
+                    }
+                    using (var publicProvider = await runtime.Client.PostAsync(ServerModuleManagementRoutes.ModuleHosts + "/" + providerId
+                        + providerRoute, null, ct))
+                        Check(publicProvider.StatusCode == HttpStatusCode.NotFound, "provider does not expose a public credential-taking route");
+                    var brokerRoute = new Uri(new Uri(runtime.Broker.Url!), providerRoute);
+                    using (var directBroker = await runtime.Client.GetAsync(brokerRoute, ct))
+                        Check(directBroker.StatusCode == HttpStatusCode.Forbidden, "private relay requires an authenticated ModuleHost");
+                    using (var provider = runtime.Hosts.AcquireConnection(providerId)!)
+                    using (var privateProbe = new HttpRequestMessage(HttpMethod.Get, brokerRoute))
+                    {
+                        privateProbe.Headers.Add(ModuleHostProtocol.ServiceTokenHeader, provider.ServiceToken);
+                        using var denied = await runtime.Client.SendAsync(privateProbe, ct);
+                        Check(denied.StatusCode == HttpStatusCode.Forbidden, "the provider's own ModuleHost token cannot invoke the relay");
+                    }
+                    configuration[prefix + "Purpose"] = "third-party";
+                    try
+                    {
+                        using var denied = await runtime.Client.GetAsync(route + "/entries", ct);
+                        Check(denied.StatusCode == HttpStatusCode.Forbidden, "a source policy mismatch cannot forward stored credentials");
+                    }
+                    finally { configuration[prefix + "Purpose"] = "official"; }
 
-                var pending = await StageUploadAsync(runtime.Client, route, [4, 5, 6], "provider-pending");
-                if (liveService)
-                {
-                    await DeleteRemoteAsync(runtime.Client, route, remotePath, ct);
-                    remoteCreated = false;
+                    var update = await InstallAsync(runtime.Client, compiled[2]);
+                    await RequireReceiptAsync(runtime.Client, update.OperationId, "Succeeded", null);
+                    await RunningAsync(runtime, providerId, "1.1.0");
+                    await VerifyProviderAsync(runtime, route, payload);
+                    var broken = await InstallAsync(runtime.Client, compiled[3]);
+                    await RequireReceiptAsync(runtime.Client, broken.OperationId, "Failed", "module-host-update-rolled-back");
+                    await RunningAsync(runtime, providerId, "1.1.0");
+                    await VerifyProviderAsync(runtime, route, payload);
+                    Check(Generation(runtime, Cloud) == siblingGeneration && runtime.Store.ProcessGeneration == coreGeneration
+                        && await runtime.Client.GetStringAsync("/acceptance-core", ct) == "ready", "Core and CloudStorage generations remain running");
+                    Report(liveService
+                        ? "online update and startup health-check rollback; the previous provider serves the same connection and bytes"
+                        : "online update and startup health-check rollback; the previous provider serves the same connection");
+
+                    var pending = await StageUploadAsync(runtime.Client, route, [4, 5, 6], "provider-pending");
+                    if (liveService)
+                    {
+                        await DeleteRemoteAsync(runtime.Client, route, remotePath, parent, remoteName, ct);
+                        remoteCreated = false;
+                    }
+                    var stop = await ManageAsync(runtime, ServerModuleAction.Stop, runtime.Store.DesiredIds);
+                    while (stop.State is ServerModuleOperationState.Prepared or ServerModuleOperationState.Applying or ServerModuleOperationState.Verifying)
+                    {
+                        await Task.Delay(30, ct);
+                        stop = (await runtime.Client.GetFromJsonAsync<ServerModuleOperationDto>(
+                            ServerModuleManagementRoutes.Operation.Replace("{operationId:guid}", stop.OperationId.ToString("D")), ct))!;
+                    }
+                    Check(stop.State == ServerModuleOperationState.Succeeded, "provider stops under the standard module plan");
+                    await VerifyOfflineAsync(runtime.Client, connection);
+                    if (completedUpload is not null)
+                    {
+                        using var receipt = await runtime.Client.PostAsJsonAsync(completedUpload + "/commit",
+                            new CommitUploadRequest(null), ct);
+                        Check(receipt.StatusCode == HttpStatusCode.OK, "a completed upload remains verifiable when the provider is stopped");
+                    }
+                    using (var unavailable = await runtime.Client.PostAsJsonAsync(pending + "/commit",
+                        new CommitUploadRequest(null), ct))
+                        Check(unavailable.StatusCode == HttpStatusCode.ServiceUnavailable, "provider stop leaves unpublished upload data staged");
+                    var pendingSession = await runtime.Client.GetFromJsonAsync<UploadSessionDto>(pending, ct);
+                    Check(pendingSession is { Offset: 3 }, "staged upload can still be inspected after provider stop");
+                    Check(Generation(runtime, Cloud) == siblingGeneration, "stopping the provider does not restart CloudStorage");
+                    var disable = await ManageAsync(runtime, ServerModuleAction.Disable, [Cloud]);
+                    Check(disable.State == ServerModuleOperationState.AwaitingRestart, "provider disable follows the existing enable-set lifecycle");
                 }
-                var stop = await ManageAsync(runtime, ServerModuleAction.Stop, runtime.Store.DesiredIds);
-                while (stop.State is ServerModuleOperationState.Prepared or ServerModuleOperationState.Applying or ServerModuleOperationState.Verifying)
+                finally
                 {
-                    await Task.Delay(30, ct);
-                    stop = (await runtime.Client.GetFromJsonAsync<ServerModuleOperationDto>(
-                        ServerModuleManagementRoutes.Operation.Replace("{operationId:guid}", stop.OperationId.ToString("D")), ct))!;
+                    if (baidu && remoteCreated)
+                    {
+                        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+                        try
+                        {
+                            await DeleteRemoteAsync(runtime.Client, route, remotePath, parent, remoteName, cleanup.Token);
+                            remoteCreated = false;
+                        }
+                        catch (Exception error) when (error is HttpRequestException or IOException or
+                            InvalidOperationException or OperationCanceledException) { }
+                    }
                 }
-                Check(stop.State == ServerModuleOperationState.Succeeded, "provider stops under the standard module plan");
-                await VerifyOfflineAsync(runtime.Client, connection);
-                if (completedUpload is not null)
-                {
-                    using var receipt = await runtime.Client.PostAsJsonAsync(completedUpload + "/commit",
-                        new CommitUploadRequest(null), ct);
-                    Check(receipt.StatusCode == HttpStatusCode.OK, "a completed upload remains verifiable when the provider is stopped");
-                }
-                using (var unavailable = await runtime.Client.PostAsJsonAsync(pending + "/commit",
-                    new CommitUploadRequest(null), ct))
-                    Check(unavailable.StatusCode == HttpStatusCode.ServiceUnavailable, "provider stop leaves unpublished upload data staged");
-                var pendingSession = await runtime.Client.GetFromJsonAsync<UploadSessionDto>(pending, ct);
-                Check(pendingSession is { Offset: 3 }, "staged upload can still be inspected after provider stop");
-                Check(Generation(runtime, Cloud) == siblingGeneration, "stopping the provider does not restart CloudStorage");
-                var disable = await ManageAsync(runtime, ServerModuleAction.Disable, [Cloud]);
-                Check(disable.State == ServerModuleOperationState.AwaitingRestart, "provider disable follows the existing enable-set lifecycle");
             }
             await using (var runtime = await StartAsync(configuration))
             {
@@ -245,7 +279,9 @@ internal static class CloudProviderPackageAcceptance
         }
         finally
         {
-            if (remoteCreated)
+            if (remoteCreated && baidu)
+                Console.Error.WriteLine($"Baidu acceptance cleanup could not be confirmed for the test folder {remotePath}.");
+            else if (remoteCreated)
             {
                 using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(20));
                 using var http = CloudTransport.Create(new Uri(config.Endpoint), config.AllowPrivateWebDav);
@@ -275,7 +311,8 @@ internal static class CloudProviderPackageAcceptance
                 module, version, release, Source, "official", ModulePackagePlatform.CurrentRid,
                 assembly + ".dll", entry, Source, new string('a', 40), Source, 1,
                 Origin, PrivateKeyPemPath: keyPath, KeyId: "acceptance", ValiditySeconds: 3600,
-                HostApiMinimum: ModuleHostProtocol.HostApiVersion, HostApiMaximumExclusive: "3.0.0", Runtime: "module-host",
+                HostApiMinimum: module == Cloud || baidu ? CloudProviderProtocol.BaiduHostApiMinimum : CloudProviderProtocol.HostApiMinimum,
+                HostApiMaximumExclusive: "3.0.0", Runtime: "module-host",
                 Ui: new(assembly, "", "", null, "MIT")), ct);
         }
 
@@ -368,6 +405,25 @@ internal static class CloudProviderPackageAcceptance
             return await ReadAsync<T>(response, ct);
         }
 
+        async Task AuthorizeBaiduAsync(HttpClient client, Guid id)
+        {
+            var sessions = CloudStorageApi.Route + "/authorization/sessions";
+            var session = await PostAsync<CloudAuthorizationSessionDto>(client, sessions,
+                new CloudAuthorizationStartRequest(config.Protocol, config.Name, EnableWrites: true, ConnectionId: id));
+            Check(session is { Status: "pending", UserCode.Length: > 0, AuthorizationUrl.Length: > 0 },
+                $"Baidu device session did not become pending ({session.Status}).");
+            Console.WriteLine($"BAIDU_APPROVAL {session.AuthorizationUrl} {session.UserCode}");
+            var route = $"{sessions}/{session.Id:D}";
+            while (session.Status == "pending")
+            {
+                await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, session.PollIntervalSeconds)), ct);
+                session = (await client.GetFromJsonAsync<CloudAuthorizationSessionDto>(route, ct))!;
+            }
+            Check(session.Status == "completed" && session.ConnectionId == id
+                && session.UserCode is null && session.AuthorizationUrl is null, $"Baidu consent did not complete ({session.Status}).");
+            Report("real OAuth device approval refreshed the existing connection without exposing token or device code");
+        }
+
         async Task RunningAsync(Runtime runtime, string module, string version)
         {
             using var ready = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -432,6 +488,8 @@ internal static class CloudProviderPackageAcceptance
             var file = listing!.Entries.Single(item => item.Name == fileName);
             using var response = await client.GetAsync(route + "/download?reference=" + file.Reference, HttpCompletionOption.ResponseHeadersRead, ct);
             response.EnsureSuccessStatusCode();
+            if (baidu)
+                Check(response.Content.Headers.ContentDisposition?.FileNameStar == fileName, "Baidu keeps the real download filename");
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
             var buffer = new byte[64 * 1024];
             var offset = 0;
@@ -458,19 +516,28 @@ internal static class CloudProviderPackageAcceptance
             Check(all!.Any(item => item.Id == id && item.Protocol == config.Protocol), "existing connection keeps its ID when the provider is unavailable");
             using var unavailable = await client.GetAsync($"{CloudStorageApi.Route}/connections/{id:D}/entries", ct);
             Check(unavailable.StatusCode == HttpStatusCode.ServiceUnavailable, "missing provider gives an explicit unavailable response");
+            if (baidu)
+            {
+                var authorization = CloudStorageApi.Route + "/authorization";
+                var configured = await client.GetFromJsonAsync<CloudAuthorizationProviderDto[]>(authorization + "/providers", ct);
+                Check(configured!.Any(item => item.Protocol == config.Protocol && item.Configured), "the OAuth application configuration is retained");
+                using var noConsent = await client.PostAsJsonAsync(authorization + "/sessions",
+                    new CloudAuthorizationStartRequest(config.Protocol, config.Name), ct);
+                Check(noConsent.StatusCode == HttpStatusCode.ServiceUnavailable, "device authorization requires the provider");
+            }
         }
     }
 
-    private static async Task DeleteRemoteAsync(HttpClient client, string route, string directory, CancellationToken ct)
+    private static async Task DeleteRemoteAsync(HttpClient client, string route, string directory, string parent, string name, CancellationToken ct)
     {
         using var response = await client.DeleteAsync(route + "/entries?reference=" + CloudTransport.Reference(directory), ct);
         response.EnsureSuccessStatusCode();
         string? cursor = null;
         do
         {
-            var page = await client.GetFromJsonAsync<CloudDirectoryDto>(route + "/entries"
-                + (cursor is null ? "" : "?cursor=" + Uri.EscapeDataString(cursor)), ct);
-            Check(page!.Entries.All(entry => entry.Name != directory.TrimEnd('/')), "the isolated remote acceptance directory was removed");
+            var page = await client.GetFromJsonAsync<CloudDirectoryDto>(route + "/entries?reference=" + CloudTransport.Reference(parent)
+                + (cursor is null ? "" : "&cursor=" + Uri.EscapeDataString(cursor)), ct);
+            Check(page!.Entries.All(entry => entry.Name != name), "the isolated remote acceptance directory was removed");
             cursor = page.NextCursor;
         } while (cursor is not null);
     }

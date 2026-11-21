@@ -1,7 +1,8 @@
 using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.WebUtilities;
-using RelaxKonOS.ServerModule.CloudStorage;
+using RelaxKonOS.ModuleHost.Protocol;
+using RelaxKonOS.ServerModule.CloudBaidu;
 
 internal static class BaiduDeviceAuthorizationChecks
 {
@@ -22,16 +23,16 @@ internal static class BaiduDeviceAuthorizationChecks
         check(query["grant_type"] == "device_token" && query["code"] == "code&=?"
             && query["client_secret"] == "secret&=?" && !query.ContainsKey("device_code"),
             "Baidu token exchange uses code parameter with safe query encoding");
-        check(poll.Status == BaiduDeviceAuthorization.PollStatus.Authorized
+        check(poll.Status == CloudBaiduPollStatus.Authorized
             && poll.Tokens!.RefreshToken == "private-refresh" && !poll.ToString().Contains("private-access"),
             "Baidu authorization returns validated tokens without diagnostic disclosure");
         foreach (var (error, status) in new[] {
-            ("authorization_pending", BaiduDeviceAuthorization.PollStatus.Pending),
-            ("slow_down", BaiduDeviceAuthorization.PollStatus.SlowDown),
-            ("authorization_declined", BaiduDeviceAuthorization.PollStatus.Denied),
-            ("access_denied", BaiduDeviceAuthorization.PollStatus.Denied),
-            ("expired_token", BaiduDeviceAuthorization.PollStatus.Expired),
-            ("invalid_client", BaiduDeviceAuthorization.PollStatus.Failed) })
+            ("authorization_pending", CloudBaiduPollStatus.Pending),
+            ("slow_down", CloudBaiduPollStatus.SlowDown),
+            ("authorization_declined", CloudBaiduPollStatus.Denied),
+            ("access_denied", CloudBaiduPollStatus.Denied),
+            ("expired_token", CloudBaiduPollStatus.Expired),
+            ("invalid_client", CloudBaiduPollStatus.Failed) })
         {
             poll = await Create($$"""{"error":"{{error}}","error_description":"secret must not escape"}""", status: HttpStatusCode.BadRequest)
                 .PollAsync("id", "secret", "code", default);

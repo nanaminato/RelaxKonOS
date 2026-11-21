@@ -76,12 +76,13 @@ public static class CloudProviderEndpoint
     private static bool Validate(CloudProviderRequest request, out Uri? endpoint)
     {
         endpoint = null;
-        return request is { Endpoint.Length: > 0 and <= 2048, UserName.Length: > 0 and <= 256, Secret.Length: > 0 and <= 2048, Path: not null }
+        return request is { Endpoint.Length: > 0 and <= 2048, UserName.Length: <= 512, Secret.Length: <= 2048, Path: not null }
             && Uri.TryCreate(request.Endpoint, UriKind.Absolute, out endpoint) && endpoint.Scheme == Uri.UriSchemeHttps
             && endpoint.UserInfo.Length == 0 && endpoint.Query.Length == 0 && endpoint.Fragment.Length == 0
             && !request.UserName.Any(char.IsControl) && !request.Secret.Any(char.IsControl)
             && CloudTransport.ValidPath(request.Path) && Enum.IsDefined(request.Action)
-            && (request.Action is CloudProviderAction.List or CloudProviderAction.Info || request.Path.Length > 0)
+            && (request.Action is not (CloudProviderAction.Download or CloudProviderAction.Upload or CloudProviderAction.CreateFolder
+                or CloudProviderAction.Move or CloudProviderAction.Delete) || request.Path.Length > 0)
             && (request.Action != CloudProviderAction.Upload || request.UploadLength is >= 0 and <= CloudProviderProtocol.MaximumUploadBytes)
             && (request.Action != CloudProviderAction.Move || request.Destination is { Length: > 0 } destination && CloudTransport.ValidPath(destination));
     }

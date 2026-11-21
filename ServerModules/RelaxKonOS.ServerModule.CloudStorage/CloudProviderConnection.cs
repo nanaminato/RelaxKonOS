@@ -6,12 +6,13 @@ using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.ServerModule.CloudStorage;
 
-internal sealed class CloudProviderConnection(CloudConnectionRequest connection, ICloudFileProviders provider)
+internal sealed class CloudProviderConnection(CloudConnectionRequest connection, ICloudFileProviders provider, string? accessToken)
 {
     internal static CloudFileProvider? Kind(string protocol) => protocol switch
     {
         "webdav" => CloudFileProvider.WebDav,
         "s3" => CloudFileProvider.S3,
+        CloudProviderProtocol.BaiduProtocol => CloudFileProvider.Baidu,
         _ => null,
     };
 
@@ -35,6 +36,15 @@ internal sealed class CloudProviderConnection(CloudConnectionRequest connection,
     internal ValueTask<HttpResponseMessage> DownloadAsync(string path, CancellationToken ct) =>
         SendAsync(CloudProviderAction.Download, path, ct);
 
+    internal async Task<string> ResolveMutationPathAsync(string path, CancellationToken ct)
+    {
+        if (!path.StartsWith("id:", StringComparison.Ordinal)) return path;
+        using var response = await SendAsync(CloudProviderAction.ResolveMutationPath, path, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<string>(cancellationToken: ct)
+            ?? throw new InvalidDataException("cloud-storage-provider-response");
+    }
+
     internal Task CreateFolderAsync(string path, CancellationToken ct) =>
         CompleteAsync(CloudProviderAction.CreateFolder, path, ct);
 
@@ -57,7 +67,9 @@ internal sealed class CloudProviderConnection(CloudConnectionRequest connection,
     private ValueTask<HttpResponseMessage> SendAsync(CloudProviderAction action, string path, CancellationToken ct,
         string? cursor = null, string? destination = null, Stream? content = null, bool replace = false) =>
         provider.SendAsync(Kind(connection.Protocol) ?? throw new ArgumentException("protocol"),
-            new(action, connection.Endpoint, connection.UserName, connection.Secret, connection.AllowPrivateWebDav,
+            new(action, connection.Endpoint, accessToken is null ? connection.UserName : "",
+                accessToken is null ? connection.Secret : "", connection.AllowPrivateWebDav,
                 path, cursor, destination, replace, content is null ? null : content.Length - content.Position,
-                connection.Region, connection.Bucket, connection.Prefix, connection.SessionToken), content, ct);
+                connection.Region, connection.Bucket, connection.Prefix, accessToken is null ? connection.SessionToken : null,
+                accessToken), content, ct);
 }
