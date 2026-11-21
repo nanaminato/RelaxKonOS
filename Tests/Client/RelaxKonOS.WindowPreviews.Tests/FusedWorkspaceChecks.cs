@@ -13,7 +13,7 @@ using RelaxKonOS.Client.Apps.PortForwarding;
 using RelaxKonOS.Client.Apps.PortForwarding.ViewModels;
 using RelaxKonOS.Client.Apps.PortForwarding.Views;
 using RelaxKonOS.Client.Apps.WebServers;
-using RelaxKonOS.Client.Apps.WebServers.Views;
+using RelaxKonOS.App.WebServers.Views;
 using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.App.Certificates.Views;
 using RelaxKonOS.Client.Apps.ApplicationDeployments;

@@ -1,12 +1,10 @@
-using RelaxKonOS.App.WebServers;
-using RelaxKonOS.App.WebServers.Views;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.WebServers.Views;
+namespace RelaxKonOS.App.WebServers.Views;
 
 /// <summary>Web Server Manager shell. Layout lives in AXAML; this class only switches pages.</summary>
-internal partial class WebServerManagerWorkspace : UserControl
+public partial class WebServerManagerWorkspace : UserControl
 {
     public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
     {
@@ -15,20 +13,21 @@ internal partial class WebServerManagerWorkspace : UserControl
     }
 
     private Button? _selectedButton;
-    private readonly RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel? _dependency;
+    private readonly Func<Control>? _createSettings;
 
     private WebServerManagerWorkspace(WebServerManagerViewModel viewModel,
-        RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel? dependency)
+        Func<Control>? createSettings)
     {
-        _dependency = dependency;
+        _createSettings = createSettings;
         InitializeComponent();
-        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        RelaxKonOS.WindowManager.CompactWorkspaceNavigation.Install(this, WorkspaceBody,
+            (Avalonia.Data.Binding)new LocExtension("webservers.view").ProvideValue(null!));
         DataContext = viewModel;
         ShowPage("instances", InstancesPageButton);
     }
 
     public static WebServerManagerWorkspace Create(WebServerManagerViewModel viewModel,
-        RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel? dependency = null) => new(viewModel, dependency);
+        Func<Control>? createSettings = null) => new(viewModel, createSettings);
 
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)
     {
@@ -45,14 +44,13 @@ internal partial class WebServerManagerWorkspace : UserControl
 
         _selectedButton = button;
         button.Classes.Add("nav-selected");
-        if (page == "settings" && _dependency is not null) _ = _dependency.RefreshAsync();
         ContentHost.Content = page switch
         {
             "sites" => new WebServerSitesPageView(),
             "settings" => new ScrollViewer
             {
                 HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-                Content = new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView { DataContext = _dependency }
+                Content = _createSettings?.Invoke()
             },
             _ => new WebServerInstancesPageView()
         };

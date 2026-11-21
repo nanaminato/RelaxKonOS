@@ -1,6 +1,11 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "webservers.title": "Web サーバーマネージャー",
+    "webservers.view": "表示",
+    "webservers.operation_log": "操作ログ",
+    "webservers.settings": "設定",
+    "webservers.stop": "停止",
     "webservers.cancel": "キャンセル",
     "webservers.operation_running": "実行中",
     "webservers.refresh": "更新",

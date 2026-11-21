@@ -1,6 +1,11 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "webservers.title": "Web Server Manager",
+    "webservers.view": "View",
+    "webservers.operation_log": "Operation log",
+    "webservers.settings": "Settings",
+    "webservers.stop": "Stop",
     "webservers.cancel": "Cancel",
     "webservers.operation_running": "In progress",
     "webservers.refresh": "Refresh",

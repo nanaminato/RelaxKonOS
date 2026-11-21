@@ -30,7 +30,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
     public override ApplicationManifest Manifest { get; } = new(
         new AppId("relaxkonos.webservers"), "Web Server Manager", "0.1.0", "🌐", "Manage web servers on the RelaxKonOS Server",
         [AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage, AppPermissions.ServerComponentsRead], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.WebServer]),
-        InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+        IconPath: "avares://RelaxKonOS.App.WebServers/Assets/webservers.png", InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {
@@ -51,7 +51,11 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
         {
             FormatHostProblem = WebServerAuthorization.FormatProblem
         };
-        var view = WebServerManagerWorkspace.Create(viewModel, dependency);
+        var view = WebServerManagerWorkspace.Create(viewModel, () =>
+        {
+            if (dependency is not null) _ = dependency.RefreshAsync();
+            return new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView { DataContext = dependency };
+        });
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.webservers.display_name"),
             view, new Rect(70, 55, 1080, 680), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
