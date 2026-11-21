@@ -47,9 +47,9 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
                 try
                 {
                     var receipt = drive.ResolveRootChild($"System/bundled-apps/{id}.json");
-                    if (File.Exists(receipt)) continue;
                     var existing = packages.FindInstalled(id);
-                    if (existing is null)
+                    if (existing is null && File.Exists(receipt)) continue;
+                    if (existing is null || !MeetsVersion(existing.Version, entry.MinimumVersion))
                     {
                         var path = packages.OfficialSource.BundledPath(id);
                         var candidate = await installer.InspectLocalAsync(path, cancellationToken: cancellationToken);
@@ -70,10 +70,8 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
                             ?? await deployment.PrepareAsync(candidate, [], cancellationToken);
                         existing = await deployment.ExecuteAsync(review, cancellationToken);
                     }
-                    else if (!MeetsVersion(existing.Version, entry.MinimumVersion))
-                        throw new InvalidOperationException("The installed application needs an interactive update.");
-
-                    await drive.WriteJsonAtomicallyAsync(receipt, new ProvisionedApplication(id, existing.Version), cancellationToken);
+                    if (!File.Exists(receipt))
+                        await drive.WriteJsonAtomicallyAsync(receipt, new ProvisionedApplication(id, existing.Version), cancellationToken);
                 }
                 catch (Exception error) when (!cancellationToken.IsCancellationRequested && AppPackageInstallerService.IsStoreFailure(error))
                 {

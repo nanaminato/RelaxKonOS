@@ -272,6 +272,18 @@ internal static class OfficialRoappChecks
             Check(upgraded.Version == "1.1.0" && upgraded.InstallationPath != first.InstallationPath && Directory.Exists(first.InstallationPath),
                 "The upgrade should leave the previous package version intact.");
 
+            if (applicationId == "relaxkonos.welcome")
+            {
+                await WriteProfileAsync("offline", "1.2.0");
+                await provisioner.RunAsync();
+                Check(packages.FindInstalled(applicationId) == upgraded, "An insufficient bundled release must preserve the installed version.");
+                await PublishCandidateAsync(manifest => manifest["version"] = "1.2.0");
+                await provisioner.RunAsync();
+                upgraded = packages.FindInstalled(applicationId) ?? throw new InvalidOperationException("Profile update removed the application.");
+                Check(upgraded.Version == "1.2.0" && File.Exists(Path.Combine(upgraded.InstallationPath, "deployment-receipt.json")),
+                    "A higher offline profile floor should upgrade an installed application through the coordinator despite the first-install receipt.");
+            }
+
             var receipt = Path.Combine(upgraded.InstallationPath, OfficialDesktopPackages.OriginFileName);
             await File.WriteAllTextAsync(receipt, "\"directDeploy\"");
             var (releaseReader, releaseApplications, _) = CreateRuntime();
@@ -342,9 +354,9 @@ internal static class OfficialRoappChecks
             ? installer.InstallAsync(candidate, default, (_, _) => Task.FromResult(Guid.NewGuid()))
             : installer.InstallAsync(candidate);
 
-        Task WriteProfileAsync(string policy)
+        Task WriteProfileAsync(string policy, string? minimum = null)
         {
-            var entry = new[] { new { appId = applicationId, minimumVersion = isDocker ? "0.3.0" : "1.0.0", installPolicy = policy } };
+            var entry = new[] { new { appId = applicationId, minimumVersion = minimum ?? (isDocker ? "0.3.0" : "1.0.0"), installPolicy = policy } };
             return File.WriteAllTextAsync(Path.Combine(source, "installation-profiles.json"),
                 System.Text.Json.JsonSerializer.Serialize(new
                 {
