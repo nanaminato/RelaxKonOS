@@ -1,3 +1,7 @@
+using Avalonia.Utilities;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.App.Firewall;
+using RelaxKonOS.Client.Services;
 using Avalonia.Controls;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
@@ -35,7 +39,7 @@ public sealed class FirewallApp : RemoteApplicationBase
             return;
         }
 
-        var viewModel = new FirewallViewModel(client, context.Permissions);
+        var viewModel = CreateViewModel(client, context.Permissions);
         var view = new FirewallWorkspace(viewModel);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.firewall.display_name"), view, new Rect(70, 55, 1120, 780), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
@@ -43,6 +47,16 @@ public sealed class FirewallApp : RemoteApplicationBase
         viewModel.ShowRuleEditorAsync = editing => ShowRuleEditorAsync(context, window, viewModel, editing);
         viewModel.ConfirmAsync = (title, message) => ConfirmAsync(context, window, title, message);
         _ = viewModel.StartAsync();
+    }
+
+    internal static FirewallViewModel CreateViewModel(IServerFirewall client, IAppPermissionScope permissions)
+    {
+        var localization = App.Services.GetRequiredService<LocalizationService>();
+        var model = new FirewallViewModel(client, permissions, localization.Get,
+            PrivilegedHelperProblemText.FormatOrFallback, code => PrivilegedHelperProblemText.TryFormat(code, out _));
+        WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, FirewallViewModel>(
+            localization, nameof(LocalizationService.LanguageChanged), model.OnLanguageChanged);
+        return model;
     }
 
     /// <summary>Used by the window-preview checks to render the real workspace without a window host.</summary>

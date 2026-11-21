@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:fw="clr-namespace:RelaxKonOS.Client.Apps.Firewall"
+             xmlns:fwApp="clr-namespace:RelaxKonOS.App.Firewall;assembly=RelaxKonOS.App.Firewall"
              x:Class="RelaxKonOS.Client.Apps.Firewall.Views.FirewallRuleEditorView"
-             x:DataType="fw:FirewallViewModel"
+             x:DataType="fwApp:FirewallViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
   <UserControl.Styles>
     <Style Selector="TextBlock.field-label"><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /><Setter Property="FontSize" Value="12" /></Style>

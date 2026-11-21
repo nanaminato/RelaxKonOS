@@ -1,5 +1,3 @@
-using System.ComponentModel;
-using RelaxKonOS.App.Firewall;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Net;
@@ -7,32 +5,29 @@ using System.Net.Sockets;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Firewall;
 
-namespace RelaxKonOS.Client.Apps.Firewall;
+namespace RelaxKonOS.App.Firewall;
 
 /// <summary>
 /// Window-local host firewall editor. The host remains the only source of truth: every accepted
 /// write is followed by a re-read, and a refused write keeps the user's draft instead of guessing
 /// at optimistic state.
 /// </summary>
-public sealed partial class FirewallViewModel : LocalizedObservableObject
+public sealed partial class FirewallViewModel : ObservableObject
 {
-    private static readonly FirewallProblemText ProblemText = new(LocalizedText.Get, PrivilegedHelperProblemText.FormatOrFallback);
+    private readonly FirewallProblemText _problemText;
+    private readonly Func<string, string, string> _localize;
+    private readonly Func<string?, bool> _isHelperProblem;
 
-    protected override void OnPropertyChanged(PropertyChangedEventArgs args)
+    public void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args)
     {
-        if (args.PropertyName == string.Empty)
-        {
-            foreach (var option in Policies.Concat(Actions).Concat(Directions).Concat(Protocols))
-                option.RefreshLocalization();
-            foreach (var rule in _allRules)
-                rule.RefreshLocalization();
-        }
-        base.OnPropertyChanged(args);
+        foreach (var option in Policies.Concat(Actions).Concat(Directions).Concat(Protocols))
+            option.RefreshLocalization();
+        foreach (var rule in _allRules)
+            rule.RefreshLocalization();
+        OnPropertyChanged(string.Empty);
     }
 
     private readonly IServerFirewall _client;
@@ -46,16 +41,21 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
     private string? _hostIncoming;
     private string? _hostOutgoing;
 
-    public FirewallViewModel(IServerFirewall client, IAppPermissionScope permissions)
+    public FirewallViewModel(IServerFirewall client, IAppPermissionScope permissions,
+        Func<string, string, string> localize, Func<string?, string, string> formatHostProblem,
+        Func<string?, bool> isHelperProblem)
     {
         _client = client;
         _permissions = permissions;
-        _directions = [new FirewallOption("in", "firewall.choice.in", LocalizedText.Get), new FirewallOption("out", "firewall.choice.out", LocalizedText.Get)];
+        _localize = localize;
+        _problemText = new FirewallProblemText(localize, formatHostProblem);
+        _isHelperProblem = isHelperProblem;
+        _directions = [new FirewallOption("in", "firewall.choice.in", _localize), new FirewallOption("out", "firewall.choice.out", _localize)];
         _protocols =
         [
-            new FirewallOption("tcp", "firewall.choice.tcp", LocalizedText.Get),
-            new FirewallOption("udp", "firewall.choice.udp", LocalizedText.Get),
-            new FirewallOption("any", "firewall.choice.any", LocalizedText.Get),
+            new FirewallOption("tcp", "firewall.choice.tcp", _localize),
+            new FirewallOption("udp", "firewall.choice.udp", _localize),
+            new FirewallOption("any", "firewall.choice.any", _localize),
         ];
         SyncOptions(false);
         // The default-policy editor starts empty: a host that cannot report its policies must not
@@ -63,8 +63,14 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
         SelectedAction = Pick(Actions, "allow");
         SelectedDirection = _directions[0];
         SelectedProtocol = _protocols[0];
-        StatusText = LocalizedText.Ref("firewall.status.loading");
+        StatusText = Message("firewall.status.loading");
     }
+
+    private string Format(string key, params object?[] arguments) =>
+        string.Format(CultureInfo.CurrentCulture, _localize(key, key), arguments);
+
+    private FirewallMessage Message(string key, params object?[] arguments) =>
+        new(() => arguments.Length == 0 ? _localize(key, key) : Format(key, arguments));
 
     public ObservableCollection<FirewallRuleRow> Rules { get; } = [];
     public ObservableCollection<FirewallOption> Policies { get; } = [];
@@ -74,9 +80,9 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
 
     [ObservableProperty] private FirewallRuleRow? _selectedRow;
     [ObservableProperty] private FirewallRuleDto? _selectedRule;
-    [ObservableProperty] private LocalizedStatus _statusText;
-    [ObservableProperty] private LocalizedStatus _unavailableReason;
-    [ObservableProperty] private LocalizedStatus _editorMessage;
+    [ObservableProperty] private FirewallMessage _statusText;
+    [ObservableProperty] private FirewallMessage _unavailableReason;
+    [ObservableProperty] private FirewallMessage _editorMessage;
     [ObservableProperty] private string _ruleFilter = string.Empty;
     [ObservableProperty] private bool _isEditingRule;
 
@@ -114,23 +120,23 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
 
     public string BackendLabel => _backend switch
     {
-        "ufw" => T("firewall.backend.ufw", "UFW"),
-        "windows-defender" => T("firewall.backend.windows", "Windows Defender Firewall"),
-        "" => T("firewall.value.unknown", "Unknown"),
+        "ufw" => _localize("firewall.backend.ufw", "UFW"),
+        "windows-defender" => _localize("firewall.backend.windows", "Windows Defender Firewall"),
+        "" => _localize("firewall.value.unknown", "Unknown"),
         _ => _backend,
     };
 
-    public string VersionLabel => string.IsNullOrWhiteSpace(_version) ? T("firewall.value.unknown", "Unknown") : _version;
+    public string VersionLabel => string.IsNullOrWhiteSpace(_version) ? _localize("firewall.value.unknown", "Unknown") : _version;
 
     public string HostIncomingLabel => PolicyLabel(_hostIncoming);
     public string HostOutgoingLabel => PolicyLabel(_hostOutgoing);
 
     public string StatePillText =>
-        !HasReadPermission ? T("firewall.pill.no_permission", "No access")
-        : !HasFacts ? T("firewall.pill.loading", "Reading")
-        : !IsAvailable ? T("firewall.pill.unavailable", "Unavailable")
-        : IsEnabled ? T("firewall.pill.active", "Active")
-        : T("firewall.pill.inactive", "Off");
+        !HasReadPermission ? _localize("firewall.pill.no_permission", "No access")
+        : !HasFacts ? _localize("firewall.pill.loading", "Reading")
+        : !IsAvailable ? _localize("firewall.pill.unavailable", "Unavailable")
+        : IsEnabled ? _localize("firewall.pill.active", "Active")
+        : _localize("firewall.pill.inactive", "Off");
 
     public bool StatePillOk => HasReadPermission && HasFacts && IsAvailable && IsEnabled;
     public bool StatePillWarn => HasReadPermission && HasFacts && IsAvailable && !IsEnabled;
@@ -146,12 +152,12 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
     public bool ShowDisableAction => HasFacts && IsAvailable && (IsWindowsBackend || IsEnabled);
     public bool HasProtectionActionHint => HasFacts && IsAvailable;
     public string ProtectionActionHint => IsEnabled
-        ? T("firewall.protection.disable_hint", "Stopping the firewall makes every rule inactive until it is started again.")
-        : T("firewall.protection.enable_hint", "Starting the firewall applies every rule; connections that are not allowed are dropped.");
+        ? _localize("firewall.protection.disable_hint", "Stopping the firewall makes every rule inactive until it is started again.")
+        : _localize("firewall.protection.enable_hint", "Starting the firewall applies every rule; connections that are not allowed are dropped.");
 
     public string RuleCountText => Rules.Count == _allRules.Count
-        ? LocalizedText.Format("firewall.rules.count", _allRules.Count)
-        : LocalizedText.Format("firewall.rules.count_filtered", Rules.Count, _allRules.Count);
+        ? Format("firewall.rules.count", _allRules.Count)
+        : Format("firewall.rules.count_filtered", Rules.Count, _allRules.Count);
 
     public bool HasRules => _allRules.Count > 0;
     public bool ShowRulesEmpty => HasFacts && IsAvailable && Rules.Count == 0 && _allRules.Count == 0;
@@ -175,19 +181,19 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
             {
                 // "Matches the host" would be a claim about facts the host never reported.
                 if (!string.IsNullOrEmpty(_hostIncoming) || !string.IsNullOrEmpty(_hostOutgoing))
-                    return T("firewall.defaults.unchanged", "Default policies match the host.");
+                    return _localize("firewall.defaults.unchanged", "Default policies match the host.");
                 return IsWindowsBackend
-                    ? T("firewall.value.mixed", "Differs across profiles")
-                    : T("firewall.defaults.unknown", "The host did not report its default policies.");
+                    ? _localize("firewall.value.mixed", "Differs across profiles")
+                    : _localize("firewall.defaults.unknown", "The host did not report its default policies.");
             }
 
             var parts = new List<string>(2);
             if (!string.Equals(SelectedIncomingPolicy?.Value, _hostIncoming, StringComparison.OrdinalIgnoreCase))
-                parts.Add(LocalizedText.Format("firewall.defaults.change_item",
-                    T("firewall.default_incoming", "Incoming policy"), PolicyLabel(_hostIncoming), SelectedIncomingPolicy?.Label ?? ""));
+                parts.Add(Format("firewall.defaults.change_item",
+                    _localize("firewall.default_incoming", "Incoming policy"), PolicyLabel(_hostIncoming), SelectedIncomingPolicy?.Label ?? ""));
             if (!string.Equals(SelectedOutgoingPolicy?.Value, _hostOutgoing, StringComparison.OrdinalIgnoreCase))
-                parts.Add(LocalizedText.Format("firewall.defaults.change_item",
-                    T("firewall.default_outgoing", "Outgoing policy"), PolicyLabel(_hostOutgoing), SelectedOutgoingPolicy?.Label ?? ""));
+                parts.Add(Format("firewall.defaults.change_item",
+                    _localize("firewall.default_outgoing", "Outgoing policy"), PolicyLabel(_hostOutgoing), SelectedOutgoingPolicy?.Label ?? ""));
             return string.Join("  ·  ", parts);
         }
     }
@@ -212,9 +218,9 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
             var port = Port.Trim();
             if (port.Length == 0) return null;
             if (!IsPort(port))
-                return T("firewall.validation.port_invalid", "Enter a port from 1 to 65535, or a start:end range.");
+                return _localize("firewall.validation.port_invalid", "Enter a port from 1 to 65535, or a start:end range.");
             if (SelectedProtocol?.Value == "any" && !IsAnyEndpoint(port))
-                return T("firewall.validation.protocol_port", "The any protocol can only use the any port.");
+                return _localize("firewall.validation.protocol_port", "The any protocol can only use the any port.");
             return null;
         }
     }
@@ -222,16 +228,16 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
     public bool IsDraftValid => SourceProblem is null && DestinationProblem is null && PortProblem is null;
     public bool CanSubmitDraft => IsDraftValid && !IsLoading && CanManage && !IsReadOnly;
     public string SubmitText => IsEditingRule
-        ? T("firewall.rule.update", "Update rule")
-        : T("firewall.rule.add", "Add rule");
+        ? _localize("firewall.rule.update", "Update rule")
+        : _localize("firewall.rule.add", "Add rule");
 
     /// <summary>The rule the current draft would create, phrased the same way as the table read-back.</summary>
-    public string DraftSummary => LocalizedText.Format("firewall.sentence.rule",
+    public string DraftSummary => Format("firewall.sentence.rule",
         SelectedAction?.Label ?? string.Empty, SelectedDirection?.Label ?? string.Empty, SelectedProtocol?.Label ?? string.Empty,
-        string.Format(CultureInfo.CurrentCulture, T("firewall.sentence.port", "port {0}"),
-            IsAnyEndpoint(Port.Trim()) ? T("firewall.value.any", "Any") : Port.Trim()),
-        string.Format(CultureInfo.CurrentCulture, T("firewall.sentence.from", "from {0}"), AddressPhrase(Source)),
-        string.Format(CultureInfo.CurrentCulture, T("firewall.sentence.to", "to {0}"), AddressPhrase(Destination)));
+        string.Format(CultureInfo.CurrentCulture, _localize("firewall.sentence.port", "port {0}"),
+            IsAnyEndpoint(Port.Trim()) ? _localize("firewall.value.any", "Any") : Port.Trim()),
+        string.Format(CultureInfo.CurrentCulture, _localize("firewall.sentence.from", "from {0}"), AddressPhrase(Source)),
+        string.Format(CultureInfo.CurrentCulture, _localize("firewall.sentence.to", "to {0}"), AddressPhrase(Destination)));
 
     public bool HasSelection => SelectedRule is not null;
     /// <summary>A refusal raised while the rule dialog is open; the dialog is modal, so the page
@@ -239,13 +245,13 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
     public bool HasEditorMessage => !EditorMessage.IsEmpty;
     public string SelectedRuleNumberText => SelectedRule is null
         ? string.Empty
-        : LocalizedText.Format("firewall.rule.number_value", SelectedRule.Number);
+        : Format("firewall.rule.number_value", SelectedRule.Number);
     public string SelectedRuleSentence => SelectedRow?.Sentence ?? string.Empty;
 
     // ---- navigation state -------------------------------------------------------------------
 
     partial void OnIsLoadingChanged(bool value) { RefreshFactProperties(); RefreshCommands(); }
-    partial void OnEditorMessageChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasEditorMessage));
+    partial void OnEditorMessageChanged(FirewallMessage value) => OnPropertyChanged(nameof(HasEditorMessage));
     partial void OnIsAvailableChanged(bool value) => RefreshFactProperties();
     partial void OnIsEnabledChanged(bool value) => RefreshFactProperties();
     partial void OnHasFactsChanged(bool value) => RefreshFactProperties();
@@ -297,7 +303,7 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
             IsAvailable = false;
             IsEnabled = false;
             HasFacts = true;
-            StatusText = LocalizedText.Ref("firewall.permission.read_required");
+            StatusText = Message("firewall.permission.read_required");
             return;
         }
 
@@ -306,7 +312,7 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
         var pendingOutgoing = SelectedOutgoingPolicy?.Value;
         var keepPendingDefaults = HasDefaultChanges;
         IsLoading = true;
-        StatusText = LocalizedText.Ref("firewall.status.loading");
+        StatusText = Message("firewall.status.loading");
         try
         {
             var status = await _client.GetStatusAsync();
@@ -325,7 +331,7 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
                 && string.Equals(_hostOutgoing, status.DefaultOutgoingPolicy, StringComparison.Ordinal);
             _hostIncoming = status.DefaultIncomingPolicy;
             _hostOutgoing = status.DefaultOutgoingPolicy;
-            UnavailableReason = LocalizedStatus.Literal(string.Empty);
+            UnavailableReason = FirewallMessage.Literal(string.Empty);
 
             if (!status.IsAvailable)
             {
@@ -333,10 +339,10 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
                 ApplyFilter();
                 SelectedRule = null;
                 AdoptHostDefaults();
-                UnavailableReason = LocalizedStatus.Literal(ProblemText.Format(status.ProblemCode,
-                    T("firewall.value.unknown", "Unknown")));
-                StatusText = LocalizedText.Ref("firewall.status.unavailable", ProblemText.Format(status.ProblemCode,
-                    T("firewall.value.unknown", "Unknown")));
+                UnavailableReason = FirewallMessage.Literal(_problemText.Format(status.ProblemCode,
+                    _localize("firewall.value.unknown", "Unknown")));
+                StatusText = Message("firewall.status.unavailable", _problemText.Format(status.ProblemCode,
+                    _localize("firewall.value.unknown", "Unknown")));
                 await ShowPrivilegedHelperUnavailableAsyncIfNeeded(status.ProblemCode);
                 return;
             }
@@ -352,13 +358,13 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
 
             var rules = await _client.ListRulesAsync();
             _allRules.Clear();
-            foreach (var rule in rules) _allRules.Add(new FirewallRuleRow(rule, LocalizedText.Get));
+            foreach (var rule in rules) _allRules.Add(new FirewallRuleRow(rule, _localize));
             ApplyFilter();
             if (selectedNumber is { } number)
                 SelectedRow = Rules.FirstOrDefault(row => row.Number == number);
             StatusText = windows
-                ? LocalizedText.Ref("firewall.status.windows_ready")
-                : LocalizedText.Ref(status.IsEnabled ? "firewall.status.ready_enabled" : "firewall.status.ready_disabled",
+                ? Message("firewall.status.windows_ready")
+                : Message(status.IsEnabled ? "firewall.status.ready_enabled" : "firewall.status.ready_disabled",
                     BackendLabel, VersionLabel);
         }
         catch (Exception exception)
@@ -369,8 +375,8 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
             IsAvailable = false;
             IsEnabled = false;
             HasFacts = true;
-            UnavailableReason = LocalizedStatus.Literal(exception.Message);
-            StatusText = LocalizedText.Ref("firewall.status.failed", exception.Message);
+            UnavailableReason = FirewallMessage.Literal(exception.Message);
+            StatusText = Message("firewall.status.failed", exception.Message);
         }
         finally
         {
@@ -399,7 +405,7 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
     {
         var summary = DefaultsSummary;
         if (!await ConfirmOperationAsync("firewall.confirm.defaults_title", "firewall.confirm.defaults_message",
-                ShowLockoutWarning ? $"{summary} {T("firewall.defaults.lockout_warning", string.Empty)}" : summary)) return;
+                ShowLockoutWarning ? $"{summary} {_localize("firewall.defaults.lockout_warning", string.Empty)}" : summary)) return;
         await ApplyAsync(() => _client.SetDefaultsAsync(new UpdateFirewallDefaultsRequest(
             SelectedIncomingPolicy?.Value ?? "deny", SelectedOutgoingPolicy?.Value ?? "allow")), "firewall.operation.defaults_saved");
     }
@@ -485,7 +491,7 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
         // can never turn a read-only firewall grant into a host configuration change.
         if (!HasManagePermission)
         {
-            StatusText = LocalizedText.Ref("firewall.permission.manage_required");
+            StatusText = Message("firewall.permission.manage_required");
             return false;
         }
 
@@ -495,9 +501,9 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
         {
             var result = await operation();
             StatusText = result.Success
-                ? LocalizedText.Ref(successKey)
-                : LocalizedText.Ref("firewall.operation.failed", ProblemText.Format(result.ProblemCode,
-                    T("firewall.value.unknown", "Unknown")));
+                ? Message(successKey)
+                : Message("firewall.operation.failed", _problemText.Format(result.ProblemCode,
+                    _localize("firewall.value.unknown", "Unknown")));
             if (!result.Success)
             {
                 EditorMessage = StatusText;
@@ -507,7 +513,7 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
         }
         catch (Exception exception)
         {
-            StatusText = LocalizedText.Ref("firewall.operation.failed", exception.Message);
+            StatusText = Message("firewall.operation.failed", exception.Message);
             EditorMessage = StatusText;
         }
         finally { IsLoading = false; }
@@ -520,13 +526,13 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
     private Task<bool> ConfirmOperationAsync(string titleKey, string messageKey, params object?[] arguments)
     {
         if (ConfirmAsync is null) return Task.FromResult(true);
-        var title = LocalizedText.Get(titleKey, titleKey);
-        var message = LocalizedText.Format(messageKey, arguments);
+        var title = _localize(titleKey, titleKey);
+        var message = Format(messageKey, arguments);
         return ConfirmAsync(title, message);
     }
 
     private Task ShowPrivilegedHelperUnavailableAsyncIfNeeded(string? problemCode) =>
-        PrivilegedHelperProblemText.TryFormat(problemCode, out _)
+        _isHelperProblem(problemCode)
             ? ShowPrivilegedHelperUnavailableAsync?.Invoke(problemCode) ?? Task.CompletedTask
             : Task.CompletedTask;
 
@@ -635,21 +641,21 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
         var port = Port.Trim();
         if (SourceProblem is { } sourceProblem)
         {
-            StatusText = LocalizedStatus.Literal(sourceProblem);
+            StatusText = FirewallMessage.Literal(sourceProblem);
             EditorMessage = StatusText;
             rule = default!;
             return false;
         }
         if (DestinationProblem is { } destinationProblem)
         {
-            StatusText = LocalizedStatus.Literal(destinationProblem);
+            StatusText = FirewallMessage.Literal(destinationProblem);
             EditorMessage = StatusText;
             rule = default!;
             return false;
         }
         if (PortProblem is { } portProblem)
         {
-            StatusText = LocalizedStatus.Literal(portProblem);
+            StatusText = FirewallMessage.Literal(portProblem);
             EditorMessage = StatusText;
             rule = default!;
             return false;
@@ -686,25 +692,25 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
             SelectedOutgoingPolicy = Pick(Policies, outgoing.Value);
     }
 
-    private static void Sync(ObservableCollection<FirewallOption> target, IReadOnlyList<(string Value, string Key)> desired)
+    private void Sync(ObservableCollection<FirewallOption> target, IReadOnlyList<(string Value, string Key)> desired)
     {
         if (target.Count == desired.Count
             && target.Select(option => option.Value).SequenceEqual(desired.Select(entry => entry.Value), StringComparer.Ordinal))
             return;
         target.Clear();
-        foreach (var (value, key) in desired) target.Add(new FirewallOption(value, key, LocalizedText.Get));
+        foreach (var (value, key) in desired) target.Add(new FirewallOption(value, key, _localize));
     }
 
     private string PolicyLabel(string? value) => value switch
     {
         null or "" => IsWindowsBackend
-            ? T("firewall.value.mixed", "Differs across profiles")
-            : T("firewall.value.unknown", "Unknown"),
+            ? _localize("firewall.value.mixed", "Differs across profiles")
+            : _localize("firewall.value.unknown", "Unknown"),
         _ => Pick(Policies, value)?.Label ?? value,
     };
 
     private string? EndpointProblem(string value, string key, string fallback) =>
-        IsEndpoint(value) ? null : T(key, fallback);
+        IsEndpoint(value) ? null : _localize(key, fallback);
 
     private bool HasReadPermission => _permissions.IsGranted(AppPermissions.ServerFirewallRead);
     private bool HasManagePermission => HasReadPermission && _permissions.IsGranted(AppPermissions.ServerFirewallManage);
@@ -730,8 +736,8 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
             || normalized.Equals("anywhere", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string AddressPhrase(string value) =>
-        IsAnyEndpoint(value) ? LocalizedText.Get("firewall.value.any", "Any") : value.Trim();
+    private string AddressPhrase(string value) =>
+        IsAnyEndpoint(value) ? _localize("firewall.value.any", "Any") : value.Trim();
 
     private static string NormalizeEndpoint(string value) => string.IsNullOrWhiteSpace(value) ? "any" : value.Trim();
 

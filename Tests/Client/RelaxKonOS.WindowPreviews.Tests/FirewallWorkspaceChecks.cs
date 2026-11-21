@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Firewall;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -254,7 +255,7 @@ internal static class FirewallWorkspaceChecks
             finally { window.Close(); }
 
             var client = DispatchProxy.Create<IServerFirewall, FirewallHostStub>();
-            var readOnly = new FirewallViewModel(client, new FirewallReadOnlyPermissions());
+            var readOnly = FirewallApp.CreateViewModel(client, new FirewallReadOnlyPermissions());
             readOnly.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             var readOnlyView = new FirewallWorkspace(readOnly);
             var readOnlyWindow = new Window { Width = 1120, Height = 780, Content = readOnlyView };
@@ -316,7 +317,7 @@ internal static class FirewallWorkspaceChecks
     {
         var client = DispatchProxy.Create<IServerFirewall, FirewallHostStub>();
         stub = (FirewallHostStub)(object)client;
-        var vm = new FirewallViewModel(client, new FirewallTestPermissions());
+        var vm = FirewallApp.CreateViewModel(client, new FirewallTestPermissions());
         vm.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         return vm;
     }

@@ -55,7 +55,8 @@ internal static class FirewallSubmissionChecks
     private static void UpdateFreezesItsTarget()
     {
         var host = Host();
-        var vm = new FirewallViewModel(host.Client, new FirewallTestPermissions()) { IsAvailable = true };
+        var vm = FirewallApp.CreateViewModel(host.Client, new FirewallTestPermissions());
+        vm.IsAvailable = true;
         vm.SelectedRule = new(7, "allow", "in", "tcp", "any", "any", "80");
         vm.Port = "8080";
         host.Stub.HoldUpdates = true;
@@ -79,7 +80,7 @@ internal static class FirewallSubmissionChecks
     private static void ConfirmationGates()
     {
         var host = Host();
-        var vm = new FirewallViewModel(host.Client, new FirewallTestPermissions());
+        var vm = FirewallApp.CreateViewModel(host.Client, new FirewallTestPermissions());
         vm.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(!vm.DeleteRuleCommand.CanExecute(null), "Nothing can be deleted before a rule is selected.");
         vm.SelectedRow = vm.Rules[0];
@@ -111,7 +112,7 @@ internal static class FirewallSubmissionChecks
     private static void DefaultPolicies()
     {
         var host = Host();
-        var vm = new FirewallViewModel(host.Client, new FirewallTestPermissions());
+        var vm = FirewallApp.CreateViewModel(host.Client, new FirewallTestPermissions());
         vm.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(!vm.HasDefaultChanges && !vm.SaveDefaultsCommand.CanExecute(null),
             "Saving is offered only when a policy differs from the host.");
@@ -137,7 +138,8 @@ internal static class FirewallSubmissionChecks
     private static void DraftValidation()
     {
         var host = Host();
-        var vm = new FirewallViewModel(host.Client, new FirewallTestPermissions()) { IsAvailable = true };
+        var vm = FirewallApp.CreateViewModel(host.Client, new FirewallTestPermissions());
+        vm.IsAvailable = true;
         vm.Port = "99999";
         Check(!vm.IsDraftValid && vm.PortProblem is not null && !vm.CanSubmitDraft,
             "An out-of-range port blocks submit with a field message.");

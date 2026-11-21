@@ -2,9 +2,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:fwApp="clr-namespace:RelaxKonOS.App.Firewall;assembly=RelaxKonOS.App.Firewall" xmlns:fw="clr-namespace:RelaxKonOS.Client.Apps.Firewall"
+             xmlns:fwApp="clr-namespace:RelaxKonOS.App.Firewall;assembly=RelaxKonOS.App.Firewall"
              x:Class="RelaxKonOS.Client.Apps.Firewall.Views.FirewallWorkspace"
-             x:DataType="fw:FirewallViewModel"
+             x:DataType="fwApp:FirewallViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
   <UserControl.Styles>
     <Style Selector="TextBlock.section-title"><Setter Property="FontSize" Value="15" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
