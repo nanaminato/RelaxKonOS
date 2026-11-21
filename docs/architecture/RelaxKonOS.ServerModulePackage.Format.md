@@ -136,6 +136,8 @@ GET /api/v1.0/server/module-hosts/{moduleId}/{**path}
 
 上传要求服务器管理授权，原始 body 最大 1 GiB，返回 uploadId/字节数/SHA-256；上传本身不验证包。plans 重新按已接纳签名目录验证 sourceId/releaseId/上传文件，生成十分钟有效的冻结计划，绑定 module/version/publisher/归档摘要/manifest 摘要；plans/auto 通过上传摘要在所有已接纳来源中查找唯一 release，找到多个不同模块/版本时返回 `module-package-upload-ambiguous`。plan apply 重新验证计划和上传文件仍为同一目标，然后安装；重复 apply 返回原 operationId，不重复安装。rollback 重新核对目标版本文件哈希，切换 `installed.json` 当前版本。
 
+精确来源的包计划先验证签名、来源、版本与归档身份，可在联合部署的前置依赖尚未安装时生成。应用计划时重新验证归档和实际已安装依赖，再写入版本目录。
+
 对已启用且由监督器管理的 `module-host` 应用另一版本时，`module-packages/plans/{planId}/apply` 使用 [ModuleHost 在线生命周期](RelaxKonOS.ServerModuleDistribution.Design.md#modulehost-在线生命周期)。`module-package-operations` 可查询 `update` 回执及其 `Applying`、`Succeeded` 或 `Failed` 状态。应用结果中的 `record.active` 指示该候选是否已被选为生效版本。首次安装及进程内模块继续使用待 Core 重启回执。
 
 `module-store/search` 只读已接纳签名目录，不执行包；`module-store/sources` 只读报告已接纳来源的 sequence/policy revision/release 数/撤销数、`catalogRevision` 和是否配置远程刷新 URI。`module-store/refresh` 使用 `catalogUri` 或配置的 `CatalogUri` 获取 HTTPS 签名目录，要求精确 `expectedRevision` 和幂等键；它只持有独立的目录锁，因此可在 Host 运行时安全接纳签名目录，不改启用集合、不重启。配置 `ModulePackages:Refresh:Enabled=true` 和 `ModulePackages:Refresh:IntervalSeconds`（60–86400）后，Host 会周期刷新所有配置了 `CatalogUri` 的来源；已是最新 sequence 时跳过，失败仅记录日志，不阻断 Host。`module-store/download` 按 sourceId/releaseId 从策略允许的 HTTPS origin 下载，拒绝重定向、超过 1 GiB、字节数或 SHA-256 不一致的内容，成功后才写入 staging。客户端不能提交任意下载 URL。

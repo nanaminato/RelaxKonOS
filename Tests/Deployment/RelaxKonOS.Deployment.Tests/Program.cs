@@ -22,6 +22,11 @@ var backend = new Backend();
 var journal = new FileDeploymentJournal(Path.Combine(Path.GetTempPath(), "rk-deployment-" + Guid.NewGuid().ToString("N")));
 var coordinator = new UnifiedDeploymentCoordinator(backend, journal, TimeProvider.System);
 var plan = await coordinator.PlanAsync(backend.Target, root, candidates, []);
+plan = plan with
+{
+    PreparedSteps = [new(Key("shared"), Guid.NewGuid(), plan.ExpiresAt,
+        [new("package", ["linux"], ["shared"], true)])]
+};
 async Task Reject(DeploymentPlan candidate, string message)
 {
     try { await coordinator.ExecuteAsync(candidate); throw new Exception("Expected rejection."); }
@@ -33,6 +38,7 @@ await Reject(plan, "deployment-server-changed");
 backend.Target = plan.Target;
 try { await coordinator.ExecuteAsync(plan); throw new Exception("Expected interruption."); }
 catch (IOException) { }
+await Reject(plan with { PreparedSteps = [] }, "deployment-plan-identity-changed");
 var persisted = await journal.FindStartedPlanAsync(plan.Id) ?? throw new Exception("Missing persisted plan.");
 await coordinator.ExecuteAsync(persisted);
 await coordinator.ExecuteAsync(plan);

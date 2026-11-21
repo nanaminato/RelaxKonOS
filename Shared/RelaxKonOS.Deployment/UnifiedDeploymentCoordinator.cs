@@ -4,8 +4,17 @@ namespace RelaxKonOS.Deployment;
 
 public sealed record DeploymentTarget(string ServerIdentity, string StateRevision, string CatalogRevision);
 
+public sealed record DeploymentPermission(string Kind, ImmutableArray<string> Platforms,
+    ImmutableArray<string> Resources, bool Executable);
+
+public sealed record PreparedDeploymentStep(DeploymentPackageKey Package, Guid InstallerPlanId,
+    DateTimeOffset ExpiresAt, ImmutableArray<DeploymentPermission> Permissions);
+
 public sealed record DeploymentPlan(Guid Id, DeploymentTarget Target, DateTimeOffset ExpiresAt,
-    ImmutableArray<DeploymentRelease> OrderedReleases);
+    ImmutableArray<DeploymentRelease> OrderedReleases)
+{
+    public ImmutableArray<PreparedDeploymentStep> PreparedSteps { get; init; } = [];
+}
 
 public sealed record DeploymentCheckpoint(int CompletedSteps, bool Verified);
 

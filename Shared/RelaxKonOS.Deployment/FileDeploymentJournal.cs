@@ -29,6 +29,7 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
                 plan.Id,
                 plan.Target,
                 plan.ExpiresAt,
+                plan.PreparedSteps,
                 Releases = plan.OrderedReleases.Select(release => new
                 {
                     release.Package,

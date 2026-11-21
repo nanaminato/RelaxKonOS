@@ -43,7 +43,7 @@ internal static class InstalledModuleInstaller
 
     internal static async Task<AcceptedModulePackageCandidate> InspectAsync(string contentRoot, IConfiguration configuration,
         IHostEnvironment environment, string sourceId, string archivePath, string releaseId, DateTimeOffset now,
-        bool takeHostLock, CancellationToken cancellationToken = default)
+        bool takeHostLock, CancellationToken cancellationToken = default, bool checkInstalledDependencies = true)
     {
         if (!Path.IsPathFullyQualified(contentRoot) || !Directory.Exists(contentRoot)
             || !Path.IsPathFullyQualified(archivePath) || !File.Exists(archivePath))
@@ -64,7 +64,7 @@ internal static class InstalledModuleInstaller
             policy, context, verified.NextHistory, releaseId, now, cancellationToken);
         if (ServerModules.Create(new ConfigurationBuilder().Build()).KnownModuleIds.Contains(candidate.Manifest.ModuleId))
             throw new ModulePackageException("module-package-module-id-conflict");
-        ValidateDependencies(contentRoot, configuration, candidate.Manifest);
+        if (checkInstalledDependencies) ValidateDependencies(contentRoot, configuration, candidate.Manifest);
         return new(candidate.Manifest, release.ManifestSha256, candidate.ArchiveSha256, candidate.ArchiveBytes,
             sourceId, releaseId);
     }

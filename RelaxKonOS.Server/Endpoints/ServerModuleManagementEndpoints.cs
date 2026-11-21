@@ -247,7 +247,7 @@ internal static class ServerModuleManagementEndpoints
             if (!File.Exists(path)) return Problem("module-package-upload-not-found", 404);
             var candidate = await InstalledModuleInstaller.InspectAsync(context.ContentRootPath, context.Configuration,
                 context.Environment, request.SourceId, path, request.ReleaseId, DateTimeOffset.UtcNow,
-                takeHostLock: false, cancellationToken);
+                takeHostLock: false, cancellationToken, checkInstalledDependencies: false);
             var plan = ModulePackagePlanStore.Create(context.ContentRootPath, Actor(http.User), request.UploadId,
                 candidate, DateTimeOffset.UtcNow);
             return Results.Ok(PlanDto(plan));
