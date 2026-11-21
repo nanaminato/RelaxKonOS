@@ -65,5 +65,5 @@
 - 本地 SDK 10.0.300。部署库独立构建通过，零警告、零错误。桌面 Client 构建通过，NuGet 漏洞索引不可达，项目还报告了原有编译警告。
 - Git CLI 通过本地代理访问 GitHub 失败，基线已通过 GitHub 连接器独立确认。
 - 运行 `dotnet run --project Tests/Deployment/RelaxKonOS.Deployment.Tests` 可复现。模拟后端通过共享依赖版本回溯、循环检测、过期计划、服务器切换、中断后恢复和重复提交检查。模拟后端未调用桌面或服务端安装器。
-- Windows 上的桌面构建、协调器可选依赖与恢复测试，以及既有本地和远程 .roapp 目录安装测试通过。联合部署界面新增字符串覆盖 zh-CN、en-US、ja-JP，三个 JSON 文件均通过语法检查。
+- Windows 上的桌面构建、协调器可选依赖与恢复测试，以及既有本地和远程 .roapp 目录安装测试通过。Release 官方商店回归也通过，涵盖本机 HTTPS 的浏览、下载、审核、安装、升级、失败回退、随包来源和卸载。沙箱内拒绝本机套接字，授权运行通过。联合部署界面新增字符串覆盖 zh-CN、en-US、ja-JP，三个 JSON 文件均通过语法检查。
 - Windows/Linux 设备联合部署、Android 和三语言界面验收均待执行。
