@@ -82,8 +82,7 @@ internal static class RegistryChecks
     private static async Task CheckPaneStatesAsync(FakeRegistryClient client, RegistryViewModel vm, RegistryKeyNode own, RegistryKeyNode other)
     {
         var emptyText = LocalizedText.Get("registry.status.empty", "No values in this key.");
-        client.Failure = new RelaxKonOSAuthException(new ProblemDetails(
-            "https://relaxkonos.app/problems/elevation-required", "Registry", 403, null, null));
+        client.Failure = new RelaxKonOS.AppSDK.RegistryRequestException(403, "Registry access denied");
         vm.SelectedKey = own;
         vm.SelectedKey = other;
         await Until(() => vm.PaneState == RegistryPaneState.Denied && !vm.IsLoading);

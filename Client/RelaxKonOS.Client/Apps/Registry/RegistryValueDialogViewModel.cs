@@ -171,7 +171,7 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
             _saved(result);
             _close(true);
         }
-        catch (RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException ex) when (ex.Status == 409)
+        catch (RegistryRequestException ex) when (ex.Status == 409)
         {
             try
             {

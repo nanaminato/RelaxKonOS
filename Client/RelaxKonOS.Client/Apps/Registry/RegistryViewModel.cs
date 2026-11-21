@@ -3,7 +3,6 @@ using System.Collections.ObjectModel;
 using System.Net.Http;
 using System.Text.Json;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Auth;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Registry;
@@ -478,13 +477,13 @@ public sealed partial class RegistryViewModel(IServerRegistry client,
 
     private static RegistryPaneState Classify(Exception error) => error switch
     {
-        RelaxKonOSAuthException { Status: 403 } => RegistryPaneState.Denied,
+        RegistryRequestException { Status: 403 } => RegistryPaneState.Denied,
         HttpRequestException => RegistryPaneState.Disconnected,
         TaskCanceledException => RegistryPaneState.Disconnected,
         _ => RegistryPaneState.Failed,
     };
 
-    private static string ErrorText(Exception error) => error is RelaxKonOSAuthException { Status: 401 }
+    private static string ErrorText(Exception error) => error is RegistryRequestException { Status: 401 }
         ? LocalizedText.Get("registry.error.sign_in", "Sign in to browse the configuration registry.")
         : error.Message;
 

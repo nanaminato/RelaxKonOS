@@ -6,6 +6,7 @@ using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Registry;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Workspace;
 
 internal static class RegistryCapabilityChecks
@@ -42,13 +43,24 @@ internal static class RegistryCapabilityChecks
         permissions.Write = true;
         Check((await scoped.CreateKeyAsync(request)).Path == request.Path && transport.Requests == 1,
             "The authorized write must reach the bound registry transport.");
+        transport.Conflict = true;
+        try
+        {
+            await scoped.CreateKeyAsync(request);
+            throw new InvalidOperationException("Expected a registry conflict.");
+        }
+        catch (RegistryRequestException error)
+        {
+            Check(error.Status == 409 && error.Message == "Revision changed", "The SDK preserves registry conflict details.");
+        }
+        transport.Conflict = false;
 
         var pending = registry.GetContextAsync();
         session.ServiceId = "https://replacement.invalid";
         transport.Context.SetResult(new RegistryContextDto("fixture", target, "fixture", null, false, null, Guid.NewGuid()));
         await RejectAsync<InvalidOperationException>(() => pending);
         await RejectAsync<InvalidOperationException>(() => scoped.CreateKeyAsync(request));
-        Check(transport.Requests == 2, "The previous registry context must not contact the new server.");
+        Check(transport.Requests == 3, "The previous registry context must not contact the new server.");
         Console.WriteLine("Registry read/write grants, owner scoping and connection isolation passed.");
     }
 
@@ -82,6 +94,7 @@ public class RegistryCapabilityTransport : DispatchProxy
 {
     internal int Requests { get; private set; }
     internal Guid Target { get; private set; }
+    internal bool Conflict { get; set; }
     internal TaskCompletionSource<RegistryContextDto> Context { get; } = new();
 
     protected override object Invoke(MethodInfo? method, object?[]? args)
@@ -94,7 +107,11 @@ public class RegistryCapabilityTransport : DispatchProxy
         Requests++;
         if (method?.Name == nameof(IServerRegistry.GetContextAsync)) return Context.Task;
         if (method?.Name == nameof(IServerRegistry.CreateKeyAsync) && args?[0] is CreateRegistryKeyRequest request)
+        {
+            if (Conflict)
+                throw new RelaxKonOSAuthException(new ProblemDetails("fixture-conflict", "Conflict", 409, "Revision changed", null));
             return Task.FromResult(new RegistryKeyDto(request.Scope, request.Path));
+        }
         throw new NotSupportedException(method?.Name);
     }
 }

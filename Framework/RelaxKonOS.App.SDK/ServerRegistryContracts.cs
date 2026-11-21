@@ -2,6 +2,12 @@ using RelaxKonOS.Protocol.Registry;
 
 namespace RelaxKonOS.AppSDK;
 
+/// <summary>A Registry request rejected by the connected server.</summary>
+public sealed class RegistryRequestException(int status, string message) : Exception(message)
+{
+    public int Status { get; } = status;
+}
+
 /// <summary>Device-local presentation settings for the Registry workspace.</summary>
 public interface IRegistryAppearancePreferences
 {

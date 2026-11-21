@@ -1,5 +1,5 @@
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Apps.Registry;
+using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Registry;
 using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
@@ -50,7 +50,13 @@ internal sealed class ServerRegistryCapability(AppId appId, IAppPermissionManage
     private async Task<T> RunAsync<T>(Func<Task<T>> operation, string permission, CancellationToken token)
     {
         CheckAccess(permission, token);
-        var result = await operation();
+        T result;
+        try { result = await operation(); }
+        catch (RelaxKonOSAuthException error)
+        {
+            CheckAccess(permission, token);
+            throw new RegistryRequestException(error.Status, error.Message);
+        }
         CheckAccess(permission, token);
         return result;
     }

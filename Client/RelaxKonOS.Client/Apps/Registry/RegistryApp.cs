@@ -40,6 +40,7 @@ public sealed class RegistryApp : RemoteApplicationBase
                 throw new InvalidOperationException("The client device changed. Reopen the registry editor.");
             await window.ShowDialogAsync<bool>(LocalizedText.Get("registry.dialog.edit", "Edit Registry Value"), dialog => new RegistryValueDialogView
             {
+                AppearancePreferences = sdk.RegistryAppearance,
                 DataContext = new RegistryValueDialogViewModel(row, row.Source.Scope == RelaxKonOS.Protocol.Registry.RegistryScope.Server ? client.ForServer(row.Source.Address.ScopeId) : client.ForUser(row.Source.Address.OwnerUserId!.Value), dialog.Close, entry => viewModel.ApplySaved(entry)),
             }, row.Source.ValueType == RelaxKonOS.Protocol.Registry.RegistryValueType.Number ? new Size(600, 320) : new Size(720, 520));
         };
@@ -58,6 +59,7 @@ public sealed class RegistryApp : RemoteApplicationBase
             var ownedClient = client.ForUser(owner);
             await window.ShowDialogAsync<bool>(LocalizedText.Get("registry.dialog.new", "New Registry Value"), dialog => new RegistryValueDialogView
             {
+                AppearancePreferences = sdk.RegistryAppearance,
                 DataContext = new RegistryValueDialogViewModel(scope, path, ownedClient, dialog.Close, entry => viewModel.ApplySaved(entry)),
             }, new Size(720, 520));
         };

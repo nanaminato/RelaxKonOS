@@ -58,6 +58,14 @@ internal static class PresentationPreferencesChecks
             "Successful own-device writes must immediately change the displayed resources.");
         Check(view.FindControl<Grid>("RegistryPanes")!.ColumnDefinitions[0].Width.Value == 360,
             "The sidebar width must use the same preference as registry editing.");
+        var editor = new RegistryValueDialogView { AppearancePreferences = preferences };
+        var editorWindow = new Window { Width = 640, Height = 480, Content = editor };
+        editorWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+        Check((double)editor.Resources["RegistryScrollbarThickness"]! == 9
+            && (double)editor.Resources["RegistryTreeRowHeight"]! == 32,
+            "The value editor uses the appearance preferences supplied by the workspace.");
+        editorWindow.Close();
         var external = await client.ChangeExternallyAsync(ClientPresentationPaths.Registry, "iconSize", JsonSerializer.SerializeToElement(24));
         var beforeNotification = client.ReadCount;
         var notification = new RelaxKonOS.Protocol.Hubs.RegistrySettingsChanged(owner, RegistryScope.Device, firstDevice, external.Path, external.Revision, external.Revision);

@@ -2,7 +2,6 @@ using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Registry;
 
 namespace RelaxKonOS.Client.Apps.Registry;
@@ -45,7 +44,7 @@ public sealed partial class RegistryRenameDialogViewModel : LocalizedObservableO
             _renamed(result);
             _close(true);
         }
-        catch (RelaxKonOSAuthException ex) when (ex.Status == 409)
+        catch (RegistryRequestException ex) when (ex.Status == 409)
         { Error = LocalizedText.Get("registry.rename.conflict", "The value changed or the new name is already used in this key. Refresh and try again."); }
         catch (Exception ex) { Error = ex.Message; }
     }
