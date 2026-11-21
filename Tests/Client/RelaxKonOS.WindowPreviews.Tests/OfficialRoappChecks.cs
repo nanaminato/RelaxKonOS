@@ -41,6 +41,7 @@ internal static class OfficialRoappChecks
         var isDocker = applicationId == "relaxkonos.docker";
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
+        var isBrowser = applicationId == "relaxkonos.browser";
         var opensFiles = isCodeEditor || applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
         var samplePath = isCodeEditor ? "/files/sample.cs" : isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
@@ -124,7 +125,7 @@ internal static class OfficialRoappChecks
             if (isTaskManager)
                 Check(!await packages.LaunchAsync(applicationId), "The preinstalled Task Manager must refuse launch without server capabilities.");
             compatibility.TaskManagerServerAvailable = true;
-            if (isDocker || isTaskManager || isRegistry)
+            if (isDocker || isTaskManager || isRegistry || isBrowser)
             {
                 windows.Attach(new Canvas { Width = 1100, Height = 800 });
                 Check(await packages.LaunchAsync(applicationId), "The application must launch from its installed package.");
@@ -135,11 +136,30 @@ internal static class OfficialRoappChecks
                 {
                     "relaxkonos.registry" => "RelaxKonOS.App.Registry.RegistryView",
                     "relaxkonos.taskmanager" => "RelaxKonOS.App.TaskManager.Views.TaskManagerMainView",
+                    "relaxkonos.browser" => typeof(TextBlock).FullName,
                     _ => "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
                 };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
                     "The installed entry point must create its own workspace.");
+                if (isBrowser)
+                {
+                    foreach (var (culture, title) in new[]
+                    {
+                        ("zh-CN", "远程浏览器"), ("en-US", "Remote Browser"), ("ja-JP", "リモート ブラウザー"),
+                    })
+                    {
+                        settings.Language = culture;
+                        Dispatcher.UIThread.RunJobs();
+                        Check(workspace.Title == title, "The installed Browser title should follow the host language.");
+                    }
+                }
                 windows.Close(workspace);
+                if (isBrowser)
+                {
+                    settings.Language = "en-US";
+                    Dispatcher.UIThread.RunJobs();
+                    Check(workspace.Title == "リモート ブラウザー", "A closed Browser window should release its language subscription.");
+                }
             }
 
             await PublishCandidateAsync(manifest => manifest["version"] = "1.1.0");

@@ -1,0 +1,7 @@
+{
+    "Culture": "en-US",
+    "Strings": {
+        "browser.settings.open_built_in": "Built-in browser",
+        "browser.settings.open_host": "Host browser"
+    }
+}

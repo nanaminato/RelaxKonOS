@@ -212,35 +212,7 @@ if (args.Contains("--forward-runtime-only"))
     PortForwardRuntimeChecks.RunAsync().GetAwaiter().GetResult();
     return;
 }
-// Check the actual activation paths, including the browser's signed-out window.
-foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
-{
-    new RelaxKonOS.Client.Apps.Browser.BrowserApp()
-})
-{
-    var titleWindows = new WindowManagerService();
-    titleWindows.Attach(new Canvas { Width = 1200, Height = 800 });
-    settings.Language = "zh-CN";
-    var titleContext = new RelaxKonOS.AppSDK.AppContext(app.Manifest.Id, titleWindows, services, app.Manifest);
-    app.Activate(titleContext);
-    var titleWindow = titleWindows.Windows.Single();
-    foreach (var language in new[] { "zh-CN", "en-US", "ja-JP", "zh-CN" })
-    {
-        settings.Language = language;
-        Dispatcher.UIThread.RunJobs();
-        var expected = localization.Get($"application.{app.Manifest.Id.Value}.display_name", "missing");
-        if (expected == "missing" || titleWindow.Title != expected)
-            throw new InvalidOperationException($"{app.Manifest.Id} window title did not follow {language}: {titleWindow.Title}");
-    }
-    titleWindows.Close(titleWindow);
-    var closedTitle = titleWindow.Title;
-    settings.Language = "en-US";
-    Dispatcher.UIThread.RunJobs();
-    if (titleWindow.Title != closedTitle)
-        throw new InvalidOperationException("Closed window retained its language subscription.");
-}
 WelcomeWorkspaceChecks.Run(settings, localization, services);
-Console.WriteLine("PASS: Image viewer, browser and welcome window titles follow three languages and unsubscribe on close.");
 ModalCancellationChecks.Run();
 ModalCancellationChecks.RunDocker(settings, localization);
 DockerSubmissionChecks.Run();

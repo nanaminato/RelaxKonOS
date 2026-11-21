@@ -13,7 +13,7 @@ public static class OfficialDesktopCatalogRules
     public const long MaximumPackageBytes = 128 * 1024 * 1024;
     public static IReadOnlyList<string> ApplicationIds { get; } = Array.AsReadOnly(new[]
     {
-        "relaxkonos.codeeditor", "relaxkonos.docker", "relaxkonos.event-alerts", "relaxkonos.imageviewer", "relaxkonos.notepad", "relaxkonos.registry", "relaxkonos.taskmanager", "relaxkonos.welcome"
+        "relaxkonos.browser", "relaxkonos.codeeditor", "relaxkonos.docker", "relaxkonos.event-alerts", "relaxkonos.imageviewer", "relaxkonos.notepad", "relaxkonos.registry", "relaxkonos.taskmanager", "relaxkonos.welcome"
     });
 
     public static bool ValidVersion(string? value) => Version.TryParse(value, out var version)

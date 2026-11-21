@@ -1,0 +1,7 @@
+{
+    "Culture": "zh-CN",
+    "Strings": {
+        "browser.settings.open_built_in": "内置浏览器",
+        "browser.settings.open_host": "本机浏览器"
+    }
+}

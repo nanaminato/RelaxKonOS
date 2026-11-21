@@ -9,6 +9,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../../examples/Windows11DesktopShell/RelaxKonOS.Example.Windows11DesktopShell.csproj" />
     <ProjectReference Include="../../../examples/ImageViewerPilot/RelaxKonOS.Example.ImageViewerPilot.csproj" />
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.Browser/RelaxKonOS.App.Browser.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Notepad/RelaxKonOS.App.Notepad.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Welcome/RelaxKonOS.App.Welcome.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Docker/RelaxKonOS.App.Docker.csproj" />

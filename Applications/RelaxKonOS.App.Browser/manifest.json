@@ -1,0 +1,23 @@
+{
+  "id": "relaxkonos.browser",
+  "displayName": "Remote Browser",
+  "description": "Browse the web and sync bookmarks and history with RelaxKonOS Server",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.Browser.dll",
+  "entryType": "RelaxKonOS.App.Browser.BrowserPackageApp",
+  "iconGlyph": "🌐",
+  "iconPath": "Assets/browser.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": [],
+  "localizedMetadata": {
+    "zh-CN": {
+      "displayName": "远程浏览器",
+      "description": "浏览网页并与 RelaxKonOS Server 同步书签和历史记录"
+    },
+    "ja-JP": {
+      "displayName": "リモート ブラウザー",
+      "description": "Web を閲覧し、ブックマークと履歴を RelaxKonOS Server に同期します"
+    }
+  }
+}

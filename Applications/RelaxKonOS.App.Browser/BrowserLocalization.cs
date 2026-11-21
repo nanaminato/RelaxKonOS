@@ -6,16 +6,13 @@ using RelaxKonOS.AppSDK;
 
 namespace RelaxKonOS.App.Browser;
 
-public static class BrowserLocalization
+internal static class BrowserLocalization
 {
     private static readonly Lazy<Dictionary<string, string>> English = new(() => Load("en-US"));
     private static readonly Lazy<Dictionary<string, string>> Chinese = new(() => Load("zh-CN"));
     private static readonly Lazy<Dictionary<string, string>> Japanese = new(() => Load("ja-JP"));
 
-    public static IEnumerable<string> ResourceNames => typeof(BrowserLocalization).Assembly.GetManifestResourceNames()
-        .Where(name => name.StartsWith("Browser.Localization.", StringComparison.Ordinal));
-
-    public static Stream Open(string resourceName) =>
+    private static Stream Open(string resourceName) =>
         typeof(BrowserLocalization).Assembly.GetManifestResourceStream(resourceName)
         ?? throw new InvalidDataException($"Missing Browser localization resource '{resourceName}'.");
 

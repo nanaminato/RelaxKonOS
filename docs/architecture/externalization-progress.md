@@ -22,7 +22,7 @@
 | component-center | ComponentCenter | 否 / 否 | 是 | 组件、可信来源、模块及任务 API | 基础 | 待验 |
 | taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Release 包验收；真实服务器待验 |
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | 待验 |
-| browser | Browser | 否 / 否 | 是 | 本地 WebView 与浏览器宿主服务 | 基础 | 待验 |
+| browser | Browser 独立应用项目 | 是 / 是 | 否 | 本地 WebView 与 SDK 浏览器数据服务 | 基础 | Windows 发行包已验，原生 WebView 待验 |
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | 待验 |
 | registry | RelaxKonOS.App.Registry | 是 / 是 | 否 | SDK Registry 与设备外观偏好 | 基础 | Release 包验收；真实服务器待验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期已验，真实服务端告警读取待验 |
@@ -63,7 +63,7 @@
 ## 测试证据
 
 - Browser 的书签、历史记录和工作区设置已通过 SDK 接入，仅官方 Browser 应用上下文提供此能力。请求绑定启动时的服务器会话。
-- Browser 的主模型、标签页、历史记录行模型、原生 WebView 视图、设置视图和样式已迁入独立项目，使用中英日内嵌文案。独立 SDK 入口负责创建窗口、处理快捷键和释放原生视图。桌面内置注册通过该入口启动。Windows 三语言布局检查和标签栏回归通过，发行包与原生 WebView 实机验收待完成。
+- Browser 的窗口和原生 WebView 已由独立 SDK 入口承载。Standard 与 Developer 使用同一官方 .roapp 离线预装。Windows Release 使用 DevCli 生成的实际归档验证来源校验、预装、未登录启动窗口跟随中英日语言、关闭后解除语言订阅、更新、失败保留版本、重启发现与卸载。已登录的原生 WebView 实机验收待完成。
 
 - Registry SDK 分开检查读写权限，用户与实例子客户端沿用同一会话和授权。宿主提权在授权重试和令牌刷新时核对原会话。
 - Registry 桌面工作区和三个编辑对话框已使用 SDK 的注册表和窗口接口。在刷新、编辑及删除时按需请求应用权限，确认后的回复仍使用原有所有者、实例和版本核对。独立项目和应用包仍待迁移。

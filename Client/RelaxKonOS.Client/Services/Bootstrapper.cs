@@ -355,7 +355,6 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.SshFileBrowserApp>();
         services.AddSingleton<IDesktopRestoreParticipant, TerminalDesktopRestoreParticipant>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>();
-        services.AddSingleton<RelaxKonOS.Client.Apps.Browser.BrowserApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.PortForwarding.PortForwardingApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ProcessGuardian.ProcessGuardianApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Firewall.FirewallApp>();

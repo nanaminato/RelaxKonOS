@@ -1,0 +1,7 @@
+{
+    "Culture": "ja-JP",
+    "Strings": {
+        "browser.settings.open_built_in": "内蔵ブラウザー",
+        "browser.settings.open_host": "ホストのブラウザー"
+    }
+}
