@@ -6,12 +6,15 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.App.FileServices.Views;
+using RelaxKonOS.App.FileServices;
+using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices;
 using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.FileServices;
 using RelaxKonOS.WindowManager;
@@ -101,6 +104,29 @@ internal static class FileShareDialogChecks
         lifetime.Cancel();
         await RejectAsync<OperationCanceledException>(() => capability.GetStatusAsync(default));
         Console.WriteLine("SMB SDK withheld ungranted, stale and cancelled operations.");
+
+        session.ServiceId = "http://fixture.invalid";
+        var windows = new WindowManagerService();
+        windows.Attach(new Canvas { Width = 1280, Height = 900 });
+        using var http = new HttpClient();
+        var settings = new ShellSettings(null!);
+        var language = (ISystemLanguage)RelaxKonOS.Client.App.Services.GetService(typeof(LocalizationService))!;
+        var factory = new ExternalAppContextFactory(permissions, permissions, language, settings, null!, auth, null!,
+            windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings), null!,
+            null!, null!, null!, null!, memory, null!, null!, null!, null!,
+            fileServices: DispatchProxy.Create<IServerFileServices, ShareDialogClient>());
+        var entry = new FileServicesPackageApp();
+        await entry.ActivateAsync(factory.Create(entry.Manifest));
+        var window = windows.Windows.Single();
+        Check(window.View.Content is FileServicesWorkspace { DataContext: FileServicesViewModel { FactsAvailable: true } },
+            "The external File Services entry loads SMB facts into its application workspace.");
+        windows.ForceClose(window);
+
+        var context = factory.Create(entry.Manifest);
+        var owner = context.Windows.ShowWindow("Fixture", new TextBlock());
+        Check(await context.FileServicesAdministratorPrompt!.RequestAsync(owner, null) is null && windows.Windows.Count == 1,
+            "Read-only access cannot open the system administrator prompt.");
+        windows.ForceClose(owner.Window);
 
         static async Task RejectAsync<T>(Func<Task> operation) where T : Exception
         {

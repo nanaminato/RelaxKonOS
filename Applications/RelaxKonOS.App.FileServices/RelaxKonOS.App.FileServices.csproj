@@ -10,5 +10,6 @@
         <PackageReference Include="CommunityToolkit.Mvvm" />
         <AvaloniaResource Include="Assets/file-services.png" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="FileServices.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Package/*.json" LogicalName="FileServices.PackageLocalization.%(Filename).json" />
     </ItemGroup>
 </Project>

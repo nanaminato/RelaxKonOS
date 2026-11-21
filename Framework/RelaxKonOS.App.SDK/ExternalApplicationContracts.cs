@@ -46,6 +46,7 @@ public interface IExternalAppContext
     IServerWebServers WebServers { get; }
     IServerGit Git { get; }
     IServerFileServices FileServices { get; }
+    IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt { get; }
     IRegistryAppearancePreferences? RegistryAppearance { get; }
     /// <summary>Available only to the official Browser application.</summary>
     IBrowserData? BrowserData { get; }

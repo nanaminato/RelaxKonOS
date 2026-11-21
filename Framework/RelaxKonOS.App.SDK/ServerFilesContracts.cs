@@ -42,7 +42,8 @@ public interface IServerFiles
     Task<AppCapabilityResult> DeleteAsync(string path, CancellationToken cancellationToken = default);
 
     /// <summary>Opens the host's remote file or folder picker. Save mode requires both read and write grants.</summary>
-    Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options);
+    Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options,
+        RelaxKonOS.WindowManager.ManagedWindow? dialogOwner = null);
 }
 
 public sealed record ServerFileReadResult(AppCapabilityResult Status, Stream? Content, string? FileName);

@@ -1,0 +1,12 @@
+{
+  "Culture": "zh-CN",
+  "Strings": {
+    "common.cancel": "取消",
+    "common.refresh": "刷新",
+    "common.save": "保存",
+    "common.settings": "设置",
+    "common.discard": "放弃修改",
+    "common.discard_title": "放弃修改？",
+    "common.discard_message": "放弃未保存的修改并关闭编辑器？"
+  }
+}

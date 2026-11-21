@@ -155,6 +155,7 @@ public sealed class ExternalAppContextFactory
         new ServerWebServersCapability(appId, _permissions, connection, _webServers, _elevationBroker),
         new ServerGitCapability(appId, _permissions, connection, _git, lifetime),
         new ServerFileServicesCapability(appId, _permissions, connection, _fileServices, lifetime),
+        appId.Value == "relaxkonos.file-services" ? new FileServicesAdministratorPrompt(appId, _permissions, connection, fileSession, _windowManager) : null,
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
         appId.Value == "relaxkonos.browser" && _browserData is not null ? new ExternalBrowserData(_browserData, connection) : null,
@@ -201,6 +202,7 @@ public sealed class ExternalAppContextFactory
         IServerWebServers WebServers,
         IServerGit Git,
         IServerFileServices FileServices,
+        IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt,
         IRegistryAppearancePreferences? RegistryAppearance,
         IBrowserData? BrowserData,
         ITerminalSessionDiscovery? TerminalSessions,
@@ -437,6 +439,25 @@ public sealed class ExternalAppContextFactory
 
         private static ConfirmDialogView CreateConfirmation(ModalDialog<bool> dialog, string message, string confirmLabel) =>
             new() { DataContext = new ConfirmDialogViewModel(message, dialog.Close, confirmLabel) };
+    }
+
+    private sealed class FileServicesAdministratorPrompt(AppId appId, IAppPermissionManager permissions,
+        ExternalServerConnection connection, UsageMemoryScope memory, IWindowManager windows) : IFileServicesAdministratorPrompt
+    {
+        public async Task<HostAdministratorCredentials?> RequestAsync(IExternalAppWindowHandle owner, string? errorMessage)
+        {
+            if (owner is not ExternalAppWindowHandle || !HasAccess()) return null;
+            var credentials = await windows.ShowSystemDialogAsync<HostAdministratorCredentials?>(
+                LocalizedText.Get("file_services.host_password"),
+                dialog => new RelaxKonOS.Client.Apps.FileServices.Views.HostAdministratorCredentialsDialogView(dialog,
+                    LocalizedText.Get("file_services.host_password_message"), errorMessage, memory.Administrator ?? string.Empty),
+                new Size(460, 250));
+            return HasAccess() ? credentials : null;
+
+            bool HasAccess() => owner.Window.Info.OwnerAppId == appId && windows.Windows.Contains(owner.Window)
+                && connection.IsCurrent && permissions.IsGranted(appId, CoreAppPermissions.ServerFileServicesRead)
+                && permissions.IsGranted(appId, CoreAppPermissions.ServerFileServicesManage);
+        }
     }
 
     private sealed class ExternalFileApiAccess(
@@ -809,7 +830,8 @@ public sealed class ExternalAppContextFactory
             return HasWorkspace ? AppCapabilityResult.Succeeded : AppCapabilityResult.Unavailable;
         }
 
-        public async Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options)
+        public async Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options,
+            ManagedWindow? dialogOwner = null)
         {
             var save = options.Mode == ServerFilePickerMode.SaveFile;
             bool HasGrants() => permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead)
@@ -818,6 +840,9 @@ public sealed class ExternalAppContextFactory
             if (!HasGrants()) return new(AppCapabilityResult.PermissionDenied);
             if (!HasWorkspace) return new(AppCapabilityResult.Unavailable);
             if (owner is not ExternalAppWindowHandle handle || handle.Window.Info.OwnerAppId != appId || !windows.Windows.Contains(handle.Window))
+                return new(AppCapabilityResult.InvalidArgument);
+            if (dialogOwner is not null && (!dialogOwner.IsModalDialog || dialogOwner.Info.OwnerAppId != appId
+                || !windows.Windows.Contains(dialogOwner)))
                 return new(AppCapabilityResult.InvalidArgument);
 
             var mode = options.Mode switch
@@ -829,7 +854,7 @@ public sealed class ExternalAppContextFactory
             };
             if (mode is null || !save && options.SuggestedFileName is not null)
                 return new(AppCapabilityResult.InvalidArgument);
-            var path = await handle.ShowDialogAsync<string>(options.Title, dialog =>
+            var path = await handle.ShowOwnedDialogAsync<string>(dialogOwner ?? handle.Window, options.Title, dialog =>
             {
                 var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(mode.Value,
                     Filters: options.Filters?.Select(filter => new ExplorerFileFilter(filter.Label, filter.Patterns,

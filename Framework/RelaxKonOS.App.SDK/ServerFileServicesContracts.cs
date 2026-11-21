@@ -5,6 +5,11 @@ namespace RelaxKonOS.AppSDK;
 /// <summary>One-time host administrator credentials used only to authorize a privileged operation.</summary>
 public sealed record HostAdministratorCredentials(string Username, string Password);
 
+public interface IFileServicesAdministratorPrompt
+{
+    Task<HostAdministratorCredentials?> RequestAsync(IExternalAppWindowHandle owner, string? errorMessage);
+}
+
 public interface IServerFileServices
 {
     Task<FileServiceStatusDto> GetStatusAsync(CancellationToken ct = default);

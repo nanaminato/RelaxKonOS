@@ -162,7 +162,7 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
         => throw new NotSupportedException();
     public Task<AppCapabilityResult> DeleteAsync(string path, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
-    public Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options)
+    public Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options, ManagedWindow? dialogOwner = null)
         => throw new NotSupportedException();
 
     public AppPermissionStatus GetStatus(string permissionId) => ReadPermission;

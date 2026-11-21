@@ -1,0 +1,12 @@
+{
+  "Culture": "ja-JP",
+  "Strings": {
+    "common.cancel": "キャンセル",
+    "common.refresh": "更新",
+    "common.save": "保存",
+    "common.settings": "設定",
+    "common.discard": "破棄",
+    "common.discard_title": "変更を破棄しますか？",
+    "common.discard_message": "未保存の変更を破棄してエディターを閉じますか？"
+  }
+}

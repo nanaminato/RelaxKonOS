@@ -1,0 +1,12 @@
+{
+  "Culture": "en-US",
+  "Strings": {
+    "common.cancel": "Cancel",
+    "common.refresh": "Refresh",
+    "common.save": "Save",
+    "common.settings": "Settings",
+    "common.discard": "Discard",
+    "common.discard_title": "Discard changes?",
+    "common.discard_message": "Discard unsaved changes and close this editor?"
+  }
+}
