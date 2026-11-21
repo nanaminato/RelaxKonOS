@@ -53,7 +53,7 @@ internal static class UsageMemoryChecks
             await explorer.ElevateFileOperationAsync(["/protected"], RelaxKonOS.Protocol.Files.FileElevationCapability.Write, "secret", "operation-admin");
             check(store.Capture(session).Administrator == "operation-admin", "File-operation elevation shares the administrator memory.");
             var smb = new RelaxKonOS.Client.Apps.FileServices.RemoteFileServicesClient(http, session, store);
-            await smb.ElevateAsync(new RelaxKonOS.Client.Apps.FileServices.HostAdministratorCredentials("smb-admin", "secret"));
+            await smb.ElevateAsync(new RelaxKonOS.AppSDK.HostAdministratorCredentials("smb-admin", "secret"));
             check(store.Capture(session).Administrator == "smb-admin" && !File.ReadAllText(path).Contains("secret"), "SMB elevation shares the username and persists no password.");
 
             var storage = DispatchProxy.Create<IStorageProvider, UsageProxy>();

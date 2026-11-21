@@ -11,7 +11,7 @@ using RelaxKonOS.Protocol.FileServices;
 namespace RelaxKonOS.Client.Apps.FileServices;
 
 /// <summary>Window-local SMB control-plane state. It never retains Samba passwords or Helper output.</summary>
-public sealed partial class FileServicesViewModel(IRemoteFileServicesClient client, IAppPermissionScope permissions, Func<bool> isWindowSessionCurrent) : LocalizedObservableObject
+public sealed partial class FileServicesViewModel(IServerFileServices client, IAppPermissionScope permissions, Func<bool> isWindowSessionCurrent) : LocalizedObservableObject
 {
     /// <summary>Samba installation lives in Component Center; settings only observes and navigates.</summary>
     public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }

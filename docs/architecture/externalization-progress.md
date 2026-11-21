@@ -33,18 +33,18 @@
 | proxy | Proxy | 否 / 否 | 是 | Proxy 模块；组件中心管理 mihomo | 可选 | 待验 |
 | proxy-server | ProxyServer | 否 / 否 | 是 | ProxyServer capability；组件中心管理 sing-box | 可选 | 待验 |
 | squid | Squid | 否 / 否 | 是 | GatewayProxy capability；组件中心管理 Squid | 可选 | 待验 |
-| file-services | FileServices | 否 / 否 | 是 | FileServices capability 与主机 SMB | 可选 | 待验 |
+| file-services | FileServices | 否 / 否 | 是 | `IServerFileServices` SDK 与主机 SMB | 可选 | SDK 权限及会话边界已验，应用包待迁移 |
 | port-forwarding | PortForwarding | 否 / 否 | 是 | 连接会话与隧道 | 可选 | 待验 |
 | certificates | RelaxKonOS.App.Certificates | 是 / 是 | 否 | SDK 证书接口与 Certificates 模块 | 官方可选包 | Windows 包生命周期及隔离宿主模块复用已验，真实证书服务待验 |
 | webservers | RelaxKonOS.App.WebServers | 是 / 是 | 否 | WebServer 模块与宿主权限边界 | 官方可选包 | Windows 包生命周期及 Windows、Linux 隔离模块复用已验，Nginx 业务联调待验 |
-| git | Git | 否 / 否 | 是 | Git 模块与远程文件 API | 可选 | 待验 |
+| git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，真实设备业务联调待验 |
 | tunnels | Tunnels | 否 / 否 | 是 | Tunnels capability；组件中心管理 FRP | 可选 | 待验 |
 | application-deployments | ApplicationDeployments | 否 / 否 | 是 | ApplicationDeployments capability | 可选 | 待验 |
 | database | Databases | 否 / 否 | 是 | 数据库引擎与组件中心 | 可选 | 待验 |
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。桌面发行构建将 Browser、Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager、Registry、Terminal、Code Editor、Docker、Certificate Manager 和 Web Server Manager 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装前八个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。Developer 将 Docker、Certificate Manager 和 Web Server Manager 声明为交互式安装项，可从官方商店审阅和确认联合部署。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。桌面发行构建将 Browser、Welcome、Notepad、Image Viewer、Event & Alert Center、Task Manager、Registry、Terminal、Code Editor、Docker、Certificate Manager、Web Server Manager 和 Git 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装前八个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。Developer 将 Docker、Certificate Manager、Web Server Manager 和 Git 声明为交互式安装项，可从官方商店审阅和确认联合部署。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 ## 复用边界
 
@@ -256,3 +256,4 @@
 - Git 0.3.0 已加入桌面发行打包及官方目录。归档声明 Server Git 模块及 server.git 能力，包含独立入口、共享编辑器程序集和原图标。Windows Release 使用实际归档验证来源、完整性、联合安装入口、隔离启动、更新、失败保留版本、重启发现和卸载。测试使用 Git SDK 服务替身，真实服务器联合部署和移除内置注册仍待完成。
 - 桌面宿主已移除内置 Git 应用注册。Developer 配置提供 Git 0.3.0 交互式联合安装，正式入口来自官方归档。Windows Release 客户端和服务器模块测试项目构建通过，实际归档生命周期及 Git SDK 激活回归通过。真实设备上的联合部署待验收。
 - Windows Release 使用实际 Git 与 Welcome 官方归档完成本机隔离 HTTP 联合部署验收。已验证 Git 模块禁用后仅提交启用、重启前保持待完成、重启后恢复并注册 Git 应用，以及复用已启用模块时不产生模块包操作。真实设备与 Git 仓库业务联调仍待执行。
+- File Services 的 SMB 客户端契约已迁入 SDK。外置上下文使用现有传输，检查读取和管理授权、当前服务端会话与应用生命周期取消。Windows Release 的 SMB 功能及共享对话框回归通过，并验证未授权管理与提权、会话切换和取消。界面、激活入口和发行包待迁移。

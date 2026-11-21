@@ -223,7 +223,7 @@ sealed class Permissions : IAppPermissionScope
  public Task<AppPermissionStatus> RequestAsync(string id, CancellationToken ct = default) => Task.FromResult(AppPermissionStatus.Granted);
  public Task OpenSettingsAsync() => Task.CompletedTask;
 }
-sealed class FakeClient : IRemoteFileServicesClient
+sealed class FakeClient : IServerFileServices
 {
  public string? FailRead;
  public Action<string>? BeforeRead;

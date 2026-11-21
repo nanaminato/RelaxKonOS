@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services;
 using System.Net;
 using System.Net.Http.Json;
@@ -10,7 +11,7 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.Client.Apps.FileServices;
 
 /// <summary>Typed protocol-only SMB client. It has no native service, Helper, or credential knowledge.</summary>
-public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession session, UsageMemoryStore memory) : IRemoteFileServicesClient
+public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession session, UsageMemoryStore memory) : IServerFileServices
 {
     public Task<FileServiceStatusDto> GetStatusAsync(CancellationToken ct = default) => Send<FileServiceStatusDto>(HttpMethod.Get, FileServiceApiRoutes.Status, ct);
     public Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct = default) => Send<FileServiceCapabilitiesDto>(HttpMethod.Get, FileServiceApiRoutes.Capabilities, ct);

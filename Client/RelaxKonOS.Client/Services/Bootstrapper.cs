@@ -236,7 +236,7 @@ public static class Bootstrapper
         // short-lived installation staging area.
         services.AddHttpClient("InstallationHostDownload", http => http.Timeout = TimeSpan.FromMinutes(15))
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
-        services.AddHttpClient<RelaxKonOS.Client.Apps.FileServices.IRemoteFileServicesClient, RelaxKonOS.Client.Apps.FileServices.RemoteFileServicesClient>()
+        services.AddHttpClient<RelaxKonOS.AppSDK.IServerFileServices, RelaxKonOS.Client.Apps.FileServices.RemoteFileServicesClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "file-services"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();

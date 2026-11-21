@@ -1,11 +1,11 @@
 using RelaxKonOS.Protocol.FileServices;
 
-namespace RelaxKonOS.Client.Apps.FileServices;
+namespace RelaxKonOS.AppSDK;
 
 /// <summary>One-time host administrator credentials used only to authorize a privileged operation.</summary>
 public sealed record HostAdministratorCredentials(string Username, string Password);
 
-public interface IRemoteFileServicesClient
+public interface IServerFileServices
 {
     Task<FileServiceStatusDto> GetStatusAsync(CancellationToken ct = default);
     Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct = default);

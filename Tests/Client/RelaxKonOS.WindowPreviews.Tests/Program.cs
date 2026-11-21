@@ -136,6 +136,7 @@ if (args.Contains("--git-capability-only"))
     GitCapabilityChecks.RunAsync(settings, localization).GetAwaiter().GetResult();
     return;
 }
+if (args.Contains("--file-share-dialog-only")) { FileShareDialogChecks.Run(); return; }
 if (args.Contains("--browser-capability-only"))
 {
     Task.Run(BrowserCapabilityChecks.RunAsync).GetAwaiter().GetResult();

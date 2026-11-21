@@ -1,8 +1,13 @@
+using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
+using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.FileServices;
 using RelaxKonOS.WindowManager;
 using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
@@ -11,7 +16,8 @@ internal static class FileShareDialogChecks
 {
     public static void Run()
     {
-        var vm = new FileServicesViewModel(DispatchProxy.Create<IRemoteFileServicesClient, ShareDialogClient>(), new FirewallTestPermissions(), () => true);
+        CheckCapabilityAsync().GetAwaiter().GetResult();
+        var vm = new FileServicesViewModel(DispatchProxy.Create<IServerFileServices, ShareDialogClient>(), new FirewallTestPermissions(), () => true);
         vm.StartAsync().GetAwaiter().GetResult();
         vm.ShareName = "test-share";
         vm.SharePath = "/test/share";
@@ -52,6 +58,37 @@ internal static class FileShareDialogChecks
         Check(result.IsCompleted, "Confirmed SMB discard closes the editor.");
         manager.Close(owner);
         Console.WriteLine("SMB share dialog checks passed.");
+    }
+
+    private static async Task CheckCapabilityAsync()
+    {
+        var id = new AppId("relaxkonos.file-services");
+        var permissions = new CertificateCapabilityChecks.Permission(id.Value);
+        var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+        var session = (EventAlertsAuthFixture)(object)auth;
+        var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "smb-memory.json"));
+        using var lifetime = new CancellationTokenSource();
+        var capability = new ServerFileServicesCapability(id, permissions, new ExternalServerConnection(memory.Capture(auth)),
+            DispatchProxy.Create<IServerFileServices, ShareDialogClient>(), lifetime.Token);
+
+        await RejectAsync<UnauthorizedAccessException>(() => capability.GetStatusAsync(default));
+        permissions.Granted.Add(AppPermissions.ServerFileServicesRead);
+        Check((await capability.GetStatusAsync(default)).State == FileServiceRuntimeState.Running,
+            "The SMB SDK forwards reads with a valid app grant and connection.");
+        await RejectAsync<UnauthorizedAccessException>(() => capability.DeleteShareAsync("share", default));
+        await RejectAsync<UnauthorizedAccessException>(() => capability.ElevateAsync(new("fixture", "unused"), default));
+        session.ServiceId = "http://replacement.invalid";
+        await RejectAsync<InvalidOperationException>(() => capability.GetStatusAsync(default));
+        lifetime.Cancel();
+        await RejectAsync<OperationCanceledException>(() => capability.GetStatusAsync(default));
+        Console.WriteLine("SMB SDK withheld ungranted, stale and cancelled operations.");
+
+        static async Task RejectAsync<T>(Func<Task> operation) where T : Exception
+        {
+            try { await operation(); }
+            catch (T) { return; }
+            throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+        }
     }
     private static ConfirmDialogViewModel Confirmation(WindowManagerService manager)
         => (ConfirmDialogViewModel)((Control)manager.Windows.Last().View.Content!).DataContext!;

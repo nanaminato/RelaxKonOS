@@ -57,6 +57,7 @@ public sealed class ExternalAppContextFactory
     private readonly IServerCertificates? _certificates;
     private readonly IServerWebServers? _webServers;
     private readonly IServerGit? _git;
+    private readonly IServerFileServices? _fileServices;
     private readonly ClientPresentationPreferences? _presentationPreferences;
     private readonly IBrowserData? _browserData;
     private readonly DesktopDevicePreferences? _devicePreferences;
@@ -95,7 +96,8 @@ public sealed class ExternalAppContextFactory
         RelaxKonOS.Client.Apps.Terminal.ITerminalSettingsClient? terminalSettings = null,
         IServerCertificates? certificates = null,
         IServerWebServers? webServers = null,
-        IServerGit? git = null)
+        IServerGit? git = null,
+        IServerFileServices? fileServices = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -124,6 +126,7 @@ public sealed class ExternalAppContextFactory
         _certificates = certificates;
         _webServers = webServers;
         _git = git;
+        _fileServices = fileServices;
         _presentationPreferences = presentationPreferences;
         _browserData = browserData;
         _diagnostics = diagnostics;
@@ -151,6 +154,7 @@ public sealed class ExternalAppContextFactory
         new ServerCertificatesCapability(appId, _permissions, connection, _certificates),
         new ServerWebServersCapability(appId, _permissions, connection, _webServers, _elevationBroker),
         new ServerGitCapability(appId, _permissions, connection, _git, lifetime),
+        new ServerFileServicesCapability(appId, _permissions, connection, _fileServices, lifetime),
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
         appId.Value == "relaxkonos.browser" && _browserData is not null ? new ExternalBrowserData(_browserData, connection) : null,
@@ -196,6 +200,7 @@ public sealed class ExternalAppContextFactory
         IServerCertificates Certificates,
         IServerWebServers WebServers,
         IServerGit Git,
+        IServerFileServices FileServices,
         IRegistryAppearancePreferences? RegistryAppearance,
         IBrowserData? BrowserData,
         ITerminalSessionDiscovery? TerminalSessions,

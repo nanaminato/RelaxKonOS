@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.FileServices;
 using RelaxKonOS.Protocol.FileServices;
 
@@ -106,7 +107,7 @@ internal static class ReadRecoveryChecks
         Console.WriteLine("PASS: SMB read failures at all five stages preserve display/draft, block mutations and recover.");
         var writeClient = new FakeClient { Linux = true };
         var writeVm = new FileServicesViewModel(writeClient, new Permissions(), () => true)
-        { RequestHostAdministratorCredentialsAsync = _ => Task.FromResult<RelaxKonOS.Client.Apps.FileServices.HostAdministratorCredentials?>(new("admin", "test")) };
+        { RequestHostAdministratorCredentialsAsync = _ => Task.FromResult<RelaxKonOS.AppSDK.HostAdministratorCredentials?>(new("admin", "test")) };
         await writeVm.StartAsync();
         writeVm.ShareName = "test"; writeVm.SharePath = "/srv/relaxkonos-shares/test";
         writeVm.AddSharePermission("nanami");

@@ -295,7 +295,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 LocalizedText.Get("component_center.package.recovery." + action)).Resolve());
         model.ConfirmTaskAsync = async plan => await ShowOwnedAsync<bool>(LocalizedText.Get("component_center.task_confirm_title"),
             dialog => new TaskPlanConfirmationView(dialog, plan), new Size(720, 600)) == true;
-        model.TaskCredentialsAsync = () => ShowOwnedAsync<RelaxKonOS.Client.Apps.FileServices.HostAdministratorCredentials?>(
+        model.TaskCredentialsAsync = () => ShowOwnedAsync<RelaxKonOS.AppSDK.HostAdministratorCredentials?>(
             LocalizedText.Get("installation.elevation_title"), dialog => new HostAdministratorCredentialsDialogView(dialog,
                 LocalizedText.Get("component_center.task_credentials"), null, session.CurrentUser?.Username ?? ""), new Size(560, 340));
         model.ConfirmTaskRecoveryAsync = (action, recovery) => ConfirmAsync(LocalizedText.Get("component_center.task_recovery_action." + action),

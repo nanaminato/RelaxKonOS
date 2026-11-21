@@ -20,7 +20,7 @@ public sealed class FileServicesApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var client = context.Services.GetService(typeof(IRemoteFileServicesClient)) as IRemoteFileServicesClient;
+        var client = context.Services.GetService(typeof(IServerFileServices)) as IServerFileServices;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
             context.ShowWindow(LocalizedText.Get("file_services.title"), new FileServicesLoginRequiredView(), new Rect(180, 160, 440, 160), Manifest.IconGlyph, false, false, false);
