@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git.Views;
 using RelaxKonOS.AppSDK;
 using Avalonia.Headless;
 using System.Reflection;

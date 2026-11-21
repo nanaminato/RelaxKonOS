@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git.Views;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Avalonia.Controls;
@@ -163,7 +164,7 @@ internal partial class GitClientWorkspace
             _consoleAfter = Math.Max(_consoleAfter, entries.Max(entry => entry.Sequence));
             if (revision != _consoleRevision) return;
             var tab = GitTabs.FirstOrDefault(tab => tab.Kind == "console");
-            if (tab is null) tab = AddGitTab("console", new GitConsoleView());
+            if (tab is null) tab = AddGitTab("console", new GitConsoleView(LocalizedText.Get));
             ((GitConsoleView)tab.View).Append(entries);
         }
         catch (OperationCanceledException) { }
@@ -176,7 +177,7 @@ internal partial class GitClientWorkspace
     private async void DuplicateGitLog_Click(object? sender, RoutedEventArgs e) => await NewLogTabAsync(duplicate: true);
     private void ShowGitConsole_Click(object? sender, RoutedEventArgs e)
     {
-        var tab = GitTabs.FirstOrDefault(tab => tab.Kind == "console") ?? AddGitTab("console", new GitConsoleView());
+        var tab = GitTabs.FirstOrDefault(tab => tab.Kind == "console") ?? AddGitTab("console", new GitConsoleView(LocalizedText.Get));
         SelectGitTab(tab); _ = RefreshGitConsoleAsync();
     }
     private void GitTabList_Click(object? sender, RoutedEventArgs e)

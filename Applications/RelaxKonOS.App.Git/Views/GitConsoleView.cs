@@ -1,14 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
-internal sealed class GitConsoleView : UserControl
+public sealed class GitConsoleView : UserControl
 {
     private readonly TextBox _output;
     private readonly ScrollViewer _scroll;
@@ -17,14 +15,17 @@ internal sealed class GitConsoleView : UserControl
     private bool _unavailable;
     private bool _wrap;
     public event EventHandler? ClearRequested;
-    public GitConsoleView()
+    private readonly Func<string, string> _localize;
+
+    public GitConsoleView(Func<string, string> localize)
     {
+        _localize = localize;
         var grid = new Grid { ColumnDefinitions = new("32,*"), RowDefinitions = new("Auto,*") };
         var tools = new StackPanel { Margin = new(1, 5), Spacing = 3 };
         Button Tool(string symbol, string key, Action action)
         {
             var button = new Button { Content = symbol, Width = 28, MinWidth = 0, Height = 26, HorizontalContentAlignment = HorizontalAlignment.Center, Padding = new(0), Background = Brushes.Transparent, BorderThickness = new(0) };
-            ToolTip.SetTip(button, LocalizedText.Get(key)); Avalonia.Automation.AutomationProperties.SetName(button, LocalizedText.Get(key));
+            ToolTip.SetTip(button, _localize(key)); Avalonia.Automation.AutomationProperties.SetName(button, _localize(key));
             button.Click += (_, _) => action(); tools.Children.Add(button); _toolKeys[button] = key; return button;
         }
         _output = new TextBox { Name = "GitConsoleOutput", IsReadOnly = true, AcceptsReturn = true, BorderThickness = new(0), Background = Brushes.Transparent,
@@ -41,12 +42,12 @@ internal sealed class GitConsoleView : UserControl
     public void ShowUnavailable(bool unavailable)
     {
         _unavailable = unavailable; _status.IsVisible = unavailable;
-        _status.Text = unavailable ? LocalizedText.Get("git.dock.console_unavailable") : "";
+        _status.Text = unavailable ? _localize("git.dock.console_unavailable") : "";
     }
     public void RefreshLocalization()
     {
-        foreach (var (button, key) in _toolKeys) { ToolTip.SetTip(button, LocalizedText.Get(key)); Avalonia.Automation.AutomationProperties.SetName(button, LocalizedText.Get(key)); }
-        _output.PlaceholderText = LocalizedText.Get("git.dock.console_empty");
+        foreach (var (button, key) in _toolKeys) { ToolTip.SetTip(button, _localize(key)); Avalonia.Automation.AutomationProperties.SetName(button, _localize(key)); }
+        _output.PlaceholderText = _localize("git.dock.console_empty");
         ShowUnavailable(_unavailable);
     }
     public void Append(IEnumerable<GitConsoleEntryDto> entries)
@@ -54,7 +55,7 @@ internal sealed class GitConsoleView : UserControl
         ShowUnavailable(false);
         var text = _output.Text ?? "";
         foreach (var entry in entries)
-            text += $"[{entry.Timestamp.ToLocalTime():HH:mm:ss}] {entry.Command}\n{entry.Output}{(entry.Output.EndsWith('\n') || entry.Output.Length == 0 ? "" : "\n")}{entry.Error}{(entry.Error.EndsWith('\n') || entry.Error.Length == 0 ? "" : "\n")}[{LocalizedText.Get("git.dock.exit_code")}: {entry.ExitCode}]\n\n";
+            text += $"[{entry.Timestamp.ToLocalTime():HH:mm:ss}] {entry.Command}\n{entry.Output}{(entry.Output.EndsWith('\n') || entry.Output.Length == 0 ? "" : "\n")}{entry.Error}{(entry.Error.EndsWith('\n') || entry.Error.Length == 0 ? "" : "\n")}[{_localize("git.dock.exit_code")}: {entry.ExitCode}]\n\n";
         _output.Text = text.Length <= 256 * 1024 ? text : text[^ (256 * 1024)..];
         _scroll.ScrollToEnd();
     }

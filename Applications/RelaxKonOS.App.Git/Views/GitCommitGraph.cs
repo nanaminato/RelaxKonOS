@@ -3,12 +3,12 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
-internal sealed record GitGraphEdge(int From, int To, bool Incoming, bool Through, bool Cut = false);
-internal sealed record GitGraphRow(int Lane, IReadOnlyList<GitGraphEdge> Edges, int LaneCount, bool IsHead);
-internal sealed record GitLogReference(string Name, IBrush Foreground);
-internal sealed class GitLogRow(GitCommitDto commit, GitGraphRow graph, IReadOnlyList<GitLogReference> references)
+public sealed record GitGraphEdge(int From, int To, bool Incoming, bool Through, bool Cut = false);
+public sealed record GitGraphRow(int Lane, IReadOnlyList<GitGraphEdge> Edges, int LaneCount, bool IsHead);
+public sealed record GitLogReference(string Name, IBrush Foreground);
+public sealed class GitLogRow(GitCommitDto commit, GitGraphRow graph, IReadOnlyList<GitLogReference> references)
 {
     public GitCommitDto Commit { get; } = commit;
     public GitGraphRow Graph { get; } = graph;
@@ -19,7 +19,7 @@ internal sealed class GitLogRow(GitCommitDto commit, GitGraphRow graph, IReadOnl
     public string AuthorDate => Commit.AuthorDate;
     public string ToolTip => Commit.Sha + "\n" + Commit.Subject + "\n" + string.Join(", ", References.Select(reference => reference.Name));
 }
-internal static class GitCommitGraph
+public static class GitCommitGraph
 {
     public static IReadOnlyList<GitLogRow> Build(IReadOnlyList<GitCommitDto> commits, IReadOnlyList<GitGraphCommitDto> graph,
         IReadOnlyList<GitBranchDto> branches, IReadOnlyList<GitTagDto> tags)
@@ -65,7 +65,7 @@ internal static class GitCommitGraph
         return rows;
     }
 }
-internal sealed class GitCommitGraphCell : Control
+public sealed class GitCommitGraphCell : Control
 {
     public static readonly StyledProperty<GitGraphRow?> RowProperty = AvaloniaProperty.Register<GitCommitGraphCell, GitGraphRow?>(nameof(Row));
     public GitGraphRow? Row { get => GetValue(RowProperty); set => SetValue(RowProperty, value); }

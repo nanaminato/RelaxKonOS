@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git.Views;
 using RelaxKonOS.App.CodeEditor;
 using System.ComponentModel;
 using Avalonia;
@@ -228,7 +229,7 @@ internal partial class GitClientWorkspace : UserControl
                 "worktrees" or "stashes" => new GitWorkspaceMaintenanceView(_viewModel, kind),
                 "remotes" => new GitRemotesView(_viewModel),
                 "overview" => new GitOverviewView(_viewModel),
-                "console" => new GitConsoleView(),
+                "console" => new GitConsoleView(LocalizedText.Get),
                 _ => new GitLogView(_viewModel),
             };
             tab = AddGitTab(kind, view, kind == "log" ? _viewModel : null);
