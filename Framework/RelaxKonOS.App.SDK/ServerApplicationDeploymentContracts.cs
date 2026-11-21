@@ -41,7 +41,7 @@ public interface IServerApplicationDeployments
     /// <summary>Stages an archive and returns the reference the deployment request carries.</summary>
     Task<DeploymentStagedFileDto> UploadArchiveAsync(string fileName, Stream content, IProgress<DeploymentUploadProgress>? progress = null, CancellationToken cancellationToken = default);
 
-    IAsyncDisposable WatchLogs(Guid operationId, Action<RelaxKonOS.Protocol.Hubs.DeploymentLiveLogSnapshot> receive, Action<bool> connectionChanged);
+    IAsyncDisposable WatchLogs(Guid operationId, Action<RelaxKonOS.Protocol.Hubs.DeploymentLiveLogSnapshot> receive, Action<bool> connectionChanged, CancellationToken cancellationToken = default);
     /// <summary>Registers a file that already exists on the server. The host path never leaves this call.</summary>
     Task<DeploymentStagedFileDto> CreateFileReferenceAsync(string path, CancellationToken cancellationToken = default);
 }

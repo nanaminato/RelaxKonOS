@@ -94,8 +94,8 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
     public Task<DeploymentOperationDto> CancelOperationAsync(Guid operationId, string idempotencyKey, CancellationToken cancellationToken = default) =>
         SendAsync<DeploymentOperationDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.Cancel(operationId), null, idempotencyKey, cancellationToken);
 
-    public IAsyncDisposable WatchLogs(Guid operationId, Action<RelaxKonOS.Protocol.Hubs.DeploymentLiveLogSnapshot> receive, Action<bool> connectionChanged)
-        => new DeploymentLogStream(session, operationId, receive, connectionChanged);
+    public IAsyncDisposable WatchLogs(Guid operationId, Action<RelaxKonOS.Protocol.Hubs.DeploymentLiveLogSnapshot> receive, Action<bool> connectionChanged, CancellationToken cancellationToken = default)
+        => new DeploymentLogStream(session, operationId, receive, connectionChanged, cancellationToken);
 
     public async Task<DeploymentStagedFileDto> UploadArchiveAsync(string fileName, Stream content, IProgress<DeploymentUploadProgress>? progress = null, CancellationToken cancellationToken = default)
     {

@@ -48,6 +48,7 @@ public interface IExternalAppContext
     IServerFileServices FileServices { get; }
     IServerFirewall Firewall { get; }
     IServerGuardian Guardian { get; }
+    IServerApplicationDeployments ApplicationDeployments { get; }
     IGuardianHostInteraction? GuardianHost { get; }
     IPortForwardingService? PortForwarding { get; }
     IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt { get; }

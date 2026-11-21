@@ -1,3 +1,5 @@
+using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.AppPermissions;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -19,6 +21,39 @@ using AppContext = System.AppContext;
 
 internal static class ApplicationDeploymentsWorkspaceChecks
 {
+    public static async Task CheckSdkAsync()
+    {
+        var id = new RelaxKonOS.Core.Applications.AppId("relaxkonos.application-deployments");
+        var permissions = new CertificateCapabilityChecks.Permission(id.Value);
+        var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+        var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "deployment-sdk-memory.json"));
+        using var lifetime = new CancellationTokenSource();
+        IServerApplicationDeployments sdk = new ServerApplicationDeploymentsCapability(id, permissions,
+            new ExternalServerConnection(memory.Capture(auth)), DispatchProxy.Create<IServerApplicationDeployments, DeploymentHostStub>(),
+            lifetime.Token);
+
+        await RejectAsync<UnauthorizedAccessException>(() => sdk.ListApplicationsAsync());
+        permissions.Granted.Add(AppPermissions.ServerApplicationDeploymentsRead);
+        await sdk.ListApplicationsAsync();
+        await RejectAsync<UnauthorizedAccessException>(() => sdk.UploadArchiveAsync("fixture.zip", Stream.Null));
+        await RejectAsync<UnauthorizedAccessException>(() => sdk.InstallCatalogAsync(null!, "fixture"));
+        permissions.Granted.Add(AppPermissions.ServerApplicationDeploymentsManage);
+        await sdk.InstallCatalogAsync(null!, "fixture");
+
+        ((EventAlertsAuthFixture)(object)auth).ServiceId = "http://replacement.invalid";
+        await RejectAsync<InvalidOperationException>(() => sdk.ListApplicationsAsync());
+        lifetime.Cancel();
+        await RejectAsync<OperationCanceledException>(() => sdk.ListApplicationsAsync());
+        Console.WriteLine("Application deployment SDK scope checks passed.");
+
+        static async Task RejectAsync<T>(Func<Task> call) where T : Exception
+        {
+            try { await call(); }
+            catch (T) { return; }
+            throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+        }
+    }
+
     public static void Run(ShellSettings settings)
     {
         var output = Path.Combine(AppContext.BaseDirectory, "preview-qa", "application-deployments");

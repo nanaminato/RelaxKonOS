@@ -8,14 +8,15 @@ namespace RelaxKonOS.Client.Apps.ApplicationDeployments;
 /// <summary>Retries initial connections as well as disconnects; each subscribe restores the tail.</summary>
 internal sealed class DeploymentLogStream : IAsyncDisposable
 {
-    private readonly CancellationTokenSource stopping = new();
+    private readonly CancellationTokenSource stopping;
     private readonly Task running;
     private readonly Guid operationId;
     private readonly Action<DeploymentLiveLogSnapshot> receive;
     private HubConnection? connection;
 
-    public DeploymentLogStream(IAuthSession session, Guid operationId, Action<DeploymentLiveLogSnapshot> receive, Action<bool> connectionChanged)
+    public DeploymentLogStream(IAuthSession session, Guid operationId, Action<DeploymentLiveLogSnapshot> receive, Action<bool> connectionChanged, CancellationToken cancellationToken = default)
     {
+        stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         this.operationId = operationId;
         this.receive = receive;
         running = RunAsync(session, connectionChanged);
@@ -59,7 +60,7 @@ internal sealed class DeploymentLogStream : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         // Fetch once more after REST reports completion so the last half-second of output is kept.
-        if (connection is { State: HubConnectionState.Connected } hub)
+        if (!stopping.IsCancellationRequested && connection is { State: HubConnectionState.Connected } hub)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             try { receive(await hub.InvokeAsync<DeploymentLiveLogSnapshot>(ApplicationDeploymentLogsHubMethods.Subscribe, operationId, timeout.Token)); }

@@ -539,7 +539,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
             }), connected => Dispatcher.UIThread.Post(() =>
             {
                 if (!IsFinished) LiveLogStatus = LocalizedStatus.Key(DeploymentText.Prefix + (connected ? ".logs_live" : ".logs_connecting"));
-            }));
+            }), token);
         while (current.State is DeploymentOperationState.Queued or DeploymentOperationState.Running)
         {
             ReportStage(current);

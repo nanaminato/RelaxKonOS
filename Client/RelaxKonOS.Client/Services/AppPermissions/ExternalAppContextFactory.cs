@@ -64,6 +64,7 @@ public sealed class ExternalAppContextFactory
     private readonly IServerFileServices? _fileServices;
     private readonly IServerFirewall? _firewall;
     private readonly IServerGuardian? _guardian;
+    private readonly IServerApplicationDeployments? _applicationDeployments;
     private readonly IPortForwardingService? _portForwarding;
     private readonly ClientPresentationPreferences? _presentationPreferences;
     private readonly IBrowserData? _browserData;
@@ -107,7 +108,8 @@ public sealed class ExternalAppContextFactory
         IServerFileServices? fileServices = null,
         IServerFirewall? firewall = null,
         IServerGuardian? guardian = null,
-        IPortForwardingService? portForwarding = null)
+        IPortForwardingService? portForwarding = null,
+        IServerApplicationDeployments? applicationDeployments = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -139,6 +141,7 @@ public sealed class ExternalAppContextFactory
         _fileServices = fileServices;
         _firewall = firewall;
         _guardian = guardian;
+        _applicationDeployments = applicationDeployments;
         _portForwarding = portForwarding;
         _presentationPreferences = presentationPreferences;
         _browserData = browserData;
@@ -170,6 +173,7 @@ public sealed class ExternalAppContextFactory
         new ServerFileServicesCapability(appId, _permissions, connection, _fileServices, lifetime),
         new ServerFirewallCapability(appId, _permissions, connection, _firewall, lifetime),
         new ServerGuardianCapability(appId, _permissions, connection, _guardian, lifetime),
+        new ServerApplicationDeploymentsCapability(appId, _permissions, connection, _applicationDeployments, lifetime),
         appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime, _guardian as ProcessGuardianClient) : null,
         appId.Value == "relaxkonos.port-forwarding" && _portForwarding is { } forwarding
             && manifest.Permissions.Contains(CoreAppPermissions.DesktopPortForwardingManage)
@@ -223,6 +227,7 @@ public sealed class ExternalAppContextFactory
         IServerFileServices FileServices,
         IServerFirewall Firewall,
         IServerGuardian Guardian,
+        IServerApplicationDeployments ApplicationDeployments,
         IGuardianHostInteraction? GuardianHost,
         IPortForwardingService? PortForwarding,
         IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt,

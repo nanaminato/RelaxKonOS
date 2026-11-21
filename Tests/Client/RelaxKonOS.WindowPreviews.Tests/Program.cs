@@ -199,6 +199,7 @@ if (args.Contains("--firewall-only"))
 }
 if (args.Contains("--deployments-only"))
 {
+    Task.Run(ApplicationDeploymentsWorkspaceChecks.CheckSdkAsync).GetAwaiter().GetResult();
     ApplicationDeploymentsWorkspaceChecks.Run(settings);
     return;
 }
