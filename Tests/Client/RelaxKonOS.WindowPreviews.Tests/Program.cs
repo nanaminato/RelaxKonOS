@@ -190,6 +190,7 @@ if (args.Contains("--proxy-only"))
     ProxyWorkspaceChecks.Run(settings);
     return;
 }
+if (args.Contains("--guardian-capability-only")) { GuardianCapabilityChecks.RunAsync().GetAwaiter().GetResult(); return; }
 if (args.Contains("--firewall-only"))
 {
     FirewallSubmissionChecks.Run();

@@ -1,8 +1,8 @@
 using RelaxKonOS.Protocol.ProcessGuardian;
 
-namespace RelaxKonOS.Client.Apps.ProcessGuardian;
+namespace RelaxKonOS.AppSDK;
 
-public interface IProcessGuardianClient
+public interface IServerGuardian
 {
     Task<GuardianStatusDto> GetStatusAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GuardianWorkloadDto>> ListWorkloadsAsync(CancellationToken cancellationToken = default);

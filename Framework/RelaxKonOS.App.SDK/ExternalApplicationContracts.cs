@@ -47,6 +47,7 @@ public interface IExternalAppContext
     IServerGit Git { get; }
     IServerFileServices FileServices { get; }
     IServerFirewall Firewall { get; }
+    IServerGuardian Guardian { get; }
     IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt { get; }
     IRegistryAppearancePreferences? RegistryAppearance { get; }
     /// <summary>Available only to the official Browser application.</summary>

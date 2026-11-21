@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using RelaxKonOS.Client.Services.Auth;
@@ -6,7 +7,7 @@ using RelaxKonOS.Protocol.ProcessGuardian;
 
 namespace RelaxKonOS.Client.Apps.ProcessGuardian;
 
-public sealed class ProcessGuardianClient(HttpClient http, IAuthSession session) : IProcessGuardianClient
+public sealed class ProcessGuardianClient(HttpClient http, IAuthSession session) : IServerGuardian
 {
     public Task<GuardianStatusDto> GetStatusAsync(CancellationToken cancellationToken = default) => SendAsync<GuardianStatusDto>(ProcessGuardianApiRoutes.Status, cancellationToken);
     public Task<IReadOnlyList<GuardianWorkloadDto>> ListWorkloadsAsync(CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<GuardianWorkloadDto>>(ProcessGuardianApiRoutes.Workloads, cancellationToken);

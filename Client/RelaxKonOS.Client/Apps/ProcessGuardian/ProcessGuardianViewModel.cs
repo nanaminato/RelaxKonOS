@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Privileged;
@@ -9,7 +10,7 @@ using RelaxKonOS.Protocol.ProcessGuardian;
 
 namespace RelaxKonOS.Client.Apps.ProcessGuardian;
 
-public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient client, IAuthSession session) : LocalizedObservableObject
+public sealed partial class ProcessGuardianViewModel(IServerGuardian client, IAuthSession session) : LocalizedObservableObject
 {
     // The Guardian Agent accepts one local pipe connection at a time. Keep UI refreshes
     // serialized too, otherwise concurrent status/list requests can time out and replace

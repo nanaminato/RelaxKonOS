@@ -29,7 +29,7 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var client = context.Services.GetService(typeof(IProcessGuardianClient)) as IProcessGuardianClient;
+        var client = context.Services.GetService(typeof(IServerGuardian)) as IServerGuardian;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.processguardian.display_name"),
