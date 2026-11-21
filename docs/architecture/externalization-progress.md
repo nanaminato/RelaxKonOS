@@ -62,6 +62,8 @@
 
 ## 测试证据
 
+- Windows 桌面 Release 完整发布通过。核对 `OfficialApps` 下全部 11 个归档的 SHA-256 及 Developer 配置中的证书管理器交互条目。使用发布目录中的证书管理器归档再次通过官方来源、安装、启动、更新、失败保留、重启发现和卸载回归。
+
 - Windows Release 双归档联合部署验收使用实际 Certificate Manager 官方归档。协调器通过隔离服务端的模块管理 HTTP 接口确认已启用的同名 Certificates 模块满足依赖，未创建模块安装计划或增加包操作回执，客户端完成安装与注册。隔离宿主未挂载证书业务 HTTP 端点，真实证书服务联调仍待执行。
 
 - 证书管理器已移除内置登记，桌面发行将 `relaxkonos.certificates.roapp` 纳入官方来源，Developer 配置将它列为交互安装项。清单要求 Certificates 模块及其能力。Windows Release 使用 DevCli 生成的实际归档验证可信来源、直接安装拒绝、交互审阅、安装后启动、更新、失败保留、重启发现和卸载。客户端生命周期测试使用模块验证替身，真实服务端模块联动和完整桌面发行发布尚待验收。
