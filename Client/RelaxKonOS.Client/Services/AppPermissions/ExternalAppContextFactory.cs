@@ -94,6 +94,8 @@ public sealed class ExternalAppContextFactory
     {
         var appId = manifest.Id;
         var sshEndpoint = _sshSession.Endpoint;
+        var sshFiles = sshEndpoint is null ? null : _sshFiles.Bind(sshEndpoint);
+        var sshEditor = sshFiles is not null && appId.Value == "relaxkonos.codeeditor";
         var fileSession = _usageMemory.Capture(_session);
         return new ExternalAppContext(
         appId,
@@ -102,9 +104,10 @@ public sealed class ExternalAppContextFactory
         new ServerMonitorCapability(appId, _permissions, _systemMonitor),
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         new ServerFilesCapability(appId, _permissions,
-            sshEndpoint is null ? _files.DownloadAsync : (path, ct) => _sshFiles.DownloadAsync(path, sshEndpoint, ct),
+            (sshFiles as IExplorerClient ?? _files).DownloadAsync,
             sshEndpoint is not null, sshEndpoint is not null || _session.CurrentServer?.Platform != RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
-            openedFile, _files, fileSession, _windowManager),
+            openedFile, sshEditor ? sshFiles! : _files, fileSession, _windowManager,
+            () => sshEditor && ReferenceEquals(_sshSession.Endpoint, sshEndpoint)),
         appId.Value is "relaxkonos.notepad" or "relaxkonos.codeeditor"
             ? new EditorEncodingPreferences(_textEncoding, fileSession, appId.Value == "relaxkonos.codeeditor") : null,
         new ExternalFileApiAccess(appId, _permissions, _session, _capabilities),
@@ -595,11 +598,13 @@ public sealed class ExternalAppContextFactory
         string? openedFile,
         IExplorerClient files,
         UsageMemoryScope session,
-        IWindowManager windows) : IServerFiles
+        IWindowManager windows,
+        Func<bool> isSshEditorCurrent) : IServerFiles
     {
         public bool IsSshSession => isSshSession;
         public bool IsPathCaseSensitive => isPathCaseSensitive;
         private bool IsServerSession => !isSshSession && session.Session.State == AuthSessionState.Authenticated && session.IsCurrent;
+        private bool HasWorkspace => IsServerSession || isSshEditorCurrent();
 
         public async Task<ServerFileReadResult> OpenReadAsync(string path, CancellationToken cancellationToken = default)
         {
@@ -633,9 +638,9 @@ public sealed class ExternalAppContextFactory
             if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
                 return new(AppCapabilityResult.PermissionDenied);
             if (string.IsNullOrWhiteSpace(path)) return new(AppCapabilityResult.InvalidArgument);
-            if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
+            if (!HasWorkspace) return new(AppCapabilityResult.Unavailable);
             var bytes = await files.ReadFileAsync(path, cancellationToken);
-            if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
+            if (!HasWorkspace) return new(AppCapabilityResult.Unavailable);
             if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
                 return new(AppCapabilityResult.PermissionDenied);
             return new(AppCapabilityResult.Succeeded, bytes, bytes is null ? null : GitTextFileWrite.Version(bytes));
@@ -647,10 +652,10 @@ public sealed class ExternalAppContextFactory
             if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
                 return new(AppCapabilityResult.PermissionDenied);
             if (string.IsNullOrWhiteSpace(path)) return new(AppCapabilityResult.InvalidArgument);
-            if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
+            if (!HasWorkspace) return new(AppCapabilityResult.Unavailable);
 
             var directory = await files.GetDirectoryAsync(path, cancellationToken);
-            if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
+            if (!HasWorkspace) return new(AppCapabilityResult.Unavailable);
             if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
                 return new(AppCapabilityResult.PermissionDenied);
 
@@ -701,7 +706,7 @@ public sealed class ExternalAppContextFactory
             if (string.IsNullOrWhiteSpace(newName) || newName is "." or ".." || newName.IndexOfAny(['/', '\\', '\0', ':']) >= 0)
                 return new(AppCapabilityResult.InvalidArgument);
             var renamed = await files.RenameAsync(path, newName, cancellationToken);
-            return IsServerSession ? new(AppCapabilityResult.Succeeded, renamed.Path) : new(AppCapabilityResult.Unavailable);
+            return HasWorkspace ? new(AppCapabilityResult.Succeeded, renamed.Path) : new(AppCapabilityResult.Unavailable);
         }
 
         public async Task<AppCapabilityResult> DeleteAsync(string path, CancellationToken cancellationToken)
@@ -718,7 +723,7 @@ public sealed class ExternalAppContextFactory
             if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesWrite))
                 return AppCapabilityResult.PermissionDenied;
             if (string.IsNullOrWhiteSpace(path)) return AppCapabilityResult.InvalidArgument;
-            return IsServerSession ? AppCapabilityResult.Succeeded : AppCapabilityResult.Unavailable;
+            return HasWorkspace ? AppCapabilityResult.Succeeded : AppCapabilityResult.Unavailable;
         }
 
         public async Task<ServerFilePickResult> PickAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options)
@@ -728,7 +733,7 @@ public sealed class ExternalAppContextFactory
                 && (!save || permissions.IsGranted(appId, CoreAppPermissions.ServerFilesWrite));
 
             if (!HasGrants()) return new(AppCapabilityResult.PermissionDenied);
-            if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
+            if (!HasWorkspace) return new(AppCapabilityResult.Unavailable);
             if (owner is not ExternalAppWindowHandle handle || handle.Window.Info.OwnerAppId != appId || !windows.Windows.Contains(handle.Window))
                 return new(AppCapabilityResult.InvalidArgument);
 
@@ -756,7 +761,7 @@ public sealed class ExternalAppContextFactory
             }, new Size(760, 520));
 
             if (!HasGrants()) return new(AppCapabilityResult.PermissionDenied);
-            return IsServerSession ? new(AppCapabilityResult.Succeeded, path) : new(AppCapabilityResult.Unavailable);
+            return HasWorkspace ? new(AppCapabilityResult.Succeeded, path) : new(AppCapabilityResult.Unavailable);
         }
     }
 }

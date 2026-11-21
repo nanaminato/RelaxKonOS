@@ -26,7 +26,7 @@
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | 待验 |
 | registry | Registry | 否 / 否 | 是 | Registry API | 基础 | 待验 |
 | event-alerts | RelaxKonOS.App.EventAlerts | 是 / 是 | 否 | SDK 告警读取能力，复用可观测事件 API | 基础 | Windows 包生命周期已验，真实服务端告警读取待验 |
-| codeeditor | CodeEditor | 否 / 否 | 是 | 远程文件与编辑器 API | 可选 | 待验 |
+| codeeditor | RelaxKonOS.App.CodeEditor | 是 / 是 | 否 | SDK 文件 API 和 SSH 工作区 | 可选 | Windows 包生命周期已验，真实 SSH 工作区待验 |
 | docker | Docker | 否 / 否 | 是 | Docker 模块；组件中心管理 Engine | 可选 | 待验 |
 | processguardian | ProcessGuardian | 否 / 否 | 是 | Guardian API 与独立 Agent | 可选 | 待验 |
 | firewall | Firewall | 否 / 否 | 是 | Firewall 模块与宿主权限边界 | 可选 | 待验 |
@@ -44,7 +44,7 @@
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前 Welcome 和 Event & Alert Center 已迁出桌面宿主。桌面发行构建将 Welcome、Notepad、Image Viewer 和 Event & Alert Center 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装这四个应用，Minimal 跳过预装并保留应用安装器入口，Developer 暂与 Standard 同集，等开发者应用外置后扩充。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。包含服务端要求或必需依赖的包须经交互部署。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前 Welcome 和 Event & Alert Center 已迁出桌面宿主。桌面发行构建将 Welcome、Notepad、Image Viewer 和 Event & Alert Center 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装这四个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。包含服务端要求或必需依赖的包须经交互部署。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 ## 复用边界
 
@@ -92,5 +92,5 @@
 - `Applications/RelaxKonOS.App.CodeEditor` 独立项目保存文件关联规则和中、英、日三语资源。桌面宿主从该程序集加载同一份文案，供当前 Code Editor 和 Git 共用。应用入口、视图及发行包仍待迁移。
 - Code Editor 项目还提供文档、标签页状态、目录树、工作区文件契约和视图模型。Code Editor 与 Git 项目编辑器共用这些类型。应用项目只依赖 SDK、共享 UI 和协议类型。桌面宿主提供文案解析和文件适配，并把版本冲突转换为统一的编辑器异常。独立应用入口、视图和发行包仍待迁移。
 - Code Editor 主视图和设置视图已由应用程序集编译。文字从视图模型绑定，窗口标题栏移到宿主后仍可刷新文案。Git 项目编辑器引用应用程序集中的同一视图。
-- Code Editor 具备独立 SDK 入口、文件关联清单、权限声明与中英日文案，DevCli 在 Windows 生成了 `relaxkonos.codeeditor.roapp`。归档包含程序入口和图标。Windows 桌面回归使用该入口打开本地化 SDK 窗口并经测试文件 API 读取源文件。桌面发行配置切换和 SSH 工作区功能验收仍待完成，生产桌面当前通过宿主入口登记。
+- Code Editor 具备独立 SDK 入口、文件关联清单、权限声明与中英日文案，DevCli 在 Windows 生成了 `relaxkonos.codeeditor.roapp`。归档包含程序入口和图标。Windows 桌面回归使用该入口打开本地化 SDK 窗口并经测试文件 API 读取源文件。桌面发行版通过 Developer 配置安装该应用包。Windows Release 已验证实际包的来源、安装、文件关联、更新、失败保留版本、重启发现与卸载。SSH 文件能力沿用经主机密钥校验的 SFTP 会话，真实远端的工作区验收仍待完成。
 - 独立部署设备和 Linux 双包验收、Android 和全应用三语言界面验收均待执行。

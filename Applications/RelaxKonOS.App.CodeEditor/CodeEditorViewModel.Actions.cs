@@ -14,7 +14,8 @@ public sealed partial class CodeEditorViewModel
     private bool _treeOperation;
     public bool IsTreeOperationPending => _treeOperation;
     private bool _closingDocuments;
-    public bool CanCreateWorkspaceFile => _conditionalWriter is not null || _files is IEditorFileWriter;
+    private readonly bool _allowExclusiveCreation;
+    public bool CanCreateWorkspaceFile => _allowExclusiveCreation && (_conditionalWriter is not null || _files is IEditorFileWriter);
     public Func<string, string, Task<string?>>? RequestEntryNameAsync { get; set; }
     public Func<string, Task<bool>>? RequestDeleteEntryAsync { get; set; }
     public Func<string, Task>? ShowTreeOperationErrorAsync { get; set; }

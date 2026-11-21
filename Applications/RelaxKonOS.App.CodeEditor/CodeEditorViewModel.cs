@@ -29,12 +29,13 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     private readonly IEditorFileWriter? _conditionalWriter;
 
     public CodeEditorViewModel(Func<string, string> text, IEditorWorkspaceFiles? files, bool pathCaseSensitive = true, string defaultEncodingName = "UTF-8",
-        IEditorFileWriter? conditionalWriter = null)
+        IEditorFileWriter? conditionalWriter = null, bool allowExclusiveCreation = true)
     {
         _files = files;
         _localize = text;
         Labels = new(text);
         _conditionalWriter = conditionalWriter;
+        _allowExclusiveCreation = allowExclusiveCreation;
         _pathComparer = pathCaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
         DefaultEncodingName = TextFileEncodings.IsSupported(defaultEncodingName) ? defaultEncodingName : "UTF-8";
         EncodingName = DefaultEncodingName;

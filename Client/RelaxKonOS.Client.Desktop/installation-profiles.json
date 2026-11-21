@@ -10,6 +10,7 @@
       { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0", "installPolicy": "offline" }
     ],
     "developer": [
+      { "appId": "relaxkonos.codeeditor", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.event-alerts", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.imageviewer", "minimumVersion": "1.0.0", "installPolicy": "offline" },
       { "appId": "relaxkonos.notepad", "minimumVersion": "1.0.0", "installPolicy": "offline" },

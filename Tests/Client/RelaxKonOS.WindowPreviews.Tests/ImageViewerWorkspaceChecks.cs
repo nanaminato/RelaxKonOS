@@ -131,6 +131,7 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
     {
         "get_ServerFiles" or "get_Windows" or "get_Permissions" => this,
         "get_SystemLanguage" => _language,
+        "get_TextEditorPreferences" => null,
         "get_Activations" when Activations is not null => Activations,
         _ => throw new NotSupportedException(method?.Name),
     };

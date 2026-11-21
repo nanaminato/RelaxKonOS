@@ -874,6 +874,7 @@ public sealed partial class DeveloperPackageManager
         {
             "RelaxKonOS.App.SDK", "RelaxKonOS.Core", "RelaxKonOS.WindowManager", "RelaxKonOS.UI",
             "RelaxKonOS.Protocol", "RelaxKonOS.Shell",
+            "AvaloniaEdit",
         };
         private readonly AssemblyDependencyResolver _resolver = new(mainAssemblyPath);
 

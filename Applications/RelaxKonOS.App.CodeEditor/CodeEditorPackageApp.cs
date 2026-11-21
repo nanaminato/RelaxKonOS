@@ -37,7 +37,7 @@ public sealed class CodeEditorPackageApp : IExternalRemoteApplication, IExternal
         var files = new SdkEditorWorkspaceFiles(context.ServerFiles, Label, context.Permissions);
         var preferences = context.TextEditorPreferences;
         var model = new CodeEditorViewModel(Label, files, context.ServerFiles.IsPathCaseSensitive,
-            preferences?.DefaultEncoding ?? "UTF-8");
+            preferences?.DefaultEncoding ?? "UTF-8", allowExclusiveCreation: !context.ServerFiles.IsSshSession);
         if (preferences is not null) model.SaveDefaultEncodingAsync = preferences.SetDefaultEncodingAsync;
         IExternalAppWindowHandle owner;
         var view = new CodeEditorView { DataContext = model };

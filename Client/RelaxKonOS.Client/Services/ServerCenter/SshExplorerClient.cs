@@ -7,12 +7,19 @@ using Renci.SshNet.Sftp;
 namespace RelaxKonOS.Client.Services.ServerCenter;
 
 /// <summary>
-/// Provides the subset of the remote file API needed by the built-in editors while an SSH desktop
+/// Provides the subset of the remote file API needed by desktop editors while an SSH desktop
 /// is active. Every operation creates an SFTP connection whose host key is checked against the
 /// fingerprint accepted for the current SSH desktop session.
 /// </summary>
 public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClient
 {
+    private readonly ServerCenterSshEndpoint? _expectedEndpoint;
+
+    private SshExplorerClient(SshDesktopSession session, ServerCenterSshEndpoint endpoint) : this(session) =>
+        _expectedEndpoint = endpoint;
+
+    internal SshExplorerClient Bind(ServerCenterSshEndpoint endpoint) => new(session, endpoint);
+
     public Task<IReadOnlyList<DriveDto>> GetDrivesAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<DriveDto>>([new DriveDto("/", "/", null, null, true, true)]);
 
@@ -46,9 +53,6 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
         }, ct);
 
     public Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default) =>
-        DownloadAsync(path, expectedEndpoint: null, ct);
-
-    internal Task<(Stream Stream, string FileName)?> DownloadAsync(string path, ServerCenterSshEndpoint? expectedEndpoint, CancellationToken ct) =>
         ExecuteAsync<(Stream Stream, string FileName)?>(client =>
         {
             if (!client.Exists(path)) return null;
@@ -56,7 +60,7 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
             client.DownloadFile(path, stream);
             stream.Position = 0;
             return (stream, Path.GetFileName(path));
-        }, ct, expectedEndpoint);
+        }, ct);
 
     public Task<byte[]?> ReadFileAsync(string path, CancellationToken ct = default) =>
         ExecuteAsync<byte[]?>(client =>
@@ -131,10 +135,10 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
     public Task<FilePropertiesDto> SetUnixOwnershipAsync(string path, string owner, string group, bool recursive, CancellationToken ct = default) => Unsupported<FilePropertiesDto>();
     public Task<FileSystemEntryDto> CopyAsync(string sourcePath, string destinationPath, bool overwrite = false, CancellationToken ct = default) => Unsupported<FileSystemEntryDto>();
 
-    private async Task<T> ExecuteAsync<T>(Func<SftpClient, T> action, CancellationToken ct, ServerCenterSshEndpoint? expectedEndpoint = null)
+    private async Task<T> ExecuteAsync<T>(Func<SftpClient, T> action, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        using var client = await Task.Run(() => OpenClient(expectedEndpoint), ct).ConfigureAwait(false);
+        using var client = await Task.Run(() => OpenClient(_expectedEndpoint), ct).ConfigureAwait(false);
         return await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();

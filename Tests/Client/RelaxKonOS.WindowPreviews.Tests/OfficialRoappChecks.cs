@@ -31,8 +31,9 @@ internal static class OfficialRoappChecks
         var applicationId = Path.GetFileNameWithoutExtension(artifact);
         var isNotepad = applicationId == "relaxkonos.notepad";
         var isEventAlerts = applicationId == "relaxkonos.event-alerts";
-        var opensFiles = applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
-        var samplePath = isNotepad ? "/files/README" : "/images/test.JFIF";
+        var isCodeEditor = applicationId == "relaxkonos.codeeditor";
+        var opensFiles = isCodeEditor || applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
+        var samplePath = isCodeEditor ? "/files/sample.cs" : isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
         var root = Path.Combine(parent, "official-apps-" + Guid.NewGuid().ToString("N"));
         var source = Directory.CreateDirectory(Path.Combine(root, "OfficialApps")).FullName;
@@ -94,7 +95,7 @@ internal static class OfficialRoappChecks
             Check(applications.IsRegistered(id) && applications.SupportsFile(id, samplePath) == opensFiles
                 && !applications.IsBuiltIn(id), "Official app should register as a package with its declared file behavior.");
 
-            Check(applications.TextFileOpeners.Any(app => app.Id == id) == isNotepad,
+            Check(applications.TextFileOpeners.Any(app => app.Id == id) == (isNotepad || isCodeEditor),
                 "Package text fallback must match the manifest.");
 
             await PublishCandidateAsync(manifest => manifest["version"] = "1.1.0");

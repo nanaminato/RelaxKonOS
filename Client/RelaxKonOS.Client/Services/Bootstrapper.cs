@@ -2,7 +2,6 @@ using RelaxKonOS.Client.Services.WorkspaceSettings;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using RelaxKonOS.Client.Apps;
-using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Client.Apps.Docker;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Apps.Terminal;
@@ -351,7 +350,6 @@ public static class Bootstrapper
         services.AddSingleton<WorkspacePreferencesEditor>();
 
         // Built-in applications.
-        services.AddSingleton<CodeEditorApp>();
         services.AddSingleton<SettingsApp>();
         services.AddSingleton<TerminalApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>();

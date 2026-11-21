@@ -7,6 +7,8 @@ using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Microsoft.Extensions.DependencyInjection;
+using IExternalAppContext = RelaxKonOS.AppSDK.IExternalAppContext;
 using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Models;
@@ -31,9 +33,11 @@ internal static class FusedApplicationChecks
         var activationManager = new WindowManagerService();
         activationManager.Attach(new Canvas { Width = 1100, Height = 800 });
         activationManager.SetHostBounds(new CoreRect(0, 0, 1100, 800));
-        var application = new CodeEditorApp();
-        application.Activate(new RelaxKonOS.AppSDK.AppContext(application.Manifest.Id, activationManager,
-            RelaxKonOS.Client.App.Services, application.Manifest));
+        var application = new CodeEditorPackageApp();
+        var activationContext = DispatchProxy.Create<IExternalAppContext, ImageViewerPackageFixture>();
+        ((ImageViewerPackageFixture)(object)activationContext).Initialize(activationManager,
+            RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), application.Manifest.Id);
+        application.ActivateAsync(activationContext).GetAwaiter().GetResult();
         var activated = activationManager.Windows.Single();
         var activatedView = (CodeEditorView)activated.View.Content!;
         var activatedModel = (CodeEditorViewModel)activatedView.DataContext!;
