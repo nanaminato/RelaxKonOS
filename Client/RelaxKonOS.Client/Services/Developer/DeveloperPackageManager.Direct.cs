@@ -154,6 +154,12 @@ public sealed partial class DeveloperPackageManager
         var stageCode = "incompatible_client";
         try
         {
+            if (writePointer)
+            {
+                stageCode = "dependency_version_conflict";
+                EnsureReplacementVersionIsCompatible(record.Id, record.Version);
+                stageCode = "incompatible_client";
+            }
             if (record.ClientPlatforms is { Count: > 0 }
                 && !ToApplicationManifest(record).SupportedClientPlatforms.Contains(ApplicationCompatibilityService.DetectClientPlatform(), StringComparer.Ordinal))
                 throw new InvalidOperationException("This application does not support the current client platform.");
@@ -252,6 +258,7 @@ public sealed partial class DeveloperPackageManager
 
     private async Task CommitVersionAsync(DeveloperAppRecord record, CancellationToken cancellationToken, bool rememberPrevious = true)
     {
+        EnsureReplacementVersionIsCompatible(record.Id, record.Version);
         var previous = rememberPrevious ? _catalog.GetValueOrDefault(record.Id) : null;
         await WritePointerAsync(record, previous, cancellationToken);
         await Dispatcher.UIThread.InvokeAsync(() =>

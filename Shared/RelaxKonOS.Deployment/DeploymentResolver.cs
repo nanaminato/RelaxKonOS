@@ -115,14 +115,17 @@ public static class DeploymentResolver
 
     private static bool Matches(DeploymentRelease release, DeploymentRequirement requirement)
     {
-        var version = Parse(release.Version);
-        return (requirement.MinimumVersion is null || version.CompareTo(Parse(requirement.MinimumVersion)) >= 0)
-            && (requirement.MaximumVersionExclusive is null || version.CompareTo(Parse(requirement.MaximumVersionExclusive)) < 0)
+        return IsVersionAllowed(release.Version, requirement)
             && (requirement.Capability is null
                 ? requirement.ContractVersion is null
                 : release.Capabilities.TryGetValue(requirement.Capability, out var actual)
                     && (requirement.ContractVersion is null || actual == requirement.ContractVersion));
     }
+
+    public static bool IsVersionAllowed(string version, DeploymentRequirement requirement) =>
+        RuntimeSemanticVersion.TryParse(version, out var parsed)
+        && (requirement.MinimumVersion is null || parsed.CompareTo(Parse(requirement.MinimumVersion)) >= 0)
+        && (requirement.MaximumVersionExclusive is null || parsed.CompareTo(Parse(requirement.MaximumVersionExclusive)) < 0);
 
     private static RuntimeSemanticVersion Parse(string version) =>
         RuntimeSemanticVersion.TryParse(version, out var parsed)

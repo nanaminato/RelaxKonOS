@@ -167,7 +167,19 @@ internal static class JointDeploymentAcceptance
             Require(offlineApp.Id == "fixture.offline" && factory.Requests == requests
                 && offline.Plan.OrderedReleases[0].Satisfied,
                 "a real desktop package with a satisfied client-only dependency installs offline without module API calls");
+            var original = packages.FindInstalled(AppIdText);
+            await RewriteDesktopArchiveAsync(archive, packagePath, manifest => manifest["version"] = "2.0.0");
+            var blocked = false;
+            try { await installer.InstallAsync(await installer.InspectLocalAsync(packagePath)); }
+            catch (InvalidOperationException error) when (error.Message.Contains("fixture.offline", StringComparison.Ordinal))
+            {
+                blocked = true;
+            }
+            Require(blocked && packages.FindInstalled(AppIdText) == original,
+                "an incompatible replacement preserves the app version required by another installed app");
             await packages.UninstallAsync("fixture.offline");
+            var upgraded = await installer.InstallAsync(await installer.InspectLocalAsync(packagePath));
+            Require(upgraded.Version == "2.0.0", "removing the consuming app lets the same replacement proceed");
             await packages.UninstallAsync(AppIdText);
         }
         finally
@@ -182,15 +194,10 @@ internal static class JointDeploymentAcceptance
         }
     }
 
-    private static async Task PrepareDesktopArchiveAsync(string source, string path,
-        string appId = AppIdText, DeploymentPackageKey? dependency = null)
-    {
-        File.Copy(source, path);
-        using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+    private static Task PrepareDesktopArchiveAsync(string source, string path,
+        string appId = AppIdText, DeploymentPackageKey? dependency = null) =>
+        RewriteDesktopArchiveAsync(source, path, manifest =>
         {
-            var entry = archive.GetEntry("manifest.json")!;
-            JsonNode manifest;
-            using (var input = entry.Open()) manifest = JsonNode.Parse(input)!;
             var package = dependency ?? new DeploymentPackageKey(DeploymentPackageKind.ServerModule, ModuleId);
             manifest["id"] = appId;
             manifest["dependencies"] = new JsonObject
@@ -199,8 +206,20 @@ internal static class JointDeploymentAcceptance
                 {
                     ["package"] = new JsonObject { ["kind"] = (int)package.Kind, ["id"] = package.Id },
                     ["minimumVersion"] = "1.0.0",
+                    ["maximumVersionExclusive"] = "2.0.0",
                 }),
             };
+        });
+
+    private static async Task RewriteDesktopArchiveAsync(string source, string path, Action<JsonNode> edit)
+    {
+        File.Copy(source, path, overwrite: true);
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = archive.GetEntry("manifest.json")!;
+            JsonNode manifest;
+            using (var input = entry.Open()) manifest = JsonNode.Parse(input)!;
+            edit(manifest);
             entry.Delete();
             using var output = new StreamWriter(archive.CreateEntry("manifest.json").Open());
             await output.WriteAsync(manifest.ToJsonString());

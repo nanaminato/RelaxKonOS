@@ -85,6 +85,17 @@ public sealed partial class DeveloperPackageManager
                 && record.Dependencies?.Required?.Any(requirement => requirement.Package == package) == true)
             .Select(record => record.Id).Order(StringComparer.Ordinal).ToArray();
 
+    internal void EnsureReplacementVersionIsCompatible(string appId, string version)
+    {
+        var key = new DeploymentPackageKey(DeploymentPackageKind.Application, appId);
+        var blocked = _catalog.Values.Where(record => record.Id != appId
+                && record.Dependencies?.Required?.Any(requirement => requirement.Package == key
+                    && !DeploymentResolver.IsVersionAllowed(version, requirement)) == true)
+            .Select(record => record.Id).Order(StringComparer.Ordinal).ToArray();
+        if (blocked.Length > 0)
+            throw new InvalidOperationException($"Version {version} does not satisfy {string.Join(", ", blocked)}.");
+    }
+
     internal async Task<DeveloperAppInfo?> FindDeploymentResultAsync(string appId, Guid planId, CancellationToken cancellationToken)
     {
         if (FindInstalled(appId) is not { } installed) return null;
@@ -285,6 +296,7 @@ public sealed partial class DeveloperPackageManager
             Directory.CreateDirectory(staging);
             var manifest = await extract(staging, cancellationToken);
             ValidateManifest(manifest, origin);
+            EnsureReplacementVersionIsCompatible(manifest.Id, manifest.Version.Trim());
             var deploymentReceipt = _drive.ResolveUnder(staging, "deployment-receipt.json");
             if (File.Exists(deploymentReceipt) || Directory.Exists(deploymentReceipt))
                 throw new InvalidDataException("The application package uses a reserved deployment receipt path.");

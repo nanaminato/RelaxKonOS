@@ -32,6 +32,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         if (current?.Version != candidate.InstalledVersion
             || candidate.OfficialRelease is not null && current?.InstallationPath != candidate.ExpectedInstalledPath)
             throw new InvalidOperationException("component.state_revision_conflict");
+        packages.EnsureReplacementVersionIsCompatible(candidate.Manifest.Id, candidate.Manifest.Version);
         candidate = candidate with { ExpectedSha256 = digest, ExpectedInstalledPath = current?.InstallationPath };
 
         var backend = new Backend(candidate, installer, packages, applications, session);
@@ -144,6 +145,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             installed ??= await packages.FindDeploymentResultAsync(candidate.Manifest.Id, plan.Id, cancellationToken);
             if (installed is not null) return;
             VerifyApplicationBaseline();
+            packages.EnsureReplacementVersionIsCompatible(candidate.Manifest.Id, candidate.Manifest.Version);
             foreach (var dependency in plan.OrderedReleases)
                 if (dependency.Package.Kind == DeploymentPackageKind.Application && dependency.Satisfied)
                     VerifyInstalledDependency(dependency);
