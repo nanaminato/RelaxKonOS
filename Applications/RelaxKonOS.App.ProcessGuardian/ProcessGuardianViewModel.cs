@@ -9,7 +9,7 @@ namespace RelaxKonOS.App.ProcessGuardian;
 
 public sealed partial class ProcessGuardianViewModel(IServerGuardian client,
     Func<string?> username, Func<bool> isWindows, Func<string, string> localize,
-    Func<string?, string?> helperProblem) : ObservableObject
+    Func<string?, string?> helperProblem, Func<bool>? mayManage = null) : ObservableObject
 {
     // The Guardian Agent accepts one local pipe connection at a time. Keep UI refreshes
     // serialized too, otherwise concurrent status/list requests can time out and replace
@@ -89,12 +89,12 @@ public sealed partial class ProcessGuardianViewModel(IServerGuardian client,
             _refreshGate.Release();
         }
     }
-    [RelayCommand] private Task OpenCreateWorkloadAsync()
+    [RelayCommand(CanExecute = nameof(CanManage))] private Task OpenCreateWorkloadAsync()
     {
         ClearDefinition();
         return ShowEditorAsync?.Invoke(false) ?? Task.CompletedTask;
     }
-    [RelayCommand] private async Task EditWorkloadAsync(GuardianWorkloadDto? workload)
+    [RelayCommand(CanExecute = nameof(CanManage))] private async Task EditWorkloadAsync(GuardianWorkloadDto? workload)
     {
         workload ??= SelectedWorkload;
         if (workload is null) return;
@@ -112,10 +112,10 @@ public sealed partial class ProcessGuardianViewModel(IServerGuardian client,
         }
         await (ShowEditorAsync?.Invoke(true) ?? Task.CompletedTask);
     }
-    [RelayCommand] private Task StartWorkloadAsync(GuardianWorkloadDto? workload) => ApplyActionAsync("start", workload ?? SelectedWorkload);
-    [RelayCommand] private Task StopWorkloadAsync(GuardianWorkloadDto? workload) => ApplyActionAsync("stop", workload ?? SelectedWorkload);
-    [RelayCommand] private Task RestartWorkloadAsync(GuardianWorkloadDto? workload) => ApplyActionAsync("restart", workload ?? SelectedWorkload);
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanManage))] private Task StartWorkloadAsync(GuardianWorkloadDto? workload) => ApplyActionAsync("start", workload ?? SelectedWorkload);
+    [RelayCommand(CanExecute = nameof(CanManage))] private Task StopWorkloadAsync(GuardianWorkloadDto? workload) => ApplyActionAsync("stop", workload ?? SelectedWorkload);
+    [RelayCommand(CanExecute = nameof(CanManage))] private Task RestartWorkloadAsync(GuardianWorkloadDto? workload) => ApplyActionAsync("restart", workload ?? SelectedWorkload);
+    [RelayCommand(CanExecute = nameof(CanManage))]
     private async Task DeleteWorkloadAsync(GuardianWorkloadDto? workload)
     {
         workload ??= SelectedWorkload; if (workload is null) return; IsLoading = true;
@@ -135,14 +135,25 @@ public sealed partial class ProcessGuardianViewModel(IServerGuardian client,
         workload ??= SelectedWorkload;
         if (workload is not null && ShowLogsAsync is not null) await ShowLogsAsync(workload);
     }
-    private bool HasSelectedWorkload => SelectedWorkload is not null && !IsLoading;
+    private bool CanManage() => !IsLoading && (mayManage?.Invoke() ?? true);
     partial void OnSelectedWorkloadChanged(GuardianWorkloadDto? value)
     {
         NotifyActionCommands();
         if (value is not null && !_suppressSelectionDefinitionLoad) _ = LoadDefinitionAsync(value.Id);
     }
     partial void OnIsLoadingChanged(bool value) => NotifyActionCommands();
-    private void NotifyActionCommands() { }
+    public void RefreshAccess() => NotifyActionCommands();
+
+    private void NotifyActionCommands()
+    {
+        OpenCreateWorkloadCommand.NotifyCanExecuteChanged();
+        EditWorkloadCommand.NotifyCanExecuteChanged();
+        StartWorkloadCommand.NotifyCanExecuteChanged();
+        StopWorkloadCommand.NotifyCanExecuteChanged();
+        RestartWorkloadCommand.NotifyCanExecuteChanged();
+        DeleteWorkloadCommand.NotifyCanExecuteChanged();
+        CreateWorkloadCommand.NotifyCanExecuteChanged();
+    }
     private async Task ApplyActionAsync(string action, GuardianWorkloadDto? workload)
     {
         if (workload is null) return; IsLoading = true;
@@ -157,7 +168,7 @@ public sealed partial class ProcessGuardianViewModel(IServerGuardian client,
         await RefreshAsync();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanManage))]
     private async Task CreateWorkloadAsync()
     {
         if (string.IsNullOrWhiteSpace(DefinitionName) || string.IsNullOrWhiteSpace(ExecutablePath) || string.IsNullOrWhiteSpace(WorkingDirectory) || string.IsNullOrWhiteSpace(RunAs))

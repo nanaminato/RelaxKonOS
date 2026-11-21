@@ -278,3 +278,4 @@
 - Process Guardian 的中、英、日资源已迁入应用程序集，现有桌面入口从该程序集读取界面文案。Windows Release 构建、三语键与占位符校验及 Guardian 界面和权限回归通过。
 - Process Guardian 外置上下文已提供受限的当前账户读取和宿主原生文件选择。选取可执行文件或工作目录需读取及管理授权、有效会话与当前应用的所有者窗口。Windows Release 构建和外置上下文授权测试通过，原生选择器实机交互待验。
 - Process Guardian 的跨账户工作负载保存已移至宿主批准流程。应用提交工作负载定义，宿主显示目标账户和可执行文件，并在批准后使用凭据提交。Windows Release 构建与取消批准回归通过，真实管理员验证待验。
+- Process Guardian 外置入口与包清单已实现，沿用 Guardian 服务端 capability、宿主路径选择、管理员批准和实时日志。Windows Release 构建、只读命令回归及 DevCLI 打包通过。官方目录切换和安装启动验收待完成。

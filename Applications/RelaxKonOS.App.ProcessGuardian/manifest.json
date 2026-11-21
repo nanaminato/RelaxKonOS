@@ -1,0 +1,18 @@
+{
+  "id": "relaxkonos.processguardian",
+  "displayName": "Process Guardian",
+  "description": "View and manage workloads supervised by the Guardian Agent",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.ProcessGuardian.dll",
+  "entryType": "RelaxKonOS.App.ProcessGuardian.ProcessGuardianPackageApp",
+  "iconGlyph": "🛡",
+  "iconPath": "Assets/processguardian.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": ["server.guardian.read", "server.guardian.manage"],
+  "serverRequirements": { "capabilities": ["server.guardian"] },
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "进程守护程序", "description": "查看和管理 Guardian Agent 监管的工作负载" },
+    "ja-JP": { "displayName": "プロセスガーディアン", "description": "Guardian Agent が監視するワークロードを表示および管理します" }
+  }
+}

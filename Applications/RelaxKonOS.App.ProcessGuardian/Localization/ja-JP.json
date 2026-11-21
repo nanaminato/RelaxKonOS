@@ -1,6 +1,7 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "guardian.permission.read_required": "ワークスペースを開くには、プロセスガーディアンにワークロードの読み取りを許可してください。",
     "guardian.login_required": "プロセスガーディアンを開始するには、RelaxKonOS Server にサインインして接続してください。",
     "guardian.status.loading": "RelaxKonOS Guardian Agent を確認しています…",
     "guardian.status.available": "RelaxKonOS Guardian Agent を利用できます（バージョン {0}）。",

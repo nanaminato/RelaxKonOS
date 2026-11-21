@@ -1,6 +1,7 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "guardian.permission.read_required": "Allow Process Guardian to read workloads before opening the workspace.",
     "guardian.login_required": "Process Guardian requires sign-in. Connect to a RelaxKonOS Server before starting this app.",
     "guardian.status.loading": "Checking the RelaxKonOS Guardian Agent…",
     "guardian.status.available": "RelaxKonOS Guardian Agent is available (version {0}).",

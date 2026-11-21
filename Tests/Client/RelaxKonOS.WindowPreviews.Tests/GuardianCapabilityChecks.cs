@@ -30,6 +30,11 @@ internal static class GuardianCapabilityChecks
         var picker = editor.GetLogicalDescendants().OfType<Button>().First(button => Equals(button.Content, "guardian.create.browse"));
         picker.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         if (!pickedExecutable) throw new InvalidOperationException("Guardian editor did not delegate executable selection.");
+        var readOnly = new ProcessGuardianViewModel(guardian, () => "fixture", () => true, key => key, _ => null, () => false);
+        if (readOnly.OpenCreateWorkloadCommand.CanExecute(null) || readOnly.StartWorkloadCommand.CanExecute(null)
+            || !readOnly.OpenLogsCommand.CanExecute(null))
+            throw new InvalidOperationException("Guardian did not disable management commands for a read-only grant.");
+
         Console.WriteLine("Guardian application workspace and editor checks passed.");
     }
 

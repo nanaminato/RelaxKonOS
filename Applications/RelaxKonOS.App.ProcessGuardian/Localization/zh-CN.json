@@ -1,6 +1,7 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "guardian.permission.read_required": "请先允许进程守护程序读取工作负载，再打开工作区。",
     "guardian.login_required": "进程守护程序需要先登录并连接到 RelaxKonOS Server。",
     "guardian.status.loading": "正在检查 RelaxKonOS Guardian Agent…",
     "guardian.status.available": "RelaxKonOS Guardian Agent 可用（版本 {0}）。",
