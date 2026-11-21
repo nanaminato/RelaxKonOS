@@ -237,3 +237,4 @@
 - Android Debug 离线构建与 1,904 项 JVM 单元测试通过。只读模拟器使用生产应用宿主冷启动 Debug APK，并通过包来源选择与工作区导航的 10 项设备测试。
 - 独立部署设备、Linux 图形桌面、Android 真实服务端联调和全应用三语言界面验收仍待执行。
 - Git 的服务器操作由 SDK 中的 `IServerGit` 声明，桌面宿主仍负责提供远程实现。Windows Release 编译和 Git Dock 回归通过。项目编辑器回归在资源预检中因现有 `registry.error.empty_response` 翻译为空而中断。Git 界面和独立发行包待迁移。
+- Git 的中英日资源已迁入独立的 RelaxKonOS.App.Git 程序集，由现有桌面语言服务加载。移除三种语言中与有效注册表错误文案重复的空条目，恢复项目编辑器回归。

@@ -1,7 +1,6 @@
 {
   "Culture": "ja-JP",
   "Strings": {
-    "registry.error.sign_in": "構成レジストリを参照するにはサインインしてください。",
-    "registry.error.empty_response": null
+    "registry.error.sign_in": "構成レジストリを参照するにはサインインしてください。"
   }
 }

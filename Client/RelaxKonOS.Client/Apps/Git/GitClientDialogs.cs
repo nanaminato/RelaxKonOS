@@ -16,7 +16,7 @@ using AppContext = RelaxKonOS.AppSDK.AppContext;
 namespace RelaxKonOS.Client.Apps.Git;
 
 /// <summary>Dialog factory for the Git RelaxKonOS.Client. Uses AppContext.ShowDialogAsync (same pattern as DockerManagerDialogs).
-/// All user-facing strings are resolved through <see cref="LocalizedText"/> using keys from git_client.json.</summary>
+/// All user-facing strings are resolved through <see cref="LocalizedText"/> using Git application resources.</summary>
 internal static partial class GitClientDialogs
 {
     public static Task<GitCommitRequest?> ShowCommitDialogAsync(AppContext context, ManagedWindow owner, GitClientViewModel vm) =>

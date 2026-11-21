@@ -115,6 +115,12 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
             Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
         }
 
+        foreach (var resource in RelaxKonOS.App.Git.GitLocalization.ResourceNames)
+        {
+            using var source = RelaxKonOS.App.Git.GitLocalization.Open(resource);
+            Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
+        }
+
         foreach (var resource in RelaxKonOS.App.Certificates.CertificateLocalization.ResourceNames)
         {
             using var source = RelaxKonOS.App.Certificates.CertificateLocalization.Open(resource);
