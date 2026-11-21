@@ -29,6 +29,11 @@ using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
 using WindowState = RelaxKonOS.Core.Windows.WindowState;
 using WindowRect = RelaxKonOS.Core.Primitives.Rect;
 
+if (args is ["--direct-deploy-desktop"])
+{
+    DirectDeployDesktopHost.Run(args);
+    return;
+}
 if (args.Contains("--desktop-live-review") || args.Contains("--fused-live-review") || args.Contains("--fused-all-apps-review") || args.Contains("--fused-ssh-review"))
 {
     LiveFusedApplicationReview.Run(args);
@@ -77,6 +82,7 @@ if (args.Contains("--database-only")) { DatabaseWorkspaceChecks.Run(settings); P
 if (args.Contains("--component-installs-only")) { ComponentInstallEntryChecks.Run(); return; }
 if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
 if (args.Contains("--roapp-catalog-only")) { RoappCatalogChecks.Run(settings); return; }
+if (args.Contains("--developer-release-only")) { DeveloperReleaseChecks.Run(); return; }
 if (args.Contains("--component-center-only")) { RoappCatalogChecks.Run(settings); ComponentCenterWorkspaceChecks.Run(settings); return; }
 if (args.Contains("--git-dock-only")) { GitDockChecks.Run(settings); return; }
 if (args.Contains("--project-editor-only"))

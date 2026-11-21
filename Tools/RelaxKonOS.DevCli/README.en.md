@@ -6,8 +6,22 @@
 relaxkonos-dev pack ./MyApp --configuration Release
 relaxkonos-dev pack ./MyApp --configuration Debug --no-build
 relaxkonos-dev pack ./MyApp --runtime win-x64 --configuration Release --install
-relaxkonos-dev watch ./MyApp --runtime win-x64 --configuration Debug
+relaxkonos-dev --profile default watch ./MyApp --runtime win-x64 --configuration Debug
 ```
+
+Enable Developer Mode on a running Debug client and set `RELAXKONOS_DEV_TOKEN` to its pairing token. Deploy either a project or a compiled directory. Select a named Debug instance with `--profile`, and use `--port` when the client overrides its derived port.
+
+```bash
+relaxkonos-dev deploy ./MyApp
+relaxkonos-dev deploy ./publish --manifest ./MyApp/manifest.json --no-launch
+relaxkonos-dev watch --direct ./MyApp
+relaxkonos-dev status
+relaxkonos-dev diagnostics com.example.my-app
+relaxkonos-dev reload com.example.my-app
+relaxkonos-dev rollback com.example.my-app
+```
+
+Direct Deploy commands write one JSON object to stdout per attempt. Build progress goes to stderr. The `installation`, `assemblyLoad`, `windowLaunch`, and `uiTest` fields report independent outcomes. See the [Developer Mode guide](../../docs/development/RelaxKonOS.DeveloperMode.md).
 
 `pack` writes `artifacts/<entry-assembly>.roapp` by default. It requires a `manifest.json` beside the `.csproj`; use `--manifest` and `--output` to override those paths. By default it recompiles the selected `Debug` or `Release` configuration with `dotnet publish`; pass `--no-build` to use `dotnet publish --no-build` and package that configuration's existing build output. It packages the complete publish output beneath the target framework directory declared by `manifest.json`'s `entryAssembly`, including private dependencies and native runtime assets. When the manifest declares `iconPath`, the CLI also safely copies that relative icon asset.
 

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using RelaxKonOS.Core.VirtualSystemDrive;
+using RelaxKonOS.Client.Services.Developer;
 
 namespace RelaxKonOS.Client.Services.VirtualSystemDrive;
 
@@ -19,8 +20,7 @@ public sealed class VirtualSystemDrive
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    public VirtualSystemDrive() : this(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "SystemDrive")) { }
+    public VirtualSystemDrive() : this(Path.Combine(DeveloperProfile.DataDirectory, "SystemDrive")) { }
 
     internal VirtualSystemDrive(string root)
     {

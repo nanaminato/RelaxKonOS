@@ -4,7 +4,7 @@
 
 ## 固定目录与路径规则
 
-VSD 根目录只能由客户端 Host 计算：`{LocalApplicationData}/RelaxKonOS/SystemDrive`。所有持久化的相对路径统一使用 `/`，并在落盘前转换为平台分隔符。任何输入路径均不得为绝对路径，不得含 `..`、空段、符号链接/重解析点逃逸，且必须在完整路径规范化后仍位于预期根目录之内。
+VSD 根目录由客户端 Host 计算。Release 使用 `{LocalApplicationData}/RelaxKonOS/SystemDrive`。Debug 使用独立的 `{LocalApplicationData}/RelaxKonOS/Debug/<profile>/SystemDrive`，可在启动时选择 [Debug 数据父目录](../development/RelaxKonOS.DeveloperMode.md#profile-与结果)。所有持久化的相对路径统一使用 `/`，并在落盘前转换为平台分隔符。任何输入路径均不得为绝对路径，不得含 `..`、空段、符号链接/重解析点逃逸，且必须在完整路径规范化后仍位于预期根目录之内。
 
 ```text
 SystemDrive/
@@ -30,7 +30,7 @@ SystemDrive/
 | --- | --- | --- | --- |
 | VSD 根与固定目录 | Host | Host | UI、包与脚本不能指定 Root。 |
 | BuiltIn AppId、builtinKey、工厂、固定运行时元数据 | 编译进 Host 的 factory registry | Host | 磁盘 descriptor 只能被验证/恢复，不能赋予 BuiltIn 身份或选择 DLL/类型。 |
-| 外置应用显示/激活/兼容性请求 | 已验证 `.roapp` manifest 与版本 descriptor | 受控安装器 | 描述文件不含 TrustLevel、权限授予、Elevation 或服务注入。 |
+| 外置应用显示/激活/兼容性请求 | 已验证的应用 manifest 与版本 descriptor | 受控安装器与 Debug 部署事务 | 描述文件不含 TrustLevel、权限授予、Elevation 或服务注入。 |
 | 权限决策 | 现有 `IAppPermissionManager` | 用户授权 UI | descriptor、快捷方式和脚本不得改变 grant。 |
 | 运行时可启动应用 | `ApplicationManager` | Catalog/安装器仅通过其 API | `catalog.json` 不是 launch registry。 |
 | 窗口状态 | `WindowManager` | WindowManager | Shell 不直接写入窗口私有状态。 |
@@ -42,6 +42,8 @@ SystemDrive/
 
 `ApplicationDescriptor`：`schemaVersion`、`id`、`kind` (`builtin` 或 `package`)、显示元数据、`version`、图标、请求权限、文件/URI 声明、实例策略、平台、权限模型及 activation。`builtin` activation 仅允许 `builtinKey`；`package` activation 仅允许包根内的 `entryAssembly` 和 `entryType`。DTO 不是授权模型。
 
+外置应用的 `current.json` 包含 `schemaVersion`、`appId`、`versionId` 和可选的 `previousVersionId`。两个版本标识引用同一应用名下的不可覆写目录。切换时 Host 原子替换指针，显式回退使用上一版本标识。Debug Direct Deploy 会在写入指针前完成程序集验证和所请求的激活。
+
 `ShellDescriptor`：`schemaVersion`、`id`、显示名、预览资源与受支持功能。Shell 只能由 Host 受控工厂创建；V1 不支持外置 Shell 插件。
 
 `RelaxKonOSShortcut`：`schemaVersion`、稳定 `id`、显示名、`kind` (`application`、`remote-file`、`remote-folder`、`script`、`uri`)、受限 `target` 与可选图标。不得含绝对本地路径、命令行、程序集类型、权限 grant 或 HTTP 凭据。
@@ -50,7 +52,7 @@ SystemDrive/
 
 ## 旧开发包迁移
 
-首次启用 VSD 时，客户端只读取旧目录 `{LocalApplicationData}/RelaxKonOS/developer-apps` 及其 `catalog.json`。每条旧记录会被验证并复制/迁移至新的 `Programs/External/<app-id>/versions/<immutable-id>`；新 `current.json` 和可重建 catalog 由 Host 原子写入。成功迁移后旧目录保留，直到未来版本提供用户确认的清理流程。
+Release 客户端可读取旧目录 `{LocalApplicationData}/RelaxKonOS/developer-apps` 及其 `catalog.json`。每条旧记录会被验证并复制/迁移至新的 `Programs/External/<app-id>/versions/<immutable-id>`；新 `current.json` 和可重建 catalog 由 Host 原子写入。Debug profile 从自己的 VSD 发现应用。
 
 不兼容、损坏或无法安全定位的记录绝不删除：保持原文件不动，记录稳定诊断并在应用安装 UI 中显示“需重新安装/修复”。迁移不复制或清除现有权限决策；更新后的包仍按既有权限模型重新进行用户授权。
 

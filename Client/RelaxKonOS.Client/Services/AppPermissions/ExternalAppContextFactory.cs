@@ -66,7 +66,8 @@ public sealed class ExternalAppContextFactory
         _activations = activations;
     }
 
-    public IExternalAppContext Create(ApplicationManifest manifest)
+    public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
+        Action<ManagedWindow>? onWindowCreated = null)
     {
         var appId = manifest.Id;
         return new ExternalAppContext(
@@ -81,7 +82,7 @@ public sealed class ExternalAppContextFactory
         _systemLanguage,
         new ExternalAppActivation(appId, _activations),
         _settingsNavigation,
-        new ExternalAppWindowService(manifest, _windowManager));
+        new ExternalAppWindowService(manifest, _windowManager, lifetime, onWindowCreated));
     }
 
     private sealed record ExternalAppContext(
@@ -140,7 +141,8 @@ public sealed class ExternalAppContextFactory
             document.Key, document.Value, document.SchemaVersion, document.Revision, document.UpdatedAt);
     }
 
-    private sealed class ExternalAppWindowService(ApplicationManifest manifest, IWindowManager windowManager) : IExternalAppWindowService
+    private sealed class ExternalAppWindowService(ApplicationManifest manifest, IWindowManager windowManager,
+        CancellationToken lifetime, Action<ManagedWindow>? onWindowCreated) : IExternalAppWindowService
     {
         public IExternalAppWindowHandle ShowWindow(
             string title,
@@ -151,6 +153,7 @@ public sealed class ExternalAppContextFactory
             bool canMinimize = true,
             bool canMaximize = true)
         {
+            lifetime.ThrowIfCancellationRequested();
             var window = windowManager.Create(new WindowCreateOptions(
                 OwnerAppId: manifest.Id,
                 Title: title,
@@ -162,6 +165,7 @@ public sealed class ExternalAppContextFactory
                 CanMaximize: canMaximize,
                 InitialPlacement: WindowInitialPlacement.CenteredCascade,
                 IconPath: manifest.EffectiveIconPath));
+            onWindowCreated?.Invoke(window);
             return new ExternalAppWindowHandle(window, windowManager);
         }
     }

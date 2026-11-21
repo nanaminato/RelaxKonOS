@@ -127,6 +127,23 @@ public sealed class ApplicationManager : IAppActivationService
         return Accepted(ActivateApplication(app, null));
     }
 
+    /// <summary>Runs the normal launch checks and awaits a package activation whose completion is observed by tooling.</summary>
+    public async Task<bool> LaunchObservedAsync(AppId id, Func<Task> activate, CancellationToken cancellationToken)
+    {
+        if (!_apps.TryGetValue(id, out var app) || !EnsureCompatible(app.Manifest)) return false;
+        if (_services.GetService(typeof(IApplicationLaunchGuard)) is IApplicationLaunchGuard guard
+            && guard.RequiresCheck(app.Manifest))
+        {
+            var context = new AppContext(id, _windowManager, _services, app.Manifest);
+            if (!await guard.CheckAsync(context, FindExistingPrimaryWindow(id)).WaitAsync(cancellationToken)) return false;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_apps.TryGetValue(id, out var registered) || !ReferenceEquals(registered, app) || !EnsureCompatible(app.Manifest))
+            return false;
+        await activate().WaitAsync(cancellationToken);
+        return true;
+    }
+
     /// <summary>Open a file in a registered file-opening application.</summary>
     public bool OpenFile(AppId id, string path) => Accepted(OpenFileResult(id, path));
 
@@ -428,7 +445,8 @@ public sealed class ApplicationManager : IAppActivationService
             activationHandler.HandleActivation(context, request, FindExistingPrimaryWindow(app.Manifest.Id));
     }
 
-    private void RequestUndecidedPermissions(AppId appId)
+    /// <summary>Queues prompts for permissions declared by the registered application.</summary>
+    public void RequestUndecidedPermissions(AppId appId)
     {
         var service = _services.GetService(typeof(IAppPermissionRequestService)) as IAppPermissionRequestService;
         if (service is null)

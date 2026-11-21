@@ -6,8 +6,22 @@
 relaxkonos-dev pack ./MyApp --configuration Release
 relaxkonos-dev pack ./MyApp --configuration Debug --no-build
 relaxkonos-dev pack ./MyApp --runtime win-x64 --configuration Release --install
-relaxkonos-dev watch ./MyApp --runtime win-x64 --configuration Debug
+relaxkonos-dev --profile default watch ./MyApp --runtime win-x64 --configuration Debug
 ```
+
+在运行中的 Debug 客户端启用开发者模式，设置该实例的 `RELAXKONOS_DEV_TOKEN` 后即可直接部署。`deploy` 接受项目或已编译输出。`watch --direct` 在项目改动时重新编译和部署。使用 `--profile` 选择其他 Debug 实例，必要时同时传入 `--port`。
+
+```bash
+relaxkonos-dev deploy ./MyApp
+relaxkonos-dev deploy ./publish --manifest ./MyApp/manifest.json --no-launch
+relaxkonos-dev watch --direct ./MyApp
+relaxkonos-dev status
+relaxkonos-dev diagnostics com.example.my-app
+relaxkonos-dev reload com.example.my-app
+relaxkonos-dev rollback com.example.my-app
+```
+
+Direct Deploy 命令在 stdout 写 JSON，监听时每次尝试写一行。编译日志走 stderr。`installation`、`assemblyLoad`、`windowLaunch` 和 `uiTest` 分别报告。布局和交互验收需单独执行。详见[开发者模式](../../docs/development/RelaxKonOS.DeveloperMode.md)。
 
 `pack` 默认写入 `artifacts/<entry-assembly>.roapp`。它要求 `.csproj` 旁存在 `manifest.json`；可用 `--manifest` 和 `--output` 覆盖这些路径。默认会用 `dotnet publish` 重新编译指定的 `Debug` 或 `Release` 配置；传入 `--no-build` 时改为 `dotnet publish --no-build`，直接打包该配置已有的编译结果。
 

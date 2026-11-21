@@ -8,14 +8,14 @@
 
 ```bash
 export RELAXKONOS_DEV_TOKEN="<设置中的配对令牌>"
-dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/ServerMonitor --configuration Debug --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack ./examples/ServerMonitor --configuration Debug --install
 ```
 
 在 Windows PowerShell 中：
 
 ```powershell
 $env:RELAXKONOS_DEV_TOKEN = "<设置中的配对令牌>"
-dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\ServerMonitor --configuration Debug --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack .\examples\ServerMonitor --configuration Debug --install
 ```
 
 如果已用相同配置编译该项目（例如直接在 IDE 中构建），可跳过重新编译，直接依据 `manifest.json` 打包已有输出：

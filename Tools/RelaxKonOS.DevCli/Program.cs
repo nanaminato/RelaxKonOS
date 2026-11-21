@@ -1,25 +1,39 @@
 using System.Diagnostics;
+using System.Formats.Tar;
 using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using RelaxKonOS.Protocol.Developer;
 
-const string defaultEndpoint = "http://127.0.0.1:45321/api/developer/v1.0/";
 var arguments = args.ToList();
-var token = ReadOption(arguments, "--token") ?? Environment.GetEnvironmentVariable("RELAXKONOS_DEV_TOKEN");
-var endpoint = ReadOption(arguments, "--endpoint") ?? Environment.GetEnvironmentVariable("RELAXKONOS_DEV_ENDPOINT") ?? defaultEndpoint;
 HttpClient? http = null;
-
-if (arguments.Count == 0)
-{
-    PrintUsage();
-    return 2;
-}
-
-var command = arguments[0].ToLowerInvariant();
-arguments.RemoveAt(0);
+string? token = null;
+string? endpoint = null;
+string? profile = null;
+var direct = args.Any(value => value is "deploy" or "status" or "reload" or "diagnostics" or "rollback" or "--direct");
 
 try
 {
+    token = ReadOption(arguments, "--token") ?? Environment.GetEnvironmentVariable("RELAXKONOS_DEV_TOKEN");
+    endpoint = ReadOption(arguments, "--endpoint") ?? Environment.GetEnvironmentVariable("RELAXKONOS_DEV_ENDPOINT");
+    profile = ReadOption(arguments, "--profile") ?? Environment.GetEnvironmentVariable("RELAXKONOS_DEV_PROFILE");
+    var port = ReadOption(arguments, "--port") ?? Environment.GetEnvironmentVariable("RELAXKONOS_DEV_PORT");
+    if (arguments.Count == 0)
+    {
+        PrintUsage();
+        return 2;
+    }
+    var command = arguments[0].ToLowerInvariant();
+    arguments.RemoveAt(0);
+    direct = command is "deploy" or "status" or "reload" or "diagnostics" or "rollback"
+        || command == "watch" && arguments.Contains("--direct", StringComparer.OrdinalIgnoreCase);
+    if (direct || profile is not null || port is not null)
+    {
+        profile = DeveloperBridgeTarget.ValidateProfile(profile ?? DeveloperBridgeTarget.DefaultProfile);
+        endpoint ??= DeveloperBridgeTarget.Endpoint(DeveloperBridgeTarget.ResolveDebugPort(profile, port));
+    }
+    endpoint ??= DeveloperBridgeTarget.Endpoint(DeveloperBridgeTarget.ReleasePort);
+
     switch (command)
     {
         case "settings":
@@ -47,8 +61,19 @@ try
             break;
         }
         case "watch":
+            if (direct)
+            {
+                ReadFlag(arguments, "--direct");
+                var launch = !ReadFlag(arguments, "--no-launch");
+                return await WatchAsync(arguments, direct: true, launch);
+            }
             await WatchAsync(arguments);
             break;
+        case "deploy":
+            EnsureToken();
+            return await DeployAsync(arguments);
+        case "status" or "reload" or "diagnostics" or "rollback":
+            return await SendAppCommandAsync(command, arguments);
         case "launch" when arguments.Count == 1:
             await SendAsync(new HttpRequestMessage(HttpMethod.Post, $"apps/{Uri.EscapeDataString(arguments[0])}/launch"));
             break;
@@ -62,13 +87,19 @@ try
 }
 catch (HttpRequestException exception)
 {
+    if (direct) return WriteDirectError("bridge_unreachable", exception.Message);
     Console.Error.WriteLine($"Cannot reach the RelaxKonOS Developer Bridge: {exception.Message}");
     return 1;
 }
-catch (Exception exception) when (exception is ArgumentException or FileNotFoundException or InvalidOperationException or IOException)
+catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or IOException or JsonException or UnauthorizedAccessException or FormatException)
 {
+    if (direct) return WriteDirectError("invalid_input", exception.Message);
     Console.Error.WriteLine(exception.Message);
     return 1;
+}
+catch (OperationCanceledException) when (direct)
+{
+    return WriteDirectError("bridge_timeout", "The Developer Bridge did not respond before the timeout.");
 }
 finally
 {
@@ -77,47 +108,186 @@ finally
 
 return 0;
 
-async Task WatchAsync(List<string> watchArguments)
+async Task<int> DeployAsync(List<string> deployArguments)
+{
+    var launch = !ReadFlag(deployArguments, "--no-launch");
+    if (deployArguments.Contains("--output", StringComparer.OrdinalIgnoreCase))
+        throw new ArgumentException("--output applies to pack. Pass an existing compiled directory to deploy it.");
+
+    var inputs = new List<string>(deployArguments);
+    foreach (var option in new[] { "--manifest", "--configuration", "--runtime", "--work-dir" }) ReadOption(inputs, option);
+    ReadFlag(inputs, "--no-build");
+    if (inputs.Count != 1) throw new ArgumentException("deploy requires one project file, project directory, or compiled directory.");
+    var source = Path.GetFullPath(inputs[0]);
+    if (Directory.Exists(source) && !Directory.EnumerateFiles(source, "*.csproj").Any())
+    {
+        var manifestPath = Path.GetFullPath(ReadOption(deployArguments, "--manifest") ?? Path.Combine(source, "manifest.json"));
+        if (deployArguments.Count != 1) throw new ArgumentException("A compiled directory accepts --manifest and --no-launch.");
+        return await DeployOutputAsync(source, manifestPath, launch);
+    }
+
+    var options = ParsePackOptions(deployArguments);
+    return await DeployProjectAsync(options, ResolveScratchRoot(options, Console.Error), launch);
+}
+
+async Task<int> DeployProjectAsync(PackOptions options, string scratchRoot, bool launch)
+{
+    var scratch = Path.Combine(scratchRoot, Guid.NewGuid().ToString("N"));
+    var output = Path.Combine(scratch, "publish");
+    Directory.CreateDirectory(output);
+    try
+    {
+        await PublishAsync(options, output, scratchRoot, Console.Error);
+        return await DeployOutputAsync(output, options.ManifestPath, launch);
+    }
+    catch (PublishFailedException exception) { return WriteDirectError("build_failed", exception.Message); }
+    finally
+    {
+        try { DeleteScratchDirectory(scratch); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Cannot clean up build scratch directory: {exception.Message}");
+        }
+    }
+}
+
+async Task<int> DeployOutputAsync(string directory, string manifestPath, bool launch)
+{
+    var manifest = ReadManifest(manifestPath);
+    var packagedLayout = File.Exists(ResolveRelativeFilePath(directory, manifest.EntryAssembly));
+    var files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["manifest.json"] = manifestPath };
+    string? iconSource = null;
+    if (manifest.IconPath is { } icon)
+    {
+        var inOutput = ResolveRelativeFilePath(directory, icon);
+        iconSource = File.Exists(inOutput) ? inOutput : ResolveRelativeFilePath(Path.GetDirectoryName(manifestPath)!, icon);
+        if (!File.Exists(iconSource)) throw new FileNotFoundException($"Manifest iconPath '{icon}' was not found.", iconSource);
+        files.Add(icon, iconSource);
+    }
+
+    foreach (var (relative, path) in EnumerateOutputFiles(directory))
+    {
+        if (relative.Equals("manifest.json", StringComparison.OrdinalIgnoreCase)
+            || relative.Equals(manifest.IconPath, StringComparison.OrdinalIgnoreCase) && path == iconSource)
+            continue;
+        files.Add(packagedLayout ? relative : $"{manifest.TargetFramework}/{relative}", path);
+    }
+
+    using var request = new HttpRequestMessage(HttpMethod.Post, $"deploy?launch={launch.ToString().ToLowerInvariant()}")
+    {
+        Content = new DeploymentContent(files),
+    };
+    return await SendDirectAsync(request);
+}
+
+static IEnumerable<(string RelativePath, string Path)> EnumerateOutputFiles(string root)
+{
+    var pending = new Stack<string>();
+    pending.Push(root);
+    while (pending.TryPop(out var directory))
+    {
+        if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
+            throw new ArgumentException($"The compiled directory contains a link: '{directory}'.");
+        foreach (var path in Directory.EnumerateFileSystemEntries(directory))
+        {
+            var attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+                throw new ArgumentException($"The compiled directory contains a link: '{path}'.");
+            if ((attributes & FileAttributes.Directory) != 0) pending.Push(path);
+            else yield return (Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/'), path);
+        }
+    }
+}
+
+async Task<int> SendAppCommandAsync(string command, List<string> commandArguments)
+{
+    var mutation = command is "reload" or "rollback";
+    var launch = !mutation || !ReadFlag(commandArguments, "--no-launch");
+    if (commandArguments.Count != (command == "status" ? 0 : 1))
+        throw new ArgumentException(command == "status" ? "status takes no positional arguments." : $"{command} requires one application id.");
+    var path = command == "status" ? command : $"apps/{Uri.EscapeDataString(commandArguments[0])}/{command}";
+    if (mutation) path += $"?launch={launch.ToString().ToLowerInvariant()}";
+    using var request = new HttpRequestMessage(mutation ? HttpMethod.Post : HttpMethod.Get, path);
+    return await SendDirectAsync(request);
+}
+
+async Task<int> SendDirectAsync(HttpRequestMessage request)
+{
+    using var response = await GetHttpClient().SendAsync(request);
+    var body = await response.Content.ReadAsStringAsync();
+    try
+    {
+        using var document = JsonDocument.Parse(body);
+        if (document.RootElement.ValueKind == JsonValueKind.Object
+            && document.RootElement.TryGetProperty("ok", out var ok) && ok.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(document.RootElement));
+            return response.IsSuccessStatusCode && ok.GetBoolean() ? 0 : 1;
+        }
+    }
+    catch (JsonException) { }
+    return WriteDirectError("invalid_bridge_response", $"Developer Bridge returned HTTP {(int)response.StatusCode} without a result.");
+}
+
+static int WriteDirectError(string code, string message)
+{
+    Console.WriteLine(JsonSerializer.Serialize(new
+    {
+        ok = false, code, message, installation = "notRun", assemblyLoad = "notRun", windowLaunch = "notRun", uiTest = "notRun",
+    }));
+    return 1;
+}
+
+async Task<int> WatchAsync(List<string> watchArguments, bool direct = false, bool launch = true)
 {
     if (watchArguments.Count == 1 && watchArguments[0].EndsWith(".roapp", StringComparison.OrdinalIgnoreCase))
     {
+        if (direct) throw new ArgumentException("watch --direct requires a project.");
         await WatchPackageAsync(watchArguments[0]);
-        return;
+        return 0;
     }
 
     var install = !ReadFlag(watchArguments, "--no-install");
+    if (direct && (!install || watchArguments.Contains("--output", StringComparer.OrdinalIgnoreCase)))
+        throw new ArgumentException("watch --direct deploys the published output. --no-install and --output apply to .roapp watch.");
     var options = ParsePackOptions(watchArguments);
     if (options.NoBuild)
         throw new ArgumentException("watch <project> always rebuilds source changes; use watch <package.roapp> to watch an externally built package.");
     if (install)
         EnsureToken();
 
-    await RebuildAsync();
     var projectDirectory = Path.GetDirectoryName(options.ProjectPath)!;
-    Console.WriteLine($"Watching {projectDirectory}");
+    var scratch = direct ? ResolveScratchRoot(options, Console.Error) : null;
+    (direct ? Console.Error : Console.Out).WriteLine($"Watching {projectDirectory}");
     using var watcher = new FileSystemWatcher(projectDirectory)
     {
         IncludeSubdirectories = true,
         NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.DirectoryName,
-        EnableRaisingEvents = true,
     };
     using var stop = new CancellationTokenSource();
     using var changed = new SemaphoreSlim(0, 1);
     Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; stop.Cancel(); };
     FileSystemEventHandler signal = (_, eventArgs) =>
     {
-        if (!IsSourceChange(eventArgs.FullPath, options)) return;
+        if (!IsSourceChange(eventArgs.FullPath, options, scratch)) return;
         try { changed.Release(); }
         catch (SemaphoreFullException) { }
     };
-    RenamedEventHandler renamed = (_, eventArgs) => signal(_, eventArgs);
+    RenamedEventHandler renamed = (sender, eventArgs) =>
+    {
+        signal(sender, eventArgs);
+        signal(sender, new FileSystemEventArgs(WatcherChangeTypes.Deleted,
+            Path.GetDirectoryName(eventArgs.OldFullPath)!, Path.GetFileName(eventArgs.OldFullPath)));
+    };
     watcher.Changed += signal;
     watcher.Created += signal;
     watcher.Deleted += signal;
     watcher.Renamed += renamed;
+    watcher.EnableRaisingEvents = true;
 
     try
     {
+        await RebuildAsync();
         while (await changed.WaitAsync(Timeout.InfiniteTimeSpan, stop.Token))
         {
             await Task.Delay(400, stop.Token);
@@ -126,18 +296,30 @@ async Task WatchAsync(List<string> watchArguments)
         }
     }
     catch (OperationCanceledException) { }
+    return 0;
 
     async Task RebuildAsync()
     {
         try
         {
+            if (direct)
+            {
+                await DeployProjectAsync(options, scratch!, launch);
+                return;
+            }
             var package = await PackAsync(options);
             if (install)
                 await InstallAsync(package, launch: true);
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine($"Build/update failed: {exception.Message}");
+            if (direct) WriteDirectError(exception switch
+            {
+                HttpRequestException => "bridge_unreachable",
+                OperationCanceledException => "bridge_timeout",
+                _ => "invalid_input",
+            }, exception.Message);
+            else Console.Error.WriteLine($"Build/update failed: {exception.Message}");
         }
     }
 }
@@ -212,12 +394,11 @@ async Task<string> PackAsync(PackOptions options)
     }
     finally
     {
-        if (Directory.Exists(temporaryRoot))
-            Directory.Delete(temporaryRoot, recursive: true);
+        DeleteScratchDirectory(temporaryRoot);
     }
 }
 
-async Task PublishAsync(PackOptions options, string outputDirectory, string scratchRoot)
+async Task PublishAsync(PackOptions options, string outputDirectory, string scratchRoot, TextWriter? buildLog = null)
 {
     var startInfo = new ProcessStartInfo("dotnet")
     {
@@ -232,7 +413,7 @@ async Task PublishAsync(PackOptions options, string outputDirectory, string scra
     Directory.CreateDirectory(childTemp);
     startInfo.Environment["TMP"] = childTemp;
     startInfo.Environment["TEMP"] = childTemp;
-    ApplyWritablePackageCache(startInfo, scratchRoot);
+    ApplyWritablePackageCache(startInfo, scratchRoot, buildLog);
     startInfo.ArgumentList.Add("publish");
     startInfo.ArgumentList.Add(options.ProjectPath);
     // Avalonia's build telemetry task writes into the user profile, which a restricted host denies and
@@ -258,10 +439,10 @@ async Task PublishAsync(PackOptions options, string outputDirectory, string scra
     await process.WaitForExitAsync();
     var output = await standardOutput;
     var error = await standardError;
-    if (!string.IsNullOrWhiteSpace(output)) Console.Write(output);
+    if (!string.IsNullOrWhiteSpace(output)) (buildLog ?? Console.Out).Write(output);
     if (!string.IsNullOrWhiteSpace(error)) Console.Error.Write(error);
     if (process.ExitCode != 0)
-        throw new InvalidOperationException($"dotnet publish failed with exit code {process.ExitCode}.");
+        throw new PublishFailedException($"dotnet publish failed with exit code {process.ExitCode}.");
 }
 
 async Task InstallAsync(string packagePath, bool launch)
@@ -292,8 +473,16 @@ HttpClient GetHttpClient()
 {
     if (http is not null) return http;
     EnsureToken();
-    http = new HttpClient { BaseAddress = new Uri(endpoint, UriKind.Absolute) };
-    http.DefaultRequestHeaders.Add("X-RelaxKonOS-Dev-Token", token);
+    var address = new Uri(endpoint!, UriKind.Absolute);
+    if (direct && (!address.IsLoopback || address.Scheme != Uri.UriSchemeHttp || address.AbsolutePath != DeveloperBridgeTarget.RoutePrefix))
+        throw new ArgumentException("Direct Deploy requires a loopback HTTP Developer Bridge endpoint ending in /api/developer/v1.0/.");
+    http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = !address.IsLoopback })
+    {
+        BaseAddress = address,
+        Timeout = direct ? TimeSpan.FromMinutes(10) : TimeSpan.FromSeconds(100),
+    };
+    http.DefaultRequestHeaders.Add(DeveloperBridgeTarget.TokenHeader, token);
+    if (profile is not null) http.DefaultRequestHeaders.Add(DeveloperBridgeTarget.ProfileHeader, profile);
     return http;
 }
 
@@ -337,7 +526,7 @@ static PackOptions ParsePackOptions(List<string> packArguments)
 /// nothing about packaging. Probe each candidate instead of guessing, and say which one won when it
 /// is not the default.
 /// </summary>
-static string ResolveScratchRoot(PackOptions options)
+static string ResolveScratchRoot(PackOptions options, TextWriter? log = null)
 {
     var projectDirectory = Path.GetDirectoryName(options.ProjectPath)!;
     var candidates = new List<(string Path, string Source)>
@@ -370,7 +559,7 @@ static string ResolveScratchRoot(PackOptions options)
         }
 
         if (source != "system temp")
-            Console.WriteLine($"Scratch: {root} ({source})");
+            (log ?? Console.Out).WriteLine($"Scratch: {root} ({source})");
         return root;
     }
 
@@ -394,13 +583,28 @@ static bool TryProbeWritableRoot(string root)
     }
 }
 
+static void DeleteScratchDirectory(string directory)
+{
+    if (!Directory.Exists(directory)) return;
+    if (OperatingSystem.IsWindows())
+    {
+        var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint };
+        foreach (var file in Directory.EnumerateFiles(directory, "*", options))
+        {
+            var attributes = File.GetAttributes(file);
+            if ((attributes & FileAttributes.ReadOnly) != 0) File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+        }
+    }
+    Directory.Delete(directory, recursive: true);
+}
+
 /// <summary>
 /// Restore writes the package cache and the NuGet HTTP cache into the user profile, which a restricted
 /// host can deny to this toolchain. When the default package folder is not writable and the caller did
 /// not choose one, point both caches at the scratch root, which was already proven writable, and say so:
 /// a cold cache is slow but a denied one cannot package at all.
 /// </summary>
-static void ApplyWritablePackageCache(ProcessStartInfo startInfo, string scratchRoot)
+static void ApplyWritablePackageCache(ProcessStartInfo startInfo, string scratchRoot, TextWriter? log)
 {
     if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("NUGET_PACKAGES")))
         return;
@@ -416,7 +620,7 @@ static void ApplyWritablePackageCache(ProcessStartInfo startInfo, string scratch
     Directory.CreateDirectory(httpCache);
     startInfo.Environment["NUGET_PACKAGES"] = packages;
     startInfo.Environment["NUGET_HTTP_CACHE_PATH"] = httpCache;
-    Console.WriteLine($"NuGet cache: {packages} (the default package folder is not writable here)");
+    (log ?? Console.Out).WriteLine($"NuGet cache: {packages} (the default package folder is not writable here)");
 }
 
 static string ResolveProjectPath(string projectOrDirectory)
@@ -518,15 +722,19 @@ static void CopyDirectory(string source, string destination)
     }
 }
 
-static bool IsSourceChange(string path, PackOptions options)
+static bool IsSourceChange(string path, PackOptions options, string? scratch)
 {
     if (string.Equals(Path.GetFullPath(path), options.OutputPath, StringComparison.OrdinalIgnoreCase))
+        return false;
+    if (scratch is not null && Path.GetFullPath(path).StartsWith(Path.TrimEndingDirectorySeparator(scratch) + Path.DirectorySeparatorChar,
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
         return false;
     var relativePath = Path.GetRelativePath(Path.GetDirectoryName(options.ProjectPath)!, path);
     return !relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
         .Any(segment => segment.Equals("bin", StringComparison.OrdinalIgnoreCase)
             || segment.Equals("obj", StringComparison.OrdinalIgnoreCase)
             || segment.Equals("artifacts", StringComparison.OrdinalIgnoreCase)
+            || segment.Equals(".tmp", StringComparison.OrdinalIgnoreCase)
             || segment.Equals(".git", StringComparison.OrdinalIgnoreCase));
 }
 
@@ -557,6 +765,12 @@ static void PrintUsage()
 Usage: relaxkonos-dev [--token <pairing-token>] [--endpoint <url>] <command>
 
 Commands:
+  deploy <project.csproj|project-directory|compiled-directory> [--manifest <path>] [--configuration <Debug|Release>] [--runtime <rid>] [--work-dir <path>] [--no-build] [--no-launch]
+  watch --direct <project.csproj|directory> [--manifest <path>] [--configuration <Debug|Release>] [--runtime <rid>] [--work-dir <path>] [--no-launch]
+  status
+  diagnostics <app-id>
+  reload <app-id> [--no-launch]
+  rollback <app-id> [--no-launch]
   pack <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--work-dir <path>] [--no-build] [--install]
   watch <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--work-dir <path>] [--no-install]
   watch <package.roapp>
@@ -575,9 +789,45 @@ pack stages the publish output in a scratch directory: --work-dir, then RELAXKON
 then local application data, then <project>/.tmp/devcli. The first one this process can write wins, and a fallback is reported.
 watch <project> rebuilds, packages, and installs on source changes; use --no-install to only rebuild packages.
 Set RELAXKONOS_DEV_TOKEN to avoid passing the pairing token on each install or watch command.
+Select a Debug client with --profile <name> and optionally --port <port>. Direct commands use the default Debug profile if omitted.
 """);
 }
 
 sealed record PackOptions(string ProjectPath, string ManifestPath, string OutputPath, string Configuration,
     string? RuntimeIdentifier, bool NoBuild, string? WorkDirectory = null);
 sealed record PackageManifest(string EntryAssembly, string TargetFramework, string? IconPath);
+sealed class PublishFailedException(string message) : InvalidOperationException(message);
+
+sealed class DeploymentContent : HttpContent
+{
+    private readonly IReadOnlyDictionary<string, string> _files;
+
+    public DeploymentContent(IReadOnlyDictionary<string, string> files)
+    {
+        _files = files;
+        Headers.ContentType = new MediaTypeHeaderValue("application/x-tar");
+    }
+
+    protected override bool TryComputeLength(out long length)
+    {
+        length = 0;
+        return false;
+    }
+
+    protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) =>
+        SerializeToStreamAsync(stream, context, CancellationToken.None);
+
+    protected override async Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context, CancellationToken cancellationToken)
+    {
+        await using var writer = new TarWriter(stream, TarEntryFormat.Pax, leaveOpen: true);
+        foreach (var (name, path) in _files)
+        {
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                throw new IOException($"The upload contains a link: '{path}'.");
+            await using var source = File.OpenRead(path);
+            var entry = new PaxTarEntry(TarEntryType.RegularFile, name) { DataStream = source };
+            await writer.WriteEntryAsync(entry, cancellationToken);
+        }
+    }
+
+}

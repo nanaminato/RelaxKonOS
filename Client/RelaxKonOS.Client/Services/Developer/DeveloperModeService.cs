@@ -1,20 +1,23 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using RelaxKonOS.Protocol.Developer;
 
 namespace RelaxKonOS.Client.Services.Developer;
 
 /// <summary>Persists the local Developer Mode switch and its pairing secret.</summary>
 public sealed class DeveloperModeService
 {
-    public const int BridgePort = 45321;
     private readonly string _path;
     private readonly object _gate = new();
     private DeveloperModeState _state;
 
     public DeveloperModeService()
-        : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RelaxKonOS", "developer-mode.json"))
+        : this(Path.Combine(DeveloperProfile.DataDirectory, "developer-mode.json"))
     {
+#if DEBUG
+        if (!IsEnabled && Environment.GetEnvironmentVariable("RELAXKONOS_DEV_ENABLE") == "1")
+            SetEnabled(true);
+#endif
     }
 
     /// <summary>Store-path seam. Rendering checks must be able to switch Developer Mode on without
@@ -38,7 +41,8 @@ public sealed class DeveloperModeService
         get { lock (_gate) return _state.PairingToken; }
     }
 
-    public string Endpoint => $"http://127.0.0.1:{BridgePort}/api/developer/v1.0/";
+    public int Port => DeveloperProfile.Port;
+    public string Endpoint => DeveloperBridgeTarget.Endpoint(Port);
 
     public void SetEnabled(bool enabled)
     {

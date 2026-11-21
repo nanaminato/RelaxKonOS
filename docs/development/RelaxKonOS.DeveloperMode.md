@@ -6,7 +6,52 @@
 
 ## 启用与配对
 
-打开 **设置 → 应用 → 开发者模式**，启用它，然后复制配对令牌。该桥接仅在 `http://127.0.0.1:45321/api/developer/v1.0/` 上监听，并在每个 `X-RelaxKonOS-Dev-Token` 请求头中要求提供令牌。
+打开 **设置 → 开发者**，启用开发者模式并复制配对令牌。桥接只监听 `127.0.0.1`，每个请求都需要 `X-RelaxKonOS-Dev-Token`。Debug 默认使用 `default` profile 和端口 `45322`；Release 的 `.roapp` 桥接使用端口 `45321`。
+
+## Direct Deploy
+
+先构建并运行 Debug 桌面客户端一次，之后可重复构建和部署应用。以下 PowerShell 命令可以在不同终端运行。客户端和 CLI 应选择相同的 profile。
+
+```powershell
+$env:RELAXKONOS_DEV_PROFILE = 'image-pilot'
+dotnet run --project Client/RelaxKonOS.Client.Desktop -c Debug
+```
+
+```powershell
+$env:RELAXKONOS_DEV_PROFILE = 'image-pilot'
+$env:RELAXKONOS_DEV_TOKEN = '<该 profile 的配对令牌>'
+dotnet build Tools/RelaxKonOS.DevCli
+$cli = 'Tools/RelaxKonOS.DevCli/bin/Debug/net10.0/RelaxKonOS.DevCli.dll'
+dotnet $cli status
+dotnet $cli deploy ./examples/ImageViewerPilot
+dotnet $cli watch --direct ./examples/ImageViewerPilot
+dotnet $cli diagnostics com.relaxkonos.example.image-viewer
+dotnet $cli reload com.relaxkonos.example.image-viewer
+dotnet $cli rollback com.relaxkonos.example.image-viewer --no-launch
+```
+
+`deploy` 接受 `.csproj`、含一个 `.csproj` 的项目目录或已编译的输出目录。项目输入会执行 `dotnet publish`。对平铺的编译产物，传入 `deploy <输出目录> --manifest <manifest.json>`。输出也可以自带根级 `manifest.json` 和完整的 `lib/<TFM>/` 目录。包含平台私有依赖的应用可传入完整的发布目录，例如 `dotnet publish -r win-x64 --no-self-contained` 的输出。使用 `--no-launch` 可以仅验证、安装并注册。`watch --direct` 监听项目目录，忽略 `bin`、`obj`、`artifacts`、`.tmp` 和所选中转目录，编译失败后仍继续监听。
+
+CLI 通过回环 HTTP 传输文件，无需生成 `.roapp`。Debug 客户端验证清单、入口程序集和可解析的运行时依赖，并为每次部署分配独立的版本目录。候选版本通过加载与可选的激活后，客户端原子更新 `current.json`，关闭旧窗口并卸载旧版的程序集加载上下文。若候选加载或激活失败，当前版本和其窗口保留。`reload` 用新加载上下文重载当前版本，`rollback` 切换到持久化的上一版本。原生库能否完成初始化取决于应用实际调用相关功能时的运行结果。自动启动需要已打开的桌面工作区。在登录页可用 `--no-launch` 安装。
+
+### Profile 与结果
+
+- Debug 路径为 `%LOCALAPPDATA%/RelaxKonOS/Debug/<profile>/SystemDrive`。每个 profile 独立保存配对令牌和本地应用授权。可用 `RELAXKONOS_DEV_DATA_HOME` 指定 Debug 数据父目录，客户端仍在其中创建 `RelaxKonOS/Debug/<profile>`。同一个 profile 的数据目录只能由一个桌面进程打开。
+- 命名 profile 使用稳定的派生端口。端口被占用时，通过客户端的 `RELAXKONOS_DEV_PORT` 和 CLI 的 `--port` 指定同一可用端口。CLI 支持 `--profile`，桥接会校验请求目标。自动化可以在启动 Debug 进程时显式设 `RELAXKONOS_DEV_ENABLE=1`，配对仍使用该 profile 的 `developer-mode.json` 生成的令牌。
+- Release 继续使用 `%LOCALAPPDATA%/RelaxKonOS/SystemDrive` 及既有配对数据，拒绝 Direct Deploy 路由。远端工作区及服务端应用数据仍由所登录的服务器管理。
+- `deploy`、`reload`、`rollback`、`status` 和 `diagnostics` 各写一行 JSON 到 stdout。`watch --direct` 每次尝试写一行 JSON，编译日志和监听信息写到 stderr。独立命令失败退出码为 `1`。Agent 可直接调用已构建的 CLI，以获得纯 JSON 输出。
+
+```json
+{"ok":true,"code":"ok","appId":"com.relaxkonos.example.image-viewer","attemptedVersionId":"…","currentVersionId":"…","installation":"passed","assemblyLoad":"passed","windowLaunch":"passed","uiTest":"notRun","message":null}
+```
+
+`windowLaunch: passed` 表示激活已返回且窗口管理器观测到候选应用的非模态窗口。后台应用可返回 `notOpened`。`uiTest: notRun` 表示这条通道未执行 UI 交互测试。`diagnostics <app-id>` 返回当前版本、加载状态、窗口标题和本进程最后一次版本操作。常见失败码包括 `build_failed`、`unauthorized`、`profile_mismatch`、`debug_required`、`invalid_payload`、`invalid_manifest`、`assembly_load_failed`、`registration_failed`、`launch_blocked`、`activation_failed`、`activation_timeout`、`rollback_unavailable`。`currentVersionId` 可用于确认失败后仍在运行的版本。
+
+桥接路由位于 `/api/developer/v1.0/` 下。Debug 请求还需 `X-RelaxKonOS-Dev-Profile`。`GET status` 查询进程和已安装应用，`GET apps/{id}/diagnostics` 查询单个应用，`POST deploy` 上传 `application/x-tar` 常规文件流，`POST apps/{id}/reload` 与 `POST apps/{id}/rollback` 使用相同的操作结果格式。三个写入路由均接受 `?launch=true|false`。
+
+Windows 端到端验收可在桌面客户端、DevCli 和 `RelaxKonOS.WindowPreviews.Tests` 的 Debug 构建完成后运行 `python Tests/Client/verify-direct-deploy.py`。测试使用隔离 profile 启动标准桌面客户端及使用同一套客户端服务的本地桌面验收宿主。日志保存在 `.codex-scratch` 下。
+
+## `.roapp` 安装与监听
 
 从仓库根目录使用内置 CLI。`pack` 命令只需要 .NET SDK；只有当命令安装、更新、监视或以其他方式与运行中的 Shell 通信时才需要令牌：
 
@@ -19,10 +64,10 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\MyApp --configuration Deb
 
 # 一条命令完成构建、打包、安装和启动。
 $env:RELAXKONOS_DEV_TOKEN = "<设置中的令牌>"
-dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\MyApp --configuration Debug --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack .\MyApp --configuration Debug --install
 
 # 当项目源码更改时重新构建、打包和重新安装。
-dotnet run --project Tools/RelaxKonOS.DevCli -- watch .\MyApp --configuration Debug
+dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default watch .\MyApp --configuration Debug
 ```
 
 在 Linux、macOS 或其他 POSIX shell 中，使用 `export RELAXKONOS_DEV_TOKEN="<设置中的令牌>"` 设置令牌，并将项目路径写为 `./MyApp`。PowerShell、bash、zsh 和 cmd 都可以运行相同的 CLI 命令；只有环境变量和路径语法不同。
@@ -61,16 +106,7 @@ dotnet run --project /path/to/RelaxKonOS/Tools/RelaxKonOS.DevCli -- pack ./MyApp
 
 `pack` 需要一个当前进程能写的中转目录，按 `--work-dir` → `RELAXKONOS_DEVCLI_TMP` → 系统临时目录 → `%LOCALAPPDATA%\RelaxKonOS\DevCli` → `<项目>/.tmp/devcli` 的顺序取第一个通过写入探测的位置，并在使用非默认项时打印 `Scratch:`。受限宿主（应用容器、收紧的终端、杀软策略）会把系统临时目录和用户级 NuGet 缓存对 .NET 进程关闭；此时 CLI 会把子进程的 `TMP`/`TEMP` 指向同一中转根，并在默认包目录不可写时把 `NUGET_PACKAGES`、`NUGET_HTTP_CACHE_PATH` 改到 `<中转根>/nuget` 下并打印 `NuGet cache:`，因此打包会在工作区内完成而不是以权限错误终止。中转根可随时删除，代价是下次重新下载包。
 
-安装包与运行客户端同样受这层边界限制：VSD 根固定为 `%LOCALAPPDATA%\RelaxKonOS\SystemDrive`，若客户端是从被沙箱限制的位置（例如仓库内的 `bin/<Configuration>/<TFM>`）启动的，写入 `Programs/External` 会被拒绝，安装以 `vsd.package.storage-unavailable` 失败并在安装器里指名该目录。要自测安装，请把构建输出复制到不受限的目录后再从那里启动客户端：
-
-```bash
-dotnet build Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj -c Debug
-robocopy Client/RelaxKonOS.Client.Desktop/bin/Debug/net10.0 %LOCALAPPDATA%\RelaxKonOS\ClientDev /E
-```
-
-`ClientDev` 只是客户端数据根下的一个普通副本目录，与 VSD 的 `SystemDrive` 并列，随时可以删除。
-
-两个客户端实例共用同一份 VSD，因此从副本安装的包在 IDE 里启动时同样可见；反过来，被限制的实例仍然无法安装。
+客户端必须有权写入当前 VSD 的 `Programs/External`。`vsd.package.storage-unavailable` 会给出受限目录。若沙箱限制应用数据目录，可用 `RELAXKONOS_DEV_DATA_HOME` 为 Debug 选择一个允许写入的父目录。
 
 ## 开发包格式
 
@@ -123,7 +159,7 @@ lib/net10.0/<私有依赖>.dll
 
 ```powershell
 $env:RELAXKONOS_DEV_TOKEN = "<设置中的令牌>"
-dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\ServerMonitor --configuration Debug --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack .\examples\ServerMonitor --configuration Debug --install
 ```
 
 安装后，在设置中向 **Server Monitor** 授予 **读取服务器性能指标**，然后启动桌面图标。

@@ -119,7 +119,7 @@ public sealed class NetworkDiagnosticsService : IDisposable
             return false;
         if (uri.AbsolutePath.Contains("/auth/", StringComparison.OrdinalIgnoreCase)) return false;
         if (IsTailscaleLoginChallenge(uri.AbsolutePath)) return false;
-        if (uri.IsLoopback && uri.Port == DeveloperModeService.BridgePort)
+        if (uri.IsLoopback && uri.Port == DeveloperProfile.Port)
             return true;
         var serverUrl = GetSession().EffectiveBaseUrl;
         if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out var server))

@@ -1,0 +1,10 @@
+{
+  "id": "com.relaxkonos.example.image-viewer",
+  "displayName": "Image Viewer Pilot",
+  "version": "0.1.0-dev",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.Example.ImageViewerPilot.dll",
+  "entryType": "RelaxKonOS.Examples.ImageViewerPilot.ImageViewerPilotApp",
+  "requestedPermissions": ["server.files.read"],
+  "supportedFileExtensions": [".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".ico", ".svg"]
+}

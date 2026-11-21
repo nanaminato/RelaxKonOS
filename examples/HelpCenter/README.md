@@ -15,14 +15,14 @@ help://guide/docker/uninstall?lang=zh-CN
 
 ```bash
 export RELAXKONOS_DEV_TOKEN="<设置中的配对令牌>"
-dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/HelpCenter --configuration Debug --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack ./examples/HelpCenter --configuration Debug --install
 ```
 
 在 Windows PowerShell 中：
 
 ```powershell
 $env:RELAXKONOS_DEV_TOKEN = "<设置中的配对令牌>"
-dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\HelpCenter --configuration Debug --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack .\examples\HelpCenter --configuration Debug --install
 ```
 
 如果已由 IDE 或 `dotnet build` 编译过同一 `Debug` 配置，可跳过重新编译，直接根据 `manifest.json` 打包已有输出：

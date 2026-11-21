@@ -29,7 +29,7 @@ public sealed class JsonAppPermissionManager : IAppPermissionManager, IAppPermis
     {
         _applications = applications;
         _useEncryption = OperatingSystem.IsWindows();
-        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS");
+        var root = Developer.DeveloperProfile.DataDirectory;
         _path = Path.Combine(root, _useEncryption ? "app-permissions-v2.dat" : "app-permissions-v2.json");
         DeleteLegacyFiles(root);
         _grants = Load(_path, _useEncryption);
@@ -87,6 +87,40 @@ public sealed class JsonAppPermissionManager : IAppPermissionManager, IAppPermis
             var removed = _grants.Remove(appId.Value);
             _temporary.Remove(appId.Value);
             if (removed) Save(_path, _grants, _useEncryption);
+        }
+    }
+
+    /// <summary>Resets the candidate's authorization and provides an undo for a failed package replacement.</summary>
+    internal Action ResetForPackageUpdate(AppId appId)
+    {
+        lock (_gate)
+        {
+            _grants.TryGetValue(appId.Value, out var persisted);
+            _temporary.TryGetValue(appId.Value, out var session);
+            try { Clear(appId); }
+            catch
+            {
+                RestoreInMemory();
+                throw;
+            }
+
+            return () =>
+            {
+                lock (_gate)
+                {
+                    var candidateHadGrants = _grants.ContainsKey(appId.Value);
+                    RestoreInMemory();
+                    if (persisted is not null || candidateHadGrants) Save(_path, _grants, _useEncryption);
+                }
+            };
+
+            void RestoreInMemory()
+            {
+                if (persisted is null) _grants.Remove(appId.Value);
+                else _grants[appId.Value] = persisted;
+                if (session is null) _temporary.Remove(appId.Value);
+                else _temporary[appId.Value] = session;
+            }
         }
     }
 

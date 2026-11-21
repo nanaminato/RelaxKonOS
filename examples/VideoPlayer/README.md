@@ -18,7 +18,7 @@ To install the existing Debug build immediately, enable Developer Mode, set the 
 
 ```powershell
 $env:RELAXKONOS_DEV_TOKEN = "<pairing-token>"
-dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\VideoPlayer --runtime win-x64 --configuration Debug --no-build --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack .\examples\VideoPlayer --runtime win-x64 --configuration Debug --no-build --install
 ```
 
 Install it using the Developer Mode CLI, then open a video from RemoteExplorer with **Open with → Video Player**. Grant **读取服务器文件** in Settings → Applications → Video Player before opening remote media.
