@@ -153,7 +153,7 @@ public sealed class ApplicationCompatibilityService : IApplicationCompatibilityE
         return reason is null ? message : message + Environment.NewLine + reason;
     }
 
-    private static string DetectClientPlatform() => OperatingSystem.IsWindows()
+    internal static string DetectClientPlatform() => OperatingSystem.IsWindows()
         ? ApplicationPlatformNames.Windows
         : ApplicationPlatformNames.Linux;
 

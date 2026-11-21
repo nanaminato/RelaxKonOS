@@ -17,6 +17,7 @@ repo = Path(__file__).resolve().parents[1]
 root = repo / "Client" / "RelaxKonOS.Client"
 language_dir = root / "Localization"
 image_viewer = repo / "Applications" / "RelaxKonOS.App.ImageViewer"
+notepad = repo / "Applications" / "RelaxKonOS.App.Notepad"
 # Resource segments may use protocol enum names (for example `install_state.Idle`).
 # Keep the namespace segment lowercase while accepting those established enum suffixes.
 valid_key = re.compile(r"[a-z][a-z0-9-]*(?:[._][A-Za-z0-9-]+)*$")
@@ -40,12 +41,13 @@ suffix_prefix = {
 xaml_key = re.compile(r"\{loc:Loc\s+([A-Za-z0-9_.]+)\s*\}")
 
 
-def load_language(culture: str) -> dict[str, str]:
+def load_language(culture: str, paths: list[Path] | None = None) -> dict[str, str]:
     strings: dict[str, str] = {}
-    paths = sorted((language_dir / culture).glob("*.json"))
-    image_viewer_fragment = image_viewer / "Localization" / f"{culture}.json"
-    if image_viewer_fragment.is_file():
-        paths.append(image_viewer_fragment)
+    if paths is None:
+        paths = sorted((language_dir / culture).glob("*.json"))
+        image_viewer_fragment = image_viewer / "Localization" / f"{culture}.json"
+        if image_viewer_fragment.is_file():
+            paths.append(image_viewer_fragment)
     if not paths:
         errors.append(f"{culture}: no localization files")
 
@@ -165,6 +167,20 @@ for key, where in sorted(unresolved.items()):
 for prefix, where in sorted(prefix_keys.items()):
     if not any(key.startswith(prefix) for key in expected):
         errors.append(f"{where}: composed key prefix {prefix} matches no en-US key")
+
+notepad_packs = {culture: load_language(culture, [notepad / "Localization" / f"{culture}.json"]) for culture in cultures}
+notepad_english = notepad_packs["en-US"]
+for culture, translated in notepad_packs.items():
+    if set(notepad_english) != set(translated):
+        errors.append(f"Notepad {culture}: resource keys differ from en-US")
+    for key in notepad_english.keys() & translated.keys():
+        if format_arguments(notepad_english[key]) != format_arguments(translated[key]):
+            errors.append(f"Notepad {culture}: format arguments differ for {key}")
+for source in (*notepad.glob("*.axaml"), *notepad.glob("*.cs")):
+    for key in re.findall(r'"((?:common|notepad)\.[a-z0-9_.]+)"|Labels\[((?:common|notepad)\.[a-z0-9_.]+)\]', source.read_text(encoding="utf-8")):
+        literal = key[0] or key[1]
+        if literal not in notepad_english:
+            errors.append(f"{source.name}: Notepad resource {literal} is missing from en-US")
 
 if errors:
     print("\n".join(errors), file=sys.stderr)

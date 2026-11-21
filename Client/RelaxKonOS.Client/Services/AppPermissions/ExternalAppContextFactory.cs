@@ -3,7 +3,13 @@ using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Services.AppSettings;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.Explorer.Dialogs;
+using RelaxKonOS.Client.Apps.Explorer.ViewModels;
+using RelaxKonOS.Client.Apps.Explorer.Views;
+using RelaxKonOS.Client.Apps.TextEditor;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Workspace;
@@ -29,10 +35,14 @@ public sealed class ExternalAppContextFactory
     private readonly IWindowManager _windowManager;
     private readonly ITaskManagerClient _systemMonitor;
     private readonly IExplorerClient _files;
+    private readonly SshDesktopSession _sshSession;
+    private readonly SshExplorerClient _sshFiles;
     private readonly ISettingsNavigation _settingsNavigation;
     private readonly IAppCapabilityClient _capabilities;
     private readonly IAppSettingsClient _appSettings;
     private readonly IAppActivationService _activations;
+    private readonly UsageMemoryStore _usageMemory;
+    private readonly TextEditorEncodingSettings _textEncoding;
 
     public ExternalAppContextFactory(
         IAppPermissionManager permissions,
@@ -45,10 +55,14 @@ public sealed class ExternalAppContextFactory
         IWindowManager windowManager,
         ITaskManagerClient systemMonitor,
         IExplorerClient files,
+        SshDesktopSession sshSession,
+        SshExplorerClient sshFiles,
         ISettingsNavigation settingsNavigation,
         IAppCapabilityClient capabilities,
         IAppSettingsClient appSettings,
-        IAppActivationService activations)
+        IAppActivationService activations,
+        UsageMemoryStore usageMemory,
+        TextEditorEncodingSettings textEncoding)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -60,22 +74,31 @@ public sealed class ExternalAppContextFactory
         _windowManager = windowManager;
         _systemMonitor = systemMonitor;
         _files = files;
+        _sshSession = sshSession;
+        _sshFiles = sshFiles;
         _settingsNavigation = settingsNavigation;
         _capabilities = capabilities;
         _appSettings = appSettings;
         _activations = activations;
+        _usageMemory = usageMemory;
+        _textEncoding = textEncoding;
     }
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
-        Action<ManagedWindow>? onWindowCreated = null)
+        Action<ManagedWindow>? onWindowCreated = null, string? openedFile = null)
     {
         var appId = manifest.Id;
+        var sshEndpoint = _sshSession.Endpoint;
+        var fileSession = _usageMemory.Capture(_session);
         return new ExternalAppContext(
         appId,
         new AppPermissionScope(appId, _permissionRequests),
         new DesktopAppearanceCapability(appId, _permissions, _settings, _settingsClient, _session, _defaultApps),
         new ServerMonitorCapability(appId, _permissions, _systemMonitor),
-        new ServerFilesCapability(appId, _permissions, _files),
+        new ServerFilesCapability(appId, _permissions,
+            sshEndpoint is null ? _files.DownloadAsync : (path, ct) => _sshFiles.DownloadAsync(path, sshEndpoint, ct),
+            sshEndpoint is not null, openedFile, _files, fileSession, _windowManager),
+        appId.Value == "relaxkonos.notepad" ? new NotepadEncodingPreferences(_textEncoding, fileSession) : null,
         new ExternalFileApiAccess(appId, _permissions, _session, _capabilities),
         new ExternalMediaService(appId, _permissions, _session, _capabilities),
         new ExternalAppSettings(appId, _appSettings),
@@ -91,6 +114,7 @@ public sealed class ExternalAppContextFactory
         IDesktopAppearance DesktopAppearance,
         IServerMonitor ServerMonitor,
         IServerFiles ServerFiles,
+        IExternalTextEditorPreferences? TextEditorPreferences,
         IExternalFileApiAccess FileApi,
         IExternalMediaService Media,
         IExternalAppSettings SettingsStore,
@@ -98,6 +122,31 @@ public sealed class ExternalAppContextFactory
         IAppActivation Activations,
         ISettingsNavigation Settings,
         IExternalAppWindowService Windows) : IExternalAppContext;
+
+    private sealed class NotepadEncodingPreferences(TextEditorEncodingSettings settings, UsageMemoryScope session) : IExternalTextEditorPreferences
+    {
+        public string DefaultEncoding => session.IsCurrent ? settings.NotepadDefaultEncoding : "UTF-8";
+        public Task SetDefaultEncodingAsync(string encoding) => session.IsCurrent
+            ? settings.SetNotepadDefaultEncodingAsync(encoding) : Task.CompletedTask;
+
+        public Task<EncodingDialogAction?> PickEncodingActionAsync(IExternalAppWindowHandle owner) =>
+            owner.ShowDialogAsync<EncodingDialogAction?>(LocalizedText.Get("common.file_encoding"),
+                dialog => new EncodingActionDialogView
+                {
+                    DataContext = new EncodingActionDialogViewModel(choice => dialog.Close(choice)),
+                }, new Size(420, 220));
+
+        public Task<string?> PickEncodingAsync(IExternalAppWindowHandle owner, string currentEncoding) =>
+            owner.ShowDialogAsync<string>(LocalizedText.Get("common.file_encoding"),
+                dialog => new EncodingDialogView
+                {
+                    DataContext = new EncodingDialogViewModel(currentEncoding, encoding =>
+                    {
+                        if (encoding is null) dialog.Cancel();
+                        else dialog.Close(encoding);
+                    }),
+                }, new Size(420, 330));
+    }
 
     private sealed class ExternalAppActivation(AppId appId, IAppActivationService activations) : IAppActivation
     {
@@ -197,6 +246,18 @@ public sealed class ExternalAppContextFactory
         public void EnterFullScreen() => _windowManager.EnterFullScreen(Window);
 
         public void ExitFullScreen() => _windowManager.ExitFullScreen(Window);
+
+        public Task<TResult?> ShowDialogAsync<TResult>(string title, Func<ModalDialog<TResult>, Avalonia.Controls.Control> content, Size preferredSize)
+        {
+            if (!_windowManager.Windows.Contains(Window)) return Task.FromResult<TResult?>(default);
+            return _windowManager.ShowDialogAsync(Window, title, content, preferredSize);
+        }
+
+        public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) =>
+            ShowDialogAsync<bool>(title, dialog => new ConfirmDialogView
+            {
+                DataContext = new ConfirmDialogViewModel(message, dialog.Close, confirmLabel),
+            }, new Size(460, 320));
     }
 
     private sealed class ExternalFileApiAccess(
@@ -479,18 +540,29 @@ public sealed class ExternalAppContextFactory
     private sealed class ServerFilesCapability(
         AppId appId,
         IAppPermissionManager permissions,
-        IExplorerClient files) : IServerFiles
+        Func<string, CancellationToken, Task<(Stream Stream, string FileName)?>> downloadFile,
+        bool isSshSession,
+        string? openedFile,
+        IExplorerClient files,
+        UsageMemoryScope session,
+        IWindowManager windows) : IServerFiles
     {
+        public bool IsSshSession => isSshSession;
+        private bool IsServerSession => !isSshSession && session.Session.State == AuthSessionState.Authenticated && session.IsCurrent;
+
         public async Task<ServerFileReadResult> OpenReadAsync(string path, CancellationToken cancellationToken = default)
         {
             if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
                 return new ServerFileReadResult(AppCapabilityResult.PermissionDenied, null, null);
-            if (string.IsNullOrWhiteSpace(path))
+            // SSH file access is limited to the selection handed off by the host file browser.
+            if (string.IsNullOrWhiteSpace(path) || (isSshSession && !string.Equals(path, openedFile, StringComparison.Ordinal)))
                 return new ServerFileReadResult(AppCapabilityResult.InvalidArgument, null, null);
+            if (!isSshSession && !IsServerSession)
+                return new ServerFileReadResult(AppCapabilityResult.Unavailable, null, null);
 
             try
             {
-                var result = await files.DownloadAsync(path, cancellationToken);
+                var result = await downloadFile(path, cancellationToken);
                 return result is { } download
                     ? new ServerFileReadResult(AppCapabilityResult.Succeeded, download.Stream, download.FileName)
                     : new ServerFileReadResult(AppCapabilityResult.InvalidArgument, null, null);
@@ -503,6 +575,54 @@ public sealed class ExternalAppContextFactory
             {
                 return new ServerFileReadResult(AppCapabilityResult.Unavailable, null, null);
             }
+        }
+
+        public async Task<ServerFileContentResult> ReadAsync(string path, CancellationToken cancellationToken = default)
+        {
+            if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead))
+                return new(AppCapabilityResult.PermissionDenied);
+            if (string.IsNullOrWhiteSpace(path)) return new(AppCapabilityResult.InvalidArgument);
+            if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
+            return new(AppCapabilityResult.Succeeded, await files.ReadFileAsync(path, cancellationToken));
+        }
+
+        public async Task<AppCapabilityResult> WriteAsync(string path, byte[] content, CancellationToken cancellationToken = default)
+        {
+            if (!permissions.IsGranted(appId, CoreAppPermissions.ServerFilesWrite))
+                return AppCapabilityResult.PermissionDenied;
+            if (string.IsNullOrWhiteSpace(path)) return AppCapabilityResult.InvalidArgument;
+            if (!IsServerSession) return AppCapabilityResult.Unavailable;
+            await files.WriteFileAsync(path, content, cancellationToken);
+            return AppCapabilityResult.Succeeded;
+        }
+
+        public async Task<ServerFilePickResult> PickFileAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options)
+        {
+            var save = options.SuggestedFileName is not null;
+            bool HasGrants() => permissions.IsGranted(appId, CoreAppPermissions.ServerFilesRead)
+                && (!save || permissions.IsGranted(appId, CoreAppPermissions.ServerFilesWrite));
+
+            if (!HasGrants()) return new(AppCapabilityResult.PermissionDenied);
+            if (!IsServerSession) return new(AppCapabilityResult.Unavailable);
+            if (owner is not ExternalAppWindowHandle handle || handle.Window.Info.OwnerAppId != appId || !windows.Windows.Contains(handle.Window))
+                return new(AppCapabilityResult.InvalidArgument);
+
+            var mode = save ? ExplorerPickerMode.SaveFile : ExplorerPickerMode.OpenFile;
+            var path = await handle.ShowDialogAsync<string>(options.Title, dialog =>
+            {
+                var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(mode,
+                    Filters: [new ExplorerFileFilter(options.FilterLabel, options.Patterns, options.IncludeExtensionlessFiles)],
+                    DefaultFileName: options.SuggestedFileName), paths => dialog.Close(paths[0]),
+                    usageMemory: session, memoryPurpose: appId.Value)
+                {
+                    CancelAction = dialog.Cancel,
+                };
+                _ = picker.LoadRootAsync();
+                return new ExplorerMainView { DataContext = picker };
+            }, new Size(760, 520));
+
+            if (!HasGrants()) return new(AppCapabilityResult.PermissionDenied);
+            return IsServerSession ? new(AppCapabilityResult.Succeeded, path) : new(AppCapabilityResult.Unavailable);
         }
     }
 }

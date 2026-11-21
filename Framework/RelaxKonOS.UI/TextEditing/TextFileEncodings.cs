@@ -1,10 +1,10 @@
 using System.Text;
 using RelaxKonOS.Protocol.Workspace;
 
-namespace RelaxKonOS.Client.Apps.TextEditor;
+namespace RelaxKonOS.UI.TextEditing;
 
-/// <summary>Shared encoding choices and byte conversion for the built-in text editors.</summary>
-internal static class TextFileEncodings
+/// <summary>Shared encoding choices and byte conversion for text editors.</summary>
+public static class TextFileEncodings
 {
     public static IReadOnlyList<string> Available => TextEncodingPreferences.Supported;
 

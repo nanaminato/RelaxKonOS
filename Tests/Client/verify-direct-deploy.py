@@ -20,6 +20,10 @@ CLI = REPO / "Tools/RelaxKonOS.DevCli/bin/Debug/net10.0/RelaxKonOS.DevCli.dll"
 DESKTOP_HOST = REPO / "Tests/Client/RelaxKonOS.WindowPreviews.Tests/bin/Debug/net10.0/RelaxKonOS.WindowPreviews.Tests.dll"
 APP_ID = "com.relaxkonos.tests.direct-deploy"
 PILOT_ID = "com.relaxkonos.example.image-viewer"
+OFFICIAL_APPS = {
+    "relaxkonos.imageviewer": "RelaxKonOS.App.ImageViewer",
+    "relaxkonos.notepad": "RelaxKonOS.App.Notepad",
+}
 
 
 def wait_for(check, seconds=90):
@@ -273,8 +277,38 @@ def main():
         assert cli(env_a, "rollback", APP_ID)["currentVersionId"] == (versions - {last}).pop()
 
         reserved = root / "official-id.json"
-        reserved.write_text((app / "manifest.json").read_text(encoding="utf-8").replace(APP_ID, "relaxkonos.imageviewer"), encoding="utf-8")
+        reserved.write_text((app / "manifest.json").read_text(encoding="utf-8").replace(APP_ID, "relaxkonos.explorer"), encoding="utf-8")
         cli(env_a, "deploy", compiled, "--manifest", reserved, code="invalid_manifest")
+
+        for app_id, project_name in OFFICIAL_APPS.items():
+            official_project = REPO / "Applications" / project_name
+            official = cli(env_a, "deploy", official_project)
+            assert official["appId"] == app_id and official["windowLaunch"] == "passed", official
+            manifest = json.loads((official_project / "manifest.json").read_text(encoding="utf-8"))
+            # Use a separate source directory for a different published version and its relative icon.
+            official_output = root / project_name
+            dotnet(env_a, "publish", str(official_project), "-c", "Debug", "-o", str(official_output), "-p:UsedAvaloniaProducts=")
+            asset = official_output / manifest["iconPath"]
+            asset.parent.mkdir()
+            asset.write_bytes((official_project / manifest["iconPath"]).read_bytes())
+            manifest["version"] = "1.1.0"
+            next_manifest = official_output / "manifest.json"
+            next_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+            upgraded = cli(env_a, "deploy", official_output, "--manifest", next_manifest)
+            assert upgraded["currentVersionId"] != official["currentVersionId"] and upgraded["windowLaunch"] == "passed", upgraded
+            active_windows = cli(env_a, "diagnostics", app_id)["apps"][0]["windows"]
+            assert len(active_windows) == 1, active_windows
+            manifest["entryType"] = "Fixture.MissingEntry"
+            next_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+            failure = cli(env_a, "deploy", official_output, "--manifest", next_manifest, code="assembly_load_failed")
+            assert failure["currentVersionId"] == upgraded["currentVersionId"], failure
+            state = cli(env_a, "diagnostics", app_id)["apps"][0]
+            assert state["version"] == "1.1.0" and state["windows"] == active_windows, state
+            assert cli(env_a, "rollback", app_id)["currentVersionId"] == official["currentVersionId"]
+            dotnet(env_a, str(CLI), "uninstall", app_id)
+            cli(env_a, "diagnostics", app_id, code="app_not_found")
+            print(f"{app_id}: Direct Deploy, update, failed-candidate preservation, rollback and uninstall passed.", flush=True)
+
         pilot = cli(env_a, "deploy", REPO / "examples/ImageViewerPilot")
         assert pilot["appId"] == PILOT_ID and pilot["windowLaunch"] == "passed" and pilot["uiTest"] == "notRun", pilot
         pilot_package = root / "image-viewer-pilot.roapp"

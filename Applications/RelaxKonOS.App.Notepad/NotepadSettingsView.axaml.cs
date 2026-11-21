@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.Notepad;
+namespace RelaxKonOS.App.Notepad;
 
 public partial class NotepadSettingsView : UserControl
 {

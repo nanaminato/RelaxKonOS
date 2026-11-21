@@ -19,7 +19,7 @@ namespace RelaxKonOS.Client.Services.Developer;
 
 /// <summary>
 /// Installs development <c>.roapp</c> archives and loads them into their own assembly load context.
-/// A development package may never use the reserved <c>relaxkonos.*</c> identifier range.
+/// Reserved application IDs require a host-approved installation origin.
 /// </summary>
 public sealed partial class DeveloperPackageManager
 {
@@ -35,6 +35,7 @@ public sealed partial class DeveloperPackageManager
     private readonly string _legacyCatalogPath;
     private readonly ConcurrentDictionary<string, DeveloperAppRecord> _catalog;
     private readonly SemaphoreSlim _mutations = new(1, 1);
+    private readonly OfficialDesktopPackages _official;
 
     public DeveloperPackageManager(
         ApplicationManager applications,
@@ -43,6 +44,19 @@ public sealed partial class DeveloperPackageManager
         IAppPermissionManager permissions,
         IAppActivationDiagnostics activationDiagnostics,
         VirtualSystemDriveService drive)
+        : this(applications, contextFactory, windowManager, permissions, activationDiagnostics, drive,
+            Path.Combine(System.AppContext.BaseDirectory, "OfficialApps"))
+    {
+    }
+
+    internal DeveloperPackageManager(
+        ApplicationManager applications,
+        ExternalAppContextFactory contextFactory,
+        IWindowManager windowManager,
+        IAppPermissionManager permissions,
+        IAppActivationDiagnostics activationDiagnostics,
+        VirtualSystemDriveService drive,
+        string officialDirectory)
     {
         _applications = applications;
         _contextFactory = contextFactory;
@@ -50,6 +64,7 @@ public sealed partial class DeveloperPackageManager
         _permissions = permissions;
         _activationDiagnostics = activationDiagnostics;
         _drive = drive;
+        _official = new OfficialDesktopPackages(Path.GetFullPath(officialDirectory));
         _drive.EnsureCreated();
         _root = _drive.ExternalProgramsDirectory;
         _catalogPath = _drive.ResolveRootChild("System/external-catalog.json");
@@ -67,18 +82,37 @@ public sealed partial class DeveloperPackageManager
     public event EventHandler? PackagesChanged;
 
     /// <summary>Reads package metadata without extracting or installing the archive.</summary>
-    public async Task<DeveloperPackageManifest> InspectAsync(string packagePath, CancellationToken cancellationToken = default)
+    internal async Task<(DeveloperPackageManifest Manifest, string? OfficialSha256)> InspectAsync(
+        string packagePath, CancellationToken cancellationToken = default)
     {
         await using var package = File.OpenRead(packagePath);
-        using var archive = new ZipArchive(package, ZipArchiveMode.Read, leaveOpen: false);
+        DeveloperPackageManifest manifest;
+        using (var archive = new ZipArchive(package, ZipArchiveMode.Read, leaveOpen: true))
+            manifest = await ReadArchiveManifestAsync(archive, cancellationToken);
+        if (!OfficialDesktopPackages.IsReserved(manifest.Id))
+        {
+            ValidateManifest(manifest, PackageOrigin.LocalPackage);
+            return (manifest, null);
+        }
+
+        ValidateManifest(manifest, PackageOrigin.OfficialDistribution);
+        return (manifest, await _official.VerifyAsync(packagePath, manifest.Id, package, cancellationToken));
+    }
+
+    private static async Task<DeveloperPackageManifest> ReadArchiveManifestAsync(ZipArchive archive, CancellationToken cancellationToken)
+    {
         var manifestEntry = archive.GetEntry("manifest.json")
             ?? throw new InvalidOperationException("The application package must contain manifest.json at its root.");
+        if (manifestEntry.Length > VirtualSystemDriveService.MaximumJsonBytes)
+            throw new InvalidOperationException("manifest.json exceeds the maximum size.");
         await using var manifestStream = manifestEntry.Open();
-        var manifest = await JsonSerializer.DeserializeAsync<DeveloperPackageManifest>(manifestStream,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, cancellationToken)
+        return await JsonSerializer.DeserializeAsync<DeveloperPackageManifest>(manifestStream,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
+            }, cancellationToken)
             ?? throw new InvalidOperationException("manifest.json is invalid.");
-        ValidateManifest(manifest);
-        return manifest;
     }
 
     public DeveloperAppInfo? FindInstalled(string appId) => _catalog.TryGetValue(appId, out var record)
@@ -124,7 +158,8 @@ public sealed partial class DeveloperPackageManager
         await _mutations.WaitAsync(cancellationToken);
         try
         {
-            var record = await StageAsync((staging, ct) => ExtractAndReadManifestAsync(package, staging, ct), cancellationToken);
+            var record = await StageAsync((staging, ct) => ExtractAndReadManifestAsync(package, staging, ct),
+                PackageOrigin.LocalPackage, cancellationToken);
             await CommitVersionAsync(record, cancellationToken);
             if (launch && !IsDesktopShellPackage(record.Path)) await LaunchAsync(record.Id);
             return ToInfo(record);
@@ -132,8 +167,41 @@ public sealed partial class DeveloperPackageManager
         finally { _mutations.Release(); }
     }
 
+    internal async Task<DeveloperAppInfo> InstallOfficialAsync(Stream package, string path, string appId, string expectedSha256,
+        string? installedVersion, CancellationToken cancellationToken)
+    {
+        await _mutations.WaitAsync(cancellationToken);
+        try
+        {
+            if (await _official.VerifyAsync(path, appId, package, cancellationToken) != expectedSha256)
+                throw new InvalidOperationException("component.package_expectation_changed");
+            if (FindInstalled(appId)?.Version != installedVersion)
+                throw new InvalidOperationException("component.state_revision_conflict");
+
+            var record = await StageAsync(async (staging, ct) =>
+            {
+                var manifest = await ExtractAndReadManifestAsync(package, staging, ct);
+                if (manifest.Id != appId)
+                    throw new InvalidOperationException("component.package_expectation_changed");
+                return manifest;
+            }, PackageOrigin.OfficialDistribution, cancellationToken);
+            try
+            {
+                var result = await PromoteAsync(record, launch: false, writePointer: true, cancellationToken);
+                if (!result.Ok) throw new InvalidOperationException(result.Message ?? result.Code);
+                return ToInfo(record);
+            }
+            finally
+            {
+                if (_catalog.GetValueOrDefault(appId)?.Path != record.Path)
+                    TryDeleteDirectory(record.Path);
+            }
+        }
+        finally { _mutations.Release(); }
+    }
+
     private async Task<DeveloperAppRecord> StageAsync(
-        Func<string, CancellationToken, Task<DeveloperPackageManifest>> extract, CancellationToken cancellationToken)
+        Func<string, CancellationToken, Task<DeveloperPackageManifest>> extract, PackageOrigin origin, CancellationToken cancellationToken)
     {
         var staging = _drive.ResolveUnder(_root, $".staging/{Guid.NewGuid():N}");
         string? destination = null;
@@ -141,15 +209,17 @@ public sealed partial class DeveloperPackageManager
         {
             Directory.CreateDirectory(staging);
             var manifest = await extract(staging, cancellationToken);
-            ValidateManifest(manifest);
+            ValidateManifest(manifest, origin);
 
             // Keep every deployment in a distinct folder. A currently loaded DLL can be locked on
             // Windows, so overwriting a version directory would make the development update flaky.
             destination = VersionPath(manifest.Id, Guid.NewGuid().ToString("N"));
             await _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(staging, "app.relaxkonos.json"), ToDescriptor(manifest), cancellationToken);
+            if (OfficialDesktopPackages.IsReserved(manifest.Id))
+                await _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(staging, OfficialDesktopPackages.OriginFileName), origin, cancellationToken);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             Directory.Move(staging, destination);
-            var record = CreateRecord(destination, manifest);
+            var record = CreateRecord(destination, manifest, origin);
             destination = null;
             return record;
         }
@@ -174,6 +244,8 @@ public sealed partial class DeveloperPackageManager
         try
         {
             if (!_catalog.ContainsKey(appId)) return false;
+            if (!await CanRetireWindowsAsync(new AppId(appId)))
+                throw new InvalidOperationException("Application windows are busy or have unsaved changes.");
             File.Delete(CurrentPath(appId));
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -223,6 +295,8 @@ public sealed partial class DeveloperPackageManager
 
     private void Register(DeveloperAppRecord record)
     {
+        if (_applications.IsBuiltIn(new AppId(record.Id)))
+            throw new InvalidOperationException("The application id is already registered by the host.");
         UnregisterAndUnload(record.Id);
         if (IsDesktopShellPackage(record.Path)) return;
         _applications.Register(CreateAdapter(record));
@@ -234,7 +308,20 @@ public sealed partial class DeveloperPackageManager
             : new ExternalApplicationAdapter(record, this, _contextFactory);
 
     private static bool HasFileHandlers(DeveloperAppRecord record) =>
-        record.SupportedFileExtensions.Count > 0 || record.SupportedFileNames is { Count: > 0 } || record.SupportsExtensionlessFiles;
+        record.SupportedFileExtensions.Count > 0 || record.SupportedFileNames is { Count: > 0 }
+        || record.SupportsExtensionlessFiles || record.SupportsTextFiles;
+
+    private Task<bool> CanRetireWindowsAsync(AppId id) => Dispatcher.UIThread.InvokeAsync(async () =>
+    {
+        var owned = _windowManager.Windows.Where(window => window.Info.OwnerAppId == id).ToArray();
+        foreach (var window in owned)
+        {
+            if (window.CanCloseAsync is { } canClose
+                && (_windowManager.Windows.Any(dialog => dialog.Info.OwnerAppId == id && dialog.IsModalDialog) || !await canClose()))
+                return false;
+        }
+        return true;
+    });
 
     private void UnregisterAndUnload(string appId)
     {
@@ -279,7 +366,7 @@ public sealed partial class DeveloperPackageManager
         new AppId(record.Id), record.DisplayName, record.Version, record.IconGlyph, record.Description,
         record.RequestedPermissions, record.SupportedFileExtensions, record.LocalizedMetadata,
         record.ClientPlatforms, record.ServerRequirements, record.SupportedFileNames, record.SupportsExtensionlessFiles,
-        SupportsTextFiles: false,
+        SupportsTextFiles: record.SupportsTextFiles,
         InstancePolicy: record.InstancePolicy,
         SupportedUriSchemes: record.SupportedUriSchemes,
         IconPath: record.IconPath,
@@ -345,6 +432,7 @@ public sealed partial class DeveloperPackageManager
             try
             {
                 ValidateAppId(legacy.Id);
+                if (OfficialDesktopPackages.IsReserved(legacy.Id)) throw new InvalidOperationException();
                 if (legacy.PermissionModelVersion != 2 || !Directory.Exists(legacy.Path)) throw new InvalidOperationException();
                 var legacyRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_legacyRoot)) + Path.DirectorySeparatorChar;
                 var source = Path.GetFullPath(legacy.Path);
@@ -389,39 +477,27 @@ public sealed partial class DeveloperPackageManager
     private async Task<DeveloperPackageManifest> ExtractAndReadManifestAsync(Stream package, string destination, CancellationToken cancellationToken)
     {
         using var archive = new ZipArchive(package, ZipArchiveMode.Read, leaveOpen: true);
-        var manifestEntry = archive.GetEntry("manifest.json")
-            ?? throw new InvalidOperationException("A development package must contain manifest.json at its root.");
-        DeveloperPackageManifest manifest;
-        await using (var manifestStream = manifestEntry.Open())
-        {
-            manifest = await JsonSerializer.DeserializeAsync<DeveloperPackageManifest>(manifestStream,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, cancellationToken)
-                ?? throw new InvalidOperationException("manifest.json is invalid.");
-        }
-
-        var root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
+        var manifest = await ReadArchiveManifestAsync(archive, cancellationToken);
         foreach (var entry in archive.Entries)
         {
             if (string.IsNullOrEmpty(entry.Name))
                 continue;
-            var target = Path.GetFullPath(Path.Combine(destination, entry.FullName));
-            if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("The package contains an invalid path.");
+            var target = ResolvePayloadFile(destination, entry.FullName);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             await using var source = entry.Open();
-            await using var output = File.Create(target);
+            await using var output = new FileStream(target, FileMode.CreateNew);
             await source.CopyToAsync(output, cancellationToken);
         }
 
         return manifest;
     }
 
-    private static void ValidateManifest(DeveloperPackageManifest manifest)
+    private static void ValidateManifest(DeveloperPackageManifest manifest, PackageOrigin origin)
     {
-        if (!ApplicationDescriptorValidator.IsValidAppId(manifest.Id))
-            throw new InvalidOperationException("Application id must use lowercase letters, digits, dots, or hyphens.");
-        if (manifest.Id.StartsWith("relaxkonos.", StringComparison.Ordinal))
-            throw new InvalidOperationException("The relaxkonos.* application id range is reserved for built-in applications.");
+        ValidateAppId(manifest.Id);
+        if (OfficialDesktopPackages.IsReserved(manifest.Id)
+            && (!OfficialDesktopPackages.IsAllowed(manifest.Id, origin) || manifest.PackageType == "desktopShell"))
+            throw new InvalidOperationException("The relaxkonos.* application id range requires a host-approved application source.");
         if (manifest.PermissionModelVersion != 2)
             throw new InvalidOperationException("This package uses an unsupported permission model. Rebuild it with permissionModelVersion: 2.");
         if (manifest.PackageType is not null and not "application" and not "desktopShell")
@@ -575,8 +651,7 @@ public sealed partial class DeveloperPackageManager
 
     private static void ValidateAppId(string appId)
     {
-        if (!ApplicationDescriptorValidator.IsValidAppId(appId) || appId.StartsWith("relaxkonos.", StringComparison.Ordinal)
-            || appId.EndsWith('.') || IsWindowsDeviceName(appId))
+        if (!ApplicationDescriptorValidator.IsValidAppId(appId) || appId.EndsWith('.') || IsWindowsDeviceName(appId))
             throw new InvalidOperationException("Invalid developer application id.");
     }
 
@@ -712,6 +787,7 @@ public sealed partial class DeveloperPackageManager
 
         public override ApplicationManifest Manifest => ToApplicationManifest(Record);
         internal bool IsLoaded => _loaded is not null;
+        protected CancellationToken Lifetime => _lifetime.Token;
 
         internal void ValidateLoad() => _loaded ??= Owner.CreateLoaded(Record, verifyDependencies: true);
 
@@ -726,8 +802,8 @@ public sealed partial class DeveloperPackageManager
             _loaded = null;
         }
 
-        protected IExternalAppContext CreateContext() => ContextFactory.Create(Manifest, _lifetime.Token,
-            _observedWindows is { } windows ? window => windows.Add(window) : null);
+        protected IExternalAppContext CreateContext(string? openedFile = null) => ContextFactory.Create(Manifest, _lifetime.Token,
+            _observedWindows is { } windows ? window => windows.Add(window) : null, openedFile);
 
         protected IExternalRemoteApplication GetOrLoad()
         {
@@ -760,6 +836,8 @@ public sealed partial class DeveloperPackageManager
             {
                 Owner.RecordActivationDiagnostic($"External app launch failed: app={Manifest.Id.Value}, error={exception.GetType().Name}: {exception.Message}");
                 ShowFailure(context, exception);
+                if (Record.Origin == PackageOrigin.OfficialDistribution && !_lifetime.IsCancellationRequested)
+                    _ = Owner.RestoreFallbackAsync(Record);
             }
         }
 
@@ -817,8 +895,9 @@ public sealed partial class DeveloperPackageManager
             try
             {
                 await ((IExternalFileOpenApplication)GetOrLoad())
-                    .OpenFileAsync(CreateContext(), path);
+                    .OpenFileAsync(CreateContext(path), path, Lifetime);
             }
+            catch (OperationCanceledException) when (Lifetime.IsCancellationRequested) { }
             catch (Exception exception)
             {
                 ShowFailure(context, exception);
@@ -854,7 +933,8 @@ public sealed record DeveloperPackageManifest(
     string? ShellApiVersion = null,
     IReadOnlyList<string>? Capabilities = null,
     string? PackageId = null,
-    string? Sha256 = null);
+    string? Sha256 = null,
+    bool SupportsTextFiles = false);
 
 internal sealed record DeveloperAppRecord(
     string Id,
@@ -875,7 +955,9 @@ internal sealed record DeveloperAppRecord(
     bool SupportsExtensionlessFiles = false,
     ApplicationInstancePolicy InstancePolicy = ApplicationInstancePolicy.MultiWindow,
     IReadOnlyList<string>? SupportedUriSchemes = null,
-    int PermissionModelVersion = 0);
+    int PermissionModelVersion = 0,
+    PackageOrigin Origin = PackageOrigin.LocalPackage,
+    bool SupportsTextFiles = false);
 
 internal sealed record ExternalCurrentVersion(int SchemaVersion, string AppId, string VersionId,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]

@@ -187,8 +187,8 @@ internal static class RoappCatalogChecks
             await input.CopyToAsync(destination, ct);
         }
     }
-    private sealed class Diagnostics : IAppActivationDiagnostics { public void Record(string message) { } }
-    private sealed class Permissions : IAppPermissionManager
+    internal sealed class Diagnostics : IAppActivationDiagnostics { public void Record(string message) { } }
+    internal sealed class Permissions : IAppPermissionManager
     {
         public int Clears;
         public AppPermissionStatus GetStatus(AppId id, string permission) => default;

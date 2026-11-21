@@ -4,7 +4,9 @@ using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Models;
-using RelaxKonOS.Client.Apps.Notepad;
+using RelaxKonOS.App.Notepad;
+using RelaxKonOS.Client.Services;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Protocol.Files;
 using IOPath = System.IO.Path;
 
@@ -26,7 +28,11 @@ internal static class EditorDraftStateChecks
     private static void Notepad()
     {
         var files = new RecordingExplorerClient();
-        var notepad = new NotepadViewModel(files, "UTF-8");
+        using var notepad = new NotepadViewModel(new NotepadText(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>()),
+            files.ReadFileAsync, async (path, bytes, ct) => { await files.WriteFileAsync(path, bytes, ct); })
+        {
+            RequestDiscardChangesAsync = () => Task.FromResult(true),
+        };
         var view = new NotepadView { DataContext = notepad };
         var host = new Window { Width = 900, Height = 600, Content = view };
         host.Show();

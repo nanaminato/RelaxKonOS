@@ -1,0 +1,45 @@
+using RelaxKonOS.Client.Services.AppPackages;
+
+namespace RelaxKonOS.Client.Services.Developer;
+
+/// <summary>The desktop distribution supplies this source alongside the client binaries.</summary>
+internal sealed class OfficialDesktopPackages(string directory)
+{
+    public const string OriginFileName = "package-origin.json";
+
+    public static bool IsReserved(string? appId) => appId?.StartsWith("relaxkonos.", StringComparison.Ordinal) == true;
+
+    public static bool IsExternalOfficialId(string appId) => appId is "relaxkonos.imageviewer" or "relaxkonos.notepad";
+
+    public static bool IsAllowed(string appId, PackageOrigin origin) => IsExternalOfficialId(appId)
+        && (origin == PackageOrigin.OfficialDistribution || (origin == PackageOrigin.DirectDeploy && DeveloperProfile.IsDebug));
+
+    public async Task<string> VerifyAsync(string path, string appId, Stream package, CancellationToken cancellationToken)
+    {
+        var expectedPath = Path.Combine(directory, appId + ".roapp");
+        var pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!IsExternalOfficialId(appId) || !Path.GetFullPath(path).Equals(expectedPath, pathComparison))
+            throw new InvalidOperationException("The relaxkonos.* application id range requires the preconfigured OfficialApps source.");
+
+        var checksumPath = expectedPath + ".sha256";
+        if (!File.Exists(checksumPath))
+            throw new InvalidOperationException("The official package checksum is missing.");
+        if (new FileInfo(checksumPath).Length > 128
+            || new[] { directory, expectedPath, checksumPath }.Any(candidate =>
+                (File.GetAttributes(candidate) & FileAttributes.ReparsePoint) != 0))
+            throw new InvalidOperationException("The official source contains an invalid package or checksum path.");
+        var sha256 = (await File.ReadAllTextAsync(checksumPath, cancellationToken)).Trim().ToLowerInvariant();
+        if (sha256.Length != 64 || !sha256.All(Uri.IsHexDigit))
+            throw new InvalidOperationException("The official package checksum is invalid.");
+        package.Position = 0;
+        await AppPackageInstallerService.VerifyFrozenAsync(package, sha256, cancellationToken);
+        return sha256;
+    }
+}
+
+internal enum PackageOrigin
+{
+    LocalPackage,
+    OfficialDistribution,
+    DirectDeploy,
+}

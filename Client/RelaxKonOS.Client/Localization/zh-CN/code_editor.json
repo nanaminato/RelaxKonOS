@@ -38,6 +38,7 @@
         "code_editor.save_remote_file": "保存远程文件",
         "code_editor.remote_path_prompt": "输入完整的远程路径：",
         "code_editor.source_file_filter": "源代码文件",
+        "code_editor.preview.dimensions": "{0} × {1}px",
         "code_editor.preview.bytes": "{0:N0} 字节",
         "code_editor.preview.opened": "正在预览 {0}",
         "code_editor.preview.edit_source": "编辑 SVG 源码",

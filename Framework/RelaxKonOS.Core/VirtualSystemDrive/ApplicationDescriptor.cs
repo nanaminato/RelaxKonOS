@@ -96,8 +96,7 @@ public static partial class ApplicationDescriptorValidator
 
     private static DescriptorValidationResult ValidatePackage(ApplicationDescriptor descriptor)
     {
-        if (descriptor.Id.StartsWith("relaxkonos.", StringComparison.Ordinal)
-            || !string.IsNullOrWhiteSpace(descriptor.Activation.BuiltInKey)
+        if (!string.IsNullOrWhiteSpace(descriptor.Activation.BuiltInKey)
             || !IsSafeRelativePath(descriptor.Activation.EntryAssembly)
             || !descriptor.Activation.EntryAssembly!.StartsWith("lib/", StringComparison.Ordinal)
             || !descriptor.Activation.EntryAssembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)

@@ -4,8 +4,6 @@ using Avalonia.Controls.ApplicationLifetimes;
 using RelaxKonOS.Client.Apps;
 using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Client.Apps.Docker;
-using RelaxKonOS.Client.Apps.ImageViewer;
-using RelaxKonOS.Client.Apps.Notepad;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Apps.Terminal;
 using RelaxKonOS.Client.Apps.Welcome;
@@ -351,9 +349,7 @@ public static class Bootstrapper
 
         // Built-in applications.
         services.AddSingleton<WelcomeApp>();
-        services.AddSingleton<NotepadApp>();
         services.AddSingleton<CodeEditorApp>();
-        services.AddSingleton<ImageViewerApp>();
         services.AddSingleton<SettingsApp>();
         services.AddSingleton<TerminalApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>();

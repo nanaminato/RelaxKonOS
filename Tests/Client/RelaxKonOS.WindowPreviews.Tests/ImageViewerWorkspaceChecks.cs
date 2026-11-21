@@ -2,17 +2,12 @@ using System.Reflection;
 using System.Text;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Media.Imaging;
 using Avalonia.Threading;
-using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.App.ImageViewer;
 using RelaxKonOS.AppSDK;
-using RelaxKonOS.Client.Apps.Explorer;
-using RelaxKonOS.Client.Apps.ImageViewer;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Examples.ImageViewerPilot;
-using RelaxKonOS.Runtime;
 using RelaxKonOS.WindowManager;
 using Rect = RelaxKonOS.Core.Primitives.Rect;
 
@@ -25,8 +20,6 @@ internal static class ImageViewerWorkspaceChecks
     public static void Run(ShellSettings settings, LocalizationService localization)
     {
         var originalLanguage = settings.Language;
-        var explorer = DispatchProxy.Create<IExplorerClient, ImageViewerExplorerFixture>();
-        using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(explorer).BuildServiceProvider();
         var manager = new RelaxKonOS.WindowManager.WindowManager();
         var canvas = new Canvas();
         var host = new Window { Width = 1100, Height = 800, Content = canvas };
@@ -36,53 +29,51 @@ internal static class ImageViewerWorkspaceChecks
             host.Show();
             manager.Attach(canvas);
             manager.SetHostBounds(new Rect(0, 0, 1100, 800));
-            var apps = new ApplicationManager(manager, services);
-            var builtIn = new ImageViewerApp();
-            apps.RegisterBuiltIn(builtIn);
-            var id = new AppId("relaxkonos.imageviewer");
-            Check(apps.IsBuiltIn(id) && apps.SupportsFile(id, "/test/photo.JFIF"), "The built-in registry lost the official identity or file associations.");
-            Check(apps.OpenFile(id, "/test/logo.SVG"), "The built-in file-open route was rejected.");
-            var builtInWindow = manager.Windows.Single();
-            var builtInView = CheckViewer(builtInWindow);
-            Check(((ImageViewerExplorerFixture)(object)explorer).Path == "/test/logo.SVG", "The built-in entry did not use the Explorer file source.");
-            var model = (ImageViewerViewModel)builtInView.DataContext!;
+            var context = DispatchProxy.Create<IExternalAppContext, ImageViewerPackageFixture>();
+            var fixture = (ImageViewerPackageFixture)(object)context;
+            fixture.ReadPermission = AppPermissionStatus.Undecided;
+            var official = new ImageViewerApp();
+            fixture.Initialize(manager, localization, official.Manifest.Id);
+            Check(official.Manifest.SupportsFile("/test/photo.JFIF"), "Image Viewer lost its file associations.");
+            official.OpenFileAsync(context, "/test/logo.SVG").GetAwaiter().GetResult();
+            var officialWindow = manager.Windows.Single();
+            var officialView = CheckViewer(officialWindow);
+            Check(fixture.PermissionRequests == 1 && fixture.ReadPath == "/test/logo.SVG",
+                "The official entry did not request permission before reading via the SDK.");
+            var model = (ImageViewerViewModel)officialView.DataContext!;
 
             host.UpdateLayout();
             Dispatcher.UIThread.RunJobs();
-            using var icon = AppIconImageLoader.Load("avares://RelaxKonOS.Client/Assets/AppIcons/imageviewer.png") as Bitmap;
-            Check(icon is not null, "The launcher could not find the shipped Image Viewer icon.");
-            KeyPress(builtInWindow, Key.D0, KeyModifiers.Control);
+            KeyPress(officialWindow, Key.D0, KeyModifiers.Control);
             Check(model.ZoomPercent == 100, "Ctrl+0 did not reset to actual size.");
-            KeyPress(builtInWindow, Key.OemPlus, KeyModifiers.Control);
+            KeyPress(officialWindow, Key.OemPlus, KeyModifiers.Control);
             Check(model.ZoomPercent == 125, "Ctrl++ did not zoom in.");
-            KeyPress(builtInWindow, Key.OemMinus, KeyModifiers.Control);
+            KeyPress(officialWindow, Key.OemMinus, KeyModifiers.Control);
             Check(model.ZoomPercent == 100, "Ctrl+- did not zoom out.");
-            KeyPress(builtInWindow, Key.F, KeyModifiers.None);
+            KeyPress(officialWindow, Key.F, KeyModifiers.None);
             Check(model.ZoomPercent > 100 && model.DisplayWidth > 120, "F did not fit the image to the viewer.");
             settings.Language = "ja-JP";
             Dispatcher.UIThread.RunJobs();
-            Check(builtInWindow.Title == "画像ビューアー" && model.ZoomInText == "拡大", "The open window did not follow the workspace language.");
-            manager.Close(builtInWindow);
-            Check(!model.HasImage, "Closing the built-in window retained the image.");
+            Check(officialWindow.Title == "画像ビューアー" && model.ZoomInText == "拡大", "The open window did not follow the workspace language.");
+            manager.Close(officialWindow);
+            Check(!model.HasImage, "Closing the official window retained the image.");
 
-            using var sshModel = new ImageViewerViewModel(localization, null, isSshSession: true);
-            Check(sshModel.SessionText == "SSH デスクトップ", "The SSH session label was lost.");
-            var context = DispatchProxy.Create<IExternalAppContext, ImageViewerPackageFixture>();
-            var fixture = (ImageViewerPackageFixture)(object)context;
+            fixture.IsSshSession = true;
             var pilot = new ImageViewerPilotApp();
             fixture.Initialize(manager, localization, pilot.Manifest.Id);
-            Check(pilot.Manifest.Id != id && pilot.Manifest.FileExtensions.SequenceEqual(builtIn.Manifest.FileExtensions),
+            Check(pilot.Manifest.Id != official.Manifest.Id && pilot.Manifest.FileExtensions.SequenceEqual(official.Manifest.FileExtensions),
                 "The pilot should retain its external id and advertise the same image formats.");
             pilot.OpenFileAsync(context, "/test/pilot.svg").GetAwaiter().GetResult();
             var pilotWindow = manager.Windows.Single();
             var pilotView = CheckViewer(pilotWindow);
-            Check(pilotView.GetType() == builtInView.GetType() && fixture.ReadPath == "/test/pilot.svg"
+            Check(pilotView.GetType() == officialView.GetType() && fixture.ReadPath == "/test/pilot.svg"
+                && ((ImageViewerViewModel)pilotView.DataContext!).SessionText.StartsWith("SSH ", StringComparison.Ordinal)
                 && pilotWindow.Title == "pilot.svg · Image Viewer Pilot",
                 "The pilot did not render the shared viewer using SDK server files.");
             manager.Close(pilotWindow);
             Check(pilotView.DataContext is ImageViewerViewModel { HasImage: false }, "Closing the package window retained the image.");
 
-            fixture.DenyReads = true;
+            fixture.ReadPermission = AppPermissionStatus.Denied;
             settings.Language = "zh-CN";
             Dispatcher.UIThread.RunJobs();
             pilot.OpenFileAsync(context, "/test/denied.svg").GetAwaiter().GetResult();
@@ -117,25 +108,15 @@ internal static class ImageViewerWorkspaceChecks
     }
 }
 
-public class ImageViewerExplorerFixture : DispatchProxy
-{
-    public string? Path { get; private set; }
-
-    protected override object? Invoke(MethodInfo? method, object?[]? args)
-    {
-        if (method?.Name != nameof(IExplorerClient.ReadFileAsync)) throw new NotSupportedException(method?.Name);
-        Path = (string)args![0]!;
-        return Task.FromResult<byte[]?>(ImageViewerWorkspaceChecks.Svg);
-    }
-}
-
-public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalAppWindowService
+public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalAppWindowService, IAppPermissionScope
 {
     private IWindowManager _manager = null!;
     private ISystemLanguage _language = null!;
     private AppId _id;
     public string? ReadPath { get; private set; }
-    public bool DenyReads { get; set; }
+    public AppPermissionStatus ReadPermission { get; set; } = AppPermissionStatus.Granted;
+    public int PermissionRequests { get; private set; }
+    public bool IsSshSession { get; set; }
 
     internal void Initialize(IWindowManager manager, ISystemLanguage language, AppId id)
     {
@@ -146,7 +127,7 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
 
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
-        "get_ServerFiles" or "get_Windows" => this,
+        "get_ServerFiles" or "get_Windows" or "get_Permissions" => this,
         "get_SystemLanguage" => _language,
         _ => throw new NotSupportedException(method?.Name),
     };
@@ -154,10 +135,27 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
     public Task<ServerFileReadResult> OpenReadAsync(string path, CancellationToken cancellationToken = default)
     {
         ReadPath = path;
-        return Task.FromResult(DenyReads
+        return Task.FromResult(ReadPermission != AppPermissionStatus.Granted
             ? new ServerFileReadResult(AppCapabilityResult.PermissionDenied, null, null)
             : new ServerFileReadResult(AppCapabilityResult.Succeeded, new MemoryStream(ImageViewerWorkspaceChecks.Svg), "pilot.svg"));
     }
+
+    public Task<AppCapabilityResult> WriteAsync(string path, byte[] content, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+    public Task<ServerFileContentResult> ReadAsync(string path, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+    public Task<ServerFilePickResult> PickFileAsync(IExternalAppWindowHandle owner, ServerFilePickerOptions options)
+        => throw new NotSupportedException();
+
+    public AppPermissionStatus GetStatus(string permissionId) => ReadPermission;
+    public bool IsGranted(string permissionId) => ReadPermission == AppPermissionStatus.Granted;
+    public Task<AppPermissionStatus> RequestAsync(string permissionId, CancellationToken cancellationToken = default)
+    {
+        PermissionRequests++;
+        ReadPermission = AppPermissionStatus.Granted;
+        return Task.FromResult(ReadPermission);
+    }
+    public Task OpenSettingsAsync() => Task.CompletedTask;
 
     public IExternalAppWindowHandle ShowWindow(string title, Control content, Rect? bounds = null, string? iconGlyph = null,
         bool canResize = true, bool canMinimize = true, bool canMaximize = true) =>
@@ -183,5 +181,8 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
         public bool IsFullScreen => Window.IsFullScreen;
         public void EnterFullScreen() => throw new NotSupportedException();
         public void ExitFullScreen() => throw new NotSupportedException();
+        public Task<TResult?> ShowDialogAsync<TResult>(string title, Func<ModalDialog<TResult>, Control> content, RelaxKonOS.Core.Primitives.Size preferredSize)
+            => throw new NotSupportedException();
+        public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => throw new NotSupportedException();
     }
 }

@@ -8,7 +8,7 @@
     <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
     <PackageReference Include="Avalonia" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
-    <PackageReference Include="Svg.Controls.Avalonia" />
+    <ProjectReference Include="../../Framework/RelaxKonOS.UI/RelaxKonOS.UI.csproj" />
     <EmbeddedResource Include="Localization/*.json" LogicalName="ImageViewer.Localization.%(Filename).json" />
     <EmbeddedResource Include="Assets/imageviewer.png" LogicalName="ImageViewer.Icon.png" />
   </ItemGroup>

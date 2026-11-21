@@ -1,0 +1,17 @@
+{
+  "id": "relaxkonos.imageviewer",
+  "displayName": "Image Viewer",
+  "version": "1.0.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.ImageViewer.dll",
+  "entryType": "RelaxKonOS.App.ImageViewer.ImageViewerApp",
+  "iconGlyph": "🖼️",
+  "iconPath": "Assets/imageviewer.png",
+  "description": "Lightweight viewer for remote image files",
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "图像查看器", "description": "轻量级远程图片查看器" },
+    "ja-JP": { "displayName": "画像ビューアー", "description": "軽量なリモート画像ビューアー" }
+  },
+  "requestedPermissions": ["server.files.read"],
+  "supportedFileExtensions": [".png", ".apng", ".jpg", ".jpeg", ".jpe", ".jfif", ".gif", ".bmp", ".dib", ".webp", ".ico", ".svg"]
+}

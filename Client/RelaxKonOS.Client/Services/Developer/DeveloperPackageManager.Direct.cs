@@ -23,7 +23,7 @@ public sealed partial class DeveloperPackageManager
         try
         {
             DeveloperAppRecord record;
-            try { record = await StageAsync(ExtractDirectAsync, cancellationToken); }
+            try { record = await StageAsync(ExtractDirectAsync, PackageOrigin.DirectDeploy, cancellationToken); }
             catch (PackageStorageUnavailableException exception)
             {
                 return new(exception.ProblemCode, Message: exception.Message);
@@ -58,12 +58,7 @@ public sealed partial class DeveloperPackageManager
                     || ++count > MaxDirectFiles || entry.Length > MaxDirectBytes - total)
                     throw new InvalidDataException("Direct Deploy accepts up to 20,000 regular files and 1 GiB of file data.");
                 total += entry.Length;
-                if (!ApplicationDescriptorValidator.IsSafeRelativePath(entry.Name)
-                    || entry.Name.Split('/').Any(segment => segment.EndsWith('.') || segment.EndsWith(' ')
-                        || segment.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || IsWindowsDeviceName(segment))
-                    || entry.Name.Equals("app.relaxkonos.json", StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException("The upload contains an invalid package path.");
-                var target = _drive.ResolveUnder(staging, entry.Name);
+                var target = ResolvePayloadFile(staging, entry.Name);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 if (File.Exists(target)) throw new InvalidDataException("The upload contains a duplicate package path.");
                 await using var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
@@ -84,6 +79,17 @@ public sealed partial class DeveloperPackageManager
                 throw new InvalidOperationException("Use the .roapp installer for desktop shell packages.");
             return manifest;
         }
+    }
+
+    private string ResolvePayloadFile(string staging, string path)
+    {
+        if (!ApplicationDescriptorValidator.IsSafeRelativePath(path)
+            || path.Split('/').Any(segment => segment.EndsWith('.') || segment.EndsWith(' ')
+                || segment.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || IsWindowsDeviceName(segment))
+            || path.Equals("app.relaxkonos.json", StringComparison.OrdinalIgnoreCase)
+            || path.Equals(OfficialDesktopPackages.OriginFileName, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The upload contains an invalid package path.");
+        return _drive.ResolveUnder(staging, path);
     }
 
     private static bool IsWindowsDeviceName(string segment)
@@ -145,11 +151,19 @@ public sealed partial class DeveloperPackageManager
         Action? restorePermissions = null;
         var swapped = false;
         var committed = false;
-        var stageCode = "assembly_load_failed";
+        var stageCode = "incompatible_client";
         try
         {
+            if (record.ClientPlatforms is { Count: > 0 }
+                && !ToApplicationManifest(record).SupportedClientPlatforms.Contains(ApplicationCompatibilityService.DetectClientPlatform(), StringComparer.Ordinal))
+                throw new InvalidOperationException("This application does not support the current client platform.");
+            stageCode = "assembly_load_failed";
             await Dispatcher.UIThread.InvokeAsync(() => candidate.ValidateLoad());
             result = result with { AssemblyLoad = "passed" };
+            cancellationToken.ThrowIfCancellationRequested();
+            stageCode = "close_blocked";
+            if (previous is not null && !await CanRetireWindowsAsync(id).WaitAsync(cancellationToken))
+                throw new InvalidOperationException("Application windows are busy or have unsaved changes.");
             cancellationToken.ThrowIfCancellationRequested();
             stageCode = "registration_failed";
             await Dispatcher.UIThread.InvokeAsync(() =>
@@ -284,20 +298,23 @@ public sealed partial class DeveloperPackageManager
         var root = VersionPath(appId, versionId);
         var descriptor = await _drive.ReadJsonAsync<ApplicationDescriptor>(_drive.ResolveUnder(root, "app.relaxkonos.json"), cancellationToken);
         var manifest = await _drive.ReadJsonAsync<DeveloperPackageManifest>(_drive.ResolveUnder(root, "manifest.json"), cancellationToken);
-        ValidateManifest(manifest);
+        var origin = OfficialDesktopPackages.IsReserved(appId)
+            ? await _drive.ReadJsonAsync<PackageOrigin>(_drive.ResolveUnder(root, OfficialDesktopPackages.OriginFileName), cancellationToken)
+            : PackageOrigin.LocalPackage;
+        ValidateManifest(manifest, origin);
         if (!ApplicationDescriptorValidator.Validate(descriptor).IsValid || descriptor.Kind != ApplicationDescriptorKind.Package
             || manifest.Id != appId || descriptor.Id != appId || descriptor.Activation.EntryAssembly != manifest.EntryAssembly.Trim()
             || descriptor.Activation.EntryType != manifest.EntryType.Trim())
             throw new VirtualSystemDriveException(VirtualSystemDriveProblemCode.PackageLayoutInvalid);
-        return CreateRecord(root, manifest);
+        return CreateRecord(root, manifest, origin);
     }
 
-    private static DeveloperAppRecord CreateRecord(string root, DeveloperPackageManifest manifest) => new(
+    private static DeveloperAppRecord CreateRecord(string root, DeveloperPackageManifest manifest, PackageOrigin origin) => new(
         manifest.Id, manifest.DisplayName.Trim(), manifest.Version.Trim(), root, manifest.EntryAssembly.Trim(), manifest.EntryType.Trim(),
         manifest.IconGlyph, ResolveIconPath(root, manifest.IconPath), manifest.Description, manifest.RequestedPermissions ?? [],
         manifest.SupportedFileExtensions ?? [], manifest.LocalizedMetadata, manifest.ClientPlatforms ?? [], manifest.ServerRequirements,
         manifest.SupportedFileNames ?? [], manifest.SupportsExtensionlessFiles, ParseInstancePolicy(manifest.InstancePolicy),
-        manifest.SupportedUriSchemes ?? [], manifest.PermissionModelVersion);
+        manifest.SupportedUriSchemes ?? [], manifest.PermissionModelVersion, origin, manifest.SupportsTextFiles);
 
     private static DeveloperAppInfo ToInfo(DeveloperAppRecord record) => new(record.Id, record.DisplayName, record.Version, record.Path);
     private static string VersionId(DeveloperAppRecord record) => Path.GetFileName(record.Path);

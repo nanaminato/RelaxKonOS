@@ -1,7 +1,5 @@
 using RelaxKonOS.Client.Apps;
 using RelaxKonOS.Client.Apps.CodeEditor;
-using RelaxKonOS.Client.Apps.ImageViewer;
-using RelaxKonOS.Client.Apps.Notepad;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Apps.Terminal;
 using RelaxKonOS.Client.Apps.Welcome;
@@ -22,9 +20,7 @@ public sealed class BuiltInApplicationRegistry : IBuiltInApplicationFactoryRegis
         {
             Define<RelaxKonOS.Client.Apps.ComponentCenter.ComponentCenterApp>("component-center", "relaxkonos.component-center", services),
             Define<WelcomeApp>("welcome", "relaxkonos.welcome", services),
-            Define<NotepadApp>("notepad", "relaxkonos.notepad", services),
             Define<CodeEditorApp>("codeeditor", "relaxkonos.codeeditor", services),
-            Define<ImageViewerApp>("imageviewer", "relaxkonos.imageviewer", services),
             Define<SettingsApp>("settings", "relaxkonos.settings", services),
             Define<TerminalApp>("terminal", "relaxkonos.terminal", services),
             Define<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>("server-center", "relaxkonos.server-center", services),

@@ -473,7 +473,7 @@ User → One Persistent Workspace → Multiple Device Session
 > **Preferences JSON 已扩字段**（`OwnsOne + ToJson`，新增字段无需改 schema）：
 > - **桌面体验**：`DesktopExperiencePreferencesDto`（`appearance`：mode/paletteId/accentOverride/customPalettes[]，每调色板包含 Light/Dark 双色变体，需通过 ThemePaletteValidator 对比度校验；`systemStyleId`：系统风格的用户意图，可用性由设备本地的 SystemStyleRegistry 解析；`shell`：桌面布局选择）。三者独立存储，可自由组合，详见 [`RelaxKonOS.SystemStyle.md`](../desktop/RelaxKonOS.SystemStyle.md)。
 > - **桌面显示**：`DesktopDisplaySettingsDto`（内置应用显隐、可见应用白名单、服务器桌面文件/快捷方式、首次配置完成位）。
-> - **文本编码**：`notepadDefaultEncoding` / `codeEditorDefaultEncoding`，默认 `UTF-8`，由 Notepad/CodeEditor 打开对话框使用（见 `TextEditor/` 共用编码对话框）。
+> - **文本编码**：`notepadDefaultEncoding` / `codeEditorDefaultEncoding` 默认均为 `UTF-8`。记事本独立包通过宿主管理的编码设置接口使用原工作区字段，并复用 Code Editor 的编码对话框。见[记事本](../applications/RelaxKonOS.Notepad.md)。
 > - **窗口布局**：`WorkspaceWindowLayoutDto` 作为独立 Workspace 状态（GET/PUT `/workspaces/{id}/window-layout`），保存每个窗口 key 的 (width,height)，登录后恢复尺寸。
 >
 > 终端外观配置 TerminalSettings 随 Workspace 以 JSON 列持久，跨重启保留。终端 PTY 会话由 `TerminalSessionManager` 持有（与 Hub 连接解耦），断开仅 detach 保留、再次登录 `Start(Attach)` 回放 1MB 环形缓冲恢复历史输出——契合 §7 Runtime State "Client 断开 → Workspace Running → Runtime Continue → 重新连接 Restore" 模型。详见 [`RelaxKonOS.Storage.md`](../platform/RelaxKonOS.Storage.md)、[`RelaxKonOS.Terminal.md`](../applications/RelaxKonOS.Terminal.md) 与 [`RelaxKonOS.Settings.md`](../desktop/RelaxKonOS.Settings.md)。

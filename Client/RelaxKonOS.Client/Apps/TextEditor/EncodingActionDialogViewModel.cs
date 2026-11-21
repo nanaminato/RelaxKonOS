@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.AppSDK;
 
 namespace RelaxKonOS.Client.Apps.TextEditor;
 
@@ -18,10 +19,4 @@ public sealed partial class EncodingActionDialogViewModel : ObservableObject
 
     [RelayCommand]
     private void Cancel() => _complete(null);
-}
-
-public enum EncodingDialogAction
-{
-    Reopen,
-    Save,
 }

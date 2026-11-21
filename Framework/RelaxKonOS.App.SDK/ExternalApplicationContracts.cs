@@ -40,6 +40,8 @@ public interface IExternalAppContext
     IDesktopAppearance DesktopAppearance { get; }
     IServerMonitor ServerMonitor { get; }
     IServerFiles ServerFiles { get; }
+    /// <summary>Workspace-backed encoding preferences for a host-configured text editor.</summary>
+    IExternalTextEditorPreferences? TextEditorPreferences { get; }
     IExternalFileApiAccess FileApi { get; }
     IExternalMediaService Media { get; }
     /// <summary>Versioned JSON configuration private to this application and persisted by the connected server.</summary>
@@ -129,7 +131,19 @@ public interface IExternalAppWindowHandle
     bool IsFullScreen { get; }
     void EnterFullScreen();
     void ExitFullScreen();
+    Task<TResult?> ShowDialogAsync<TResult>(string title, Func<ModalDialog<TResult>, Control> content, Size preferredSize);
+    Task<bool> ConfirmAsync(string title, string message, string confirmLabel);
 }
+
+public interface IExternalTextEditorPreferences
+{
+    string DefaultEncoding { get; }
+    Task SetDefaultEncodingAsync(string encoding);
+    Task<EncodingDialogAction?> PickEncodingActionAsync(IExternalAppWindowHandle owner);
+    Task<string?> PickEncodingAsync(IExternalAppWindowHandle owner, string currentEncoding);
+}
+
+public enum EncodingDialogAction { Reopen, Save }
 
 /// <summary>Result returned by a host-mediated capability call.</summary>
 public enum AppCapabilityResult

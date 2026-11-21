@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:notepad="clr-namespace:RelaxKonOS.App.Notepad"
+             x:Class="RelaxKonOS.App.Notepad.NotepadSettingsView"
+             x:DataType="notepad:NotepadViewModel"
+             Width="420" Classes="builtin-app">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto" Margin="20" RowSpacing="14">
+        <TextBlock Text="{ReflectionBinding Labels[notepad.settings.title]}" FontSize="18" FontWeight="SemiBold" />
+        <Grid Grid.Row="1" ColumnDefinitions="150,*" ColumnSpacing="12">
+            <TextBlock Text="{ReflectionBinding Labels[common.font_size]}" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding FontSizes}" SelectedItem="{Binding FontSize, Mode=TwoWay}" />
+        </Grid>
+        <Grid Grid.Row="2" ColumnDefinitions="150,*" ColumnSpacing="12">
+            <TextBlock Text="{ReflectionBinding Labels[notepad.settings.default_encoding]}" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableEncodings}" SelectedItem="{Binding DefaultEncodingName, Mode=TwoWay}" />
+        </Grid>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Classes="primary" Content="{ReflectionBinding Labels[common.ok]}" Command="{Binding CloseSettingsCommand}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

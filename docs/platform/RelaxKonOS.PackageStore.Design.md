@@ -1,5 +1,7 @@
 # RelaxKonOS 包商店来源设计
 
+> 2026-11-21：桌面官方包可使用客户端发行版预配置的 `OfficialApps` 来源，经 SHA-256 和既有 AppInstaller 审查安装。此路径供 Image Viewer 等独立应用迁移使用，应用签名为可选。线上桌面商店、官方下载与应用捆绑包仍属于后续阶段，服务端模块的授权与签名规则继续适用。见[官方图片查看器](../applications/RelaxKonOS.ImageViewer.md)。
+
 > 2026-11-02：[组件目录](RelaxKonOS.ComponentCatalog.Design.md) 已实现可选签名 HTTPS 来源与桌面用户显式信任确认，复用模块包 P-256 验证原语和本文撤销/反回退边界；`.roapp` 仍经原安装审查，不授予 BuiltIn、权限或 Helper 授权。组件来源日志与服务端模块来源配置分别属于各自用户/部署，未实现统一配置迁移、完整商店服务或跨设备同步。
 
 > 状态：设计，2026-10-31。服务端模块商店的**已接纳目录搜索、受控下载**、**管理员离线远程目录刷新**、**在线目录刷新**和**可选的周期目录刷新**已实现为 v1 切片；桌面应用商店、评分/审核和完整商店服务未实现。本文统一服务端模块商店与桌面应用商店的**来源、目录、搜索、下载和信任契约**；安装事务分别由模块安装器和桌面应用安装器拥有。
@@ -14,7 +16,7 @@
 - 服务端模块和桌面应用共用来源/目录/下载契约，但分别由不同权威安装：
   - `server-module` 交给[服务端模块分发设计](../architecture/RelaxKonOS.ServerModuleDistribution.Design.md)的安装器；
   - `desktop-app` 交给桌面应用安装器（现有 `AppPackageInstallerService`/`DeveloperPackageManager`）。
-- 官方来源使用固定公钥和签名目录；社区来源由用户显式添加并固定公钥指纹；未签名本地包按摘要信任。
+- 服务端模块官方来源使用固定公钥和签名目录；现有社区 HTTPS 组件来源由用户显式添加并固定公钥指纹。桌面发行版预配置的官方包使用同发行目录提供的 SHA-256。
 - 搜索和详情只读目录，不执行包代码；下载先进入有界暂存，校验通过后才交给安装器。
 - 商店不能把包提升为官方、授予权限、授予提权或绕过模块/应用安装授权。
 
@@ -31,7 +33,7 @@
 | --- | --- |
 | 服务端模块来源 | 部署配置中的 `ModulePackages:Sources:<sourceId>` 信任策略 + 已接纳的签名目录；支持管理员离线 `refresh-catalog`、在线 `module-store/refresh`、可选周期刷新、已接纳目录搜索/下载，无评分或审核 |
 | 服务端模块安装 | 已实现；见[服务端模块分发设计](../architecture/RelaxKonOS.ServerModuleDistribution.Design.md)。商店搜索/下载只负责生成 staging upload，安装仍走计划/apply |
-| 桌面 `.roapp` 安装 | 本地文件、服务器文件、开发者桥接及组件中心签名 HTTPS 来源；来源审查/刷新与安装分别确认，无完整商店搜索/评分服务 |
+| 桌面 `.roapp` 安装 | 本地文件、服务器文件、开发者桥接、组件中心签名 HTTPS 来源和预配置 `OfficialApps` 发行来源；来源审查/刷新与安装分别确认，无完整商店搜索/评分服务 |
 | 桌面应用目录 | `DeveloperPackageManager` 维护本地 catalog；`AppPackageInstallerService` 负责用户选择包的暂存/安装 |
 | 权限 | `.roapp` 使用 `requestedPermissions` + 本地权限决策；模块使用 `privileges` + Broker（v2） |
 | 跨端 | Android 不执行 `.roapp`；详细规则由 Android 文档拥有 |

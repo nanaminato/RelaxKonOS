@@ -38,6 +38,7 @@
         "code_editor.save_remote_file": "リモートファイルを保存",
         "code_editor.remote_path_prompt": "完全なリモートパスを入力してください：",
         "code_editor.source_file_filter": "ソースファイル",
+        "code_editor.preview.dimensions": "{0} × {1}px",
         "code_editor.preview.bytes": "{0:N0} バイト",
         "code_editor.preview.opened": "{0} をプレビュー中",
         "code_editor.preview.edit_source": "SVG ソースを編集",

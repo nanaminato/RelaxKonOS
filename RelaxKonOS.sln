@@ -70,6 +70,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Applications", "Application
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.ImageViewer", "Applications\RelaxKonOS.App.ImageViewer\RelaxKonOS.App.ImageViewer.csproj", "{F13C15C8-8941-41BF-BECE-82F53E385468}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.Notepad", "Applications\RelaxKonOS.App.Notepad\RelaxKonOS.App.Notepad.csproj", "{4A61B362-8F24-470C-9556-61B9D33B4F85}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -464,6 +466,18 @@ Global
 		{F13C15C8-8941-41BF-BECE-82F53E385468}.Release|x64.Build.0 = Release|Any CPU
 		{F13C15C8-8941-41BF-BECE-82F53E385468}.Release|x86.ActiveCfg = Release|Any CPU
 		{F13C15C8-8941-41BF-BECE-82F53E385468}.Release|x86.Build.0 = Release|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Debug|x64.Build.0 = Debug|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Debug|x86.Build.0 = Debug|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Release|x64.ActiveCfg = Release|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Release|x64.Build.0 = Release|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Release|x86.ActiveCfg = Release|Any CPU
+		{4A61B362-8F24-470C-9556-61B9D33B4F85}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -486,5 +500,6 @@ Global
 		{C7F1AEE8-6B38-465C-AFBB-EE9BF0AB05CF} = {A809C279-753C-14CF-05EC-B199CC73BAF0}
 		{C5A2C42E-950F-4DC8-BF5C-2E3F4107A84E} = {A809C279-753C-14CF-05EC-B199CC73BAF0}
 		{F13C15C8-8941-41BF-BECE-82F53E385468} = {A10A91C2-6485-6656-963B-F6FCBC812542}
+		{4A61B362-8F24-470C-9556-61B9D33B4F85} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 	EndGlobalSection
 EndGlobal

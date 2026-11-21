@@ -1,10 +1,12 @@
+using RelaxKonOS.UI.TextEditing;
 using System.Collections.ObjectModel;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.App.ImageViewer;
+using RelaxKonOS.UI.Imaging;
 using Avalonia.Media;
 using RelaxKonOS.Client.Controls.Diff;
 using RelaxKonOS.Client.Services.Auth;
@@ -92,7 +94,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     public double PreviewHeight => ImageAtActualSize ? PreviewImage?.Size.Height ?? double.NaN : double.NaN;
     public string FileSizeText => LocalizedText.Format("code_editor.preview.bytes", ActiveDocument?.ByteLength ?? 0);
     public string ImageDimensionsText => PreviewImage is { } image
-        ? LocalizedText.Format("image_viewer.dimensions", (int)Math.Ceiling(image.Size.Width), (int)Math.Ceiling(image.Size.Height)) : string.Empty;
+        ? LocalizedText.Format("code_editor.preview.dimensions", (int)Math.Ceiling(image.Size.Width), (int)Math.Ceiling(image.Size.Height)) : string.Empty;
 
     /// <summary>
     /// True while any open tab holds unsaved edits. The window close guard uses this rather than
@@ -214,7 +216,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
         {
             try
             {
-                var image = ImageViewerDecoder.Load(document.Path!, TextFileEncodings.Encode(document.Text, document.EncodingName));
+                var image = ImageDecoder.Load(document.Path!, TextFileEncodings.Encode(document.Text, document.EncodingName));
                 (document.ImageSource as IDisposable)?.Dispose();
                 document.ImageSource = image;
             }
@@ -438,7 +440,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
                 var svg = string.Equals(Path.GetExtension(path), ".svg", StringComparison.OrdinalIgnoreCase);
                 try
                 {
-                    image = ImageViewerDecoder.Load(path, bytes);
+                    image = ImageDecoder.Load(path, bytes);
                     contentKind = CodeEditorContentKind.Image;
                 }
                 catch

@@ -625,14 +625,14 @@ D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「�
 
 | 编号 / 界面 | 结构证据 | 分别审查的重点 | 状态 |
 |---|---|---|---|
-| UI-068 [ImageViewerView](../../Applications/RelaxKonOS.App.ImageViewer/ImageViewerView.axaml) | ScrollViewer；入口：ZoomOutCommand、ZoomInCommand、FitToViewCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 内置与试点共用视图 |
+| UI-068 [ImageViewerView](../../Applications/RelaxKonOS.App.ImageViewer/ImageViewerView.axaml) | ScrollViewer；入口：ZoomOutCommand、ZoomInCommand、FitToViewCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 官方外置应用与试点共用视图 |
 
 ### Notepad
 
 | 编号 / 界面 | 结构证据 | 分别审查的重点 | 状态 |
 |---|---|---|---|
-| UI-069 [NotepadSettingsView](../../Client/RelaxKonOS.Client/Apps/Notepad/NotepadSettingsView.axaml) | 入口：CloseSettingsCommand | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |
-| UI-070 [NotepadView](../../Client/RelaxKonOS.Client/Apps/Notepad/NotepadView.axaml) | TextBox；Menu；入口：NewDocumentCommand、OpenDocumentCommand、SaveCommand | 草稿关闭守卫、保存忙碌/目标快照、迟到读取与读取失败保留已修复；继续断线输入与原生验收 | 首批实现/受控回归通过，完整流程及运行验收待完成 |
+| UI-069 [NotepadSettingsView](../../Applications/RelaxKonOS.App.Notepad/NotepadSettingsView.axaml) | 入口：CloseSettingsCommand | 默认编码、窄窗口及焦点返回 | 独立官方包 |
+| UI-070 [NotepadView](../../Applications/RelaxKonOS.App.Notepad/NotepadView.axaml) | TextBox；Menu；入口：NewDocumentCommand、OpenDocumentCommand、SaveCommand | 草稿关闭、保存忙碌、目标快照和迟到读取 | 独立官方包 |
 
 ### PortForwarding
 

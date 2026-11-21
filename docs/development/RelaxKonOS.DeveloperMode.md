@@ -30,6 +30,10 @@ dotnet $cli reload com.relaxkonos.example.image-viewer
 dotnet $cli rollback com.relaxkonos.example.image-viewer --no-launch
 ```
 
+开发官方图片查看器时，把项目路径换成 `./Applications/RelaxKonOS.App.ImageViewer`，应用 ID 换成 `relaxkonos.imageviewer`。仅已外置并由宿主列入名单的官方应用可以通过配对的 Debug 桥接部署或替换。卸载仍用 `dotnet $cli uninstall relaxkonos.imageviewer`。
+
+记事本使用 `./Applications/RelaxKonOS.App.Notepad` 和 `relaxkonos.notepad`。候选加载成功后，若当前编辑窗口拒绝关闭或正在保存，更新或回退会返回 `close_blocked` 并保留原窗口与版本。
+
 `deploy` 接受 `.csproj`、含一个 `.csproj` 的项目目录或已编译的输出目录。项目输入会执行 `dotnet publish`。对平铺的编译产物，传入 `deploy <输出目录> --manifest <manifest.json>`。输出也可以自带根级 `manifest.json` 和完整的 `lib/<TFM>/` 目录。包含平台私有依赖的应用可传入完整的发布目录，例如 `dotnet publish -r win-x64 --no-self-contained` 的输出。使用 `--no-launch` 可以仅验证、安装并注册。`watch --direct` 监听项目目录，忽略 `bin`、`obj`、`artifacts`、`.tmp` 和所选中转目录，编译失败后仍继续监听。
 
 CLI 通过回环 HTTP 传输文件，无需生成 `.roapp`。Debug 客户端验证清单、入口程序集和可解析的运行时依赖，并为每次部署分配独立的版本目录。候选版本通过加载与可选的激活后，客户端原子更新 `current.json`，关闭旧窗口并卸载旧版的程序集加载上下文。若候选加载或激活失败，当前版本和其窗口保留。`reload` 用新加载上下文重载当前版本，`rollback` 切换到持久化的上一版本。原生库能否完成初始化取决于应用实际调用相关功能时的运行结果。自动启动需要已打开的桌面工作区。在登录页可用 `--no-launch` 安装。
@@ -147,7 +151,9 @@ lib/net10.0/<私有依赖>.dll
 
 入口类型必须实现 `RelaxKonOS.AppSDK.IExternalRemoteApplication`。它接收 `IExternalAppContext`，该上下文仅暴露已批准的 RelaxKonOS 能力，包括自有窗口创建和权限门控的桌面外观服务。
 
-要出现在 RemoteExplorer 的 **打开方式** 菜单中，入口类型还必须实现 `IExternalFileOpenApplication` 并声明至少一个接受的路径规则。`supportedFileExtensions` 不区分大小写，每个扩展名必须以点开头。`supportedFileNames` 接受精确文件名，例如 `.gitignore`；这些优先于扩展名匹配。`supportsExtensionlessFiles` 仅对没有扩展名的文件启用低优先级回退。省略这三个字段的包仍可启动，但永远不会获得文件路径。
+要出现在 RemoteExplorer 的 **打开方式** 菜单中，入口类型还必须实现 `IExternalFileOpenApplication` 并声明接受的文件类型。`supportedFileExtensions` 不区分大小写，每个扩展名必须以点开头。`supportedFileNames` 接受精确文件名，例如 `.gitignore`；这些优先于扩展名匹配。`supportsExtensionlessFiles` 仅对没有扩展名的文件启用低优先级回退。
+
+文本编辑器可在清单中声明 `supportsTextFiles: true`。Explorer 识别出文件内容为文本时，可把它交给此类应用，包括未声明的扩展名。入口仍需实现 `IExternalFileOpenApplication`。
 
 `supportedUriSchemes` 可选地声明包拥有的自定义 URI 方案。每个方案必须匹配 `^[a-z][a-z0-9+.-]{0,31}$`；`relaxkonos` 保留给 Shell 使用。入口类型必须实现 `IExternalAppActivationHandler` 以接收其声明的 URI 之一。Shell 为该方案选择用户有效的默认应用，或者在没有设置默认值时选择唯一兼容的处理程序。对导航器（如帮助中心）使用 `instancePolicy: "SingleWindow"`，这样重复的链接会导航到同一窗口而不是打开重复的窗口。
 
@@ -170,7 +176,7 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack .\example
 
 ## 安全模型
 
-开发包使用保留的外部应用 ID，不能使用 `relaxkonos.*` 内置命名空间。它们安装在当前用户的本地应用数据下方，不会覆盖商店包。开发者模式不会自动授予清单权限；请在 **应用权限** 下授予或撤销每个请求的能力。
+第三方开发包使用自己的命名空间。`relaxkonos.*` 由宿主保留。Release 的外置官方应用由发行目录中的 `OfficialApps/<app-id>.roapp` 及配套 SHA-256 文件提供，经过原安装器审查后写入当前 VSD。普通本地、服务器、组件目录和开发桥接上传继续拒绝保留 ID。Debug 的配对 Direct Deploy 仅为宿主名单中的外置官方 ID 开放，记录到独立 profile。清单权限继续由用户审查和授权。完整流程见[官方图片查看器](../applications/RelaxKonOS.ImageViewer.md)。
 
 商店来源、目录、搜索、下载和来源信任的统一设计见[包商店来源设计](../platform/RelaxKonOS.PackageStore.Design.md)；本文仍拥有 `.roapp` 清单、本地安装器和开发者桥接语义。
 
@@ -192,6 +198,10 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack .\example
 
 管理权限仅包括安全执行该操作所需的最小检查（例如，进程管理包括列出进程）；它们不授予其他类别。仅声明未来的目录权限永远不会授予对主机服务的访问，直到权限门控的 SDK 能力暴露它。
 
+`IExternalAppContext.ServerFiles` 在普通工作区使用当前服务器文件服务，在 SSH 桌面经当前已核验主机密钥的 SFTP 会话读取宿主交给应用的单个文件。两种入口都要求 `server.files.read`，并沿用连接本身的身份和文件权限。`IsSshSession` 可用于界面标记来源。
+
+在普通服务器工作区，编辑器可通过 `ReadAsync` 读取内容、`WriteAsync` 写回，以及 `PickFileAsync` 在应用所属窗口打开宿主选择器。打开和浏览需要读权限，写入需要写权限，另存为选择器需要两者。文件写入使用原服务端文件授权。记事本通过宿主提供的文本编码设置接口继续使用工作区默认编码，详见[记事本](../applications/RelaxKonOS.Notepad.md)。
+
 授予在桌面客户端是本地的。在 Windows 上，它们使用当前用户的 DPAPI 保护存储；其他平台使用兼容的本地 JSON 回退。
 
 ## 清除应用数据
@@ -205,7 +215,7 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack .\example
 
 ## 运行时权限批准
 
-当应用打开时，Shell 为每个仍未决定的声明权限打开一个应用拥有的提示。应用在这些提示显示时已经在运行：选择 **拒绝** 不会关闭它，选择 **稍后** 会在剩余提示继续时保持该权限未决定。授予和拒绝的决策会被记住；只有未决定的权限会在下次启动时自动提示。
+权限由应用在使用相应能力时请求。Shell 在应用窗口内显示授权提示。选择 **稍后** 保持原权限状态，授予和拒绝的决策会被记住。
 
 内置的 `AppContext` 和包的 `IExternalAppContext` 都暴露相同的作用域 `Permissions` 表面。它只能检查或请求当前应用的声明 ID：
 

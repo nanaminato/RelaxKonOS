@@ -3,7 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using RelaxKonOS.App.ImageViewer;
+using RelaxKonOS.UI.Imaging;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Files;
@@ -100,7 +100,7 @@ public sealed class ArchiveBrowserView : UserControl, IDisposable
             token.ThrowIfCancellationRequested();
             if (isImage)
             {
-                var decoded = ImageViewerDecoder.Load(row.Name, bytes);
+                var decoded = ImageDecoder.Load(row.Name, bytes);
                 image = decoded as IDisposable;
                 content.Content = new ScrollViewer { Content = new Image { Source = decoded, Stretch = Stretch.Uniform } };
             }

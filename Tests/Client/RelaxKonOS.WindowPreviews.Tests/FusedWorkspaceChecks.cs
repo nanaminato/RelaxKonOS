@@ -18,7 +18,7 @@ using RelaxKonOS.Client.Apps.ApplicationDeployments;
 using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
 using RelaxKonOS.Client.Apps.FileServices;
 using RelaxKonOS.Client.Apps.FileServices.Views;
-using RelaxKonOS.Client.Apps.Notepad;
+using RelaxKonOS.App.Notepad;
 using RelaxKonOS.App.ImageViewer;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Apps.TaskManager.ViewModels;
@@ -66,7 +66,7 @@ internal static class FusedWorkspaceChecks
         var webModel = new WebServerManagerViewModel(null!, null!, auth, permissions, null!);
         var deploymentModel = new ApplicationDeploymentsViewModel(null!, permissions);
         var filesModel = new FileServicesViewModel(null!, permissions, () => true);
-        var notepadModel = new NotepadViewModel(null!, "UTF-8");
+        using var notepadModel = new NotepadViewModel(new NotepadText(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>()), null, null);
         using var imageModel = new ImageViewerViewModel(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), null);
         var tasksModel = new TaskManagerViewModel(null!, new PerformanceStream(auth), null!, auth);
         var browserModel = new BrowserViewModel(DispatchProxy.Create<RelaxKonOS.Client.Apps.Browser.IBrowserClient, HeaderPreviewPermissions>());

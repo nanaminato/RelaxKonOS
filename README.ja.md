@@ -125,10 +125,8 @@ RelaxKonOS/
 │   │   │   ├── Tunnels/            # FRPトンネル管理
 │   │   │   ├── Registry/           # 設定レジストリ
 │   │   │   ├── EventAlerts/        # イベントとアラートのセンター
-│   │   │   ├── Notepad/            # メモ帳
 │   │   │   ├── CodeEditor/         # コードエディタ
 │   │   │   ├── TextEditor/         # テキストエンコーディングダイアログ（Notepad/CodeEditor共通）
-│   │   │   ├── ImageViewer/        # 画像ビューア
 │   │   │   ├── Welcome/            # ウェルカムページ
 │   │   │   └── AppInstaller/       # アプリインストーラー
 │   │   ├── Localization/           # 言語リソース（en-US / zh-CN / ja-JP）
@@ -137,6 +135,9 @@ RelaxKonOS/
 │   │   └── Views/                  # Shell / Login / MainWindowビュー
 │   ├── RelaxKonOS.Client.Desktop/  # デスクトップのエントリーポイント（WinExe）
 │   └── RelaxKonOS.Client.Android/  # Androidクライアント（Kotlin + Compose、独自の docs/ を含む）
+├── Applications/
+│   ├── RelaxKonOS.App.ImageViewer/ # 独立した公式画像ビューア
+│   └── RelaxKonOS.App.Notepad/     # 独立した公式メモ帳
 ├── Framework/
 │   ├── RelaxKonOS.Core/            # プラットフォーム非依存プリミティブ（幾何、ウィンドウ、アプリモデル）
 │   ├── RelaxKonOS.Core.Tests/      # プリミティブ層の単体テスト

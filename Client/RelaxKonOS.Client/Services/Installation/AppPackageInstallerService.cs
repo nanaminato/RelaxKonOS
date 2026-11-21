@@ -27,15 +27,16 @@ public sealed class AppPackageInstallerService
     public async Task<AppPackageCandidate> InspectLocalAsync(string localPath, string? displayName = null, bool deleteWhenFinished = false,
         CancellationToken cancellationToken = default)
     {
-        var manifest = await _packages.InspectAsync(localPath, cancellationToken);
+        var (manifest, officialSha256) = await _packages.InspectAsync(localPath, cancellationToken);
         var installed = _packages.FindInstalled(manifest.Id);
         return new AppPackageCandidate(
             localPath,
-            displayName ?? Path.GetFileName(localPath),
+            displayName ?? (officialSha256 is null ? Path.GetFileName(localPath) : "OfficialApps / " + Path.GetFileName(localPath)),
             manifest,
             installed?.Version,
             deleteWhenFinished,
-            await ReadIconAsync(localPath, manifest.IconPath, cancellationToken));
+            await ReadIconAsync(localPath, manifest.IconPath, cancellationToken),
+            ExpectedSha256: officialSha256);
     }
 
     private static async Task<byte[]?> ReadIconAsync(string packagePath, string? iconPath, CancellationToken ct)
@@ -81,11 +82,19 @@ public sealed class AppPackageInstallerService
             DeveloperAppInfo installed;
             await using (var package = new FileStream(candidate.LocalPath, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
-                await VerifyFrozenAsync(package, candidate.ExpectedSha256, cancellationToken);
-                if (candidate.ExpectedSha256 is not null && _packages.FindInstalled(candidate.Manifest.Id)?.Version != candidate.InstalledVersion)
-                    throw new InvalidOperationException("component.state_revision_conflict");
-                authorization?.Revalidate();
-                installed = await _packages.InstallAsync(package, launch: false, cancellationToken);
+                if (OfficialDesktopPackages.IsReserved(candidate.Manifest.Id) && candidate.ExpectedSha256 is { } officialSha256)
+                {
+                    installed = await _packages.InstallOfficialAsync(package, candidate.LocalPath, candidate.Manifest.Id, officialSha256,
+                        candidate.InstalledVersion, cancellationToken);
+                }
+                else
+                {
+                    await VerifyFrozenAsync(package, candidate.ExpectedSha256, cancellationToken);
+                    if (candidate.ExpectedSha256 is not null && _packages.FindInstalled(candidate.Manifest.Id)?.Version != candidate.InstalledVersion)
+                        throw new InvalidOperationException("component.state_revision_conflict");
+                    authorization?.Revalidate();
+                    installed = await _packages.InstallAsync(package, launch: false, cancellationToken);
+                }
             }
             // Dispose before deleting a staged file on Windows.
             if (candidate.DeleteWhenFinished && File.Exists(candidate.LocalPath)) File.Delete(candidate.LocalPath);

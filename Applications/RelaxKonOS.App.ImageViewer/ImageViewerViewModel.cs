@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
+using RelaxKonOS.UI.Imaging;
 
 namespace RelaxKonOS.App.ImageViewer;
 
@@ -13,7 +14,6 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
 {
     private readonly ISystemLanguage _language;
     private readonly Func<string, CancellationToken, Task<byte[]?>>? _readFile;
-    private readonly Func<string, string, string>? _resolveHostText;
     private readonly bool _isSshSession;
     private readonly string? _title;
     private CancellationTokenSource? _loadCts;
@@ -24,11 +24,10 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
     private double _viewportHeight;
 
     public ImageViewerViewModel(ISystemLanguage language, Func<string, CancellationToken, Task<byte[]?>>? readFile,
-        bool isSshSession = false, Func<string, string, string>? resolveHostText = null, string? title = null)
+        bool isSshSession = false, string? title = null)
     {
         _language = language;
         _readFile = readFile;
-        _resolveHostText = resolveHostText;
         _isSshSession = isSshSession;
         _title = title;
         _language.LanguageChanged += OnLanguageChanged;
@@ -52,7 +51,7 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
     public string SessionText => _isSshSession ? Text("image_viewer.session.ssh") : Text("image_viewer.session.server");
     public string ZoomInText => Text("image_viewer.zoom_in");
     public string ZoomOutText => Text("image_viewer.zoom_out");
-    public string MoreText => _resolveHostText?.Invoke("explorer.more", Text("image_viewer.more")) ?? Text("image_viewer.more");
+    public string MoreText => Text("image_viewer.more");
     public string FitText => Text("image_viewer.fit_to_view");
     public string ResetZoomText => Text("image_viewer.reset_zoom");
     public string ShortcutsText => Text("image_viewer.shortcuts");
@@ -126,7 +125,7 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            var image = ImageViewerDecoder.Load(path, bytes);
+            var image = ImageDecoder.Load(path, bytes);
             if (ct.IsCancellationRequested)
             {
                 (image as IDisposable)?.Dispose();
@@ -177,11 +176,7 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
         (image as IDisposable)?.Dispose();
     }
 
-    private string Text(string key)
-    {
-        var text = ImageViewerText.Get(_language.CurrentLanguage, key);
-        return _resolveHostText?.Invoke(key, text) ?? text;
-    }
+    private string Text(string key) => ImageViewerText.Get(_language.CurrentLanguage, key);
 
     private string Format(string key, params object?[] arguments) => string.Format(CultureInfo.CurrentCulture, Text(key), arguments);
 

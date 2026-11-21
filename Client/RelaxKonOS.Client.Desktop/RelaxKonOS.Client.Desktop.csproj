@@ -24,4 +24,22 @@
     <ItemGroup>
         <ProjectReference Include="..\RelaxKonOS.Client\RelaxKonOS.Client.csproj" />
     </ItemGroup>
+
+    <ItemGroup>
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.ImageViewer" AppId="relaxkonos.imageviewer" />
+        <OfficialDesktopApp Include="../../Applications/RelaxKonOS.App.Notepad" AppId="relaxkonos.notepad" />
+    </ItemGroup>
+
+    <Target Name="PublishOfficialDesktopApps" AfterTargets="Publish" Condition="'$(IncludeOfficialApps)' != 'false'">
+        <PropertyGroup>
+            <OfficialAppSource>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(PublishDir)', 'OfficialApps'))</OfficialAppSource>
+            <DesktopDevCli>$(MSBuildProjectDirectory)/../../Tools/RelaxKonOS.DevCli</DesktopDevCli>
+        </PropertyGroup>
+        <MakeDir Directories="$(OfficialAppSource)" />
+        <Exec Command="dotnet run --project &quot;$(DesktopDevCli)&quot; --configuration $(Configuration) -- pack &quot;%(OfficialDesktopApp.FullPath)&quot; --configuration $(Configuration) --output &quot;$(OfficialAppSource)%(OfficialDesktopApp.AppId).roapp&quot;" />
+        <GetFileHash Files="@(OfficialDesktopApp->'$(OfficialAppSource)%(AppId).roapp')" Algorithm="SHA256">
+            <Output TaskParameter="Items" ItemName="OfficialDesktopPackage" />
+        </GetFileHash>
+        <WriteLinesToFile File="%(OfficialDesktopPackage.Identity).sha256" Lines="%(OfficialDesktopPackage.FileHash)" Overwrite="true" />
+    </Target>
 </Project>

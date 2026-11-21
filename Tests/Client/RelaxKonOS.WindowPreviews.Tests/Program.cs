@@ -81,6 +81,8 @@ if (args.Contains("--component-download-preview"))
 if (args.Contains("--database-only")) { DatabaseWorkspaceChecks.Run(settings); PostgreSqlAccountsWorkspaceChecks.Run(settings); return; }
 if (args.Contains("--component-installs-only")) { ComponentInstallEntryChecks.Run(); return; }
 if (args.Contains("--image-viewer-only")) { ImageViewerWorkspaceChecks.Run(settings, localization); return; }
+if (args.Contains("--notepad-only")) { NotepadWorkspaceChecks.Run(settings, localization); EditorDraftStateChecks.Run(); return; }
+if (args is ["--official-roapp-only", var artifact]) { OfficialRoappChecks.Run(artifact); return; }
 if (args.Contains("--current-nginx-only")) { CurrentNginxChecks.Run(); return; }
 if (args.Contains("--roapp-catalog-only")) { RoappCatalogChecks.Run(settings); return; }
 if (args.Contains("--developer-release-only")) { DeveloperReleaseChecks.Run(); return; }
@@ -180,7 +182,6 @@ if (args.Contains("--forward-runtime-only"))
 // Check the actual activation paths, including the browser's signed-out window.
 foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
 {
-    new RelaxKonOS.Client.Apps.ImageViewer.ImageViewerApp(),
     new RelaxKonOS.Client.Apps.Browser.BrowserApp(),
     new RelaxKonOS.Client.Apps.Welcome.WelcomeApp()
 })

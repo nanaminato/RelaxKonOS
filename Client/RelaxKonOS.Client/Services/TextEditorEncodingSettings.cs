@@ -1,6 +1,6 @@
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Client.Apps.Settings;
-using RelaxKonOS.Client.Apps.TextEditor;
+using RelaxKonOS.UI.TextEditing;
 using RelaxKonOS.Client.Services.Auth;
 
 namespace RelaxKonOS.Client.Services;

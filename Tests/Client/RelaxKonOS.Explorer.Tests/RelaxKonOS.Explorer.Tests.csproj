@@ -7,6 +7,7 @@
   </PropertyGroup>
   <!-- Exercise the production view model without bootstrapping the desktop or a server. -->
   <ItemGroup>
+    <ProjectReference Include="../../../Framework/RelaxKonOS.UI/RelaxKonOS.UI.csproj" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Views/ComputerOverviewView.cs" Link="ComputerOverviewView.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/CloudAuthorizationNavigation.cs" Link="CloudAuthorizationNavigation.cs" />
     <PackageReference Include="Avalonia.Controls.DataGrid" />
@@ -15,7 +16,6 @@
     <PackageReference Include="Svg.Controls.Avalonia" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <ProjectReference Include="../../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
-    <ProjectReference Include="../../../Applications/RelaxKonOS.App.ImageViewer/RelaxKonOS.App.ImageViewer.csproj" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ViewModels/ExplorerViewModel.Archives.cs" Link="ExplorerViewModel.Archives.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ViewModels/ExplorerViewModel.cs" Link="ExplorerViewModel.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Models/*.cs" Link="Models/%(Filename)%(Extension)" />

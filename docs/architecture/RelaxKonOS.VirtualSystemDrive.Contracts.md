@@ -13,6 +13,7 @@ SystemDrive/
   System/automation-audit/
   Programs/BuiltIn/<app-id>/app.relaxkonos.json
   Programs/External/<app-id>/versions/<immutable-id>/app.relaxkonos.json
+  Programs/External/<official-app-id>/versions/<immutable-id>/package-origin.json
   Programs/External/<app-id>/current.json
   Shells/<shell-id>/shell.relaxkonos.json
   Users/<local-profile-id>/Desktop/*.relaxkonos-link.json
@@ -43,6 +44,8 @@ SystemDrive/
 `ApplicationDescriptor`：`schemaVersion`、`id`、`kind` (`builtin` 或 `package`)、显示元数据、`version`、图标、请求权限、文件/URI 声明、实例策略、平台、权限模型及 activation。`builtin` activation 仅允许 `builtinKey`；`package` activation 仅允许包根内的 `entryAssembly` 和 `entryType`。DTO 不是授权模型。
 
 外置应用的 `current.json` 包含 `schemaVersion`、`appId`、`versionId` 和可选的 `previousVersionId`。两个版本标识引用同一应用名下的不可覆写目录。切换时 Host 原子替换指针，显式回退使用上一版本标识。Debug Direct Deploy 会在写入指针前完成程序集验证和所请求的激活。
+
+外置官方应用另有客户端安装器写入的 `package-origin.json`，取值为 `"officialDistribution"` 或 `"directDeploy"`。包归档与直接部署载荷均不能写入此保留路径。Release 仅发现带有 `officialDistribution` 来源的宿主名单内应用。更新安装先校验 SHA-256、客户端平台与包入口，再切换 `current.json`。
 
 `ShellDescriptor`：`schemaVersion`、`id`、显示名、预览资源与受支持功能。Shell 只能由 Host 受控工厂创建；V1 不支持外置 Shell 插件。
 

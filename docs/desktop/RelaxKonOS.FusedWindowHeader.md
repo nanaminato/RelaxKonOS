@@ -113,7 +113,7 @@
 |---|---|---|---|---|---|
 | 10 | 资源管理器 | `Apps/Explorer/Views/ExplorerMainView.axaml` | 导航 / 地址 / 筛选交 `HeaderToolbar`；文件操作栏留在正文 | **已有**窗口内标签，独立历史 / 搜索 / 视图状态 | **已接入** |
 | 11 | 代码编辑器 | `Apps/CodeEditor/CodeEditorView.axaml` | 菜单栏 + 文档标签 | **已有** `ListBox.title-tabs` | **已接入** |
-| 12 | 记事本 | `Apps/Notepad/NotepadView.axaml` | 菜单栏 + 文档名 | 无 | **已接入** |
+| 12 | 记事本 | `Applications/RelaxKonOS.App.Notepad/NotepadView.axaml` | 菜单栏 + 文档名 | 无 | **已接入** |
 | 13 | 任务管理器 | `Apps/TaskManager/Views/TaskManagerMainView.axaml` | 工具条 | 无 | **已接入** |
 | 14 | 图片查看器 | `Applications/RelaxKonOS.App.ImageViewer/ImageViewerView.axaml` | 查看工具条 | 无 | **已接入** |
 | 15 | 浏览器 | `Apps/Browser/Views/BrowserMainView.axaml` | `DockPanel.Dock="Top"` 的标签条 + 导航工具条与地址栏 | **已有** `ListBox.browser-tabs` | **已接入** |

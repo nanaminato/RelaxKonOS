@@ -2,7 +2,7 @@ using System.Text;
 using Avalonia;
 using Avalonia.Media.Imaging;
 using Avalonia.Svg;
-using RelaxKonOS.App.ImageViewer;
+using RelaxKonOS.UI.Imaging;
 
 internal static class ImageViewerChecks
 {
@@ -13,7 +13,7 @@ internal static class ImageViewerChecks
               <rect width="120" height="60" fill="red"/>
             </svg>
             """);
-        var image = ImageViewerDecoder.Load("/remote/logo.SVG", svg);
+        var image = ImageDecoder.Load("/remote/logo.SVG", svg);
         check(image is SvgImage && image.Size == new Size(120, 60),
             "SVG uses a vector image and derives dimensions from viewBox, including uppercase extensions");
         using (var target = new RenderTargetBitmap(new PixelSize(240, 120)))
@@ -24,7 +24,7 @@ internal static class ImageViewerChecks
         var rejected = false;
         try
         {
-            ImageViewerDecoder.Load("broken.svg", Encoding.UTF8.GetBytes("not an SVG"));
+            ImageDecoder.Load("broken.svg", Encoding.UTF8.GetBytes("not an SVG"));
         }
         catch (Exception)
         {

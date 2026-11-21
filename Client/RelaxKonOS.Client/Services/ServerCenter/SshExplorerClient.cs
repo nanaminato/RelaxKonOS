@@ -46,6 +46,9 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
         }, ct);
 
     public Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default) =>
+        DownloadAsync(path, expectedEndpoint: null, ct);
+
+    internal Task<(Stream Stream, string FileName)?> DownloadAsync(string path, ServerCenterSshEndpoint? expectedEndpoint, CancellationToken ct) =>
         ExecuteAsync<(Stream Stream, string FileName)?>(client =>
         {
             if (!client.Exists(path)) return null;
@@ -53,7 +56,7 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
             client.DownloadFile(path, stream);
             stream.Position = 0;
             return (stream, Path.GetFileName(path));
-        }, ct);
+        }, ct, expectedEndpoint);
 
     public Task<byte[]?> ReadFileAsync(string path, CancellationToken ct = default) =>
         ExecuteAsync<byte[]?>(client =>
@@ -128,10 +131,10 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
     public Task<FilePropertiesDto> SetUnixOwnershipAsync(string path, string owner, string group, bool recursive, CancellationToken ct = default) => Unsupported<FilePropertiesDto>();
     public Task<FileSystemEntryDto> CopyAsync(string sourcePath, string destinationPath, bool overwrite = false, CancellationToken ct = default) => Unsupported<FileSystemEntryDto>();
 
-    private async Task<T> ExecuteAsync<T>(Func<SftpClient, T> action, CancellationToken ct)
+    private async Task<T> ExecuteAsync<T>(Func<SftpClient, T> action, CancellationToken ct, ServerCenterSshEndpoint? expectedEndpoint = null)
     {
         ct.ThrowIfCancellationRequested();
-        using var client = await Task.Run(OpenClient, ct).ConfigureAwait(false);
+        using var client = await Task.Run(() => OpenClient(expectedEndpoint), ct).ConfigureAwait(false);
         return await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
@@ -139,11 +142,9 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
         }, ct).ConfigureAwait(false);
     }
 
-    private SftpClient OpenClient()
+    private SftpClient OpenClient(ServerCenterSshEndpoint? expectedEndpoint)
     {
-        var endpoint = session.Endpoint ?? throw new InvalidOperationException("SSH session ended.");
-        var fingerprint = session.HostKeyFingerprint ?? throw new InvalidOperationException("SSH host key is unavailable.");
-        var password = session.Password ?? throw new InvalidOperationException("SSH session ended.");
+        var (endpoint, password, fingerprint) = session.GetFileConnection(expectedEndpoint);
         var client = new SftpClient(endpoint.Host, endpoint.Port, endpoint.UserName, password);
         client.HostKeyReceived += (_, args) =>
             args.CanTrust = string.Equals(ServerHostTrustRules.Fingerprint(args.HostKey), fingerprint, StringComparison.Ordinal);

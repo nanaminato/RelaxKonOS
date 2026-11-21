@@ -1,38 +1,37 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:notepad="clr-namespace:RelaxKonOS.Client.Apps.Notepad"
-             x:Class="RelaxKonOS.Client.Apps.Notepad.NotepadView"
+             xmlns:notepad="clr-namespace:RelaxKonOS.App.Notepad"
+             x:Class="RelaxKonOS.App.Notepad.NotepadView"
              x:Name="Root"
              x:DataType="notepad:NotepadViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto">
         <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="Auto,*">
             <StackPanel x:Name="HeaderLeading" Orientation="Horizontal" VerticalAlignment="Center">
-                <Image Width="18" Height="18" Margin="0,0,6,0" Source="avares://RelaxKonOS.Client/Assets/AppIcons/notepad.png" VerticalAlignment="Center" />
+                <Image Width="18" Height="18" Margin="0,0,6,0" x:Name="HeaderIcon" VerticalAlignment="Center" />
                 <Menu x:Name="HeaderMenu" Background="Transparent" BorderThickness="0" IsEnabled="{Binding CanEditDocument}">
-                    <MenuItem Header="{loc:Loc common.file}">
-                        <MenuItem Header="{loc:Loc common.new}" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />
-                        <MenuItem Header="{loc:Loc common.open_ellipsis}" Command="{Binding OpenDocumentCommand}" InputGesture="Ctrl+O" />
+                    <MenuItem Header="{ReflectionBinding Labels[common.file]}">
+                        <MenuItem Header="{ReflectionBinding Labels[common.new]}" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />
+                        <MenuItem Header="{ReflectionBinding Labels[common.open_ellipsis]}" Command="{Binding OpenDocumentCommand}" InputGesture="Ctrl+O" />
                         <Separator />
-                        <MenuItem Header="{loc:Loc common.save}" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
-                        <MenuItem Header="{loc:Loc common.save_as_ellipsis}" Command="{Binding SaveAsCommand}" InputGesture="Ctrl+Shift+S" />
+                        <MenuItem Header="{ReflectionBinding Labels[common.save]}" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
+                        <MenuItem Header="{ReflectionBinding Labels[common.save_as_ellipsis]}" Command="{Binding SaveAsCommand}" InputGesture="Ctrl+Shift+S" />
                     </MenuItem>
-                    <MenuItem Header="{loc:Loc common.settings}">
-                        <MenuItem Header="{loc:Loc common.preferences_ellipsis}" Command="{Binding OpenSettingsCommand}" />
+                    <MenuItem Header="{ReflectionBinding Labels[common.settings]}">
+                        <MenuItem Header="{ReflectionBinding Labels[common.preferences_ellipsis]}" Command="{Binding OpenSettingsCommand}" />
                     </MenuItem>
                 </Menu>
-                <Button x:Name="CompactMenu" Classes="header-action" Content="☰" IsVisible="False" IsEnabled="{Binding CanEditDocument}" ToolTip.Tip="{loc:Loc common.file}" AutomationProperties.Name="{loc:Loc common.file}">
+                <Button x:Name="CompactMenu" Classes="header-action" Content="☰" IsVisible="False" IsEnabled="{Binding CanEditDocument}" ToolTip.Tip="{ReflectionBinding Labels[common.file]}" AutomationProperties.Name="{ReflectionBinding Labels[common.file]}">
                     <Button.Flyout><MenuFlyout>
-                    <MenuItem Header="{loc:Loc common.file}">
-                        <MenuItem Header="{loc:Loc common.new}" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />
-                        <MenuItem Header="{loc:Loc common.open_ellipsis}" Command="{Binding OpenDocumentCommand}" InputGesture="Ctrl+O" />
+                    <MenuItem Header="{ReflectionBinding Labels[common.file]}">
+                        <MenuItem Header="{ReflectionBinding Labels[common.new]}" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />
+                        <MenuItem Header="{ReflectionBinding Labels[common.open_ellipsis]}" Command="{Binding OpenDocumentCommand}" InputGesture="Ctrl+O" />
                         <Separator />
-                        <MenuItem Header="{loc:Loc common.save}" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
-                        <MenuItem Header="{loc:Loc common.save_as_ellipsis}" Command="{Binding SaveAsCommand}" InputGesture="Ctrl+Shift+S" />
+                        <MenuItem Header="{ReflectionBinding Labels[common.save]}" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
+                        <MenuItem Header="{ReflectionBinding Labels[common.save_as_ellipsis]}" Command="{Binding SaveAsCommand}" InputGesture="Ctrl+Shift+S" />
                     </MenuItem>
-                    <MenuItem Header="{loc:Loc common.settings}">
-                        <MenuItem Header="{loc:Loc common.preferences_ellipsis}" Command="{Binding OpenSettingsCommand}" />
+                    <MenuItem Header="{ReflectionBinding Labels[common.settings]}">
+                        <MenuItem Header="{ReflectionBinding Labels[common.preferences_ellipsis]}" Command="{Binding OpenSettingsCommand}" />
                     </MenuItem>
                     </MenuFlyout></Button.Flyout>
                 </Button>
@@ -56,7 +55,7 @@
             <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="14">
                 <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="1" Content="{Binding EncodingName}" FontSize="12" Padding="4,0"
-                        IsVisible="{Binding HasOpenFile}" ToolTip.Tip="{loc:Loc common.file_encoding}"
+                        IsVisible="{Binding HasOpenFile}" ToolTip.Tip="{ReflectionBinding Labels[common.file_encoding]}"
                         IsEnabled="{Binding CanEditDocument}"
                         Command="{Binding ChooseEncodingCommand}" />
                 <TextBlock Grid.Column="2" Text="{Binding LineCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />

@@ -2,9 +2,9 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Svg;
 
-namespace RelaxKonOS.App.ImageViewer;
+namespace RelaxKonOS.UI.Imaging;
 
-public static class ImageViewerDecoder
+public static class ImageDecoder
 {
     public static IReadOnlyList<string> SupportedExtensions { get; } =
         [".png", ".apng", ".jpg", ".jpeg", ".jpe", ".jfif", ".gif", ".bmp", ".dib", ".webp", ".ico", ".svg"];

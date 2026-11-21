@@ -125,10 +125,8 @@ RelaxKonOS/
 │   │   │   ├── Tunnels/            # FRP Tunnel Manager
 │   │   │   ├── Registry/           # Configuration Registry
 │   │   │   ├── EventAlerts/        # Event and alert center
-│   │   │   ├── Notepad/            # Notepad
 │   │   │   ├── CodeEditor/         # Code Editor
 │   │   │   ├── TextEditor/         # Text Encoding Dialog (shared by Notepad/CodeEditor)
-│   │   │   ├── ImageViewer/        # Image Viewer
 │   │   │   ├── Welcome/            # Welcome Page
 │   │   │   └── AppInstaller/       # App Installer
 │   │   ├── Localization/           # Language Resources (en-US / zh-CN / ja-JP)
@@ -137,6 +135,9 @@ RelaxKonOS/
 │   │   └── Views/                  # Shell / Login / MainWindow Views
 │   ├── RelaxKonOS.Client.Desktop/  # Desktop entry point (WinExe)
 │   └── RelaxKonOS.Client.Android/  # Android client (Kotlin + Compose, with its own docs/)
+├── Applications/
+│   ├── RelaxKonOS.App.ImageViewer/ # Extracted official Image Viewer
+│   └── RelaxKonOS.App.Notepad/     # Standalone official Notebook
 ├── Framework/
 │   ├── RelaxKonOS.Core/            # Platform-agnostic primitives (geometry, window, app models)
 │   ├── RelaxKonOS.Core.Tests/      # Primitive-layer unit tests

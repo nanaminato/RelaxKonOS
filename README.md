@@ -125,10 +125,8 @@ RelaxKonOS/
 │   │   │   ├── Tunnels/            # FRP 隧道管理
 │   │   │   ├── Registry/           # 配置注册表
 │   │   │   ├── EventAlerts/        # 事件与告警中心
-│   │   │   ├── Notepad/            # 记事本
 │   │   │   ├── CodeEditor/         # 代码编辑器
 │   │   │   ├── TextEditor/         # 文本编码对话框（Notepad/CodeEditor 共用）
-│   │   │   ├── ImageViewer/        # 图片查看器
 │   │   │   ├── Welcome/            # 欢迎页
 │   │   │   └── AppInstaller/       # 应用安装器
 │   │   ├── Localization/           # 多语言资源（en-US / zh-CN / ja-JP）
@@ -137,6 +135,9 @@ RelaxKonOS/
 │   │   └── Views/                  # Shell / Login / MainWindow 视图
 │   ├── RelaxKonOS.Client.Desktop/  # 桌面平台入口（WinExe）
 │   └── RelaxKonOS.Client.Android/  # Android 客户端（Kotlin + Compose，含自有 docs/）
+├── Applications/
+│   ├── RelaxKonOS.App.ImageViewer/ # 独立官方图片查看器
+│   └── RelaxKonOS.App.Notepad/     # 独立官方记事本
 ├── Framework/
 │   ├── RelaxKonOS.Core/            # 平台无关原语（几何、窗口、应用模型）
 │   ├── RelaxKonOS.Core.Tests/      # 原语层单元测试

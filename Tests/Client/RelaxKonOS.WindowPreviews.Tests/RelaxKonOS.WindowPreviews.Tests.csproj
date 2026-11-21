@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="../../../examples/Windows11DesktopShell/RelaxKonOS.Example.Windows11DesktopShell.csproj" />
     <ProjectReference Include="../../../examples/ImageViewerPilot/RelaxKonOS.Example.ImageViewerPilot.csproj" />
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.Notepad/RelaxKonOS.App.Notepad.csproj" />
     <ProjectReference Include="../../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
     <PackageReference Include="Avalonia.Headless" />
     <PackageReference Include="Avalonia.Desktop" />

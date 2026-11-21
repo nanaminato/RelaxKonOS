@@ -38,6 +38,7 @@
         "code_editor.save_remote_file": "Save remote file",
         "code_editor.remote_path_prompt": "Enter a full remote path:",
         "code_editor.source_file_filter": "Source files",
+        "code_editor.preview.dimensions": "{0} × {1}px",
         "code_editor.preview.bytes": "{0:N0} bytes",
         "code_editor.preview.opened": "Previewing {0}",
         "code_editor.preview.edit_source": "Edit SVG source",

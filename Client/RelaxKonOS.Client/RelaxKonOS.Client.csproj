@@ -17,12 +17,9 @@
         <EmbeddedResource Include="$(IntermediateOutputPath)deployment-launcher/RelaxKonOS-Deploy.ps1" LogicalName="RelaxKonOS.Deployment.RelaxKonOS-Deploy.ps1" />
         <EmbeddedResource Include="$(IntermediateOutputPath)deployment-launcher/relaxkonos-deploy.sh" LogicalName="RelaxKonOS.Deployment.relaxkonos-deploy.sh" />
         <AvaloniaResource Include="Assets\**"/>
-        <AvaloniaResource Include="../../Applications/RelaxKonOS.App.ImageViewer/Assets/imageviewer.png" Link="Assets/AppIcons/imageviewer.png" />
         <AvaloniaResource Include="..\..\LICENSE" Link="Assets\Legal\LICENSE.txt" />
         <AvaloniaResource Include="..\..\THIRD_PARTY_NOTICES.md" Link="Assets\Legal\THIRD_PARTY_NOTICES.md" />
         <Content Include="Localization\**\*.json" CopyToOutputDirectory="PreserveNewest" />
-        <Content Include="../../Applications/RelaxKonOS.App.ImageViewer/Localization/*.json"
-                 Link="Localization/%(Filename)/image_viewer.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <Import Project="../../deployment/launcher/Launchers.targets" />
@@ -33,7 +30,6 @@
         <PackageReference Include="Avalonia.Fonts.Inter"/>
         <PackageReference Include="Avalonia.Controls.DataGrid"/>
         <PackageReference Include="Avalonia.AvaloniaEdit" />
-        <PackageReference Include="Svg.Controls.Avalonia" />
         <PackageReference Include="CommunityToolkit.Mvvm"/>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
         <PackageReference Include="Microsoft.Extensions.Http"/>
@@ -65,6 +61,5 @@
       <ProjectReference Include="..\..\Framework\RelaxKonOS.UI\RelaxKonOS.UI.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.WindowManager\RelaxKonOS.WindowManager.csproj" />
       <ProjectReference Include="..\..\Framework\RelaxKonOS.Shell\RelaxKonOS.Shell.csproj" />
-      <ProjectReference Include="../../Applications/RelaxKonOS.App.ImageViewer/RelaxKonOS.App.ImageViewer.csproj" />
     </ItemGroup>
 </Project>

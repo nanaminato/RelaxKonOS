@@ -1,6 +1,6 @@
 # Image Viewer 官方包迁移预研
 
-该项目通过 SDK 外部入口运行，可以使用 `deploy ./examples/ImageViewerPilot` 或常规 `.roapp` 安装。它和内置版共同引用 [`RelaxKonOS.App.ImageViewer`](../../Applications/RelaxKonOS.App.ImageViewer/RelaxKonOS.App.ImageViewer.csproj)，复用解码器、视图、融合窗口头部、缩放、快捷键及语言资源。启动、热更新和 `.roapp` 流程见[开发者模式](../../docs/development/RelaxKonOS.DeveloperMode.md)。
+该项目使用第三方示例 ID 和 SDK 外部入口，可以通过 `deploy ./examples/ImageViewerPilot` 或常规 `.roapp` 安装。它复用[官方独立图片查看器](../../docs/applications/RelaxKonOS.ImageViewer.md)的窗口、缩放、快捷键及语言资源。启动、热更新和 `.roapp` 流程见[开发者模式](../../docs/development/RelaxKonOS.DeveloperMode.md)。
 
 `watch --direct` 监听试点项目目录。修改 `Applications/RelaxKonOS.App.ImageViewer/` 后，重新执行 `deploy ./examples/ImageViewerPilot` 会编译两个项目并重新加载试点。
 

@@ -62,6 +62,18 @@ public sealed class SshDesktopSession(IServerCenterConnectionResolver connection
     public event EventHandler? Connected;
     public event EventHandler? Disconnected;
 
+    internal (ServerCenterSshEndpoint Endpoint, string Password, string Fingerprint) GetFileConnection(
+        ServerCenterSshEndpoint? expectedEndpoint)
+    {
+        lock (_gate)
+        {
+            if (Endpoint is not { } endpoint || Password is not { } password || HostKeyFingerprint is not { } fingerprint
+                || (expectedEndpoint is not null && !ReferenceEquals(endpoint, expectedEndpoint)))
+                throw new InvalidOperationException("SSH session ended.");
+            return (endpoint, password, fingerprint);
+        }
+    }
+
     public async Task ConnectAsync(ServerHostTarget target, string password, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

@@ -253,8 +253,7 @@ var result = await context.ShowDialogAsync<string>(window, "选择要打开的�
 | `Framework/RelaxKonOS.WindowManager/WindowManager.cs` | `ShowDialogAsync` / `CloseModalSession` / `UpdateDialogs` / `Focus`（模态链激活与层级抬升）/ `BuildModalChain` / `GetBlockerFor` / `GetModalOwner` |
 | `Framework/RelaxKonOS.WindowManager/IWindowManager.cs` | `ShowDialogAsync` 接口契约 |
 | `Framework/RelaxKonOS.App.SDK/AppContext.cs` | `ShowDialogAsync` 应用入口 |
-| `Client/RelaxKonOS.Client/Apps/NotepadApp.cs` | 模态对话框 + 嵌套 + 文件选择示例装配 |
-| `Client/RelaxKonOS.Client/Apps/NotepadInsertDialogView.axaml`(+`.cs`) + `NotepadInsertDialogViewModel.cs` | 文本输入对话框 |
+| `Applications/RelaxKonOS.App.Notepad/NotepadApp.cs` | SDK 所属窗口对话框、草稿确认和宿主文件选择器 |
 | `Client/RelaxKonOS.Client/Apps/FilePickerView.axaml`(+`.cs`) + `FilePickerViewModel.cs` + `FilePickerEntry.cs` | 文件选择对话框（"选择文件"模式） |
 
 ---

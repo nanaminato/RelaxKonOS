@@ -11,7 +11,8 @@ public partial class WelcomeViewModel : ObservableObject
     [RelayCommand]
     private void OpenNotepad()
     {
-        App.Services.GetRequiredService<ApplicationManager>()
-            .Launch(new AppId("relaxkonos.notepad"));
+        var applications = App.Services.GetRequiredService<ApplicationManager>();
+        if (!applications.Launch(new AppId("relaxkonos.notepad")))
+            applications.Launch(new AppId("relaxkonos.appinstaller"));
     }
 }
