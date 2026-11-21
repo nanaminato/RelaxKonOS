@@ -18,7 +18,7 @@ namespace RelaxKonOS.Client.Apps.Squid;
 public sealed class SquidApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.squid"), "Squid", "1.0.0", "⇥", "HTTP and HTTPS forward proxy gateway",
-        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerComponentsRead],
+        [AppPermissions.ServerSquidRead, AppPermissions.ServerSquidManage, AppPermissions.ServerComponentsRead],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.GatewayProxy]),
         IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/squid.png", InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
@@ -59,15 +59,15 @@ public sealed class SquidApp : RemoteApplicationBase
         _ = InitializeAsync();
         async Task InitializeAsync()
         {
-            var read = context.Permissions.GetStatus(AppPermissions.ServerProxyRead);
-            if (read == AppPermissionStatus.Undecided) read = await context.Permissions.RequestAsync(AppPermissions.ServerProxyRead);
+            var read = context.Permissions.GetStatus(AppPermissions.ServerSquidRead);
+            if (read == AppPermissionStatus.Undecided) read = await context.Permissions.RequestAsync(AppPermissions.ServerSquidRead);
             vm.CanRead = read == AppPermissionStatus.Granted;
             if (vm.CanRead) await vm.RefreshCommand.ExecuteAsync(null);
             // A host that reported "unsupported" can never accept a mutation, so do not ask for the
             // manage grant there. An unavailable host keeps the prompt: the facts are merely unknown.
             if (!vm.CanRead || vm.Snapshot?.Status is { Supported: false }) return;
-            var manage = context.Permissions.GetStatus(AppPermissions.ServerProxyManage);
-            if (manage == AppPermissionStatus.Undecided) manage = await context.Permissions.RequestAsync(AppPermissions.ServerProxyManage);
+            var manage = context.Permissions.GetStatus(AppPermissions.ServerSquidManage);
+            if (manage == AppPermissionStatus.Undecided) manage = await context.Permissions.RequestAsync(AppPermissions.ServerSquidManage);
             vm.CanManage = manage == AppPermissionStatus.Granted && session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller;
         }
         Task<TResult?> ShowOwnedAsync<TResult>(string title, Func<RelaxKonOS.WindowManager.ModalDialog<TResult>, Avalonia.Controls.Control> factory, RelaxKonOS.Core.Primitives.Size size)

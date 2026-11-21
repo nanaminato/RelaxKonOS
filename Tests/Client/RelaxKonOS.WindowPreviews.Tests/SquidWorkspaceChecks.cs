@@ -1,3 +1,6 @@
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.AppPermissions;
+using RelaxKonOS.Core.Applications;
 using IServerSquid = RelaxKonOS.AppSDK.IServerSquid;
 using Avalonia.LogicalTree;
 using Avalonia.Controls;
@@ -17,6 +20,49 @@ using RelaxKonOS.Protocol.Proxy;
 
 internal static class SquidWorkspaceChecks
 {
+    public static async Task VerifyCapabilityAsync()
+    {
+        var id = new AppId("relaxkonos.squid");
+        var permissions = new CertificateCapabilityChecks.Permission(id.Value);
+        var session = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+        var auth = (EventAlertsAuthFixture)(object)session;
+        var memory = new UsageMemoryStore(Path.Combine(AppContext.BaseDirectory, "preview-qa", "squid-sdk-memory.json"));
+        var transport = new SquidClientStub();
+        var opened = 0;
+        using var lifetime = new CancellationTokenSource();
+        IServerSquid squid = new ServerSquidCapability(id, permissions, new ExternalServerConnection(memory.Capture(session)),
+            () => { opened++; return transport; }, lifetime.Token);
+        var request = new SquidLifecycleRequest(SquidServiceAction.Reload);
+
+        permissions.Granted.Add(AppPermissions.ServerProxyRead);
+        await RejectAsync<UnauthorizedAccessException>(() => squid.ReadAsync(default));
+        Check(opened == 0, "Proxy permission cannot initialize the Squid transport.");
+        permissions.Granted.Add(AppPermissions.ServerSquidRead);
+        await squid.ReadAsync(default);
+        await RejectAsync<UnauthorizedAccessException>(() => squid.RunLifecycleAsync(request, "request-key", default));
+        permissions.Granted.Add(AppPermissions.ServerSquidManage);
+        var accepted = await squid.RunLifecycleAsync(request, "request-key", default);
+        await squid.OperationAsync(accepted.OperationId, default);
+        transport.OperationKind = "proxy.configuration.apply";
+        await RejectAsync<InvalidDataException>(() => squid.OperationAsync(accepted.OperationId, default));
+        Check(opened == 1 && transport.Submissions is [("request-key", SquidLifecycleRequest)],
+            "Only the authorized request may reach the captured transport.");
+
+        auth.ServiceId = "http://replacement.invalid";
+        auth.NotifyStateChanged();
+        await RejectAsync<InvalidOperationException>(() => squid.ReadAsync(default));
+        lifetime.Cancel();
+        await RejectAsync<OperationCanceledException>(() => squid.ReadAsync(default));
+        Console.WriteLine("Squid SDK grants, operation scope, and session lifetime checks passed.");
+
+        static async Task RejectAsync<T>(Func<Task> operation) where T : Exception
+        {
+            try { await operation(); }
+            catch (T) { return; }
+            throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+        }
+    }
+
     public static void Run()
     {
         // The Server answers the gateway contract on every platform, so the manifest must not narrow
@@ -368,6 +414,7 @@ internal static class SquidWorkspaceChecks
     {
         public SquidConfigurationSnapshot Snapshot = new(new(new SquidConfiguration { Port = 1270 }, 1, 1, "hash", null), new(true, true, true, true, true, "hash", true), true);
         public int Reads; public int OperationReads; public bool LoseFirstResponse; public bool OperationFailed;
+        public string OperationKind = "squid.configuration.apply";
         public string FailureCode = "squid.package.install_failed";
         public List<(string Key, object Body)> Submissions = [];
         private readonly Guid _id = Guid.NewGuid();
@@ -397,7 +444,7 @@ internal static class SquidWorkspaceChecks
                 else if (mutation.Action == SquidAccountAction.SetEnabled && existing >= 0) Accounts[existing] = Accounts[existing] with { Enabled = mutation.Enabled!.Value };
                 _pendingAccount = null;
             }
-            OperationReads++; return Task.FromResult(new ProxyOperationDto(id, "squid.configuration.apply", OperationFailed ? ProxyOperationState.Failed : ProxyOperationState.Succeeded, "completed", OperationFailed ? FailureCode : "", null, DateTimeOffset.UtcNow));
+            OperationReads++; return Task.FromResult(new ProxyOperationDto(id, OperationKind, OperationFailed ? ProxyOperationState.Failed : ProxyOperationState.Succeeded, "completed", OperationFailed ? FailureCode : "", null, DateTimeOffset.UtcNow));
         }
     }
 }

@@ -31,6 +31,8 @@ public static class AppPermissions
     public const string ServerFileServicesManage = "server.file-services.manage";
     public const string ServerGitRead = "server.git.read";
     public const string ServerGitManage = "server.git.manage";
+    public const string ServerSquidRead = "server.squid.read";
+    public const string ServerSquidManage = "server.squid.manage";
     public const string ServerTunnelsRead = "server.tunnels.read";
     public const string ServerTunnelsManage = "server.tunnels.manage";
     public const string ServerRegistryRead = "server.registry.read";
@@ -84,6 +86,8 @@ public static class AppPermissions
         new(ServerFileServicesManage, "Manage file services", "Install and control SMB services and change only RelaxKonOS-managed shares.", "server_files"),
         new(ServerGitRead, "Read Git repositories", "View registered Git repositories, their status, branches, history, and diffs on the server.", "server_files"),
         new(ServerGitManage, "Manage Git repositories", "Commit, pull, push, switch, create and delete branches, and revert commits in registered Git repositories on the server.", "server_files"),
+        new(ServerSquidRead, "Read Squid configuration", "View Squid account names, gateway configuration, and service status.", "server_network"),
+        new(ServerSquidManage, "Manage Squid", "Manage the Squid gateway, its accounts, and its service lifecycle.", "server_network"),
         new(ServerTunnelsRead, "Read tunnel configuration", "View safe tunnel, FRP server profile, runtime, and sanitized log state on the server.", "server_network"),
         new(ServerTunnelsManage, "Manage tunnels", "Create, change, apply, stop, and delete server tunnel configuration and FRP runtime settings.", "server_network"),
         new(ServerRegistryRead, "Read configuration registry", "Browse supported RelaxKonOS configuration values and their synchronization state.", "server_management"),

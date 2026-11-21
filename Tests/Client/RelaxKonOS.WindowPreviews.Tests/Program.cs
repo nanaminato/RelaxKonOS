@@ -183,6 +183,7 @@ if (args.Contains("--network-inspector-only"))
 if (args.Contains("--squid-only"))
 {
     SquidWorkspaceChecks.Run();
+    Task.Run(SquidWorkspaceChecks.VerifyCapabilityAsync).GetAwaiter().GetResult();
     return;
 }
 if (args.Contains("--proxy-only"))
