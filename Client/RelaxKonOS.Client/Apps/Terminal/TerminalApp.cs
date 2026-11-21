@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Terminal;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Client.Services.Dialogs;
@@ -82,7 +83,7 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
                         accessToken: tokens.AccessToken,
                         diagnostics: diagnostics);
                     sessionIds = (await TerminalHubConnection.ListSessionsAsync(options, cancellationToken))
-                        .Where(x => !x.HasExited && !TerminalViewModel.IsSessionOpen(x.SessionId))
+                        .Where(x => !x.HasExited && !TerminalSessionReservations.IsOpen(x.SessionId))
                         .OrderBy(x => x.CreatedAt)
                         .ToArray();
                 }
@@ -119,7 +120,7 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
                     if (restoreOnly && cancellationToken.IsCancellationRequested)
                         return;
 
-                    if (TerminalViewModel.TryReserveSession(sessionId.SessionId))
+                    if (TerminalSessionReservations.TryReserve(sessionId.SessionId))
                         OpenWindow(context, session, diagnostics, sessionId.SessionId, isAdministrator: sessionId.IsAdministrator);
                 }
         }

@@ -1,5 +1,4 @@
 using RelaxKonOS.App.Terminal;
-using System.Collections.Concurrent;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Diagnostics;
@@ -37,13 +36,12 @@ public partial class TerminalViewModel : LocalizedObservableObject
     }
     private const int Columns = 80;
     private const int Rows = 24;
-    private static readonly ConcurrentDictionary<string, byte> OpenSessions = new();
 
     private readonly IAuthSession? _session;
     private readonly ITerminalSettingsClient _settingsClient;
     private readonly string? _initialSessionId;
     private readonly string? _initialWorkingDirectory;
-    private readonly NetworkDiagnosticsService? _diagnostics;
+    private readonly TerminalConnectionOptions _connectionOptions;
     private readonly SshDesktopSession? _sshDesktop;
     private TerminalSurfaceFactory? _surfaceFactory;
     private ITerminalSurface? _surface;
@@ -112,18 +110,13 @@ public partial class TerminalViewModel : LocalizedObservableObject
         _preferences = session is { State: AuthSessionState.Authenticated } && sshDesktop?.IsConnected != true ? preferences : null;
         _session = session;
         _settingsClient = settingsClient;
-        _diagnostics = diagnostics;
+        _connectionOptions = new(session, sshDesktop, diagnostics);
         _sshDesktop = sshDesktop;
         _initialSessionId = initialSessionId;
         _initialWorkingDirectory = initialWorkingDirectory;
         IsAdministrator = isAdministrator;
         Title = LocalizedText.Get(isAdministrator ? "terminal.administrator_title" : "application.relaxkonos.terminal.display_name");
     }
-
-    public static bool IsSessionOpen(string sessionId) => OpenSessions.ContainsKey(sessionId);
-
-    /// <summary>Reserves a restored session before its view is attached, preventing duplicate windows.</summary>
-    public static bool TryReserveSession(string sessionId) => OpenSessions.TryAdd(sessionId, 0);
 
     /// <summary>Called once when the terminal control is loaded.</summary>
     public async Task AttachAsync(TerminalSurfaceFactory surfaceFactory)
@@ -230,52 +223,14 @@ public partial class TerminalViewModel : LocalizedObservableObject
 
         HasExited = false;
         var dimensions = new TerminalSessionDimensions(Columns, Rows, WidthPixels: 800, HeightPixels: 480);
-        ITerminalTransportOptions options;
-
-        if (_sshDesktop is { IsConnected: true, Endpoint: { } endpoint, HostKeyFingerprint: { } fingerprint })
-        {
-            Status = LocalizedText.Ref("terminal.status.connecting");
-            options = new SshTransportOptions(
-                Endpoint: new SshEndpointOptions(endpoint.Host, endpoint.Port, endpoint.UserName),
-                RequestPty: true,
-                TerminalType: "xterm-256color",
-                InitialCommand: null,
-                Authentication: new SshAuthenticationOptions(
-                    UsePassword: true,
-                    PasswordSecretId: "ssh-desktop-session",
-                    PrivateKeySecretIds: Array.Empty<string>(),
-                    UseAgent: false),
-                Dimensions: dimensions)
-            { ExpectedHostKeyFingerprintSha256 = fingerprint };
-        }
-        else if (_session is { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } })
-        {
-            Status = LocalizedText.Ref("terminal.status.connecting");
-            options = new SignalRTransportOptions(
-                hubUrl: url.TrimEnd('/') + "/hubs/terminals",
-                dimensions: dimensions,
-                tokenProvider: () => _session?.GetAccessTokenAsync(TimeSpan.FromMinutes(1)) ?? Task.FromResult<string?>(null),
-                accessToken: _session.Tokens.AccessToken,
-                sessionId: sessionId,
-                workingDirectory: _initialWorkingDirectory,
-                diagnostics: _diagnostics,
-                isAdministrator: IsAdministrator);
-        }
-        else
-        {
-            Status = LocalizedText.Ref("terminal.status.local_fallback");
-            options = new PtyTransportOptions(
-                Command: null,
-                WorkingDirectory: _initialWorkingDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                Environment: null,
-                Dimensions: dimensions);
-        }
+        var (options, remote) = _connectionOptions.Create(dimensions, sessionId, _initialWorkingDirectory, IsAdministrator);
+        Status = LocalizedText.Ref(remote ? "terminal.status.connecting" : "terminal.status.local_fallback");
 
         try
         {
             await _surface.StartSessionAsync(options, CancellationToken.None);
             if (_surfaceFactory.TransportFactory.CurrentSessionId is { } id)
-                OpenSessions.TryAdd(id, 0);
+                TerminalSessionReservations.TryReserve(id);
             Status = LocalizedText.Ref(IsAdministrator ? "terminal.status.administrator_connected" : "terminal.status.connected");
         }
         catch (Exception ex)
@@ -291,7 +246,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
             return;
 
         if (_surfaceFactory.TransportFactory.CurrentSessionId is { } id)
-            OpenSessions.TryRemove(id, out _);
+            TerminalSessionReservations.Release(id);
         _ = kill ? _surfaceFactory.TransportFactory.KillActiveAsync() : _surfaceFactory.TransportFactory.StopActiveAsync();
     }
 
