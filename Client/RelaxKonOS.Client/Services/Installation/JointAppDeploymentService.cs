@@ -173,8 +173,19 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         {
             if (!MatchesAccount(plan))
                 throw new InvalidOperationException("deployment-account-changed");
+            if (plan.OrderedReleases.IsDefaultOrEmpty
+                || plan.OrderedReleases[^1] is not { } root
+                || root.Package != App(candidate.Manifest.Id) || root.Version != candidate.Manifest.Version
+                || root.ArtifactIdentity != candidate.ExpectedSha256)
+                throw new InvalidOperationException("deployment-application-plan-changed");
             installed ??= await packages.FindDeploymentResultAsync(candidate.Manifest.Id, plan.Id, cancellationToken);
-            if (installed is not null) return;
+            if (installed is not null)
+            {
+                if (installed.Version != root.Version
+                    || applications.GetManifest(new AppId(root.Package.Id))?.Version != root.Version)
+                    throw new InvalidOperationException("deployment-application-not-registered");
+                return;
+            }
             VerifyApplicationBaseline();
             packages.EnsureReplacementVersionIsCompatible(candidate.Manifest.Id, candidate.Manifest.Version);
             foreach (var dependency in plan.OrderedReleases)

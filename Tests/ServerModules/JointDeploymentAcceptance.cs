@@ -190,6 +190,17 @@ internal static class JointDeploymentAcceptance
             joint = Service();
             review = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Missing deployment after enable.");
             var installed = await joint.ExecuteAsync(review, default);
+            try
+            {
+                await joint.ExecuteAsync(review with
+                {
+                    Candidate = review.Candidate with { ExpectedSha256 = new string('0', 64) },
+                }, default);
+                throw new InvalidOperationException("Expected the completed plan to reject a different candidate.");
+            }
+            catch (InvalidOperationException error) when (error.Message == "deployment-application-plan-changed") { }
+            Require(await joint.ExecuteAsync(review, default) == installed,
+                "completed deployment replay accepts the confirmed application archive identity");
             using var ready = new HttpClient { BaseAddress = new Uri(host.Url) };
             ready.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Admin);
             var health = await ready.GetFromJsonAsync<ServerModuleHealthPageDto>(
