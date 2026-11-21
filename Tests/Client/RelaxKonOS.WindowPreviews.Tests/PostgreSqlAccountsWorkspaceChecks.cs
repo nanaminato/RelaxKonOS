@@ -1,3 +1,4 @@
+using IServerPostgreSql = RelaxKonOS.AppSDK.IServerPostgreSql;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -60,7 +61,7 @@ internal static class PostgreSqlAccountsWorkspaceChecks
         }
         vm.Password="Fixture-Only-Password-30!";vm.Invalidate();Check(vm.Password=="" && !vm.CanResume && !vm.CanCreateDatabase,"session invalidation clears secret drafts and disables actions");
     }
-    private sealed class Client:IPostgreSqlClient
+    private sealed class Client:IServerPostgreSql
     {
         public List<PostgreSqlCredentialRequest> Credentials=[];
         public PostgreSqlState State=new(true,true,true,"16.15",5,Guid.NewGuid(),55432,true,true,null,null,null,

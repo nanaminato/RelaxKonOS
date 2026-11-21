@@ -1,5 +1,7 @@
 # 数据库引擎管理设计（APP-005）
 
+桌面 PostgreSQL 工作区通过应用 SDK 的 `IServerPostgreSql` 访问状态、维护与迁移计划以及凭据暂存。宿主传输继续校验当前登录并构建原有请求。应用级授权绑定和独立官方包仍在迁移。
+
 > 状态：DB-01 已核实，DB-02/03/04、DB-05 指定来源 TLS 与 DB-06 补丁维护切片已实现并通过隔离 systemd/PostgreSQL 验收。DB-07D 扩充原生平台矩阵，验收范围见下文。更新：2026-11-17。
 > 本文拥有数据库领域设计与 DB 跟踪项；[原提案](../application-ideas/proposals/DatabaseManagement.md)保留需求入口。本文的实施顺序是建议，不能作为支持矩阵或交付承诺。
 

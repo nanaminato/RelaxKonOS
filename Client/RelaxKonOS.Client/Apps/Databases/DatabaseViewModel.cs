@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Apps.ComponentCenter;
@@ -8,7 +9,7 @@ using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Client.Apps.Databases;
 
-public sealed partial class DatabaseViewModel(IPostgreSqlClient client) : ObservableObject, IDisposable
+public sealed partial class DatabaseViewModel(IServerPostgreSql client) : ObservableObject, IDisposable
 {
     private readonly CancellationTokenSource lifetime = new();
     private bool invalid;

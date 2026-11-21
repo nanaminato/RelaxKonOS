@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
@@ -5,7 +6,7 @@ using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Installations;
 namespace RelaxKonOS.Client.Apps.Databases;
-public sealed partial class PostgreSqlMaintenanceViewModel(IPostgreSqlClient client, InstallationTaskViewModel installation):ObservableObject,IDisposable
+public sealed partial class PostgreSqlMaintenanceViewModel(IServerPostgreSql client, InstallationTaskViewModel installation):ObservableObject,IDisposable
 {
     public InstallationTaskViewModel Installation=>installation;
     public InstallationTaskViewModel? ScheduleInstallation {get;set;}

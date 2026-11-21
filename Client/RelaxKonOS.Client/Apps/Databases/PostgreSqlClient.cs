@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using RelaxKonOS.Client.Services.Auth;
@@ -6,8 +7,7 @@ using RelaxKonOS.Protocol.Databases;
 
 namespace RelaxKonOS.Client.Apps.Databases;
 
-public interface IPostgreSqlClient { Task<PostgreSqlState> ReadAsync(CancellationToken ct, Guid? instance = null); Task<PostgreSqlState> MaintenancePlanAsync(CancellationToken ct); Task<PostgreSqlState> MigrationPlanAsync(CancellationToken ct); Task StageCredentialAsync(PostgreSqlCredentialRequest request, CancellationToken ct); }
-public sealed class PostgreSqlClient(HttpClient http, IAuthSession session) : IPostgreSqlClient
+public sealed class PostgreSqlClient(HttpClient http, IAuthSession session) : IServerPostgreSql
 {
     private readonly object? login = session.CurrentSession;
     public Task<PostgreSqlState> ReadAsync(CancellationToken ct, Guid? instance = null) => ReadStateAsync(instance is { } id ? PostgreSqlRoutes.State + "?instance=" + id.ToString("D") : PostgreSqlRoutes.State,ct);

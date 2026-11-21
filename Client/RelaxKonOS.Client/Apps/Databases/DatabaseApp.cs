@@ -24,7 +24,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
     {
         var session = context.Services.GetRequiredService<IAuthSession>();
         if (session.State != AuthSessionState.Authenticated) return;
-        var model = new DatabaseViewModel(context.Services.GetRequiredService<IPostgreSqlClient>())
+        var model = new DatabaseViewModel(context.Services.GetRequiredService<IServerPostgreSql>())
         {
             Dependency = ComponentDependencySettingsViewModel.Create(context, "relaxkonos.database"),
             CanManage = session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller
@@ -91,7 +91,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
         var accountsTask = new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
             InstallationServiceId.PostgreSqlAccounts, "relaxkonos.database", model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlAccounts), "accounts-installation");
-        model.AccountManager = new(context.Services.GetRequiredService<IPostgreSqlClient>(), accountsTask)
+        model.AccountManager = new(context.Services.GetRequiredService<IServerPostgreSql>(), accountsTask)
         { CanManage = model.CanManage, LifecycleBusy = () => model.MaintenanceBusy || model.Busy || model.Installation.IsActive || model.CanResume || model.AdminRecoveryInstallation.IsActive || model.CanResumeAdminRecovery || model.RemoteManager.Busy || model.RemoteManager.HasPending || remoteTask.IsActive };
         model.AccountManager.ConfirmAsync = command => Confirm("database.accounts_confirm",
             LocalizedText.Get("database.account_action." + command.Action) + " · " + command.Database + " · " + (command.Account ?? "—") + " · "
@@ -103,7 +103,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
         var maintenanceTask=new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(),context.Services.GetRequiredService<IAppSettingsClient>(),
             InstallationServiceId.PostgreSqlMaintenance,"relaxkonos.database",model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlMaintenance),"maintenance-installation");
-        model.MaintenanceManager=new(context.Services.GetRequiredService<IPostgreSqlClient>(),maintenanceTask)
+        model.MaintenanceManager=new(context.Services.GetRequiredService<IServerPostgreSql>(),maintenanceTask)
         {CanManage=model.CanManage,ConfirmAsync=command=>Confirm(command?.Action==RelaxKonOS.Protocol.Databases.PostgreSqlMaintenanceAction.DeleteInstance?"database.delete_instance_confirm":command?.Action==RelaxKonOS.Protocol.Databases.PostgreSqlMaintenanceAction.MigrateMajor?"database.migration_confirm":command?.Action==RelaxKonOS.Protocol.Databases.PostgreSqlMaintenanceAction.DeleteBackup?"database.backup_delete_confirm":"database.maintenance_confirm",command is null?LocalizedText.Get("database.recover"):LocalizedText.Get("database.maintenance_action."+command.Action)+" · "+(command.Target?.Version??command.BackupId?.ToString()??command.InstanceId.ToString())),
             OtherBusy=()=>model.Busy||model.CanResume||model.Installation.IsActive||model.AdminRecoveryInstallation.IsActive||model.CanResumeAdminRecovery||model.RemoteManager.Busy||model.RemoteManager.HasPending||remoteTask.IsActive||model.AccountManager.Busy||model.AccountManager.HasPendingRequest||accountsTask.IsActive};
         maintenanceTask.PropertyChanged+=(_,_)=>{model.MaintenanceManager.Notify();model.NotifyState();model.AccountManager.Notify();model.RemoteManager.Notify();};

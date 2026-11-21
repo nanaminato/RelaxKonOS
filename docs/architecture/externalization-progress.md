@@ -331,3 +331,5 @@
 - Tailscale 已建立独立应用项目，五类对话框、出口节点显示模型和中英日资源由该项目提供。现有桌面入口和工作区已接入独立项目，Windows Release 的 246 项桌面行为、传输和布局检查通过。主工作区与包入口仍待迁移。
 
 - Tailscale 桌面工作区已随可选官方 .roapp 发布，包清单声明 Tailscale 服务端模块依赖。Windows Release 验证了 246 项桌面检查、SDK 授权，以及官方包的来源、完整性、更新、安装失败、重启和卸载。真实 Tailscale daemon 和设备验收仍待完成。
+- Databases 的 PostgreSQL 状态、计划与凭据暂存契约已迁入应用 SDK。后续接入外置应用的授权与连接作用域，以及 MySQL 和受管安装任务。
+- Windows Release Databases 桌面专项通过，覆盖 PostgreSQL 操作恢复、凭据暂存和 MySQL 页面回归。

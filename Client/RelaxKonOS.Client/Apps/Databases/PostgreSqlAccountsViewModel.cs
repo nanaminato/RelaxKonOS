@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
@@ -8,7 +9,7 @@ using RelaxKonOS.Protocol.Installations;
 namespace RelaxKonOS.Client.Apps.Databases;
 
 public sealed record PostgreSqlPermissionChoice(PostgreSqlPermission Value, LocalizedStatus Label);
-public sealed partial class PostgreSqlAccountsViewModel(IPostgreSqlClient client, InstallationTaskViewModel installation) : ObservableObject, IDisposable
+public sealed partial class PostgreSqlAccountsViewModel(IServerPostgreSql client, InstallationTaskViewModel installation) : ObservableObject, IDisposable
 {
     private readonly CancellationTokenSource lifetime = new();
     private bool invalid;

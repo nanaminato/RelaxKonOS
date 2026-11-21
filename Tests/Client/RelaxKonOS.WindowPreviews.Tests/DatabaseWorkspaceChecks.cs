@@ -1,3 +1,4 @@
+using IServerPostgreSql = RelaxKonOS.AppSDK.IServerPostgreSql;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -309,7 +310,7 @@ internal static class DatabaseWorkspaceChecks
                 InstallationStage.Completed, null, null, DateTimeOffset.UtcNow, null, DateTimeOffset.UtcNow, false), options: RelaxKonOSJsonOptions.Default) };
         }
     }
-    private sealed class Client:IPostgreSqlClient
+    private sealed class Client:IServerPostgreSql
     {
         public PostgreSqlState State=new(true,true,true,"16.15-0ubuntu0.24.04.1",2,null,55432,false,false,null,null,null);
         public Task StageCredentialAsync(PostgreSqlCredentialRequest request, CancellationToken ct) => Task.CompletedTask;
