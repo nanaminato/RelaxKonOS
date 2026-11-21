@@ -38,6 +38,8 @@ dotnet $cli rollback com.relaxkonos.example.image-viewer --no-launch
 
 CLI 通过回环 HTTP 传输文件，无需生成 `.roapp`。Debug 客户端验证清单、入口程序集和可解析的运行时依赖，并为每次部署分配独立的版本目录。候选版本通过加载与可选的激活后，客户端原子更新 `current.json`，关闭旧窗口并卸载旧版的程序集加载上下文。若候选加载或激活失败，当前版本和其窗口保留。`reload` 用新加载上下文重载当前版本，`rollback` 切换到持久化的上一版本。原生库能否完成初始化取决于应用实际调用相关功能时的运行结果。自动启动需要已打开的桌面工作区。在登录页可用 `--no-launch` 安装。
 
+Direct Deploy 将清单中的依赖随候选版本登记。启动检查读取候选的依赖。依赖缺失时自动启动返回 `launch_blocked`，开发者可使用 `--no-launch` 先登记候选。需要安装服务端模块时，通过应用安装器审阅 `.roapp` 联合部署计划。
+
 ### Profile 与结果
 
 - Debug 路径为 `%LOCALAPPDATA%/RelaxKonOS/Debug/<profile>/SystemDrive`。每个 profile 独立保存配对令牌和本地应用授权。可用 `RELAXKONOS_DEV_DATA_HOME` 指定 Debug 数据父目录，客户端仍在其中创建 `RelaxKonOS/Debug/<profile>`。同一个 profile 的数据目录只能由一个桌面进程打开。

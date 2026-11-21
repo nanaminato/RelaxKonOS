@@ -90,6 +90,7 @@
 - Docker 对话框已迁入应用项目，由 SDK 创建和确认。Compose 提交期间禁止取消，放弃修改需经当前对话框的子窗口确认。
 - Docker 独立入口使用 SDK 打开窗口、显示组件依赖和跳转文件浏览器，自带中英日界面文案。Docker 已从桌面内置注册移除，作为官方商店可选 `.roapp` 随桌面发行物发布。Developer 声明交互式安装，启动时不安装。真实 Docker 主机验收仍待执行。
 - Docker Manager 0.3.0 在清单中要求 `relaxkonos.docker` 服务端模块及 `server.docker` 能力。Windows Release 使用实际归档验证官方商店审查、拒绝绕过联合部署、Developer 交互条目跳过启动安装，以及隔离的客户端包生命周期。发行配置中的最低版本与归档一致。客户端生命周期测试使用模拟部署回执，Docker 模块与 Engine 实机验收待完成。
+- Windows Debug 使用实际 Docker 包内容构造 Direct Deploy 负载。回归验证候选启动时读取新清单的依赖，启动守卫拒绝后恢复注册状态，且 `--no-launch` 路径可以登记保留依赖的候选。该测试直接调用桌面部署处理程序。
 - Docker 代理状态页已迁入应用项目，通过 SDK 读取引擎、构建与 Docker Desktop 的代理状态。系统设置负责主机级代理配置的写入和清除。
 
 - 本地 SDK 10.0.300。部署库独立构建通过，零警告、零错误。桌面 Client 构建通过，NuGet 漏洞索引不可达，项目还报告了原有编译警告。

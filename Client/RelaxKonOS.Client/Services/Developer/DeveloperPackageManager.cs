@@ -78,7 +78,8 @@ public sealed partial class DeveloperPackageManager
     internal OfficialDesktopPackages OfficialSource => _official;
     internal IReadOnlyList<DeveloperAppRecord> InstalledRecords => _catalog.Values.ToArray();
     internal IReadOnlyList<DeploymentRequirement> RequiredDependencies(AppId id) =>
-        _catalog.GetValueOrDefault(id.Value)?.Dependencies?.Required ?? [];
+        (_applications.Get(id) is ExternalApplicationAdapter adapter ? adapter.RequiredDependencies
+            : _catalog.GetValueOrDefault(id.Value)?.Dependencies?.Required) ?? [];
 
     internal IReadOnlyList<string> RequiredBy(DeploymentPackageKey package) =>
         _catalog.Values.Where(record => (package.Kind != DeploymentPackageKind.Application || record.Id != package.Id)
@@ -305,7 +306,8 @@ public sealed partial class DeveloperPackageManager
                 var planId = await verifyDeployment(manifest, cancellationToken);
                 await _drive.WriteJsonAtomicallyAsync(deploymentReceipt, planId, cancellationToken);
             }
-            else if (manifest.Dependencies?.Required is { Count: > 0 })
+            else if (manifest.Dependencies?.Required is { Count: > 0 }
+                     && !(origin == PackageOrigin.DirectDeploy && DeveloperProfile.IsDebug))
                 throw new InvalidOperationException("This package requires joint deployment before installation.");
 
             // Keep every deployment in a distinct folder. A currently loaded DLL can be locked on
@@ -959,6 +961,7 @@ public sealed partial class DeveloperPackageManager
         }
 
         public override ApplicationManifest Manifest => ToApplicationManifest(Record);
+        internal IReadOnlyList<DeploymentRequirement>? RequiredDependencies => Record.Dependencies?.Required;
         internal bool IsLoaded => _loaded is not null;
         protected CancellationToken Lifetime => _lifetime.Token;
 
