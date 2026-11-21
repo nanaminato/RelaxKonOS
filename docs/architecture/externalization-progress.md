@@ -72,5 +72,5 @@
 - Welcome 已独立构建并使用 DevCli 生成 Release 归档。Windows 包测试通过首次预装、更新、坏包拒绝、重启和卸载。窗口测试覆盖中英日、关闭后解除订阅、记事本入口与安装器回退。
 - Welcome 的 Windows Release 回归验证了 Standard 默认读取、Minimal 选择跨启动保留、排除项生效、Developer 选择以及卸载决定保留。尚未验证完整 Developer 工具集和图形化选择。
 - Windows 本机 HTTP 签名包测试通过。两份签名 .rkmodule 中，依赖方可提前生成计划，缺少前置模块时提交被拒绝，安装前置模块后原计划成功写入安装目录。此测试覆盖服务端包操作，桌面 .roapp 尚未参加该场景。
-- Windows 隔离宿主双包验收通过。使用 DevCli 打包的 Welcome 和实际签名的 fixture-module，经桌面协调器创建计划、安装模块、恢复并启用、再次重启、查证 1.0.0 健康后注册应用。模块包操作只有一条，模块 ping 与测试 Core 就绪端点均可用。运行 ServerModules 测试的 `--joint-deployment-acceptance <Welcome.roapp>` 可复现。fixture 使用本机 HTTP 和测试鉴权，归档经真实上传端点暂存。
+- Windows 隔离宿主双包验收通过。使用 DevCli 打包的 Welcome 和实际签名的 fixture-module，经桌面协调器创建计划、安装模块、恢复并启用、再次重启、查证 1.0.0 健康后注册应用。模块包操作只有一条，模块 ping 与测试 Core 就绪端点均可用。模拟启用提交前断线后，重试根据最新期望状态生成新的启用预览并恢复原联合计划。运行 ServerModules 测试的 `--joint-deployment-acceptance <Welcome.roapp>` 可复现。fixture 使用本机 HTTP 和测试鉴权，归档经真实上传端点暂存。
 - 独立部署设备和 Linux 双包验收、Android 和全应用三语言界面验收均待执行。

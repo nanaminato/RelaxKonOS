@@ -120,7 +120,16 @@ internal static class JointDeploymentAcceptance
             session.Url = host.Url;
             joint = Service();
             review = await joint.FindPendingAsync(candidate, default) ?? throw new InvalidOperationException("Missing pending deployment.");
+            factory.DropNextEnableApply();
+            try
+            {
+                await joint.ExecuteAsync(review, default);
+                throw new InvalidOperationException("Expected the enable request to be interrupted.");
+            }
+            catch (HttpRequestException error) when (error.Message == "fixture-enable-apply-interrupted") { }
             await ExpectRestartAsync(joint, review);
+            Require(factory.EnablePreviewKeys.Distinct(StringComparer.Ordinal).Count() == 2,
+                "retry after an interrupted enable requests a fresh server preview");
             Require(!applications.IsRegistered(new AppId(AppIdText)), "the desktop stays pending while module enable awaits restart");
 
             await host.DisposeAsync();
@@ -244,17 +253,37 @@ internal static class JointDeploymentAcceptance
 
     private sealed class FixtureHttpFactory(byte[] signedArchive) : IHttpClientFactory, IDisposable
     {
-        private readonly HttpClient http = new(new ArchiveUploadHandler(signedArchive));
-        public HttpClient CreateClient(string name) => http;
-        public void Dispose() => http.Dispose();
+        private readonly ArchiveUploadHandler handler = new(signedArchive);
+        private HttpClient? http;
+        public IReadOnlyList<string> EnablePreviewKeys => handler.EnablePreviewKeys;
+        public void DropNextEnableApply() => handler.DropNextEnableApply = true;
+        public HttpClient CreateClient(string name) => http ??= new(handler);
+        public void Dispose() => http?.Dispose();
     }
 
     // Use the real server staging endpoint in place of the external HTTPS artifact host.
     private sealed class ArchiveUploadHandler(byte[] signedArchive) : DelegatingHandler(new HttpClientHandler { UseProxy = false })
     {
+        public List<string> EnablePreviewKeys { get; } = [];
+        public bool DropNextEnableApply { get; set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
+            var path = request.RequestUri?.AbsolutePath;
+            if (request.Method == HttpMethod.Post && path == ServerModuleManagementRoutes.Plans)
+            {
+                var plan = await request.Content!.ReadFromJsonAsync<ServerModulePlanRequest>(
+                    RelaxKonOSJsonOptions.Default, cancellationToken);
+                if (plan?.Action == ServerModuleAction.Enable) EnablePreviewKeys.Add(plan.IdempotencyKey);
+            }
+            if (DropNextEnableApply && request.Method == HttpMethod.Post
+                && path?.StartsWith(ServerModuleManagementRoutes.Plans + "/", StringComparison.Ordinal) == true
+                && path.EndsWith("/apply", StringComparison.Ordinal))
+            {
+                DropNextEnableApply = false;
+                throw new HttpRequestException("fixture-enable-apply-interrupted");
+            }
             if (request.RequestUri?.AbsolutePath != ServerModuleManagementRoutes.ModuleStoreDownload)
                 return await base.SendAsync(request, cancellationToken);
             using var upload = new HttpRequestMessage(HttpMethod.Post, new Uri(request.RequestUri, ServerModuleManagementRoutes.PackageUpload));

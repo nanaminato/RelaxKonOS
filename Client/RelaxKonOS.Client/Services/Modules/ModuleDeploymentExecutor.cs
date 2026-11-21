@@ -85,8 +85,10 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
 
         var desired = facts.Where(item => item.DesiredEnabled).Select(item => item.Id)
             .Append(module.Id).Order(StringComparer.Ordinal).ToArray();
+        // Preview is disposable. A retry observes the durable desired state first, then asks for
+        // a fresh preview if an earlier one was blocked, expired, or never reached apply.
         var preview = await client.PreviewAsync(new(plan.Target.ServerIdentity, ServerModuleAction.Enable,
-            [module.Id], desired, module.DesiredRevision!, $"{plan.Id:N}-enable-{plan.OrderedReleases.IndexOf(release)}"));
+            [module.Id], desired, module.DesiredRevision!, Guid.NewGuid().ToString("N")));
         if (preview.BlockedBy.Count > 0)
             throw new InvalidOperationException(preview.BlockedBy[0].ProblemCode);
         if (preview.Removed.Count != 0 || preview.Added.Count != 1 || preview.Added[0] != module.Id)
