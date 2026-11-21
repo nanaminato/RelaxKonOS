@@ -1,6 +1,9 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "certificates.title": "Certificate Manager",
+    "certificates.view": "View",
+    "certificates.operation_log": "Operation log",
     "certificates.stop": "Stop",
     "certificates.cancel": "Cancel",
     "certificates.delete": "Delete",

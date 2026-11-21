@@ -356,6 +356,11 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
     Dispatcher.UIThread.RunJobs();
     Check(runs.GetVisualDescendants().OfType<DataGrid>().Single().Columns[0].Header as string
         == LocalizedText.Get("certificates.renewal.source"), "The application assembly resolves the renewal grid headers.");
+    var loginRequired = new RelaxKonOS.App.Certificates.Views.CertificateLoginRequiredView(localization);
+    host.Content = loginRequired;
+    Dispatcher.UIThread.RunJobs();
+    Check(loginRequired.GetVisualDescendants().OfType<TextBlock>().Single().Text
+        == LocalizedText.Get("certificates.login_required"), "The certificate sign-in prompt resolves from the application assembly.");
     host.Content = httpsView;
     if (culture == "zh-CN")
     {

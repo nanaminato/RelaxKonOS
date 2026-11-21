@@ -3,10 +3,10 @@ using RelaxKonOS.App.Certificates;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.Certificates.Views;
+namespace RelaxKonOS.App.Certificates.Views;
 
 /// <summary>Certificate Manager shell. Layout lives in AXAML; this class only attaches the view model.</summary>
-internal partial class CertificateManagerWorkspace : UserControl
+public partial class CertificateManagerWorkspace : UserControl
 {
     public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
     {
@@ -25,7 +25,8 @@ internal partial class CertificateManagerWorkspace : UserControl
         _showCreateSelfSignedCertificate = showCreateSelfSignedCertificate;
         _showRenewalHistory = showRenewalHistory;
         InitializeComponent();
-        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        RelaxKonOS.WindowManager.CompactWorkspaceNavigation.Install(this, WorkspaceBody,
+            (Avalonia.Data.Binding)new LocExtension("certificates.view").ProvideValue(null!));
         ShowPage("overview", OverviewButton);
     }
 

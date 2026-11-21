@@ -1,6 +1,9 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "certificates.title": "证书管理器",
+    "certificates.view": "查看",
+    "certificates.operation_log": "操作日志",
     "certificates.stop": "停止",
     "certificates.cancel": "取消",
     "certificates.delete": "删除",

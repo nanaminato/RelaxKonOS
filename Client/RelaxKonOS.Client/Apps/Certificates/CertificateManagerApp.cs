@@ -18,20 +18,21 @@ public sealed class CertificateManagerApp : RemoteApplicationBase
     public override ApplicationManifest Manifest { get; } = new(
         new AppId("relaxkonos.certificates"), "Certificate Manager", "0.1.0", "🔐", "Manage TLS certificates on the RelaxKonOS Server",
         [AppPermissions.ServerCertificatesRead, AppPermissions.ServerCertificatesManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Certificates]),
-        InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+        IconPath: "avares://RelaxKonOS.App.Certificates/Assets/certificates.png", InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var client = context.Services.GetService(typeof(IServerCertificates)) as IServerCertificates;
+        var language = (ISystemLanguage)context.Services.GetService(typeof(ISystemLanguage))!;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.certificates.display_name"),
-                new CertificateLoginRequiredView(),
+                new CertificateLoginRequiredView(language),
                 new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
-        var viewModel = new CertificateManagerViewModel(client, context.Permissions, (ISystemLanguage)context.Services.GetService(typeof(ISystemLanguage))!);
+        var viewModel = new CertificateManagerViewModel(client, context.Permissions, language);
         ManagedWindow? window = null;
         var view = CertificateManagerWorkspace.Create(
             viewModel,

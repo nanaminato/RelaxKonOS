@@ -1,6 +1,9 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "certificates.title": "証明書マネージャー",
+    "certificates.view": "表示",
+    "certificates.operation_log": "操作ログ",
     "certificates.stop": "停止",
     "certificates.cancel": "キャンセル",
     "certificates.delete": "削除",

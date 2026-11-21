@@ -10,5 +10,6 @@
     <PackageReference Include="Avalonia.Controls.DataGrid" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <EmbeddedResource Include="Localization/*.json" LogicalName="Certificates.Localization.%(Filename).json" />
+    <AvaloniaResource Include="Assets/certificates.png" />
   </ItemGroup>
 </Project>

@@ -1,13 +1,13 @@
 <UserControl xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:certificateApp="clr-namespace:RelaxKonOS.App.Certificates;assembly=RelaxKonOS.App.Certificates"
-             x:Class="RelaxKonOS.Client.Apps.Certificates.Views.CertificateManagerWorkspace"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Certificates"
+             xmlns:certificateApp="clr-namespace:RelaxKonOS.App.Certificates"
+             x:Class="RelaxKonOS.App.Certificates.Views.CertificateManagerWorkspace"
              x:DataType="certificateApp:CertificateManagerViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto">
         <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
-            <wm:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.certificates.display_name}" Subtitle="{loc:Loc certificates.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/certificates.png" />
+            <wm:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc certificates.title}" Subtitle="{loc:Loc certificates.subtitle}" IconAsset="avares://RelaxKonOS.App.Certificates/Assets/certificates.png" />
 
         </Grid>
 
@@ -23,9 +23,9 @@
                     <TextBlock Grid.Column="1" Text="{Binding OperationText}" TextTrimming="CharacterEllipsis"
                                ToolTip.Tip="{Binding OperationText}" VerticalAlignment="Center" FontSize="12" />
 
-                    <ToggleButton Grid.Column="3" x:Name="OperationLogToggle" Content="{loc:Loc common.operation_log}"
+                    <ToggleButton Grid.Column="3" x:Name="OperationLogToggle" Content="{loc:Loc certificates.operation_log}"
                                   IsChecked="{Binding IsOperationLogExpanded, Mode=TwoWay}" Padding="8,2" Height="28" />
-                <Button Grid.Column="4" Content="{loc:Loc common.stop}" Command="{Binding CancelOperationCommand}"
+                <Button Grid.Column="4" Content="{loc:Loc certificates.stop}" Command="{Binding CancelOperationCommand}"
                         IsVisible="{Binding IsOperationRunning}" Padding="8,2" Height="28" />
                 </Grid>
             </Grid>
