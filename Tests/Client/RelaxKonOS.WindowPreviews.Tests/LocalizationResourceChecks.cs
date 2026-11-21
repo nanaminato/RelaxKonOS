@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Avalonia.Threading;
 using RelaxKonOS.App.FileServices;
+using RelaxKonOS.App.Firewall;
 using RelaxKonOS.App.Git;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
@@ -16,11 +17,13 @@ internal static class LocalizationResourceChecks
             var table = new Dictionary<string, string>();
             var files = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Localization", culture), "*.json");
             if (files.Length == 0) throw new Exception("No shipped localization files for " + culture);
-            foreach (var file in files.Concat([$"Git.Localization.{culture}.json", $"FileServices.Localization.{culture}.json"]))
+            foreach (var file in files.Concat([$"Git.Localization.{culture}.json", $"FileServices.Localization.{culture}.json",
+                $"Firewall.Localization.{culture}.json"]))
             {
                 using var source = Path.IsPathRooted(file) ? File.OpenRead(file)
                     : file.StartsWith("Git.", StringComparison.Ordinal) ? GitLocalization.Open(file)
-                    : FileServicesLocalization.Open(file);
+                    : file.StartsWith("FileServices.", StringComparison.Ordinal) ? FileServicesLocalization.Open(file)
+                    : FirewallLocalization.Open(file);
                 using var json = JsonDocument.Parse(source);
                 var root = json.RootElement;
                 var rootKeys = new HashSet<string>();
@@ -70,7 +73,8 @@ internal static class LocalizationResourceChecks
                 if (LocalizedText.Get("code_editor.context.newfile") != expected)
                     throw new Exception("The live localization loader did not resolve the expected menu text for " + culture);
                 var keys = tables["en-US"].Keys.Where(key => key.StartsWith("code_editor.context.")
-                    || key.StartsWith("explorer.cloud.") || key.StartsWith("git.") || key.StartsWith("file_services.")).ToArray();
+                    || key.StartsWith("explorer.cloud.") || key.StartsWith("git.") || key.StartsWith("file_services.")
+                    || key.StartsWith("firewall.")).ToArray();
                 foreach (var key in keys)
                     if (!tables[culture].TryGetValue(key, out var expectedValue) || LocalizedText.Get(key) != expectedValue)
                         throw new Exception("Missing or incorrectly loaded translation " + culture + ": " + key);

@@ -2,7 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:fw="clr-namespace:RelaxKonOS.Client.Apps.Firewall"
+             xmlns:fwApp="clr-namespace:RelaxKonOS.App.Firewall;assembly=RelaxKonOS.App.Firewall" xmlns:fw="clr-namespace:RelaxKonOS.Client.Apps.Firewall"
              x:Class="RelaxKonOS.Client.Apps.Firewall.Views.FirewallWorkspace"
              x:DataType="fw:FirewallViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
@@ -244,7 +244,7 @@
                 <DataGridTextColumn Header="{loc:Loc firewall.rule.number}" Width="94" Binding="{Binding Number}" />
                 <DataGridTemplateColumn Header="{loc:Loc firewall.rule.action}" Width="104">
                   <DataGridTemplateColumn.CellTemplate>
-                    <DataTemplate x:DataType="fw:FirewallRuleRow">
+                    <DataTemplate x:DataType="fwApp:FirewallRuleRow">
                       <Border Classes="tag" Classes.ok="{Binding ActionAllow}" Classes.bad="{Binding ActionDeny}" Classes.warn="{Binding ActionLimit}">
                         <TextBlock Text="{Binding ActionLabel}" />
                       </Border>

@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using RelaxKonOS.App.Firewall;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Net;
@@ -19,6 +21,20 @@ namespace RelaxKonOS.Client.Apps.Firewall;
 /// </summary>
 public sealed partial class FirewallViewModel : LocalizedObservableObject
 {
+    private static readonly FirewallProblemText ProblemText = new(LocalizedText.Get, PrivilegedHelperProblemText.FormatOrFallback);
+
+    protected override void OnPropertyChanged(PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == string.Empty)
+        {
+            foreach (var option in Policies.Concat(Actions).Concat(Directions).Concat(Protocols))
+                option.RefreshLocalization();
+            foreach (var rule in _allRules)
+                rule.RefreshLocalization();
+        }
+        base.OnPropertyChanged(args);
+    }
+
     private readonly IServerFirewall _client;
     private readonly IAppPermissionScope _permissions;
     private readonly List<FirewallRuleRow> _allRules = [];
@@ -34,12 +50,12 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
     {
         _client = client;
         _permissions = permissions;
-        _directions = [new FirewallOption("in", "firewall.choice.in"), new FirewallOption("out", "firewall.choice.out")];
+        _directions = [new FirewallOption("in", "firewall.choice.in", LocalizedText.Get), new FirewallOption("out", "firewall.choice.out", LocalizedText.Get)];
         _protocols =
         [
-            new FirewallOption("tcp", "firewall.choice.tcp"),
-            new FirewallOption("udp", "firewall.choice.udp"),
-            new FirewallOption("any", "firewall.choice.any"),
+            new FirewallOption("tcp", "firewall.choice.tcp", LocalizedText.Get),
+            new FirewallOption("udp", "firewall.choice.udp", LocalizedText.Get),
+            new FirewallOption("any", "firewall.choice.any", LocalizedText.Get),
         ];
         SyncOptions(false);
         // The default-policy editor starts empty: a host that cannot report its policies must not
@@ -317,9 +333,9 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
                 ApplyFilter();
                 SelectedRule = null;
                 AdoptHostDefaults();
-                UnavailableReason = LocalizedStatus.Literal(FirewallProblemText.Format(status.ProblemCode,
+                UnavailableReason = LocalizedStatus.Literal(ProblemText.Format(status.ProblemCode,
                     T("firewall.value.unknown", "Unknown")));
-                StatusText = LocalizedText.Ref("firewall.status.unavailable", FirewallProblemText.Format(status.ProblemCode,
+                StatusText = LocalizedText.Ref("firewall.status.unavailable", ProblemText.Format(status.ProblemCode,
                     T("firewall.value.unknown", "Unknown")));
                 await ShowPrivilegedHelperUnavailableAsyncIfNeeded(status.ProblemCode);
                 return;
@@ -336,7 +352,7 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
 
             var rules = await _client.ListRulesAsync();
             _allRules.Clear();
-            foreach (var rule in rules) _allRules.Add(new FirewallRuleRow(rule));
+            foreach (var rule in rules) _allRules.Add(new FirewallRuleRow(rule, LocalizedText.Get));
             ApplyFilter();
             if (selectedNumber is { } number)
                 SelectedRow = Rules.FirstOrDefault(row => row.Number == number);
@@ -480,7 +496,7 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
             var result = await operation();
             StatusText = result.Success
                 ? LocalizedText.Ref(successKey)
-                : LocalizedText.Ref("firewall.operation.failed", FirewallProblemText.Format(result.ProblemCode,
+                : LocalizedText.Ref("firewall.operation.failed", ProblemText.Format(result.ProblemCode,
                     T("firewall.value.unknown", "Unknown")));
             if (!result.Success)
             {
@@ -676,7 +692,7 @@ public sealed partial class FirewallViewModel : LocalizedObservableObject
             && target.Select(option => option.Value).SequenceEqual(desired.Select(entry => entry.Value), StringComparer.Ordinal))
             return;
         target.Clear();
-        foreach (var (value, key) in desired) target.Add(new FirewallOption(value, key));
+        foreach (var (value, key) in desired) target.Add(new FirewallOption(value, key, LocalizedText.Get));
     }
 
     private string PolicyLabel(string? value) => value switch

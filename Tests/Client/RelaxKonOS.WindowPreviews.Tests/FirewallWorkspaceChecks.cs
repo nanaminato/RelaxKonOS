@@ -25,6 +25,21 @@ internal static class FirewallWorkspaceChecks
         Directory.CreateDirectory(output);
         try
         {
+            settings.Language = "en-US";
+            Dispatcher.UIThread.RunJobs();
+            var model = Model(out _);
+            var policy = model.Policies.First(option => option.Value == "allow");
+            model.SelectedIncomingPolicy = policy;
+            var row = model.Rules[0];
+            var label = policy.Label;
+            var sentence = row.Sentence;
+            var rowRefreshed = false;
+            row.PropertyChanged += (_, _) => rowRefreshed = true;
+            settings.Language = "zh-CN";
+            Dispatcher.UIThread.RunJobs();
+            Check(rowRefreshed && policy.Label != label && row.Sentence != sentence
+                && ReferenceEquals(model.SelectedIncomingPolicy, policy) && ReferenceEquals(model.Rules[0], row),
+                "Changing language refreshes application-owned rule and policy labels without replacing the selection.");
             foreach (var language in new[] { "zh-CN", "en-US", "ja-JP" })
             {
                 settings.Language = language;

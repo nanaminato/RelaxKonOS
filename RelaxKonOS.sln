@@ -110,6 +110,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.Git", "Appli
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.FileServices", "Applications\RelaxKonOS.App.FileServices\RelaxKonOS.App.FileServices.csproj", "{9242394B-2EB1-4502-B341-53AA22888B08}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.Firewall", "Applications\RelaxKonOS.App.Firewall\RelaxKonOS.App.Firewall.csproj", "{35571A1B-69D5-4619-B1DD-0A5227F07CAA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -732,6 +734,18 @@ Global
 		{9242394B-2EB1-4502-B341-53AA22888B08}.Release|x64.Build.0 = Release|Any CPU
 		{9242394B-2EB1-4502-B341-53AA22888B08}.Release|x86.ActiveCfg = Release|Any CPU
 		{9242394B-2EB1-4502-B341-53AA22888B08}.Release|x86.Build.0 = Release|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Debug|x64.Build.0 = Debug|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Debug|x86.Build.0 = Debug|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Release|x64.ActiveCfg = Release|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Release|x64.Build.0 = Release|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Release|x86.ActiveCfg = Release|Any CPU
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -773,5 +787,6 @@ Global
 		{39D130A8-1DDE-46A6-8A28-7C6761FE0461} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 		{74F483E4-CB94-4884-9295-EB4FB30313E9} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 		{9242394B-2EB1-4502-B341-53AA22888B08} = {A10A91C2-6485-6656-963B-F6FCBC812542}
+		{35571A1B-69D5-4619-B1DD-0A5227F07CAA} = {A10A91C2-6485-6656-963B-F6FCBC812542}
 	EndGlobalSection
 EndGlobal
