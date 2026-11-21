@@ -1,7 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.PortForwarding.Views;
+namespace RelaxKonOS.App.PortForwarding.Views;
 
 /// <summary>Docker-style workspace shell for the local port forward manager.</summary>
 public partial class PortForwardingMainView : UserControl
@@ -17,7 +17,8 @@ public partial class PortForwardingMainView : UserControl
     public PortForwardingMainView()
     {
         InitializeComponent();
-        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        RelaxKonOS.WindowManager.CompactWorkspaceNavigation.Install(this, WorkspaceBody,
+            LocExtension.CreateBinding(this, "common.view"));
         ShowPage("forwards", ForwardsButton);
     }
 

@@ -31,6 +31,7 @@ public sealed partial class PortForwardingViewModel : ObservableObject, IDisposa
     }
 
     public ObservableCollection<PortForwardInfo> Forwards { get; }
+    public Func<string, string> Labels => key => _localize(key);
 
     [ObservableProperty] private string _targetAddress = "http://localhost:7000";
     [ObservableProperty] private string _preferredLocalPortText = "7000";

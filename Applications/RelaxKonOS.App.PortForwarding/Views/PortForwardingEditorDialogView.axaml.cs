@@ -1,10 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.App.PortForwarding;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.WindowManager;
 
-namespace RelaxKonOS.Client.Apps.PortForwarding.Views;
+namespace RelaxKonOS.App.PortForwarding.Views;
 
 /// <summary>Modal editor used for both creating and changing a loopback forward.</summary>
 public partial class PortForwardingEditorDialogView : UserControl
@@ -17,16 +16,17 @@ public partial class PortForwardingEditorDialogView : UserControl
         InitializeComponent();
     }
 
-    public PortForwardingEditorDialogView(PortForwardingViewModel viewModel, ModalDialog<bool> dialog, bool isEditing)
+    public PortForwardingEditorDialogView(PortForwardingViewModel viewModel, ModalDialog<bool> dialog, bool isEditing,
+        Action<ModalDialog<bool>, Func<bool>, Func<bool>> attachDraftGuard)
         : this()
     {
         DataContext = viewModel;
         _dialog = dialog;
-        SaveButton.Content = LocalizedText.Get(isEditing ? "port_forwarding.update" : "port_forwarding.start");
+        SaveButton.Content = viewModel.Labels(isEditing ? "port_forwarding.update" : "port_forwarding.start");
         SaveButton.Command = isEditing ? viewModel.UpdateSelectedCommand : viewModel.StartCommand;
         var initial = (viewModel.TargetAddress, viewModel.PreferredLocalPortText, viewModel.SshHost,
             viewModel.SshUser, viewModel.SshPortText, viewModel.SshPassword);
-        RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => viewModel.IsBusy,
+        attachDraftGuard(dialog, () => viewModel.IsBusy,
             () => initial != (viewModel.TargetAddress, viewModel.PreferredLocalPortText, viewModel.SshHost,
                 viewModel.SshUser, viewModel.SshPortText, viewModel.SshPassword));
     }

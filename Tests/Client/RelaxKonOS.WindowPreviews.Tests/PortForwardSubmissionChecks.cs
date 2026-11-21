@@ -2,7 +2,7 @@ using RelaxKonOS.AppSDK;
 using System.Reflection;
 using RelaxKonOS.Client.Apps.PortForwarding;
 using RelaxKonOS.App.PortForwarding;
-using RelaxKonOS.Client.Apps.PortForwarding.Views;
+using RelaxKonOS.App.PortForwarding.Views;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.WindowManager;
 using Avalonia.Controls;
@@ -107,7 +107,7 @@ internal static class PortForwardSubmissionChecks
         var owner = manager.Create(new WindowCreateOptions(new("test.forward"), "Owner", new TextBlock(), new RelaxKonOS.Core.Primitives.Rect(0, 0, 800, 600)));
         ModalDialog<bool>? handle = null;
         var result = manager.ShowDialogAsync<bool>(owner, "Forward", dialog =>
-        { handle = dialog; return new PortForwardingEditorDialogView(vm, dialog, false); });
+        { handle = dialog; return new PortForwardingEditorDialogView(vm, dialog, false, RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach); });
         vm.TargetAddress = "http://changed.test:80";
         handle!.Cancel();
         if (manager.Windows.Count != 3) throw new Exception("Forward draft closed without confirmation.");

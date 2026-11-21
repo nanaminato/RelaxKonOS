@@ -16,7 +16,7 @@ using RelaxKonOS.Client.Apps.Tunnels;
 using RelaxKonOS.Client.Apps.Tunnels.Views;
 using RelaxKonOS.Client.Apps.PortForwarding;
 using RelaxKonOS.App.PortForwarding;
-using RelaxKonOS.Client.Apps.PortForwarding.Views;
+using RelaxKonOS.App.PortForwarding.Views;
 using RelaxKonOS.Client.Apps.WebServers;
 using RelaxKonOS.App.WebServers.Views;
 using RelaxKonOS.Client.Apps.Certificates;

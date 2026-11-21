@@ -1,7 +1,7 @@
 using Avalonia.Utilities;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.App.PortForwarding;
-using RelaxKonOS.Client.Apps.PortForwarding.Views;
+using RelaxKonOS.App.PortForwarding.Views;
 using RelaxKonOS.Client.Localization;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
@@ -44,7 +44,7 @@ public sealed class PortForwardingApp : RemoteApplicationBase
                             dialog.Close(true);
                             return Task.CompletedTask;
                         };
-                        return new PortForwardingEditorDialogView(viewModel, dialog, forward is not null);
+                        return new PortForwardingEditorDialogView(viewModel, dialog, forward is not null, RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach);
                     }, new Size(480, 360));
             }
             finally
