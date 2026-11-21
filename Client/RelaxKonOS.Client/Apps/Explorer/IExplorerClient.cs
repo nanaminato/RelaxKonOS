@@ -5,7 +5,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 /// <summary>RelaxKonOS Server 文件管理 HTTP 客户端抽象。typed HttpClient 实现（见 <see cref="ExplorerClient"/>）。
 /// 所有方法从 <c>IAuthSession</c> 取 <c>serverUrl</c> + <c>accessToken</c> 构造绝对 URI 与 Authorization 头。
 /// 路由常量见 <see cref="FileApiRoutes"/>。错误统一为 <see cref="RelaxKonOSAuthException"/>（含 ProblemDetails）。</summary>
-public interface IExplorerClient
+public interface IExplorerClient : IEditorWorkspaceFiles
 {
     Task<FileOperationDto> StartOperationAsync(StartFileOperationRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<FileOperationDto>> ListOperationsAsync(CancellationToken ct = default);
@@ -20,17 +20,11 @@ public interface IExplorerClient
     /// 服务端已 <c>Directory.Exists</c> 过滤，缺失项不返回。</summary>
     Task<IReadOnlyList<SpecialLocationDto>> GetSpecialLocationsAsync(CancellationToken ct = default);
 
-    /// <summary>列举目录内容（GET /files/list）。path 为空表示盘符根。</summary>
-    Task<DirectoryDto> GetDirectoryAsync(string? path, CancellationToken ct = default);
-
     /// <summary>获取单个条目元数据（GET /files/info）。</summary>
     Task<FileSystemEntryDto?> GetInfoAsync(string path, CancellationToken ct = default);
 
     /// <summary>下载文件（GET /files/download）。返回字节流；调用方负责释放。</summary>
     Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default);
-
-    /// <summary>读取远程文件的原始字节；文件不存在时返回 null。</summary>
-    Task<byte[]?> ReadFileAsync(string path, CancellationToken ct = default);
 
     /// <summary>Tests direct access and, after host password confirmation, authorizes short-lived elevated access to one path.</summary>
     Task<FileElevationResult> ElevateFileAccessAsync(string path, FileElevationCapability capability, string? password = null,
@@ -40,24 +34,12 @@ public interface IExplorerClient
     Task<FileElevationResult> ElevateFileOperationAsync(IReadOnlyList<string> directoryPaths, FileElevationCapability capability, string? password = null,
         string? administratorUsername = null, CancellationToken ct = default);
 
-    /// <summary>以原始字节覆盖保存远程文件。</summary>
-    Task<FileEntryDto> WriteFileAsync(string path, byte[] content, CancellationToken ct = default);
-
     /// <summary>获取远程文件或目录的详细属性与权限摘要；不存在时返回 null。</summary>
     Task<FilePropertiesDto?> GetPropertiesAsync(string path, CancellationToken ct = default);
 
     /// <summary>更新远程 Linux 文件或目录的 POSIX 权限位。</summary>
     Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, bool recursive, CancellationToken ct = default);
     Task<FilePropertiesDto> SetUnixOwnershipAsync(string path, string owner, string group, bool recursive, CancellationToken ct = default);
-
-    /// <summary>创建目录（POST /files/directory）。</summary>
-    Task<FileSystemEntryDto> CreateDirectoryAsync(string path, CancellationToken ct = default);
-
-    /// <summary>删除文件或目录（DELETE /files）。</summary>
-    Task DeleteAsync(string path, CancellationToken ct = default);
-
-    /// <summary>同目录重命名（POST /files/rename）。</summary>
-    Task<FileSystemEntryDto> RenameAsync(string sourcePath, string newName, CancellationToken ct = default);
 
     /// <summary>移动（POST /files/move）。</summary>
     Task<FileSystemEntryDto> MoveAsync(string sourcePath, string destinationPath, bool overwrite = false, CancellationToken ct = default);

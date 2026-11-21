@@ -18,7 +18,7 @@ namespace RelaxKonOS.Client.Apps.CodeEditor;
 /// <summary>Owns the window-local multi-root workspace and the currently open editor documents.</summary>
 public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 {
-    private readonly IExplorerClient? _files;
+    private readonly IEditorWorkspaceFiles? _files;
     private readonly StringComparer _pathComparer;
     private bool _isLoadingDocument;
     private int _untitledSequence;
@@ -30,7 +30,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly IEditorFileWriter? _conditionalWriter;
 
-    public CodeEditorViewModel(IExplorerClient? files, bool pathCaseSensitive = true, string defaultEncodingName = "UTF-8",
+    public CodeEditorViewModel(IEditorWorkspaceFiles? files, bool pathCaseSensitive = true, string defaultEncodingName = "UTF-8",
         IEditorFileWriter? conditionalWriter = null)
     {
         _files = files;
