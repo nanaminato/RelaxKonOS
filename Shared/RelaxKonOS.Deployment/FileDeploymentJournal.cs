@@ -6,6 +6,17 @@ namespace RelaxKonOS.Deployment;
 /// <summary>Stores checkpoint files in the caller's private deployment state directory.</summary>
 public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
 {
+    public async Task<DeploymentPlan?> FindStartedPlanAsync(Guid planId, CancellationToken cancellationToken = default)
+    {
+        var path = Path.Combine(directory, planId.ToString("N"));
+        try
+        {
+            return (await ReadAsync(path, cancellationToken)).Plan;
+        }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
+    }
+
     public async Task<IDeploymentLease> OpenAsync(DeploymentPlan plan, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(directory);
@@ -31,13 +42,11 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             Entry? entry = null;
             if (File.Exists(path))
             {
-                await using var input = File.OpenRead(path);
-                entry = await JsonSerializer.DeserializeAsync<Entry>(input, cancellationToken: cancellationToken)
-                    ?? throw new InvalidDataException("Missing deployment checkpoint.");
+                entry = await ReadAsync(path, cancellationToken);
                 if (entry.Identity != identity)
                     throw new InvalidOperationException("deployment-plan-identity-changed");
             }
-            return new Lease(fileLock, path, identity, entry?.Checkpoint);
+            return new Lease(fileLock, path, identity, plan, entry?.Checkpoint);
         }
         catch
         {
@@ -46,9 +55,16 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
         }
     }
 
-    private sealed record Entry(string Identity, DeploymentCheckpoint Checkpoint);
+    private static async Task<Entry> ReadAsync(string path, CancellationToken cancellationToken)
+    {
+        await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        return await JsonSerializer.DeserializeAsync<Entry>(input, cancellationToken: cancellationToken)
+            ?? throw new InvalidDataException("Missing deployment checkpoint.");
+    }
 
-    private sealed class Lease(FileStream fileLock, string path, string identity, DeploymentCheckpoint? checkpoint)
+    private sealed record Entry(string Identity, DeploymentPlan Plan, DeploymentCheckpoint Checkpoint);
+
+    private sealed class Lease(FileStream fileLock, string path, string identity, DeploymentPlan plan, DeploymentCheckpoint? checkpoint)
         : IDeploymentLease
     {
         public DeploymentCheckpoint? Checkpoint { get; private set; } = checkpoint;
@@ -60,7 +76,7 @@ public sealed class FileDeploymentJournal(string directory) : IDeploymentJournal
             {
                 await using (var output = new FileStream(staging, FileMode.Create, FileAccess.Write, FileShare.None))
                 {
-                    await JsonSerializer.SerializeAsync(output, new Entry(identity, value), cancellationToken: cancellationToken);
+                    await JsonSerializer.SerializeAsync(output, new Entry(identity, plan, value), cancellationToken: cancellationToken);
                     output.Flush(flushToDisk: true);
                 }
                 File.Move(staging, path, overwrite: true);

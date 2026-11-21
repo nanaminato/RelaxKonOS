@@ -314,7 +314,8 @@ public sealed partial class DeveloperPackageManager
         manifest.IconGlyph, ResolveIconPath(root, manifest.IconPath), manifest.Description, manifest.RequestedPermissions ?? [],
         manifest.SupportedFileExtensions ?? [], manifest.LocalizedMetadata, manifest.ClientPlatforms ?? [], manifest.ServerRequirements,
         manifest.SupportedFileNames ?? [], manifest.SupportsExtensionlessFiles, ParseInstancePolicy(manifest.InstancePolicy),
-        manifest.SupportedUriSchemes ?? [], manifest.PermissionModelVersion, origin, manifest.SupportsTextFiles);
+        manifest.SupportedUriSchemes ?? [], manifest.PermissionModelVersion, origin, manifest.SupportsTextFiles,
+        manifest.Dependencies);
 
     private static DeveloperAppInfo ToInfo(DeveloperAppRecord record) => new(record.Id, record.DisplayName, record.Version, record.Path);
     private static string VersionId(DeveloperAppRecord record) => Path.GetFileName(record.Path);

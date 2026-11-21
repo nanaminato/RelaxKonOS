@@ -11,6 +11,8 @@ using VirtualSystemDriveService = RelaxKonOS.Client.Services.VirtualSystemDrive.
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.VirtualSystemDrive;
+using RelaxKonOS.Deployment;
+using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
@@ -247,6 +249,8 @@ public sealed partial class DeveloperPackageManager
             Directory.CreateDirectory(staging);
             var manifest = await extract(staging, cancellationToken);
             ValidateManifest(manifest, origin);
+            if (manifest.Dependencies?.Required is { Count: > 0 })
+                throw new InvalidOperationException("This package requires joint deployment before installation.");
 
             // Keep every deployment in a distinct folder. A currently loaded DLL can be locked on
             // Windows, so overwriting a version directory would make the development update flaky.
@@ -580,6 +584,13 @@ public sealed partial class DeveloperPackageManager
         if (string.IsNullOrWhiteSpace(manifest.DisplayName) || string.IsNullOrWhiteSpace(manifest.Version)
             || string.IsNullOrWhiteSpace(manifest.EntryAssembly) || string.IsNullOrWhiteSpace(manifest.EntryType))
             throw new InvalidOperationException("manifest.json is missing a required field.");
+        if (manifest.Dependencies is { } dependencies)
+        {
+            ValidateDependencies(dependencies.Required, optional: false);
+            ValidateDependencies(dependencies.Optional, optional: true);
+            if (manifest.PackageType == "desktopShell" || !RuntimeSemanticVersion.TryParse(manifest.Version, out _))
+                throw new InvalidDataException("Deployment dependencies require an application package with a semantic version.");
+        }
         var entryAssembly = manifest.EntryAssembly.Replace('\\', '/');
         if (!ApplicationDescriptorValidator.IsSafeRelativePath(entryAssembly)
             || !entryAssembly.StartsWith("lib/", StringComparison.Ordinal)
@@ -600,6 +611,33 @@ public sealed partial class DeveloperPackageManager
                 || scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)) == true)
             throw new InvalidOperationException("supportedUriSchemes must contain non-reserved URI schemes.");
         _ = ParseInstancePolicy(manifest.InstancePolicy);
+    }
+
+    private static void ValidateDependencies(IReadOnlyList<DeploymentRequirement>? requirements, bool optional)
+    {
+        if (requirements is null) return;
+        var keys = new HashSet<DeploymentPackageKey>();
+        if (requirements.Count > 128)
+            throw new InvalidDataException("Too many deployment dependencies.");
+        foreach (var requirement in requirements)
+        {
+            if (requirement is null || !Enum.IsDefined(requirement.Package.Kind)
+                || optional && requirement.Package.Kind != DeploymentPackageKind.ServerModule
+                || requirement.Package.Id is not { Length: > 0 and <= 128 } id
+                || !id.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-')
+                || requirement.Capability is { Length: 0 or > 128 }
+                || requirement.ContractVersion is { Length: 0 or > 128 }
+                || requirement.ContractVersion is not null && requirement.Capability is null
+                || !keys.Add(requirement.Package))
+                throw new InvalidDataException("Invalid deployment dependency.");
+
+            RuntimeSemanticVersion? minimum = null;
+            RuntimeSemanticVersion? maximum = null;
+            if (requirement.MinimumVersion is { } lower && !RuntimeSemanticVersion.TryParse(lower, out minimum)
+                || requirement.MaximumVersionExclusive is { } upper && !RuntimeSemanticVersion.TryParse(upper, out maximum)
+                || minimum is not null && maximum is not null && minimum.CompareTo(maximum) >= 0)
+                throw new InvalidDataException("Invalid deployment dependency version range.");
+        }
     }
 
     private static bool IsDesktopShellPackage(string packageRoot)
@@ -1009,7 +1047,12 @@ public sealed record DeveloperPackageManifest(
     IReadOnlyList<string>? Capabilities = null,
     string? PackageId = null,
     string? Sha256 = null,
-    bool SupportsTextFiles = false);
+    bool SupportsTextFiles = false,
+    PackageDeploymentDependencies? Dependencies = null);
+
+public sealed record PackageDeploymentDependencies(
+    IReadOnlyList<DeploymentRequirement>? Required = null,
+    IReadOnlyList<DeploymentRequirement>? Optional = null);
 
 internal sealed record DeveloperAppRecord(
     string Id,
@@ -1032,7 +1075,8 @@ internal sealed record DeveloperAppRecord(
     IReadOnlyList<string>? SupportedUriSchemes = null,
     int PermissionModelVersion = 0,
     PackageOrigin Origin = PackageOrigin.LocalPackage,
-    bool SupportsTextFiles = false);
+    bool SupportsTextFiles = false,
+    PackageDeploymentDependencies? Dependencies = null);
 
 internal sealed record ExternalCurrentVersion(int SchemaVersion, string AppId, string VersionId,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
