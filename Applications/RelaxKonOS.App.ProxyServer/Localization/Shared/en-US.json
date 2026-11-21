@@ -1,0 +1,12 @@
+{
+  "Culture": "en-US",
+  "Strings": {
+    "proxy_server.refresh": "Refresh",
+    "proxy_server.operation_pending": "Operation {0} accepted. Waiting for the server to finish.",
+    "proxy_server.operation_state": "Operation {0}: {1} / {2}",
+    "proxy_server.session_changed": "The login session or server changed. Reopen the application.",
+    "proxy_server.permission_denied": "This account lacks the manage permission for Proxy Server.",
+    "proxy_server.state.unknown": "Unknown",
+    "proxy_server.problem.platform_unsupported": "Proxy Server is not supported on this platform."
+  }
+}

@@ -8,5 +8,8 @@
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
         <PackageReference Include="QRCoder" />
+        <AvaloniaResource Include="Assets/proxy-server.png" />
+        <EmbeddedResource Include="Localization/*.json" LogicalName="ProxyServer.Localization.%(Filename).json" />
+        <EmbeddedResource Include="Localization/Shared/*.json" LogicalName="ProxyServer.SharedLocalization.%(Filename).json" />
     </ItemGroup>
 </Project>

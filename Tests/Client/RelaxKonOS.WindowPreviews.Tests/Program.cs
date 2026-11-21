@@ -191,6 +191,7 @@ if (args.Contains("--proxy-only"))
     ProxyWorkspaceChecks.Run(settings);
     Task.Run(ProxyServerTransportChecks.RunAsync).GetAwaiter().GetResult();
     Task.Run(ProxyServerTransportChecks.VerifyScopeAsync).GetAwaiter().GetResult();
+    ProxyServerTransportChecks.VerifyLocalization();
     return;
 }
 if (args.Contains("--guardian-capability-only")) { GuardianCapabilityChecks.VerifyViews(); GuardianCapabilityChecks.VerifyHostInteraction(localization, settings); Task.Run(GuardianCapabilityChecks.RunAsync).GetAwaiter().GetResult(); return; }

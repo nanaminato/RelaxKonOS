@@ -1,9 +1,9 @@
-using RelaxKonOS.App.ProxyServer;
+using RelaxKonOS.WindowManager;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.ProxyServer.Views;
+namespace RelaxKonOS.App.ProxyServer.Views;
 
 /// <summary>Proxy Server workspace with compact page navigation and a pinned publication bar.</summary>
 public partial class ProxyServerWorkspace : UserControl
@@ -25,13 +25,13 @@ public partial class ProxyServerWorkspace : UserControl
             if (parts[0] == "PrincipalEditor") model.NewPrincipalCommand.Execute(null);
             if (parts[0] == "CredentialEditor") model.NewCredentialCommand.Execute(null);
         }
-        await RelaxKonOS.WindowManager.WorkspaceEditorContent.OpenAsync(this, parts[0], button.Content?.ToString() ?? "", ShowEditorAsync);
+        await WorkspaceEditorContent.OpenAsync(this, parts[0], button.Content?.ToString() ?? "", ShowEditorAsync);
     }
 
     public ProxyServerWorkspace()
     {
         InitializeComponent();
-        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        CompactWorkspaceNavigation.Install(this, WorkspaceBody, LocExtension.CreateBinding(this, "common.view"));
         ShowPage(0);
     }
 

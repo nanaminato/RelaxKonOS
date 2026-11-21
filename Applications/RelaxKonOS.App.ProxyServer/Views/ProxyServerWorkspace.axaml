@@ -1,11 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
-             xmlns:loc="using:RelaxKonOS.Client.Localization"
-             xmlns:vm="clr-namespace:RelaxKonOS.App.ProxyServer;assembly=RelaxKonOS.App.ProxyServer"
-             xmlns:views="using:RelaxKonOS.Client.Apps.ProxyServer.Views"
+             xmlns:loc="using:RelaxKonOS.App.ProxyServer.Views"
+             xmlns:vm="using:RelaxKonOS.App.ProxyServer"
              xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.ProxyServer;assembly=RelaxKonOS.Protocol"
-             x:Class="RelaxKonOS.Client.Apps.ProxyServer.Views.ProxyServerWorkspace"
+             x:Class="RelaxKonOS.App.ProxyServer.Views.ProxyServerWorkspace"
              x:DataType="vm:ProxyServerViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
   <UserControl.Styles>
@@ -26,7 +25,7 @@
   <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
     <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
       <wm:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.proxy-server.display_name}"
-                                    Subtitle="{loc:Loc proxy_server.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png" />
+                                    Subtitle="{loc:Loc proxy_server.intro}" IconAsset="avares://RelaxKonOS.App.ProxyServer/Assets/proxy-server.png" />
       <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}"
               ToolTip.Tip="{loc:Loc proxy_server.refresh}" AutomationProperties.Name="{loc:Loc proxy_server.refresh}" VerticalAlignment="Center">
         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16"

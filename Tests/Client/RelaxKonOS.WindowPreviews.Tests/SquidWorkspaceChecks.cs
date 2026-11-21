@@ -317,7 +317,7 @@ internal static class SquidWorkspaceChecks
             "Access control lists accounts while keeping masked editing fields inside a closed modal.");
         using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 760)))
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid-access.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
-        foreach (var workspace in new UserControl[] { (UserControl)view, new RelaxKonOS.Client.Apps.ProxyServer.Views.ProxyServerWorkspace() })
+        foreach (var workspace in new UserControl[] { (UserControl)view, new RelaxKonOS.App.ProxyServer.Views.ProxyServerWorkspace() })
         {
             foreach (var field in workspace.GetLogicalDescendants().OfType<TextBox>().Where(field => !field.IsReadOnly))
                 Check(field.GetLogicalAncestors().OfType<StackPanel>().Any(panel => panel.Name?.EndsWith("Editor", StringComparison.Ordinal) == true && !panel.IsVisible), "Editable text fields belong to an unopened editor, not the main workspace.");

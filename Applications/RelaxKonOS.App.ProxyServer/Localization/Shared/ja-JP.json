@@ -1,0 +1,12 @@
+{
+  "Culture": "ja-JP",
+  "Strings": {
+    "proxy_server.refresh": "更新",
+    "proxy_server.operation_pending": "操作 {0} を受け付けました。サーバーの完了を待っています。",
+    "proxy_server.operation_state": "操作 {0}: {1} / {2}",
+    "proxy_server.session_changed": "ログインまたはサーバーが変更されました。アプリを開き直してください。",
+    "proxy_server.permission_denied": "このアカウントにはプロキシサーバーの管理権限がありません。",
+    "proxy_server.state.unknown": "不明",
+    "proxy_server.problem.platform_unsupported": "このプラットフォームではプロキシサーバーに対応していません。"
+  }
+}

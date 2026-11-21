@@ -1,0 +1,12 @@
+{
+  "Culture": "zh-CN",
+  "Strings": {
+    "proxy_server.refresh": "刷新",
+    "proxy_server.operation_pending": "操作 {0} 已受理，正在等待服务器完成。",
+    "proxy_server.operation_state": "操作 {0}：{1} / {2}",
+    "proxy_server.session_changed": "登录会话或服务器已变更，请重新打开应用。",
+    "proxy_server.permission_denied": "当前账户缺少代理服务端的管理权限。",
+    "proxy_server.state.unknown": "未知",
+    "proxy_server.problem.platform_unsupported": "当前平台不支持代理服务端。"
+  }
+}

@@ -3,8 +3,8 @@ using Size = RelaxKonOS.Core.Primitives.Size;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Apps.FileServices.Views;
-using RelaxKonOS.Client.Apps.ProxyServer.Views;
-using RelaxKonOS.Client.Localization;
+using RelaxKonOS.App.ProxyServer.Views;
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
@@ -22,21 +22,23 @@ public sealed class ProxyServerApp : RemoteApplicationBase
             AppPermissions.ServerComponentsRead],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.ProxyServer]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow,
-        IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png");
+        IconPath: "avares://RelaxKonOS.App.ProxyServer/Assets/proxy-server.png");
 
     public override void Activate(AppContext context)
     {
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
         var client = (IServerProxyServer?)context.Services.GetService(typeof(IServerProxyServer));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
+        var language = (LocalizationService)context.Services.GetService(typeof(LocalizationService))!;
+        string Label(string key, string fallback) => ProxyServerLocalization.Resolve(language, key, fallback);
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, Manifest.Id.Value);
-        var vm = new ProxyServerViewModel(client, LocalizedText.Get);
+        var vm = new ProxyServerViewModel(client, Label);
         var view = new ProxyServerWorkspace(vm)
         {
             CreateDependencySettings = () => new ComponentCenter.ComponentDependencySettingsView { DataContext = dependency },
             RefreshDependencySettings = () => _ = dependency.RefreshAsync(),
         };
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy-server.display_name"), view,
+        var window = context.ShowWindow(vm.Labels("application.relaxkonos.proxy-server.display_name"), view,
             new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         RelaxKonOS.WindowManager.ModalDialog<bool>? activeEditor = null;
@@ -44,7 +46,7 @@ public sealed class ProxyServerApp : RemoteApplicationBase
 
         vm.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
         window.CanCloseAsync = () => vm.IsBusy || vm.HasUnsavedChanges
-            ? ConfirmAsync(LocalizedText.Get("common.discard_title"), LocalizedText.Get("proxy_server.close_warning"))
+            ? ConfirmAsync(vm.Labels("common.discard_title"), vm.Labels("proxy_server.close_warning"))
             : Task.FromResult(true);
         var login = session.CurrentSession;
         EventHandler<AuthSessionStateChangedEventArgs> sessionChanged = (_, _) =>
@@ -56,11 +58,19 @@ public sealed class ProxyServerApp : RemoteApplicationBase
                 });
         };
         session.StateChanged += sessionChanged;
+        void RefreshLanguage(object? sender, SystemLanguageChangedEventArgs args) =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                window.Title = vm.Labels("application.relaxkonos.proxy-server.display_name");
+                vm.RefreshLanguage();
+            });
+        language.LanguageChanged += RefreshLanguage;
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
         closed = (_, current) =>
         {
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed; session.StateChanged -= sessionChanged;
+            language.LanguageChanged -= RefreshLanguage;
             dependency.Dispose();
             vm.Dispose();
         };

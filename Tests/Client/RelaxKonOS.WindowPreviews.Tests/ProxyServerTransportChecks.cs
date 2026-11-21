@@ -1,3 +1,8 @@
+using Avalonia.Controls;
+using Avalonia.Threading;
+using RelaxKonOS.App.ProxyServer;
+using RelaxKonOS.App.ProxyServer.Views;
+using RelaxKonOS.WindowManager;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
@@ -77,6 +82,45 @@ internal static class ProxyServerTransportChecks
         lifetime.Cancel();
         await RejectAsync<OperationCanceledException>(() => scoped.ReadAsync(default));
         Console.WriteLine("Proxy Server SDK read, management, export, and session scope passed.");
+    }
+
+    public static void VerifyLocalization()
+    {
+        var language = new PreviewLanguage();
+        var transport = DispatchProxy.Create<IServerProxyServer, ProxyServerScopeTransport>();
+        using var model = new ProxyServerViewModel(transport, (key, fallback) => ProxyServerLocalization.Resolve(language, key, fallback));
+        language.LanguageChanged += (_, _) => model.RefreshLanguage();
+        var view = new ProxyServerWorkspace(model);
+        var header = view.FindControl<WorkspaceWindowHeader>("Header")
+            ?? throw new InvalidOperationException("Proxy Server workspace header is missing.");
+
+        foreach (var (culture, title, refresh) in new[]
+        {
+            ("zh-CN", "代理服务器", "刷新"),
+            ("en-US", "Proxy Server", "Refresh"),
+            ("ja-JP", "プロキシサーバー", "更新"),
+        })
+        {
+            language.SetLanguage(culture);
+            Dispatcher.UIThread.RunJobs();
+            if (header.Title != title || model.Labels("proxy_server.refresh") != refresh
+                || model.ServiceStateText.Resolve() == "proxy_server.state.unavailable")
+                throw new InvalidOperationException($"Proxy Server did not refresh its {culture} window resources.");
+        }
+        Console.WriteLine("Proxy Server workspace and shared labels resolved in all three languages.");
+    }
+
+    private sealed class PreviewLanguage : ISystemLanguage
+    {
+        public string CurrentLanguage { get; private set; } = "en-US";
+        public event EventHandler<SystemLanguageChangedEventArgs>? LanguageChanged;
+
+        public void SetLanguage(string language)
+        {
+            var previous = CurrentLanguage;
+            CurrentLanguage = language;
+            LanguageChanged?.Invoke(this, new(previous, language));
+        }
     }
 
     private static async Task RejectAsync<T>(Func<Task> operation) where T : Exception
