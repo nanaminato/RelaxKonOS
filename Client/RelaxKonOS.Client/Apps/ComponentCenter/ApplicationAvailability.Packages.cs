@@ -15,18 +15,30 @@ public sealed partial class ApplicationAvailabilityService
     private IReadOnlyList<DeploymentRequirement> InstalledRequiredDependencies(AppId id) =>
         services.GetService<DeveloperPackageManager>()?.RequiredDependencies(id) ?? [];
 
+    private ApplicationAvailability? ReadOfflinePackageAvailability(AppId id)
+    {
+        var required = InstalledRequiredDependencies(id);
+        if (required.Count == 0 || ComponentCatalog.LaunchGate(id.Value) is not null) return null;
+        var root = PackageRoot(id, required);
+        var result = DeploymentResolver.Resolve(root, ReadInstalledApplications(root.Package), []);
+        var affected = result.ProblemPackage ?? required[0].Package;
+        var state = result.Succeeded ? ComponentAvailabilityKind.Installed
+            : affected.Kind == DeploymentPackageKind.ServerModule ? ComponentAvailabilityKind.Unknown
+            : ComponentAvailabilityKind.Missing;
+        return new(id, null, affected.Id, state, PackageKind: affected.Kind);
+    }
+
     private async Task<ApplicationAvailability?> ObservePackageDependenciesAsync(AppId id,
         IReadOnlyList<DeploymentRequirement> required)
     {
-        var rootKey = new DeploymentPackageKey(DeploymentPackageKind.Application, id.Value);
+        var root = PackageRoot(id, required);
+        var rootKey = root.Package;
         var login = session.CurrentSession;
         var user = session.CurrentUser?.Id;
         var server = session.ServiceId;
         long generation;
         lock (_cacheLock) generation = _generation;
 
-        var root = new DeploymentRelease(rootKey, "0.0.0", "", true,
-            [.. required], ImmutableDictionary<string, string>.Empty);
         var local = ReadInstalledApplications(rootKey).ToArray();
         var result = DeploymentResolver.Resolve(root, local, []);
         var usedServer = false;
@@ -83,6 +95,10 @@ public sealed partial class ApplicationAvailabilityService
         if (changed) Changed?.Invoke(this, EventArgs.Empty);
         return availability;
     }
+
+    private static DeploymentRelease PackageRoot(AppId id, IReadOnlyList<DeploymentRequirement> required) =>
+        new(new(DeploymentPackageKind.Application, id.Value), "0.0.0", "", true,
+            [.. required], ImmutableDictionary<string, string>.Empty);
 
     private IEnumerable<DeploymentRelease> ReadInstalledApplications(DeploymentPackageKey root)
     {

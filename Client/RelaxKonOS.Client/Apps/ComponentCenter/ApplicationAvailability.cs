@@ -68,7 +68,8 @@ public sealed partial class ApplicationAvailabilityService : IApplicationLaunchG
     public ApplicationAvailability? GetCached(AppId app)
     {
         if (session.State != AuthSessionState.Authenticated
-            || session.ServiceId is not { } server || session.CurrentUser is not { } user) return null;
+            || session.ServiceId is not { } server || session.CurrentUser is not { } user)
+            return ReadOfflinePackageAvailability(app);
         lock (_cacheLock) return _observations.GetValueOrDefault((server, user.Id, app.Value));
     }
 

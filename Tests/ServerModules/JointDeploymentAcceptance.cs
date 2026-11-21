@@ -15,6 +15,7 @@ using RelaxKonOS.Client.Services.Modules;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Apps.AppInstaller.ViewModels;
+using RelaxKonOS.Client.Apps.ComponentCenter;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
@@ -250,6 +251,12 @@ internal static class JointDeploymentAcceptance
             Require(offlineApp.Id == "fixture.offline" && factory.Requests == requests
                 && offline.Plan.OrderedReleases[0].Satisfied,
                 "a real desktop package with a satisfied client-only dependency installs offline without module API calls");
+            using var availabilityServices = new ServiceCollection().AddSingleton(packages).AddSingleton(applications).BuildServiceProvider();
+            using var availability = new ApplicationAvailabilityService(auth, availabilityServices, null!);
+            Require(availability.GetCached(new AppId(offlineApp.Id)) is
+                    { CanOpen: true, PackageKind: DeploymentPackageKind.Application, ServerIdentity: null }
+                && factory.Requests == requests,
+                "the offline desktop reports a satisfied local dependency without making a module API call");
             var original = packages.FindInstalled(AppIdText);
             await RewriteDesktopArchiveAsync(archive, packagePath, manifest => manifest["version"] = "2.0.0");
             var blocked = false;
@@ -482,6 +489,7 @@ internal static class JointDeploymentAcceptance
             "get_CurrentSession" => Online ? login : null,
             "get_CurrentUser" => Online ? new UserDto(actor, "controller", HostPlatformKind.Windows, "fixture", default, null) : null,
             "get_CurrentServer" => null,
+            "add_StateChanged" or "remove_StateChanged" => null,
             _ => throw new NotSupportedException(method?.Name),
         };
     }
