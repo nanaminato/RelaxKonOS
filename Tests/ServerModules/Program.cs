@@ -424,8 +424,8 @@ Check(ServerModules.ConfigurationName(ServerModules.SystemPerformanceId) == "Sys
     "configuration name is derived from the module ID so the two cannot drift");
 Check(new RelaxKonOS.Client.Apps.Terminal.TerminalApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Terminal),
     "desktop terminal requires server terminal capability");
-Check(new RelaxKonOS.Client.Apps.TaskManager.TaskManagerApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Metrics)
-    && new RelaxKonOS.Client.Apps.TaskManager.TaskManagerApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Processes),
+Check(new RelaxKonOS.App.TaskManager.TaskManagerPackageApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Metrics)
+    && new RelaxKonOS.App.TaskManager.TaskManagerPackageApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Processes),
     "desktop task manager requires server metrics and processes capabilities");
 Check(new RelaxKonOS.Client.Apps.Git.GitClientApp().Manifest.Server.RequiredCapabilities.Contains(ServerCapabilities.Git),
     "desktop project editor requires server git capability");

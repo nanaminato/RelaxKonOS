@@ -1,0 +1,6 @@
+{
+  "Culture": "ja-JP",
+  "Strings": {
+    "task_manager.error.not_signed_in": "サインインしていないため、システム監視サービスを利用できません。"
+  }
+}

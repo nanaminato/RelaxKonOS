@@ -6,6 +6,7 @@ using RelaxKonOS.Client.Services.Modules;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
 using RelaxKonOS.ManagedRuntimes;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Runtime;
 
 namespace RelaxKonOS.Client.Services.AppPackages;
@@ -46,7 +47,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         var local = backend.InstalledReleases().ToArray();
         var optional = selectedOptional.ToArray();
         var localResolution = DeploymentResolver.Resolve(root, local, optional);
-        if (runtimeManifest.Server is { SupportedPlatforms.Count: 0, RequiredCapabilities.Count: 0 }
+        if ((runtimeManifest.Server is { SupportedPlatforms.Count: 0, RequiredCapabilities.Count: 0 }
+                || AllowsBundledLaunchRequirements(candidate, packages))
             && localResolution.ProblemPackage?.Kind != DeploymentPackageKind.ServerModule)
         {
             if (!localResolution.Succeeded)
@@ -109,6 +111,15 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
         new(http.CreateClient(ServerModuleCatalog.HttpClientName), session);
 
     private static DeploymentPackageKey App(string id) => new(DeploymentPackageKind.Application, id);
+
+    // The shipped Task Manager needs the server only at launch and installs no server dependencies.
+    internal static bool AllowsBundledLaunchRequirements(AppPackageCandidate candidate, DeveloperPackageManager packages) =>
+        candidate.ExpectedSha256 is not null && candidate.Manifest.Id == "relaxkonos.taskmanager"
+        && candidate.Manifest.Dependencies?.Required is not { Count: > 0 }
+        && candidate.Manifest.ServerRequirements is { SupportedPlatforms.Count: 0 } requirements
+        && requirements.RequiredCapabilities.ToHashSet(StringComparer.Ordinal).SetEquals([ServerCapabilities.Metrics, ServerCapabilities.Processes])
+        && string.Equals(Path.GetFullPath(candidate.LocalPath), Path.GetFullPath(packages.OfficialSource.BundledPath(candidate.Manifest.Id)),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     private static ApplicationManifest RuntimeManifest(DeveloperPackageManifest manifest) =>
         new(new AppId(manifest.Id), manifest.DisplayName, manifest.Version,
@@ -185,7 +196,8 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                     throw new InvalidOperationException("deployment-application-plan-changed");
                 VerifyApplicationBaseline();
                 await VerifyDependenciesAsync(plan, ct);
-                if (!applications.EvaluateCompatibility(RuntimeManifest(manifest)).IsCompatible)
+                if (!(plan.Target == LocalTarget && AllowsBundledLaunchRequirements(candidate, packages))
+                    && !applications.EvaluateCompatibility(RuntimeManifest(manifest)).IsCompatible)
                     throw new InvalidOperationException("deployment-application-incompatible");
                 return plan.Id;
             });

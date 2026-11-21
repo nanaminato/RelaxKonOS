@@ -357,7 +357,6 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Browser.BrowserApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.PortForwarding.PortForwardingApp>();
-        services.AddSingleton<RelaxKonOS.Client.Apps.TaskManager.TaskManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ProcessGuardian.ProcessGuardianApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Firewall.FirewallApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Squid.SquidApp>();

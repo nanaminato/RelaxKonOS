@@ -39,6 +39,7 @@ internal static class OfficialRoappChecks
         var isEventAlerts = applicationId == "relaxkonos.event-alerts";
         var isCodeEditor = applicationId == "relaxkonos.codeeditor";
         var isDocker = applicationId == "relaxkonos.docker";
+        var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var opensFiles = isCodeEditor || applicationId is "relaxkonos.notepad" or "relaxkonos.imageviewer";
         var samplePath = isCodeEditor ? "/files/sample.cs" : isNotepad ? "/files/README" : "/images/test.JFIF";
         var parent = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "preview-qa"));
@@ -46,7 +47,8 @@ internal static class OfficialRoappChecks
         var source = Directory.CreateDirectory(Path.Combine(root, "OfficialApps")).FullName;
         var path = Path.Combine(source, applicationId + ".roapp");
         var drive = new VirtualSystemDrive(Path.Combine(root, "drive"));
-        using var services = new ServiceCollection().BuildServiceProvider();
+        var compatibility = new Compatibility();
+        using var services = new ServiceCollection().AddSingleton<IApplicationCompatibilityEvaluator>(compatibility).BuildServiceProvider();
         using var http = new HttpClient();
         using var catalog = new ComponentCatalogSourceStore(Path.Combine(root, "catalog-trust"), "test-desktop");
         var journal = new FileDeploymentJournal(Path.Combine(root, "deployment-journal"));
@@ -97,6 +99,7 @@ internal static class OfficialRoappChecks
             await provisioner.RunAsync(["--installation-profile=standard", $"--exclude-bundled-app={applicationId}"]);
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "An excluded application stays uninstalled on restart.");
+            compatibility.TaskManagerServerAvailable = !isTaskManager;
             await provisioner.RunAsync(["--installation-profile=developer"]);
             if (isDocker)
                 Check(packages.FindInstalled(applicationId) is null, "Docker stays optional even in the Developer profile.");
@@ -114,16 +117,20 @@ internal static class OfficialRoappChecks
 
             Check(applications.TextFileOpeners.Any(app => app.Id == id) == (isNotepad || isCodeEditor),
                 "Package text fallback must match the manifest.");
-            if (isDocker)
+            if (isTaskManager)
+                Check(!await packages.LaunchAsync(applicationId), "The preinstalled Task Manager must refuse launch without server capabilities.");
+            compatibility.TaskManagerServerAvailable = true;
+            if (isDocker || isTaskManager)
             {
                 windows.Attach(new Canvas { Width = 1100, Height = 800 });
-                Check(await packages.LaunchAsync(applicationId), "Docker must launch from its installed package.");
+                Check(await packages.LaunchAsync(applicationId), "The application must launch from its installed package.");
                 for (var attempt = 0; attempt < 50 && windows.Windows.Count == 0; attempt++)
                     await Task.Delay(20);
                 var workspace = windows.Windows.Single();
-                Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName
-                    == "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace",
-                    "The installed Docker entry point must create its own workspace.");
+                var workspaceType = isTaskManager ? "RelaxKonOS.App.TaskManager.Views.TaskManagerMainView"
+                    : "RelaxKonOS.App.Docker.Views.DockerManagerWorkspace";
+                Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
+                    "The installed entry point must create its own workspace.");
                 windows.Close(workspace);
             }
 
@@ -241,6 +248,15 @@ internal static class OfficialRoappChecks
                     profiles = new { minimal = Array.Empty<object>(), standard = entry, developer = entry },
                 }));
         }
+    }
+
+    private sealed class Compatibility : IApplicationCompatibilityEvaluator
+    {
+        public bool TaskManagerServerAvailable { get; set; } = true;
+        public ApplicationCompatibilityResult Evaluate(ApplicationManifest manifest) =>
+            manifest.Id.Value == "relaxkonos.taskmanager" && manifest.Server.RequiredCapabilities.Count > 0 && !TaskManagerServerAvailable
+                ? new(ApplicationCompatibilityStatus.ServerUnavailable)
+                : ApplicationCompatibilityResult.Compatible;
     }
 
     private static async Task RejectAsync(Func<Task> action, string scenario)

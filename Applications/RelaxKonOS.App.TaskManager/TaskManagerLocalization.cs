@@ -10,10 +10,7 @@ public static class TaskManagerLocalization
     private static readonly Lazy<Dictionary<string, string>> Chinese = new(() => Load("zh-CN"));
     private static readonly Lazy<Dictionary<string, string>> Japanese = new(() => Load("ja-JP"));
 
-    public static IEnumerable<string> ResourceNames => typeof(TaskManagerLocalization).Assembly.GetManifestResourceNames()
-        .Where(name => name.StartsWith("TaskManager.Localization.", StringComparison.Ordinal));
-
-    public static Stream Open(string resourceName) =>
+    private static Stream Open(string resourceName) =>
         typeof(TaskManagerLocalization).Assembly.GetManifestResourceStream(resourceName)
         ?? throw new InvalidDataException($"Missing Task Manager localization resource '{resourceName}'.");
 

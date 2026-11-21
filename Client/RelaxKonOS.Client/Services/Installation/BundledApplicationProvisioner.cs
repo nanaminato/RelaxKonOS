@@ -61,7 +61,8 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
                         var platforms = ApplicationPlatformNames.Normalize(candidate.Manifest.ClientPlatforms);
                         var requirements = candidate.Manifest.ServerRequirements;
                         if (platforms.Count > 0 && !platforms.Contains(ApplicationCompatibilityService.DetectClientPlatform(), StringComparer.Ordinal)
-                            || requirements is { RequiredCapabilities.Count: > 0 } or { SupportedPlatforms.Count: > 0 }
+                            || (requirements is { RequiredCapabilities.Count: > 0 } or { SupportedPlatforms.Count: > 0 }
+                                && !JointAppDeploymentService.AllowsBundledLaunchRequirements(candidate, packages))
                             || candidate.Manifest.Dependencies?.Required is { Count: > 0 })
                             throw new InvalidOperationException("The bundled application requires an interactive deployment.");
 

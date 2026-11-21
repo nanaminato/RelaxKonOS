@@ -20,7 +20,7 @@
 | terminal | Terminal | 否 / 否 | 是 | Terminal capability | 基础 | 待验 |
 | server-center | ServerCenter | 否 / 否 | 是 | 服务端连接、安装与管理 | 基础 | 待验 |
 | component-center | ComponentCenter | 否 / 否 | 是 | 组件、可信来源、模块及任务 API | 基础 | 待验 |
-| taskmanager | TaskManager | 否 / 否 | 是 | 服务端系统性能与进程 API | 基础 | 待验 |
+| taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Release 包验收；真实服务器待验 |
 | notepad | RelaxKonOS.App.Notepad | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | 待验 |
 | browser | Browser | 否 / 否 | 是 | 本地 WebView 与浏览器宿主服务 | 基础 | 待验 |
 | imageviewer | RelaxKonOS.App.ImageViewer | 是 / 是 | 否 | 文件能力通过 SDK | 基础 | 待验 |
@@ -44,7 +44,7 @@
 | tailscale | Tailscale | 否 / 否 | 是 | Tailscale capability、Firewall 集成与宿主组件 | 可选 | 待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
-基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前 Welcome 和 Event & Alert Center 已迁出桌面宿主。桌面发行构建将 Welcome、Notepad、Image Viewer 和 Event & Alert Center 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装这四个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。包含服务端要求或必需依赖的包须经交互部署。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
+基线共有 29 个登记入口，2 个可独立打包安装，27 个由桌面宿主编译和登记。当前 Welcome 和 Event & Alert Center 已迁出桌面宿主。桌面发行构建将 Welcome、Notepad、Image Viewer、Event & Alert Center 和 Task Manager 放进 `OfficialApps`，并随包提供版本化的 installation-profiles.json。Standard 默认安装这五个应用，Minimal 跳过预装并保留应用安装器入口，Developer 额外离线预装 Code Editor。首次可用 --installation-profile=minimal|standard|developer 与可重复的 --exclude-bundled-app=<id> 选择和排除。选择保存在本机 VSD。启动扫描后通过原安装器离线预装，逐项记录首次处理的版本。重启和客户端升级保留已记录应用的卸载决定。带有必需依赖或服务端部署要求的包须经交互部署。随包提供的 Task Manager 只在启动时检查服务端能力。官方商店可使用与已安装版本相同的可信归档进行修复，继续使用原安装器的摘要、路径和版本检查。
 
 ## 复用边界
 
@@ -69,7 +69,7 @@
 - Task Manager 主模型通过 SDK 检查及监听启动时的服务器会话。会话更换时停止订阅和轮询，清空旧数据。性能与进程 API 复用同一会话边界。
 - Task Manager 主模型、性能指标模型和字节格式化器已迁入独立项目。主模型直接读取应用内嵌文案，不再依赖宿主本地化服务。
 - Task Manager 主视图、导航样式、表头和界面转换器已迁入独立项目。窗口外壳仍使用原有标题栏、快捷键和进程表交互。
-- Task Manager 独立启动入口使用 SDK 创建窗口并监听应用生命周期。DevCli 已生成本地 Release `.roapp`。当前内置注册调用同一入口，官方安装链路和内置注册移除仍待完成。
+- Task Manager 独立启动入口使用 SDK 创建窗口并监听应用生命周期。已移除桌面内置注册。官方包随 Standard 和 Developer 档位离线预装，Minimal 跳过。启动时继续检查服务端指标和进程能力。
 
 - Docker Manager 的状态、资源详情、Compose 回执、引擎控制和账户镜像源使用 SDK，沿用现有 HTTP 路由。读取要求读授权，变更要求管理授权。SDK 在操作前后检查服务器会话，停止或重启引擎还要求用户确认。
 - Docker Manager 主工作区模型位于 `Applications/RelaxKonOS.App.Docker`。组件依赖页由宿主 SDK 提供。
