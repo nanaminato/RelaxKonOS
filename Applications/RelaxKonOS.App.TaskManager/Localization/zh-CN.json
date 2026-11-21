@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "application.relaxkonos.taskmanager.display_name": "任务管理器",
         "task_manager.process.administrator_mode": "管理员模式",
         "task_manager.process.normal_mode": "普通模式",
         "task_manager.cpu": "🖥 CPU",

@@ -1,6 +1,7 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "application.relaxkonos.taskmanager.display_name": "Task Manager",
         "task_manager.process.administrator_mode": "Administrator mode",
         "task_manager.process.normal_mode": "Normal mode",
         "task_manager.cpu": "🖥 CPU",

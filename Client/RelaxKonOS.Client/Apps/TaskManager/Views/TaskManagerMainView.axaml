@@ -3,7 +3,8 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.TaskManager.ViewModels"
              xmlns:conv="clr-namespace:RelaxKonOS.Client.Apps.TaskManager.Converters"
-             xmlns:charts="clr-namespace:RelaxKonOS.Client.Apps.TaskManager.Controls"
+             xmlns:charts="clr-namespace:RelaxKonOS.App.TaskManager.Controls;assembly=RelaxKonOS.App.TaskManager"
+             xmlns:task="clr-namespace:RelaxKonOS.App.TaskManager.ViewModels;assembly=RelaxKonOS.App.TaskManager"
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.SystemMonitor;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.TaskManager.Views.TaskManagerMainView"
              x:DataType="vm:TaskManagerViewModel"
@@ -30,7 +31,7 @@
 
     <DockPanel LastChildFill="True">
         <Grid x:Name="HeaderHost" DockPanel.Dock="Top" Height="0" IsVisible="False" ColumnDefinitions="Auto,*">
-            <Image x:Name="HeaderLeading" Width="20" Height="20" Source="avares://RelaxKonOS.Client/Assets/AppIcons/taskmanager.png" VerticalAlignment="Center" />
+            <Image x:Name="HeaderLeading" Width="20" Height="20" Source="avares://RelaxKonOS.App.TaskManager/Assets/taskmanager.png" VerticalAlignment="Center" />
             <TextBlock x:Name="HeaderCenter" Grid.Column="1" Margin="8,0,0,0" Text="{loc:Loc application.relaxkonos.taskmanager.display_name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
         </Grid>
         <Border DockPanel.Dock="Bottom" Classes="app-statusbar">
@@ -166,7 +167,7 @@
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Header="{loc:Loc common.name}" SortMemberPath="Name" Width="2*" MinWidth="180">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate x:DataType="vm:ProcessTreeItemViewModel">
+                                    <DataTemplate x:DataType="task:ProcessTreeItemViewModel">
                                         <Grid ColumnDefinitions="20,20,*" Margin="{Binding Indent}" ColumnSpacing="6">
                                             <Button Content="{Binding ExpandGlyph}" Command="{Binding ToggleExpandedCommand}" IsVisible="{Binding HasChildren}" Width="20" Height="24" Padding="0" Background="Transparent" BorderThickness="0" VerticalAlignment="Center" />
                                             <Image Grid.Column="1" Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Width="20" Height="20" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" DataContextChanged="ProcessIcon_DataContextChanged" AttachedToVisualTree="ProcessIcon_AttachedToVisualTree" />

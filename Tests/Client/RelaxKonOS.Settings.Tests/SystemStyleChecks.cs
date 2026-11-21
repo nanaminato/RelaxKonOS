@@ -342,7 +342,7 @@ internal static class SystemStyleChecks
             ["Client/RelaxKonOS.Client/Services/ShellSettings.cs"] = 27,
             ["Client/RelaxKonOS.Client/Apps/Terminal/TerminalAppearance.cs"] = 12,
             ["Client/RelaxKonOS.Client/Apps/TaskManager/ViewModels/TaskManagerViewModel.cs"] = 4,
-            ["Client/RelaxKonOS.Client/Apps/TaskManager/Controls/PerformanceLineChart.cs"] = 1,
+            ["Applications/RelaxKonOS.App.TaskManager/Controls/PerformanceLineChart.cs"] = 1,
         };
 
         var offending = new List<string>();
@@ -350,7 +350,7 @@ internal static class SystemStyleChecks
 
         // UI projects only. Shared/ holds the palette contract itself and the host-side services
         // hold no presentation, so neither is in scope for a rule about themeable UI.
-        foreach (var scanRoot in new[] { "Client/RelaxKonOS.Client", "Framework", "examples" })
+        foreach (var scanRoot in new[] { "Client/RelaxKonOS.Client", "Applications/RelaxKonOS.App.TaskManager", "Framework", "examples" })
         {
             var directory = Path.Combine(root, scanRoot.Replace('/', Path.DirectorySeparatorChar));
             if (!Directory.Exists(directory)) continue;

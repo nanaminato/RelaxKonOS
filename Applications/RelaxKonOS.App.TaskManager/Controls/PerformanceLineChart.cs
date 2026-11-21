@@ -3,7 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 
-namespace RelaxKonOS.Client.Apps.TaskManager.Controls;
+namespace RelaxKonOS.App.TaskManager.Controls;
 
 /// <summary>Small, dependency-free performance graph used by the task manager.</summary>
 public sealed class PerformanceLineChart : Control

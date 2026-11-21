@@ -111,7 +111,7 @@ internal static class FusedWorkspaceChecks
                 window.View.Width = width; window.Info.Bounds = new CoreRect(10, 10, width, 640); Pump(); host.UpdateLayout(); Pump();
                 using var frame = host.CaptureRenderedFrame();
                 Check(window.View.HasTitleBarContent, $"{name}: no fused header.");
-                if (name is not ("browser" or "notepad" or "taskmanager"))
+                if (name is not ("browser" or "notepad"))
                 {
                     Check(window.View.HeaderLeading is Image { Source: not null }, $"{name}: workspace icon binding was lost after reparenting.");
                     Check(name == "git"

@@ -10,7 +10,6 @@
         "application.relaxkonos.ssh-files.description": "通过 SFTP 浏览和传输文件",
         "application.relaxkonos.settings.display_name": "设置",
         "application.relaxkonos.codeeditor.display_name": "代码编辑器",
-        "application.relaxkonos.taskmanager.display_name": "任务管理器",
         "application.relaxkonos.browser.display_name": "远程浏览器",
         "application.relaxkonos.appinstaller.display_name": "应用安装程序",
         "application.relaxkonos.explorer.display_name": "文件资源管理器",

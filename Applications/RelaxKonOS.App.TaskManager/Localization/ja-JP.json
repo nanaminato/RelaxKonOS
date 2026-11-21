@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "application.relaxkonos.taskmanager.display_name": "タスク マネージャー",
         "task_manager.process.administrator_mode": "管理者モード",
         "task_manager.process.normal_mode": "通常モード",
         "task_manager.cpu": "🖥 CPU",

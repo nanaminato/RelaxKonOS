@@ -4,7 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.SystemMonitor;
 
-namespace RelaxKonOS.Client.Apps.TaskManager.ViewModels;
+namespace RelaxKonOS.App.TaskManager.ViewModels;
 
 public sealed partial class ProcessTreeItemViewModel(ProcessInfoDto process) : ObservableObject, IDisposable
 {
