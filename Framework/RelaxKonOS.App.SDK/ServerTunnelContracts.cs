@@ -1,8 +1,8 @@
 using RelaxKonOS.Protocol.Tunnels;
 
-namespace RelaxKonOS.Client.Apps.Tunnels;
+namespace RelaxKonOS.AppSDK;
 
-public interface IRemoteTunnelClient
+public interface IServerTunnels
 {
     Task<IReadOnlyList<TunnelServerProfileDto>> ListProfilesAsync(CancellationToken cancellationToken = default);
     Task<TunnelServerProfileDto?> GetProfileAsync(Guid profileId, CancellationToken cancellationToken = default);

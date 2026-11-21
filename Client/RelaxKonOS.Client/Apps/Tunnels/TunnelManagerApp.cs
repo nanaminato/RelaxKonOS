@@ -24,7 +24,7 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var client = context.Services.GetService(typeof(IRemoteTunnelClient)) as IRemoteTunnelClient;
+        var client = context.Services.GetService(typeof(IServerTunnels)) as IServerTunnels;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
             context.ShowWindow(LocalizedText.Get("tunnels.title"), new TunnelLoginRequiredView(), new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false); return;

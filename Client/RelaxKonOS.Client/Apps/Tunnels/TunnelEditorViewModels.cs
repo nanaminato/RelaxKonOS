@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -8,7 +9,7 @@ namespace RelaxKonOS.Client.Apps.Tunnels;
 
 public sealed partial class TunnelProfileEditorViewModel : LocalizedObservableObject
 {
-    private readonly IRemoteTunnelClient _client;
+    private readonly IServerTunnels _client;
     private readonly TunnelServerProfileDto? _original;
     public IReadOnlyList<TunnelAuthKind> AuthKinds { get; } = Enum.GetValues<TunnelAuthKind>();
     public IReadOnlyList<TunnelTlsMode> TlsModes { get; } = Enum.GetValues<TunnelTlsMode>();
@@ -33,7 +34,7 @@ public sealed partial class TunnelProfileEditorViewModel : LocalizedObservableOb
     public bool IsTokenAuth => AuthKind == TunnelAuthKind.Token;
     public bool CanDelete => IsEditing && !IsBusy;
 
-    public TunnelProfileEditorViewModel(IRemoteTunnelClient client, TunnelServerProfileDto? original, string? token = null)
+    public TunnelProfileEditorViewModel(IServerTunnels client, TunnelServerProfileDto? original, string? token = null)
     {
         _client = client; _original = original;
         _name = original?.Name ?? string.Empty; _host = original?.Host ?? string.Empty; _port = original?.Port ?? 7000;
@@ -98,7 +99,7 @@ public sealed partial class TunnelProfileEditorViewModel : LocalizedObservableOb
 
 public sealed partial class TunnelDefinitionEditorViewModel : LocalizedObservableObject
 {
-    private readonly IRemoteTunnelClient _client;
+    private readonly IServerTunnels _client;
     private readonly TunnelDefinitionDto? _original;
     public ObservableCollection<TunnelServerProfileDto> Profiles { get; }
     public IReadOnlyList<TunnelProtocol> Protocols { get; } = Enum.GetValues<TunnelProtocol>();
@@ -124,7 +125,7 @@ public sealed partial class TunnelDefinitionEditorViewModel : LocalizedObservabl
     public bool UsesRemotePort => Protocol is TunnelProtocol.Tcp or TunnelProtocol.Udp;
     public bool UsesDomain => Protocol is TunnelProtocol.Http or TunnelProtocol.Https;
 
-    public TunnelDefinitionEditorViewModel(IRemoteTunnelClient client, IEnumerable<TunnelServerProfileDto> profiles, TunnelDefinitionDto? original)
+    public TunnelDefinitionEditorViewModel(IServerTunnels client, IEnumerable<TunnelServerProfileDto> profiles, TunnelDefinitionDto? original)
     {
         _client = client; _original = original; Profiles = new ObservableCollection<TunnelServerProfileDto>(profiles);
         _name = original?.Name ?? string.Empty; _profile = Profiles.FirstOrDefault(x => x.Id == original?.ServerProfileId) ?? Profiles.FirstOrDefault();
@@ -176,7 +177,7 @@ public sealed partial class TunnelDefinitionEditorViewModel : LocalizedObservabl
     }
 }
 
-public sealed partial class TunnelLogViewModel(IRemoteTunnelClient client, TunnelServerProfileDto profile) : LocalizedObservableObject, IDisposable
+public sealed partial class TunnelLogViewModel(IServerTunnels client, TunnelServerProfileDto profile) : LocalizedObservableObject, IDisposable
 {
     private readonly CancellationTokenSource _lifetime = new();
     [ObservableProperty] private string _logsText = string.Empty;

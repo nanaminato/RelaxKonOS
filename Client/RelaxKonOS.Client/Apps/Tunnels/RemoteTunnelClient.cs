@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Net.Http.Json;
 using RelaxKonOS.Client.Services.Auth;
@@ -9,7 +10,7 @@ using RelaxKonOS.Client.Services.Privileged;
 namespace RelaxKonOS.Client.Apps.Tunnels;
 
 /// <summary>Client facade. Full profile details are available only for Controller-authorized editing; generated TOML is never exposed.</summary>
-public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session, IHostElevationBroker elevations) : IRemoteTunnelClient
+public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session, IHostElevationBroker elevations) : IServerTunnels
 {
     public async Task<IReadOnlyList<TunnelServerProfileDto>> ListProfilesAsync(CancellationToken ct = default) =>
         await SendAsync<IReadOnlyList<TunnelServerProfileDto>>(HttpMethod.Get, TunnelApiRoutes.Profiles, null, ct) ?? [];

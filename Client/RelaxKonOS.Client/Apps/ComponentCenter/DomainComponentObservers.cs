@@ -1,5 +1,5 @@
-﻿using RelaxKonOS.Client.Apps.Squid;
-using RelaxKonOS.Client.Apps.Tunnels;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Apps.Squid;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Tunnels;
@@ -35,7 +35,7 @@ public sealed class SquidComponentObserver(ISquidClient client) : IComponentHost
 }
 
 /// <summary>Client executable observation and server process observation are independent facts.</summary>
-public sealed class TunnelComponentObserver(IRemoteTunnelClient client) : IComponentHostObserver
+public sealed class TunnelComponentObserver(IServerTunnels client) : IComponentHostObserver
 {
     public bool CanObserve(string componentId) => componentId is "frpc" or "frps";
     public async Task<ComponentHostObservation?> ObserveAsync(string componentId, string? hostOs, CancellationToken cancellationToken)

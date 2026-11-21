@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
@@ -9,7 +10,7 @@ using RelaxKonOS.Protocol.Tunnels;
 namespace RelaxKonOS.Client.Apps.Tunnels;
 
 /// <summary>Shared state for the tunnel list, runtime page, and independent child windows.</summary>
-public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, bool canManage) : LocalizedObservableObject, IDisposable
+public sealed partial class TunnelManagerViewModel(IServerTunnels client, bool canManage) : LocalizedObservableObject, IDisposable
 {
     private readonly CancellationTokenSource _lifetime = new();
     public ObservableCollection<TunnelServerProfileDto> Profiles { get; } = [];

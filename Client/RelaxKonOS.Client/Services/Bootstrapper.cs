@@ -240,7 +240,7 @@ public static class Bootstrapper
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "file-services"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
-        services.AddHttpClient<RelaxKonOS.Client.Apps.Tunnels.IRemoteTunnelClient, RelaxKonOS.Client.Apps.Tunnels.RemoteTunnelClient>()
+        services.AddHttpClient<RelaxKonOS.AppSDK.IServerTunnels, RelaxKonOS.Client.Apps.Tunnels.RemoteTunnelClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "tunnels"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
