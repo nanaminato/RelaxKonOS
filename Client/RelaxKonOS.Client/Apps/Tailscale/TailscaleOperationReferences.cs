@@ -1,14 +1,7 @@
-using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
+using RelaxKonOS.AppSDK;
 using System.Text.Json;
-using RelaxKonOS.Client.Services.HostSettings;
 
 namespace RelaxKonOS.Client.Apps.Tailscale;
-
-public interface ITailscaleOperationReferences
-{
-    IReadOnlyList<Guid> Read(HostSettingsConnection connection);
-    void Remember(HostSettingsConnection connection, Guid operationId);
-}
 
 /// <summary>Device-local host/user-scoped references only. The Server owns operation outcomes.</summary>
 public sealed class TailscaleOperationReferences : ITailscaleOperationReferences
@@ -18,6 +11,9 @@ public sealed class TailscaleOperationReferences : ITailscaleOperationReferences
     public TailscaleOperationReferences() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RelaxKonOS", "tailscale-operations.json")) { }
     public TailscaleOperationReferences(string path) => _path = path;
+
+    internal static TailscaleOperationReferences CreateLoginStore() => new(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "tailscale-login-operations.json"));
     public IReadOnlyList<Guid> Read(HostSettingsConnection connection)
     {
         lock (_gate) return Load().Where(x => x.Host == connection.ServiceId && x.User == connection.UserId).Select(x => x.Operation).ToArray();

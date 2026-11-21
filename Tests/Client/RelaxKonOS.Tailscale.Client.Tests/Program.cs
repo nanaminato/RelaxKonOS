@@ -1,3 +1,4 @@
+using ITailscaleOperationReferences = RelaxKonOS.AppSDK.ITailscaleOperationReferences;
 using HostSettingsConnection = RelaxKonOS.AppSDK.HostSettingsConnection;
 using IServerTailscale = RelaxKonOS.AppSDK.IServerTailscale;
 using Avalonia;

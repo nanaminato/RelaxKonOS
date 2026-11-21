@@ -70,6 +70,8 @@ public sealed class ExternalAppContextFactory
     private readonly Func<IServerProxy>? _createProxyClient;
     private readonly IServerTailscale? _tailscale;
     private readonly IServerTailscaleLogin? _tailscaleLogin;
+    private readonly ITailscaleOperationReferences? _tailscaleReferences;
+    private readonly ITailscaleOperationReferences? _tailscaleLoginReferences;
     private readonly IServerApplicationDeployments? _applicationDeployments;
     private readonly IPortForwardingService? _portForwarding;
     private readonly ClientPresentationPreferences? _presentationPreferences;
@@ -121,7 +123,8 @@ public sealed class ExternalAppContextFactory
         Func<IServerProxyServer>? createProxyServerClient = null,
         Func<IServerProxy>? createProxyClient = null,
         IServerTailscale? tailscale = null,
-        IServerTailscaleLogin? tailscaleLogin = null)
+        IServerTailscaleLogin? tailscaleLogin = null,
+        ITailscaleOperationReferences? tailscaleReferences = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -159,6 +162,8 @@ public sealed class ExternalAppContextFactory
         _createProxyClient = createProxyClient;
         _tailscale = tailscale;
         _tailscaleLogin = tailscaleLogin;
+        _tailscaleReferences = tailscaleReferences;
+        _tailscaleLoginReferences = RelaxKonOS.Client.Apps.Tailscale.TailscaleOperationReferences.CreateLoginStore();
         _applicationDeployments = applicationDeployments;
         _portForwarding = portForwarding;
         _presentationPreferences = presentationPreferences;
@@ -178,7 +183,8 @@ public sealed class ExternalAppContextFactory
         var fileSession = _usageMemory.Capture(_session);
         var connection = new ExternalServerConnection(fileSession);
         var docker = new ServerDockerResourcesCapability(appId, _permissions, fileSession, _docker, _dockerMirrors);
-        var tailscale = new ServerTailscaleCapability(appId, _permissions, connection, _tailscale, _tailscaleLogin, _elevationBroker, lifetime);
+        var tailscale = new ServerTailscaleCapability(appId, _permissions, connection, _tailscale, _tailscaleLogin, _elevationBroker, lifetime,
+            _tailscaleReferences, _tailscaleLoginReferences);
         return new ExternalAppContext(
         appId,
         new AppPermissionScope(appId, _permissionRequests),

@@ -10,11 +10,32 @@ namespace RelaxKonOS.Client.Services.AppPermissions;
 
 internal sealed class ServerTailscaleCapability(AppId appId, IAppPermissionManager permissions,
     ExternalServerConnection connection, IServerTailscale? controlClient, IServerTailscaleLogin? loginClient,
-    IHostElevationBroker? elevation, CancellationToken lifetime) : IExternalTailscale, IServerTailscaleLogin
+    IHostElevationBroker? elevation, CancellationToken lifetime, ITailscaleOperationReferences? operationReferences = null,
+    ITailscaleOperationReferences? loginReferences = null) : IExternalTailscale, IServerTailscaleLogin
 {
     private IServerTailscale Control => controlClient ?? throw new InvalidOperationException("Tailscale is unavailable.");
     private IServerTailscaleLogin Login => loginClient ?? throw new InvalidOperationException("Tailscale login is unavailable.");
     private IHostElevationBroker Elevation => elevation ?? throw Problem(503, "tailscale.authorization_unavailable");
+
+    public ITailscaleOperationReferences OperationReferences => new ScopedReferences(this, operationReferences);
+    public ITailscaleOperationReferences LoginReferences => new ScopedReferences(this, loginReferences);
+
+    private sealed class ScopedReferences(ServerTailscaleCapability scope, ITailscaleOperationReferences? store) : ITailscaleOperationReferences
+    {
+        private ITailscaleOperationReferences Store => store ?? throw new InvalidOperationException("Tailscale operation storage is unavailable.");
+
+        public IReadOnlyList<Guid> Read(HostSettingsConnection connection)
+        {
+            scope.CheckAccess(connection, manage: false, default);
+            return Store.Read(connection);
+        }
+
+        public void Remember(HostSettingsConnection connection, Guid operationId)
+        {
+            scope.CheckAccess(connection, manage: true, default);
+            Store.Remember(connection, operationId);
+        }
+    }
 
     public event EventHandler? SessionChanged
     {

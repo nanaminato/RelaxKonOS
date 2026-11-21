@@ -24,18 +24,23 @@ internal static class TailscaleScopeChecks
         var broker = new Broker();
         using var lifetime = new CancellationTokenSource();
         var scoped = new ServerTailscaleCapability(id, permissions, new ExternalServerConnection(memory.Capture(session)),
-            control, login, broker, lifetime.Token);
+            control, login, broker, lifetime.Token, new References(), new References());
         IServerTailscaleLogin scopedLogin = scoped;
         await RejectAsync<TailscaleRequestException>(() => Task.FromResult(scoped.CaptureConnection()));
 
         permissions.Granted.Add(AppPermissions.ServerTailscaleRead);
         var identity = scoped.CaptureConnection();
+        var receipt = Guid.NewGuid();
+        await RejectAsync<TailscaleRequestException>(() => { scoped.OperationReferences.Remember(identity, receipt); return Task.CompletedTask; });
         var status = await scoped.GetStatusAsync(identity, default);
         if (status.Account is not null || status.TailnetName is not null || !status.PeersRestricted)
             throw new InvalidOperationException("Tailscale read-only scope returned restricted account or tailnet details.");
         await RejectAsync<TailscaleRequestException>(() => scopedLogin.ChallengeAsync(identity, Guid.NewGuid(), default));
 
         permissions.Granted.Add(AppPermissions.ServerTailscaleManage);
+        scoped.OperationReferences.Remember(identity, receipt);
+        if (!scoped.OperationReferences.Read(identity).SequenceEqual([receipt]) || scoped.LoginReferences.Read(identity).Count != 0)
+            throw new InvalidOperationException("Tailscale control and login must retain separate references.");
         var controlFixture = (TailscaleScopeTransport)(object)control;
         controlFixture.RequireGrant = true;
         try
@@ -63,6 +68,7 @@ internal static class TailscaleScopeChecks
             auth.NotifyStateChanged();
         };
         await RejectAsync<OperationCanceledException>(() => scopedLogin.ChallengeAsync(identity, operation, default));
+        await RejectAsync<TailscaleRequestException>(() => Task.FromResult(scoped.OperationReferences.Read(identity)));
         if (loginFixture.ChallengeReads != 1)
             throw new InvalidOperationException("A host switch during native authorization reached the old login transport.");
         Console.WriteLine("Tailscale scoped reads, peer authorization, challenge access, and grant-time host switching passed.");
@@ -73,6 +79,13 @@ internal static class TailscaleScopeChecks
         try { await operation(); }
         catch (T) { return; }
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+    }
+
+    private sealed class References : ITailscaleOperationReferences
+    {
+        private readonly List<Guid> _ids = [];
+        public IReadOnlyList<Guid> Read(HostSettingsConnection connection) => _ids;
+        public void Remember(HostSettingsConnection connection, Guid operationId) => _ids.Add(operationId);
     }
 
     private sealed class Broker : IHostElevationBroker

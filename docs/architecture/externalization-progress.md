@@ -319,10 +319,11 @@
 - Proxy Manager 工作区通过控件工厂显示组件依赖，通过宿主回调读取网络地址并处理 Helper 故障。视图模型移除了组件中心、任务管理器客户端和提权故障格式化的具体类型引用。Windows Release 代理专项通过。
 - Proxy Manager 视图模型和代理组投影已进入独立项目。视图模型通过注入的查询解析本地化，现有桌面窗口在语言变更时刷新绑定。Windows Release 代理工作区与流量轮询专项通过。
 - Proxy Manager 的工作区、设置和订阅对话框、样式、图标及中英日资源已进入应用程序集。Windows Release 代理工作区、组合工作区和流量轮询通过，独立入口与官方发行接线待完成。
-- Proxy Manager 已改为官方可选包。联合部署要求与 Squid、Proxy Server 共用的 Proxy 模块及对应管理能力。Windows Release 使用实际 DevCli 归档验证拒绝绕过联合部署、只读激活、权限隔离、升级、重启发现和卸载。SDK 专项验证关闭或切换连接时取消请求并清除订阅内容。系统代理地址候选在打开相应设置时请求指标读取权限。真实 mihomo 和包含此包的完整桌面发行待验。
+- Proxy Manager 已改为官方可选包。联合部署要求与 Squid、Proxy Server 共用的 Proxy 模块及对应管理能力。Windows Release 使用实际 DevCli 归档验证拒绝绕过联合部署、只读激活、权限隔离、升级、重启发现和卸载。SDK 专项验证关闭或切换连接时取消请求并清除订阅内容。系统代理地址候选在打开相应设置时请求指标读取权限。Windows x64 完整发行生成 22 个官方包，均通过 SHA-256 核对。发行中的 Proxy Manager、Proxy Server 和 Squid Gateway 均通过包生命周期回归。真实 mihomo 待验。
 - Tailscale 控制与登录契约及其共享主机连接标识已迁入应用 SDK。桌面传输继续区分稳定登录身份与当前地址，事件桥接隐藏宿主认证实现。Windows Release 246 项 Tailscale 行为、传输和布局检查通过，设置三语交互检查通过。
 - Tailscale 外置上下文已接入读取、管理及按连接绑定的登录。只读状态会隐藏账号和节点详情，原生授权限于 HostNetworkChange 的 Tailscale 目标。Windows Release 验证了只读遮蔽、登录挑战和授权期间切换服务器。现有桌面入口仍在迁移。
 - Tailscale 外置 SDK 区分被动刷新与用户主动打开控制设置。被动读取不会触发宿主授权，显式读取仍通过原生授权代理。Windows Release 授权专项覆盖这两条路径。
 - Tailscale 控制、登录及对等节点显示通过 SDK 的语言事件和注入的文案查询更新。主机没有授权代理时返回明确状态。Windows Release 的 246 项 Tailscale 行为、传输和布局检查通过。
 - Windows 隔离 HTTP 联合部署使用三个实际代理归档验证了对已启用 Proxy 模块的复用。三应用同时安装时全部出现在模块依赖清单，逐个卸载只移除被卸载应用的依赖，模块包操作回执数保持不变。
 - Tailscale 外置应用现在收到 SDK 的错误码和 HTTP 状态。宿主先处理原生授权，再将失败转成应用契约。Windows Release 验证被动读取保留授权所需的 403 与错误码。
+- Tailscale 连接与登录的操作引用通过 SDK 提供，沿用设备上独立的现有存储文件。读取和保存分别验证当前连接及相应应用权限。Windows Release 专项验证两个存储独立、只读拒绝保存以及服务器切换后拒绝读取旧连接；既有 246 项桌面检查通过。

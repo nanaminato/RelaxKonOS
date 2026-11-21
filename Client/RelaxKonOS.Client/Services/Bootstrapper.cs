@@ -386,7 +386,7 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleLoginClient>().AddRelaxKonOSAuthentication();
         services.AddTransient<RelaxKonOS.AppSDK.IServerTailscaleLogin>(services => services.GetRequiredService<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleLoginClient>());
         services.AddTransient<RelaxKonOS.AppSDK.IServerTailscale>(services => services.GetRequiredService<RelaxKonOS.Client.Apps.Tailscale.RemoteTailscaleClient>());
-        services.AddSingleton<RelaxKonOS.Client.Apps.Tailscale.ITailscaleOperationReferences, RelaxKonOS.Client.Apps.Tailscale.TailscaleOperationReferences>();
+        services.AddSingleton<RelaxKonOS.AppSDK.ITailscaleOperationReferences, RelaxKonOS.Client.Apps.Tailscale.TailscaleOperationReferences>();
         services.AddSingleton<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>();
 
         services.AddSingleton<DesktopShellViewModel>(sp =>
