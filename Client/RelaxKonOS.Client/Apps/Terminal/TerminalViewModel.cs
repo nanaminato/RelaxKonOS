@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Terminal;
 using System.Collections.Concurrent;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;

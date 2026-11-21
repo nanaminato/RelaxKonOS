@@ -1,7 +1,7 @@
 using Avalonia.Media;
 using RelaxKonOS.Protocol.Workspace;
 
-namespace RelaxKonOS.Client.Apps.Terminal;
+namespace RelaxKonOS.App.Terminal;
 
 /// <summary>Built-in terminal palettes. Saved values are the resolved colours, not just a preset name.</summary>
 public static class TerminalAppearance

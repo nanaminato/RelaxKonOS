@@ -7,7 +7,7 @@ using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Services;
 using RoyalTerminal.Terminal.Transport.Ssh;
 
-namespace RelaxKonOS.Client.Apps.Terminal;
+namespace RelaxKonOS.App.Terminal;
 
 /// <summary>
 /// The in-process terminal control (RoyalTerminal) drawn with Skia inside the Avalonia window.

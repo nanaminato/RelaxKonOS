@@ -1,7 +1,7 @@
 using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Services;
 
-namespace RelaxKonOS.Client.Apps.Terminal;
+namespace RelaxKonOS.App.Terminal;
 
 /// <summary>
 /// Holds the control's VT lifetime stable while an asynchronous transport starts.

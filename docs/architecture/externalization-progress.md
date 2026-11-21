@@ -17,7 +17,7 @@
 | welcome | RelaxKonOS.App.Welcome | 是 / 是 | 否 | 使用 SDK 激活记事本或安装器 | 基础 | Windows 已验 |
 | settings | Settings | 否 / 否 | 是 | 工作区设置与宿主设置 | 基础 | 待验 |
 | explorer | Explorer | 否 / 否 | 是 | 文件 API；调用存储提供者的聚合入口 | 基础 | 待验 |
-| terminal | Terminal | 否 / 否 | 是 | Terminal capability | 基础 | 待验 |
+| terminal | Terminal；RelaxKonOS.App.Terminal | 是 / 否 | 是 | Terminal capability | 基础 | Windows 渲染层回归通过 |
 | server-center | ServerCenter | 否 / 否 | 是 | 服务端连接、安装与管理 | 基础 | 待验 |
 | component-center | ComponentCenter | 否 / 否 | 是 | 组件、可信来源、模块及任务 API | 基础 | 待验 |
 | taskmanager | RelaxKonOS.App.TaskManager | 是 / 是 | 否 | SDK 性能与进程 API | 基础 | Release 包验收；真实服务器待验 |
@@ -120,6 +120,8 @@
 - 外置应用就绪检查排除模块清单中已隔离、报告恢复状态或驻留故障的模块。Windows 双包回归使用真实模块清单，注入已启用模块的驻留故障，验证应用状态从就绪转为待恢复。
 - 联合部署规划、执行验证和启动检查使用同一模块状态判定。Windows 双包回归确认已启用模块报告驻留故障后，状态快照发生变化，解析器无法将该模块标为已满足。
 - 外置应用的启动恢复提示采用已登记的本地化应用名。中英日提示分别指向应用安装器和组件中心。Windows Release 启动门禁回归通过。
+- Terminal 的 RoyalTerminal 渲染、连接期间的 VT 会话生命周期和外观配置已迁入独立的应用项目。Windows Release 工作区回归覆盖标签、托管与原生 VT、光标和历史记录。窗口入口及 SignalR/SSH 传输仍由宿主承载。
+- 设置主题的颜色扫描已覆盖 Terminal 新项目。全局扫描仍报告 Proxy、Shell、Git、UI 样式和示例项目中的既有硬编码颜色。
 - 服务端替换或回退模块活动版本时，从依赖方的已安装清单校验版本约束。Windows HTTP 签名包回归证实排他上界阻止升级并保留原版本，包完整性与热替换回归通过。手动回退会重新检查归档版本的前置依赖。缺少依赖时保留当前版本，自动启动恢复会隔离失败更新并留下回执，避免激活不兼容的旧包。两条路径均通过 Windows 测试。
 - Windows 模块包回归验证了随宿主编译的 Git 模块也受依赖版本区间约束，兼容区间通过，要求更高版本的包被拒绝。
 - Windows Release 使用实际 Welcome .roapp 验证配置集通过统一部署协调器离线预装并写入部署回执。回归覆盖 Standard 默认选择、Minimal、排除应用、避免重复安装、保留卸载决定，以及暂缓带服务端要求的包。

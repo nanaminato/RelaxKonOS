@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using RelaxKonOS.Protocol.Workspace;
 using RoyalTerminal.Terminal;
 
-namespace RelaxKonOS.Client.Apps.Terminal;
+namespace RelaxKonOS.App.Terminal;
 
 /// <summary>
 /// One rendering surface for one terminal session. Desktop currently uses the in-process
