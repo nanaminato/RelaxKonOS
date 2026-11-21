@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ProxyManager;
 using Avalonia.Controls;
 using Avalonia.Threading;
 namespace RelaxKonOS.Client.Apps.Proxy.Views;

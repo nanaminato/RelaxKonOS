@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ProxyManager;
 using IServerProxy = RelaxKonOS.AppSDK.IServerProxy;
 using System.Diagnostics;
 using System.Reflection;
@@ -12,8 +13,8 @@ internal static class ProxyTrafficPollingChecks
     {
         var repository = DispatchProxy.Create<IServerProxy, TrafficRepository>();
         var transport = (TrafficRepository)(object)repository;
-        var model = new ProxyManagerViewModel(repository, false, false);
-        var viewType = typeof(ProxyManagerViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.Proxy.Views.ProxyOverviewView", throwOnError: true)!;
+        var model = new ProxyManagerViewModel(repository, RelaxKonOS.Client.Localization.LocalizedText.Get, false, false);
+        var viewType = typeof(RelaxKonOS.Client.App).Assembly.GetType("RelaxKonOS.Client.Apps.Proxy.Views.ProxyOverviewView", throwOnError: true)!;
 
         host.Content = NewOverview();
         PumpUntil(() => transport.Requests.Count == 1, "The overview did not start polling on attach.");

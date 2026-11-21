@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ProxyManager;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
@@ -46,7 +47,7 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         // ApplicationManager presents prompts after Activate returns, so this workspace owns
         // the first request and waits for its decision before enabling server actions.
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.proxy");
-        var vm = new ProxyManagerViewModel(repository, canManage: false, canManageTun: false)
+        var vm = new ProxyManagerViewModel(repository, LocalizedText.Get, canManage: false, canManageTun: false)
         {
             ReadNetworkAddressesAsync = systemMonitor is null ? null : systemMonitor.GetNetworkAddressesAsync,
             FormatPrivilegedHelperProblem = code => PrivilegedHelperProblemText.TryFormat(code, out var text) ? text : null,
@@ -100,11 +101,19 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
             await context.ShowDialogAsync<bool>(window, vm.NetworkSettingsDialogTitle, dialog =>
                 new ProxyNetworkSettingsDialogView(vm, dialog), new RelaxKonOS.Core.Primitives.Size(600, isTun ? 700 : 650));
         };
+        var language = context.Services.GetService(typeof(LocalizationService)) as LocalizationService;
+        void RefreshLanguage(object? sender, SystemLanguageChangedEventArgs args)
+        {
+            window.Title = vm.Labels("application.relaxkonos.proxy.display_name");
+            vm.RefreshLanguage();
+        }
+        if (language is not null) language.LanguageChanged += RefreshLanguage;
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
         closed = (_, current) =>
         {
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed;
+            if (language is not null) language.LanguageChanged -= RefreshLanguage;
             dependency.Dispose();
         };
         context.WindowManager.WindowClosed += closed;

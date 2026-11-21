@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ProxyManager;
 using RelaxKonOS.App.Tunnels;
 using RelaxKonOS.App.ApplicationDeployments;
 using RelaxKonOS.App.FileServices.Views;
@@ -67,7 +68,7 @@ internal static class FusedWorkspaceChecks
         var gitView = GitClientWorkspace.Create(git, gitProject);
         var auth = DispatchProxy.Create<IAuthSession, SiteEditorSession>();
         var permissions = DispatchProxy.Create<IAppPermissionScope, HeaderPreviewPermissions>();
-        var proxyModel = new ProxyManagerViewModel(DispatchProxy.Create<IServerProxy, HeaderPreviewPermissions>(), false, false);
+        var proxyModel = new ProxyManagerViewModel(DispatchProxy.Create<IServerProxy, HeaderPreviewPermissions>(), RelaxKonOS.Client.Localization.LocalizedText.Get, false, false);
         using var tunnelModel = new TunnelManagerViewModel(null!, false, key => TunnelsLocalization.Resolve(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), key, key));
         using var forwardModel = new PortForwardingViewModel(new PortForwardingService(null!, new PortForwardingSettingsStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "unused-forward-settings.json"))), key => PortForwardingLocalization.Resolve(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), key, key));
         var dockerModel = new DockerManagerViewModel(DispatchProxy.Create<IServerDockerResources, HeaderPreviewPermissions>(), DockerLocalization.ForLanguage(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>()));

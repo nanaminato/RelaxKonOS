@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace RelaxKonOS.Client.Apps.Proxy;
+namespace RelaxKonOS.App.ProxyManager;
 
 /// <summary>UI-only projection of a controller proxy group. It keeps visual state out of the public API contract.</summary>
 public sealed partial class ProxyGroupItem : ObservableObject

@@ -1,31 +1,46 @@
 using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using RelaxKonOS.Protocol.SystemMonitor;
-using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 
-namespace RelaxKonOS.Client.Apps.Proxy;
+namespace RelaxKonOS.App.ProxyManager;
 
 /// <summary>Presentation state for the host-global proxy workspace. Controller details stay on the RelaxKonOS.Server.</summary>
-public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
+public sealed partial class ProxyManagerViewModel : ObservableObject
 {
     private readonly IServerProxy repository;
+    private readonly Func<string, string, string> localize;
     private int _refreshingTraffic;
     private bool _updatingOverviewProxySelection;
     private int? _persistedMixedPort;
     [ObservableProperty] private bool _hasManagePermission;
     [ObservableProperty] private bool _hasTunManagePermission;
 
-    public ProxyManagerViewModel(IServerProxy repository, bool canManage, bool canManageTun)
+    public ProxyManagerViewModel(IServerProxy repository, Func<string, string, string> localize, bool canManage, bool canManageTun)
     {
         this.repository = repository;
-
+        this.localize = localize;
+        _statusText = Message("proxy.status.loading");
+        _connectionStatus = _statusText;
         _hasManagePermission = canManage;
         _hasTunManagePermission = canManageTun;
     }
+
+    public Func<string, string> Labels => Label;
+
+    public void RefreshLanguage() => OnPropertyChanged(string.Empty);
+
+    private string Label(string key) => localize(key, key);
+
+    private string Format(string key, params object?[] arguments) =>
+        string.Format(CultureInfo.CurrentCulture, Label(key), arguments);
+
+    private ApplicationMessage Message(string key, params object?[] arguments) =>
+        new(() => arguments.Length == 0 ? Label(key) : Format(key, arguments));
 
     public ObservableCollection<ProxyProfileDto> Profiles { get; } = [];
     public ObservableCollection<ProxySubscriptionDto> Subscriptions { get; } = [];
@@ -35,7 +50,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     public ObservableCollection<string> SystemProxyHostOptions { get; } = ["127.0.0.1"];
     public IEnumerable<ProxySubscriptionDto> VisibleSubscriptions => Subscriptions;
 
-    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("proxy.status.loading");
+    [ObservableProperty] private ApplicationMessage _statusText;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private ProxyOverviewDto? _overview;
     [ObservableProperty] private ProxyRuntimeDto? _runtime;
@@ -48,7 +63,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     [ObservableProperty] private ProxyGroupItem? _selectedGroup;
     [ObservableProperty] private ProxyConnectionDto? _selectedConnection;
     [ObservableProperty] private bool _isRefreshingConnections;
-    [ObservableProperty] private LocalizedStatus _connectionStatus = LocalizedText.Ref("proxy.status.loading");
+    [ObservableProperty] private ApplicationMessage _connectionStatus;
     [ObservableProperty] private string _profileName = string.Empty;
     [ObservableProperty] private string _selectedProxy = string.Empty;
     [ObservableProperty] private ProxyRoutingMode _routingMode = ProxyRoutingMode.Rule;
@@ -92,25 +107,25 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     public string RuntimeState => Runtime is null ? "—" : LocalizeEnum("proxy.runtime_state", Runtime.State);
     public bool ProxyIsRunning => Runtime?.State == ProxyRuntimeState.Running;
     public bool ProxyCanToggle => Runtime?.State is ProxyRuntimeState.Stopped or ProxyRuntimeState.Running;
-    public string ProxyActionText => LocalizedText.Get(ProxyIsRunning ? "proxy.stop" : "proxy.start");
+    public string ProxyActionText => Label(ProxyIsRunning ? "proxy.stop" : "proxy.start");
     public string ProxyStateLabel => Runtime?.State switch
     {
-        ProxyRuntimeState.Running => LocalizedText.Get("proxy.runtime_running"),
-        ProxyRuntimeState.Stopped => LocalizedText.Get("proxy.runtime_stopped"),
-        _ => LocalizedText.Get("proxy.runtime_unavailable"),
+        ProxyRuntimeState.Running => Label("proxy.runtime_running"),
+        ProxyRuntimeState.Stopped => Label("proxy.runtime_stopped"),
+        _ => Label("proxy.runtime_unavailable"),
     };
     public bool RuntimeIsInstalled => Runtime is { Mode: ProxyRuntimeMode.Managed, IntegrityVerified: true };
     public bool RuntimeIsNotInstalled => !RuntimeIsInstalled;
     public string RuntimeInstalledVersion => Runtime?.Version ?? "—";
-    public string RuntimeAvailableVersion => LocalizedText.Format("proxy.runtime.available_version", RuntimeInstalledVersion);
+    public string RuntimeAvailableVersion => Format("proxy.runtime.available_version", RuntimeInstalledVersion);
     public string HealthState => Overview is null ? "—" : LocalizeEnum("proxy.health_state", Overview.Health.State);
     public string TunState => Overview is null ? "—" : LocalizeEnum("proxy.tun_state", Overview.Health.TunState);
     public string DnsState => DnsStatus is { Enabled: true }
-        ? (DnsStatus.HijackEnabled ? LocalizedText.Get("proxy.dns.hijack_enabled") : LocalizedText.Get("proxy.dns.enabled"))
-        : LocalizedText.Get("proxy.dns.disabled");
-    public string ActiveProfileName => Overview?.ActiveProfile?.Name ?? LocalizedText.Get("proxy.none");
+        ? (DnsStatus.HijackEnabled ? Label("proxy.dns.hijack_enabled") : Label("proxy.dns.enabled"))
+        : Label("proxy.dns.disabled");
+    public string ActiveProfileName => Overview?.ActiveProfile?.Name ?? Label("proxy.none");
     public ProxySubscriptionDto? ActiveSubscription => Subscriptions.FirstOrDefault(subscription => subscription.IsActive);
-    public string ActiveSubscriptionName => ActiveSubscription?.Name ?? LocalizedText.Get("proxy.none");
+    public string ActiveSubscriptionName => ActiveSubscription?.Name ?? Label("proxy.none");
     public string ActiveSubscriptionUpdatedAt => ActiveSubscription?.LastUpdatedAt is { } updated
         ? updated.LocalDateTime.ToString("yyyy-MM-dd HH:mm")
         : "—";
@@ -119,11 +134,11 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     public string RuleCount => "—";
     public string ServerOperatingSystem => Overview?.OperatingSystem ?? "—";
     /// <summary>Displayed only as an informational status; no startup configuration is read or changed.</summary>
-    public string StartupState => LocalizedText.Get("proxy.system_info.startup_disabled");
+    public string StartupState => Label("proxy.system_info.startup_disabled");
     public string RuntimeServiceMode => Runtime?.Mode switch
     {
-        ProxyRuntimeMode.Managed => LocalizedText.Get("proxy.system_info.managed_service"),
-        ProxyRuntimeMode.External => LocalizedText.Get("proxy.system_info.external_runtime"),
+        ProxyRuntimeMode.Managed => Label("proxy.system_info.managed_service"),
+        ProxyRuntimeMode.External => Label("proxy.system_info.external_runtime"),
         _ => "—",
     };
     public string ConfigurationUpdatedAt => Overview?.ActiveProfile?.UpdatedAt is { } updated
@@ -132,10 +147,10 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     public string ClientVersion => GetType().Assembly.GetName().Version?.ToString() ?? "—";
     /// <summary>The Server orders groups from proxy-groups in the active YAML, making the first one the overview entry point.</summary>
     public ProxyGroupItem? CurrentProxyGroupItem => Groups.FirstOrDefault();
-    public string CurrentProxyGroupName => CurrentProxyGroupItem?.Name ?? LocalizedText.Get("proxy.none");
+    public string CurrentProxyGroupName => CurrentProxyGroupItem?.Name ?? Label("proxy.none");
     public string CurrentProxyNodeName => CurrentProxyGroupItem?.Selected ?? "—";
     public IEnumerable<ProxyNodeItem> OverviewProxyNodes => CurrentProxyGroupItem?.Nodes ?? [];
-    public string SystemProxyState => LocalizedText.Get(SystemProxyEnabled ? "proxy.overview.enabled" : "proxy.overview.disabled");
+    public string SystemProxyState => Label(SystemProxyEnabled ? "proxy.overview.enabled" : "proxy.overview.disabled");
     public string TunOverviewState => TunState;
     public string UploadRate => FormatTraffic(Traffic?.UploadBytesPerSecond, "/s");
     public string DownloadRate => FormatTraffic(Traffic?.DownloadBytesPerSecond, "/s");
@@ -147,14 +162,14 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     public bool IsSystemProxyAvailable => Overview?.PlatformCapabilities.SystemProxy.Supported == true;
     public bool IsSystemProxyPacAvailable => Overview?.PlatformCapabilities.SystemProxy.SupportsPac == true;
     public bool IsSystemProxyOptionsEditable => IsSystemProxyAvailable && CanManage;
-    public string SystemProxyScopeHint => LocalizedText.Get(!IsSystemProxyAvailable ? "proxy.system_proxy_unavailable"
+    public string SystemProxyScopeHint => Label(!IsSystemProxyAvailable ? "proxy.system_proxy_unavailable"
         : Overview?.PlatformCapabilities.SystemProxy.LoginEnvironment == true
             ? Overview.PlatformCapabilities.SystemProxy.DesktopSession ? "proxy.system_proxy_linux_desktop_scope" : "proxy.system_proxy_linux_scope"
             : "proxy.system_proxy_windows_scope");
-    public string SystemProxyBypassHint => LocalizedText.Get(Overview?.PlatformCapabilities.SystemProxy.LoginEnvironment == true
+    public string SystemProxyBypassHint => Label(Overview?.PlatformCapabilities.SystemProxy.LoginEnvironment == true
         ? "proxy.system_proxy_linux_bypass" : "proxy.system_proxy_windows_bypass");
     public bool IsSystemProxySettingsSelected => !IsTunSettingsSelected;
-    public string NetworkSettingsDialogTitle => LocalizedText.Get(IsTunSettingsSelected
+    public string NetworkSettingsDialogTitle => Label(IsTunSettingsSelected
         ? "proxy.tun_managed_settings"
         : "proxy.system_proxy_settings");
     private ProxyTunSettingsDto TunSettings => Settings?.Tun ?? ProxyTunSettingsDto.Default;
@@ -166,14 +181,14 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     public bool TunAutoDetectInterface { get => TunSettings.AutoDetectInterface; set => SetTunSettings(TunSettings with { AutoDetectInterface = value }); }
     public string TunDnsHijack { get => TunSettings.DnsHijack; set => SetTunSettings(TunSettings with { DnsHijack = value }); }
     public int TunMtu { get => TunSettings.Mtu; set => SetTunSettings(TunSettings with { Mtu = value }); }
-    public string SystemProxyModeHint => LocalizedText.Get(!IsSystemProxyAvailable ? "proxy.system_proxy_unavailable" : SystemProxyEnabled
+    public string SystemProxyModeHint => Label(!IsSystemProxyAvailable ? "proxy.system_proxy_unavailable" : SystemProxyEnabled
         ? "proxy.system_proxy_mode_hint_enabled"
         : "proxy.system_proxy_mode_hint_disabled");
-    public string TunModeHint => LocalizedText.Get("proxy.tun_mode_hint");
+    public string TunModeHint => Label("proxy.tun_mode_hint");
     public bool IsRecoveryRequired => Overview?.Recovery.RecoveryRequired == true;
     public bool HasControllerAuthenticationFailure => Overview?.Health.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed;
-    public string ControllerAuthenticationTitle => LocalizedText.Get("proxy.controller_authentication.title");
-    public string ControllerAuthenticationHint => LocalizedText.Get("proxy.controller_authentication.hint");
+    public string ControllerAuthenticationTitle => Label("proxy.controller_authentication.title");
+    public string ControllerAuthenticationHint => Label("proxy.controller_authentication.hint");
     public bool SystemProxyEnabled { get => Settings?.SystemProxyEnabled == true; set => SetSettings(systemProxyEnabled: value); }
     public string SystemProxyHost { get => Settings?.SystemProxyHost ?? "127.0.0.1"; set => SetSettings(systemProxyHost: value); }
     private ProxySystemProxyOptionsDto SystemProxyOptions => Settings?.SystemProxy ?? ProxySystemProxyOptionsDto.Default;
@@ -192,18 +207,18 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     public bool IsRuleRouting => RoutingMode == ProxyRoutingMode.Rule;
     public bool IsGlobalRouting => RoutingMode == ProxyRoutingMode.Global;
     public bool IsDirectRouting => RoutingMode == ProxyRoutingMode.Direct;
-    public string ProxyNodeSortLabel => LocalizedText.Get(ProxyNodeSortMode switch
+    public string ProxyNodeSortLabel => Label(ProxyNodeSortMode switch
     {
         ProxyNodeSortMode.Name => "proxy.latency_sort_name",
         ProxyNodeSortMode.Delay => "proxy.latency_sort_delay",
         _ => "proxy.latency_sort_default",
     });
-    public string ResourceState => LocalizedText.Get(RuntimeResources is null ? "proxy.geodata.unknown"
+    public string ResourceState => Label(RuntimeResources is null ? "proxy.geodata.unknown"
         : RuntimeResources.ProblemCode == "runtime.installation_absent" ? "proxy.runtime_state.not_installed"
         : RuntimeResources.ProblemCode is not null ? "proxy.geodata.unknown"
         : RuntimeResources.Files.All(file => file.State == RuntimeResourceState.Verified) ? "proxy.geodata.configured" : "proxy.geodata.not_configured");
     public string ResourceDetails => RuntimeResources?.ProblemCode ?? string.Join("\n", RuntimeResources?.Files.Select(file =>
-        file.Name + " · " + LocalizedText.Get("proxy.geodata." + file.State.ToString().ToLowerInvariant())
+        file.Name + " · " + Label("proxy.geodata." + file.State.ToString().ToLowerInvariant())
         + (file.Length is { } size ? " · " + size + " B" : "") + (file.ProblemCode is { } problem ? " · " + problem : "")) ?? []);
     public IReadOnlyList<string> LogLevels { get; } = ["silent", "error", "warning", "info", "debug"];
 
@@ -244,10 +259,10 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
                 LoadOptionalAsync(() => repository.ListLogsAsync(), values => Replace(Logs, values)));
             await LoadSystemProxyHostOptionsAsync();
             StatusText = Overview.Recovery.RecoveryRequired
-                ? LocalizedText.Ref("proxy.status.recovery_required")
+                ? Message("proxy.status.recovery_required")
                 : HasControllerAuthenticationFailure
-                    ? LocalizedText.Ref("proxy.status.controller_authentication_failed")
-                    : LocalizedText.Ref("proxy.status.ready", RuntimeState, HealthState);
+                    ? Message("proxy.status.controller_authentication_failed")
+                    : Message("proxy.status.ready", RuntimeState, HealthState);
             RaiseSummaryProperties();
         }
         catch (Exception exception) { SetFailureStatus(exception); }
@@ -265,8 +280,8 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             var selectedId = SelectedConnection?.Id;
             Replace(Connections, connections);
             SelectedConnection = Connections.FirstOrDefault(item => item.Id == selectedId);
-            ConnectionStatus = Connections.Count == 0 ? LocalizedText.Ref("proxy.connections_empty")
-                : LocalizedText.Ref("proxy.connections_count", Connections.Count);
+            ConnectionStatus = Connections.Count == 0 ? Message("proxy.connections_empty")
+                : Message("proxy.connections_count", Connections.Count);
             OnPropertyChanged(nameof(RunningConnectionCount));
         }
         catch (Exception exception) when (exception is ProxyRequestException or HttpRequestException or OperationCanceledException
@@ -274,7 +289,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         {
             Connections.Clear(); SelectedConnection = null;
             OnPropertyChanged(nameof(RunningConnectionCount));
-            ConnectionStatus = LocalizedText.Ref("proxy.status.failed", (object?)FormatProblemCode(
+            ConnectionStatus = Message("proxy.status.failed", (object?)FormatProblemCode(
                 exception is ProxyRequestException request ? request.ProblemCode
                     : exception is OperationCanceledException ? ProxyProblemCodes.ControllerTimeout : ProxyProblemCodes.ControllerUnavailable));
         }
@@ -329,10 +344,10 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
                     return;
                 }
 
-                StatusText = LocalizedText.Ref("proxy.status.port_restart_pending");
+                StatusText = Message("proxy.status.port_restart_pending");
                 return;
             }
-            StatusText = LocalizedText.Ref("proxy.status.settings_saved");
+            StatusText = Message("proxy.status.settings_saved");
             await RefreshAsync();
         }
         catch (Exception exception) { SetFailureStatus(exception); }
@@ -347,7 +362,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             IsBusy = true;
             await repository.PrepareResourcesAsync();
             RuntimeResources = await repository.GetResourcesAsync();
-            StatusText = LocalizedText.Ref("proxy.status.geodata_configured");
+            StatusText = Message("proxy.status.geodata_configured");
         }
         catch (Exception exception) { RuntimeResources = null; SetFailureStatus(exception); }
         finally { IsBusy = false; }
@@ -363,7 +378,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             var profile = await repository.CreateProfileAsync(name, Overview?.EngineId ?? "mihomo");
             Profiles.Add(profile);
             ProfileName = string.Empty;
-            StatusText = LocalizedText.Ref("proxy.status.profile_created", profile.Name);
+            StatusText = Message("proxy.status.profile_created", profile.Name);
         }
         catch (Exception exception) { SetFailureStatus(exception); }
         finally { IsBusy = false; }
@@ -384,13 +399,13 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     private async Task ViewRuntimeSubscriptionsAsync()
     {
         SelectedSubscription ??= Subscriptions.FirstOrDefault(subscription => subscription.IsActive) ?? Subscriptions.FirstOrDefault();
-        if (SelectedSubscription is null) { StatusText = LocalizedText.Ref("proxy.status.subscription_none"); return; }
+        if (SelectedSubscription is null) { StatusText = Message("proxy.status.subscription_none"); return; }
         try
         {
             IsBusy = true;
             var content = await repository.GetSubscriptionContentAsync(SelectedSubscription.Id);
             RuntimeSubscriptionText = content.Content;
-            StatusText = LocalizedText.Ref("proxy.status.runtime_subscriptions_shown");
+            StatusText = Message("proxy.status.runtime_subscriptions_shown");
             ShowRuntimeSubscriptionWindow?.Invoke();
         }
         catch (Exception exception) { SetFailureStatus(exception); }
@@ -419,7 +434,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             var subscription = await repository.ImportSubscriptionAsync(new ImportProxySubscriptionRequest(SubscriptionLink.Trim(), DownloadRoute: downloadRoute));
             Subscriptions.Add(subscription);
             SubscriptionLink = string.Empty;
-            StatusText = LocalizedText.Ref("proxy.status.subscription_imported");
+            StatusText = Message("proxy.status.subscription_imported");
             OnPropertyChanged(nameof(VisibleSubscriptions));
         }
         catch (Exception exception) { SetFailureStatus(exception); }
@@ -437,7 +452,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             Overview = Overview is null ? null : Overview with { ActiveProfile = activated };
             for (var index = 0; index < Profiles.Count; index++) Profiles[index] = Profiles[index] with { IsActive = Profiles[index].Id == activated.Id };
             SelectedProfile = activated;
-            StatusText = LocalizedText.Ref("proxy.status.profile_activated", activated.Name);
+            StatusText = Message("proxy.status.profile_activated", activated.Name);
             RaiseSummaryProperties();
         }
         catch (Exception exception) { SetFailureStatus(exception); }
@@ -454,7 +469,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             await repository.DeleteProfileAsync(profile.Id);
             Profiles.Remove(profile);
             SelectedProfile = null;
-            StatusText = LocalizedText.Ref("proxy.status.profile_deleted", profile.Name);
+            StatusText = Message("proxy.status.profile_deleted", profile.Name);
         }
         catch (Exception exception) { SetFailureStatus(exception); }
         finally { IsBusy = false; }
@@ -468,7 +483,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             IsBusy = true;
             await repository.SelectGroupAsync(SelectedGroup!.Name, SelectedProxy);
             SelectedGroup.SetSelected(SelectedProxy);
-            StatusText = LocalizedText.Ref("proxy.status.node_selected", SelectedProxy);
+            StatusText = Message("proxy.status.node_selected", SelectedProxy);
         }
         catch (Exception exception) { SetFailureStatus(exception); }
         finally { IsBusy = false; }
@@ -500,7 +515,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             IsBusy = true;
             await repository.SetRoutingModeAsync(mode);
             RoutingMode = mode;
-            StatusText = LocalizedText.Ref("proxy.status.routing_updated");
+            StatusText = Message("proxy.status.routing_updated");
         }
         catch (Exception exception) { SetFailureStatus(exception); }
         finally { IsBusy = false; }
@@ -570,9 +585,9 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             Connections.Remove(connection);
             SelectedConnection = null;
             OnPropertyChanged(nameof(RunningConnectionCount));
-            StatusText = LocalizedText.Ref("proxy.status.connection_closed");
-            ConnectionStatus = Connections.Count == 0 ? LocalizedText.Ref("proxy.connections_empty")
-                : LocalizedText.Ref("proxy.connections_count", Connections.Count);
+            StatusText = Message("proxy.status.connection_closed");
+            ConnectionStatus = Connections.Count == 0 ? Message("proxy.connections_empty")
+                : Message("proxy.connections_count", Connections.Count);
         }
         catch (Exception exception) { SetFailureStatus(exception); }
         finally { IsBusy = false; }
@@ -585,7 +600,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         {
             IsBusy = true;
             var accepted = await operation();
-            StatusText = LocalizedText.Ref("proxy.status.operation_queued");
+            StatusText = Message("proxy.status.operation_queued");
             await TrackOperationAsync(accepted.OperationId);
         }
         catch (Exception exception) { SetFailureStatus(exception); }
@@ -597,7 +612,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         while (true)
         {
             var operation = await repository.GetOperationAsync(operationId);
-            if (operation is null) { StatusText = LocalizedText.Ref("proxy.status.operation_unavailable"); return; }
+            if (operation is null) { StatusText = Message("proxy.status.operation_unavailable"); return; }
             StatusText = FormatOperation(operation);
             if (operation.State is ProxyOperationState.Succeeded or ProxyOperationState.Failed or ProxyOperationState.Cancelled or ProxyOperationState.Interrupted)
             {
@@ -801,10 +816,10 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         }
         catch (Exception) { }
     }
-    private LocalizedStatus FormatOperation(ProxyOperationDto operation)
+    private ApplicationMessage FormatOperation(ProxyOperationDto operation)
     {
         if (operation.State == ProxyOperationState.Succeeded)
-            return LocalizedText.Ref(operation.Kind switch
+            return Message(operation.Kind switch
             {
                 "runtime.install" or "runtime.install_from_file" => "proxy.operation.completed.runtime_install",
                 "runtime.rollback" => "proxy.operation.completed.runtime_rollback",
@@ -819,39 +834,39 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
                 _ => "proxy.operation.completed.generic",
             });
         if (operation.State is ProxyOperationState.Failed or ProxyOperationState.Interrupted)
-            return LocalizedText.Ref("proxy.status.failed", (object?)FormatProblemCode(operation.ProblemCode));
+            return Message("proxy.status.failed", (object?)FormatProblemCode(operation.ProblemCode));
         if (operation.State == ProxyOperationState.Cancelled)
-            return LocalizedText.Ref("proxy.operation.cancelled");
+            return Message("proxy.operation.cancelled");
         var key = "proxy.operation." + operation.Stage;
-        var stage = LocalizedText.Get(key);
-        return stage == key ? LocalizedText.Ref("proxy.operation.running") : LocalizedStatus.Literal(stage);
+        var stage = Label(key);
+        return stage == key ? Message("proxy.operation.running") : ApplicationMessage.Literal(stage);
     }
     private void SetFailureStatus(Exception exception)
     {
         var problemCode = exception is ProxyRequestException request ? request.ProblemCode : exception.Message;
-        StatusText = LocalizedText.Ref("proxy.status.failed", (object?)FormatProblemCode(problemCode));
+        StatusText = Message("proxy.status.failed", (object?)FormatProblemCode(problemCode));
         _ = ShowPrivilegedHelperUnavailableAsyncIfNeeded(problemCode);
     }
     private string FormatProblemCode(string? problemCode)
     {
         if (FormatPrivilegedHelperProblem?.Invoke(problemCode) is { } helperMessage) return helperMessage;
-        if (string.IsNullOrWhiteSpace(problemCode)) return LocalizedText.Get("proxy.problem.unknown");
+        if (string.IsNullOrWhiteSpace(problemCode)) return Label("proxy.problem.unknown");
         var key = "proxy.problem." + problemCode.Replace("proxy.", string.Empty, StringComparison.Ordinal).Replace('.', '_');
-        var localized = LocalizedText.Get(key);
+        var localized = Label(key);
         return localized == key ? problemCode : localized;
     }
     private Task ShowPrivilegedHelperUnavailableAsyncIfNeeded(string? problemCode) =>
         FormatPrivilegedHelperProblem?.Invoke(problemCode) is not null
             ? ShowPrivilegedHelperUnavailableAsync?.Invoke(problemCode) ?? Task.CompletedTask
             : Task.CompletedTask;
-    private static string LocalizeEnum(string prefix, Enum value)
+    private string LocalizeEnum(string prefix, Enum value)
     {
         var name = value.ToString();
         var suffix = string.Concat(name.Select((character, index) => index > 0 && char.IsUpper(character)
             ? "_" + character.ToString().ToLowerInvariant()
             : character.ToString().ToLowerInvariant()));
         var key = prefix + "." + suffix;
-        var localized = LocalizedText.Get(key);
+        var localized = Label(key);
         return localized == key ? name : localized;
     }
     private void ReplaceGroups(IReadOnlyList<ProxyGroupDto> groups)
@@ -901,7 +916,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             using var concurrency = new SemaphoreSlim(Math.Min(6, nodes.Count));
             await Task.WhenAll(nodes.Select(node => TestNodeLatencyAsync(node, LatencyTestTarget, concurrency)));
             foreach (var group in Groups) group.SortNodes(ProxyNodeSortMode);
-            StatusText = LocalizedText.Ref("proxy.status.latency_tested");
+            StatusText = Message("proxy.status.latency_tested");
         }
         finally { IsLatencyTesting = false; }
     }

@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ProxyManager;
 using IServerProxy = RelaxKonOS.AppSDK.IServerProxy;
 using Avalonia;
 using Avalonia.Controls;
@@ -41,7 +42,7 @@ internal static class ProxyWorkspaceChecks
 
                 // A fresh workspace per appearance: a window reused across a theme switch can capture
                 // its own re-layout, which says nothing about what a user sees.
-                var model = new ProxyManagerViewModel(new ProxyRepositoryFixture(), canManage: true, canManageTun: true);
+                var model = new ProxyManagerViewModel(new ProxyRepositoryFixture(), RelaxKonOS.Client.Localization.LocalizedText.Get, canManage: true, canManageTun: true);
                 model.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                 Check(model.Runtime?.State == ProxyRuntimeState.Running, "The fixture runtime is running, so the overview renders the live state.");
                 Check(model.Groups.Count == 2 && model.Subscriptions.Count == 3 && model.Connections.Count == 4, "The fixture exposes groups, subscriptions, connections and logs.");
@@ -113,7 +114,7 @@ internal static class ProxyWorkspaceChecks
                 {
                     // The footer handle is only dereferenced by the save/cancel commands, which this
                     // render does not invoke; the view itself renders from the view model alone.
-                    var dialogModel = new ProxyManagerViewModel(new ProxyRepositoryFixture(), canManage: true, canManageTun: true);
+                    var dialogModel = new ProxyManagerViewModel(new ProxyRepositoryFixture(), RelaxKonOS.Client.Localization.LocalizedText.Get, canManage: true, canManageTun: true);
                     dialogModel.RefreshCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                     dialogModel.SelectNetworkSettingsPageForDialog(tun);
                     var dialogWindow = new Window { Width = 600, Height = tun ? 700 : 650, Content = new ProxyNetworkSettingsDialogView(dialogModel, null!) };
