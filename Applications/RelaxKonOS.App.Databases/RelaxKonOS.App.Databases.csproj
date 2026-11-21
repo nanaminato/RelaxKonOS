@@ -8,6 +8,7 @@
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
         <ProjectReference Include="../../Shared/RelaxKonOS.ManagedRuntimes/RelaxKonOS.ManagedRuntimes.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
+        <AvaloniaResource Include="Assets/database.png" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="Databases.Localization.%(Filename).json" />
     </ItemGroup>
 </Project>

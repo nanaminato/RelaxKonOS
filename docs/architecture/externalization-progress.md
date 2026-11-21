@@ -40,7 +40,7 @@
 | git | RelaxKonOS.App.Git | 是 / 是 | 否 | SDK Git、远程文件与 Git 模块 | 官方可选包 | Windows 包生命周期及隔离联合部署已验，真实设备业务联调待验 |
 | tunnels | RelaxKonOS.App.Tunnels | 是 / 是 | 否 | SDK Tunnels；组件中心管理 FRP | 官方可选包 | Windows Release 包生命周期已验，真实 FRP 待验 |
 | application-deployments | RelaxKonOS.App.ApplicationDeployments | 是 / 是 | 否 | ApplicationDeployments capability | 官方可选包 | Windows Release 包生命周期已验，真实部署待验 |
-| database | Databases | 否 / 否 | 是 | 数据库引擎与组件中心 | 可选 | 待验 |
+| database | RelaxKonOS.App.Databases | 是 / 是 | 否 | 数据库 SDK、宿主安装任务与组件中心 | 官方可选包 | Windows Release 包生命周期、只读启动与桌面回归通过，数据库实机待验 |
 | tailscale | Tailscale | 是 / 是 | 否 | Tailscale 模块、Tailscale SDK | 可选 | Windows Release 包生命周期及授权验证通过，实机待验 |
 | ssh-files | ServerCenter | 否 / 否 | 是 | Server Center 的 SSH/SFTP 会话 | 基础应用内部入口候选 | 待验 |
 
@@ -343,3 +343,4 @@
 - Databases 初始化和确认对话框已迁入独立应用项目，打开期间通过 SDK 语言事件更新标签和确认正文。Windows Release 构建与 116 项桌面检查通过，包括三语热切换、默认端口返回及取消。
 - 共享安装任务视图模型已迁入应用 SDK，由调用方提供文案、权限错误映射和失败回执显示策略。Windows Release Databases 桌面、安装提权和安装事务专项通过，覆盖恢复失败回执的调用方差异。
 - Databases 主工作区、各页面及视图模型已迁入独立项目。程序集引用检查确认未引用桌面客户端。Windows Release 119 项桌面检查通过，覆盖同一窗口中静态标签和状态的三语切换。桌面登记和官方包入口仍待切换。
+- Databases 已切换为官方可选包，使用应用 SDK 提供的数据库、安装、证书和组件设置能力。Windows Release 制品通过官方来源与摘要、升级、安装失败、重启、卸载及只读启动验证，另有 119 项桌面检查和数据库授权专项通过。真实数据库主机与服务端模块切换尚待验收。

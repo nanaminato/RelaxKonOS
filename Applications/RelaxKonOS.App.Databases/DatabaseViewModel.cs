@@ -63,7 +63,7 @@ public sealed partial class DatabaseViewModel(IServerPostgreSql client) : Observ
     public InstallationTaskViewModel? AdminRecoveryInstallation { get; set; }
     public Func<Task<bool>>? ConfirmAdminRecoveryAsync { get; set; }
     private PostgreSqlInstallationRequest? adminSubmission;
-    public Control? DependencySettings { get; init; }
+    public Control? DependencySettings { get; set; }
     public bool CanManage { get; set; }
     public PostgreSqlAccountsViewModel? AccountManager { get; set; }
     public PostgreSqlMaintenanceViewModel? MaintenanceManager { get; set; }

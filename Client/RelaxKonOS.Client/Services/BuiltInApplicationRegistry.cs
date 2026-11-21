@@ -21,7 +21,6 @@ public sealed class BuiltInApplicationRegistry : IBuiltInApplicationFactoryRegis
             Define<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>("server-center", "relaxkonos.server-center", services),
             Define<RelaxKonOS.Client.Apps.ServerCenter.SshFileBrowserApp>("ssh-files", "relaxkonos.ssh-files", services),
             Define<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>("explorer", "relaxkonos.explorer", services),
-            Define<RelaxKonOS.Client.Apps.Databases.DatabaseApp>("database", "relaxkonos.database", services),
             Define<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>("appinstaller", "relaxkonos.appinstaller", services),
         });
     }

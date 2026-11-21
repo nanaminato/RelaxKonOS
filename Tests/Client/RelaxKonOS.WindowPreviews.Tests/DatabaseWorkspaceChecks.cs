@@ -39,7 +39,7 @@ internal static class DatabaseWorkspaceChecks
             Dispatcher.UIThread.RunJobs();
             Check(Equals(initialize.FindControl<Button>("ConfirmButton")?.Content, localization.Get("common.confirm", "[missing]"))
                 && Equals(confirm.FindControl<Button>("CancelButton")?.Content, localization.Get("common.cancel", "[missing]"))
-                && confirm.FindControl<TextBlock>("Message")?.Text == localization.Get("database.mysql_remote_confirm", "[missing]") + "\n\nfixture",
+                && confirm.FindControl<TextBlock>("Message")?.Text == DatabaseLocalization.Resolve(localization, "database.mysql_remote_confirm", "[missing]") + "\n\nfixture",
                 "open database dialogs follow language changes in " + culture);
         }
         initialize.FindControl<Button>("ConfirmButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -68,8 +68,8 @@ internal static class DatabaseWorkspaceChecks
             settings.Language=language;Dispatcher.UIThread.RunJobs();
             const string confirmation = "database.mysql_remote_confirm";
             var appText = DatabaseLocalization.Resolve(localization, confirmation, "[missing]");
-            Check(appText != "[missing]" && appText == localization.Get(confirmation, "[missing]"),
-                "application confirmation text matches the desktop resource in " + language);
+            Check(appText != "[missing]" && appText != confirmation,
+                "application confirmation text resolves in " + language);
             foreach(var size in new[]{new PixelSize(980,700),new PixelSize(760,580)})
             {
                 var view=new DatabaseWorkspace { DataContext=model };
@@ -90,8 +90,8 @@ internal static class DatabaseWorkspaceChecks
         {
             settings.Language = culture;
             Dispatcher.UIThread.RunJobs();
-            var title = localization.Get("application.relaxkonos.database.display_name", "[missing]");
-            var state = localization.Get(model.StateText.ResourceKey!, "[missing]");
+            var title = DatabaseLocalization.Resolve(localization, "application.relaxkonos.database.display_name", "[missing]");
+            var state = DatabaseLocalization.Resolve(localization, model.StateText.ResourceKey!, "[missing]");
             Check(liveWorkspace.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == title)
                 && liveWorkspace.GetVisualDescendants().OfType<DatabaseStatusText>().Any(text => text.Text == state),
                 "open workspace refreshes labels and status in " + culture);

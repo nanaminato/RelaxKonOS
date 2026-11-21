@@ -358,7 +358,6 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.SshFileBrowserApp>();
         services.AddSingleton<IDesktopRestoreParticipant, TerminalDesktopRestoreParticipant>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>();
-        services.AddSingleton<RelaxKonOS.Client.Apps.Databases.DatabaseApp>();
         services.AddHttpClient<IServerPostgreSql, Databases.PostgreSqlClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).RemoveAllLoggers();
         services.AddHttpClient<IServerMySql, Databases.MySqlClient>()

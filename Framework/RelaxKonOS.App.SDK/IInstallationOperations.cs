@@ -33,3 +33,8 @@ public sealed class InstallationApiException(string code, HttpStatusCode status)
     public string ProblemCode { get; } = code;
     public HttpStatusCode Status { get; } = status;
 }
+
+public sealed class InstallationAuthorizationException(string problemCode) : Exception(problemCode)
+{
+    public string ProblemCode { get; } = problemCode;
+}

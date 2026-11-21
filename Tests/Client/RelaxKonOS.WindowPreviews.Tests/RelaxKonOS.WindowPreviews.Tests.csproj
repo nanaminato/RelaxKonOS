@@ -18,6 +18,7 @@
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Welcome/RelaxKonOS.App.Welcome.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Docker/RelaxKonOS.App.Docker.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.TaskManager/RelaxKonOS.App.TaskManager.csproj" />
+    <ProjectReference Include="../../../Applications/RelaxKonOS.App.Databases/RelaxKonOS.App.Databases.csproj" />
     <ProjectReference Include="../../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.Firewall/RelaxKonOS.App.Firewall.csproj" />
     <ProjectReference Include="../../../Applications/RelaxKonOS.App.ProcessGuardian/RelaxKonOS.App.ProcessGuardian.csproj" />

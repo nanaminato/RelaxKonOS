@@ -67,6 +67,16 @@ internal static class DatabaseScopeChecks
         if (transport.Instance != request.InstanceId || transport.Staged != 1)
             throw new InvalidOperationException("PostgreSQL scope dispatched an unauthorized write or changed the selected instance.");
 
+        broker.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        broker.Pending.SetException(new RelaxKonOSAuthException(new(
+            "https://relaxkonos.app/problems/elevation-password-invalid", "Invalid credentials", 403, null, null)));
+        try
+        {
+            await installation.RequestAuthorizationAsync(InstallationServiceId.MySqlAccounts);
+            throw new InvalidOperationException("A rejected database grant unexpectedly succeeded.");
+        }
+        catch (InstallationAuthorizationException error) when (error.ProblemCode == "elevation-password-invalid") { }
+
         var pending = scoped.MaintenancePlanAsync(default);
         broker.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var pendingGrant = installation.RequestAuthorizationAsync(InstallationServiceId.PostgreSqlMaintenance);

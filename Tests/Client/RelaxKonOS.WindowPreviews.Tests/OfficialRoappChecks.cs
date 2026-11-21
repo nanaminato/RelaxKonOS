@@ -50,13 +50,14 @@ internal static class OfficialRoappChecks
         var isSquid = applicationId == "relaxkonos.squid";
         var isProxyManager = applicationId == "relaxkonos.proxy";
         var isProxyServer = applicationId == "relaxkonos.proxy-server";
+        var isDatabase = applicationId == "relaxkonos.database";
         var isTailscale = applicationId == "relaxkonos.tailscale";
         var requiresModule = isDocker || isCertificates || isWebServers || isGit || isFirewall || isSquid || isProxyServer || isProxyManager || isTailscale;
         var isGuardian = applicationId == "relaxkonos.processguardian";
         var isPortForwarding = applicationId == "relaxkonos.port-forwarding";
         var isApplicationDeployments = applicationId == "relaxkonos.application-deployments";
         var isTunnels = applicationId == "relaxkonos.tunnels";
-        var interactive = requiresModule || isFileServices || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels;
+        var interactive = requiresModule || isDatabase || isFileServices || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels;
         var isTaskManager = applicationId == "relaxkonos.taskmanager";
         var isRegistry = applicationId == "relaxkonos.registry";
         var isBrowser = applicationId == "relaxkonos.browser";
@@ -311,6 +312,7 @@ internal static class OfficialRoappChecks
                     "relaxkonos.port-forwarding" => "RelaxKonOS.App.PortForwarding.Views.PortForwardingMainView",
                     "relaxkonos.processguardian" => typeof(DockPanel).FullName,
                     "relaxkonos.tunnels" => "RelaxKonOS.App.Tunnels.Views.TunnelManagerView",
+                    "relaxkonos.database" => "RelaxKonOS.App.Databases.Views.DatabaseWorkspace",
                     "relaxkonos.tailscale" => "RelaxKonOS.App.Tailscale.Views.TailscaleWorkspace",
                     "relaxkonos.squid" => "RelaxKonOS.App.Squid.Views.SquidWorkspace",
                     "relaxkonos.proxy-server" => "RelaxKonOS.App.ProxyServer.Views.ProxyServerWorkspace",
@@ -321,6 +323,13 @@ internal static class OfficialRoappChecks
                 };
                 Check(workspace.Info.OwnerAppId == id && workspace.View.Content?.GetType().FullName == workspaceType,
                     "The installed entry point must create its own workspace.");
+                if (isDatabase)
+                {
+                    var model = ((Control)workspace.View.Content!).DataContext!;
+                    Check(model.GetType().GetProperty("CanManage")?.GetValue(model) is false
+                        && model.GetType().GetProperty("Snapshot")?.GetValue(model) is RelaxKonOS.Protocol.Databases.PostgreSqlState { Installed: true },
+                        "The installed database workspace reads PostgreSQL and honors a read-only grant.");
+                }
                 if (isApplicationDeployments)
                 {
                     var model = ((Control)workspace.View.Content!).DataContext!;
@@ -504,7 +513,7 @@ internal static class OfficialRoappChecks
             var windows = new WindowManager();
             var apps = new ApplicationManager(windows, services);
             var permissions = new RoappCatalogChecks.Permissions();
-            var auth = isTailscale ? DispatchProxy.Create<IAuthSession, TailscaleScopeAuthFixture>() : isProxyServer || isProxyManager
+            var auth = isTailscale || isDatabase ? DispatchProxy.Create<IAuthSession, TailscaleScopeAuthFixture>() : isProxyServer || isProxyManager
                 ? DispatchProxy.Create<IAuthSession, ProxyServerScopeAuthFixture>()
                 : DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
             if (isTerminal)
@@ -518,7 +527,7 @@ internal static class OfficialRoappChecks
             var appPermissions = new CertificateCapabilityChecks.Permission(applicationId);
             appPermissions.Granted.Add(AppPermissions.ServerCertificatesRead);
             appPermissions.Granted.Add(AppPermissions.ServerWebServersRead);
-            var certificates = isCertificates ? DispatchProxy.Create<IServerCertificates, CertificateCapabilityClient>() : null;
+            var certificates = isCertificates || isDatabase ? DispatchProxy.Create<IServerCertificates, CertificateCapabilityClient>() : null;
             var webServers = isWebServers ? DispatchProxy.Create<IServerWebServers, CurrentNginxClient>() : null;
             appPermissions.Granted.Add(AppPermissions.ServerGitRead);
             appPermissions.Granted.Add(AppPermissions.ServerGitManage);
@@ -545,8 +554,10 @@ internal static class OfficialRoappChecks
             var proxyManager = isProxyManager ? new ProxyWorkspaceChecks.ProxyRepositoryFixture() : null;
             appPermissions.Granted.Add(AppPermissions.ServerTailscaleRead);
             var tailscale = isTailscale ? DispatchProxy.Create<IServerTailscale, TailscaleScopeTransport>() : null;
-            var scopedPermissions = isCertificates || isWebServers || isGit || isFileServices || isFirewall
+            appPermissions.Granted.Add(AppPermissions.ServerDatabasesRead);
+            var scopedPermissions = isDatabase || isCertificates || isWebServers || isGit || isFileServices || isFirewall
                 || isGuardian || isPortForwarding || isApplicationDeployments || isTunnels || isSquid || isProxyServer || isProxyManager || isTailscale;
+            var postgres = isDatabase ? new OfficialPostgreSqlFixture() : null;
             var context = new ExternalAppContextFactory(scopedPermissions ? appPermissions : permissions,
                 scopedPermissions ? appPermissions : null!, language, settings, null!, auth, null!,
                 windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings),
@@ -554,7 +565,8 @@ internal static class OfficialRoappChecks
                 browserData: isBrowser ? browserData : null, certificates: certificates, webServers: webServers, git: git,
                 fileServices: fileServices, firewall: firewall, guardian: guardian, portForwarding: forwarding, applicationDeployments: deployments, tunnels: tunnels, createSquidClient: squid is null ? null : () => squid,
                 createProxyServerClient: proxyServer is null ? null : () => proxyServer,
-                createProxyClient: proxyManager is null ? null : () => proxyManager, tailscale: tailscale);
+                createProxyClient: proxyManager is null ? null : () => proxyManager, tailscale: tailscale,
+                createPostgreSqlClient: postgres is null ? null : () => postgres);
             return (new DeveloperPackageManager(apps, context, windows, permissions, new RoappCatalogChecks.Diagnostics(), drive, source), apps, windows);
         }
 
@@ -646,4 +658,20 @@ public class OfficialGitFixture : DispatchProxy
             Task.FromResult<IReadOnlyList<RelaxKonOS.Protocol.Git.GitRepositoryDto>>([]),
         _ => throw new NotSupportedException(method?.Name),
     };
+}
+
+internal sealed class OfficialPostgreSqlFixture : RelaxKonOS.AppSDK.IServerPostgreSql
+{
+    public Task<RelaxKonOS.Protocol.Databases.PostgreSqlState> ReadAsync(CancellationToken cancellationToken, Guid? instance = null) =>
+        Task.FromResult<RelaxKonOS.Protocol.Databases.PostgreSqlState>(new(true, true, true,
+            "16.15-0ubuntu0.24.04.1", 2, null, 55432, false, false, null, null, null));
+
+    public Task<RelaxKonOS.Protocol.Databases.PostgreSqlState> MaintenancePlanAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    public Task<RelaxKonOS.Protocol.Databases.PostgreSqlState> MigrationPlanAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    public Task StageCredentialAsync(RelaxKonOS.Protocol.Databases.PostgreSqlCredentialRequest request, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
 }

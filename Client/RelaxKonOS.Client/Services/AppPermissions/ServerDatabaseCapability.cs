@@ -1,6 +1,7 @@
 using System.Net;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Databases;
@@ -79,11 +80,20 @@ internal sealed class ServerDatabaseCapability(AppId appId, IAppPermissionManage
         cancellation.Token.ThrowIfCancellationRequested();
         if (elevationBroker is null) return false;
 
-        var granted = await elevationBroker.RequestGrantAsync(InstallationClient.ElevationCapability(service),
-            service.ToString().ToLowerInvariant(), cancellation.Token);
-        cancellation.Token.ThrowIfCancellationRequested();
-        VerifyAccess(manage: true);
-        return granted;
+        try
+        {
+            var granted = await elevationBroker.RequestGrantAsync(InstallationClient.ElevationCapability(service),
+                service.ToString().ToLowerInvariant(), cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            VerifyAccess(manage: true);
+            return granted;
+        }
+        catch (RelaxKonOSAuthException error)
+        {
+            cancellation.Token.ThrowIfCancellationRequested();
+            VerifyAccess(manage: true);
+            throw new InstallationAuthorizationException(error.Type.Split('/').Last());
+        }
     }
 
     private static void VerifyInstallationService(InstallationServiceId service)

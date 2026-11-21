@@ -1,0 +1,17 @@
+{
+  "id": "relaxkonos.database",
+  "displayName": "Database engines",
+  "description": "Manage PostgreSQL and MySQL on the connected server",
+  "version": "0.1.0",
+  "permissionModelVersion": 2,
+  "entryAssembly": "lib/net10.0/RelaxKonOS.App.Databases.dll",
+  "entryType": "RelaxKonOS.App.Databases.DatabasePackageApp",
+  "iconGlyph": "▤",
+  "iconPath": "Assets/database.png",
+  "instancePolicy": "SingleWindow",
+  "requestedPermissions": ["server.components.read", "server.databases.read", "server.databases.manage", "server.certificates.read"],
+  "localizedMetadata": {
+    "zh-CN": { "displayName": "数据库引擎管理", "description": "管理已连接服务器上的 PostgreSQL 和 MySQL" },
+    "ja-JP": { "displayName": "データベースエンジン", "description": "接続先サーバーの PostgreSQL と MySQL を管理します" }
+  }
+}
