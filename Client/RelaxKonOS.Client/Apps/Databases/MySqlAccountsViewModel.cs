@@ -1,8 +1,8 @@
+using RelaxKonOS.AppSDK;
 using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Databases;
 
 namespace RelaxKonOS.Client.Apps.Databases;

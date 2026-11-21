@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using InstallationApiException = RelaxKonOS.AppSDK.InstallationApiException;
 using System.Net;
 using System.Net.Http.Json;
@@ -26,6 +27,23 @@ internal static class PackageTransactionClientChecks
             && fixture.Value.GetProperty("operationId").GetGuid() == operationId,
             "Database operation settings preserve workspace identity, document shape, and revision checks");
 
+        var failed = new InstallationOperationDto(Guid.Empty, InstallationServiceId.Nginx,
+            InstallationOperationKind.Install, InstallationOperationState.Failed, InstallationStage.Failed,
+            null, "installation.connection_unavailable", DateTimeOffset.UtcNow, null, DateTimeOffset.UtcNow, false);
+        using var restoreHttp = new HttpClient(new Handler(request => request.RequestUri?.AbsolutePath ==
+            InstallationApiRoutes.Operation(failed.OperationId)
+            ? new(HttpStatusCode.OK) { Content = JsonContent.Create(failed) }
+            : new(HttpStatusCode.NotFound)));
+        var restoreClient = new InstallationClient(restoreHttp, session);
+        using var retained = new InstallationTaskViewModel(DesktopInstallationText.Instance, restoreClient, databaseSettings,
+            failed.Service, retainFailedReceipt: true, () => Task.CompletedTask, () => Task.FromResult(false));
+        using var dismissed = new InstallationTaskViewModel(DesktopInstallationText.Instance, restoreClient, databaseSettings,
+            failed.Service, retainFailedReceipt: false, () => Task.CompletedTask, () => Task.FromResult(false));
+        await retained.RestoreAsync();
+        await dismissed.RestoreAsync();
+        Check(retained.Operation?.OperationId == failed.OperationId && dismissed.Operation is null,
+            "Failed installation receipts are retained only when the caller requests them");
+
         var package = new ComponentPackageTarget("nginx", "1.26.3-1", "amd64", "repo", "https://repo.example/",
             "stable", "main", "https://repo.example/nginx.deb", new('a', 64), 1024, [new("acl.deb", "https://repo.example/acl.deb", 100, new('b', 64))]);
         var plan = new ComponentPlanRequest("nginx", "host", RuntimeChange.Install, 1,
@@ -43,8 +61,8 @@ internal static class PackageTransactionClientChecks
                 && body.FrozenPackage.Request == plan, "The exact displayed target and frozen revisions reach the ledger");
             return new(HttpStatusCode.ServiceUnavailable) { Content = JsonContent.Create(new { problemCode = "installation.connection_unavailable" }) };
         }));
-        using var task = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("relaxkonos.component-center"), settings),
-            InstallationServiceId.Nginx, "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false));
+        using var task = new InstallationTaskViewModel(DesktopInstallationText.Instance, new InstallationClient(http, session), new ExternalAppSettings(new("relaxkonos.component-center"), settings),
+            InstallationServiceId.Nginx, true, () => Task.CompletedTask, () => Task.FromResult(false));
         await task.SubmitAsync(InstallationOperationKind.Install, options);
         await task.SubmitAsync(InstallationOperationKind.Install, options);
         Check(keys.Count == 2 && keys.All(key => key == plan.IdempotencyKey),
@@ -100,8 +118,8 @@ internal static class PackageTransactionClientChecks
                     id + " serialized installation retains the selected component identity");
                 return new(HttpStatusCode.ServiceUnavailable) { Content = JsonContent.Create(new { problemCode = "installation.connection_unavailable" }) };
             }));
-            using var task = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("relaxkonos.component-center"), settings), service,
-                "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false), "installation." + id);
+            using var task = new InstallationTaskViewModel(DesktopInstallationText.Instance, new InstallationClient(http, session), new ExternalAppSettings(new("relaxkonos.component-center"), settings), service,
+                true, () => Task.CompletedTask, () => Task.FromResult(false), "installation." + id);
             await task.SubmitAsync(InstallationOperationKind.Install, options);
             await task.SubmitAsync(InstallationOperationKind.Install, options);
             Check(seen.Count == 2 && seen.All(key => key == plan.IdempotencyKey), id + " retry retains its frozen operation key");

@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
@@ -34,8 +35,8 @@ internal static class ComponentDownloadChecks
             using var http = new HttpClient(handler);
             var service = id switch { "nginx" => InstallationServiceId.Nginx, "mihomo" => InstallationServiceId.Mihomo, _ => InstallationServiceId.Frp };
             var download = new DownloadFactory();
-            model.AttachPackageInstallation(id, new(new InstallationClient(http, DispatchProxy.Create<IAuthSession, EntrySession>(), download), null!, service,
-                "relaxkonos.component-center", () => Task.CompletedTask, () => Task.FromResult(false)));
+            model.AttachPackageInstallation(id, new(DesktopInstallationText.Instance, new InstallationClient(http, DispatchProxy.Create<IAuthSession, EntrySession>(), download), null!, service,
+                true, () => Task.CompletedTask, () => Task.FromResult(false)));
             model.SelectedNode = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == id);
             model.LoadOfficialReleasesAsync(false).GetAwaiter().GetResult();
             Check(model.ShowOfficialDownloads && !model.ShowPackageFreeze && !model.HasRuntimeDetails && model.OfficialReleases.Count == 2,
@@ -121,7 +122,7 @@ internal static class ComponentDownloadChecks
     {
         using var runtime = new ProxyServerRuntimeViewModel(DispatchProxy.Create<IRuntimeCatalogClient, DisplayOnlyRuntime>()) { CanRead = true, CanManage = true };
         using var model = new ComponentCenterViewModel(runtime, new(), "https://host.example", Guid.NewGuid(), lifecycle: new OfficialEntryLifecycle(), hostPlatform: "windows");
-        model.AttachPackageInstallation("nginx", new(null!, null!, InstallationServiceId.Nginx, "preview", () => Task.CompletedTask, () => Task.FromResult(false)));
+        model.AttachPackageInstallation("nginx", new(DesktopInstallationText.Instance, null!, null!, InstallationServiceId.Nginx, false, () => Task.CompletedTask, () => Task.FromResult(false)));
         model.SelectedNode = model.VisibleRoots.SelectMany(root => root.DescendantsAndSelf()).Single(node => node.ComponentId == "nginx");
         model.RefreshPackageInstallationAsync("nginx").GetAwaiter().GetResult();
         model.LoadOfficialReleasesAsync(false).GetAwaiter().GetResult();

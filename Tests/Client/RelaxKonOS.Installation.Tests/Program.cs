@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -88,7 +89,7 @@ if (args.Contains("--direct-compensation-wire-only"))
     Check(calls == 1, "Sing-box cannot send a request to the Mihomo compensation route");
     return;
 }
-string FormatInstallationProblem(string code) => (string)typeof(InstallationTaskViewModel).GetMethod("FormatProblemCode", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [code])!;
+string FormatInstallationProblem(string code) => DesktopInstallationText.FormatProblemCode(code);
 // Grant acceptance and cancellation both preserve the original Nginx operation identity.
 foreach (var grant in new[] { true, false })
 {
@@ -103,8 +104,8 @@ foreach (var grant in new[] { true, false })
             ? Json(HttpStatusCode.Forbidden, new { problemCode = "elevation-required" })
             : Json(HttpStatusCode.BadRequest, new { problemCode = "installation.invalid_request" });
     }));
-    using var task = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("test"), settings), InstallationServiceId.Nginx,
-        "test", () => Task.CompletedTask, () => { grants++; return Task.FromResult(grant); });
+    using var task = new InstallationTaskViewModel(DesktopInstallationText.Instance, new InstallationClient(http, session), new ExternalAppSettings(new("test"), settings), InstallationServiceId.Nginx,
+        false, () => Task.CompletedTask, () => { grants++; return Task.FromResult(grant); });
     await task.SubmitAsync(InstallationOperationKind.Install, new NginxInstallationRequest(true, Version: "1.30.6"));
     Check(grants == 1 && requests.Count == (grant ? 2 : 1),
         "Nginx retries only after a successful grant; cancellation never dispatches again");
@@ -171,7 +172,7 @@ using (var http = new HttpClient(new Handler(_ => Json(HttpStatusCode.NotFound, 
 {
     var client = new InstallationClient(http, session);
     Check(await client.GetActiveAsync(InstallationServiceId.Mihomo, default) is null, "Missing active task is an empty result");
-    using var vm = new InstallationTaskViewModel(client, new ExternalAppSettings(new("test"), settings), InstallationServiceId.Mihomo, "test", () => Task.CompletedTask, () => Task.FromResult(false));
+    using var vm = new InstallationTaskViewModel(DesktopInstallationText.Instance, client, new ExternalAppSettings(new("test"), settings), InstallationServiceId.Mihomo, false, () => Task.CompletedTask, () => Task.FromResult(false));
     var dialogs = 0;
     vm.ShowPrivilegedHelperUnavailableAsync = code => { Check(code == helperCode, "Helper error is preserved"); dialogs++; return Task.CompletedTask; };
     Check(await vm.CreateFileReferenceAsync("/mihomo.gz") is null && vm.HasMessage && dialogs == 1,
@@ -188,8 +189,8 @@ using (var http = new HttpClient(new Handler(request => Json(HttpStatusCode.OK,
 {
     var completed = new TaskCompletionSource();
     var dialogs = 0;
-    using var vm = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("test"), settings), InstallationServiceId.Mihomo,
-        "test", () => { completed.SetResult(); return Task.CompletedTask; }, () => Task.FromResult(false));
+    using var vm = new InstallationTaskViewModel(DesktopInstallationText.Instance, new InstallationClient(http, session), new ExternalAppSettings(new("test"), settings), InstallationServiceId.Mihomo,
+        false, () => { completed.SetResult(); return Task.CompletedTask; }, () => Task.FromResult(false));
     vm.ShowPrivilegedHelperUnavailableAsync = code => { Check(code == helperCode, "Polled helper error is preserved"); dialogs++; return Task.CompletedTask; };
     await vm.SubmitAsync(InstallationOperationKind.Install, RuntimePlanBody());
     await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -199,8 +200,8 @@ using (var http = new HttpClient(new Handler(request => Json(HttpStatusCode.OK,
 
 using (var handler = new BlockingTransferHandler())
 using (var http = new HttpClient(handler))
-using (var vm = new InstallationTaskViewModel(new InstallationClient(http, session), new ExternalAppSettings(new("test"), settings),
-    InstallationServiceId.Nginx, "test", () => Task.CompletedTask, () => Task.FromResult(false)))
+using (var vm = new InstallationTaskViewModel(DesktopInstallationText.Instance, new InstallationClient(http, session), new ExternalAppSettings(new("test"), settings),
+    InstallationServiceId.Nginx, false, () => Task.CompletedTask, () => Task.FromResult(false)))
 {
     using var package = new MemoryStream([1, 2, 3]);
     var transfer = vm.UploadPackageAsync("nginx.zip", package);

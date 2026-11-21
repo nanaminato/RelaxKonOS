@@ -1,16 +1,16 @@
-using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Protocol.Installations;
 
-namespace RelaxKonOS.Client.Services.Installation;
+namespace RelaxKonOS.AppSDK;
 
-public sealed partial class InstallationTaskViewModel(IInstallationOperations client, IExternalAppSettings settings,
-    InstallationServiceId service, string appId, Func<Task> refresh, Func<Task<bool>> requestElevation, string workspaceKey = "installation") : ObservableObject, IDisposable
+public sealed record InstallationTaskText(Func<string, string> Get, Func<string?, string> FormatProblemCode,
+    Func<string?, bool> IsPrivilegedHelperFailure, Func<Exception, string?> GetAuthorizationProblem);
+
+public sealed partial class InstallationTaskViewModel(InstallationTaskText text, IInstallationOperations client, IExternalAppSettings settings,
+    InstallationServiceId service, bool retainFailedReceipt, Func<Task> refresh, Func<Task<bool>> requestElevation, string workspaceKey = "installation") : ObservableObject, IDisposable
 {
     private IInstallationPackageOperations PackageOperations => client as IInstallationPackageOperations
         ?? throw new NotSupportedException("Package staging is unavailable for this installation task.");
@@ -44,9 +44,9 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
     public bool IsActive => IsTransferring || Operation?.State is InstallationOperationState.Queued or InstallationOperationState.Running;
     public bool IsIndeterminate => IsTransferring || IsActive && Operation?.Progress is null;
     public int Progress => IsTransferring ? 0 : Operation?.Progress ?? 0;
-    public string StageText => IsTransferring ? LocalizedText.Get("installation.stage." + transferStage) : Operation is null ? "" : LocalizedText.Get("installation.stage." + Operation.Stage)
+    public string StageText => IsTransferring ? text.Get("installation.stage." + transferStage) : Operation is null ? "" : text.Get("installation.stage." + Operation.Stage)
         + (Operation.Progress is { } value ? $" ({value}%)" : "")
-        + (Operation.ProblemCode is { Length: > 0 } code ? " · " + FormatProblemCode(code) : "");
+        + (Operation.ProblemCode is { Length: > 0 } code ? " · " + text.FormatProblemCode(code) : "");
     public bool HasMessage => !string.IsNullOrWhiteSpace(StageText) || !string.IsNullOrWhiteSpace(ConnectionText);
     private bool CanCancel => IsTransferring || IsActive && Operation?.Cancellable == true;
     partial void OnOperationChanged(InstallationOperationDto? value)
@@ -105,18 +105,17 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
         }
         catch (InstallationApiException error)
         {
-            ConnectionText = FormatProblemCode(error.ProblemCode);
+            ConnectionText = text.FormatProblemCode(error.ProblemCode);
             if (error.Status is HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.Forbidden) pendingKey = null;
             await ShowHelperFailureAsync(error.ProblemCode);
         }
-        catch (RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException error)
+        catch (Exception error) when (text.GetAuthorizationProblem(error) is { } code)
         {
-            var code = error.Type.Split('/').Last();
-            ConnectionText = FormatProblemCode(code);
+            ConnectionText = text.FormatProblemCode(code);
             await ShowHelperFailureAsync(code);
         }
         catch (OperationCanceledException) { }
-        catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
+        catch { ConnectionText = text.Get("installation.connection_unavailable"); }
         finally { submitGate.Release(); }
     }
 
@@ -130,11 +129,11 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
         }
         catch (InstallationApiException error)
         {
-            ConnectionText = FormatProblemCode(error.ProblemCode);
+            ConnectionText = text.FormatProblemCode(error.ProblemCode);
             await ShowHelperFailureAsync(error.ProblemCode);
         }
         catch (OperationCanceledException) { }
-        catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
+        catch { ConnectionText = text.Get("installation.connection_unavailable"); }
         return null;
     }
 
@@ -161,7 +160,7 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
         }
         catch (InstallationApiException error)
         {
-            ConnectionText = FormatProblemCode(error.ProblemCode);
+            ConnectionText = text.FormatProblemCode(error.ProblemCode);
             await ShowHelperFailureAsync(error.ProblemCode);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -169,10 +168,10 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
             if (!lifetime.IsCancellationRequested)
             {
                 Operation = null;
-                ConnectionText = LocalizedText.Get("installation.stage." + InstallationStage.Cancelled);
+                ConnectionText = text.Get("installation.stage." + InstallationStage.Cancelled);
             }
         }
-        catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
+        catch { ConnectionText = text.Get("installation.connection_unavailable"); }
         finally { IsTransferring = false; transferCancellation = null; }
         return null;
     }
@@ -196,7 +195,7 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
             // A terminal task may be retained in workspace settings for recovery diagnostics, but
             // it must not reappear as the current app's installation banner after navigation.
             Operation = active ?? (remembered?.State is InstallationOperationState.Queued or InstallationOperationState.Running
-                || appId == "relaxkonos.component-center" && remembered?.State is InstallationOperationState.Interrupted or InstallationOperationState.Failed
+                || retainFailedReceipt && remembered?.State is InstallationOperationState.Interrupted or InstallationOperationState.Failed
                 ? remembered : null);
             if (Operation is not null)
             {
@@ -205,7 +204,7 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
             }
         }
         catch (OperationCanceledException) { }
-        catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
+        catch { ConnectionText = text.Get("installation.connection_unavailable"); }
     }
 
     private async Task RememberAsync(Guid id)
@@ -217,7 +216,7 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
                 expectedRevision: existing?.Revision, cancellationToken: lifetime.Token);
         }
         catch (OperationCanceledException) { }
-        catch { ConnectionText = LocalizedText.Get("installation.workspace_save_failed"); }
+        catch { ConnectionText = text.Get("installation.workspace_save_failed"); }
     }
 
     private async Task ObserveAsync()
@@ -231,13 +230,13 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
                 try
                 {
                     var latest = await client.GetAsync(Operation!.OperationId, lifetime.Token);
-                    if (latest is null) { ConnectionText = LocalizedText.Get("installation.operation_unavailable"); return; }
+                    if (latest is null) { ConnectionText = text.Get("installation.operation_unavailable"); return; }
                     Operation = latest; ConnectionText = "";
                 }
                 catch (InstallationApiException error) when (error.Status is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
-                { ConnectionText = LocalizedText.Get("installation.operation_unavailable"); return; }
+                { ConnectionText = text.Get("installation.operation_unavailable"); return; }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
-                catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
+                catch { ConnectionText = text.Get("installation.connection_unavailable"); }
             }
             if (!lifetime.IsCancellationRequested)
             {
@@ -247,7 +246,7 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
             }
         }
         catch (OperationCanceledException) { }
-        catch { ConnectionText = LocalizedText.Get("installation.refresh_failed"); }
+        catch { ConnectionText = text.Get("installation.refresh_failed"); }
     }
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
@@ -255,68 +254,13 @@ public sealed partial class InstallationTaskViewModel(IInstallationOperations cl
     {
         if (transferCancellation is { } transfer) { transfer.Cancel(); return; }
         try { Operation = await client.CancelAsync(Operation!.OperationId, lifetime.Token) ?? Operation; }
-        catch { ConnectionText = LocalizedText.Get("installation.cancel_unavailable"); }
+        catch { ConnectionText = text.Get("installation.cancel_unavailable"); }
     }
 
     private Task ShowHelperFailureAsync(string? problemCode) =>
-        PrivilegedHelperProblemText.TryFormat(problemCode, out _)
+        text.IsPrivilegedHelperFailure(problemCode)
             ? ShowPrivilegedHelperUnavailableAsync?.Invoke(problemCode) ?? Task.CompletedTask
             : Task.CompletedTask;
 
-    /// <summary>
-    /// Installation operations retain their domain problem code in the durable task record.
-    /// Resolve it through that domain's resources instead of exposing a transport-facing code
-    /// in the shared installation progress panel.
-    /// </summary>
-    internal static string FormatProblemCode(string? problemCode)
-    {
-        if (PrivilegedHelperProblemText.TryFormat(problemCode, out var helperMessage)) return helperMessage;
-        if (string.IsNullOrWhiteSpace(problemCode)) return LocalizedText.Get("installation.problem.unknown");
-        // A component change is refused or fails with a component lifecycle code, and that code is the
-        // host's actual answer (package unresolved, candidate changed, install failed, version
-        // mismatch). The shared banner has no resource domain for it, so resolve it through the
-        // component center's own table instead of falling back to "installation failed".
-        if (ComponentProblemText.IsComponentCode(problemCode)) return LocalizedText.Get(ComponentProblemText.Key(problemCode));
-
-        if (problemCode == "elevation-password-required")
-            return LocalizedText.Get("settings.host_time.password_required");
-        if (problemCode == "elevation-password-invalid")
-            return LocalizedText.Get("settings.host_time.password_invalid");
-        if (problemCode == "elevation-account-not-administrator")
-            return LocalizedText.Get("settings.host_time.administrator_required");
-        if (problemCode.StartsWith("elevation-", StringComparison.Ordinal) || problemCode.StartsWith("host-administrator-authentication-", StringComparison.Ordinal))
-            return LocalizedText.Get("settings.host_time.password_check_failed");
-
-        const string listenPortPrefix = "webserver.listen_port_unavailable.";
-        if (problemCode.StartsWith(listenPortPrefix, StringComparison.Ordinal)
-            && ushort.TryParse(problemCode.AsSpan(listenPortPrefix.Length), out var port) && port != 0)
-            return LocalizedText.Format("webservers.problem.listen_port_unavailable", port);
-
-        var candidates = new List<string>();
-        if (problemCode.StartsWith("installation.", StringComparison.Ordinal))
-            candidates.Add("installation.problem." + problemCode["installation.".Length..]);
-        else
-        {
-            var separator = problemCode.IndexOf('.');
-            if (separator > 0 && separator < problemCode.Length - 1)
-            {
-                var domain = problemCode[..separator] switch
-                {
-                    "tunnel" => "tunnels",
-                    "nginx" => "webservers",
-                    "smb" => "file_services",
-                    _ => problemCode[..separator],
-                };
-                candidates.Add(domain + ".problem." + problemCode[(separator + 1)..].Replace('.', '_'));
-            }
-        }
-        candidates.Add("installation.problem." + problemCode);
-        foreach (var key in candidates)
-        {
-            var localized = LocalizedText.Get(key);
-            if (!string.Equals(localized, key, StringComparison.Ordinal)) return localized;
-        }
-        return LocalizedText.Get("installation.problem.unknown");
-    }
     public void Dispose() => lifetime.Cancel();
 }

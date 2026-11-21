@@ -1,3 +1,4 @@
+using InstallationTaskViewModel = RelaxKonOS.AppSDK.InstallationTaskViewModel;
 using InstallationApiException = RelaxKonOS.AppSDK.InstallationApiException;
 using IServerPostgreSql = RelaxKonOS.AppSDK.IServerPostgreSql;
 using System.Net;
@@ -24,8 +25,8 @@ internal static class PostgreSqlAccountsWorkspaceChecks
     {
         void Check(bool ok,string label) { if(!ok)throw new Exception(label);Console.WriteLine("PASS Database accounts "+label); }
         using var handler = new Handler(); using var http = new HttpClient(handler);
-        var task = new InstallationTaskViewModel(new InstallationClient(http,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,InstallationServiceId.PostgreSqlAccounts,
-            "test",()=>Task.CompletedTask,()=>Task.FromResult(false));
+        var task = new InstallationTaskViewModel(DesktopInstallationText.Instance, new InstallationClient(http,DispatchProxy.Create<IAuthSession,EntrySession>()),null!,InstallationServiceId.PostgreSqlAccounts,
+            false,()=>Task.CompletedTask,()=>Task.FromResult(false));
         var client = new Client();
         using var vm = new PostgreSqlAccountsViewModel(client,task) { CanManage=true, Snapshot=client.State };
         task.PropertyChanged += (_,_)=>vm.Notify();

@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Client.Apps.WebServers;
 using Size = RelaxKonOS.Core.Primitives.Size;
 using RelaxKonOS.AppSDK;
@@ -253,9 +254,9 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 ("frpc", RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp),
                 ("frps", RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp) })
             {
-                var task = new RelaxKonOS.Client.Services.Installation.InstallationTaskViewModel(installationClient,
+                var task = new InstallationTaskViewModel(DesktopInstallationText.Instance, installationClient,
                     new RelaxKonOS.Client.Services.AppSettings.ExternalAppSettings(Manifest.Id, settings),
-                    serviceId, "relaxkonos.component-center", () => model.RefreshPackageInstallationAsync(componentId),
+                    serviceId, true, () => model.RefreshPackageInstallationAsync(componentId),
                     () => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
                         .GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>(context.Services)
                         .RequestGrantAsync(RelaxKonOS.Client.Services.Installation.InstallationClient.ElevationCapability(serviceId), serviceId.ToString().ToLowerInvariant()), "installation." + componentId);
@@ -456,7 +457,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
                 : context.ShowDialogAsync(window, title, factory, size);
 
         async Task ReviewServiceStopAsync(RelaxKonOS.Client.Services.Installation.InstallationClient client,
-            RelaxKonOS.Client.Services.Installation.InstallationTaskViewModel task)
+            InstallationTaskViewModel task)
         {
             if (context.Services.GetService(typeof(RelaxKonOS.Client.Services.Privileged.IHostElevationBroker))
                 is not RelaxKonOS.Client.Services.Privileged.IHostElevationBroker broker) return;

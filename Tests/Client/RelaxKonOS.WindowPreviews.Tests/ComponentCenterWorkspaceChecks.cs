@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services.Installation;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -204,8 +205,8 @@ internal static class ComponentCenterWorkspaceChecks
                         bitmap.Save(Path.Combine(output, language + (dark ? "-dark-" : "-light") + "PackageFreeze.png"), new PngBitmapEncoderOptions());
                     }
                     packageLifecycle.Ready = true;
-                    multiModel.AttachPackageInstallation("nginx", new(null!, null!, InstallationServiceId.Nginx,
-                        "layout", () => Task.CompletedTask, () => Task.FromResult(false)));
+                    multiModel.AttachPackageInstallation("nginx", new(DesktopInstallationText.Instance, null!, null!, InstallationServiceId.Nginx,
+                        false, () => Task.CompletedTask, () => Task.FromResult(false)));
                     multiModel.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                     Check(multiModel.CanInstallPackage, "A frozen allowed package exposes explicit installation only after task integration");
                     Dispatcher.UIThread.RunJobs(); observationWindow.UpdateLayout();
@@ -250,8 +251,8 @@ internal static class ComponentCenterWorkspaceChecks
                         "A Windows host describes the direct download and never the Linux package manager in " + language);
                     Check(windowsModel.PackageManagers.Count == 0 && windowsModel.ShowInstallOnlyNote,
                         "Windows shows no package-manager selector and says only installation is connected in " + language);
-                    windowsModel.AttachPackageInstallation("nginx", new(null!, null!, InstallationServiceId.Nginx,
-                        "layout", () => Task.CompletedTask, () => Task.FromResult(false)));
+                    windowsModel.AttachPackageInstallation("nginx", new(DesktopInstallationText.Instance, null!, null!, InstallationServiceId.Nginx,
+                        false, () => Task.CompletedTask, () => Task.FromResult(false)));
                     windowsModel.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                     Check(windowsModel.CanInstallPackage && windowsModel.HasPinnedArchiveCandidates
                         && !windowsModel.HasPackageManagerChoice,
@@ -299,8 +300,8 @@ internal static class ComponentCenterWorkspaceChecks
                 {
                     unreadableModel.SelectedNode = unreadableModel.VisibleRoots.SelectMany(root => root.VisibleDescendantsAndSelf())
                         .Single(node => node.ComponentId == "squid");
-                    unreadableModel.AttachPackageInstallation("squid", new(null!, null!, InstallationServiceId.Squid,
-                        "layout", () => Task.CompletedTask, () => Task.FromResult(false)));
+                    unreadableModel.AttachPackageInstallation("squid", new(DesktopInstallationText.Instance, null!, null!, InstallationServiceId.Squid,
+                        false, () => Task.CompletedTask, () => Task.FromResult(false)));
                     unreadableModel.ResolvePackageCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                     Check(unreadableModel.PackageManagers.SequenceEqual(["apt"]) && unreadableModel.SelectedPackageManagerText.Resolve() == "apt",
                         "A refused package query still names the manager the host declared in " + language);

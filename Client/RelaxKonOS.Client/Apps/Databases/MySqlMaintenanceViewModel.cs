@@ -1,7 +1,7 @@
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.ManagedRuntimes.MySql;
 using RelaxKonOS.Protocol.Databases;
 
