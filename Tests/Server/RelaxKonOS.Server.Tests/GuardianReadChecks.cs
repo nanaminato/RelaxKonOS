@@ -1,6 +1,6 @@
 using System.IO.Pipes;
 using RelaxKonOS.Protocol.ProcessGuardian;
-using RelaxKonOS.Client.Apps.ProcessGuardian;
+using RelaxKonOS.App.ProcessGuardian;
 
 public static class GuardianReadChecks
 {

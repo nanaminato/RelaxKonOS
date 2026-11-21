@@ -1,3 +1,6 @@
+using Avalonia.Utilities;
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.App.ProcessGuardian;
 using RelaxKonOS.Client.Services;
 using Avalonia;
 using Avalonia.Controls;
@@ -38,7 +41,12 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
             return;
         }
 
-        var viewModel = new ProcessGuardianViewModel(client, session);
+        var viewModel = new ProcessGuardianViewModel(client, () => session.CurrentUser?.Username,
+            () => session.CurrentServer?.Platform == HostPlatformKind.Windows, LocalizedText.Get,
+            code => PrivilegedHelperProblemText.TryFormat(code, out var message) ? message : null);
+        var localization = App.Services.GetRequiredService<LocalizationService>();
+        WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, ProcessGuardianViewModel>(
+            localization, nameof(LocalizationService.LanguageChanged), viewModel.OnLanguageChanged);
         viewModel.OpenComponentManagement = () => (context.Services.GetService(typeof(RelaxKonOS.Runtime.ApplicationManager)) as RelaxKonOS.Runtime.ApplicationManager)?.Launch(new AppId("relaxkonos.server-center"));
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.processguardian.display_name"), CreateView(viewModel), new Rect(80, 60, 1240, 700), Manifest.IconGlyph);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);

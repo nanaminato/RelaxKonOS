@@ -272,3 +272,4 @@
 - Windows 环回隔离宿主使用未改写的 Firewall Release 包通过联合部署验收。已停用的随附模块只生成启用步骤，应用等待服务端重启及模块检查后注册。模块已启用时直接复用，两种路径均未新增模块包操作。测试使用隔离模块状态与测试鉴权，未操作操作系统防火墙。可将 Firewall 包作为 --joint-deployment-acceptance 的第二个归档参数复现。
 
 - Process Guardian 的工作负载接口已迁入 SDK。外置上下文分别验证读取和管理权限，并在调用前后检查连接与应用生命周期。Windows Release 构建与权限回归通过。桌面入口与视图尚待外置。
+- Process Guardian 的主视图模型和工作负载定义编辑逻辑已迁入独立项目。桌面入口提供当前用户、平台、本地化及 Helper 诊断。Windows Release 构建、SDK 权限测试及 24 项 Guardian 读取和定义回归通过，覆盖参数、健康检查及账户标识的保留。

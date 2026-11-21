@@ -1,6 +1,6 @@
 using RelaxKonOS.Protocol.ProcessGuardian;
 
-namespace RelaxKonOS.Client.Apps.ProcessGuardian;
+namespace RelaxKonOS.App.ProcessGuardian;
 
 /// <summary>Updates visible desktop fields without resetting the complete saved declaration.</summary>
 public static class GuardianDefinitionEditor
