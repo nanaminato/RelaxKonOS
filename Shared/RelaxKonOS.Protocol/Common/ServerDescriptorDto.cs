@@ -29,6 +29,7 @@ public static class ServerCapabilities
     public const string ApplicationDeploymentsCompose = "server.application-deployments.compose";
     public const string FileServices = "server.file-services";
     public const string WebServer = "server.web-server";
+    public const string Database = "server.database";
     public const string Certificates = "server.certificates";
     public const string EventAlerts = "server.event-alerts";
     public const string BackupRecovery = "server.backup-recovery";

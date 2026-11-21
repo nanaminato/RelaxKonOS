@@ -104,6 +104,7 @@ internal sealed partial class ServerModules
     internal const string SystemPerformanceId = "relaxkonos.system-performance";
     internal const string GitId = "relaxkonos.git";
     internal const string DockerId = "relaxkonos.docker";
+    internal const string DatabaseId = "relaxkonos.database";
     internal const string CertificatesId = "relaxkonos.certificates";
     internal const string WebServerId = "relaxkonos.webserver";
     internal const string ProxyId = "relaxkonos.proxy";

@@ -68,7 +68,8 @@ internal static class ModuleRecoveryHostChecks
                 "recovery inventory retains authentication requirement");
             client.DefaultRequestHeaders.Add("test-user", ModuleTestAuthentication.Observer);
             var facts = (await client.GetFromJsonAsync<ServerModuleDto[]>(ServerApiRoutes.Modules, RelaxKonOSJsonOptions.Default))!;
-            check(facts.Length == 9 && facts.All(module => !module.EffectiveEnabled && module.ServiceId == serviceId
+            var knownIds = ServerModules.Create(new ConfigurationBuilder().Build()).KnownModuleIds;
+            check(facts.Select(module => module.Id).ToHashSet(StringComparer.Ordinal).SetEquals(knownIds) && facts.All(module => !module.EffectiveEnabled && module.ServiceId == serviceId
                 && module.RecoveryState == "host-recovery" && module.OrphanedWork.Count > 0 && module.EffectiveRevision != module.DesiredRevision),
                 "recovery facts retain stable Server identity and desired intent while effective modules and work stay unverified");
             var request = new ServerModulePlanRequest(serviceId, ServerModuleAction.Enable, facts.Select(module => module.Id).ToArray(),
@@ -103,7 +104,7 @@ internal static class ModuleRecoveryHostChecks
             var applied = await client.PostAsync(ServerModuleManagementRoutes.Apply.Replace("{planId:guid}", plan.PlanId.ToString()), null);
             applied.EnsureSuccessStatusCode();
             var operation = (await applied.Content.ReadFromJsonAsync<ServerModuleOperationDto>(RelaxKonOSJsonOptions.Default))!;
-            check(operation.State == ServerModuleOperationState.AwaitingRestart && operation.EnabledModuleIds.Count == 9,
+            check(operation.State == ServerModuleOperationState.AwaitingRestart && operation.EnabledModuleIds.ToHashSet(StringComparer.Ordinal).SetEquals(knownIds),
                 "authenticated recovery apply persists the normal ledger receipt without claiming completion");
             await app.StopAsync();
         }

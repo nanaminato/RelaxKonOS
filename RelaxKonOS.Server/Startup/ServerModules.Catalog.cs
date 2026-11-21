@@ -66,6 +66,7 @@ internal sealed partial class ServerModules
             new Modules.TailscaleModule(),
             new Modules.DockerModule(),
             new Modules.CertificateModule(),
+            new Modules.DatabaseModule(),
             new Modules.WebServerModule(),
             new Modules.ProxyModule(),
         ];

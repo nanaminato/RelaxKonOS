@@ -37,6 +37,11 @@ public class MySqlInstallationService(IPrivilegedOperationTransport helper,
     public async Task<MySqlState> ReadAsync(CancellationToken ct, Guid? operation = null)
     {
         var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.MySqlQuery, OperationId: operation), ct);
+        return DecodeState(result);
+    }
+
+    internal static MySqlState DecodeState(PrivilegedOperationResult result)
+    {
         if (!result.Success || result.OutputBase64 is null)
             throw new InstallationException("database.state_unavailable", 503);
         return JsonSerializer.Deserialize<MySqlState>(Convert.FromBase64String(result.OutputBase64))

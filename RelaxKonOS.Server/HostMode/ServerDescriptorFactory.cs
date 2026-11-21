@@ -50,6 +50,7 @@ public static class ServerDescriptorFactory
         if (hostCapabilities.FileServices) capabilities.Add(ServerCapabilities.FileServices);
         if (hostCapabilities.WebServer) capabilities.Add(ServerCapabilities.WebServer);
         if (hostCapabilities.Certificates) capabilities.Add(ServerCapabilities.Certificates);
+        if (enabledModuleCapabilities.Contains(ServerCapabilities.Database)) capabilities.Add(ServerCapabilities.Database);
         if (hostCapabilities.Tunnels) capabilities.Add(ServerCapabilities.Tunnels);
         if (hostCapabilities.Proxy) capabilities.Add(ServerCapabilities.Proxy);
         // Squid exists only on Unix-like hosts, but the gateway contract is answerable everywhere:

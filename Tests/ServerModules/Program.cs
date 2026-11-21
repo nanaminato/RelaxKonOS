@@ -481,7 +481,7 @@ Check(ServerModules.Create(Config(("Modules:Firewall:Enabled", "false")))
 // Capability sets follow the snapshot: a disabled module contributes nothing.
 Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabilities.Firewall,
         ServerCapabilities.Metrics, ServerCapabilities.Processes, ServerCapabilities.Git, ServerCapabilities.Docker,
-        ServerCapabilities.Certificates, ServerCapabilities.WebServer, ServerCapabilities.Tailscale,
+        ServerCapabilities.Certificates, ServerCapabilities.WebServer, ServerCapabilities.Tailscale, ServerCapabilities.Database,
         ServerCapabilities.Proxy, ServerCapabilities.GatewayProxy, ServerCapabilities.ProxyServer]),
     "default capability set is exactly the declared module capabilities");
 
@@ -494,6 +494,9 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
         new EventAlertsOptions(), new ConfigurationBackupRecoveryKeyProvider(new BackupRecoveryOptions()), modules.Capabilities);
 
     var advertised = Describe(defaults);
+    Check(advertised.Capabilities.Contains(ServerCapabilities.Database)
+          && !Describe(ServerModules.Create(Config(("Modules:Database:Enabled", "false")))).Capabilities.Contains(ServerCapabilities.Database),
+        "the server descriptor follows database module enablement");
     Check(advertised.Capabilities.Contains(ServerCapabilities.WebServer) && advertised.Host!.Capabilities.WebServer,
         "web server capability is advertised together with the Host flag");
     var withdrawn = Describe(ServerModules.Create(Config(("Modules:WebServer:Enabled", "false"))));
@@ -586,6 +589,7 @@ Check(defaults.Capabilities.SetEquals([ServerCapabilities.Terminal, ServerCapabi
         var collection = new ServiceCollection();
         collection.AddDataProtection();
         collection.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformPaths>(new GateProxyPaths(root));
+        collection.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport, IdleDatabaseHelper>();
         collection.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoPublicationStore>();
         collection.AddSingleton(new RelaxKonOS.Server.Docker.DockerStackOperationStore(hostBuilder.Environment,
             Microsoft.Extensions.Options.Options.Create(new RelaxKonOS.Server.Docker.DockerComposeOptions { DataDirectory = root })));
