@@ -190,6 +190,18 @@ internal static class JointDeploymentAcceptance
                 && await ready.GetStringAsync("/fixture-core") == "ready"
                 && await joint.FindPendingAsync(candidate, default) is null,
                 "the resumed deployment verifies the running module, Core and desktop application registration");
+            using (var readinessServices = new ServiceCollection().AddSingleton(packages).AddSingleton(applications)
+                .AddSingleton<IHttpClientFactory>(factory).BuildServiceProvider())
+            using (var readiness = new ApplicationAvailabilityService(auth, readinessServices, null!))
+            {
+                var manifest = applications.GetManifest(new AppId(AppIdText))!;
+                Require(await readiness.RefreshAsync(manifest) is { CanOpen: true }, "a healthy module satisfies launch readiness");
+                factory.FaultedModule = ModuleId;
+                Require(await readiness.RefreshAsync(manifest) is
+                    { CanOpen: false, State: ComponentAvailabilityKind.Recovery, ComponentId: ModuleId },
+                    "a faulted module cannot satisfy launch readiness even when effectively enabled");
+                factory.FaultedModule = null;
+            }
             await packages.UninstallAsync(AppIdText);
 
             foreach (var dependencyId in new[] { ServerModules.FirewallId, ModuleId })
@@ -400,6 +412,7 @@ internal static class JointDeploymentAcceptance
         public IReadOnlyList<string> EnablePreviewKeys => handler.EnablePreviewKeys;
         public int SubmittedEnableApplies => handler.SubmittedEnableApplies;
         public int Requests => handler.Requests;
+        public string? FaultedModule { get => handler.FaultedModule; set => handler.FaultedModule = value; }
         public Action? BeforeNextClient { get; set; }
         public Task HoldNextEnableApply()
         {
@@ -425,12 +438,25 @@ internal static class JointDeploymentAcceptance
         public bool DropEnableResponse { get; set; }
         public int SubmittedEnableApplies { get; private set; }
         public int Requests { get; private set; }
+        public string? FaultedModule { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests++;
             request.Headers.Add("test-user", ModuleTestAuthentication.Admin);
             var path = request.RequestUri?.AbsolutePath;
+            if (request.Method == HttpMethod.Get && path == ServerApiRoutes.Modules && FaultedModule is { } faulted)
+            {
+                using var response = await base.SendAsync(request, cancellationToken);
+                response.EnsureSuccessStatusCode();
+                var modules = await response.Content.ReadFromJsonAsync<ServerModuleDto[]>(RelaxKonOSJsonOptions.Default, cancellationToken);
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(modules!.Select(module => module.Id == faulted
+                        ? module with { Residency = new("faulted", false, "KeepLoaded", 0, 0, null, null, null, "fixture", null) }
+                        : module).ToArray(), options: RelaxKonOSJsonOptions.Default),
+                };
+            }
             if (request.Method == HttpMethod.Post && path == ServerModuleManagementRoutes.Plans)
             {
                 var plan = await request.Content!.ReadFromJsonAsync<ServerModulePlanRequest>(

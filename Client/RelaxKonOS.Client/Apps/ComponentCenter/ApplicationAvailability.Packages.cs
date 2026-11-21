@@ -58,6 +58,7 @@ public sealed partial class ApplicationAvailabilityService
                 local = ReadInstalledApplications(rootKey).ToArray();
                 result = DeploymentResolver.Resolve(root, local.Concat(modules
                     .Where(module => module.EffectiveEnabled && !module.RestartRequired && module.RecoveryState == "none")
+                    .Where(module => module.TrustState != "quarantined" && module.Residency?.State != "faulted")
                     .Select(module => (Module: module, Version: ModuleDeploymentCatalog.EffectivePackageVersion(module)))
                     .Where(item => item.Version is not null)
                     .Select(item => new DeploymentRelease(
@@ -65,6 +66,10 @@ public sealed partial class ApplicationAvailabilityService
                         true, [.. item.Module.Requires.Select(dependency => new DeploymentRequirement(new(DeploymentPackageKind.ServerModule, dependency)))],
                         item.Module.Capabilities.Distinct(StringComparer.Ordinal)
                             .ToImmutableDictionary(capability => capability, _ => "", StringComparer.Ordinal)))), []);
+                if (result.ProblemPackage is { Kind: DeploymentPackageKind.ServerModule } unavailable
+                    && modules.Any(module => module.Id == unavailable.Id
+                        && (module.RecoveryState != "none" || module.TrustState == "quarantined" || module.Residency?.State == "faulted")))
+                    serverFailure = ComponentAvailabilityKind.Recovery;
             }
             catch (Exception error) when (error is InvalidOperationException or InvalidDataException or HttpRequestException
                 or OperationCanceledException or System.Text.Json.JsonException)
