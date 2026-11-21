@@ -52,6 +52,7 @@
         "app_installer.deployment.restart_pending": "デプロイを続行するにはサーバーの再起動が必要です。再接続後に再試行してください。",
         "app_installer.deployment.activation_pending": "必須モジュールが有効になっていません。コンポーネントセンターで状態を確認してから再試行してください。",
         "app_installer.deployment.no_permission": "現在のアカウントにはサーバーモジュールの管理権限がありません。",
+        "app_installer.deployment.enable_review": "デプロイでは、以下のサーバーモジュールをインストールして有効にします。サーバーの再起動が必要な場合は、再接続して再試行するまでインストールを保留します。",
         "app_compatibility.title": "アプリケーションを利用できません",
         "app_compatibility.client_platform": "{0} は次のクライアントプラットフォームのみをサポートします: {1}。現在のクライアントは {2} です。",
         "app_compatibility.server_platform": "{0} は次のサーバープラットフォームのみをサポートします: {1}。接続中のサーバーは {2} です。",

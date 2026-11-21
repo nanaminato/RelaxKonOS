@@ -33,7 +33,7 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
             throw new InvalidOperationException("component.state_revision_conflict");
         candidate = candidate with { ExpectedSha256 = digest, ExpectedInstalledPath = current?.InstallationPath };
 
-        var client = new ServerModuleManagementClient(http.CreateClient(ServerModuleCatalog.HttpClientName), session);
+        var client = NewModuleClient();
         var catalog = new ModuleDeploymentCatalog(client);
         var modules = new ModuleDeploymentExecutor(client);
         var backend = new Backend(candidate, installer, packages, applications, catalog, modules, session);
@@ -60,11 +60,15 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
     public async Task<DeveloperAppInfo> ExecuteAsync(Review review, CancellationToken cancellationToken)
     {
         await review.Backend.VerifyBeforeExecutionAsync(review.Plan, cancellationToken);
+        review.Backend.BindModuleClient(NewModuleClient());
         var coordinator = new UnifiedDeploymentCoordinator(review.Backend, journal, TimeProvider.System);
         await coordinator.ExecuteAsync(review.Plan, cancellationToken);
         return review.Backend.InstalledApplication()
             ?? throw new InvalidOperationException("deployment-application-not-registered");
     }
+
+    private ServerModuleManagementClient NewModuleClient() =>
+        new(http.CreateClient(ServerModuleCatalog.HttpClientName), session);
 
     private static DeploymentPackageKey App(string id) => new(DeploymentPackageKind.Application, id);
 
@@ -87,6 +91,12 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 [.. record.Dependencies?.Required ?? []], ImmutableDictionary<string, string>.Empty));
 
         public DeveloperAppInfo? InstalledApplication() => installed;
+
+        public void BindModuleClient(ServerModuleManagementClient client)
+        {
+            catalog = new ModuleDeploymentCatalog(client);
+            modules = new ModuleDeploymentExecutor(client);
+        }
 
         public async Task VerifyBeforeExecutionAsync(DeploymentPlan plan, CancellationToken cancellationToken)
         {

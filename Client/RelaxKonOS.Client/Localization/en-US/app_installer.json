@@ -52,6 +52,7 @@
         "app_installer.deployment.restart_pending": "The server must restart before deployment can continue. Retry after reconnecting.",
         "app_installer.deployment.activation_pending": "A required module is not active. Check its status in Component Center, then retry.",
         "app_installer.deployment.no_permission": "The current account does not have permission to manage server modules.",
+        "app_installer.deployment.enable_review": "Deployment installs and enables the listed server modules. If the server requires a restart, installation pauses until you reconnect and retry.",
         "app_compatibility.title": "Application unavailable",
         "app_compatibility.client_platform": "{0} supports only these client platforms: {1}. This client is {2}.",
         "app_compatibility.server_platform": "{0} supports only these server platforms: {1}. The connected server is {2}.",

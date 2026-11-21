@@ -65,9 +65,37 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
                 throw new InvalidOperationException("deployment-module-receipt-unavailable");
             if (operation.State != "Succeeded")
                 throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
+            await EnsureEnabledAsync(plan, release, serverPlan.ArtifactSha256, cancellationToken);
         }
 
         await VerifyAsync(plan, release, cancellationToken);
+    }
+
+    private async Task EnsureEnabledAsync(DeploymentPlan plan, DeploymentRelease release, string digest,
+        CancellationToken cancellationToken)
+    {
+        var facts = await RequireServerAsync(plan.Target.ServerIdentity);
+        var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
+        if (module is null || module.InstalledVersion != release.Version || module.ArtifactDigest != digest
+            || module.RecoveryState != "none")
+            throw new InvalidOperationException("deployment-module-not-effective");
+        if (module.PendingOperationId is not null || module.RestartRequired)
+            throw new InvalidOperationException("deployment-module-AwaitingRestart");
+        if (module.DesiredEnabled) return;
+
+        var desired = facts.Where(item => item.DesiredEnabled).Select(item => item.Id)
+            .Append(module.Id).Order(StringComparer.Ordinal).ToArray();
+        var preview = await client.PreviewAsync(new(plan.Target.ServerIdentity, ServerModuleAction.Enable,
+            [module.Id], desired, module.DesiredRevision!, $"{plan.Id:N}-enable-{plan.OrderedReleases.IndexOf(release)}"));
+        if (preview.BlockedBy.Count > 0)
+            throw new InvalidOperationException(preview.BlockedBy[0].ProblemCode);
+        if (preview.Removed.Count != 0 || preview.Added.Count != 1 || preview.Added[0] != module.Id)
+            throw new InvalidOperationException("deployment-module-plan-changed");
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var operation = await client.ApplyAsync(preview.PlanId);
+        if (operation.State != ServerModuleOperationState.Succeeded)
+            throw new InvalidOperationException(operation.ProblemCode ?? "deployment-module-" + operation.State);
     }
 
     public async Task VerifyAsync(DeploymentPlan plan, DeploymentRelease release, CancellationToken cancellationToken)

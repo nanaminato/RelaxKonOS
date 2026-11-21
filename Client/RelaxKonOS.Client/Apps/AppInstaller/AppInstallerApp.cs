@@ -124,6 +124,12 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
     private static Control CreateDeploymentReview(ModalDialog<bool> dialog, DeploymentPlan plan)
     {
         var content = new StackPanel { Spacing = 8 };
+        if (plan.PreparedSteps.Length > 0)
+            content.Children.Add(new TextBlock
+            {
+                Text = LocalizedText.Get("app_installer.deployment.enable_review"),
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            });
         foreach (var release in plan.OrderedReleases)
         {
             var label = release.Satisfied ? "app_installer.deployment.satisfied" : "app_installer.deployment.change";
