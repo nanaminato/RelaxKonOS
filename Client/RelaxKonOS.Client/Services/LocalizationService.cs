@@ -1,4 +1,5 @@
 using RelaxKonOS.App.CodeEditor;
+using RelaxKonOS.App.Docker;
 using RelaxKonOS.Client.Services.Diagnostics;
 using System.Text.Json;
 using Avalonia.Threading;
@@ -112,6 +113,11 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
         foreach (var resource in CodeEditorLocalization.ResourceNames)
         {
             using var source = CodeEditorLocalization.Open(resource);
+            Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
+        }
+        foreach (var resource in DockerLocalization.ResourceNames)
+        {
+            using var source = DockerLocalization.Open(resource);
             Merge(JsonSerializer.Deserialize<LanguageFile>(source), resource);
         }
 

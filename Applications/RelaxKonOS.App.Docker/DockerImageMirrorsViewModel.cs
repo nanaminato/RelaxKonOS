@@ -2,20 +2,26 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ImageMirrors;
 
-namespace RelaxKonOS.Client.Apps.Docker;
+namespace RelaxKonOS.App.Docker;
 
 /// <summary>Docker Hub mirror selection belongs beside image pulls, not among desktop settings.</summary>
-public sealed partial class DockerImageMirrorsViewModel(IServerDockerImageMirrors client) : ObservableObject
+public sealed partial class DockerImageMirrorsViewModel(IServerDockerImageMirrors client, DockerText text) : ObservableObject
 {
     public ObservableCollection<DockerImageMirrorItemViewModel> Mirrors { get; } = [];
+    public DockerText Labels => new(text.Get);
     [ObservableProperty] private string _newName = string.Empty;
     [ObservableProperty] private string _newEndpoint = string.Empty;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private string _statusText = string.Empty;
     public bool HasStatus => StatusText.Length > 0;
+
+    public void RefreshLocalization()
+    {
+        OnPropertyChanged(nameof(Labels));
+        foreach (var item in Mirrors) item.RefreshLocalization();
+    }
 
     public async Task LoadAsync()
     {
@@ -23,7 +29,7 @@ public sealed partial class DockerImageMirrorsViewModel(IServerDockerImageMirror
         IsLoading = true;
         StatusText = string.Empty;
         try { await ReloadAsync(); }
-        catch (Exception exception) { StatusText = LocalizedText.Format("docker.mirrors.load_failed", exception.Message); }
+        catch (Exception exception) { StatusText = text.Format("docker.mirrors.load_failed", exception.Message); }
         finally { IsLoading = false; }
     }
 
@@ -33,7 +39,7 @@ public sealed partial class DockerImageMirrorsViewModel(IServerDockerImageMirror
         if (IsLoading) return;
         if (string.IsNullOrWhiteSpace(NewName) || string.IsNullOrWhiteSpace(NewEndpoint))
         {
-            StatusText = LocalizedText.Get("docker.mirrors.required");
+            StatusText = text.Get("docker.mirrors.required");
             return;
         }
         IsLoading = true;
@@ -42,9 +48,9 @@ public sealed partial class DockerImageMirrorsViewModel(IServerDockerImageMirror
             await client.CreateAsync(new CreateImageMirrorRequest(NewName.Trim(), NewEndpoint.Trim()));
             NewName = NewEndpoint = string.Empty;
             await ReloadAsync();
-            StatusText = LocalizedText.Get("docker.mirrors.added");
+            StatusText = text.Get("docker.mirrors.added");
         }
-        catch (Exception exception) { StatusText = LocalizedText.Format("docker.mirrors.save_failed", exception.Message); }
+        catch (Exception exception) { StatusText = text.Format("docker.mirrors.save_failed", exception.Message); }
         finally { IsLoading = false; }
     }
 
@@ -57,13 +63,14 @@ public sealed partial class DockerImageMirrorsViewModel(IServerDockerImageMirror
         {
             await client.SelectAsync(mirror.IsDefault ? null : mirror.Id);
             foreach (var item in Mirrors) item.IsSelected = item.Id == mirror.Id;
-            StatusText = mirror.IsDefault ? LocalizedText.Get("docker.mirrors.default_selected")
-                : LocalizedText.Format("docker.mirrors.selected", mirror.Name);
+            StatusText = mirror.IsDefault ? text.Get("docker.mirrors.default_selected")
+                : text.Format("docker.mirrors.selected", mirror.Name);
         }
         catch (Exception exception)
         {
-            await ReloadAsync();
-            StatusText = LocalizedText.Format("docker.mirrors.select_failed", exception.Message);
+            try { await ReloadAsync(); }
+            catch (Exception) { /* Keep the previously observed list when the session or grant has changed. */ }
+            StatusText = text.Format("docker.mirrors.select_failed", exception.Message);
         }
         finally { IsLoading = false; }
     }
@@ -78,9 +85,9 @@ public sealed partial class DockerImageMirrorsViewModel(IServerDockerImageMirror
             await client.DeleteAsync(mirror.Id);
             Mirrors.Remove(mirror);
             if (mirror.IsSelected) SetSelected(Guid.Empty);
-            StatusText = LocalizedText.Get("docker.mirrors.removed");
+            StatusText = text.Get("docker.mirrors.removed");
         }
-        catch (Exception exception) { StatusText = LocalizedText.Format("docker.mirrors.remove_failed", exception.Message); }
+        catch (Exception exception) { StatusText = text.Format("docker.mirrors.remove_failed", exception.Message); }
         finally { IsLoading = false; }
     }
 
@@ -90,7 +97,7 @@ public sealed partial class DockerImageMirrorsViewModel(IServerDockerImageMirror
     {
         var mirrors = await client.ListAsync();
         Mirrors.Clear();
-        foreach (var mirror in mirrors) Mirrors.Add(new DockerImageMirrorItemViewModel(mirror));
+        foreach (var mirror in mirrors) Mirrors.Add(new DockerImageMirrorItemViewModel(mirror, text));
     }
 
     private void SetSelected(Guid id)
@@ -99,8 +106,10 @@ public sealed partial class DockerImageMirrorsViewModel(IServerDockerImageMirror
     }
 }
 
-public sealed partial class DockerImageMirrorItemViewModel(ImageMirrorDto mirror) : ObservableObject
+public sealed partial class DockerImageMirrorItemViewModel(ImageMirrorDto mirror, DockerText text) : ObservableObject
 {
+    public DockerText Labels => new(text.Get);
+    internal void RefreshLocalization() => OnPropertyChanged(nameof(Labels));
     public Guid Id { get; } = mirror.Id;
     public string Name { get; } = mirror.Name;
     public string Endpoint { get; } = mirror.Endpoint;

@@ -36,9 +36,10 @@ public sealed class DockerManagerApp : RemoteApplicationBase
 
         var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.docker");
         var sdk = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest);
-        var vm = new DockerManagerViewModel(sdk.DockerResources, new DockerText(LocalizedText.Get));
+        var text = new DockerText(LocalizedText.Get);
+        var vm = new DockerManagerViewModel(sdk.DockerResources, text);
         var proxyViewModel = new DockerProxyViewModel(sdk.DockerResources);
-        var imageMirrorsViewModel = new DockerImageMirrorsViewModel(sdk.DockerImageMirrors);
+        var imageMirrorsViewModel = new DockerImageMirrorsViewModel(sdk.DockerImageMirrors, text);
         ManagedWindow? window = null;
         var view = DockerManagerWorkspace.Create(vm, proxyViewModel, imageMirrorsViewModel,
             () => DockerManagerDialogs.ShowCreateContainerAsync(context, window!, vm),
@@ -48,11 +49,14 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm), dependency);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        void LanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => imageMirrorsViewModel.RefreshLocalization();
+        sdk.SystemLanguage.LanguageChanged += LanguageChanged;
         EventHandler<ManagedWindow>? closed = null;
         closed = (_, current) =>
         {
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed;
+            sdk.SystemLanguage.LanguageChanged -= LanguageChanged;
             dependency.Dispose();
         };
         context.WindowManager.WindowClosed += closed;

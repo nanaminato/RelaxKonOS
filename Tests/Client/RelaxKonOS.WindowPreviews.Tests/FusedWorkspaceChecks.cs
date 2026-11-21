@@ -82,7 +82,7 @@ internal static class FusedWorkspaceChecks
             var gitWindow = manager.Create(new WindowCreateOptions(new AppId("test.git"), "Git", gitView, new CoreRect(10, 10, 960, 640)));
             serverView.AttachWindowHeader(serverWindow); gitView.AttachWindowHeader(gitWindow);
             var samples = new List<(ManagedWindow window, UserControl view, string name)> { (serverWindow, serverView, "server-center"), (gitWindow, gitView, "git") };
-            Add(DockerManagerWorkspace.Create(dockerModel, new DockerProxyViewModel(null!), new DockerImageMirrorsViewModel(null!), Done, Done, Done, Done, Done), "docker", (view, window) => view.AttachWindowHeader(window));
+            Add(DockerManagerWorkspace.Create(dockerModel, new DockerProxyViewModel(null!), new DockerImageMirrorsViewModel(null!, new DockerText(RelaxKonOS.Client.Localization.LocalizedText.Get)), Done, Done, Done, Done, Done), "docker", (view, window) => view.AttachWindowHeader(window));
             Add(new ProxyManagerWorkspace(proxyModel), "proxy", (view, window) => view.AttachWindowHeader(window));
             Add(new TunnelManagerView { DataContext = tunnelModel }, "tunnels", (view, window) => view.AttachWindowHeader(window));
             Add(new PortForwardingMainView { DataContext = forwardModel }, "port-forwarding", (view, window) => view.AttachWindowHeader(window));
