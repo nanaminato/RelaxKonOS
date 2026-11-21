@@ -2,6 +2,7 @@
  xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
  xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls" xmlns:explorer="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
  xmlns:gitViews="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
+ xmlns:gitAppViews="clr-namespace:RelaxKonOS.App.Git.Views;assembly=RelaxKonOS.App.Git"
  x:Class="RelaxKonOS.Client.Apps.Git.Views.GitLogView" x:Name="LogViewRoot" x:DataType="git:GitClientViewModel"
  x:CompileBindings="False" Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
  <UserControl.Styles>
@@ -146,6 +147,6 @@
    </Grid>
   </Border>
   <GridSplitter Grid.Column="5" Width="4" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" IsVisible="{Binding IsInlineDiffOpen}"/>
-  <Border Grid.Column="6" IsVisible="{Binding IsInlineDiffOpen}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1,0,0,0"><Panel><gitViews:GitDiffPane DataContext="{Binding InlineDiff}" CanClose="True" CloseRequested="DiffPane_CloseRequested"/><TextBlock Text="{loc:Loc git.log.diff_pane.loading}" IsVisible="{Binding IsInlineDiffLoading}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel></Border>
+  <Border Grid.Column="6" IsVisible="{Binding IsInlineDiffOpen}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1,0,0,0"><Panel><gitAppViews:GitDiffPane CloseLabel="{loc:Loc common.close}" DataContext="{Binding InlineDiff}" CanClose="True" CloseRequested="DiffPane_CloseRequested"/><TextBlock Text="{loc:Loc git.log.diff_pane.loading}" IsVisible="{Binding IsInlineDiffLoading}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel></Border>
  </Grid>
 </UserControl>

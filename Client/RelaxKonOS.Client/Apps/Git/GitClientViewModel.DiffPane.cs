@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.App.Git;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 
@@ -53,7 +54,7 @@ public sealed partial class GitClientViewModel
             var diff = await client.GetDiffAsync(SelectedRepository.Id, file.Path, staged: false, @ref: SelectedCommit.Sha);
             if (request != _inlineDiffRequest) return;
             FileDiff = diff;
-            InlineDiff = new GitDiffPresentation(diff);
+            InlineDiff = new GitDiffPresentation(diff, LocalizedText.Get);
         }
         catch (Exception ex)
         {

@@ -13,6 +13,8 @@ using Avalonia.VisualTree;
 using AvaloniaEdit;
 using AvaloniaEdit.Rendering;
 using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.App.Git;
+using RelaxKonOS.App.Git.Views;
 using RelaxKonOS.Client.Apps.Git;
 using RelaxKonOS.Client.Apps.Git.Views;
 using RelaxKonOS.UI.TextEditing.Diff;
@@ -187,9 +189,8 @@ index 4bee98b..9a1c2f0 100644
         // The pane is shared by the modal dialog and the log page's inline column, so its bindings
         // (path, both counts, the close mark the host opts into) are worth a render rather than a
         // reading — a renamed property would otherwise only show up as a blank header at runtime.
-        // BuildLocalization() has to run first: the presentation resolves its captions the same way
-        // every other view model does, through the application service provider.
-        var presentation = new GitDiffPresentation(new GitDiffDto("src/map.ts", "v1", null, SamplePatch, 8, 1));
+        // Use the host's localization callback, as the modal and log page do.
+        var presentation = new GitDiffPresentation(new GitDiffDto("src/map.ts", "v1", null, SamplePatch, 8, 1), LocalizedText.Get);
         var pane = new GitDiffPane { DataContext = presentation, CanClose = true };
         var paneWindow = new Window { Width = ViewWidth, Height = ViewHeight, Content = pane };
         paneWindow.Show();
@@ -200,7 +201,7 @@ index 4bee98b..9a1c2f0 100644
         Check(
             pane.GetVisualDescendants().OfType<DiffView>().Single().Document?.Files[0].Lines.Count == rows.Count,
             "the pane hands the parsed patch to the diff view");
-        var closeMark = pane.GetVisualDescendants().OfType<Button>().Single();
+        var closeMark = pane.FindControl<Button>("CloseButton")!;
         Check(closeMark.IsVisible, "a pane that may close shows its close mark");
         using (var paneBitmap = new RenderTargetBitmap(new PixelSize(ViewWidth, ViewHeight)))
         {
@@ -221,6 +222,9 @@ index 4bee98b..9a1c2f0 100644
         logWindow.Show();
         Dispatcher.UIThread.RunJobs();
         var inlinePane = logView.GetVisualDescendants().OfType<GitDiffPane>().Single();
+        var inlineClose = inlinePane.FindControl<Button>("CloseButton")!;
+        Check(Equals(ToolTip.GetTip(inlineClose), LocalizedText.Get("common.close")),
+            "the log supplies the localized tooltip for the application pane's close button");
         Check(inlinePane.Bounds.Width > 240, $"the log page gives the diff a column ({inlinePane.Bounds.Width:F0}px)");
         var paneOrigin = inlinePane.TranslatePoint(new Point(0, 0), logView) ?? new Point(0, 0);
         Check(paneOrigin.X > 590, $"the diff sits to the right of the three-pane layout (x={paneOrigin.X:F0})");

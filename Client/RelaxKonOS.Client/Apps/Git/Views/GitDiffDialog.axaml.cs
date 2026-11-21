@@ -1,5 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using RelaxKonOS.App.Git;
+using RelaxKonOS.App.Git.Views;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.WindowManager;
 
@@ -14,7 +17,7 @@ internal partial class GitDiffDialog : UserControl
     {
         _dialog = dialog;
         InitializeComponent();
-        DataContext = new GitDiffPresentation(diff);
+        DataContext = new GitDiffPresentation(diff, LocalizedText.Get);
     }
 
     private void Close_Click(object? sender, RoutedEventArgs e) => _dialog.Close(true);

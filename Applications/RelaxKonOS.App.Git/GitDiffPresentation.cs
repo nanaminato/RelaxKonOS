@@ -1,8 +1,7 @@
 using RelaxKonOS.UI.TextEditing.Diff;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git;
+namespace RelaxKonOS.App.Git;
 
 /// <summary>
 /// Everything a diff surface needs to render: the parsed patch, the title, the change counts and
@@ -11,7 +10,7 @@ namespace RelaxKonOS.Client.Apps.Git;
 /// </summary>
 public sealed class GitDiffPresentation
 {
-    public GitDiffPresentation(GitDiffDto diff)
+    public GitDiffPresentation(GitDiffDto diff, Func<string, string> localize)
     {
         DisplayPath = string.IsNullOrWhiteSpace(diff.OldPath) ? diff.Path : $"{diff.OldPath} → {diff.Path}";
         AdditionsText = $"+{diff.Additions}";
@@ -21,11 +20,11 @@ public sealed class GitDiffPresentation
         HasTextPatch = !diff.Binary && !string.IsNullOrEmpty(diff.Patch);
         IsEmpty = !diff.Binary && string.IsNullOrEmpty(diff.Patch);
         Description = diff.Binary
-            ? LocalizedText.Get("git.dialog.diff.binary_description")
-            : LocalizedText.Get("git.dialog.diff.description");
-        BinaryMessage = LocalizedText.Get("git.dialog.diff.binary_message");
-        EmptyMessage = LocalizedText.Get("git.dialog.diff.empty_message");
-        TruncatedMessage = LocalizedText.Get("git.dialog.diff.truncated_message");
+            ? localize("git.dialog.diff.binary_description")
+            : localize("git.dialog.diff.description");
+        BinaryMessage = localize("git.dialog.diff.binary_message");
+        EmptyMessage = localize("git.dialog.diff.empty_message");
+        TruncatedMessage = localize("git.dialog.diff.truncated_message");
         Document = HasTextPatch ? DiffDocument.Parse(diff.Patch) : DiffDocument.Parse(null);
     }
 

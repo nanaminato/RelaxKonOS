@@ -1,9 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:git="clr-namespace:RelaxKonOS.App.Git"
              xmlns:diff="clr-namespace:RelaxKonOS.UI.TextEditing.Diff;assembly=RelaxKonOS.UI"
-             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitDiffPane"
+             x:Class="RelaxKonOS.App.Git.Views.GitDiffPane"
              x:Name="PaneRoot"
              x:DataType="git:GitDiffPresentation">
     <UserControl.Resources>
@@ -29,9 +28,9 @@
             </Border>
             <!-- The modal shell brings its own Close button, so the mark only appears where the
                  pane has to dismiss itself. -->
-            <Button Grid.Column="3" Classes="header-action compact" Click="Close_Click"
+            <Button x:Name="CloseButton" Grid.Column="3" Classes="header-action compact" Click="Close_Click"
                     IsVisible="{Binding #PaneRoot.CanClose}" VerticalAlignment="Center"
-                    ToolTip.Tip="{loc:Loc common.close}" AutomationProperties.Name="{loc:Loc common.close}">
+                    ToolTip.Tip="{Binding #PaneRoot.CloseLabel}" AutomationProperties.Name="{Binding #PaneRoot.CloseLabel}">
                 <PathIcon Width="11" Height="11" Data="{StaticResource PaneCloseMark}" />
             </Button>
         </Grid>
