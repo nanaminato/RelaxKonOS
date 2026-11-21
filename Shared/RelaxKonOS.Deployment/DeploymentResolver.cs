@@ -24,6 +24,12 @@ public sealed record DeploymentResolution(ImmutableArray<DeploymentRelease> Orde
     public bool Succeeded => Problem is null;
 }
 
+public sealed class DeploymentResolutionException(string problem, DeploymentPackageKey? package)
+    : InvalidOperationException(problem)
+{
+    public DeploymentPackageKey? Package { get; } = package;
+}
+
 /// <summary>Resolves a snapshot of admitted releases. The caller supplies platform-compatible candidates.</summary>
 public static class DeploymentResolver
 {

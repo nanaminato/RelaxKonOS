@@ -158,7 +158,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
                 _expiredJointPlan = _jointReview?.Plan.Id;
                 _jointReview = null;
             }
-            Status = LocalizedText.Ref("app_installer.status.install_failed", DeploymentProblem(exception.Message));
+            Status = LocalizedText.Ref("app_installer.status.install_failed", DeploymentProblem(exception));
             await ReportAsync(LocalizedText.Get("app_installer.error.install_title"), Status);
         }
         finally { IsBusy = false; }
@@ -176,12 +176,15 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     private bool CanInstall() => CurrentPackage is not null && !IsBusy;
     private bool CanSkip() => CurrentPackage is not null && !IsBusy;
 
-    private static string DeploymentProblem(string problem) => problem switch
+    private static string DeploymentProblem(Exception error) => error switch
     {
-        "deployment-module-AwaitingRestart" => LocalizedText.Get("app_installer.deployment.restart_pending"),
-        "deployment-module-not-effective" => LocalizedText.Get("app_installer.deployment.activation_pending"),
-        "module-http-403" => LocalizedText.Get("app_installer.deployment.no_permission"),
-        _ => problem,
+        DeploymentResolutionException { Message: "deployment-dependency-conflict", Package: { } package } =>
+            LocalizedText.Format(package.Kind == DeploymentPackageKind.ServerModule
+                ? "app_installer.deployment.module_unavailable" : "app_installer.deployment.app_unavailable", package.Id),
+        { Message: "deployment-module-AwaitingRestart" } => LocalizedText.Get("app_installer.deployment.restart_pending"),
+        { Message: "deployment-module-not-effective" } => LocalizedText.Get("app_installer.deployment.activation_pending"),
+        { Message: "module-http-403" } => LocalizedText.Get("app_installer.deployment.no_permission"),
+        _ => error.Message,
     };
 
     partial void OnCurrentPackageChanged(AppPackageCandidate? value)

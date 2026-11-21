@@ -51,8 +51,6 @@ internal sealed class JointAppDeploymentService(IHttpClientFactory http, IAuthSe
                 || AllowsBundledLaunchRequirements(candidate, packages))
             && localResolution.ProblemPackage?.Kind != DeploymentPackageKind.ServerModule)
         {
-            if (!localResolution.Succeeded)
-                throw new InvalidOperationException(localResolution.Problem);
             var plan = await coordinator.PlanAsync(LocalTarget, root, local, optional, cancellationToken);
             return new(plan with { ClientBinding = new(Guid.Empty, "", candidate.ExpectedInstalledPath) }, candidate);
         }

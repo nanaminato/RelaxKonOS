@@ -49,7 +49,8 @@ public sealed class UnifiedDeploymentCoordinator(IDeploymentBackend backend, IDe
         CancellationToken cancellationToken = default)
     {
         var resolution = DeploymentResolver.Resolve(root, candidates, selectedOptional);
-        if (!resolution.Succeeded) throw new InvalidOperationException(resolution.Problem);
+        if (resolution.Problem is { } problem)
+            throw new DeploymentResolutionException(problem, resolution.ProblemPackage);
         if (snapshot != await backend.ObserveAsync(cancellationToken))
             throw new InvalidOperationException("deployment-snapshot-changed");
 

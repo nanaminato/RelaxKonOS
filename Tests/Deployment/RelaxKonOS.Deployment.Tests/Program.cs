@@ -36,6 +36,15 @@ var backend = new Backend();
 var journalDirectory = Path.Combine(Path.GetTempPath(), "rk-deployment-" + Guid.NewGuid().ToString("N"));
 var journal = new FileDeploymentJournal(journalDirectory);
 var coordinator = new UnifiedDeploymentCoordinator(backend, journal, TimeProvider.System);
+try
+{
+    await coordinator.PlanAsync(backend.Target, root, candidates.Where(release => release.Package != Key("b")), []);
+    throw new Exception("Expected unresolved dependency.");
+}
+catch (DeploymentResolutionException error)
+{
+    Check(error.Message == "deployment-dependency-conflict" && error.Package == Key("b"));
+}
 var plan = await coordinator.PlanAsync(backend.Target, root, candidates, []);
 plan = plan with
 {

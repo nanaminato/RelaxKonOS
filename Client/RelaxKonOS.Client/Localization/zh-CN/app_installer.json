@@ -52,6 +52,8 @@
         "app_installer.deployment.restart_pending": "服务端重启后才能继续部署。重新连接后请重试。",
         "app_installer.deployment.activation_pending": "必需模块尚未启用。请在组件中心检查其状态，然后重试。",
         "app_installer.deployment.no_permission": "当前账户没有管理服务端模块的权限。",
+        "app_installer.deployment.module_unavailable": "没有可用的兼容服务端模块 {0}。请在组件中心检查该模块及其来源。",
+        "app_installer.deployment.app_unavailable": "已安装的应用中没有兼容版本可满足对 {0} 的依赖。",
         "app_installer.deployment.enable_review": "部署会安装并启用下列服务端模块。如果服务端需要重启，安装会等待你重新连接并重试。",
         "app_compatibility.title": "应用程序不可用",
         "app_compatibility.client_platform": "{0} 仅支持以下客户端平台：{1}；当前客户端为 {2}。",
