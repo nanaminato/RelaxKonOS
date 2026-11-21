@@ -2,10 +2,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
              xmlns:loc="using:RelaxKonOS.Client.Localization"
-             xmlns:vm="using:RelaxKonOS.Client.Apps.ProxyServer"
+             xmlns:vm="clr-namespace:RelaxKonOS.App.ProxyServer;assembly=RelaxKonOS.App.ProxyServer"
              xmlns:views="using:RelaxKonOS.Client.Apps.ProxyServer.Views"
              xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.ProxyServer;assembly=RelaxKonOS.Protocol"
-             xmlns:cc="clr-namespace:RelaxKonOS.Client.Apps.ComponentCenter"
              x:Class="RelaxKonOS.Client.Apps.ProxyServer.Views.ProxyServerWorkspace"
              x:DataType="vm:ProxyServerViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
@@ -359,7 +358,7 @@
           </StackPanel>
 
           <StackPanel x:Name="Page5" Spacing="16" IsVisible="False">
-            <cc:ComponentDependencySettingsView DataContext="{Binding Dependency}" />
+            <ContentControl x:Name="DependencySettingsHost" />
           </StackPanel>
 
 

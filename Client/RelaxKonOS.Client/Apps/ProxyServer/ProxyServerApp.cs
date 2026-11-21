@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ProxyServer;
 using Size = RelaxKonOS.Core.Primitives.Size;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
@@ -29,8 +30,12 @@ public sealed class ProxyServerApp : RemoteApplicationBase
         var client = (IServerProxyServer?)context.Services.GetService(typeof(IServerProxyServer));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, Manifest.Id.Value);
-        var vm = new ProxyServerViewModel(client) { Dependency = dependency };
-        var view = new ProxyServerWorkspace(vm);
+        var vm = new ProxyServerViewModel(client, LocalizedText.Get);
+        var view = new ProxyServerWorkspace(vm)
+        {
+            CreateDependencySettings = () => new ComponentCenter.ComponentDependencySettingsView { DataContext = dependency },
+            RefreshDependencySettings = () => _ = dependency.RefreshAsync(),
+        };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy-server.display_name"), view,
             new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
         view.AttachWindowHeader(window);

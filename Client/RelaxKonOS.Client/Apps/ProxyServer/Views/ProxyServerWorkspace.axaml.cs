@@ -1,3 +1,4 @@
+using RelaxKonOS.App.ProxyServer;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -11,6 +12,8 @@ public partial class ProxyServerWorkspace : UserControl
     private ProxyServerViewModel? _viewModel;
 
     public Func<string, Control, Task>? ShowEditorAsync { get; set; }
+    public Func<Control?>? CreateDependencySettings { get; init; }
+    public Action? RefreshDependencySettings { get; init; }
 
     private async void EditorButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
@@ -46,7 +49,11 @@ public partial class ProxyServerWorkspace : UserControl
             this.FindControl<StackPanel>($"Page{i}")!.IsVisible = i == page;
             this.FindControl<Button>($"PageButton{i}")!.Classes.Set("nav-selected", i == page);
         }
-        if (page == 5 && _viewModel?.Dependency is { } dependency) _ = dependency.RefreshAsync();
+        if (page == 5)
+        {
+            DependencySettingsHost.Content ??= CreateDependencySettings?.Invoke();
+            RefreshDependencySettings?.Invoke();
+        }
         BodyScroll.Offset = default;
     }
 

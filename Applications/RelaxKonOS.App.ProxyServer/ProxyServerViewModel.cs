@@ -1,45 +1,43 @@
 using RelaxKonOS.AppSDK;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QRCoder;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.ProxyServer;
 
-namespace RelaxKonOS.Client.Apps.ProxyServer;
+namespace RelaxKonOS.App.ProxyServer;
 
 /// <summary>One authorized-inbound checkbox in the credential editor.</summary>
-public sealed partial class InboundGrant(ProxyServerInbound inbound) : ObservableObject
+public sealed partial class InboundGrant(ProxyServerInbound inbound, ApplicationMessage protocolLabel) : ObservableObject
 {
     public ProxyServerInbound Inbound { get; } = inbound;
     public string Name => Inbound.Name;
-    public LocalizedStatus ProtocolLabel => LocalizedStatus.Key("proxy_server.protocol." + Inbound.Protocol);
+    public ApplicationMessage ProtocolLabel { get; } = protocolLabel;
     public string Endpoint => $"{Inbound.ListenAddress}:{Inbound.ListenPort}";
     [ObservableProperty] private bool isSelected;
 }
 
 /// <summary>One client format offered by the export or subscription page.</summary>
-public sealed partial class FormatChoice(string format, LocalizedStatus label) : ObservableObject
+public sealed partial class FormatChoice(string format, ApplicationMessage label) : ObservableObject
 {
     public string Format { get; } = format;
-    public LocalizedStatus Label { get; } = label;
+    public ApplicationMessage Label { get; } = label;
     public bool Supported { get; init; } = true;
-    public LocalizedStatus Reason { get; init; } = LocalizedStatus.Literal("");
+    public ApplicationMessage Reason { get; init; } = ApplicationMessage.Literal("");
     [ObservableProperty] private bool isSelected;
 }
 
 /// <summary>One inbound protocol preset in the create/edit form.</summary>
-public sealed record ProtocolChoice(ProxyServerProtocol Protocol)
-{
-    public LocalizedStatus Label => LocalizedStatus.Key("proxy_server.protocol." + Protocol);
-}
+public sealed record ProtocolChoice(ProxyServerProtocol Protocol, ApplicationMessage Label);
 
-public partial class ProxyServerViewModel(IServerProxyServer client) : ObservableObject, IDisposable
+public partial class ProxyServerViewModel(IServerProxyServer client, Func<string, string, string> localize) : ObservableObject, IDisposable
 {
-    /// <summary>sing-box installation lives in Component Center; settings only observes and navigates.</summary>
-    public ComponentCenter.ComponentDependencySettingsViewModel? Dependency { get; init; }
+    public Func<string, string> Labels => key => localize(key, key);
+
+    public void RefreshLanguage() => OnPropertyChanged(string.Empty);
 
     private readonly CancellationTokenSource _lifetime = new();
     private ProxyServerSnapshot? _snapshot;
@@ -60,17 +58,17 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
 
     private void NotifyDerived() { foreach (var name in DerivedProperties) OnPropertyChanged(name); }
 
-    public Func<LocalizedStatus, LocalizedStatus, Task<bool>>? ConfirmAsync { get; set; }
+    public Func<ApplicationMessage, ApplicationMessage, Task<bool>>? ConfirmAsync { get; set; }
 
     [ObservableProperty] private bool canRead;
     [ObservableProperty] private bool canManage;
     [ObservableProperty] private bool canExport;
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private bool hasUnsavedChanges;
-    [ObservableProperty] private LocalizedStatus statusText = LocalizedStatus.Literal("");
-    [ObservableProperty] private LocalizedStatus outcomeText = LocalizedStatus.Literal("");
-    [ObservableProperty] private LocalizedStatus operationText = LocalizedStatus.Literal("");
-    [ObservableProperty] private LocalizedStatus exportWarning = LocalizedStatus.Literal("");
+    [ObservableProperty] private ApplicationMessage statusText = ApplicationMessage.Literal("");
+    [ObservableProperty] private ApplicationMessage outcomeText = ApplicationMessage.Literal("");
+    [ObservableProperty] private ApplicationMessage operationText = ApplicationMessage.Literal("");
+    [ObservableProperty] private ApplicationMessage exportWarning = ApplicationMessage.Literal("");
 
     [ObservableProperty] private ProxyServerInbound? selectedInbound;
     [ObservableProperty] private ProxyServerPrincipal? selectedPrincipal;
@@ -111,7 +109,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
     public ObservableCollection<InboundGrant> CredentialGrants { get; } = [];
     public ObservableCollection<FormatChoice> SubscriptionFormats { get; } = [];
     public ObservableCollection<ProtocolChoice> ProtocolChoices { get; } =
-        new(Enum.GetValues<ProxyServerProtocol>().Select(protocol => new ProtocolChoice(protocol)));
+        new(Enum.GetValues<ProxyServerProtocol>().Select(protocol => new ProtocolChoice(protocol, new(() => localize("proxy_server.protocol." + protocol, protocol.ToString())))));
     public ObservableCollection<FormatChoice> ExportFormats { get; } = [];
 
     public ProxyServerSnapshot? Snapshot => _snapshot;
@@ -130,7 +128,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
     public bool SingBoxEnabled => ExportFormats.FirstOrDefault(f => f.Format == ProxyServerExportFormats.SingBox)?.Supported == true;
     public bool MihomoEnabled => ExportFormats.FirstOrDefault(f => f.Format == ProxyServerExportFormats.Mihomo)?.Supported == true;
     public bool AllFormatsEnabled => UriEnabled && SingBoxEnabled && MihomoEnabled;
-    public LocalizedStatus ExportReasons => LocalizedStatus.Join("\n", ExportFormats
+    public ApplicationMessage ExportReasons => ApplicationMessage.Join("\n", ExportFormats
         .Where(format => !format.Supported && !format.Reason.IsEmpty).Select(format => format.Reason));
     public bool HasIssuedToken => !string.IsNullOrEmpty(IssuedToken);
     public bool HasPrincipals => Principals.Count > 0;
@@ -141,25 +139,25 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
     public bool ShowCertificateField => Protocol != ProxyServerProtocol.VlessReality;
     public bool ShowRealityFields => Protocol == ProxyServerProtocol.VlessReality;
     public bool ShowWebSocketField => Protocol == ProxyServerProtocol.VlessWebSocket;
-    public LocalizedStatus ServiceStateText => _snapshot is null ? LocalizedStatus.Key("proxy_server.state.unavailable")
-        : !_snapshot.Capabilities.Supported ? LocalizedStatus.Key("proxy_server.state.unsupported")
-        : _snapshot.Status.RecoveryRequired ? LocalizedStatus.Key("proxy_server.state.recovery")
-        : !_snapshot.Status.Installed ? LocalizedStatus.Key("proxy_server.state.not_installed")
-        : _snapshot.Status.Running ? LocalizedStatus.Key("proxy_server.state.running")
-        : LocalizedStatus.Key("proxy_server.state.stopped");
-    public LocalizedStatus BootText => _snapshot?.Status.BootEnabled switch
+    public ApplicationMessage ServiceStateText => _snapshot is null ? Key("proxy_server.state.unavailable")
+        : !_snapshot.Capabilities.Supported ? Key("proxy_server.state.unsupported")
+        : _snapshot.Status.RecoveryRequired ? Key("proxy_server.state.recovery")
+        : !_snapshot.Status.Installed ? Key("proxy_server.state.not_installed")
+        : _snapshot.Status.Running ? Key("proxy_server.state.running")
+        : Key("proxy_server.state.stopped");
+    public ApplicationMessage BootText => _snapshot?.Status.BootEnabled switch
     {
-        true => LocalizedStatus.Key("proxy_server.state.boot_enabled"),
-        false => LocalizedStatus.Key("proxy_server.state.boot_disabled"),
-        _ => LocalizedStatus.Key("proxy_server.state.unknown")
+        true => Key("proxy_server.state.boot_enabled"),
+        false => Key("proxy_server.state.boot_disabled"),
+        _ => Key("proxy_server.state.unknown")
     };
-    public LocalizedStatus AppliedText => _snapshot?.Status.Applied == true
-        ? LocalizedStatus.Key("proxy_server.state.applied") : LocalizedStatus.Key("proxy_server.state.not_applied");
-    public LocalizedStatus VersionText => LocalizedStatus.Literal(_snapshot?.Status.Version ?? SingBoxManifest.Version);
-    public LocalizedStatus RevisionText => LocalizedStatus.Format("proxy_server.revisions",
+    public ApplicationMessage AppliedText => _snapshot?.Status.Applied == true
+        ? Key("proxy_server.state.applied") : Key("proxy_server.state.not_applied");
+    public ApplicationMessage VersionText => ApplicationMessage.Literal(_snapshot?.Status.Version ?? SingBoxManifest.Version);
+    public ApplicationMessage RevisionText => Format("proxy_server.revisions",
         _snapshot?.Configuration.Revision ?? 0, _snapshot?.PublishedRevision?.ToString() ?? "—", _snapshot?.PreviousRevision?.ToString() ?? "—");
-    public LocalizedStatus StatisticsText => _snapshot?.Capabilities.Statistics == true
-        ? LocalizedStatus.Key("proxy_server.state.statistics_available") : LocalizedStatus.Key("proxy_server.state.statistics_unavailable");
+    public ApplicationMessage StatisticsText => _snapshot?.Capabilities.Statistics == true
+        ? Key("proxy_server.state.statistics_available") : Key("proxy_server.state.statistics_unavailable");
 
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -204,7 +202,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
         _exportOptionsLoaded = false;
         CredentialGrants.Clear();
         foreach (var inbound in Inbounds)
-            CredentialGrants.Add(new InboundGrant(inbound) { IsSelected = value?.InboundIds.Contains(inbound.Id) == true });
+            CredentialGrants.Add(new InboundGrant(inbound, Key("proxy_server.protocol." + inbound.Protocol)) { IsSelected = value?.InboundIds.Contains(inbound.Id) == true });
         if (value is null) return;
         _loading = true;
         CredentialName = value.Name; CredentialEnabled = value.Enabled;
@@ -233,9 +231,9 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
         SelectedSubscription = Subscriptions.FirstOrDefault(s => s.Id == subscriptionId);
         if (!_subscriptionFormatsBuilt) { BuildSubscriptionFormats(); _subscriptionFormatsBuilt = true; }
         _loading = false;
-        StatusText = LocalizedStatus.Join(" · ", [
+        StatusText = ApplicationMessage.Join(" · ", [
             ServiceStateText,
-            LocalizedStatus.Format("proxy_server.status_version", snapshot.Status.Version ?? SingBoxManifest.Version),
+            Format("proxy_server.status_version", snapshot.Status.Version ?? SingBoxManifest.Version),
             RevisionText, AppliedText]);
         if (snapshot.Status.ProblemCode is { } problem && OutcomeText.IsEmpty) OutcomeText = ProblemText(problem);
         NotifyDerived();
@@ -253,7 +251,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
     {
         SelectedInbound = null;
         _loading = true;
-        ProtocolIndex = 0; InboundName = LocalizedText.Get("proxy_server.new_inbound_name");
+        ProtocolIndex = 0; InboundName = Labels("proxy_server.new_inbound_name");
         ListenAddress = "0.0.0.0"; ListenPort = "24443"; PublicHost = ""; PublicPort = "24443";
         ServerName = ""; CertificateId = ""; HandshakeHost = ""; HandshakePort = "443"; WebSocketPath = "/proxy"; InboundEnabled = true;
         _loading = false;
@@ -286,7 +284,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
     /// </summary>
     private Task<bool> ConfirmDestructiveAsync(string titleKey, string messageKey) =>
         ConfirmAsync is { } confirm
-            ? confirm(LocalizedStatus.Key(titleKey), LocalizedStatus.Key(messageKey))
+            ? confirm(Key(titleKey), Key(messageKey))
             : Task.FromResult(false);
 
     [RelayCommand] private Task DeleteInboundAsync() => RunAsync(async () =>
@@ -336,7 +334,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
         SelectedCredential = null;
         _loading = true; CredentialName = ""; CredentialEnabled = true; CredentialExpiresAt = "";
         CredentialGrants.Clear();
-        foreach (var inbound in Inbounds) CredentialGrants.Add(new InboundGrant(inbound));
+        foreach (var inbound in Inbounds) CredentialGrants.Add(new InboundGrant(inbound, Key("proxy_server.protocol." + inbound.Protocol)));
         _loading = false;
         HasUnsavedChanges = true;
     }
@@ -377,8 +375,8 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
         RequireManage();
         var validation = await client.ValidateAsync(_lifetime.Token);
         PreviewText = validation.Preview ?? "";
-        OutcomeText = validation.Valid ? LocalizedStatus.Key("proxy_server.validation_ok")
-            : LocalizedStatus.Join("\n", validation.Problems.Select(ProblemText));
+        OutcomeText = validation.Valid ? Key("proxy_server.validation_ok")
+            : ApplicationMessage.Join("\n", validation.Problems.Select(ProblemText));
     });
 
     [RelayCommand] private Task ApplyAsync() => RunAsync(async () =>
@@ -416,7 +414,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
             ExportFormats.Add(new FormatChoice(option.Format, FormatLabel(option.Format))
             {
                 Supported = option.Supported,
-                Reason = option.Reason is null ? LocalizedStatus.Literal("") : ProblemText(option.Reason)
+                Reason = option.Reason is null ? ApplicationMessage.Literal("") : ProblemText(option.Reason)
             });
         _exportOptionsLoaded = true;
         NotifyDerived();
@@ -428,7 +426,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
         ClearExport();
         var export = await client.ExportAsync(SelectedCredential.Id, format, _lifetime.Token);
         ExportText = export.Content;
-        ExportWarning = export.Warning is null ? LocalizedStatus.Literal("") : ProblemText(export.Warning);
+        ExportWarning = export.Warning is null ? ApplicationMessage.Literal("") : ProblemText(export.Warning);
         if (export.Format == ProxyServerExportFormats.Uri && export.Content.Length < 2000 && !export.Content.Contains('\n'))
         {
             using var generator = new QRCodeGenerator();
@@ -443,7 +441,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
     [RelayCommand] private void ClearExport()
     {
         ExportText = "";
-        ExportWarning = LocalizedStatus.Literal("");
+        ExportWarning = ApplicationMessage.Literal("");
         QrCode?.Dispose(); QrCode = null;
         NotifyDerived();
     }
@@ -456,7 +454,7 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
         var issued = await client.IssueSubscriptionAsync(new(SelectedCredential.Id, formats, null), _lifetime.Token);
         IssuedToken = issued.Token;
         IssuedUrls = string.Join('\n', issued.Urls);
-        OutcomeText = LocalizedStatus.Key("proxy_server.subscription_issued");
+        OutcomeText = Key("proxy_server.subscription_issued");
         await LoadAsync();
     });
 
@@ -470,11 +468,11 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
     private async Task SubmitAsync(Func<string, Task<ProxyOperationAcceptedDto>> submit, string successKey)
     {
         var accepted = await submit(Guid.NewGuid().ToString("N"));
-        OperationText = LocalizedStatus.Format("proxy_server.operation_pending", accepted.OperationId.ToString("D"));
+        OperationText = Format("proxy_server.operation_pending", accepted.OperationId.ToString("D"));
         for (var attempt = 0; attempt < 180; attempt++)
         {
             var operation = await client.OperationAsync(accepted.OperationId, _lifetime.Token);
-            OperationText = LocalizedStatus.Format("proxy_server.operation_state", operation.OperationId.ToString("D"), operation.State, operation.Stage);
+            OperationText = Format("proxy_server.operation_state", operation.OperationId.ToString("D"), operation.State, operation.Stage);
             if (operation.State is ProxyOperationState.Failed)
                 throw new InvalidOperationException(string.IsNullOrEmpty(operation.ProblemCode) ? "proxy_server.operation_failed" : operation.ProblemCode);
             if (operation.State is ProxyOperationState.Succeeded) break;
@@ -482,13 +480,13 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
             await Task.Delay(1000, _lifetime.Token);
         }
         await LoadAsync();
-        OutcomeText = LocalizedStatus.Key(successKey);
+        OutcomeText = Key(successKey);
     }
 
     private async Task RunAsync(Func<Task> action)
     {
         if (IsBusy || _invalidated) return;
-        IsBusy = true; OutcomeText = LocalizedStatus.Literal("");
+        IsBusy = true; OutcomeText = ApplicationMessage.Literal("");
         NotifyDerived();
         try { await action(); }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
@@ -513,15 +511,20 @@ public partial class ProxyServerViewModel(IServerProxyServer client) : Observabl
         return parsed.ToUniversalTime();
     }
 
-    private static LocalizedStatus FormatLabel(string format) => LocalizedStatus.Key("proxy_server.format." + format.Replace('-', '_'));
+    private ApplicationMessage Key(string key, string? fallback = null) => new(() => localize(key, fallback ?? key));
 
-    internal static LocalizedStatus ProblemText(string code) => LocalizedStatus.Key("proxy_server.problem." + code.Replace("proxy_server.", ""), code);
+    private ApplicationMessage Format(string key, params object?[] arguments) =>
+        new(() => string.Format(CultureInfo.CurrentCulture, localize(key, key), arguments));
+
+    private ApplicationMessage FormatLabel(string format) => Key("proxy_server.format." + format.Replace('-', '_'));
+
+    private ApplicationMessage ProblemText(string code) => Key("proxy_server.problem." + code.Replace("proxy_server.", ""), code);
 
     public void InvalidateSession()
     {
         _invalidated = true; CanManage = CanExport = false; ClearExport();
         IssuedToken = ""; IssuedUrls = "";
-        _lifetime.Cancel(); OutcomeText = LocalizedStatus.Key("proxy_server.session_changed");
+        _lifetime.Cancel(); OutcomeText = Key("proxy_server.session_changed");
         NotifyDerived();
     }
 
