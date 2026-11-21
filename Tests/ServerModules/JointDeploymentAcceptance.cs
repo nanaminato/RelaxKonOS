@@ -11,6 +11,7 @@ using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Developer;
+using RelaxKonOS.Client.Services.Modules;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Deployment;
@@ -174,6 +175,46 @@ internal static class JointDeploymentAcceptance
                 && await joint.FindPendingAsync(candidate, default) is null,
                 "the resumed deployment verifies the running module, Core and desktop application registration");
             await packages.UninstallAsync(AppIdText);
+
+            var moduleClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
+            var inventory = await moduleClient.ReadAsync();
+            var enabled = inventory.Where(module => module.DesiredEnabled && module.Id != ServerModules.FirewallId)
+                .Select(module => module.Id).Order(StringComparer.Ordinal).ToArray();
+            var disable = await moduleClient.PreviewAsync(new(serviceId, ServerModuleAction.Disable,
+                [ServerModules.FirewallId], enabled, inventory[0].DesiredRevision!, "disable-bundled-for-joint-test"));
+            Require(disable.BlockedBy.Count == 0,
+                "the isolated host previews disabling the bundled Firewall module: "
+                + string.Join(", ", disable.BlockedBy.Select(item => $"{item.ProblemCode}/{item.ModuleId}")));
+            var disabled = await moduleClient.ApplyAsync(disable.PlanId);
+            Require(disabled.State == ServerModuleOperationState.AwaitingRestart,
+                $"the isolated host accepts disabling the bundled Firewall module ({disabled.State}/{disabled.ProblemCode})");
+            await host.DisposeAsync();
+            host = await TestHost.StartAsync(serverRoot, config);
+            session.Url = host.Url;
+            joint = Service();
+
+            var bundledArchive = Path.Combine(root, "bundled-dependent.roapp");
+            await PrepareDesktopArchiveAsync(archive, bundledArchive, "fixture.bundled",
+                new DeploymentPackageKey(DeploymentPackageKind.ServerModule, ServerModules.FirewallId));
+            var bundledCandidate = await installer.InspectLocalAsync(bundledArchive);
+            var bundledReview = await joint.PrepareAsync(bundledCandidate, [], default);
+            Require(bundledReview.Plan.PreparedSteps.IsEmpty &&
+                bundledReview.Plan.OrderedReleases[0] is { ActivationOnly: true, Satisfied: false },
+                "a disabled bundled module is reviewed as enable-only without a package download");
+            await ExpectRestartAsync(joint, bundledReview);
+            Require(!applications.IsRegistered(new AppId("fixture.bundled"))
+                && ModulePackageOperationStore.Read(serverRoot).Count == 1,
+                "enabling a bundled module leaves the application pending without a package operation");
+            await host.DisposeAsync();
+            host = await TestHost.StartAsync(serverRoot, config);
+            session.Url = host.Url;
+            joint = Service();
+            var bundledPending = await joint.FindPendingAsync(bundledCandidate, default)
+                ?? throw new InvalidOperationException("Missing bundled-module deployment after restart.");
+            var bundledInstalled = await joint.ExecuteAsync(bundledPending, default);
+            Require(bundledInstalled.Id == "fixture.bundled" && applications.IsRegistered(new AppId("fixture.bundled")),
+                "restart activates the bundled dependency and permits desktop application registration");
+            await packages.UninstallAsync("fixture.bundled");
 
             // Use the original desktop archive as a local prerequisite without a server dependency.
             File.Copy(archive, packagePath, overwrite: true);

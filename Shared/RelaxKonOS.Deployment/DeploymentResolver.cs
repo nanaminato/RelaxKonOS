@@ -16,6 +16,7 @@ public sealed record DeploymentRelease(DeploymentPackageKey Package, string Vers
     ImmutableDictionary<string, string> Capabilities)
 {
     public string? CurrentVersion { get; init; }
+    public bool ActivationOnly { get; init; }
 }
 
 public sealed record DeploymentResolution(ImmutableArray<DeploymentRelease> OrderedReleases, string? Problem,
@@ -105,6 +106,7 @@ public static class DeploymentResolver
             problemPackage = requirement.Package;
             foreach (var entry in releases[requirement.Package].Where(entry => Matches(entry.Release, requirement))
                 .OrderByDescending(entry => entry.Release.Satisfied)
+                .ThenByDescending(entry => entry.Release.ActivationOnly)
                 .ThenByDescending(entry => entry.Version)
                 .ThenBy(entry => entry.Release.ArtifactIdentity, StringComparer.Ordinal))
             {

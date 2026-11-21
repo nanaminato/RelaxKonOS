@@ -124,7 +124,7 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
     private static Control CreateDeploymentReview(ModalDialog<bool> dialog, DeploymentPlan plan)
     {
         var content = new StackPanel { Spacing = 8 };
-        if (plan.PreparedSteps.Length > 0)
+        if (plan.PreparedSteps.Length > 0 || plan.OrderedReleases.Any(release => release.ActivationOnly))
             content.Children.Add(new TextBlock
             {
                 Text = LocalizedText.Get("app_installer.deployment.enable_review"),
@@ -132,10 +132,11 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
             });
         foreach (var release in plan.OrderedReleases)
         {
-            var label = release.Satisfied ? "app_installer.deployment.satisfied" : "app_installer.deployment.change";
+            var label = release.Satisfied ? "app_installer.deployment.satisfied"
+                : release.ActivationOnly ? "app_installer.deployment.enable_installed" : "app_installer.deployment.change";
             content.Children.Add(new TextBlock
             {
-                Text = !release.Satisfied && release.CurrentVersion is { } before
+                Text = !release.Satisfied && !release.ActivationOnly && release.CurrentVersion is { } before
                     ? LocalizedText.Format("app_installer.deployment.version_change", release.Package.Id, before, release.Version)
                     : LocalizedText.Format(label, release.Package.Id, release.Version),
                 TextWrapping = Avalonia.Media.TextWrapping.Wrap,

@@ -17,7 +17,7 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
         var expires = plan.ExpiresAt;
         foreach (var release in plan.OrderedReleases)
         {
-            if (release.Package.Kind != DeploymentPackageKind.ServerModule || release.Satisfied) continue;
+            if (release.Package.Kind != DeploymentPackageKind.ServerModule || release.Satisfied || release.ActivationOnly) continue;
             cancellationToken.ThrowIfCancellationRequested();
             await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
             var installer = await client.PreparePackageAsync(snapshot.Store[release.ArtifactIdentity], cancellationToken);
@@ -35,7 +35,11 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
     {
         cancellationToken.ThrowIfCancellationRequested();
         await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
-        if (!release.Satisfied)
+        if (release.ActivationOnly)
+        {
+            await EnsureEnabledAsync(plan, release, release.ArtifactIdentity, cancellationToken);
+        }
+        else if (!release.Satisfied)
         {
             var step = plan.PreparedSteps.Single(item => item.Package == release.Package);
             var serverPlan = await client.ReadPackagePlanAsync(step.InstallerPlanId, cancellationToken);
@@ -76,7 +80,10 @@ internal sealed class ModuleDeploymentExecutor(ServerModuleManagementClient clie
     {
         var facts = await RequireServerAsync(plan.Target.ServerIdentity, cancellationToken);
         var module = facts.SingleOrDefault(item => item.Id == release.Package.Id);
-        if (module is null || module.InstalledVersion != release.Version || module.ArtifactDigest != digest
+        var version = release.ActivationOnly && module is { Packaging: "bundled", TrustState: "host" }
+            ? ModuleDeploymentCatalog.BundledPackageVersion(module.InstalledVersion)
+            : release.ActivationOnly ? null : module?.InstalledVersion;
+        if (module is null || version != release.Version || module.ArtifactDigest != digest
             || module.RecoveryState != "none")
             throw new InvalidOperationException("deployment-module-not-effective");
         if (module.PendingOperationId is not null || module.RestartRequired)
