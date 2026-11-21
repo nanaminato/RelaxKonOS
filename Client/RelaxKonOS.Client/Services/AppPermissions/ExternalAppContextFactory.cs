@@ -67,6 +67,7 @@ public sealed class ExternalAppContextFactory
     private readonly IServerTunnels? _tunnels;
     private readonly Func<IServerSquid>? _createSquidClient;
     private readonly Func<IServerProxyServer>? _createProxyServerClient;
+    private readonly Func<IServerProxy>? _createProxyClient;
     private readonly IServerApplicationDeployments? _applicationDeployments;
     private readonly IPortForwardingService? _portForwarding;
     private readonly ClientPresentationPreferences? _presentationPreferences;
@@ -115,7 +116,8 @@ public sealed class ExternalAppContextFactory
         IServerApplicationDeployments? applicationDeployments = null,
         IServerTunnels? tunnels = null,
         Func<IServerSquid>? createSquidClient = null,
-        Func<IServerProxyServer>? createProxyServerClient = null)
+        Func<IServerProxyServer>? createProxyServerClient = null,
+        Func<IServerProxy>? createProxyClient = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -150,6 +152,7 @@ public sealed class ExternalAppContextFactory
         _tunnels = tunnels;
         _createSquidClient = createSquidClient;
         _createProxyServerClient = createProxyServerClient;
+        _createProxyClient = createProxyClient;
         _applicationDeployments = applicationDeployments;
         _portForwarding = portForwarding;
         _presentationPreferences = presentationPreferences;
@@ -185,6 +188,7 @@ public sealed class ExternalAppContextFactory
         new ServerTunnelsCapability(appId, _permissions, connection, _tunnels, lifetime),
         new ServerSquidCapability(appId, _permissions, connection, _createSquidClient, lifetime),
         new ServerProxyServerCapability(appId, _permissions, connection, _createProxyServerClient, lifetime),
+        new ServerProxyCapability(appId, _permissions, connection, _createProxyClient, lifetime),
         new ServerApplicationDeploymentsCapability(appId, _permissions, connection, _applicationDeployments, lifetime),
         appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime, _guardian as ProcessGuardianClient) : null,
         appId.Value == "relaxkonos.port-forwarding" && _portForwarding is { } forwarding
@@ -242,6 +246,7 @@ public sealed class ExternalAppContextFactory
         IServerTunnels Tunnels,
         IServerSquid Squid,
         IServerProxyServer ProxyServer,
+        IServerProxy Proxy,
         IServerApplicationDeployments ApplicationDeployments,
         IGuardianHostInteraction? GuardianHost,
         IPortForwardingService? PortForwarding,

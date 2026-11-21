@@ -189,6 +189,7 @@ if (args.Contains("--squid-only"))
 if (args.Contains("--proxy-only"))
 {
     ProxyWorkspaceChecks.Run(settings);
+    Task.Run(ProxyScopeChecks.RunAsync).GetAwaiter().GetResult();
     Task.Run(ProxyServerTransportChecks.RunAsync).GetAwaiter().GetResult();
     Task.Run(ProxyServerTransportChecks.VerifyScopeAsync).GetAwaiter().GetResult();
     ProxyServerTransportChecks.VerifyLocalization();
