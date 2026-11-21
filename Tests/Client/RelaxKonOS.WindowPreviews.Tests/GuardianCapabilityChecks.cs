@@ -1,3 +1,5 @@
+using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Apps.Explorer;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using RelaxKonOS.App.ProcessGuardian;
@@ -29,6 +31,33 @@ internal static class GuardianCapabilityChecks
         picker.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         if (!pickedExecutable) throw new InvalidOperationException("Guardian editor did not delegate executable selection.");
         Console.WriteLine("Guardian application workspace and editor checks passed.");
+    }
+
+    public static void VerifyHostInteraction(ISystemLanguage language, ShellSettings settings)
+    {
+        var id = new AppId("relaxkonos.processguardian");
+        var grants = new CertificateCapabilityChecks.Permission(id.Value);
+        var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
+        var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "guardian-host-memory.json"));
+        var windows = new RelaxKonOS.WindowManager.WindowManager();
+        using var http = new HttpClient();
+        var factory = new ExternalAppContextFactory(grants, grants, language, settings, null!, auth, null!,
+            windows, null!, new ExplorerClient(http, auth, memory), new SshDesktopSession(null!, settings), null!,
+            null!, null!, null!, null!, memory, null!, null!, null!, null!);
+        var manifest = new ApplicationManifest(id, "Process Guardian", "1.0.0", "", "",
+            [AppPermissions.ServerGuardianRead, AppPermissions.ServerGuardianManage]);
+        var guardian = factory.Create(manifest).GuardianHost
+            ?? throw new InvalidOperationException("Missing Guardian host interactions.");
+        var foreign = factory.Create(manifest with { Id = new AppId("fixture.other") });
+        if (foreign.GuardianHost is not null || guardian.CurrentUsername is not null)
+            throw new InvalidOperationException("Guardian host interactions exposed the session without an app grant.");
+        grants.Granted.Add(AppPermissions.ServerGuardianRead);
+        if (guardian.CurrentUsername != "fixture")
+            throw new InvalidOperationException("Guardian could not read the current username with a read grant.");
+        ((EventAlertsAuthFixture)(object)auth).ServiceId = "http://replacement.invalid";
+        if (guardian.CurrentUsername is not null)
+            throw new InvalidOperationException("Guardian host interactions exposed the replaced session.");
+        Console.WriteLine("Guardian host interaction access checks passed.");
     }
 
     public static async Task RunAsync()

@@ -14,3 +14,12 @@ public interface IServerGuardian
     IAsyncEnumerable<IReadOnlyList<GuardianLogEntryDto>> WatchLogsAsync(string id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GuardianAuditEntryDto>> ListAuditAsync(CancellationToken cancellationToken = default);
 }
+
+/// <summary>Desktop interactions for the official Process Guardian package.</summary>
+public interface IGuardianHostInteraction
+{
+    string? CurrentUsername { get; }
+    Task<string?> PickWorkloadPathAsync(IExternalAppWindowHandle owner, string title, GuardianWorkloadPathKind kind);
+}
+
+public enum GuardianWorkloadPathKind { Executable, WorkingDirectory }

@@ -1,3 +1,5 @@
+using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using RelaxKonOS.App.CodeEditor;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Client.Apps.Settings;
@@ -163,6 +165,7 @@ public sealed class ExternalAppContextFactory
         new ServerFileServicesCapability(appId, _permissions, connection, _fileServices, lifetime),
         new ServerFirewallCapability(appId, _permissions, connection, _firewall, lifetime),
         new ServerGuardianCapability(appId, _permissions, connection, _guardian, lifetime),
+        appId.Value == "relaxkonos.processguardian" ? new GuardianHostInteraction(appId, _permissions, connection, fileSession, _windowManager, lifetime) : null,
         appId.Value == "relaxkonos.file-services" ? new FileServicesAdministratorPrompt(appId, _permissions, connection, fileSession, _windowManager) : null,
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
@@ -212,6 +215,7 @@ public sealed class ExternalAppContextFactory
         IServerFileServices FileServices,
         IServerFirewall Firewall,
         IServerGuardian Guardian,
+        IGuardianHostInteraction? GuardianHost,
         IFileServicesAdministratorPrompt? FileServicesAdministratorPrompt,
         IRegistryAppearancePreferences? RegistryAppearance,
         IBrowserData? BrowserData,
@@ -449,6 +453,37 @@ public sealed class ExternalAppContextFactory
 
         private static ConfirmDialogView CreateConfirmation(ModalDialog<bool> dialog, string message, string confirmLabel) =>
             new() { DataContext = new ConfirmDialogViewModel(message, dialog.Close, confirmLabel) };
+    }
+
+    private sealed class GuardianHostInteraction(AppId appId, IAppPermissionManager permissions,
+        ExternalServerConnection connection, UsageMemoryScope memory, IWindowManager windows, CancellationToken lifetime) : IGuardianHostInteraction
+    {
+        public string? CurrentUsername => HasReadAccess() ? connection.Session.CurrentUser?.Username : null;
+
+        public async Task<string?> PickWorkloadPathAsync(IExternalAppWindowHandle owner, string title, GuardianWorkloadPathKind kind)
+        {
+            if (!CanPick() || TopLevel.GetTopLevel(owner.Window.View)?.StorageProvider is not { } storage)
+                return null;
+
+            string? path = kind switch
+            {
+                GuardianWorkloadPathKind.Executable => (await UsageFilePicker.OpenFilePickerAsync(storage,
+                    new FilePickerOpenOptions { Title = title, AllowMultiple = false }, memory, "ProcessGuardian.executable"))
+                    .FirstOrDefault()?.TryGetLocalPath(),
+                GuardianWorkloadPathKind.WorkingDirectory => (await UsageFilePicker.OpenFolderPickerAsync(storage,
+                    new FolderPickerOpenOptions { Title = title, AllowMultiple = false }, memory, "ProcessGuardian.working-directory"))
+                    .FirstOrDefault()?.TryGetLocalPath(),
+                _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+            };
+            return CanPick() ? path : null;
+
+            bool CanPick() => owner is ExternalAppWindowHandle && owner.Window.Info.OwnerAppId == appId
+                && windows.Windows.Contains(owner.Window) && !owner.Closed.IsCancellationRequested
+                && HasReadAccess() && permissions.IsGranted(appId, CoreAppPermissions.ServerGuardianManage);
+        }
+
+        private bool HasReadAccess() => !lifetime.IsCancellationRequested && connection.IsCurrent
+            && permissions.IsGranted(appId, CoreAppPermissions.ServerGuardianRead);
     }
 
     private sealed class FileServicesAdministratorPrompt(AppId appId, IAppPermissionManager permissions,
