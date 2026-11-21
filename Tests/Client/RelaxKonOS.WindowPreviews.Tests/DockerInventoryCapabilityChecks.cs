@@ -8,6 +8,7 @@ using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Docker;
+using RelaxKonOS.Protocol.ImageMirrors;
 
 internal static class DockerInventoryCapabilityChecks
 {
@@ -19,8 +20,10 @@ internal static class DockerInventoryCapabilityChecks
         var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "docker-memory.json"));
         using var transport = new StatusTransport();
         using var http = new HttpClient(transport);
-        IServerDockerResources capability = new ServerDockerResourcesCapability(new AppId("relaxkonos.docker"), grants,
-            memory.Capture(auth), new RemoteDockerClient(http, auth));
+        var sdk = new ServerDockerResourcesCapability(new AppId("relaxkonos.docker"), grants,
+            memory.Capture(auth), new RemoteDockerClient(http, auth), new DockerImageMirrorClient(http, auth));
+        IServerDockerResources capability = sdk;
+        IServerDockerImageMirrors mirrors = sdk;
 
         await RejectAsync<UnauthorizedAccessException>(() => capability.GetStatusAsync());
         Check(transport.Requests == 0, "A missing read grant sent an inventory request.");
@@ -30,16 +33,24 @@ internal static class DockerInventoryCapabilityChecks
             "The captured connection did not return Docker status.");
         await RejectAsync<UnauthorizedAccessException>(() => capability.ApplyContainerActionAsync(
             "fixture-container", "stop", new(Confirmed: true)));
-        Check(transport.Requests == 1, "The Docker read grant must not authorize a management request.");
+        await RejectAsync<UnauthorizedAccessException>(() => mirrors.SelectAsync(null));
+        Check(transport.Requests == 1, "The Docker read grant must not authorize a management or mirror selection request.");
         grants.Manage = true;
         var operation = await capability.ApplyContainerActionAsync("fixture-container", "stop", new(Confirmed: true));
         Check(operation.Success && transport.Requests == 2, "A Docker management grant must forward the typed operation.");
+        var unconfirmed = await capability.ApplyEngineActionAsync(DockerEngineAction.Restart, confirmed: false);
+        Check(unconfirmed is { Success: false, ProblemCode: "docker.engine.problem.confirmation_required" }
+            && transport.Requests == 2, "An unconfirmed engine restart must not reach the server.");
+        var confirmed = await capability.ApplyEngineActionAsync(DockerEngineAction.Restart, confirmed: true);
+        await mirrors.SelectAsync(null);
+        Check(confirmed.Success && transport.Requests == 4, "The granted and confirmed operations must reach the server.");
         transport.BeforeResponse = () => session.ServiceId = "https://replacement.invalid";
         await RejectAsync<InvalidOperationException>(() => capability.GetStatusAsync());
         await RejectAsync<InvalidOperationException>(() => capability.GetStatusAsync());
         await RejectAsync<InvalidOperationException>(() => capability.ApplyContainerActionAsync(
             "fixture-container", "stop", new(Confirmed: true)));
-        Check(transport.Requests == 3, "A stale capability contacted the replacement server.");
+        await RejectAsync<InvalidOperationException>(() => mirrors.SelectAsync(null));
+        Check(transport.Requests == 5, "A stale capability contacted the replacement server.");
         Console.WriteLine("Docker inventory SDK permission checks and connection binding passed.");
     }
 
@@ -72,6 +83,14 @@ internal static class DockerInventoryCapabilityChecks
                 {
                     Content = JsonContent.Create(new DockerOperationResult(true, "")),
                 });
+            if (request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath == DockerApiRoutes.EngineAction
+                .Replace("{action}", "restart"))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new DockerEngineControlResult(true, "", null)),
+                });
+            if (request.Method == HttpMethod.Put && request.RequestUri!.AbsolutePath == ImageMirrorApiRoutes.Selection.Replace("{target}", "docker"))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
             Check(request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == DockerApiRoutes.Status,
                 "The Docker capability did not use the expected read or management route.");
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)

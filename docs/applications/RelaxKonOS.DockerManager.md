@@ -6,6 +6,8 @@
 
 > 内置 Docker 管理器。它管理 **RelaxKonOS.Server 所在宿主机** 的本地 Docker Engine；客户端只负责本地 UI 渲染，不直连 Docker socket、不保存 Docker 凭据，也不将守护进程 API 暴露到网络。
 
+桌面 Docker Manager 通过 SDK 控制已安装引擎、读取代理状态和管理当前账户的镜像源。停止和重启仍需确认。运行时安装由组件中心处理，主机代理写入由桌面设置处理。
+
 > **模块归属（2026-10-28）**：容器/镜像/网络/卷编辑、Compose、栈操作协调器、引擎生命周期与 Docker 代理界面归官方模块 `relaxkonos.docker`，默认启用；设置 `Modules:Docker:Enabled=false` 并重启后，`/api/v1.0/docker/*` 与 `server.docker` 能力消失，桌面 Docker Manager 因缺少该能力在启动前被拒绝。**引擎传输本身留在 Core**：应用部署、Docker 运行时安装、Nginx/Mihomo/FRP 与受管运行时下载都直接使用 `IDockerEngineService`、`IDockerRuntimeInstaller`、`IDockerProxyResolver` 与 `IOutboundHttpClientFactory`，禁用管理界面既不会卸载 Docker，也不会让这些下载意外走直连。详见[模块设计实施记录](../architecture/RelaxKonOS.ModulesAndExtensions.Design.md#docker-模块与引擎传输边界2026-10-28)。
 > **停用门禁（2026-10-28）**：Compose 栈操作账本（`stack-operations.json`）留在 Core，并被 Host 的停用门禁读取。若账本里还有 `Queued`/`Running` 的操作，`Modules:Docker:Enabled=false` 会让 Server **拒绝启动**并打印具体操作 ID 与项目名——先启用模块让协调器把操作对账成 `interrupted`，再停用即可。账本不可读同样按「状态未知」阻止，不会为了允许停用而清账。
 >

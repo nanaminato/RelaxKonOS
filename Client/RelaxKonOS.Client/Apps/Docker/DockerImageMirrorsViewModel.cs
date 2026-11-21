@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.ImageMirrors;
@@ -7,7 +8,7 @@ using RelaxKonOS.Protocol.ImageMirrors;
 namespace RelaxKonOS.Client.Apps.Docker;
 
 /// <summary>Docker Hub mirror selection belongs beside image pulls, not among desktop settings.</summary>
-public sealed partial class DockerImageMirrorsViewModel(IDockerImageMirrorClient client) : ObservableObject
+public sealed partial class DockerImageMirrorsViewModel(IServerDockerImageMirrors client) : ObservableObject
 {
     public ObservableCollection<DockerImageMirrorItemViewModel> Mirrors { get; } = [];
     [ObservableProperty] private string _newName = string.Empty;

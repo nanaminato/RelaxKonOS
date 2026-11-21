@@ -1,22 +1,14 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ImageMirrors;
 
 namespace RelaxKonOS.Client.Apps.Docker;
 
-/// <summary>Docker Manager's client for the current user's Docker Hub-compatible mirrors.</summary>
-public interface IDockerImageMirrorClient
-{
-    Task<IReadOnlyList<ImageMirrorDto>> ListAsync(CancellationToken cancellationToken = default);
-    Task<ImageMirrorDto> CreateAsync(CreateImageMirrorRequest request, CancellationToken cancellationToken = default);
-    Task SelectAsync(Guid? mirrorId, CancellationToken cancellationToken = default);
-    Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
-}
-
 /// <summary>JWT client for the Docker Manager's image-mirror configuration.</summary>
-public sealed class DockerImageMirrorClient(HttpClient http, IAuthSession session) : IDockerImageMirrorClient
+public sealed class DockerImageMirrorClient(HttpClient http, IAuthSession session) : IServerDockerImageMirrors
 {
     public async Task<IReadOnlyList<ImageMirrorDto>> ListAsync(CancellationToken cancellationToken = default)
     {

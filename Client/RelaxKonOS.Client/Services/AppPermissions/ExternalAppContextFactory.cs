@@ -39,6 +39,7 @@ public sealed class ExternalAppContextFactory
     private readonly ITaskManagerClient _systemMonitor;
     private readonly IRemoteEventAlertClient _alerts;
     private readonly IRemoteDockerClient _docker;
+    private readonly DockerImageMirrorClient _dockerMirrors;
     private readonly IExplorerClient _files;
     private readonly SshDesktopSession _sshSession;
     private readonly SshExplorerClient _sshFiles;
@@ -69,7 +70,8 @@ public sealed class ExternalAppContextFactory
         UsageMemoryStore usageMemory,
         TextEditorEncodingSettings textEncoding,
         IRemoteEventAlertClient alerts,
-        IRemoteDockerClient docker)
+        IRemoteDockerClient docker,
+        DockerImageMirrorClient dockerMirrors)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -82,6 +84,7 @@ public sealed class ExternalAppContextFactory
         _systemMonitor = systemMonitor;
         _alerts = alerts;
         _docker = docker;
+        _dockerMirrors = dockerMirrors;
         _files = files;
         _sshSession = sshSession;
         _sshFiles = sshFiles;
@@ -101,13 +104,15 @@ public sealed class ExternalAppContextFactory
         var sshFiles = sshEndpoint is null ? null : _sshFiles.Bind(sshEndpoint);
         var sshEditor = sshFiles is not null && appId.Value == "relaxkonos.codeeditor";
         var fileSession = _usageMemory.Capture(_session);
+        var docker = new ServerDockerResourcesCapability(appId, _permissions, fileSession, _docker, _dockerMirrors);
         return new ExternalAppContext(
         appId,
         new AppPermissionScope(appId, _permissionRequests),
         new DesktopAppearanceCapability(appId, _permissions, _settings, _settingsClient, _session, _defaultApps),
         new ServerMonitorCapability(appId, _permissions, _systemMonitor),
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
-        new ServerDockerResourcesCapability(appId, _permissions, fileSession, _docker),
+        docker,
+        docker,
         new ServerFilesCapability(appId, _permissions,
             (sshFiles as IExplorerClient ?? _files).DownloadAsync,
             sshEndpoint is not null, sshEndpoint is not null || _session.CurrentServer?.Platform != RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
@@ -131,6 +136,7 @@ public sealed class ExternalAppContextFactory
         IServerMonitor ServerMonitor,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
+        IServerDockerImageMirrors DockerImageMirrors,
         IServerFiles ServerFiles,
         IExternalTextEditorPreferences? TextEditorPreferences,
         IExternalFileApiAccess FileApi,

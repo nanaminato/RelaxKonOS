@@ -4,13 +4,44 @@ using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Docker;
+using RelaxKonOS.Protocol.ImageMirrors;
 using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
 
 namespace RelaxKonOS.Client.Services.AppPermissions;
 
 internal sealed class ServerDockerResourcesCapability(AppId appId, IAppPermissionManager permissions,
-    UsageMemoryScope connection, IRemoteDockerClient client) : IServerDockerResources
+    UsageMemoryScope connection, IRemoteDockerClient client, IServerDockerImageMirrors mirrors)
+    : IServerDockerResources, IServerDockerImageMirrors
 {
+    public Task<DockerProxyStatusDto> GetProxyStatusAsync(CancellationToken cancellationToken) =>
+        ReadAsync(client.GetProxyStatusAsync, cancellationToken);
+
+    public Task<DockerEngineControlResult> ApplyEngineActionAsync(DockerEngineAction action, bool confirmed, CancellationToken cancellationToken) =>
+        ExecuteAsync(() => action is DockerEngineAction.Stop or DockerEngineAction.Restart && !confirmed
+            ? Task.FromResult(new DockerEngineControlResult(false, "docker.engine.problem.confirmation_required", null))
+            : client.ApplyEngineActionAsync(action, confirmed, cancellationToken),
+            CoreAppPermissions.ServerDockerManage, cancellationToken);
+
+    public Task<IReadOnlyList<ImageMirrorDto>> ListAsync(CancellationToken cancellationToken) =>
+        ReadAsync(mirrors.ListAsync, cancellationToken);
+
+    public Task<ImageMirrorDto> CreateAsync(CreateImageMirrorRequest request, CancellationToken cancellationToken) =>
+        ExecuteAsync(() => mirrors.CreateAsync(request, cancellationToken), CoreAppPermissions.ServerDockerManage, cancellationToken);
+
+    public Task SelectAsync(Guid? mirrorId, CancellationToken cancellationToken) =>
+        ChangeMirrorAsync(() => mirrors.SelectAsync(mirrorId, cancellationToken), cancellationToken);
+
+    public Task DeleteAsync(Guid id, CancellationToken cancellationToken) =>
+        ChangeMirrorAsync(() => mirrors.DeleteAsync(id, cancellationToken), cancellationToken);
+
+    private async Task ChangeMirrorAsync(Func<Task> change, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureAccess(CoreAppPermissions.ServerDockerManage);
+        await change();
+        EnsureAccess(CoreAppPermissions.ServerDockerManage);
+    }
+
     public Task<DockerStatusDto> GetStatusAsync(CancellationToken cancellationToken) =>
         ReadAsync(client.GetStatusAsync, cancellationToken);
     public Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken) =>

@@ -25,8 +25,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var client = context.Services.GetService(typeof(IRemoteDockerClient)) as IRemoteDockerClient;
-        if (session is null || client is null || session.State != AuthSessionState.Authenticated)
+        if (session?.State != AuthSessionState.Authenticated)
         {
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"),
                 new DockerLoginRequiredView(),
@@ -35,10 +34,10 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         }
 
         var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.docker");
-        var resources = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest).DockerResources;
-        var vm = new DockerManagerViewModel(client) { Dependency = dependency, Resources = resources };
-        var proxyViewModel = new DockerProxyViewModel(client, readOnly: true);
-        var imageMirrorsViewModel = new DockerImageMirrorsViewModel(context.Services.GetRequiredService<IDockerImageMirrorClient>());
+        var sdk = context.Services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest);
+        var vm = new DockerManagerViewModel(sdk.DockerResources) { Dependency = dependency };
+        var proxyViewModel = new DockerProxyViewModel(sdk.DockerResources);
+        var imageMirrorsViewModel = new DockerImageMirrorsViewModel(sdk.DockerImageMirrors);
         ManagedWindow? window = null;
         var view = DockerManagerWorkspace.Create(vm, proxyViewModel, imageMirrorsViewModel,
             () => DockerManagerDialogs.ShowCreateContainerAsync(context, window!, vm),

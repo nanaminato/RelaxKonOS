@@ -202,7 +202,7 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- --profile default pack .\example
 
 在普通服务器工作区，编辑器可通过 `ReadAsync` 读取内容、`ListDirectoryAsync` 列出目录的直接子项、`WriteAsync` 写回文件，以及 `PickAsync` 在应用所属窗口打开宿主选择器。选择器支持打开文件、另存为和选择目录，文件选择器可声明多组过滤器。应用可通过 `IsPathCaseSensitive` 判断远程路径的大小写规则。打开和浏览需要读权限，写入需要写权限，另存为选择器需要两者。应用可凭写权限使用 `CreateDirectoryAsync`、`RenameAsync` 和 `DeleteAsync` 管理文件树。重命名只接受单个新名称，并返回服务端确认的路径。`ReadAsync` 返回已读取内容的版本。编辑器可将此版本传给 `WriteConditionalAsync` 防止覆盖已变化的文件。传入空版本只允许创建新文件，发生版本冲突时返回 `Conflict`。文件访问沿用原服务端文件授权。记事本通过宿主提供的文本编码设置接口继续使用工作区默认编码，详见[记事本](../applications/RelaxKonOS.Notepad.md)。
 
-`IExternalAppContext.DockerResources` 使用 `server.docker.read` 授权读取 Docker 状态、资源详情和 Compose 操作回执，并使用 `server.docker.manage` 授权修改容器、镜像、网络、卷和 Compose 项目。切换服务器后应重新打开工作区，旧会话的响应会被丢弃。
+`IExternalAppContext.DockerResources` 使用 `server.docker.read` 授权读取 Docker 状态、资源详情、Compose 操作回执和代理状态。修改容器、镜像、网络、卷、Compose 项目或控制已安装的引擎要求 `server.docker.manage`。停止和重启引擎还需要操作员确认。`DockerImageMirrors` 使用相同授权读取或修改当前账户的镜像源。切换服务器后应重新打开工作区，旧会话的响应会被丢弃。
 
 授予在桌面客户端是本地的。在 Windows 上，它们使用当前用户的 DPAPI 保护存储；其他平台使用兼容的本地 JSON 回退。
 

@@ -5,6 +5,10 @@ namespace RelaxKonOS.AppSDK;
 /// <summary>Docker resource inventory and operations for the captured server session.</summary>
 public interface IServerDockerResources
 {
+    Task<DockerProxyStatusDto> GetProxyStatusAsync(CancellationToken cancellationToken = default);
+    /// <summary>Stops and restarts require explicit operator confirmation.</summary>
+    Task<DockerEngineControlResult> ApplyEngineActionAsync(DockerEngineAction action, bool confirmed,
+        CancellationToken cancellationToken = default);
     Task<DockerStatusDto> GetStatusAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerImageDto>> ListImagesAsync(CancellationToken cancellationToken = default);

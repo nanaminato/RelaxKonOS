@@ -5,11 +5,8 @@ namespace RelaxKonOS.Client.Apps.Docker;
 
 public interface IRemoteDockerClient : IServerDockerResources
 {
-    Task<DockerProxyStatusDto> GetProxyStatusAsync(CancellationToken cancellationToken = default);
     Task<DockerProxyStatusDto> SaveProxyAsync(SaveDockerProxySettingsRequest request, CancellationToken cancellationToken = default);
     Task<DockerProxyStatusDto> ClearProxyAsync(CancellationToken cancellationToken = default);
-    /// <summary>Starts, stops, or restarts the machine's whole Docker engine.</summary>
-    Task<DockerEngineControlResult> ApplyEngineActionAsync(DockerEngineAction action, bool confirmed, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Docker;
@@ -10,9 +11,9 @@ namespace RelaxKonOS.Client.Apps.Docker;
 /// machine's Docker daemon and the Server's own docker child processes, so it is not tied to the
 /// signed-in user. Both layers are reported separately because they use unrelated host mechanisms.
 /// </summary>
-public sealed partial class DockerProxyViewModel(IRemoteDockerClient client, bool readOnly = false) : ObservableObject
+public sealed partial class DockerProxyViewModel(IServerDockerResources resources, IRemoteDockerClient? writeClient = null) : ObservableObject
 {
-    public bool IsReadOnly { get; } = readOnly;
+    public bool IsReadOnly => writeClient is null;
     /// <summary>
     /// Asked before a change that restarts the Docker daemon, which interrupts running containers.
     /// The page has no window of its own, so the host supplies the dialog.
@@ -62,7 +63,7 @@ public sealed partial class DockerProxyViewModel(IRemoteDockerClient client, boo
         IsLoading = true;
         try
         {
-            Apply(await client.GetProxyStatusAsync());
+            Apply(await resources.GetProxyStatusAsync());
             ProblemText = default;
         }
         catch (Exception exception)
@@ -81,7 +82,7 @@ public sealed partial class DockerProxyViewModel(IRemoteDockerClient client, boo
     [RelayCommand]
     private async Task SaveAsync()
     {
-        if (IsSaving) return;
+        if (IsSaving || writeClient is null) return;
         ProblemText = default;
 
         // The daemon layer restarts Docker, so the operator is warned before anything is sent
@@ -104,7 +105,7 @@ public sealed partial class DockerProxyViewModel(IRemoteDockerClient client, boo
                 NoProxy,
                 ApplyToEngine, ApplyToBuild, ApplyToImageTags, ApplyToRuntimeDownloads,
                 Confirmed: true);
-            Apply(await client.SaveProxyAsync(request));
+            Apply(await writeClient.SaveProxyAsync(request));
             StatusText = LocalizedText.Ref("docker.proxy.status.saved");
         }
         catch (DockerProxyRequestException exception)
@@ -126,7 +127,7 @@ public sealed partial class DockerProxyViewModel(IRemoteDockerClient client, boo
     [RelayCommand]
     private async Task ClearAsync()
     {
-        if (IsSaving) return;
+        if (IsSaving || writeClient is null) return;
         ProblemText = default;
 
         if (IsEngineLayerInstalled && !await RequestConfirmationAsync(LocalizedText.Get("docker.proxy.confirm.clear")))
@@ -139,7 +140,7 @@ public sealed partial class DockerProxyViewModel(IRemoteDockerClient client, boo
         StatusText = LocalizedText.Ref("docker.proxy.status.clearing");
         try
         {
-            Apply(await client.ClearProxyAsync());
+            Apply(await writeClient.ClearProxyAsync());
             StatusText = LocalizedText.Ref("docker.proxy.status.cleared");
         }
         catch (Exception exception)

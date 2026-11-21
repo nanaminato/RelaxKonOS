@@ -41,6 +41,7 @@ public interface IExternalAppContext
     IServerMonitor ServerMonitor { get; }
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
+    IServerDockerImageMirrors DockerImageMirrors { get; }
     IServerFiles ServerFiles { get; }
     /// <summary>Workspace-backed encoding preferences for a host-configured text editor.</summary>
     IExternalTextEditorPreferences? TextEditorPreferences { get; }

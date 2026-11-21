@@ -47,7 +47,7 @@ internal static class NotepadWorkspaceChecks
         var preferences = new WorkspacePreferencesFixture();
         var encoding = new TextEditorEncodingSettings(settings, preferences, auth, new DefaultAppRegistry());
         var factory = new ExternalAppContextFactory(permission, permission, language, settings, preferences, auth, new DefaultAppRegistry(),
-            manager, null!, files, new SshDesktopSession(null!, settings), null!, null!, null!, null!, null!, memory, encoding, null!, null!);
+            manager, null!, files, new SshDesktopSession(null!, settings), null!, null!, null!, null!, null!, memory, encoding, null!, null!, null!);
         var app = new NotepadApp();
         var context = factory.Create(app.Manifest);
         try
