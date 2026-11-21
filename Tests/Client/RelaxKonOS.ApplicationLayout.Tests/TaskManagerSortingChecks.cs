@@ -6,16 +6,16 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using RelaxKonOS.Client.Apps.TaskManager;
-using RelaxKonOS.Client.Apps.TaskManager.ViewModels;
+using RelaxKonOS.App.TaskManager;
+using RelaxKonOS.App.TaskManager.ViewModels;
 using RelaxKonOS.Client.Apps.TaskManager.Views;
 using RelaxKonOS.Protocol.SystemMonitor;
 
 internal static class TaskManagerSortingChecks
 {
-    public static void Run(Window host)
+    public static void Run(Window host, RelaxKonOS.AppSDK.ISystemLanguage language)
     {
-        var vm = new TaskManagerViewModel(null!, null!, null!)
+        var vm = new TaskManagerViewModel(null!, null!, null!, language)
         { IsAutoRefresh = false, ActiveTab = TaskManagerTab.Processes };
         var processes = new List<ProcessInfoDto>
         {
@@ -29,6 +29,10 @@ internal static class TaskManagerSortingChecks
         host.Width = 1300;
         host.Content = view;
         Pump();
+        var collecting = TaskManagerLocalization.Resolve(language, "task_manager.status.collecting");
+        Check(collecting != "task_manager.status.collecting"
+            && view.GetVisualDescendants().OfType<TextBlock>().Any(label => label.Text == collecting),
+            "The Task Manager workspace renders the application-owned status label.");
         var grid = view.FindControl<DataGrid>("ProcessesGrid")!;
         foreach (var column in grid.Columns)
         {

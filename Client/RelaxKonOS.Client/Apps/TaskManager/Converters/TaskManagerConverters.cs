@@ -3,33 +3,10 @@ using Avalonia.Data.Converters;
 using Avalonia.Media;
 using RelaxKonOS.Client.Services.Theming;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Apps.TaskManager.ViewModels;
+using RelaxKonOS.App.TaskManager.ViewModels;
+using RelaxKonOS.App.TaskManager.Converters;
 
 namespace RelaxKonOS.Client.Apps.TaskManager.Converters;
-
-/// <summary>字节 → 人类可读（1024 进制，B/KB/MB/GB/TB）。用于内存/磁盘/进程内存。</summary>
-public sealed class BytesConverter : IValueConverter
-{
-    public static readonly BytesConverter Instance = new();
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is not IConvertible c) return "—";
-        var bytes = c.ToInt64(CultureInfo.InvariantCulture);
-        return FormatBytes(bytes);
-    }
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => throw new NotSupportedException();
-
-    public static string FormatBytes(long bytes)
-    {
-        if (bytes < 0) return "—";
-        string[] units = { "B", "KB", "MB", "GB", "TB", "PB" };
-        double size = bytes;
-        int u = 0;
-        while (size >= 1024 && u < units.Length - 1) { size /= 1024; u++; }
-        return u == 0 ? $"{size:0} {units[u]}" : $"{size:0.##} {units[u]}";
-    }
-}
 
 /// <summary>字节/秒 → 人类可读速率（如 "1.5 MB/s"）。用于网络速率。</summary>
 public sealed class RateConverter : IValueConverter
@@ -137,24 +114,6 @@ public sealed class BoolToVisibilityConverter : IValueConverter
     public static readonly BoolToVisibilityConverter Instance = new();
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => value is bool b && b;
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => throw new NotSupportedException();
-}
-
-/// <summary>运行时间秒数 → "d天 HH:mm:ss"（不足 1 天则 "HH:mm:ss"）。</summary>
-public sealed class UptimeConverter : IValueConverter
-{
-    public static readonly UptimeConverter Instance = new();
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is not IConvertible c) return "—";
-        var secs = c.ToInt64(CultureInfo.InvariantCulture);
-        if (secs < 0) return "—";
-        var ts = TimeSpan.FromSeconds(secs);
-        return ts.TotalDays >= 1
-            ? LocalizedText.Format("task_manager.uptime_days", (int)ts.TotalDays, ts.Hours, ts.Minutes, ts.Seconds)
-            : $"{ts.Hours:00}:{ts.Minutes:00}:{ts.Seconds:00}";
-    }
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }

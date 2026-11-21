@@ -7,6 +7,7 @@
     <ItemGroup>
         <ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" />
         <PackageReference Include="CommunityToolkit.Mvvm" />
+        <PackageReference Include="Svg.Controls.Avalonia" />
         <AvaloniaResource Include="Assets/taskmanager.png" />
         <EmbeddedResource Include="Localization/*.json" LogicalName="TaskManager.Localization.%(Filename).json" />
     </ItemGroup>

@@ -5,7 +5,6 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
-using RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 
 namespace RelaxKonOS.Client.Apps.TaskManager.Views;
 

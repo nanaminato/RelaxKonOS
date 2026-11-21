@@ -1,10 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.TaskManager.ViewModels"
+             xmlns:vm="clr-namespace:RelaxKonOS.App.TaskManager.ViewModels;assembly=RelaxKonOS.App.TaskManager"
              xmlns:conv="clr-namespace:RelaxKonOS.Client.Apps.TaskManager.Converters"
              xmlns:charts="clr-namespace:RelaxKonOS.App.TaskManager.Controls;assembly=RelaxKonOS.App.TaskManager"
-             xmlns:task="clr-namespace:RelaxKonOS.App.TaskManager.ViewModels;assembly=RelaxKonOS.App.TaskManager"
+             xmlns:taskConverters="clr-namespace:RelaxKonOS.App.TaskManager.Converters;assembly=RelaxKonOS.App.TaskManager"
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.SystemMonitor;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.TaskManager.Views.TaskManagerMainView"
              x:DataType="vm:TaskManagerViewModel"
@@ -167,7 +167,7 @@
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Header="{loc:Loc common.name}" SortMemberPath="Name" Width="2*" MinWidth="180">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate x:DataType="task:ProcessTreeItemViewModel">
+                                    <DataTemplate x:DataType="vm:ProcessTreeItemViewModel">
                                         <Grid ColumnDefinitions="20,20,*" Margin="{Binding Indent}" ColumnSpacing="6">
                                             <Button Content="{Binding ExpandGlyph}" Command="{Binding ToggleExpandedCommand}" IsVisible="{Binding HasChildren}" Width="20" Height="24" Padding="0" Background="Transparent" BorderThickness="0" VerticalAlignment="Center" />
                                             <Image Grid.Column="1" Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Width="20" Height="20" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" DataContextChanged="ProcessIcon_DataContextChanged" AttachedToVisualTree="ProcessIcon_AttachedToVisualTree" />
@@ -181,7 +181,7 @@
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="PID" SortMemberPath="Id" Binding="{Binding Process.Id}" Width="80" MinWidth="70" />
                             <DataGridTextColumn Header="CPU" SortMemberPath="CpuPercent" Binding="{Binding Process.CpuPercent, StringFormat='{}{0:0.0}%'}" Width="90" MinWidth="70" />
-                            <DataGridTextColumn Header="{loc:Loc task_manager.memory}" SortMemberPath="MemoryBytes" Binding="{Binding Process.MemoryBytes, Converter={x:Static conv:BytesConverter.Instance}}" Width="120" MinWidth="70" />
+                            <DataGridTextColumn Header="{loc:Loc task_manager.memory}" SortMemberPath="MemoryBytes" Binding="{Binding Process.MemoryBytes, Converter={x:Static taskConverters:BytesConverter.Instance}}" Width="120" MinWidth="70" />
                             <DataGridTextColumn Header="{loc:Loc task_manager.user}" SortMemberPath="UserName" Binding="{Binding Process.UserName}" Width="120" MinWidth="70" />
                             <DataGridTextColumn Header="{loc:Loc task_manager.threads}" SortMemberPath="ThreadCount" Binding="{Binding Process.ThreadCount}" Width="85" MinWidth="70" />
                         </DataGrid.Columns>

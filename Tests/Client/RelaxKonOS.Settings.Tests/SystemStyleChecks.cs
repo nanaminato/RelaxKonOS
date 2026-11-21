@@ -341,7 +341,7 @@ internal static class SystemStyleChecks
             ["Framework/RelaxKonOS.UI/Themes/Tokens/SystemStyleTokens.axaml"] = 2,
             ["Client/RelaxKonOS.Client/Services/ShellSettings.cs"] = 27,
             ["Client/RelaxKonOS.Client/Apps/Terminal/TerminalAppearance.cs"] = 12,
-            ["Client/RelaxKonOS.Client/Apps/TaskManager/ViewModels/TaskManagerViewModel.cs"] = 4,
+            ["Applications/RelaxKonOS.App.TaskManager/ViewModels/TaskManagerViewModel.cs"] = 4,
             ["Applications/RelaxKonOS.App.TaskManager/Controls/PerformanceLineChart.cs"] = 1,
         };
 

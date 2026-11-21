@@ -21,7 +21,7 @@ using RelaxKonOS.Client.Apps.FileServices.Views;
 using RelaxKonOS.App.Notepad;
 using RelaxKonOS.App.ImageViewer;
 using RelaxKonOS.Client.Apps.TaskManager;
-using RelaxKonOS.Client.Apps.TaskManager.ViewModels;
+using RelaxKonOS.App.TaskManager.ViewModels;
 using RelaxKonOS.Client.Apps.TaskManager.Views;
 using RelaxKonOS.Client.Apps.Browser.ViewModels;
 using RelaxKonOS.Client.Apps.Browser.Views;
@@ -68,7 +68,7 @@ internal static class FusedWorkspaceChecks
         var filesModel = new FileServicesViewModel(null!, permissions, () => true);
         using var notepadModel = new NotepadViewModel(new NotepadText(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>()), null, null);
         using var imageModel = new ImageViewerViewModel(RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>(), null);
-        var tasksModel = new TaskManagerViewModel(null!, null!, null!);
+        var tasksModel = new TaskManagerViewModel(null!, null!, null!, RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>());
         var browserModel = new BrowserViewModel(DispatchProxy.Create<RelaxKonOS.Client.Apps.Browser.IBrowserClient, HeaderPreviewPermissions>());
         var browserView = new BrowserMainView { DataContext = browserModel };
         var canvas = new Canvas();

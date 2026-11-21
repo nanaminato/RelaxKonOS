@@ -78,7 +78,7 @@ if (args.Contains("--explorer-cloud-only"))
 }
 if (args.Contains("--task-manager-only"))
 {
-    TaskManagerSortingChecks.Run(host);
+    TaskManagerSortingChecks.Run(host, localization);
     host.Close();
     return;
 }
