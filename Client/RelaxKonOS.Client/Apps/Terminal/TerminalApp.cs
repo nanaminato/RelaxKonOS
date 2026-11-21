@@ -8,7 +8,6 @@ using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Common;
-using RoyalTerminal.Terminal;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
 namespace RelaxKonOS.Client.Apps.Terminal;
@@ -19,10 +18,6 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 /// </summary>
 public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplication
 {
-    // Desktop restoration and an early manual launch may overlap. Serialize them instead of
-    // dropping the manual request while the restore-only list request is in flight.
-    private static readonly SemaphoreSlim Opening = new(1, 1);
-
     public override ApplicationManifest Manifest { get; } = new(
         Id: new AppId("relaxkonos.terminal"),
         DisplayName: "Terminal",
@@ -55,77 +50,15 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         OpenWindow(context, session, diagnostics, sessionId: null, workingDirectory: workingDirectory);
     }
 
-    private async Task OpenAsync(AppContext context, bool restoreOnly, CancellationToken cancellationToken)
+    private Task OpenAsync(AppContext context, bool restoreOnly, CancellationToken cancellationToken)
     {
-        await Opening.WaitAsync(cancellationToken);
-        try
-        {
-            var session = context.Services.GetService<IAuthSession>();
-            var sshDesktop = context.Services.GetService<SshDesktopSession>();
-            var diagnostics = context.Services.GetService<NetworkDiagnosticsService>();
-            if (sshDesktop?.IsConnected == true)
-            {
-                if (!restoreOnly) OpenWindow(context, session, diagnostics, null);
-                return;
-            }
-            var sessionIds = Array.Empty<RelaxKonOS.Protocol.Hubs.TerminalSessionInfo>();
-
-            if (session is { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens })
-            {
-                try
-                {
-                    var options = new SignalRTransportOptions(
-                        url.TrimEnd('/') + "/hubs/terminals",
-                        new TerminalSessionDimensions(80, 24, 800, 480),
-                        tokenProvider: () => session.GetAccessTokenAsync(TimeSpan.FromMinutes(1)),
-                        accessToken: tokens.AccessToken,
-                        diagnostics: diagnostics);
-                    sessionIds = (await TerminalHubConnection.ListSessionsAsync(options, cancellationToken))
-                        .Where(x => !x.HasExited && !TerminalSessionReservations.IsOpen(x.SessionId))
-                        .OrderBy(x => x.CreatedAt)
-                        .ToArray();
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch
-                {
-                    // Manual activation falls back to a new terminal. Desktop restoration is
-                    // intentionally restore-only and leaves the desktop unchanged on failure.
-                    if (restoreOnly)
-                        return;
-                }
-            }
-
-            // The desktop might have been closed while the one-shot list request was in flight.
-            // Never turn a restore into a local fallback or a late window in that case.
-            if (restoreOnly && (cancellationToken.IsCancellationRequested
-                || session?.State != AuthSessionState.Authenticated))
-                return;
-
-            // No restorable process means this activation starts one fresh terminal. If every
-            // existing process is already represented by a window, this is also the explicit
-            // way to open an additional terminal from the desktop.
-            if (sessionIds.Length == 0)
-            {
-                if (!restoreOnly)
-                    OpenWindow(context, session, diagnostics, null);
-            }
-            else
-                foreach (var sessionId in sessionIds)
-                {
-                    if (restoreOnly && cancellationToken.IsCancellationRequested)
-                        return;
-
-                    if (TerminalSessionReservations.TryReserve(sessionId.SessionId))
-                        OpenWindow(context, session, diagnostics, sessionId.SessionId, isAdministrator: sessionId.IsAdministrator);
-                }
-        }
-        finally
-        {
-            Opening.Release();
-        }
+        var services = context.Services;
+        var session = services.GetService<IAuthSession>();
+        var diagnostics = services.GetService<NetworkDiagnosticsService>();
+        var sdk = services.GetRequiredService<ExternalAppContextFactory>().Create(Manifest);
+        return TerminalWorkspace.ActivateAsync(sdk, restoreOnly,
+            (sessionId, administrator) => OpenWindow(context, session, diagnostics, sessionId, isAdministrator: administrator),
+            cancellationToken);
     }
 
     private void OpenWindow(

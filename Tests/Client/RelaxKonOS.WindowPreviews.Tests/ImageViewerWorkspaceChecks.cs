@@ -119,6 +119,7 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
     public bool IsSshSession { get; set; }
     public bool IsPathCaseSensitive => true;
     public IAppActivation? Activations { get; set; }
+    public ITerminalSessionDiscovery? TerminalSessions { get; set; }
 
     internal void Initialize(IWindowManager manager, ISystemLanguage language, AppId id)
     {
@@ -133,6 +134,7 @@ public class ImageViewerPackageFixture : DispatchProxy, IServerFiles, IExternalA
         "get_SystemLanguage" => _language,
         "get_TextEditorPreferences" => null,
         "get_Activations" when Activations is not null => Activations,
+        "get_TerminalSessions" => TerminalSessions,
         _ => throw new NotSupportedException(method?.Name),
     };
 

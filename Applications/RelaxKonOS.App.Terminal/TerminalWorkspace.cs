@@ -7,6 +7,48 @@ namespace RelaxKonOS.App.Terminal;
 /// <summary>Opens and coordinates a terminal workspace through the SDK window service.</summary>
 public static class TerminalWorkspace
 {
+    private static readonly SemaphoreSlim Opening = new(1, 1);
+
+    public static async Task ActivateAsync(IExternalAppContext context, bool restoreOnly,
+        Action<string?, bool> openSession, CancellationToken cancellationToken)
+    {
+        await Opening.WaitAsync(cancellationToken);
+        try
+        {
+            if (context.TerminalSessions is not { } discovery)
+            {
+                if (!restoreOnly) openSession(null, false);
+                return;
+            }
+
+            IReadOnlyList<RelaxKonOS.Protocol.Hubs.TerminalSessionInfo> sessions;
+            try { sessions = await discovery.ListAsync(cancellationToken); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
+            catch
+            {
+                if (!restoreOnly && discovery.IsCurrent) openSession(null, false);
+                return;
+            }
+
+            if (cancellationToken.IsCancellationRequested || !discovery.IsCurrent) return;
+            var opened = false;
+            foreach (var session in sessions.Where(session => !session.HasExited).OrderBy(session => session.CreatedAt))
+            {
+                if (cancellationToken.IsCancellationRequested || !discovery.IsCurrent) return;
+                if (!TerminalSessionReservations.TryReserve(session.SessionId)) continue;
+                try { openSession(session.SessionId, session.IsAdministrator); }
+                catch
+                {
+                    TerminalSessionReservations.Release(session.SessionId);
+                    throw;
+                }
+                opened = true;
+            }
+            if (!opened && !restoreOnly) openSession(null, false);
+        }
+        finally { Opening.Release(); }
+    }
+
     public static void Open(IExternalAppContext context, string? iconGlyph,
         Func<string?, string?, bool, TerminalTabViewModel> createSession, Func<Task> openEnvironment,
         Action<string?> openAdministrator, string? sessionId, string? workingDirectory, bool isAdministrator)

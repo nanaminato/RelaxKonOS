@@ -125,6 +125,36 @@ internal static class TerminalWorkspaceChecks
         workspace.RequestCloseTabAsync!(workspace.Tabs[0]).GetAwaiter().GetResult();
         Check(workspace.Tabs.Count == 1, "SDK workspace closes an inactive session tab");
         windows.ForceClose(window);
+
+        var discovery = new TerminalDiscoveryFixture();
+        ((ImageViewerPackageFixture)(object)context).TerminalSessions = discovery;
+        var restored = new List<string?>();
+        void Open(string? sessionId, bool administrator) => restored.Add(sessionId);
+        try
+        {
+            TerminalWorkspace.ActivateAsync(context, true, Open, default).GetAwaiter().GetResult();
+            TerminalWorkspace.ActivateAsync(context, true, Open, default).GetAwaiter().GetResult();
+            Check(restored.SequenceEqual(new[] { "sdk-old", "sdk-new" }),
+                "SDK discovery restores live sessions in order without duplicates or a fresh session");
+            discovery.IsCurrent = false;
+            TerminalWorkspace.ActivateAsync(context, false, Open, default).GetAwaiter().GetResult();
+            Check(restored.Count == 2, "SDK discovery discards sessions after their connection becomes stale");
+        }
+        finally
+        {
+            TerminalSessionReservations.Release("sdk-old");
+            TerminalSessionReservations.Release("sdk-new");
+        }
+    }
+
+    private sealed class TerminalDiscoveryFixture : ITerminalSessionDiscovery
+    {
+        public bool IsCurrent { get; set; } = true;
+        public Task<IReadOnlyList<RelaxKonOS.Protocol.Hubs.TerminalSessionInfo>> ListAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<RelaxKonOS.Protocol.Hubs.TerminalSessionInfo>>(
+                [new("sdk-new", DateTimeOffset.UnixEpoch.AddMinutes(1), false, true),
+                 new("sdk-exited", DateTimeOffset.UnixEpoch, true, false),
+                 new("sdk-old", DateTimeOffset.UnixEpoch, false, false)]);
     }
 
     private static void CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference preference)

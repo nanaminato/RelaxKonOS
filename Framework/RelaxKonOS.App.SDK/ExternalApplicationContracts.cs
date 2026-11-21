@@ -44,6 +44,8 @@ public interface IExternalAppContext
     IRegistryAppearancePreferences? RegistryAppearance { get; }
     /// <summary>Available only to the official Browser application.</summary>
     IBrowserData? BrowserData { get; }
+    /// <summary>Server PTY discovery for the official Terminal application.</summary>
+    ITerminalSessionDiscovery? TerminalSessions { get; }
     IServerAlerts ServerAlerts { get; }
     IServerDockerResources DockerResources { get; }
     IServerDockerImageMirrors DockerImageMirrors { get; }
@@ -65,6 +67,12 @@ public interface IExternalAppContext
     IAppActivation Activations { get; }
     ISettingsNavigation Settings { get; }
     IExternalAppWindowService Windows { get; }
+}
+
+public interface ITerminalSessionDiscovery
+{
+    bool IsCurrent { get; }
+    Task<IReadOnlyList<RelaxKonOS.Protocol.Hubs.TerminalSessionInfo>> ListAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>Observes the authenticated server connection captured for an application launch.</summary>

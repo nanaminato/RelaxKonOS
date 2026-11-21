@@ -56,6 +56,7 @@ public sealed class ExternalAppContextFactory
     private readonly IServerRegistry? _registry;
     private readonly ClientPresentationPreferences? _presentationPreferences;
     private readonly IBrowserData? _browserData;
+    private readonly RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsService? _diagnostics;
 
     public ExternalAppContextFactory(
         IAppPermissionManager permissions,
@@ -83,7 +84,8 @@ public sealed class ExternalAppContextFactory
         IHostElevationBroker? elevationBroker = null,
         IServerRegistry? registry = null,
         ClientPresentationPreferences? presentationPreferences = null,
-        IBrowserData? browserData = null)
+        IBrowserData? browserData = null,
+        RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsService? diagnostics = null)
     {
         _permissions = permissions;
         _permissionRequests = permissionRequests;
@@ -111,6 +113,7 @@ public sealed class ExternalAppContextFactory
         _registry = registry;
         _presentationPreferences = presentationPreferences;
         _browserData = browserData;
+        _diagnostics = diagnostics;
     }
 
     public IExternalAppContext Create(ApplicationManifest manifest, CancellationToken lifetime = default,
@@ -133,6 +136,8 @@ public sealed class ExternalAppContextFactory
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
         appId.Value == "relaxkonos.browser" && _browserData is not null ? new ExternalBrowserData(_browserData, connection) : null,
+        appId.Value == "relaxkonos.terminal" && sshEndpoint is null && connection.IsCurrent
+            ? new ExternalTerminalSessionDiscovery(connection, _diagnostics) : null,
         new ServerAlertsCapability(appId, _permissions, _session, fileSession, _alerts),
         docker,
         docker,
@@ -165,6 +170,7 @@ public sealed class ExternalAppContextFactory
         IServerRegistry Registry,
         IRegistryAppearancePreferences? RegistryAppearance,
         IBrowserData? BrowserData,
+        ITerminalSessionDiscovery? TerminalSessions,
         IServerAlerts ServerAlerts,
         IServerDockerResources DockerResources,
         IServerDockerImageMirrors DockerImageMirrors,
