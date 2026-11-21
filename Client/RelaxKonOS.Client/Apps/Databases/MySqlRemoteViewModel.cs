@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Apps.Certificates;
@@ -11,7 +12,7 @@ namespace RelaxKonOS.Client.Apps.Databases;
 public sealed partial class MySqlViewModel
 {
     public InstallationTaskViewModel? RemoteInstallation { get; set; }
-    public IRemoteCertificateClient? RemoteCertificates { get; set; }
+    public IServerCertificates? RemoteCertificates { get; set; }
     public Func<Task<bool>>? ConfirmRemoteAsync { get; set; }
     [ObservableProperty] private string remoteListenAddress = "";
     [ObservableProperty] private string remoteSourceAddress = "";

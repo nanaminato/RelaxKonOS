@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.WebServers;
@@ -65,7 +66,7 @@ internal static class WebSiteScopeChecks
         stub.Pending.SetException(new IOException("test read failure"));
         PumpUntil(() => saving.IsCompleted);
 
-        var certificates = DispatchProxy.Create<IRemoteCertificateClient, PendingSiteCertificates>();
+        var certificates = DispatchProxy.Create<IServerCertificates, PendingSiteCertificates>();
         var certificateReads = (PendingSiteCertificates)(object)certificates;
         vm = new WebServerManagerViewModel(client, certificates, auth, new FirewallTestPermissions(),
             DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>());

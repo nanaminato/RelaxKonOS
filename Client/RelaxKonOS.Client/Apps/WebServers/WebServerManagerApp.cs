@@ -35,7 +35,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var client = context.Services.GetService(typeof(IRemoteWebServerClient)) as IRemoteWebServerClient;
-        var certificates = context.Services.GetService(typeof(IRemoteCertificateClient)) as IRemoteCertificateClient;
+        var certificates = context.Services.GetService(typeof(IServerCertificates)) as IServerCertificates;
         var explorer = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var elevations = context.Services.GetService(typeof(IHostElevationBroker)) as IHostElevationBroker;
         if (session is null || client is null || certificates is null || elevations is null || session.State != AuthSessionState.Authenticated)

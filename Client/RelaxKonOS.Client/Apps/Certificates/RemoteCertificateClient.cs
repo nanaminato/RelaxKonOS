@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -11,11 +12,11 @@ using RelaxKonOS.Protocol.Common;
 namespace RelaxKonOS.Client.Apps.Certificates;
 
 /// <summary>
-/// HTTP implementation of <see cref="IRemoteCertificateClient"/>. Mutating endpoints require an
+/// HTTP implementation of <see cref="IServerCertificates"/>. Mutating endpoints require an
 /// Idempotency-Key header (server-enforced); each invocation generates a fresh key. Retrying an accepted intent must retain its original key;
 /// issuing another invocation creates a new intent. 202 Accepted responses carry the operation dto in the body.
 /// </summary>
-public sealed class RemoteCertificateClient(HttpClient http, IAuthSession session, IHostElevationBroker elevations) : IRemoteCertificateClient
+public sealed class RemoteCertificateClient(HttpClient http, IAuthSession session, IHostElevationBroker elevations) : IServerCertificates
 {
     public Task<IReadOnlyList<CertificateRenewalRunDto>> ListRenewalRunsAsync(CancellationToken cancellationToken = default)
         => SendAsync<IReadOnlyList<CertificateRenewalRunDto>>(HttpMethod.Get, CertificateApiRoutes.RenewalRuns, null, null, cancellationToken);

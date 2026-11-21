@@ -61,7 +61,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
         mysql.AdministratorInstallation.PropertyChanged += (_, _) => mysql.Notify();
         mysql.ConfirmAdministratorAsync = () => Confirm("database.mysql_admin_recovery_confirm");
         _ = mysql.AdministratorInstallation.RestoreAsync();
-        mysql.RemoteCertificates = context.Services.GetRequiredService<RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient>();
+        mysql.RemoteCertificates = context.Services.GetRequiredService<RelaxKonOS.AppSDK.IServerCertificates>();
         mysql.RemoteInstallation = new(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
             InstallationServiceId.MySqlRemoteAccess, "relaxkonos.database", mysql.RefreshAsync, () => AuthorizeInstallationAsync(InstallationServiceId.MySqlRemoteAccess), "mysql-remote-installation");
         mysql.RemoteInstallation.PropertyChanged += (_, _) => mysql.Notify();
@@ -83,7 +83,7 @@ public sealed class DatabaseApp : RemoteApplicationBase
         var remoteTask = new InstallationTaskViewModel(context.Services.GetRequiredService<InstallationClient>(), context.Services.GetRequiredService<IAppSettingsClient>(),
             InstallationServiceId.PostgreSqlRemoteAccess, "relaxkonos.database", model.RefreshAsync,
             () => AuthorizeInstallationAsync(InstallationServiceId.PostgreSqlRemoteAccess), "remote-installation");
-        model.RemoteManager = new(context.Services.GetRequiredService<RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient>(), remoteTask)
+        model.RemoteManager = new(context.Services.GetRequiredService<RelaxKonOS.AppSDK.IServerCertificates>(), remoteTask)
         { CanManage = model.CanManage, ConfirmAsync = () => Confirm("database.remote_confirm"), OtherBusy = () => model.MaintenanceBusy || model.Busy || model.CanResume || model.Installation.IsActive
             || model.AdminRecoveryInstallation.IsActive || model.CanResumeAdminRecovery || model.AccountManager?.Busy == true || model.AccountManager?.HasPendingRequest == true || model.AccountManager?.Installation.IsActive == true };
         remoteTask.PropertyChanged += (_, _) => { model.RemoteManager.Notify(); model.NotifyState(); model.AccountManager?.Notify(); };

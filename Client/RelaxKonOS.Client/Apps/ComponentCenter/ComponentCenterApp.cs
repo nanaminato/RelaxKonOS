@@ -91,7 +91,7 @@ public sealed class ComponentCenterApp : RemoteApplicationBase, IAppActivationHa
             };
         _model = model;
         if (context.Services.GetService(typeof(RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient)) is RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient web
-            && context.Services.GetService(typeof(RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient)) is RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient certificates
+            && context.Services.GetService(typeof(RelaxKonOS.AppSDK.IServerCertificates)) is RelaxKonOS.AppSDK.IServerCertificates certificates
             && context.Services.GetService(typeof(RelaxKonOS.Client.Services.Privileged.IHostElevationBroker)) is RelaxKonOS.Client.Services.Privileged.IHostElevationBroker elevations)
         {
             model.NginxSelection = new(web, certificates, session, context.Permissions, elevations) { IsComponentCenter = true };

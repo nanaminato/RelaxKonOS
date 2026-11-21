@@ -21,7 +21,7 @@ public sealed class CertificateManagerApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var client = context.Services.GetService(typeof(IRemoteCertificateClient)) as IRemoteCertificateClient;
+        var client = context.Services.GetService(typeof(IServerCertificates)) as IServerCertificates;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.certificates.display_name"),

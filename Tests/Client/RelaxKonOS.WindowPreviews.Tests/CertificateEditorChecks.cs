@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Threading;
@@ -15,7 +16,7 @@ internal static class CertificateEditorChecks
     {
         foreach (var selfSigned in new[] { false, true })
         {
-            var client = DispatchProxy.Create<IRemoteCertificateClient, CertificateEditorClient>();
+            var client = DispatchProxy.Create<IServerCertificates, CertificateEditorClient>();
             var stub = (CertificateEditorClient)(object)client;
             var vm = new CertificateManagerViewModel(client, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions())
             {
@@ -80,7 +81,7 @@ internal static class CertificateEditorChecks
     {
         foreach (var terminal in new[] { CertificateOperationState.Cancelled, CertificateOperationState.Succeeded })
         {
-            var client = DispatchProxy.Create<IRemoteCertificateClient, CertificateCancellationClient>();
+            var client = DispatchProxy.Create<IServerCertificates, CertificateCancellationClient>();
             var stub = (CertificateCancellationClient)(object)client;
             var vm = new CertificateManagerViewModel(client, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions())
             { SelfSignedDomains = "example.test" };
@@ -102,7 +103,7 @@ internal static class CertificateEditorChecks
             if (terminal == CertificateOperationState.Cancelled)
                 Check(vm.OperationText.Resolve() == LocalizedText.Get("certificates.operation.cancelled"), "Confirmed server cancellation uses the terminal cancelled message.");
         }
-        var disconnectedClient = DispatchProxy.Create<IRemoteCertificateClient, CertificateCancellationClient>();
+        var disconnectedClient = DispatchProxy.Create<IServerCertificates, CertificateCancellationClient>();
         var disconnected = (CertificateCancellationClient)(object)disconnectedClient;
         var disconnectedVm = new CertificateManagerViewModel(disconnectedClient, DispatchProxy.Create<IAuthSession, SiteEditorSession>(), new FirewallTestPermissions())
         { SelfSignedDomains = "example.test" };

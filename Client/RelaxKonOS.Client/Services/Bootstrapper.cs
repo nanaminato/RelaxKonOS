@@ -210,7 +210,7 @@ public static class Bootstrapper
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         // Certificates（证书管理器）与 WebServers（Web 服务器管理器）：typed HttpClient（JWT from IAuthSession，与 Firewall 同模式）。
         // 长时操作通过 Idempotency-Key + 操作轮询跟踪；私钥/ACME 账户与 shell 文本均不通过 HTTP 暴露。
-        services.AddHttpClient<RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient, RelaxKonOS.Client.Apps.Certificates.RemoteCertificateClient>()
+        services.AddHttpClient<RelaxKonOS.AppSDK.IServerCertificates, RelaxKonOS.Client.Apps.Certificates.RemoteCertificateClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "certificates"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddHttpClient<RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient, RelaxKonOS.Client.Apps.WebServers.RemoteWebServerClient>()

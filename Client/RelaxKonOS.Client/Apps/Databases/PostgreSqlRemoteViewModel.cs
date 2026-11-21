@@ -1,3 +1,4 @@
+using RelaxKonOS.AppSDK;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Apps.Certificates;
@@ -7,7 +8,7 @@ using RelaxKonOS.Protocol.Databases;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Installations;
 namespace RelaxKonOS.Client.Apps.Databases;
-public sealed partial class PostgreSqlRemoteViewModel(IRemoteCertificateClient certificates, InstallationTaskViewModel installation) : ObservableObject, IDisposable
+public sealed partial class PostgreSqlRemoteViewModel(IServerCertificates certificates, InstallationTaskViewModel installation) : ObservableObject, IDisposable
 {
     public InstallationTaskViewModel Installation => installation;
     public Func<Task<bool>>? ConfirmAsync { get; set; }

@@ -1,13 +1,13 @@
 using RelaxKonOS.Protocol.Certificates;
 
-namespace RelaxKonOS.Client.Apps.Certificates;
+namespace RelaxKonOS.AppSDK;
 
 /// <summary>
 /// Client-side facade for the host-global TLS certificate API. Long-running operations
 /// (request/renew/deploy/revoke/delete) return an operation id that is polled to completion;
 /// the API never exposes private keys or ACME account material.
 /// </summary>
-public interface IRemoteCertificateClient
+public interface IServerCertificates
 {
     Task<IReadOnlyList<CertificateRenewalRunDto>> ListRenewalRunsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CertificateRenewalAttemptDto>> GetRenewalHistoryAsync(Guid id, CancellationToken cancellationToken = default);
