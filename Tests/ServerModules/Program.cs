@@ -153,9 +153,9 @@ if (args is ["--module-host-checks"])
     return;
 }
 
-if (args is ["--joint-deployment-acceptance", _, ..] && args.Length is 2 or 3)
+if (args is ["--joint-deployment-acceptance", var desktopPackage, .. var bundledModulePackages])
 {
-    JointDeploymentAcceptance.Run(args[1], args.Length == 3 ? args[2] : null);
+    JointDeploymentAcceptance.Run(desktopPackage, bundledModulePackages);
     return;
 }
 
