@@ -233,11 +233,12 @@ internal static class JointDeploymentAcceptance
             }
             await packages.UninstallAsync(AppIdText);
 
-            var gitArchive = bundledModuleArchives.FirstOrDefault(path =>
-                Path.GetFileNameWithoutExtension(path) == "relaxkonos.git");
-            var activationDependencies = gitArchive is null
-                ? new[] { ServerModules.FirewallId, ModuleId }
-                : new[] { ServerModules.FirewallId, ModuleId, ServerModules.GitId };
+            var activationArchives = bundledModuleArchives.Where(path =>
+                Path.GetFileNameWithoutExtension(path) is ServerModules.FirewallId or ServerModules.GitId)
+                .ToDictionary(path => Path.GetFileNameWithoutExtension(path), StringComparer.Ordinal);
+            var activationDependencies = activationArchives.ContainsKey(ServerModules.GitId)
+                ? new[] { ServerModules.FirewallId, ModuleId, ServerModules.GitId }
+                : new[] { ServerModules.FirewallId, ModuleId };
             foreach (var dependencyId in activationDependencies)
             {
                 var moduleClient = new ServerModuleManagementClient(factory.CreateClient("joint-fixture"), auth);
@@ -257,14 +258,15 @@ internal static class JointDeploymentAcceptance
                 session.Url = host.Url;
                 joint = Service();
 
-                var activationAppId = dependencyId == ServerModules.GitId ? "relaxkonos.git" : "fixture.bundled";
-                var activationArchive = dependencyId == ServerModules.GitId
-                    ? Path.Combine(official, activationAppId + ".roapp")
-                    : Path.Combine(root, dependencyId + "-dependent.roapp");
-                if (dependencyId == ServerModules.GitId)
+                var officialArchive = activationArchives.GetValueOrDefault(dependencyId);
+                var activationAppId = officialArchive is null ? "fixture.bundled" : dependencyId;
+                var activationArchive = officialArchive is null
+                    ? Path.Combine(root, dependencyId + "-dependent.roapp")
+                    : Path.Combine(official, activationAppId + ".roapp");
+                if (officialArchive is not null)
                 {
-                    File.Copy(gitArchive!, activationArchive);
-                    File.Copy(gitArchive + ".sha256", activationArchive + ".sha256");
+                    File.Copy(officialArchive, activationArchive);
+                    File.Copy(officialArchive + ".sha256", activationArchive + ".sha256");
                 }
                 else
                     await PrepareDesktopArchiveAsync(archive, activationArchive, activationAppId,
@@ -298,6 +300,7 @@ internal static class JointDeploymentAcceptance
                     "relaxkonos.certificates" => [ServerModules.CertificatesId],
                     "relaxkonos.webservers" => [ServerModules.CertificatesId, ServerModules.WebServerId],
                     "relaxkonos.git" => [ServerModules.GitId],
+                    "relaxkonos.firewall" => [ServerModules.FirewallId],
                     _ => throw new ArgumentException($"Unrecognized bundled-module test package: {appId}"),
                 };
                 var bundledPath = Path.Combine(official, appId + ".roapp");
