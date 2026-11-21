@@ -32,6 +32,7 @@
         "terminal.context.select_all": "すべて選択",
         "terminal.context.clear": "クリア",
         "terminal.done": "完了",
-        "terminal.environment": "環境変数"
+        "terminal.environment": "環境変数",
+        "terminal.window_title": "ターミナル"
     }
 }

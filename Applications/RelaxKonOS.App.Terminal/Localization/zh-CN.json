@@ -32,6 +32,7 @@
         "terminal.context.select_all": "全选",
         "terminal.context.clear": "清屏",
         "terminal.done": "完成",
-        "terminal.environment": "环境变量"
+        "terminal.environment": "环境变量",
+        "terminal.window_title": "终端"
     }
 }

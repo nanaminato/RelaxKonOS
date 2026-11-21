@@ -4,6 +4,9 @@ using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System.Text.Json;
+using System.Reflection;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Client.Apps.Terminal;
 using RelaxKonOS.Client.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -91,10 +94,37 @@ internal static class TerminalWorkspaceChecks
         preview.Close();
         Dispatcher.UIThread.RunJobs();
         CheckEngineMigration(shellSettings);
+        CheckSdkWorkspace();
         CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference.Managed);
         if (new RoyalTerminal.Terminal.GhosttyVtProcessorProvider().IsAvailable)
             CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference.Native);
         Console.WriteLine("Terminal workspace checks passed (tabs, overflow, VT selection, presentation).");
+    }
+
+    private static void CheckSdkWorkspace()
+    {
+        var windows = new RelaxKonOS.WindowManager.WindowManager();
+        windows.Attach(new Canvas { Width = 1100, Height = 700 });
+        var context = DispatchProxy.Create<IExternalAppContext, ImageViewerPackageFixture>();
+        var language = RelaxKonOS.Client.App.Services.GetRequiredService<LocalizationService>();
+        var id = new AppId("relaxkonos.terminal");
+        ((ImageViewerPackageFixture)(object)context).Initialize(windows, language, id);
+        var sessions = new List<(string? Id, string? Directory)>();
+        TerminalWorkspace.Open(context, "T", (sessionId, directory, _) =>
+        {
+            sessions.Add((sessionId, directory));
+            return new TerminalViewModel(null, new Settings(), null);
+        }, () => Task.CompletedTask, _ => { }, "restored", "/workspace", false);
+
+        var window = windows.Windows.Single();
+        var workspace = (TerminalWorkspaceView)window.View.Content!;
+        workspace.RequestNewTab!();
+        Check(window.Info.OwnerAppId == id && workspace.Tabs.Count == 2
+            && sessions.SequenceEqual(new (string?, string?)[] { ("restored", "/workspace"), (null, "/workspace") }),
+            "SDK workspace keeps ownership, restores the initial session, and passes its directory to new tabs");
+        workspace.RequestCloseTabAsync!(workspace.Tabs[0]).GetAwaiter().GetResult();
+        Check(workspace.Tabs.Count == 1, "SDK workspace closes an inactive session tab");
+        windows.ForceClose(window);
     }
 
     private static void CheckRenderingPreferences(RoyalTerminal.Terminal.VtProcessorPreference preference)
