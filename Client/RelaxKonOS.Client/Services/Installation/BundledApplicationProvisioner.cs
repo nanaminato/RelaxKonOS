@@ -28,7 +28,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
 
             await using var input = File.OpenRead(manifest);
             var profiles = await JsonSerializer.DeserializeAsync<ProfileDocument>(input, Json, cancellationToken);
-            if (profiles is not { SchemaVersion: 1, DefaultProfile: "standard", Profiles.Count: >= 3 and <= 16 }
+            if (profiles is not { SchemaVersion: 2, DefaultProfile: "standard", Profiles.Count: >= 3 and <= 16 }
                 || !new[] { "minimal", "standard", "developer" }.All(profiles.Profiles.ContainsKey)
                 || profiles.Profiles.Values.Any(entries => !ValidEntries(entries)))
                 throw new InvalidDataException("Invalid bundled application profiles.");
@@ -42,7 +42,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
             foreach (var entry in profiles.Profiles[selection.Profile])
             {
                 var id = entry.AppId;
-                if (selection.Excluded.Contains(id, StringComparer.Ordinal)) continue;
+                if (entry.InstallPolicy == "interactive" || selection.Excluded.Contains(id, StringComparer.Ordinal)) continue;
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
@@ -88,6 +88,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
 
     private static bool ValidEntries(ProfileApplication[]? entries) => entries is { Length: <= 128 }
         && entries.All(entry => entry is not null && OfficialDesktopPackages.IsExternalOfficialId(entry.AppId)
+            && entry.InstallPolicy is "offline" or "interactive"
             && RuntimeSemanticVersion.TryParse(entry.MinimumVersion, out _))
         && entries.Select(entry => entry.AppId).Distinct(StringComparer.Ordinal).Count() == entries.Length;
 
@@ -115,7 +116,7 @@ internal sealed class BundledApplicationProvisioner(DeveloperPackageManager pack
     }
 
     private sealed record ProfileDocument(int SchemaVersion, string DefaultProfile, Dictionary<string, ProfileApplication[]> Profiles);
-    private sealed record ProfileApplication(string AppId, string MinimumVersion);
+    private sealed record ProfileApplication(string AppId, string MinimumVersion, string InstallPolicy);
     private sealed record ProfileSelection(string Profile, string[] Excluded);
     private sealed record ProvisionedApplication(string Id, string Version);
 }

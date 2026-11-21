@@ -57,15 +57,16 @@ internal static class OfficialRoappChecks
             if (isEventAlerts)
                 Check(candidate.Manifest.RequestedPermissions is [AppPermissions.ServerEventAlertsRead],
                     "The official alert package must request only permission to read alerts.");
-            var entry = new[] { new { appId = applicationId, minimumVersion = "1.0.0" } };
-            await File.WriteAllTextAsync(Path.Combine(source, "installation-profiles.json"),
-                System.Text.Json.JsonSerializer.Serialize(new
-                {
-                    schemaVersion = 1, defaultProfile = "standard",
-                    profiles = new { minimal = Array.Empty<object>(), standard = entry, developer = entry },
-                }));
             var provisioner = new BundledApplicationProvisioner(packages, installer,
                 new JointAppDeploymentService(null!, null!, installer, packages, applications, journal), drive);
+            await WriteProfileAsync("interactive");
+            await provisioner.RunAsync();
+            Check(packages.FindInstalled(applicationId) is null, "Interactive profile entries must not install during startup.");
+            var published = (await installer.BrowseOfficialAsync(default)).Releases.Single(release => release.AppId == applicationId);
+            var staged = await installer.StageOfficialAsync(published, default);
+            Check(staged.ExpectedSha256 == candidate.ExpectedSha256,
+                "The existing store must offer the reviewed bundled artifact for interactive deployment.");
+            await WriteProfileAsync("offline");
             await File.AppendAllTextAsync(path, "corrupted distribution package");
             await provisioner.RunAsync();
             Check(packages.FindInstalled(applicationId) is null, "A broken bundled package must not prevent startup or register an app.");
@@ -193,6 +194,17 @@ internal static class OfficialRoappChecks
             }
             await using var file = File.OpenRead(path);
             await File.WriteAllTextAsync(path + ".sha256", Convert.ToHexStringLower(await SHA256.HashDataAsync(file)));
+        }
+
+        Task WriteProfileAsync(string policy)
+        {
+            var entry = new[] { new { appId = applicationId, minimumVersion = "1.0.0", installPolicy = policy } };
+            return File.WriteAllTextAsync(Path.Combine(source, "installation-profiles.json"),
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    schemaVersion = 2, defaultProfile = "standard",
+                    profiles = new { minimal = Array.Empty<object>(), standard = entry, developer = entry },
+                }));
         }
     }
 

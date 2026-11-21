@@ -1,19 +1,19 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "defaultProfile": "standard",
   "profiles": {
     "minimal": [],
     "standard": [
-      { "appId": "relaxkonos.event-alerts", "minimumVersion": "1.0.0" },
-      { "appId": "relaxkonos.imageviewer", "minimumVersion": "1.0.0" },
-      { "appId": "relaxkonos.notepad", "minimumVersion": "1.0.0" },
-      { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0" }
+      { "appId": "relaxkonos.event-alerts", "minimumVersion": "1.0.0", "installPolicy": "offline" },
+      { "appId": "relaxkonos.imageviewer", "minimumVersion": "1.0.0", "installPolicy": "offline" },
+      { "appId": "relaxkonos.notepad", "minimumVersion": "1.0.0", "installPolicy": "offline" },
+      { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0", "installPolicy": "offline" }
     ],
     "developer": [
-      { "appId": "relaxkonos.event-alerts", "minimumVersion": "1.0.0" },
-      { "appId": "relaxkonos.imageviewer", "minimumVersion": "1.0.0" },
-      { "appId": "relaxkonos.notepad", "minimumVersion": "1.0.0" },
-      { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0" }
+      { "appId": "relaxkonos.event-alerts", "minimumVersion": "1.0.0", "installPolicy": "offline" },
+      { "appId": "relaxkonos.imageviewer", "minimumVersion": "1.0.0", "installPolicy": "offline" },
+      { "appId": "relaxkonos.notepad", "minimumVersion": "1.0.0", "installPolicy": "offline" },
+      { "appId": "relaxkonos.welcome", "minimumVersion": "1.0.0", "installPolicy": "offline" }
     ]
   }
 }
