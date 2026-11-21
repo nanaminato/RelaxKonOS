@@ -135,4 +135,5 @@
 - Code Editor 具备独立 SDK 入口、文件关联清单、权限声明与中英日文案，DevCli 在 Windows 生成了 `relaxkonos.codeeditor.roapp`。归档包含程序入口和图标。Windows 桌面回归使用该入口打开本地化 SDK 窗口并经测试文件 API 读取源文件。桌面发行版通过 Developer 配置安装该应用包。Windows Release 已验证实际包的来源、安装、文件关联、更新、失败保留版本、重启发现与卸载。SSH 文件能力沿用经主机密钥校验的 SFTP 会话，真实远端的工作区验收仍待完成。
 - WSL x86_64 上使用 Linux .NET 10.0.14 运行协调器及隔离双包验收。用实际 Welcome 归档与在 Linux 测试进程签名的 `.rkmodule` 验证模块安装、取消、响应丢失、重启恢复及随附和独立模块复用。测试进程使用桌面和服务器 Release 的可移植程序集。
 - 桌面宿主在 Windows 成功交叉发布到 `linux-x64`，此次交叉发布仅验证宿主产物。在 WSL 单独使用实际 Welcome 与 Browser 官方归档验证无头包生命周期，包括 Welcome 配置集升级、Browser 签入工作区和卸载。修复了包目录已移除时 Linux 卸载清理仍试图删除活动指针的问题。Windows Welcome 回归通过。
-- 独立部署设备、Linux 图形桌面、Android 和全应用三语言界面验收仍待执行。
+- Android Debug 离线构建与 1,904 项 JVM 单元测试通过。只读模拟器使用生产应用宿主冷启动 Debug APK，并通过包来源选择与工作区导航的 10 项设备测试。
+- 独立部署设备、Linux 图形桌面、Android 真实服务端联调和全应用三语言界面验收仍待执行。
