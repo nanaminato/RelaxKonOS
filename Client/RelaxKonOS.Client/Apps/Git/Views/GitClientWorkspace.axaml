@@ -6,7 +6,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
              xmlns:ui="clr-namespace:RelaxKonOS.Client.Controls"
-             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
+             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views" xmlns:gitAppViews="clr-namespace:RelaxKonOS.App.Git.Views;assembly=RelaxKonOS.App.Git"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitClientWorkspace"
              x:DataType="gitApp:GitClientViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
@@ -220,7 +220,7 @@
                             </Border>
                             <ContentControl x:Name="ProjectToolHost" Grid.Row="1" />
                         </Grid>
-                        <views:GitCommitToolView x:Name="CommitTool" IsVisible="False" />
+                        <gitAppViews:GitCommitToolView x:Name="CommitTool" IsVisible="False" />
                     </Grid>
                 </Border>
                 <GridSplitter x:Name="CommitSplitter" Grid.Column="1" Width="4" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" />

@@ -3,9 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.Protocol.Git;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
-internal partial class GitCommitToolView : UserControl
+public partial class GitCommitToolView : UserControl
 {
     public GitCommitToolView() => InitializeComponent();
     public void FocusMessage() => CommitMessageInput.Focus();

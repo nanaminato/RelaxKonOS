@@ -69,6 +69,13 @@ public sealed partial class GitClientViewModel(IServerGit client, Func<string, s
 
     /// <summary>Number of selected files for commit.</summary>
     public int SelectedCount => Changes.Count(c => c.IsSelected);
+    public string SelectedCountLabel => FormatLabel("git.workspace.file_count_format", SelectedCount);
+
+    private void NotifySelectedCountChanged()
+    {
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(SelectedCountLabel));
+    }
 
     /// <summary>Gets the selected file paths for commit.</summary>
     public IReadOnlyList<string> SelectedFilePaths => Changes.Where(c => c.IsSelected).Select(c => c.Path).ToArray();

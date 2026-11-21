@@ -336,7 +336,7 @@ public sealed partial class GitClientViewModel
     public void ToggleFileSelection(GitFileChangeItem item)
     {
         item.IsSelected = !item.IsSelected;
-        OnPropertyChanged(nameof(SelectedCount));
+        NotifySelectedCountChanged();
         OnPropertyChanged(nameof(SelectedFilePaths));
     }
 
@@ -344,7 +344,7 @@ public sealed partial class GitClientViewModel
     public void SetFileSelection(GitFileChangeItem item, bool isSelected)
     {
         item.IsSelected = isSelected;
-        OnPropertyChanged(nameof(SelectedCount));
+        NotifySelectedCountChanged();
         OnPropertyChanged(nameof(SelectedFilePaths));
     }
 
@@ -353,7 +353,7 @@ public sealed partial class GitClientViewModel
     private void SelectAllChanges()
     {
         foreach (var c in Changes) c.IsSelected = true;
-        OnPropertyChanged(nameof(SelectedCount));
+        NotifySelectedCountChanged();
         OnPropertyChanged(nameof(SelectedFilePaths));
     }
 
@@ -362,7 +362,7 @@ public sealed partial class GitClientViewModel
     private void ClearSelection()
     {
         foreach (var c in Changes) c.IsSelected = false;
-        OnPropertyChanged(nameof(SelectedCount));
+        NotifySelectedCountChanged();
         OnPropertyChanged(nameof(SelectedFilePaths));
     }
 
@@ -410,7 +410,7 @@ public sealed partial class GitClientViewModel
         }
 
         RebuildEditorGroups();
-        OnPropertyChanged(nameof(SelectedCount));
+        NotifySelectedCountChanged();
         OnPropertyChanged(nameof(SelectedFilePaths));
     }
 
@@ -430,7 +430,7 @@ public sealed partial class GitClientViewModel
 
     private void OnItemSelectionChanged(object? sender, EventArgs e)
     {
-        OnPropertyChanged(nameof(SelectedCount));
+        NotifySelectedCountChanged();
         OnPropertyChanged(nameof(SelectedFilePaths));
     }
 

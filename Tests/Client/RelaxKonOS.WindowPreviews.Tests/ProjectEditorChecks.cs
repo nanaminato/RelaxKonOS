@@ -1,3 +1,4 @@
+using RelaxKonOS.App.Git.Views;
 using RelaxKonOS.App.Git;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.App.CodeEditor;
@@ -10,6 +11,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Git;
@@ -83,6 +85,10 @@ internal static class ProjectEditorChecks
         Check(project.IsCommitVisible && view.FindControl<Border>("SidebarHost")!.IsVisible
             && view.FindControl<GitCommitToolView>("CommitTool")!.IsVisible,
             "A real pointer click opens the Commit tool below Project.");
+        var commitTool = view.FindControl<GitCommitToolView>("CommitTool")!;
+        Check(commitTool.GetVisualDescendants().OfType<TextBlock>().Any(text =>
+            text.Text == LocalizedText.Format("git.workspace.file_count_format", git.SelectedCount)),
+            "The application Commit tool displays the localized selected-file count.");
         ClickTool(commitButton);
         Check(!project.IsCommitVisible, "Clicking Commit again collapses it.");
         git.IsBusy = true;

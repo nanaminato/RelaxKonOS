@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
+             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views" xmlns:gitAppViews="clr-namespace:RelaxKonOS.App.Git.Views;assembly=RelaxKonOS.App.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitConflictResolutionDialog" Classes="builtin-app">
     <Grid Margin="12" RowDefinitions="Auto,*,Auto" RowSpacing="8">
@@ -9,7 +9,7 @@
             <TextBlock Text="{loc:Loc git.dialog.conflicts.message}" TextWrapping="Wrap" FontSize="12" />
         </StackPanel>
         <Border Grid.Row="1" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="4">
-            <views:GitConflictResolutionView />
+            <gitAppViews:GitConflictResolutionView />
         </Border>
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="{loc:Loc git.dialog.conflicts.close}" Padding="14,6" Click="Close_Click" />

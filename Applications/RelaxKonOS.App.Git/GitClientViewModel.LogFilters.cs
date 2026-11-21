@@ -133,7 +133,7 @@ public sealed partial class GitClientViewModel
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(Status));
         OnPropertyChanged(nameof(CommitChangedFiles));
-        OnPropertyChanged(nameof(SelectedCount));
+        NotifySelectedCountChanged();
     }
 
     partial void OnCommitSearchTextChanged(string value) => QueueLogFilterRefresh();

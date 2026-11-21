@@ -1,9 +1,9 @@
 using RelaxKonOS.App.Git;
 using Avalonia.Controls;
 
-namespace RelaxKonOS.Client.Apps.Git.Views;
+namespace RelaxKonOS.App.Git.Views;
 
-internal partial class GitConflictResolutionView : UserControl
+public partial class GitConflictResolutionView : UserControl
 {
     public GitConflictResolutionView() => InitializeComponent();
     public GitConflictResolutionView(GitClientViewModel vm) : this() => DataContext = vm;
