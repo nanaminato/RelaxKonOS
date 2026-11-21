@@ -94,7 +94,7 @@ internal static class ComponentInstallEntryChecks
         foreach (var (type, command) in new[] { (typeof(GitClientViewModel), "InstallEngineCommand"),
             (typeof(RelaxKonOS.App.FileServices.FileServicesViewModel), "InstallCommand"),
             (typeof(RelaxKonOS.Client.Apps.Squid.SquidViewModel), "InstallCommand"),
-            (typeof(RelaxKonOS.Client.Apps.Tunnels.TunnelManagerViewModel), "InstallRuntimeCommand") })
+            (typeof(RelaxKonOS.App.Tunnels.TunnelManagerViewModel), "InstallRuntimeCommand") })
             Check(type.GetProperty(command) is null, type.Name + " no longer exposes an application installation command.");
         var taskDialogRequests = 0;
         gitCenter.ShowTasksDialogAsync = () => { taskDialogRequests++; return Task.CompletedTask; };

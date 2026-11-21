@@ -6,16 +6,21 @@ namespace RelaxKonOS.App.Tunnels;
 
 public abstract class TunnelObservableObject(Func<string, string> localize) : ObservableObject
 {
+    protected Func<string, string> Localize { get; } = localize;
+
+    protected string Format(string key, params object?[] arguments) =>
+        string.Format(CultureInfo.CurrentCulture, Localize(key), arguments);
+
     protected TunnelMessage Message(string key, params object?[] arguments) =>
-        new(() => arguments.Length == 0 ? localize(key) : string.Format(CultureInfo.CurrentCulture, localize(key), arguments));
+        new(() => arguments.Length == 0 ? Localize(key) : string.Format(CultureInfo.CurrentCulture, Localize(key), arguments));
 
     protected TunnelMessage Problem(Exception failure) => Problem((failure as TunnelRequestException)?.ProblemCode);
 
     protected TunnelMessage Problem(string? code) => new(() =>
     {
         var key = $"tunnels.problem.{code}";
-        var text = localize(key);
-        return text == key ? localize("tunnels.status.failed") : text;
+        var text = Localize(key);
+        return text == key ? Localize("tunnels.status.failed") : text;
     });
 
     public void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) =>

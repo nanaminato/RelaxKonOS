@@ -35,8 +35,16 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
         }
         var canManage = context.Permissions.IsGranted(AppPermissions.ServerTunnelsManage);
         var dependency = ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.tunnels");
-        var vm = new TunnelManagerViewModel(client, canManage) { Dependency = dependency };
-        var view = new TunnelManagerView { DataContext = vm };
+        var vm = new TunnelManagerViewModel(client, canManage, LocalizedText.Get);
+        var view = new TunnelManagerView
+        {
+            DataContext = vm,
+            CreateDependencySettings = () =>
+            {
+                _ = dependency.RefreshAsync();
+                return new ComponentCenter.ComponentDependencySettingsView { DataContext = dependency };
+            },
+        };
         var window = context.ShowWindow(LocalizedText.Get("tunnels.title"), view, new Rect(90, 65, 1040, 680), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         async Task<bool> ConfirmAsync(string title, string message, string confirmLabel)
@@ -66,6 +74,7 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
             WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, TunnelObservableObject>(
                 localization, nameof(LocalizationService.LanguageChanged), model.OnLanguageChanged);
 
+        ObserveLanguage(vm);
         vm.OpenProfileEditorAsync = async profile =>
         {
             var editableProfile = profile is null ? null : await client.GetProfileAsync(profile.Id);

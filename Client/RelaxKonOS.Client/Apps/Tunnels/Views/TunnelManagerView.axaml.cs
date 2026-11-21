@@ -13,6 +13,8 @@ public partial class TunnelManagerView : UserControl
         Header.Attach(window, HeaderActions);
     }
 
+    public Func<Control>? CreateDependencySettings { get; init; }
+
     private Button? _selectedButton;
     public TunnelManagerView()
     {
@@ -31,18 +33,13 @@ public partial class TunnelManagerView : UserControl
         _selectedButton?.Classes.Remove("nav-selected");
         _selectedButton = button;
         button.Classes.Add("nav-selected");
-        var dependency = (DataContext as TunnelManagerViewModel)?.Dependency;
-        if (section == "settings" && dependency is not null) _ = dependency.RefreshAsync();
         Control page = section switch
         {
             "tunnels" => new TunnelDefinitionsView(),
             "servers" => new TunnelServersView(),
             "frps" => new TunnelManagedFrpsView(),
             "runtime" => new TunnelRuntimeView(),
-            "settings" => new RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsView
-            {
-                DataContext = dependency
-            },
+            "settings" => CreateDependencySettings?.Invoke() ?? new ContentControl(),
             _ => new TunnelOverviewView()
         };
         // Data grids need the actual viewport height so they can expand and scroll internally.

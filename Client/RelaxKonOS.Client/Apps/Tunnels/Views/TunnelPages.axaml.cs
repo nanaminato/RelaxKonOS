@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using RelaxKonOS.Client.Apps.Tunnels;
+using RelaxKonOS.App.Tunnels;
 using RelaxKonOS.Protocol.Tunnels;
 
 namespace RelaxKonOS.Client.Apps.Tunnels.Views;
