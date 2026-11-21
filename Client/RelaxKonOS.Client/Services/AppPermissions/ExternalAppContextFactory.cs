@@ -146,7 +146,7 @@ public sealed class ExternalAppContextFactory
         new ServerProcessesCapability(appId, _permissions, connection, _systemMonitor, _elevationBroker),
         new ServerRegistryCapability(appId, _permissions, connection, _registry),
         new ServerCertificatesCapability(appId, _permissions, connection, _certificates),
-        new ServerWebServersCapability(appId, _permissions, connection, _webServers),
+        new ServerWebServersCapability(appId, _permissions, connection, _webServers, _elevationBroker),
         appId.Value == "relaxkonos.registry" && _presentationPreferences is not null
             ? new ExternalRegistryAppearance(_presentationPreferences, connection) : null,
         appId.Value == "relaxkonos.browser" && _browserData is not null ? new ExternalBrowserData(_browserData, connection) : null,

@@ -1,13 +1,15 @@
 using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebServers;
 using CoreAppPermissions = RelaxKonOS.Core.Applications.AppPermissions;
 
 namespace RelaxKonOS.Client.Services.AppPermissions;
 
 internal sealed class ServerWebServersCapability(AppId appId, IAppPermissionManager permissions,
-    ExternalServerConnection connection, IServerWebServers? client) : IServerWebServers
+    ExternalServerConnection connection, IServerWebServers? client, IHostElevationBroker? elevation) : IServerWebServers
 {
     private IServerWebServers Client => client ?? throw new InvalidOperationException("The web server client is unavailable.");
 
@@ -39,13 +41,16 @@ internal sealed class ServerWebServersCapability(AppId appId, IAppPermissionMana
         RunAsync(() => Client.GetManagedInstallDownloadAsync(version, token), manage: false, token);
 
     public Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, IntegrateWebServerRequest request, CancellationToken token) =>
-        RunAsync(() => Client.IntegrateCandidateAsync(candidateId, request, token), manage: true, token);
+        RunElevatedAsync(HostElevationCapability.NginxConfigurationWrite, candidateId,
+            () => Client.IntegrateCandidateAsync(candidateId, request, token), token);
 
     public Task<WebServerOperationDto?> ApplyLifecycleAsync(string id, WebServerLifecycleAction action, CancellationToken token) =>
-        RunAsync(() => Client.ApplyLifecycleAsync(id, action, token), manage: true, token);
+        RunElevatedAsync(action == WebServerLifecycleAction.EnableAcmeHttp01
+                ? HostElevationCapability.NginxConfigurationWrite : HostElevationCapability.NginxLifecycle,
+            id, () => Client.ApplyLifecycleAsync(id, action, token), token);
 
     public Task<WebServerOperationDto?> ReloadAsync(string id, CancellationToken token) =>
-        RunAsync(() => Client.ReloadAsync(id, token), manage: true, token);
+        RunElevatedAsync(HostElevationCapability.NginxLifecycle, id, () => Client.ReloadAsync(id, token), token);
 
     public Task<WebServerOperationDto?> GetOperationAsync(Guid operationId, CancellationToken token) =>
         RunAsync(() => Client.GetOperationAsync(operationId, token), manage: false, token);
@@ -57,13 +62,21 @@ internal sealed class ServerWebServersCapability(AppId appId, IAppPermissionMana
         RunAsync(() => Client.ListSitesAsync(id, token), manage: false, token);
 
     public Task<WebServerSiteDto?> UpsertSiteAsync(string id, UpsertWebServerSiteRequest request, CancellationToken token) =>
-        RunAsync(() => Client.UpsertSiteAsync(id, request, token), manage: true, token);
+        RunElevatedAsync(HostElevationCapability.NginxConfigurationWrite, id, () => Client.UpsertSiteAsync(id, request, token), token);
 
-    public async Task DeleteSiteAsync(string id, string siteId, DeleteWebServerSiteRequest request, CancellationToken token)
+    public Task DeleteSiteAsync(string id, string siteId, DeleteWebServerSiteRequest request, CancellationToken token) =>
+        RunElevatedAsync(HostElevationCapability.NginxConfigurationWrite, id, async () =>
+        {
+            await Client.DeleteSiteAsync(id, siteId, request, token);
+            return true;
+        }, token);
+
+    private Task<T> RunElevatedAsync<T>(HostElevationCapability capability, string target, Func<Task<T>> operation,
+        CancellationToken token)
     {
         CheckAccess(manage: true, token);
-        await Client.DeleteSiteAsync(id, siteId, request, token);
-        CheckAccess(manage: true, token);
+        var broker = elevation ?? throw new InvalidOperationException("Host authorization is unavailable.");
+        return broker.ExecuteAsync(capability, target, () => RunAsync(operation, manage: true, token), token);
     }
 
     private async Task<T> RunAsync<T>(Func<Task<T>> operation, bool manage, CancellationToken token)

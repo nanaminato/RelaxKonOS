@@ -13,6 +13,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebServers;
 
 internal static class CurrentNginxChecks
@@ -33,17 +34,24 @@ internal static class CurrentNginxChecks
         var auth = DispatchProxy.Create<IAuthSession, EventAlertsAuthFixture>();
         var session = (EventAlertsAuthFixture)(object)auth;
         var memory = new UsageMemoryStore(Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "web-server-memory.json"));
-        var capability = new ServerWebServersCapability(app, permissions, new ExternalServerConnection(memory.Capture(auth)), client);
+        var broker = DispatchProxy.Create<IHostElevationBroker, SiteEditorElevation>();
+        var elevation = (SiteEditorElevation)(object)broker;
+        var capability = new ServerWebServersCapability(app, permissions, new ExternalServerConnection(memory.Capture(auth)), client, broker);
         Reject<UnauthorizedAccessException>(() => capability.ListAsync(default).GetAwaiter().GetResult());
         permissions.Granted.Add(AppPermissions.ServerWebServersRead);
         Check(capability.ListAsync(default).GetAwaiter().GetResult().Count == 2, "The SDK permits the granted web-server read.");
         Reject<UnauthorizedAccessException>(() => capability.IntegrateCandidateAsync("external", null!, default).GetAwaiter().GetResult());
         Check(host.IntegrationCalls == 0, "SDK read permission alone cannot integrate a web server.");
         permissions.Granted.Add(AppPermissions.ServerWebServersManage);
+        elevation.BeforeDispatch = (grant, target) =>
+            Check(grant is HostElevationCapability.NginxConfigurationWrite && target is "external",
+                "SDK integration requests the existing candidate-scoped host authorization.");
         capability.IntegrateCandidateAsync("external", null!, default).GetAwaiter().GetResult();
         Reject<UnauthorizedAccessException>(() => capability.SelectCurrentNginxAsync(new("second"), default).GetAwaiter().GetResult());
         Check(host.IntegrationCalls == 1 && host.Current == "first", "SDK management leaves current Nginx selection with Component Center.");
-        session.ServiceId = "http://replacement.invalid";
+        elevation.BeforeDispatch = (_, _) => session.ServiceId = "http://replacement.invalid";
+        Reject<InvalidOperationException>(() => capability.IntegrateCandidateAsync("external", null!, default).GetAwaiter().GetResult());
+        Check(host.IntegrationCalls == 1, "Switching servers during SDK authorization prevents the write.");
         Reject<InvalidOperationException>(() => capability.ListAsync(default).GetAwaiter().GetResult());
 
         static void Reject<T>(Action call) where T : Exception

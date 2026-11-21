@@ -102,5 +102,11 @@ public class SiteEditorClient : DispatchProxy
 }
 public class SiteEditorElevation : DispatchProxy
 {
-    protected override object? Invoke(MethodInfo? method, object?[]? args) => ((Delegate)args![2]!).DynamicInvoke();
+    public Action<object?, object?>? BeforeDispatch { get; set; }
+
+    protected override object? Invoke(MethodInfo? method, object?[]? args)
+    {
+        BeforeDispatch?.Invoke(args![0], args[1]);
+        return ((Delegate)args![2]!).DynamicInvoke();
+    }
 }
