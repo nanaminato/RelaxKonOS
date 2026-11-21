@@ -152,7 +152,7 @@ internal static class InstalledModuleChecks
             check(versionsExit == 0 && versionsDocument.RootElement.GetProperty("readOnly").GetBoolean()
                 && versionsDocument.RootElement.GetProperty("versions").GetArrayLength() == 2,
                 "list-versions reports immutable installed versions without claiming the active one");
-            var rolledBack = await InstalledModuleInstaller.RollbackAsync(root, "fixture-module", "1.0.0");
+            var rolledBack = await InstalledModuleInstaller.RollbackAsync(root, dependencyConfiguration, "fixture-module", "1.0.0");
             check(rolledBack.Version == "1.0.0"
                 && InstalledModuleStore.Read(root).Single(module => module.ModuleId == "fixture-module").Version == "1.0.0",
                 "rollback switches the installation fact to a previously verified version");
@@ -187,8 +187,8 @@ internal static class InstalledModuleChecks
             currentModules[currentModules.FindIndex(module => module.ModuleId == "fixture-module")] = newerRecord;
             InstalledModuleStore.Write(root, currentModules);
             var failedUpdate = ModulePackageOperationStore.Record(root, "install", newerRecord, "1.0.0", now);
-            ModulePackageStartupGuard.Begin(root, "startup-attempt-a");
-            ModulePackageStartupGuard.Begin(root, "startup-attempt-b");
+            ModulePackageStartupGuard.Begin(root, dependencyConfiguration, "startup-attempt-a");
+            ModulePackageStartupGuard.Begin(root, dependencyConfiguration, "startup-attempt-b");
             var restored = InstalledModuleStore.Read(root).Single(module => module.ModuleId == "fixture-module");
             var recovered = ModulePackageOperationStore.Read(root).Single(operation => operation.OperationId == failedUpdate.OperationId);
             check(restored.Version == "1.0.0" && recovered.State == ModulePackageOperationState.Failed
@@ -197,8 +197,8 @@ internal static class InstalledModuleChecks
             ModulePackageStartupGuard.Complete(root);
 
             var quarantineOperation = ModulePackageOperationStore.Record(root, "install", fixtureRecord, null, now);
-            ModulePackageStartupGuard.Begin(root, "quarantine-a");
-            ModulePackageStartupGuard.Begin(root, "quarantine-b");
+            ModulePackageStartupGuard.Begin(root, dependencyConfiguration, "quarantine-a");
+            ModulePackageStartupGuard.Begin(root, dependencyConfiguration, "quarantine-b");
             var quarantined = InstalledModuleStore.Read(root).Single(module => module.ModuleId == "fixture-module");
             var quarantinedOperation = ModulePackageOperationStore.Read(root)
                 .Single(operation => operation.OperationId == quarantineOperation.OperationId);
@@ -268,6 +268,53 @@ internal static class InstalledModuleChecks
             check(InstalledModuleStore.Read(root).Count == 0
                 && Directory.Exists(Path.Combine(root, "data", "module-management", record.PackagePath)),
                 "remove-installed removes the record and preserves package files by default");
+
+            var archived = fixtureManifest with
+            {
+                ModuleId = "fixture-rollback", ReleaseId = "fixture-rollback-1",
+                Dependencies = [new("example", "1.0.0", "2.0.0")],
+            };
+            await StoreVersionAsync(archived, activate: false);
+            await StoreVersionAsync(archived with
+            {
+                Version = "2.0.0", ReleaseId = "fixture-rollback-2", Dependencies = [],
+            }, activate: true);
+            try
+            {
+                await InstalledModuleInstaller.RollbackAsync(root, dependencyConfiguration, archived.ModuleId, archived.Version);
+                check(false, "rollback rejects an archived version with a removed dependency");
+            }
+            catch (ModulePackageException error)
+            {
+                check(error.ProblemCode == "module-package-dependency-missing"
+                    && InstalledModuleStore.Read(root).Single().Version == "2.0.0",
+                    "rollback rejects an archived version with a removed dependency and retains the current version");
+            }
+
+            var active = InstalledModuleStore.Read(root).Single();
+            var pendingRecovery = ModulePackageOperationStore.Record(root, "install", active, archived.Version, now);
+            ModulePackageStartupGuard.Begin(root, dependencyConfiguration, "rollback-check-a");
+            ModulePackageStartupGuard.Begin(root, dependencyConfiguration, "rollback-check-b");
+            var recoveredFact = InstalledModuleStore.Read(root).Single();
+            check(recoveredFact is { Version: "2.0.0", Quarantined: true }
+                && ModulePackageOperationStore.Read(root).Single(operation => operation.OperationId == pendingRecovery.OperationId)
+                    .ProblemCode == "module-package-operation-startup-rollback-failed-quarantined",
+                "startup recovery quarantines a failed update when the archived version cannot satisfy dependencies");
+            ModulePackageStartupGuard.Complete(root);
+
+            async Task StoreVersionAsync(ModulePackageManifest manifest, bool activate)
+            {
+                var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ModulePackageJson.Options);
+                using var bytes = new MemoryStream();
+                using (var zip = new ZipArchive(bytes, ZipArchiveMode.Create, leaveOpen: true))
+                {
+                    using (var stream = zip.CreateEntry("manifest.json").Open()) stream.Write(manifestBytes);
+                    using (var stream = zip.CreateEntry(entryAssembly).Open()) stream.Write(fixtureBytes);
+                }
+                bytes.Position = 0;
+                await InstalledModuleInstaller.InstallVerifiedAsync(root, "fixture", manifest,
+                    Hash(manifestBytes), Hash(bytes.ToArray()), bytes, now, activate: activate);
+            }
         }
         finally
         {

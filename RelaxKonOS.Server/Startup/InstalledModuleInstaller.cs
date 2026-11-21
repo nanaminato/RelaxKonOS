@@ -219,7 +219,8 @@ internal static class InstalledModuleInstaller
         InstalledModuleStore.Write(contentRoot, modules);
     }
 
-    internal static Task<InstalledModuleRecord> RollbackAsync(string contentRoot, string moduleId, string version,
+    internal static Task<InstalledModuleRecord> RollbackAsync(string contentRoot, IConfiguration configuration,
+        string moduleId, string version,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -229,8 +230,8 @@ internal static class InstalledModuleInstaller
         var target = InstalledModuleStore.ReadInstallMetadata(contentRoot, "packages/" + moduleId + "/" + version);
         if (target.ModuleId != moduleId || target.Version != version || target.InstalledAt == default)
             throw new ModulePackageException("module-package-install-metadata-invalid");
-        InstalledModuleStore.VerifyPackage(contentRoot, target);
-        ValidateDependentVersions(contentRoot, target.ModuleId, target.Version, modules);
+        var manifest = InstalledModuleStore.VerifyPackage(contentRoot, target);
+        ValidateDependencies(contentRoot, configuration, manifest);
         modules[index] = target;
         InstalledModuleStore.Write(contentRoot, modules);
         return Task.FromResult(target);

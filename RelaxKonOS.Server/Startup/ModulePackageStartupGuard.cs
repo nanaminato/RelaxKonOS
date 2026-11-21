@@ -15,10 +15,10 @@ internal static class ModulePackageStartupGuard
     internal static string PathFor(string contentRoot) =>
         Path.Combine(contentRoot, "data", "module-management", "package-startup.json");
 
-    internal static void Begin(string contentRoot, string processGeneration)
+    internal static void Begin(string contentRoot, IConfiguration configuration, string processGeneration)
     {
         var marker = PathFor(contentRoot);
-        if (File.Exists(marker)) Recover(contentRoot, processGeneration);
+        if (File.Exists(marker)) Recover(contentRoot, configuration, processGeneration);
         var directory = Path.GetDirectoryName(marker)!;
         Directory.CreateDirectory(directory);
         var temporary = marker + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -44,7 +44,7 @@ internal static class ModulePackageStartupGuard
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
-    private static void Recover(string contentRoot, string processGeneration)
+    private static void Recover(string contentRoot, IConfiguration configuration, string processGeneration)
     {
         var operations = ModulePackageOperationStore.Read(contentRoot)
             .Where(operation => operation.State == ModulePackageOperationState.AwaitingRestart)
@@ -62,7 +62,8 @@ internal static class ModulePackageStartupGuard
                     "packages/" + operation.ModuleId + "/" + operation.PreviousVersion);
                 if (previous.ModuleId != operation.ModuleId || previous.Version != operation.PreviousVersion)
                     throw new ModulePackageException("module-package-operation-startup-rollback-failed");
-                InstalledModuleStore.VerifyPackage(contentRoot, previous);
+                var manifest = InstalledModuleStore.VerifyPackage(contentRoot, previous);
+                InstalledModuleInstaller.ValidateDependencies(contentRoot, configuration, manifest);
                 var modules = InstalledModuleStore.Read(contentRoot).ToList();
                 var index = modules.FindIndex(module => module.ModuleId == operation.ModuleId);
                 if (index >= 0) modules[index] = previous; else modules.Add(previous);

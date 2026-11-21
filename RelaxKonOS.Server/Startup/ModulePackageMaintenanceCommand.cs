@@ -84,7 +84,9 @@ internal static class ModulePackageMaintenanceCommand
                 throw new ModulePackageException("module-package-local-administrator-required");
             using var hostLock = AcquireHostLock(root);
             var previous = InstalledModuleStore.Read(root).SingleOrDefault(module => module.ModuleId == moduleId);
-            var record = await InstalledModuleInstaller.RollbackAsync(root, moduleId, version);
+            var rollbackHost = CreateHostBuilder(root);
+            using var rollbackConfiguration = (IDisposable)rollbackHost.Configuration;
+            var record = await InstalledModuleInstaller.RollbackAsync(root, rollbackHost.Configuration, moduleId, version);
             var operation = ModulePackageOperationStore.Record(root, "rollback", record, previous?.Version, DateTimeOffset.UtcNow);
             Console.WriteLine(JsonSerializer.Serialize(new { rolledBack = true, effective = false,
                 operationId = operation.OperationId, record }, ModulePackageJson.Options));
@@ -125,11 +127,8 @@ internal static class ModulePackageMaintenanceCommand
         var sourceId = values["--source-id"];
         if (!ModulePackageHostConfiguration.Identifier(sourceId))
             throw new ModulePackageException("module-package-source-invalid");
-        var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
-            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? Environments.Production;
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = root, EnvironmentName = environment });
+        var builder = CreateHostBuilder(root);
         using var configurationLifetime = (IDisposable)builder.Configuration;
-        builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
         var policy = ModulePackageHostConfiguration.Source(builder.Configuration, sourceId);
         var context = ModulePackageHostConfiguration.Context(identity.ServiceId, builder.Configuration, builder.Environment);
         if (refreshing)
@@ -179,6 +178,15 @@ internal static class ModulePackageMaintenanceCommand
         Console.WriteLine(JsonSerializer.Serialize(new { readOnly = true, trustHistoryPresent = historyPresent,
             trustHistoryCommitted = false, installed = false, candidate = result }, ModulePackageJson.Options));
         return 0;
+    }
+
+    private static WebApplicationBuilder CreateHostBuilder(string root)
+    {
+        var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? Environments.Production;
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = root, EnvironmentName = environment });
+        builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
+        return builder;
     }
 
     private static FileStream AcquireHostLock(string root)

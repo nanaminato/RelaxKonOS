@@ -396,7 +396,7 @@ internal static class ServerModuleManagementEndpoints
             if (current is null) return Problem("module-package-installed-module-not-found", 404);
             if (current.Runtime == "module-host" && http.RequestServices.GetService<ServerModules>()?.IsEnabled(request.ModuleId) == true)
                 return Problem("module-host-rollback-plan-required", 409);
-            var record = await InstalledModuleInstaller.RollbackAsync(context.ContentRootPath, request.ModuleId,
+            var record = await InstalledModuleInstaller.RollbackAsync(context.ContentRootPath, context.Configuration, request.ModuleId,
                 request.Version, cancellationToken);
             var operation = ModulePackageOperationStore.Record(context.ContentRootPath, "rollback", record,
                 current.Version, DateTimeOffset.UtcNow);
