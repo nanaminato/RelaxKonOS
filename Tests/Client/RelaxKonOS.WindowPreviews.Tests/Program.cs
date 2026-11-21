@@ -86,6 +86,20 @@ if (args.Contains("--notepad-only")) { NotepadWorkspaceChecks.Run(settings, loca
 if (args.Contains("--event-alerts-capability-only")) { Task.Run(() => EventAlertsCapabilityChecks.RunAsync(settings, localization)).GetAwaiter().GetResult(); return; }
 if (args.Contains("--certificates-only"))
 {
+    var previousLanguage = settings.Language;
+    try
+    {
+        var labels = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
+        {
+            settings.Language = culture;
+            var text = localization.Get("certificates.subtitle", "");
+            if (string.IsNullOrWhiteSpace(text) || !labels.Add(text))
+                throw new InvalidOperationException($"Missing distinct certificate text for {culture}.");
+        }
+        Console.WriteLine("Certificate Manager resources resolved in all three languages.");
+    }
+    finally { settings.Language = previousLanguage; }
     Task.Run(() => CertificateCapabilityChecks.RunAsync(settings, localization)).GetAwaiter().GetResult();
     CertificateEditorChecks.Run();
     return;
