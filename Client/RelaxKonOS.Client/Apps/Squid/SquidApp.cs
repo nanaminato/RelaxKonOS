@@ -2,8 +2,8 @@ using RelaxKonOS.App.Squid;
 using Avalonia.Controls;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
-using RelaxKonOS.Client.Apps.Squid.Views;
-using RelaxKonOS.Client.Localization;
+using RelaxKonOS.App.Squid.Views;
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
@@ -21,15 +21,17 @@ public sealed class SquidApp : RemoteApplicationBase
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.squid"), "Squid", "1.0.0", "⇥", "HTTP and HTTPS forward proxy gateway",
         [AppPermissions.ServerSquidRead, AppPermissions.ServerSquidManage, AppPermissions.ServerComponentsRead],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.GatewayProxy]),
-        IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/squid.png", InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+        IconPath: "avares://RelaxKonOS.App.Squid/Assets/squid.png", InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {
         var session = (IAuthSession?)context.Services.GetService(typeof(IAuthSession));
         var client = (IServerSquid?)context.Services.GetService(typeof(IServerSquid));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
+        var language = (LocalizationService)context.Services.GetService(typeof(LocalizationService))!;
+        string Label(string key, string fallback) => SquidLocalization.Resolve(language, key, fallback);
         var dependency = RelaxKonOS.Client.Apps.ComponentCenter.ComponentDependencySettingsViewModel.Create(context, "relaxkonos.squid");
-        var vm = new SquidViewModel(client, LocalizedText.Get)
+        var vm = new SquidViewModel(client, Label)
         {
             GetComponentManagementCommand = () => dependency.Components.FirstOrDefault()?.ManageCommand,
         };
@@ -38,7 +40,7 @@ public sealed class SquidApp : RemoteApplicationBase
             CreateDependencySettings = () => new ComponentCenter.ComponentDependencySettingsView { DataContext = dependency },
             RefreshDependencySettings = () => _ = dependency.RefreshAsync(),
         };
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.squid.display_name"), view,
+        var window = context.ShowWindow(vm.Labels("application.relaxkonos.squid.display_name"), view,
             new Rect(90, 55, 960, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         RelaxKonOS.WindowManager.ModalDialog<bool>? activeEditor = null;
@@ -56,11 +58,19 @@ public sealed class SquidApp : RemoteApplicationBase
                 Avalonia.Threading.Dispatcher.UIThread.Post(vm.InvalidateSession);
         };
         session.StateChanged += sessionChanged;
+        void RefreshLanguage(object? sender, SystemLanguageChangedEventArgs args) =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                window.Title = vm.Labels("application.relaxkonos.squid.display_name");
+                vm.RefreshLanguage();
+            });
+        language.LanguageChanged += RefreshLanguage;
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
         closed = (_, current) =>
         {
             if (!ReferenceEquals(current, window)) return;
             context.WindowManager.WindowClosed -= closed; session.StateChanged -= sessionChanged;
+            language.LanguageChanged -= RefreshLanguage;
             dependency.Dispose(); vm.Dispose();
         };
         context.WindowManager.WindowClosed += closed;
@@ -84,9 +94,9 @@ public sealed class SquidApp : RemoteApplicationBase
         async Task<bool> ConfirmAsync(string title, string message)
         {
             var accepted = false;
-            await ShowOwnedAsync<bool>( LocalizedText.Get(title), dialog => new ConfirmDialogView
+            await ShowOwnedAsync<bool>( vm.Labels(title), dialog => new ConfirmDialogView
             {
-                DataContext = new ConfirmDialogViewModel(LocalizedText.Get(message), value => { accepted = value; dialog.Close(value); })
+                DataContext = new ConfirmDialogViewModel(vm.Labels(message), value => { accepted = value; dialog.Close(value); })
             }, new Size(520, 260));
             return accepted;
         }

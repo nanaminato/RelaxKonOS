@@ -35,6 +35,8 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         _localize = localize;
     }
 
+    public Func<string, string> Labels => key => _localize(key, key);
+
     public void RefreshLanguage() => OnPropertyChanged(string.Empty);
 
     /// <summary>Draft fields. They only reach the host through preview, validate and apply.</summary>

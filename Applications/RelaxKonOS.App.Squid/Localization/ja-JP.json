@@ -1,6 +1,12 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "application.relaxkonos.squid.display_name": "Squid ゲートウェイ",
+    "common.view": "表示",
+    "common.refresh": "更新",
+    "common.settings": "設定",
+    "common.close": "閉じる",
+    "common.discard_title": "変更を破棄しますか？",
         "squid.edit_account": "アカウントを編集…",
     "squid.intro": "Linux サーバーの HTTP/CONNECT ゲートウェイを管理します。リストは 1 行 1 項目です。HTTPS は復号しません。",
     "squid.bind_address": "待ち受け IP アドレス",

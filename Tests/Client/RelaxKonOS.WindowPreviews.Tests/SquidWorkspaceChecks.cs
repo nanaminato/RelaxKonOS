@@ -15,7 +15,6 @@ using RelaxKonOS.Protocol.Workspace;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.Squid;
-using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.GatewayProxy;
 using RelaxKonOS.Protocol.Proxy;
 
@@ -64,8 +63,10 @@ internal static class SquidWorkspaceChecks
         }
     }
 
-    public static void Run()
+    public static void Run(LocalizationService language)
     {
+        string Label(string key, string fallback) => SquidLocalization.Resolve(language, key, fallback);
+        string Text(string key) => Label(key, key);
         // The Server answers the gateway contract on every platform, so the manifest must not narrow
         // itself back to Linux: that would hide the only window in which a Windows host can explain
         // itself, and the application must not borrow another application's icon either.
@@ -73,12 +74,12 @@ internal static class SquidWorkspaceChecks
         Check(manifest.Server.SupportedPlatforms.Count == 0
             && manifest.Server.RequiredCapabilities.SequenceEqual([ServerCapabilities.GatewayProxy]),
             "Squid must reach every host that advertises gateway-proxy regardless of platform.");
-        Check(manifest.IconPath == "avares://RelaxKonOS.Client/Assets/AppIcons/squid.png",
+        Check(manifest.IconPath == "avares://RelaxKonOS.App.Squid/Assets/squid.png",
             "Squid must render its own icon instead of the proxy manager icon.");
 
         VerifyHttpContract();
         var fake = new SquidClientStub();
-        using var vm = new SquidViewModel(fake, LocalizedText.Get);
+        using var vm = new SquidViewModel(fake, Label);
         Check(!vm.ApplyCommand.CanExecute(null) && !vm.RefreshCommand.CanExecute(null), "Permission decisions must precede requests.");
         vm.CanRead = true;
         Complete(vm.RefreshCommand.ExecuteAsync(null));
@@ -247,23 +248,23 @@ internal static class SquidWorkspaceChecks
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Supported = true, Installed = false, Running = false, Enabled = false } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
         Check(vm.ShowInstallRequired && !vm.HasServiceState && !vm.StatePillOk && vm.StatePillNeutral
-            && vm.StatePillText.Resolve() == LocalizedText.Get("squid.state.not_installed"),
+            && vm.StatePillText.Resolve() == Text("squid.state.not_installed"),
             "A supported host without the package says so instead of showing a running pill over dashes.");
-        Check(vm.ServiceControlReasonText.Resolve() == LocalizedText.Get("squid.control_reason.not_installed")
+        Check(vm.ServiceControlReasonText.Resolve() == Text("squid.control_reason.not_installed")
             && !vm.CanStart && !vm.CanToggleBoot,
             "The lifecycle card names the missing package as the reason its actions are unavailable.");
         Check(!vm.CanOpenComponentCenter, "Without a component dependency area no installation shortcut is offered.");
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Installed = true, Managed = true, Running = false, Enabled = false } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
-        Check(vm.StatePillWarn && vm.StatePillText.Resolve() == LocalizedText.Get("squid.stopped")
-            && vm.ServiceControlReasonText.Resolve() == LocalizedText.Get("squid.control_reason.stopped"),
+        Check(vm.StatePillWarn && vm.StatePillText.Resolve() == Text("squid.stopped")
+            && vm.ServiceControlReasonText.Resolve() == Text("squid.control_reason.stopped"),
             "A stopped service is a warning pill and states why restart and reload are missing.");
 
         // The host proved the listener cannot bind; the window must name the address and the fix.
         vm.BindAddress = "192.168.1.4"; vm.Port = "3128"; vm.AllowRemoteClients = true;
         fake.OperationFailed = true; fake.FailureCode = SquidFailureClassifier.AddressUnavailable;
         Complete(vm.StartCommand.ExecuteAsync(null));
-        var bindSentence = string.Format(LocalizedText.Get("squid.code.address_unavailable"), "192.168.1.4", "3128");
+        var bindSentence = string.Format(Text("squid.code.address_unavailable"), "192.168.1.4", "3128");
         Check(vm.OutcomeFailed && vm.OutcomeText.Resolve().Contains(bindSentence, StringComparison.Ordinal),
             "A bind rejection is reported as the listener address problem, naming the address and the way out.");
         Check(!vm.OutcomeText.Resolve().Contains(SquidFailureClassifier.AddressUnavailable, StringComparison.Ordinal),
@@ -275,32 +276,32 @@ internal static class SquidWorkspaceChecks
         fake.OperationFailed = false;
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Running = true, Enabled = true } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
-        Check(vm.StatePillOk && vm.StatePillText.Resolve() == LocalizedText.Get("squid.running"),
+        Check(vm.StatePillOk && vm.StatePillText.Resolve() == Text("squid.running"),
             "A running service is the only green pill.");
 
         vm.BindAddress = "127.0.0.1"; vm.Port = "8080"; vm.AllowedNetworks = "127.0.0.1/32\n10.0.0.0/8";
         Check(vm.ListenerSummary.Resolve() == "127.0.0.1:8080" && vm.NetworksSummary.Resolve().Contains('2'),
             "The listener page reads the draft back instead of hiding every value in the dialog.");
         vm.AllowedDomains = ""; vm.DeniedDomains = ".example.org";
-        Check(vm.AllowedDomainsSummary.Resolve() == LocalizedText.Get("squid.summary.all_allowed")
+        Check(vm.AllowedDomainsSummary.Resolve() == Text("squid.summary.all_allowed")
             && vm.DeniedDomainsSummary.Resolve().Contains('1'),
             "Domain counts are shown per list, and an empty allow list says what it means.");
-        vm.UpstreamHost = ""; Check(vm.UpstreamSummary.Resolve() == LocalizedText.Get("squid.summary.direct"),
+        vm.UpstreamHost = ""; Check(vm.UpstreamSummary.Resolve() == Text("squid.summary.direct"),
             "An empty upstream is reported as a direct connection rather than a blank field.");
         vm.AccessModeIndex = (int)SquidAccessMode.IpWhitelist;
-        Check(vm.AccessModeSummary.Resolve() == LocalizedText.Get("squid.mode_ip"),
+        Check(vm.AccessModeSummary.Resolve() == Text("squid.mode_ip"),
             "The access page names the active mode outside the editor.");
-        Check(vm.DraftStateText.Resolve() == LocalizedText.Get("squid.draft.dirty"),
+        Check(vm.DraftStateText.Resolve() == Text("squid.draft.dirty"),
             "The runtime card reports an unsaved draft without opening the action bar notice.");
         Check(!vm.CanEditSelectedAccount, "Editing an account needs a selection; an empty form is never opened.");
 
         // Password mode without an enabled account is the classic silent refusal: name it up front.
         vm.AccessModeIndex = (int)SquidAccessMode.Password; vm.AllowedNetworks = "";
         Check(vm.IsConfigurationValid && !vm.IsReadyToApply
-            && vm.ApplyReadinessText.Resolve().Contains(LocalizedText.Get("squid.blocker.accounts"), StringComparison.Ordinal),
+            && vm.ApplyReadinessText.Resolve().Contains(Text("squid.blocker.accounts"), StringComparison.Ordinal),
             "The publishing card states which gate keeps apply disabled.");
         vm.AccessModeIndex = (int)SquidAccessMode.IpWhitelist; vm.AllowedNetworks = "127.0.0.1/32";
-        Check(vm.IsReadyToApply && vm.ApplyReadinessText.Resolve() == LocalizedText.Get("squid.ready.apply"),
+        Check(vm.IsReadyToApply && vm.ApplyReadinessText.Resolve() == Text("squid.ready.apply"),
             "With every gate open the publishing card says the configuration can be applied.");
 
         var view = SquidApp.CreateView(vm);
@@ -321,7 +322,7 @@ internal static class SquidWorkspaceChecks
                 Check(field.GetLogicalAncestors().OfType<StackPanel>().Any(panel => panel.Name?.EndsWith("Editor", StringComparison.Ordinal) == true && !panel.IsVisible), "Editable text fields belong to an unopened editor, not the main workspace.");
         }
         var editorOwner = view.FindControl<StackPanel>("AccessEditor")!.Parent;
-        Complete(RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync((UserControl)view, "AccessEditor", "Access", (title, editor) =>
+        Complete(RelaxKonOS.WindowManager.WorkspaceEditorContent.OpenAsync((UserControl)view, "AccessEditor", "Access", (title, editor) =>
         {
             Check(editor.IsVisible && editor.Parent is null && ReferenceEquals(editor.DataContext, vm), "Opening detaches the same draft and keeps its binding owner.");
             var wrapper = new RelaxKonOS.Client.Controls.WorkspaceEditorDialogView { DataContext = vm };
@@ -367,7 +368,7 @@ internal static class SquidWorkspaceChecks
 
         // Blocking host states get their own band so the reason an action is missing is visible.
         fake.Snapshot = fake.Snapshot with { Status = new SquidStatus(true, true, true, true, false, "hash", true, true) };
-        using (var noticeVm = new SquidViewModel(fake, LocalizedText.Get) { CanRead = true, CanManage = false })
+        using (var noticeVm = new SquidViewModel(fake, Label) { CanRead = true, CanManage = false })
         {
             Complete(noticeVm.RefreshCommand.ExecuteAsync(null));
             Check(noticeVm.ShowRecoveryRequired && noticeVm.ShowReadOnly && noticeVm.ShowAdoptionRequired && !noticeVm.CanEdit,

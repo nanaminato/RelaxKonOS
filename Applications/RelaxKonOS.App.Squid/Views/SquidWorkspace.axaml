@@ -1,11 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wm="clr-namespace:RelaxKonOS.WindowManager;assembly=RelaxKonOS.WindowManager"
-             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:squid="clr-namespace:RelaxKonOS.App.Squid;assembly=RelaxKonOS.App.Squid"
+             xmlns:loc="clr-namespace:RelaxKonOS.App.Squid.Views"
+             xmlns:squid="clr-namespace:RelaxKonOS.App.Squid"
 
              xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.GatewayProxy;assembly=RelaxKonOS.Protocol"
-             x:Class="RelaxKonOS.Client.Apps.Squid.Views.SquidWorkspace"
+             x:Class="RelaxKonOS.App.Squid.Views.SquidWorkspace"
              x:DataType="squid:SquidViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
   <UserControl.Styles>
@@ -72,7 +72,7 @@
          for embedded/preview rendering. -->
     <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
       <wm:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.squid.display_name}"
-                                    Subtitle="{loc:Loc squid.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/squid.png" />
+                                    Subtitle="{loc:Loc squid.intro}" IconAsset="avares://RelaxKonOS.App.Squid/Assets/squid.png" />
       <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action header-refresh" Command="{Binding RefreshCommand}"
               ToolTip.Tip="{loc:Loc squid.refresh}" AutomationProperties.Name="{loc:Loc squid.refresh}" VerticalAlignment="Center">
         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16"

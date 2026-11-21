@@ -22,7 +22,7 @@ public partial class ProxyServerWorkspace : UserControl
             if (parts[0] == "PrincipalEditor") model.NewPrincipalCommand.Execute(null);
             if (parts[0] == "CredentialEditor") model.NewCredentialCommand.Execute(null);
         }
-        await RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync(this, parts[0], button.Content?.ToString() ?? "", ShowEditorAsync);
+        await RelaxKonOS.WindowManager.WorkspaceEditorContent.OpenAsync(this, parts[0], button.Content?.ToString() ?? "", ShowEditorAsync);
     }
 
     public ProxyServerWorkspace()

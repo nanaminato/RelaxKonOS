@@ -1,6 +1,12 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "application.relaxkonos.squid.display_name": "Squid Gateway",
+    "common.view": "View",
+    "common.refresh": "Refresh",
+    "common.settings": "Settings",
+    "common.close": "Close",
+    "common.discard_title": "Discard changes?",
         "squid.edit_account": "Edit account…",
     "squid.intro": "Manage the Linux server HTTP/CONNECT gateway. Lists accept one entry per line. HTTPS is tunneled without decryption.",
     "squid.bind_address": "Listen IP address",

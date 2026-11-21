@@ -1,6 +1,12 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "application.relaxkonos.squid.display_name": "Squid 网关",
+    "common.view": "查看",
+    "common.refresh": "刷新",
+    "common.settings": "设置",
+    "common.close": "关闭",
+    "common.discard_title": "放弃修改？",
         "squid.edit_account": "编辑账号…",
     "squid.intro": "管理 Linux 服务器的 HTTP/CONNECT 代理入口。列表每行一项，HTTPS 仅建立隧道，不解密内容。",
     "squid.bind_address": "监听 IP 地址",

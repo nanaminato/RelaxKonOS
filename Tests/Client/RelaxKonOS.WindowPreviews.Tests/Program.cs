@@ -182,7 +182,7 @@ if (args.Contains("--network-inspector-only"))
 }
 if (args.Contains("--squid-only"))
 {
-    SquidWorkspaceChecks.Run();
+    SquidWorkspaceChecks.Run(localization);
     Task.Run(SquidWorkspaceChecks.VerifyCapabilityAsync).GetAwaiter().GetResult();
     return;
 }

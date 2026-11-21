@@ -1,10 +1,10 @@
-using RelaxKonOS.App.Squid;
+using RelaxKonOS.WindowManager;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace RelaxKonOS.Client.Apps.Squid.Views;
+namespace RelaxKonOS.App.Squid.Views;
 
 /// <summary>Squid workspace with persistent draft fields and compact page navigation.</summary>
 public partial class SquidWorkspace : UserControl
@@ -23,7 +23,7 @@ public partial class SquidWorkspace : UserControl
         { accountModel.SelectedAccount = null; accountModel.NewAccountName = ""; accountModel.AccountPassword = ""; }
         // The trigger says "编辑…"; the dialog is titled after the card it edits.
         var title = button.CommandParameter?.ToString() ?? button.Content?.ToString() ?? "";
-        await RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync(this, parts[0], title, ShowEditorAsync);
+        await WorkspaceEditorContent.OpenAsync(this, parts[0], title, ShowEditorAsync);
         if (_viewModel is { } model) model.AccountPassword = "";
     }
 
@@ -33,7 +33,7 @@ public partial class SquidWorkspace : UserControl
     public SquidWorkspace()
     {
         InitializeComponent();
-        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        CompactWorkspaceNavigation.Install(this, WorkspaceBody, LocExtension.CreateBinding(this, "common.view"));
         ShowPage(0);
     }
 

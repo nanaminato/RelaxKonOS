@@ -12,11 +12,11 @@ public partial class ProxyServerRuntimeView : UserControl
     {
         if (sender is not Button { Tag: string target } button || ShowEditorAsync is null) return;
         var parts = target.Split(':');
-        await RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync(this, parts[0], button.Content?.ToString() ?? "", ShowEditorAsync);
+        await RelaxKonOS.WindowManager.WorkspaceEditorContent.OpenAsync(this, parts[0], button.Content?.ToString() ?? "", ShowEditorAsync);
     }
 
     public Task OpenEditorAsync() => ShowEditorAsync is { } presenter
-        ? RelaxKonOS.Client.Controls.WorkspaceEditorDialogView.OpenAsync(this, "RuntimeEditor", RelaxKonOS.Client.Localization.LocalizedText.Get("proxy_server.runtime.action_title"), presenter)
+        ? RelaxKonOS.WindowManager.WorkspaceEditorContent.OpenAsync(this, "RuntimeEditor", RelaxKonOS.Client.Localization.LocalizedText.Get("proxy_server.runtime.action_title"), presenter)
         : Task.CompletedTask;
 
     /// <summary>Component Center uses the same controls inline; domain workspaces retain their editor host.</summary>
